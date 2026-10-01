@@ -40,7 +40,6 @@ ACCOUNT SETTINGS (used for position sizing)
 larger position, reduce the shares to fit and report the smaller risk.
 * If the formula gives fewer than 1 share, mark the stock "Too large for account"
 and treat it as WATCH — WAIT.
-* Sector limit: at most 3 TRADE / TRADE ON TRIGGER names per sector (see STEP 6).
 
 BROWSER RULES
 
