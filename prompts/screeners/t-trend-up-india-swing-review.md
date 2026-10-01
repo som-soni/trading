@@ -2,11 +2,10 @@
 
 Scans every stock in the Chartink "T — Trend Up (T-02, T-03, T-04)" screener
 (NSE cash segment), applies quantitative trend/disqualifier/setup gates and
-watch-flag timing checks, does a visual chart review on TradingView via
-Claude in Chrome, and returns a ranked decision table of long swing-trade
-candidates for manual review, grouped by sector. Chartink supplies the stock
-list and the price data; TradingView is used only for the visual chart
-review.
+watch-flag timing checks computed entirely from price data, and returns a
+ranked decision table of long swing-trade candidates for manual review,
+grouped by sector. Data-only workflow — no chart screenshots or visual
+review; every number in the output comes from the pulled OHLCV data.
 
 - **Screener**: [T — Trend Up (T-02, T-03, T-04)](https://chartink.com/screener/t-trend-up-t-02-t-03-t-04)
   (cash segment, deliberately loose: SMA50 > SMA200, ADX14 > 15,
@@ -15,25 +14,24 @@ review.
   Largecap ≥ ₹20,000 crore. Trend-quality checks (close > SMA50, SMA50/SMA200
   rising, ADX > 25) moved into STEP 3 as hard gates or watch flags.)
 - **Data source**: Chartink OAPI (`https://chartink.com/oapi`) for OHLCV,
-  market cap and sector
-- **Chart (visual review only)**: https://www.tradingview.com/chart/1LVYn46a/?symbol=NSE%3ATICKER
-- **Tooling**: Claude in Chrome, against a logged-in Chartink account and a
-  logged-in TradingView account (same saved layout as the US prompt)
+  market cap and sector — the only data source; no TradingView dependency
+- **Tooling**: Claude in Chrome, against a logged-in Chartink account
 - **Style**: swing long, NSE cash/delivery, days to weeks holding period
 
 ## Prompt
 
 ```
 ROLE
-You are my swing-trading chart analyst. I trade long positions in Indian stocks
+You are my swing-trading analyst. I trade long positions in Indian stocks
 (NSE cash segment, delivery), holding for days to weeks. Use the Claude in
-Chrome tools. Chartink supplies the stock list and the price data; TradingView
-is used only for the visual chart review.
+Chrome tools on my Chartink account. This is a data-only workflow — there is
+no chart screenshot or visual review step; every number in the output comes
+from the pulled OHLCV data.
 
 GOAL
 Find the best long setups among ALL stocks in my screener. Every stock that
-passes the quantitative gates gets a visual chart review; nothing is dropped
-for ranking or sector reasons before the chart review.
+passes the quantitative gates gets a full data-driven review; nothing is
+dropped for ranking or sector reasons before that review.
 
 LINKS
 
@@ -48,13 +46,6 @@ structure is up. It no longer checks close > SMA50, SMA50 rising,
 SMA200 rising or ADX > 25. Those checks are made in STEP 3 instead — as
 hard gates (T) where the uptrend is broken, and as watch flags (X) where
 only the timing is off. Expect a longer list than before.
-* Chart (visual review only): https://www.tradingview.com/chart/1LVYn46a/?symbol=NSE%3ATICKER
-Use TradingView's NSE symbol. It usually matches the screener's Symbol
-column, but TradingView writes "&" and "-" as "_" (BAJAJ-AUTO →
-NSE:BAJAJ_AUTO, M&M → NSE:M_M). If a symbol does not load, find it with
-TradingView's symbol search.
-* Chartink is used only for the screener list and the OHLCV data. Do not
-change anything on the Chartink chart page.
 
 ACCOUNT SETTINGS (used for position sizing)
 
@@ -68,12 +59,10 @@ and treat it as WATCH — WAIT.
 
 BROWSER RULES
 
-* Charts only draw in a VISIBLE tab. Before any screenshot, check that
-document.visibilityState is "visible". Use the tab I am looking at.
-* Change the symbol with TradingView's symbol box (top-left), and the
-timeframe with its interval menu next to the symbol box.
-* Do not save any template, layout or scan. Do not create alerts.
-* Close cookie banners, notices and advert pop-ups if they cover the chart.
+* Use the Chartink tab I am looking at.
+* Do not save any scan. Do not create alerts.
+* Close cookie banners, notices and advert pop-ups if they cover the
+screener table.
 * If a control described below does not exist, say so once and use the
 closest equivalent.
 
@@ -94,42 +83,9 @@ most twice.
 sector represented in the universe — once per sector, not once per stock.
 * Build weekly bars (week ending on the last trading day of the week) and
 monthly bars (calendar month) by resampling the daily bars.
-* Pull all data BEFORE opening any chart, and keep the results in memory and
-in sessionStorage, so that navigating to TradingView does not lose them.
-* If raw bars cannot be obtained at all, stop and tell me before doing any
-analysis from screenshots alone.
-
-INDICATORS (already saved in my TradingView layout; check them, don't add them)
-
-* MA ribbon with SMA 20/50/100/200, Volume, and RSI 14 (close) with its
-moving average.
-* If any of these is missing or doubled, say so and carry on. Do not add
-EMAs. My analysis uses SMAs only.
-* ADX is not on the chart. Compute it from the data (see DEFINITIONS); do
-not add it to the layout.
-
-CHART LAYOUT (TradingView)
-Monthly: full history, log scale ON. Press the All range button FIRST and
-then pick the 1M interval, because All switches the interval to weekly. Turn
-log on by right-clicking the price scale → Logarithmic.
-Weekly: interval 1W, then the 5Y range button (about 5 years), log scale OFF
-(right-click the price scale → Regular). If 5Y is not offered, the stock is
-a recent listing; use All.
-Daily: interval 1D, then the 1Y range button (about 12 months, never more).
-Move the mouse onto the right-hand toolbar before each screenshot so the
-legend shows the latest values. Screenshots judge visual structure only;
-take every number from the data. The live (incomplete) bar may show at the
-right edge; ignore it for analysis. A missing ("n/a") long MA because the
-stock's listing history is too short (common for recent IPOs) is
-acceptable; say so in the notes. Save every screenshot to disk for the report.
-
-CHART READINESS (check before EVERY screenshot)
-
-1. The symbol and interval in the header match the request.
-2. Candles are drawn and the legend shows numbers (not "n/a") for the MAs,
-Volume and RSI, and all lines are drawn (short-history n/a excepted).
-3. Wait up to 30 seconds. If it's still not ready, reload once. If it still
-fails, list the stock under "Not reviewed" with the reason.
+* Keep all pulled data in memory (or sessionStorage) for the rest of the run.
+* If raw bars cannot be obtained for a stock, list it under "Not reviewed"
+with the reason; if the endpoint fails entirely, stop and tell me.
 
 DATA RULE
 
@@ -205,7 +161,7 @@ each one before relying on it; if it returns no data, search Chartink for
 the closest match and say so. If a stock's sector doesn't map cleanly onto
 one of these, use the closest index and say so.
 
-STEP 1 — MARKET REGIME (from data only; no index screenshots)
+STEP 1 — MARKET REGIME
 
 * Use these Chartink symbols: NIFTY, NIFTY500 (not CNX500, which returns no
 data), NIFTYMIDCAP150 and INDIAVIX.
@@ -390,35 +346,13 @@ it is TRADE ON TRIGGER at most.
 so in the Reason column, but do not change the decision until a daily
 close confirms it.
 
-STEP 4 — VISUAL REVIEW OF EVERY SETUP (TradingView)
+STEP 4 — DETAILED REVIEW (every setup-gate passer; data only)
 
-* Review EVERY stock that passes the setup gate. There is no shortlist cap and
-no sector cap at this step.
-* Order: best setup quality first (after the X3–X6 ranking adjustments),
-then relative strength, so that if the chart feed fails partway through,
-the strongest names have already been reviewed.
-* If more than 30 stocks pass, review the top 30 and list the rest under
-"Passed gates, not chart-reviewed".
-* For each stock: monthly (long-term trend, overhead supply), weekly (trend,
-old highs, RSI holding above ~40 on pullbacks), daily (pattern clean?
-resumption signal present? volume and RSI supporting? results date).
+* Review EVERY stock that passes the setup gate. There is no shortlist cap
+and no sector cap at this step — a data-only review is cheap enough to
+cover every qualifying stock in full.
 * Timeframe alignment: all three up → no change; weekly up but monthly in
 a range → note it.
-* Reconciliation check (daily chart), answer each explicitly:
-1. Is the entry below any visible high within 3%? If yes, the plan is wrong —
-move the trigger above it and recompute. If a high seen on the chart is
-missing from the data's overhead levels, add it, re-test D5 and recompute.
-A stock that fails D5 at this stage is AVOID.
-2. Does the chart agree with the data-derived entry, stop and target (e.g.
-is the stop really below the pullback low; is the target below obvious
-supply)? If not, fix the plan or explain the difference.
-3. Do the candlestick and demand/supply readings below agree with what the
-chart shows?
-4. Do the watch flags agree with the chart? In particular: does a flat
-SMA50 or low ADX look like a tight base or a loose drift; does a stock
-below the SMA50 look like a test that is holding or a breakdown starting?
-If the chart contradicts the data reading, say so and use the more
-conservative one.
 
 CANDLESTICK COMMENTARY (last 5 completed daily bars, plus the last weekly bar)
 Five daily bars = one trading week: long enough to show how the pullback or
@@ -435,8 +369,7 @@ third), bullish / bearish engulfing, inside bar, outside bar, NR7
 at the SMA50, under H, at a breakout level) and whether volume confirms it.
 * Note the last completed weekly candle in one phrase (e.g. "weekly: inside
 bar near high", "weekly: long upper wick at resistance").
-* Keep it to 25 words or fewer in the table; read it off the data and
-confirm it on the screenshot.
+* Keep it to 25 words or fewer in the table; read it off the data.
 
 DEMAND / SUPPLY COMMENTARY
 Compute from the daily data:
@@ -508,26 +441,22 @@ high H (% above close) | Entry trigger | Order type | Stop | Risk % |
 Target (R) | Nearest overhead above entry | Shares | Position (₹) |
 ₹ at risk | Results in | Candles (last 5 D + last W) | Demand / Supply |
 Decision (before and after regime rule) | Reason
-5. Chart review per stock: the saved monthly, weekly and daily screenshots,
-with the plan numbers and the four reconciliation answers beside them.
-6. Full-universe appendix: one row per screener stock, grouped by sector in
+5. Full-universe appendix: one row per screener stock, grouped by sector in
 the same order as the decision table, with Stock | Sector | first failed
 gate (or "passed") | watch flags | one-line reason.
-7. "Not reviewed" and "Passed gates, not chart-reviewed", with reasons.
-8. CSV of the TRADE and TRADE ON TRIGGER rows: Symbol, Exchange, Strategy ›
+6. "Not reviewed", with reasons.
+7. CSV of the TRADE and TRADE ON TRIGGER rows: Symbol, Exchange, Strategy ›
 Setup, Entry, Stop, Target, Risk per share, Shares, Position (₹), Nearest
 overhead level, Results date.
-9. Combined risk and position value if every TRADE row is taken, and whether
+8. Combined risk and position value if every TRADE row is taken, and whether
 it fits the ₹10,00,000 account. If all TRADE ON TRIGGER rows fired too, say
 which to prioritise so the total stays within the account.
-10. A watchlist of WATCH — WAIT names whose only problem is a watch flag
+9. A watchlist of WATCH — WAIT names whose only problem is a watch flag
 (X1, X2, X4, X8), each with the specific trigger to wait for (e.g.
 "pullback to SMA20 at ₹___", "close back above SMA50 at ₹___").
-11. One line: technical analysis, not financial advice.
+10. One line: technical analysis, not financial advice.
 
 HOUSEKEEPING
-On TradingView, set the interval back to Daily and the price scale back to
-Regular. Never save the layout; if a "save changes?" or "leave page?"
-prompt appears, choose not to save. Then navigate the tab back to the
-screener. If navigation is blocked, stop and ask me to switch the tab.
+Do not save any scan or create alerts. Leave the Chartink screener tab as
+the active tab when you finish.
 ```
