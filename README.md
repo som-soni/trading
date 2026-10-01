@@ -8,3 +8,5 @@ Version control for trading-related tooling and prompts.
   - `screeners/` — prompts that scan a screener and produce a reviewed trade list
     - [`uptrend-daily-v2-swing-review.md`](prompts/screeners/uptrend-daily-v2-swing-review.md) — US market (TradingView, NASDAQ/NYSE)
     - [`t-trend-up-india-swing-review.md`](prompts/screeners/t-trend-up-india-swing-review.md) — India market (Chartink, NSE)
+- [`scripts/`](scripts/README.md) — `swing_screener`, a Python port of the two prompts above: same
+  gates/flags/entry/sizing/decision logic, run locally against yfinance data instead of an LLM

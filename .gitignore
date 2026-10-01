@@ -1,0 +1,7 @@
+scripts/.venv/
+scripts/cache/
+scripts/reports/
+scripts/data/sector_cache_*.csv
+__pycache__/
+*.pyc
+.DS_Store
