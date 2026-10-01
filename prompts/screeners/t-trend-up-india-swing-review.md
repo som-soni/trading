@@ -1,18 +1,19 @@
 # T — Trend Up (India) — Swing Trade Screener Review
 
 Scans every stock in the Chartink "T — Trend Up (T-02, T-03, T-04)" screener
-(NSE cash segment), applies quantitative trend/disqualifier/setup gates, does
-a visual chart review on TradingView via Claude in Chrome, and returns a
-ranked decision table of long swing-trade candidates for manual review.
-Chartink supplies the stock list and the price data; TradingView is used
-only for the visual chart review.
+(NSE cash segment), applies quantitative trend/disqualifier/setup gates and
+watch-flag timing checks, does a visual chart review on TradingView via
+Claude in Chrome, and returns a ranked decision table of long swing-trade
+candidates for manual review, grouped by sector. Chartink supplies the stock
+list and the price data; TradingView is used only for the visual chart
+review.
 
 - **Screener**: [T — Trend Up (T-02, T-03, T-04)](https://chartink.com/screener/t-trend-up-t-02-t-03-t-04)
-  (cash segment: Close > SMA50, SMA50 > SMA200,
-  SMA50 > (SMA50 20 days ago + ATR14), SMA200 > SMA200 20 days ago, ADX14 > 25,
+  (cash segment, deliberately loose: SMA50 > SMA200, ADX14 > 15,
   SMA20(Volume × Close) ≥ ₹50 crore, ATR14 > 1.5% of close,
   Market cap ≥ ₹5,000 crore — either Midcap ₹5,000–20,000 crore or
-  Largecap ≥ ₹20,000 crore)
+  Largecap ≥ ₹20,000 crore. Trend-quality checks (close > SMA50, SMA50/SMA200
+  rising, ADX > 25) moved into STEP 3 as hard gates or watch flags.)
 - **Data source**: Chartink OAPI (`https://chartink.com/oapi`) for OHLCV,
   market cap and sector
 - **Chart (visual review only)**: https://www.tradingview.com/chart/1LVYn46a/?symbol=NSE%3ATICKER
@@ -38,11 +39,15 @@ LINKS
 
 * Screener "T — Trend Up (T-02, T-03, T-04)":
 https://chartink.com/screener/t-trend-up-t-02-t-03-t-04
-(filters, cash segment: Close > SMA50, SMA50 > SMA200,
-SMA50 > (SMA50 20 days ago + ATR14), SMA200 > SMA200 20 days ago, ADX14 > 25,
+(filters, cash segment: SMA50 > SMA200, ADX14 > 15,
 SMA20(Volume × Close) ≥ ₹50 crore, ATR14 > 1.5% of close,
 Market cap ≥ ₹5,000 crore — either Midcap ₹5,000–20,000 crore or
 Largecap ≥ ₹20,000 crore)
+The screener is deliberately loose: it only confirms that the long-term
+structure is up. It no longer checks close > SMA50, SMA50 rising,
+SMA200 rising or ADX > 25. Those checks are made in STEP 3 instead — as
+hard gates (T) where the uptrend is broken, and as watch flags (X) where
+only the timing is off. Expect a longer list than before.
 * Chart (visual review only): https://www.tradingview.com/chart/1LVYn46a/?symbol=NSE%3ATICKER
 Use TradingView's NSE symbol. It usually matches the screener's Symbol
 column, but TradingView writes "&" and "-" as "_" (BAJAJ-AUTO →
@@ -100,6 +105,8 @@ INDICATORS (already saved in my TradingView layout; check them, don't add them)
 moving average.
 * If any of these is missing or doubled, say so and carry on. Do not add
 EMAs. My analysis uses SMAs only.
+* ADX is not on the chart. Compute it from the data (see DEFINITIONS); do
+not add it to the layout.
 
 CHART LAYOUT (TradingView)
 Monthly: full history, log scale ON. Press the All range button FIRST and
@@ -147,6 +154,17 @@ Monthly: 2 bars each side.
 * Prior structural swing low: the last daily swing low before H.
 * "Rising": SMA50 above its value 10 bars ago; SMA200 above its value
 20 bars ago; weekly 30 EMA above last week's value.
+* "Falling": SMA50 more than 1% below its value 10 bars ago; SMA200 more
+than 0.5% below its value 20 bars ago.
+* "Flat": neither rising nor falling.
+* Percent distance from an SMA: (close ÷ SMA − 1) × 100. ATR% = ATR14 ÷
+close × 100. "N ATR from an SMA" = (close − SMA) ÷ ATR14.
+* 52-week high: the highest high of the last 252 daily bars.
+* ADX: ADX 14 with Wilder smoothing. "ADX falling" = ADX below its value
+5 bars ago.
+* Base vs drift (used when the SMA50 is flat or ADX is 15–20):
+Base = the 10-bar range is ≤ 4.5 ATR AND the close is within 10% of the
+52-week high. Drift = anything else.
 * Overhead levels: every daily swing high in the last 252 bars, weekly
 swing high in the last 5 years, monthly swing high in all available history,
 AND the current swing high H. A level counts as "broken" only after a
@@ -195,7 +213,9 @@ data), NIFTYMIDCAP150 and INDIAVIX.
 SMA200; is SMA50 rising (above its value 10 bars ago)? Is the weekly close
 above a rising 30-week EMA?
 * India VIX: if above 20, use ₹5,000 risk and say so at the top.
-* Breadth: % of screener names whose close is above their SMA20.
+* Breadth: % of screener names whose close is above their SMA20, and
+separately % above their SMA50. (The screener no longer requires close >
+SMA50, so the second number is now meaningful.)
 * If NIFTY 50 and NIFTY 500 are both below their SMA50, downgrade every
 decision by one level (TRADE — HIGH CONFIDENCE → TRADE ON TRIGGER →
 WATCH — WAIT → AVOID). Show each stock's decision before and after this rule.
@@ -208,6 +228,11 @@ total under the table.
 * Record the time the list was read, the total count and the data time
 shown. This frozen list is the universe for the whole run; ignore any
 later intraday changes.
+* If the screener table shows the review columns (ADX, RSI, Pct_vs_sma20,
+Pct_vs_sma50, Pct_from_52w_high, Perf_1m, Perf_3m), record them too, as
+a cross-check only. Every gate and flag uses values computed from the
+completed-bar data. If a screener value and your computed value disagree
+noticeably (e.g. ADX by more than 3 points), note it.
 * If you run this before 09:15 IST or on a holiday, the list reflects the last
 close.
 * For each stock collect: exchange (NSE), sector / industry, market-cap band
@@ -238,24 +263,44 @@ so recommend re-checking before entry.
 
 STEP 3 — QUANTITATIVE GATES (every stock)
 
-Multi-timeframe (M / W) — hard gates; a stock that fails one leaves the funnel:
+There are two kinds of check. HARD GATES (M, W, T, D) mean the uptrend is
+broken or the stock is untradeable; a stock that fails one is AVOID and
+leaves the funnel. WATCH FLAGS (X) mean the trend is intact but the timing
+or quality is off; they never make a stock AVOID on their own, but they
+cap the decision or change its ranking as stated.
+
+Multi-timeframe (M / W) — hard gates:
 M1 Monthly close above the 10-month SMA, and 12-month highs and lows above
 the prior 12 months (n/a with under 24 months of history: pass, flag it)
 W1 Weekly close above a rising 30-week EMA
 W2 Weekly SMA20 above weekly SMA50
 
-Trend existence (T):
-T1 close > SMA20 > SMA50 > SMA200
-T2 SMA50 rising over the last 10 bars, and SMA200 rising
-T3 higher swing lows over the last ~50 bars (see DEFINITIONS)
+Trend (T) — hard gates:
+T1 Structure: SMA50 > SMA200 (the screener guarantees this; re-check it on
+completed bars), AND the close has not broken down through the SMA50.
+Fail if the close is more than 2 ATR below the SMA50, or if the last 5
+completed closes are all below the SMA50. (A close slightly below the
+SMA50 is NOT a fail; see X2.)
+T2 Slope: fail if the SMA50 is falling or the SMA200 is falling (see
+DEFINITIONS). Flat passes but is flagged X4.
+T3 Higher swing lows over the last ~50 bars (see DEFINITIONS)
 T4 12-1 month momentum positive (close 21 bars ago vs close 252 bars ago)
+T5 Leadership: the close is no more than 25% below the 52-week high.
+T6 Trend not fading: fail if the 3-month (63-bar) return is negative AND
+the SMA50 is flat or falling.
+
+Note on the old T1 stack (close > SMA20 > SMA50 > SMA200): it is no longer a
+gate. A close below the SMA20 is normal during a TC-01 pullback, and the
+resumption signal in ENTRY RULES already requires a close back above the
+SMA20 before any entry.
 
 Relative strength (ranking only): 3-month (63-bar) and 6-month (126-bar)
 return minus NIFTY 500's, and separately minus the stock's own sector
 index's (see SECTOR INDEX MAP).
 
-Disqualifiers (D):
-D1 more than 2.5 ATR above SMA20
+Disqualifiers (D) — hard gates:
+D1 (retired — extension is now watch flag X1, so an extended stock in a
+good trend goes to WATCH — WAIT instead of AVOID)
 D2 quarterly results / board meeting within 10 trading days
 D3 pullback on rising volume (see DEFINITIONS)
 D4 close below the prior structural swing low
@@ -270,6 +315,31 @@ D8 the stock is under ASM / GSM / ESM surveillance, trades in the
 trade-for-trade (BE) series, or has a price band of 5% or less
 D9 the last completed bar closed locked at its upper or lower circuit
 
+Watch flags (X) — never AVOID on their own:
+X1 Extended: close more than 2.5 ATR above the SMA20, or daily RSI above
+75. Cap: WATCH — WAIT. Say what pullback would make it actionable (e.g.
+"back toward the SMA20 at ₹___").
+X2 Below the SMA50 (but within the T1 limits): the stock is testing its
+SMA50. Cap: TRADE ON TRIGGER, and the trigger must also be above the
+SMA50.
+X3 At a rising SMA50: the close is within 1 ATR of the SMA50 (either side)
+and the SMA50 is rising. Positive flag — often the best risk/reward. Rank
+it up one step in setup quality. It still needs the resumption signal.
+X4 Flat SMA50: read it as base or drift (see DEFINITIONS). Base: no cap; it
+supports a TC-02 continuation. Drift: cap at TRADE ON TRIGGER and rank it
+down one step in setup quality.
+X5 Low ADX (15–20): read it as base or drift. Base: no effect. Drift: rank
+it down one step in setup quality. Never a reason to reject — low ADX
+inside a tight base is often the best setup.
+X6 ADX falling: if the close is within 5% of H, it is a healthy pause (no
+effect). If the close has fallen toward the SMA50 over the last 5 bars,
+momentum is fading: rank it down one step.
+X7 Late move: ADX above 40 together with X1. Prefer Plan A (pullback) over
+Plan B (breakout), and say so.
+X8 Weak momentum: daily RSI below 40 while the close is above the SMA50.
+Cap: TRADE ON TRIGGER; check that the next pullback holds.
+If several caps apply, use the lowest.
+
 Setup gates:
 TC-01 Trend Pullback: S-01 depth 30–60% of the impulse (H − L) or 1–3 ATR;
 S-02 lasting 3–10 bars; S-03 low above the prior swing low;
@@ -280,7 +350,8 @@ the 50-day average
 TC-04 tag: within 2% of the 55-day or 52-week high
 If both TC-01 and TC-02 are valid, TC-01 sets the stop and target.
 
-Funnel: report counts after M/W, T, D, and setup.
+Funnel: report counts after M/W, T, D, and setup, and how many of the
+survivors carry each watch flag (X1–X8).
 
 ENTRY RULES (apply before any sizing or decision)
 
@@ -288,7 +359,8 @@ ENTRY RULES (apply before any sizing or decision)
 above the SMA20. For TC-02, a completed close above the high of the 10
 bars before the signal bar.
 * Trigger level: start from the high of the last completed bar (TC-02: the
-higher of that and the prior 10-bar high). Then, while any overhead level
+higher of that and the prior 10-bar high). If X2 applies, the trigger is
+also at least the SMA50 + 0.1%. Then, while any overhead level
 (including H) lies within 3% above the ENTRY (trigger + 0.1%), move the
 trigger up to the highest such level and check again. Stop when no
 overhead level sits within 3% above the entry.
@@ -300,7 +372,7 @@ entry below an overhead level that sits within 3% above it.
 better decision (state which, and give the other in the Reason column):
 Plan A "pullback": the entry from the rule above. Plan B "breakout":
 entry = H + 0.1%, same stop. Use it when Plan A's target is capped at H
-(or another level) below 2R.
+(or another level) below 2R. With X7, prefer Plan A.
 * Stop = TC-01: pullback low P − 0.1 ATR; TC-02: 10-bar range low − 0.1 ATR.
 * Target = measured move (TC-01: P + (H − L); TC-02: range high + 2 × range
 height), cut to the next overhead level above the entry if that is lower.
@@ -322,8 +394,9 @@ STEP 4 — VISUAL REVIEW OF EVERY SETUP (TradingView)
 
 * Review EVERY stock that passes the setup gate. There is no shortlist cap and
 no sector cap at this step.
-* Order: best setup quality first, then relative strength, so that if the chart
-feed fails partway through, the strongest names have already been reviewed.
+* Order: best setup quality first (after the X3–X6 ranking adjustments),
+then relative strength, so that if the chart feed fails partway through,
+the strongest names have already been reviewed.
 * If more than 30 stocks pass, review the top 30 and list the rest under
 "Passed gates, not chart-reviewed".
 * For each stock: monthly (long-term trend, overhead supply), weekly (trend,
@@ -341,6 +414,11 @@ is the stop really below the pullback low; is the target below obvious
 supply)? If not, fix the plan or explain the difference.
 3. Do the candlestick and demand/supply readings below agree with what the
 chart shows?
+4. Do the watch flags agree with the chart? In particular: does a flat
+SMA50 or low ADX look like a tight base or a loose drift; does a stock
+below the SMA50 look like a test that is holding or a breakdown starting?
+If the chart contradicts the data reading, say so and use the more
+conservative one.
 
 CANDLESTICK COMMENTARY (last 5 completed daily bars, plus the last weekly bar)
 Five daily bars = one trading week: long enough to show how the pullback or
@@ -354,7 +432,7 @@ range), hammer / shooting star (wick ≥ 2× body, close in the top / bottom
 third), bullish / bearish engulfing, inside bar, outside bar, NR7
 (narrowest range of the last 7), 3-bar reversal, gap up / gap down.
 * Interpret in context: where the pattern sits (at support, at the SMA20,
-under H, at a breakout level) and whether volume confirms it.
+at the SMA50, under H, at a breakout level) and whether volume confirms it.
 * Note the last completed weekly candle in one phrase (e.g. "weekly: inside
 bar near high", "weekly: long upper wick at resistance").
 * Keep it to 25 words or fewer in the table; read it off the data and
@@ -393,43 +471,48 @@ it "Too large for account" (WATCH — WAIT).
 
 STEP 6 — DECISION, THEN SECTOR FILTER
 Decision values:
-TRADE — HIGH CONFIDENCE : all gates pass; all timeframes aligned; signal
-present as defined in ENTRY RULES; risk ≤ 7%; target ≥ 2R; no results
-within 15 trading days; demand/supply not "Supply in control"
-TRADE ON TRIGGER : gates pass, but the close is still below the trigger
-level (including a bounce that closed under H); risk ≤ 8%; target ≥ 2R
-WATCH — WAIT : trend fine, but extended, stop > 8%, target < 2R after
+TRADE — HIGH CONFIDENCE : all hard gates pass; no watch-flag cap applies
+(X1, X2, X4-drift, X8); all timeframes aligned; signal present as defined
+in ENTRY RULES; risk ≤ 7%; target ≥ 2R; no results within 15 trading days;
+demand/supply not "Supply in control"
+TRADE ON TRIGGER : hard gates pass, but the close is still below the
+trigger level (including a bounce that closed under H), or a watch flag
+caps it here (X2, X4-drift, X8); risk ≤ 8%; target ≥ 2R
+WATCH — WAIT : trend fine, but extended (X1), stop > 8%, target < 2R after
 moving the entry above resistance, supply in control, or too large
-AVOID : fails a trend gate or a disqualifier
-Then apply the market-regime downgrade from STEP 1, if active.
+AVOID : fails a hard gate (M, W, T or D2–D9)
+Apply the watch-flag caps first, then the market-regime downgrade from
+STEP 1, if active.
 
 Sector filter (applied only now):
 Within each sector, rank the TRADE and TRADE ON TRIGGER names by setup
-quality, then R-multiple, then RS. Keep the top 3. Mark the rest
-"WATCH — SECTOR LIMIT" and name the stronger stocks in that sector that
-replaced them.
+quality (after the X3–X6 adjustments), then R-multiple, then RS. Keep the
+top 3. Mark the rest "WATCH — SECTOR LIMIT" and name the stronger stocks in
+that sector that replaced them.
 
 OUTPUT (publish as one report page)
 
-1. Market regime in one line (NIFTY 50 / 500 / Midcap 150 trend, breadth %,
-India VIX, risk per trade, whether the downgrade rule is active).
+1. Market regime in one line (NIFTY 50 / 500 / Midcap 150 trend, breadth %
+above SMA20 and above SMA50, India VIX, risk per trade, whether the
+downgrade rule is active).
 2. Universe line: screener count, time read, data timestamp, stocks with data.
-3. Funnel counts.
+3. Funnel counts, including how many survivors carry each watch flag.
 4. Decision table for every reviewed stock, grouped by sector (strongest
 sector index RS vs NIFTY 500 first), each group opening with a one-line
 sector summary (index trend, RS vs NIFTY 500); within each sector, sorted
 by decision and then setup quality: Stock | Symbol | Sector | Mcap band |
 Price (₹) | Strategy › Setup | Monthly | Weekly | Daily setup |
-Gates (M/W/T/S/D) | RS vs NIFTY 500 / Sector | RSI (D) | Current swing
+Gates (M/W/T/S/D) | Watch flags (X) | RS vs NIFTY 500 / Sector | RSI (D) |
+ADX (D) | % vs SMA20 / SMA50 | % below 52-week high | Current swing
 high H (% above close) | Entry trigger | Order type | Stop | Risk % |
 Target (R) | Nearest overhead above entry | Shares | Position (₹) |
 ₹ at risk | Results in | Candles (last 5 D + last W) | Demand / Supply |
 Decision (before and after regime rule) | Reason
 5. Chart review per stock: the saved monthly, weekly and daily screenshots,
-with the plan numbers and the three reconciliation answers beside them.
+with the plan numbers and the four reconciliation answers beside them.
 6. Full-universe appendix: one row per screener stock, grouped by sector in
 the same order as the decision table, with Stock | Sector | first failed
-gate (or "passed") | one-line reason.
+gate (or "passed") | watch flags | one-line reason.
 7. "Not reviewed" and "Passed gates, not chart-reviewed", with reasons.
 8. CSV of the TRADE and TRADE ON TRIGGER rows: Symbol, Exchange, Strategy ›
 Setup, Entry, Stop, Target, Risk per share, Shares, Position (₹), Nearest
@@ -437,7 +520,10 @@ overhead level, Results date.
 9. Combined risk and position value if every TRADE row is taken, and whether
 it fits the ₹10,00,000 account. If all TRADE ON TRIGGER rows fired too, say
 which to prioritise so the total stays within the account.
-10. One line: technical analysis, not financial advice.
+10. A watchlist of WATCH — WAIT names whose only problem is a watch flag
+(X1, X2, X4, X8), each with the specific trigger to wait for (e.g.
+"pullback to SMA20 at ₹___", "close back above SMA50 at ₹___").
+11. One line: technical analysis, not financial advice.
 
 HOUSEKEEPING
 On TradingView, set the interval back to Daily and the price scale back to
