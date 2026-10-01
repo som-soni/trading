@@ -209,7 +209,7 @@ def run(market_key: str, refresh_universe: bool = False, limit: int | None = Non
             "pct_vs_sma50": round(ind.pct_distance(ctx.close, float(last["sma50"])), 1) if pd.notna(last["sma50"]) else None,
             "pct_below_52wk_high": round(ind.pct_distance(ctx.close, float(last["high_252"])), 1) if pd.notna(last["high_252"]) else None,
             "h_pct_above_close": round(ind.pct_distance(ctx.h_value, ctx.close), 1),
-            "earnings_in": earnings_map.get(sym, "unknown"),
+            "earnings_in": earnings_map.get(sym),  # None (not a string) when lookup failed/missing — keeps the column numeric
             "candles": patterns.summarize(
                 ctx.daily, float(last["sma20"]), float(last["sma50"]), ctx.h_value
             ),

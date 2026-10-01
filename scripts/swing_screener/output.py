@@ -37,6 +37,37 @@ _TRAIL_COLUMNS = [
     "demand_supply", "setup_quality",
 ]
 
+# Explicit, nullable dtypes for every column whose type could otherwise be
+# inferred inconsistently run-to-run depending on which rows happen to be
+# present (e.g. a run with no 'insufficient history' stocks has no None in
+# the gate_/watch_ columns, so pandas/DuckDB infer a non-nullable type —
+# then a LATER run that does have one crashes on insert). Forcing these
+# dtypes here means every run produces the same schema regardless of what
+# it contains. This bit us once already (earnings_in: int vs the string
+# "unknown" — fixed by using None instead — this is the general-purpose
+# version of that fix, applied before it can bite another column).
+_BOOL_COLUMNS = [
+    "tradeable", "watchlist_candidate", "uptrend_intact", "has_setup",
+    "setup_tc01", "setup_tc02", "setup_tc04_tag",
+] + [f"gate_{c}" for c in GATE_CODES] + [f"watch_{c}" for c in WATCH_CODES]
+
+_NUMERIC_COLUMNS = [
+    "price", "rs_vs_benchmark", "rs_vs_sector", "rsi", "adx", "pct_vs_sma20",
+    "pct_vs_sma50", "pct_below_52wk_high", "h_pct_above_close", "entry", "stop",
+    "risk_pct", "target_r", "nearest_overhead", "shares", "position_value",
+    "usd_at_risk", "earnings_in", "setup_quality",
+]
+
+
+def _enforce_dtypes(df: pd.DataFrame) -> pd.DataFrame:
+    for col in _BOOL_COLUMNS:
+        if col in df.columns:
+            df[col] = df[col].astype("boolean")  # pandas nullable bool: True/False/pd.NA
+    for col in _NUMERIC_COLUMNS:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Float64")  # nullable float
+    return df
+
 
 def universe_report(rows: list[dict], sector_rs: dict[str, float]) -> pd.DataFrame:
     """One row per stock that passed the loose screener filter, grouped by
@@ -49,9 +80,10 @@ def universe_report(rows: list[dict], sector_rs: dict[str, float]) -> pd.DataFra
         return pd.DataFrame(columns=columns)
 
     df = pd.DataFrame(rows)
+    df = _enforce_dtypes(df)
     df["_sector_rs"] = df["sector"].map(lambda s: sector_rs.get(s, float("-inf")))
     df["_decision_rank"] = df["decision"].map(lambda d: DECISION_RANK.get(d, 9))
-    df["setup_quality"] = df.get("setup_quality", 0).fillna(0)
+    df["setup_quality"] = df["setup_quality"].fillna(0)
     df = df.sort_values(
         by=["_sector_rs", "_decision_rank", "setup_quality"],
         ascending=[False, True, False],
