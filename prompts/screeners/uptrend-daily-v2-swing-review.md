@@ -40,6 +40,7 @@ ACCOUNT SETTINGS (used for position sizing)
 larger position, reduce the shares to fit and report the smaller risk.
 * If the formula gives fewer than 1 share, mark the stock "Too large for account"
 and treat it as WATCH — WAIT.
+* Sector limit: at most 3 TRADE / TRADE ON TRIGGER names per sector (see STEP 6).
 
 BROWSER RULES
 
@@ -74,6 +75,8 @@ Daily: "1Y" range button (never more than 12 months).
 Move the mouse off the chart before each screenshot so the legend shows
 the latest values. Close any advert pop-ups.
 Screenshots judge visual structure only; take every number from the data.
+A "∅" on a long MA because the stock's history is too short is acceptable;
+say so in the notes.
 
 CHART READINESS (check before EVERY screenshot)
 
@@ -88,6 +91,22 @@ DATA RULE
 * At least 260 daily bars, plus weekly and monthly bars, for every stock.
 * Work on completed bars. If the market is open, drop today's bar, and use the
 last completed daily close as the current weekly and monthly close.
+
+DEFINITIONS (use these exactly, so every run is reproducible)
+
+* Swing low / swing high (daily): a bar whose low (high) is the lowest
+(highest) of the 3 bars on each side. Weekly: 3 bars each side.
+Monthly: 2 bars each side.
+* Current swing high (H): the highest high of the last 20 daily bars.
+* Impulse low (L): the lowest low in the 40 bars before H.
+* Pullback low (P): the lowest low after H.
+* Prior structural swing low: the last daily swing low before H.
+* "Rising": SMA50 above its value 10 bars ago; SMA200 above its value
+20 bars ago; weekly 30 EMA above last week's value.
+* Overhead levels: every daily swing high in the last 252 bars, weekly
+swing high in the last 5 years, monthly swing high in all history, AND
+the current swing high H. A level counts as "broken" only after a
+completed daily close above it.
 
 STEP 1 — MARKET REGIME
 
@@ -128,13 +147,16 @@ D1 more than 2.5 ATR above EMA20
 D2 earnings within 10 trading days
 D3 pullback on rising volume
 D4 close below the prior structural swing low
-D5 a prior daily, weekly or monthly high within about 3% above
-(unless price is breaking it)
+D5 any overhead level (see DEFINITIONS — this INCLUDES the current swing
+high H) within 3% above the close, unless the close is already above it.
+Exception: a stock with an active TC-01 or TC-02 setup is NOT disqualified
+when the only level within 3% is H itself; instead, H becomes the
+mandatory entry level under ENTRY RULES.
 D6 ATR14 above 8% of price
 D7 a gap of more than 8% in the last 10 bars that has not held
 
 Setup gates:
-TC-01 Trend Pullback: S-01 depth 30–60% of the impulse or 1–3 ATR;
+TC-01 Trend Pullback: S-01 depth 30–60% of the impulse (H − L) or 1–3 ATR;
 S-02 lasting 3–10 bars; S-03 low above the prior swing low;
 S-04 volume contracting
 TC-02 Continuation Pattern: S-03 structure intact; S-05 10-bar range
@@ -142,6 +164,32 @@ TC-02 Continuation Pattern: S-03 structure intact; S-05 10-bar range
 TC-04 tag: within 2% of the 55-day or 52-week high
 
 Funnel: report counts after M/W, T, D, and setup.
+
+ENTRY RULES (apply before any sizing or decision)
+
+* Resumption signal: a completed daily close above the prior bar's high AND
+above the EMA20. For TC-02, a completed close above the 10-bar range high.
+* Trigger level: start from the high of the last completed bar. Then, while
+any overhead level (including H) lies within 3% above the ENTRY (trigger
++ 0.1%), move the trigger up to the highest such level and check again.
+Stop when no overhead level sits within 3% above the entry.
+* Entry = buy stop at trigger level + 0.1% (at least 0.01 USD). Never place
+an entry below an overhead level that sits within 3% above it.
+* Two plans per stock — evaluate both and report the one that earns the
+better decision (state which, and give the other in the Reason column):
+Plan A "pullback": the entry from the rule above. Plan B "breakout":
+entry = H + 0.1%, same stop. Use it when Plan A's target is capped at H
+(or another level) below 2R.
+* Stop = TC-01: pullback low P − 0.1 ATR; TC-02: 10-bar range low − 0.1 ATR.
+* Target = measured move (TC-01: P + (H − L); TC-02: range high + 2 × range
+height), cut to the next overhead level above the entry if that is lower.
+* Compute risk %, R-multiple and shares from the FINAL entry, after any
+move above H. Report the nearest overhead level above the entry ($ and %).
+* "Signal present" for TRADE — HIGH CONFIDENCE means: the resumption signal
+fired on the last completed bar AND no overhead level (including H) lies
+within 3% above the close. The entry is then the buy stop above the signal
+bar's high. A bounce that closed within 3% below H is not a fired signal;
+it is TRADE ON TRIGGER at most.
 
 STEP 4 — VISUAL REVIEW OF EVERY SETUP
 
@@ -157,22 +205,73 @@ resumption signal present? volume and RSI supporting? earnings marker).
 * Timeframe alignment:
 all three up → no change; weekly up but monthly in a range → note it;
 weekly fails W1 → cap at WATCH; monthly in a long-term downtrend → down one level.
+* Reconciliation check (daily chart), answer each explicitly:
+1. Is the entry below any visible high within 3%? If yes, the plan is wrong —
+move the trigger above it and recompute. If a high seen on the chart is
+missing from the data's overhead levels, add it, re-test D5 and recompute.
+A stock that fails D5 at this stage is AVOID.
+2. Does the chart agree with the data-derived entry, stop and target (e.g.
+is the stop really below the pullback low; is the target below obvious
+supply)? If not, fix the plan or explain the difference.
+3. Do the candlestick and demand/supply readings below agree with what the
+chart shows?
+
+CANDLESTICK COMMENTARY (last 5 completed daily bars, plus the last weekly bar)
+Five daily bars = one trading week: long enough to show how the pullback or
+flag is ending, short enough to stay about the entry decision.
+
+* Compute from the data for each of the 5 bars: body as % of range, close
+location in the range (top / middle / bottom third), upper and lower wick
+size vs body, any gap, and volume vs the 50-day average.
+* Name a pattern only when its definition is met: doji (body ≤ 10% of
+range), hammer / shooting star (wick ≥ 2× body, close in the top / bottom
+third), bullish / bearish engulfing, inside bar, outside bar, NR7
+(narrowest range of the last 7), 3-bar reversal, gap up / gap down.
+* Interpret in context: where the pattern sits (at support, at the EMA20,
+under H, at a breakout level) and whether volume confirms it.
+* Note the last completed weekly candle in one phrase (e.g. "weekly: inside
+bar near high", "weekly: long upper wick at resistance").
+* Keep it to 25 words or fewer in the table; read it off the data and
+confirm it on the screenshot.
+
+DEMAND / SUPPLY COMMENTARY
+Compute from the daily data:
+
+* Up/down volume ratio, 50 bars: total volume on up-close days ÷ total
+volume on down-close days.
+* Accumulation and distribution days, last 25 bars: accumulation = close up
+≥ 0.2% on volume higher than the prior day; distribution = close down
+≥ 0.2% on volume higher than the prior day.
+* Pullback volume vs impulse volume (average per bar), and 5-day vs 50-day
+average volume.
+* Demand zone: the nearest support below the close — the pullback low, the
+breakout level the stock came from, or an EMA20 / SMA50 cluster. Give the
+price range.
+* Supply zone: the nearest overhead level above the close (from
+DEFINITIONS), plus any high-volume down bar in the last 60 bars whose
+range is above the close. Give the price range and % distance.
+* Verdict: "Demand in control", "Balanced" or "Supply in control", with the
+two numbers that most support it (e.g. "U/D 1.6, 6 acc vs 2 dist").
+* Supply in control caps the decision at WATCH — WAIT.
 
 STEP 5 — TRADE PLAN (every reviewed stock)
-Strategy › setup, entry trigger, stop, risk %, target with R-multiple, exit
-style (trailing or fixed), days to earnings, and sizing:
+Strategy › setup, entry trigger (per ENTRY RULES), stop, risk %, target with
+R-multiple, exit style (trailing or fixed), nearest overhead level above the
+entry, days to earnings, and sizing:
 shares = floor(risk USD ÷ (entry − stop)); if shares × entry > 2500, use
 floor(2500 ÷ entry) and report the actual USD at risk; if shares < 1, mark
 it "Too large for account" (WATCH — WAIT).
 
 STEP 6 — DECISION, THEN SECTOR FILTER
 Decision values:
-TRADE — HIGH CONFIDENCE : all gates pass; all timeframes aligned; resumption
-signal present on a completed bar; risk ≤ 7%;
-target ≥ 2R; no earnings within 15 days
-TRADE ON TRIGGER : gates pass, but the entry signal hasn't fired yet
-WATCH — WAIT : trend fine, but extended, stop > 8%, resistance
-just overhead, weekly not confirmed, or too large
+TRADE — HIGH CONFIDENCE : all gates pass; all timeframes aligned; signal
+present as defined in ENTRY RULES; risk ≤ 7%; target ≥ 2R; no earnings
+within 15 trading days; demand/supply not "Supply in control"
+TRADE ON TRIGGER : gates pass, but the close is still below the trigger
+level (including a bounce that closed under H)
+WATCH — WAIT : trend fine, but extended, stop > 8%, target < 2R after
+moving the entry above resistance, weekly not confirmed, supply in
+control, or too large
 AVOID : fails a trend gate or a disqualifier
 
 Sector filter (applied only now):
@@ -188,15 +287,16 @@ OUTPUT
 3. Funnel counts.
 4. Decision table for every reviewed stock, sorted by decision and then setup
 quality: Stock | Exchange | Sector | Price | Strategy › Setup | Monthly |
-Weekly | Daily setup | Gates (M/W/T/S/D) | RS vs SPY | RSI (D) | Entry trigger |
-Stop | Risk % | Target (R) | Shares | Position ($) | USD at risk |
-Earnings in | Decision | Reason
+Weekly | Daily setup | Gates (M/W/T/S/D) | RS vs SPY | RSI (D) | Current
+swing high H (% above close) | Entry trigger | Stop | Risk % | Target (R) |
+Nearest overhead above entry | Shares | Position ($) | USD at risk |
+Earnings in | Candles (last 5 D + last W) | Demand / Supply | Decision | Reason
 5. Full-universe appendix: one row per screener stock with Stock | Sector |
 first failed gate (or "passed") | one-line reason.
 6. "Not reviewed" and "Passed gates, not chart-reviewed", with reasons.
 7. CSV of the TRADE and TRADE ON TRIGGER rows: Ticker, Exchange, Strategy ›
-Setup, Entry, Stop, Target, Risk per share, Shares, Position ($),
-Earnings date.
+Setup, Entry, Stop, Target, Risk per share, Shares, Position ($), Nearest
+overhead level, Earnings date.
 8. Combined risk and position value if every TRADE row is taken, and whether
 it fits the 10000 USD account. If all TRADE ON TRIGGER rows fired too, say
 which to prioritise so the total stays within the account.
