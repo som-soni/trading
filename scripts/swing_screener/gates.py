@@ -110,6 +110,8 @@ class GateResult:
             caps.append("TRADE_ON_TRIGGER")
         if self.watch_flags.get("X8"):
             caps.append("TRADE_ON_TRIGGER")
+        if self.watch_flags.get("X9"):
+            caps.append("TRADE_ON_TRIGGER")
         if not caps:
             return "TRADE_HIGH_CONFIDENCE"
         return min(caps, key=CAP_ORDER.index)
@@ -132,27 +134,19 @@ def _pass(result: GateResult, code: str, note: str = "") -> None:
 def compute_gates(ctx: StockContext) -> GateResult:
     d = ctx.daily
     w = ctx.weekly
-    m = ctx.monthly
     result = GateResult()
     close = ctx.close
 
     # ---- Multi-timeframe (M / W) — hard gates ----
-    # M1: monthly close above 10-month SMA, 12mo highs/lows above prior 12mo
-    if ctx.history_months < 24:
-        _pass(result, "M1", "n/a: <24mo history, pass flagged")
-    elif len(m) < 24 or pd.isna(m["sma10"].iloc[-1]):
-        _pass(result, "M1", "n/a: insufficient monthly data, pass flagged")
-    else:
-        above_sma10 = m["close"].iloc[-1] > m["sma10"].iloc[-1]
-        last12_high = m["high"].iloc[-12:].max()
-        prior12_high = m["high"].iloc[-24:-12].max()
-        last12_low = m["low"].iloc[-12:].min()
-        prior12_low = m["low"].iloc[-24:-12].min()
-        structure_up = (last12_high > prior12_high) and (last12_low > prior12_low)
-        if above_sma10 and structure_up:
-            _pass(result, "M1")
-        else:
-            _fail(result, "M1", "monthly close below 10mo SMA or 12mo structure not higher")
+    # M1 (monthly close vs 10-month SMA, 12mo-vs-prior-12mo high/low
+    # structure) used to live here as a hard gate, but it penalizes a
+    # genuine recent recovery just as hard as a stock that's still falling
+    # — a stock can be up 30%+ off its own low, confirmed on every other
+    # timeframe, and still fail M1 purely because its 24-month low happens
+    # to fall inside the trailing 12-month window rather than the prior
+    # one (see HMC, discussed and verified against real cached data: W1,
+    # W2, T1-T6 all passed, only M1 and D5 failed). Moved to watch flag X9
+    # below — still computed and surfaced, just no longer disqualifying.
 
     # W1: weekly close above a rising 30-week EMA
     if len(w) < 31 or pd.isna(w["ema30"].iloc[-1]):
@@ -413,3 +407,30 @@ def _compute_watch_flags(ctx: StockContext, result: GateResult) -> None:
     # X8: weak momentum — RSI<40 while close above SMA50
     weak_momentum = pd.notna(rsi14) and rsi14 < 40 and pd.notna(sma50) and close > sma50
     result.watch_flags["X8"] = bool(weak_momentum)
+
+    # X9: monthly structure not yet confirmed — formerly the hard gate M1
+    # (monthly close vs 10-month SMA, 12mo-vs-prior-12mo high/low
+    # structure). Demoted to a watch flag: a stock recovering from a
+    # recent multi-year low fails this by construction even when every
+    # other timeframe already confirms the trend, so it caps the decision
+    # at TRADE ON TRIGGER instead of removing the stock outright — still
+    # visible, still a discretionary call, not an automatic exclusion.
+    m = ctx.monthly
+    if ctx.history_months < 24 or len(m) < 24 or pd.isna(m["sma10"].iloc[-1]):
+        result.watch_flags["X9"] = False  # not enough monthly history to judge either way
+    else:
+        above_sma10 = m["close"].iloc[-1] > m["sma10"].iloc[-1]
+        last12_high = m["high"].iloc[-12:].max()
+        prior12_high = m["high"].iloc[-24:-12].max()
+        last12_low = m["low"].iloc[-12:].min()
+        prior12_low = m["low"].iloc[-24:-12].min()
+        reasons = []
+        if not above_sma10:
+            reasons.append("monthly close below 10mo SMA")
+        if last12_high <= prior12_high:
+            reasons.append(f"high not above prior year ({last12_high:.2f} vs {prior12_high:.2f})")
+        if last12_low <= prior12_low:
+            reasons.append(f"low not above prior year ({last12_low:.2f} vs {prior12_low:.2f})")
+        result.watch_flags["X9"] = bool(reasons)
+        if reasons:
+            result.watch_notes["X9"] = "monthly structure not yet confirmed: " + "; ".join(reasons)

@@ -104,7 +104,12 @@ def classify(
         if not sig:
             reasons.append("entry trigger not yet fired")
         if cap == "TRADE_ON_TRIGGER":
-            reasons.append("capped by watch flag (X2/X4-drift/X8)")
+            capping = [
+                code for code in ("X2", "X4", "X8", "X9")
+                if result.watch_flags.get(code)
+                and (code != "X4" or result.watch_notes.get("X4") == "drift")
+            ]
+            reasons.append(f"capped by watch flag ({'/'.join(capping)})")
         if earnings_block_15 and label != "WATCH_WAIT":
             reasons.append(f"earnings in {earnings_days_away}d (blocks HIGH CONFIDENCE)")
 

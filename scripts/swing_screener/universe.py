@@ -11,6 +11,7 @@ since the vast majority never reach a gate that needs their sector.
 
 import csv
 import logging
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -26,6 +27,15 @@ NYSE_TRADER_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
 
 def universe_csv_path(market: str) -> Path:
     return DATA_DIR / f"universe_{market}.csv"
+
+
+def universe_age_days(market: str) -> float | None:
+    """Days since the universe CSV was last written, or None if it
+    doesn't exist yet (definitely needs a refresh)."""
+    path = universe_csv_path(market)
+    if not path.exists():
+        return None
+    return (time.time() - path.stat().st_mtime) / 86400
 
 
 def sector_cache_path(market: str) -> Path:

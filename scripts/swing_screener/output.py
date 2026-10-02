@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pandas as pd
 
-GATE_CODES = ["M1", "W1", "W2", "T1", "T2", "T3", "T4", "T5", "T6", "D2", "D3", "D4", "D5", "D6", "D7"]
-WATCH_CODES = ["X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8"]
+GATE_CODES = ["W1", "W2", "T1", "T2", "T3", "T4", "T5", "T6", "D2", "D3", "D4", "D5", "D6", "D7"]
+WATCH_CODES = ["X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8", "X9"]
 
 DECISION_RANK = {
     "TRADE - HIGH CONFIDENCE": 0,

@@ -56,7 +56,7 @@ def _empty_universe_row(sym: str, sector: str, decision_label: str, reason: str)
     return row
 
 
-def run(market_key: str, refresh_universe: bool = False, limit: int | None = None) -> None:
+def run(market_key: str, refresh_universe: bool = False, limit: int | None = None) -> pd.DataFrame:
     cfg = MARKETS[market_key]
     provider = YFinanceProvider()
     cache_dir = cache.DEFAULT_CACHE_DIR
@@ -199,7 +199,7 @@ def run(market_key: str, refresh_universe: bool = False, limit: int | None = Non
             "setup_tc02": result.setup_tc02,
             "setup_tc04_tag": result.setup_tc04,
             "watch_flags_summary": _watch_flag_summary(result),
-            "monthly": "up" if result.hard_gates.get("M1") else "down",
+            "monthly": "up" if not result.watch_flags.get("X9") else "recovering",
             "weekly": "up" if result.hard_gates.get("W1") and result.hard_gates.get("W2") else "down",
             "rs_vs_benchmark": round(rs_vs_benchmark, 1) if rs_vs_benchmark is not None else None,
             "rs_vs_sector": round(rs_vs_sector, 1) if rs_vs_sector is not None else None,
@@ -339,6 +339,8 @@ def run(market_key: str, refresh_universe: bool = False, limit: int | None = Non
             history.print_diff(market_key, prior_runs[-1], run_id)
         else:
             print("\n(first recorded run for this market — nothing to diff against yet)")
+
+    return report
 
 
 def main() -> None:
