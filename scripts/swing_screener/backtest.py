@@ -3,12 +3,16 @@ not a shortcut that reuses today's indicators, a true day-by-day
 simulation where every date only sees data up to and including itself.
 
 Methodology, stated plainly (so results aren't over-trusted):
-* Entry: a trade opens on the first day a symbol has an active setup
-  (TC-01/TC-02), all hard gates pass, and entry.signal_present() is true
-  (same 'signal already fired' test used for TRADE - HIGH CONFIDENCE
-  live). Fill price = the plan's computed entry (trigger + 0.1%, same as
-  live). One open position per symbol at a time — no pyramiding, no
-  re-entry until the prior trade on that symbol has closed.
+* Entry: a trade opens on the first day a symbol would have graded as
+  TRADE - HIGH CONFIDENCE live — active setup (TC-01/TC-02), all hard
+  gates pass, entry.signal_present() true, risk <= 7%, target >= 2R, and
+  demand/supply not 'Supply in control'. (An earlier version of this
+  only checked gates+setup+signal and skipped the risk/R/demand-supply
+  thresholds — that tested a looser rule than the live system actually
+  trades on, so it was tightened to match.) Fill price = the plan's
+  computed entry (trigger + 0.1%, same as live). One open position per
+  symbol at a time — no pyramiding, no re-entry until the prior trade on
+  that symbol has closed.
 * Exit: whichever of stop/target is touched first on a later day's
   low/high. If both would be touched on the same bar, the stop is
   assumed to fill first (conservative — can't know the intraday order
@@ -40,7 +44,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import cache, universe, indicators as ind, screener, gates, entry, sizing
+from . import cache, universe, indicators as ind, screener, gates, entry, sizing, demand_supply as ds_mod
 from .config import MarketConfig, MARKETS
 
 logger = logging.getLogger("backtest")
@@ -133,6 +137,13 @@ def backtest_symbol(
         sz = sizing.size_position(cfg, plan.entry, plan.stop, vix_above_threshold=False)
         if sz.too_large:
             continue
+        # match the live TRADE - HIGH CONFIDENCE bar, not just gates+setup+signal
+        risk_pct = plan.risk_per_share / plan.entry * 100
+        r_multiple = (plan.target - plan.entry) / plan.risk_per_share
+        if risk_pct > 7 or r_multiple < 2:
+            continue
+        if ds_mod.compute(ctx).verdict == "Supply in control":
+            continue
 
         pos = {
             "market": cfg.name, "symbol": symbol, "setup": plan.setup,
@@ -158,8 +169,24 @@ def _close_trade(pos: dict, exit_date: pd.Timestamp, reason: str, exit_price: fl
     )
 
 
+def refresh_deep_history(
+    provider, cache_dir: Path, market_key: str, symbols: list[str], deep_lookback_days: int
+) -> dict[str, pd.DataFrame]:
+    """Overwrite the cache for `symbols` with `deep_lookback_days` of history
+    (batched, not one-by-one) — the normal incremental cache only extends
+    the tail, it won't backfill MORE history before the existing start, so
+    a longer backtest window needs this explicit deep re-pull once."""
+    logger.info("Deep-refreshing %d symbols to %d trading days of history...", len(symbols), deep_lookback_days)
+    fresh = provider.get_many_daily_bars(symbols, deep_lookback_days)
+    for sym, df in fresh.items():
+        if df is not None and not df.empty:
+            cache.save_cached(cache_dir, market_key, sym, df)
+    logger.info("Deep refresh: got data for %d/%d symbols", len(fresh), len(symbols))
+    return fresh
+
+
 def run_backtest(
-    market_key: str, start_date: str, limit: int | None = None
+    market_key: str, start_date: str, limit: int | None = None, deep_lookback_days: int = 1000
 ) -> pd.DataFrame:
     cfg = MARKETS[market_key]
     cache_dir = cache.DEFAULT_CACHE_DIR
@@ -183,9 +210,17 @@ def run_backtest(
         candidates = candidates[:limit]
         logger.info("Capped to %d symbols for this run", len(candidates))
 
+    from .providers import YFinanceProvider
+
+    deep_data = refresh_deep_history(
+        YFinanceProvider(), cache_dir, market_key, candidates, deep_lookback_days
+    )
+
     all_trades: list[Trade] = []
     for i, sym in enumerate(candidates):
-        raw = cache.load_cached(cache_dir, market_key, sym)
+        raw = deep_data.get(sym)
+        if raw is None:
+            raw = cache.load_cached(cache_dir, market_key, sym)
         trades = backtest_symbol(sym, raw, cfg, start)
         all_trades.extend(trades)
         if (i + 1) % 50 == 0:
@@ -241,9 +276,14 @@ def main() -> None:
     parser.add_argument("--market", choices=list(MARKETS.keys()), required=True)
     parser.add_argument("--start", required=True, help="YYYY-MM-DD")
     parser.add_argument("--limit", type=int, default=None, help="cap number of symbols tested")
+    parser.add_argument(
+        "--deep-lookback-days", type=int, default=1000,
+        help="trading days of history to pull for candidates before simulating (default 1000 "
+        "~= 4 years, enough buffer for a ~21-month backtest window with all 24-month gates intact)",
+    )
     args = parser.parse_args()
 
-    df = run_backtest(args.market, args.start, args.limit)
+    df = run_backtest(args.market, args.start, args.limit, args.deep_lookback_days)
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = REPORT_DIR / f"{args.market}_backtest_{args.start}.csv"
     df.to_csv(out_path, index=False)
