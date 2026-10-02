@@ -1,0 +1,24 @@
+INFO swing_screener.db: Schema ready (prices, universe_history, backtest_signals)
+INFO backtest: Strategy: trend_pullback (Trend pullback / continuation)
+INFO backtest: Universe: 5391 tickers; applying the pre-filter POINT-IN-TIME over the window...
+INFO backtest: Pre-filter (trend_pullback): 2544/5391 symbols qualify on >=1 bar in the window
+INFO backtest:   of those, 1421 would have been MISSED by selecting on today's row
+INFO backtest: Deep history: 2418/2544 symbols already cover the window; fetching 126 to 1000 trading days
+INFO backtest: Deep refresh: got data for 126/126 fetched symbols
+INFO backtest: Deep history ready for 2544/2544 candidates
+INFO backtest: Backtested 50/2544 symbols, 11 trades so far
+INFO backtest: Backtested 100/2544 symbols, 22 trades so far
+INFO backtest: Backtested 150/2544 symbols, 32 trades so far
+INFO backtest: Backtested 200/2544 symbols, 37 trades so far
+INFO backtest: Backtested 250/2544 symbols, 50 trades so far
+INFO backtest: Backtested 300/2544 symbols, 65 trades so far
+INFO backtest: Backtested 350/2544 symbols, 74 trades so far
+INFO backtest: Backtested 400/2544 symbols, 81 trades so far
+INFO backtest: Backtested 450/2544 symbols, 93 trades so far
+INFO backtest: Backtested 500/2544 symbols, 102 trades so far
+INFO backtest: Backtested 550/2544 symbols, 109 trades so far
+INFO backtest: Backtested 600/2544 symbols, 119 trades so far
+INFO backtest: Backtested 650/2544 symbols, 126 trades so far
+INFO backtest: Backtested 700/2544 symbols, 131 trades so far
+INFO backtest: Backtested 750/2544 symbols, 140 trades so far
+INFO backtest: Backtested 800/2544 symbols, 147 trades so far

@@ -23,6 +23,7 @@ import pandas as pd
 
 from . import pipeline, universe
 from .config import MARKETS
+from .strategies import DEFAULT_STRATEGY, list_strategies
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 REFRESH_FNS = {
@@ -56,9 +57,12 @@ def _maybe_refresh_universe(market: str, refresh_stale_days: float) -> None:
         logger.info("%s: universe is %.1f days old, reusing it", market, age)
 
 
-def run_daily(markets: list[str], refresh_stale_days: float = 7) -> int:
+def run_daily(
+    markets: list[str], refresh_stale_days: float = 7,
+    strategy_key: str = DEFAULT_STRATEGY,
+) -> int:
     log_path = _setup_logging()
-    logger.info("=== Daily run starting: markets=%s ===", markets)
+    logger.info("=== Daily run starting: markets=%s strategy=%s ===", markets, strategy_key)
 
     reports: dict[str, pd.DataFrame] = {}
     failures: dict[str, str] = {}
@@ -67,7 +71,9 @@ def run_daily(markets: list[str], refresh_stale_days: float = 7) -> int:
         print(f"\n{'=' * 60}\n{MARKETS[market].name.upper()}\n{'=' * 60}")
         try:
             _maybe_refresh_universe(market, refresh_stale_days)
-            reports[market] = pipeline.run(market, refresh_universe=False)
+            reports[market] = pipeline.run(
+                market, refresh_universe=False, strategy_key=strategy_key
+            )
         except Exception as e:
             logger.exception("%s run failed", market)
             failures[market] = f"{type(e).__name__}: {e}"
@@ -121,6 +127,10 @@ def main() -> None:
         "--markets", default="us,india", help="comma-separated subset of: " + ",".join(MARKETS.keys())
     )
     parser.add_argument(
+        "--strategy", default=DEFAULT_STRATEGY, choices=list_strategies(),
+        help="which strategy to run for every market",
+    )
+    parser.add_argument(
         "--refresh-stale-days", type=float, default=7,
         help="auto-refresh a market's universe list if older than this many days "
         "(default 7; use a negative number to disable auto-refresh entirely)",
@@ -131,7 +141,7 @@ def main() -> None:
         if m not in MARKETS:
             parser.error(f"unknown market '{m}', choose from {list(MARKETS.keys())}")
 
-    sys.exit(run_daily(markets, args.refresh_stale_days))
+    sys.exit(run_daily(markets, args.refresh_stale_days, args.strategy))
 
 
 if __name__ == "__main__":

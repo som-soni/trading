@@ -1,0 +1,96 @@
+INFO swing_screener.db: Schema ready (prices, universe_history, backtest_signals)
+INFO backtest: Strategy: trend_pullback (Trend pullback / continuation)
+INFO backtest: Universe: 5391 tickers; applying the pre-filter POINT-IN-TIME over the window...
+INFO backtest: Pre-filter (trend_pullback): 2544/5391 symbols qualify on >=1 bar in the window
+INFO backtest:   of those, 1421 would have been MISSED by selecting on today's row
+INFO backtest: Deep history: 1071/2544 symbols already cover the window; fetching 1473 to 1000 trading days
+INFO backtest: Deep refresh: got data for 1473/1473 fetched symbols
+INFO backtest: Deep history ready for 2544/2544 candidates
+INFO backtest: Backtested 50/2544 symbols, 1 trades so far
+INFO backtest: Backtested 100/2544 symbols, 1 trades so far
+INFO backtest: Backtested 150/2544 symbols, 2 trades so far
+INFO backtest: Backtested 200/2544 symbols, 2 trades so far
+INFO backtest: Backtested 250/2544 symbols, 2 trades so far
+INFO backtest: Backtested 300/2544 symbols, 3 trades so far
+INFO backtest: Backtested 350/2544 symbols, 3 trades so far
+INFO backtest: Backtested 400/2544 symbols, 4 trades so far
+INFO backtest: Backtested 450/2544 symbols, 6 trades so far
+INFO backtest: Backtested 500/2544 symbols, 7 trades so far
+INFO backtest: Backtested 550/2544 symbols, 8 trades so far
+INFO backtest: Backtested 600/2544 symbols, 9 trades so far
+INFO backtest: Backtested 650/2544 symbols, 9 trades so far
+INFO backtest: Backtested 700/2544 symbols, 9 trades so far
+INFO backtest: Backtested 750/2544 symbols, 10 trades so far
+INFO backtest: Backtested 800/2544 symbols, 10 trades so far
+INFO backtest: Backtested 850/2544 symbols, 10 trades so far
+INFO backtest: Backtested 900/2544 symbols, 10 trades so far
+INFO backtest: Backtested 950/2544 symbols, 10 trades so far
+INFO backtest: Backtested 1000/2544 symbols, 10 trades so far
+INFO backtest: Backtested 1050/2544 symbols, 10 trades so far
+INFO backtest: Backtested 1100/2544 symbols, 10 trades so far
+INFO backtest: Backtested 1150/2544 symbols, 10 trades so far
+INFO backtest: Backtested 1200/2544 symbols, 10 trades so far
+INFO backtest: Backtested 1250/2544 symbols, 10 trades so far
+INFO backtest: Backtested 1300/2544 symbols, 12 trades so far
+INFO backtest: Backtested 1350/2544 symbols, 12 trades so far
+INFO backtest: Backtested 1400/2544 symbols, 13 trades so far
+INFO backtest: Backtested 1450/2544 symbols, 13 trades so far
+INFO backtest: Backtested 1500/2544 symbols, 15 trades so far
+INFO backtest: Backtested 1550/2544 symbols, 16 trades so far
+INFO backtest: Backtested 1600/2544 symbols, 17 trades so far
+INFO backtest: Backtested 1650/2544 symbols, 18 trades so far
+INFO backtest: Backtested 1700/2544 symbols, 19 trades so far
+INFO backtest: Backtested 1750/2544 symbols, 19 trades so far
+INFO backtest: Backtested 1800/2544 symbols, 19 trades so far
+INFO backtest: Backtested 1850/2544 symbols, 19 trades so far
+INFO backtest: Backtested 1900/2544 symbols, 19 trades so far
+INFO backtest: Backtested 1950/2544 symbols, 19 trades so far
+INFO backtest: Backtested 2000/2544 symbols, 19 trades so far
+INFO backtest: Backtested 2050/2544 symbols, 20 trades so far
+INFO backtest: Backtested 2100/2544 symbols, 21 trades so far
+INFO backtest: Backtested 2150/2544 symbols, 21 trades so far
+INFO backtest: Backtested 2200/2544 symbols, 21 trades so far
+INFO backtest: Backtested 2250/2544 symbols, 21 trades so far
+INFO backtest: Backtested 2300/2544 symbols, 22 trades so far
+INFO backtest: Backtested 2350/2544 symbols, 23 trades so far
+INFO backtest: Backtested 2400/2544 symbols, 24 trades so far
+INFO backtest: Backtested 2450/2544 symbols, 25 trades so far
+INFO backtest: Backtested 2500/2544 symbols, 25 trades so far
+INFO backtest: Done: 25 trades across 2544 symbols
+
+Wrote 25 trades to /Users/admin/Workspace/trading/scripts/reports/us_trend_pullback_backtest_2025-01-01.csv
+
+Total trades: 25  (closed: 24, still open: 1)
+Win rate: 20.8% (5W / 19L)
+Avg R-multiple (closed): -0.05
+Total P&L (closed): $17.16
+Open trades unrealized P&L: $-66.42
+Total P&L (incl. open, mark-to-market): $-49.26
+
+Trades:
+market symbol setup entry_date  entry_price   stop  target  exit_date exit_reason  exit_price  shares    pnl  pct_return  r_multiple  holding_days
+    US   ADPT TC-01 2025-08-28        13.41  12.55   16.06 2025-09-04        STOP       12.55     116 -99.76       -6.41       -1.00             7
+    US   ALNY TC-01 2025-09-09       470.28 441.09  602.62 2025-10-30        STOP      441.09       3 -87.57       -6.21       -1.00            51
+    US    BEN TC-01 2026-07-01        34.46  32.19   40.25 2026-07-17        STOP       32.19      44 -99.88       -6.59       -1.00            16
+    US      C TC-01 2026-01-05       122.97 116.12  143.38 2026-01-13        STOP      116.12      14 -95.90       -5.57       -1.00             8
+    US   CASY TC-01 2026-04-21       775.01 727.26  875.93 2026-05-11      TARGET      875.93       2 201.84       13.02        2.11            20
+    US    CCL TC-01 2025-07-23        30.50  28.51   39.61 2025-08-01        STOP       28.51      50 -99.50       -6.52       -1.00             9
+    US    CFG TC-01 2026-02-03        65.95  62.07   77.35 2026-02-23        STOP       62.07      25 -97.00       -5.88       -1.00            20
+    US    CMI TC-01 2025-10-02       432.94 409.37  488.04 2025-10-13        STOP      409.37       4 -94.28       -5.44       -1.00            11
+    US    CRK TC-01 2025-06-06        24.73  23.03   31.55 2025-07-08        STOP       23.03      58 -98.60       -6.87       -1.00            32
+    US     DY TC-01 2025-06-27       243.63 229.40  325.35 2025-11-19      TARGET      325.35       7 572.04       33.54        5.74           145
+    US   KNSA TC-01 2025-09-29        37.38  35.19   46.36 2026-02-13      TARGET       46.36      45 404.06       24.02        4.10           137
+    US      L TC-01 2026-02-23       109.93 107.64  114.90 2026-03-06        STOP      107.64      22 -50.38       -2.08       -1.00            11
+    US    LTH TC-01 2026-07-28        44.01  41.15   54.21 2026-09-10        STOP       41.15      34 -97.24       -6.50       -1.00            44
+    US     MS TC-01 2026-06-15       219.38 205.28  250.50 2026-07-29        STOP      205.28       7 -98.70       -6.43       -1.00            44
+    US     MT TC-01 2026-01-02        46.65  44.42   54.41 2026-01-22      TARGET       54.41      44 341.44       16.63        3.48            20
+    US   MUFG TC-01 2025-08-22        15.41  15.15   16.16 2025-09-02        STOP       15.15     162 -42.12       -1.69       -1.00            11
+    US    NIC TC-01 2026-07-16       171.00 159.93  199.31 2026-10-01        OPEN      163.62       9 -66.42       -4.32       -0.67            77
+    US    NYT TC-01 2026-03-23        82.83  77.49  101.56 2026-04-16        STOP       77.49      18 -96.12       -6.45       -1.00            24
+    US   OPLN TC-01 2026-05-22        35.41  34.07   38.52 2026-06-01      TARGET       38.52      70 217.70        8.78        2.32            10
+    US    SAP TC-01 2025-05-27       303.71 285.34  354.92 2025-07-28        STOP      285.34       5 -91.85       -6.05       -1.00            62
+    US   SKWD TC-01 2025-06-02        63.83  59.44   78.22 2025-06-09        STOP       59.44      22 -96.58       -6.88       -1.00             7
+    US    TPB TC-01 2025-03-03        71.07  67.22   84.39 2025-03-04        STOP       67.22      25 -96.25       -5.42       -1.00             1
+    US    ULS TC-01 2025-10-23        79.13  74.39   92.00 2026-01-20        STOP       74.39      21 -99.54       -5.99       -1.00            89
+    US   VIRT TC-01 2026-04-27        48.73  47.02   52.21 2026-04-27        STOP       47.02      51 -87.21       -3.51       -1.00             0
+    US   VSEC TC-01 2026-01-29       218.47 203.23  261.38 2026-02-02        STOP      203.23       6 -91.44       -6.98       -1.00             4

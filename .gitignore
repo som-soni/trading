@@ -2,6 +2,7 @@ scripts/.venv/
 scripts/cache/
 scripts/reports/
 scripts/data/sector_cache_*.csv
+scripts/.env
 __pycache__/
 *.pyc
 .DS_Store

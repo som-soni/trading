@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from .gates import StockContext
+from .context import StockContext
 from . import swings as sw
 
 
