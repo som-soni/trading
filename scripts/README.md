@@ -38,6 +38,81 @@ Schema (tables: `prices`, `universe_history`, `backtest_signals`) is
 created automatically on first use — see `db.py`, or run
 `python3 -c "from swing_screener import db; db.init_schema()"` explicitly.
 
+## Command reference
+
+Every command runs from `scripts/` with `PYTHONPATH=.` set. All ten entry
+points, grouped by what they are for:
+
+| command | purpose |
+|---|---|
+| `screening.daily` | Both markets, one summary — the morning run |
+| `screening.pipeline` | One market's screen → candidate CSV |
+| `screening.inspect` | Why one symbol did or didn't qualify |
+| `screening.history` | What changed between two runs |
+| `backtesting.backtest` | Backtest a strategy (portfolio-level by default) |
+| `backtesting.baseline` | The momentum baseline every strategy must beat |
+| `backtesting.experiments` | Controlled A/B over one signal set |
+| `backtesting.report` | Re-render a finished run as markdown + charts |
+| `marketdata.backfill` | Pull long history (do this first) |
+| `marketdata.migrate` | Apply additive schema migrations |
+
+### Flags that matter
+
+**`backtesting.backtest`**
+
+| flag | effect |
+|---|---|
+| `--market {us,india}` `--start YYYY-MM-DD` | required |
+| `--strategy {trend_pullback,breakout}` | which strategy to run |
+| `--sample N` | seeded RANDOM subset of N candidates — **prefer over `--limit`**, which slices alphabetically and is therefore biased |
+| `--max-positions N` | position cap (default: the market config's 10) |
+| `--exit-mode {bracket,trail_atr,ma,donchian}` | how open positions are managed |
+| `--no-target` | drop the fixed profit target so winners can run |
+| `--atr-mult` `--ma-col` `--donchian-bars` | parameters for the above |
+| `--accept-labels` | which `classify()` labels to trade; add `"TRADE ON TRIGGER"` to test whether the confidence tiers separate outcomes |
+| `--per-symbol` | the OLD unlimited-capital mode, kept for comparison only |
+| `--no-signal-cache` | recompute gates from scratch — needed only when gate logic changed |
+| `--refresh-history` | pull fresh data first (skip if backfill already ran) |
+
+**`backtesting.baseline`**
+
+| flag | effect |
+|---|---|
+| `--top-n N` | how many names to hold (50 behaved better than 10 or 20) |
+| `--lookback` `--skip` | momentum window; defaults are the 12-1 convention |
+| `--rebalance {ME,QE,W-FRI}` | pandas offset alias; quarterly cut turnover with no loss of return |
+| `--min-turnover` | **the real universe control** — the turnover floor decides whether you own microcaps or large caps |
+| `--liquidity-top N` | rank within the N most liquid; largely inert above ~250 because the turnover floor already binds |
+| `--cost-bps` | per side; 5 is reasonable for the US, 25 for Indian delivery |
+| `--no-trend-filter` | drop the >200DMA requirement |
+
+**`backtesting.report`** — `--list`, `--all`, or `--market/--strategy/--run`.
+
+## Reports
+
+Every backtest writes a self-contained directory:
+
+```
+reports/<market>/<strategy>/<run>/
+  report.md      headline table, verdict, charts, trade breakdown, caveats
+  trades.csv     every trade with entry/exit/R/costs
+  equity.csv     daily equity, cash, positions, drawdown
+  figures/       equity curve, drawdown, annual returns, R distribution, exposure
+```
+
+`report.md` leads with a plain-English verdict and the numbers that decide it —
+CAGR, max drawdown, Sharpe, Sortino, Calmar, exposure, turnover, costs — always
+beside the buy-and-hold benchmark, with **excess CAGR** called out. A caveats
+block states the survivorship bias and cost model on every run, and a
+"Reproduce" block carries the exact command.
+
+To render a run that already happened without re-simulating:
+
+```
+python3 -m swing_screener.backtesting.report --list
+python3 -m swing_screener.backtesting.report --all
+```
+
 ## Run the daily screener
 
 ```
