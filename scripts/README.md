@@ -1,9 +1,16 @@
 # swing_screener
 
-A data-only Python port of the two prompts in `prompts/screeners/` —
+A data-only Python port of the two prompts now in [`archive/prompts/`](../archive/prompts/) —
 `uptrend-daily-v2-swing-review.md` (US) and
-`t-trend-up-india-swing-review.md` (India). Same gates, watch flags, entry
-rules, sizing, and decision logic; no LLM calls, no screenshots. Pulls
+`t-trend-up-india-swing-review.md` (India). No LLM calls, no screenshots.
+
+> **The code and the prompts have DIVERGED.** The prompts still document
+> M1 as a hard gate (it is now watch flag X9), percent-based risk caps
+> (now ATR-relative), and an overhead-resistance rule that vetoed the
+> breakouts it was meant to catch (now excludes the setup's own swing
+> high). Treat the code as the source of truth and the prompts as
+> historical until they are regenerated. They are archived, with the
+> full list of divergences, in [`archive/README.md`](../archive/README.md). Pulls
 price data with [yfinance](https://pypi.org/project/yfinance/) (free, no
 auth), stores everything in Postgres so re-runs only fetch new bars, and
 writes one filterable CSV per market to `reports/`.
@@ -34,15 +41,15 @@ created automatically on first use — see `db.py`, or run
 ## Run the daily screener
 
 ```
-python3 -m swing_screener.daily                    # both markets
-python3 -m swing_screener.daily --markets us        # one market
+python3 -m swing_screener.screening.daily                    # both markets
+python3 -m swing_screener.screening.daily --markets us        # one market
 ```
 
 Auto-refreshes a market's ticker list if it's more than 7 days old
 (`--refresh-stale-days` to change), runs both markets with per-market
 failure isolation, logs to `logs/daily_<date>.log`, and prints a
 cross-market summary of tradeable/watchlist candidates. Or run a single
-market directly: `python3 -m swing_screener.pipeline --market us`
+market directly: `python3 -m swing_screener.screening.pipeline --market us`
 (`--refresh-universe`, `--limit N` for a quick test run).
 
 **Output**: `reports/<market>_universe.csv` — one row per stock that
@@ -57,7 +64,7 @@ run is recorded in Postgres so you can diff decisions across runs — see
 ## Inspect a single stock
 
 ```
-python3 -m swing_screener.inspect --market india --symbol RELIANCE.NS
+python3 -m swing_screener.screening.inspect --market india --symbol RELIANCE.NS
 ```
 
 Full gate-by-gate breakdown (every hard gate pass/fail with its reason,
@@ -67,9 +74,9 @@ everything. `--fresh` bypasses the cache and pulls live data instead.
 ## Run history / diffing
 
 ```
-python3 -m swing_screener.history --market india              # diff latest vs previous run
-python3 -m swing_screener.history --market india --list        # list recorded runs
-python3 -m swing_screener.history --market india --from <run_id> --to <run_id>
+python3 -m swing_screener.screening.history --market india              # diff latest vs previous run
+python3 -m swing_screener.screening.history --market india --list        # list recorded runs
+python3 -m swing_screener.screening.history --market india --from <run_id> --to <run_id>
 ```
 
 Every `pipeline.py`/`daily.py` run (not `--limit` test runs) appends to
@@ -80,17 +87,54 @@ that newly entered/left the filtered universe.
 ## Backtest
 
 ```
-python3 -m swing_screener.backtest --market us --start 2025-01-01
+python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01
+python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 --sample 500
+python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 --exit-mode trail_atr --no-target
+python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 --per-symbol   # old mode
 ```
 
-True walk-forward simulation — every simulated day only sees data up to
-and including itself (no lookahead), and only takes a trade if it would
-have graded as `TRADE - HIGH CONFIDENCE` live (gates + setup + signal +
-risk ≤7% + target ≥2R + demand/supply not "Supply in control"). Entries
-are simulated as resting buy-stop orders checked against *future* days'
-highs (not instant same-day fills — see the module docstring for the full
-methodology and its stated limitations, e.g. no historical earnings
-calendar, today's screener applied retroactively).
+**Portfolio-level by default.** One shared pool of capital, a cap on
+simultaneously held positions (`max_open_positions`, default 10), costs on
+both sides (slippage bps + commission), sizing that compounds off current
+equity, and ranking when more signals trigger than there are free slots.
+Signals arriving with no slot are *missed*, as they would be in a real
+account.
+
+This matters: the old per-symbol mode held an average of 24 and a peak of
+51 positions at once — 51% of the account at risk simultaneously, needing
+~13x the stated capital. Its aggregate P&L was never achievable. It is
+kept as `--per-symbol` for comparison only, and prints a warning saying so.
+
+Reports: CAGR, max drawdown (and longest stretch underwater), volatility,
+Sharpe, Sortino, Calmar, exposure, turnover, profit factor, costs paid, a
+buy-and-hold benchmark comparison with excess CAGR, an ASCII equity curve
+with a drawdown panel, and a caveats block. Writes `<stem>_trades.csv` and
+`<stem>_equity.csv` to `reports/`.
+
+Fills are deliberately pessimistic: a bar that gaps past the stop fills at
+the open, not the stop (16.4% of stop exits gap through, averaging -1.50R
+rather than -1.00R); a buy-stop that gaps above its trigger fills at the
+open, which also widens the risk denominator; an order gapping clean past
+its target is cancelled rather than booked.
+
+`--exit-mode` tests whether the fixed measured-move target caps the right
+tail that trend-following depends on: `bracket` (the strategy's own
+stop+target), `trail_atr`, `ma`, `donchian`, with `--no-target` to let
+winners run. R is always measured against the stop accepted *at entry*,
+never the trailed stop.
+
+Use `--sample N` rather than `--limit N`: `--limit` slices the candidate
+list in universe-file order, which is roughly alphabetical and therefore a
+biased sample. `--sample` is a seeded random subset.
+
+True walk-forward: every simulated day sees only data up to and including
+itself. Candidate selection is **point-in-time** — a symbol qualifies if it
+would have been screened in on at least one bar *in the window*, not if it
+passes today. Selecting on today's row leaked the present into the past and
+silently discarded 2,167 of 3,290 real candidates over a 14-year window.
+
+`classify()` is the single arbiter of whether a signal is tradeable; the
+backtest no longer re-implements its risk/R thresholds inline.
 
 `--deep-lookback-days` (default 1000 trading days, ~4 years) controls how
 far back candidate history is pulled — needs to comfortably exceed your
@@ -106,6 +150,54 @@ results and only re-runs the cheap part — should turn a slow full
 walk-forward into a fast iteration loop. Pass `--no-signal-cache` if
 you've changed actual gate logic (`gates.py`/`swings.py`), not just
 trade-sim parameters, since those need a fresh recompute.
+
+The first pass over a long window is slow (~13s/symbol over 14 years,
+because `build_context` rebuilds swing structure per bar), but it populates
+the cache — subsequent runs over the same window take minutes.
+
+## Long history (do this before judging any strategy)
+
+```
+python3 -m swing_screener.marketdata.backfill --market us --years 16
+python3 -m swing_screener.marketdata.backfill --market us --only-short   # resume
+python3 -m swing_screener.marketdata.backfill --market us --report       # coverage
+```
+
+The incremental cache only ever extends the tail; it will not fetch more
+history *before* an existing start date. Without this, every backtest runs
+on ~2 years — one bull market — which is the single environment where a
+trend strategy is structurally handicapped (it sits partly in cash while
+the index compounds). 16 years brings 2015-16, Q4 2018, the 2020 crash and
+the 2022 bear into the window. Checkpoints per symbol; ~26 min and ~15M
+bars for the US universe.
+
+## Baseline (the reference every strategy must beat)
+
+```
+python3 -m swing_screener.backtesting.baseline --market us --start 2013-01-01 --top-n 50
+```
+
+Cross-sectional momentum: rank by 12-1 month return, hold the top N
+equal-weight, rebalance monthly, within the top 1,000 by dollar volume.
+Two real parameters, no gates or setups. Deliberately *not* built on the
+`Strategy` ABC — ranking is a decision across symbols on one date, whereas
+the ABC evaluates one symbol in isolation.
+
+Without a baseline there is no way to answer whether 14 hard gates and 9
+watch flags beat the simplest expression of the same idea. Measured over
+13.75 years, they have to clear roughly 9% CAGR at a -50% drawdown (top-50)
+— and SPY itself did 12.79% at -34%.
+
+## Experiments (controlled A/B)
+
+```
+python3 -m swing_screener.backtesting.experiments --market us --start 2013-01-01 --exits
+python3 -m swing_screener.backtesting.experiments --market us --start 2013-01-01 --caps
+```
+
+Collects signals **once** and simulates every variant against the identical
+set, so only the knob under test differs. Re-scanning per variant would let
+scan-level differences leak into the comparison.
 
 ## Earnings dates (D2 gate)
 
@@ -158,42 +250,82 @@ survive the loose screener filter, and cached forever in
 - **Backtest earnings**: no historical point-in-time earnings calendar is
   cached, so D2 is never enforced in `backtest.py` — see its module
   docstring for the full list of backtest-specific methodology caveats.
+- **Survivorship bias (the largest remaining flaw)**: the ticker list is
+  today's listed names, so every company delisted, acquired or bankrupted
+  during the window is absent. Returns are biased upward, and the bias
+  grows the further back the window reaches. Only point-in-time
+  constituent data (CRSP, Norgate, Sharadar) fixes it. Every backtest
+  prints this in its caveats block.
+- **Dividends** are excluded on both the strategy and the benchmark, so
+  absolute returns understate reality for both. Since the strategy is only
+  ~70-99% invested, a price-only comparison mildly flatters it.
+- **Signal generation is O(n^2) per symbol**: `build_context` rebuilds the
+  weekly/monthly resamples and swing structure for every screened-in bar,
+  so a 14-year window costs ~13s/symbol on the first pass. The Postgres
+  signal cache makes re-runs fast; making the first pass fast would need
+  incremental swing detection.
+- **The confidence tiers do not discriminate.** Measured over 484 trades,
+  `TRADE - HIGH CONFIDENCE` performed no better than the `TRADE ON
+  TRIGGER` tier it downgrades (25.1% vs 29.7% win rate; both t<0.4 after
+  correcting for censoring and regime). The X1-X9 watch-flag machinery
+  carries no measurable information as currently calibrated.
 
 ## Layout
 
+Code is grouped by topic, so a strategy or the backtesting machinery can be
+read as a unit:
+
 ```
 swing_screener/
-  config/           MarketConfig for US and India (account settings,
-                     sector index maps, screener thresholds)
+  paths.py          every filesystem location, defined once
+  config/           MarketConfig for US and India (account, thresholds,
+                     sector maps, costs, position caps)
   providers/        pluggable price-data sources (yfinance implemented)
-  db.py             Postgres connection + schema (prices, universe_history,
-                     backtest_signals)
-  cache.py          Postgres-backed price cache, incremental pulls,
-                     precomputed indicators stored alongside raw OHLCV
-  universe.py       ticker list + lazy sector lookup
-  screener.py       the loosened screener filter, replicated locally
-  indicators.py     SMA/EMA/RSI/ATR/ADX (Wilder smoothing), resampling
-  swings.py         swing highs/lows, H/L/P, overhead levels, base/drift
-  gates.py          STEP 3: hard gates (M/W/T/D), watch flags (X1-X9) —
-                     X9 is the former M1 hard gate, demoted to a
-                     discretionary flag (see gates.py for why)
-  entry.py          ENTRY RULES: trigger/entry/stop/target, Plan A vs B
-  patterns.py       candlestick pattern classifier
-  demand_supply.py  demand/supply point-scoring verdict
-  regime.py         STEP 1 market regime + per-sector regime
-  sizing.py         STEP 5 position sizing
-  decision.py       STEP 6 decision classification + sector filter
-  output.py         the single filterable per-market report
-  history.py        run history + diffing (Postgres-backed)
-  backtest.py        walk-forward backtest with Postgres-cached signals
-  inspect.py        single-stock gate/decision debug tool
-  pipeline.py       single-market CLI orchestrator
-  daily.py          both-markets wrapper for a morning run
-test_synthetic.py   fast sanity check of the gate->entry->decision path
-                     using engineered OHLCV (real market data doesn't
-                     always produce a reviewable setup on a small universe)
+
+  core/             market primitives, strategy-agnostic
+    indicators.py    SMA/EMA/RSI/ATR/ADX (Wilder), resampling
+    swings.py        swing highs/lows, H/L/P, overhead levels
+    context.py       StockContext: the per-symbol frames every strategy reads
+    patterns.py      candlestick classifier
+    demand_supply.py demand/supply point-scoring verdict
+    regime.py        market + per-sector regime
+    sizing.py        position sizing
+
+  strategies/       one file per strategy, behind one interface
+    base.py          the Strategy ABC + StrategyResult/TradePlan/Decision
+    trend_pullback.py  gates W/T/D, flags X1-X9, setups TC-01/02/04
+    breakout.py      gates B1-B7, setups BO-01/02 — NOT validated
+    __init__.py      registry + known defects left unfixed
+
+  backtesting/      everything that evaluates a strategy
+    backtest.py      signal generation + portfolio/per-symbol runners
+    portfolio_sim.py the engine: shared capital, position cap, costs, exits
+    metrics.py       equity-curve stats + ASCII equity curve
+    report.py        markdown reports with charts
+    baseline.py      cross-sectional momentum baseline
+    experiments.py   controlled A/B over one signal set
+
+  marketdata/       data in, storage
+    cache.py db.py migrate.py universe.py earnings.py backfill.py
+
+  screening/        the day-to-day screener
+    screener.py pipeline.py daily.py output.py history.py inspect.py portfolio.py
+
+tests/
+  golden_baseline.py  behaviour-preservation harness: records the full
+                     gate/flag/setup/plan/decision output for a fixed sample,
+                     so a refactor that changes behaviour shows up as a
+                     field-level diff rather than surfacing in a backtest
 ```
 
-If a gate, flag, or formula ever changes in the prompts, change it here
-to match — these are meant to stay in lockstep, not drift into two
-different sets of rules.
+Generated output lives **outside** this directory, at the repository root:
+`reports/<market>/<strategy>/<run>/`, `logs/`, `data/`, `research/`.
+Superseded material lives in `archive/`.
+
+Adding a strategy means adding one file under `strategies/` and registering
+it. If that ever requires editing the pipeline, the backtester, the reporter
+or the storage layer, the abstraction has broken and should be fixed rather
+than worked around.
+
+See [`research/`](../research/) for findings — the results ledger, methodology
+and known biases.

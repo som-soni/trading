@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
 from ..config.base import MarketConfig
-from ..context import StockContext
+from ..core.context import StockContext
 
 # Decision tiers, least to most permissive. Used to resolve "if several
 # caps apply, use the lowest".

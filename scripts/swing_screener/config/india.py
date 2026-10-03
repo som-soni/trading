@@ -49,6 +49,9 @@ INDIA_CONFIG = MarketConfig(
         adx_min=15.0,
         atr_pct_min=1.5,
     ),
+    max_open_positions=10,
+    commission_per_order=0.0,
+    slippage_bps=10.0,
     tick_size=0.05,
 )
 

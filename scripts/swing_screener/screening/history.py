@@ -6,9 +6,9 @@ since those drive the diff queries; the full row is also kept as JSONB so
 nothing is lost even as output.py's column set evolves.
 
 Usage (standalone, without re-running the pipeline):
-    python3 -m swing_screener.history --market india
-    python3 -m swing_screener.history --market india --list
-    python3 -m swing_screener.history --market india --from 2026-09-30_090000 --to 2026-10-01_090000
+    python3 -m swing_screener.screening.history --market india
+    python3 -m swing_screener.screening.history --market india --list
+    python3 -m swing_screener.screening.history --market india --from 2026-09-30_090000 --to 2026-10-01_090000
 """
 
 import argparse
@@ -17,10 +17,10 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import db
+from ..marketdata import db
 
-REPORT_DIR = Path(__file__).resolve().parent.parent / "reports"
-HISTORY_DIR = REPORT_DIR / "history"
+from ..paths import REPORTS_DIR as REPORT_DIR  # noqa: F401
+from ..paths import HISTORY_DIR  # noqa: F401
 
 
 def new_run_id() -> str:

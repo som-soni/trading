@@ -17,10 +17,10 @@ backtest.py before trusting it.
 
 import pandas as pd
 
-from .. import indicators as ind
-from .. import swings as sw
+from ..core import indicators as ind
+from ..core import swings as sw
 from ..config.base import MarketConfig
-from ..context import StockContext
+from ..core.context import StockContext
 from .base import (
     CAP_ORDER,
     DOWNGRADE_MAP,

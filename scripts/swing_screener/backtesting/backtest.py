@@ -30,8 +30,8 @@ Methodology, stated plainly (so results aren't over-trusted):
   overlay on top of it.
 
 Usage:
-    python3 -m swing_screener.backtest --market us --start 2025-01-01
-    python3 -m swing_screener.backtest --market us --start 2025-01-01 --strategy breakout
+    python3 -m swing_screener.backtesting.backtest --market us --start 2025-01-01
+    python3 -m swing_screener.backtesting.backtest --market us --start 2025-01-01 --strategy breakout
 """
 
 import argparse
@@ -42,17 +42,19 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import cache, db, universe, indicators as ind, sizing
-from . import context as ctx_mod
-from .context import StockContext
-from .config import MarketConfig, MARKETS
-from .strategies import DEFAULT_STRATEGY, StrategyResult, get_strategy, list_strategies
+from ..marketdata import cache, db, universe
+
+from ..core import indicators as ind, sizing
+from ..core import context as ctx_mod
+from ..core.context import StockContext
+from ..config import MarketConfig, MARKETS
+from ..strategies import DEFAULT_STRATEGY, StrategyResult, get_strategy, list_strategies
 
 logger = logging.getLogger("backtest")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
-REPORT_DIR = Path(__file__).resolve().parent.parent / "reports"
+from ..paths import REPORTS_DIR as REPORT_DIR  # noqa: F401
 
 
 @dataclass
@@ -68,6 +70,7 @@ class Trade:
     exit_date: pd.Timestamp
     exit_reason: str  # TARGET / STOP / OPEN
     exit_price: float
+    decision: str = ""  # the classify() label this entry was accepted under
 
     @property
     def pnl(self) -> float:
@@ -88,7 +91,7 @@ class Trade:
 
 
 _SIGNAL_FIELDS = (
-    "hard_gates_passed", "first_failed_gate", "has_setup", "setups",
+    "hard_gates_passed", "first_failed_gate", "hard_gates", "has_setup", "setups",
     "h_value", "h_index", "l_value", "p_value", "prior_swing_low",
     "overhead_levels", "watch_flags", "watch_notes",
 )
@@ -120,6 +123,7 @@ def _load_cached_signal(
 
     result = StrategyResult(
         first_hard_fail=vals["first_failed_gate"],
+        hard_gates=vals.get("hard_gates") or {},
         setups=vals["setups"] or {},
         entry_setup_codes=strategy.setup_codes,
         watch_flags=vals["watch_flags"] or {}, watch_notes=vals["watch_notes"] or {},
@@ -143,6 +147,7 @@ def _signal_row(
     return (
         market_key, strategy.key, symbol, date.date(),
         result.hard_gates_passed, result.first_hard_fail,
+        json.dumps({k: bool(v) for k, v in result.hard_gates.items()}),
         result.has_setup, json.dumps({k: bool(v) for k, v in result.setups.items()}),
         ctx.h_value, ctx.h_index.date() if ctx.h_index is not None else None,
         ctx.l_value, ctx.p_value, ctx.prior_swing_low,
@@ -158,7 +163,7 @@ def _save_signals(rows: list[tuple]) -> None:
     query = """
         INSERT INTO backtest_signals
             (market, strategy, symbol, date, hard_gates_passed, first_failed_gate,
-             has_setup, setups, h_value, h_index, l_value, p_value,
+             hard_gates, has_setup, setups, h_value, h_index, l_value, p_value,
              prior_swing_low, overhead_levels, watch_flags, watch_notes)
         VALUES %s
         ON CONFLICT (market, strategy, symbol, date) DO NOTHING
@@ -169,6 +174,7 @@ def _save_signals(rows: list[tuple]) -> None:
 def backtest_symbol(
     symbol: str, raw_daily: pd.DataFrame, cfg: MarketConfig, start_date: pd.Timestamp,
     strategy=None, market_key: str = "", use_signal_cache: bool = True,
+    accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
 ) -> list[Trade]:
     if strategy is None:
         strategy = get_strategy(DEFAULT_STRATEGY)
@@ -206,10 +212,17 @@ def backtest_symbol(
             stop_hit = row["low"] <= pos["stop"]
             target_hit = row["high"] >= pos["target"]
             if stop_hit:  # conservative: stop wins a same-bar tie
-                trades.append(_close_trade(pos, current_date, "STOP", pos["stop"]))
+                # A bar that OPENS past the stop never traded at the stop --
+                # the realistic fill is the open. 16.4% of stop exits gap
+                # through, and they average -1.50R rather than the -1.00R a
+                # fill-at-the-stop assumption reports.
+                fill = min(pos["stop"], float(row["open"]))
+                trades.append(_close_trade(pos, current_date, "STOP", fill))
                 in_position, pos = False, None
             elif target_hit:
-                trades.append(_close_trade(pos, current_date, "TARGET", pos["target"]))
+                # symmetric on the upside: a favourable gap fills better
+                fill = max(pos["target"], float(row["open"]))
+                trades.append(_close_trade(pos, current_date, "TARGET", fill))
                 in_position, pos = False, None
             continue  # either way, no new entry on the exit bar itself
 
@@ -220,10 +233,20 @@ def backtest_symbol(
             if stopped_first or expired:
                 pending = None  # price fell away (or time ran out) before the order ever filled — not a trade
             elif triggered:
+                # a resting buy-stop that gaps open above its trigger fills at
+                # the open, not the trigger -- a worse entry, so assuming the
+                # trigger price flatters both entry and every R computed from it
+                fill_entry = max(pending["entry"], float(row["open"]))
+                if fill_entry >= pending["target"]:
+                    # gapped clean past the target: the whole reward is gone
+                    # before we could be filled, so the order is simply dead
+                    pending = None
+                    continue
                 pos = {
                     "market": cfg.name, "symbol": symbol, "setup": pending["setup"],
-                    "entry_date": current_date, "entry_price": pending["entry"],
+                    "entry_date": current_date, "entry_price": fill_entry,
                     "stop": pending["stop"], "target": pending["target"], "shares": pending["shares"],
+                    "decision": pending["decision"],
                 }
                 in_position, pending = True, None
                 # same-bar check: a huge-range day could clear the trigger
@@ -285,11 +308,12 @@ def backtest_symbol(
         # classify already enforces, so it could only ever drift out of sync
         # with the live pipeline (and silently did, when the cap moved to ATRs).
         dec = strategy.classify(ctx, result, plan, sz, None, False)
-        if dec.label_before != "TRADE - HIGH CONFIDENCE":
+        if dec.label_before not in accept_labels:
             continue
 
         # a resting buy-stop order, not an instant fill — see note above
         pending = {
+            "decision": dec.label_before,
             "setup": plan.setup, "entry": plan.entry, "stop": plan.stop,
             "target": plan.target, "shares": sz.shares,
             "expires": current_date + pd.tseries.offsets.BDay(PENDING_EXPIRY_DAYS),
@@ -304,12 +328,94 @@ def backtest_symbol(
     return trades
 
 
+def collect_signals(
+    symbol: str, raw_daily: pd.DataFrame, cfg: MarketConfig, start_date: pd.Timestamp,
+    strategy=None, market_key: str = "", use_signal_cache: bool = True,
+    accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
+) -> list:
+    """Every bar on which the strategy would have placed an order.
+
+    Unlike backtest_symbol this holds NO position state: it does not skip a
+    bar because a previous trade is still open, because in portfolio mode
+    that arbitration belongs to the portfolio engine (which knows about
+    capital and slot limits), not to the per-symbol scan.
+    """
+    from .portfolio_sim import Signal
+
+    if strategy is None:
+        strategy = get_strategy(DEFAULT_STRATEGY)
+    out: list = []
+    new_signal_rows: list[tuple] = []
+    if raw_daily is None or len(raw_daily) < strategy.min_bars:
+        return out
+
+    sim_dates = raw_daily.index[raw_daily.index >= start_date]
+    if len(sim_dates) < 2:
+        return out
+
+    screened_in = strategy.prefilter_mask(cfg, ind.enrich_daily(raw_daily))
+
+    for current_date in sim_dates:
+        if not bool(screened_in.get(current_date, False)):
+            continue
+
+        cached = (
+            _load_cached_signal(market_key, strategy, symbol, current_date)
+            if (use_signal_cache and market_key) else None
+        )
+        if cached is not None:
+            ctx, result = cached
+        else:
+            slice_df = raw_daily.loc[:current_date]
+            if len(slice_df) < strategy.min_bars:
+                continue
+            try:
+                ctx = ctx_mod.build_context(symbol, slice_df, earnings_days_away=None)
+            except Exception:
+                continue
+            if ctx is None:
+                continue
+            try:
+                result = strategy.evaluate(ctx)
+            except Exception:
+                continue
+            if market_key:
+                new_signal_rows.append(
+                    _signal_row(market_key, strategy, symbol, current_date, ctx, result)
+                )
+
+        if not result.hard_gates_passed or not result.has_setup:
+            continue
+        if not strategy.entry_signal_fired(ctx, result):
+            continue
+        plan = strategy.build_plans(ctx, result, cfg).chosen
+        if plan is None or not plan.is_valid:
+            continue
+        # sizing here is only an input to classify (it mirrors the live
+        # pipeline); the portfolio engine does the real sizing off current
+        # equity, so `too_large` is deliberately NOT a filter at this stage
+        sz = sizing.size_position(cfg, plan.entry, plan.stop, vix_above_threshold=False)
+        dec = strategy.classify(ctx, result, plan, sz, None, False)
+        if dec.label_before not in accept_labels:
+            continue
+
+        out.append(Signal(
+            date=current_date, symbol=symbol, setup=plan.setup,
+            entry=plan.entry, stop=plan.stop, target=plan.target,
+            decision=dec.label_before, quality=dec.setup_quality,
+        ))
+
+    _save_signals(new_signal_rows)
+    return out
+
+
 def _close_trade(pos: dict, exit_date: pd.Timestamp, reason: str, exit_price: float) -> Trade:
     return Trade(
         market=pos["market"], symbol=pos["symbol"], setup=pos["setup"],
         entry_date=pos["entry_date"], entry_price=pos["entry_price"],
         stop=pos["stop"], target=pos["target"], shares=pos["shares"],
         exit_date=exit_date, exit_reason=reason, exit_price=exit_price,
+        decision=pos.get("decision", ""),
     )
 
 
@@ -368,6 +474,7 @@ def refresh_deep_history(
 def run_backtest(
     market_key: str, start_date: str, limit: int | None = None, deep_lookback_days: int = 1000,
     use_signal_cache: bool = True, strategy_key: str = DEFAULT_STRATEGY,
+    accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
 ) -> pd.DataFrame:
     db.init_schema()
     cfg = MARKETS[market_key]
@@ -375,45 +482,13 @@ def run_backtest(
     start = pd.Timestamp(start_date)
     logger.info("Strategy: %s (%s)", strategy.key, strategy.name)
 
-    tickers = universe.load_universe(market_key)
-    logger.info(
-        "Universe: %d tickers; applying the pre-filter POINT-IN-TIME over the window...",
-        len(tickers),
-    )
-
-    # A symbol is a candidate if it would have been screened in on AT LEAST
-    # ONE bar in the window -- not if it passes today. Selecting on today's
-    # row leaks the present into the past: a stock that trended all through
-    # the window but is consolidating now (low ADX today) would be dropped
-    # from the entire simulation, discarding trades the live screener would
-    # genuinely have taken.
-    candidates: list[str] = []
-    excluded_today: list[str] = []
-    for sym in tickers:
-        raw = cache.load_cached(market_key, sym)
-        if raw is None or len(raw) < 260:
-            continue
-        enriched = ind.enrich_daily(raw)
-        mask = strategy.prefilter_mask(cfg, enriched)
-        in_window = mask[mask.index >= start]
-        if bool(in_window.any()):
-            candidates.append(sym)
-            if not bool(strategy.passes_prefilter(cfg, enriched)[0]):
-                excluded_today.append(sym)
-    logger.info(
-        "Pre-filter (%s): %d/%d symbols qualify on >=1 bar in the window",
-        strategy.key, len(candidates), len(tickers),
-    )
-    logger.info(
-        "  of those, %d would have been MISSED by selecting on today's row",
-        len(excluded_today),
-    )
+    candidates = _point_in_time_candidates(cfg, strategy, market_key, start)
 
     if limit:
         candidates = candidates[:limit]
         logger.info("Capped to %d symbols for this run", len(candidates))
 
-    from .providers import YFinanceProvider
+    from ..providers import YFinanceProvider
 
     deep_data = refresh_deep_history(
         YFinanceProvider(), market_key, candidates, deep_lookback_days,
@@ -428,6 +503,7 @@ def run_backtest(
         trades = backtest_symbol(
             sym, raw, cfg, start, strategy=strategy,
             market_key=market_key, use_signal_cache=use_signal_cache,
+            accept_labels=accept_labels,
         )
         all_trades.extend(trades)
         if (i + 1) % 50 == 0:
@@ -435,6 +511,178 @@ def run_backtest(
 
     logger.info("Done: %d trades across %d symbols", len(all_trades), len(candidates))
     return trades_to_df(all_trades)
+
+
+def collect_portfolio_signals(
+    market_key: str, cfg: MarketConfig, strategy, start: pd.Timestamp,
+    candidates: list[str], deep_data: dict | None = None,
+    use_signal_cache: bool = True,
+    accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
+):
+    """Scan every candidate once and return (signals, enriched price frames).
+
+    Separated from the simulation so several exit policies (or position
+    caps) can be compared against the SAME signal set — otherwise each
+    variant would re-scan, and any difference in the scan would confound
+    the comparison."""
+    deep_data = deep_data or {}
+    all_signals = []
+    prices: dict[str, pd.DataFrame] = {}
+    for i, sym in enumerate(candidates):
+        raw = deep_data.get(sym)
+        if raw is None:
+            raw = cache.load_cached(market_key, sym)
+        sigs = collect_signals(
+            sym, raw, cfg, start, strategy=strategy, market_key=market_key,
+            use_signal_cache=use_signal_cache, accept_labels=accept_labels,
+        )
+        if sigs:
+            all_signals.extend(sigs)
+            # enriched, not raw: the exit policies read atr14/sma50 off the bar
+            prices[sym] = ind.enrich_daily(raw)
+        if (i + 1) % 100 == 0:
+            logger.info(
+                "Scanned %d/%d symbols, %d signals so far",
+                i + 1, len(candidates), len(all_signals),
+            )
+    logger.info("Collected %d signals across %d symbols", len(all_signals), len(prices))
+    if not all_signals:
+        raise ValueError("no signals produced — nothing to simulate")
+    return all_signals, prices
+
+
+def sample_candidates(candidates: list[str], n: int | None, seed: int = 20260101) -> list[str]:
+    """A seeded random subset.
+
+    `--limit` slices the first N, which is universe-file order and therefore
+    roughly alphabetical — a biased sample (sector and listing-age effects
+    cluster by name). Full-universe runs over a 14-year window cost ~9 hours
+    because build_context is re-run per bar, so a random subset is often the
+    practical choice; it needs to be unbiased and reproducible."""
+    import random
+
+    if not n or n >= len(candidates):
+        return candidates
+    rng = random.Random(seed)
+    picked = rng.sample(sorted(candidates), n)
+    logger.info("Sampled %d of %d candidates (seed %d)", len(picked), len(candidates), seed)
+    return sorted(picked)
+
+
+def _point_in_time_candidates(
+    cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp
+) -> list[str]:
+    """Symbols that would have been screened in on AT LEAST ONE bar in the
+    window -- not the ones that pass today.
+
+    Selecting on today's row leaks the present into the past: a stock that
+    trended all through the window but is consolidating now (low ADX today)
+    gets dropped from the whole simulation, discarding trades the live
+    screener would genuinely have taken. Measured on US data, selecting on
+    today's row silently excluded 1,421 of 2,544 real candidates.
+    """
+    tickers = universe.load_universe(market_key)
+    logger.info(
+        "Universe: %d tickers; applying the pre-filter POINT-IN-TIME over the window...",
+        len(tickers),
+    )
+    candidates: list[str] = []
+    excluded_today = 0
+    for sym in tickers:
+        raw = cache.load_cached(market_key, sym)
+        if raw is None or len(raw) < 260:
+            continue
+        enriched = ind.enrich_daily(raw)
+        mask = strategy.prefilter_mask(cfg, enriched)
+        if bool(mask[mask.index >= start].any()):
+            candidates.append(sym)
+            if not bool(strategy.passes_prefilter(cfg, enriched)[0]):
+                excluded_today += 1
+    logger.info(
+        "Pre-filter (%s): %d/%d symbols qualify on >=1 bar in the window",
+        strategy.key, len(candidates), len(tickers),
+    )
+    logger.info(
+        "  of those, %d would have been MISSED by selecting on today's row",
+        excluded_today,
+    )
+    return candidates
+
+
+def run_portfolio_backtest(
+    market_key: str, start_date: str, limit: int | None = None,
+    deep_lookback_days: int = 1000, use_signal_cache: bool = True,
+    strategy_key: str = DEFAULT_STRATEGY,
+    accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
+    max_positions: int | None = None,
+    exit_policy=None,
+    sample: int | None = None,
+    refresh_history: bool = False,
+):
+    """Portfolio-level backtest: one capital pool, a position cap and costs.
+
+    Returns (trades_df, Performance, PortfolioResult)."""
+    from . import metrics
+    from .portfolio_sim import ExitPolicy, simulate, trades_to_df as p_trades_to_df
+
+    policy = exit_policy or ExitPolicy()
+
+    db.init_schema()
+    cfg = MARKETS[market_key]
+    strategy = get_strategy(strategy_key)
+    start = pd.Timestamp(start_date)
+    logger.info("Strategy: %s (%s)", strategy.key, strategy.name)
+
+    candidates = _point_in_time_candidates(cfg, strategy, market_key, start)
+    candidates = sample_candidates(candidates, sample) if sample else (
+        candidates[:limit] if limit else candidates
+    )
+
+    deep_data: dict = {}
+    if refresh_history:
+        from ..providers import YFinanceProvider
+        deep_data = refresh_deep_history(
+            YFinanceProvider(), market_key, candidates, deep_lookback_days,
+            start=start, warmup_bars=strategy.min_bars,
+        )
+
+    all_signals, prices = collect_portfolio_signals(
+        market_key, cfg, strategy, start, candidates, deep_data,
+        use_signal_cache=use_signal_cache, accept_labels=accept_labels,
+    )
+
+    result = simulate(
+        all_signals, prices, cfg, start,
+        max_positions=max_positions, exit_policy=policy,
+    )
+    tdf = p_trades_to_df(result.trades)
+
+    bench_raw = cache.load_cached(market_key, cfg.benchmark_ticker)
+    bench_close = None
+    if bench_raw is not None and not bench_raw.empty:
+        bench_close = bench_raw["close"].reindex(result.equity.index).ffill()
+
+    cap = max_positions if max_positions is not None else cfg.max_open_positions
+    notes = [
+        "SURVIVORSHIP BIAS: the universe is today's listed names, so companies "
+        "delisted or acquired during the window are absent entirely. This "
+        "flatters results and cannot be fixed without point-in-time constituent data.",
+        f"Costs modelled: {cfg.slippage_bps:.0f}bps slippage per side plus "
+        f"{cfg.currency_symbol}{cfg.commission_per_order:.2f} per order. Real spreads on "
+        "thin names can exceed this.",
+        "Signals are generated and filled on daily bars; intraday path within a bar "
+        "is unknown, so a bar touching both stop and target is scored as a stop.",
+        f"{result.signals_seen} signals were generated; {result.signals_taken} were taken, "
+        f"{result.signals_missed_no_slot} passed up with all {cap} slots full, "
+        f"{result.signals_missed_no_cash} for insufficient cash.",
+        f"Exit policy: {policy.label()}.",
+    ]
+    perf = metrics.compute(
+        equity=result.equity, positions_open=result.positions_open, trades=tdf,
+        max_open_positions=cap, costs_paid=result.costs_paid,
+        bench_close=bench_close, notes=notes,
+    )
+    return tdf, perf, result
 
 
 def trades_to_df(trades: list[Trade]) -> pd.DataFrame:
@@ -447,13 +695,14 @@ def trades_to_df(trades: list[Trade]) -> pd.DataFrame:
             "exit_price": round(t.exit_price, 2), "shares": t.shares,
             "pnl": round(t.pnl, 2), "pct_return": round(t.pct_return, 2),
             "r_multiple": round(t.r_multiple, 2), "holding_days": t.holding_days,
+            "decision": t.decision,
         }
         for t in trades
     ]
     cols = [
         "market", "symbol", "setup", "entry_date", "entry_price", "stop", "target",
         "exit_date", "exit_reason", "exit_price", "shares", "pnl", "pct_return",
-        "r_multiple", "holding_days",
+        "r_multiple", "holding_days", "decision",
     ]
     return pd.DataFrame(rows, columns=cols)
 
@@ -490,25 +739,131 @@ def main() -> None:
         "~= 4 years, enough buffer for a ~21-month backtest window with all 24-month gates intact)",
     )
     parser.add_argument(
+        "--accept-labels", default="TRADE - HIGH CONFIDENCE",
+        help="comma-separated classify() labels to take as entries (default only "
+        "'TRADE - HIGH CONFIDENCE'). Add 'TRADE ON TRIGGER' to test whether the "
+        "confidence tiers actually separate outcomes -- the resulting CSV carries a "
+        "`decision` column so the two can be compared within a single run.",
+    )
+    parser.add_argument(
         "--no-signal-cache", action="store_true",
         help="recompute gates/setup from scratch instead of reusing backtest_signals — use this "
         "when you've changed a strategy's gate logic, not just trade-sim params "
         "(stop buffer, risk/R thresholds, pending-order expiry) which don't need it",
     )
+    parser.add_argument(
+        "--per-symbol", action="store_true",
+        help="use the OLD per-symbol simulation (unlimited capital, no costs, no "
+        "position cap). Kept for comparison only -- its aggregate P&L is not "
+        "achievable in a real account, so the portfolio mode is the default.",
+    )
+    parser.add_argument(
+        "--max-positions", type=int, default=None,
+        help="cap on simultaneously held positions (default: the market config's)",
+    )
+    parser.add_argument(
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "ma", "donchian"],
+        help="how open positions are managed. 'bracket' is the strategy's fixed "
+        "stop+target; the others test whether letting winners run beats capping them.",
+    )
+    parser.add_argument(
+        "--no-target", action="store_true",
+        help="drop the fixed profit target so winners can run (use with a trailing exit mode)",
+    )
+    parser.add_argument(
+        "--sample", type=int, default=None,
+        help="simulate a seeded RANDOM subset of N candidates (unbiased, reproducible). "
+        "Prefer this over --limit, which slices alphabetically.",
+    )
+    parser.add_argument(
+        "--refresh-history", action="store_true",
+        help="deep-refresh candidates from yfinance first (skip if backfill already ran)",
+    )
+    parser.add_argument("--atr-mult", type=float, default=3.0, help="for --exit-mode trail_atr")
+    parser.add_argument("--ma-col", default="sma50", help="for --exit-mode ma")
+    parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
     args = parser.parse_args()
+    labels = tuple(x.strip() for x in args.accept_labels.split(",") if x.strip())
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-    df = run_backtest(
+    if args.per_symbol:
+        df = run_backtest(
+            args.market, args.start, args.limit, args.deep_lookback_days,
+            use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy,
+            accept_labels=labels,
+        )
+        out_path = REPORT_DIR / f"{args.market}_{args.strategy}_persymbol_{args.start}.csv"
+        df.to_csv(out_path, index=False)
+        print(f"\nWrote {len(df)} trades to {out_path}\n")
+        print_summary(df, MARKETS[args.market].currency_symbol)
+        print(
+            "\nNOTE: per-symbol mode assumes unlimited capital and zero costs. "
+            "Run without --per-symbol for an achievable portfolio result."
+        )
+        return
+
+    from . import metrics
+
+    cfg = MARKETS[args.market]
+    from .portfolio_sim import ExitPolicy
+
+    policy = ExitPolicy(
+        mode=args.exit_mode, use_target=not args.no_target,
+        atr_mult=args.atr_mult, ma_col=args.ma_col, donchian_bars=args.donchian_bars,
+    )
+    tdf, perf, result = run_portfolio_backtest(
         args.market, args.start, args.limit, args.deep_lookback_days,
         use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy,
+        accept_labels=labels, max_positions=args.max_positions, exit_policy=policy,
+        sample=args.sample, refresh_history=args.refresh_history,
     )
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = REPORT_DIR / f"{args.market}_{args.strategy}_backtest_{args.start}.csv"
-    df.to_csv(out_path, index=False)
-    print(f"\nWrote {len(df)} trades to {out_path}\n")
-    print_summary(df, MARKETS[args.market].currency_symbol)
-    if not df.empty:
-        print("\nTrades:")
-        print(df.to_string(index=False))
+    from ..paths import run_dir
+
+    run = f"{args.start}_{policy.label()}" + (f"_sample{args.sample}" if args.sample else "")
+    out = run_dir(args.market, args.strategy, run)
+    tdf.to_csv(out / "trades.csv", index=False)
+    pd.DataFrame({
+        "equity": result.equity, "cash": result.cash,
+        "positions_open": result.positions_open,
+        "drawdown_pct": metrics.drawdown_series(result.equity) * 100,
+    }).to_csv(out / "equity.csv")
+    print()
+    print(metrics.format_report(
+        perf, cfg.currency_symbol,
+        args.max_positions if args.max_positions is not None else cfg.max_open_positions,
+    ))
+    print(f"\nRun dir -> {out}")
+
+    # markdown report with charts, alongside the CSVs
+    try:
+        from . import report as report_mod
+
+        cmd = (
+            f"python3 -m swing_screener.backtesting.backtest --market {args.market} "
+            f"--start {args.start} --strategy {args.strategy}"
+            + (f" --sample {args.sample}" if args.sample else "")
+            + (f" --max-positions {args.max_positions}" if args.max_positions else "")
+            + (f" --exit-mode {args.exit_mode}" if args.exit_mode != "bracket" else "")
+            + (" --no-target" if args.no_target else "")
+        )
+        md = report_mod.write_report(
+            out,
+            f"{cfg.name} — {get_strategy(args.strategy).name}, {args.start} onward",
+            perf, result.equity, result.positions_open, tdf,
+            cfg.currency_symbol,
+            args.max_positions if args.max_positions is not None else cfg.max_open_positions,
+            _bench_c, cmd,
+        )
+        print(f"Report  -> {md}")
+    except Exception as e:  # a chart failure must not lose the run's results
+        logger.warning("markdown report not generated (%s: %s)", type(e).__name__, e)
+    print()
+    _bench = cache.load_cached(args.market, cfg.benchmark_ticker)
+    _bench_c = (
+        _bench["close"].reindex(result.equity.index).ffill()
+        if _bench is not None and not _bench.empty else None
+    )
+    print(metrics.format_equity_curve(result.equity, _bench_c))
 
 
 if __name__ == "__main__":

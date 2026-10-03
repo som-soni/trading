@@ -3,8 +3,8 @@ loosened screener filter -> indicators -> gate/flag engine -> entry plan
 -> sizing -> decision -> sector filter -> output.
 
 Usage:
-    python -m swing_screener.pipeline --market us
-    python -m swing_screener.pipeline --market india --refresh-universe
+    python -m swing_screener.screening.pipeline --market us
+    python -m swing_screener.screening.pipeline --market india --refresh-universe
 """
 
 import argparse
@@ -14,11 +14,15 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import cache, universe, indicators as ind, context as ctx_mod
-from . import regime as regime_mod, sizing, portfolio, output as out_mod, earnings, patterns, history
-from .config import MARKETS
-from .providers import YFinanceProvider
-from .strategies import DEFAULT_STRATEGY, describe_strategies, get_strategy, list_strategies
+from ..marketdata import cache, universe
+
+from ..core import indicators as ind, context as ctx_mod
+from ..core import regime as regime_mod, sizing, patterns
+from . import portfolio, output as out_mod, history
+from ..marketdata import earnings
+from ..config import MARKETS
+from ..providers import YFinanceProvider
+from ..strategies import DEFAULT_STRATEGY, describe_strategies, get_strategy, list_strategies
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("pipeline")
@@ -30,7 +34,7 @@ logger = logging.getLogger("pipeline")
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 LOOKBACK_DAYS = 560  # ~2.2 years of daily bars: covers 252-bar lookbacks + buffer
-REPORT_DIR = Path(__file__).resolve().parent.parent / "reports"
+from ..paths import REPORTS_DIR as REPORT_DIR  # noqa: F401
 
 
 def _watch_flag_summary(result) -> str:
@@ -114,7 +118,7 @@ def run(
     logger.info("Pre-filter (%s): %d/%d pass", strategy.key, len(filtered), len(enriched_by_symbol))
 
     if market_key == "india":
-        from .config.india import INDIA_MIN_MARKET_CAP_CR
+        from ..config.india import INDIA_MIN_MARKET_CAP_CR
         from . import screener
 
         caps = universe.get_market_caps_cr(filtered)

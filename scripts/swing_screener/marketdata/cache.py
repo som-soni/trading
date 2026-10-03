@@ -11,8 +11,10 @@ import logging
 
 import pandas as pd
 
-from . import db, indicators as ind
-from .providers.base import DataProvider
+from . import db
+
+from ..core import indicators as ind
+from ..providers.base import DataProvider
 
 logger = logging.getLogger(__name__)
 

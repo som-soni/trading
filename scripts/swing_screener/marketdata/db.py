@@ -20,9 +20,16 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 
+from .. import paths
+
 logger = logging.getLogger(__name__)
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+# .env lives beside the code (scripts/) or at the repo root; try both so a
+# module moving between sub-packages can never silently lose the credentials
+for _env in (paths.SCRIPTS_DIR / ".env", paths.REPO_ROOT / ".env"):
+    if _env.exists():
+        load_dotenv(_env)
+        break
 
 _connection = None  # module-level singleton; this is a single-threaded batch script
 
@@ -86,6 +93,11 @@ CREATE TABLE IF NOT EXISTS backtest_signals (
     date DATE NOT NULL,
     hard_gates_passed BOOLEAN NOT NULL,
     first_failed_gate VARCHAR(8),
+    -- the FULL pass/fail vector, not just the first failure. Without it you
+    -- can only see which gate bound first in evaluation order, which
+    -- undercounts every gate evaluated later and makes true ablation
+    -- ("what if gate X were removed?") impossible without a full re-run.
+    hard_gates JSONB,
     has_setup BOOLEAN NOT NULL,
     -- open JSONB rather than one column per setup code, so a new strategy's
     -- setup vocabulary doesn't need a migration

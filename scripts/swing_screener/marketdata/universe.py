@@ -19,7 +19,7 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+from ..paths import DATA_DIR  # noqa: F401
 
 NASDAQ_TRADER_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
 NYSE_TRADER_URL = "https://www.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"

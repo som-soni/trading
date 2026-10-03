@@ -4,13 +4,13 @@ both console and a dated file, and prints one cross-market summary at the
 end instead of two separate scrolls of output.
 
 Usage:
-    python3 -m swing_screener.daily
-    python3 -m swing_screener.daily --markets us
-    python3 -m swing_screener.daily --refresh-stale-days 3
-    python3 -m swing_screener.daily --refresh-stale-days -1   # never auto-refresh
+    python3 -m swing_screener.screening.daily
+    python3 -m swing_screener.screening.daily --markets us
+    python3 -m swing_screener.screening.daily --refresh-stale-days 3
+    python3 -m swing_screener.screening.daily --refresh-stale-days -1   # never auto-refresh
 
 Scheduling (macOS cron, run at 7am local time daily):
-    0 7 * * * cd /Users/admin/Workspace/trading/scripts && .venv/bin/python3 -m swing_screener.daily >> logs/cron.log 2>&1
+    0 7 * * * cd /Users/admin/Workspace/trading/scripts && .venv/bin/python3 -m swing_screener.screening.daily >> logs/cron.log 2>&1
 """
 
 import argparse
@@ -21,11 +21,13 @@ from pathlib import Path
 
 import pandas as pd
 
-from . import pipeline, universe
-from .config import MARKETS
-from .strategies import DEFAULT_STRATEGY, list_strategies
+from . import pipeline
 
-LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
+from ..marketdata import universe
+from ..config import MARKETS
+from ..strategies import DEFAULT_STRATEGY, list_strategies
+
+from ..paths import LOGS_DIR as LOG_DIR  # noqa: F401
 REFRESH_FNS = {
     "us": universe.fetch_us_universe_from_nasdaqtrader,
     "india": universe.fetch_india_universe_from_yfinance_screener,

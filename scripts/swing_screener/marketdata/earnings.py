@@ -18,7 +18,7 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+from ..paths import DATA_DIR  # noqa: F401
 CACHE_REFRESH_DAYS = 7  # re-check each ticker's earnings date at most weekly
 
 

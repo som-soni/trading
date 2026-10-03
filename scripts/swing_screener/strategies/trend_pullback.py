@@ -17,11 +17,11 @@ import math
 
 import pandas as pd
 
-from .. import indicators as ind
-from .. import swings as sw
-from .. import demand_supply as ds_mod
+from ..core import indicators as ind
+from ..core import swings as sw
+from ..core import demand_supply as ds_mod
 from ..config.base import MarketConfig
-from ..context import StockContext
+from ..core.context import StockContext
 from .base import (
     CAP_ORDER,
     DOWNGRADE_MAP,
@@ -433,6 +433,22 @@ class TrendPullbackStrategy(Strategy):
     max_stop_atr_trade: float = 3.0
     max_stop_atr_wait: float = 3.5
 
+    # The ATR cap alone is NOT sufficient. It asks "is the stop sane for this
+    # stock's volatility" -- a different question from "is the 2R target
+    # reachable in a swing-trade timeframe". Measured cases where they
+    # diverge: SWVL sat at 2.05 ATR but 27.5% of price, so with R>=2 enforced
+    # the target needs a 55% move; ITGR was 4.5% of price but 13.5 ATR, a
+    # stop absurdly wide for its own volatility. Both caps are therefore
+    # kept, each guarding its own failure mode.
+    #
+    # 12% follows from the timeframe: a stop of X% needs a >=2X% move to pay
+    # 2R, and ~24% is the top of what a multi-week swing plausibly delivers.
+    # It admits the volatile leaders this strategy was wrongly excluding
+    # (AMD 7.2%, TSM 7.6-9.1%, AVGO 8.5%, MU 10.9%) while still rejecting
+    # SNDK 20.9%, MRVL 18.4% and SWVL 27.5%.
+    max_stop_pct_trade: float = 12.0
+    max_stop_pct_wait: float = 15.0
+
     def stop_atr_multiple(self, ctx: StockContext, plan: TradePlan) -> float:
         """Stop distance expressed in current ATRs (NaN if ATR unavailable)."""
         atr14 = float(ctx.daily["atr14"].iloc[-1])
@@ -558,13 +574,19 @@ class TrendPullbackStrategy(Strategy):
         if sizing_result.too_large:
             label = "WATCH_WAIT"
             reasons.append("too large for account")
-        elif stop_atr > self.max_stop_atr_wait or r_mult < 2:
+        elif (
+            stop_atr > self.max_stop_atr_wait
+            or risk_pct > self.max_stop_pct_wait
+            or r_mult < 2
+        ):
             label = "WATCH_WAIT"
             if stop_atr > self.max_stop_atr_wait:
                 reasons.append(
                     f"stop {stop_atr:.2f} ATR > {self.max_stop_atr_wait} ATR "
                     f"({risk_pct:.1f}% of price)"
                 )
+            if risk_pct > self.max_stop_pct_wait:
+                reasons.append(f"stop {risk_pct:.1f}% > {self.max_stop_pct_wait}% of price")
             if r_mult < 2:
                 reasons.append(f"target {r_mult:.2f}R < 2R")
         elif supply_blocks:
@@ -577,6 +599,7 @@ class TrendPullbackStrategy(Strategy):
             sig
             and cap == "TRADE_HIGH_CONFIDENCE"
             and stop_atr <= self.max_stop_atr_trade
+            and risk_pct <= self.max_stop_pct_trade
             and r_mult >= 2
             and not earnings_block_15
         ):

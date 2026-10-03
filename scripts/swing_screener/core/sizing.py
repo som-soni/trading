@@ -7,7 +7,7 @@ shares < 1, mark 'Too large for account'.
 import math
 from dataclasses import dataclass
 
-from .config.base import MarketConfig
+from ..config.base import MarketConfig
 
 
 @dataclass

@@ -49,3 +49,20 @@ class MarketConfig:
     # sector_index_map (GICS/SPDR-style names) — without this, sectors
     # silently fail to match their index and get skipped from regime/RS
     sector_alias_map: dict = field(default_factory=dict)
+
+    @property
+    def benchmark_ticker(self) -> str:
+        """`benchmark_symbol` may be a LABEL (India uses 'NIFTY500') rather
+        than something the data provider understands. Resolve it through
+        `broad_index_symbols` so callers that just want to load prices get a
+        real ticker. US happens to work either way because 'SPY' is both,
+        which is why the India benchmark comparison was silently absent."""
+        return self.broad_index_symbols.get(self.benchmark_symbol, self.benchmark_symbol)
+
+    # ---- PORTFOLIO / EXECUTION (used by the portfolio backtest) ----
+    # A per-symbol backtest implicitly assumes unlimited capital and no
+    # costs. Both assumptions flatter results badly, so the portfolio
+    # simulator needs them stated explicitly.
+    max_open_positions: int = 10
+    commission_per_order: float = 0.0   # per side, in account currency
+    slippage_bps: float = 5.0           # per side, basis points of notional

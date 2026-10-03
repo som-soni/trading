@@ -15,7 +15,7 @@ import json
 import random
 from pathlib import Path
 
-from swing_screener import cache, universe
+from swing_screener.marketdata import cache, universe
 from swing_screener.config import MARKETS
 
 BASELINE_PATH = Path(__file__).resolve().parent / "golden_baseline.json"
@@ -46,7 +46,7 @@ def _snapshot_symbol(market: str, symbol: str, strategy_key: str = "trend_pullba
     Key names are frozen deliberately (setup_tc01 etc.) so a baseline
     recorded before the strategy extraction still compares cleanly against
     one recorded after it."""
-    from swing_screener import context as ctx_mod, demand_supply as ds_mod, sizing
+    from swing_screener.core import context as ctx_mod, demand_supply as ds_mod, sizing
     from swing_screener.strategies import get_strategy
 
     cfg = MARKETS[market]

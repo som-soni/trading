@@ -4,18 +4,20 @@ watch flag, the trade plan, sizing and decision. Answers "why did/didn't
 this stock show up?" without re-running the whole universe.
 
 Usage:
-    python3 -m swing_screener.inspect --market india --symbol RELIANCE.NS
-    python3 -m swing_screener.inspect --market us --symbol AAPL --strategy breakout
-    python3 -m swing_screener.inspect --market us --symbol AAPL --fresh
+    python3 -m swing_screener.screening.inspect --market india --symbol RELIANCE.NS
+    python3 -m swing_screener.screening.inspect --market us --symbol AAPL --strategy breakout
+    python3 -m swing_screener.screening.inspect --market us --symbol AAPL --fresh
 """
 
 import argparse
 
-from . import cache, context as ctx_mod, earnings, indicators as ind, patterns, sizing
-from .config import MARKETS
+from ..marketdata import cache, earnings
+
+from ..core import context as ctx_mod, indicators as ind, patterns, sizing
+from ..config import MARKETS
 from .pipeline import LOOKBACK_DAYS
-from .providers import YFinanceProvider
-from .strategies import DEFAULT_STRATEGY, get_strategy, list_strategies
+from ..providers import YFinanceProvider
+from ..strategies import DEFAULT_STRATEGY, get_strategy, list_strategies
 
 
 def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str = DEFAULT_STRATEGY) -> None:

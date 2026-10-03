@@ -4,7 +4,7 @@ Deliberately non-destructive: columns are added, never dropped, and no
 table is recreated. Rows written before the strategy dimension existed
 are backfilled to 'trend_pullback', which is what they actually were.
 
-    python3 -m swing_screener.migrate
+    python3 -m swing_screener.marketdata.migrate
 """
 
 import logging
@@ -26,6 +26,7 @@ STATEMENTS = [
     "ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS strategy VARCHAR(32) "
     "NOT NULL DEFAULT 'trend_pullback'",
     "ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS setups JSONB",
+    "ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS hard_gates JSONB",
     # fold the old per-setup boolean columns into the new JSONB shape, so
     # previously cached signals stay usable instead of silently missing
     """

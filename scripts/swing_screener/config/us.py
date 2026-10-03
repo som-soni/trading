@@ -33,6 +33,9 @@ US_CONFIG = MarketConfig(
         adx_min=15.0,
         atr_pct_min=1.5,
     ),
+    max_open_positions=10,
+    commission_per_order=0.0,
+    slippage_bps=5.0,
     tick_size=0.01,
     # yfinance's .info['sector'] uses its own taxonomy, not GICS/SPDR names
     sector_alias_map={
