@@ -47,7 +47,10 @@ def run_dir(market: str, strategy: str, run: str, create: bool = True) -> Path:
 
     `run` should describe the configuration (start date, exit policy, ...)
     so two runs of the same strategy don't overwrite each other."""
-    d = REPORTS_DIR / slug(market) / slug(strategy) / slug(run)
+    # `run` may contain "/" to nest (e.g. "screener/2026-10-03"); slug each
+    # segment so the separator survives instead of being flattened to "-"
+    parts = [slug(part) for part in str(run).split("/") if part]
+    d = REPORTS_DIR.joinpath(slug(market), slug(strategy), *parts)
     if create:
         d.mkdir(parents=True, exist_ok=True)
     return d

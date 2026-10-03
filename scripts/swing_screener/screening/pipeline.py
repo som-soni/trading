@@ -8,7 +8,9 @@ Usage:
 """
 
 import argparse
+import datetime as _dt
 import logging
+import time
 import sys
 from pathlib import Path
 
@@ -103,9 +105,15 @@ def run(
     )
     logger.info("Pulled %d/%d symbols (%d failed)", len(bars_by_symbol), len(tickers), len(pull_failed))
 
-    enriched_by_symbol: dict[str, pd.DataFrame] = {
-        s: ind.enrich_daily(df) for s, df in bars_by_symbol.items()
-    }
+    logger.info("Computing indicators for %d symbols...", len(bars_by_symbol))
+    enriched_by_symbol: dict[str, pd.DataFrame] = {}
+    _t0 = time.time()
+    _step = max(1, len(bars_by_symbol) // 10)
+    for _i, (s_, df_) in enumerate(bars_by_symbol.items(), 1):
+        enriched_by_symbol[s_] = ind.enrich_daily(df_)
+        if _i % _step == 0 or _i == len(bars_by_symbol):
+            logger.info("  indicators %d/%d (%.0f/s)", _i, len(bars_by_symbol),
+                        _i / max(time.time() - _t0, 1e-9))
 
     filtered: list[str] = []
     screener_fail_reason: dict[str, str] = {}
@@ -173,7 +181,14 @@ def run(
     # SETUP, WATCH, TRADE...), so the whole universe lands in one table.
     all_rows: list[dict] = []
 
-    for sym in filtered:
+    logger.info("Evaluating %d filtered symbols (gates, setups, plans)...", len(filtered))
+    _t0 = time.time()
+    _step = max(1, len(filtered) // 10)
+    for _i, sym in enumerate(filtered, 1):
+        if _i % _step == 0 or _i == len(filtered):
+            _rate = _i / max(time.time() - _t0, 1e-9)
+            logger.info("  evaluated %d/%d (%.0f/s, ETA %.0f s)", _i, len(filtered),
+                        _rate, (len(filtered) - _i) / max(_rate, 1e-9))
         raw = bars_by_symbol[sym]
         sector = sectors.get(sym, "Unknown")
         ctx = ctx_mod.build_context(sym, raw, earnings_map.get(sym))
@@ -303,13 +318,22 @@ def run(
     combined = out_mod.combined_risk_summary(all_rows, cfg.account_size, cfg.currency_symbol)
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    from ..paths import run_dir
     report = out_mod.universe_report(all_rows, sector_rs, strategy)
-    report_path = REPORT_DIR / f"{market_key}_{strategy.key}_universe.csv"
+    # Screener output goes into the same per-run tree the backtests use, so a
+    # day's candidates, its CSV and its charts sit together instead of in a
+    # flat pile. The stable top-level CSV is kept as a convenience symlink
+    # target for anything that reads "the latest" by a fixed path.
+    screen_dir = run_dir(market_key, strategy.key, f"screener/{_dt.date.today()}")
+    report_path = screen_dir / "candidates.csv"
     report.to_csv(report_path, index=False)
+    latest_csv = REPORT_DIR / f"{market_key}_{strategy.key}_universe.csv"
+    report.to_csv(latest_csv, index=False)
 
     # history: skip for --limit test runs so partial universes don't
     # pollute run-over-run comparisons
     run_id = None
+    diff_text = ""
     if not limit:
         run_id = history.new_run_id()
         snapshot_path = history.record_run(market_key, run_id, report, strategy_key=strategy.key)
@@ -334,6 +358,7 @@ def run(
         print(f"  {label}: {count}")
     print(f"\n{combined}")
     print(f"\nWrote: {report_path}")
+
     print(
         "Filter the 'decision'/'tradeable'/'watchlist_candidate'/'uptrend_intact' "
         "columns in a spreadsheet to slice it however you want."
@@ -346,9 +371,56 @@ def run(
         prior_runs = [r for r in history.list_run_ids(market_key) if r != run_id]
         if prior_runs:
             print()
-            history.print_diff(market_key, prior_runs[-1], run_id)
+            import contextlib, io as _io
+
+            _buf = _io.StringIO()
+            with contextlib.redirect_stdout(_buf):
+                history.print_diff(market_key, prior_runs[-1], run_id)
+            diff_text = _buf.getvalue()
+            print(diff_text)
         else:
             print("\n(first recorded run for this market — nothing to diff against yet)")
+
+    _vix_txt = f"{vix_value:.1f}" if isinstance(vix_value, (int, float)) else str(vix_value)
+    try:
+        from . import candidates_report
+
+        md = candidates_report.write(
+            screen_dir, cfg.name, strategy.name, strategy.key, report,
+            cfg.currency_symbol, run_id or str(_dt.date.today()),
+            regime_note=(
+                f"Market regime — VIX {_vix_txt}, high_vol={market_regime.high_vol}, "
+                f"breadth >SMA20 {market_regime.breadth_above_sma20_pct:.0f}%, "
+                f">SMA50 {market_regime.breadth_above_sma50_pct:.0f}%"
+                + (", **downgrade active**" if market_regime.downgrade_active else "")
+            ),
+            diff_text=diff_text,
+        )
+        print(f"Report: {md}")
+    except Exception as e:  # a chart failure must never lose the run's CSV
+        logger.warning("markdown report not generated (%s: %s)", type(e).__name__, e)
+
+    # Metadata for the cross-market consolidated report. `attrs` travels with
+    # the frame in-process, so daily.py gets this without re-reading files or
+    # pipeline.run() changing its return type.
+    report.attrs.update({
+        "market_key": market_key,
+        "market_name": cfg.name,
+        "strategy_key": strategy.key,
+        "strategy_name": strategy.name,
+        "currency": cfg.currency_symbol,
+        "run_id": run_id or str(_dt.date.today()),
+        "screen_dir": str(screen_dir),
+        "regime_note": (
+            f"VIX {_vix_txt}, breadth >SMA20 "
+            f"{market_regime.breadth_above_sma20_pct:.0f}%, >SMA50 "
+            f"{market_regime.breadth_above_sma50_pct:.0f}%"
+            + (", **downgrade active**" if market_regime.downgrade_active else "")
+        ),
+        "diff_text": diff_text,
+        "surveyed": len(report),
+        "universe_size": len(tickers),
+    })
 
     return report
 

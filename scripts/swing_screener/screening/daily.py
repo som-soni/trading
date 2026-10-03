@@ -83,6 +83,21 @@ def run_daily(
             print(traceback.format_exc())
 
     _print_cross_market_summary(reports, failures)
+
+    # one consolidated page across markets, alongside the per-market reports
+    try:
+        import datetime as _dt
+
+        from ..paths import REPORTS_DIR
+        from . import candidates_report
+
+        combined_dir = REPORTS_DIR / "daily" / str(_dt.date.today())
+        md = candidates_report.write_combined(
+            combined_dir, reports, failures, str(_dt.date.today())
+        )
+        print(f"\nConsolidated report: {md}")
+    except Exception as e:
+        logger.warning("combined report not generated (%s: %s)", type(e).__name__, e)
     logger.info("=== Daily run finished. Log: %s ===", log_path)
     print(f"\nFull log: {log_path}")
 
