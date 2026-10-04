@@ -110,6 +110,11 @@ CREATE TABLE IF NOT EXISTS backtest_signals (
     overhead_levels JSONB,
     watch_flags JSONB,
     watch_notes JSONB,
+    -- strategy-specific values stashed on StockContext.extras during
+    -- evaluate(). Without these a cache hit rebuilds a context missing the
+    -- very numbers build_plans() needs (donchian's channel_high, breakout's
+    -- pivot), and the strategy silently produces zero signals.
+    extras JSONB,
     PRIMARY KEY (market, strategy, symbol, date)
 );
 """

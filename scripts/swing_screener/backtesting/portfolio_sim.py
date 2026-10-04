@@ -137,6 +137,7 @@ class PortfolioResult:
     signals_taken: int = 0
     signals_missed_no_slot: int = 0
     signals_missed_no_cash: int = 0
+    partial_fills: int = 0
 
 
 PENDING_EXPIRY_BDAYS = 10
@@ -177,7 +178,7 @@ def simulate(
     pending: dict[str, dict] = {}
     closed: list[PortfolioTrade] = []
     costs_total = 0.0
-    taken = missed_slot = missed_cash = 0
+    taken = missed_slot = missed_cash = partial_fills = 0
 
     eq_rows, pos_rows, cash_rows = [], [], []
 
@@ -277,8 +278,18 @@ def simulate(
             max_notional = equity_now * cfg.max_position_pct
             if shares * entry > max_notional:
                 shares = int(max_notional // entry)
+            # Scale down to what cash allows rather than declining outright.
+            # A trader who can afford 70% of target size buys 70%; they do not
+            # skip the breakout. Under-filling puts LESS than risk_pct at risk
+            # on that position, never more, so this cannot inflate leverage --
+            # it only stops a fully-invested book from being deaf for months.
+            affordable = int((cash - cfg.commission_per_order) // entry)
+            if affordable < shares:
+                shares = affordable
+                partial_fills += 1
+            # computed after the final share count, not before
             cost = cfg.commission_per_order + (entry - raw_entry) * shares
-            if shares < 1 or shares * entry + cfg.commission_per_order > cash:
+            if shares < 1:
                 missed_cash += 1
                 del pending[sym]
                 continue
@@ -328,6 +339,7 @@ def simulate(
         trades=closed, costs_paid=costs_total,
         signals_seen=len(signals), signals_taken=taken,
         signals_missed_no_slot=missed_slot, signals_missed_no_cash=missed_cash,
+        partial_fills=partial_fills,
     )
 
 

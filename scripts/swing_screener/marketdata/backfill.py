@@ -52,8 +52,15 @@ def backfill_market(
     threshold = min_existing_bars if min_existing_bars is not None else int(want_bars * 0.95)
 
     tickers = universe.load_universe(market)
-    # the benchmark and index symbols are needed for regime and comparison
-    extras = [cfg.benchmark_ticker, *cfg.broad_index_symbols.values()]
+    # The benchmark, broad indices AND sector indices are all needed: the
+    # sector ones drive the sector-regime table in every daily report, and
+    # omitting them here left 10 of India's 12 sector indices with no data
+    # while their tickers were perfectly valid.
+    extras = [
+        cfg.benchmark_ticker,
+        *cfg.broad_index_symbols.values(),
+        *cfg.sector_index_map.values(),
+    ]
     todo = list(dict.fromkeys([*tickers, *[e for e in extras if e]]))
 
     if only_short:

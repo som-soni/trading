@@ -43,6 +43,8 @@ from .base import (
     TradePlan,
 )
 from .breakout import BreakoutStrategy
+from .chart_pattern import ChartPatternStrategy
+from .donchian import DonchianStrategy
 from .trend_pullback import TrendPullbackStrategy
 
 _REGISTRY: dict[str, Strategy] = {}
@@ -54,7 +56,9 @@ def register(strategy: Strategy) -> Strategy:
 
 
 register(TrendPullbackStrategy())
+register(DonchianStrategy())
 register(BreakoutStrategy())
+register(ChartPatternStrategy())
 
 DEFAULT_STRATEGY = TrendPullbackStrategy.key
 
@@ -79,7 +83,8 @@ def describe_strategies() -> str:
 __all__ = [
     "CAP_ORDER", "DOWNGRADE_MAP", "LABELS",
     "Decision", "PlanChoice", "Strategy", "StrategyResult", "TradePlan",
-    "TrendPullbackStrategy", "BreakoutStrategy",
+    "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy",
+    "ChartPatternStrategy",
     "register", "get_strategy", "list_strategies", "describe_strategies",
     "DEFAULT_STRATEGY",
 ]

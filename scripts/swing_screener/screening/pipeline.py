@@ -368,14 +368,19 @@ def run(
         print(report.head(15).to_string(index=False))
 
     if run_id:
-        prior_runs = [r for r in history.list_run_ids(market_key) if r != run_id]
+        # MUST pass the strategy: list_run_ids defaults to trend_pullback, so
+        # without it every other strategy diffs itself against trend_pullback's
+        # history and reports the entire universe as "dropped".
+        prior_runs = [
+            r for r in history.list_run_ids(market_key, strategy.key) if r != run_id
+        ]
         if prior_runs:
             print()
             import contextlib, io as _io
 
             _buf = _io.StringIO()
             with contextlib.redirect_stdout(_buf):
-                history.print_diff(market_key, prior_runs[-1], run_id)
+                history.print_diff(market_key, prior_runs[-1], run_id, strategy.key)
             diff_text = _buf.getvalue()
             print(diff_text)
         else:
@@ -395,6 +400,7 @@ def run(
                 + (", **downgrade active**" if market_regime.downgrade_active else "")
             ),
             diff_text=diff_text,
+            sector_regimes=sector_regimes,
         )
         print(f"Report: {md}")
     except Exception as e:  # a chart failure must never lose the run's CSV
@@ -420,6 +426,7 @@ def run(
         "diff_text": diff_text,
         "surveyed": len(report),
         "universe_size": len(tickers),
+        "sector_regimes": sector_regimes,
     })
 
     return report

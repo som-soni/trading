@@ -93,7 +93,7 @@ class Trade:
 _SIGNAL_FIELDS = (
     "hard_gates_passed", "first_failed_gate", "hard_gates", "has_setup", "setups",
     "h_value", "h_index", "l_value", "p_value", "prior_swing_low",
-    "overhead_levels", "watch_flags", "watch_notes",
+    "overhead_levels", "watch_flags", "watch_notes", "extras",
 )
 
 
@@ -117,6 +117,12 @@ def _load_cached_signal(
         return None
     vals = dict(zip(_SIGNAL_FIELDS, row))
 
+    # A strategy whose build_plans() reads ctx.extras cannot use a row written
+    # before extras were persisted: rebuilding from it yields an empty extras
+    # dict and the strategy silently emits no signals. Treat that as a miss.
+    if getattr(strategy, "needs_ctx_extras", False) and not vals.get("extras"):
+        return None
+
     daily = cache.load_cached_with_indicators(market_key, symbol, date, tail=70)
     if daily is None or len(daily) < 15:
         return None  # not enough tail data cached for entry/demand-supply math — recompute fresh
@@ -133,6 +139,7 @@ def _load_cached_signal(
         h_value=vals["h_value"], h_index=pd.Timestamp(vals["h_index"]) if vals["h_index"] else None,
         l_value=vals["l_value"], p_value=vals["p_value"], prior_swing_low=vals["prior_swing_low"],
         overhead=vals["overhead_levels"] or [], history_months=24,  # unused downstream of a cache hit
+        extras=dict(vals.get("extras") or {}),
     )
     # weekly/monthly are intentionally empty on the cache-hit path: nothing
     # between here and the trade decision reads them. If a strategy ever
@@ -154,6 +161,7 @@ def _signal_row(
         json.dumps(ctx.overhead),
         json.dumps({k: bool(v) for k, v in result.watch_flags.items()}),
         json.dumps(result.watch_notes),
+        json.dumps({k: db.py_value(v) for k, v in (ctx.extras or {}).items()}),
     )
 
 
@@ -164,9 +172,12 @@ def _save_signals(rows: list[tuple]) -> None:
         INSERT INTO backtest_signals
             (market, strategy, symbol, date, hard_gates_passed, first_failed_gate,
              hard_gates, has_setup, setups, h_value, h_index, l_value, p_value,
-             prior_swing_low, overhead_levels, watch_flags, watch_notes)
+             prior_swing_low, overhead_levels, watch_flags, watch_notes, extras)
         VALUES %s
-        ON CONFLICT (market, strategy, symbol, date) DO NOTHING
+        ON CONFLICT (market, strategy, symbol, date) DO UPDATE SET
+            hard_gates=EXCLUDED.hard_gates, setups=EXCLUDED.setups,
+            watch_flags=EXCLUDED.watch_flags, watch_notes=EXCLUDED.watch_notes,
+            extras=EXCLUDED.extras
     """
     db.execute_values(query, rows)
 
@@ -551,7 +562,10 @@ def collect_portfolio_signals(
     return all_signals, prices
 
 
-def sample_candidates(candidates: list[str], n: int | None, seed: int = 20260101) -> list[str]:
+def sample_candidates(
+    candidates: list[str], n: int | None, seed: int = 20260101,
+    include: "list[str] | None" = None,
+) -> list[str]:
     """A seeded random subset.
 
     `--limit` slices the first N, which is universe-file order and therefore
@@ -561,11 +575,24 @@ def sample_candidates(candidates: list[str], n: int | None, seed: int = 20260101
     practical choice; it needs to be unbiased and reproducible."""
     import random
 
+    pool = set(candidates)
+    # `include` is ADDITIVE on top of the seeded draw, not a replacement for
+    # part of it: that keeps the sample directly comparable to a previous run
+    # of the same size, and keeps its signals cached.
+    forced = [s for s in (include or []) if s in pool]
+    missing = [s for s in (include or []) if s not in pool]
+    if missing:
+        logger.warning("--include symbols not in the candidate pool: %s", ", ".join(missing))
+
     if not n or n >= len(candidates):
-        return candidates
+        return sorted(pool)
     rng = random.Random(seed)
-    picked = rng.sample(sorted(candidates), n)
-    logger.info("Sampled %d of %d candidates (seed %d)", len(picked), len(candidates), seed)
+    picked = set(rng.sample(sorted(candidates), n)) | set(forced)
+    logger.info(
+        "Sampled %d of %d candidates (seed %d)%s",
+        len(picked), len(candidates), seed,
+        f" + forced {', '.join(forced)}" if forced else "",
+    )
     return sorted(picked)
 
 
@@ -617,7 +644,10 @@ def run_portfolio_backtest(
     max_positions: int | None = None,
     exit_policy=None,
     sample: int | None = None,
+    include: list[str] | None = None,
     refresh_history: bool = False,
+    risk_pct: float | None = None,
+    max_position_pct: float | None = None,
 ):
     """Portfolio-level backtest: one capital pool, a position cap and costs.
 
@@ -629,12 +659,26 @@ def run_portfolio_backtest(
 
     db.init_schema()
     cfg = MARKETS[market_key]
+    # Sizing overrides, so a sweep's winning (risk, cap) pair can be carried
+    # into a full run without editing the market config. `max_positions` x
+    # `max_position_pct` can exceed 100% of capital, in which case the book
+    # runs out of cash before it runs out of slots -- see the sizing sweep.
+    if risk_pct is not None or max_position_pct is not None:
+        import dataclasses as _dc
+        cfg = _dc.replace(
+            cfg,
+            risk_pct=cfg.risk_pct if risk_pct is None else risk_pct,
+            max_position_pct=(cfg.max_position_pct if max_position_pct is None
+                              else max_position_pct),
+        )
+        logger.info("Sizing override: risk_pct=%.3f%% max_position_pct=%.0f%%",
+                    cfg.risk_pct * 100, cfg.max_position_pct * 100)
     strategy = get_strategy(strategy_key)
     start = pd.Timestamp(start_date)
     logger.info("Strategy: %s (%s)", strategy.key, strategy.name)
 
     candidates = _point_in_time_candidates(cfg, strategy, market_key, start)
-    candidates = sample_candidates(candidates, sample) if sample else (
+    candidates = sample_candidates(candidates, sample, include=include) if sample else (
         candidates[:limit] if limit else candidates
     )
 
@@ -776,12 +820,23 @@ def main() -> None:
         "Prefer this over --limit, which slices alphabetically.",
     )
     parser.add_argument(
+        "--include", default="",
+        help="comma-separated symbols to force into the sample, in ADDITION to "
+        "the seeded draw (keeps the run comparable to one without it)",
+    )
+    parser.add_argument(
         "--refresh-history", action="store_true",
         help="deep-refresh candidates from yfinance first (skip if backfill already ran)",
     )
     parser.add_argument("--atr-mult", type=float, default=3.0, help="for --exit-mode trail_atr")
     parser.add_argument("--ma-col", default="sma50", help="for --exit-mode ma")
     parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
+    parser.add_argument("--risk-pct", type=float, default=None,
+                        help="risk per trade as a fraction, e.g. 0.005 (default: market config)")
+    parser.add_argument("--max-position-pct", type=float, default=None,
+                        help="notional cap per position as a fraction, e.g. 0.10 "
+                             "(default: market config). max_positions x this should "
+                             "not exceed 1.0, or the book runs out of cash before slots")
     args = parser.parse_args()
     labels = tuple(x.strip() for x in args.accept_labels.split(",") if x.strip())
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -816,10 +871,17 @@ def main() -> None:
         use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy,
         accept_labels=labels, max_positions=args.max_positions, exit_policy=policy,
         sample=args.sample, refresh_history=args.refresh_history,
+        include=[x.strip() for x in args.include.split(",") if x.strip()],
+        risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
     )
     from ..paths import run_dir
 
-    run = f"{args.start}_{policy.label()}" + (f"_sample{args.sample}" if args.sample else "")
+    run = f"{args.start}_{policy.label()}"
+    if args.risk_pct is not None:
+        run += f"_risk{args.risk_pct * 100:g}pct"
+    if args.max_position_pct is not None:
+        run += f"_cap{args.max_position_pct * 100:g}pct"
+    run += f"_sample{args.sample}" if args.sample else ""
     out = run_dir(args.market, args.strategy, run)
     tdf.to_csv(out / "trades.csv", index=False)
     pd.DataFrame({
@@ -833,6 +895,12 @@ def main() -> None:
         args.max_positions if args.max_positions is not None else cfg.max_open_positions,
     ))
     print(f"\nRun dir -> {out}")
+
+    _bench = cache.load_cached(args.market, cfg.benchmark_ticker)
+    _bench_c = (
+        _bench["close"].reindex(result.equity.index).ffill()
+        if _bench is not None and not _bench.empty else None
+    )
 
     # markdown report with charts, alongside the CSVs
     try:
@@ -858,11 +926,6 @@ def main() -> None:
     except Exception as e:  # a chart failure must not lose the run's results
         logger.warning("markdown report not generated (%s: %s)", type(e).__name__, e)
     print()
-    _bench = cache.load_cached(args.market, cfg.benchmark_ticker)
-    _bench_c = (
-        _bench["close"].reindex(result.equity.index).ffill()
-        if _bench is not None and not _bench.empty else None
-    )
     print(metrics.format_equity_curve(result.equity, _bench_c))
 
 

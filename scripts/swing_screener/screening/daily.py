@@ -61,28 +61,40 @@ def _maybe_refresh_universe(market: str, refresh_stale_days: float) -> None:
 
 def run_daily(
     markets: list[str], refresh_stale_days: float = 7,
-    strategy_key: str = DEFAULT_STRATEGY,
+    strategy_keys: list[str] | None = None,
 ) -> int:
+    strategy_keys = strategy_keys or [DEFAULT_STRATEGY]
     log_path = _setup_logging()
-    logger.info("=== Daily run starting: markets=%s strategy=%s ===", markets, strategy_key)
+    logger.info(
+        "=== Daily run starting: markets=%s strategies=%s ===", markets, strategy_keys
+    )
 
-    reports: dict[str, pd.DataFrame] = {}
+    # {strategy: {market: report_df}} — the report sections by strategy, and a
+    # failure in one strategy/market pair must not stop the others
+    reports: dict[str, dict[str, pd.DataFrame]] = {k: {} for k in strategy_keys}
     failures: dict[str, str] = {}
 
     for market in markets:
         print(f"\n{'=' * 60}\n{MARKETS[market].name.upper()}\n{'=' * 60}")
         try:
             _maybe_refresh_universe(market, refresh_stale_days)
-            reports[market] = pipeline.run(
-                market, refresh_universe=False, strategy_key=strategy_key
-            )
         except Exception as e:
-            logger.exception("%s run failed", market)
-            failures[market] = f"{type(e).__name__}: {e}"
-            print(f"\n*** {market.upper()} FAILED: {e} ***")
-            print(traceback.format_exc())
+            logger.exception("%s universe refresh failed", market)
+            failures[market] = f"universe refresh: {type(e).__name__}: {e}"
+        for key in strategy_keys:
+            print(f"\n--- strategy: {key} ---")
+            try:
+                reports[key][market] = pipeline.run(
+                    market, refresh_universe=False, strategy_key=key
+                )
+            except Exception as e:
+                logger.exception("%s/%s run failed", market, key)
+                failures[f"{market}/{key}"] = f"{type(e).__name__}: {e}"
+                print(f"\n*** {market.upper()}/{key} FAILED: {e} ***")
+                print(traceback.format_exc())
 
-    _print_cross_market_summary(reports, failures)
+    for key, by_market in reports.items():
+        _print_cross_market_summary(by_market, failures, key)
 
     # one consolidated page across markets, alongside the per-market reports
     try:
@@ -104,8 +116,11 @@ def run_daily(
     return 1 if failures else 0
 
 
-def _print_cross_market_summary(reports: dict[str, pd.DataFrame], failures: dict[str, str]) -> None:
-    print(f"\n{'=' * 60}\nCROSS-MARKET SUMMARY\n{'=' * 60}")
+def _print_cross_market_summary(
+    reports: dict[str, pd.DataFrame], failures: dict[str, str], strategy_key: str = ""
+) -> None:
+    label = f"CROSS-MARKET SUMMARY — {strategy_key}" if strategy_key else "CROSS-MARKET SUMMARY"
+    print(f"\n{'=' * 60}\n{label}\n{'=' * 60}")
 
     if failures:
         print("Failed markets (see log for full traceback):")
@@ -144,8 +159,10 @@ def main() -> None:
         "--markets", default="us,india", help="comma-separated subset of: " + ",".join(MARKETS.keys())
     )
     parser.add_argument(
-        "--strategy", default=DEFAULT_STRATEGY, choices=list_strategies(),
-        help="which strategy to run for every market",
+        "--strategies", default=DEFAULT_STRATEGY,
+        help="comma-separated strategies to run for every market, each getting its "
+        "own section in the report. Use 'all' for every registered strategy. "
+        "Available: " + ",".join(list_strategies()),
     )
     parser.add_argument(
         "--refresh-stale-days", type=float, default=7,
@@ -158,7 +175,13 @@ def main() -> None:
         if m not in MARKETS:
             parser.error(f"unknown market '{m}', choose from {list(MARKETS.keys())}")
 
-    sys.exit(run_daily(markets, args.refresh_stale_days, args.strategy))
+    keys = (list_strategies() if args.strategies.strip() == "all"
+            else [k.strip() for k in args.strategies.split(",") if k.strip()])
+    for k in keys:
+        if k not in list_strategies():
+            parser.error(f"unknown strategy '{k}', choose from {list_strategies()}")
+
+    sys.exit(run_daily(markets, args.refresh_stale_days, keys))
 
 
 if __name__ == "__main__":

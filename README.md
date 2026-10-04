@@ -59,6 +59,9 @@ python3 -m swing_screener.screening.pipeline --market india
 
 # a different strategy
 python3 -m swing_screener.screening.pipeline --market india --strategy breakout
+
+# breakouts from a named chart pattern (cup-and-handle, flat base, VCP...)
+python3 -m swing_screener.screening.pipeline --market us --strategy chart_pattern
 ```
 
 Writes `reports/<market>_<strategy>_universe.csv` — one row per stock that
@@ -122,7 +125,35 @@ python3 -m swing_screener.backtesting.experiments --market india --start 2013-01
 # how sensitive is it to the position cap
 python3 -m swing_screener.backtesting.experiments --market india --start 2013-01-01 \
     --sample 500 --caps
+
+# risk-per-trade and notional cap together: can the book afford its own slots?
+python3 -m swing_screener.backtesting.experiments --market us --start 2013-01-01 \
+    --strategy donchian --sample 500 --sizing \
+    --exit-mode donchian --no-target --donchian-bars 50
 ```
+
+**`--caps` and `--sizing` hold the exit policy fixed while varying one other
+thing, so pass the strategy's real exit policy.** They default to
+`bracket`+target; donchian measured with a fixed target is not donchian, and
+the mistake is invisible in the output unless you check the trade count and
+median holding days against the strategy's own run.
+
+### Change position sizing
+
+`max_positions` x `max_position_pct` can exceed 100% of capital, in which case
+the book runs out of cash before it runs out of slots and silently declines
+most signals. Both markets ship 10 slots x 25% = 250%.
+
+```bash
+python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 \
+    --strategy donchian --exit-mode donchian --no-target \
+    --risk-pct 0.005 --max-position-pct 0.15
+```
+
+The sizing appears in the run directory name, so configurations don't
+overwrite each other. Check `report.md` for the line reporting how many
+signals were declined for insufficient cash — if it dwarfs the trade count,
+the book is the binding constraint, not the strategy.
 
 ### Re-render a finished run as a report
 
@@ -142,7 +173,7 @@ No re-simulation — it rebuilds from the run's saved CSVs.
 trading/
   scripts/        code — see scripts/README.md for the full guide
     swing_screener/
-      core/           indicators, swings, context — strategy-agnostic
+      core/           indicators, swings, chart patterns, context — strategy-agnostic
       strategies/     one file per strategy, behind one interface
       backtesting/    simulator, metrics, reports, baseline, experiments
       marketdata/     cache, Postgres, universes, backfill

@@ -4,14 +4,14 @@ A living record of what has been tested, what the numbers were, and what
 survived scrutiny. Append to the ledger as new strategies are tried; the
 methodology and bias sections apply to everything in it.
 
-**Last updated:** 2026-10-03 · **Window used throughout:** 2013-01-01 → 2026-10-01 (13.75y)
+**Last updated:** 2026-10-04 · **Window used throughout:** 2013-01-01 → 2026-10-02 (13.75y)
 
 ---
 
 ## 1. Where things stand
 
-Three conclusions are well supported, and one earlier conclusion was wrong and
-has been corrected.
+Four conclusions are well supported, and two earlier conclusions were wrong and
+have been corrected.
 
 1. **The hand-built `trend_pullback` strategy has no edge in either market.**
    US −0.87% CAGR, India +0.57%, against indices returning 12.79% and 11.68%.
@@ -21,12 +21,21 @@ has been corrected.
 3. **India's momentum premium lives in small/mid caps and disappears in large
    caps.** Monotonic decay from +14.2% excess at a ₹1cr turnover floor to
    −9.3% at ₹500cr.
-4. **Corrected:** an earlier conclusion that "stock selection adds no value,
+4. **Donchian channel breakout is the only hand-built strategy with a
+   positive edge, and only in India** (+3.06% excess). Its US run trails SPY
+   by 7.07% — but the trade shape (129 trend exits at +2.58R) says the signal
+   works and the *book* is the constraint: 10,793 of 14,336 signals were
+   declined for want of cash. See §3.5.
+5. **Corrected:** an earlier conclusion that "stock selection adds no value,
    buy the index" was drawn from US data alone and over-generalised. India
    contradicts it.
+6. **Corrected:** the index trend overlay was expected to cut India's drawdown
+   the way it cuts SPY's. It did the opposite — deeper drawdown *and* lower
+   CAGR at all four lookbacks. See §6.
 
 The practical consequence: the gates are the problem, not the premise — but
-only in India. In the US the premise fails too.
+only in India. In the US the premise fails too, except that donchian's US
+result has never been measured on a book that could afford its own signals.
 
 ---
 
@@ -52,6 +61,7 @@ Every row is a completed backtest. **Append new strategies here.**
 | momentum baseline | top 50, ₹100cr floor, 25bps | 11.15% | −49.4% | 0.63 | 0.23 | −0.53 | 2164 |
 | momentum baseline | top 20, ₹250cr floor, 25bps | 9.10% | −49.6% | 0.51 | 0.18 | −2.59 | 890 |
 | momentum baseline | top 20, ₹500cr floor, 25bps | 2.59% | −46.9% | 0.23 | 0.06 | −9.10 | 567 |
+| **donchian** | 500-symbol sample, 50d exit, no target | **14.74%** | −43.2% | 0.78 | 0.34 | **+3.06** | — |
 | **trend_pullback** | 500-symbol sample, bracket exits | **0.57%** | −18.5% | 0.12 | 0.03 | **−11.11** | 183 |
 
 ### US (benchmark: SPY — CAGR 12.79%, maxDD −34.1%, Sharpe 0.80)
@@ -64,7 +74,10 @@ Every row is a completed backtest. **Append new strategies here.**
 | momentum baseline | top 20, 5bps | 2.92% | −62.7% | 0.27 | 0.05 | −9.87 | 1240 |
 | momentum baseline | top 10, 5bps | −4.85% | −79.7% | 0.11 | −0.06 | −17.64 | 681 |
 | momentum baseline | top 20, 3mo lookback | −5.86% | −89.5% | 0.02 | −0.07 | −18.65 | 2013 |
+| **donchian** | 500-sample +MU,SNDK forced, 50d exit, no target | **5.78%** | −53.3% | 0.38 | 0.11 | **−7.07** | 338 |
+| **donchian** | 500-symbol sample, 50d exit, no target | 5.41% | −58.6% | 0.37 | 0.09 | −7.44 | 328 |
 | **trend_pullback** | 500-symbol sample, bracket exits | **−0.87%** | −40.6% | −0.02 | −0.02 | **−13.67** | 301 |
+| **breakout** | 500-symbol sample, bracket exits | **−1.74%** | −34.1% | −0.26 | −0.05 | **−14.59** | — |
 
 ### Index-level trend overlays (no stock selection — survivorship-bias free)
 
@@ -116,9 +129,12 @@ Concrete cost: Micron's 2025-10-23 signal was correct — entry 214.97, target
 292.90, and it reached target on 2025-12-29 for **+3.32R**. It was rejected
 because it graded TRADE ON TRIGGER.
 
-### 3.3 Exits are not the lever
+### 3.3 Exits are not the lever (for `trend_pullback`)
 
-Eight exit policies on the identical 879-signal set, 13.74 years:
+Eight exit policies on the identical 879-signal set, 13.74 years. **Scope: this
+was measured on `trend_pullback` signals only** — it does not transfer to
+`donchian`, whose exit width is still open (§6).
+
 
 | variant | CAGR | maxDD | Sharpe | avgR |
 |---|---|---|---|---|
@@ -151,7 +167,54 @@ strategy made nothing on either:
 - **SNDK was unsizeable** — 14 HIGH CONFIDENCE bars, all with `shares = 0` at
   ₹1,600–2,400/share on a ₹10 lakh account.
 
-### 3.5 Universe restriction (answered)
+### 3.5 The book is cash-constrained, not signal-constrained (donchian)
+
+Donchian's US run returned 5.78% against SPY's 12.85%, but the trade shape says
+the signal is not the problem:
+
+| exit reason | trades | avg R | median days |
+|---|---|---|---|
+| TREND_EXIT | 129 | **+2.58** | 158 |
+| STOP | 201 | −1.09 | 22 |
+
+That is a working trend follower — a fat right tail paid for by many small
+losses, profit factor 1.16. What throttles it is capital:
+
+- **Of 14,336 signals, 338 were taken.** 10,793 were declined for insufficient
+  cash, 7,716 for a full book.
+- **Median position is 11.1% of equity**, so `max_positions=10` implies **111%
+  of capital**. The config's stated limits (10 slots × `max_position_pct=0.25`)
+  sum to **250%**. The account fills up at 8 positions and never reaches 10 —
+  it hit the position cap on 5 days out of 337 in 2025-06→2026-10, while
+  averaging **$2,251 cash** (2% of equity) over that stretch.
+- Tight stops are the mechanism. Donchian's stop is `min(entry − 2ATR,
+  entry × 0.98)`, so a 2%-stop name needs 50× its risk budget in notional.
+
+MU and SNDK make it concrete. Both were correctly flagged and neither could be
+bought:
+
+| signal | equity | cash | positions | notional wanted | short by |
+|---|---|---|---|---|---|
+| MU 2025-06-05 | $84,142 | $5,169 | 8 / 10 | $11,014 | $5,846 |
+| MU 2025-09-05 | $94,563 | **$143** | 8 / 10 | $13,764 | $13,621 |
+| SNDK 2026-03-18 | $103,936 | $5,113 | 8 / 10 | $7,250 | $2,137 |
+
+MU's first signal landed while the account was **52% below its prior peak** —
+the drawdown preceding the opportunity is what prevented taking it. Forcing MU
+and SNDK into the sample changed nothing in 2025-26; the only MU trade was
+2013 (+8.47R, 282 days). **This was a capital-deployment finding, not a
+stock-selection one.**
+
+Two defects found and fixed while establishing this:
+
+1. `portfolio_sim` declined a signal outright when the full risk-sized
+   position did not fit in cash, rather than buying what cash allowed. It now
+   scales down — under-filling puts *less* than `risk_pct` at risk, never
+   more, so it cannot inflate leverage.
+2. `cost` was computed before the final share count, so a scaled fill would
+   have been charged for shares it did not buy.
+
+### 3.6 Universe restriction (answered)
 
 Restricting to larger/more liquid names makes India **worse**, monotonically.
 See the ledger. The `liquidity_rank_top` parameter was found to be inert — the
@@ -209,16 +272,47 @@ Decisions that materially affect results, and why.
 
 ## 6. Open questions / experiment queue
 
+### Answered — momentum-book enhancements (India, 13.75y, identical signal set)
+
+All five literature fixes were run. Only one helped, and the one recommended
+most confidently did active harm.
+
+| variant | CAGR | maxDD | Sharpe | Calmar | excess | verdict |
+|---|---|---|---|---|---|---|
+| **weight: inverse-vol** | **18.88%** | −47.4% | **0.88** | **0.40** | **+7.20** | **adopt** |
+| rank: residual (Blitz) | 18.20% | −49.2% | 0.84 | 0.37 | +6.52 | marginal |
+| rank: vol-scaled (Barroso–SC) | 17.99% | −46.6% | 0.87 | 0.39 | +6.31 | marginal |
+| base: momentum, equal weight | 17.96% | −50.0% | 0.82 | 0.36 | +6.28 | reference |
+| rank: path quality (Alpha Arch.) | 13.62% | **−41.4%** | 0.76 | 0.33 | +1.94 | costs 4.3% CAGR |
+| index overlay (10mo) | 9.98% | **−54.8%** | 0.56 | 0.18 | −1.71 | **reject** |
+| ALL combined | 9.77% | −49.8% | 0.61 | 0.20 | −1.91 | **reject** |
+
+1. **Volatility targeting fails monotonically.** 25% → 17.03%, 20% → 15.42%,
+   15% → 12.29%, 10% → 8.62%, against an 18.88% reference. Tighter targets
+   cost more. (An earlier version of the estimator divided by √n, assuming
+   zero correlation between holdings — 7.7% estimated vs 28.9% actual — so the
+   constraint never bound. These are the post-fix numbers.)
+2. **The index overlay made India worse on BOTH axes** — lower CAGR *and* a
+   deeper drawdown (−53.8% vs −47.4%) at every lookback tested (6/8/10/12mo).
+   It is the opposite of its SPY result in §2. A momentum book is already
+   long-only and already exits losers; the overlay adds whipsaw without adding
+   protection it does not already have. **This was my most confident
+   recommendation and it was wrong.**
+3. **Inverse-vol weighting is the only free win:** +0.92% CAGR, −2.6pp
+   drawdown, Sharpe 0.82 → 0.88, on the same 1,159 trades.
+4. Ranking refinements are within noise of plain 12-1 momentum. Path quality
+   buys the lowest drawdown of any ranking variant but pays 4.3% CAGR for it.
+
+### Still open
+
 | # | experiment | needs | why |
 |---|---|---|---|
-| 1 | Volatility-scaled momentum (Barroso–Santa-Clara) | nothing new | Directly targets the −49.9% drawdown; the most cited momentum fix |
-| 2 | Volatility-weighted positions + portfolio vol target | nothing new | Standard in managed futures; usually lifts Sharpe more than it costs |
-| 3 | Index-level trend overlay on the India momentum book | nothing new | Cut SPY's drawdown from −50.8% to −23.0%; untested on Nifty |
-| 4 | Residual momentum (strip market beta before ranking) | nothing new | Reported Sharpe gains; we have `^CRSLDX` to regress against |
-| 5 | Path quality / % positive days (Alpha Architect) | nothing new | Prefers smooth momentum over gap-driven |
-| 6 | Gate ablation — drop each gate, measure | one full re-run | `hard_gates` JSONB now captures the full vector |
-| 7 | Value + momentum blend (Asness et al.) | **point-in-time fundamentals** | Most robust pairing in the literature; blocked on data |
-| 8 | Full-universe India run (not a 500 sample) | ~9h compute | Firms up the headline numbers |
+| 1 | **Pyramiding into winners** (Turtle 0.5N adds) | simulator work (~½ day) | Donchian's actual return engine. 129 trend exits at **+2.58R** avg and we take one bite of each. The biggest untested lever in the repo |
+| 2 | Donchian exit-channel width on **donchian** signals | nothing new | §3.3 measured exits on `trend_pullback` only. Donchian's own rule is the 4-week (20d), not the 50d we use |
+| 3 | Risk/notional sizing so the book can fill its slots | nothing new | §3.5 — in flight |
+| 4 | Gate ablation — drop each gate, measure | one full re-run | `hard_gates` JSONB now captures the full vector |
+| 5 | Value + momentum blend (Asness et al.) | **point-in-time fundamentals** | Most robust pairing in the literature; blocked on data |
+| 6 | Full-universe runs for the gated strategies | US 3,604 / India 1,064 candidates | Only `momentum_baseline` is full-universe today; donchian, trend_pullback and breakout are 500-symbol samples |
 
 ---
 
@@ -256,6 +350,10 @@ Reports land in `reports/<market>/<strategy>/<run>/` — `report.md`,
 
 | date | change |
 |---|---|
+| 2026-10-04 | Donchian implemented and backtested: India +3.06% excess, US −7.07% |
+| 2026-10-04 | Found the US donchian book is cash-constrained, not signal-constrained (§3.5) |
+| 2026-10-04 | Fixed: simulator declined signals outright instead of part-filling from available cash |
+| 2026-10-04 | Recorded the five momentum enhancements as measured: only inverse-vol weighting helps; the index overlay actively harms India |
 | 2026-10-03 | Universe/turnover sweep: premium is small/mid-cap, decays monotonically to −9.3% excess at ₹500cr |
 | 2026-10-03 | Restructured into topic sub-packages; reports moved to repo root, one directory per run |
 | 2026-10-02 | India results: momentum +6.23% excess (8/8 configs); gated strategy +0.57% |

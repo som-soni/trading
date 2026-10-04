@@ -52,6 +52,40 @@ class BreakoutStrategy(Strategy):
     setup_codes = (BO01, BO02)
     min_bars = 260
 
+    needs_ctx_extras = True
+    extra_columns = ("breakout_pivot", "pct_from_pivot", "structural_r")
+    extra_numeric_columns = ("breakout_pivot", "pct_from_pivot", "structural_r")
+
+    # Minimum reward the consolidation must actually project, measured off the
+    # base height. Nothing pads a setup up to this — it is a rejection
+    # threshold, not a target floor.
+    min_structural_r: float = 2.0
+
+    thesis = (
+        "A decisive, volume-confirmed break to new highs out of a tight "
+        "consolidation continues, so buy strength rather than weakness."
+    )
+    how_it_works = (
+        "**Screen** for stocks above their SMA200 and within 20% of the 52-week high.",
+        "**Gates B1-B7** require a rising SMA200, price within 5% of the 52-week "
+        "high, a tight 20-bar base (range under 6 ATR), not already extended "
+        "beyond 4 ATR above SMA20, and no earnings inside 10 days.",
+        "**Setups**: BO-01 is a close above the 55-day pivot on confirming volume; "
+        "BO-02 is a coil sitting within 3% below that pivot.",
+        "**Entry** is the pivot plus a tick; for BO-01 the signal *is* the setup, "
+        "because the close has already cleared the pivot.",
+        "**Exit**: stop below the consolidation (never wider than 2 ATR), target "
+        "the measured base height or 2.5R, whichever is larger.",
+    )
+    caveats = (
+        "**NOT VALIDATED.** The thresholds are reasonable defaults, not tuned or "
+        "backtested numbers. It has never been run through the backtester.",
+        "Treat anything it produces as a hypothesis to test, not a signal to act on.",
+        "The target is the measured move off the base, with no floor; setups "
+        "projecting under 2R are rejected rather than padded. `structural_r` "
+        "and the R column are therefore the same number by construction.",
+    )
+
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
         if cfg.screener.min_price and last["close"] < cfg.screener.min_price:
             return False, f"price {last['close']:.2f} < {cfg.screener.min_price}"
@@ -215,9 +249,23 @@ class BreakoutStrategy(Strategy):
         stop = round_tick(max(base_low - 0.1 * atr14, entry - 2 * atr14), cfg.tick_size, "down")
 
         risk = entry - stop
-        # measured move: project the consolidation height off the pivot
+        # Measured move: project the consolidation height off the pivot.
+        #
+        # The 2.5R floor below is an ASSUMPTION, not a measurement. Whenever the
+        # base is shorter than 2.5R the floor binds and every candidate reports
+        # "2.50R" — which looks like an assessment of opportunity but is the
+        # formula restating itself. Both numbers are kept so a reader can tell
+        # which one is real: `structural_r` is what the chart actually offers.
         base_high = float(d["high"].iloc[-(CONSOLIDATION_BARS + 1) : -1].max())
-        target = entry + max(base_high - base_low, 2.5 * risk)
+        measured_move = base_high - base_low
+        structural_r = measured_move / risk if risk > 0 else float("nan")
+        # The target is the measured move, full stop. A floor (this previously
+        # used max(measured_move, 2.5 * risk)) reports reward the chart does
+        # not offer: 12 of 14 live candidates showed "2.50R" while projecting
+        # 1.40-2.38R. Setups that project less than `min_structural_r` are
+        # rejected in classify() rather than padded up to look acceptable.
+        target = entry + measured_move
+        ctx.extras["structural_r"] = structural_r
 
         nearest_above = sw.nearest_overhead_above(entry, ctx.overhead)
         if nearest_above is not None and nearest_above < target:
@@ -264,12 +312,15 @@ class BreakoutStrategy(Strategy):
         if sizing_result.too_large:
             label = "WATCH_WAIT"
             reasons.append("too large for account")
-        elif risk_pct > 8 or r_mult < 2:
+        elif risk_pct > 8 or r_mult < self.min_structural_r:
             label = "WATCH_WAIT"
             if risk_pct > 8:
                 reasons.append(f"stop {risk_pct:.1f}% > 8%")
-            if r_mult < 2:
-                reasons.append(f"target {r_mult:.2f}R < 2R")
+            if r_mult < self.min_structural_r:
+                reasons.append(
+                    f"base projects {r_mult:.2f}R < {self.min_structural_r:g}R "
+                    "— not enough reward for the risk"
+                )
         elif cap == "WATCH_WAIT":
             label = "WATCH_WAIT"
             reasons.append(result.watch_notes.get("XB2", "capped by watch flag"))
@@ -303,7 +354,11 @@ class BreakoutStrategy(Strategy):
         self, ctx: StockContext, result: StrategyResult, plan: TradePlan | None
     ) -> dict:
         pivot = ctx.extras.get("breakout_pivot")
+        sr = ctx.extras.get("structural_r")
         return {
             "breakout_pivot": round(pivot, 2) if pivot else None,
             "pct_from_pivot": round((ctx.close / pivot - 1) * 100, 2) if pivot else None,
+            # what the base projects — now identical to target_r, kept because
+            # it names the thing explicitly
+            "structural_r": round(sr, 2) if isinstance(sr, float) and sr == sr else None,
         }

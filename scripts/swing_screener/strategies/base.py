@@ -144,8 +144,42 @@ class Strategy(ABC):
     gate_codes: tuple[str, ...] = ()
     watch_codes: tuple[str, ...] = ()
     setup_codes: tuple[str, ...] = ()
+    # extra report columns this strategy's report_extras() returns, and which
+    # of them are numeric. Declared here so output.py never needs to know any
+    # strategy's specifics — previously breakout_pivot/pct_from_pivot were
+    # hardcoded into the shared column list, and anything not hardcoded was
+    # silently dropped from the report.
+    # True when build_plans() reads values that evaluate() stashed on
+    # ctx.extras. Such a strategy cannot use a cached signal that predates
+    # extras being persisted — it must recompute that bar.
+    needs_ctx_extras: bool = False
+    extra_columns: tuple[str, ...] = ()
+    extra_numeric_columns: tuple[str, ...] = ()
     # minimum daily bars before this strategy will evaluate a symbol
     min_bars: int = 260
+
+    # --- self-description, for reports ---
+    # A report that lists symbols without saying what the strategy was looking
+    # for is unreadable by anyone who didn't write it (including you, later).
+    thesis: str = ""              # one sentence: what edge is being claimed
+    how_it_works: tuple[str, ...] = ()   # the mechanics, in plain language
+    caveats: tuple[str, ...] = ()        # what is known to be wrong or untested
+
+    @classmethod
+    def explain(cls) -> str:
+        """Markdown block describing the strategy for a report."""
+        out: list[str] = []
+        if cls.thesis:
+            out += [f"**Thesis.** {cls.thesis}", ""]
+        if cls.how_it_works:
+            out += ["**How it works**", ""]
+            out += [f"{i}. {step}" for i, step in enumerate(cls.how_it_works, 1)]
+            out.append("")
+        if cls.caveats:
+            out += ["**Known caveats**", ""]
+            out += [f"- {c}" for c in cls.caveats]
+            out.append("")
+        return "\n".join(out)
 
     @abstractmethod
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:

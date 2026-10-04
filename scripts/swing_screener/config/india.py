@@ -15,7 +15,7 @@ INDIA_CONFIG = MarketConfig(
     name="India",
     currency_symbol="₹",
     tz="Asia/Kolkata",
-    account_size=1_000_000,
+    account_size=2_000_000,
     risk_pct=0.01,
     risk_pct_high_vol=0.005,
     max_position_pct=0.25,
@@ -29,19 +29,49 @@ INDIA_CONFIG = MarketConfig(
     benchmark_symbol="NIFTY500",
     # SECTOR INDEX MAP — NSE sectoral indices. Same caveat as above: test
     # each symbol, these are best-effort guesses at Yahoo's naming.
+    # Sector proxies, each verified to return usable history — not assumed.
+    #
+    # Yahoo carries only three live Nifty sector INDICES (^NSEBANK, ^CNXIT,
+    # ^CNXPHARMA, ~4,000 bars each); ^CNXAUTO, ^CNXFMCG, ^CNXMEDIA,
+    # ^CNXMETAL, ^CNXPSUBANK, ^CNXREALTY and the NIFTY_*.NS forms all return
+    # 0-1 bars however they are fetched. NSE-listed sector ETFs are ordinary
+    # equities and do resolve, so they fill the gaps.
+    #
+    # Indices are preferred where they work (far longer history); ETFs are
+    # the fallback. ETF proxies carry tracking error and start much later —
+    # the oldest is 2019 — so sector history before then is unavailable for
+    # those sectors, which matters for backtesting but not for a daily regime
+    # read. Thinly traded ETFs were rejected in favour of liquid ones
+    # (INFRABEES has 3,950 bars but only ~Rs 0.8cr/day, too noisy to use).
     sector_index_map={
-        "Auto": "^CNXAUTO",
-        "Bank": "^NSEBANK",
-        "Financial Services": "NIFTY_FIN_SERVICE.NS",
-        "FMCG": "^CNXFMCG",
-        "Healthcare": "NIFTY_HEALTHCARE.NS",
-        "IT": "^CNXIT",
-        "Media": "^CNXMEDIA",
-        "Metal": "^CNXMETAL",
-        "Pharma": "^CNXPHARMA",
-        "PSU Bank": "^CNXPSUBANK",
-        "Private Bank": "NIFTY_PVT_BANK.NS",
-        "Realty": "^CNXREALTY",
+        "Bank": "^NSEBANK",            # index, 4,013 bars
+        "IT": "^CNXIT",                # index, 4,013 bars
+        "Pharma": "^CNXPHARMA",        # index, 3,859 bars
+        "PSU Bank": "PSUBNKBEES.NS",   # ETF, 4,380 bars, ~Rs 18cr/day
+        "Private Bank": "PVTBANIETF.NS",  # ETF, 1,761 bars, ~Rs 8.9cr/day
+        "Auto": "AUTOBEES.NS",         # ETF, 1,161 bars, ~Rs 6.6cr/day
+        "FMCG": "FMCGIETF.NS",         # ETF, 1,269 bars, ~Rs 7.5cr/day
+        "Metal": "METALIETF.NS",       # ETF,   532 bars, ~Rs 10cr/day
+        "Infra": "INFRAIETF.NS",       # ETF,   562 bars, ~Rs 4cr/day
+        "Energy": "OILIETF.NS",        # ETF,   519 bars, ~Rs 2.1cr/day
+        "Consumption": "CONSUMBEES.NS",  # ETF, 2,919 bars, ~Rs 1.2cr/day
+    },
+    # yfinance reports its own sector taxonomy for NSE stocks ("Technology",
+    # "Financial Services", "Healthcare"), which does not match the Nifty
+    # names above. Without this the pipeline logged 68 "no sector index
+    # mapped" warnings per run and produced no sector regime at all.
+    # Real Estate, Communication Services and Utilities remain unmapped —
+    # no proxy with usable history was found, and a wrong proxy is worse
+    # than an honest gap.
+    sector_alias_map={
+        "Technology": "IT",
+        "Financial Services": "Bank",
+        "Healthcare": "Pharma",
+        "Consumer Cyclical": "Auto",
+        "Consumer Defensive": "FMCG",
+        "Basic Materials": "Metal",
+        "Industrials": "Infra",
+        "Energy": "Energy",
     },
     screener=ScreenerThresholds(
         min_price=0,  # India uses a market-cap floor instead of a price floor

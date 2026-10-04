@@ -15,6 +15,7 @@ willing to hold at once.
 """
 
 import argparse
+import dataclasses
 import logging
 
 import pandas as pd
@@ -76,6 +77,7 @@ def run(
     accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
     which: str = "exits", max_positions: int | None = None,
     refresh: bool = False, sample: int | None = None,
+    exit_policy: ExitPolicy | None = None,
 ) -> pd.DataFrame:
     cfg = MARKETS[market]
     strategy = get_strategy(strategy_key)
@@ -106,15 +108,29 @@ def run(
     rows = []
 
     if which == "exits":
-        variants = [(v.label(), v, max_positions) for v in EXIT_VARIANTS]
+        variants = [(v.label(), v, max_positions, cfg) for v in EXIT_VARIANTS]
+    elif which == "sizing":
+        # Does the book have room to hold the slots it claims? With 10 slots
+        # and a 25% notional cap the stated limits sum to 250% of capital, so
+        # the account runs out of cash at 8 positions and declines everything
+        # after. Vary risk and the notional cap together: risk sets the size a
+        # signal asks for, the cap sets the ceiling, and only the pair decides
+        # how many positions actually fit.
+        base = exit_policy or ExitPolicy()
+        variants = [
+            (f"risk={r:.1%} cap={c:.0%} {base.label()}", base, max_positions,
+             dataclasses.replace(cfg, risk_pct=r, max_position_pct=c))
+            for r, c in ((0.010, 0.25), (0.010, 0.15), (0.010, 0.10),
+                         (0.005, 0.25), (0.005, 0.10))
+        ]
     else:
-        base = ExitPolicy()
-        variants = [(f"cap={c}", base, c) for c in (5, 10, 20, 30, 50)]
+        base = exit_policy or ExitPolicy()
+        variants = [(f"cap={c}", base, c, cfg) for c in (5, 10, 20, 30, 50)]
 
-    for label, policy, cap in variants:
+    for label, policy, cap, vcfg in variants:
         logger.info("simulating variant: %s", label)
         result = simulate(
-            signals, prices, cfg, start_ts, max_positions=cap, exit_policy=policy
+            signals, prices, vcfg, start_ts, max_positions=cap, exit_policy=policy
         )
         tdf = trades_to_df(result.trades)
         bench_close = (
@@ -123,7 +139,7 @@ def run(
         )
         perf = metrics.compute(
             equity=result.equity, positions_open=result.positions_open, trades=tdf,
-            max_open_positions=cap or cfg.max_open_positions,
+            max_open_positions=cap or vcfg.max_open_positions,
             costs_paid=result.costs_paid, bench_close=bench_close,
         )
         rows.append(_row(label, perf, result))
@@ -147,17 +163,33 @@ def main() -> None:
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--exits", action="store_true", help="compare exit policies")
     g.add_argument("--caps", action="store_true", help="compare position caps")
+    g.add_argument("--sizing", action="store_true",
+                   help="compare risk-per-trade and notional-cap pairs")
+    # The sizing and cap sweeps hold the exit policy fixed while varying one
+    # other thing, so that policy must be the strategy's real one -- donchian
+    # measured with bracket+target exits is not donchian.
+    ap.add_argument("--exit-mode", default="bracket",
+                    choices=["bracket", "trail_atr", "ma", "donchian"])
+    ap.add_argument("--no-target", action="store_true")
+    ap.add_argument("--atr-mult", type=float, default=3.0)
+    ap.add_argument("--ma-col", default="sma50")
+    ap.add_argument("--donchian-bars", type=int, default=50)
     args = ap.parse_args()
 
     df = run(
         args.market, args.start, strategy_key=args.strategy, limit=args.limit,
         deep_lookback_days=args.deep_lookback_days,
         accept_labels=tuple(x.strip() for x in args.accept_labels.split(",") if x.strip()),
-        which="exits" if args.exits else "caps",
+        which=("exits" if args.exits else "sizing" if args.sizing else "caps"),
+        exit_policy=ExitPolicy(
+            mode=args.exit_mode, use_target=not args.no_target,
+            atr_mult=args.atr_mult, ma_col=args.ma_col,
+            donchian_bars=args.donchian_bars,
+        ),
         max_positions=args.max_positions, refresh=args.refresh, sample=args.sample,
     )
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    kind = "exits" if args.exits else "caps"
+    kind = "exits" if args.exits else "sizing" if args.sizing else "caps"
     out = REPORT_DIR / f"{args.market}_{args.strategy}_experiment_{kind}_{args.start}.csv"
     df.to_csv(out, index=False)
     print()

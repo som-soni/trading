@@ -148,10 +148,16 @@ def print_diff(
         print("No decision changes for symbols present in both runs.")
     else:
         print(changes.to_string(index=False))
-    if not new_syms.empty:
-        print(f"\nNewly in filtered universe ({len(new_syms)}): {', '.join(new_syms['symbol'])}")
-    if not dropped_syms.empty:
-        print(f"\nDropped from filtered universe ({len(dropped_syms)}): {', '.join(dropped_syms['symbol'])}")
+    def _listing(df, label: str, cap: int = 25) -> None:
+        if df.empty:
+            return
+        syms = list(df["symbol"])
+        shown = ", ".join(syms[:cap])
+        more = f" … and {len(syms) - cap} more" if len(syms) > cap else ""
+        print(f"\n{label} ({len(syms)}): {shown}{more}")
+
+    _listing(new_syms, "Newly in filtered universe")
+    _listing(dropped_syms, "Dropped from filtered universe")
 
 
 def main() -> None:

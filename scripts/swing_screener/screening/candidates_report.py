@@ -103,6 +103,108 @@ def _chart_sector_mix(df: pd.DataFrame, out: Path) -> Path | None:
     return charts._save(fig, out)
 
 
+def _chart_sector_strength(
+    sector_regimes: dict, candidate_counts: dict[str, int], out: Path
+) -> Path | None:
+    """Sector index performance vs the benchmark, with the sectors we actually
+    have candidates in emphasised.
+
+    This is the picture behind the hypothesis that a stock in a leading sector
+    has better odds: if the candidates cluster in the left (lagging) half, the
+    screen is finding strength in weak neighbourhoods, which is worth knowing
+    before sizing them."""
+    rows = [
+        (sec, sr.return_3m_vs_benchmark)
+        for sec, sr in sector_regimes.items()
+        if sr.return_3m_vs_benchmark is not None
+    ]
+    if not rows:
+        return None
+    rows.sort(key=lambda kv: kv[1])
+    labels = [f"{s}  ({candidate_counts.get(s, 0)})" for s, _ in rows]
+    values = [v for _, v in rows]
+
+    charts._style()
+    fig, ax = charts.plt.subplots(figsize=(7.6, max(2.6, 0.36 * len(rows) + 1.2)))
+    ax.grid(True, axis="x", zorder=0)
+    ax.set_axisbelow(True)
+    # emphasis, not a third colour scale: sectors holding candidates carry the
+    # diverging sign colour, the rest recede to muted
+    colours = [
+        (POS if v >= 0 else NEG) if candidate_counts.get(s, 0) else MUTED
+        for (s, v) in rows
+    ]
+    ax.barh(labels, values, height=0.64, color=colours,
+            edgecolor=SURFACE, linewidth=1.0, zorder=3)
+    ax.axvline(0, color=AXIS, linewidth=0.9, zorder=4)
+    ax.set_xlabel("3-month return vs benchmark (%)")
+    ax.set_title("Sector strength — (n) = candidates found there")
+    return charts._save(fig, out)
+
+
+def _sector_section(
+    sector_regimes: dict, report_df: pd.DataFrame
+) -> tuple[list[str], dict[str, int]]:
+    """Sector table plus the per-sector candidate counts the chart needs."""
+    live = report_df[
+        report_df["decision"].isin(
+            ["TRADE - HIGH CONFIDENCE", "TRADE ON TRIGGER", "WATCH - WAIT"]
+        )
+    ] if "decision" in report_df else report_df.iloc[0:0]
+    counts = live["sector"].fillna("Unknown").value_counts().to_dict() if "sector" in live else {}
+
+    if not sector_regimes:
+        return [], counts
+
+    L = ["## Sector performance", ""]
+    # be explicit when sector coverage is partial — otherwise a reader takes
+    # "3 sectors" as the market's structure rather than a data limitation
+    sectors_seen = set(report_df["sector"].dropna().unique()) if "sector" in report_df else set()
+    uncovered = len(sectors_seen - set(sector_regimes) - {"Unknown"})
+    if uncovered:
+        L.append(
+            f"> Coverage is partial: {len(sector_regimes)} sector "
+            f"{'index has' if len(sector_regimes) == 1 else 'indices have'} usable "
+            f"history, while {uncovered} further sector(s) appear in the universe "
+            "with no index available. Read the table as a sample, not the whole market."
+        )
+        L.append("")
+    L.append("| sector | index | 3m vs benchmark | above SMA50 | SMA50 rising | candidates |")
+    L.append("|---|---|---|---|---|---|")
+    ordered = sorted(
+        sector_regimes.items(),
+        key=lambda kv: (kv[1].return_3m_vs_benchmark is None, -(kv[1].return_3m_vs_benchmark or 0)),
+    )
+    for sec, sr in ordered:
+        rs = sr.return_3m_vs_benchmark
+        L.append(
+            f"| {sec} | `{sr.index_symbol}` "
+            f"| {'—' if rs is None else f'{rs:+.1f}%'} "
+            f"| {'yes' if sr.above_sma50 else 'no'} "
+            f"| {'yes' if sr.sma50_rising else 'no'} "
+            f"| {counts.get(sec, 0)} |"
+        )
+    L.append("")
+
+    # does the day's evidence support the leading-sector hypothesis?
+    with_c = {s: sr.return_3m_vs_benchmark for s, sr in sector_regimes.items()
+              if counts.get(s, 0) and sr.return_3m_vs_benchmark is not None}
+    if with_c:
+        lead = sum(1 for v in with_c.values() if v > 0)
+        L.append(
+            f"> {lead} of {len(with_c)} sectors holding candidates are "
+            f"**outperforming** the benchmark over 3 months. "
+            + (
+                "Candidates are concentrated in leading sectors today."
+                if lead > len(with_c) / 2
+                else "Most candidates sit in **lagging** sectors today — worth "
+                "weighing before sizing them equally."
+            )
+        )
+        L.append("")
+    return L, counts
+
+
 def _fmt(v, nd=2):
     if v is None or (isinstance(v, float) and v != v):
         return "—"
@@ -132,7 +234,7 @@ def _table(rows: pd.DataFrame, cols: list[tuple[str, str]], currency: str) -> li
 def write(
     out_dir: Path, market_name: str, strategy_name: str, strategy_key: str,
     report_df: pd.DataFrame, currency: str, run_id: str,
-    regime_note: str = "", diff_text: str = "",
+    regime_note: str = "", diff_text: str = "", sector_regimes: dict | None = None,
 ) -> Path:
     """Render one screener run. Returns the markdown path."""
     out_dir = Path(out_dir)
@@ -213,6 +315,17 @@ def write(
         L.append("")
 
     # what blocked everything
+    sec_lines, sec_counts = _sector_section(sector_regimes or {}, report_df)
+    if sec_lines:
+        L += sec_lines
+        f_sec_str = _chart_sector_strength(
+            sector_regimes or {}, sec_counts, figs / "sector_strength.png"
+        )
+        if f_sec_str is not None:
+            L.append(f"![Sector index performance versus the benchmark]"
+                     f"(figures/{f_sec_str.name})")
+            L.append("")
+
     f_gate = _chart_gate_failures(report_df, figs / "gate_failures.png")
     if f_gate is not None:
         L.append("## What blocked the rest")
@@ -312,42 +425,43 @@ def _chart_blocking_gates_by_market(
     return charts._save(fig, out)
 
 
-def write_combined(
-    out_dir: Path, frames: dict[str, pd.DataFrame], failures: dict[str, str],
-    run_date: str,
-) -> Path:
-    """One cross-market review. The per-market reports stay as the detail;
-    this is the single page to read in the morning."""
-    out_dir = Path(out_dir)
-    figs = out_dir / "figures"
-    L: list[str] = []
+def _strategy_section(key: str, by_market: dict, L: list[str]) -> tuple[int, int]:
+    """One strategy's section. Returns (tradeable, watch) counts."""
+    from ..strategies import get_strategy
 
-    L.append(f"# Daily review — {run_date}")
-    L.append("")
+    try:
+        strat = get_strategy(key)
+        title, explain = strat.name, strat.explain()
+    except Exception:
+        title, explain = key, ""
 
-    live = {m: df for m, df in frames.items() if df is not None and not df.empty}
-    total_trade = sum(int((df.get("tradeable") == True).sum()) for df in live.values())  # noqa: E712
-    total_watch = sum(
+    live = {m: df for m, df in by_market.items() if df is not None and not df.empty}
+    n_trade = sum(int((df.get("tradeable") == True).sum()) for df in live.values())  # noqa: E712
+    n_watch = sum(
         int((df.get("watchlist_candidate") == True).sum()) for df in live.values()  # noqa: E712
     )
 
-    if failures:
-        L.append("> **Some markets failed to run.**")
-        for m, msg in failures.items():
-            L.append(f"> - `{m}`: {msg}")
+    L.append(f"## {title}")
+    L.append("")
+    L.append(f"`{key}` — **{n_trade} tradeable**, **{n_watch} on watch**")
+    L.append("")
+    if explain:
+        L.append("<details><summary>How this strategy works</summary>")
+        L.append("")
+        L.append(explain)
+        L.append("</details>")
         L.append("")
 
-    L.append(f"**{total_trade} tradeable** · **{total_watch} on watch** across "
-             f"{len(live)} market(s).")
-    L.append("")
+    if not live:
+        L.append("_No results for this strategy._")
+        L.append("")
+        return n_trade, n_watch
 
-    # per-market summary
+    # per-market line
     L.append("| market | surveyed | tradeable | watch | regime | detail |")
     L.append("|---|---|---|---|---|---|")
     for m, df in live.items():
         a = df.attrs
-        # this file lives at reports/daily/<date>/, so "../.." is reports/ —
-        # the per-market path must be relative to REPORTS_DIR, not the repo root
         link = "—"
         if a.get("screen_dir"):
             from ..paths import REPORTS_DIR
@@ -356,7 +470,7 @@ def write_combined(
                 rel = Path(a["screen_dir"]).relative_to(REPORTS_DIR)
                 link = f"[report](../../{rel}/report.md)"
             except ValueError:
-                link = "—"
+                pass
         L.append(
             f"| {a.get('market_name', m)} | {a.get('surveyed', len(df))} "
             f"| {int((df.get('tradeable') == True).sum())} "  # noqa: E712
@@ -365,7 +479,7 @@ def write_combined(
         )
     L.append("")
 
-    # the actual candidates, across markets
+    # candidates across markets
     rows = []
     for m, df in live.items():
         t = df[df.get("tradeable") == True]  # noqa: E712
@@ -379,34 +493,38 @@ def write_combined(
         sort_cols = [c for c in ["decision", "setup_quality"] if c in allt.columns]
         if sort_cols:
             allt = allt.sort_values(sort_cols, ascending=[True, False][: len(sort_cols)])
-        L.append("## What to trade today")
+        L.append("### Candidates")
         L.append("")
-        L.append("| market | symbol | sector | price | setup | entry | stop | risk % | R | decision |")
+        L.append("| market | symbol | sector | price | entry | vs price | stop "
+                 "| risk % | R | decision |")
         L.append("|---|---|---|---|---|---|---|---|---|---|")
         for _, r in allt.iterrows():
             c = r.get("ccy", "")
+            px, entry = r.get("price"), r.get("entry")
+            gap = ("—" if not (isinstance(px, (int, float)) and isinstance(entry, (int, float))
+                               and px) else f"{(entry / px - 1) * 100:+.1f}%")
             L.append(
                 f"| {r.get('market','')} | {r.get('symbol','')} | {r.get('sector','')} "
-                f"| {c}{_fmt(r.get('price'))} | {r.get('strategy_setup','')} "
-                f"| {c}{_fmt(r.get('entry'))} | {c}{_fmt(r.get('stop'))} "
+                f"| {c}{_fmt(px)} | {c}{_fmt(entry)} | {gap} | {c}{_fmt(r.get('stop'))} "
                 f"| {_fmt(r.get('risk_pct'))} | {_fmt(r.get('target_r'))} "
                 f"| {r.get('decision','')} |"
             )
         L.append("")
-        if "decision" in allt and (allt["decision"] == "TRADE ON TRIGGER").all():
-            L.append(
-                "> Every candidate today is **TRADE ON TRIGGER**, the tier measured "
-                "to carry no predictive information (25.1% vs 29.7% win rate across "
-                "484 trades). Treat the label as descriptive, not as a ranking."
-            )
-            L.append("")
-    else:
-        L.append("## No tradeable candidates in any market")
+        L.append(
+            "> Entries are resting **buy-stop** orders placed ABOVE the current "
+            "price — the trade only happens if price rises through the trigger, "
+            "and the order expires unfilled after 10 business days. `vs price` is "
+            "how far it has to move first."
+        )
         L.append("")
-        L.append("Normal — the gate stack passes roughly 5% of symbol-days.")
+    else:
+        L.append("### Candidates")
+        L.append("")
+        L.append("_None today._ The gate stack passes roughly 5% of symbol-days, "
+                 "so this is the normal outcome.")
         L.append("")
 
-    # watchlist across markets
+    # watchlist
     wrows = []
     for m, df in live.items():
         w = df[df.get("watchlist_candidate") == True]  # noqa: E712
@@ -416,7 +534,7 @@ def write_combined(
             wrows.append(w)
     if wrows:
         allw = pd.concat(wrows, ignore_index=True)
-        L.append(f"## Watchlist — {len(allw)} name(s)")
+        L.append(f"### Watchlist — {len(allw)} name(s)")
         L.append("")
         L.append("| market | symbol | sector | waiting for |")
         L.append("|---|---|---|---|")
@@ -425,10 +543,89 @@ def write_combined(
                      f"| {r.get('sector','')} | {r.get('wait_for','')} |")
         L.append("")
 
-    f = _chart_blocking_gates_by_market(
-        {df.attrs.get("market_name", m): df for m, df in live.items()},
-        figs / "blocking_gates.png",
-    )
+    # sector view
+    sec_blocks: list[str] = []
+    for m, df in live.items():
+        regs = df.attrs.get("sector_regimes") or {}
+        if not regs:
+            continue
+        name = df.attrs.get("market_name", m)
+        _, counts = _sector_section(regs, df)
+        ranked = sorted(
+            ((sec, sr.return_3m_vs_benchmark) for sec, sr in regs.items()
+             if sr.return_3m_vs_benchmark is not None),
+            key=lambda kv: -kv[1],
+        )
+        if not ranked:
+            continue
+        sec_blocks.append(f"**{name}**")
+        sec_blocks.append("")
+        if len(ranked) < 6:
+            sec_blocks.append("- Ranked: " + ", ".join(f"{s} ({v:+.1f}%)" for s, v in ranked))
+        else:
+            sec_blocks.append("- Leading: " + ", ".join(f"{s} ({v:+.1f}%)" for s, v in ranked[:3]))
+            sec_blocks.append("- Lagging: " + ", ".join(f"{s} ({v:+.1f}%)" for s, v in ranked[-3:]))
+        rs = dict(ranked)
+        held = {s: c for s, c in counts.items() if c}
+        total = sum(held.values())
+        in_lead = sum(c for s, c in held.items() if rs.get(s, 0) > 0)
+        in_lag = sum(c for s, c in held.items() if s in rs and rs[s] <= 0)
+        unc = total - in_lead - in_lag
+        if total:
+            parts = [f"**{in_lead} of {total}** candidates sit in an outperforming sector"]
+            if in_lag:
+                parts.append(f"{in_lag} in a lagging one")
+            if unc:
+                parts.append(f"{unc} in sectors with no index available")
+            sec_blocks.append("- " + ", ".join(parts))
+        sec_blocks.append("")
+    if sec_blocks:
+        L.append("### Sector performance")
+        L.append("")
+        L += sec_blocks
+
+    return n_trade, n_watch
+
+
+def write_combined(
+    out_dir: Path, by_strategy: dict, failures: dict[str, str], run_date: str,
+) -> Path:
+    """One cross-market, cross-strategy review.
+
+    `by_strategy` is {strategy_key: {market: report_df}}. Each strategy gets
+    its own section with an explanation of what it looks for, because a list
+    of tickers with no statement of the thesis behind them is unreadable by
+    anyone who did not write the strategy.
+    """
+    out_dir = Path(out_dir)
+    figs = out_dir / "figures"
+    L: list[str] = [f"# Daily review — {run_date}", ""]
+
+    if failures:
+        L.append("> **Some runs failed.**")
+        for m, msg in failures.items():
+            L.append(f"> - `{m}`: {msg}")
+        L.append("")
+
+    # contents, with the headline counts
+    L.append("| strategy | tradeable | on watch |")
+    L.append("|---|---|---|")
+    counts: dict[str, tuple[int, int]] = {}
+    body: list[str] = []
+    for key, by_market in by_strategy.items():
+        section: list[str] = []
+        counts[key] = _strategy_section(key, by_market, section)
+        body += section
+    for key, (t, w) in counts.items():
+        L.append(f"| [{key}](#{key.replace('_', '-')}) | {t} | {w} |")
+    L.append("")
+    L += body
+
+    # cross-strategy: what blocked the universe, per market (same every run)
+    first = next((bm for bm in by_strategy.values() if bm), {})
+    live = {df.attrs.get("market_name", m): df for m, df in first.items()
+            if df is not None and not df.empty}
+    f = _chart_blocking_gates_by_market(live, figs / "blocking_gates.png") if live else None
     if f is not None:
         L.append("## What blocked the rest")
         L.append("")
@@ -436,13 +633,18 @@ def write_combined(
                  f"(figures/{f.name})")
         L.append("")
 
-    changed = {m: df.attrs.get("diff_text", "") for m, df in live.items()
-               if df.attrs.get("diff_text")}
+    changed = []
+    for key, by_market in by_strategy.items():
+        for m, df in by_market.items():
+            if df is None or df.empty or not df.attrs.get("diff_text"):
+                continue
+            changed.append((f"{df.attrs.get('market_name', m)} · {key}",
+                            df.attrs["diff_text"]))
     if changed:
         L.append("## Changed since the previous run")
         L.append("")
-        for m, text in changed.items():
-            L.append(f"**{live[m].attrs.get('market_name', m)}**")
+        for label, text in changed:
+            L.append(f"**{label}**")
             L.append("")
             L.append("```")
             L.append(text.rstrip())
@@ -452,8 +654,8 @@ def write_combined(
     L.append("---")
     L.append("")
     L.append("Generated by `swing_screener.screening.daily`. A screen, not advice — "
-             "see [`research/`](../../../research/) for whether this strategy has any "
-             "demonstrated edge.")
+             "see [`research/`](../../../research/) for whether any of these "
+             "strategies has a demonstrated edge.")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     md = out_dir / "report.md"

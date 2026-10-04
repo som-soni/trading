@@ -58,6 +58,38 @@ class TrendPullbackStrategy(Strategy):
     setup_codes = (TC01, TC02, TC04)
     min_bars = 260
 
+    thesis = (
+        "A stock in a confirmed uptrend that pulls back a measured amount and "
+        "then resumes should continue, so buy the resumption rather than the dip."
+    )
+    how_it_works = (
+        "**Screen** the universe on price, liquidity, ADX and volatility, and "
+        "require SMA50 above SMA200.",
+        "**Hard gates (W/T/D)** confirm the uptrend is real — weekly price above "
+        "a rising 30-week EMA, higher swing lows, positive 12-1 momentum, within "
+        "25% of the 52-week high — and disqualify specific hazards such as "
+        "earnings inside 10 days or an unheld gap.",
+        "**Setups** look for the shape: TC-01 a pullback 30-60% of the prior "
+        "impulse (or 1-3 ATR), TC-02 a tight continuation base.",
+        "**Watch flags (X1-X9)** cap confidence without disqualifying — e.g. X1 "
+        "marks a stock extended more than 2.5 ATR above its SMA20.",
+        "**Entry is a resting buy-stop ABOVE the current price**, so you only buy "
+        "if price actually resumes. It expires unfilled after 10 business days.",
+        "**Exit** is a fixed bracket: stop just below the pullback low, target a "
+        "measured move. There is no trailing stop and no time stop.",
+    )
+    caveats = (
+        "**No demonstrated edge.** Backtested over 13.75 years it returned "
+        "-0.87% CAGR in the US and +0.57% in India, against indices doing 12.79% "
+        "and 11.68%.",
+        "The confidence tiers do not discriminate — TRADE - HIGH CONFIDENCE "
+        "performed no better than TRADE ON TRIGGER across 484 trades.",
+        "The fixed target caps the upside: on Micron's 2025 run it would have "
+        "exited at +36% against a +484% move.",
+        "Plan B relocates the entry upward when Plan A fails the 2R test, which "
+        "manufactures the R rather than earning it.",
+    )
+
     # ---------- pre-filter ----------
 
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:

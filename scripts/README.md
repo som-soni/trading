@@ -63,7 +63,7 @@ points, grouped by what they are for:
 | flag | effect |
 |---|---|
 | `--market {us,india}` `--start YYYY-MM-DD` | required |
-| `--strategy {trend_pullback,breakout}` | which strategy to run |
+| `--strategy {trend_pullback,breakout,donchian,chart_pattern}` | which strategy to run |
 | `--sample N` | seeded RANDOM subset of N candidates — **prefer over `--limit`**, which slices alphabetically and is therefore biased |
 | `--max-positions N` | position cap (default: the market config's 10) |
 | `--exit-mode {bracket,trail_atr,ma,donchian}` | how open positions are managed |
@@ -303,6 +303,52 @@ Sector tags are looked up lazily (yfinance `.info`) only for tickers that
 survive the loose screener filter, and cached forever in
 `data/sector_cache_<market>.csv`.
 
+## Chart patterns (`--strategy chart_pattern`)
+
+Six classical bases are detected geometrically in
+[`core/chart_patterns.py`](swing_screener/core/chart_patterns.py), which is
+strategy-agnostic: a detector returns the pivot to clear, the structural low a
+stop belongs under, the measured move the pattern projects, its depth, length
+and a 0-1 quality score — and no opinion about whether any of that is
+tradeable.
+
+| code | pattern | pivot | stop under | measured move |
+|---|---|---|---|---|
+| `CUP` | cup-and-handle, 12-50% deep, handle in the upper half | right rim | handle low | cup depth |
+| `DBOT` | double bottom, lows within 5%, 8%+ rally between | middle peak | second low | peak minus low |
+| `FLAT` | flat base / Darvas box, under 15% over 25-65 bars | box top | box low | the prior advance |
+| `FLAG` | bull flag; 20%+ pole retracing under 40% | pole high | flag low | pole height |
+| `ATRI` | ascending triangle, 3 highs within 3%, rising lows | resistance | last swing low | triangle height |
+| `VCP` | 2+ contractions, each under 0.8x the last, final under 12% | last high | last swing low | base height |
+
+The strategy on top of it (`strategies/chart_pattern.py`) adds the opinions:
+gates P1-P7 (SMA200 intact and not falling, within 15% of the 52-week high,
+ATR% under 10, no earnings inside 10 days, a pattern scoring at least 0.45,
+and price no more than 4% above the pivot), a uniform entry a tick through the
+pivot, a stop never wider than 2 ATR, and rejection of anything whose own
+measured move projects under 2R.
+
+Two details that are easy to get wrong and are deliberate here:
+
+- **Pivots are computed from bars before the current one.** Otherwise the
+  breakout bar's own high defines the level it is breaking, every pattern
+  "breaks out" by construction, and a backtest of it means nothing. Lows (for
+  stops) and volume do use the current bar, which is known at the close.
+- **Overhead supply within 1 ATR of the entry does not cap the target.** A
+  base's ceiling is a zone, not a line — a cup's two rims, a triangle's three
+  touches and a box top print at slightly different prices. Capping inside
+  that zone says "this breakout cannot travel past the level it is breaking":
+  on a 400-symbol US sweep it collapsed 20 of 25 targets below 0.5R. Both
+  numbers are reported, `structural_r` (what the pattern projects) and
+  `target_r` (after the cap), so the two never get confused.
+
+Status: **not backtested.** The thresholds are the conventional published ones
+(O'Neil, Darvas, Minervini), not numbers fitted to this data. The first
+question to settle is whether shape adds anything over `breakout`, which
+requires no shape at all — if it does not, the shape is decoration. Detection
+itself is cheap (~1ms per symbol-day against `build_context`'s ~11ms), so
+testing it costs no more than any other strategy.
+
 ## Known gaps (by design, not oversight)
 
 - **India sector/breadth indices**: the tickers in
@@ -360,6 +406,8 @@ swing_screener/
   core/             market primitives, strategy-agnostic
     indicators.py    SMA/EMA/RSI/ATR/ADX (Wilder), resampling
     swings.py        swing highs/lows, H/L/P, overhead levels
+    chart_patterns.py cup-and-handle, double bottom, flat base, flag,
+                      ascending triangle, VCP — geometry only
     context.py       StockContext: the per-symbol frames every strategy reads
     patterns.py      candlestick classifier
     demand_supply.py demand/supply point-scoring verdict
@@ -370,6 +418,8 @@ swing_screener/
     base.py          the Strategy ABC + StrategyResult/TradePlan/Decision
     trend_pullback.py  gates W/T/D, flags X1-X9, setups TC-01/02/04
     breakout.py      gates B1-B7, setups BO-01/02 — NOT validated
+    donchian.py      N-day channel breakout, M-day-low exit — NOT validated
+    chart_pattern.py gates P1-P7, one setup per named pattern — NOT validated
     __init__.py      registry + known defects left unfixed
 
   backtesting/      everything that evaluates a strategy
@@ -387,6 +437,10 @@ swing_screener/
     screener.py pipeline.py daily.py output.py history.py inspect.py portfolio.py
 
 tests/
+  test_chart_patterns.py  draws each classical pattern on a synthetic chart
+                     and asserts the detector finds it, that the current
+                     bar never defines a pivot, and that a random walk
+                     produces nothing. No database needed.
   golden_baseline.py  behaviour-preservation harness: records the full
                      gate/flag/setup/plan/decision output for a fixed sample,
                      so a refactor that changes behaviour shows up as a

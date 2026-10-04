@@ -28,7 +28,7 @@ _TRAIL_COLUMNS = [
     "watch_flags_summary", "strategy_setup", "monthly", "weekly", "candles", "wait_for",
     "sector_filter_note",
     "rs_vs_benchmark", "rs_vs_sector", "rsi", "adx", "pct_vs_sma20", "pct_vs_sma50",
-    "pct_below_52wk_high", "h_pct_above_close", "breakout_pivot", "pct_from_pivot",
+    "pct_below_52wk_high", "h_pct_above_close",
     "entry", "stop", "risk_pct", "target_r", "nearest_overhead",
     "shares", "position_value", "usd_at_risk", "earnings_in",
     "demand_supply", "setup_quality",
@@ -37,8 +37,8 @@ _TRAIL_COLUMNS = [
 _BASE_BOOL_COLUMNS = ["tradeable", "watchlist_candidate", "uptrend_intact", "has_setup"]
 _NUMERIC_COLUMNS = [
     "price", "rs_vs_benchmark", "rs_vs_sector", "rsi", "adx", "pct_vs_sma20",
-    "pct_vs_sma50", "pct_below_52wk_high", "h_pct_above_close", "breakout_pivot",
-    "pct_from_pivot", "entry", "stop", "risk_pct", "target_r", "nearest_overhead",
+    "pct_vs_sma50", "pct_below_52wk_high", "h_pct_above_close",
+    "entry", "stop", "risk_pct", "target_r", "nearest_overhead",
     "shares", "position_value", "usd_at_risk", "earnings_in", "setup_quality",
 ]
 
@@ -50,6 +50,7 @@ def column_order(strategy) -> list[str]:
         + [f"gate_{c}" for c in strategy.gate_codes]
         + [f"watch_{c}" for c in strategy.watch_codes]
         + _TRAIL_COLUMNS
+        + list(getattr(strategy, "extra_columns", ()))
     )
 
 
@@ -68,6 +69,9 @@ def _enforce_dtypes(df: pd.DataFrame, strategy) -> pd.DataFrame:
     for col in bool_cols:
         if col in df.columns:
             df[col] = df[col].astype("boolean")
+    for col in getattr(strategy, "extra_numeric_columns", ()):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce").astype("Float64")
     for col in _NUMERIC_COLUMNS:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").astype("Float64")

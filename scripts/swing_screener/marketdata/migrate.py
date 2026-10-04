@@ -27,6 +27,7 @@ STATEMENTS = [
     "NOT NULL DEFAULT 'trend_pullback'",
     "ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS setups JSONB",
     "ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS hard_gates JSONB",
+    "ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS extras JSONB",
     # fold the old per-setup boolean columns into the new JSONB shape, so
     # previously cached signals stay usable instead of silently missing
     """
