@@ -88,6 +88,16 @@ def _annualised(daily_returns: pd.Series) -> tuple[float, float, float]:
     return ann_vol, sharpe, sortino
 
 
+def risk_stats(daily_returns: pd.Series) -> tuple[float, float, float]:
+    """Public form of `_annualised`: (ann. vol %, Sharpe, Sortino).
+
+    Exposed so the index-investing modules can report the same risk numbers
+    as the stock-level backtests without reimplementing (and quietly
+    disagreeing with) the convention.
+    """
+    return _annualised(daily_returns)
+
+
 def benchmark_stats(bench_close: pd.Series) -> dict:
     """Buy-and-hold stats for the benchmark over the same dates, so the
     strategy is judged against the alternative of doing nothing."""

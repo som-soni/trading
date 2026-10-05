@@ -25,6 +25,7 @@ from ..marketdata import earnings
 from ..config import MARKETS
 from ..providers import YFinanceProvider
 from ..strategies import DEFAULT_STRATEGY, describe_strategies, get_strategy, list_strategies
+from . import links
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("pipeline")
@@ -49,7 +50,8 @@ def _empty_universe_row(strategy, sym: str, sector: str, decision_label: str, re
     insufficient history) — same columns as a fully-reviewed row, just
     mostly blank, so it still sorts/filters correctly in the single CSV."""
     row = {
-        "strategy": strategy.key, "symbol": sym, "sector": sector, "price": None,
+        "strategy": strategy.key, "symbol": sym, "sector": sector,
+        "chart": links.chart_url(sym), "price": None,
         "decision": decision_label, "tradeable": False, "watchlist_candidate": False,
         "decision_before": decision_label, "reason": reason,
         "uptrend_intact": None, "first_failed_gate": reason, "has_setup": False,
@@ -218,6 +220,7 @@ def run(
         # fields available for EVERY stock, regardless of setup/decision
         row = {
             "strategy": strategy.key,
+            "chart": links.chart_url(sym),
             "symbol": sym,
             "sector": sector,
             "price": round(float(last["close"]), 2),
@@ -313,6 +316,32 @@ def run(
     sector_trend = {
         s: ("up" if sr.above_sma50 and sr.sma50_rising else "weak") for s, sr in sector_regimes.items()
     }
+
+    # SEPA part 2, for strategies that ask for it. Fetched ONLY for rows that
+    # already cleared the screen (23 of 400 in a US sample), because it costs
+    # one HTTP round trip per symbol. Screener-only by design: these are
+    # current-restatement figures, correct for "today" and lookahead in a
+    # backtest -- backtesting/ must never import this.
+    if getattr(strategy, "wants_live_fundamentals", False) and reviewed_rows:
+        from ..marketdata import fundamentals as fund
+
+        syms = [r["symbol"] for r in reviewed_rows]
+        logger.info("Fetching current fundamentals for %d screened symbols", len(syms))
+        recs = fund.load_fundamentals(market_key, syms)
+        for r in reviewed_rows:
+            rec = recs.get(r["symbol"]) or {}
+            flags = fund.fundamental_flags(rec)
+            r["revenue_yoy_pct"] = rec.get("revenue_yoy_pct")
+            r["earnings_yoy_pct"] = rec.get("earnings_yoy_pct")
+            r["gross_margin_change_pp"] = rec.get("gross_margin_change_pp")
+            # three states, not two: "unknown" must not read as "failed"
+            g, m = flags["F_growth"], flags["F_margin"]
+            r["fundamentals_ok"] = (
+                "unknown" if g is None and m is None
+                else "yes" if (g and m is not False)
+                else "growth" if g
+                else "no"
+            )
 
     portfolio.apply_sector_filter(reviewed_rows, cfg.sector_limit_per_sector)  # mutates in place
     combined = out_mod.combined_risk_summary(all_rows, cfg.account_size, cfg.currency_symbol)

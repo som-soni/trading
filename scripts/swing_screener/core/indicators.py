@@ -67,6 +67,10 @@ def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
     out["sma20"] = sma(out["close"], 20)
     out["sma50"] = sma(out["close"], 50)
     out["sma100"] = sma(out["close"], 100)
+    # Minervini's Trend Template reads the 150-day as well as the 50/200, and
+    # needs the 52-week LOW (for the ">=30% off the low" test) alongside the
+    # 52-week high that was already here.
+    out["sma150"] = sma(out["close"], 150)
     out["sma200"] = sma(out["close"], 200)
     out["ema20"] = ema(out["close"], 20)
     out["rsi14"] = rsi(out["close"], 14)
@@ -77,6 +81,14 @@ def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
     out["vol_sma50"] = sma(out["volume"], 50)
     out["dollar_vol_sma20"] = sma(out["close"] * out["volume"], 20)
     out["high_252"] = out["high"].rolling(252, min_periods=20).max()  # 52-week high
+    out["low_252"] = out["low"].rolling(252, min_periods=20).min()  # 52-week low
+    # "the 200-day has been rising for at least a month" -- compare against
+    # itself 21 sessions ago rather than fitting a slope, which is what the
+    # rule actually says and is cheaper
+    out["sma200_21d_ago"] = out["sma200"].shift(21)
+    # 12-1 momentum: the RS proxy. Skips the most recent ~21 sessions (the
+    # short-term reversal month), matching the momentum baseline's ranking.
+    out["mom_12_1"] = out["close"].shift(21) / out["close"].shift(252) - 1.0
     return out
 
 

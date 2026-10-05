@@ -33,9 +33,9 @@ and a stop placed under it is honest.
 Thresholds
 ----------
 The numbers are the conventional ones from the sources above (cup 12-50%
-deep, handle no more than a third of the cup, flat base under 15% over five
-weeks or more, flag retracing under 40% of its pole, each VCP contraction
-tighter than the last). They are NOT tuned on this repository's data and no
+deep, handle 5-20 bars drifting down no more than a third of the cup on
+declining volume, flat base under 15% over five weeks or more, flag retracing
+under 40% of its pole, each VCP contraction tighter than the last). They are NOT tuned on this repository's data and no
 pattern here has been backtested. Treat a match as a hypothesis.
 """
 
@@ -46,17 +46,30 @@ import pandas as pd
 
 # pattern codes — these double as a strategy's setup codes, so keep them
 # short, uppercase and stable (they become report column names)
-CUP = "CUP"    # cup-and-handle
-DBOT = "DBOT"  # double bottom (W)
-FLAT = "FLAT"  # flat base / Darvas box
-FLAG = "FLAG"  # bull flag (incl. high tight flag)
-ATRI = "ATRI"  # ascending triangle
-VCP = "VCP"    # volatility contraction pattern
+CUP = "CUP"      # cup-and-handle
+CUPNH = "CUPNH"  # cup without a handle (yet)
+DBOT = "DBOT"    # double bottom (W)
+FLAT = "FLAT"    # flat base / Darvas box
+FLAG = "FLAG"    # bull flag (incl. high tight flag)
+ATRI = "ATRI"    # ascending triangle
+VCP = "VCP"      # volatility contraction pattern
 
-ALL_CODES: tuple[str, ...] = (CUP, DBOT, FLAT, FLAG, ATRI, VCP)
+# Topping structures. These are NOT entries: the book here is long-only, so a
+# top cannot be sold short. They exist to VETO a long and to mark an exit —
+# a breakout bought inside a confirmed top is the trade this screener would
+# otherwise keep taking.
+DTOP = "DTOP"    # double top (M)
+HSTOP = "HSTOP"  # head and shoulders top
+
+BULLISH_CODES: tuple[str, ...] = (CUP, CUPNH, DBOT, FLAT, FLAG, ATRI, VCP)
+TOPPING_CODES: tuple[str, ...] = (DTOP, HSTOP)
+ALL_CODES: tuple[str, ...] = BULLISH_CODES + TOPPING_CODES
 
 PATTERN_NAMES = {
     CUP: "cup-and-handle",
+    CUPNH: "cup without handle",
+    DTOP: "double top",
+    HSTOP: "head and shoulders top",
     DBOT: "double bottom",
     FLAT: "flat base",
     FLAG: "bull flag",
@@ -67,6 +80,21 @@ PATTERN_NAMES = {
 # Enough history for the longest base (250 bars) plus room for the pole/prior
 # advance a few detectors look back at.
 MIN_BARS = 300
+
+
+@dataclass(frozen=True)
+class Flaw:
+    """One way a match departs from the textbook description.
+
+    A detector's bounds are what it will ACCEPT; the textbook describes what
+    is IDEAL, and the gap between the two is most of what a human sees when
+    they say "that's a cup but the handle hasn't formed". Recording the gap
+    keeps the loose matches in the report — they are real structures worth
+    watching — without letting them read as equals of a clean one.
+    """
+
+    severity: str  # "major" | "minor"
+    text: str
 
 
 @dataclass(frozen=True)
@@ -85,10 +113,43 @@ class PatternMatch:
     length_bars: int
     quality: float        # 0-1, higher is a cleaner example of the pattern
     note: str
+    # None means this detector does not assess textbook deviations yet; an
+    # empty tuple means it does and found none. Only CUP implements it so far.
+    flaws: tuple[Flaw, ...] | None = None
 
     @property
     def name(self) -> str:
         return PATTERN_NAMES.get(self.code, self.code)
+
+    @property
+    def is_bearish(self) -> bool:
+        """A topping structure. It never becomes a setup — see TOPPING_CODES."""
+        return self.code in TOPPING_CODES
+
+    @property
+    def major_flaws(self) -> int:
+        return sum(1 for f in (self.flaws or ()) if f.severity == "major")
+
+    @property
+    def minor_flaws(self) -> int:
+        return sum(1 for f in (self.flaws or ()) if f.severity == "minor")
+
+    @property
+    def confidence(self) -> str:
+        """How close this is to the textbook description — NOT a probability
+        and not a forecast. A `low` match is still a real structure; it is
+        further from the pattern whose statistics are being claimed."""
+        if self.flaws is None:
+            return "unassessed"
+        if self.major_flaws >= 2 or self.minor_flaws >= 4:
+            return "low"
+        if self.major_flaws or self.minor_flaws >= 2:
+            return "moderate"
+        return "textbook"
+
+    @property
+    def flaw_text(self) -> str:
+        return "; ".join(f.text for f in (self.flaws or ()))
 
     @property
     def target(self) -> float:
@@ -149,21 +210,154 @@ def _mean(a: np.ndarray) -> float:
 # ------------------------------------------------------------ cup & handle
 
 MIN_CUP_BARS, MAX_CUP_BARS = 25, 250
-MIN_HANDLE_BARS, MAX_HANDLE_BARS = 3, 40
+# O'Neil's handle is one to four weeks of DOWNWARD DRIFT on DECLINING volume.
+# The first version of this detector tested only "a dip of up to 15% that
+# stays in the cup's upper half, over 3 to 40 bars", which accepted three
+# things that are not handles, all of them found in one live scan:
+#   * a rejection at the rim — META hit 779.82 and lost 8.5% in 6 sessions
+#     (1.42%/bar) on 1.15x volume; MCX.NS fell 8.3% in 4 (2.07%/bar);
+#   * a drift far too long to be a handle — EHC 37 bars, EMBJ 38;
+#   * a flat pause at resistance — TECH, 0.5% deep over 8 bars, which is a
+#     flat base (and `FLAT` already detects it).
+# Each bound below exists to exclude one of those.
+MIN_HANDLE_BARS, MAX_HANDLE_BARS = 5, 20
+MIN_HANDLE_DEPTH, MAX_HANDLE_DEPTH = 0.02, 0.15
+# a handle drifts; faster than this is a rejection being mislabelled
+MAX_HANDLE_DRIFT_PER_BAR = 0.012
+
+# The bounds above are what the detector ACCEPTS. These are what O'Neil calls
+# IDEAL, and a match outside them is reported with the deviation named rather
+# than dropped — a 48% cup is a real structure, it is just not the structure
+# whose statistics the pattern's reputation rests on.
+IDEAL_CUP_DEPTH = (0.12, 0.33)
+IDEAL_CUP_BARS = (35, 325)          # ~7 to 65 weeks
+IDEAL_HANDLE_BARS = (8, 20)         # ~2 to 4 weeks
+IDEAL_HANDLE_DEPTH = (0.05, 0.12)
+RIM_RECOVERY_TOL = 0.03             # right rim within 3% of the left
+STRONG_DRY_UP = 0.80                # handle volume this far below the cup's
 
 
-def detect_cup_handle(
-    h: np.ndarray, l: np.ndarray, c: np.ndarray, v: np.ndarray, end_hi: int, end_all: int
-) -> PatternMatch | None:
-    """O'Neil's cup-and-handle: a rounded 12-50% correction that recovers to
-    within ~10% of its left rim, then a shallow drift (the handle) in the
-    upper half of the cup. The pivot is the right rim."""
-    best: PatternMatch | None = None
+def _cup_flaws(
+    h: np.ndarray, l: np.ndarray, c: np.ndarray, *, depth: float, cup_len: int,
+    lh: float, rh: float, bl: float, bp: int, rp: int, handle_depth: float,
+    handle_len: int, handle_low: float, dry_up: float, skip_handle: bool = False,
+) -> tuple[Flaw, ...]:
+    """Every way this cup departs from O'Neil's description, in plain words.
+
+    A `major` flaw is one that changes what the structure IS (a cup that
+    never recovered to its rim, a V where a U is claimed); a `minor` one
+    changes how good an example it is. The caller decides what to do with
+    them — nothing here rejects a match.
+    """
+    out: list[Flaw] = []
+
+    lo, hi = IDEAL_CUP_DEPTH
+    if depth > hi:
+        out.append(Flaw(
+            "major" if depth > 0.40 else "minor",
+            f"cup is {depth * 100:.0f}% deep, beyond the textbook "
+            f"{lo * 100:.0f}-{hi * 100:.0f}% — a deep base is a damaged one, "
+            f"and the measured move off it is the least reliable part",
+        ))
+    elif depth < lo:
+        out.append(Flaw("minor", f"cup only {depth * 100:.0f}% deep, shallower "
+                                 f"than the textbook {lo * 100:.0f}%"))
+
+    # has the right side actually come back to the rim?
+    shortfall = (lh - rh) / lh
+    if shortfall > RIM_RECOVERY_TOL:
+        out.append(Flaw(
+            "major",
+            f"right rim {rh:.2f} is {shortfall * 100:.1f}% below the left rim "
+            f"{lh:.2f} — the cup has not recovered to its own rim, so what "
+            f"looks like a handle may still be part of the right side",
+        ))
+
+    # U or V? how much of the advance off the low came in its final fifth
+    tail = max(3, int(0.2 * max(rp - bp, 1)))
+    advance = rh - bl
+    if advance > 0 and rp - tail > bp:
+        late = (rh - float(c[rp - tail])) / advance
+        if late > 0.5:
+            out.append(Flaw(
+                "major",
+                f"{late * 100:.0f}% of the climb off the low came in the last "
+                f"{tail} bars — a V-shaped right side, not the rounded one the "
+                f"pattern describes",
+            ))
+
+    lo_b, hi_b = IDEAL_CUP_BARS
+    if cup_len < lo_b:
+        out.append(Flaw("minor", f"cup spans {cup_len} bars, under the textbook "
+                                 f"{lo_b} (~7 weeks)"))
+
+    if skip_handle:
+        # CUPNH has no handle by definition; flagging its absence would be
+        # flagging the pattern for being itself
+        return tuple(out)
+
+    lo_h, hi_h = IDEAL_HANDLE_BARS
+    if handle_len < lo_h:
+        out.append(Flaw("minor", f"handle is only {handle_len} bars — handles "
+                                 f"usually take {lo_h}-{hi_h} (2-4 weeks), so "
+                                 f"this one may still be forming"))
+
+    lo_d, hi_d = IDEAL_HANDLE_DEPTH
+    if handle_depth > hi_d:
+        out.append(Flaw("minor", f"handle is {handle_depth * 100:.1f}% deep vs "
+                                 f"the usual {lo_d * 100:.0f}-{hi_d * 100:.0f}%"))
+
+    # O'Neil wants the handle in the upper third, not merely the upper half
+    upper_third = lh - (lh - bl) / 3
+    if handle_low < upper_third:
+        out.append(Flaw("minor", f"handle low {handle_low:.2f} sits below the "
+                                 f"cup's upper third ({upper_third:.2f})"))
+
+    if dry_up == dry_up and dry_up > STRONG_DRY_UP:
+        out.append(Flaw("minor", f"handle volume is {dry_up:.2f}x the cup's — "
+                                 f"below it, but not the marked dry-up the "
+                                 f"pattern wants"))
+    return tuple(out)
+
+
+@dataclass(frozen=True)
+class _Cup:
+    """The cup BODY — everything except the handle.
+
+    Factored out because `CUP` and `CUPNH` are the same structure read at two
+    different moments: before a handle has formed, and after.
+    """
+
+    lp: int
+    bp: int
+    rp: int
+    lh: float
+    bl: float
+    rh: float
+    depth: float
+    cup_len: int
+    rounded: int
+
+
+def _find_cup(
+    h: np.ndarray, l: np.ndarray, c: np.ndarray, end_hi: int, end_all: int
+) -> _Cup | None:
+    """The cup anchored to the highest qualifying prior peak, or None."""
     window_start = max(0, end_hi - MAX_CUP_BARS)
 
-    # the left rim is a confirmed swing high old enough for a cup to have
-    # formed to the right of it
-    for lp in _confirmed_pivots(h, 5, "max", window_start, end_hi - MIN_CUP_BARS):
+    # The left rim is a confirmed swing high old enough for a cup to have
+    # formed to the right of it. Where SEVERAL qualify, take the HIGHEST —
+    # the cup is a correction from a prior peak, and the peak is the rim.
+    #
+    # Keeping the best-SCORING candidate instead (the first version) quietly
+    # reported the most flattering reading of every chart: PLTR's prior peak
+    # is 207.52 on 2025-11-03, but anchoring to a later 187.28 swing high
+    # scored better (a 43% cup with the right rim 4% ABOVE its left, rather
+    # than a 49% cup still 6% BELOW it), so that is what it published. The
+    # depth and rim-recovery bounds still apply, so a too-deep anchor is
+    # rejected rather than flattered.
+    candidates = _confirmed_pivots(h, 5, "max", window_start, end_hi - MIN_CUP_BARS)
+    for lp in sorted(candidates, key=lambda i: h[i], reverse=True):
         lh = float(h[lp])
         if lh <= 0:
             continue
@@ -204,49 +398,144 @@ def detect_cup_handle(
         if rounded < max(3, int(0.12 * cup_len)):
             continue
 
-        # handle: everything after the right rim
-        handle_len = end_all - rp
-        if not (MIN_HANDLE_BARS <= handle_len <= MAX_HANDLE_BARS):
-            continue
-        handle_low = float(l[rp + 1 : end_all + 1].min())
-        handle_depth = (rh - handle_low) / rh
-        # a handle is shallow, sits in the upper half of the cup, and never
-        # retraces more than a third of it
-        if handle_depth > 0.15 or handle_depth > depth / 3:
-            continue
-        if handle_low < lh - 0.5 * (lh - bl):
-            continue
+        # Candidates are walked highest-rim-first, so the first body that
+        # qualifies IS the prior peak's cup; nothing lower can be a more
+        # faithful anchor, and falling through to one would re-introduce the
+        # flattery this ordering exists to remove.
+        return _Cup(lp=lp, bp=bp, rp=rp, lh=lh, bl=bl, rh=rh,
+                    depth=depth, cup_len=cup_len, rounded=rounded)
+    return None
 
-        cup_vol = _mean(v[lp : rp + 1])
-        handle_vol = _mean(v[rp + 1 : end_all + 1])
-        dry_up = handle_vol / cup_vol if cup_vol and cup_vol == cup_vol else float("nan")
 
-        quality = float(
-            np.mean([
-                _band_score(depth, 0.15, 0.35),              # classic depth
-                _clip01(1 - abs(rh - lh) / lh / 0.10),       # rim symmetry
-                _clip01(1 - handle_depth / 0.15),            # tight handle
-                _band_score(cup_len, 35, 150),               # 7-30 weeks
-                _clip01(1.3 - dry_up) if dry_up == dry_up else 0.5,  # volume dry-up
-                _clip01(rounded / max(1, 0.35 * cup_len)),   # roundness
-            ])
-        )
-        note = (
-            f"cup {depth * 100:.0f}% deep over {cup_len} bars, "
-            f"handle {handle_depth * 100:.1f}% over {handle_len}"
-        )
-        if dry_up == dry_up:
-            note += f", handle volume {dry_up:.2f}x cup"
-        match = PatternMatch(
-            code=CUP, pivot=rh, stop_ref=handle_low,
-            measured_move=lh - bl,  # project the cup depth off the rim
-            base_low=bl, base_high=max(lh, rh), start_pos=lp, end_pos=end_all,
-            depth_pct=depth * 100, length_bars=end_all - lp,
-            quality=quality, note=note,
-        )
-        if best is None or match.quality > best.quality:
-            best = match
-    return best
+def detect_cup_handle(
+    h: np.ndarray, l: np.ndarray, c: np.ndarray, v: np.ndarray, end_hi: int, end_all: int
+) -> PatternMatch | None:
+    """O'Neil's cup-and-handle: a rounded 12-50% correction that recovers
+    toward its left rim, then a shallow drift (the handle) in the upper half
+    of the cup, on declining volume. The pivot is the right rim."""
+    cup = _find_cup(h, l, c, end_hi, end_all)
+    if cup is None:
+        return None
+    rp, rh, lh, bl = cup.rp, cup.rh, cup.lh, cup.bl
+
+    handle_len = end_all - rp
+    if not (MIN_HANDLE_BARS <= handle_len <= MAX_HANDLE_BARS):
+        return None
+    handle_low = float(l[rp + 1 : end_all + 1].min())
+    handle_depth = (rh - handle_low) / rh
+    # a handle is shallow, sits in the upper half of the cup, and never
+    # retraces more than a third of it
+    if not (MIN_HANDLE_DEPTH <= handle_depth <= MAX_HANDLE_DEPTH):
+        return None
+    if handle_depth > cup.depth / 3:
+        return None
+    if handle_low < lh - 0.5 * (lh - bl):
+        return None
+    # drift, not a plunge
+    if handle_depth / handle_len > MAX_HANDLE_DRIFT_PER_BAR:
+        return None
+
+    cup_vol = _mean(v[cup.lp : rp + 1])
+    handle_vol = _mean(v[rp + 1 : end_all + 1])
+    dry_up = handle_vol / cup_vol if cup_vol and cup_vol == cup_vol else float("nan")
+    # Volume drying up in the handle is not a bonus, it is the mechanism the
+    # pattern claims: supply exhausting before the breakout. A handle on
+    # heavier volume than the cup is distribution wearing the shape.
+    if not (dry_up == dry_up) or dry_up >= 1.0:
+        return None
+
+    quality = float(
+        np.mean([
+            _band_score(cup.depth, 0.15, 0.35),            # classic depth
+            _clip01(1 - abs(rh - lh) / lh / 0.10),         # rim symmetry
+            _clip01(1 - handle_depth / MAX_HANDLE_DEPTH),  # tight handle
+            _band_score(cup.cup_len, 35, 150),             # 7-30 weeks
+            _clip01((1.0 - dry_up) / 0.4),                 # how hard volume dried
+            _clip01(cup.rounded / max(1, 0.35 * cup.cup_len)),  # roundness
+        ])
+    )
+    note = (
+        f"cup {cup.depth * 100:.0f}% deep over {cup.cup_len} bars, "
+        f"handle {handle_depth * 100:.1f}% over {handle_len}, "
+        f"handle volume {dry_up:.2f}x cup"
+    )
+    return PatternMatch(
+        code=CUP, pivot=rh, stop_ref=handle_low,
+        measured_move=lh - bl,  # project the cup depth off the rim
+        base_low=bl, base_high=max(lh, rh), start_pos=cup.lp, end_pos=end_all,
+        depth_pct=cup.depth * 100, length_bars=end_all - cup.lp,
+        quality=quality, note=note,
+        flaws=_cup_flaws(
+            h, l, c, depth=cup.depth, cup_len=cup.cup_len, lh=lh, rh=rh, bl=bl,
+            bp=cup.bp, rp=rp, handle_depth=handle_depth, handle_len=handle_len,
+            handle_low=handle_low, dry_up=dry_up,
+        ),
+    )
+
+
+def detect_cup_no_handle(
+    h: np.ndarray, l: np.ndarray, c: np.ndarray, v: np.ndarray, end_hi: int, end_all: int
+) -> PatternMatch | None:
+    """The same cup, read before a handle exists.
+
+    O'Neil counts the cup-without-handle as its own base: price returns to the
+    rim and breaks out directly, with no shakeout first. He treats it as the
+    weaker of the two, which is why it is a separate code rather than a
+    loosening of CUP.
+
+    This fires ONLY when price is still pinned to the rim — the pullback since
+    is too short or too shallow to be a handle. A deep or fast drop off the
+    rim is a REJECTION, and deliberately matches nothing: that distinction is
+    the whole reason the handle bounds were tightened.
+    """
+    cup = _find_cup(h, l, c, end_hi, end_all)
+    if cup is None:
+        return None
+    rp, rh, lh, bl = cup.rp, cup.rh, cup.lh, cup.bl
+
+    since_rim = end_all - rp
+    low_since = float(l[rp + 1 : end_all + 1].min()) if since_rim >= 1 else float(l[rp])
+    pullback = (rh - low_since) / rh
+    # a handle that qualifies belongs to CUP; the two codes never both fire
+    forming = since_rim < MIN_HANDLE_BARS or pullback < MIN_HANDLE_DEPTH
+    if not forming:
+        return None
+    # ...but "no handle" must mean price is STILL AT the rim, not that it fell
+    # away from it too fast to count
+    if pullback > MIN_HANDLE_DEPTH * 2 or float(c[end_all]) < rh * 0.93:
+        return None
+    # the right side must have genuinely reached the rim: with no handle to
+    # form, a cup still 10% short of its rim is just an unfinished advance
+    if rh < lh * 0.97:
+        return None
+
+    base_low = min(low_since, float(l[max(rp - 5, cup.bp) : end_all + 1].min()))
+    quality = float(
+        np.mean([
+            _band_score(cup.depth, 0.15, 0.35),
+            _clip01(1 - abs(rh - lh) / lh / 0.10),
+            _band_score(cup.cup_len, 35, 150),
+            _clip01(cup.rounded / max(1, 0.35 * cup.cup_len)),
+            0.7,  # a cup without a handle is the weaker variant, by definition
+        ])
+    )
+    flaws = _cup_flaws(
+        h, l, c, depth=cup.depth, cup_len=cup.cup_len, lh=lh, rh=rh, bl=bl,
+        bp=cup.bp, rp=rp, handle_depth=pullback, handle_len=max(since_rim, 1),
+        handle_low=low_since, dry_up=float("nan"), skip_handle=True,
+    )
+    return PatternMatch(
+        code=CUPNH, pivot=rh, stop_ref=base_low,
+        measured_move=lh - bl,
+        base_low=bl, base_high=max(lh, rh), start_pos=cup.lp, end_pos=end_all,
+        depth_pct=cup.depth * 100, length_bars=end_all - cup.lp,
+        quality=quality,
+        note=(
+            f"cup {cup.depth * 100:.0f}% deep over {cup.cup_len} bars, no handle "
+            f"yet — {since_rim} bars since the rim, {pullback * 100:.1f}% off it"
+        ),
+        flaws=flaws,
+    )
 
 
 # ----------------------------------------------------------- double bottom
@@ -657,10 +946,193 @@ def detect_vcp(
     )
 
 
+# ------------------------------------------------- topping structures
+
+# A top is only a top once the market agrees: two highs at a level with price
+# still pressed against them is RESISTANCE (and often an ascending triangle),
+# not a reversal. What separates them is the trough between the peaks — the
+# neckline. Until it breaks, the structure is forming; after it breaks, the
+# pattern has done what it describes.
+MIN_TOP_SEPARATION, MAX_TOP_SEPARATION = 15, 160
+TOP_LEVEL_TOL = 0.03      # the two peaks count as "equal" within this
+MIN_NECK_DEPTH = 0.08     # the trough must be a real decline, not a pause
+
+
+# A top is only worth vetoing on while it is LIVE. Three ways one dies, all
+# of them seen in the first live run of these detectors:
+#   * price takes out the last peak      -> it was resistance, not a top
+#     (PLTR: "confirmed H&S, head 207.52" while price sat at 188 having
+#      already cleared the 187.28 right shoulder);
+#   * the neckline break fails and price recovers above it
+#     (DOCU: "confirmed, neckline 63.50" with price back at 69.01);
+#   * the whole structure is simply old
+#     (TECH: a neckline of 48.25 against a 72.40 price).
+MAX_TOP_AGE = 90          # bars since the last peak
+TOP_ROLLOVER = 0.95       # a forming top must have turned down this far
+
+
+def _top_state(
+    h: np.ndarray, c: np.ndarray, *, last_peak_pos: int, last_peak: float,
+    neckline: float, end_hi: int, end_all: int,
+) -> str | None:
+    """'confirmed', 'forming', or None when the structure is dead."""
+    if end_all - last_peak_pos > MAX_TOP_AGE:
+        return None
+    after_h = h[last_peak_pos + 1 : end_hi + 1]
+    if after_h.size and float(after_h.max()) > last_peak * 1.01:
+        return None  # the level broke: this was resistance, not a reversal
+    after_c = c[last_peak_pos + 1 : end_all + 1]
+    if after_c.size == 0:
+        return None
+    broke = float(after_c.min()) < neckline
+    close = float(c[end_all])
+    if broke:
+        # a break that price has since recovered is a FAILED top, which is a
+        # bullish event — vetoing a long on it would be exactly backwards
+        return "confirmed" if close < neckline else None
+    # Not yet broken: only a veto once price has actually rolled over, which
+    # has to mean MORE than "it pulled back". A cup's left and right rims ARE
+    # two peaks at one level with a trough between them — GILD's cup matched
+    # its own geometry as a "forming double top" — so until price has given
+    # back half the distance from the peak to the neckline, the decline is
+    # indistinguishable from a handle and calling it a top is overreach.
+    midpoint = neckline + (last_peak - neckline) / 2
+    return "forming" if close < min(last_peak * TOP_ROLLOVER, midpoint) else None
+
+
+def detect_double_top(
+    h: np.ndarray, l: np.ndarray, c: np.ndarray, v: np.ndarray, end_hi: int, end_all: int
+) -> PatternMatch | None:
+    """Two peaks at the same level with a meaningful trough between them.
+
+    Bearish, so the fields carry their mirrored meaning: `pivot` is the
+    NECKLINE (the level whose break confirms the top), `stop_ref` is the peak,
+    and `measured_move` is the projected decline, not a target above.
+    """
+    highs = _confirmed_pivots(h, 5, "max", max(0, end_hi - 250), end_hi - 5)
+    best: PatternMatch | None = None
+    for a in range(len(highs)):
+        i = highs[a]
+        for b in range(a + 1, len(highs)):
+            j = highs[b]
+            span = j - i
+            if not (MIN_TOP_SEPARATION <= span <= MAX_TOP_SEPARATION):
+                continue
+            hi_, hj = float(h[i]), float(h[j])
+            top = max(hi_, hj)
+            if top <= 0 or abs(hj - hi_) / hi_ > TOP_LEVEL_TOL:
+                continue
+            tseg = l[i + 1 : j]
+            if tseg.size == 0:
+                continue
+            tp = i + 1 + int(np.argmin(tseg))
+            neck = float(l[tp])
+            if (top - neck) / top < MIN_NECK_DEPTH:
+                continue
+            status = _top_state(
+                h, c, last_peak_pos=j, last_peak=float(h[j]), neckline=neck,
+                end_hi=end_hi, end_all=end_all,
+            )
+            if status is None:
+                continue
+            quality = float(
+                np.mean([
+                    _clip01(1 - abs(hj - hi_) / hi_ / TOP_LEVEL_TOL),  # level match
+                    _band_score((top - neck) / top, 0.10, 0.30),
+                    _band_score(span, 20, 120),
+                    1.0 if status == "confirmed" else 0.6,
+                ])
+            )
+            match = PatternMatch(
+                code=DTOP, pivot=neck, stop_ref=top,
+                measured_move=top - neck,  # projected DOWN from the neckline
+                base_low=neck, base_high=top, start_pos=i, end_pos=end_all,
+                depth_pct=(top - neck) / top * 100, length_bars=end_all - i,
+                quality=quality,
+                note=(
+                    f"{status}: peaks {hi_:.2f}/{hj:.2f} {span} bars apart, "
+                    f"neckline {neck:.2f}"
+                ),
+            )
+            if best is None or match.quality > best.quality:
+                best = match
+    return best
+
+
+def detect_head_shoulders_top(
+    h: np.ndarray, l: np.ndarray, c: np.ndarray, v: np.ndarray, end_hi: int, end_all: int
+) -> PatternMatch | None:
+    """Three peaks, the middle one highest, shoulders roughly level.
+
+    Same mirrored field meanings as `detect_double_top`. The neckline is taken
+    as the LOWER of the two troughs — the conservative reading, since that is
+    the level a close must break for the pattern to have completed on any
+    drawing of it.
+    """
+    highs = _confirmed_pivots(h, 5, "max", max(0, end_hi - 250), end_hi - 5)
+    if len(highs) < 3:
+        return None
+    best: PatternMatch | None = None
+    for a in range(len(highs) - 2):
+        for b in range(a + 1, len(highs) - 1):
+            for d in range(b + 1, len(highs)):
+                ls, hd, rs = highs[a], highs[b], highs[d]
+                lsh, head, rsh = float(h[ls]), float(h[hd]), float(h[rs])
+                if head <= 0 or rs - ls > MAX_TOP_SEPARATION * 2:
+                    continue
+                # the head must stand clear of both shoulders, but not so far
+                # that they are not shoulders at all: GILD matched with
+                # shoulders 18% under its head, which is a spike with two
+                # unrelated bumps beside it
+                if lsh > head * 0.97 or rsh > head * 0.97:
+                    continue
+                if lsh < head * 0.85 or rsh < head * 0.85:
+                    continue
+                # ...and the shoulders must be roughly level with each other
+                if abs(rsh - lsh) / lsh > 0.05:
+                    continue
+                t1 = l[ls + 1 : hd]
+                t2 = l[hd + 1 : rs]
+                if t1.size == 0 or t2.size == 0:
+                    continue
+                neck = min(float(t1.min()), float(t2.min()))
+                if (head - neck) / head < MIN_NECK_DEPTH:
+                    continue
+                status = _top_state(
+                    h, c, last_peak_pos=rs, last_peak=rsh, neckline=neck,
+                    end_hi=end_hi, end_all=end_all,
+                )
+                if status is None:
+                    continue
+                quality = float(
+                    np.mean([
+                        _clip01(1 - abs(rsh - lsh) / lsh / 0.05),   # shoulder symmetry
+                        _clip01((head - max(lsh, rsh)) / head / 0.08),  # head clearance
+                        _band_score((head - neck) / head, 0.10, 0.35),
+                        1.0 if status == "confirmed" else 0.6,
+                    ])
+                )
+                match = PatternMatch(
+                    code=HSTOP, pivot=neck, stop_ref=head,
+                    measured_move=head - neck,
+                    base_low=neck, base_high=head, start_pos=ls, end_pos=end_all,
+                    depth_pct=(head - neck) / head * 100, length_bars=end_all - ls,
+                    quality=quality,
+                    note=(
+                        f"{status}: shoulders {lsh:.2f}/{rsh:.2f}, head {head:.2f}, "
+                        f"neckline {neck:.2f}"
+                    ),
+                )
+                if best is None or match.quality > best.quality:
+                    best = match
+    return best
+
+
 # ------------------------------------------------------------- entry point
 
 _DETECTORS = (
     detect_cup_handle,
+    detect_cup_no_handle,
     detect_double_bottom,
     detect_flat_base,
     detect_bull_flag,
@@ -669,7 +1141,25 @@ _DETECTORS = (
 )
 
 
-def detect_patterns(daily: pd.DataFrame) -> list[PatternMatch]:
+_TOPPING_DETECTORS = (
+    detect_double_top,
+    detect_head_shoulders_top,
+)
+
+
+def detect_topping(daily: pd.DataFrame) -> list[PatternMatch]:
+    """Topping structures only — for vetoing a long or marking an exit.
+
+    Kept behind its own call so a bearish match can never reach code that
+    builds entries: `detect_patterns` returns bullish bases unless explicitly
+    asked otherwise.
+    """
+    return [m for m in detect_patterns(daily, include_topping=True) if m.is_bearish]
+
+
+def detect_patterns(
+    daily: pd.DataFrame, *, include_topping: bool = False
+) -> list[PatternMatch]:
     """Every pattern present as of `daily`'s last bar, best quality first.
 
     Several patterns can describe the same chart (a VCP is often also a
@@ -689,7 +1179,7 @@ def detect_patterns(daily: pd.DataFrame) -> list[PatternMatch]:
     end_hi = end_all - 1       # last bar allowed to define a pivot
 
     found: list[PatternMatch] = []
-    for detector in _DETECTORS:
+    for detector in (_DETECTORS + (_TOPPING_DETECTORS if include_topping else ())):
         try:
             match = detector(h, l, c, v, end_hi, end_all)
         except (IndexError, ValueError, ZeroDivisionError):

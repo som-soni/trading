@@ -23,11 +23,16 @@ separable and the thresholds are the conventional published ones rather than
 numbers fitted here: you can backtest this against `breakout` and find out
 whether shape adds anything over "tight range near highs".
 
+The first such test has been run, and it went badly: on US data from 2020 the
+strategy returned -3.26% CAGR while the benchmark made +13.63%, at a 19% win
+rate and -0.214R per trade. See `caveats` below for the per-pattern split.
+Nothing here should be traded on the strength of the idea alone.
+
 What it shares with the other strategies
 ----------------------------------------
-Entry geometry is uniform across all six patterns — buy a tick through the
+Entry geometry is uniform across all seven patterns — buy a tick through the
 pivot, stop under the structural low the pattern names, target the measured
-move, reject anything projecting under 2R. Only the pivot/stop/measured-move
+move, downgrade anything projecting under 2R to WATCH. Only the pivot/stop/measured-move
 differ by pattern, and those come from the detector.
 """
 
@@ -69,15 +74,21 @@ class ChartPatternStrategy(Strategy):
         "base, bull flag, ascending triangle, or VCP."
     )
     gate_codes = ("P1", "P2", "P3", "P4", "P5", "P6", "P7")
-    watch_codes = ("XP1", "XP2", "XP3", "XP4")
-    setup_codes = cp.ALL_CODES
+    watch_codes = ("XP1", "XP2", "XP3", "XP4", "XP5")
+    # bullish bases only — a topping structure can never become a setup in a
+    # long-only book; it enters through the XP5 veto instead
+    setup_codes = cp.BULLISH_CODES
+    # which detectors may produce a setup. Subclasses narrow this; see
+    # ChartPatternCupStrategy for why that is worth doing.
+    allowed_codes: tuple[str, ...] = cp.BULLISH_CODES
     min_bars = cp.MIN_BARS
 
     needs_ctx_extras = True
     extra_columns = (
-        "pattern", "patterns_seen", "pattern_pivot", "pct_from_pivot",
-        "pattern_depth_pct", "pattern_length", "pattern_quality",
-        "structural_r", "pattern_note",
+        "pattern", "patterns_seen", "pattern_confidence", "pattern_pivot",
+        "pct_from_pivot", "pattern_depth_pct", "pattern_length",
+        "pattern_quality", "structural_r", "pattern_note", "pattern_flaws",
+        "topping_pattern", "topping_note",
     )
     extra_numeric_columns = (
         "pattern_pivot", "pct_from_pivot", "pattern_depth_pct",
@@ -95,6 +106,14 @@ class ChartPatternStrategy(Strategy):
     # cup's two rims, a triangle's three touches and a box top all print at
     # slightly different prices, spread over roughly an ATR.
     overhead_cluster_atr: float = 1.0
+    # Floor on the stop distance. The 2 ATR clamp below only stops a stop
+    # being too WIDE; nothing stopped one being absurdly TIGHT. TECH printed
+    # a cup whose handle was 0.5% deep, which put the stop 0.40 below a 72.77
+    # entry — inside the spread, certain to be taken out by noise — and the
+    # measured move then divided by that to report "14.13R" and a TRADE ON
+    # TRIGGER. `donchian` already floors its stop for the same reason.
+    min_stop_atr: float = 0.6
+    min_stop_pct: float = 1.5
 
     thesis = (
         "A base with a recognised shape — rounded cup, matched double bottom, "
@@ -104,33 +123,79 @@ class ChartPatternStrategy(Strategy):
     how_it_works = (
         "**Screen** for liquid stocks above their SMA200 and within 20% of the "
         "52-week high, with enough history for a long base.",
-        "**Detect** all six patterns geometrically (see `core/chart_patterns.py`); "
+        "**Detect** all seven patterns geometrically (see `core/chart_patterns.py`); "
         "each returns a pivot, the structural low a stop belongs under, and the "
         "measured move it projects. Pivots are computed from bars BEFORE the "
         "current one, so a breakout bar can never define the level it breaks.",
         f"**Setups** fire per pattern once price is within {NEAR_PIVOT_PCT * 100:.0f}% "
-        "below the pivot; several patterns may match one chart and all are reported.",
+        f"below the pivot and the pattern scores at least {min_quality:g}; several "
+        "patterns may match one chart and all are reported.",
         "**Gates P1-P7** require the SMA200 intact and not falling, price within "
         "15% of the 52-week high, sane volatility, no earnings inside 10 days, a "
         f"pattern scoring at least {min_quality:g}, and price no more than "
         f"{MAX_CHASE_PCT * 100:.0f}% above the pivot.",
-        "**Entry** a tick through the pivot, or the market price if price has "
-        "already cleared it. **Stop** under the pattern's own structural low "
+        "**Entry** 0.1% above the pivot (rounded up to the tick), or the market "
+        "price if price has already cleared it. **Stop** under the pattern's own structural low "
         "(handle low, second bottom, box low, flag low), never wider than 2 "
-        "ATR. **Target** the measured move, capped at overhead supply more "
+        f"ATR and never tighter than {min_stop_atr:g} ATR or "
+        f"{min_stop_pct:g}% of price. **Target** the measured move, capped at overhead supply more "
         "than 1 ATR above the entry — nearer levels are the base's own "
-        "resistance zone, not new supply.",
+        "resistance zone, not new supply. A plan projecting under 2R, or with a "
+        "stop more than 8% below entry, is downgraded to WATCH rather than rejected. "
+        "(The stop floor is applied after the 2 ATR cap, so on a very quiet stock "
+        "the stop can end up wider than 2 ATR.)",
         "**Confirmation**: the trigger is a close through the pivot on "
         f"{VOL_CONFIRM:g}x average volume; without the volume it is still a "
         "setup, capped at WATCH.",
     )
     caveats = (
-        "**NOT BACKTESTED.** No pattern here has been run through the "
-        "backtester, and the thresholds are the conventional published ones "
-        "(O'Neil, Darvas, Minervini), not numbers fitted to this data.",
+        "**A DAY OF DETECTOR REFINEMENT MOVED EXPECTANCY BY 0.001R.** "
+        "Tightening the handle, anchoring the cup to the prior peak, adding "
+        "CUPNH and the XP5 topping veto took per-trade expectancy from -0.214R "
+        "to -0.213R over the same window and sample (CAGR -3.26% to -4.08%, "
+        "146 trades). Every change was individually defensible and a human "
+        "chart review motivated most of them; together they bought nothing "
+        "measurable. Assume the same of the next refinement.",
+        "**BACKTESTED AND IT LOST MONEY.** US, 2020-01-02 to 2026-10-02, a "
+        "300-symbol sample, bracket exit: -3.26% CAGR against the benchmark's "
+        "+13.63% (excess -16.90%), -38.98% max drawdown, 140 trades at a 19.0% "
+        "win rate, -0.214R per trade, profit factor 0.75. Per pattern, total R "
+        "was FLAT -11.9 (57 trades), DBOT -7.5 (13), ATRI -4.7 (34), CUP -3.0 "
+        "(3), FLAG +0.1 (26), VCP +2.4 (7) — nothing with a meaningful sample "
+        "made money. 111 trades stopped out against 26 that reached a target.",
+        "**Three quarters of random walks contain one of these patterns.** "
+        "Measured over 150 seeded walks: VCP 44%, FLAT 31%, DBOT 31%, FLAG "
+        "11%, ATRI 9%, CUP 0.7%; 75% match something. Against 519 liquid US "
+        "names the same day: VCP 27%, DBOT 27%, FLAT 11%, CUP 0.2%, 55% "
+        "overall. Three of the seven detect noise about as readily as they "
+        "detect the market, and they are exactly the ones the backtest traded "
+        "most (FLAT 57 trades, ATRI 34). CUP is the only one whose match is "
+        "rare in both columns. `tests/test_chart_patterns.py` holds the "
+        "measurement and fails if any detector drifts looser.",
+        "**The CUP numbers above are STALE.** A manual chart review after that "
+        "backtest found the handle test was accepting things no one would call "
+        "a handle — a 6-bar 8.5% rejection at the rim on rising volume "
+        "(META), 37-38 bar drifts (EHC, EMBJ), a 0.5%-deep flat pause (TECH). "
+        "The handle now has to be 5-20 bars, 2-15% deep, drifting at under "
+        "1.2%/bar, on volume below the cup's. That cut a live scan from 76 "
+        "cup matches to a handful, so CUP's 3 backtest trades were taken under "
+        "a definition that no longer exists. Re-run before quoting them. The "
+        "other five patterns are untouched.",
+        "**The exit is not what is wrong.** All eight exit policies were run "
+        "over that identical 193-signal set: the best (a 20-day Donchian exit, "
+        "no target) reached +0.27% CAGR and a 5 ATR trail 0.00%, against "
+        "-3.26% for the bracket. So the exit costs about three points of CAGR, "
+        "and none of the 13-17 point shortfall against the benchmark. The "
+        "entry carries no edge to protect.",
+        "That result is the strategy's headline, not a footnote. It is one "
+        "market and one window, so it does not prove the patterns carry no "
+        "information — but anyone trading this off the screener is trading a "
+        "measured loss. Re-measure before believing otherwise.",
         "Pattern recognition is the most over-claimed idea in technical "
-        "analysis. The first thing to test is whether this beats `breakout`, "
-        "which needs no shape at all — if it does not, the shape is decoration.",
+        "analysis, and this is one reading of seven informally-defined shapes. "
+        "The open question is whether shape adds anything over `breakout`, "
+        "which needs no shape at all; on the evidence above the burden of "
+        "proof sits with the shape.",
         "Any detector is one reading of an informally-defined shape. A chart a "
         "human would call a cup may score 0.3 here, and vice versa. Read "
         "`pattern_note` before trusting `pattern_quality`.",
@@ -143,6 +208,175 @@ class ChartPatternStrategy(Strategy):
         "a long `patterns_seen` as corroboration — the detectors are not "
         "independent.",
     )
+
+    # ---------- full reference documentation (the Strategy page) ----------
+    status = (
+        "Backtested and lost money: US 2020-2026, 300-symbol sample, bracket "
+        "exit, -4.08% CAGR vs the benchmark's +13.63%, -0.213R per trade over "
+        "146 trades. No demonstrated edge."
+    )
+    gate_docs = {
+        "P1": "The close must be above the 200-day SMA. Every pattern here is a "
+              "continuation base; the same shape under a broken long-term trend "
+              "is treated as a bear-market rally.",
+        "P2": "The 200-day SMA must not be falling, i.e. not more than 0.5% "
+              "below its value 20 bars ago. Flat or rising both pass.",
+        "P3": "The close must be at least 85% of the 52-week high (within 15% "
+              "of it). Fails if there is not enough history to compute the high.",
+        "P4": "ATR14 as a percentage of price must be 10% or less. A missing "
+              "ATR% passes.",
+        "P5": "No earnings report within the next 10 trading days. Passes when "
+              "no earnings date is known, which is always the case in the "
+              "backtest (there is no point-in-time earnings calendar).",
+        "P6": "At least one of this strategy's allowed patterns must be detected "
+              "with a quality score of at least 0.45 AND a close at or above "
+              "pivot x (1 - {NEAR_PIVOT_PCT}). The failure note says whether "
+              "nothing was found, the best match scored too low, or its pivot "
+              "is too far overhead.",
+        "P7": "The close must not be more than pivot x (1 + {MAX_CHASE_PCT}) — "
+              "a breakout already further past its pivot than that is a chase, "
+              "not an entry. Only checked when P6 found an actionable pattern.",
+    }
+    watch_docs = {
+        "XP1": "Raised when the close is already above the traded pattern's "
+               "pivot but volume is below {VOL_CONFIRM}x its 50-day average — "
+               "the classic unconfirmed breakout. Caps the decision at WATCH "
+               "and cuts the ranking score by 1.0.",
+        "XP2": "Raised when the close is more than 2.5 ATR above the 20-day "
+               "SMA (extended from the mean). Caps the decision at TRADE ON "
+               "TRIGGER and cuts the ranking score by 0.5.",
+        "XP3": "Raised when RSI14 is above 80 (overbought). Caps the decision "
+               "at TRADE ON TRIGGER.",
+        "XP4": "Raised when the traded pattern is more than 35% deep. Not "
+               "disqualifying, but a deep base is a damaged one: caps the "
+               "decision at TRADE ON TRIGGER and cuts the ranking score by 0.25.",
+        "XP5": "Raised when a live topping structure (double top or head and "
+               "shoulders top) is on the same chart — one whose last peak is "
+               "under 90 bars old, has not been exceeded by more than 1%, and "
+               "has either broken its neckline (confirmed) or rolled over below "
+               "both 95% of the peak and the peak-to-neckline midpoint "
+               "(forming). A confirmed top caps the decision at WATCH; a forming "
+               "one at TRADE ON TRIGGER. It never creates or removes a setup.",
+    }
+    setup_docs = {
+        "CUP": "Cup-and-handle. The left rim is the highest confirmed swing high "
+               "of the last 250 bars; the cup bottom sits 12-50% below it, the "
+               "right rim recovers to 90-105% of the left, the cup spans 25-250 "
+               "bars with neither side shorter than 20% of it, and enough bars "
+               "sit in its lower third to make it rounded rather than a V. The "
+               "handle is the last 5-20 bars: 2-15% deep and no deeper than a "
+               "third of the cup, its low in the cup's upper half, falling no "
+               "faster than 1.2% per bar, on average volume below the cup's. "
+               "Pivot: right rim. Stop: handle low. Move: cup depth.",
+        "CUPNH": "Cup without a handle. The same cup body as CUP, but price is "
+                 "still pinned to the rim: fewer than 5 bars since the right "
+                 "rim or less than a 2% pullback from it, never more than 4% "
+                 "off it, a close within 7% of it, and a right rim within 3% "
+                 "of the left. Pivot: right rim. Stop: the lowest low since "
+                 "about 5 bars before the rim. Move: cup depth.",
+        "DBOT": "Double bottom (W). Two confirmed swing lows 15-160 bars apart "
+                "within 5% of each other, with a rally of at least 8% between "
+                "them, preceded by a high at least 15% above the lows in the 80 "
+                "bars before the first. The second low must be at most 80 bars "
+                "old and have held (nothing since more than 2% below it), and "
+                "nothing since may have cleared the middle peak by more than "
+                "3%. An undercutting second low scores higher. Pivot: highest "
+                "high since the second low, at least the middle peak. Stop: "
+                "second low. Move: middle peak minus the lower low.",
+        "FLAT": "Flat base / Darvas box. A box of 25, 35, 45 or 65 bars ending "
+                "yesterday whose high-to-low range is at most 15% deep, topping "
+                "an advance of at least 20% from the lowest low of the 60 bars "
+                "before it, with the close in the upper 60% of the box. Pivot: "
+                "box high. Stop: box low. Move: the PRIOR ADVANCE (box high "
+                "minus that pre-box low), not the box height.",
+        "FLAG": "Bull flag. The pole high is the highest high of the last 45 "
+                "bars, 4-35 bars ago; the pole rises at least 20% from the "
+                "lowest low of the 40 bars before it; the flag since then has "
+                "retraced no more than 40% of the pole. A gain of 80%+ with a "
+                "retrace of 25% or less is labelled a high tight flag and "
+                "scores higher. Pivot: pole high. Stop: flag low. Move: pole "
+                "height.",
+        "ATRI": "Ascending triangle. Within the last 120 bars, the three most "
+                "recent confirmed swing highs all lie within 3% of the highest, "
+                "the structure spans at least 25 bars, and the swing lows since "
+                "it began rise (last more than 1% above first). The triangle is "
+                "at least 6% tall at its left edge, the lows have closed 40-92% "
+                "of that gap, and no high since the last touch is more than 3% "
+                "above resistance. Pivot: resistance. Stop: last rising low. "
+                "Move: triangle height.",
+        "VCP": "Volatility contraction pattern. Within the last 140 bars, "
+               "alternating confirmed swing highs and lows form pullbacks; the "
+               "most recent run in which each pullback is at most 0.8x as deep "
+               "as the one before must hold at least 2 contractions, the last "
+               "no deeper than 12%. Pivot: the final contraction's high, or any "
+               "higher high since. Stop: the final contraction's low. Move: "
+               "first contraction's high minus the base low.",
+    }
+    entry_rules = (
+        "A pattern is a setup once the close is at or above pivot x "
+        "(1 - {NEAR_PIVOT_PCT}) and its quality score is at least 0.45. When "
+        "several qualify, the highest-scoring one is traded. Pivots come only "
+        "from bars before the current one.",
+        "The trigger is a daily close above that pivot on volume of at least "
+        "{VOL_CONFIRM}x the 50-day average. That close, with gates passed and "
+        "no watch-flag cap, is TRADE HIGH CONFIDENCE. A setup that has not "
+        "triggered yet is TRADE ON TRIGGER.",
+        "Entry is the higher of pivot x 1.001 and the current close, rounded "
+        "up to the tick. Once price has cleared the pivot, you pay the market "
+        "price, not the pivot.",
+        "Stop is 0.1 ATR under the pattern's structural low, but no more than "
+        "2 ATR below entry. It is then widened if needed so it sits at least "
+        "0.6 ATR and at least 1.5% below entry. It is rounded down to the "
+        "tick.",
+        "Target is entry plus the pattern's measured move, with no floor. It "
+        "is capped at the nearest overhead swing-high level that is at least "
+        "1 ATR above entry. Levels nearer than that are the base's own "
+        "resistance zone and are ignored.",
+        "A plan whose reward:risk is under 2R (after the overhead cap), whose "
+        "stop is more than 8% below entry, or whose size is too large for the "
+        "account is downgraded to WATCH. It is not padded up to look "
+        "acceptable.",
+    )
+    exit_rules = (
+        "A fixed bracket. The stop and target are set at entry and never move. "
+        "The strategy has no trailing stop, time stop or discretionary exit.",
+        "In the backtest, a TRADE HIGH CONFIDENCE signal becomes a resting "
+        "buy-stop at the entry price. It fills on a later bar whose high "
+        "reaches it, at the open if that bar gaps above. It is cancelled if "
+        "the low reaches the stop first, if the open gaps past the target, or "
+        "if it is still unfilled after 10 business days.",
+        "A position exits on whichever of stop or target a later bar touches "
+        "first. When both are touched on the same bar, the stop is assumed to "
+        "fill. Gaps through either level fill at the open. Positions still "
+        "open at the end are marked at the last close.",
+        "Backtest only: the earnings gate (P5) and the market-regime downgrade "
+        "are not applied, and only TRADE HIGH CONFIDENCE signals are taken.",
+    )
+    param_docs = (
+        ("Near-pivot zone", "NEAR_PIVOT_PCT",
+         "Fraction below the pivot within which a detected pattern counts as "
+         "a setup ({NEAR_PIVOT_PCT}). Further out, it is reported but not "
+         "actionable."),
+        ("Max chase", "MAX_CHASE_PCT",
+         "Fraction above the pivot beyond which gate P7 fails "
+         "({MAX_CHASE_PCT})."),
+        ("Breakout volume", "VOL_CONFIRM",
+         "Multiple of 50-day average volume that a close through the pivot "
+         "needs to count as the trigger ({VOL_CONFIRM}x). Below it, XP1 fires."),
+        ("Minimum price", "cfg.screener.min_price",
+         "Screen: closes below this price are excluded."),
+        ("Minimum liquidity", "cfg.screener.min_dollar_volume",
+         "Screen: the 20-day average of close x volume must reach this."),
+        ("Tick size", "cfg.tick_size",
+         "Entry is rounded up and the stop rounded down to this increment."),
+        ("Risk per trade", "cfg.risk_pct",
+         "Fraction of equity risked between entry and stop, which sets "
+         "position size."),
+        ("Max open positions", "cfg.max_open_positions",
+         "Portfolio backtest slot limit. Triggered orders beyond it keep "
+         "resting until they expire."),
+    )
+    backtest_args = ""
 
     # ---------- screen ----------
 
@@ -168,7 +402,7 @@ class ChartPatternStrategy(Strategy):
         result = StrategyResult(entry_setup_codes=self.setup_codes)
         close, atr14 = ctx.close, ctx.atr
 
-        matches = cp.detect_patterns(d)
+        matches = [m for m in cp.detect_patterns(d) if m.code in self.allowed_codes]
         # The traded pattern is the best-scoring one that is also actionable
         # (price already near its pivot); a higher-scoring pattern whose pivot
         # is far overhead is reported but not traded.
@@ -186,6 +420,18 @@ class ChartPatternStrategy(Strategy):
         # (see backtest._load_cached_signal), so a symbol-day with no pattern
         # would otherwise be recomputed from scratch on every run forever.
         ctx.extras["patterns_seen"] = ",".join(m.code for m in matches)
+
+        # A LIVE topping structure on the same chart — one that price has not
+        # already taken out, whose neckline break has not failed, and which
+        # has actually rolled over (see `_top_state`). It never creates or
+        # blocks a setup; it caps confidence, because a breakout bought inside
+        # a confirmed top is the trade this screener would otherwise keep
+        # taking.
+        top = next(iter(cp.detect_topping(d)), None)
+        if top is not None:
+            ctx.extras["topping_pattern"] = top.code
+            ctx.extras["topping_note"] = top.note
+            ctx.extras["topping_confirmed"] = top.note.startswith("confirmed")
         if best is not None:
             ctx.extras.update({
                 "pattern": best.code,
@@ -196,6 +442,11 @@ class ChartPatternStrategy(Strategy):
                 "pattern_length": int(best.length_bars),
                 "pattern_quality": round(float(best.quality), 3),
                 "pattern_note": best.note,
+                # how far the match sits from the textbook description, and
+                # why — a `low` match is still reported, never silently
+                # equated with a clean one
+                "pattern_confidence": best.confidence,
+                "pattern_flaws": best.flaw_text,
                 "pattern_actionable": bool(actionable),
             })
 
@@ -316,6 +567,15 @@ class ChartPatternStrategy(Strategy):
                 f"(> {self.max_depth_pct:g}%)"
             )
 
+        # XP5: a live topping structure on the same chart
+        top_code = ctx.extras.get("topping_pattern")
+        result.watch_flags["XP5"] = bool(top_code)
+        if top_code:
+            result.watch_notes["XP5"] = (
+                f"{cp.PATTERN_NAMES.get(top_code, top_code)} on the same chart "
+                f"— {ctx.extras.get('topping_note', '')}"
+            )
+
     def watch_cap(self, result: StrategyResult) -> str:
         caps = []
         if result.watch_flags.get("XP1"):
@@ -323,6 +583,11 @@ class ChartPatternStrategy(Strategy):
         for code in ("XP2", "XP3", "XP4"):
             if result.watch_flags.get(code):
                 caps.append("TRADE_ON_TRIGGER")
+        if result.watch_flags.get("XP5"):
+            # a CONFIRMED top (price below the neckline) is the stronger
+            # statement, so it caps harder than one still forming
+            note = result.watch_notes.get("XP5", "")
+            caps.append("WATCH_WAIT" if "confirmed" in note else "TRADE_ON_TRIGGER")
         return min(caps, key=CAP_ORDER.index) if caps else "TRADE_HIGH_CONFIDENCE"
 
     def setup_quality(
@@ -385,10 +650,14 @@ class ChartPatternStrategy(Strategy):
         entry = round_tick(max(pivot * 1.001, ctx.close), cfg.tick_size, "up")
         # Under the structural low the pattern itself names — but never wider
         # than 2 ATR, because a 25% stop under a deep cup's handle is not a
-        # position anyone can size.
-        stop = round_tick(
-            max(stop_ref - 0.1 * atr14, entry - 2 * atr14), cfg.tick_size, "down"
+        # position anyone can size, and never tighter than the floor, because
+        # a stop inside the daily noise is not a stop (see min_stop_atr).
+        structural_stop = max(stop_ref - 0.1 * atr14, entry - 2 * atr14)
+        floor_stop = min(
+            entry - self.min_stop_atr * atr14,
+            entry * (1 - self.min_stop_pct / 100),
         )
+        stop = round_tick(min(structural_stop, floor_stop), cfg.tick_size, "down")
         risk = entry - stop
         if risk <= 0:
             return PlanChoice(None, None, "degenerate stop (pivot at/below the base low)")
@@ -482,7 +751,11 @@ class ChartPatternStrategy(Strategy):
                 )
         elif cap == "WATCH_WAIT":
             label = "WATCH_WAIT"
-            reasons.append(result.watch_notes.get("XP1", "capped by watch flag"))
+            reasons.append(
+                result.watch_notes.get("XP5")
+                if result.watch_flags.get("XP5") and "confirmed" in result.watch_notes.get("XP5", "")
+                else result.watch_notes.get("XP1", "capped by watch flag")
+            )
         elif fired and cap == "TRADE_HIGH_CONFIDENCE":
             label = "TRADE_HIGH_CONFIDENCE"
             reasons.append(
@@ -497,7 +770,7 @@ class ChartPatternStrategy(Strategy):
                     f"{plan.entry:.2f} on volume"
                 )
             if cap == "TRADE_ON_TRIGGER":
-                active = [c for c in ("XP2", "XP3", "XP4") if result.watch_flags.get(c)]
+                active = [c for c in ("XP2", "XP3", "XP4", "XP5") if result.watch_flags.get(c)]
                 reasons.append(f"capped by watch flag ({'/'.join(active)})")
 
         before = label
@@ -531,4 +804,76 @@ class ChartPatternStrategy(Strategy):
             "pattern_quality": e.get("pattern_quality"),
             "structural_r": round(float(sr), 2) if sr is not None else None,
             "pattern_note": e.get("pattern_note"),
+            "pattern_confidence": e.get("pattern_confidence"),
+            "pattern_flaws": e.get("pattern_flaws"),
+            "topping_pattern": e.get("topping_pattern"),
+            "topping_note": e.get("topping_note"),
         }
+
+
+class ChartPatternCupStrategy(ChartPatternStrategy):
+    """The same machinery, restricted to the cup — the selectivity experiment.
+
+    `tests/test_chart_patterns.py` measures how often each detector fires on a
+    pure random walk: VCP 44%, FLAT 31%, DBOT 31%, and 75% of walks match
+    something, against 55% of real liquid stocks. Three of the seven detect
+    noise about as readily as they detect the market — and they are the ones
+    the full strategy traded most (FLAT 57 trades, ATRI 34, out of 140).
+
+    CUP is the exception at 0.7% of random walks and 0.2% of real names. If
+    shape carries anything, the selective detector should show it; if this
+    does no better than the full set, the shape is not the thing and no
+    seventh pattern will change that. That is the entire point of running it.
+    """
+
+    key = "chart_pattern_cup"
+    name = "Cup-and-handle only"
+    description = (
+        "The chart-pattern strategy restricted to CUP and CUPNH — the only "
+        "two detectors that are rare in random data."
+    )
+    setup_codes = (cp.CUP, cp.CUPNH)
+    allowed_codes = (cp.CUP, cp.CUPNH)
+
+    thesis = (
+        "If classical chart patterns carry information, the one that a random "
+        "walk almost never produces should carry more of it than the ones a "
+        "random walk produces constantly."
+    )
+    caveats = (
+        "**RUN, AND THE RESULT IS INDECISIVE.** US, 2020-01-02 to 2026-10-02, "
+        "300-symbol sample, identical to `chart_pattern`'s run: -0.24% CAGR "
+        "(vs -4.08%), -13.0% max drawdown (vs -42.2%), 32 trades at a 25.0% "
+        "win rate, -0.019R per trade (vs -0.213R), profit factor 0.94. Every "
+        "headline favours the selective detector AND NONE OF IT IS "
+        "SIGNIFICANT: the difference is +0.194R with a Welch t of 0.42, "
+        "bootstrap 95% CI [-0.67, +1.12], P(cup better) = 0.66. Its own "
+        "expectancy is -0.019R at t = -0.04 — indistinguishable from zero in "
+        "either direction. Do not read the CAGR gap as evidence.",
+        "**32 trades in 6.75 years is the price of selectivity.** CUP fires on "
+        "~0.2% of names, so the more selective the detector the longer it "
+        "takes to learn whether it works. Settling this needs roughly 10x the "
+        "sample: the full universe over the full 13.75-year window, not a "
+        "300-symbol draw.",
+        "Of those 32 trades, 27 were CUPNH (-0.25R) and 5 were CUP proper "
+        "(+1.23R). Five trades is not a finding, and the temptation to read "
+        "one into it is exactly what the t-statistics above exist to resist.",
+        "**This exists to be falsified.** It is the same code as "
+        "`chart_pattern` with five of seven detectors switched off; compare "
+        "the two over an identical window and sample, and read the difference, "
+        "not either number alone.",
+        "CUP fires on ~0.2% of liquid names, so expect FEW trades and wide "
+        "error bars. A difference of a point or two of CAGR over ~20 trades "
+        "says nothing at all.",
+        "Every caveat on `chart_pattern` applies here unchanged.",
+    )
+
+    status = (
+        "Indecisive: US 2020-2026, 300-symbol sample, bracket exit, -0.24% "
+        "CAGR and -0.019R per trade over 32 trades (t = -0.04). That is "
+        "indistinguishable from zero and not significantly better than the "
+        "full pattern set."
+    )
+    setup_docs = {
+        code: ChartPatternStrategy.setup_docs[code] for code in (cp.CUP, cp.CUPNH)
+    }

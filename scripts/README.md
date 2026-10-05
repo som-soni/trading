@@ -53,7 +53,9 @@ points, grouped by what they are for:
 | `backtesting.baseline` | The momentum baseline every strategy must beat |
 | `backtesting.experiments` | Controlled A/B over one signal set |
 | `backtesting.report` | Re-render a finished run as markdown + charts |
+| `backtesting.index_investing` | Index-investing backtests: SIP timing, trend overlays, allocation, rotation |
 | `marketdata.backfill` | Pull long history (do this first) |
+| `marketdata.index_data` | Total-return index series (separate store — see below) |
 | `marketdata.migrate` | Apply additive schema migrations |
 
 ### Flags that matter
@@ -86,6 +88,19 @@ points, grouped by what they are for:
 | `--cost-bps` | per side; 5 is reasonable for the US, 25 for Indian delivery |
 | `--no-trend-filter` | drop the >200DMA requirement |
 
+**`backtesting.index_investing`**
+
+| flag | effect |
+|---|---|
+| `--market {us,india}` | required |
+| `--family A B C D` | A accumulation timing · B lump-sum overlays · C allocation/rebalancing · D rotation (default: all) |
+| `--cost-bps` | per side, on top of each series' expense ratio (default 2 US, 10 India) |
+| `--no-tax` | pre-tax only; by default every table carries both pre- and after-tax columns |
+| `--quick` | 40 placebo draws instead of 200, annual instead of quarterly A5 starts |
+
+**`marketdata.index_data`** — `--refresh` (fetch/update), `--list` (coverage),
+`--validate` (flag impossible single-day moves), `--calibrate-dividends`.
+
 **`backtesting.report`** — `--list`, `--all`, or `--market/--strategy/--run`.
 
 ## Reports
@@ -112,6 +127,56 @@ To render a run that already happened without re-simulating:
 python3 -m swing_screener.backtesting.report --list
 python3 -m swing_screener.backtesting.report --all
 ```
+
+## Index investing
+
+A separate suite for the question the stock-level backtests cannot answer:
+not *which stock*, but *when to put money into the index*.
+
+```
+# once: fetch the total-return series (~21 series, 150k rows)
+PYTHONPATH=. python3 -m swing_screener.marketdata.index_data --refresh
+PYTHONPATH=. python3 -m swing_screener.marketdata.index_data --validate
+
+PYTHONPATH=. python3 -m swing_screener.backtesting.index_investing --market us
+PYTHONPATH=. python3 -m swing_screener.backtesting.index_investing --market india --family A
+```
+
+Four families: **A** contribution timing (day-of-month, day-of-week,
+frequency, lump-sum vs DCA, dip-buying, value averaging), **B** lump-sum
+timing overlays (Faber 10-month, 200-DMA, absolute momentum, vol targeting,
+sell-in-May), **C** static allocation and rebalancing cadence, **D** rotation
+between index sleeves.
+
+Three things differ from the stock-level backtests, and they are the reason
+this is a separate store rather than a flag on `backtest.py`:
+
+* **`index_series`, not `prices`.** These series are fetched with
+  `auto_adjust=True`, i.e. dividends included, because dividends (~1.9%/yr
+  US, ~0.8%/yr measured for India) swamp every effect being tested. The
+  screener's `prices` table stays unadjusted, as stops and pivots need real
+  traded levels. Price-only indices carry an empirically calibrated dividend
+  accrual (`--calibrate-dividends`), never a guessed one.
+* **Cash earns a real rate** — the 13-week T-bill (`^IRX`, 1960 onward) for
+  the US, the realised LIQUIDBEES yield for India — accrued on *calendar*
+  days. Every strategy that waits in cash is credited with the interest it
+  would actually have earned.
+* **Tax is modelled, and reported beside the pre-tax figure.** Each strategy
+  is simulated twice, because a taxed run pays its bill out of the book as it
+  goes, so that run's CAGR *is* the after-tax number and cannot double as the
+  pre-tax one. India's 20% STCG / 12.5% LTCG changes the ranking of
+  rebalancing cadences outright.
+
+`--validate` exists because Yahoo applies some NSE splits to only part of a
+series: NIFTYBEES printed −89.9% then +896.9% across 2019-12-19..23, GOLDBEES
+−99% then +9900%. Unrepaired, those produce a −90% "max drawdown" on a market
+that fell 38%. `index_data.repair` fixes the three artefact shapes and logs
+every repair; `tests/test_index_investing.py` checks it leaves a real −20.5%
+crash untouched.
+
+Verification: `PYTHONPATH=. python3 -m tests.test_index_investing` — 13 checks,
+no database needed. The important one asserts no signal reads a price it would
+trade at.
 
 ## Run the daily screener
 
@@ -314,7 +379,8 @@ tradeable.
 
 | code | pattern | pivot | stop under | measured move |
 |---|---|---|---|---|
-| `CUP` | cup-and-handle, 12-50% deep, handle in the upper half | right rim | handle low | cup depth |
+| `CUPNH` | cup without a handle yet — price still pinned to the rim | right rim | recent low | cup depth |
+| `CUP` | cup-and-handle, 12-50% deep; handle 5-20 bars, 2-15% deep, drifting under 1.2%/bar on volume below the cup's | right rim | handle low | cup depth |
 | `DBOT` | double bottom, lows within 5%, 8%+ rally between | middle peak | second low | peak minus low |
 | `FLAT` | flat base / Darvas box, under 15% over 25-65 bars | box top | box low | the prior advance |
 | `FLAG` | bull flag; 20%+ pole retracing under 40% | pole high | flag low | pole height |
@@ -327,6 +393,116 @@ ATR% under 10, no earnings inside 10 days, a pattern scoring at least 0.45,
 and price no more than 4% above the pivot), a uniform entry a tick through the
 pivot, a stop never wider than 2 ATR, and rejection of anything whose own
 measured move projects under 2R.
+
+### The noise floor — read this before trusting any of it
+
+`tests/test_chart_patterns.py` measures how often each detector fires on a
+**pure random walk**. Measured 2026-10-04 over 150 seeded walks of 420 bars:
+
+| pattern | random walks | liquid US stocks |
+|---|---|---|
+| `VCP` | 44.0% | 27% |
+| `FLAT` | 31.3% | 11% |
+| `DBOT` | 30.7% | 27% |
+| `FLAG` | 11.3% | 4% |
+| `ATRI` | 8.7% | 10% |
+| `CUPNH` | 4.7% | — |
+| `CUP` | 0.7% | 0.2% |
+| **any** | **75%** | **55%** |
+
+(Real-market column: 519 liquid US names, same day. The two columns are not
+perfectly matched — different volatility, drift and history length — so read
+the order of magnitude, not the decimals.)
+
+Three quarters of random walks contain one of these shapes, and `VCP`, `DBOT`
+and `FLAT` appear in noise about as readily as in the market. A rule that
+fires on 75% of noise cannot be selective no matter whose name is on it, and
+it explains the backtest without appeal to anything subtler: the strategy's
+most-traded patterns were `FLAT` (57 trades) and `ATRI` (34), which are
+exactly the ones noise produces. `CUP` is the outlier in the other direction —
+rare in both columns — and is the only one of the seven whose match says
+something unusual is on the chart.
+
+The test enforces per-pattern ceilings a few points above those rates, so
+loosening a detector fails loudly rather than quietly raising the noise floor.
+
+### Topping structures (`DTOP`, `HSTOP`) — veto, not entry
+
+The book is long-only, so a top cannot be sold. `detect_topping()` is a
+separate call from `detect_patterns()` precisely so a bearish match can never
+reach code that builds entries, and the strategy consumes it as watch flag
+`XP5`, which caps confidence (`confirmed` -> WATCH, `forming` -> TRADE ON
+TRIGGER) and never creates or blocks a setup by itself.
+
+For these two codes the fields carry mirrored meanings: `pivot` is the
+**neckline**, `stop_ref` the peak, and `measured_move` projects **down**.
+
+A top is only a veto while it is LIVE, which took three rules to get right,
+each from a live false positive:
+
+- price takes out the last peak, so it was resistance rather than a reversal
+  (PLTR showed a "confirmed H&S, head 207.52" while trading at 188, having
+  already cleared its 187.28 right shoulder);
+- the neckline break fails and price recovers above it — a *failed* top is a
+  bullish event, and vetoing a long on it is exactly backwards (DOCU, neckline
+  63.50, price 69.01);
+- the structure is simply old (TECH, a neckline of 48.25 against a 72.40 price).
+
+And one conceptual trap: **a cup's two rims are a double top** until the
+breakout happens. GILD's cup matched its own geometry as a "forming double
+top". A forming top therefore requires price to have given back half the
+distance from the peak to the neckline — short of that, the decline is
+indistinguishable from a handle. With all four rules, live tops appear on
+~9% of names that pass the trend gates.
+
+### Confidence, and why a match is not ideal
+
+A detector's bounds are what it ACCEPTS; the textbook describes what is
+IDEAL. `chart_patterns.py` keeps the two apart (`IDEAL_CUP_DEPTH`,
+`IDEAL_HANDLE_BARS`, `RIM_RECOVERY_TOL`, ...) and reports the gap instead of
+dropping the match, because a 49%-deep cup whose right side has not reached
+its own rim is a real structure worth watching — it is just not the thing the
+pattern's statistics are about.
+
+Each match carries `flaws` (plain-language deviations, `major` or `minor`)
+and a `confidence` grade derived from them:
+
+| grade | means |
+|---|---|
+| `textbook` | no major deviations, at most one minor |
+| `moderate` | one major, or two to three minors |
+| `low` | two or more majors, or four or more minors |
+| `unassessed` | that detector does not grade yet (only `CUP` does so far) |
+
+It is a measure of **resemblance, not probability** — nothing here forecasts.
+`find_pattern` groups its output by grade and prints the flaws under each
+name; the daily screener carries them as `pattern_confidence` and
+`pattern_flaws`.
+
+Worked example — PLTR, 2026-10-02, graded `low`:
+
+```
+cup is 49% deep, beyond the textbook 12-33% — a deep base is a damaged one;
+right rim 194.68 is 6.2% below the left rim 207.52 — the cup has not
+  recovered to its own rim, so what looks like a handle may still be part
+  of the right side;
+handle is only 6 bars — handles usually take 8-20 (2-4 weeks), so this one
+  may still be forming
+```
+
+**Anchor the cup to the prior peak.** Where several swing highs qualify as
+the left rim, take the HIGHEST. Keeping the best-scoring one instead (the
+first version did) reports the most flattering reading of every chart: PLTR's
+prior peak is 207.52, but anchoring to a later 187.28 swing high scored
+better — a 43% cup with its right rim 4% *above* the left, rather than a 49%
+cup still 6% *below* it — so that is what it published, and it disagreed with
+every human who looked at the chart.
+
+The handle bounds are the fussiest part and were tightened after a manual
+chart review: the first version accepted a 6-bar 8.5% rejection at the rim on
+rising volume, a 37-bar drift, and a 0.5%-deep flat pause as "handles". Each
+bound in `detect_cup_handle` names the live example it exists to exclude.
+**The backtest below predates that change**, so its `CUP` row is stale.
 
 Two details that are easy to get wrong and are deliberate here:
 
@@ -342,12 +518,102 @@ Two details that are easy to get wrong and are deliberate here:
   numbers are reported, `structural_r` (what the pattern projects) and
   `target_r` (after the cap), so the two never get confused.
 
-Status: **not backtested.** The thresholds are the conventional published ones
-(O'Neil, Darvas, Minervini), not numbers fitted to this data. The first
-question to settle is whether shape adds anything over `breakout`, which
-requires no shape at all — if it does not, the shape is decoration. Detection
-itself is cheap (~1ms per symbol-day against `build_context`'s ~11ms), so
-testing it costs no more than any other strategy.
+### Status: backtested, and it lost
+
+US, 2020-01-02 → 2026-10-02, 300-symbol sample, bracket exit:
+
+| | strategy | benchmark |
+|---|---|---|
+| CAGR | **-3.26%** | +13.63% |
+| max drawdown | -38.98% | -34.10% |
+| Sharpe | -0.26 | 0.74 |
+| trades / win rate | 140 / 19.0% | — |
+| avg R per trade | -0.214 (PF 0.75) | — |
+
+Total R by pattern: `FLAT` -11.9 (57 trades), `DBOT` -7.5 (13), `ATRI` -4.7
+(34), `CUP` -3.0 (3), `FLAG` +0.1 (26), `VCP` +2.4 (7). Nothing with a
+meaningful sample made money; 111 trades stopped out against 26 that reached a
+target.
+
+### Does selectivity help? (`chart_pattern` vs `chart_pattern_cup`)
+
+Same window, same seeded 300-symbol sample, same exit; the only difference is
+that the `_cup` variant switches off the five detectors that fire on random
+data.
+
+| | full set | cup only |
+|---|---|---|
+| CAGR | -4.08% | **-0.24%** |
+| max drawdown | -42.2% | **-13.0%** |
+| trades / win rate | 146 / 18.2% | 32 / 25.0% |
+| avg R per trade | -0.213 | **-0.019** |
+| profit factor | 0.71 | 0.94 |
+| t-stat on avg R | -1.24 | -0.04 |
+
+Every headline favours the selective detector, and **none of it is
+significant**: the difference is +0.194R, Welch t = 0.42, bootstrap 95% CI
+[-0.67, +1.12], P(cup better) = 0.66. Both expectancies are indistinguishable
+from zero. 32 trades in 6.75 years is the price of selectivity — settling this
+needs roughly 10x the sample (full universe, full 13.75-year window).
+
+Two things worth carrying forward. A full day of detector work — tightening
+the handle, anchoring cups to the prior peak, adding `CUPNH`, adding the
+topping veto — moved per-trade expectancy from **-0.214R to -0.213R**. And of
+the cup run's 32 trades, 27 were `CUPNH` (-0.25R) against 5 `CUP` proper
+(+1.23R); five trades is not a finding.
+
+**The exit is not the problem.** All eight exit policies over that identical
+193-signal set:
+
+| variant | CAGR% | maxDD% | excessCAGR% | win% | avgR |
+|---|---|---|---|---|---|
+| `donchian-20d-noTarget` | **+0.27** | -28.55 | -13.37 | 22.8 | -0.028 |
+| `trail_atr-5ATR-noTarget` | -0.00 | -31.04 | -13.64 | 20.9 | +0.014 |
+| `donchian-50d-noTarget` | -0.19 | -34.54 | -13.82 | 19.3 | -0.039 |
+| `ma-sma50-noTarget` | -1.32 | -26.31 | -14.95 | 25.2 | -0.113 |
+| `ma-sma20-noTarget` | -2.14 | -23.37 | -15.77 | 33.1 | -0.127 |
+| `trail_atr-3ATR-withTarget` | -3.17 | -28.11 | -16.81 | 27.0 | -0.156 |
+| `bracket-withTarget` | -3.26 | -38.98 | -16.90 | 19.0 | -0.214 |
+
+The exit choice is worth about three points of CAGR and none of the 13-17
+point shortfall against the benchmark. Letting winners run (`--no-target`)
+helps, as it did for `donchian` — but it lifts the strategy to roughly zero,
+not to an edge. There is no edge in the entry for a better exit to protect.
+
+One market, one window — so this is not proof that the shapes
+carry no information. It is, however, a measured loss, which is where the
+burden of proof now sits. The thresholds are the conventional published ones
+(O'Neil, Darvas, Minervini) and were not fitted to this data, so the result is
+at least not an artefact of tuning. Detection itself is cheap (~1ms per
+symbol-day against `build_context`'s ~11ms), so re-measuring costs little:
+
+```
+# does a different exit policy rescue the same signals?
+python3 -m swing_screener.backtesting.experiments --market us --start 2020-01-01 \
+    --strategy chart_pattern --sample 300 --exits
+
+# does shape beat the shapeless breakout, on one axis?
+python3 -m swing_screener.backtesting.compare --market us --start 2020-01-01 \
+    --strategies breakout chart_pattern --sample 300
+```
+
+## Chart links
+
+Every report names a symbol AND links straight to its chart, because a
+candidate has to be looked at before it is traded and retyping tickers is the
+friction that stops you doing it:
+
+- the pipeline CSV gains a `chart` column, next to `symbol`;
+- `report.md` renders the ticker itself as the link, in both the candidates
+  and watchlist tables;
+- `find_pattern` prints the link under each match.
+
+[`screening/links.py`](swing_screener/screening/links.py) holds everything
+provider-specific — the URL template and the yfinance-suffix-to-exchange map
+(`.NS` -> `NSE:`, `.BO` -> `BSE:`). Point `CHART_URL` elsewhere and every
+report follows. US tickers are passed bare because the universe CSV carries no
+exchange; TradingView resolves them itself, which is a guess on its part for a
+ticker that also trades abroad.
 
 ## Known gaps (by design, not oversight)
 

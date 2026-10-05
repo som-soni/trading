@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "trading-web",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "cd scripts && PYTHONPATH=. .venv/bin/python -m swing_screener.web --no-ingest"],
+      "port": 8000
+    }
+  ]
+}

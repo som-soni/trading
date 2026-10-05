@@ -5,6 +5,7 @@ Written findings. Code lives in `scripts/`, generated output in `reports/`.
 | document | what it covers |
 |---|---|
 | [momentum-trend-research.md](momentum-trend-research.md) | The main log: results ledger for every strategy tested, what each experiment established, methodology, known biases, and the queue of open experiments |
+| [index-investing-research.md](index-investing-research.md) | *When* to put money into an index rather than *which* stocks to own: SIP day-of-month and frequency, lump sum vs DCA, dip-buying, trend overlays, allocation and rebalancing, rotation — with pre- and after-tax results for both markets |
 
 ## How to use the research log
 
@@ -14,7 +15,15 @@ maxDD, Sharpe, Calmar, excess vs benchmark, trade count. A result without a
 benchmark comparison is not interpretable.
 
 **Before trusting a result**, read §5 (known biases). Survivorship bias is
-unfixed and is worst exactly where the returns look best.
+unfixed and is worst exactly where the returns look best — though it does not
+apply to the index-investing log, which has no selection step at all.
+
+**For the index log specifically**, note that its scoring differs by family:
+accumulation strategies are judged on XIRR and terminal wealth per unit
+contributed (CAGR is meaningless once money is flowing in), lump-sum ones on
+CAGR and drawdown. Calendar findings there are reported against a
+randomised-day null, because the best of 30 contribution days is a selected
+maximum before it is a finding.
 
 **Before concluding a strategy failed**, check it is not one of the measurement
 artefacts already catalogued in §4 — right-censoring, optimistic fills, and

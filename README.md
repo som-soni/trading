@@ -155,6 +155,75 @@ overwrite each other. Check `report.md` for the line reporting how many
 signals were declined for insufficient cash — if it dwarfs the trade count,
 the book is the binding constraint, not the strategy.
 
+### Decide when to put money into the index
+
+A separate question from which stock to buy, so a separate suite — SIP
+timing, trend overlays, allocation and rotation, on dividend-inclusive index
+series going back to 1980 (US) and 1997 (India).
+
+```bash
+# once: fetch total-return index series, then check them for vendor artefacts
+python3 -m swing_screener.marketdata.index_data --refresh
+python3 -m swing_screener.marketdata.index_data --validate
+
+python3 -m swing_screener.backtesting.index_investing --market us
+python3 -m swing_screener.backtesting.index_investing --market india --family A
+```
+
+Four families: **A** contribution timing (day-of-month, day-of-week,
+frequency, lump sum vs DCA, dip-buying, value averaging), **B** lump-sum
+timing overlays, **C** static allocation and rebalancing cadence, **D**
+rotation between index sleeves. Results carry pre-tax *and* after-tax columns,
+cash earns the real T-bill/liquid-fund rate, and every calendar experiment is
+scored against a randomised-day null — because the best of 30 contribution
+days is a selected maximum before it is a finding. See
+[`research/index-investing-research.md`](research/index-investing-research.md).
+
+### Browse charts and reports in a web UI
+
+A read-only viewer: TradingView-style price charts (candles, volume, SMAs,
+RSI, daily/weekly/monthly), the screener's entry/stop/target levels drawn on the
+chart, backtest trades overlaid as markers, plus every screening run and
+backtest/index report. Strategies still run offline; this only displays results.
+
+```bash
+cd scripts
+PYTHONPATH=. python3 -m swing_screener.web          # http://127.0.0.1:8000
+```
+
+The **Strategies** page explains every strategy — thesis, each hard gate,
+watch flag and setup, entry/stop/target and exit rules, live parameter values
+per market, and its backtest results. It is generated from the strategy
+classes themselves (`strategies/docs.py`), and
+`PYTHONPATH=. python3 -m tests.test_strategy_docs` fails when a strategy's
+code and documentation drift apart — run it after any strategy change (see
+`CLAUDE.md`).
+
+Reports (`report.md`, figures, trades, equity, CSVs) and `research/*.md` are
+loaded into Postgres (`report_runs`, `report_figures`, `report_tables`) at
+startup, and again with the **Refresh reports** button or
+`python3 -m swing_screener.web.ingest` after a new run. Prices and screener
+history come from the existing `prices` / `universe_history` / `index_series`
+tables.
+
+### Keep a watchlist
+
+Every full screening run updates the watchlist automatically: a name is on it
+while its strategy marks it `tradeable` or `watchlist_candidate` (the same
+rule as the daily summary's watchlist section) and drops off when it no longer
+does. Add your own names in the web UI (Watchlist page, or ☆ next to the symbol
+on the chart) or from the command line — the screener never touches those.
+
+```bash
+python3 -m swing_screener.screening.watchlist --list
+python3 -m swing_screener.screening.watchlist --add AAPL --market us --note "breakout above 235"
+python3 -m swing_screener.screening.watchlist --remove AAPL --market us
+python3 -m swing_screener.screening.watchlist --sync-latest   # rebuild from the latest recorded runs
+```
+
+Removing a screener name hides it until it drops off the screen and is flagged
+again, so the next run doesn't put it straight back.
+
 ### Re-render a finished run as a report
 
 ```bash
@@ -175,9 +244,11 @@ trading/
     swing_screener/
       core/           indicators, swings, chart patterns, context — strategy-agnostic
       strategies/     one file per strategy, behind one interface
-      backtesting/    simulator, metrics, reports, baseline, experiments
+      backtesting/    simulator, metrics, reports, baseline, experiments,
+                      index-investing suite (core/allocate/accumulate/stats)
       marketdata/     cache, Postgres, universes, backfill
       screening/      the daily screener pipeline
+      web/            read-only viewer (FastAPI + static JS) and report ingest
     tests/            behaviour-preservation harness
   data/           inputs: universe lists, earnings overrides
   reports/        generated output — one directory per run (gitignored)
@@ -192,6 +263,7 @@ trading/
 |---|---|
 | [`scripts/README.md`](scripts/README.md) | Full command reference, how the strategy works gate by gate, known gaps |
 | [`research/`](research/) | What has been tested and what the numbers were |
+| [`research/index-investing-research.md`](research/index-investing-research.md) | Index investing: SIP timing, overlays, allocation — results and caveats |
 | [`archive/README.md`](archive/README.md) | The original prompts and how they diverge from the code |
 
 ## A caution

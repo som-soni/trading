@@ -155,6 +155,12 @@ class Strategy(ABC):
     needs_ctx_extras: bool = False
     extra_columns: tuple[str, ...] = ()
     extra_numeric_columns: tuple[str, ...] = ()
+    # True when the LIVE screener should attach current fundamentals to the
+    # rows that passed. Deliberately screener-only: those figures are the
+    # current restatement with no as-of history, so a backtest reading them
+    # would be ranking a 2015 stock by a 2026 margin. See
+    # marketdata/fundamentals.py.
+    wants_live_fundamentals: bool = False
     # minimum daily bars before this strategy will evaluate a symbol
     min_bars: int = 260
 
@@ -165,19 +171,63 @@ class Strategy(ABC):
     how_it_works: tuple[str, ...] = ()   # the mechanics, in plain language
     caveats: tuple[str, ...] = ()        # what is known to be wrong or untested
 
+    # --- full reference documentation (the web app's Strategy page) ---
+    # This page is GENERATED from these attributes, so it cannot drift from
+    # the code — and tests/test_strategy_docs.py fails if a code in
+    # gate_codes / watch_codes / setup_codes has no entry here, if an entry
+    # documents a code that no longer exists, or if a placeholder is broken.
+    #
+    # Text may embed `{NAME}` placeholders naming a module-level constant of
+    # the strategy's own module (e.g. "stop more than {MAX_STOP_PCT}% below
+    # entry"); the page substitutes the live value, so changing a threshold
+    # updates the explanation automatically. Use `{{` / `}}` for literal braces.
+    status: str = ""                       # one line: validated? edge? e.g. "No demonstrated edge"
+    gate_docs: dict[str, str] = {}         # hard gate code -> what it requires (failing = AVOID)
+    watch_docs: dict[str, str] = {}        # watch flag code -> what it flags (caps the decision)
+    setup_docs: dict[str, str] = {}        # setup code -> the pattern it recognises
+    entry_rules: tuple[str, ...] = ()      # how entry, stop and target are placed
+    exit_rules: tuple[str, ...] = ()       # how a trade ends, live and in the backtest
+    # (label, source, meaning): source is a module constant name, or
+    # "cfg.<field>" / "cfg.screener.<field>" for a per-market MarketConfig value
+    param_docs: tuple[tuple[str, str, str], ...] = ()
+    # the backtest invocation that measures the strategy with its REAL exit
+    # policy (run from scripts/ with PYTHONPATH=.); empty = default bracket exit
+    backtest_args: str = ""
+
+    @classmethod
+    def doc_namespace(cls) -> dict:
+        """Values `{NAME}` placeholders (and param_docs sources) can refer to:
+        the module's UPPER_CASE constants, plus the class's own numeric
+        tunables (e.g. `entry_channel`, `min_structural_r`), inherited ones included."""
+        import sys
+        mod = sys.modules[cls.__module__]
+        ns = {k: v for k, v in vars(mod).items() if k.isupper() and isinstance(v, (int, float, str, tuple))}
+        for k in dir(cls):
+            v = getattr(cls, k, None)
+            if not k.startswith("_") and isinstance(v, (int, float)) and not isinstance(v, bool):
+                ns.setdefault(k, v)
+        return ns
+
+    @classmethod
+    def render_doc(cls, text: str) -> str:
+        """Substitute `{NAME}` placeholders with the live constant values."""
+        ns = {k: (f"{v:g}" if isinstance(v, float) else v) for k, v in cls.doc_namespace().items()}
+        return text.format_map(ns)
+
     @classmethod
     def explain(cls) -> str:
         """Markdown block describing the strategy for a report."""
         out: list[str] = []
+        r = cls.render_doc  # `{NAME}` placeholders -> live values, same as the web page
         if cls.thesis:
-            out += [f"**Thesis.** {cls.thesis}", ""]
+            out += [f"**Thesis.** {r(cls.thesis)}", ""]
         if cls.how_it_works:
             out += ["**How it works**", ""]
-            out += [f"{i}. {step}" for i, step in enumerate(cls.how_it_works, 1)]
+            out += [f"{i}. {r(step)}" for i, step in enumerate(cls.how_it_works, 1)]
             out.append("")
         if cls.caveats:
             out += ["**Known caveats**", ""]
-            out += [f"- {c}" for c in cls.caveats]
+            out += [f"- {r(c)}" for c in cls.caveats]
             out.append("")
         return "\n".join(out)
 

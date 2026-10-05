@@ -20,7 +20,9 @@ DECISION_RANK = {
 }
 
 _LEAD_COLUMNS = [
-    "strategy", "symbol", "sector", "price",
+    # `chart` is a link straight to the symbol's chart: every candidate has to
+    # be looked at before it is traded, and retyping tickers is the friction.
+    "strategy", "symbol", "chart", "sector", "price",
     "decision", "tradeable", "watchlist_candidate", "decision_before", "reason",
     "uptrend_intact", "first_failed_gate", "has_setup",
 ]

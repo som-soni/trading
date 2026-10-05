@@ -21,11 +21,15 @@ have been corrected.
 3. **India's momentum premium lives in small/mid caps and disappears in large
    caps.** Monotonic decay from +14.2% excess at a ₹1cr turnover floor to
    −9.3% at ₹500cr.
-4. **Donchian channel breakout is the only hand-built strategy with a
-   positive edge, and only in India** (+3.06% excess). Its US run trails SPY
-   by 7.07% — but the trade shape (129 trend exits at +2.58R) says the signal
-   works and the *book* is the constraint: 10,793 of 14,336 signals were
-   declined for want of cash. See §3.5.
+4. **No hand-built strategy has a positive edge, in either market.**
+   Donchian looked like the exception at +3.06% excess in India, but that was
+   a 500-symbol sampling artefact: on the full 1,064-candidate universe it
+   returns **7.34% against the index's 11.68% (−4.34% excess)**. A 7.6pp
+   swing from sampling alone — see §3.7.
+   The trade shape is still sound (profit factor 1.22, avg +0.43R). What
+   fails is *which* signals the book takes: slots bind 580× harder than cash
+   (63,383 vs 109 declines), and the tiebreaker among competing signals is
+   effectively arbitrary. See §3.5 and §3.7.
 5. **Corrected:** an earlier conclusion that "stock selection adds no value,
    buy the index" was drawn from US data alone and over-generalised. India
    contradicts it.
@@ -61,7 +65,9 @@ Every row is a completed backtest. **Append new strategies here.**
 | momentum baseline | top 50, ₹100cr floor, 25bps | 11.15% | −49.4% | 0.63 | 0.23 | −0.53 | 2164 |
 | momentum baseline | top 20, ₹250cr floor, 25bps | 9.10% | −49.6% | 0.51 | 0.18 | −2.59 | 890 |
 | momentum baseline | top 20, ₹500cr floor, 25bps | 2.59% | −46.9% | 0.23 | 0.06 | −9.10 | 567 |
-| **donchian** | 500-symbol sample, 50d exit, no target | **14.74%** | −43.2% | 0.78 | 0.34 | **+3.06** | — |
+| **donchian** | **FULL universe (1,064), 50d exit, no target** | **7.34%** | −48.2% | 0.47 | 0.15 | **−4.34** | 430 |
+| donchian | 500-sample, 50d exit, no target, part-fill | 14.97% | −36.4% | 0.83 | 0.41 | +3.29 | 381 |
+| donchian | 500-sample, 50d exit, no target *(superseded)* | 14.74% | −43.2% | 0.78 | 0.34 | +3.06 | — |
 | **trend_pullback** | 500-symbol sample, bracket exits | **0.57%** | −18.5% | 0.12 | 0.03 | **−11.11** | 183 |
 
 ### US (benchmark: SPY — CAGR 12.79%, maxDD −34.1%, Sharpe 0.80)
@@ -167,7 +173,10 @@ strategy made nothing on either:
 - **SNDK was unsizeable** — 14 HIGH CONFIDENCE bars, all with `shares = 0` at
   ₹1,600–2,400/share on a ₹10 lakh account.
 
-### 3.5 The book is cash-constrained, not signal-constrained (donchian)
+### 3.5 The book could not afford its own signals (donchian)
+
+*Resolved: the fix below removed the cash constraint, after which slots
+became binding instead — see §3.6.*
 
 Donchian's US run returned 5.78% against SPY's 12.85%, but the trade shape says
 the signal is not the problem:
@@ -214,7 +223,163 @@ Two defects found and fixed while establishing this:
 2. `cost` was computed before the final share count, so a scaled fill would
    have been charged for shares it did not buy.
 
-### 3.6 Universe restriction (answered)
+**The part-fill fix is the largest single improvement measured in this repo.**
+Same config, same 500-symbol sample, same exit policy — only the fill logic
+changed:
+
+| | declines order | part-fills |
+|---|---|---|
+| CAGR | 5.41% | **8.78%** |
+| maxDD | −58.56% | **−32.79%** |
+| Sharpe | 0.37 | **0.57** |
+| avg R | 0.345 | **0.423** |
+| trades | 328 | **480** |
+| excess | −7.44 | **−4.07** |
+
++3.37% CAGR and **25.8pp** less drawdown. The drawdown half is the surprise:
+idle cash was not neutral, it concentrated the book into fewer positions at
+precisely the worst moments.
+
+#### Resizing the book does NOT help — thesis falsified
+
+The obvious follow-up was that `max_positions` x `max_position_pct` = 250% of
+capital must be wrong, and a tighter notional cap would let the book hold more
+positions. **It makes things monotonically worse** (US, 13.75y, identical
+signal set, donchian-50d-noTarget):
+
+| risk | notional cap | CAGR | maxDD | Sharpe | Calmar | excess |
+|---|---|---|---|---|---|---|
+| 1.0% | **25%** *(shipped)* | **8.78%** | **−32.8%** | **0.57** | **0.27** | **−4.07** |
+| 1.0% | 15% | 6.80% | −40.7% | 0.46 | 0.17 | −6.05 |
+| 1.0% | 10% | 4.71% | −43.5% | 0.35 | 0.11 | −8.14 |
+| 0.5% | 25% | 5.57% | −30.7% | 0.47 | 0.18 | −7.28 |
+| 0.5% | 10% | 4.18% | **−29.5%** | 0.38 | 0.14 | −8.67 |
+
+Drawdown gets *worse* as the cap tightens, not better. The reason is the thing
+trend following depends on: the return lives in a handful of enormous winners,
+so capping position size caps the winner. Spreading the same capital over more,
+smaller positions dilutes the right tail faster than it diversifies away the
+losses. Halving risk per trade buys ~3pp of drawdown for ~3pp of CAGR — a bad
+trade at these levels.
+
+**Lesson: the capital constraint was real, but "hold more, smaller positions"
+was the wrong remedy. Let the book fill partially and stay concentrated.**
+
+#### India inverts the US cap result — so neither was adopted
+
+Same sweep, India, identical signal set:
+
+| risk | notional cap | CAGR | maxDD | Sharpe | Calmar | excess | turnover |
+|---|---|---|---|---|---|---|---|
+| 1.0% | 25% *(shipped)* | 14.97% | −36.4% | 0.83 | 0.41 | +3.29 | 2.53 |
+| 1.0% | **15%** | **17.89%** | −37.5% | **0.96** | **0.48** | **+6.21** | 2.33 |
+| 1.0% | 10% | 17.42% | −37.8% | 0.95 | 0.46 | +5.74 | 2.26 |
+| 0.5% | 25% | 11.42% | **−23.6%** | 0.91 | 0.48 | −0.26 | 1.59 |
+| 0.5% | 10% | 11.41% | −23.6% | 0.91 | 0.48 | −0.27 | 1.58 |
+
+India prefers a 15% cap; the US prefers 25% and degrades monotonically as the
+cap tightens. **Neither was adopted.** Choosing a different cap per market,
+from one 500-symbol sample each, over a ~3% CAGR difference, is the
+data-snooping this document exists to prevent (§5).
+
+What decides it is the *shape* of the evidence, not the winner. US Calmar has a
+monotone gradient — 0.27 / 0.17 / 0.11 — while India's is flat at 0.41 / 0.48 /
+0.46 / 0.48 / 0.48. A flat surface with one bump is noise; a monotone gradient
+is signal. The shipped config stays the default and `cap=15%` is re-tested on
+the full universe, not on a sample.
+
+Two further notes:
+
+- **The part-fill fix barely moved India** (14.74% → 14.97% CAGR) against the
+  US's +3.37%. India's book was far less cash-starved. Its drawdown still
+  improved 6.8pp (−43.2% → −36.4%).
+- **India donchian at `cap=15%` would out-Sharpe and out-Calmar the momentum
+  baseline** (0.96 / 0.48 vs 0.88 / 0.40). If that survives the full universe
+  it is the first hand-built strategy here to beat the baseline on
+  risk-adjusted terms. Unconfirmed.
+
+A methodology trap found here, worth remembering: the first version of this
+sweep used `ExitPolicy()`, which defaults to `bracket`+target, so it measured
+donchian with a fixed target — and produced the *opposite* ranking (cap=15%
+best by +3.6% CAGR). The tell was 696 trades at a 43-day median hold against
+the strategy's own 338 trades at 158 days. `--caps` and `--sizing` now require
+the exit policy to be passed in.
+
+### 3.6 Signal selection, not signal generation, is donchian's binding constraint
+
+The full-universe India run is 7.6pp worse than the 500-symbol sample
+(7.34% vs 14.97% CAGR). The sample did not contain better *stocks* — it
+contained fewer *competitors*.
+
+| | 500-sample | full universe |
+|---|---|---|
+| signals generated | — | 17,477 |
+| declined: slots full | — | **63,383** |
+| declined: no cash | — | 109 |
+| trades taken | 381 | 430 |
+| CAGR | 14.97% | **7.34%** |
+
+After the part-fill fix, cash blocks almost nothing (109) and slots block
+everything (63,383 — a 580× ratio). With 17,477 signals chasing 10 slots, the
+rule that picks between them determines the result. That rule is
+`portfolio_sim.py:254`, sorting on `quality`, which donchian defines as:
+
+```python
+score = 2.0 if DC01 else (1.0 if DC02 else 0.0)
+if watch_flags["XN1"]: score -= 0.5
+```
+
+Five possible values — and **all 430 taken trades are DC-01 /
+TRADE-HIGH CONFIDENCE**, so they all scored identically. Python's sort is
+stable, so ties resolve to insertion order, which is scan order. *Among
+thousands of equally-ranked breakouts the book takes whichever was scanned
+first, i.e. roughly alphabetically.*
+
+That is why the sample flattered it: with 500 symbols there were few
+competitors per day and arbitrary selection cost little. At full universe it
+costs 7.6pp of CAGR.
+
+**This is the same mechanism that makes the momentum baseline work.** The
+baseline's entire edge is its ranking — 12-1 momentum across the whole
+universe. Donchian generates sound signals (profit factor 1.22, avg +0.43R)
+and then discards the ranking problem.
+
+#### Tested: ranking IS the lever (India, full universe)
+
+`--rank-by` replaces `Signal.quality` with a point-in-time cross-sectional
+score. Identical 17,477 signals, identical exits and costs — only the order in
+which they compete for the 10 slots changes:
+
+| ranking | CAGR | maxDD | Sharpe | Calmar | excess | trades |
+|---|---|---|---|---|---|---|
+| `setup` (the strategy's 5-level score) | 7.34% | −48.2% | 0.47 | 0.15 | −4.34 | 430 |
+| `random` (seeded control) | 6.05% | −49.8% | 0.40 | 0.12 | −5.63 | 468 |
+| **`momentum` (12-1)** | **13.83%** | −52.6% | **0.73** | **0.26** | **+2.15** | 472 |
+| *Nifty 500 buy & hold* | *11.68%* | *−38.3%* | *0.78* | *0.305* | — | — |
+
+**Momentum ranking is worth +7.78pp CAGR over the random control.** Total
+return 164.95% → 493.88%.
+
+The control carries the argument: `random` (6.05%) lands within ~1.3pp of
+`setup` (7.34%), so the strategy's own score was barely better than a coin
+flip. The finding is not "momentum is magic" — it is "no selection was
+happening, and now some is."
+
+**What it does not fix.** Drawdown got *worse* (−52.6% vs −48.2%), because
+momentum ranking concentrates the book into the same hot names. Sharpe 0.73
+and Calmar 0.26 remain below the index's 0.78 / 0.305. It beats buy-and-hold on
+return and still loses on risk-adjusted terms. An improvement, not a victory.
+
+Caveats: one market, and momentum ranking is *known* to work in India
+specifically (the baseline earns +6.23% excess there and nothing in the US).
+The US test is the real check — pending.
+
+A corollary worth stating: **any backtest here that uses `--sample` and hits
+its position cap is biased upward**, because sampling thins the competition
+for slots. Sample runs are for A/B comparisons on one signal set, never for
+headline numbers.
+
+### 3.7 Universe restriction (answered)
 
 Restricting to larger/more liquid names makes India **worse**, monotonically.
 See the ledger. The `liquidity_rank_top` parameter was found to be inert — the
@@ -267,6 +432,23 @@ Decisions that materially affect results, and why.
    material drag that none of these numbers reflect.
 6. **One regime.** 2013–2026 contains no prolonged bear market. The index-level
    overlays (§2) are the only tests covering 2000–02 and 2008.
+7. **Fundamental data caps what can be tested at all.** Measured on
+   yfinance: `quarterly_income_stmt` returns **5 quarters** (AAPL and
+   RELIANCE.NS alike), `income_stmt` 4-5 years, and `earnings_dates` raises
+   ImportError without `lxml`. All of it is the CURRENT restatement with no
+   as-of history. Five quarters supports exactly one year-over-year reading
+   and cannot show growth *acceleration* (needs 8+). Against a ~55-quarter
+   window that is 9% coverage, all at the recent end. **No fundamental
+   criterion can be backtested here** — any attempt ranks a 2015 stock by a
+   2026 figure. A live screener may legitimately read current fundamentals,
+   because for a screen "now" IS the as-of date. Unblocking this needs a
+   point-in-time vendor: Sharadar via Nasdaq Data Link, Compustat PIT or
+   Capital IQ (US); Trendlyne or Screener.in (India).
+8. **`--sample` biases results UPWARD when the position cap binds** — measured,
+   not theoretical. Sampling thins the competition for slots, so the book faces
+   an easier selection problem than it really would. India donchian: 14.97% CAGR
+   on a 500-symbol sample vs **7.34% on the full 1,064** (§3.6). Use `--sample`
+   for A/B tests on one signal set; never for a headline number.
 
 ---
 
@@ -307,12 +489,14 @@ most confidently did active harm.
 
 | # | experiment | needs | why |
 |---|---|---|---|
-| 1 | **Pyramiding into winners** (Turtle 0.5N adds) | simulator work (~½ day) | Donchian's actual return engine. 129 trend exits at **+2.58R** avg and we take one bite of each. The biggest untested lever in the repo |
-| 2 | Donchian exit-channel width on **donchian** signals | nothing new | §3.3 measured exits on `trend_pullback` only. Donchian's own rule is the 4-week (20d), not the 50d we use |
-| 3 | Risk/notional sizing so the book can fill its slots | nothing new | §3.5 — in flight |
-| 4 | Gate ablation — drop each gate, measure | one full re-run | `hard_gates` JSONB now captures the full vector |
-| 5 | Value + momentum blend (Asness et al.) | **point-in-time fundamentals** | Most robust pairing in the literature; blocked on data |
-| 6 | Full-universe runs for the gated strategies | US 3,604 / India 1,064 candidates | Only `momentum_baseline` is full-universe today; donchian, trend_pullback and breakout are 500-symbol samples |
+| 1 | ~~Rank competing signals informatively~~ | — | **Answered: yes, and it is large.** +7.78pp CAGR over a random control in India; `setup` scored barely above random (§3.6). **US test pending.** Next: does it also help `trend_pullback` / `breakout`? |
+| 2 | **Pyramiding into winners** (Turtle 0.5N adds) | simulator work (~½ day) | Donchian's return engine. 129 trend exits at **+2.58R** avg and we take one bite of each |
+| 3 | Donchian exit-channel width on **donchian** signals | nothing new | §3.3 measured exits on `trend_pullback` only. Donchian's own rule is the 4-week (20d), not the 50d we use |
+| 4 | ~~Risk/notional sizing~~ | — | **Answered: no.** Tightening the cap hurts monotonically in the US; India disagrees; neither adopted (§3.5) |
+| 5 | Gate ablation — drop each gate, measure | one full re-run | `hard_gates` JSONB now captures the full vector |
+| 6 | Value + momentum blend (Asness et al.) | **point-in-time fundamentals** | Most robust pairing in the literature; blocked on data |
+| 7 | **Minervini SEPA** — backtest both markets | running | Trend Template + VCP implemented; part 2 (fundamentals) omitted by the data ceiling in §5.7. Screener live: US 9 TRADE of 292 template-passers, India 0 TRADE / 10 watchlist (regime) |
+| 8 | Full-universe runs for the gated strategies | US 3,604 / India 1,064 candidates | India donchian **done** (§3.6); US donchian, trend_pullback and breakout running |
 
 ---
 
@@ -350,6 +534,9 @@ Reports land in `reports/<market>/<strategy>/<run>/` — `report.md`,
 
 | date | change |
 |---|---|
+| 2026-10-04 | Minervini SEPA implemented (Trend Template + VCP detector); screeners run both markets; backtests queued |
+| 2026-10-04 | Measured the fundamental-data ceiling: 5 quarters, current restatement only — part 2 of SEPA is not backtestable (§5.7) |
+| 2026-10-04 | Ranking competing signals by 12-1 momentum beat a random control by +7.78pp CAGR (India donchian, full universe) |
 | 2026-10-04 | Donchian implemented and backtested: India +3.06% excess, US −7.07% |
 | 2026-10-04 | Found the US donchian book is cash-constrained, not signal-constrained (§3.5) |
 | 2026-10-04 | Fixed: simulator declined signals outright instead of part-filling from available cash |

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='4' fill='%232962ff'/%3E%3Cpath d='M4 14l4-5 3 3 5-7' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <a class="brand" href="#/chart"><svg viewBox="0 0 20 20"><rect width="20" height="20" rx="5"/><path d="M4 14l4-5 3 3 5-7"/></svg>Trading</a>
+  <nav>
+    <a href="#/chart" data-nav="chart">Chart</a>
+    <a href="#/watchlist" data-nav="watchlist">Watchlist</a>
+    <a href="#/screening" data-nav="screening">Screening</a>
+    <a href="#/reports" data-nav="reports">Reports</a>
+    <a href="#/strategies" data-nav="strategies">Strategies</a>
+  </nav>
+  <span class="spacer"></span>
+  <button class="ghost icon" id="help" title="Keyboard shortcuts (?)">?</button>
+  <button id="refresh" title="Load new report files from disk into the database">
+    <svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-2-4.5M16 3v4h-4"/></svg>Refresh reports</button>
+</header>
+<main id="view"></main>
+<div id="toasts"></div>
+<script src="/static/vendor/lightweight-charts.js"></script>
+<script src="/static/vendor/marked.js"></script>
+<script src="/static/drawings.js"></script>
+<script src="/static/studies.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

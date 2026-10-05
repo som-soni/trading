@@ -167,3 +167,75 @@ def gap_not_held(daily: pd.DataFrame, lookback: int = 10, gap_pct: float = 8.0) 
         if gap < -gap_pct and current_close < prev_close:
             return True
     return False
+
+
+def volatility_contractions(
+    daily: pd.DataFrame, lookback: int = 120, left: int = 3, right: int = 3,
+    min_pullback_pct: float = 2.0,
+) -> list[tuple[pd.Timestamp, float, float]]:
+    """Successive peak-to-trough pullbacks inside a base, newest LAST.
+
+    Minervini's Volatility Contraction Pattern is a base in which each
+    pullback is shallower than the one before it (25% -> 12% -> 6%), which
+    says supply is drying up. To test that you first need the sequence of
+    pullbacks, which is what this returns: one (trough_date, depth_pct,
+    pivot_high) per swing-high -> following-swing-low leg in the window.
+
+    `right` bars of confirmation are required on both sides of a swing, so
+    the newest leg only appears once its low is confirmed -- deliberately
+    lagging rather than guessing at an unconfirmed low.
+
+    Legs shallower than `min_pullback_pct` are noise, not contractions, and
+    are dropped so a flat drift does not read as a dozen tiny contractions.
+    """
+    if daily is None or len(daily) < left + right + 5:
+        return []
+    win = daily.iloc[-lookback:]
+    hi_mask = swing_high_mask(win["high"], left, right)
+    lo_mask = swing_low_mask(win["low"], left, right)
+
+    # walk the window pairing each swing high with the next swing low after it
+    events = sorted(
+        [(ts, "H", float(win.at[ts, "high"])) for ts in win.index[hi_mask]]
+        + [(ts, "L", float(win.at[ts, "low"])) for ts in win.index[lo_mask]],
+        key=lambda e: e[0],
+    )
+    out: list[tuple[pd.Timestamp, float, float]] = []
+    pending_high: tuple[pd.Timestamp, float] | None = None
+    for ts, kind, val in events:
+        if kind == "H":
+            # a higher high before any low supersedes the previous one: the
+            # pullback is measured from the peak the base actually made
+            if pending_high is None or val >= pending_high[1]:
+                pending_high = (ts, val)
+        elif pending_high is not None:
+            peak = pending_high[1]
+            if peak > 0:
+                depth = (peak - val) / peak * 100.0
+                if depth >= min_pullback_pct:
+                    out.append((ts, depth, peak))
+            pending_high = None
+    return out
+
+
+def is_contracting(
+    contractions: list[tuple[pd.Timestamp, float, float]],
+    min_legs: int = 2, tolerance: float = 1.0, last_n: int = 3,
+) -> bool:
+    """True when the MOST RECENT legs each pull back less than the one before.
+
+    Only the final `last_n` legs are tested, because that is what the rule
+    actually describes -- "25%, then 12%, then 6%" is a three-leg sequence at
+    the right edge of the base. Demanding monotonic contraction across every
+    leg in a 120-bar window rejects essentially everything: a 120-bar window
+    routinely holds 6-8 legs and real bases are not monotonic that far back.
+
+    `tolerance` lets a leg be marginally deeper (in percentage points) without
+    disqualifying the base, for the same reason.
+    """
+    if len(contractions) < min_legs:
+        return False
+    depths = [d for _, d, _ in contractions][-last_n:]
+    if len(depths) < min_legs:
+        return False
+    return all(b <= a + tolerance for a, b in zip(depths, depths[1:]))

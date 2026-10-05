@@ -16,6 +16,7 @@ from pathlib import Path
 import pandas as pd
 
 from ..core import charts
+from . import links
 from ..core.charts import AXIS, GRID, MUTED, NEG, POS, SERIES_STRATEGY, SURFACE
 
 logger = logging.getLogger(__name__)
@@ -221,7 +222,11 @@ def _table(rows: pd.DataFrame, cols: list[tuple[str, str]], currency: str) -> li
         cells = []
         for c, _ in present:
             v = r.get(c)
-            if c in ("price", "entry", "stop"):
+            if c == "symbol":
+                # the ticker IS the link to its chart — every candidate here
+                # has to be looked at before it is traded
+                cells.append(links.md_link("" if pd.isna(v) else str(v)))
+            elif c in ("price", "entry", "stop"):
                 cells.append(f"{currency}{_fmt(v)}")
             elif c in ("risk_pct", "target_r", "setup_quality", "rsi", "adx"):
                 cells.append(_fmt(v))
@@ -504,7 +509,8 @@ def _strategy_section(key: str, by_market: dict, L: list[str]) -> tuple[int, int
             gap = ("—" if not (isinstance(px, (int, float)) and isinstance(entry, (int, float))
                                and px) else f"{(entry / px - 1) * 100:+.1f}%")
             L.append(
-                f"| {r.get('market','')} | {r.get('symbol','')} | {r.get('sector','')} "
+                f"| {r.get('market','')} | {links.md_link(r.get('symbol',''))} "
+                f"| {r.get('sector','')} "
                 f"| {c}{_fmt(px)} | {c}{_fmt(entry)} | {gap} | {c}{_fmt(r.get('stop'))} "
                 f"| {_fmt(r.get('risk_pct'))} | {_fmt(r.get('target_r'))} "
                 f"| {r.get('decision','')} |"
@@ -539,7 +545,7 @@ def _strategy_section(key: str, by_market: dict, L: list[str]) -> tuple[int, int
         L.append("| market | symbol | sector | waiting for |")
         L.append("|---|---|---|---|")
         for _, r in allw.iterrows():
-            L.append(f"| {r.get('market','')} | {r.get('symbol','')} "
+            L.append(f"| {r.get('market','')} | {links.md_link(r.get('symbol',''))} "
                      f"| {r.get('sector','')} | {r.get('wait_for','')} |")
         L.append("")
 

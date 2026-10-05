@@ -87,19 +87,25 @@ class DonchianStrategy(Strategy):
         "portfolio that can profit from downtrends).",
         "**Gate N2** rejects a stock already more than 1 ATR above the channel "
         "high, i.e. the breakout has run away before you could act.",
-        f"**Setup DC-01** fires when the close exceeds the highest high of the "
-        f"last {entry_channel} bars; DC-02 marks a coil within 1 ATR below it.",
-        f"**Entry** is the channel high — where a resting buy-stop fills. "
-        f"**Stop** is {stop_atr_mult:g} ATR below it (the Turtles' 2N), floored "
-        f"at {min_stop_pct:g}% so a very quiet stock does not get a stop that "
+        "**Setup DC-01** fires when the close exceeds the highest high of the "
+        "last {entry_channel} bars; DC-02 marks a coil within 1 ATR below it. "
+        "Only DC-01 is the entry signal, so DC-02 never reaches TRADE - HIGH CONFIDENCE.",
+        "**Entry** is 0.1% above the channel high, rounded up to the tick — where a "
+        "resting buy-stop fills (in the backtest it usually fills at the next open, "
+        "because DC-01 only fires once the close is already through the channel). "
+        "**Stop** is {stop_atr_mult} ATR below it (the Turtles' 2N), floored "
+        "at {min_stop_pct}% so a very quiet stock does not get a stop that "
         "daily noise alone would trigger.",
-        f"**Exit** is a close below the {exit_channel}-day low. There is no "
-        "profit target: that is the whole point.",
+        "**Exit** is a close below an N-day low, with no profit target: that is the "
+        "whole point. The screener reports the {exit_channel}-day low, but nothing "
+        "manages live positions; backtests use `--donchian-bars` (50 in every "
+        "recorded run), not {exit_channel}.",
     )
     caveats = (
-        "**NOT YET BACKTESTED** as a complete strategy. Its exit rule is the "
-        "only one of eight tested that showed positive per-trade expectancy, "
-        "which is why it exists — that is suggestive, not evidence.",
+        "**No demonstrated edge.** Backtested with a 50-day channel exit: India full "
+        "universe 7.34% CAGR vs the index's 11.68%; US 500-symbol sample 5.78% vs "
+        "about 12.8%. Its exit rule was the only one of eight tested with positive "
+        "per-trade expectancy, which is why it exists.",
         "Trend following's track record is in diversified futures traded long "
         "and short. A long-only single-market equity book removes both the "
         "cross-market diversification and the short side.",
@@ -108,6 +114,111 @@ class DonchianStrategy(Strategy):
         "Run it with `--exit-mode donchian --no-target`; the bracket exit "
         "defeats the strategy's entire premise.",
     )
+
+    # --- full reference documentation (the web app's Strategy page) ---
+    # The tunables are class attributes, not module constants, so they are
+    # interpolated with f-strings here (same as how_it_works) rather than
+    # `{NAME}` placeholders.
+    status = (
+        "No demonstrated edge: backtested with a 50-day channel exit and no "
+        "target, it trailed the index in both markets on the widest runs "
+        "(India full universe 7.34% CAGR vs 11.68%; US 500-sample 5.78% vs "
+        "~12.8%). Trade shape is sound (profit factor ~1.2) but signal "
+        "selection among tied breakouts is arbitrary."
+    )
+    gate_docs = {
+        "N1": (
+            "Today's close must be above the 200-day simple moving average. "
+            "Fails if the close is at or below it, or if there is not enough "
+            "history to compute the SMA200."
+        ),
+        "N2": (
+            f"Today's close must be no more than 1 ATR(14) above the "
+            f"{entry_channel}-day channel high (the highest high of the "
+            f"{entry_channel} bars before today). A close further above it "
+            "means the breakout has already run away and the symbol is AVOID."
+        ),
+    }
+    watch_docs = {
+        "XN1": (
+            "Raised only on a DC-01 breakout day when today's volume is below "
+            "its 50-day average volume. Caps the decision at TRADE ON TRIGGER "
+            "and lowers setup quality by 0.5, which demotes it in the "
+            "backtest's ranking of competing signals."
+        ),
+        "XN2": (
+            f"Raised when {stop_atr_mult:g} x ATR(14) is more than 12% of the "
+            "close (a very wide raw volatility stop). Caps the decision at "
+            "TRADE ON TRIGGER. Separately, any plan whose actual stop risk "
+            "exceeds 15% of entry is downgraded to WATCH - WAIT."
+        ),
+    }
+    setup_docs = {
+        DC01: (
+            f"Breakout: today's close is above the highest high of the prior "
+            f"{entry_channel} bars. This is also the entry signal, so DC-01 is "
+            "the only setup that can produce TRADE - HIGH CONFIDENCE and the "
+            "only one the backtest trades."
+        ),
+        DC02: (
+            f"Coil: today's close is within 1 ATR(14) below the "
+            f"{entry_channel}-day channel high (inclusive of the high itself). "
+            "It builds a plan but the entry signal has not fired, so it is "
+            "capped at TRADE ON TRIGGER live and never taken by the default "
+            "backtest."
+        ),
+    }
+    entry_rules = (
+        f"Channel high = highest high of the {entry_channel} bars before "
+        "today (today's bar excluded).",
+        "Entry is a buy-stop at the channel high + 0.1%, rounded up to the "
+        "market tick size. Because DC-01 already closed above the channel, "
+        "the next bar usually opens through it; the backtest fills at "
+        "max(entry, open) plus slippage.",
+        f"Stop is the lower of entry - {stop_atr_mult:g} x ATR(14) and entry "
+        f"x (1 - {min_stop_pct:g}%), rounded down to the tick, so the stop is "
+        f"never closer than {min_stop_pct:g}% below entry.",
+        f"Target is a nominal entry + {nominal_target_atr:g} x ATR(14), used "
+        "only for sizing and the reported R multiple — the plan is not meant "
+        "to exit there.",
+        "Size = risk budget (account x risk %) / (entry - stop), capped by "
+        "the maximum position notional. No minimum-R test is applied.",
+        "In the backtest an unfilled order rests for up to 10 business days "
+        "and is cancelled if price trades down to the stop first.",
+    )
+    exit_rules = (
+        f"Intended exit: a daily close below the lowest low of the prior "
+        f"{exit_channel} bars (the reported channel_low), or the initial "
+        "stop, whichever comes first. The stop never trails.",
+        "Live, the screener only reports channel_low and exit_channel; it "
+        "does not manage open positions — the trader applies the channel "
+        "exit by hand.",
+        "Backtest with --exit-mode donchian: exits at the close when the "
+        "close is below the lowest low of the prior --donchian-bars bars "
+        f"(default 50, not the strategy's own {exit_channel}); the stop fills "
+        "at min(stop, open) and wins a same-bar tie. --no-target removes the "
+        "nominal target so winners can run.",
+        "Without those flags the backtest uses the default bracket exit "
+        f"(stop or the nominal {nominal_target_atr:g}-ATR target, filled "
+        "intrabar), which defeats the strategy's premise.",
+    )
+    param_docs = (
+        ("Minimum price", "cfg.screener.min_price",
+         "Screen: last close must be at least this."),
+        ("Minimum liquidity", "cfg.screener.min_dollar_volume",
+         "Screen: 20-day average dollar volume must be at least this."),
+        ("Risk per trade", "cfg.risk_pct",
+         "Fraction of equity risked between entry and stop when sizing."),
+        ("Max position size", "cfg.max_position_pct",
+         "Cap on one position's notional as a fraction of equity."),
+        ("Position cap", "cfg.max_open_positions",
+         "Backtest slots; with many tied breakouts this is the binding limit."),
+        ("Tick size", "cfg.tick_size",
+         "Entry rounded up and stop rounded down to this increment."),
+        ("Slippage", "cfg.slippage_bps",
+         "Backtest cost per side, in basis points of notional."),
+    )
+    backtest_args = "--exit-mode donchian --no-target --donchian-bars 50"
 
     # ---------- screen ----------
 

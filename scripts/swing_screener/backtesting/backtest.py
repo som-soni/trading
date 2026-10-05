@@ -37,7 +37,7 @@ Usage:
 import argparse
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as dc_replace
 from pathlib import Path
 
 import pandas as pd
@@ -420,6 +420,76 @@ def collect_signals(
     return out
 
 
+RANK_MODES = ("setup", "momentum", "vol_scaled", "random")
+
+
+def rerank_signals(
+    signals: "list[Signal]", prices: dict[str, pd.DataFrame], kind: str = "setup",
+    seed: int = 20260101,
+) -> "list[Signal]":
+    """Overwrite `Signal.quality` with a cross-sectional score.
+
+    Why this exists: once the cash constraint is fixed, the position cap is what
+    binds -- the full-universe India donchian run declined 63,383 signals for
+    want of a slot against 109 for want of cash. Every taken trade scored
+    identically on the strategy's own 5-level `setup_quality`, so ties fell
+    through to Python's stable sort and the book filled in scan order, i.e.
+    roughly alphabetically. Which signals you take is then doing more work than
+    which signals you generate, and nothing was choosing them.
+
+    `setup` keeps the strategy's own score (the default -- no behaviour change).
+    `momentum` is 12-1 month total return, the ranking the momentum baseline
+    earns its edge from. `vol_scaled` divides that by realised volatility.
+    `random` is the control: if an informative ranking does not beat a seeded
+    coin flip, the ranking is not the lever after all.
+
+    Scores are computed strictly from bars at or before each signal's own date,
+    so this cannot leak future information.
+    """
+    if kind == "setup":
+        return signals
+    if kind not in RANK_MODES:
+        raise ValueError(f"unknown rank mode {kind!r}, choose from {RANK_MODES}")
+
+    if kind == "random":
+        import random as _random
+        rng = _random.Random(seed)
+        return [dc_replace(s, quality=rng.random()) for s in signals]
+
+    # one score series per symbol, then a point-in-time lookup per signal
+    scores: dict[str, pd.Series] = {}
+    for sym, df in prices.items():
+        if df is None or df.empty or "close" not in df:
+            continue
+        c = df["close"].astype(float)
+        # 12-1: skip the most recent ~21 sessions, the short-term reversal month
+        mom = c.shift(21) / c.shift(252) - 1.0
+        if kind == "vol_scaled":
+            vol = c.pct_change().rolling(126).std()
+            mom = mom / vol.replace(0.0, pd.NA)
+        scores[sym] = mom
+
+    out: list = []
+    missing = 0
+    for sig in signals:
+        ser = scores.get(sig.symbol)
+        val = None
+        if ser is not None and sig.date in ser.index:
+            v = ser.at[sig.date]
+            if pd.notna(v):
+                val = float(v)
+        if val is None:
+            missing += 1
+            # unrankable goes last, never first -- an unknown score must not
+            # win a slot by accident
+            val = float("-inf")
+        out.append(dc_replace(sig, quality=val))
+    if missing:
+        logger.info("rerank(%s): %d of %d signals had no score, ranked last",
+                    kind, missing, len(signals))
+    return out
+
+
 def _close_trade(pos: dict, exit_date: pd.Timestamp, reason: str, exit_price: float) -> Trade:
     return Trade(
         market=pos["market"], symbol=pos["symbol"], setup=pos["setup"],
@@ -648,6 +718,7 @@ def run_portfolio_backtest(
     refresh_history: bool = False,
     risk_pct: float | None = None,
     max_position_pct: float | None = None,
+    rank_by: str = "setup",
 ):
     """Portfolio-level backtest: one capital pool, a position cap and costs.
 
@@ -694,6 +765,10 @@ def run_portfolio_backtest(
         market_key, cfg, strategy, start, candidates, deep_data,
         use_signal_cache=use_signal_cache, accept_labels=accept_labels,
     )
+    if rank_by != "setup":
+        all_signals = rerank_signals(all_signals, prices, rank_by)
+        logger.info("Re-ranked %d signals by '%s' for slot competition",
+                    len(all_signals), rank_by)
 
     result = simulate(
         all_signals, prices, cfg, start,
@@ -833,6 +908,10 @@ def main() -> None:
     parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
     parser.add_argument("--risk-pct", type=float, default=None,
                         help="risk per trade as a fraction, e.g. 0.005 (default: market config)")
+    parser.add_argument("--rank-by", default="setup", choices=list(RANK_MODES),
+                        help="how to rank signals competing for a slot. 'setup' "
+                             "(default) keeps the strategy's own score; 'momentum' "
+                             "is 12-1 month return; 'random' is the control")
     parser.add_argument("--max-position-pct", type=float, default=None,
                         help="notional cap per position as a fraction, e.g. 0.10 "
                              "(default: market config). max_positions x this should "
@@ -873,6 +952,7 @@ def main() -> None:
         sample=args.sample, refresh_history=args.refresh_history,
         include=[x.strip() for x in args.include.split(",") if x.strip()],
         risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
+        rank_by=args.rank_by,
     )
     from ..paths import run_dir
 
@@ -881,6 +961,8 @@ def main() -> None:
         run += f"_risk{args.risk_pct * 100:g}pct"
     if args.max_position_pct is not None:
         run += f"_cap{args.max_position_pct * 100:g}pct"
+    if args.rank_by != "setup":
+        run += f"_rank{args.rank_by}"
     run += f"_sample{args.sample}" if args.sample else ""
     out = run_dir(args.market, args.strategy, run)
     tdf.to_csv(out / "trades.csv", index=False)

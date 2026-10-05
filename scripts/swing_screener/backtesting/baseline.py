@@ -447,8 +447,36 @@ def run(
     return tdf, perf, eq, pos
 
 
-def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+# Reference documentation for the web app's Strategy page. The baseline is not
+# a `Strategy` subclass (see the module docstring), so it documents itself
+# here; its parameters are read live from build_parser(), so they cannot drift.
+# Update this block in the same change as any change to how the baseline works.
+DOC = {
+    "key": "momentum_baseline",
+    "name": "Cross-sectional momentum baseline",
+    "description": "Rank by 12-1 month momentum, hold the top N, rebalance on a calendar; the benchmark every strategy must beat.",
+    "status": "Reference portfolio, not a screener strategy. Beats the index in India; not in the US (see research/momentum-trend-research.md).",
+    "thesis": "Stocks that have outperformed over the past year keep outperforming for months (cross-sectional momentum), "
+              "so simply holding the strongest names should beat the index after costs.",
+    "how_it_works": (
+        "On each rebalance date, score every eligible stock by its return over the last `--lookback` bars, skipping the most "
+        "recent `--skip` bars (the 12-1 convention, which avoids the short-term reversal of the latest month).",
+        "Only the `--liquidity-top` most liquid names are ranked, so the list is not filled with speculative microcaps.",
+        "With the trend filter on (the default), a stock must also be above its 200-day moving average to be held.",
+        "Hold the top `--top-n` names, equal-weighted by default (`--weighting inverse_vol` sizes by inverse volatility).",
+        "A holding is sold when it drops out of the top N at a rebalance or loses its trend; there are no stops, targets or entry triggers.",
+        "Costs of `--cost-bps` per side are charged on every trade; whole shares only unless `--fractional`.",
+    ),
+    "caveats": (
+        "Survivorship bias: the universe is today's listed names, which flatters every backtest here.",
+        "Results depend on the rebalance cadence and N; compare runs with the same settings.",
+        "Optional overlays (`--index-overlay`, `--vol-target`, alternative `--rank` signals) are experiments, not the baseline itself.",
+    ),
+    "screen": False,
+}
+
+
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Cross-sectional momentum baseline")
     ap.add_argument("--market", required=True, choices=list(MARKETS.keys()))
     ap.add_argument("--start", required=True, help="YYYY-MM-DD")
@@ -484,7 +512,12 @@ def main() -> None:
         help="rank momentum only within the N most liquid names (0 = whole universe). "
         "Guards against the rank filling with speculative microcaps.",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    args = build_parser().parse_args()
 
     cfg = MARKETS[args.market]
     tdf, perf, eq, pos = run(

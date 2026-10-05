@@ -56,6 +56,14 @@ def record_run(
             tradeable=EXCLUDED.tradeable, reason=EXCLUDED.reason, full_row=EXCLUDED.full_row
     """
     db.execute_values(query, rows)
+
+    # keep the watchlist in step with the latest run; a watchlist problem must
+    # never cost the user the run they just did
+    try:
+        from . import watchlist
+        watchlist.sync_from_run(market, strategy_key, run_id, report_df)
+    except Exception as exc:  # noqa: BLE001
+        print(f"WARNING: watchlist not updated: {exc}")
     return snapshot_path
 
 

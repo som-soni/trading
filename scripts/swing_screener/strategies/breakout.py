@@ -67,24 +67,116 @@ class BreakoutStrategy(Strategy):
     )
     how_it_works = (
         "**Screen** for stocks above their SMA200 and within 20% of the 52-week high.",
-        "**Gates B1-B7** require a rising SMA200, price within 5% of the 52-week "
-        "high, a tight 20-bar base (range under 6 ATR), not already extended "
-        "beyond 4 ATR above SMA20, and no earnings inside 10 days.",
-        "**Setups**: BO-01 is a close above the 55-day pivot on confirming volume; "
-        "BO-02 is a coil sitting within 3% below that pivot.",
-        "**Entry** is the pivot plus a tick; for BO-01 the signal *is* the setup, "
-        "because the close has already cleared the pivot.",
+        "**Gates B1-B7** require an SMA200 that is not falling (no more than 0.5% "
+        "below its level 20 bars ago), price within 5% of the 52-week high, a "
+        "tight {CONSOLIDATION_BARS}-bar base (range under 6 ATR), not already "
+        "extended beyond 4 ATR above SMA20, ATR no more than 8% of price, and "
+        "no earnings inside 10 days.",
+        "**Setups**: BO-01 is a close above the {BREAKOUT_LOOKBACK}-day pivot on "
+        "confirming volume; BO-02 is a coil sitting within 3% below that pivot. "
+        "Only BO-01 is the entry signal, so only BO-01 can reach TRADE - HIGH CONFIDENCE.",
+        "**Entry** is 0.1% above the higher of today's high and the pivot, rounded "
+        "up to the tick; for BO-01 the signal *is* the setup, because the close "
+        "has already cleared the pivot.",
         "**Exit**: stop below the consolidation (never wider than 2 ATR), target "
-        "the measured base height or 2.5R, whichever is larger.",
+        "the entry plus the base height, lowered to the nearest overhead level "
+        "if one is in the way. Plans projecting under 2R are not traded.",
     )
     caveats = (
-        "**NOT VALIDATED.** The thresholds are reasonable defaults, not tuned or "
-        "backtested numbers. It has never been run through the backtester.",
+        "**NOT VALIDATED.** The thresholds are reasonable defaults, not tuned. "
+        "Backtested once (US, 500-symbol sample, bracket exits): -1.74% CAGR, "
+        "about 14.6 points a year behind SPY — see research/momentum-trend-research.md.",
         "Treat anything it produces as a hypothesis to test, not a signal to act on.",
         "The target is the measured move off the base, with no floor; setups "
-        "projecting under 2R are rejected rather than padded. `structural_r` "
-        "and the R column are therefore the same number by construction.",
+        "projecting under 2R are rejected rather than padded. When an overhead "
+        "level lowers the target, the R column is smaller than `structural_r`, "
+        "and the 2R test uses the lowered R.",
+        "Watch flag XB2 (breakout on below-average volume) can never fire: it needs "
+        "BO-01, which already requires volume above 1.5x average.",
     )
+
+    # --- full reference documentation (generated Strategy page) ---
+    status = (
+        "Not validated, no demonstrated edge: thresholds are untuned defaults, and the one "
+        "recorded run (US, 500-symbol sample, bracket exits) returned -1.74% CAGR, "
+        "about 14.6 points a year behind SPY."
+    )
+    gate_docs = {
+        "B1": "The latest close must be strictly above the 200-day SMA. A missing SMA200 fails.",
+        "B2": "The 200-day SMA must not be falling. It fails only if SMA200 is more than 0.5% "
+              "below its value 20 bars ago, so a flat SMA200 passes as well as a rising one.",
+        "B3": "The close must be at least 95% of the 52-week high (high_252, which includes "
+              "today's bar), i.e. no more than 5% below it. Fails if the 52-week high is unavailable.",
+        "B4": "The {CONSOLIDATION_BARS} bars before today must form a tight base: their highest "
+              "high minus lowest low must be at most 6 x ATR14. Fails if there are fewer than "
+              "{CONSOLIDATION_BARS} prior bars or ATR is missing or zero.",
+        "B5": "The close must not be more than 4 x ATR14 above the 20-day SMA (exactly 4 ATR "
+              "passes). If SMA20 or ATR is missing the gate passes.",
+        "B6": "ATR14 as a percent of the close must be 8% or less. If ATR% is missing the gate passes.",
+        "B7": "Earnings must not be 10 or fewer days away. Passes when no earnings date is "
+              "known; the backtest has no historical earnings calendar, so it always passes there.",
+    }
+    watch_docs = {
+        "XB1": "Raised when the close is more than 2.5 x ATR14 above the 20-day SMA (extended; the "
+               "note suggests SMA20 as a pullback level). Caps the decision at TRADE ON TRIGGER and "
+               "lowers setup quality by 0.5.",
+        "XB2": "Meant to flag a breakout on below-average volume: raised only when BO-01 is active "
+               "AND today's volume is below its 50-day average. Would cap the decision at WATCH - "
+               "WAIT and cut setup quality by 1. In practice it can never fire, because BO-01 "
+               "itself requires volume above 1.5x the 50-day average.",
+        "XB3": "Raised when RSI14 is above 80 (overbought). Caps the decision at TRADE ON TRIGGER; "
+               "no effect on setup quality.",
+    }
+    setup_docs = {
+        "BO-01": "Breakout: today's close is strictly above the pivot (the highest high of the "
+                 "{BREAKOUT_LOOKBACK} bars before today) AND today's volume is more than 1.5x its "
+                 "50-day average. Entry-eligible, and it is also the entry signal, so only BO-01 can "
+                 "reach TRADE - HIGH CONFIDENCE (setup quality 2).",
+        "BO-02": "Coil: the close is within 3% below the pivot (between 97% and 100% of it), not "
+                 "through it yet. Entry-eligible but the signal has not fired, so the best it gets is "
+                 "TRADE ON TRIGGER (setup quality 1). If BO-01 is also true, BO-01 is used.",
+    }
+    entry_rules = (
+        "Entry is a buy-stop at 0.1% above the higher of today's high and the "
+        "{BREAKOUT_LOOKBACK}-bar pivot, rounded up to the market's tick size.",
+        "Stop is the lowest low of the {CONSOLIDATION_BARS} bars before today minus 0.1 ATR, but "
+        "never more than 2 ATR below entry (whichever is higher), rounded down to the tick.",
+        "Target is entry plus the base height (highest high minus lowest low of the "
+        "{CONSOLIDATION_BARS} prior bars), with no minimum R. If an overhead supply level sits "
+        "between entry and that target, the target is lowered to the nearest one.",
+        "A plan is WATCH - WAIT if the position is too large for the account, the stop is more than "
+        "8% below entry, or the plan offers less than 2R. TRADE - HIGH CONFIDENCE additionally "
+        "needs BO-01, no watch-flag cap, a stop of 7% or less, at least 2R and no earnings within "
+        "15 days; otherwise TRADE ON TRIGGER. A market-regime downgrade lowers the label one tier.",
+    )
+    exit_rules = (
+        "Live: a fixed bracket. The stop and target set at entry do not move; there is no trailing "
+        "stop or time exit in the strategy itself.",
+        "Backtest (default bracket mode): only TRADE - HIGH CONFIDENCE signals (so only BO-01) are "
+        "placed, as resting buy-stops that fill on a later bar trading through the entry (at the "
+        "open if it gaps above) and expire unfilled after 10 business days, or are cancelled if "
+        "price hits the stop first or gaps past the target.",
+        "Backtest exits: the first later bar whose low touches the stop or whose high touches the "
+        "target closes the trade; if both on one bar the stop is assumed first, and gaps fill at "
+        "the open. Positions still open at the end are marked at the last close.",
+    )
+    param_docs = (
+        ("Consolidation length", "CONSOLIDATION_BARS",
+         "Bars before today that must form the tight base (B4) and that define stop and target."),
+        ("Pivot lookback", "BREAKOUT_LOOKBACK",
+         "Bars before today whose highest high is the breakout pivot for BO-01/BO-02 and entry."),
+        ("Minimum price", "cfg.screener.min_price",
+         "Pre-filter: symbols closing below this price are not screened."),
+        ("Minimum ATR%", "cfg.screener.atr_pct_min",
+         "Pre-filter: ATR14 as % of close must exceed this, so very quiet stocks are skipped."),
+        ("Minimum liquidity", "cfg.screener.min_dollar_volume",
+         "Pre-filter: 20-day average dollar volume must be at least this."),
+        ("Tick size", "cfg.tick_size",
+         "Entry is rounded up and the stop rounded down to this increment."),
+        ("Max open positions", "cfg.max_open_positions",
+         "Portfolio backtest: position slots; signals arriving with no free slot are missed."),
+    )
+    backtest_args = ""
 
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
         if cfg.screener.min_price and last["close"] < cfg.screener.min_price:
