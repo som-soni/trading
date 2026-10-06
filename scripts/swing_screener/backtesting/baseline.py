@@ -512,6 +512,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="rank momentum only within the N most liquid names (0 = whole universe). "
         "Guards against the rank filling with speculative microcaps.",
     )
+    ap.add_argument("--no-ingest", action="store_true",
+                    help="skip updating the viewer database after the run")
     return ap
 
 
@@ -575,6 +577,10 @@ def main() -> None:
         print(f"Report -> {md}")
     except Exception as e:
         print(f"(markdown report not generated: {type(e).__name__}: {e})")
+    # index the new report so the viewer shows it without a server restart
+    if not getattr(args, "no_ingest", False):
+        from ..web.ingest import ingest_after_run
+        ingest_after_run()
 
 
 if __name__ == "__main__":

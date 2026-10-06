@@ -6,6 +6,7 @@ Written findings. Code lives in `scripts/`, generated output in `reports/`.
 |---|---|
 | [momentum-trend-research.md](momentum-trend-research.md) | The main log: results ledger for every strategy tested, what each experiment established, methodology, known biases, and the queue of open experiments |
 | [index-investing-research.md](index-investing-research.md) | *When* to put money into an index rather than *which* stocks to own: SIP day-of-month and frequency, lump sum vs DCA, dip-buying, trend overlays, allocation and rebalancing, rotation — with pre- and after-tax results for both markets |
+| [sector-analysis-playbook.md](sector-analysis-playbook.md) | How to judge sectors and industry groups now (relative strength, rotation, breadth, earnings, cycle) and find future growth areas (theses, traps); the weekly routine; and the roadmap for building it into the tools |
 
 ## How to use the research log
 

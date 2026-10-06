@@ -156,7 +156,8 @@ def load_fundamentals(
                 continue
         stale.append(sym)
 
-    if refresh and stale:
+    from .cache import is_offline
+    if refresh and stale and not is_offline():  # offline: cached values only (the `fundamentals` job refreshes)
         todo = stale[:max_fetch] if max_fetch else stale
         logger.info("fundamentals: fetching %d of %d symbols (%d cached fresh)",
                     len(todo), len(symbols), len(symbols) - len(stale))

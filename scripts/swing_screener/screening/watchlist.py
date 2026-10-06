@@ -1,4 +1,12 @@
-"""Watchlist: names worth watching, from two sources.
+"""Watchlists: TradingView-style named lists you manage, plus the screener's own list.
+
+* **Your lists** (`watchlists` / `watchlist_items`) — as many named lists as you
+  like ("My watchlist", "Breakouts to watch", ...), each mixing US and Indian
+  symbols, managed from the web UI or this CLI. A screener run never touches them.
+* **Screener picks** — the built-in list described below, kept up to date by
+  every full pipeline run.
+
+The screener list: names worth watching, from the screening runs.
 
 * **screener** — refreshed by every full pipeline run (``history.record_run``
   calls :func:`sync_from_run`). A name is on it when the screener marks it
@@ -6,15 +14,16 @@
   for its "watchlist candidates" section. Entries are kept per
   (market, strategy): a re-run updates them, and names the strategy no longer
   flags drop off.
-* **manual** — added and removed by hand (web UI or this CLI); a screener run
-  never touches them.
+* **manual** — the original single hand-made list; it is migrated once into the
+  named list "My watchlist" (see `init_schema`).
 
 Removing a screener entry *dismisses* it rather than deleting it, so the next
 run doesn't put it straight back; it returns only after it has dropped off the
 screen and been flagged again.
 
-    python3 -m swing_screener.screening.watchlist --list
+    python3 -m swing_screener.screening.watchlist --show
     python3 -m swing_screener.screening.watchlist --add AAPL --market us --note "earnings 28th"
+    python3 -m swing_screener.screening.watchlist --add RELIANCE.NS --market india --list "India longs"
     python3 -m swing_screener.screening.watchlist --remove AAPL --market us
     python3 -m swing_screener.screening.watchlist --sync-latest   # rebuild screener entries from the latest runs
 """
@@ -47,7 +56,21 @@ CREATE TABLE IF NOT EXISTS watchlist (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (market, symbol, source, strategy)
 );
+CREATE TABLE IF NOT EXISTS watchlists (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS watchlist_items (
+    list_id INT NOT NULL REFERENCES watchlists(id) ON DELETE CASCADE,
+    market VARCHAR(16) NOT NULL,
+    symbol VARCHAR(32) NOT NULL,
+    note TEXT,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (list_id, market, symbol)
+);
 """
+DEFAULT_LIST = "My watchlist"
 
 _FIELDS = ("decision", "reason", "strategy_setup", "entry", "stop", "target_r")
 
@@ -55,6 +78,15 @@ _FIELDS = ("decision", "reason", "strategy_setup", "entry", "stop", "target_r")
 def init_schema() -> None:
     with db.get_connection().cursor() as cur:
         cur.execute(SCHEMA)
+        # one-time migration: the old single manual list becomes the named list "My watchlist"
+        cur.execute("SELECT count(*) FROM watchlists")
+        if cur.fetchone()[0] == 0:
+            cur.execute("INSERT INTO watchlists (name) VALUES (%s) RETURNING id", (DEFAULT_LIST,))
+            lid = cur.fetchone()[0]
+            cur.execute("""INSERT INTO watchlist_items (list_id, market, symbol, note, added_at)
+                           SELECT %s, market, symbol, note, added_at FROM watchlist WHERE source='manual'
+                           ON CONFLICT DO NOTHING""", (lid,))
+            cur.execute("DELETE FROM watchlist WHERE source='manual'")
 
 
 def _flagged(rec: dict) -> bool:
@@ -123,33 +155,107 @@ def sync_latest() -> dict:
     return out
 
 
-def add(market: str, symbol: str, note: str | None = None) -> None:
+# ---------------------------------------------------------------- named lists
+
+def lists() -> list[dict]:
     init_schema()
     with db.get_connection().cursor() as cur:
-        cur.execute("""
-            INSERT INTO watchlist (market, symbol, source, strategy, note) VALUES (%s, %s, 'manual', '', %s)
-            ON CONFLICT (market, symbol, source, strategy) DO UPDATE SET note=COALESCE(EXCLUDED.note, watchlist.note), updated_at=now()
-        """, (market, symbol, note))
+        cur.execute("""SELECT w.id, w.name, count(i.symbol) FROM watchlists w LEFT JOIN watchlist_items i ON i.list_id=w.id
+                       GROUP BY w.id ORDER BY w.created_at, w.id""")
+        return [{"id": i, "name": n, "count": c} for i, n, c in cur.fetchall()]
 
 
-def remove(market: str, symbol: str) -> None:
-    """Drop the manual entry and dismiss any screener entries for the symbol."""
+def list_id(name: str, create: bool = False) -> int | None:
     init_schema()
     with db.get_connection().cursor() as cur:
-        cur.execute("DELETE FROM watchlist WHERE market=%s AND symbol=%s AND source='manual'", (market, symbol))
+        cur.execute("SELECT id FROM watchlists WHERE name=%s", (name,))
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        if not create:
+            return None
+        cur.execute("INSERT INTO watchlists (name) VALUES (%s) RETURNING id", (name,))
+        return cur.fetchone()[0]
+
+
+def create_list(name: str) -> int:
+    name = name.strip()
+    if not name:
+        raise ValueError("a list needs a name")
+    if list_id(name) is not None:
+        raise ValueError(f"a list called “{name}” already exists")
+    return list_id(name, create=True)
+
+
+def rename_list(lid: int, name: str) -> None:
+    name = name.strip()
+    if not name:
+        raise ValueError("a list needs a name")
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT id FROM watchlists WHERE name=%s AND id<>%s", (name, lid))
+        if cur.fetchone():
+            raise ValueError(f"a list called “{name}” already exists")
+        cur.execute("UPDATE watchlists SET name=%s WHERE id=%s", (name, lid))
+
+
+def delete_list(lid: int) -> None:
+    with db.get_connection().cursor() as cur:
+        cur.execute("DELETE FROM watchlists WHERE id=%s", (lid,))
+
+
+def items(lid: int) -> list[dict]:
+    init_schema()
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT market, symbol, note, added_at FROM watchlist_items WHERE list_id=%s ORDER BY added_at, symbol", (lid,))
+        return [{"market": m, "symbol": s, "note": n, "added_at": a} for m, s, n, a in cur.fetchall()]
+
+
+def add_item(lid: int, market: str, symbol: str, note: str | None = None) -> None:
+    with db.get_connection().cursor() as cur:
+        cur.execute("""INSERT INTO watchlist_items (list_id, market, symbol, note) VALUES (%s, %s, %s, %s)
+                       ON CONFLICT (list_id, market, symbol) DO UPDATE SET note=COALESCE(EXCLUDED.note, watchlist_items.note)""",
+                    (lid, market, symbol, note or None))
+
+
+def remove_item(lid: int, market: str, symbol: str) -> None:
+    with db.get_connection().cursor() as cur:
+        cur.execute("DELETE FROM watchlist_items WHERE list_id=%s AND market=%s AND symbol=%s", (lid, market, symbol))
+
+
+def set_item_note(lid: int, market: str, symbol: str, note: str | None) -> None:
+    with db.get_connection().cursor() as cur:
+        cur.execute("UPDATE watchlist_items SET note=%s WHERE list_id=%s AND market=%s AND symbol=%s", (note or None, lid, market, symbol))
+
+
+def membership(market: str, symbol: str) -> list[int]:
+    """The ids of your lists that contain this symbol."""
+    init_schema()
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT list_id FROM watchlist_items WHERE market=%s AND symbol=%s", (market, symbol))
+        return [r[0] for r in cur.fetchall()]
+
+
+def dismiss(market: str, symbol: str) -> None:
+    """Hide a screener pick until it drops off the screen and is flagged again."""
+    init_schema()
+    with db.get_connection().cursor() as cur:
         cur.execute("UPDATE watchlist SET dismissed=true WHERE market=%s AND symbol=%s AND source='screener'", (market, symbol))
 
 
-def set_note(market: str, symbol: str, note: str | None) -> None:
-    """Notes live on the manual entry; noting a screener-only name pins it manually too."""
-    add(market, symbol, None)
-    with db.get_connection().cursor() as cur:
-        cur.execute("UPDATE watchlist SET note=%s, updated_at=now() WHERE market=%s AND symbol=%s AND source='manual'",
-                    (note or None, market, symbol))
+# the CLI's original verbs, now acting on a named list (default "My watchlist")
+def add(market: str, symbol: str, note: str | None = None, list_name: str = DEFAULT_LIST) -> None:
+    add_item(list_id(list_name, create=True), market, symbol, note)
+
+
+def remove(market: str, symbol: str, list_name: str = DEFAULT_LIST) -> None:
+    lid = list_id(list_name)
+    if lid is not None:
+        remove_item(lid, market, symbol)
 
 
 def entries(market: str | None = None) -> list[dict]:
-    """One dict per (market, symbol): sources merged, dismissed screener rows excluded."""
+    """The Screener picks list: one dict per (market, symbol) with every strategy that flagged it,
+    dismissed rows excluded."""
     init_schema()
     sql = "SELECT market, symbol, source, strategy, decision, reason, setup, entry, stop, target_r, run_id, note, added_at FROM watchlist WHERE NOT dismissed"
     args: tuple = ()
@@ -178,20 +284,25 @@ def main() -> None:
     ap.add_argument("--add")
     ap.add_argument("--remove")
     ap.add_argument("--note")
-    ap.add_argument("--list", action="store_true")
+    ap.add_argument("--list", default=DEFAULT_LIST, help="which of your named lists --add / --remove act on")
+    ap.add_argument("--show", action="store_true", help="print every list")
     ap.add_argument("--sync-latest", action="store_true")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if a.sync_latest:
         print(sync_latest())
     if a.add:
-        add(a.market, a.add.upper(), a.note)
+        add(a.market, a.add.upper(), a.note, a.list)
     if a.remove:
-        remove(a.market, a.remove.upper())
-    if a.list or not (a.add or a.remove or a.sync_latest):
+        remove(a.market, a.remove.upper(), a.list)
+    if a.show or not (a.add or a.remove or a.sync_latest):
+        for lst in lists():
+            print(f"\n{lst['name']} ({lst['count']})")
+            for e in items(lst["id"]):
+                print(f"  {e['market']:6s} {e['symbol']:14s} {e['note'] or ''}")
+        print("\nScreener picks")
         for e in entries():
-            src = (["manual"] if e["manual"] else []) + [s["strategy"] for s in e["strategies"]]
-            print(f"{e['market']:6s} {e['symbol']:14s} {', '.join(src):40s} {e['note'] or ''}")
+            print(f"  {e['market']:6s} {e['symbol']:14s} {', '.join(s['strategy'] for s in e['strategies'])}")
 
 
 if __name__ == "__main__":

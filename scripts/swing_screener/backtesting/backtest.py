@@ -916,6 +916,9 @@ def main() -> None:
                         help="notional cap per position as a fraction, e.g. 0.10 "
                              "(default: market config). max_positions x this should "
                              "not exceed 1.0, or the book runs out of cash before slots")
+    parser.add_argument("--no-ingest", action="store_true",
+                    help="skip updating the viewer database after the run")
+
     args = parser.parse_args()
     labels = tuple(x.strip() for x in args.accept_labels.split(",") if x.strip())
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -1010,6 +1013,10 @@ def main() -> None:
     print()
     print(metrics.format_equity_curve(result.equity, _bench_c))
 
+    # index the new report so the viewer shows it without a server restart
+    if not getattr(args, "no_ingest", False):
+        from ..web.ingest import ingest_after_run
+        ingest_after_run()
 
 if __name__ == "__main__":
     main()

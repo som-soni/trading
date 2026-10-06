@@ -78,6 +78,8 @@ def load_earnings_days_away(
     """Auto-fetch (cached, weekly refresh) + manual override, for `tickers`
     only — call this AFTER the loose screener filter, not against the full
     universe, since it's one request per ticker."""
+    from .cache import is_offline
+    offline = is_offline()  # stored dates only (the `earnings` job refreshes them)
     today = today or pd.Timestamp.today().normalize()
     overrides = _load_overrides(market)
     cache_df = _load_cache(market)
@@ -100,7 +102,9 @@ def load_earnings_days_away(
             or cached[0].normalize() < today  # date already passed, need the next one
             or (today - cached[1]).days > CACHE_REFRESH_DAYS
         )
-        if stale:
+        if stale and offline:
+            edate = cached[0] if cached is not None and pd.notna(cached[0]) and cached[0].normalize() >= today else None
+        elif stale:
             edate = _fetch_next_earnings_date(sym)
             cache[sym] = (edate, today)
             updated = True

@@ -10,14 +10,9 @@
 <body>
 <header>
   <a class="brand" href="#/chart"><svg viewBox="0 0 20 20"><rect width="20" height="20" rx="5"/><path d="M4 14l4-5 3 3 5-7"/></svg>Trading</a>
-  <nav>
-    <a href="#/chart" data-nav="chart">Chart</a>
-    <a href="#/watchlist" data-nav="watchlist">Watchlist</a>
-    <a href="#/screening" data-nav="screening">Screening</a>
-    <a href="#/reports" data-nav="reports">Reports</a>
-    <a href="#/strategies" data-nav="strategies">Strategies</a>
-  </nav>
+  <nav id="nav"></nav>
   <span class="spacer"></span>
+  <a id="dstatus" class="dstatus" href="#/status" title="Data status"><i></i><span>Data</span></a>
   <button class="ghost icon" id="help" title="Keyboard shortcuts (?)">?</button>
   <button id="refresh" title="Load new report files from disk into the database">
     <svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-2-4.5M16 3v4h-4"/></svg>Refresh reports</button>

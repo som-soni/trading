@@ -4,6 +4,13 @@ Screening and backtesting run offline as scripts (`scripts/`, run with
 `PYTHONPATH=.`). The web app in `scripts/swing_screener/web/` only *views*
 results; it never runs a strategy. See `README.md` and `scripts/README.md`.
 
+Scheduled offline work is a set of layered jobs (`scripts/jobs/registry.py`:
+reference → data → analytics → screening → publish). Keep the layers honest:
+only `marketdata/` downloads; `analytics/` and screening read stored data
+(screening runs inside `cache.offline()`). A new recurring task is a new job
+in the registry (with its layer, cadence and `after` dependencies), not a new
+standalone cron script, so it is logged and shows on the Data status page.
+
 ## Rule: every strategy change updates its Strategy page in the same change
 
 The web app's **Strategies** page is generated from each strategy's own code,
@@ -18,6 +25,9 @@ sizing) — update, in the same change:
   `setup_docs`, `entry_rules`, `exit_rules`, `param_docs`, `backtest_args`
   (the contract is documented in `strategies/base.py`);
 - for the momentum baseline, `DOC` in `scripts/swing_screener/backtesting/baseline.py`;
+- for the long-term quality tracker, `DOC`, `TESTS` and the threshold constants in
+  `scripts/fundamentals/quality.py` — its Quality page and Strategies
+  entry render every rule from those constants, so change a rule's text with its logic;
 - for a new strategy, register it in `strategies/__init__.py` and fill every
   attribute above — the page and the test pick it up automatically.
 

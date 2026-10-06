@@ -828,6 +828,9 @@ def main() -> None:
     ap.add_argument("--quick", action="store_true",
                     help="fewer placebo draws and coarser A5 start grid")
     ap.add_argument("--run", default=None, help="run directory name")
+    ap.add_argument("--no-ingest", action="store_true",
+                    help="skip updating the viewer database after the run")
+
     args = ap.parse_args()
 
     cost = DEFAULT_COST_BPS[args.market] if args.cost_bps is None else args.cost_bps
@@ -857,6 +860,10 @@ def main() -> None:
             print(f"\n=== {title} ===\n{band.verdict()}")
     print(f"\nReport -> {path}")
 
+    # index the new report so the viewer shows it without a server restart
+    if not getattr(args, "no_ingest", False):
+        from ..web.ingest import ingest_after_run
+        ingest_after_run()
 
 if __name__ == "__main__":
     main()

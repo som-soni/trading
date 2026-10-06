@@ -7,6 +7,7 @@ once here instead of re-deriving them from scratch in every caller (and
 every backtest day) is free correctness-wise and saves real time.
 """
 
+import contextlib
 import logging
 import time
 
@@ -18,6 +19,29 @@ from ..core import indicators as ind
 from ..providers.base import DataProvider
 
 logger = logging.getLogger(__name__)
+
+# ---- offline mode: read stored data only ---------------------------------
+# Screening and analytics must not download: the `prices` job brings the cache
+# up to date, and everything downstream reads it. Inside `with cache.offline():`
+# `get_bars` / `get_many_bars` serve straight from Postgres, and the per-ticker
+# lookups that would otherwise call the data provider (sectors, market caps,
+# earnings dates, live fundamentals) use their caches only.
+_OFFLINE = False
+
+
+@contextlib.contextmanager
+def offline():
+    global _OFFLINE
+    prev, _OFFLINE = _OFFLINE, True
+    try:
+        yield
+    finally:
+        _OFFLINE = prev
+
+
+def is_offline() -> bool:
+    return _OFFLINE
+
 
 _RAW_COLUMNS = ["open", "high", "low", "close", "volume"]
 _INDICATOR_COLUMNS = [
@@ -99,6 +123,8 @@ def get_bars(
     most of the history. Returns None if the symbol could not be loaded at
     all (caller should list it under 'Not reviewed')."""
     cached = load_cached(market, symbol)
+    if _OFFLINE:
+        return cached if cached is not None and not cached.empty else None
 
     if cached is None or cached.empty:
         try:
@@ -213,6 +239,25 @@ def load_many_cached(
     return out
 
 
+def _last_expected_session(now: pd.Timestamp | None = None) -> pd.Timestamp:
+    """The most recent weekday whose bars should already exist.
+
+    Deliberately crude: weekdays only, and today does not count until the
+    evening, because a bar for a session still in progress is not yet final.
+    Exchange holidays are not modelled -- being wrong on a holiday costs one
+    fetch that returns nothing, whereas being wrong the other way freezes the
+    cache, so the error is pointed in the cheap direction.
+    """
+    now = now or pd.Timestamp.now()
+    d = now.normalize()
+    # before 22:00 local, treat today's session as not yet closed
+    if now.hour < 22:
+        d -= pd.Timedelta(days=1)
+    while d.weekday() >= 5:  # 5=Sat, 6=Sun
+        d -= pd.Timedelta(days=1)
+    return d
+
+
 def get_many_bars(
     provider: DataProvider,
     market: str,
@@ -220,6 +265,7 @@ def get_many_bars(
     lookback_days: int,
     batch_size: int = 50,
     chunk_size: int = 400,
+    force: bool = False,
 ) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """Bring `symbols` up to date and return their bars.
 
@@ -239,6 +285,13 @@ def get_many_bars(
     indicators, and SMA200 on a 400-bar tail would be wrong.
     """
     t_start = time.time()
+    if _OFFLINE:  # stored data only: one bulk read, no network
+        since = pd.Timestamp.today().normalize() - pd.Timedelta(days=int(lookback_days * 1.6) + 30)
+        got = load_many_cached(market, symbols, since=since)
+        missing = [s for s in symbols if s not in got]
+        logger.info("%s: %d/%d symbols read from the database (offline; %d not stored)",
+                    market, len(got), len(symbols), len(missing))
+        return got, missing
     out: dict[str, pd.DataFrame] = {}
     failed: list[str] = []
 
@@ -246,7 +299,28 @@ def get_many_bars(
     uncached = [s for s in symbols if s not in last_dates]
     cached_syms = [s for s in symbols if s in last_dates]
     market_latest = max(last_dates.values()) if last_dates else None
-    stale = [s for s in cached_syms if market_latest and last_dates[s] < market_latest]
+
+    # Staleness has to be judged against the CALENDAR, not against the cache's
+    # own newest bar. Comparing symbols only to each other means a cache that
+    # has fallen behind UNIFORMLY -- which is what happens every single
+    # trading day -- contains no symbol newer than the rest, so nothing looks
+    # stale and nothing is ever fetched. The cache then freezes silently and
+    # every screener runs on old prices while reporting success.
+    everything_stale = False
+    if market_latest is not None:
+        expected = _last_expected_session()
+        if pd.Timestamp(market_latest).normalize() < expected:
+            everything_stale = True
+            logger.info(
+                "%s: newest cached bar is %s but the last session was %s — "
+                "refreshing the whole universe",
+                market, pd.Timestamp(market_latest).date(), expected.date(),
+            )
+
+    if force or everything_stale:
+        stale = list(cached_syms)
+    else:
+        stale = [s for s in cached_syms if market_latest and last_dates[s] < market_latest]
     fresh = [s for s in cached_syms if s not in set(stale)]
     logger.info(
         "%s: %d symbols — %d up to date, %d need a tail fetch, %d not cached at all",

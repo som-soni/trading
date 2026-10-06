@@ -215,6 +215,9 @@ def main() -> None:
                     help="seeded random subset of N candidates (same subset per strategy)")
     ap.add_argument("--max-positions", type=int, default=None)
     ap.add_argument("--accept-labels", default="TRADE - HIGH CONFIDENCE")
+    ap.add_argument("--no-ingest", action="store_true",
+                    help="skip updating the viewer database after the run")
+
     args = ap.parse_args()
 
     keys = (list_strategies() if args.strategies.strip() == "all"
@@ -227,6 +230,10 @@ def main() -> None:
         max_positions=args.max_positions,
         accept_labels=tuple(x.strip() for x in args.accept_labels.split(",") if x.strip()))
 
+    # index the new report so the viewer shows it without a server restart
+    if not getattr(args, "no_ingest", False):
+        from ..web.ingest import ingest_after_run
+        ingest_after_run()
 
 if __name__ == "__main__":
     main()

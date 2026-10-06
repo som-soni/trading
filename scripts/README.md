@@ -40,13 +40,15 @@ created automatically on first use — see `db.py`, or run
 
 ## Command reference
 
-Every command runs from `scripts/` with `PYTHONPATH=.` set. All ten entry
-points, grouped by what they are for:
+Every command runs from `scripts/` with `PYTHONPATH=.` set. Scheduled and
+routine work goes through **`python -m jobs`** (see "Jobs" below); the rest are
+manual tools, grouped by what they are for:
 
 | command | purpose |
 |---|---|
-| `screening.daily` | Both markets, one summary — the morning run |
-| `screening.pipeline` | One market's screen → candidate CSV |
+| `jobs` | Every offline job and pipeline: pull data, analytics, screening, publish (`list`, `run`, `status`, `schedule`) |
+| `screening.daily` | The `daily` pipeline for both markets (kept for old cron entries) |
+| `screening.pipeline` | One strategy over one market, on stored prices (`--pull` to fetch first) → candidate CSV |
 | `screening.inspect` | Why one symbol did or didn't qualify |
 | `screening.history` | What changed between two runs |
 | `backtesting.backtest` | Backtest a strategy (portfolio-level by default) |
@@ -178,19 +180,43 @@ Verification: `PYTHONPATH=. python3 -m tests.test_index_investing` — 13 checks
 no database needed. The important one asserts no signal reads a price it would
 trade at.
 
-## Run the daily screener
+## Jobs: pull data, analytics, screening — separately or chained
+
+Offline work is split into jobs, in layers; each layer reads only what the
+layers above it produced (`jobs/registry.py`):
+
+| layer | jobs | network | cadence |
+|---|---|---|---|
+| reference | `universe`, `names`, `classify`, `industries` | yes | weekly / monthly |
+| data | `prices`, `indexes`, `earnings`, `fundamentals` | yes | prices & indexes daily, the rest weekly |
+| analytics | `breadth`, `sectors` | no | daily, after prices |
+| screening | `screen` (one step per strategy), `quality` | `screen` no, `quality` yes | daily / weekly |
+| publish | `report`, `ingest` | no | after screening |
+
+Data jobs never screen, and screening never downloads: `screen` reads stored
+prices (`cache.offline()`) and refuses to run when they are two or more
+trading days behind (`--allow-stale` overrides). Every job is idempotent and
+records each step in the run log, which the web app's **Data status** page
+shows.
 
 ```
-python3 -m swing_screener.screening.daily                    # both markets
-python3 -m swing_screener.screening.daily --markets us        # one market
+python -m jobs list                                 # every job and pipeline, with its last run per market
+python -m jobs run prices --market india            # just pull data
+python -m jobs run breadth sectors --market us      # just analytics
+python -m jobs run screen --market us --strategies all
+python -m jobs run daily --market india             # pipeline: universe (if stale) → prices → indexes → breadth → sectors → screen → report → ingest
+python -m jobs run daily --market us --from screen  # resume part-way
+python -m jobs run weekly                           # universe, names, classify, earnings, fundamentals, quality
+python -m jobs run monthly                          # re-classify industries
+python -m jobs status                               # how current every dataset is
+python -m jobs schedule                             # suggested crontab: India after its close, US the next morning
 ```
 
-Auto-refreshes a market's ticker list if it's more than 7 days old
-(`--refresh-stale-days` to change), runs both markets with per-market
-failure isolation, logs to `logs/daily_<date>.log`, and prints a
-cross-market summary of tradeable/watchlist candidates. Or run a single
-market directly: `python3 -m swing_screener.screening.pipeline --market us`
-(`--refresh-universe`, `--limit N` for a quick test run).
+Each run logs to `logs/jobs/<timestamp>_<name>.log` and prints a cross-market
+summary of tradeable/watchlist candidates after the report. A single strategy
+can still be run directly: `python3 -m swing_screener.screening.pipeline
+--market us --strategy breakout` (stored prices; `--pull` to fetch first,
+`--limit N` for a quick test run).
 
 **Output**: `reports/<market>_universe.csv` — one row per stock that
 passed the loose screener, every outcome as an explicit column
@@ -696,11 +722,20 @@ swing_screener/
     baseline.py      cross-sectional momentum baseline
     experiments.py   controlled A/B over one signal set
 
-  marketdata/       data in, storage
-    cache.py db.py migrate.py universe.py earnings.py backfill.py
+  marketdata/       data in, storage (the only package that downloads)
+    cache.py (incl. offline mode) db.py migrate.py universe.py names.py industries.py
+    refresh.py backfill.py index_data.py earnings.py fundamentals.py freshness.py
+
+  analytics/        market-wide measures from stored prices only
+    breadth.py sectors.py
 
   screening/        the day-to-day screener
-    screener.py pipeline.py daily.py output.py history.py inspect.py portfolio.py
+    screener.py pipeline.py daily.py output.py history.py inspect.py portfolio.py watchlist.py
+
+  runlog.py         run log: every job's steps, timestamps, results (Data status page)
+  web/              the read-only web viewer
+
+jobs/               the offline jobs: registry (layers, cadence, dependencies), runner, CLI
 
 tests/
   test_chart_patterns.py  draws each classical pattern on a synthetic chart

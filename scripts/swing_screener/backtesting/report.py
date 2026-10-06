@@ -475,6 +475,9 @@ def main() -> None:
     ap.add_argument("--list", action="store_true", help="list renderable runs and exit")
     ap.add_argument("--cap", type=int, default=None)
     ap.add_argument("--title", default=None)
+    ap.add_argument("--no-ingest", action="store_true",
+                    help="skip updating the viewer database after the run")
+
     args = ap.parse_args()
 
     if args.list:
@@ -493,6 +496,10 @@ def main() -> None:
     print("->", from_saved(args.market, args.strategy, args.run,
                            cap=args.cap, title=args.title))
 
+    # index the new report so the viewer shows it without a server restart
+    if not getattr(args, "no_ingest", False):
+        from ..web.ingest import ingest_after_run
+        ingest_after_run()
 
 if __name__ == "__main__":
     main()

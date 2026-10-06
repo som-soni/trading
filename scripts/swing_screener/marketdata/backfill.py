@@ -12,6 +12,13 @@ a window containing 2015-16, Q4 2018, the 2020 crash and the 2022 bear.
 
     python3 -m swing_screener.marketdata.backfill --market us --years 16
     python3 -m swing_screener.marketdata.backfill --market us --years 16 --only-short
+    python3 -m swing_screener.marketdata.backfill --market india --max   # everything the source has
+
+`--max` asks for each symbol's full history (US large caps go back to the
+1980s, Indian ones to the late 1990s / 2000s), gently: small batches, no
+parallel burst, and a pause-and-retry when the source rate-limits. Each
+finished symbol is recorded in `backfill_progress`, so a re-run resumes where
+it stopped instead of starting over.
 
 Checkpoints after every batch, so an interrupted run resumes cheaply
 rather than restarting the whole fetch.
@@ -36,6 +43,67 @@ from ..providers import YFinanceProvider
 logger = logging.getLogger("backfill")
 
 TRADING_DAYS_PER_YEAR = 252
+
+
+PROGRESS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS backfill_progress (
+    market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL, mode VARCHAR(16) NOT NULL,
+    done_at TIMESTAMPTZ NOT NULL DEFAULT now(), first_date DATE, bars INT,
+    PRIMARY KEY (market, symbol, mode)
+);
+"""
+
+
+def backfill_max(market: str, batch_size: int = 20, pause: float = 2.0) -> dict:
+    """Fetch the full available history of every universe symbol (and the indices the
+    pipeline needs), resuming from `backfill_progress`."""
+    from . import db
+    cfg = MARKETS[market]
+    with db.get_connection().cursor() as cur:
+        cur.execute(PROGRESS_SCHEMA)
+        cur.execute("SELECT symbol FROM backfill_progress WHERE market=%s AND mode='max'", (market,))
+        done = {r[0] for r in cur.fetchall()}
+    extras = [cfg.benchmark_ticker, *cfg.broad_index_symbols.values(), *cfg.sector_index_map.values()]
+    todo = [s for s in dict.fromkeys([*universe.load_universe(market), *[e for e in extras if e]]) if s not in done]
+    logger.info("%s: %d symbols to fetch at full history (%d already done)", market, len(todo), len(done))
+    provider = YFinanceProvider(pause_sec=pause)
+    stats = {"requested": len(todo), "fetched": 0, "empty": 0, "bars": 0}
+    t0 = time.time()
+    for i in range(0, len(todo), batch_size):
+        chunk = todo[i : i + batch_size]
+        got = {}
+        for attempt, wait in enumerate((0, 60, 300)):
+            time.sleep(wait)
+            try:
+                got = provider.get_many_daily_bars(chunk, 0, batch_size=batch_size, period="max", threads=False, fallback=False)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("batch %d attempt %d failed: %s", i // batch_size, attempt + 1, e)
+                got = {}
+            if got:
+                break
+            # a whole batch empty is almost always a rate limit, not 20 dead tickers: back off and retry
+            logger.warning("batch %d returned nothing (rate-limited?) — waiting before retry", i // batch_size)
+        rows = []
+        for sym in chunk:
+            df = got.get(sym)
+            if df is not None and not df.empty:
+                cache.save_cached(market, sym, df)
+                stats["fetched"] += 1
+                stats["bars"] += len(df)
+                rows.append((market, sym, "max", df.index[0].date(), len(df)))
+            elif got:  # the batch worked, this symbol simply has no data (delisted / bad ticker): don't retry it forever
+                stats["empty"] += 1
+                rows.append((market, sym, "max", None, 0))
+        if rows:
+            db.execute_values("INSERT INTO backfill_progress (market, symbol, mode, first_date, bars) VALUES %s "
+                              "ON CONFLICT (market, symbol, mode) DO UPDATE SET done_at=now(), first_date=EXCLUDED.first_date, bars=EXCLUDED.bars", rows)
+        n = min(i + batch_size, len(todo))
+        rate = n / max(time.time() - t0, 1e-9)
+        logger.info("%s: %d/%d symbols, %d saved, %d empty, %.2f sym/s, ETA %.0f min",
+                    market, n, len(todo), stats["fetched"], stats["empty"], rate, (len(todo) - n) / rate / 60 if rate else float("nan"))
+    logger.info("%s: done in %.1f min — %d saved, %d empty, %.1fM bars", market, (time.time() - t0) / 60,
+                stats["fetched"], stats["empty"], stats["bars"] / 1e6)
+    return stats
 
 
 def backfill_market(
@@ -143,7 +211,12 @@ def main() -> None:
         "use this to resume an interrupted backfill",
     )
     ap.add_argument("--report", action="store_true", help="print coverage and exit")
+    ap.add_argument("--max", action="store_true", help="fetch each symbol's FULL available history (resumable)")
     args = ap.parse_args()
+
+    if args.max:
+        backfill_max(args.market)
+        return
 
     if args.report:
         df = coverage_report(args.market)

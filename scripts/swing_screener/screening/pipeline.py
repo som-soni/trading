@@ -1,10 +1,15 @@
-"""CLI orchestrator. Wires together: universe -> cached price pull ->
+"""One strategy over one market. Wires together: universe -> stored prices ->
 loosened screener filter -> indicators -> gate/flag engine -> entry plan
 -> sizing -> decision -> sector filter -> output.
 
+The command line reads STORED prices only (the `prices` job downloads them);
+it warns when they are behind. `--pull` brings prices up to date first.
+
 Usage:
     python -m swing_screener.screening.pipeline --market us
-    python -m swing_screener.screening.pipeline --market india --refresh-universe
+    python -m swing_screener.screening.pipeline --market india --strategy breakout --pull
+
+For the scheduled flow use the jobs: `python -m jobs run screen --market us --strategies all`.
 """
 
 import argparse
@@ -470,14 +475,33 @@ def main() -> None:
         "--strategy", default=DEFAULT_STRATEGY, choices=list_strategies(),
         help="which strategy to run:\n" + describe_strategies(),
     )
-    args = parser.parse_args()
-    run(
-        args.market,
-        refresh_universe=args.refresh_universe,
-        limit=args.limit,
-        strategy_key=args.strategy,
-    )
+    parser.add_argument("--no-ingest", action="store_true",
+                    help="skip updating the viewer database after the run")
+    parser.add_argument("--pull", action="store_true",
+                        help="download the latest prices first (otherwise stored prices only)")
 
+    args = parser.parse_args()
+    from ..marketdata import cache, freshness
+    if args.pull:
+        from ..marketdata.refresh import refresh
+        r = refresh(args.market)
+        logger.info("prices: %d/%d symbols updated", r["updated"], r["requested"])
+    st = freshness.price_status(args.market)
+    if st["lag"]:
+        logger.warning("%s — screening on stored prices (add --pull, or run `python -m jobs run prices --market %s`)",
+                       freshness.describe(st), args.market)
+    with cache.offline():
+        run(
+            args.market,
+            refresh_universe=args.refresh_universe,
+            limit=args.limit,
+            strategy_key=args.strategy,
+        )
+
+    # index the new report so the viewer shows it without a server restart
+    if not getattr(args, "no_ingest", False):
+        from ..web.ingest import ingest_after_run
+        ingest_after_run()
 
 if __name__ == "__main__":
     sys.exit(main())

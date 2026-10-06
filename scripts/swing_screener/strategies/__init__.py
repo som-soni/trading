@@ -77,8 +77,18 @@ def list_strategies() -> list[str]:
 
 
 def describe_strategies() -> str:
+    """One line per registered strategy, safe to embed in argparse `help=`.
+
+    Percent signs are doubled because argparse runs every help string through
+    %-formatting: a description ending "...loss near 7%." makes the following
+    newline look like a format specifier and argparse raises
+    `ValueError: unsupported format character`, which breaks `--help` for
+    EVERY command that lists strategies. Escaping here rather than in each
+    description keeps the requirement out of strategy prose, where no author
+    would think to look for it.
+    """
     return "\n".join(
-        f"  {s.key:<16} {s.name} — {s.description}"
+        f"  {s.key:<16} {s.name} — {s.description}".replace("%", "%%")
         for s in sorted(_REGISTRY.values(), key=lambda s: s.key)
     )
 

@@ -68,6 +68,8 @@ def _source_info(obj) -> dict:
 def strategy_doc(key: str) -> dict:
     if key == "momentum_baseline":
         return baseline_doc()
+    if key == "quality":
+        return quality_doc()
     strat = _REGISTRY[key]
     cls = type(strat)
     r = cls.render_doc
@@ -114,8 +116,29 @@ def baseline_doc() -> dict:
     }
 
 
+def quality_doc() -> dict:
+    """The long-term quality tracker (scripts/fundamentals/quality.py): its rules ARE its documentation —
+    every test and price rule text is rendered from the module's live constants."""
+    from fundamentals import quality as qmod
+    c = qmod.criteria()
+    params = [{"label": k, "source": "scripts/fundamentals/quality.py", "meaning": "", "values": {m: _fmt(v) for m in MARKETS}}
+              for k, v in vars(qmod).items() if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)]
+    return {
+        "key": c["key"], "kind": "long-term", "name": c["name"], "description": c["description"], "status": c["status"],
+        "thesis": c["thesis"], "how_it_works": list(c["how_it_works"]), "caveats": list(c["caveats"]),
+        "gates": [{"code": f"{t['points']} pts", "text": t["text"]} for t in c["quality_tests"]], "watch": [], "setups": [],
+        "entry_rules": list(c["price_rules"]), "exit_rules": [], "params": params, "decisions": [], "regime_note": "",
+        "commands": {
+            "Score the most liquid US companies": "python3 -m fundamentals.quality --market us --top 500",
+            "Score the most liquid India companies": "python3 -m fundamentals.quality --market india --top 300",
+            "Refresh your tracked list": "python3 -m fundamentals.quality --tracked",
+        },
+        "source": _source_info(qmod),
+    }
+
+
 def keys() -> list[str]:
-    return sorted(_REGISTRY) + ["momentum_baseline"]
+    return sorted(_REGISTRY) + ["momentum_baseline", "quality"]
 
 
 def check() -> list[str]:
@@ -146,6 +169,16 @@ def check() -> list[str]:
                 _resolve_param(cls, src)
             except (KeyError, AttributeError):
                 problems.append(f"{where}: param '{label}' points at '{src}', which does not exist")
+    try:
+        from fundamentals import quality as qmod
+        c = qmod.criteria()  # renders every rule text with the live constants: a renamed constant fails here
+        for k in ("name", "description", "status", "thesis", "how_it_works", "caveats", "quality_tests", "price_rules"):
+            if not c.get(k):
+                problems.append(f"quality: criteria()['{k}'] is empty")
+        if sum(t["points"] for t in c["quality_tests"]) != 100:
+            problems.append("quality: test points must add up to 100")
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"quality: cannot render its documentation ({exc!r})")
     try:
         from ..backtesting import baseline
         for k in ("key", "name", "description", "status", "thesis", "how_it_works", "caveats"):

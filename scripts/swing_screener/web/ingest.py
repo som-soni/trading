@@ -198,8 +198,37 @@ def main() -> None:
     ap.add_argument("--force", action="store_true", help="reload every run")
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    print(ingest(force=args.force))
+    from .. import runlog
+    with runlog.track("ingest", label="Load reports into the web viewer") as st:
+        res = ingest(force=args.force)
+        st.detail = f"{res['runs']} report runs indexed"
+    print(res)
 
 
 if __name__ == "__main__":
     main()
+
+
+def ingest_after_run(quiet: bool = False) -> None:
+    """Load newly written reports into the viewer's database.
+
+    Called at the end of every report-producing command, because the web app
+    only ingests at startup: a server left running (especially with
+    `--no-ingest`) will never show a run produced after it booted, and the
+    report sits on disk looking as though the command failed.
+
+    This NEVER raises. A ten-hour backtest that finished successfully must not
+    report failure because Postgres was down or the schema was mid-migration —
+    the report is already safely on disk, and `python3 -m
+    swing_screener.web.ingest` can always be run by hand afterwards.
+    """
+    try:
+        result = ingest()
+        if not quiet:
+            print(f"Viewer updated: {result['runs']} runs indexed.")
+    except Exception as e:  # noqa: BLE001 - see docstring
+        logger.warning(
+            "Could not update the viewer database (%s: %s). The report is on "
+            "disk; run `python3 -m swing_screener.web.ingest` to index it.",
+            type(e).__name__, e,
+        )

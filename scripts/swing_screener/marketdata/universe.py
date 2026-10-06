@@ -115,6 +115,7 @@ def fetch_us_universe_from_nasdaqtrader(min_price_hint: bool = True) -> Path:
         for sym in sorted(set(rows)):
             writer.writerow([sym])
     logger.info("Wrote %d US tickers to %s", len(rows), path)
+    _refresh_names("us")
     return path
 
 
@@ -172,7 +173,17 @@ def fetch_india_universe_from_yfinance_screener() -> Path:
         for sym in sorted(set(rows)):
             writer.writerow([sym])
     logger.info("Wrote %d India (NSE) tickers to %s", len(rows), path)
+    _refresh_names("india")
     return path
+
+
+def _refresh_names(market: str) -> None:
+    """Keep company names (marketdata/names.py) in step with the universe; never fails the refresh."""
+    try:
+        from . import names
+        names.refresh(market)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Company names not refreshed (%s); run `python3 -m swing_screener.marketdata.names`", exc)
 
 
 def load_sector_cache(market: str) -> dict[str, str]:
@@ -192,13 +203,30 @@ def save_sector_cache(market: str, sectors: dict[str, str]) -> None:
 
 
 def get_market_caps_cr(tickers: list[str]) -> dict[str, float | None]:
-    """Market cap in crore (1 crore = 1e7) for each ticker, via yfinance
-    .info. Lazy/uncached by design — call this AFTER the loose technical
-    filter has already cut the list down, not against the full universe."""
+    """Market cap in crore (1 crore = 1e7) for each ticker.
+
+    Read first from `symbol_industry` (market caps captured with the industry
+    classification, refreshed monthly — ample for a market-cap floor); only
+    tickers missing there are looked up via yfinance .info, and not at all in
+    offline mode (they come back None, which the floor treats as unknown)."""
+    from . import cache
+    out: dict[str, float | None] = {}
+    try:
+        from . import industries
+        known = industries.load("india")
+        for t in tickers:
+            cap = known.get(t, (None, None, None))[2]
+            if cap:
+                out[t] = cap / 1e7
+    except Exception as e:  # noqa: BLE001 - table not built yet
+        logger.info("Market caps not in symbol_industry (%s); looking them up", e)
+    todo = [t for t in tickers if t not in out]
+    if cache.is_offline():
+        out.update({t: None for t in todo})
+        return out
     import yfinance as yf
 
-    out: dict[str, float | None] = {}
-    for t in tickers:
+    for t in todo:
         try:
             cap = yf.Ticker(t).info.get("marketCap")
             out[t] = (cap / 1e7) if cap else None
@@ -214,6 +242,15 @@ def get_sectors(market: str, tickers: list[str]) -> dict[str, str]:
     so the lookup never repeats for a given ticker."""
     cache = load_sector_cache(market)
     missing = [t for t in tickers if t not in cache]
+    from . import cache as price_cache
+    if missing and price_cache.is_offline():
+        # no network: take the sector from the industry classification instead
+        try:
+            from . import industries
+            known = industries.load(market)
+            return {t: cache.get(t) or (known.get(t) or ("Unknown",))[0] for t in tickers}
+        except Exception:  # noqa: BLE001
+            return {t: cache.get(t, "Unknown") for t in tickers}
     if missing:
         import yfinance as yf  # local import: only needed on cache miss
 

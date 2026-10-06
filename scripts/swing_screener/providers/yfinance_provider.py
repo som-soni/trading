@@ -64,8 +64,11 @@ class YFinanceProvider(DataProvider):
         return pd.DataFrame(columns=_COLUMNS)
 
     def get_many_daily_bars(
-        self, symbols: list[str], lookback_days: int, batch_size: int = 50
+        self, symbols: list[str], lookback_days: int, batch_size: int = 50,
+        period: str | None = None, threads: bool = True, fallback: bool = True,
     ) -> dict[str, pd.DataFrame]:
+        """`period` overrides the lookback (e.g. "max" for everything the source has); `threads=False`
+        and `fallback=False` keep a long backfill from bursting requests at the data source."""
         period_days = max(lookback_days + 30, 400)
         out: dict[str, pd.DataFrame] = {}
         symbols = list(dict.fromkeys(symbols))  # de-dupe, preserve order
@@ -74,11 +77,11 @@ class YFinanceProvider(DataProvider):
             try:
                 raw = yf.download(
                     chunk,
-                    period=f"{period_days}d",
+                    period=period or f"{period_days}d",
                     interval="1d",
                     group_by="ticker",
                     auto_adjust=False,
-                    threads=True,
+                    threads=threads,
                     progress=False,
                 )
             except Exception:
@@ -94,7 +97,7 @@ class YFinanceProvider(DataProvider):
                 except Exception:
                     df = pd.DataFrame(columns=_COLUMNS)
                 df = _drop_incomplete_bar(df)
-                if df.empty:
+                if df.empty and fallback:
                     # per-symbol fallback/retry
                     try:
                         df = self.get_daily_bars(sym, lookback_days)
