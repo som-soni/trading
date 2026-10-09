@@ -360,6 +360,39 @@ def write_report(
                      f"| {row.avg_R:+.2f} | {row.median_days:.0f} |")
         L.append("")
 
+        # A strategy with several setups reports one averaged number that can
+        # describe none of them. chart_pattern's 424 trades span eleven
+        # detectors from +0.30R to -0.47R, and 228 of them are a single setup
+        # -- so its headline result is really that setup's result in disguise.
+        # Only emit this when there IS more than one setup to compare.
+        if "setup" in trades and trades["setup"].nunique() > 1:
+            L.append("### By setup")
+            L.append("")
+            g = trades.groupby("setup").agg(
+                trades=("pnl", "size"), total_pnl=("pnl", "sum"),
+                avg_R=("r_multiple", "mean"), median_days=("holding_days", "median"),
+            ).sort_values("avg_R", ascending=False)
+            wins = trades.assign(_w=trades["pnl"] > 0).groupby("setup")["_w"].mean() * 100
+            share = g["trades"] / len(trades) * 100
+            L.append("| setup | trades | share | win% | total P&L | avg R | median days |")
+            L.append("|---|---|---|---|---|---|---|")
+            for code, row in g.iterrows():
+                L.append(f"| `{code}` | {int(row.trades)} | {share[code]:.0f}% "
+                         f"| {wins[code]:.0f}% | {_money(row.total_pnl, currency)} "
+                         f"| {row.avg_R:+.3f} | {row.median_days:.0f} |")
+            L.append("")
+            top = g["trades"].idxmax()
+            if share[top] >= 40:
+                L.append(f"`{top}` is {share[top]:.0f}% of all trades, so the headline "
+                         f"figures above are largely this setup's result rather than "
+                         f"the strategy's as a whole.")
+                L.append("")
+            thin = int((g["trades"] < 20).sum())
+            if thin:
+                L.append(f"*{thin} of {len(g)} setups have fewer than 20 trades — too "
+                         f"few to read as evidence either way.*")
+                L.append("")
+
         for label, frame, asc in [("Best", trades.nlargest(10, "pnl"), False),
                                   ("Worst", trades.nsmallest(10, "pnl"), True)]:
             L.append(f"### {label} 10 trades")
