@@ -45,6 +45,23 @@ STYLES = {
     "trend": "Trend following",
 }
 
+# How a strategy decides WHICH stocks it owns. This is the axis that actually
+# separated results in testing, which is why it heads the sidebar rather than
+# entry style: ranking competing candidates by 12-1 momentum beat a seeded
+# random control by +7.78pp CAGR (India) and +4.28pp (US) on the same signals,
+# while the strategies' own setup scores landed within ~1pp of random. Every
+# approach here that beat its index ranks; every one that screens symbol by
+# symbol has lost.
+#
+# Ordered best-evidenced first, which is also the sidebar order.
+SELECTION = {
+    "ranked": "Cross-sectional ranking",
+    "level": "Price-level trigger",
+    "gated": "Per-symbol gates",
+    "pattern": "Chart-pattern detection",
+    "fundamental": "Business quality",
+}
+
 
 @dataclass
 class StrategyResult:
@@ -259,6 +276,12 @@ class Strategy(ABC):
     # variant must point at an existing non-variant parent of the same style.
     style: str = ""
     variant_of: str = ""
+    # a key of SELECTION above — how candidates are chosen, not how they are
+    # entered. `style` describes the entry; this describes the selection, and
+    # the two are independent (donchian and minervini both break out of a
+    # base, but one triggers on a mechanical level and the other on eight
+    # gates plus a pattern).
+    selection: str = "gated"
 
     # --- self-description, for reports ---
     # A report that lists symbols without saying what the strategy was looking

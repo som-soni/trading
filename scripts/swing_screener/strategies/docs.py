@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .. import paths
 from ..config import MARKETS
-from . import _REGISTRY, LABELS, STYLES
+from . import _REGISTRY, LABELS, SELECTION, STYLES
 
 # What each decision label means. Shared by every Strategy subclass: the
 # labels and the downgrade ladder are defined once, in strategies/base.py.
@@ -98,6 +98,10 @@ def strategy_doc(key: str) -> dict:
     return {
         "key": key, "kind": "screener", "name": cls.name, "description": r(cls.description), "status": r(cls.status),
         "style": cls.style, "style_label": STYLES.get(cls.style, ""),
+        "selection": cls.selection,
+        "selection_label": SELECTION.get(cls.selection, ""),
+        "selection_rank": (list(SELECTION).index(cls.selection)
+                           if cls.selection in SELECTION else len(SELECTION)),
         "style_rank": list(STYLES).index(cls.style) if cls.style in STYLES else len(STYLES),
         "variant_of": ({"key": cls.variant_of, "name": type(_REGISTRY[cls.variant_of]).name}
                        if cls.variant_of in _REGISTRY else None),
@@ -158,6 +162,8 @@ def baseline_doc() -> dict:
                        "values": {m: _fmt(default) for m in MARKETS}})
     return {
         "key": d["key"], "kind": "benchmark", "name": d["name"], "description": d["description"], "status": d["status"],
+        "selection": "ranked", "selection_label": SELECTION["ranked"],
+        "selection_rank": list(SELECTION).index("ranked"),
         "thesis": d["thesis"], "how_it_works": list(d["how_it_works"]), "caveats": list(d["caveats"]),
         "gates": [], "watch": [], "setups": [], "entry_rules": [], "exit_rules": [],
         "params": params, "decisions": [], "regime_note": "",
@@ -175,6 +181,8 @@ def quality_doc() -> dict:
               for k, v in vars(qmod).items() if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)]
     return {
         "key": c["key"], "kind": "long-term", "name": c["name"], "description": c["description"], "status": c["status"],
+        "selection": "fundamental", "selection_label": SELECTION["fundamental"],
+        "selection_rank": list(SELECTION).index("fundamental"),
         "thesis": c["thesis"], "how_it_works": list(c["how_it_works"]), "caveats": list(c["caveats"]),
         "gates": [{"code": f"{t['points']} pts", "text": t["text"]} for t in c["quality_tests"]], "watch": [], "setups": [],
         "entry_rules": list(c["price_rules"]), "exit_rules": [], "params": params, "decisions": [], "regime_note": "",

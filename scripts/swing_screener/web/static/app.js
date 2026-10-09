@@ -2164,11 +2164,20 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
     .filter((v) => v.key !== p.key && famOf(v) === famOf(p) && !heads.has(v.key))
     .sort(byVersionDesc)
     .map((v) => item(v, true)).join("");
-  const styles = [...new Map(scr.map((x) => [x.style_label || "Trading strategies", x.style_rank ?? 99]))].sort((a, b) => a[1] - b[1]);
-  const stratNav = styles.map(([label]) => `<div class="nav-h">${esc(label)}</div>` +
-    scr.filter((x) => (x.style_label || "Trading strategies") === label && topLevel(x)).map(withVariants).join("")).join("");
-  const rest = [["Benchmark", "benchmark"], ["Long-term", "long-term"]].map(([t, k]) => {
-    const xs = list.filter((x) => x.kind === k); return xs.length ? `<div class="nav-h">${t}</div>${xs.map((x) => item(x)).join("")}` : ""; }).join("");
+  // Group by HOW CANDIDATES ARE SELECTED, not by entry style. Entry style put
+  // six of eight strategies in one bucket and said nothing about results;
+  // selection is the axis that separated them — ranking the universe beat a
+  // random control by +7.78pp, and it is the only approach here that has
+  // beaten an index. Benchmark and long-term entries join the same grouping
+  // rather than sitting in separate trailing sections, so momentum_baseline
+  // appears next to what it should be compared with.
+  const all = list.filter((x) => x.selection_label);
+  const groups = [...new Map(all.map((x) => [x.selection_label, x.selection_rank ?? 99]))].sort((a, b) => a[1] - b[1]);
+  const stratNav = groups.map(([label]) => `<div class="nav-h">${esc(label)}</div>` +
+    all.filter((x) => x.selection_label === label && (x.kind !== "screener" || topLevel(x)))
+       .map((x) => (x.kind === "screener" ? withVariants(x) : item(x))).join("")).join("");
+  const ungrouped = list.filter((x) => !x.selection_label);
+  const rest = ungrouped.length ? `<div class="nav-h">Other</div>${ungrouped.map((x) => item(x)).join("")}` : "";
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
       ${stratNav}${rest}

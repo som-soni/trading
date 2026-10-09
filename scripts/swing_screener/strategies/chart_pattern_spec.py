@@ -121,6 +121,7 @@ def _live(res: dict) -> bool:
 
 
 class ChartPatternSpecStrategy(Strategy):
+    selection = "pattern"
     family = "chart_pattern"
     version = "2.0"
     changelog = (

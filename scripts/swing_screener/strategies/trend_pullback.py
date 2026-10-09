@@ -47,6 +47,7 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 
 class TrendPullbackStrategy(Strategy):
+    selection = "gated"
     key = "trend_pullback"
     name = "Trend pullback / continuation"
     description = (

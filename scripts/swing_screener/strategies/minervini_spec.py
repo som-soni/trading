@@ -79,6 +79,7 @@ EARNINGS_WARN_DAYS = 10
 
 
 class MinerviniSpecStrategy(Strategy):
+    selection = "gated"
     family = "minervini"
     version = "2.0"
     changelog = (

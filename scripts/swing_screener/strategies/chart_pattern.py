@@ -66,6 +66,7 @@ VOL_CONFIRM = 1.4
 
 
 class ChartPatternStrategy(Strategy):
+    selection = "pattern"
     family = "chart_pattern"
     version = "1.0"
     changelog = (

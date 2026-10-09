@@ -489,6 +489,10 @@ def strategies():
         out.append({"key": k, "name": d["name"], "kind": d["kind"], "status": d["status"], "description": d["description"],
                     "screen_name": (d.get("screen") or {}).get("name"),
                     "style_label": d.get("style_label") or "", "style_rank": d.get("style_rank", 99),
+                    # how candidates are chosen — the sidebar's primary grouping
+                    "selection": d.get("selection") or "",
+                    "selection_label": d.get("selection_label") or "",
+                    "selection_rank": d.get("selection_rank", 99),
                     "variant_of": (d.get("variant_of") or {}).get("key"),
                     # family / version, so the page can group successive
                     # versions of one strategy instead of listing them flat
