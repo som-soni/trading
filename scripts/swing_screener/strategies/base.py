@@ -191,17 +191,22 @@ class Strategy(ABC):
     # one, because the alternative is what happened before — Minervini's VCP
     # threshold went 12% -> 10% in place and every earlier run became
     # irreproducible with nothing recording that it had changed.
-    # `variant_of` already names the parent strategy and is used by the docs
-    # and the web page, so family is derived from it rather than duplicated.
+    # `family` groups successive VERSIONS of one strategy: minervini v1 (built
+    # from prose) and v2 (built to the written spec) are the same strategy
+    # refined, not two strategies. `variant_of` means something different --
+    # a sibling experiment rather than a successor, like chart_pattern_cup,
+    # which restricts its parent's detectors instead of replacing them.
+    family: str = ""
     version: str = "1.0"
     # (version, ISO date, what changed and why) — newest first
     changelog: tuple[tuple[str, str, str], ...] = ()
 
     @classmethod
     def family_name(cls) -> str:
-        """The high-level strategy this belongs to. A variant reports its
-        parent, so `chart_pattern_cup` groups under `chart_pattern`."""
-        return cls.variant_of or cls.key
+        """The high-level strategy this belongs to: an explicit `family` wins,
+        otherwise a variant reports its parent, otherwise the key stands
+        alone."""
+        return cls.family or cls.variant_of or cls.key
 
     @classmethod
     def spec_params(cls) -> dict:

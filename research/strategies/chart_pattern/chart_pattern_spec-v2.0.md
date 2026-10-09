@@ -1,12 +1,10 @@
 # Chart patterns (to the detection spec)
 
-`chart_pattern_spec` · family **chart_pattern** · **v1.0** · fingerprint `1c17e9be`
+`chart_pattern_spec` · family **chart_pattern** · **v2.0** · fingerprint `1c17e9be`
 
 > Backtested 2026-10-09 and it loses, by less than its sibling: -0.93% CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol sample), against `chart_pattern`'s -5.60% and -0.309R on the same run. The +0.234R difference has a Welch t of 1.16 and a 95% interval of [-0.16, +0.62], so the spec's discipline is NOT demonstrated to help; both lose 14-19 points of CAGR to the benchmark.
 
 The written chart-pattern specification, rule for rule: eleven patterns detected with ATR-scaled tolerances, fitted trendlines and prior-trend context, traded at the spec's own trigger, invalidation and measured move.
-
-*A variant of `chart_pattern` (Classical chart-pattern breakout).*
 
 ## Thesis
 
@@ -97,6 +95,12 @@ If classical chart patterns carry information, a detector built to a written spe
 - **§5 has no ceiling on the middle swing**, so two lows either side of a spike pass DB-03: AEVA screened as a live double bottom with lows of 13.51 and 13.90 around a 28.42 peak. Gate S5's band keeps it out of the report rather than the detector rejecting it, because the detector implements the spec as written; `PatternParams.db_max_peak` exists to test a cap.
 - **The reversal patterns are mostly unreachable through this screen.** `near_highs` wants price within 15% of the 52-week high above a rising 200-day, while DBOT and IHS require a prior DOWNTREND (PT-02) and form well below the highs. They are implemented and tested, and they will rarely fire here. Measuring them needs a screen that does not demand an uptrend — a deliberate follow-up, not an oversight: changing the screen would also break the like-for-like comparison with `chart_pattern` that this strategy exists for.
 - Several patterns usually match one chart. The traded one is the highest-priority live match; `pattern` names it and the setup columns show the rest.
+
+## Changelog
+
+| version | date | change |
+|---|---|---|
+| 2.0 | 2026-10-09 | Rebuilt to the written detection specification: twelve patterns with section-referenced definitions, adding triple bottom, inverse head-and-shoulders, symmetrical triangle, falling wedge, rectangle and high tight flag. |
 
 ## Commands
 

@@ -96,6 +96,12 @@ A base with a recognised shape — rounded cup, matched double bottom, tightenin
 - Flat bases and flags project their PRIOR ADVANCE as the measured move, not the base height (a 10% box cannot project 2R off a stop under its own low). That is the most aggressive assumption in the file.
 - Several patterns usually match one chart (a VCP is often also a cup or a flat base). The traded one is whichever scores highest among those near their pivot; `patterns_seen` lists the rest. Do not read a long `patterns_seen` as corroboration — the detectors are not independent.
 
+## Changelog
+
+| version | date | change |
+|---|---|---|
+| 1.0 | 2026-10-07 | First implementation: seven detectors (cup, cup-no-handle, double bottom, flat base, bull flag, ascending triangle, VCP). |
+
 ## Commands
 
 ```bash

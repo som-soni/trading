@@ -66,6 +66,12 @@ VOL_CONFIRM = 1.4
 
 
 class ChartPatternStrategy(Strategy):
+    family = "chart_pattern"
+    version = "1.0"
+    changelog = (
+        ("1.0", "2026-10-07",
+         "First implementation: seven detectors (cup, cup-no-handle, double bottom, flat base, bull flag, ascending triangle, VCP)."),
+    )
     key = "chart_pattern"
     name = "Classical chart-pattern breakout"
     description = (

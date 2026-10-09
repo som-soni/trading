@@ -106,6 +106,12 @@ EXTENDED_ATR_ABOVE_SMA50 = 4.0
 
 
 class MinerviniStrategy(Strategy):
+    family = "minervini"
+    version = "1.0"
+    changelog = (
+        ("1.0", "2026-10-05",
+         "First implementation, built from a prose description of SEPA. Approximates the exits with a 50-day moving-average break because the simulator had no mode for the real selling rules."),
+    )
     key = "minervini"
     name = "Minervini SEPA (trend template + VCP)"
     description = (

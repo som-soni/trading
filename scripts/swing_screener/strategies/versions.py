@@ -27,6 +27,14 @@ from pathlib import Path
 
 from . import _REGISTRY
 
+def _vkey(v: str) -> tuple:
+    """Sort versions numerically, so 10.0 follows 9.0 rather than 1.0."""
+    try:
+        return tuple(int(x) for x in str(v).split("."))
+    except ValueError:
+        return (0,)
+
+
 LOCK_PATH = Path(__file__).resolve().parent / "versions.lock.json"
 
 
@@ -143,11 +151,20 @@ def main() -> None:
         for k, v in now.items():
             fams.setdefault(v["family"], []).append((k, v))
         for fam, members in sorted(fams.items()):
+            # newest version first, and mark it: with several versions in a
+            # family the question is always "which one is current", and
+            # marking the key that matches the family name answers a
+            # different, less useful question
+            members.sort(key=lambda kv: _vkey(kv[1]["version"]), reverse=True)
+            latest = members[0][1]["version"] if members else None
             print(f"  {fam}")
             for k, v in members:
-                mark = "*" if k == fam else " "
+                variant = type(_REGISTRY[k]).variant_of
+                mark = "*" if v["version"] == latest and not variant else " "
+                tag = f"  (variant of {variant})" if variant else ""
                 print(f"   {mark} {k:22} v{v['version']}-{v['fingerprint']}  "
-                      f"({len(v['params'])} params)")
+                      f"({len(v['params'])} params){tag}")
+        print("\n  * = current version of its family")
 
 
 if __name__ == "__main__":

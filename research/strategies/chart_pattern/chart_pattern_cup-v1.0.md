@@ -88,6 +88,12 @@ If classical chart patterns carry information, the one that a random walk almost
 - CUP fires on ~0.2% of liquid names, so expect FEW trades and wide error bars. A difference of a point or two of CAGR over ~20 trades says nothing at all.
 - Every caveat on `chart_pattern` applies here unchanged.
 
+## Changelog
+
+| version | date | change |
+|---|---|---|
+| 1.0 | 2026-10-07 | First implementation: seven detectors (cup, cup-no-handle, double bottom, flat base, bull flag, ascending triangle, VCP). |
+
 ## Commands
 
 ```bash

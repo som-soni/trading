@@ -83,6 +83,12 @@ Stocks making large advances are already strong beforehand, so buy only confirme
 - The Trend Template is public and heavily data-mined. An in-sample edge on the same 13.75 years everything else here uses is weak evidence.
 - The VCP thresholds are an interpretation calibrated for selectivity, not fitted to returns — but they are still choices, and a different reading of 'contraction' would give different trades.
 
+## Changelog
+
+| version | date | change |
+|---|---|---|
+| 1.0 | 2026-10-05 | First implementation, built from a prose description of SEPA. Approximates the exits with a 50-day moving-average break because the simulator had no mode for the real selling rules. |
+
 ## Commands
 
 ```bash

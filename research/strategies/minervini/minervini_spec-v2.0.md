@@ -1,12 +1,10 @@
 # Minervini VCP (to the backtest spec)
 
-`minervini_spec` · family **minervini** · **v1.0** · fingerprint `cec0af9f`
+`minervini_spec` · family **minervini** · **v2.0** · fingerprint `cec0af9f`
 
 > No demonstrated edge (India, 2010 onward, `--spec`). Confirmed breakouts (EN-01): 9 trades in 16 years, CAGR −0.1% — the spec's base rules almost never complete on Indian daily data. Buy-stops (EN-02): 114 trades, expectancy −0.03R, profit factor 0.86, CAGR 0.1% against the index's ~12%, max drawdown −8.6%; the failed-breakout exit closes ~80% of trades for −0.3R each. No parameter at either end of the spec's test ranges, and no failed-breakout window, gives an edge that holds both in and out of sample (research/minervini-spec-sensitivity-india.md). US, same rules: EN-01 26 trades, −0.14R; EN-02 526 trades, −0.02R, CAGR −0.8% (index ~13%), max drawdown −30% — +0.05R to 2019, −0.12R since; the stricter variants that help in sample all turn negative after 2019 (research/minervini-spec-sensitivity-us.md).
 
 The written Minervini backtest specification, rule for rule: Trend Template, a base-high anchored VCP, confirmed breakouts at the next open or buy-stops through the pivot, and the spec's exits (failed breakout, breakeven, partial profit, climax, 50-day break).
-
-*A variant of `minervini` (Minervini SEPA (trend template + VCP)).*
 
 ## Thesis
 
@@ -99,6 +97,12 @@ The same edge as Minervini's SEPA — buy Stage-2 leaders as a volatility contra
 - **Base number** counts the bases that produced a breakout since the trend last broke; it is worked out by the backtest from the signal list, and only reported, not filtered on by default.
 - EN-03 (buying inside the tight area before any breakout) is not implemented.
 - The detector turns a chart-reading judgement into numbers; every threshold is a parameter of the spec (section 11), most of them marked there as assumptions.
+
+## Changelog
+
+| version | date | change |
+|---|---|---|
+| 2.0 | 2026-10-09 | Rebuilt to the written backtest specification: base-high anchored VCP, confirmed breakouts, and the real exit ladder (failed breakout, breakeven, partial profit, climax, 50-day break) via --exit-mode minervini. Max stop 10% -> 8%; cross-sectional RS rank replaces v1's absolute momentum floor. |
 
 ## Commands
 

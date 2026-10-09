@@ -177,7 +177,7 @@
         "XS3"
       ]
     },
-    "version": "1.0"
+    "version": "2.0"
   },
   "donchian": {
     "family": "donchian",
@@ -309,7 +309,7 @@
         "B4"
       ]
     },
-    "version": "1.0"
+    "version": "2.0"
   },
   "trend_pullback": {
     "family": "trend_pullback",

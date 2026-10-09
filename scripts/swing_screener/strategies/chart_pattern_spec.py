@@ -121,6 +121,12 @@ def _live(res: dict) -> bool:
 
 
 class ChartPatternSpecStrategy(Strategy):
+    family = "chart_pattern"
+    version = "2.0"
+    changelog = (
+        ("2.0", "2026-10-09",
+         "Rebuilt to the written detection specification: twelve patterns with section-referenced definitions, adding triple bottom, inverse head-and-shoulders, symmetrical triangle, falling wedge, rectangle and high tight flag."),
+    )
     key = "chart_pattern_spec"
     name = "Chart patterns (to the detection spec)"
     description = (
@@ -130,7 +136,6 @@ class ChartPatternSpecStrategy(Strategy):
         "and measured move."
     )
     style = "breakout"
-    variant_of = "chart_pattern"
     # The same screen as `chart_pattern`, deliberately: the question this
     # strategy exists to answer is whether the spec's detection beats the
     # ad-hoc one, and running the two over different candidate sets would

@@ -79,6 +79,12 @@ EARNINGS_WARN_DAYS = 10
 
 
 class MinerviniSpecStrategy(Strategy):
+    family = "minervini"
+    version = "2.0"
+    changelog = (
+        ("2.0", "2026-10-09",
+         "Rebuilt to the written backtest specification: base-high anchored VCP, confirmed breakouts, and the real exit ladder (failed breakout, breakeven, partial profit, climax, 50-day break) via --exit-mode minervini. Max stop 10% -> 8%; cross-sectional RS rank replaces v1's absolute momentum floor."),
+    )
     key = "minervini_spec"
     name = "Minervini VCP (to the backtest spec)"
     description = (
@@ -87,7 +93,6 @@ class MinerviniSpecStrategy(Strategy):
         "spec's exits (failed breakout, breakeven, partial profit, climax, 50-day break)."
     )
     style = "breakout"
-    variant_of = "minervini"
 
     gate_codes = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8")
     watch_codes = ("B1", "B2", "B3", "B4")
