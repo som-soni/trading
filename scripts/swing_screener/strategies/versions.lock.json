@@ -1,0 +1,360 @@
+{
+  "breakout": {
+    "family": "breakout",
+    "fingerprint": "a796b288",
+    "params": {
+      "BREAKOUT_LOOKBACK": 55,
+      "CONSOLIDATION_BARS": 20,
+      "_key": "breakout",
+      "gate_codes": [
+        "B1",
+        "B2",
+        "B3",
+        "B4",
+        "B5",
+        "B6",
+        "B7"
+      ],
+      "min_bars": 260,
+      "min_structural_r": 2.0,
+      "setup_codes": [
+        "BO-01",
+        "BO-02"
+      ],
+      "watch_codes": [
+        "XB1",
+        "XB2",
+        "XB3"
+      ]
+    },
+    "version": "1.0"
+  },
+  "chart_pattern": {
+    "family": "chart_pattern",
+    "fingerprint": "31bf07b0",
+    "params": {
+      "MAX_CHASE_PCT": 0.04,
+      "NEAR_PIVOT_PCT": 0.08,
+      "VOL_CONFIRM": 1.4,
+      "_key": "chart_pattern",
+      "allowed_codes": [
+        "CUP",
+        "CUPNH",
+        "DBOT",
+        "FLAT",
+        "FLAG",
+        "ATRI",
+        "VCP"
+      ],
+      "gate_codes": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P5",
+        "P6",
+        "P7"
+      ],
+      "max_depth_pct": 35.0,
+      "min_bars": 300,
+      "min_quality": 0.45,
+      "min_stop_atr": 0.6,
+      "min_stop_pct": 1.5,
+      "min_structural_r": 2.0,
+      "overhead_cluster_atr": 1.0,
+      "setup_codes": [
+        "CUP",
+        "CUPNH",
+        "DBOT",
+        "FLAT",
+        "FLAG",
+        "ATRI",
+        "VCP"
+      ],
+      "watch_codes": [
+        "XP1",
+        "XP2",
+        "XP3",
+        "XP4",
+        "XP5"
+      ]
+    },
+    "version": "1.0"
+  },
+  "chart_pattern_cup": {
+    "family": "chart_pattern",
+    "fingerprint": "422fb10b",
+    "params": {
+      "MAX_CHASE_PCT": 0.04,
+      "NEAR_PIVOT_PCT": 0.08,
+      "VOL_CONFIRM": 1.4,
+      "_key": "chart_pattern_cup",
+      "allowed_codes": [
+        "CUP",
+        "CUPNH"
+      ],
+      "gate_codes": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P5",
+        "P6",
+        "P7"
+      ],
+      "max_depth_pct": 35.0,
+      "min_bars": 300,
+      "min_quality": 0.45,
+      "min_stop_atr": 0.6,
+      "min_stop_pct": 1.5,
+      "min_structural_r": 2.0,
+      "overhead_cluster_atr": 1.0,
+      "setup_codes": [
+        "CUP",
+        "CUPNH"
+      ],
+      "watch_codes": [
+        "XP1",
+        "XP2",
+        "XP3",
+        "XP4",
+        "XP5"
+      ]
+    },
+    "version": "1.0"
+  },
+  "chart_pattern_spec": {
+    "family": "chart_pattern",
+    "fingerprint": "1c17e9be",
+    "params": {
+      "ATR_MULT": 1.5,
+      "BO_BUFFER": 0.5,
+      "BO_VOL": 1.4,
+      "EARNINGS_DAYS": 10,
+      "FAIL_DAYS": 10,
+      "HORIZON": 60,
+      "K_MAJOR": 8,
+      "K_MINOR": 3,
+      "MAX_ATR_PCT": 10.0,
+      "MAX_BELOW_TRIGGER_PCT": 10.0,
+      "MAX_CHASE_PCT": 4.0,
+      "MAX_RISK_PCT": 8.0,
+      "MAX_STOP_ATR": 2.0,
+      "MAX_WAIT": 20,
+      "MIN_R": 2.0,
+      "MIN_STOP_ATR": 0.6,
+      "MIN_STOP_PCT": 1.5,
+      "MIN_SWING_PCT": 3.0,
+      "OVERBOUGHT_RSI": 80.0,
+      "TOL_ATR_MULT": 0.75,
+      "TOL_PCT": 3.0,
+      "_key": "chart_pattern_spec",
+      "gate_codes": [
+        "S1",
+        "S2",
+        "S3",
+        "S4",
+        "S5"
+      ],
+      "min_bars": 320,
+      "setup_codes": [
+        "CUP",
+        "CUPNH",
+        "DBOT",
+        "TBOT",
+        "IHS",
+        "ATRI",
+        "SYMM",
+        "FWDG",
+        "RECT",
+        "FBASE",
+        "FLAG",
+        "HTF"
+      ],
+      "watch_codes": [
+        "XS1",
+        "XS2",
+        "XS3"
+      ]
+    },
+    "version": "1.0"
+  },
+  "donchian": {
+    "family": "donchian",
+    "fingerprint": "69e24dab",
+    "params": {
+      "_key": "donchian",
+      "entry_channel": 55,
+      "exit_channel": 20,
+      "gate_codes": [
+        "N1",
+        "N2"
+      ],
+      "min_bars": 260,
+      "min_stop_pct": 2.0,
+      "nominal_target_atr": 10.0,
+      "setup_codes": [
+        "DC-01",
+        "DC-02"
+      ],
+      "stop_atr_mult": 2.0,
+      "watch_codes": [
+        "XN1",
+        "XN2"
+      ]
+    },
+    "version": "1.0"
+  },
+  "minervini": {
+    "family": "minervini",
+    "fingerprint": "4b8719af",
+    "params": {
+      "EXTENDED_ATR_ABOVE_SMA50": 4.0,
+      "MAX_PCT_ABOVE_PIVOT": 5.0,
+      "MAX_PCT_BELOW_52W_HIGH": 25.0,
+      "MAX_STOP_PCT": 10.0,
+      "MIN_PCT_ABOVE_52W_LOW": 30.0,
+      "NOMINAL_TARGET_R": 3.0,
+      "RS_MIN_MOM": 0.1,
+      "SMA200_RISING_BARS": 21,
+      "TARGET_STOP_PCT": 7.0,
+      "VCP_DRY_VOLUME_RATIO": 1.0,
+      "VCP_IDEAL_TIGHT_PCT": 8.0,
+      "VCP_LEGS_TESTED": 3,
+      "VCP_LOOKBACK": 120,
+      "VCP_MIN_LEGS": 2,
+      "VCP_PROXIMITY_PCT": 8.0,
+      "VCP_TIGHT_PCT": 10.0,
+      "VCP_TOLERANCE_PP": 1.0,
+      "_key": "minervini",
+      "gate_codes": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "M8"
+      ],
+      "min_bars": 300,
+      "setup_codes": [
+        "MV-01",
+        "MV-02"
+      ],
+      "watch_codes": [
+        "V1",
+        "V2",
+        "V3",
+        "V4",
+        "V5",
+        "V6"
+      ]
+    },
+    "version": "1.0"
+  },
+  "minervini_spec": {
+    "family": "minervini",
+    "fingerprint": "cec0af9f",
+    "params": {
+      "BASE_MAX_DAYS": 325,
+      "BASE_MIN_DAYS": 15,
+      "BUY_RANGE_PCT": 5.0,
+      "COIL_PCT": 8.0,
+      "DRYUP_RATIO": 0.7,
+      "EARNINGS_WARN_DAYS": 10,
+      "MAX_ADV_PCT": 5.0,
+      "MAX_CONTRACTIONS": 6,
+      "MAX_FIRST_DEPTH_PCT": 35.0,
+      "MAX_OPEN_RISK_PCT": 6.0,
+      "MAX_PCT_BELOW_52W_HIGH": 25.0,
+      "MAX_POSITIONS": 8,
+      "MAX_STOP_PCT": 8.0,
+      "MIN_CONTRACTIONS": 2,
+      "MIN_PCT_ABOVE_52W_LOW": 30.0,
+      "MIN_SWING_PCT": 2.0,
+      "NOMINAL_TARGET_R": 3.0,
+      "PIVOT_NEAR_HIGH": 0.9,
+      "PRIOR_ADVANCE_PCT": 30.0,
+      "RS_MIN_MOM": 0.1,
+      "RS_MIN_RANK": 70,
+      "SHRINK": 0.8,
+      "SMA200_RISING_BARS": 21,
+      "STOP_BUFFER_PCT": 0.5,
+      "SWING_K": 5,
+      "TIGHT_DAYS": 10,
+      "TIGHT_PCT": 10.0,
+      "UPPER_HALF": 0.5,
+      "VOL_MULT": 1.4,
+      "_key": "minervini_spec",
+      "gate_codes": [
+        "M1",
+        "M2",
+        "M3",
+        "M4",
+        "M5",
+        "M6",
+        "M7",
+        "M8"
+      ],
+      "min_bars": 300,
+      "setup_codes": [
+        "MV-01",
+        "MV-02"
+      ],
+      "watch_codes": [
+        "B1",
+        "B2",
+        "B3",
+        "B4"
+      ]
+    },
+    "version": "1.0"
+  },
+  "trend_pullback": {
+    "family": "trend_pullback",
+    "fingerprint": "0acddbda",
+    "params": {
+      "_key": "trend_pullback",
+      "gate_codes": [
+        "W1",
+        "W2",
+        "T1",
+        "T2",
+        "T3",
+        "T4",
+        "T5",
+        "T6",
+        "D2",
+        "D3",
+        "D4",
+        "D5",
+        "D6",
+        "D7"
+      ],
+      "max_stop_atr_trade": 3.0,
+      "max_stop_atr_wait": 3.5,
+      "max_stop_pct_trade": 12.0,
+      "max_stop_pct_wait": 15.0,
+      "min_bars": 260,
+      "own_level_tol_pct": 0.5,
+      "setup_codes": [
+        "TC-01",
+        "TC-02",
+        "TC-04"
+      ],
+      "watch_codes": [
+        "X1",
+        "X2",
+        "X3",
+        "X4",
+        "X5",
+        "X6",
+        "X7",
+        "X8",
+        "X9"
+      ]
+    },
+    "version": "1.0"
+  }
+}

@@ -1104,6 +1104,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     if args.accept_labels != "TRADE - HIGH CONFIDENCE":
         run += "_" + "+".join("".join(w[0] for w in x.split() if w[0].isalpha()) for x in labels)
     run += f"_sample{args.sample}" if args.sample else ""
+    # The strategy's version and parameter fingerprint belong in the run name:
+    # without them a result cannot be traced to the rules that produced it, and
+    # two versions of the same strategy silently overwrite each other's reports.
+    run += f"_{get_strategy(args.strategy).spec_id()}"
     out = run_dir(args.market, args.strategy, run)
     tdf.to_csv(out / "trades.csv", index=False)
     pd.DataFrame({

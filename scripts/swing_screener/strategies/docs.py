@@ -256,7 +256,13 @@ def check() -> list[str]:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--write", action="store_true",
+                    help="write versioned specs under research/strategies/")
     a = ap.parse_args()
+    if a.write:
+        for p in write_specs():
+            print(f"  {p.relative_to(paths.REPO_ROOT)}")
+        return
     if a.check:
         probs = check()
         print("\n".join(probs) or "OK — every strategy is fully documented")
@@ -267,6 +273,92 @@ def main() -> None:
         for g in d["gates"]:
             print(f"  {g['code']:6s} {g['text']}")
 
+
+
+# --- versioned specs on disk -------------------------------------------------
+
+def spec_markdown(key: str) -> str:
+    """One strategy version as a readable document.
+
+    Everything here is generated from the class, so a spec cannot drift from
+    the code it describes — which is the whole reason it is worth committing.
+    The fingerprint at the top is the same one in the run directory names, so
+    a result and the spec that produced it can always be matched up.
+    """
+    from . import _REGISTRY
+
+    cls = type(_REGISTRY[key])
+    d = strategy_doc(key)
+    L = [f"# {d['name']}", "",
+         f"`{key}` · family **{cls.family_name()}** · **v{cls.version}** · "
+         f"fingerprint `{cls.fingerprint()}`", "",
+         f"> {d['status']}", "", d["description"], ""]
+
+    if d.get("variant_of"):
+        L += [f"*A variant of `{d['variant_of']['key']}` "
+              f"({d['variant_of']['name']}).*", ""]
+    if d["thesis"]:
+        L += ["## Thesis", "", d["thesis"], ""]
+    if d["how_it_works"]:
+        L += ["## How it works", ""]
+        L += [f"{i}. {s}" for i, s in enumerate(d["how_it_works"], 1)] + [""]
+
+    for title, items, cols in (
+        ("Hard gates (failing any one means AVOID)", d["gates"], ("code", "text")),
+        ("Watch flags (these cap confidence)", d["watch"], ("code", "text")),
+        ("Setups", d["setups"], ("code", "text")),
+    ):
+        if items:
+            L += [f"## {title}", "", "| code | meaning |", "|---|---|"]
+            L += [f"| `{it[cols[0]]}` | {it[cols[1]]} |" for it in items] + [""]
+
+    for title, items in (("Entry", d["entry_rules"]), ("Exit", d["exit_rules"])):
+        if items:
+            L += [f"## {title}", ""] + [f"- {s}" for s in items] + [""]
+
+    if d["params"]:
+        L += ["## Parameters", "", "| parameter | value | meaning |", "|---|---|---|"]
+        for p in d["params"]:
+            val = p.get("value")
+            if isinstance(val, dict):
+                val = ", ".join(f"{m}: {v}" for m, v in val.items())
+            L.append(f"| {p.get('label', '')} | `{val}` | {p.get('meaning', '')} |")
+        L.append("")
+
+    if d["caveats"]:
+        L += ["## Known caveats", ""] + [f"- {c}" for c in d["caveats"]] + [""]
+
+    if cls.changelog:
+        L += ["## Changelog", "", "| version | date | change |", "|---|---|---|"]
+        L += [f"| {v} | {dt} | {what} |" for v, dt, what in cls.changelog] + [""]
+
+    cmds = d.get("commands") or {}
+    if cmds:
+        L += ["## Commands", "", "```bash"]
+        L += [str(c) for c in cmds.values() if c]
+        L += ["```", ""]
+
+    src = d.get("source") or {}
+    L += ["---", "",
+          f"*Generated from `{src.get('file', '?')}`. Do not edit by hand — "
+          f"re-run `python3 -m swing_screener.strategies.docs --write`.*"]
+    return "\n".join(L)
+
+
+def write_specs() -> list:
+    """Write every registered strategy's spec under research/strategies/."""
+    from . import _REGISTRY
+
+    out_root = paths.RESEARCH_DIR / "strategies"
+    written = []
+    for key in sorted(_REGISTRY):
+        cls = type(_REGISTRY[key])
+        d = out_root / cls.family_name()
+        d.mkdir(parents=True, exist_ok=True)
+        path = d / f"{key}-v{cls.version}.md"
+        path.write_text(spec_markdown(key) + "\n")
+        written.append(path)
+    return written
 
 if __name__ == "__main__":
     main()

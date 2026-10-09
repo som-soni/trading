@@ -180,6 +180,72 @@ class Strategy(ABC):
     # minimum daily bars before this strategy will evaluate a symbol
     min_bars: int = 260
 
+    # --- identity and versioning ---
+    # `family` is the high-level strategy a reader thinks in terms of
+    # ("minervini"); `version` distinguishes rule sets within it. Keeping them
+    # apart is what stops the strategy list growing every time a threshold
+    # moves: families stay few, versions accumulate underneath.
+    #
+    # The rule this enforces: CHANGING A TUNABLE REQUIRES A VERSION BUMP.
+    # `strategies/versions.py --check` fails when a fingerprint moves without
+    # one, because the alternative is what happened before — Minervini's VCP
+    # threshold went 12% -> 10% in place and every earlier run became
+    # irreproducible with nothing recording that it had changed.
+    # `variant_of` already names the parent strategy and is used by the docs
+    # and the web page, so family is derived from it rather than duplicated.
+    version: str = "1.0"
+    # (version, ISO date, what changed and why) — newest first
+    changelog: tuple[tuple[str, str, str], ...] = ()
+
+    @classmethod
+    def family_name(cls) -> str:
+        """The high-level strategy this belongs to. A variant reports its
+        parent, so `chart_pattern_cup` groups under `chart_pattern`."""
+        return cls.variant_of or cls.key
+
+    @classmethod
+    def spec_params(cls) -> dict:
+        """Every numeric tunable that defines this version's behaviour.
+
+        Reuses `doc_namespace()` — the same values the documentation
+        substitutes into `{NAME}` placeholders — so the fingerprint cannot
+        drift from what the published spec says. A parameter that is not
+        documented is also not fingerprinted, which is the right incentive.
+        """
+        params: dict = {
+            k: v for k, v in cls.doc_namespace().items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+        }
+        # Numbers alone are not the whole rule set. `chart_pattern_cup`
+        # differs from its parent only by which detectors it admits -- same
+        # module, so identical constants and, on numbers alone, an identical
+        # fingerprint. The declared code vocabularies change behaviour and
+        # must be part of the identity.
+        for attr in ("gate_codes", "watch_codes", "setup_codes",
+                     "allowed_codes", "entry_setup_codes"):
+            codes = getattr(cls, attr, None)
+            if codes:
+                params[attr] = list(codes)
+        # and the key, so two unrelated strategies can never collide
+        params["_key"] = cls.key
+        return params
+
+    @classmethod
+    def fingerprint(cls) -> str:
+        """Short, stable hash of the tunables. Two runs with the same
+        fingerprint were produced by the same rule set."""
+        import hashlib
+        import json
+
+        blob = json.dumps(cls.spec_params(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(blob.encode()).hexdigest()[:8]
+
+    @classmethod
+    def spec_id(cls) -> str:
+        """`v2.0-73e82535` — goes into run directory names so a result can
+        always be traced back to the exact parameters that produced it."""
+        return f"v{cls.version}-{cls.fingerprint()}"
+
     # --- classification, for the Strategies page sidebar ---
     # `style` is the trading-style family this strategy belongs to (a key of
     # STYLES above); `variant_of` names the registered strategy this one is a
