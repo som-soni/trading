@@ -52,7 +52,7 @@ DC02 = "DC-02"  # coiled just under the channel high
 
 
 class DonchianStrategy(Strategy):
-    selection = "level"
+    selection = "time_series"
     key = "donchian"
     name = "Donchian channel breakout"
     description = (

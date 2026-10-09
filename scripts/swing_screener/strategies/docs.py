@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .. import paths
 from ..config import MARKETS
-from . import _REGISTRY, LABELS, SELECTION, STYLES
+from . import _REGISTRY, BEHAVIOURS, LABELS, SELECTION, STYLES
 
 # What each decision label means. Shared by every Strategy subclass: the
 # labels and the downgrade ladder are defined once, in strategies/base.py.
@@ -102,6 +102,10 @@ def strategy_doc(key: str) -> dict:
         "selection_label": SELECTION.get(cls.selection, ""),
         "selection_rank": (list(SELECTION).index(cls.selection)
                            if cls.selection in SELECTION else len(SELECTION)),
+        "behaviour": cls.behaviour,
+        "behaviour_label": BEHAVIOURS.get(cls.behaviour, ""),
+        "behaviour_rank": (list(BEHAVIOURS).index(cls.behaviour)
+                           if cls.behaviour in BEHAVIOURS else len(BEHAVIOURS)),
         "style_rank": list(STYLES).index(cls.style) if cls.style in STYLES else len(STYLES),
         "variant_of": ({"key": cls.variant_of, "name": type(_REGISTRY[cls.variant_of]).name}
                        if cls.variant_of in _REGISTRY else None),
@@ -162,8 +166,10 @@ def baseline_doc() -> dict:
                        "values": {m: _fmt(default) for m in MARKETS}})
     return {
         "key": d["key"], "kind": "benchmark", "name": d["name"], "description": d["description"], "status": d["status"],
-        "selection": "ranked", "selection_label": SELECTION["ranked"],
-        "selection_rank": list(SELECTION).index("ranked"),
+        "selection": "cross_sectional", "selection_label": SELECTION["cross_sectional"],
+        "selection_rank": list(SELECTION).index("cross_sectional"),
+        "behaviour": "trend_momentum", "behaviour_label": BEHAVIOURS["trend_momentum"],
+        "behaviour_rank": list(BEHAVIOURS).index("trend_momentum"),
         "thesis": d["thesis"], "how_it_works": list(d["how_it_works"]), "caveats": list(d["caveats"]),
         "gates": [], "watch": [], "setups": [], "entry_rules": [], "exit_rules": [],
         "params": params, "decisions": [], "regime_note": "",
@@ -183,6 +189,8 @@ def quality_doc() -> dict:
         "key": c["key"], "kind": "long-term", "name": c["name"], "description": c["description"], "status": c["status"],
         "selection": "fundamental", "selection_label": SELECTION["fundamental"],
         "selection_rank": list(SELECTION).index("fundamental"),
+        "behaviour": "quality_value", "behaviour_label": BEHAVIOURS["quality_value"],
+        "behaviour_rank": list(BEHAVIOURS).index("quality_value"),
         "thesis": c["thesis"], "how_it_works": list(c["how_it_works"]), "caveats": list(c["caveats"]),
         "gates": [{"code": f"{t['points']} pts", "text": t["text"]} for t in c["quality_tests"]], "watch": [], "setups": [],
         "entry_rules": list(c["price_rules"]), "exit_rules": [], "params": params, "decisions": [], "regime_note": "",

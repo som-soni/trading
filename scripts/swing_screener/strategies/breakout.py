@@ -40,7 +40,7 @@ BREAKOUT_LOOKBACK = 55
 
 
 class BreakoutStrategy(Strategy):
-    selection = "gated"
+    selection = "time_series"
     key = "breakout"
     name = "Volume-confirmed breakout"
     description = (

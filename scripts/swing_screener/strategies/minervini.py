@@ -106,7 +106,7 @@ EXTENDED_ATR_ABOVE_SMA50 = 4.0
 
 
 class MinerviniStrategy(Strategy):
-    selection = "gated"
+    selection = "time_series"
     family = "minervini"
     version = "1.0"
     changelog = (

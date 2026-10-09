@@ -45,21 +45,34 @@ STYLES = {
     "trend": "Trend following",
 }
 
-# How a strategy decides WHICH stocks it owns. This is the axis that actually
-# separated results in testing, which is why it heads the sidebar rather than
-# entry style: ranking competing candidates by 12-1 momentum beat a seeded
-# random control by +7.78pp CAGR (India) and +4.28pp (US) on the same signals,
-# while the strategies' own setup scores landed within ~1pp of random. Every
-# approach here that beat its index ranks; every one that screens symbol by
-# symbol has lost.
-#
-# Ordered best-evidenced first, which is also the sidebar order.
+# The market behaviour a strategy tries to exploit — the standard first cut
+# practitioners make, and the one that says what KIND of bet is being placed.
+# Groups with nothing in them yet are listed deliberately: every strategy in
+# this repo is a trend/momentum bet, so without the empty rows the sidebar
+# would imply the space had been explored when one idea has been tried eight
+# ways. They are the map of what is still untested.
+BEHAVIOURS = {
+    "trend_momentum": "Trend / momentum",
+    "mean_reversion": "Mean reversion",
+    "relative_value": "Relative value / pairs",
+    "event_driven": "Event-driven",
+    "carry": "Carry / income",
+    "quality_value": "Quality / value",
+}
+
+# Within a behaviour, HOW candidates are chosen. The split between ranking
+# stocks against each other and judging each against its own history is a
+# standard distinction (Jegadeesh & Titman 1993 vs Moskowitz, Ooi & Pedersen
+# 2012), and this repo reproduces it cleanly: the cross-sectional strategy
+# beats its index in both markets (+6.23% India, +2.59% US) and every
+# time-series one loses. Ranking competing signals by 12-1 momentum also beat
+# a seeded random control by +7.78pp CAGR (India) and +4.28pp (US) on
+# identical signals, while the strategies' own setup scores scored within
+# ~1pp of random.
 SELECTION = {
-    "ranked": "Cross-sectional ranking",
-    "level": "Price-level trigger",
-    "gated": "Per-symbol gates",
-    "pattern": "Chart-pattern detection",
-    "fundamental": "Business quality",
+    "cross_sectional": "Cross-sectional (ranked against peers)",
+    "time_series": "Time-series (judged against its own history)",
+    "fundamental": "Fundamental screen",
 }
 
 
@@ -281,7 +294,9 @@ class Strategy(ABC):
     # the two are independent (donchian and minervini both break out of a
     # base, but one triggers on a mechanical level and the other on eight
     # gates plus a pattern).
-    selection: str = "gated"
+    selection: str = "time_series"
+    # a key of BEHAVIOURS — what kind of bet this is
+    behaviour: str = "trend_momentum"
 
     # --- self-description, for reports ---
     # A report that lists symbols without saying what the strategy was looking

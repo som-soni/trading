@@ -1120,3 +1120,8 @@ table.subtab tr.open td { background: var(--warn-soft); }
   color: var(--muted);
   vertical-align: middle;
 }
+
+/* a taxonomy group with no strategies yet — rendered on purpose, so the
+   untested parts of the space stay visible instead of looking explored */
+.nav-empty { padding: .25rem .75rem .5rem; color: var(--muted); font-size: .82em; font-style: italic; }
+.nav-sub-h { padding: .35rem .75rem .15rem; color: var(--muted); font-size: .78em; text-transform: none; }

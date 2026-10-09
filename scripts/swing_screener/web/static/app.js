@@ -2144,7 +2144,10 @@ async function screenStudy(host, alive, key, mkt, d, conds) {
 async function strategiesPage(alive, key, tab, mkt, runKey) {
   key = key && key !== "setups" ? key : "";
   $view.innerHTML = LOADING;
-  const list = await api("/api/strategies").catch(() => []);
+  const [list, tax] = await Promise.all([
+    api("/api/strategies").catch(() => []),
+    api("/api/taxonomy").catch(() => ({ behaviours: [] })),
+  ]);
   if (!alive()) return;
   const dot = (x) => (x.kind === "screener" ? `<i class="st-dot ${statusClass(x.status) || "neutral"}" title="${esc(shortStatus(x.status))}"></i>` : "");
   const ver = (x) => (x.version && x.version !== "1.0") || !x.is_current ? `<span class="st-ver" title="${esc(x.spec_id || "")}">v${esc(x.version || "1.0")}</span>` : "";
@@ -2171,12 +2174,22 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   // beaten an index. Benchmark and long-term entries join the same grouping
   // rather than sitting in separate trailing sections, so momentum_baseline
   // appears next to what it should be compared with.
-  const all = list.filter((x) => x.selection_label);
-  const groups = [...new Map(all.map((x) => [x.selection_label, x.selection_rank ?? 99]))].sort((a, b) => a[1] - b[1]);
-  const stratNav = groups.map(([label]) => `<div class="nav-h">${esc(label)}</div>` +
-    all.filter((x) => x.selection_label === label && (x.kind !== "screener" || topLevel(x)))
-       .map((x) => (x.kind === "screener" ? withVariants(x) : item(x))).join("")).join("");
-  const ungrouped = list.filter((x) => !x.selection_label);
+  const all = list.filter((x) => x.behaviour_label);
+  // Group by market behaviour, then by selection within it. EVERY behaviour in
+  // the taxonomy is rendered, including ones with no strategies: all eight
+  // strategies here are trend/momentum bets, and without the empty rows the
+  // sidebar would imply the space has been explored when one idea has been
+  // tried eight ways. The blanks are the map of what is still untested.
+  const stratNav = (tax.behaviours || []).map((b) => {
+    const mine = all.filter((x) => x.behaviour === b.key);
+    if (!mine.length) return `<div class="nav-h">${esc(b.label)}</div><div class="nav-empty">nothing yet</div>`;
+    const subs = [...new Map(mine.map((x) => [x.selection_label, x.selection_rank ?? 99]))].sort((a, b2) => a[1] - b2[1]);
+    const body = subs.map(([slabel]) => (subs.length > 1 ? `<div class="nav-sub-h">${esc(slabel)}</div>` : "") +
+      mine.filter((x) => x.selection_label === slabel && (x.kind !== "screener" || topLevel(x)))
+          .map((x) => (x.kind === "screener" ? withVariants(x) : item(x))).join("")).join("");
+    return `<div class="nav-h">${esc(b.label)}</div>${body}`;
+  }).join("");
+  const ungrouped = list.filter((x) => !x.behaviour_label);
   const rest = ungrouped.length ? `<div class="nav-h">Other</div>${ungrouped.map((x) => item(x)).join("")}` : "";
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>

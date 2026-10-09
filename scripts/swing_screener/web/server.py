@@ -490,6 +490,9 @@ def strategies():
                     "screen_name": (d.get("screen") or {}).get("name"),
                     "style_label": d.get("style_label") or "", "style_rank": d.get("style_rank", 99),
                     # how candidates are chosen — the sidebar's primary grouping
+                    "behaviour": d.get("behaviour") or "",
+                    "behaviour_label": d.get("behaviour_label") or "",
+                    "behaviour_rank": d.get("behaviour_rank", 99),
                     "selection": d.get("selection") or "",
                     "selection_label": d.get("selection_label") or "",
                     "selection_rank": d.get("selection_rank", 99),
@@ -502,6 +505,15 @@ def strategies():
                     "is_current": bool(d.get("is_current")),
                     "backtests": bt.get(k, 0), "screens": [x for x in screens if x["strategy"] == k]})
     return out
+
+
+@app.get("/api/taxonomy")
+def taxonomy():
+    """The full set of groups, including those with no strategies yet."""
+    from ..strategies import BEHAVIOURS, SELECTION
+
+    return {"behaviours": [{"key": k, "label": v} for k, v in BEHAVIOURS.items()],
+            "selection": [{"key": k, "label": v} for k, v in SELECTION.items()]}
 
 
 @app.get("/api/strategies/{key}")
