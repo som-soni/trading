@@ -156,6 +156,8 @@ def screen_doc(key: str) -> dict:
 
 def baseline_doc() -> dict:
     from ..backtesting import baseline
+    from ..backtesting.baseline import MomentumBaselineStrategy as _MB
+
     d = baseline.DOC
     params = []
     for a in baseline.build_parser()._actions:
@@ -166,10 +168,15 @@ def baseline_doc() -> dict:
                        "values": {m: _fmt(default) for m in MARKETS}})
     return {
         "key": d["key"], "kind": "benchmark", "name": d["name"], "description": d["description"], "status": d["status"],
-        "selection": "cross_sectional", "selection_label": SELECTION["cross_sectional"],
-        "selection_rank": list(SELECTION).index("cross_sectional"),
-        "behaviour": "trend_momentum", "behaviour_label": BEHAVIOURS["trend_momentum"],
-        "behaviour_rank": list(BEHAVIOURS).index("trend_momentum"),
+        "selection": _MB.selection, "selection_label": SELECTION[_MB.selection],
+        "selection_rank": list(SELECTION).index(_MB.selection),
+        "behaviour": _MB.behaviour, "behaviour_label": BEHAVIOURS[_MB.behaviour],
+        "behaviour_rank": list(BEHAVIOURS).index(_MB.behaviour),
+        # now a registered PortfolioStrategy, so it carries a version like
+        # everything else rather than being the one unversioned strategy
+        "family": _MB.family_name(), "version": _MB.version,
+        "spec_id": _MB.spec_id(), "is_current": True,
+        "changelog": [{"version": v, "date": d, "change": c} for v, d, c in _MB.changelog],
         "thesis": d["thesis"], "how_it_works": list(d["how_it_works"]), "caveats": list(d["caveats"]),
         "gates": [], "watch": [], "setups": [], "entry_rules": [], "exit_rules": [],
         "params": params, "decisions": [], "regime_note": "",
@@ -325,9 +332,9 @@ def spec_markdown(key: str) -> str:
     The fingerprint at the top is the same one in the run directory names, so
     a result and the spec that produced it can always be matched up.
     """
-    from . import _REGISTRY
+    from . import all_specs
 
-    cls = type(_REGISTRY[key])
+    cls = all_specs()[key]
     d = strategy_doc(key)
     L = [f"# {d['name']}", "",
          f"`{key}` · family **{cls.family_name()}** · **v{cls.version}** · "
@@ -387,12 +394,13 @@ def spec_markdown(key: str) -> str:
 
 def write_specs() -> list:
     """Write every registered strategy's spec under research/strategies/."""
-    from . import _REGISTRY
+    from . import all_specs
 
     out_root = paths.RESEARCH_DIR / "strategies"
     written = []
-    for key in sorted(_REGISTRY):
-        cls = type(_REGISTRY[key])
+    specs = all_specs()
+    for key in sorted(specs):
+        cls = specs[key]
         d = out_root / cls.family_name()
         d.mkdir(parents=True, exist_ok=True)
         path = d / f"{key}-v{cls.version}.md"

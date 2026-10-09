@@ -25,7 +25,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import _REGISTRY
+from . import _REGISTRY, all_specs
 
 def _vkey(v: str) -> tuple:
     """Sort versions numerically, so 10.0 follows 9.0 rather than 1.0."""
@@ -40,8 +40,7 @@ LOCK_PATH = Path(__file__).resolve().parent / "versions.lock.json"
 
 def current_state() -> dict:
     out = {}
-    for key, strat in sorted(_REGISTRY.items()):
-        cls = type(strat)
+    for key, cls in sorted(all_specs().items()):
         out[key] = {
             "family": cls.family_name(),
             "version": cls.version,
@@ -98,7 +97,7 @@ def check() -> tuple[list[str], list[str]]:
             notes.append(f"  {key}: version {was['version']} -> {cur['version']} "
                          f"with identical rules (documentation-only bump)")
         else:
-            cls = type(_REGISTRY[key])
+            cls = all_specs()[key]
             logged = any(e[0] == cur["version"] for e in cls.changelog)
             msg = (f"  OK    {key}: {was['version']} -> {cur['version']}, "
                    f"rules changed as expected")
@@ -159,7 +158,7 @@ def main() -> None:
             latest = members[0][1]["version"] if members else None
             print(f"  {fam}")
             for k, v in members:
-                variant = type(_REGISTRY[k]).variant_of
+                variant = all_specs()[k].variant_of
                 mark = "*" if v["version"] == latest and not variant else " "
                 tag = f"  (variant of {variant})" if variant else ""
                 print(f"   {mark} {k:22} v{v['version']}-{v['fingerprint']}  "

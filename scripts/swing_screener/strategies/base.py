@@ -170,7 +170,92 @@ class Decision:
     setup_quality: float
 
 
-class Strategy(ABC):
+class SpecMeta:
+    """Identity, versioning and documentation — everything that describes a
+    strategy without saying how it picks stocks.
+
+    Extracted so a PORTFOLIO strategy can carry the same version metadata as a
+    per-symbol one. `momentum_baseline` ranks the universe and rebalances; it
+    has no `prefilter_row` or `evaluate` and never will, so inheriting the
+    per-symbol contract would have meant stub methods that exist only to raise.
+    The metadata is genuinely shared; the selection mechanism is not.
+    """
+
+    key: str = ""
+    name: str = ""
+    description: str = ""
+    status: str = ""
+    thesis: str = ""
+    how_it_works: tuple = ()
+    caveats: tuple = ()
+    param_docs: tuple = ()
+    family: str = ""
+    version: str = "1.0"
+    changelog: tuple = ()
+    variant_of: str = ""
+    style: str = ""
+    selection: str = "time_series"
+    behaviour: str = "trend_momentum"
+
+    @classmethod
+    def family_name(cls) -> str:
+        return cls.family or cls.variant_of or cls.key
+
+    @classmethod
+    def doc_namespace(cls) -> dict:
+        import sys
+        mod = sys.modules[cls.__module__]
+        ns = {k: v for k, v in vars(mod).items()
+              if k.isupper() and isinstance(v, (int, float, str, tuple))}
+        for k in dir(cls):
+            v = getattr(cls, k, None)
+            if not k.startswith("_") and isinstance(v, (int, float)) and not isinstance(v, bool):
+                ns.setdefault(k, v)
+        return ns
+
+    @classmethod
+    def render_doc(cls, text: str) -> str:
+        ns = {k: (f"{v:g}" if isinstance(v, float) else v)
+              for k, v in cls.doc_namespace().items()}
+        return text.format_map(ns)
+
+    @classmethod
+    def spec_params(cls) -> dict:
+        params: dict = {
+            k: v for k, v in cls.doc_namespace().items()
+            if isinstance(v, (int, float)) and not isinstance(v, bool)
+        }
+        for attr in ("gate_codes", "watch_codes", "setup_codes",
+                     "allowed_codes", "entry_setup_codes"):
+            codes = getattr(cls, attr, None)
+            if codes:
+                params[attr] = list(codes)
+        params["_key"] = cls.key
+        return params
+
+    @classmethod
+    def fingerprint(cls) -> str:
+        import hashlib
+        import json
+
+        blob = json.dumps(cls.spec_params(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(blob.encode()).hexdigest()[:8]
+
+    @classmethod
+    def spec_id(cls) -> str:
+        return f"v{cls.version}-{cls.fingerprint()}"
+
+
+class PortfolioStrategy(SpecMeta):
+    """A strategy that selects by ranking the whole universe and rebalancing,
+    rather than screening one symbol at a time. Carries the same versioning
+    and documentation as a per-symbol Strategy, and none of its contract."""
+
+    kind: str = "portfolio"
+    selection: str = "cross_sectional"
+
+
+class Strategy(SpecMeta, ABC):
     """Implement this to add a strategy. See trend_pullback.py for the
     reference implementation and breakout.py for a second, deliberately
     different one (different gates, different setup vocabulary, different
@@ -230,123 +315,6 @@ class Strategy(ABC):
     version: str = "1.0"
     # (version, ISO date, what changed and why) — newest first
     changelog: tuple[tuple[str, str, str], ...] = ()
-
-    @classmethod
-    def family_name(cls) -> str:
-        """The high-level strategy this belongs to: an explicit `family` wins,
-        otherwise a variant reports its parent, otherwise the key stands
-        alone."""
-        return cls.family or cls.variant_of or cls.key
-
-    @classmethod
-    def spec_params(cls) -> dict:
-        """Every numeric tunable that defines this version's behaviour.
-
-        Reuses `doc_namespace()` — the same values the documentation
-        substitutes into `{NAME}` placeholders — so the fingerprint cannot
-        drift from what the published spec says. A parameter that is not
-        documented is also not fingerprinted, which is the right incentive.
-        """
-        params: dict = {
-            k: v for k, v in cls.doc_namespace().items()
-            if isinstance(v, (int, float)) and not isinstance(v, bool)
-        }
-        # Numbers alone are not the whole rule set. `chart_pattern_cup`
-        # differs from its parent only by which detectors it admits -- same
-        # module, so identical constants and, on numbers alone, an identical
-        # fingerprint. The declared code vocabularies change behaviour and
-        # must be part of the identity.
-        for attr in ("gate_codes", "watch_codes", "setup_codes",
-                     "allowed_codes", "entry_setup_codes"):
-            codes = getattr(cls, attr, None)
-            if codes:
-                params[attr] = list(codes)
-        # and the key, so two unrelated strategies can never collide
-        params["_key"] = cls.key
-        return params
-
-    @classmethod
-    def fingerprint(cls) -> str:
-        """Short, stable hash of the tunables. Two runs with the same
-        fingerprint were produced by the same rule set."""
-        import hashlib
-        import json
-
-        blob = json.dumps(cls.spec_params(), sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(blob.encode()).hexdigest()[:8]
-
-    @classmethod
-    def spec_id(cls) -> str:
-        """`v2.0-73e82535` — goes into run directory names so a result can
-        always be traced back to the exact parameters that produced it."""
-        return f"v{cls.version}-{cls.fingerprint()}"
-
-    # --- classification, for the Strategies page sidebar ---
-    # `style` is the trading-style family this strategy belongs to (a key of
-    # STYLES above); `variant_of` names the registered strategy this one is a
-    # restriction or re-reading of, and nests it under that parent in the
-    # sidebar. docs.check() enforces both: style must be a STYLES key, and a
-    # variant must point at an existing non-variant parent of the same style.
-    style: str = ""
-    variant_of: str = ""
-    # a key of SELECTION above — how candidates are chosen, not how they are
-    # entered. `style` describes the entry; this describes the selection, and
-    # the two are independent (donchian and minervini both break out of a
-    # base, but one triggers on a mechanical level and the other on eight
-    # gates plus a pattern).
-    selection: str = "time_series"
-    # a key of BEHAVIOURS — what kind of bet this is
-    behaviour: str = "trend_momentum"
-
-    # --- self-description, for reports ---
-    # A report that lists symbols without saying what the strategy was looking
-    # for is unreadable by anyone who didn't write it (including you, later).
-    thesis: str = ""              # one sentence: what edge is being claimed
-    how_it_works: tuple[str, ...] = ()   # the mechanics, in plain language
-    caveats: tuple[str, ...] = ()        # what is known to be wrong or untested
-
-    # --- full reference documentation (the web app's Strategy page) ---
-    # This page is GENERATED from these attributes, so it cannot drift from
-    # the code — and tests/test_strategy_docs.py fails if a code in
-    # gate_codes / watch_codes / setup_codes has no entry here, if an entry
-    # documents a code that no longer exists, or if a placeholder is broken.
-    #
-    # Text may embed `{NAME}` placeholders naming a module-level constant of
-    # the strategy's own module (e.g. "stop more than {MAX_STOP_PCT}% below
-    # entry"); the page substitutes the live value, so changing a threshold
-    # updates the explanation automatically. Use `{{` / `}}` for literal braces.
-    status: str = ""                       # one line: validated? edge? e.g. "No demonstrated edge"
-    gate_docs: dict[str, str] = {}         # hard gate code -> what it requires (failing = AVOID)
-    watch_docs: dict[str, str] = {}        # watch flag code -> what it flags (caps the decision)
-    setup_docs: dict[str, str] = {}        # setup code -> the pattern it recognises
-    entry_rules: tuple[str, ...] = ()      # how entry, stop and target are placed
-    exit_rules: tuple[str, ...] = ()       # how a trade ends, live and in the backtest
-    # (label, source, meaning): source is a module constant name, or
-    # "cfg.<field>" / "cfg.screener.<field>" for a per-market MarketConfig value
-    param_docs: tuple[tuple[str, str, str], ...] = ()
-    # the backtest invocation that measures the strategy with its REAL exit
-    # policy (run from scripts/ with PYTHONPATH=.); empty = default bracket exit
-    backtest_args: str = ""
-
-    @classmethod
-    def doc_namespace(cls) -> dict:
-        """Values `{NAME}` placeholders (and param_docs sources) can refer to:
-        the module's UPPER_CASE constants, plus the class's own numeric
-        tunables (e.g. `entry_channel`, `min_structural_r`), inherited ones included."""
-        import sys
-        mod = sys.modules[cls.__module__]
-        ns = {k: v for k, v in vars(mod).items() if k.isupper() and isinstance(v, (int, float, str, tuple))}
-        for k in dir(cls):
-            v = getattr(cls, k, None)
-            if not k.startswith("_") and isinstance(v, (int, float)) and not isinstance(v, bool):
-                ns.setdefault(k, v)
-        return ns
-
-    @classmethod
-    def render_doc(cls, text: str) -> str:
-        """Substitute `{NAME}` placeholders with the live constant values."""
-        ns = {k: (f"{v:g}" if isinstance(v, float) else v) for k, v in cls.doc_namespace().items()}
-        return text.format_map(ns)
 
     @classmethod
     def explain(cls) -> str:

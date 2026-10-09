@@ -70,6 +70,30 @@ register(ChartPatternSpecStrategy())
 register(MinerviniStrategy())
 register(MinerviniSpecStrategy())
 
+def portfolio_strategies() -> dict:
+    """Registry of PORTFOLIO strategies, keyed like `_REGISTRY` but holding
+    classes rather than instances.
+
+    Kept separate from `_REGISTRY` on purpose: the screener and backtester
+    iterate that registry calling `prefilter_row` and `evaluate`, which a
+    portfolio strategy has no business implementing. Listing one there would
+    make it a `--strategy` choice that crashes on use.
+
+    Imported lazily because `backtesting.baseline` imports from this package,
+    so a module-level import would be circular.
+    """
+    from ..backtesting.baseline import MomentumBaselineStrategy
+
+    return {MomentumBaselineStrategy.key: MomentumBaselineStrategy}
+
+
+def all_specs() -> dict:
+    """Everything that carries a version: per-symbol and portfolio alike."""
+    out = {k: type(v) for k, v in _REGISTRY.items()}
+    out.update(portfolio_strategies())
+    return out
+
+
 DEFAULT_STRATEGY = TrendPullbackStrategy.key
 
 
@@ -106,6 +130,7 @@ __all__ = [
     "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",
     "MinerviniStrategy", "MinerviniSpecStrategy",
+    "portfolio_strategies", "all_specs",
     "register", "get_strategy", "list_strategies", "describe_strategies",
     "DEFAULT_STRATEGY",
 ]

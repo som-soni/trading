@@ -451,6 +451,9 @@ def run(
 # a `Strategy` subclass (see the module docstring), so it documents itself
 # here; its parameters are read live from build_parser(), so they cannot drift.
 # Update this block in the same change as any change to how the baseline works.
+from ..strategies.base import PortfolioStrategy
+
+
 DOC = {
     "key": "momentum_baseline",
     "name": "Cross-sectional momentum baseline",
@@ -585,3 +588,57 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# --- registry entry -----------------------------------------------------------
+
+#: The baseline's real tunables. Declared as class attributes rather than read
+#: from the argparse defaults so the fingerprint describes the STRATEGY, not
+#: whatever flags a particular run happened to pass.
+class MomentumBaselineStrategy(PortfolioStrategy):
+    """Cross-sectional momentum, in the registry so it gets a version.
+
+    It was the only approach here that beats its index and the only one with
+    no version, no fingerprint and no generated spec -- the strategy most
+    worth refining was the one whose changes nothing recorded.
+
+    It is a PortfolioStrategy, not a Strategy: it ranks the whole universe on
+    each rebalance date and holds the top N, so it has no per-symbol gate,
+    entry trigger or stop to express.
+    """
+
+    key = "momentum_baseline"
+    family = "momentum_baseline"
+    version = "1.0"
+    name = DOC["name"]
+    description = DOC["description"]
+    status = DOC["status"]
+    thesis = DOC["thesis"]
+    how_it_works = tuple(DOC["how_it_works"])
+    caveats = tuple(DOC["caveats"])
+
+    behaviour = "trend_momentum"
+    selection = "cross_sectional"
+    style = "trend"
+
+    # tunables — these ARE the strategy
+    top_n = 10
+    lookback = TRADING_DAYS
+    skip = 21
+    cost_bps = 5.0
+    liquidity_top = 1000
+
+    param_docs = (
+        ("Holdings", "top_n", "How many names are held at a time."),
+        ("Momentum lookback", "lookback", "Bars of return used to rank (12 months)."),
+        ("Skip", "skip", "Most recent bars excluded, the 12-1 convention that avoids short-term reversal."),
+        ("Cost per side", "cost_bps", "Basis points charged on every trade, both sides."),
+        ("Liquidity cutoff", "liquidity_top", "Only the N most liquid names are ranked."),
+    )
+
+    changelog = (
+        ("1.0", "2026-10-09",
+         "Brought into the registry so it carries a version and a generated "
+         "spec. Defaults unchanged: top 10, 12-1 momentum, monthly rebalance, "
+         "5bps a side, 200-day trend filter on."),
+    )

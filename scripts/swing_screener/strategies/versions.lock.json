@@ -311,6 +311,20 @@
     },
     "version": "2.0"
   },
+  "momentum_baseline": {
+    "family": "momentum_baseline",
+    "fingerprint": "df30f7bc",
+    "params": {
+      "TRADING_DAYS": 252,
+      "_key": "momentum_baseline",
+      "cost_bps": 5.0,
+      "liquidity_top": 1000,
+      "lookback": 252,
+      "skip": 21,
+      "top_n": 10
+    },
+    "version": "1.0"
+  },
   "trend_pullback": {
     "family": "trend_pullback",
     "fingerprint": "0acddbda",
