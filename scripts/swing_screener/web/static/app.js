@@ -2147,12 +2147,23 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const list = await api("/api/strategies").catch(() => []);
   if (!alive()) return;
   const dot = (x) => (x.kind === "screener" ? `<i class="st-dot ${statusClass(x.status) || "neutral"}" title="${esc(shortStatus(x.status))}"></i>` : "");
+  const ver = (x) => (x.version && x.version !== "1.0") || !x.is_current ? `<span class="st-ver" title="${esc(x.spec_id || "")}">v${esc(x.version || "1.0")}</span>` : "";
   const item = (x, sub) => `<a class="nav-item${sub ? " sub" : ""} ${x.key === key ? "active" : ""}" href="#/strategies/${x.key}" title="${esc(x.description || "")}">
-      <span><b class="sn">${dot(x)}${esc(x.name)}</b><span class="muted small sk">${esc(x.screen_name || "")}</span></span>${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
-  // trading strategies group by style (server order), variants nested under their parent
+      <span><b class="sn">${dot(x)}${esc(x.name)}${ver(x)}</b><span class="muted small sk">${esc(x.screen_name || "")}</span></span>${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
+  // Trading strategies group by style (server order). Within a style they group
+  // by FAMILY: the current version heads the group, with older versions and
+  // sibling variants nested under it. Listing every version flat made five
+  // families read as eight unrelated strategies.
   const scr = list.filter((x) => x.kind === "screener");
-  const topLevel = (x) => !x.variant_of || !scr.some((p) => p.key === x.variant_of);
-  const withVariants = (p) => item(p) + scr.filter((v) => v.variant_of === p.key).map((v) => item(v, true)).join("");
+  const famOf = (x) => x.family || x.key;
+  const heads = new Set(scr.filter((x) => x.is_current).map((x) => x.key));
+  const topLevel = (x) => (x.is_current ? true : !scr.some((p) => p.is_current && famOf(p) === famOf(x)));
+  const vnum = (x) => String(x.version || "1.0").split(".").map(Number);
+  const byVersionDesc = (a, b) => (vnum(b)[0] - vnum(a)[0]) || ((vnum(b)[1] || 0) - (vnum(a)[1] || 0));
+  const withVariants = (p) => item(p) + scr
+    .filter((v) => v.key !== p.key && famOf(v) === famOf(p) && !heads.has(v.key))
+    .sort(byVersionDesc)
+    .map((v) => item(v, true)).join("");
   const styles = [...new Map(scr.map((x) => [x.style_label || "Trading strategies", x.style_rank ?? 99]))].sort((a, b) => a[1] - b[1]);
   const stratNav = styles.map(([label]) => `<div class="nav-h">${esc(label)}</div>` +
     scr.filter((x) => (x.style_label || "Trading strategies") === label && topLevel(x)).map(withVariants).join("")).join("");

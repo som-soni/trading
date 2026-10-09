@@ -1107,3 +1107,16 @@ table.subtab tr.open td { background: var(--warn-soft); }
 .lp-card > div { display: flex; justify-content: space-between; align-items: center; gap: 6px; } .lp-card b { font-weight: 600; font-size: 13px; }
 .lp-md { margin: 14px 0; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); max-width: 820px; }
 .lp-md figcaption { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* version badge in the strategy nav — a successor version sits under its
+   family head, so the badge is what distinguishes them at a glance */
+.st-ver {
+  margin-left: .4em;
+  padding: 0 .35em;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  font-size: .78em;
+  font-weight: 500;
+  color: var(--muted);
+  vertical-align: middle;
+}

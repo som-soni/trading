@@ -65,6 +65,25 @@ def _source_info(obj) -> dict:
             "modified": dt.datetime.fromtimestamp(f.stat().st_mtime).isoformat(timespec="minutes")}
 
 
+def _is_current(cls) -> bool:
+    """True when no registered sibling in the same family has a higher
+    version. A variant (a sibling experiment, not a successor) is never
+    "current" for its family."""
+    if cls.variant_of:
+        return False
+
+    def vkey(v):
+        try:
+            return tuple(int(x) for x in str(v).split("."))
+        except ValueError:
+            return (0,)
+
+    fam = cls.family_name()
+    peers = [type(s) for s in _REGISTRY.values()
+             if type(s).family_name() == fam and not type(s).variant_of]
+    return all(vkey(cls.version) >= vkey(p.version) for p in peers)
+
+
 def strategy_doc(key: str) -> dict:
     if key == "momentum_baseline":
         return baseline_doc()
@@ -82,6 +101,11 @@ def strategy_doc(key: str) -> dict:
         "style_rank": list(STYLES).index(cls.style) if cls.style in STYLES else len(STYLES),
         "variant_of": ({"key": cls.variant_of, "name": type(_REGISTRY[cls.variant_of]).name}
                        if cls.variant_of in _REGISTRY else None),
+        "family": cls.family_name(),
+        "version": cls.version,
+        "spec_id": cls.spec_id(),
+        "is_current": _is_current(cls),
+        "changelog": [{"version": v, "date": d, "change": c} for v, d, c in cls.changelog],
         "thesis": r(cls.thesis), "how_it_works": [r(s) for s in cls.how_it_works], "caveats": [r(s) for s in cls.caveats],
         "gates": [{"code": c, "text": r(cls.gate_docs.get(c, "")), "screen": cls.screen_gates.get(c)} for c in cls.gate_codes],
         "screen": _screen_ref(cls),

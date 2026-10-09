@@ -490,6 +490,12 @@ def strategies():
                     "screen_name": (d.get("screen") or {}).get("name"),
                     "style_label": d.get("style_label") or "", "style_rank": d.get("style_rank", 99),
                     "variant_of": (d.get("variant_of") or {}).get("key"),
+                    # family / version, so the page can group successive
+                    # versions of one strategy instead of listing them flat
+                    "family": d.get("family") or k,
+                    "version": d.get("version") or "1.0",
+                    "spec_id": d.get("spec_id") or "",
+                    "is_current": bool(d.get("is_current")),
                     "backtests": bt.get(k, 0), "screens": [x for x in screens if x["strategy"] == k]})
     return out
 
