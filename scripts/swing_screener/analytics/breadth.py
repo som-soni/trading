@@ -103,6 +103,9 @@ def eligible(market: str) -> list[str]:
     """Common stocks of the market's universe: US as listed (the universe file already drops ETFs);
     India minus everything classified as not an equity."""
     syms = [s for s in universe.load_universe(market) if not s.startswith("^")]
+    if market == "us":  # closed-end funds / income trusts, flagged by the `classify` job (marketdata/subindustries.py)
+        kinds = _known_kinds(market)
+        return [s for s in syms if kinds.get(s) != "FUND"]
     if market == "india":
         kinds = _known_kinds(market)
         syms = [s for s in syms if kinds.get(s) == "EQUITY" or (s not in kinds and not _FUND_NAME.search(s.removesuffix(".NS")))]
@@ -199,7 +202,9 @@ def compute(market: str, start: str | None = None) -> int:
         cur.execute(_SQL, params)
         rows = cur.fetchall()
     # a day with only a few stray rows (a holiday or a partial load) is not a market day
-    rows = [r for r in rows if r[1] >= BREADTH_N * 0.5]
+    # ...and on a real session most stocks move: a holiday whose stray rows all repeat the previous close
+    # shows ~no advancers or decliners
+    rows = [r for r in rows if r[1] >= BREADTH_N * 0.5 and (r[2] or 0) + (r[3] or 0) >= 0.5 * r[1]]
     db.execute_values("""INSERT INTO breadth_daily (market, date, n, adv, dec, up4, dn4, highs, lows, above5, above50, up25m, dn25m, up50m, dn50m)
                          VALUES %s ON CONFLICT (market, date) DO UPDATE SET n=EXCLUDED.n, adv=EXCLUDED.adv, dec=EXCLUDED.dec,
                          up4=EXCLUDED.up4, dn4=EXCLUDED.dn4, highs=EXCLUDED.highs, lows=EXCLUDED.lows, above5=EXCLUDED.above5,

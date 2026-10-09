@@ -23,9 +23,10 @@ from zoneinfo import ZoneInfo
 import numpy as np
 
 from .. import paths, runlog
+from ..config import MARKETS
 from ..marketdata.freshness import expected_session, lag as _lag
 
-MARKET_NAME = {"us": "US", "india": "India"}
+MARKET_NAME = {k: c.name for k, c in MARKETS.items()}
 BENCH_SERIES = {"us": "SPX", "india": "NIFTY50"}
 # (ok within, warn within) days for datasets that are not refreshed every trading day
 AGE_LIMITS = {"universe": (8, 15), "industries": (35, 60), "names": (60, 120), "quality": (8, 32), "earnings": (8, 15)}
@@ -63,7 +64,7 @@ def _mtime(p) -> dt.datetime | None:
 def freshness(q, price_day) -> dict:
     """q: the server's query helper; price_day(market) -> (latest complete session, partial newer day or None, rows)."""
     out = {}
-    for m in ("us", "india"):
+    for m in tuple(MARKETS):
         exp = expected_session(m)
         items = []
         d, partial, n = price_day(m)

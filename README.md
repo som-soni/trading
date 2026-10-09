@@ -48,25 +48,58 @@ PYTHONPATH=. python3 -m swing_screener.marketdata.backfill --market india --year
 
 Every command runs from `scripts/` with `PYTHONPATH=.` set.
 
-### Get today's trade candidates
+### Screens and strategies
+
+Two separate things, kept apart in code and in the web app:
+
+- A **screen** answers *which stocks are worth looking at?* — qualification
+  criteria only, no entry or stop. Four screens (`swing_screener/screens/`):
+  **Stage 2 — Trend Template** (Minervini's eight criteria, with a true RS
+  rank), **Established uptrend**, **Near highs, rising 200-day**, **Above the
+  200-day**. A screen is a list of **conditions** over a daily **stock
+  snapshot** (~50 fields per stock: returns, RS rank, averages, 52-week range,
+  volatility, volume, trend structure, sector), so it runs as a live query —
+  and you can build your own in the web app, like Chartink or Screener.in.
+  The built-in screens' conditions are proven to return exactly what their
+  coded criteria (shared with the strategies) return. A fifth built-in,
+  **Strong stocks in leading groups**, uses the peer-group fields: stocks with RS
+  70+ whose peer group (sub-industry, else industry group) is rated RS 80+, in an
+  uptrend. Every list (screen results, today's setups, strategy setups, movers,
+  watchlists) shows each stock's peer group and its RS badge, and "Clusters"
+  chips show the peer groups several stocks share. Group RS is rebuilt for
+  every past month-end (`analytics/group_history.py`, matching the Sectors page),
+  so screens on group strength can be studied too, and
+  [research/group-strength-study.md](research/group-strength-study.md) (refreshed
+  monthly) tests whether group strength improves forward returns. A screen is judged by a
+  **screen study**, on demand: on each month-end of the last five years, did
+  its qualifiers beat the other tradable stocks over the next 1/3/6 months?
+- A **strategy** answers *is there a trade, and how do I take it?* It draws its
+  candidates from one screen and adds its own trade rules, setups,
+  entry/stop/target, exits and sizing. Strategies are **backtested**.
+
+| Strategy | Draws from screen |
+|---|---|
+| Minervini SEPA | Stage 2 — Trend Template |
+| Minervini VCP, to the backtest spec | Stage 2 — Trend Template |
+| Trend pullback | Established uptrend |
+| Volume breakout, Chart patterns (and Cup-and-handle) | Near highs, rising 200-day |
+| Donchian channel | Above the 200-day |
+
+In the web app: **Screens** — one page, the screens on the left (built-in,
+Quality, yours, "+ New screen"), the chosen one on the right (Results ·
+Criteria · Study; any session of the last 40) and the screen builder with a
+live preview and study — and **Strategies** (Today's setups across all
+strategies, one page per strategy with Setups today · Rules · Backtests).
 
 ```bash
-# both markets, with a cross-market summary
-python3 -m swing_screener.screening.daily
-
-# one market
-python3 -m swing_screener.screening.pipeline --market india
-
-# a different strategy
-python3 -m swing_screener.screening.pipeline --market india --strategy breakout
-
-# breakouts from a named chart pattern (cup-and-handle, flat base, VCP...)
-python3 -m swing_screener.screening.pipeline --market us --strategy chart_pattern
+python -m jobs run screens --market us                     # today's stock snapshot (every screen queries it)
+python -m jobs run strategies --market us --strategies all # today's setups for every strategy
+python -m jobs run screen_history --market india           # month-end snapshots for the study (first run: 5 years)
+python3 -m swing_screener.screening.pipeline --market india --strategy breakout   # one strategy, by hand
 ```
 
-Writes `reports/<market>_<strategy>_universe.csv` — one row per stock that
-passed the screen, with every gate, flag and decision as its own column, so it
-can be filtered in a spreadsheet.
+A strategy run writes `reports/<market>_<strategy>_universe.csv` — one row per
+stock its screen passed, with every gate, flag and decision as its own column.
 
 ### The daily update, and checking it ran
 
@@ -74,20 +107,40 @@ Offline work is split into **jobs** in layers — reference data, market data,
 analytics, screening, publish — run alone or chained into pipelines, so you
 can pull data without screening, or re-screen without pulling:
 
+The **daily** pipeline is data only — universe check → prices → indexes →
+breadth → sectors → the screens' snapshot → post-market analysis. Strategies
+(today's setups) and the Quality scores run **on demand**: the **strategies**
+and **quality** pipelines.
+
+Everything goes through a **job queue** (`jobs/queue.py`, in Postgres) that one
+**worker** runs, one job at a time. The web app adds to it (**System → Schedules →
+Run now** per pipeline, **System → Runs**: Resume a failed run, run a single
+job; **Today's setups → Run strategies…**), and so do **schedules** (**System →
+Schedules**: daily data for India at 18:30 Mon–Fri and the US at 07:00 Tue–Sat,
+weekly reference data Saturday 10:00, monthly classification on the 1st —
+edit, pause, add, run now). A slot missed while the computer slept runs once
+when the worker next looks. No cron.
+
 ```bash
-python -m jobs run prices --market india          # just pull data
-python -m jobs run daily --market india           # prices → indexes → breadth → sectors → screen → report → ingest
-python -m jobs run daily --market us --strategies all
+python -m jobs worker --install                   # once: a launchd agent keeps the worker running (logs/worker.log)
+python -m jobs enqueue strategies --market india  # add to the queue (same arguments as run)
+python -m jobs queue                              # running, waiting, recently finished
+python -m jobs schedules                          # the schedules and their next run
+python -m jobs run prices --market india          # run now, in this terminal (bypasses the queue)
 python -m jobs list                               # every job, its layer, cadence and last run
-python -m jobs schedule                           # crontab lines: India after its close, US next morning, weekly, monthly
 ```
 
+**System → Status** shows the queue (Stop, cancel, run next) and the worker.
+Without the launchd agent, **Start worker** there starts one
+(until the next reboot). Changing anything is allowed only from the machine
+running the app.
+
 Screening reads stored prices only and refuses prices two or more trading days
-old. Every step is logged with timestamps and its result; the web app's
-**Data status** page (the "Data" dot in the header) shows each pipeline's
-latest run step by step — live while it runs — with errors and the log tail,
-every job's last run per market, and how current each dataset is against the
-trading day it should have reached. Details: `scripts/README.md` → Jobs.
+old. Every step is logged with timestamps and its result. **System → Status**
+(also the dot and date in the header) shows how current each dataset is against
+the trading day it should have reached, and the job queue; **System → Runs**
+shows every run step by step — live while it runs — with errors, the log tail
+and every job's last run per market. Details: `scripts/README.md` → Jobs.
 
 ### Understand why one stock did or didn't qualify
 
@@ -120,6 +173,11 @@ python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 --
 # let winners run instead of taking a fixed target
 python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 \
     --exit-mode donchian --no-target
+
+# Minervini, exactly as research/minervini-backtest-spec.md defines it (EN-01: confirmed breakouts,
+# next open); "TRADE ON TRIGGER" instead gives EN-02 (buy-stops through the pivot)
+python3 -m swing_screener.backtesting.backtest --market india --start 2010-01-01 \
+    --strategy minervini_spec --spec --accept-labels "TRADE - HIGH CONFIDENCE" [--market-filter]
 ```
 
 Produces `reports/<market>/<strategy>/<run>/` containing `report.md` (with
@@ -212,11 +270,21 @@ cd scripts
 PYTHONPATH=. python3 -m swing_screener.web          # http://127.0.0.1:8000
 ```
 
-Pages are grouped in the order of a review: **Markets** (Breadth, Sectors,
-Movers) → **Ideas** (Screening, Quality) → **Chart** → **Watchlists** →
-**Research** (Reports, Strategies, the sector-analysis Playbook). Each section
-reopens the page you were last on; Alt + 1…5 jumps between sections and
-Alt + [ / ] between a section's tabs.
+Pages are grouped by what they are about: **Markets** (Post-market — tabs
+Summary · Sectors · Stocks · Yours — Breadth, Sectors, Movers) → **Screens**
+(overview, one page per screen, Quality, the screen builder) → **Strategies**
+(Today's setups, one page per strategy with its setups, rules and backtests) →
+**Chart** → **Watchlists** → **Library** (Notes, Playbook, TODO) → **System**
+(Status, Runs, Schedules, Reports archive). A section link opens its first page;
+a section with several pages shows them as a tab row under the header. The
+header holds the **market selector** (it applies to every page), search
+(**⌘K / Ctrl+K**: a page, or a stock by symbol or company), the data dot (the
+selected market's latest price date; System → Status on click) and **⚙**
+(theme — Black, Graphite, Light or match the system — density, keyboard
+shortcuts, load reports). Alt + 1…7 jumps to a section, Alt + [ / ] to the
+previous / next page in it, Alt + 0 to Status. Explanations sit behind **ⓘ**
+buttons and "How to read this page" links. On
+narrow windows the sections fold into a ☰ menu.
 
 The **Strategies** page explains every strategy — thesis, each hard gate,
 watch flag and setup, entry/stop/target and exit rules, live parameter values
@@ -228,7 +296,7 @@ code and documentation drift apart — run it after any strategy change (see
 
 Reports (`report.md`, figures, trades, equity, CSVs) and `research/*.md` are
 loaded into Postgres (`report_runs`, `report_figures`, `report_tables`) at
-startup, and again with the **Refresh reports** button or
+startup, and again with **⚙ → Load reports from disk** or
 `python3 -m swing_screener.web.ingest` after a new run. Prices and screener
 history come from the existing `prices` / `universe_history` / `index_series`
 tables.
@@ -270,10 +338,57 @@ python3 -m swing_screener.screening.watchlist --remove AAPL --market us [--list 
 python3 -m swing_screener.screening.watchlist --sync-latest   # rebuild Screener picks from the latest recorded runs
 ```
 
+### Keep notes and a trading journal
+
+**Research › Notes** is a Markdown notebook stored in Postgres (`notes`): a
+searchable list (text, `#tags`, linked stocks) beside an editor with live
+preview that saves as you type. New notes can start from a template — daily
+journal, trade plan, trade review. Link a note to stocks and it appears in the
+chart's details panel for that stock, where "+ note" starts one already linked.
+Delete has Undo; to keep a copy outside the database:
+
+```bash
+python3 -m swing_screener.notes --export notes_export/   # one .md file per note
+```
+
+### Review the day after the close
+
+The web app's **Markets › Post-market** page is the day's recap for each market,
+kept for every trading day (`postmarket_daily`; step back through history with
+‹ › or the tone timeline): a market-tone verdict from six signals (index vs its
+50/200-day averages, advancers vs decliners, new highs vs lows, % above the
+50-day, volatility), index cards, breadth vs the previous day and 10-day
+average, every sector's and the strongest/weakest industries' day move,
+group-leadership changes, top gainers/losers, unusual volume, new 52-week
+highs/lows, how your watchlists did (50-day crosses, new highs, earnings soon),
+what changed in each strategy's screen, and earnings in the next 10 days. The
+`daily` pipeline writes it after screening; to build or backfill by hand:
+
+```bash
+python -m jobs run postmarket --market india --days 60    # last 60 sessions
+```
+
+### Sub-industries: which business each company is in
+
+Groups that mix businesses are split one level further (Semiconductors → AI &
+compute, Analog, Memory…; India's Electrical Equipment → T&D, Cables, Consumer
+electricals…), and every tradable stock in such a group is labelled. Each label
+records its source — your edit, the curated list (`data/sub_industries.csv`),
+a rule, a suggestion awaiting review (`data/sub_industries_suggested.csv`), an
+official code mapped to a sub-industry (`data/sub_industry_codes.csv`), or for
+India BSE's own industry — and **Library → Sub-industries** lists each group's
+stocks with their label, source and official code (BSE's industry for India,
+Nasdaq's SIC-based industry for the US) so you can review, relabel one or many,
+accept suggestions, or create a sub-industry. The monthly `subindustries` job
+fetches the codes for new listings. `python -m swing_screener.marketdata.subindustries
+--export` writes your portal labels into the curated CSV. Design:
+`research/sector-taxonomy.md`.
+
 ### Find the leading sectors and industry groups
 
-The web app's **Sectors** page ranks every Yahoo sector and industry group
-(~140 in the US, ~85 in India) by an RS rating (1–99, IBD-style: 40% 3-month,
+The web app's **Sectors** page ranks every Yahoo sector, industry group
+(~140 in the US, ~85 in India) and — for groups that mix businesses —
+sub-industry by an RS rating (1–99, IBD-style: 40% 3-month,
 20% each 6/9/12-month return relative to the typical stock) and its change
 over the month, with equal- and cap-weight returns, breadth inside the group
 (% above the 50/200-day averages, new highs vs lows), a weekly Relative

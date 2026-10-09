@@ -69,6 +69,8 @@ CREATE TABLE IF NOT EXISTS prices (
     -- about the market, shared by every strategy
     PRIMARY KEY (market, symbol, date)
 );
+-- "latest session" and per-day questions (max(date), sessions, breadth) without scanning every row
+CREATE INDEX IF NOT EXISTS prices_market_date ON prices (market, date);
 
 CREATE TABLE IF NOT EXISTS universe_history (
     run_id VARCHAR(32) NOT NULL,

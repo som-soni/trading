@@ -1,0 +1,363 @@
+market,industry,sub_industry,symbol
+us,Software—Infrastructure,"Cloud, data & networks",NN
+us,Software—Infrastructure,"Platforms, AI & automation",GCT
+us,Software—Infrastructure,"Platforms, AI & automation",AEVA
+us,Electrical Equipment & Parts,Other electrical equipment,HAYW
+us,Capital Markets,Precious-metals trading,GOLD
+us,Software—Application,Enterprise & productivity,SAP
+us,Software—Application,Enterprise & productivity,CRM
+us,Software—Application,Enterprise & productivity,NOW
+us,Software—Application,Enterprise & productivity,WDAY
+us,Software—Application,Enterprise & productivity,TEAM
+us,Software—Application,Enterprise & productivity,ZM
+us,Software—Application,Enterprise & productivity,DOCU
+us,Software—Application,Enterprise & productivity,HUBS
+us,Software—Application,Enterprise & productivity,MNDY
+us,Software—Application,Enterprise & productivity,FRSH
+us,Software—Application,Enterprise & productivity,PEGA
+us,Software—Application,Enterprise & productivity,OTEX
+us,Software—Application,Enterprise & productivity,KVYO
+us,Software—Application,Enterprise & productivity,BRZE
+us,Software—Application,Enterprise & productivity,SPT
+us,Software—Application,Enterprise & productivity,RNG
+us,Software—Application,Enterprise & productivity,OOMA
+us,Software—Application,Enterprise & productivity,PD
+us,Software—Application,Enterprise & productivity,WK
+us,Software—Application,Enterprise & productivity,BL
+us,Software—Application,Enterprise & productivity,PLUS
+us,Software—Application,Enterprise & productivity,DFIN
+us,Software—Application,"Data, analytics & DevOps",SNOW
+us,Software—Application,"Data, analytics & DevOps",DDOG
+us,Software—Application,"Data, analytics & DevOps",DT
+us,Software—Application,"Data, analytics & DevOps",ESTC
+us,Software—Application,"Data, analytics & DevOps",FROG
+us,Software—Application,"Data, analytics & DevOps",CVLT
+us,Software—Application,"Data, analytics & DevOps",AMPL
+us,Software—Application,"Data, analytics & DevOps",FSLY
+us,Software—Application,"Data, analytics & DevOps",NIQ
+us,Software—Application,"Data, analytics & DevOps",RDVT
+us,Software—Application,"Data, analytics & DevOps",SRAD
+us,Software—Application,Design & engineering software,CDNS
+us,Software—Application,Design & engineering software,ADBE
+us,Software—Application,Design & engineering software,ADSK
+us,Software—Application,Design & engineering software,PTC
+us,Software—Application,Design & engineering software,U
+us,Software—Application,Design & engineering software,FIG
+us,Software—Application,Design & engineering software,BSY
+us,Software—Application,Design & engineering software,PDFS
+us,Software—Application,Vertical software,ROP
+us,Software—Application,Vertical software,TYL
+us,Software—Application,Vertical software,GWRE
+us,Software—Application,Vertical software,MANH
+us,Software—Application,Vertical software,PCOR
+us,Software—Application,Vertical software,APPF
+us,Software—Application,Vertical software,TTAN
+us,Software—Application,Vertical software,DSGX
+us,Software—Application,Vertical software,SPSC
+us,Software—Application,Vertical software,AGYS
+us,Software—Application,Vertical software,BLKB
+us,Software—Application,Vertical software,VERX
+us,Software—Application,Vertical software,ALRM
+us,Software—Application,Vertical software,PAR
+us,Software—Application,Vertical software,INTA
+us,Software—Application,Vertical software,DJCO
+us,Software—Application,HR & payroll,ADP
+us,Software—Application,HR & payroll,PAYX
+us,Software—Application,HR & payroll,PAYC
+us,Software—Application,HR & payroll,PCTY
+us,Software—Application,Fintech & payments,INTU
+us,Software—Application,Fintech & payments,SSNC
+us,Software—Application,Fintech & payments,FICO
+us,Software—Application,Fintech & payments,CHYM
+us,Software—Application,Fintech & payments,DAVE
+us,Software—Application,Fintech & payments,BILL
+us,Software—Application,Fintech & payments,QTWO
+us,Software—Application,Fintech & payments,NCNO
+us,Software—Application,Fintech & payments,ALKT
+us,Software—Application,Fintech & payments,MITK
+us,Software—Application,Fintech & payments,UPBD
+us,Software—Application,Fintech & payments,NATL
+us,Software—Application,Fintech & payments,DBD
+us,Software—Application,"Commerce, mobility & marketplaces",SHOP
+us,Software—Application,"Commerce, mobility & marketplaces",UBER
+us,Software—Application,"Commerce, mobility & marketplaces",LYFT
+us,Software—Application,"Commerce, mobility & marketplaces",VIA
+us,Software—Application,Consumer apps & ad-tech,DUOL
+us,Software—Application,Consumer apps & ad-tech,LIF
+us,Software—Application,Consumer apps & ad-tech,GRND
+us,Software—Application,Consumer apps & ad-tech,YOU
+us,Software—Application,Consumer apps & ad-tech,PUBM
+us,Software—Application,Consumer apps & ad-tech,APPS
+us,Software—Application,Crypto & bitcoin,MSTR
+us,Software—Application,Crypto & bitcoin,BTDR
+us,Software—Application,IP licensing,IDCC
+us,Software—Application,IP licensing,ADEA
+us,Semiconductor Equipment & Materials,Wafer-fab equipment,ASML
+us,Semiconductor Equipment & Materials,Wafer-fab equipment,LRCX
+us,Semiconductor Equipment & Materials,Wafer-fab equipment,AMAT
+us,Semiconductor Equipment & Materials,Wafer-fab equipment,ACMR
+us,Semiconductor Equipment & Materials,Wafer-fab equipment,ACLS
+us,Semiconductor Equipment & Materials,Wafer-fab equipment,VECO
+us,Semiconductor Equipment & Materials,Inspection & metrology,KLAC
+us,Semiconductor Equipment & Materials,Inspection & metrology,ONTO
+us,Semiconductor Equipment & Materials,Inspection & metrology,NVMI
+us,Semiconductor Equipment & Materials,Inspection & metrology,CAMT
+us,Semiconductor Equipment & Materials,"Test, packaging & assembly",TER
+us,Semiconductor Equipment & Materials,"Test, packaging & assembly",FORM
+us,Semiconductor Equipment & Materials,"Test, packaging & assembly",COHU
+us,Semiconductor Equipment & Materials,"Test, packaging & assembly",AEHR
+us,Semiconductor Equipment & Materials,"Test, packaging & assembly",KLIC
+us,Semiconductor Equipment & Materials,"Test, packaging & assembly",AMKR
+us,Semiconductor Equipment & Materials,Materials & sub-systems,ENTG
+us,Semiconductor Equipment & Materials,Materials & sub-systems,AXTI
+us,Semiconductor Equipment & Materials,Materials & sub-systems,UCTT
+us,Semiconductor Equipment & Materials,Materials & sub-systems,ICHR
+us,Semiconductor Equipment & Materials,Materials & sub-systems,PLAB
+us,Semiconductor Equipment & Materials,Lasers & vision chips,IPGP
+us,Semiconductor Equipment & Materials,Lasers & vision chips,AMBA
+us,Electronic Components,Connectors & components,APH
+us,Electronic Components,Connectors & components,TEL
+us,Electronic Components,Connectors & components,LFUS
+us,Electronic Components,Connectors & components,BELFA
+us,Electronic Components,Connectors & components,BELFB
+us,Electronic Components,Connectors & components,CTS
+us,Electronic Components,Connectors & components,KN
+us,Electronic Components,Connectors & components,ROG
+us,Electronic Components,Connectors & components,ALNT
+us,Electronic Components,Connectors & components,VICR
+us,Electronic Components,EMS & contract manufacturing,CLS
+us,Electronic Components,EMS & contract manufacturing,FLEX
+us,Electronic Components,EMS & contract manufacturing,JBL
+us,Electronic Components,EMS & contract manufacturing,SANM
+us,Electronic Components,EMS & contract manufacturing,PLXS
+us,Electronic Components,EMS & contract manufacturing,BHE
+us,Electronic Components,EMS & contract manufacturing,TTMI
+us,Electronic Components,Optical & display,GLW
+us,Electronic Components,Optical & display,FN
+us,Electronic Components,Optical & display,LPTH
+us,Electronic Components,Optical & display,OLED
+us,Electronic Components,"Sensors, test & security",RAL
+us,Electronic Components,"Sensors, test & security",OUST
+us,Electronic Components,"Sensors, test & security",OSIS
+us,Computer Hardware,Servers & AI hardware,DELL
+us,Computer Hardware,Servers & AI hardware,SMCI
+us,Computer Hardware,Networking,ANET
+us,Computer Hardware,Storage & memory,SNDK
+us,Computer Hardware,Storage & memory,STX
+us,Computer Hardware,Storage & memory,WDC
+us,Computer Hardware,Storage & memory,P
+us,Computer Hardware,Storage & memory,QMCO
+us,Computer Hardware,Quantum computing,IONQ
+us,Computer Hardware,Quantum computing,QBTS
+us,Computer Hardware,Quantum computing,RGTI
+us,Computer Hardware,PCs & peripherals,HPQ
+us,Computer Hardware,PCs & peripherals,LOGI
+us,Computer Hardware,PCs & peripherals,CRSR
+us,Computer Hardware,PCs & peripherals,UMAC
+us,Communication Equipment,Networking & enterprise,CSCO
+us,Communication Equipment,Networking & enterprise,HPE
+us,Communication Equipment,Networking & enterprise,UI
+us,Communication Equipment,Networking & enterprise,EXTR
+us,Communication Equipment,Networking & enterprise,DGII
+us,Communication Equipment,Networking & enterprise,ZBRA
+us,Communication Equipment,Networking & enterprise,HLIT
+us,Communication Equipment,Networking & enterprise,BDC
+us,Communication Equipment,Optical networking,LITE
+us,Communication Equipment,Optical networking,CIEN
+us,Communication Equipment,Optical networking,VIAV
+us,Communication Equipment,Optical networking,AAOI
+us,Communication Equipment,"Wireless, satellite & public safety",ASTS
+us,Communication Equipment,"Wireless, satellite & public safety",VSAT
+us,Communication Equipment,"Wireless, satellite & public safety",MSI
+us,Communication Equipment,"Wireless, satellite & public safety",FEIM
+us,Specialty Industrial Machinery,Power generation & electrification,GEV
+us,Specialty Industrial Machinery,Power generation & electrification,ETN
+us,Specialty Industrial Machinery,Power generation & electrification,GNRC
+us,Specialty Industrial Machinery,Power generation & electrification,AMSC
+us,Specialty Industrial Machinery,Power generation & electrification,PSIX
+us,Specialty Industrial Machinery,Power generation & electrification,NNE
+us,Specialty Industrial Machinery,Power generation & electrification,MIR
+us,Specialty Industrial Machinery,Power generation & electrification,CMI
+us,Specialty Industrial Machinery,Automation & robotics,ROK
+us,Specialty Industrial Machinery,Automation & robotics,EMR
+us,Specialty Industrial Machinery,Automation & robotics,AME
+us,Specialty Industrial Machinery,Automation & robotics,SYM
+us,Specialty Industrial Machinery,Automation & robotics,NDSN
+us,Specialty Industrial Machinery,Automation & robotics,RRX
+us,Specialty Industrial Machinery,Automation & robotics,GTES
+us,Specialty Industrial Machinery,Flow control & water,XYL
+us,Specialty Industrial Machinery,Flow control & water,IEX
+us,Specialty Industrial Machinery,Flow control & water,GGG
+us,Specialty Industrial Machinery,Flow control & water,FLS
+us,Specialty Industrial Machinery,Flow control & water,PNR
+us,Specialty Industrial Machinery,Flow control & water,AOS
+us,Specialty Industrial Machinery,Flow control & water,WTS
+us,Specialty Industrial Machinery,Flow control & water,MWA
+us,Specialty Industrial Machinery,Flow control & water,FELE
+us,Specialty Industrial Machinery,Flow control & water,GRC
+us,Specialty Industrial Machinery,Flow control & water,DCI
+us,Specialty Industrial Machinery,Flow control & water,ITT
+us,Specialty Industrial Machinery,Diversified industrials,PH
+us,Specialty Industrial Machinery,Diversified industrials,ITW
+us,Specialty Industrial Machinery,Diversified industrials,IR
+us,Specialty Industrial Machinery,Diversified industrials,DOV
+us,Specialty Industrial Machinery,Diversified industrials,OTIS
+us,Specialty Industrial Machinery,Diversified industrials,CR
+us,Specialty Industrial Machinery,Diversified industrials,NPO
+us,Specialty Industrial Machinery,Diversified industrials,JBTM
+us,Specialty Industrial Machinery,Diversified industrials,CSW
+us,Specialty Industrial Machinery,Diversified industrials,MIDD
+us,Specialty Industrial Machinery,Diversified industrials,SXI
+us,Specialty Industrial Machinery,Diversified industrials,KAI
+us,Specialty Industrial Machinery,Diversified industrials,HLIO
+us,Specialty Industrial Machinery,Diversified industrials,EPAC
+us,Specialty Industrial Machinery,Diversified industrials,TNC
+us,Specialty Industrial Machinery,Diversified industrials,GHM
+us,Medical Devices,Diversified medtech,ABT
+us,Medical Devices,Diversified medtech,MDT
+us,Medical Devices,Cardio & vascular,BSX
+us,Medical Devices,Cardio & vascular,EW
+us,Medical Devices,Cardio & vascular,PEN
+us,Medical Devices,Cardio & vascular,IRTC
+us,Medical Devices,Cardio & vascular,LIVN
+us,Medical Devices,Cardio & vascular,TMDX
+us,Medical Devices,Cardio & vascular,AORT
+us,Medical Devices,Orthopedics & spine,SYK
+us,Medical Devices,Orthopedics & spine,ZBH
+us,Medical Devices,Orthopedics & spine,SNN
+us,Medical Devices,Orthopedics & spine,GMED
+us,Medical Devices,Orthopedics & spine,ATEC
+us,Medical Devices,Orthopedics & spine,SIBN
+us,Medical Devices,Orthopedics & spine,ENOV
+us,Medical Devices,Diabetes,DXCM
+us,Medical Devices,Diabetes,PODD
+us,Medical Devices,Diabetes,TNDM
+us,Medical Devices,Diabetes,BBNX
+us,Medical Devices,Imaging & diagnostics,GEHC
+us,Medical Devices,Imaging & diagnostics,PHG
+us,Medical Devices,Imaging & diagnostics,VREX
+us,Medical Devices,Imaging & diagnostics,QDEL
+us,Medical Devices,Life-science tools,TXG
+us,Medical Devices,Life-science tools,BIO
+us,Medical Devices,Life-science tools,BRKR
+us,Medical Devices,Life-science tools,NEOG
+us,Medical Devices,Surgical & specialty devices,STE
+us,Medical Devices,Surgical & specialty devices,HAE
+us,Medical Devices,Surgical & specialty devices,ITGR
+us,Medical Devices,Surgical & specialty devices,UFPT
+us,Medical Devices,Surgical & specialty devices,AXGN
+us,Medical Devices,Surgical & specialty devices,INSP
+us,Medical Devices,Surgical & specialty devices,ESTA
+us,Medical Devices,Surgical & specialty devices,NVCR
+us,Medical Devices,Surgical & specialty devices,CNMD
+us,Medical Devices,Surgical & specialty devices,IRMD
+us,Medical Devices,Surgical & specialty devices,IART
+us,Medical Devices,Surgical & specialty devices,PRCT
+us,Medical Devices,Surgical & specialty devices,GKOS
+us,Engineering & Construction,Electrical & mechanical contractors,FIX
+us,Engineering & Construction,Electrical & mechanical contractors,EME
+us,Engineering & Construction,Electrical & mechanical contractors,IESC
+us,Engineering & Construction,Electrical & mechanical contractors,LGN
+us,Engineering & Construction,Electrical & mechanical contractors,APG
+us,Engineering & Construction,Power & utility infrastructure,PWR
+us,Engineering & Construction,Power & utility infrastructure,MTZ
+us,Engineering & Construction,Power & utility infrastructure,DY
+us,Engineering & Construction,Power & utility infrastructure,MYRG
+us,Engineering & Construction,Power & utility infrastructure,PRIM
+us,Engineering & Construction,Power & utility infrastructure,AGX
+us,Engineering & Construction,Power & utility infrastructure,ECG
+us,Engineering & Construction,Power & utility infrastructure,AMRC
+us,Engineering & Construction,Engineering & consulting,J
+us,Engineering & Construction,Engineering & consulting,ACM
+us,Engineering & Construction,Engineering & consulting,TTEK
+us,Engineering & Construction,Engineering & consulting,STN
+us,Engineering & Construction,Engineering & consulting,KBR
+us,Engineering & Construction,Engineering & consulting,EXPO
+us,Engineering & Construction,Engineering & consulting,WLDN
+us,Engineering & Construction,Engineering & consulting,BWMN
+us,Engineering & Construction,Engineering & consulting,FLR
+us,Engineering & Construction,Civil & transport infrastructure,FER
+us,Engineering & Construction,Civil & transport infrastructure,STRL
+us,Engineering & Construction,Civil & transport infrastructure,GVA
+us,Engineering & Construction,Civil & transport infrastructure,ROAD
+us,Engineering & Construction,Civil & transport infrastructure,TPC
+us,Engineering & Construction,Civil & transport infrastructure,ACA
+us,Oil & Gas Midstream,Pipelines & processing,ENB
+us,Oil & Gas Midstream,Pipelines & processing,WMB
+us,Oil & Gas Midstream,Pipelines & processing,EPD
+us,Oil & Gas Midstream,Pipelines & processing,KMI
+us,Oil & Gas Midstream,Pipelines & processing,TRP
+us,Oil & Gas Midstream,Pipelines & processing,TRGP
+us,Oil & Gas Midstream,Pipelines & processing,OKE
+us,Oil & Gas Midstream,Pipelines & processing,PBA
+us,Oil & Gas Midstream,Pipelines & processing,DTM
+us,Oil & Gas Midstream,Pipelines & processing,AM
+us,Oil & Gas Midstream,Pipelines & processing,KNTK
+us,Oil & Gas Midstream,Pipelines & processing,HESM
+us,Oil & Gas Midstream,Pipelines & processing,SOBO
+us,Oil & Gas Midstream,Pipelines & processing,PAGP
+us,Oil & Gas Midstream,LNG,LNG
+us,Oil & Gas Midstream,LNG,VG
+us,Oil & Gas Midstream,LNG,EE
+us,Oil & Gas Midstream,LNG,GLNG
+us,Oil & Gas Midstream,Tankers & gas shipping,FRO
+us,Oil & Gas Midstream,Tankers & gas shipping,CMBT
+us,Oil & Gas Midstream,Tankers & gas shipping,INSW
+us,Oil & Gas Midstream,Tankers & gas shipping,STNG
+us,Oil & Gas Midstream,Tankers & gas shipping,TRMD
+us,Oil & Gas Midstream,Tankers & gas shipping,DHT
+us,Oil & Gas Midstream,Tankers & gas shipping,TNK
+us,Oil & Gas Midstream,Tankers & gas shipping,LPG
+us,Oil & Gas Midstream,Tankers & gas shipping,FLNG
+us,Oil & Gas Midstream,Tankers & gas shipping,TEN
+us,Oil & Gas Midstream,Tankers & gas shipping,NVGS
+us,Oil & Gas Midstream,Mineral & royalty,VNOM
+us,Information Technology Services,IT consulting & outsourcing,IBM
+us,Information Technology Services,IT consulting & outsourcing,ACN
+us,Information Technology Services,IT consulting & outsourcing,CTSH
+us,Information Technology Services,IT consulting & outsourcing,GIB
+us,Information Technology Services,IT consulting & outsourcing,EPAM
+us,Information Technology Services,IT consulting & outsourcing,G
+us,Information Technology Services,IT consulting & outsourcing,EXLS
+us,Information Technology Services,IT consulting & outsourcing,KD
+us,Information Technology Services,IT consulting & outsourcing,DXC
+us,Information Technology Services,IT consulting & outsourcing,GLOB
+us,Information Technology Services,IT consulting & outsourcing,CNXC
+us,Information Technology Services,IT consulting & outsourcing,EFOR
+us,Information Technology Services,Government & defense IT,LDOS
+us,Information Technology Services,Government & defense IT,CACI
+us,Information Technology Services,Government & defense IT,SAIC
+us,Information Technology Services,Government & defense IT,PSN
+us,Information Technology Services,Financial-services technology,FISV
+us,Information Technology Services,Financial-services technology,FIS
+us,Information Technology Services,Financial-services technology,BR
+us,Information Technology Services,Financial-services technology,JKHY
+us,Information Technology Services,AI data centres & hosting,APLD
+us,Information Technology Services,AI data centres & hosting,CIFR
+us,Information Technology Services,AI data centres & hosting,WYFI
+us,Information Technology Services,AI data centres & hosting,PENG
+us,Information Technology Services,AI data centres & hosting,INOD
+us,Information Technology Services,IT distribution & research,CDW
+us,Information Technology Services,IT distribution & research,INGM
+us,Information Technology Services,IT distribution & research,IT
+us,Internet Content & Information,Search & social,GOOGL
+us,Internet Content & Information,Search & social,GOOG
+us,Internet Content & Information,Search & social,META
+us,Internet Content & Information,Search & social,PINS
+us,Internet Content & Information,Search & social,RDDT
+us,Internet Content & Information,AI cloud & compute,NBIS
+us,Internet Content & Information,Marketplaces & listings,ZG
+us,Internet Content & Information,Marketplaces & listings,Z
+us,Internet Content & Information,Marketplaces & listings,CARG
+us,Internet Content & Information,Marketplaces & listings,YELP
+us,Internet Content & Information,Marketplaces & listings,GRPN
+us,Internet Content & Information,Marketplaces & listings,EVER
+us,Internet Content & Information,Marketplaces & listings,BZ
+us,Internet Content & Information,"Media, streaming & dating",SPOT
+us,Internet Content & Information,"Media, streaming & dating",PPLI
+us,Internet Content & Information,"Media, streaming & dating",MTCH
+india,Capital Markets,Exchanges & depositories,CDSL.NS
+india,Electrical Equipment & Parts,Power electronics & marine electricals,MARINE.NS
+india,Engineering & Construction,Aerospace & defence engineering,AXISCADES.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,RAYMOND.NS
+india,Electrical Equipment & Parts,Graphite electrodes & refractories,GRAPHITE.NS

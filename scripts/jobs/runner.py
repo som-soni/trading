@@ -79,6 +79,10 @@ def _log_file(name: str):
 def run(targets: list[str], markets: list[str] | None = None, opts: dict | None = None, from_job: str | None = None) -> int:
     """Run jobs / pipelines. Returns 0 when every step succeeded or was deliberately skipped, else 1."""
     opts = opts or {}
+    for t in targets:   # a pipeline's defaults fill options the request left unset
+        for k, v in (PIPELINES.get(t, {}).get("defaults") or {}).items():
+            if opts.get(k) in (None, False, [], ""):
+                opts[k] = v
     markets = markets or list(MARKETS)
     entries = plan(targets, markets, opts)
     if from_job:

@@ -53,7 +53,10 @@ class TrendPullbackStrategy(Strategy):
         "Long pullbacks (TC-01) and tight continuation bases (TC-02) within an "
         "established uptrend, entered on a resumption signal above resistance."
     )
+    style = "pullback"
     gate_codes = ("W1", "W2", "T1", "T2", "T3", "T4", "T5", "T6", "D2", "D3", "D4", "D5", "D6", "D7")
+    screen_key = "uptrend"
+    screen_gates = {"W1": "U1", "W2": "U2", "T1": "U3", "T2": "U4", "T3": "U5", "T4": "U6", "T5": "U7", "T6": "U8"}
     watch_codes = ("X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8", "X9")
     setup_codes = (TC01, TC02, TC04)
     min_bars = 260
@@ -105,6 +108,8 @@ class TrendPullbackStrategy(Strategy):
         "No demonstrated edge: portfolio backtest from 2013 with bracket exits "
         "returned -0.87% CAGR in the US (SPY 12.79%) and +0.57% in India "
         "(index 11.68%); seven alternative exit policies did not rescue it."
+        " Measured before the 2026-10 cost fix (exit slippage was charged twice); re-measured runs moved by "
+        "−0.8 to +0.9 points of CAGR (the extra cash changes which later signals are taken), so re-run before relying on it."
     )
     gate_docs = {
         "W1": "Passes when the latest weekly close is above the 30-week EMA AND that "
@@ -276,7 +281,7 @@ class TrendPullbackStrategy(Strategy):
     # ---------- gates / flags / setups ----------
 
     def evaluate(self, ctx: StockContext) -> StrategyResult:
-        d, w = ctx.daily, ctx.weekly
+        d = ctx.daily
         result = StrategyResult(entry_setup_codes=(TC01, TC02))
         close = ctx.close
 
@@ -284,82 +289,8 @@ class TrendPullbackStrategy(Strategy):
         # penalises a genuine recent recovery as hard as an ongoing
         # downtrend — it is now watch flag X9 below.
 
-        # W1: weekly close above a rising 30-week EMA
-        if len(w) < 31 or pd.isna(w["ema30"].iloc[-1]):
-            result.fail("W1", "insufficient weekly history")
-        else:
-            rising = ind.is_rising(w["ema30"], 1)
-            above = w["close"].iloc[-1] > w["ema30"].iloc[-1]
-            if above and rising:
-                result.ok("W1")
-            else:
-                result.fail("W1", "weekly close not above a rising 30-week EMA")
-
-        # W2: weekly SMA20 above weekly SMA50
-        if len(w) < 50 or pd.isna(w["sma50"].iloc[-1]):
-            result.fail("W2", "insufficient weekly history")
-        elif w["sma20"].iloc[-1] > w["sma50"].iloc[-1]:
-            result.ok("W2")
-        else:
-            result.fail("W2", "weekly SMA20 below weekly SMA50")
-
-        sma50 = d["sma50"].iloc[-1]
-        sma200 = d["sma200"].iloc[-1]
-        atr14 = d["atr14"].iloc[-1]
-
-        # T1: structure SMA50>SMA200 AND close hasn't broken down through SMA50
-        if pd.isna(sma50) or pd.isna(sma200) or pd.isna(atr14):
-            result.fail("T1", "insufficient history for SMA50/SMA200/ATR")
-        else:
-            structure_ok = sma50 > sma200
-            broke_down = (close < sma50 - 2 * atr14) or bool(
-                (d["close"].iloc[-5:] < d["sma50"].iloc[-5:]).all()
-            )
-            if structure_ok and not broke_down:
-                result.ok("T1")
-            else:
-                result.fail("T1", "SMA50<=SMA200 or close broke down through SMA50")
-
-        # T2: slope — fail if SMA50 or SMA200 falling; flat passes (flagged X4)
-        sma50_state = ind.slope_state(d["sma50"], 10, 1.0)
-        sma200_state = ind.slope_state(d["sma200"], 20, 0.5)
-        if sma50_state == "falling" or sma200_state == "falling":
-            result.fail("T2", f"SMA50 {sma50_state}, SMA200 {sma200_state}")
-        else:
-            result.ok("T2", f"SMA50 {sma50_state}, SMA200 {sma200_state}")
-
-        # T3: higher swing lows over the last ~50 bars
-        if sw.higher_swing_lows(d, 50):
-            result.ok("T3")
-        else:
-            result.fail("T3", "no higher swing lows over the last ~50 bars")
-
-        # T4: 12-1 month momentum positive
-        if len(d) < 253:
-            result.fail("T4", "insufficient history for 12-1mo momentum")
-        elif d["close"].iloc[-22] > d["close"].iloc[-253]:
-            result.ok("T4")
-        else:
-            result.fail("T4", "12-1 month momentum negative")
-
-        # T5: leadership — close no more than 25% below the 52-week high
-        high_252 = d["high_252"].iloc[-1]
-        if pd.isna(high_252):
-            result.fail("T5", "insufficient history for 52-week high")
-        elif close >= high_252 * 0.75:
-            result.ok("T5")
-        else:
-            result.fail("T5", "close more than 25% below the 52-week high")
-
-        # T6: trend not fading
-        if len(d) < 64:
-            result.fail("T6", "insufficient history for 3mo return")
-        else:
-            ret_3m = d["close"].iloc[-1] / d["close"].iloc[-64] - 1
-            if ret_3m < 0 and sma50_state in ("flat", "falling"):
-                result.fail("T6", "3mo return negative and SMA50 flat/falling")
-            else:
-                result.ok("T6")
+        # W1-W2, T1-T6: the Established-uptrend screen's criteria U1-U8 (screens/criteria.py)
+        self.apply_screen(ctx, result)
 
         # D1 retired — extension is now watch flag X1
         result.ok("D1", "retired, see X1")

@@ -1,0 +1,812 @@
+market,industry,sub_industry,symbol
+india,Auto Parts,Diversified components,ASAHIINDIA.NS
+india,Auto Parts,Diversified components,ASKAUTOLTD.NS
+india,Auto Parts,Diversified components,BANCOINDIA.NS
+india,Auto Parts,Diversified components,BELRISE.NS
+india,Auto Parts,Diversified components,BHARATSE.NS
+india,Auto Parts,Diversified components,BOSCHLTD.NS
+india,Auto Parts,Diversified components,DHOOTTRANS.NS
+india,Auto Parts,Diversified components,ENDURANCE.NS
+india,Auto Parts,Diversified components,FIEMIND.NS
+india,Auto Parts,Diversified components,GABRIEL.NS
+india,Auto Parts,Diversified components,IGARASHI.NS
+india,Auto Parts,Diversified components,JAYBARMARU.NS
+india,Auto Parts,Diversified components,JBMA.NS
+india,Auto Parts,Diversified components,LUMAXIND.NS
+india,Auto Parts,Diversified components,MOTHERSON.NS
+india,Auto Parts,Diversified components,REMSONSIND.NS
+india,Auto Parts,Diversified components,RML.NS
+india,Auto Parts,Diversified components,SANDHAR.NS
+india,Auto Parts,Diversified components,SCHAEFFLER.NS
+india,Auto Parts,Diversified components,SHARDAMOTR.NS
+india,Auto Parts,Diversified components,SJS.NS
+india,Auto Parts,Diversified components,STUDDS.NS
+india,Auto Parts,Diversified components,SUBROS.NS
+india,Auto Parts,Diversified components,SUPRAJIT.NS
+india,Auto Parts,Diversified components,TENNIND.NS
+india,Auto Parts,Diversified components,TVSHLTD.NS
+india,Auto Parts,Diversified components,ZFCVINDIA.NS
+india,Auto Parts,"EV, electronics & batteries",DIVGIITTS.NS
+india,Auto Parts,"EV, electronics & batteries",EXIDEIND.NS
+india,Auto Parts,"EV, electronics & batteries",INDNIPPON.NS
+india,Auto Parts,"EV, electronics & batteries",LUMAXTECH.NS
+india,Auto Parts,"EV, electronics & batteries",MINDACORP.NS
+india,Auto Parts,"EV, electronics & batteries",MSUMI.NS
+india,Auto Parts,"EV, electronics & batteries",PRICOLLTD.NS
+india,Auto Parts,"EV, electronics & batteries",SEDEMAC.NS
+india,Auto Parts,"EV, electronics & batteries",SONACOMS.NS
+india,Auto Parts,"EV, electronics & batteries",UNOMINDA.NS
+india,Auto Parts,"EV, electronics & batteries",VARROC.NS
+india,Auto Parts,"Forgings, castings & machined parts",CARRARO.NS
+india,Auto Parts,"Forgings, castings & machined parts",CIEINDIA.NS
+india,Auto Parts,"Forgings, castings & machined parts",CRAFTSMAN.NS
+india,Auto Parts,"Forgings, castings & machined parts",DYNAMATECH.NS
+india,Auto Parts,"Forgings, castings & machined parts",FMGOETZE.NS
+india,Auto Parts,"Forgings, castings & machined parts",GNA.NS
+india,Auto Parts,"Forgings, castings & machined parts",JAMNAAUTO.NS
+india,Auto Parts,"Forgings, castings & machined parts",KROSS.NS
+india,Auto Parts,"Forgings, castings & machined parts",LGBBROSLTD.NS
+india,Auto Parts,"Forgings, castings & machined parts",MENONBE.NS
+india,Auto Parts,"Forgings, castings & machined parts",MUNJALAU.NS
+india,Auto Parts,"Forgings, castings & machined parts",NRBBEARING.NS
+india,Auto Parts,"Forgings, castings & machined parts",PRECAM.NS
+india,Auto Parts,"Forgings, castings & machined parts",RACLGEAR.NS
+india,Auto Parts,"Forgings, castings & machined parts",RICOAUTO.NS
+india,Auto Parts,"Forgings, castings & machined parts",SANSERA.NS
+india,Auto Parts,"Forgings, castings & machined parts",SHRIPISTON.NS
+india,Auto Parts,"Forgings, castings & machined parts",SSWL.NS
+india,Auto Parts,"Forgings, castings & machined parts",SUNDRMFAST.NS
+india,Auto Parts,"Forgings, castings & machined parts",TALBROAUTO.NS
+india,Auto Parts,"Forgings, castings & machined parts",WHEELS.NS
+india,Auto Parts,Tyres,APOLLOTYRE.NS
+india,Auto Parts,Tyres,BALKRISIND.NS
+india,Auto Parts,Tyres,CEATLTD.NS
+india,Auto Parts,Tyres,JKTYRE.NS
+india,Auto Parts,Tyres,MRF.NS
+india,Auto Parts,Tyres,TVSSRICHAK.NS
+india,Banks—Regional,PSU banks,BANKBARODA.NS
+india,Banks—Regional,PSU banks,BANKINDIA.NS
+india,Banks—Regional,PSU banks,CANBK.NS
+india,Banks—Regional,PSU banks,CENTRALBK.NS
+india,Banks—Regional,PSU banks,IDBI.NS
+india,Banks—Regional,PSU banks,INDIANB.NS
+india,Banks—Regional,PSU banks,IOB.NS
+india,Banks—Regional,PSU banks,J&KBANK.NS
+india,Banks—Regional,PSU banks,MAHABANK.NS
+india,Banks—Regional,PSU banks,PNB.NS
+india,Banks—Regional,PSU banks,PSB.NS
+india,Banks—Regional,PSU banks,SBIN.NS
+india,Banks—Regional,PSU banks,UCOBANK.NS
+india,Banks—Regional,PSU banks,UNIONBANK.NS
+india,Banks—Regional,Private banks,AXISBANK.NS
+india,Banks—Regional,Private banks,BANDHANBNK.NS
+india,Banks—Regional,Private banks,CSBBANK.NS
+india,Banks—Regional,Private banks,CUB.NS
+india,Banks—Regional,Private banks,DCBBANK.NS
+india,Banks—Regional,Private banks,FEDERALBNK.NS
+india,Banks—Regional,Private banks,HDFCBANK.NS
+india,Banks—Regional,Private banks,ICICIBANK.NS
+india,Banks—Regional,Private banks,IDFCFIRSTB.NS
+india,Banks—Regional,Private banks,INDUSINDBK.NS
+india,Banks—Regional,Private banks,KARURVYSYA.NS
+india,Banks—Regional,Private banks,KOTAKBANK.NS
+india,Banks—Regional,Private banks,KTKBANK.NS
+india,Banks—Regional,Private banks,RBLBANK.NS
+india,Banks—Regional,Private banks,SOUTHBANK.NS
+india,Banks—Regional,Private banks,TMB.NS
+india,Banks—Regional,Private banks,YESBANK.NS
+india,Banks—Regional,Small finance & payments banks,AUBANK.NS
+india,Banks—Regional,Small finance & payments banks,CAPITALSFB.NS
+india,Banks—Regional,Small finance & payments banks,EQUITASBNK.NS
+india,Banks—Regional,Small finance & payments banks,ESAFSFB.NS
+india,Banks—Regional,Small finance & payments banks,FINOPB.NS
+india,Banks—Regional,Small finance & payments banks,JSFB.NS
+india,Banks—Regional,Small finance & payments banks,SURYODAY.NS
+india,Banks—Regional,Small finance & payments banks,UJJIVANSFB.NS
+india,Banks—Regional,Small finance & payments banks,UTKARSHBNK.NS
+india,Credit Services,Diversified & consumer NBFCs,BAJFINANCE.NS
+india,Credit Services,Diversified & consumer NBFCs,CHOLAHLDNG.NS
+india,Credit Services,Diversified & consumer NBFCs,FEDFINA.NS
+india,Credit Services,Diversified & consumer NBFCs,HDBFS.NS
+india,Credit Services,Diversified & consumer NBFCs,IIFL.NS
+india,Credit Services,Diversified & consumer NBFCs,KISSHT.NS
+india,Credit Services,Diversified & consumer NBFCs,LTF.NS
+india,Credit Services,Diversified & consumer NBFCs,PIRAMALFIN.NS
+india,Credit Services,Diversified & consumer NBFCs,POONAWALLA.NS
+india,Credit Services,Diversified & consumer NBFCs,SBICARD.NS
+india,Credit Services,Diversified & consumer NBFCs,TATACAP.NS
+india,Credit Services,Gold loans,MANAPPURAM.NS
+india,Credit Services,Gold loans,MUTHOOTFIN.NS
+india,Credit Services,Govt. infra & power lenders,HUDCO.NS
+india,Credit Services,Govt. infra & power lenders,IFCI.NS
+india,Credit Services,Govt. infra & power lenders,IREDA.NS
+india,Credit Services,Govt. infra & power lenders,IRFC.NS
+india,Credit Services,Govt. infra & power lenders,PFC.NS
+india,Credit Services,Govt. infra & power lenders,PFS.NS
+india,Credit Services,Govt. infra & power lenders,RECLTD.NS
+india,Credit Services,Govt. infra & power lenders,TFCILTD.NS
+india,Credit Services,Microfinance,ARMANFIN.NS
+india,Credit Services,Microfinance,CREDITACC.NS
+india,Credit Services,Microfinance,FUSION.NS
+india,Credit Services,Microfinance,MUTHOOTMF.NS
+india,Credit Services,Microfinance,SATIN.NS
+india,Credit Services,Microfinance,SPANDANA.NS
+india,Credit Services,Vehicle & MSME finance,AYE.NS
+india,Credit Services,Vehicle & MSME finance,CGCL.NS
+india,Credit Services,Vehicle & MSME finance,CHOLAFIN.NS
+india,Credit Services,Vehicle & MSME finance,FIVESTAR.NS
+india,Credit Services,Vehicle & MSME finance,LAXMIINDIA.NS
+india,Credit Services,Vehicle & MSME finance,M&MFIN.NS
+india,Credit Services,Vehicle & MSME finance,MANBA.NS
+india,Credit Services,Vehicle & MSME finance,MASFIN.NS
+india,Credit Services,Vehicle & MSME finance,MUFIN.NS
+india,Credit Services,Vehicle & MSME finance,NORTHARC.NS
+india,Credit Services,Vehicle & MSME finance,PAISALO.NS
+india,Credit Services,Vehicle & MSME finance,SBFC.NS
+india,Credit Services,Vehicle & MSME finance,SHRIRAMFIN.NS
+india,Credit Services,Vehicle & MSME finance,SUNDARMFIN.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",AAREYDRUGS.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",AARTIDRUGS.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",AARTIPHARM.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",AHCL.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",AKUMS.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",ALIVUS.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",ANUHPHR.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",BAJAJHCARE.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",BPLPHARMA.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",COHANCE.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",DIVISLAB.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",FERMENTA.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",FREDUN.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",GLAND.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",GUJTHEM.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",HIKAL.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",INDSWFTLAB.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",INNOVACAP.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",IOLCP.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",JUBLPHARMA.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",LAURUSLABS.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",MOREPENLAB.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",NEULANDLAB.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",ORCHPHARMA.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",PPLPHARMA.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",SAKAR.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",SHILPAMED.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",SHUKRAPHAR.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",SIGACHI.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",SOLARA.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",SPARC.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",SUDEEPPHRM.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",SUVEN.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",VIYASH.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",WANBURY.NS
+india,Drug Manufacturers—Specialty & Generic,"CDMO, API & contract manufacturing",WINDLAS.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,ABBOTINDIA.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,AJANTPHARM.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,ALKEM.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,AMRUTANJAN.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,ASTRAZEN.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,BETA.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,EMCURE.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,ERIS.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,FDC.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,GUFICBIO.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,INDOCO.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,IPCALAB.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,JAGSNPHARM.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,KPL.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,LINCOLN.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,MANKIND.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,MEDICAMEQ.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,MEDICO.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,NOVARTIND.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,PGHL.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,RPGLIFE.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,SYNCOMF.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,THEMISMED.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,TORNTPHARM.NS
+india,Drug Manufacturers—Specialty & Generic,Domestic formulations,VENUSREM.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,APLLTD.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,AUROPHARMA.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,BLISSGVS.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,CAPLIPOINT.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,CIPLA.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,DRREDDY.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,GLENMARK.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,GRANULES.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,LUPIN.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,NATCOPHARM.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,STAR.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,SUNPHARMA.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,UNICHEMLAB.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,WOCKPHARMA.NS
+india,Drug Manufacturers—Specialty & Generic,US generics & exporters,ZYDUSLIFE.NS
+india,Electrical Equipment & Parts,"Batteries, EV charging & power electronics",ARE&M.NS
+india,Electrical Equipment & Parts,"Batteries, EV charging & power electronics",EXICOM.NS
+india,Electrical Equipment & Parts,"Batteries, EV charging & power electronics",HBLENGINE.NS
+india,Electrical Equipment & Parts,"Batteries, EV charging & power electronics",PROSTARM.NS
+india,Electrical Equipment & Parts,"Batteries, EV charging & power electronics",SERVOTECH.NS
+india,Electrical Equipment & Parts,Cables & wires,APARINDS.NS
+india,Electrical Equipment & Parts,Cables & wires,CORDSCABLE.NS
+india,Electrical Equipment & Parts,Cables & wires,DYCL.NS
+india,Electrical Equipment & Parts,Cables & wires,FINCABLES.NS
+india,Electrical Equipment & Parts,Cables & wires,KEI.NS
+india,Electrical Equipment & Parts,Cables & wires,KSHINTL.NS
+india,Electrical Equipment & Parts,Cables & wires,POLYCAB.NS
+india,Electrical Equipment & Parts,Cables & wires,PRECWIRE.NS
+india,Electrical Equipment & Parts,Cables & wires,RAMRAT.NS
+india,Electrical Equipment & Parts,Cables & wires,RRKABEL.NS
+india,Electrical Equipment & Parts,Cables & wires,UNIVCABLES.NS
+india,Electrical Equipment & Parts,Cables & wires,VIDYAWIRES.NS
+india,Electrical Equipment & Parts,Consumer electricals & lighting,EVEREADY.NS
+india,Electrical Equipment & Parts,Consumer electricals & lighting,HAVELLS.NS
+india,Electrical Equipment & Parts,Consumer electricals & lighting,HPL.NS
+india,Electrical Equipment & Parts,Consumer electricals & lighting,SALZERELEC.NS
+india,Electrical Equipment & Parts,Consumer electricals & lighting,VGUARD.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",ATLANTAELE.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",BBL.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",CGPOWER.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",GENUSPOWER.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",HIRECT.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",INDOTECH.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",LASERPOWER.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",MARSONS.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",MVELECTRO.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",POWERINDIA.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",QPOWER.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",SCHNEIDER.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",SHILCTECH.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",SPECTRUM.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",TARIL.NS
+india,Electrical Equipment & Parts,"Transmission, distribution & transformers",VOLTAMP.NS
+india,Engineering & Construction,Buildings & urban,AHLUCONT.NS
+india,Engineering & Construction,Buildings & urban,ARIS.NS
+india,Engineering & Construction,Buildings & urban,ATALREAL.NS
+india,Engineering & Construction,Buildings & urban,BLKASHYAP.NS
+india,Engineering & Construction,Buildings & urban,CAPACITE.NS
+india,Engineering & Construction,Buildings & urban,EPACKPEB.NS
+india,Engineering & Construction,Buildings & urban,GARUDA.NS
+india,Engineering & Construction,Buildings & urban,INTERARCH.NS
+india,Engineering & Construction,Buildings & urban,JKIL.NS
+india,Engineering & Construction,Buildings & urban,MANINFRA.NS
+india,Engineering & Construction,Buildings & urban,PSPPROJECT.NS
+india,Engineering & Construction,Buildings & urban,VASCONEQ.NS
+india,Engineering & Construction,Diversified E&C,AFCONS.NS
+india,Engineering & Construction,Diversified E&C,CEMPRO.NS
+india,Engineering & Construction,Diversified E&C,LT.NS
+india,Engineering & Construction,Diversified E&C,NCC.NS
+india,Engineering & Construction,Diversified E&C,SIMPLEXINF.NS
+india,Engineering & Construction,Diversified E&C,WELENT.NS
+india,Engineering & Construction,Govt. & railway infra (PSU),DREDGECORP.NS
+india,Engineering & Construction,Govt. & railway infra (PSU),ENGINERSIN.NS
+india,Engineering & Construction,Govt. & railway infra (PSU),IRCON.NS
+india,Engineering & Construction,Govt. & railway infra (PSU),NBCC.NS
+india,Engineering & Construction,Govt. & railway infra (PSU),RITES.NS
+india,Engineering & Construction,Govt. & railway infra (PSU),RVNL.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",GPTINFRA.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",GVPIL.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",KEC.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",KPEL.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",KPIL.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",POWERMECH.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",SKIPPER.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",TECHNOE.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",TRANSRAILL.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",VIKRAN.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",VIVIANA.NS
+india,Engineering & Construction,"Power, T&D & energy EPC",WAAREERTL.NS
+india,Engineering & Construction,Roads & highways,ASHOKA.NS
+india,Engineering & Construction,Roads & highways,CEIGALL.NS
+india,Engineering & Construction,Roads & highways,DBL.NS
+india,Engineering & Construction,Roads & highways,GAYAPROJ.NS
+india,Engineering & Construction,Roads & highways,GRINFRA.NS
+india,Engineering & Construction,Roads & highways,HCC.NS
+india,Engineering & Construction,Roads & highways,HGINFRA.NS
+india,Engineering & Construction,Roads & highways,KNRCON.NS
+india,Engineering & Construction,Roads & highways,PATELENG.NS
+india,Engineering & Construction,Roads & highways,PNCINFRA.NS
+india,Engineering & Construction,Water & environment,DENTA.NS
+india,Engineering & Construction,Water & environment,EIEL.NS
+india,Engineering & Construction,Water & environment,EMSLIMITED.NS
+india,Engineering & Construction,Water & environment,INDIANHUME.NS
+india,Engineering & Construction,Water & environment,SPMLINFRA.NS
+india,Engineering & Construction,Water & environment,VPRPL.NS
+india,Engineering & Construction,Water & environment,WABAG.NS
+india,Information Technology Services,BPM & data services,CAMS.NS
+india,Information Technology Services,BPM & data services,DATAMATICS.NS
+india,Information Technology Services,BPM & data services,ECLERX.NS
+india,Information Technology Services,BPM & data services,FSL.NS
+india,Information Technology Services,BPM & data services,PROTEAN.NS
+india,Information Technology Services,Engineering R&D services,LTTS.NS
+india,Information Technology Services,Engineering R&D services,SASKEN.NS
+india,Information Technology Services,Engineering R&D services,TATATECH.NS
+india,Information Technology Services,IT distribution & infrastructure services,ADSL.NS
+india,Information Technology Services,IT distribution & infrastructure services,CSM.NS
+india,Information Technology Services,IT distribution & infrastructure services,DSSL.NS
+india,Information Technology Services,IT distribution & infrastructure services,IVALUE.NS
+india,Information Technology Services,IT distribution & infrastructure services,ORIENTTECH.NS
+india,Information Technology Services,IT distribution & infrastructure services,REDINGTON.NS
+india,Information Technology Services,IT distribution & infrastructure services,SILVERTUC.NS
+india,Information Technology Services,Large IT services,HCLTECH.NS
+india,Information Technology Services,Large IT services,INFY.NS
+india,Information Technology Services,Large IT services,TCS.NS
+india,Information Technology Services,Large IT services,TECHM.NS
+india,Information Technology Services,Large IT services,WIPRO.NS
+india,Information Technology Services,Mid-tier IT services,BSOFT.NS
+india,Information Technology Services,Mid-tier IT services,COFORGE.NS
+india,Information Technology Services,Mid-tier IT services,HAPPSTMNDS.NS
+india,Information Technology Services,Mid-tier IT services,HEXT.NS
+india,Information Technology Services,Mid-tier IT services,LTM.NS
+india,Information Technology Services,Mid-tier IT services,MASTEK.NS
+india,Information Technology Services,Mid-tier IT services,MPHASIS.NS
+india,Information Technology Services,Mid-tier IT services,PERSISTENT.NS
+india,Information Technology Services,Mid-tier IT services,RSYSTEMS.NS
+india,Information Technology Services,Mid-tier IT services,SAKSOFT.NS
+india,Information Technology Services,Mid-tier IT services,SONATSOFTW.NS
+india,Information Technology Services,Mid-tier IT services,ZENSARTECH.NS
+india,Specialty Chemicals,"Carbon, lubricants & petro-specialities",GANESHBE.NS
+india,Specialty Chemicals,"Carbon, lubricants & petro-specialities",GOACARBON.NS
+india,Specialty Chemicals,"Carbon, lubricants & petro-specialities",GULFOILLUB.NS
+india,Specialty Chemicals,"Carbon, lubricants & petro-specialities",HSCL.NS
+india,Specialty Chemicals,"Carbon, lubricants & petro-specialities",PCBL.NS
+india,Specialty Chemicals,"Carbon, lubricants & petro-specialities",POCL.NS
+india,Specialty Chemicals,"Carbon, lubricants & petro-specialities",RAIN.NS
+india,Specialty Chemicals,"Carbon, lubricants & petro-specialities",SOTL.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,AARTIIND.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,ACUTAAS.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,AETHER.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,ALKYLAMINE.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,ANURAS.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,ATUL.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,BALAMINES.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,BHAGERIA.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,CAMLINFINE.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,CLEAN.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,JUBLINGREA.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,KRONOX.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,LXCHEM.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,NEOGEN.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,NOCIL.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,PAUSHAKLTD.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,SHREEPUSHK.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,TATVA.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,VINATIORGA.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,VISHNU.NS
+india,Specialty Chemicals,Custom synthesis & intermediates,YASHO.NS
+india,Specialty Chemicals,Explosives & defence chemicals,GOCLCORP.NS
+india,Specialty Chemicals,Explosives & defence chemicals,PREMEXPLN.NS
+india,Specialty Chemicals,Explosives & defence chemicals,SOLARINDS.NS
+india,Specialty Chemicals,Fluorochemicals & gases,FLUOROCHEM.NS
+india,Specialty Chemicals,Fluorochemicals & gases,LINDEINDIA.NS
+india,Specialty Chemicals,Fluorochemicals & gases,STALLION.NS
+india,Specialty Chemicals,"Paints, coatings & adhesives",ASIANPAINT.NS
+india,Specialty Chemicals,"Paints, coatings & adhesives",BERGEPAINT.NS
+india,Specialty Chemicals,"Paints, coatings & adhesives",GRAUWEIL.NS
+india,Specialty Chemicals,"Paints, coatings & adhesives",INDIGOPNTS.NS
+india,Specialty Chemicals,"Paints, coatings & adhesives",JSWDULUX.NS
+india,Specialty Chemicals,"Paints, coatings & adhesives",KANSAINER.NS
+india,Specialty Chemicals,"Paints, coatings & adhesives",PIDILITIND.NS
+india,Specialty Chemicals,"Paints, coatings & adhesives",SIRCA.NS
+india,Specialty Chemicals,"Polymers, films & plastics",APCOTEXIND.NS
+india,Specialty Chemicals,"Polymers, films & plastics",DDEVPLSTIK.NS
+india,Specialty Chemicals,"Polymers, films & plastics",ESTER.NS
+india,Specialty Chemicals,"Polymers, films & plastics",GRWRHITECH.NS
+india,Specialty Chemicals,"Polymers, films & plastics",JAICORPLTD.NS
+india,Specialty Chemicals,"Polymers, films & plastics",KINGFA.NS
+india,Specialty Chemicals,"Polymers, films & plastics",MANALIPETC.NS
+india,Specialty Chemicals,"Polymers, films & plastics",POLYPLEX.NS
+india,Specialty Chemicals,"Polymers, films & plastics",PREMIERPOL.NS
+india,Specialty Chemicals,"Polymers, films & plastics",RESPONIND.NS
+india,Specialty Chemicals,"Polymers, films & plastics",SHAILY.NS
+india,Specialty Chemicals,"Polymers, films & plastics",SPLPETRO.NS
+india,Specialty Chemicals,"Polymers, films & plastics",TINNARUBR.NS
+india,Specialty Chemicals,"Polymers, films & plastics",TIRUMALCHM.NS
+india,Specialty Chemicals,"Polymers, films & plastics",TNPETRO.NS
+india,Specialty Chemicals,"Polymers, films & plastics",XPROINDIA.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",ADVENZYMES.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",AVTNPL.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",BASF.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",BODALCHEM.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",ELANTAS.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",FCL.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",FINEORG.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",GALAXYSURF.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",KIRIINDUS.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",OAL.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",PRIVISCL.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",ROSSARI.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",SHK.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",SUDARSCHEM.NS
+india,Specialty Chemicals,"Specialty ingredients, pigments & dyes",ULTRAMAR.NS
+india,Specialty Industrial Machinery,Defence & precision engineering,AZAD.NS
+india,Specialty Industrial Machinery,Defence & precision engineering,KRISHNADEF.NS
+india,Specialty Industrial Machinery,Defence & precision engineering,LLOYDSENGG.NS
+india,Specialty Industrial Machinery,Defence & precision engineering,MTARTECH.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,ABB.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,ADOR.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,AIAENG.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,ANUP.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,DIFFNKG.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,EKC.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,ELECON.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,ELGIEQUIP.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,GALAPREC.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,GMMPFAUDLR.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,HLEGLAS.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,INGERRAND.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,ISGEC.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,JNKINDIA.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,JYOTICNC.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,KABRAEXTRU.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,KIRLPNU.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,KLBRENG-B.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,LCL.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,LMW.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,LOKESHMACH.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,MACPOWER.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,MAMATA.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,OMNI.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,PENIND.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,PIXTRANS.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,SETL.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,SHANTIGEAR.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,SIEMENS.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,TEGA.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,VESUVIUS.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,WINDMACHIN.NS
+india,Specialty Industrial Machinery,Industrial machinery & automation,YUKEN.NS
+india,Specialty Industrial Machinery,Power & energy equipment,ADVAIT.NS
+india,Specialty Industrial Machinery,Power & energy equipment,BHEL.NS
+india,Specialty Industrial Machinery,Power & energy equipment,CUMMINSIND.NS
+india,Specialty Industrial Machinery,Power & energy equipment,DIACABS.NS
+india,Specialty Industrial Machinery,Power & energy equipment,GREAVESCOT.NS
+india,Specialty Industrial Machinery,Power & energy equipment,GVT&D.NS
+india,Specialty Industrial Machinery,Power & energy equipment,INOXINDIA.NS
+india,Specialty Industrial Machinery,Power & energy equipment,INOXWIND.NS
+india,Specialty Industrial Machinery,Power & energy equipment,KIRLOSENG.NS
+india,Specialty Industrial Machinery,Power & energy equipment,POWERICA.NS
+india,Specialty Industrial Machinery,Power & energy equipment,SUZLON.NS
+india,Specialty Industrial Machinery,Power & energy equipment,TDPOWERSYS.NS
+india,Specialty Industrial Machinery,Power & energy equipment,TRITURBINE.NS
+india,Specialty Industrial Machinery,Pumps & valves,JASH.NS
+india,Specialty Industrial Machinery,Pumps & valves,KIRLOSBROS.NS
+india,Specialty Industrial Machinery,Pumps & valves,KSB.NS
+india,Specialty Industrial Machinery,Pumps & valves,ROTO.NS
+india,Specialty Industrial Machinery,Pumps & valves,SHAKTIPUMP.NS
+india,Specialty Industrial Machinery,Pumps & valves,WPIL.NS
+india,Steel,Iron ore & mining,KIOCL.NS
+india,Steel,Iron ore & mining,NMDC.NS
+india,Steel,Iron ore & mining,ORISSAMINE.NS
+india,Steel,Iron ore & mining,SANDUMA.NS
+india,Steel,Pipes & tubes,APLAPOLLO.NS
+india,Steel,Pipes & tubes,GOODLUCK.NS
+india,Steel,Pipes & tubes,HARIOMPIPE.NS
+india,Steel,Pipes & tubes,HITECH.NS
+india,Steel,Pipes & tubes,JINDALSAW.NS
+india,Steel,Pipes & tubes,JTLIND.NS
+india,Steel,Pipes & tubes,MAHSEAMLES.NS
+india,Steel,Pipes & tubes,MANINDS.NS
+india,Steel,Pipes & tubes,RATNAMANI.NS
+india,Steel,Pipes & tubes,RATNAVEER.NS
+india,Steel,Pipes & tubes,SAMBHV.NS
+india,Steel,Pipes & tubes,SCODATUBES.NS
+india,Steel,Pipes & tubes,SURYAROSNI.NS
+india,Steel,Pipes & tubes,VENUSPIPES.NS
+india,Steel,Pipes & tubes,WELCORP.NS
+india,Steel,Pipes & tubes,WELSPLSOL.NS
+india,Steel,"Stainless, special & alloy steel",JSL.NS
+india,Steel,"Stainless, special & alloy steel",KSL.NS
+india,Steel,"Stainless, special & alloy steel",MAITHANALL.NS
+india,Steel,"Stainless, special & alloy steel",MIDHANI.NS
+india,Steel,"Stainless, special & alloy steel",MUKANDLTD.NS
+india,Steel,"Stainless, special & alloy steel",RSL.NS
+india,Steel,"Stainless, special & alloy steel",STEELCAS.NS
+india,Steel,"Stainless, special & alloy steel",SUNFLAG.NS
+india,Steel,"Stainless, special & alloy steel",USHAMART.NS
+india,Steel,"Stainless, special & alloy steel",VSSL.NS
+india,Steel,Steel producers,ELECTHERM.NS
+india,Steel,Steel producers,GALLANTT.NS
+india,Steel,Steel producers,GPIL.NS
+india,Steel,Steel producers,JAIBALAJI.NS
+india,Steel,Steel producers,JAYNECOIND.NS
+india,Steel,Steel producers,JINDALSTEL.NS
+india,Steel,Steel producers,JSWSTEEL.NS
+india,Steel,Steel producers,LLOYDSME.NS
+india,Steel,Steel producers,MSPL.NS
+india,Steel,Steel producers,NSLNISP.NS
+india,Steel,Steel producers,PRAKASH.NS
+india,Steel,Steel producers,SAIL.NS
+india,Steel,Steel producers,SALSTEEL.NS
+india,Steel,Steel producers,SARDAEN.NS
+india,Steel,Steel producers,SHIVAUM.NS
+india,Steel,Steel producers,SHYAMMETL.NS
+india,Steel,Steel producers,STEELXIND.NS
+india,Steel,Steel producers,TATASTEEL.NS
+india,Steel,Steel producers,VISL.NS
+india,Steel,Wires & long products,AEROENTER.NS
+india,Steel,Wires & long products,BANSALWIRE.NS
+india,Steel,Wires & long products,BHARATWIRE.NS
+india,Steel,Wires & long products,KAMDHENU.NS
+india,Steel,Wires & long products,RAJRATAN.NS
+india,Steel,Wires & long products,RHETAN.NS
+us,Aerospace & Defense,Commercial aerospace,AIR
+us,Aerospace & Defense,Commercial aerospace,ATRO
+us,Aerospace & Defense,Commercial aerospace,BA
+us,Aerospace & Defense,Commercial aerospace,DCO
+us,Aerospace & Defense,Commercial aerospace,EMBJ
+us,Aerospace & Defense,Commercial aerospace,FTAI
+us,Aerospace & Defense,Commercial aerospace,GE
+us,Aerospace & Defense,Commercial aerospace,HEI
+us,Aerospace & Defense,Commercial aerospace,HONA
+us,Aerospace & Defense,Commercial aerospace,HWM
+us,Aerospace & Defense,Commercial aerospace,HXL
+us,Aerospace & Defense,Commercial aerospace,IA
+us,Aerospace & Defense,Commercial aerospace,LOAR
+us,Aerospace & Defense,Commercial aerospace,PKE
+us,Aerospace & Defense,Commercial aerospace,SARO
+us,Aerospace & Defense,Commercial aerospace,TATT
+us,Aerospace & Defense,Commercial aerospace,TDG
+us,Aerospace & Defense,Commercial aerospace,TXT
+us,Aerospace & Defense,Commercial aerospace,VSEC
+us,Aerospace & Defense,Commercial aerospace,WWD
+us,Aerospace & Defense,Defense,BWXT
+us,Aerospace & Defense,Defense,CAE
+us,Aerospace & Defense,Defense,CDRE
+us,Aerospace & Defense,Defense,DRS
+us,Aerospace & Defense,Defense,ESLT
+us,Aerospace & Defense,Defense,GD
+us,Aerospace & Defense,Defense,HII
+us,Aerospace & Defense,Defense,KTOS
+us,Aerospace & Defense,Defense,LHX
+us,Aerospace & Defense,Defense,LMT
+us,Aerospace & Defense,Defense,MRCY
+us,Aerospace & Defense,Defense,NOC
+us,Aerospace & Defense,Defense,NPK
+us,Aerospace & Defense,Defense,RGR
+us,Aerospace & Defense,Defense,RTX
+us,Aerospace & Defense,Defense,SWBI
+us,Aerospace & Defense,Defense,VVX
+us,Aerospace & Defense,"Drones, eVTOL & public safety",ACHR
+us,Aerospace & Defense,"Drones, eVTOL & public safety",AIRO
+us,Aerospace & Defense,"Drones, eVTOL & public safety",AVAV
+us,Aerospace & Defense,"Drones, eVTOL & public safety",AVEX
+us,Aerospace & Defense,"Drones, eVTOL & public safety",AXON
+us,Aerospace & Defense,"Drones, eVTOL & public safety",BETA
+us,Aerospace & Defense,"Drones, eVTOL & public safety",DFNS
+us,Aerospace & Defense,"Drones, eVTOL & public safety",DPRO
+us,Aerospace & Defense,"Drones, eVTOL & public safety",EH
+us,Aerospace & Defense,"Drones, eVTOL & public safety",RCAT
+us,Aerospace & Defense,Space,FLY
+us,Aerospace & Defense,Space,HAWK
+us,Aerospace & Defense,Space,KRMN
+us,Aerospace & Defense,Space,LUNR
+us,Aerospace & Defense,Space,MDA
+us,Aerospace & Defense,Space,MNTS
+us,Aerospace & Defense,Space,PL
+us,Aerospace & Defense,Space,RDW
+us,Aerospace & Defense,Space,RKLB
+us,Aerospace & Defense,Space,SATL
+us,Aerospace & Defense,Space,SPCE
+us,Aerospace & Defense,Space,SPCX
+us,Aerospace & Defense,Space,VOYG
+us,Aerospace & Defense,Space,YSS
+us,Capital Markets,Crypto & bitcoin mining,ABTC
+us,Capital Markets,Crypto & bitcoin mining,BMNR
+us,Capital Markets,Crypto & bitcoin mining,BTGO
+us,Capital Markets,Crypto & bitcoin mining,CLSK
+us,Capital Markets,Crypto & bitcoin mining,CRCL
+us,Capital Markets,Crypto & bitcoin mining,CSHR
+us,Capital Markets,Crypto & bitcoin mining,FIGR
+us,Capital Markets,Crypto & bitcoin mining,GEMI
+us,Capital Markets,Crypto & bitcoin mining,GLXY
+us,Capital Markets,Crypto & bitcoin mining,HUT
+us,Capital Markets,Crypto & bitcoin mining,IOND
+us,Capital Markets,Crypto & bitcoin mining,IREN
+us,Capital Markets,Crypto & bitcoin mining,MARA
+us,Capital Markets,Crypto & bitcoin mining,NAKA
+us,Capital Markets,Crypto & bitcoin mining,PURR
+us,Capital Markets,Crypto & bitcoin mining,RIOT
+us,Capital Markets,Crypto & bitcoin mining,SBET
+us,Capital Markets,Crypto & bitcoin mining,USDE
+us,Capital Markets,Crypto & bitcoin mining,WULF
+us,Capital Markets,Exchanges & trading,BGC
+us,Capital Markets,Exchanges & trading,MIAX
+us,Capital Markets,Exchanges & trading,MKTX
+us,Capital Markets,Exchanges & trading,TW
+us,Capital Markets,Exchanges & trading,VIRT
+us,Capital Markets,Investment banks & brokers,ETOR
+us,Capital Markets,Investment banks & brokers,EVR
+us,Capital Markets,Investment banks & brokers,GS
+us,Capital Markets,Investment banks & brokers,HLI
+us,Capital Markets,Investment banks & brokers,HOOD
+us,Capital Markets,Investment banks & brokers,IBKR
+us,Capital Markets,Investment banks & brokers,JEF
+us,Capital Markets,Investment banks & brokers,LAZ
+us,Capital Markets,Investment banks & brokers,LCLN
+us,Capital Markets,Investment banks & brokers,LPLA
+us,Capital Markets,Investment banks & brokers,MC
+us,Capital Markets,Investment banks & brokers,MRX
+us,Capital Markets,Investment banks & brokers,MS
+us,Capital Markets,Investment banks & brokers,OPY
+us,Capital Markets,Investment banks & brokers,PIPR
+us,Capital Markets,Investment banks & brokers,PJT
+us,Capital Markets,Investment banks & brokers,PWP
+us,Capital Markets,Investment banks & brokers,SCHW
+us,Capital Markets,Investment banks & brokers,SF
+us,Capital Markets,Investment banks & brokers,SNEX
+us,Capital Markets,Investment banks & brokers,XP
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",AMPX
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",BE
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",ELVA
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",ENR
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",ENS
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",EOSE
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",FAC
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",FCEL
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",NEOV
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",STI
+us,Electrical Equipment & Parts,"Fuel cells, batteries & storage",TE
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",AEIS
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",ATKR
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",AYI
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",ESP
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",FPS
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",HUBB
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",NVT
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",OESX
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",PLPC
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",POWL
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",RFIL
+us,Electrical Equipment & Parts,"Power, grid & data-centre equipment",VRT
+us,Semiconductors,AI & compute,ALAB
+us,Semiconductors,AI & compute,AMD
+us,Semiconductors,AI & compute,AVGO
+us,Semiconductors,AI & compute,CBRS
+us,Semiconductors,AI & compute,CRDO
+us,Semiconductors,AI & compute,INTC
+us,Semiconductors,AI & compute,MRVL
+us,Semiconductors,AI & compute,NVDA
+us,Semiconductors,AI & compute,RMBS
+us,Semiconductors,"Analog, power & MCU",ADI
+us,Semiconductors,"Analog, power & MCU",AIP
+us,Semiconductors,"Analog, power & MCU",ALGM
+us,Semiconductors,"Analog, power & MCU",AMBQ
+us,Semiconductors,"Analog, power & MCU",AOSL
+us,Semiconductors,"Analog, power & MCU",CEVA
+us,Semiconductors,"Analog, power & MCU",DIOD
+us,Semiconductors,"Analog, power & MCU",LSCC
+us,Semiconductors,"Analog, power & MCU",MCHP
+us,Semiconductors,"Analog, power & MCU",MPWR
+us,Semiconductors,"Analog, power & MCU",MX
+us,Semiconductors,"Analog, power & MCU",NVEC
+us,Semiconductors,"Analog, power & MCU",NVTS
+us,Semiconductors,"Analog, power & MCU",NXPI
+us,Semiconductors,"Analog, power & MCU",ON
+us,Semiconductors,"Analog, power & MCU",POWI
+us,Semiconductors,"Analog, power & MCU",QUIK
+us,Semiconductors,"Analog, power & MCU",SITM
+us,Semiconductors,"Analog, power & MCU",SLAB
+us,Semiconductors,"Analog, power & MCU",STM
+us,Semiconductors,"Analog, power & MCU",TXN
+us,Semiconductors,"Analog, power & MCU",VSH
+us,Semiconductors,"Analog, power & MCU",WOLF
+us,Semiconductors,Foundry,GFS
+us,Semiconductors,Foundry,TSEM
+us,Semiconductors,Foundry,TSM
+us,Semiconductors,Foundry,UMC
+us,Semiconductors,Memory,GSIT
+us,Semiconductors,Memory,MRAM
+us,Semiconductors,Memory,MU
+us,Semiconductors,"RF, mobile & optical",ALMU
+us,Semiconductors,"RF, mobile & optical",CRUS
+us,Semiconductors,"RF, mobile & optical",LASR
+us,Semiconductors,"RF, mobile & optical",MTSI
+us,Semiconductors,"RF, mobile & optical",MXL
+us,Semiconductors,"RF, mobile & optical",PI
+us,Semiconductors,"RF, mobile & optical",POET
+us,Semiconductors,"RF, mobile & optical",QCOM
+us,Semiconductors,"RF, mobile & optical",QRVO
+us,Semiconductors,"RF, mobile & optical",SMTC
+us,Semiconductors,"RF, mobile & optical",SWKS
+us,Semiconductors,"RF, mobile & optical",SYNA
+us,Software—Infrastructure,"AI cloud, quantum & compute",AGPU
+us,Software—Infrastructure,"AI cloud, quantum & compute",BRUN
+us,Software—Infrastructure,"AI cloud, quantum & compute",BTQ
+us,Software—Infrastructure,"AI cloud, quantum & compute",CORZ
+us,Software—Infrastructure,"AI cloud, quantum & compute",CRWV
+us,Software—Infrastructure,"AI cloud, quantum & compute",GRRR
+us,Software—Infrastructure,"AI cloud, quantum & compute",HQ
+us,Software—Infrastructure,"AI cloud, quantum & compute",INFQ
+us,Software—Infrastructure,"AI cloud, quantum & compute",MOVE
+us,Software—Infrastructure,"AI cloud, quantum & compute",NUAI
+us,Software—Infrastructure,"AI cloud, quantum & compute",PDYN
+us,Software—Infrastructure,"AI cloud, quantum & compute",QMLS
+us,Software—Infrastructure,"AI cloud, quantum & compute",SUPX
+us,Software—Infrastructure,"AI cloud, quantum & compute",XNDU
+us,Software—Infrastructure,"Cloud, data & networks",AKAM
+us,Software—Infrastructure,"Cloud, data & networks",BAND
+us,Software—Infrastructure,"Cloud, data & networks",BLZE
+us,Software—Infrastructure,"Cloud, data & networks",BOX
+us,Software—Infrastructure,"Cloud, data & networks",CALX
+us,Software—Infrastructure,"Cloud, data & networks",CCSI
+us,Software—Infrastructure,"Cloud, data & networks",DBX
+us,Software—Infrastructure,"Cloud, data & networks",DOCN
+us,Software—Infrastructure,"Cloud, data & networks",FFIV
+us,Software—Infrastructure,"Cloud, data & networks",FIVN
+us,Software—Infrastructure,"Cloud, data & networks",GDDY
+us,Software—Infrastructure,"Cloud, data & networks",MDB
+us,Software—Infrastructure,"Cloud, data & networks",NET
+us,Software—Infrastructure,"Cloud, data & networks",NTAP
+us,Software—Infrastructure,"Cloud, data & networks",NTCT
+us,Software—Infrastructure,"Cloud, data & networks",NTNX
+us,Software—Infrastructure,"Cloud, data & networks",ORCL
+us,Software—Infrastructure,"Cloud, data & networks",RXT
+us,Software—Infrastructure,"Cloud, data & networks",TDC
+us,Software—Infrastructure,"Cloud, data & networks",TWLO
+us,Software—Infrastructure,"Cloud, data & networks",VRSN
+us,Software—Infrastructure,"Cloud, data & networks",WIX
+us,Software—Infrastructure,Cybersecurity,ALLT
+us,Software—Infrastructure,Cybersecurity,ARQQ
+us,Software—Infrastructure,Cybersecurity,ATEN
+us,Software—Infrastructure,Cybersecurity,BB
+us,Software—Infrastructure,Cybersecurity,CGNT
+us,Software—Infrastructure,Cybersecurity,CHKP
+us,Software—Infrastructure,Cybersecurity,CLBT
+us,Software—Infrastructure,Cybersecurity,CRWD
+us,Software—Infrastructure,Cybersecurity,FTNT
+us,Software—Infrastructure,Cybersecurity,GEN
+us,Software—Infrastructure,Cybersecurity,NTSK
+us,Software—Infrastructure,Cybersecurity,OKTA
+us,Software—Infrastructure,Cybersecurity,OSPN
+us,Software—Infrastructure,Cybersecurity,PANW
+us,Software—Infrastructure,Cybersecurity,QLYS
+us,Software—Infrastructure,Cybersecurity,RBRK
+us,Software—Infrastructure,Cybersecurity,RDWR
+us,Software—Infrastructure,Cybersecurity,RPD
+us,Software—Infrastructure,Cybersecurity,S
+us,Software—Infrastructure,Cybersecurity,SAIL
+us,Software—Infrastructure,Cybersecurity,TENB
+us,Software—Infrastructure,Cybersecurity,TLS
+us,Software—Infrastructure,Cybersecurity,VRNS
+us,Software—Infrastructure,Cybersecurity,ZS
+us,Software—Infrastructure,Payments & fintech,ACIW
+us,Software—Infrastructure,Payments & fintech,BKKT
+us,Software—Infrastructure,Payments & fintech,BLSH
+us,Software—Infrastructure,Payments & fintech,CPAY
+us,Software—Infrastructure,Payments & fintech,DLO
+us,Software—Infrastructure,Payments & fintech,EEFT
+us,Software—Infrastructure,Payments & fintech,EVTC
+us,Software—Infrastructure,Payments & fintech,FLYW
+us,Software—Infrastructure,Payments & fintech,FOUR
+us,Software—Infrastructure,Payments & fintech,IIIV
+us,Software—Infrastructure,Payments & fintech,IMXI
+us,Software—Infrastructure,Payments & fintech,KPLT
+us,Software—Infrastructure,Payments & fintech,KSPI
+us,Software—Infrastructure,Payments & fintech,MQ
+us,Software—Infrastructure,Payments & fintech,PAGS
+us,Software—Infrastructure,Payments & fintech,PAY
+us,Software—Infrastructure,Payments & fintech,PAYO
+us,Software—Infrastructure,Payments & fintech,PAYP
+us,Software—Infrastructure,Payments & fintech,PAYS
+us,Software—Infrastructure,Payments & fintech,PGY
+us,Software—Infrastructure,Payments & fintech,PRTH
+us,Software—Infrastructure,Payments & fintech,PSFE
+us,Software—Infrastructure,Payments & fintech,RELY
+us,Software—Infrastructure,Payments & fintech,STNE
+us,Software—Infrastructure,Payments & fintech,TOST
+us,Software—Infrastructure,Payments & fintech,WEX
+us,Software—Infrastructure,Payments & fintech,XYZ
+us,Software—Infrastructure,"Platforms, AI & automation",AI
+us,Software—Infrastructure,"Platforms, AI & automation",APPN
+us,Software—Infrastructure,"Platforms, AI & automation",AVPT
+us,Software—Infrastructure,"Platforms, AI & automation",DOX
+us,Software—Infrastructure,"Platforms, AI & automation",GTLB
+us,Software—Infrastructure,"Platforms, AI & automation",IOT
+us,Software—Infrastructure,"Platforms, AI & automation",MSFT
+us,Software—Infrastructure,"Platforms, AI & automation",PATH
+us,Software—Infrastructure,"Platforms, AI & automation",PLTR
+us,Software—Infrastructure,"Platforms, AI & automation",PRGS
+us,Software—Infrastructure,"Platforms, AI & automation",RAMP
+us,Software—Infrastructure,"Platforms, AI & automation",SNPS
+us,Software—Infrastructure,"Platforms, AI & automation",YEXT
+us,Software—Infrastructure,"Platforms, AI & automation",ZETA

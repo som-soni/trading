@@ -12,7 +12,11 @@ const api = async (url, init) => {
 };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
-const LOADING = `<div class="loading"><span class="spin"></span>Loading…</div>`;
+/** Loading state: a skeleton shaped like a page (title, cards, table rows) instead of a bare spinner;
+ *  a note appears if it takes more than a few seconds, so slow never looks broken. */
+const LOADING = `<div class="skel" aria-busy="true" aria-label="Loading"><div class="sk-h"></div>
+  <div class="sk-cards"><i></i><i></i><i></i></div><div class="sk-rows">${"<i></i>".repeat(7)}</div>
+  <div class="sk-note muted small"><span class="spin"></span>Still working — the first load after new data can take a few seconds.</div></div>`;
 let cleanup = () => {};
 let navSeq = 0;  // bumps on every route change so a slow page load can't paint over a newer page
 
@@ -29,7 +33,9 @@ function fmt(v) {
   return String(v);
 }
 const signed = (v, d = 2) => (v > 0 ? "+" : "") + v.toFixed(d);
-const decisionClass = (d) => /^TRADE/i.test(d) ? "trade" : /^WATCH/i.test(d) ? "watch" : /^AVOID/i.test(d) ? "avoid" : "";
+/** status → badge variant. Five variants only (style.css): positive (trade / ok / leading), warning (watch /
+ *  behind / weakening), negative (avoid / failed / lagging), info (running / improving), neutral (the rest). */
+const decisionClass = (d) => /^TRADE/i.test(d) ? "trade" : /^WATCH/i.test(d) ? "watch" : /^AVOID/i.test(d) ? "avoid" : "neutral";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** "2026-10-03_171703" / "2026-10-03" / ISO timestamp -> "3 Oct 2026 · 17:17" */
 function prettyDate(s) {
@@ -48,6 +54,7 @@ const LABELS = {
   last: "Last", "chg %": "Chg %", quality: "Quality", f: "F", "roic / roe": "ROIC / ROE", "rev growth": "Rev growth", "eps growth": "EPS growth",
   "op margin": "Op margin", "fcf conv": "FCF conv", "net debt/ebitda": "Net debt/EBITDA", "p/e": "P/E", "p/e vs own": "P/E vs own", "fcf yield": "FCF yield",
   peg: "PEG", "off 52w high": "Off 52w high", "vs 200d": "vs 200D", value: "Value", zone: "Zone", "buy below": "Buy below", signals: "Signals", name: "Company", source: "Source", "to entry %": "To entry %", note: "Note", added: "Added", "target R": "Target R",
+  peer_group: "Peer group", group_rs: "Group RS", peer_rs: "Group RS", peer_rank: "Rank in group",
 };
 const label = (c) => LABELS[c] ?? String(c).replace(/_/g, " ").replace(/^\w/, (x) => x.toUpperCase());
 // columns where the sign is the story: colour them green / red
@@ -69,19 +76,69 @@ function toast(msg, kind = "", action = null) {
  *         actions: [{key, title, icon, fn(row)}], rowClass(row), tags: {col: value -> css class}, signed: [cols]} */
 function dataTable(host, columns, rows, opts = {}) {
   const decCol = columns.indexOf("decision");
-  const hidden = new Set((opts.hidden || []).map((c) => columns.indexOf(c)));
+  // hidden columns: the page's default, or what you chose with the Columns menu (remembered per table)
+  const colKey = opts.name ? `cols:${opts.name.replace(/_(us|india|both|all)$/, "")}` : null;
+  const saved = colKey ? store.get(colKey, null) : null;
+  const hidden = new Set((saved || opts.hidden || []).map((c) => columns.indexOf(c)).filter((i) => i > 0));
+  // the company name sits under the symbol in one cell (one column fewer, no truncated names)
+  const stack = !opts.noStack && /^(name|company)$/i.test(columns[1] || "");
+  if (stack) hidden.add(1);
   let sortCol = opts.sort ? columns.indexOf(opts.sort[0]) : -1, sortDir = opts.sort ? opts.sort[1] : 1;
   let filter = "", limit = opts.limit || 300, visible = [];
   host.innerHTML = `<div class="tbar"><label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
       <input placeholder="Filter rows" spellcheck="false"></label><span class="muted count"></span><span class="spacer"></span>
-      <button class="ghost csv" title="Download the rows shown as CSV">Export CSV</button></div>
-    <div class="tablewrap"><table class="data"><thead></thead><tbody></tbody></table></div>
+      <span class="menu"><button class="sm colsbtn" title="Choose which columns to show">Columns</button><div class="menu-pop cols-pop" hidden></div></span>
+      <button class="sm csv" title="Download the rows shown as CSV">Export CSV</button></div>
+    <div class="tablefade"><div class="tablewrap"><table class="data"><thead></thead><tbody></tbody></table></div></div>
     <div class="tfoot"><button class="more" hidden>Show more</button></div>`;
   const thead = host.querySelector("thead"), tbody = host.querySelector("tbody");
   const more = host.querySelector(".more"), count = host.querySelector(".count");
-  const cols = columns.map((c, i) => i).filter((i) => !hidden.has(i));
+  let cols = columns.map((c, i) => i).filter((i) => !hidden.has(i));
+  const wrap = host.querySelector(".tablewrap"), fade = host.querySelector(".tablefade");
+  // pin the company name next to the symbol when it is the second column
+  const pin2 = () => {
+    const nameCol = cols[1] != null && /^(name|company)$/i.test(columns[cols[1]]);
+    fade.classList.toggle("pin2", nameCol);
+    if (nameCol) { const th = thead.querySelector("th"); if (th) fade.style.setProperty("--c1w", th.getBoundingClientRect().width + "px"); }
+  };
+  // fade the edge that has more columns behind it
+  const edges = () => {
+    fade.classList.toggle("more-r", wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 2);
+    fade.classList.toggle("more-l", wrap.scrollLeft > 2);
+  };
+  wrap.addEventListener("scroll", edges, { passive: true });
+  new ResizeObserver(() => { pin2(); edges(); }).observe(wrap);
+  const pop = host.querySelector(".cols-pop");
+  host.querySelector(".colsbtn").onclick = (e) => {
+    e.stopPropagation();
+    if (!pop.hidden) { pop.hidden = true; return; }
+    pop.innerHTML = columns.map((c, i) => stack && i === 1 ? "" : `<label><input type="checkbox" data-i="${i}" ${hidden.has(i) ? "" : "checked"} ${i === 0 ? "disabled" : ""}> ${esc(label(c))}</label>`).join("")
+      + `<button class="ghost small" data-reset>Reset to default</button>`;
+    pop.hidden = false;
+    const close = (ev) => { if (!pop.contains(ev.target)) { pop.hidden = true; document.removeEventListener("click", close); } };
+    setTimeout(() => document.addEventListener("click", close));
+  };
+  pop.onchange = (e) => {
+    const i = +e.target.dataset.i; e.target.checked ? hidden.delete(i) : hidden.add(i);
+    cols = columns.map((c, j) => j).filter((j) => !hidden.has(j));
+    if (colKey) store.set(colKey, [...hidden].map((j) => columns[j]));
+    header(); draw();
+  };
+  pop.onclick = (e) => {
+    if (!e.target.closest("[data-reset]")) return;
+    hidden.clear(); (opts.hidden || []).forEach((c) => { const j = columns.indexOf(c); if (j > 0) hidden.add(j); }); if (stack) hidden.add(1);
+    if (colKey) store.set(colKey, null);
+    cols = columns.map((c, j) => j).filter((j) => !hidden.has(j)); pop.hidden = true; header(); draw();
+  };
   const numeric = columns.map((_, i) => rows.some((r) => typeof r[i] === "number"));
-  const fmtFor = columns.map((c) => (opts.format && opts.format[c]) || fmt);
+  // symbols show without the data provider's suffix (RELIANCE, not RELIANCE.NS); the market badge says where it trades
+  const bareSym = (v) => { const x = String(v ?? ""); const sfx = MKTS.find((m) => m.suffix && x.endsWith(m.suffix)); return sfx ? x.slice(0, -sfx.suffix.length) : x; };
+  // peer-group columns, wherever they appear: the short name (sub-industry, else industry group) and a coloured RS badge
+  const isPeer = (c) => /^(peer_group|peer group)$/i.test(c), isGrpRs = (c) => /^(group_rs|peer_rs|peer group rs)$/i.test(c);
+  const peerFmt = (v) => (v ? String(v).split(" › ").at(-1) : "");
+  const fmtFor = columns.map((c) => (opts.format && opts.format[c]) || (c === "symbol" ? bareSym : isPeer(c) ? peerFmt : fmt));
+  const autoTags = Object.fromEntries(columns.filter(isGrpRs).map((c) => [c, (v) => (v >= 80 ? "pos" : v >= 50 ? "warn" : "neg")]));
+  opts = { ...opts, tags: { ...autoTags, ...(opts.tags || {}) } };
   const header = () => {
     thead.innerHTML = "<tr>" + cols.map((i) => `<th data-i="${i}" class="${numeric[i] ? "num" : ""}" title="${esc(columns[i])}">${esc(label(columns[i]))}` +
       `<span class="arrow">${i === sortCol ? (sortDir > 0 ? "▲" : "▼") : ""}</span></th>`).join("") + (opts.actions ? "<th></th>" : "") + "</tr>";
@@ -100,15 +157,17 @@ function dataTable(host, columns, rows, opts = {}) {
       cols.map((i) => {
         const v = row[i];
         if (i === decCol && v) return `<td><span class="tag ${decisionClass(v)}">${esc(v)}</span></td>`;
+        if (stack && i === cols[0]) return `<td class="symcell"><div title="${esc(row[1] || "")}"><b>${esc(fmtFor[i](v, row))}</b>${row[1] ? `<span>${esc(row[1])}</span>` : ""}</div></td>`;
         if (opts.tags && opts.tags[columns[i]] && v) return `<td><span class="tag ${opts.tags[columns[i]](v)}">${esc(v)}</span></td>`;
         let cls = typeof v === "number" ? "num" : "";
         if (typeof v === "number" && (opts.inverse || []).includes(columns[i])) cls += v < 0 ? " pos" : v > 0 ? " neg" : "";  // lower is better
         else if (typeof v === "number" && (SIGNED_COL.test(columns[i]) || (opts.signed || []).includes(columns[i]))) cls += v < 0 ? " neg" : v > 0 ? " pos" : "";
         if (typeof v === "boolean") cls += v ? " yes" : " no";
-        return `<td class="${cls}"${typeof v === "string" && v.length > 40 ? ` title="${esc(v)}"` : ""}>${esc(fmtFor[i](v))}</td>`;
+        return `<td class="${cls}"${typeof v === "string" && (v.length > 40 || isPeer(columns[i])) ? ` title="${esc(v)}"` : ""}>${esc(fmtFor[i](v, row))}</td>`;
       }).join("") + (opts.actions ? `<td class="acts">${opts.actions.map((a) => `<button class="ghost icon" data-act="${a.key}" title="${esc(a.title)}">${a.icon}</button>`).join("")}</td>` : "") + "</tr>").join("");
     more.hidden = visible.length <= limit;
     more.textContent = `Show ${Math.min(500, visible.length - limit).toLocaleString()} more`;
+    requestAnimationFrame(() => { pin2(); edges(); });
   }
   thead.onclick = (e) => {
     const th = e.target.closest("th"); if (!th) return;
@@ -142,25 +201,129 @@ function openChartFromList(market, symbol, symbols, labelText, back) {
     const k = it.m + ":" + it.s;
     if (!seen.has(k)) { seen.add(k); items.push(it); }
   }
-  store.set("chartList", { items, label: labelText, back });
+  store.set("chartList", { items, label: labelText, back, fresh: true });   // fresh: open the list panel on arrival
   go(`#/chart/${market}/${encodeURIComponent(symbol)}`);
 }
-const MKT_BADGE = { us: "US", india: "NSE" };
+/** The markets, from config (GET /api/markets) — the selector, badges and currency all come from this list,
+ *  so a new country needs no UI change. The two defaults only cover the moment before it loads. */
+let MKTS = [{ key: "us", name: "US", exchange: "NYSE · Nasdaq", badge: "US", flag: "🇺🇸", currency: "$", suffix: "" },
+  { key: "india", name: "India", exchange: "NSE", badge: "NSE", flag: "🇮🇳", currency: "₹", suffix: ".NS" }];
+const MKT_BADGE = Object.fromEntries(MKTS.map((m) => [m.key, m.badge]));
+const isMarket = (m) => MKTS.some((x) => x.key === m);
+const mktInfo = (m) => MKTS.find((x) => x.key === m) || MKTS[0];
 const WL_COLS = [["symbol", "Symbol"], ["last", "Last"], ["chg", "Chg"], ["change_pct", "Chg%"]];
 /** absolute day change of a watchlist row (the API gives last close and % change) */
 const chgOf = (e) => (e.last != null && e.change_pct != null ? e.last - e.last / (1 + e.change_pct / 100) : null);
 
+/** The market is one setting for the whole app: a page opened without one in its URL shows the market you
+ *  last chose anywhere, and choosing one on any page sets it everywhere. `extra` are page-specific
+ *  combined views ("both", "all") — kept in the URL only, never remembered as the market. */
+function pageMarket(m, extra = []) {
+  if (isMarket(m)) { if (store.get("market", null) !== m) store.set("market", m); syncMarketSel(); return m; }
+  const g = store.get("market", MKTS[0].key);
+  return extra.includes(m) ? m : isMarket(g) ? g : MKTS[0].key;
+}
+/** The market is chosen once, in the header. A page with a combined view (Movers, Quality) adds a toggle
+ *  between the header's market and "All markets"; other pages show nothing here. */
+function marketSeg(m, extra = []) {
+  if (!extra.length) return "";
+  const g = pageMarket();
+  return segmented([[g, mktInfo(g).name], ...extra.map(([k]) => [k, "All markets"])], m, "mk");
+}
+// pages where the header market does not apply (they list every market, or a single record)
+const MARKETLESS = new Set(["watchlist", "notes", "todo", "playbook", "learn", "reports", "status", "runs"]);   // subindustries uses the market
+function syncMarketSel(page) {
+  const sel = document.getElementById("mktsel"); if (!sel) return;
+  const m = store.get("market", MKTS[0].key);
+  if (sel.options.length !== MKTS.length) sel.innerHTML = MKTS.map((x) => `<option value="${x.key}">${x.flag} ${esc(x.name)} · ${esc(x.exchange)}</option>`).join("");
+  sel.value = isMarket(m) ? m : MKTS[0].key;
+  page = page || pageIdOf(location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent));
+  const na = MARKETLESS.has(page);
+  sel.parentElement.classList.toggle("na", na);
+  sel.parentElement.title = na ? "This page covers every market" : "Market — applies to every page";
+}
+document.getElementById("mktsel").onchange = (e) => {
+  const m = e.target.value; store.set("market", m); refreshStatusDot();
+  const parts = location.hash.replace(/^#\//, "").split("/");
+  if ((parts[0] || "chart") === "chart") return go(`#/chart/${m}/${encodeURIComponent(store.get("lastSymbol:" + m, m === "us" ? "AAPL" : "RELIANCE.NS"))}`);
+  const h = location.hash.split("/").map((x) => (isMarket(x) || x === "both" || x === "all" ? m : x)).join("/");
+  if (h !== location.hash) go(h); else route();
+};
+api("/api/markets").then((xs) => { if (xs?.length) { MKTS = xs; Object.assign(MKT_BADGE, Object.fromEntries(xs.map((m) => [m.key, m.badge]))); syncMarketSel(); } }).catch(() => {});
+/** ⓘ — an explanation kept out of the way: a small button that opens the text in a popover.
+ *  `html` is trusted markup built by the page (escape any data inside it); `label` turns it into a text button. */
+const INFO = new Map();
+let infoSeq = 0;
+function info(html, label = "") {
+  const id = `i${++infoSeq}`; INFO.set(id, html);
+  if (INFO.size > 400) INFO.delete(INFO.keys().next().value);
+  return label ? `<button class="info-link" data-info="${id}">${esc(label)}</button>`
+    : `<button class="info" data-info="${id}" aria-label="What is this?" title="What is this?">i</button>`;
+}
+{
+  const pop = el(`<div class="infopop" hidden></div>`); document.body.append(pop);
+  let cur = null;
+  const close = () => { pop.hidden = true; cur = null; };
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-info]");
+    if (!b) { if (!pop.contains(e.target)) close(); return; }
+    e.preventDefault(); e.stopPropagation();
+    if (cur === b) return close();
+    cur = b; pop.innerHTML = INFO.get(b.dataset.info) || ""; pop.hidden = false;
+    const r = b.getBoundingClientRect(), w = pop.offsetWidth;
+    pop.style.left = `${Math.max(8, Math.min(innerWidth - w - 8, r.left))}px`;
+    pop.style.top = `${r.bottom + 6 + window.scrollY}px`;
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  addEventListener("hashchange", close);
+}
+/** The page header band, the same on every page: title, then the page's context controls (date, view),
+ *  then — pushed right — its actions. */
+function pageHead(title, { context = "", actions = "", extra = "" } = {}) {
+  return `<div class="page-head"><h1>${title}</h1>${extra}${context ? `<div class="ph-ctx">${context}</div>` : ""}<span class="spacer"></span>${actions ? `<div class="ph-act">${actions}</div>` : ""}</div>`;
+}
+/** One date control for every dated page: ‹ older · the date (every date in the list) · newer ›, a Latest
+ *  button when you are not on the newest, and how many there are. `dates`: [{value, label}], newest first. */
+function datePicker(dates, cur, noun = "sessions") {
+  const i = Math.max(0, dates.findIndex((d) => d.value === cur));
+  return `<div class="dpick"><button class="ghost icon dp-prev" ${i >= dates.length - 1 ? "disabled" : ""} title="Older">‹</button>
+    <select class="dp-sel" aria-label="Date">${dates.map((d, j) => `<option value="${esc(d.value)}" ${j === i ? "selected" : ""}>${esc(d.label)}${j === 0 ? " · latest" : ""}</option>`).join("")}</select>
+    <button class="ghost icon dp-next" ${i <= 0 ? "disabled" : ""} title="Newer">›</button>
+    ${i > 0 ? `<button class="ghost dp-latest" title="Jump to the newest">Latest</button>` : ""}<span class="muted small dp-n">${i + 1} of ${dates.length} ${noun}</span></div>`;
+}
+/** wire a datePicker inside `root`: onPick(value, isLatest) */
+function wireDatePicker(root, dates, cur, onPick) {
+  const dp = root.querySelector(".dpick"); if (!dp) return;
+  const i = Math.max(0, dates.findIndex((d) => d.value === cur));
+  const pick = (j) => onPick(dates[j].value, j === 0);
+  dp.querySelector(".dp-prev").onclick = () => i < dates.length - 1 && pick(i + 1);
+  dp.querySelector(".dp-next").onclick = () => i > 0 && pick(i - 1);
+  dp.querySelector(".dp-latest")?.addEventListener("click", () => pick(0));
+  dp.querySelector(".dp-sel").onchange = (e) => pick(e.target.selectedIndex);
+}
+/** a remembered page URL, with its market switched to the current one (the market follows you between pages) */
+function withMarket(hash) {
+  const m = store.get("market", "us");
+  if (/^#\/(chart|watchlist|reports|notes)\b/.test(hash)) return hash;   // there the market belongs to a symbol or record, not the view
+  return hash.split("/").map((x) => (isMarket(x) ? m : x)).join("/");
+}
 function segmented(options, current, cls = "") {
   return `<div class="seg ${cls}">${options.map(([v, t]) => `<button data-v="${esc(v)}" class="${v === current ? "on" : ""}">${t}</button>`).join("")}</div>`;
 }
 
 // ------------------------------------------------------------ chart page
 
-const CHART_THEME = {
-  layout: { background: { color: "#161a25" }, textColor: "#b2b5be", fontSize: 11, panes: { separatorColor: "#2a2e39", separatorHoverColor: "#363c4e" } },
-  grid: { vertLines: { color: "#1f2330" }, horzLines: { color: "#1f2330" } },
-  rightPriceScale: { borderColor: "#2a2e39" }, timeScale: { borderColor: "#2a2e39", rightOffset: 6, minBarSpacing: 0.05 },
-};
+/** a theme token's current value (style.css :root), so charts follow the theme */
+const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+/** a #rrggbb colour with an alpha, for chart fills */
+const alpha = (hex, a) => { const n = parseInt(hex.replace("#", ""), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+function chartTheme() {
+  return {
+    layout: { background: { color: cssVar("--panel") }, textColor: cssVar("--chart-text"), fontSize: 11, panes: { separatorColor: cssVar("--line-2"), separatorHoverColor: cssVar("--line-3") } },
+    grid: { vertLines: { color: cssVar("--chart-grid") }, horzLines: { color: cssVar("--chart-grid") } },
+    rightPriceScale: { borderColor: cssVar("--line-2") }, timeScale: { borderColor: cssVar("--line-2"), rightOffset: 6, minBarSpacing: 0.05 },
+  };
+}
 let keepView = null;
 const ALL_BARS = 100000;  // i.e. everything in the database: the chart shows the full stored history
 // strategy keys for the "Screener levels" indicator's setting (fetched once; the page still works without it)
@@ -170,7 +333,8 @@ const BENCH = { us: "SPY", india: "NIFTY50" };
 async function chartPage(alive, market, symbol, tf) {
   const prefs = { panel: true, tab: "wl", w: 320, ...store.get("chartPrefs", {}) };
   if (!prefs.panel) prefs.tab = null;  // older prefs: a hidden panel
-  market = market || store.get("lastMarket", "us");
+  market = isMarket(market) ? market : store.get("market", store.get("lastMarket", "us"));
+  pageMarket(market);   // the chart's market is the app's market (the header selector follows it)
   symbol = symbol || store.get("lastSymbol:" + market, market === "us" ? "AAPL" : "RELIANCE.NS");
   tf = tf || store.get("lastTf", "D");
   store.set("lastMarket", market); store.set("lastSymbol:" + market, symbol); store.set("lastTf", tf);
@@ -190,7 +354,10 @@ async function chartPage(alive, market, symbol, tf) {
         <select id="trades"><option value="">None</option></select></label>
       <button class="ghost icon" id="fit" title="Show full history"><svg viewBox="0 0 20 20"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"/></svg></button>
       <span class="spacer"></span>
-      ${pos >= 0 ? `<div class="stepper" title="Step through the list (↑ / ↓)"><button class="ghost icon" id="prev">‹</button><span>${pos + 1} / ${list.items.length}</span><button class="ghost icon" id="next">›</button></div>` : ""}
+      ${pos >= 0 ? `<div class="srcchip" title="You are stepping through this list (↑ / ↓)"><span class="muted">From</span>
+        <a href="${esc(list.back || "#/screens")}" title="Back to the list">${esc(list.label)}</a>
+        <button class="ghost icon" id="prev" title="Previous (↑)">‹</button><span class="pos-n">${pos + 1} / ${list.items.length}</span><button class="ghost icon" id="next" title="Next (↓)">›</button>
+        <button class="ghost icon" id="exitlist" title="Stop stepping through this list">✕</button></div>` : ""}
     </div>
     <div class="quote" id="quote"><b class="q-sym">${esc(symbol)}</b><span class="mkt">${MKT_BADGE[market] || market}</span></div>
     <div class="chart-layout"><div class="tools" id="tools"></div>
@@ -205,6 +372,8 @@ async function chartPage(alive, market, symbol, tf) {
   $view.querySelectorAll(".tfs button").forEach((b) => b.onclick = () => go(href(symbol, b.dataset.v)));
   // right sidebar (TradingView): an icon bar; clicking an icon opens its panel, clicking the open one closes it
   if (prefs.tab === "list" && !$('#rbar [data-tab="list"]')) prefs.tab = "wl";
+  // arriving from a list (a screen, today's setups, movers…): show it beside the chart, so chart and list are both in view
+  if (list?.fresh) { if ($('#rbar [data-tab="list"]')) prefs.tab = "list"; store.set("chartList", { ...list, fresh: false }); }
   const layout = $(".chart-layout");
   const syncPanel = () => {
     layout.classList.toggle("collapsed", !prefs.tab);
@@ -228,9 +397,13 @@ async function chartPage(alive, market, symbol, tf) {
     const l = store.get("chartList", null), p = l?.items ? l.items.findIndex((i) => i.m === market && i.s === symbol) : -1;
     if (p >= 0) { const it = l.items[(p + d + l.items.length) % l.items.length]; go(hrefFor(it.m, it.s)); }
   };
-  if (pos >= 0) { $("#prev").onclick = () => step(-1); $("#next").onclick = () => step(1); }
+  if (pos >= 0) {
+    $("#prev").onclick = () => step(-1); $("#next").onclick = () => step(1);
+    $("#exitlist").onclick = () => { store.set("chartList", null); if (prefs.tab === "list") prefs.tab = "wl"; route(); };
+  }
 
   let sideReady = false;  // the panel renders once the symbol's context has loaded
+  let symNotes = null;    // promise of this stock's notes, for the details panel
   const viewKey = `${market}:${symbol}:${tf}`;
   let chart = null;
   // rebuild the chart (for an indicator change) without losing the user's zoom / scroll
@@ -295,7 +468,7 @@ async function chartPage(alive, market, symbol, tf) {
 
   // drag-panning of the plot is done by our own handler below (both axes, TradingView style), so the
   // library's horizontal-only drag is off; wheel zoom, touch and the axis drag-to-scale stay native
-  chart = LC.createChart(chartEl, { autoSize: true, ...CHART_THEME, crosshair: { mode: LC.CrosshairMode.Normal },
+  chart = LC.createChart(chartEl, { autoSize: true, ...chartTheme(), crosshair: { mode: LC.CrosshairMode.Normal },
     handleScroll: { mouseWheel: true, pressedMouseMove: false, horzTouchDrag: true, vertTouchDrag: false } });
   const prevCleanup = cleanup;
   let dr;
@@ -306,7 +479,7 @@ async function chartPage(alive, market, symbol, tf) {
     main = chart.addSeries(LC.CandlestickSeries, { upColor: "#26a69a", downColor: "#ef5350", borderVisible: false, wickUpColor: "#26a69a", wickDownColor: "#ef5350" }, 0);
     main.setData(px.candles);
   } else {
-    main = chart.addSeries(LC.AreaSeries, { lineColor: "#2962ff", topColor: "rgba(41,98,255,.25)", bottomColor: "rgba(41,98,255,0)", lineWidth: 2 }, 0);
+    main = chart.addSeries(LC.AreaSeries, { lineColor: cssVar("--series"), topColor: alpha(cssVar("--series"), .2), bottomColor: alpha(cssVar("--series"), 0), lineWidth: 2 }, 0);
     main.setData(px.line);
   }
   times = rows.map((c) => c.time);
@@ -586,9 +759,25 @@ async function chartPage(alive, market, symbol, tf) {
   const prevCleanup1 = cleanup;
   cleanup = () => { ro.disconnect(); prevCleanup1(); };
 
-  // drawing tools (TradingView-style left toolbar)
+  // drawing tools (TradingView-style left toolbar). Drawings live on the server per symbol
+  // (chart_drawings table) so they survive browsers; localStorage stays as the offline fallback.
   const ohlcBars = px.ohlc ? px.candles : px.line.map((d) => ({ open: d.value, high: d.value, low: d.value, close: d.value }));
-  dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}` });
+  const drawUrl = `/api/drawings/${market}/${encodeURIComponent(symbol)}`;
+  const remote = await api(drawUrl).then((r) => {
+    let t = null, pending = null, failed = false;
+    const push = async () => {
+      const items = pending; pending = null;
+      try { await api(drawUrl, jsonReq("PUT", { items })); failed = false; }
+      catch { if (!failed) { failed = true; toast("Could not save drawings to the server — kept in this browser", "err"); } }
+    };
+    return {
+      exists: r.exists, items: r.items,
+      save(items) { pending = items.map((x) => ({ ...x })); clearTimeout(t); t = setTimeout(push, 600); },
+      flush() { if (pending != null) { clearTimeout(t); push(); } },
+    };
+  }).catch(() => null);
+  if (!alive()) return;
+  dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}`, remote });
   const unmountTools = Drawings.mountToolbar($("#tools"), dr, {
     count: () => studies.length,
     removeAll: () => removeStudies(studies.map((e) => e.s.id), `${studies.length} indicator${studies.length === 1 ? "" : "s"}`),
@@ -625,7 +814,7 @@ async function chartPage(alive, market, symbol, tf) {
           ${risk != null ? `<span>Risk <b>${risk.toFixed(1)}%</b></span>` : ""}${l.target_r ? `<span>Target <b class="pos">${fmt(+l.target_r)}R</b></span>` : ""}</div>` : ""}
         <div class="muted small">${prettyDate(String(l.run_id).replace(/^screener\//, ""))}</div></div>`;
     }).join("");
-    const hist = ctx.history.slice(0, 20).map((h) => `<div class="hist"><span class="muted">${prettyDate(h.run_id)}</span><span>${esc(h.strategy)}</span>
+    const hist = ctx.history.slice(0, 20).map((h) => `<div class="dhist"><span class="muted">${prettyDate(h.run_id)}</span><span>${esc(h.strategy)}</span>
       <span class="tag ${decisionClass(h.decision)}">${esc(h.decision)}</span></div>`).join("");
     const pc = (v) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
     const qHtml = qrow && qrow.quality != null ? `<section><h3>Fundamentals <a class="muted" href="#/quality/${market}">quality page</a></h3>
@@ -644,10 +833,13 @@ async function chartPage(alive, market, symbol, tf) {
     const pos52 = q && q.hi > q.lo ? ((q.last - q.lo) / (q.hi - q.lo)) * 100 : 50;
     return `<div class="wld-head"><b>${esc(symbol)}</b><span class="mkt">${MKT_BADGE[market] || market}</span>${sector ? `<span class="muted small">${esc(sector)}</span>` : ""}</div>
       ${ctx.name ? `<div class="wld-name">${esc(ctx.name)}</div>` : ""}
+      ${ctx.classification ? `<div class="wld-cls small">${[["sector", ctx.classification.sector], ["industry", ctx.classification.industry], ["sub", ctx.classification.sub_key]]
+        .filter(([, v]) => v).map(([lv, v]) => `<a href="${secHref(market, lv, v)}" title="Open on the Sectors page">${esc(groupParts(v)[0])}</a>`).join('<span class="muted"> › </span>')}</div>` : ""}
       ${q ? `<div class="wld-px"><span class="big">${fmt(q.last)}</span><span class="${q.chg >= 0 ? "pos" : "neg"}">${q.chg >= 0 ? "+" : ""}${fmt(q.chg)} (${signed(q.pct)}%)</span></div>
         <div class="muted small">Close · ${prettyDate(q.date)}</div>
         <div class="wld-52"><span class="muted small">52-week range</span><div class="bar52 wide"><i style="left:${pos52.toFixed(1)}%"></i></div>
           <div class="wld-52v small"><span>${fmt(q.lo)}</span><span>${fmt(q.hi)}</span></div></div>` : ""}
+      <div class="wld-notes" id="wlnotes"></div>
       <div class="wld-kv">
         ${best ? `<span class="muted">Screener</span><span><span class="tag ${decisionClass(best.decision)}">${esc(best.decision)}</span></span>` : ""}
         ${qrow?.quality != null ? `<span class="muted">Quality</span><span><b>${qrow.quality}</b>/100 · ${esc(qrow.at_your_price ? "AT YOUR PRICE" : qrow.zone || "")}</span>` : ""}
@@ -672,7 +864,9 @@ async function chartPage(alive, market, symbol, tf) {
         <button class="ibtn" id="wlmenu" title="More">⋯</button></div>
       <div class="search wl-search" hidden><input placeholder="Add symbol — any market" spellcheck="false"><ul hidden></ul></div>
       <div class="wlcols">${WL_COLS.map(([k, t]) => `<button data-k="${k}" class="${srt?.k === k ? "on" : ""}">${t}${srt?.k === k ? (srt.d > 0 ? " ↑" : " ↓") : ""}</button>`).join("")}</div>
-      <div class="wlrows">${rowsHtml || `<div class="muted small wl-empty">${wlCur?.builtin ? "No screener picks." : "Empty — click + or ☆ next to a symbol to add it."}</div>`}</div>
+      <div class="wlrows">${rowsHtml || `<div class="wl-empty">${wlCur?.builtin
+        ? '<b>No screener picks today</b><div class="muted small">Stocks a strategy marks tradeable or on watch land here after the daily run. <a href="#/strategies">See today\'s setups →</a></div>'
+        : '<b>This list is empty</b><div class="muted small">Track stocks here to see their price and change at a glance.</div><button class="primary wl-empty-add">+ Add a symbol</button><div class="muted small">or press ☆ next to any chart\'s name.</div>'}</div>`}</div>
       <div class="wl-details">${detailsHtml()}</div></div>`;
   }
   function listPanelHtml() {
@@ -685,6 +879,14 @@ async function chartPage(alive, market, symbol, tf) {
     const body = $("#side .side-body");
     body.innerHTML = prefs.tab === "wl" ? wlPanelHtml() : prefs.tab === "list" ? `<div class="wlpanel">${listPanelHtml()}</div>` : infoHtml();
     body.querySelectorAll(".wlr.cur").forEach((c) => c.scrollIntoView({ block: "nearest" }));
+    const $notes = body.querySelector("#wlnotes");
+    if ($notes) {  // this stock's notes (fetched once per chart)
+      symNotes = symNotes || api(`/api/notes?market=${market}&symbol=${encodeURIComponent(symbol)}`).then((r) => r.notes).catch(() => []);
+      symNotes.then((ns) => { if (!$notes.isConnected) return;
+        $notes.innerHTML = `<div class="wld-nh"><span class="muted small">Notes</span><span class="spacer"></span>
+            ${ns.length ? `<a class="small" href="#/notes/sym/${market}/${encodeURIComponent(symbol)}">all ${ns.length}</a>` : ""}<a class="small" href="#/notes/new/${market}/${encodeURIComponent(symbol)}">+ note</a></div>
+          ${ns.slice(0, 3).map((n) => `<a class="wld-note" href="#/notes/${n.id}"><b>${esc(n.title || "Untitled")}</b><span class="muted small">${ago(n.updated_at)}</span></a>`).join("")}`; });
+    }
     if (prefs.tab !== "wl") return;
     const redraw = async () => { await loadWl(); syncStar(); renderSide(); };
     body.querySelector("#wlname").onclick = (e) => {
@@ -714,6 +916,7 @@ async function chartPage(alive, market, symbol, tf) {
     };
     const box = body.querySelector(".wl-search");
     body.querySelector("#wladd")?.addEventListener("click", () => { box.hidden = !box.hidden; if (!box.hidden) box.querySelector("input").focus(); });
+    body.querySelector(".wl-empty-add")?.addEventListener("click", () => { box.hidden = false; box.querySelector("input").focus(); });
     symbolSearch(box.querySelector("input"), box.querySelector("ul"), null, async (s, m) => {
       try { const r = await WL.add(wlCur.id, s, m); toast(`${r.symbol} added to “${wlCur.name}”`, "ok"); await redraw(); }
       catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
@@ -912,14 +1115,15 @@ async function watchlistPage(alive, lid) {
   if (!cur) { host.innerHTML = `<div class="empty"><b>No watchlists</b><div class="muted">Create one with “+ New list”.</div></div>`; return; }
   if (!items.length) {
     host.innerHTML = `<div class="empty"><b>${screener ? "No screener picks" : "This list is empty"}</b>
-      <div class="muted">${screener ? "Run the daily screening." : "Add a symbol above, or use ☆ on the chart."}</div></div>`;
+      <div class="muted">${screener ? "Stocks a strategy marks tradeable or on watch appear here after the daily run." : "Type a symbol or company in the box above to add it — or press ☆ next to the name on any chart."}</div>
+      ${screener ? '<a class="btn" href="#/strategies">See today\'s setups →</a>' : ""}</div>`;
     return;
   }
   const cols = screener
-    ? ["symbol", "name", "market", "sector", "last", "chg %", "strategies", "decision", "entry", "to entry %", "stop", "target R", "added"]
-    : ["symbol", "name", "market", "sector", "last", "chg %", "note", "added"];
+    ? ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", "strategies", "decision", "entry", "to entry %", "stop", "target R", "added"]
+    : ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", "note", "added"];
   const rows = items.map((e) => {
-    const base = [e.symbol, e.name || "", MKT_BADGE[e.market] || e.market, e.sector || "", e.last, e.change_pct];
+    const base = [e.symbol, e.name || "", MKT_BADGE[e.market] || e.market, e.peer_group || e.sector || "", e.peer_rs ?? null, e.last, e.change_pct];
     if (!screener) return [...base, e.note || "", e.added_at];
     const p = bestPlan(e);
     return [...base, e.strategies.map((x) => x.strategy).join(" · "), p.decision || "", p.entry ?? null,
@@ -927,7 +1131,9 @@ async function watchlistPage(alive, lid) {
   });
   const find = (row) => items.find((x) => x.symbol === row[0] && (MKT_BADGE[x.market] || x.market) === row[2]);
   dataTable(host, cols, rows, {
-    name: screener ? "watchlist_screener" : "watchlist_list", sort: ["added", -1], format: { added: prettyDate },
+    name: screener ? "watchlist_screener" : "watchlist_list", sort: ["added", -1],
+    // lists mix markets, so every price carries its currency
+    format: { added: prettyDate, ...Object.fromEntries(["last", "entry", "stop"].map((c) => [c, (v, row) => v == null ? "" : `${(MKTS.find((m) => m.badge === row[2]) || {}).currency || ""}${fmt(v)}`])) },
     rowClick: (row, visible) => {
       const e = find(row);
       openChartFromList(e.market, e.symbol, visible.map(find).filter(Boolean), `Watchlist · ${cur.name}`, location.hash);
@@ -960,11 +1166,10 @@ function moneyShort(v, market) {
 
 async function moversPage(alive, mkt) {
   const prefs = { period: "1D", universe: "liquid", ...store.get("moversPrefs", {}) };
-  mkt = ["us", "india", "both"].includes(mkt) ? mkt : store.get("moversMarket", "both");
-  store.set("moversMarket", mkt);
+  mkt = pageMarket(mkt, ["both"]);
   document.title = "Movers · Trading";
   $view.innerHTML = `<div class="page-head"><h1>Top movers</h1>
-      ${segmented([["both", "US + India"], ["us", "US"], ["india", "India"]], mkt, "mk")}
+      ${marketSeg(mkt, [["both", "US + India"]])}
       ${segmented(MOVER_PERIODS, prefs.period, "pd")}
       ${segmented([["liquid", "Liquid stocks"], ["all", "All stocks"]], prefs.universe, "un")}</div>
     <div id="mv">${LOADING}</div>`;
@@ -979,11 +1184,12 @@ async function moversPage(alive, mkt) {
   const table = (d, kind) => {
     const rows = d[kind];
     if (!rows.length) return `<div class="muted small mv-none">No ${kind === "gainers" ? "gainers" : "losers"}.</div>`;
-    return `<table class="mvt"><thead><tr><th>#</th><th>Symbol</th><th class="num">Last</th><th class="num">Chg%</th>
+    return `<table class="mvt"><thead><tr><th>#</th><th>Symbol</th><th class="mv-g" title="Peer group (sub-industry, else industry group) and its RS rating">Group</th><th class="num">Last</th><th class="num">Chg%</th>
         <th class="num" title="Volume on the last day ÷ its 50-day average">Rel vol</th><th class="num" title="Traded value on the last day">Value</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr data-k="${kind}" data-i="${i}">
         <td class="muted">${i + 1}</td>
         <td title="${esc([r.name, r.sector].filter(Boolean).join(" · "))}"><b>${esc(r.symbol.replace(/\.NS$/, ""))}</b><span class="muted small mv-sec">${esc(r.name || r.sector || "")}</span></td>
+        <td class="mv-g" title="${esc(r.peer_group || "")}">${r.peer_rs != null ? rsBadge(r.peer_rs) : ""} <span class="small">${esc((r.peer_group || r.sector || "").split(" › ").at(-1))}</span></td>
         <td class="num">${fmt(r.last)}</td>
         <td class="num"><span class="mv-pct ${r.pct >= 0 ? "up" : "dn"}">${signed(r.pct)}%</span></td>
         <td class="num ${r.rel_vol >= 2 ? "strong" : "muted"}">${r.rel_vol != null ? r.rel_vol.toFixed(1) + "×" : ""}</td>
@@ -1021,8 +1227,129 @@ async function moversPage(alive, mkt) {
   });
 }
 
+// ------------------------------------------------------------- post-market page
+
+const TONE_CLS = { Strong: "t-strong", Positive: "t-pos", Mixed: "t-mixed", Weak: "t-weak", Negative: "t-neg" };
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const longDate = (iso) => { const d = new Date(iso + "T00:00:00"); return `${WEEKDAY[d.getDay()]} ${prettyDate(iso)}`; };
+
+const PM_TABS = [["summary", "Summary"], ["sectors", "Sectors"], ["stocks", "Stocks"], ["yours", "Yours"]];
+async function postmarketPage(alive, mkt, date, tab) {
+  mkt = pageMarket(mkt);
+  if (date === "latest") date = null;
+  tab = PM_TABS.some(([k]) => k === tab) ? tab : store.get("pmTab", "summary");
+  document.title = "Post-market · Trading";
+  $view.innerHTML = LOADING;
+  const r = await api(`/api/postmarket?market=${mkt}${date ? `&date=${date}` : ""}`).catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  const head = (context = "") => pageHead("Post-market", { context });
+  const pmInfo = (p, r) => info([p.doc.tone, p.doc.liquid, p.doc.volume, p.doc.highs_lows].map((t) => `<p>${esc(t)}</p>`).join("")
+    + `<p>Watchlist and earnings sections reflect your lists and known dates at the time of analysis (generated ${clock(r.generated_at)}), so a backfilled day shows today's lists.</p>`, "How this is built");
+  if (r.error || r.empty) {
+    $view.innerHTML = head() + `<div class="empty"><b>${r.empty ? "No post-market analysis yet" : "Could not load it"}</b>
+      <div class="muted">${r.empty ? "It is written by the daily pipeline after each close. To build it now (from scripts/, PYTHONPATH=.):" : esc(r.error)}</div>${r.command ? `<code>${esc(r.command)}</code>` : ""}</div>`;
+    $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(`#/postmarket/${b.dataset.v}`));
+    return;
+  }
+  const p = r.payload, H = r.history, i = H.findIndex((h) => h.date === p.date);
+  const pmHref = (d, t = tab) => `#/postmarket/${mkt}/${d || "latest"}${t !== "summary" ? "/" + t : ""}`;
+  const pc = (v, d = 2) => (v == null ? "" : `${v > 0 ? "+" : ""}${v.toFixed(d)}%`);
+  const sym = (s) => esc(s.replace(/\.NS$/, ""));
+  const stockTable = (rows, key, cols = "pct") => !rows.length ? '<div class="muted small mv-none">None.</div>' : `<table class="mvt pmt"><thead><tr><th>Symbol</th>
+      <th class="num">Close</th><th class="num">Chg%</th><th class="num" title="Volume ÷ 50-day average">Rel vol</th></tr></thead><tbody>
+      ${rows.map((x, j) => `<tr data-k="${key}" data-i="${j}" title="${esc([x.name, x.sector].filter(Boolean).join(" · "))}"><td><b>${sym(x.symbol)}</b><span class="muted small mv-sec">${esc(x.name || x.sector || "")}</span></td>
+        <td class="num">${fmt(x.close)}</td><td class="num"><span class="mv-pct ${x.pct >= 0 ? "up" : "dn"}">${pc(x.pct)}</span></td>
+        <td class="num ${x.rvol >= 2 ? "strong" : "muted"}">${x.rvol != null ? x.rvol.toFixed(1) + "×" : ""}</td></tr>`).join("")}</tbody></table>`;
+  const lists = { gainers: p.movers.gainers, losers: p.movers.losers, vup: p.volume.up, vdn: p.volume.down, hi: p.highs_lows.highs, lo: p.highs_lows.lows, wl: p.watchlists };
+  const B = p.breadth, bt = B?.today, bp = B?.prev, ba = B?.avg10;
+  const brow = (label, k, pct = false) => {
+    const f = (o) => (o && o[k] != null ? (pct ? `${((o[k] / o.n) * 100).toFixed(0)}%` : Math.round(o[k]).toLocaleString()) : "—");
+    return `<tr><td>${label}</td><td class="num"><b>${f(bt)}</b></td><td class="num muted">${f(bp)}</td><td class="num muted">${f(ba)}</td></tr>`;
+  };
+  const sectorBars = (rows) => { const mx = Math.max(0.005, ...rows.map((x) => Math.abs(x.pct)));
+    return rows.map((x) => `<div class="dbar"><span class="dl" title="${x.n} stocks · ${(x.up * 100).toFixed(0)}% rose">${esc(x.group)}</span>
+      <span class="dt"><i class="${x.pct >= 0 ? "up" : "dn"}" style="width:${(Math.abs(x.pct) / mx) * 50}%;${x.pct >= 0 ? "left:50%" : `right:50%`}"></i></span>
+      <span class="dv ${x.pct >= 0 ? "pos" : "neg"}">${pc(x.pct * 100)}</span></div>`).join(""); };
+  const ind = p.sectors.industry, rs = p.sector_rs;
+  const timeline = H.slice(0, 60).reverse().map((h) => `<a href="${pmHref(h.date)}" class="tl ${TONE_CLS[h.tone] || ""} ${h.date === p.date ? "cur" : ""}" title="${longDate(h.date)} — ${h.tone} (${h.score}/6) · ${h.up?.toLocaleString()} up / ${h.down?.toLocaleString()} down"></a>`).join("");
+  const pmDates = H.map((h) => ({ value: h.date, label: `${longDate(h.date)} · ${h.tone}` }));
+  $view.innerHTML = head(datePicker(pmDates, p.date) + pmInfo(p, r)) + `
+    <div class="pm-tl" title="Market tone, last ${Math.min(60, H.length)} sessions (oldest left) — click a day">${timeline}</div>
+    <nav class="ptabs pm-tabs">${PM_TABS.map(([k, t]) => `<a data-t="${k}" class="${k === tab ? "active" : ""}">${t}${
+      k === "stocks" ? ` <span class="n">${p.movers.gainers.length + p.movers.losers.length}</span>` : k === "yours" ? ` <span class="n">${p.watchlists.length}</span>` : ""}</a>`).join("")}</nav>
+    <div class="pmtab" data-t="summary">
+    <div class="pm-hero sec-card">
+      <div><div class="muted small">${esc(p.market_name)} · ${longDate(p.date)} <span class="muted">(vs ${prettyDate(p.prev_date)})</span></div>
+        <div class="pm-tone ${TONE_CLS[p.tone.label]}">${p.tone.label}<span>${p.tone.score} of ${p.tone.of} signals bullish</span></div>
+        <div class="pm-ad"><span class="pos">${p.counts.up.toLocaleString()} up</span><span class="adbar"><i class="up" style="width:${(p.counts.up / Math.max(1, p.counts.up + p.counts.down)) * 100}%"></i><i class="dn" style="width:${(p.counts.down / Math.max(1, p.counts.up + p.counts.down)) * 100}%"></i></span><span class="neg">${p.counts.down.toLocaleString()} down</span>
+          <span class="muted small">· ${p.counts.new_highs} new highs / ${p.counts.new_lows} new lows among ${p.counts.liquid.toLocaleString()} liquid stocks</span></div></div>
+      <div class="pm-sigw"><div class="sa-k">The six signals · ${p.tone.score} bullish</div>
+      <ul class="pm-sig">${p.tone.signals.map((x) => x.ok == null
+        ? `<li class="na"><span class="sgl">n/a</span>${esc(x.text)} — no data</li>`
+        : `<li class="${x.ok ? "ok" : "no"}"><span class="sgl">${x.ok ? "▲ bullish" : "▼ bearish"}</span>${esc(x.ok ? x.text : x.text_not)}</li>`).join("")}</ul></div>
+    </div>
+    <div class="pm-idx">${p.indexes.map((x) => `<div class="sec-card pm-i"><div class="muted small">${esc(x.label)}</div>
+        <div class="pm-ic"><b>${fmt(+x.close.toFixed(2))}</b><span class="${(x.vol ? -x.pct : x.pct) >= 0 ? "pos" : "neg"}">${pc(x.pct)}</span></div>
+        ${x.vol ? `<div class="muted small">${x.pct >= 0 ? "Fear rising" : "Fear easing"}</div>` : `<div class="pm-chips"><span class="${x.above50 ? "pos" : "neg"}">${x.above50 ? "above" : "below"} 50D</span><span class="${x.above200 ? "pos" : "neg"}">${x.above200 ? "above" : "below"} 200D</span><span class="muted">${x.from_high > -0.5 ? "at 52w high" : pc(x.from_high, 1) + " from high"}</span></div>`}</div>`).join("")}</div>
+    <div class="sec-top">
+      <section class="sec-card"><h3>Breadth</h3>${bt ? `<table class="stt"><thead><tr><th></th><th class="num">${prettyDate(p.date)}</th><th class="num">Previous</th><th class="num">10-day avg</th></tr></thead><tbody>
+          ${brow("Advancers", "adv")}${brow("Decliners", "dec")}${brow("Up 4%+", "up4")}${brow("Down 4%+", "dn4")}${brow("New 52-week highs", "highs")}${brow("New 52-week lows", "lows")}${brow("Above 50-day average", "above50", true)}${brow("Above 5-day average", "above5", true)}</tbody></table>
+          <p class="muted small">The ${Math.round(bt.n).toLocaleString()} most-traded stocks. <a href="#/breadth/${mkt}">Breadth page →</a></p>` : '<div class="muted small">No breadth row for this day.</div>'}</section>
+      <section class="sec-card"><h3>Sectors today</h3><div class="dbars">${sectorBars(p.sectors.sector)}</div>
+        <p class="muted small"><a href="#/sectors/${mkt}">Sectors page →</a> ${info(`<p>${esc(p.doc.sectors)}</p>`)}</p></section>
+    </div>
+    </div><div class="pmtab" data-t="sectors">
+    <div class="sec-top">
+      <section class="sec-card"><h3>Strongest industries</h3><div class="dbars">${sectorBars(ind.slice(0, 8))}</div></section>
+      <section class="sec-card"><h3>Weakest industries</h3><div class="dbars">${sectorBars(ind.slice(-8).reverse())}</div></section>
+    </div>
+    ${rs && (rs.rs_up.length || rs.quadrant_changes.length) ? `<section class="sec-card"><div class="sec-card-h"><h3>Group leadership changes</h3><span class="muted small">RS rating vs ${prettyDate(rs.compared_with)} · rotation changes vs the previous day</span></div>
+      <div class="pm-3">
+        <div><div class="muted small">RS rating rising</div>${rs.rs_up.map((x) => `<div class="pm-li"><a href="#/sectors/${mkt}/industry/${encodeURIComponent(x.group)}">${esc(x.group)}</a>${rsBadge(x.rs)}<span class="pos">▲${x.delta}</span></div>`).join("") || '<div class="muted small">—</div>'}</div>
+        <div><div class="muted small">RS rating falling</div>${rs.rs_down.map((x) => `<div class="pm-li"><a href="#/sectors/${mkt}/industry/${encodeURIComponent(x.group)}">${esc(x.group)}</a>${rsBadge(x.rs)}<span class="neg">▼${-x.delta}</span></div>`).join("") || '<div class="muted small">—</div>'}</div>
+        <div><div class="muted small">Rotation changes</div>${rs.quadrant_changes.slice(0, 10).map((x) => `<div class="pm-li"><a href="#/sectors/${mkt}/${x.level}/${encodeURIComponent(x.group)}">${esc(x.group)}</a><span class="qtag ${QUAD_CLS[x.from]}">${x.from}</span>→<span class="qtag ${QUAD_CLS[x.to]}">${x.to}</span></div>`).join("") || '<div class="muted small">—</div>'}</div>
+      </div></section>` : ""}
+    </div><div class="pmtab" data-t="stocks">
+    <div class="sec-top"><section class="sec-card"><h3>Top gainers</h3>${stockTable(p.movers.gainers, "gainers")}</section><section class="sec-card"><h3>Top losers</h3>${stockTable(p.movers.losers, "losers")}</section></div>
+    <div class="sec-top"><section class="sec-card"><h3>Unusual volume — up</h3>${stockTable(p.volume.up, "vup")}</section><section class="sec-card"><h3>Unusual volume — down</h3>${stockTable(p.volume.down, "vdn")}</section></div>
+    <div class="sec-top"><section class="sec-card"><h3>New 52-week highs <span class="muted">${p.counts.new_highs}</span></h3>${stockTable(p.highs_lows.highs, "hi")}</section><section class="sec-card"><h3>New 52-week lows <span class="muted">${p.counts.new_lows}</span></h3>${stockTable(p.highs_lows.lows, "lo")}</section></div>
+    </div><div class="pmtab" data-t="yours">
+    <section class="sec-card"><div class="sec-card-h"><h3>Your watchlists</h3><span class="muted small">${p.watchlists.length} names on your lists and Screener picks, biggest moves first</span></div>
+      ${p.watchlists.length ? `<table class="mvt pmt pm-wl"><thead><tr><th>Symbol</th><th>Lists</th><th class="num">Close</th><th class="num">Chg%</th><th class="num">Rel vol</th><th>Signals</th></tr></thead><tbody>
+        ${p.watchlists.map((x, j) => `<tr data-k="wl" data-i="${j}"><td><b>${sym(x.symbol)}</b><span class="muted small mv-sec">${esc(x.name || "")}</span></td><td class="muted small">${esc(x.lists.join(", "))}</td>
+          <td class="num">${fmt(x.close)}</td><td class="num"><span class="mv-pct ${x.pct >= 0 ? "up" : "dn"}">${pc(x.pct)}</span></td><td class="num ${x.rvol >= 2 ? "strong" : "muted"}">${x.rvol != null ? x.rvol.toFixed(1) + "×" : ""}</td>
+          <td class="pm-flags">${x.cross50 === "up" ? '<span class="pos">crossed above 50D</span>' : x.cross50 === "down" ? '<span class="neg">fell below 50D</span>' : ""}${x.new_high ? '<span class="pos">new 52w high</span>' : ""}${x.new_low ? '<span class="neg">new 52w low</span>' : ""}${x.rvol >= 2 ? `<span>${x.pct >= 0 ? "heavy buying" : "heavy selling"}</span>` : ""}${x.earnings ? `<span class="warn">earnings ${prettyDate(x.earnings)}</span>` : ""}</td></tr>`).join("")}</tbody></table>` : '<div class="muted small">Your watchlists are empty for this market.</div>'}</section>
+    <section class="sec-card"><h3>Screener changes</h3>${p.screener.length ? `<div class="pm-scr">${p.screener.map((x) => `<div class="pm-s"><div class="pm-sh"><b>${esc(x.strategy)}</b><span class="muted small">${x.tradeable} tradeable · ${x.watch} on watch · run ${prettyDate(x.run)}${x.prev_run ? ` vs ${prettyDate(x.prev_run)}` : ""}</span></div>
+        <div class="pm-ch">${x.new_tradeable.length ? `<span class="muted small">New tradeable</span>${x.new_tradeable.map((t) => `<a class="chip-s up" href="#/chart/${mkt}/${encodeURIComponent(t.symbol)}" title="${esc([t.decision, t.setup, t.entry ? "entry " + fmt(t.entry) : "", t.stop ? "stop " + fmt(t.stop) : ""].filter(Boolean).join(" · "))}">${sym(t.symbol)}</a>`).join("")}` : '<span class="muted small">No new tradeable names</span>'}</div>
+        ${x.dropped_tradeable.length ? `<div class="pm-ch"><span class="muted small">No longer tradeable</span>${x.dropped_tradeable.map((t) => `<a class="chip-s dn" href="#/chart/${mkt}/${encodeURIComponent(t)}">${sym(t)}</a>`).join("")}</div>` : ""}
+        ${x.new_watch.length ? `<div class="pm-ch"><span class="muted small">New on watch</span>${x.new_watch.slice(0, 30).map((t) => `<a class="chip-s" href="#/chart/${mkt}/${encodeURIComponent(t)}">${sym(t)}</a>`).join("")}${x.new_watch.length > 30 ? `<span class="muted small">+${x.new_watch.length - 30}</span>` : ""}</div>` : ""}</div>`).join("")}</div>` : '<div class="muted small">No screening run for this day.</div>'}</section>
+    <section class="sec-card"><h3>Earnings in the next 10 days</h3>${p.earnings.length ? p.earnings.map((x) => `<div class="pm-li"><a href="#/chart/${mkt}/${encodeURIComponent(x.symbol)}"><b>${sym(x.symbol)}</b></a><span class="muted">${esc(x.name || "")}</span><span>${longDate(x.date)}</span><span class="muted small">${x.days}d${x.watched ? " · on your watchlist" : ""}</span></div>`).join("") : '<div class="muted small">None among watched or screened names.</div>'}</section>
+    </div>
+    `;
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(`#/postmarket/${b.dataset.v}`));
+  wireDatePicker($view, pmDates, p.date, (d, latest) => go(pmHref(latest ? null : d)));
+  // tabs switch in place (no reload); the URL keeps the tab so a date change or a reload returns to it
+  const showTab = (t) => {
+    tab = t; store.set("pmTab", t);
+    $view.querySelectorAll(".pmtab").forEach((x) => { x.hidden = x.dataset.t !== t; });
+    $view.querySelectorAll(".pm-tabs a").forEach((a) => a.classList.toggle("active", a.dataset.t === t));
+    history.replaceState(null, "", pmHref(date ? p.date : null));
+    $view.querySelectorAll(".pm-tl a").forEach((a, k) => { a.href = pmHref(H.slice(0, 60).reverse()[k].date); });
+  };
+  $view.querySelector(".pm-tabs").onclick = (e) => { const a = e.target.closest("[data-t]"); if (a) showTab(a.dataset.t); };
+  showTab(tab);
+  $view.querySelectorAll("tr[data-k]").forEach((tr) => tr.onclick = () => {
+    const rows = lists[tr.dataset.k], x = rows[+tr.dataset.i];
+    const label = { gainers: "Top gainers", losers: "Top losers", vup: "Unusual volume up", vdn: "Unusual volume down", hi: "New highs", lo: "New lows", wl: "Watchlists" }[tr.dataset.k];
+    openChartFromList(mkt, x.symbol, rows.map((y) => y.symbol), `${label} · ${prettyDate(p.date)}`, location.hash);
+  });
+}
+
 // ------------------------------------------------------------- sectors page
 
+const LEVEL_NAME = { sector: "sectors", industry: "industry groups", sub: "sub-industries" };
+/** a sub-industry key is "Industry › Sub"; show the sub part, with the industry as context */
+const groupParts = (g) => { const i = g.indexOf(" › "); return i < 0 ? [g, null] : [g.slice(i + 3), g.slice(0, i)]; };
 const QUADS = ["Leading", "Improving", "Weakening", "Lagging"];
 const QUAD_CLS = { Leading: "q-lead", Improving: "q-impr", Weakening: "q-weak", Lagging: "q-lag" };
 const SEC_H = ["1W", "1M", "3M", "6M", "12M"];
@@ -1041,54 +1368,74 @@ function sparkSvg(vals, w = 90, h = 22) {
 }
 
 /** Relative Rotation Graph: RS-Ratio (x) vs RS-Momentum (y), each group's last weeks as a tail */
-function rrgSvg(groups, hot) {
-  const W = 560, H = 420, P = 34;
+function rrgSvg(groups, hot, pinned, width = 560) {
+  // drawn at the container's pixel size (1 viewBox unit = 1px), so text stays readable however wide the card is
+  const W = Math.max(360, Math.round(width)), H = Math.round(Math.max(380, Math.min(680, W * 0.5))), P = 40;
   const pts = groups.flatMap((g) => g.rrg || []);
   if (!pts.length) return '<div class="muted small">Not enough history for a rotation graph.</div>';
-  const dx = Math.max(1.5, ...pts.map((p) => Math.abs(p.ratio - 100))) * 1.1;
-  const dy = Math.max(1.5, ...pts.map((p) => Math.abs(p.mom - 100))) * 1.1;
-  const X = (v) => P + ((v - (100 - dx)) / (2 * dx)) * (W - 2 * P), Y = (v) => H - P - ((v - (100 - dy)) / (2 * dy)) * (H - 2 * P);
+  // each axis fits the data (always keeping the 100 crosshair in view), so the trails fill the plot
+  const span = (vs) => { let lo = Math.min(100, ...vs), hi = Math.max(100, ...vs); if (hi - lo < 3) { const m = (hi + lo) / 2; lo = m - 1.5; hi = m + 1.5; }
+    const pad = (hi - lo) * 0.06; return [lo - pad, hi + pad]; };
+  const [x0, x1] = span(pts.map((p) => p.ratio)), [y0, y1] = span(pts.map((p) => p.mom));
+  const X = (v) => P + ((v - x0) / (x1 - x0)) * (W - 2 * P), Y = (v) => H - P - ((v - y0) / (y1 - y0)) * (H - 2 * P);
   const cx = X(100), cy = Y(100);
-  const palette = ["#2962ff", "#ff9800", "#26a69a", "#e91e63", "#9c27b0", "#00bcd4", "#8bc34a", "#ffc107", "#795548", "#f44336", "#3f51b5", "#cddc39", "#009688", "#ff5722", "#607d8b", "#673ab7"];
-  // label positions: start at each head, then push apart vertically so names don't overprint
-  const labs = groups.map((g, i) => ({ i, x: g.rrg?.length ? X(g.rrg.at(-1).ratio) + 7 : 0, y: g.rrg?.length ? Y(g.rrg.at(-1).mom) + 4 : 0, ok: !!g.rrg?.length }))
-    .filter((l) => l.ok).sort((a, b) => a.y - b.y);
-  for (let k = 1; k < labs.length; k++)
-    for (let j = 0; j < k; j++)
-      if (Math.abs(labs[k].x - labs[j].x) < 120 && labs[k].y - labs[j].y < 12) labs[k].y = labs[j].y + 12;
-  const labY = Object.fromEntries(labs.map((l) => [l.i, Math.min(H - P - 2, l.y)]));
+  const ticks = (lo, hi, n) => { const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 5, 10].map((k) => k * mag).find((s) => s >= raw);
+    const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6)); return out; };
+  const grid = ticks(x0, x1, Math.max(4, Math.round(W / 140))).map((v) => `<line x1="${X(v).toFixed(1)}" y1="${P}" x2="${X(v).toFixed(1)}" y2="${H - P}" class="rqg"/><text x="${X(v).toFixed(1)}" y="${H - P + 13}" class="rqt" text-anchor="middle">${v}</text>`).join("")
+    + ticks(y0, y1, Math.max(4, Math.round(H / 90))).map((v) => `<line x1="${P}" y1="${Y(v).toFixed(1)}" x2="${W - P}" y2="${Y(v).toFixed(1)}" class="rqg"/><text x="${P - 5}" y="${(Y(v) + 3.5).toFixed(1)}" class="rqt" text-anchor="end">${v}</text>`).join("");
+  // mid-tone colours that read on both the dark and the light themes
+  const palette = ["#3b82f6", "#f97316", "#14b8a6", "#ec4899", "#a855f7", "#06b6d4", "#65a30d", "#ef4444", "#6366f1", "#10b981", "#d946ef", "#0ea5e9", "#f43f5e", "#8b5cf6", "#22c55e", "#e11d48"];
+  // label placement: each name tries right of its head, left, above, below, then further out; the first
+  // spot that overlaps no placed label and no head wins. A label that had to move gets a leader line.
+  const name = (g) => (n => n.length > 30 ? n.slice(0, 29) + "…" : n)(groupParts(g.group)[0]);
+  const heads = groups.map((g) => g.rrg?.length ? [X(g.rrg.at(-1).ratio), Y(g.rrg.at(-1).mom)] : null);
+  const boxes = [], lab = {};
+  const hits = (b) => boxes.some((o) => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y)
+    || heads.some((h) => h && h[0] > b.x - 4 && h[0] < b.x + b.w + 4 && h[1] > b.y - 4 && h[1] < b.y + b.h + 4);
+  groups.map((g, i) => i).filter((i) => heads[i]).sort((a, b) => (groups[b].rs ?? 0) - (groups[a].rs ?? 0)).forEach((i) => {
+    const [hx, hy] = heads[i], w = name(groups[i]).length * 6.6 + 4, h = 14;
+    const spots = [];
+    for (const r of [0, 15, 30, 45, 60]) spots.push([hx + 7, hy - 8 - r], [hx + 7, hy - 8 + r], [hx - 7 - w, hy - 8 - r], [hx - 7 - w, hy - 8 + r], [hx - w / 2, hy - 22 - r], [hx - w / 2, hy + 7 + r]);
+    let pick = spots.map(([x, y]) => ({ x: Math.max(P, Math.min(W - P - w, x)), y: Math.max(P, Math.min(H - P - h, y)), w, h })).find((b) => !hits(b));
+    if (!pick) pick = { x: Math.max(P, Math.min(W - P - w, hx + 7)), y: Math.max(P, Math.min(H - P - h, hy - 8)), w, h };
+    boxes.push(pick);
+    lab[i] = { x: pick.x + 2, y: pick.y + 11, moved: Math.hypot(pick.x - (hx + 7), pick.y - (hy - 8)) > 3, ax: pick.x + (pick.x > hx ? 0 : w), ay: pick.y + 6 };
+  });
   const series = groups.map((g, i) => {
     const t = g.rrg || []; if (!t.length) return "";
-    const c = palette[i % palette.length], head = t.at(-1), on = hot === g.group;
+    const c = palette[i % palette.length], head = t.at(-1), on = hot === g.group || pinned === g.group, L = lab[i];
     const line = t.map((p) => `${X(p.ratio).toFixed(1)},${Y(p.mom).toFixed(1)}`).join(" ");
-    return `<g class="rrg-g ${on ? "on" : ""}" data-g="${esc(g.group)}"><title>${esc(g.group)} — ${g.quadrant || ""}\nRS-Ratio ${head.ratio.toFixed(1)} · RS-Momentum ${head.mom.toFixed(1)}</title>
+    return `<g class="rrg-g ${on ? "on" : ""} ${pinned === g.group ? "pin" : ""}" data-g="${esc(g.group)}"><title>${esc(g.group)} — ${g.quadrant || ""}\nRS-Ratio ${head.ratio.toFixed(1)} · RS-Momentum ${head.mom.toFixed(1)}</title>
       <polyline points="${line}" fill="none" stroke="${c}" stroke-width="${on ? 2.5 : 1.3}" stroke-opacity="${on ? 1 : .75}"/>
       ${t.slice(0, -1).map((p) => `<circle cx="${X(p.ratio).toFixed(1)}" cy="${Y(p.mom).toFixed(1)}" r="1.8" fill="${c}"/>`).join("")}
-      <circle cx="${X(head.ratio).toFixed(1)}" cy="${Y(head.mom).toFixed(1)}" r="${on ? 6 : 4.5}" fill="${c}" stroke="#0f121a" stroke-width="1"/>
-      <text class="lbl" x="${(X(head.ratio) + 7).toFixed(1)}" y="${labY[i].toFixed(1)}" fill="${c}">${esc(g.group.length > 26 ? g.group.slice(0, 25) + "…" : g.group)}</text></g>`;
+      <circle cx="${X(head.ratio).toFixed(1)}" cy="${Y(head.mom).toFixed(1)}" r="${on ? 6 : 4.5}" fill="${c}" stroke="var(--panel)" stroke-width="1"/>
+      ${L.moved ? `<line x1="${X(head.ratio).toFixed(1)}" y1="${Y(head.mom).toFixed(1)}" x2="${L.ax.toFixed(1)}" y2="${L.ay.toFixed(1)}" stroke="${c}" stroke-width=".7" stroke-opacity=".6"/>` : ""}
+      <text class="lbl" x="${L.x.toFixed(1)}" y="${L.y.toFixed(1)}" fill="${c}">${esc(name(g))}</text></g>`;
   }).join("");
-  return `<svg class="rrg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+  return `<svg class="rrg ${pinned && groups.some((g) => g.group === pinned) ? "pinned" : ""}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
     <rect x="${cx}" y="${P}" width="${W - P - cx}" height="${cy - P}" class="rq lead"/><rect x="${cx}" y="${cy}" width="${W - P - cx}" height="${H - P - cy}" class="rq weak"/>
     <rect x="${P}" y="${cy}" width="${cx - P}" height="${H - P - cy}" class="rq lag"/><rect x="${P}" y="${P}" width="${cx - P}" height="${cy - P}" class="rq impr"/>
+    ${grid}
     <text x="${W - P - 6}" y="${P + 14}" class="rql" text-anchor="end">LEADING</text><text x="${W - P - 6}" y="${H - P - 6}" class="rql" text-anchor="end">WEAKENING</text>
     <text x="${P + 6}" y="${H - P - 6}" class="rql">LAGGING</text><text x="${P + 6}" y="${P + 14}" class="rql">IMPROVING</text>
     <line x1="${cx}" y1="${P}" x2="${cx}" y2="${H - P}" class="rqx"/><line x1="${P}" y1="${cy}" x2="${W - P}" y2="${cy}" class="rqx"/>
-    <text x="${W / 2}" y="${H - 8}" class="rqa" text-anchor="middle">RS-Ratio → (relative strength trend)</text>
+    <text x="${W / 2}" y="${H - 6}" class="rqa" text-anchor="middle">RS-Ratio → (relative strength trend)</text>
     <text x="12" y="${H / 2}" class="rqa" text-anchor="middle" transform="rotate(-90 12 ${H / 2})">RS-Momentum →</text>
     ${series}</svg>`;
 }
 
 async function sectorsPage(alive, mkt, level, group) {
-  mkt = mkt === "us" || mkt === "india" ? mkt : store.get("secMarket", "us");
-  level = level === "industry" || level === "sector" ? level : store.get("secLevel", "industry");
-  store.set("secMarket", mkt); store.set("secLevel", level);
+  mkt = pageMarket(mkt);
+  level = ["industry", "sector", "sub"].includes(level) ? level : store.get("secLevel", "industry");
+  store.set("secLevel", level);
   if (group) return sectorGroupPage(alive, mkt, level, group);
   document.title = "Sectors · Trading";
-  const prefs = { sort: "rs", dir: -1, rel: false, quad: "all", sector: "", rrgN: 10, ...store.get("secPrefs", {}) };
+  const prefs = { sort: "rs", dir: -1, rel: false, quad: "all", sector: "", rrgN: 8, ...store.get("secPrefs", {}) };
+  if (![6, 8, 12, 20].includes(prefs.rrgN)) prefs.rrgN = 8;
   const save = () => store.set("secPrefs", prefs);
   $view.innerHTML = `<div class="page-head"><h1>Sectors</h1>
-      ${segmented([["us", "US"], ["india", "India"]], mkt, "mk")}
-      ${segmented([["industry", "Industry groups"], ["sector", "Sectors"]], level, "lv")}</div><div id="sec">${LOADING}</div>`;
+      ${marketSeg(mkt)}
+      ${segmented([["sector", "Sectors"], ["industry", "Industry groups"], ["sub", "Sub-industries"]], level, "lv")}</div><div id="sec">${LOADING}</div>`;
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(secHref(b.dataset.v, level)));
   $view.querySelectorAll(".lv button").forEach((b) => b.onclick = () => go(secHref(mkt, b.dataset.v)));
   const d = await api(`/api/sectors?market=${mkt}&level=${level}`).catch((e) => ({ error: e.message }));
@@ -1102,29 +1449,27 @@ async function sectorsPage(alive, mkt, level, group) {
   const sectorsList = [...new Set(d.groups.map((g) => g.sector))].sort();
   const mret = d.market_ret, bench = d.bench;
   host.innerHTML = `
-    <div class="sec-sub muted">${prettyDate(d.date)} · ${d.stocks.toLocaleString()} liquid stocks in ${d.groups.length} ${level === "industry" ? "industry groups" : "sectors"}
+    <div class="sec-sub muted">${prettyDate(d.date)} · ${d.stocks.toLocaleString()} liquid stocks in ${d.groups.length} ${LEVEL_NAME[level]}${level === "sub" ? " (large, mixed industry groups split further — data/sub_industries.csv)" : ""}
       · typical stock ${SEC_H.map((h) => `${h} <b class="${pctCls(mret[h])}">${pct1(mret[h])}</b>`).join(" ")}
       ${bench ? ` · ${esc(bench.label)} 3M <b class="${pctCls(bench["3M"])}">${pct1(bench["3M"])}</b> 12M <b class="${pctCls(bench["12M"])}">${pct1(bench["12M"])}</b>` : ""}
-      ${d.updating ? ' <span class="tag watch">updating…</span>' : ""}</div>
-    <div class="sec-top">
+      ${d.updating ? ' <span class="tag watch">updating…</span>' : ""}
+      · ${info(["rs", "returns", "relative", "breadth", "rrg", "universe", "caveats"].map((k) => `<p>${esc(d.doc[k])}</p>`).join("") + '<p><a href="#/playbook">Read the sector-analysis playbook →</a></p>', "How to read this page")}</div>
+    <div class="sec-top one">
       <section class="sec-card"><div class="sec-card-h"><h3>Rotation</h3><span class="muted small" id="rrg-note"></span><span class="spacer"></span>
-        ${level === "industry" ? `<label class="small muted">show <select id="rrgn">${[6, 10, 15, 20].map((n) => `<option ${n === prefs.rrgN ? "selected" : ""}>${n}</option>`).join("")}</select></label>` : ""}</div>
+        ${level !== "sector" ? `<label class="small muted">show <select id="rrgn">${[6, 8, 12, 20].map((n) => `<option ${n === prefs.rrgN ? "selected" : ""}>${n}</option>`).join("")}</select></label>` : ""}</div>
         <div id="rrg"></div></section>
-      <section class="sec-card sec-doc"><h3>How to read this page</h3>
-        ${["rs", "returns", "relative", "breadth", "rrg", "universe", "caveats"].map((k) => `<p>${esc(d.doc[k])}</p>`).join("")}
-        <p><a href="#/playbook">Read the sector-analysis playbook →</a></p></section>
     </div>
     <div class="sec-filters">
       <label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="sf" placeholder="Filter groups" spellcheck="false"></label>
-      ${level === "industry" ? `<select id="ssec"><option value="">All sectors</option>${sectorsList.map((x) => `<option ${x === prefs.sector ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>` : ""}
+      ${level !== "sector" ? `<select id="ssec"><option value="">All sectors</option>${sectorsList.map((x) => `<option ${x === prefs.sector ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>` : ""}
       <div class="chips" id="squad">${["all", ...QUADS].map((q) => `<button class="chip ${q === prefs.quad ? "on" : ""}" data-q="${q}">${q === "all" ? "All" : q}<span>${q === "all" ? d.groups.length : d.groups.filter((g) => g.quadrant === q).length}</span></button>`).join("")}</div>
       <span class="spacer"></span>
       <label class="check"><input type="checkbox" id="srel" ${prefs.rel ? "checked" : ""}> Returns vs the typical stock</label>
     </div>
     <div id="stbl"></div>`;
-  let text = "", hot = null;
+  let text = "", hot = null, pinned = null;
   const shown = () => {
-    let gs = d.groups.filter((g) => (prefs.quad === "all" || g.quadrant === prefs.quad) && (!prefs.sector || level !== "industry" || g.sector === prefs.sector)
+    let gs = d.groups.filter((g) => (prefs.quad === "all" || g.quadrant === prefs.quad) && (!prefs.sector || level === "sector" || g.sector === prefs.sector)
       && (!text || g.group.toLowerCase().includes(text) || g.sector.toLowerCase().includes(text) || g.leaders.some((l) => l.symbol.toLowerCase().includes(text))));
     const v = (g) => prefs.sort === "rs" ? g.rs : prefs.sort === "drs" ? (g.rs ?? 0) - (g.rs_prev ?? g.rs ?? 0) : prefs.sort === "group" ? g.group
       : prefs.sort === "n" ? g.n : prefs.sort === "above50" ? g.above50 : prefs.sort === "above200" ? g.above200 : prefs.sort === "hl" ? g.highs - g.lows
@@ -1133,9 +1478,14 @@ async function sectorsPage(alive, mkt, level, group) {
   };
   const drawRrg = () => {
     const gs = shown(), n = level === "sector" ? gs.length : Math.min(prefs.rrgN, gs.length);
-    $view.querySelector("#rrg").innerHTML = rrgSvg(gs.slice(0, n), hot);
-    $view.querySelector("#rrg-note").textContent = level === "sector" ? "weekly, last 8 weeks" : `first ${n} rows of the table below · weekly, last 8 weeks`;
-    $view.querySelectorAll(".rrg-g").forEach((g) => { g.onclick = () => go(secHref(mkt, level, g.dataset.g)); });
+    const el = $view.querySelector("#rrg");
+    el.innerHTML = rrgSvg(gs.slice(0, n), hot, pinned, el.clientWidth || 560);
+    $view.querySelector("#rrg-note").textContent = (level === "sector" ? "weekly, last 8 weeks" : `top ${n} rows of the table · weekly, last 8 weeks`)
+      + (pinned ? ` · pinned: ${groupParts(pinned)[0]} (click again to unpin)` : " · click a trail to pin it, double-click to open");
+    $view.querySelectorAll(".rrg-g").forEach((g) => {
+      g.onclick = () => { pinned = pinned === g.dataset.g ? null : g.dataset.g; drawRrg(); };
+      g.ondblclick = () => go(secHref(mkt, level, g.dataset.g));
+    });
   };
   const bar = (v) => v == null ? "" : `<span class="pbar"><i style="width:${(v * 100).toFixed(0)}%" class="${v >= 0.6 ? "hi" : v >= 0.4 ? "mid" : "lo"}"></i></span><span class="pnum">${(v * 100).toFixed(0)}%</span>`;
   const drawTable = () => {
@@ -1143,7 +1493,7 @@ async function sectorsPage(alive, mkt, level, group) {
     const th = (k, t, cls = "num", title = "") => `<th class="${cls} ${prefs.sort === k ? "on" : ""}" data-k="${k}" title="${esc(title)}">${t}${prefs.sort === k ? (prefs.dir > 0 ? " ↑" : " ↓") : ""}</th>`;
     $view.querySelector("#stbl").innerHTML = `<div class="sect-wrap"><table class="sect"><thead><tr>
         ${th("rs", "RS", "num", "RS rating 1–99 across groups")}${th("drs", "Δ 1M", "num", "Change in RS rating over the last month")}
-        ${th("group", level === "industry" ? "Industry group" : "Sector", "")}${th("n", "Stocks")}
+        ${th("group", { industry: "Industry group", sector: "Sector", sub: "Sub-industry" }[level], "")}${th("n", "Stocks")}
         ${SEC_H.map((h) => th(h, h, "num", prefs.rel ? "Equal-weight return minus the typical stock's" : "Equal-weight return")).join("")}
         ${th("above50", "> 50D", "", "% of members above their 50-day average")}${th("above200", "> 200D", "", "% of members above their 200-day average")}
         ${th("hl", "Highs / lows", "num", "Members at a new 52-week closing high / low")}<th>Rotation</th><th>RS line 6M</th><th>Leaders</th></tr></thead>
@@ -1151,7 +1501,7 @@ async function sectorsPage(alive, mkt, level, group) {
         const dr = g.rs != null && g.rs_prev != null ? g.rs - g.rs_prev : null, r = prefs.rel ? g.rel : g.ew;
         return `<tr data-g="${esc(g.group)}"><td class="num">${rsBadge(g.rs)}</td>
           <td class="num ${dr == null ? "" : dr >= 10 ? "pos" : dr <= -10 ? "neg" : "muted"}">${dr == null ? "" : (dr > 0 ? "▲" : dr < 0 ? "▼" : "") + Math.abs(dr)}</td>
-          <td class="gname"><b>${esc(g.group)}</b>${level === "industry" ? `<span class="muted sec-of">${esc(g.sector)}</span>` : ""}</td>
+          <td class="gname"><b>${esc(groupParts(g.group)[0])}</b>${level === "industry" ? `<span class="muted sec-of">${esc(g.sector)}</span>` : level === "sub" ? `<span class="muted sec-of">${esc(g.industry)} · ${esc(g.sector)}</span>` : ""}</td>
           <td class="num muted">${g.n}</td>
           ${SEC_H.map((h) => `<td class="num ${pctCls(r[h])}">${pct1(r[h])}</td>`).join("")}
           <td class="pc">${bar(g.above50)}</td><td class="pc">${bar(g.above200)}</td>
@@ -1182,11 +1532,15 @@ async function sectorsPage(alive, mkt, level, group) {
     $view.querySelectorAll("#squad .chip").forEach((c) => c.classList.toggle("on", c === b)); redraw(); };
   $view.querySelector("#srel").onchange = (e) => { prefs.rel = e.target.checked; save(); drawTable(); };
   $view.querySelector("#rrgn")?.addEventListener("change", (e) => { prefs.rrgN = +e.target.value; save(); drawRrg(); });
+  // the graph is laid out in pixels, so redraw it when the card changes width
+  let rrgW = 0;
+  const ro = new ResizeObserver(([e]) => { if (!alive()) return ro.disconnect(); const w = Math.round(e.contentRect.width); if (w && Math.abs(w - rrgW) > 4) { rrgW = w; drawRrg(); } });
+  ro.observe($view.querySelector("#rrg"));
   redraw();
 }
 
 async function sectorGroupPage(alive, mkt, level, group) {
-  document.title = `${group} · Sectors · Trading`;
+  document.title = `${groupParts(group)[0]} · Sectors · Trading`;
   $view.innerHTML = LOADING;
   const d = await api(`/api/sectors/group?market=${mkt}&level=${level}&group=${encodeURIComponent(group)}`).catch((e) => ({ error: e.message }));
   if (!alive()) return;
@@ -1194,7 +1548,9 @@ async function sectorGroupPage(alive, mkt, level, group) {
   const g = d.group, dr = g.rs != null && g.rs_prev != null ? g.rs - g.rs_prev : null;
   const ret = (o, h) => `<td class="num ${pctCls(o[h])}">${pct1(o[h])}</td>`;
   $view.innerHTML = `<div class="page-head"><a class="muted" href="${secHref(mkt, level)}">← Sectors</a>
-      <h1>${esc(g.group)}</h1>${level === "industry" ? `<a class="muted" href="${secHref(mkt, "sector", g.sector)}">${esc(g.sector)}</a>` : ""}
+      <h1>${esc(groupParts(g.group)[0])}</h1>
+      ${level === "industry" ? `<a class="muted" href="${secHref(mkt, "sector", g.sector)}">${esc(g.sector)}</a>` : ""}
+      ${level === "sub" ? `<a class="muted" href="${secHref(mkt, "sector", g.sector)}">${esc(g.sector)}</a><span class="muted">›</span><a class="muted" href="${secHref(mkt, "industry", g.industry)}">${esc(g.industry)}</a>` : ""}
       <span class="mkt">${MKT_BADGE[mkt]}</span>${rsBadge(g.rs)}${dr != null ? `<span class="${dr >= 10 ? "pos" : dr <= -10 ? "neg" : "muted"}">${dr > 0 ? "▲" : dr < 0 ? "▼" : ""}${Math.abs(dr)} in a month</span>` : ""}
       ${g.quadrant ? `<span class="qtag ${QUAD_CLS[g.quadrant]}">${g.quadrant}</span>` : ""}<span class="spacer"></span>
       <button class="ghost" id="towl">Add top 10 to a watchlist…</button></div>
@@ -1214,19 +1570,19 @@ async function sectorGroupPage(alive, mkt, level, group) {
           <span>New 52-week highs / lows</span><b><span class="pos">${g.highs}</span> / <span class="neg">${g.lows}</span></b></div>
         <p class="muted small">${esc(d.doc.returns)}</p>
       </section></div>
-    ${d.industries.length ? `<section class="sec-card"><h3>Industry groups in ${esc(g.group)}</h3><table class="sect mini"><thead><tr><th class="num">RS</th><th>Industry</th><th class="num">Stocks</th>${SEC_H.map((h) => `<th class="num">${h}</th>`).join("")}<th>Rotation</th></tr></thead>
-      <tbody>${d.industries.map((x) => `<tr data-g="${esc(x.group)}"><td class="num">${rsBadge(x.rs)}</td><td><b>${esc(x.group)}</b></td><td class="num muted">${x.n}</td>${SEC_H.map((h) => ret(x.ew, h)).join("")}
+    ${d.children.length ? `<section class="sec-card"><h3>${d.child_level === "sub" ? "Sub-industries" : "Industry groups"} in ${esc(groupParts(g.group)[0])}</h3><table class="sect mini"><thead><tr><th class="num">RS</th><th>${d.child_level === "sub" ? "Sub-industry" : "Industry"}</th><th class="num">Stocks</th>${SEC_H.map((h) => `<th class="num">${h}</th>`).join("")}<th>Rotation</th></tr></thead>
+      <tbody>${d.children.map((x) => `<tr data-g="${esc(x.group)}"><td class="num">${rsBadge(x.rs)}</td><td><b>${esc(groupParts(x.group)[0])}</b></td><td class="num muted">${x.n}</td>${SEC_H.map((h) => ret(x.ew, h)).join("")}
         <td>${x.quadrant ? `<span class="qtag ${QUAD_CLS[x.quadrant]}">${x.quadrant}</span>` : ""}</td></tr>`).join("")}</tbody></table></section>` : ""}
     <section class="sec-card"><div class="sec-card-h"><h3>Members, strongest first</h3><span class="muted small">ranked by the RS composite across all ${d.members.length ? "" : ""}stocks · click a row for its chart</span></div><div id="gmem"></div></section>`;
-  $view.querySelectorAll(".sect.mini tr[data-g]").forEach((tr) => tr.onclick = () => go(secHref(mkt, "industry", tr.dataset.g)));
+  $view.querySelectorAll(".sect.mini tr[data-g]").forEach((tr) => tr.onclick = () => go(secHref(mkt, d.child_level, tr.dataset.g)));
 
   // chart: group vs market (rebased) and the RS line
   const el_ = $view.querySelector("#gchart");
-  const chart = LC.createChart(el_, { autoSize: true, ...CHART_THEME, handleScroll: false, handleScale: false, crosshair: { mode: LC.CrosshairMode.Normal } });
+  const chart = LC.createChart(el_, { autoSize: true, ...chartTheme(), handleScroll: false, handleScale: false, crosshair: { mode: LC.CrosshairMode.Normal } });
   const s0 = g.series[0];
-  chart.addSeries(LC.LineSeries, { color: "#2962ff", lineWidth: 2, priceLineVisible: false, title: g.group.slice(0, 24) })
+  chart.addSeries(LC.LineSeries, { color: cssVar("--series"), lineWidth: 2, priceLineVisible: false, title: g.group.slice(0, 24) })
     .setData(g.series.map((p) => ({ time: p.time, value: (100 * p.group) / s0.group })));
-  chart.addSeries(LC.LineSeries, { color: "#787b86", lineWidth: 1.5, priceLineVisible: false, title: "Typical stock" })
+  chart.addSeries(LC.LineSeries, { color: cssVar("--muted"), lineWidth: 1.5, priceLineVisible: false, title: "Typical stock" })
     .setData(g.series.map((p) => ({ time: p.time, value: (100 * p.market) / s0.market })));
   chart.addSeries(LC.LineSeries, { color: "#ff9800", lineWidth: 1.5, priceLineVisible: false, title: "RS line" }, 1)
     .setData(g.series.map((p) => ({ time: p.time, value: (100 * p.group / p.market) / (s0.group / s0.market) })));
@@ -1235,17 +1591,18 @@ async function sectorGroupPage(alive, mkt, level, group) {
   { const prev = cleanup; cleanup = () => { chart.remove(); prev(); }; }
 
   // members
-  const cols = ["rank", "symbol", "name", "rs", "1M %", "3M %", "6M %", "12M %", "off 52w high", "> 50D", "> 200D", "quality", "last"];
+  const extra = level === "sector" ? "industry" : level === "industry" && d.members.some((m) => m.sub) ? "sub-industry" : null;
+  const cols = ["rank", "symbol", "name", ...(extra ? [extra] : []), "rs", "1M %", "3M %", "6M %", "12M %", "off 52w high", "> 50D", "> 200D", "quality", "last"];
   const p100 = (v) => (v == null ? null : +(v * 100).toFixed(1));
-  const rows = d.members.map((m, i) => [i + 1, m.symbol, m.name || "", m.rs, p100(m["1M"]), p100(m["3M"]), p100(m["6M"]), p100(m["12M"]),
-    p100(m.from_high), m.above50, m.above200, m.quality != null ? Math.round(m.quality) : null, m.last]);
+  const rows = d.members.map((m, i) => [i + 1, m.symbol, m.name || "", ...(extra ? [extra === "industry" ? m.industry : m.sub || ""] : []), m.rs,
+    p100(m["1M"]), p100(m["3M"]), p100(m["6M"]), p100(m["12M"]), p100(m.from_high), m.above50, m.above200, m.quality != null ? Math.round(m.quality) : null, m.last]);
   dataTable($view.querySelector("#gmem"), cols, rows, {
     name: "sector_members", sort: ["rank", 1],
-    rowClick: (row, visible) => openChartFromList(mkt, row[1], visible.map((r) => r[1]), `${g.group} · members`, location.hash),
+    rowClick: (row, visible) => openChartFromList(mkt, row[1], visible.map((r) => r[1]), `${groupParts(g.group)[0]} · members`, location.hash),
   });
 
   $view.querySelector("#towl").onclick = async () => {
-    const name = await askText("Add the top 10 members to a watchlist", `${g.group} (${MKT_BADGE[mkt]})`, "Watchlist name");
+    const name = await askText("Add the top 10 members to a watchlist", `${groupParts(g.group)[0]} (${MKT_BADGE[mkt]})`, "Watchlist name");
     if (!name?.trim()) return;
     try {
       const lists = await WL.lists();
@@ -1263,13 +1620,12 @@ async function sectorGroupPage(alive, mkt, level, group) {
 const BR_GOOD_HIGH = new Set(["adv", "up4", "highs", "pct5", "pct50", "up25m", "up50m"]);
 
 async function breadthPage(alive, mkt) {
-  mkt = mkt === "us" || mkt === "india" ? mkt : store.get("brMarket", "india");
-  store.set("brMarket", mkt);
+  mkt = pageMarket(mkt);
   document.title = "Breadth · Trading";
   $view.innerHTML = LOADING;
   const b = await api(`/api/breadth?market=${mkt}`);
   if (!alive()) return;
-  const head = `<div class="page-head"><h1>Market breadth</h1>${segmented([["india", "India"], ["us", "US"]], mkt, "mk")}
+  const head = `<div class="page-head"><h1>Market breadth</h1>${marketSeg(mkt)}
     ${b.date ? `<span class="muted">${prettyDate(b.date)} · the ${b.breadth_n?.toLocaleString()} most-traded stocks</span>` : ""}
     ${b.updating ? `<span class="tag watch" title="Newer prices exist; today's figures are being computed in the background">updating…</span>` : ""}</div>`;
   if (b.empty) {
@@ -1307,9 +1663,8 @@ async function breadthPage(alive, mkt) {
       <td class="num ${x.above50 >= 0.5 ? "s-good" : x.above50 < 0.2 ? "s-bad" : ""}">${(x.above50 * 100).toFixed(0)}%</td><td class="num">${x.highs}</td><td class="num">${x.lows}</td></tr>
     <tr class="members" data-for="${i}" hidden><td colspan="7"><div class="wl">${x.members.map((m) => `<a href="#/chart/${mkt}/${encodeURIComponent(m.symbol)}" title="3M ${pc(m.r3m)} · 1M ${pc(m.r1m)}">${esc(m.symbol)} <span class="${m.r3m >= 0 ? "pos" : "neg"}">${pc(m.r3m, 0)}</span></a>`).join("")}</div></td></tr>`).join("");
 
-  $view.innerHTML = head + `<div class="bsub">Today · ${idxLine}</div>
+  $view.innerHTML = head + `<div class="bsub">Today · ${idxLine} · ${info("<p>Each reading is ranked against every trading day since 2015 and compared with a week, a month and three months ago.</p><p>Slow changes matter most: markets rarely turn in a day.</p>", "How to read this page")}</div>
     <div class="bcards">${b.cards.map(card).join("")}</div>
-    <p class="muted small">Each reading is ranked against every trading day since 2015 and compared with a week, a month and three months ago. Slow changes matter most: markets rarely turn in a day.</p>
     ${b.events.length ? `<h2>What changed in the last 5 sessions</h2><div class="bevents">${b.events.map((e) => `<div><span class="muted">${prettyDate(e.date)}</span> ${esc(e.text)}</div>`).join("")}</div>` : ""}
     <h2>Charts <span class="seg brange">${["6M", "1Y", "3Y", "All"].map((r) => `<button data-r="${r}" class="${r === store.get("brRange", "1Y") ? "on" : ""}">${r}</button>`).join("")}</span></h2>
     <div class="bcharts">
@@ -1344,15 +1699,15 @@ async function breadthPage(alive, mkt) {
 
   // charts
   const charts = [];
-  const mk = (id) => { const c = LC.createChart($view.querySelector(id), { autoSize: true, ...CHART_THEME, handleScroll: false, handleScale: false,
-    crosshair: { mode: LC.CrosshairMode.Normal }, rightPriceScale: { borderColor: "#2a2e39" }, leftPriceScale: { visible: false, borderColor: "#2a2e39" } }); charts.push(c); return c; };
+  const mk = (id) => { const c = LC.createChart($view.querySelector(id), { autoSize: true, ...chartTheme(), handleScroll: false, handleScale: false,
+    crosshair: { mode: LC.CrosshairMode.Normal }, rightPriceScale: { borderColor: cssVar("--line-2") }, leftPriceScale: { visible: false, borderColor: cssVar("--line-2") } }); charts.push(c); return c; };
   const k0 = b.index_keys[0], k1 = b.index_keys[b.index_keys.length - 1];
   const ci = mk("#bc-idx");
-  ci.addSeries(LC.LineSeries, { color: "#2962ff", lineWidth: 2, priceLineVisible: false, title: b.indexes[k0].label }).setData(b.charts[k0]);
+  ci.addSeries(LC.LineSeries, { color: cssVar("--series"), lineWidth: 2, priceLineVisible: false, title: b.indexes[k0].label }).setData(b.charts[k0]);
   if (k1 !== k0) { ci.applyOptions({ leftPriceScale: { visible: true } }); ci.addSeries(LC.LineSeries, { color: "#ff9800", lineWidth: 1, priceLineVisible: false, priceScaleId: "left", title: b.indexes[k1].label }).setData(b.charts[k1]); }
   const ch = mk("#bc-hl");
   ch.addSeries(LC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }).setData(b.charts.hl.map((p) => ({ ...p, color: p.value >= 0 ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)" })));
-  ch.addSeries(LC.LineSeries, { color: "#e0e0e0", lineWidth: 1.5, priceLineVisible: false, title: "10d" }).setData(b.charts.hl10);
+  ch.addSeries(LC.LineSeries, { color: cssVar("--strong"), lineWidth: 1.5, priceLineVisible: false, title: "10d" }).setData(b.charts.hl10);
   const c5 = mk("#bc-50");
   const s5 = c5.addSeries(LC.AreaSeries, { lineColor: "#26a69a", topColor: "rgba(38,166,154,.25)", bottomColor: "rgba(38,166,154,0)", lineWidth: 1.5, priceLineVisible: false });
   s5.setData(b.charts.pct50);
@@ -1394,18 +1749,19 @@ const ICON_STAR = '<svg viewBox="0 0 20 20"><path d="M10 2.5l2.3 4.8 5.2.6-3.9 3
 const QCMD = (m, syms) => `python3 -m fundamentals.quality ${syms ? `--market ${m} --symbols ${syms}` : "--tracked"}`;
 
 async function qualityPage(alive, mkt) {
-  mkt = mkt || store.get("qMarket", "all");
-  store.set("qMarket", mkt);
+  mkt = pageMarket(mkt, ["all"]);
   document.title = "Quality · Trading";
   $view.innerHTML = LOADING;
   const [rows, crit] = await Promise.all([api(`/api/quality${mkt === "all" ? "" : `?market=${mkt}`}`), api("/api/quality/criteria")]);
   if (!alive()) return;
   let view = store.get("qView", "tracked");
   if (view === "tracked" && !rows.some((r) => r.tracked)) view = "all";
-  $view.innerHTML = `<div class="page-head"><h1>Quality companies</h1>${segmented([["all", "All"], ["us", "US"], ["india", "India"]], mkt, "mk")}
+  // Quality is one of the screens: the same way back to the others, and to building your own
+  $view.innerHTML = `<div class="crumbs scr-crumbs"><a href="#/screens">← All screens</a><span class="muted">·</span><a href="#/screens/new/${mkt === "all" ? pageMarket() : mkt}">+ New screen</a></div>
+    <div class="page-head"><h1>Quality companies</h1>${marketSeg(mkt, [["all", "US + India"]])}
       <span class="spacer"></span>
       <form class="wl-add" autocomplete="off">
-        ${mkt === "all" ? `<select id="qm" title="Market"><option value="us">US</option><option value="india">India</option></select>` : ""}
+        ${mkt === "all" ? `<select id="qm" title="Market">${MKTS.map((m) => `<option value="${m.key}">${esc(m.name)}</option>`).join("")}</select>` : ""}
         <div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="qs" placeholder="Track a company" spellcheck="false"><ul hidden></ul></div>
         <input id="qt" type="number" step="any" placeholder="Buy below (optional)" title="Your own buy-below price: the row is flagged AT YOUR PRICE once the close reaches it">
         <input id="qn" placeholder="Note (optional)"><button class="primary" type="submit">Track</button>
@@ -1514,118 +1870,440 @@ async function qualityPage(alive, mkt) {
 
 // the strategy prose uses light markdown (**bold**, `code`, *italic*); escape first, then format
 const mdInline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/(^|[^*])\*([^*\s][^*]*?)\*/g, "$1<i>$2</i>");
+/** a strategy's status in a few words — the sentence up to its first colon or full stop ("No demonstrated edge") */
+const shortStatus = (t) => { const x = String(t || "").split(/[:.;]/)[0].replace(/\s*—.*$/, "").trim(); return x.length > 42 ? x.slice(0, 40) + "…" : x; };
 const statusClass = (t) => (/no demonstrated edge|not validated|no edge|untested|does not beat|did not beat|losing|negative/i.test(t) ? "watch" : /beats|edge confirmed/i.test(t) ? "trade" : "");
 
-async function strategiesPage(alive, key) {
-  document.title = "Strategies · Trading";
+// --------------------------------------------------------- screens
+
+const pctf = (v, d = 1) => (v == null ? "" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(d)}%`);
+const tabsHtml = (tabs, cur) => `<nav class="ptabs">${tabs.map(([k, t, href]) => `<a href="${href}" class="${k === cur ? "active" : ""}">${t}</a>`).join("")}</nav>`;
+
+const _fields = {};
+const screenFields = async (mkt) => (_fields[mkt] = _fields[mkt] || await api(`/api/screen-fields?market=${mkt}`));
+const fieldLabel = (fs, k) => (fs.fields.find((f) => f.key === k) || {}).label || k;
+function condText(c, fs) {
+  const f = fieldLabel(fs, c.field), op = { ">=": "≥", "<=": "≤", "!=": "≠" }[c.op] || c.op;
+  if (c.op === "is") return c.value === false ? `not ${f}` : f;
+  if (c.op === "in") return `${f} in ${(c.value || []).join(", ")}`;
+  if (c.ref) return `${f} ${op} ${fieldLabel(fs, c.ref)}${c.mult != null && +c.mult !== 1 ? ` × ${c.mult}` : ""}`;
+  return `${f} ${op} ${c.value}`;
+}
+
+/** Screens: one page — the list of built-in and your screens on the left, the chosen one (or the builder) on the right. */
+async function screensPage(alive, key, mkt, tab, date) {
+  mkt = pageMarket(mkt);
+  if (key && key !== "new") store.set("scrKey", key);
+  document.title = "Screens · Trading";
   $view.innerHTML = LOADING;
-  const list = await api("/api/strategies");
+  const [list, fs] = await Promise.all([api(`/api/screens?market=${mkt}`).catch((e) => ({ error: e.message, screens: [] })), screenFields(mkt)]);
   if (!alive()) return;
-  if (!list.some((x) => x.key === key)) key = list.some((x) => x.key === store.get("stratKey")) ? store.get("stratKey") : list[0].key;
-  store.set("stratKey", key);
-  const d = await api(`/api/strategies/${encodeURIComponent(key)}`);
+  const item = (x) => `<a class="nav-item ${x.key === key ? "active" : ""}" href="#/screens/${x.key}/${mkt}" title="${esc(x.description || "")}">
+      <span><b class="sn">${esc(x.name)}</b></span>${x.count != null ? `<span class="n">${x.count}</span>` : ""}</a>`;
+  const builtins = list.screens.filter((x) => x.builtin), mine = list.screens.filter((x) => !x.builtin);
+  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">
+      <a class="nav-item ${key ? "" : "active"}" href="#/screens"><span><b class="sn">All screens</b></span></a>
+      <a class="nav-item new ${key === "new" ? "active" : ""}" href="#/screens/new/${mkt}"><span><b class="sn">+ New screen</b></span></a>
+      <div class="nav-h">Built-in</div>${builtins.map(item).join("")}
+      <a class="nav-item" href="#/quality" title="Long-term: fundamentals, and when the price is right"><span><b class="sn">Quality</b></span></a>
+      <div class="nav-h">My screens</div>${mine.map(item).join("") || `<div class="nav-empty muted small">None yet</div>`}
+    </aside><section id="scrmain" class="scr-main">${LOADING}</section></div>`;
+  const main = $view.querySelector("#scrmain");
+  if (list.error || !list.date) {
+    main.innerHTML = `<div class="empty"><b>${list.error ? "Could not load screens" : "No snapshot yet"}</b><div class="muted">${esc(list.error || "Build today's stock snapshot (from scripts/, PYTHONPATH=.):")}</div>${list.command ? `<code>${esc(list.command)}</code>` : ""}</div>`;
+    return;
+  }
+  if (!key) return screensOverview(main, list, mkt);
+  if (key === "new" || tab === "edit") {
+    let base = { name: "", description: "", conditions: [{ field: "tradable", op: "is", value: true }] };
+    const from = store.get("scrDraftFrom", null);
+    if (tab === "edit") base = (await api(`/api/screens/${key}?market=${mkt}`)).def;
+    else if (from) { const d = (await api(`/api/screens/${from}?market=${mkt}`)).def; base = { name: `${d.name} (my copy)`, description: d.description, conditions: d.conditions }; store.set("scrDraftFrom", null); }
+    if (!alive()) return;
+    return screenBuilder(main, alive, mkt, fs, base, tab === "edit" ? key : null);
+  }
+  tab = ["results", "criteria", "study"].includes(tab) ? tab : "results";
+  date = /^\d{4}-\d\d-\d\d$/.test(date || "") ? date : null;   // a past session is part of the URL: #/screens/<key>/<market>/<tab>/<date>
+  const r = await api(`/api/screens/${encodeURIComponent(key)}?market=${mkt}${date ? `&date=${date}` : ""}`).catch((e) => ({ error: e.message }));
   if (!alive()) return;
+  if (r.error || r.empty) { main.innerHTML = `<div class="empty"><b>${r.empty ? "No snapshot for this market yet" : "Screen not found"}</b><div class="muted">${esc(r.error || "Build it (from scripts/, PYTHONPATH=.):")}</div>${r.command ? `<code>${esc(r.command)}</code>` : ""}</div>`; return; }
+  const d = r.def;
+  const href = (t, m = mkt, dd = date) => `#/screens/${key}/${m}/${t}${dd && m === mkt ? "/" + dd : ""}`;
+  const sDates = r.dates.map((x, i) => ({ value: x, label: prettyDate(x) + (i > 0 && (r.dates[i - 1] || "").slice(0, 7) !== x.slice(0, 7) ? " · month-end" : "") }));
+  main.innerHTML = `<div class="crumbs"><a href="#/screens">← All screens</a></div>` + pageHead(esc(d.name), { context: datePicker(sDates, r.date),
+      actions: (d.builtin ? `<button id="scust" title="Start a screen of your own from this one">Customise…</button>`
+        : `<a class="btn" href="#/screens/${key}/${mkt}/edit">Edit</a><button class="danger" id="sdel">Delete</button>`)
+        + `<a class="btn primary" href="#/screens/new/${mkt}">+ New screen</a>` }) + `
+    <p class="sd-lead">${esc(d.description || "")}</p>
+    ${tabsHtml([["results", `Results <span class="n">${r.count}</span>`, href("results")], ["criteria", "Criteria", href("criteria")], ["study", "Study", href("study")]], tab)}
+    <div id="stab"></div>`;
+  main.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(href(tab, b.dataset.v)));
+  wireDatePicker(main, sDates, r.date, (dd, latest) => go(href(tab, mkt, latest ? null : dd)));
+  main.querySelector("#scust")?.addEventListener("click", () => { store.set("scrDraftFrom", key); go(`#/screens/new/${mkt}`); });
+  main.querySelector("#sdel")?.addEventListener("click", async () => {
+    if (!confirm(`Delete the screen “${d.name}”?`)) return;
+    await api(`/api/screens/${key}`, { method: "DELETE" }); store.set("scrKey", "stage2"); toast(`Deleted “${d.name}”`, "ok"); go(`#/screens/stage2/${mkt}`);
+  });
+  const host = main.querySelector("#stab");
+  if (tab === "criteria") {
+    host.innerHTML = `${d.thesis ? `<section class="sec-card"><p><b>Why.</b> ${esc(d.thesis)}</p></section>` : ""}
+      <section class="sec-card"><h3>Every condition must hold</h3><ol class="sd-list">${d.conditions.map((c) => `<li>${esc(condText(c, fs))}</li>`).join("")}</ol>
+        ${d.criteria ? `<h3>In plain words</h3><table class="dtab"><tbody>${d.criteria.map((c) => `<tr><td><code>${c.code}</code></td><td>${esc(c.text)}</td></tr>`).join("")}</tbody></table>` : ""}
+        <p class="muted small">"Tradable" is the market's floor — minimum price and 20-day traded value, a year of history, a valid ATR — the same floor the strategies use.</p></section>
+      ${d.used_by?.length ? `<section class="sec-card"><h3>Strategies that draw from this screen</h3><table class="dtab click"><tbody>
+        ${d.used_by.map((u) => `<tr data-href="#/strategies/${u.key}/rules"><td><b>${esc(u.name)}</b></td><td>${Object.entries(u.gates).map(([g, c]) => `<code>${g}</code>=${c}`).join(" · ")}</td></tr>`).join("")}</tbody></table>
+        <p class="muted small">A strategy evaluates these criteria with the same code, then adds its own trade rules, setups, entry, stop and exit.</p></section>` : ""}`;
+    host.querySelectorAll("tr[data-href]").forEach((tr) => tr.onclick = () => go(tr.dataset.href));
+    return;
+  }
+  if (tab === "study") return screenStudy(host, alive, key, mkt, d);
+  screenResults(host, r, mkt, d, fs);
+}
+
+/** "Clusters": the peer groups that several stocks of a list share — a theme, not separate ideas. Each chip
+ *  filters the table below to that group. `groups`: peer group per row. */
+function clusterChips(groups, min = 2) {
+  const c = {}; groups.forEach((g) => { if (g) c[g] = (c[g] || 0) + 1; });
+  const top = Object.entries(c).filter(([, n]) => n >= min).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  return top.length ? `<div class="clusters"><span class="muted small">Clusters</span>${top.map(([g, n]) => `<button class="chip" data-cluster="${esc(g)}" title="${esc(g)}">${esc(g.split(" › ").at(-1))}<span>${n}</span></button>`).join("")}</div>` : "";
+}
+function wireClusters(root, tableHost) {
+  root.querySelectorAll("[data-cluster]").forEach((b) => b.onclick = () => {
+    const inp = tableHost.querySelector(".tbar input"), on = b.classList.toggle("on");
+    root.querySelectorAll("[data-cluster]").forEach((x) => { if (x !== b) x.classList.remove("on"); });
+    inp.value = on ? b.dataset.cluster : ""; inp.dispatchEvent(new Event("input"));
+  });
+}
+
+function screenResults(host, r, mkt, d, fs) {
+  const used = [...new Set(d.conditions.flatMap((c) => [c.field, c.ref]).filter(Boolean))];
+  const base = ["symbol", "name", "peer_group", "peer_rs", "peer_rank", "market_cap_usd", "rs_rank", "close", "pct_below_high", "r1m", "r3m", "industry", "peer_count", "atr_pct", "value20"];
+  const extra = used.filter((k) => !base.includes(k) && (fs.fields.find((f) => f.key === k) || {}).kind !== "bool" && k !== "tradable");
+  const keys = [...base, ...extra];
+  const lbl = (k) => k === "name" ? "name" : k === "value20" ? `value (${mkt === "india" ? "₹ Cr" : "$M"})` : fieldLabel(fs, k);
+  const val = (k, v) => v == null ? null : k === "value20" ? +(v / (mkt === "india" ? 1e7 : 1e6)).toFixed(1)
+    : typeof v === "number" ? +v.toFixed(Math.abs(v) >= 100 ? 1 : 2) : v;
+  host.innerHTML = `${clusterChips(r.rows.map((x) => x.peer_group))}<div class="muted small scr-sum">${r.count} of ${r.universe.toLocaleString()} stocks (${r.tradable.toLocaleString()} tradable) on ${prettyDate(r.date)}
+      ${r.prev_date ? ` · ${r.rows.filter((x) => x.new).length} new since ${prettyDate(r.prev_date)}${r.dropped.length ? ` · ${r.dropped.length} dropped out` : ""}` : ""}</div><div id="stbl"></div>`;
+  const cols = [...keys.map(lbl), "setups", "new"];
+  const rows = r.rows.map((x) => [...keys.map((k) => val(k, x[k])), x.setups.map((u) => `${u.strategy} · ${u.tradeable ? "TRADE" : "watch"}`).join(", "), x.new ? "new" : ""]);
+  dataTable(host.querySelector("#stbl"), cols, rows, {
+    name: `screen_${d.key || "draft"}_${mkt}`, tags: { new: () => "trade" }, hidden: [lbl("industry"), lbl("peer_count"), lbl("atr_pct"), lbl("value20"), ...(d.builtin ? extra.map(lbl) : [])],
+    format: { [lbl("peer_rank")]: (v, row) => (v == null ? "" : `${v} of ${row[keys.indexOf("peer_count")] ?? "?"}`) },
+    rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((x) => x[0]), `${d.name || "Screen"} · ${prettyDate(r.date)}`, location.hash),
+  });
+  wireClusters(host, host.querySelector("#stbl"));
+}
+
+/** Screens home: every screen as a card — today's count, the change since the previous session, the top
+ *  names by RS — your own screens beside the built-in ones, and a card to create a new one. */
+function screensOverview(main, list, mkt) {
+  const card = (x) => {
+    const ch = x.prev_count != null ? x.count - x.prev_count : null;
+    return `<a class="sec-card scr-card" href="#/screens/${x.key}/${mkt}" title="Open this screen">
+      <div class="scr-h"><b>${esc(x.name)}</b>${x.builtin ? "" : '<span class="tag info">yours</span>'}</div>
+      <div><span class="scr-n">${x.count ?? "—"}</span> <span class="muted small">stocks qualify${ch ? ` · <span class="${ch > 0 ? "pos" : "neg"}">${ch > 0 ? "+" : ""}${ch}</span> since the previous session` : ""}</span></div>
+      <div class="muted small scr-desc">${esc(x.description || "")}</div>
+      ${x.top?.length ? `<div class="scr-top">${x.top.slice(0, 8).map((t) => `<span class="chip-s" title="${esc(t.name || "")}">${esc(t.symbol.replace(/\.NS$/, ""))}</span>`).join("")}</div>` : ""}
+      ${x.used_by?.length ? `<div class="muted small">Used by: ${x.used_by.map((u) => esc(u.name)).join(", ")}</div>` : ""}</a>`;
+  };
+  const builtins = list.screens.filter((x) => x.builtin), mine = list.screens.filter((x) => !x.builtin);
+  main.innerHTML = pageHead("Screens", { context: `<span class="muted small">${prettyDate(list.date)} · ${list.tradable?.toLocaleString()} tradable stocks</span>${info(`<p>Which stocks are worth a look today. A screen is a set of conditions over every stock's daily snapshot (about 50 fields) — it only qualifies stocks; a strategy adds the trade.</p><p>${list.tradable?.toLocaleString()} of ${list.universe?.toLocaleString()} stocks clear the tradable floor (price, liquidity, a year of history).</p>`)}`,
+      actions: `<a class="btn primary" href="#/screens/new/${mkt}">+ New screen</a>` })
+    + `
+    <h3 class="ov-h">Built-in screens</h3><div class="scr-cards">${builtins.map(card).join("")}
+      <a class="sec-card scr-card" href="#/quality"><div class="scr-h"><b>Quality</b></div><div class="muted small">Long-term: companies with durable fundamentals, and when their price is right.</div></a></div>
+    <h3 class="ov-h">Your screens</h3><div class="scr-cards">${mine.map(card).join("")}
+      <a class="sec-card scr-card scr-new" href="#/screens/new/${mkt}"><div class="scr-h"><b>+ New screen</b></div>
+        <div class="muted small">Pick conditions from ~50 fields — returns, RS rank, moving averages, 52-week range, volume, trend, sector — and see the matching stocks as you build. Then study how it did over five years.</div></a></div>`;
+}
+
+/** The screen builder: conditions with a live preview; save as one of your screens. */
+function screenBuilder(main, alive, mkt, fs, base, editKey) {
+  let conds = JSON.parse(JSON.stringify(base.conditions || []));
+  const groups = [...new Set(fs.fields.map((f) => f.group))];
+  const fieldOpts = (sel, kinds) => groups.map((g) => { const fl = fs.fields.filter((f) => f.group === g && (!kinds || kinds.includes(f.kind)));
+    return fl.length ? `<optgroup label="${esc(g)}">${fl.map((f) => `<option value="${f.key}" ${f.key === sel ? "selected" : ""}>${esc(f.label)}</option>`).join("")}</optgroup>` : ""; }).join("");
+  const kindOf = (k) => (fs.fields.find((f) => f.key === k) || {}).kind;
+  main.innerHTML = `<div class="page-head"><h1>${editKey ? "Edit screen" : "New screen"}</h1>${marketSeg(mkt)}<span class="spacer"></span>
+      <a class="ghost btn" href="#/screens/${editKey || store.get("scrKey", "stage2")}/${mkt}">Cancel</a><button class="primary" id="bsave">Save screen</button></div>
+    <div class="sec-card builder">
+      <div class="b-meta"><input id="bname" placeholder="Name, e.g. Strong leaders near highs" value="${esc(base.name || "")}"><input id="bdesc" placeholder="Description (optional)" value="${esc(base.description || "")}"></div>
+      <h3>Stocks where every condition holds</h3><div id="bconds"></div>
+      <button class="ghost" id="badd">+ Add condition</button>
+      <p class="muted small">Compare a field with a number, or with another field (× a factor, e.g. Close ≥ 52-week high × 0.9). Percent fields are in % (enter 20 for 20%). Hover a field for its meaning.</p>
+    </div>${segmented([["results", "Results"], ["study", "Study (5 years of month-ends)"]], "results", "bview")}<div id="bres">${LOADING}</div>`;
+  let view = "results";
+  main.querySelectorAll(".bview button").forEach((b) => b.onclick = () => { view = b.dataset.v;
+    main.querySelectorAll(".bview button").forEach((x) => x.classList.toggle("on", x === b)); preview(); });
+  main.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(`#/screens/${editKey ? editKey + "/" + b.dataset.v + "/edit" : "new/" + b.dataset.v}`));
+  const draw = () => {
+    main.querySelector("#bconds").innerHTML = conds.map((c, i) => {
+      const k = kindOf(c.field);
+      const ops = k === "bool" ? [["is", "is"]] : k === "text" ? [["in", "is one of"]] : [[">", ">"], [">=", "≥"], ["<", "<"], ["<=", "≤"], ["=", "="], ["!=", "≠"]];
+      const right = k === "bool" ? `<select data-i="${i}" data-k="value"><option value="true" ${c.value !== false ? "selected" : ""}>yes</option><option value="false" ${c.value === false ? "selected" : ""}>no</option></select>`
+        : k === "text" ? `<span class="b-vals">${(c.value || []).map((v, j) => `<span class="b-chip">${esc(v)}<button data-i="${i}" data-rm="${j}" title="Remove">×</button></span>`).join("")}
+            <select data-i="${i}" data-k="add"><option value="">+ add ${esc(fieldLabel(fs, c.field).toLowerCase())}…</option>${(fs.values?.[c.field] || []).filter((v) => !(c.value || []).includes(v)).map((v) => `<option>${esc(v)}</option>`).join("")}</select></span>`
+        : `<select data-i="${i}" data-k="mode"><option value="value" ${!c.ref ? "selected" : ""}>value</option><option value="ref" ${c.ref ? "selected" : ""}>field</option></select>
+           ${c.ref ? `<select data-i="${i}" data-k="ref">${fieldOpts(c.ref, ["price", "pct", "num", "money"])}</select><span class="muted">×</span><input class="mult" data-i="${i}" data-k="mult" type="number" step="any" value="${c.mult ?? 1}">`
+             : `<input class="num" data-i="${i}" data-k="value" type="number" step="any" value="${c.value ?? ""}">`}`;
+      return `<div class="b-row"><select data-i="${i}" data-k="field" title="${esc((fs.fields.find((f) => f.key === c.field) || {}).description || "")}">${fieldOpts(c.field)}</select>
+        <select data-i="${i}" data-k="op">${ops.map(([v, t]) => `<option value="${v}" ${v === c.op ? "selected" : ""}>${t}</option>`).join("")}</select>${right}
+        <button class="ibtn" data-del="${i}" title="Remove">×</button></div>`;
+    }).join("") || '<div class="muted small">No conditions — every stock passes. Add one.</div>';
+  };
+  let qt, seq = 0;
+  const preview = () => { clearTimeout(qt); qt = setTimeout(async () => {
+    const my = ++seq;
+    if (view === "study") return screenStudy(main.querySelector("#bres"), () => alive() && my === seq, null, mkt, { name: main.querySelector("#bname").value || "Draft" }, conds);
+    const r = await api("/api/screens/query", jsonReq("POST", { market: mkt, conditions: conds })).catch((e) => ({ error: e.message }));
+    if (!alive() || my !== seq) return;
+    const host = main.querySelector("#bres");
+    if (r.empty) r.error = "No snapshot for this market yet — run: " + r.command;
+    if (r.error) { host.innerHTML = `<div class="empty"><b>Can't run this yet</b><div class="muted">${esc(r.error.replace(/^\d+ /, ""))}</div></div>`; return; }
+    screenResults(host, r, mkt, { name: main.querySelector("#bname").value || "Draft", conditions: conds }, fs);
+  }, 250); };
+  main.querySelector("#bconds").addEventListener("change", (e) => {
+    const el_ = e.target, i = +el_.dataset.i, k = el_.dataset.k; if (isNaN(i)) return;
+    const c = conds[i];
+    if (k === "field") {
+      const kd = kindOf(el_.value);
+      conds[i] = kd === "bool" ? { field: el_.value, op: "is", value: true } : kd === "text" ? { field: el_.value, op: "in", value: [] } : { field: el_.value, op: ">", value: 0 };
+    } else if (k === "op") c.op = el_.value;
+    else if (k === "mode") { if (el_.value === "ref") { c.ref = "sma200"; c.mult = 1; delete c.value; } else { delete c.ref; delete c.mult; c.value = 0; } }
+    else if (k === "ref") c.ref = el_.value;
+    else if (k === "add") { if (el_.value) c.value = [...(c.value || []), el_.value]; }
+    else if (k === "mult") c.mult = el_.value === "" ? 1 : +el_.value;
+    else if (k === "value") c.value = kindOf(c.field) === "bool" ? el_.value === "true" : kindOf(c.field) === "text" ? el_.value.split(",").map((x) => x.trim()).filter(Boolean) : el_.value === "" ? null : +el_.value;
+    draw(); preview();
+  });
+  main.querySelector("#bconds").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-del]"); if (b) { conds.splice(+b.dataset.del, 1); draw(); preview(); return; }
+    const r = e.target.closest("[data-rm]"); if (r) { conds[+r.dataset.i].value.splice(+r.dataset.rm, 1); draw(); preview(); }
+  });
+  main.querySelector("#badd").onclick = () => { conds.push({ field: "rs_rank", op: ">=", value: 80 }); draw(); preview(); };
+  main.querySelector("#bsave").onclick = async () => {
+    const name = main.querySelector("#bname").value.trim();
+    if (!name) { toast("Give the screen a name", "err"); main.querySelector("#bname").focus(); return; }
+    try {
+      const r = await api("/api/screens", jsonReq("POST", { id: editKey ? +editKey.slice(1) : null, name, description: main.querySelector("#bdesc").value.trim(), conditions: conds }));
+      toast(`Saved “${r.name}”`, "ok"); store.set("scrKey", r.key); go(`#/screens/${r.key}/${mkt}`);
+    } catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
+  };
+  main.querySelectorAll(".b-meta input").forEach((x) => x.onkeydown = (e) => e.stopPropagation());
+  draw(); preview();
+}
+
+/** Study: forward returns of a screen's qualifiers on each month-end vs all tradable stocks (screens/study.py).
+ *  `key` is a saved screen; with `conds` (the builder) the unsaved conditions are studied. */
+async function screenStudy(host, alive, key, mkt, d, conds) {
+  host.innerHTML = LOADING;
+  const r = await (conds ? api("/api/screens/study", jsonReq("POST", { market: mkt, conditions: conds })) : api(`/api/screens/${key}/study?market=${mkt}`))
+    .catch((e) => ({ error: e.message.replace(/^\d+ /, "") }));
+  if (!alive() || !host.isConnected) return;
+  if (r.error || r.empty) {
+    host.innerHTML = `<div class="empty"><b>${r.empty ? "Not enough history to study yet" : "Can't study this screen"}</b>
+      <div class="muted">${r.empty ? `The study needs month-end snapshots (${r.month_ends} so far). Build five years of them (a few minutes, from scripts/, PYTHONPATH=.):` : esc(r.error)}</div>${r.command ? `<code>${esc(r.command)}</code>` : ""}</div>`;
+    return;
+  }
+  const pp = (v, dg = 1) => pctf(v == null ? null : v / 100, dg);
+  const s0 = r.summary[0];
+  const cmp = (r.compare || []).slice().sort((a, b) => b.excess - a.excess);
+  const mine = r.summary.find((x) => x.horizon === "6M");
+  if (mine && !d.builtin) cmp.push({ screen: key || "draft", name: `${d.name || "This screen"} (this)`, excess: mine.excess }), cmp.sort((a, b) => b.excess - a.excess);
+  const mx = Math.max(0.5, ...cmp.map((x) => Math.abs(x.excess)));
+  const small = s0.avg_qualifiers < 10 ? `<div class="sd-status watch"><b>Small sample</b> About ${Math.round(s0.avg_qualifiers)} qualifiers per month-end — a few big winners or losers dominate these averages; treat them as anecdote, not evidence.</div>` : "";
+  host.innerHTML = `${small}<div class="sec-top">
+      <section class="sec-card"><h3>Did qualifiers beat the field?</h3>
+        <table class="stt"><thead><tr><th>Held for</th><th class="num">Qualifiers</th><th class="num">All tradable</th><th class="num">Excess</th><th class="num" title="Share of qualifiers that beat the median tradable stock">Hit rate</th><th class="num" title="Share of month-ends on which qualifiers beat all tradable stocks on average">Dates won</th></tr></thead><tbody>
+        ${r.summary.map((x) => `<tr><td><b>${x.horizon}</b></td><td class="num">${pp(x.mean)}</td><td class="num muted">${pp(x.universe)}</td>
+          <td class="num"><b class="${x.excess >= 0 ? "pos" : "neg"}">${pp(x.excess, 2)}</b></td><td class="num">${(x.hit_rate * 100).toFixed(0)}%</td><td class="num">${(x.pct_dates_beating * 100).toFixed(0)}%</td></tr>`).join("")}</tbody></table>
+        <p class="muted small">${s0.dates} month-ends from ${prettyDate(s0.first)} to ${prettyDate(s0.last)} · about ${Math.round(s0.avg_qualifiers)} qualifiers each ${info(`<p>On each month-end the conditions were applied to that day's snapshot only; returns run to the month-end 1, 3 and 6 months later, close to close, equal-weight, no costs.</p>
+          <p><b>Hit rate</b>: share of qualifiers that beat the median tradable stock. <b>Dates won</b>: share of month-ends on which qualifiers beat all tradable stocks on average.</p>
+          <p>Caveats: delisted stocks are missing (survivorship), which flatters every group but most the weakest; 3- and 6-month windows overlap, so the dates are not independent; sector and industry use today's classification. This measures the screen alone — a strategy adds setups, entries and exits, judged by its backtests.</p>`)}</p></section>
+      <section class="sec-card"><h3>Against the built-in screens <span class="muted small">— 6-month excess</span></h3>
+        <div class="dbars">${cmp.map((x) => `<div class="dbar ${x.screen === (key || "draft") ? "me" : ""}"><span class="dl">${esc(x.name)}</span>
+          <span class="dt"><i class="${x.excess >= 0 ? "up" : "dn"}" style="width:${(Math.abs(x.excess) / mx) * 50}%;${x.excess >= 0 ? "left:50%" : "right:50%"}"></i></span>
+          <span class="dv ${x.excess >= 0 ? "pos" : "neg"}">${pp(x.excess, 2)}</span></div>`).join("")}</div>
+        <p class="muted small">A stricter screen should beat a looser one.</p></section></div>
+    <section class="sec-card"><div class="sec-card-h"><h3>Each month-end</h3><span class="muted small">qualifiers' 3-month return minus all tradable stocks' (bars) · number of qualifiers (line, right axis)</span></div><div id="stchart" class="gchart" style="height:300px"></div></section>
+    `;
+  const el_ = host.querySelector("#stchart");
+  const chart = LC.createChart(el_, { autoSize: true, ...chartTheme(), handleScroll: false, handleScale: false, rightPriceScale: { borderColor: cssVar("--line-2") }, leftPriceScale: { visible: true, borderColor: cssVar("--line-2") } });
+  const pts = r.series.filter((x) => x["3M"] && x["3M"].q != null);
+  chart.addSeries(LC.HistogramSeries, { priceScaleId: "left", priceLineVisible: false, lastValueVisible: false, priceFormat: { type: "percent" } })
+    .setData(pts.map((x) => { const e = x["3M"].q - x["3M"].u; return { time: x.date, value: +e.toFixed(2), color: e >= 0 ? "rgba(38,166,154,.7)" : "rgba(239,83,80,.7)" }; }));
+  chart.addSeries(LC.LineSeries, { color: cssVar("--series"), lineWidth: 1.5, priceLineVisible: false, title: "qualifiers" }).setData(r.series.map((x) => ({ time: x.date, value: x.qualifiers })));
+  chart.timeScale().fitContent();
+  { const prev = cleanup; cleanup = () => { chart.remove(); prev(); }; }
+}
+
+// --------------------------------------------------------- strategies
+
+/** Strategies: one page — Today's setups and every strategy on the left, the chosen one on the right. */
+async function strategiesPage(alive, key, tab, mkt, runKey) {
+  key = key && key !== "setups" ? key : "";
+  $view.innerHTML = LOADING;
+  const list = await api("/api/strategies").catch(() => []);
+  if (!alive()) return;
+  const dot = (x) => (x.kind === "screener" ? `<i class="st-dot ${statusClass(x.status) || "neutral"}" title="${esc(shortStatus(x.status))}"></i>` : "");
+  const item = (x, sub) => `<a class="nav-item${sub ? " sub" : ""} ${x.key === key ? "active" : ""}" href="#/strategies/${x.key}" title="${esc(x.description || "")}">
+      <span><b class="sn">${dot(x)}${esc(x.name)}</b><span class="muted small sk">${esc(x.screen_name || "")}</span></span>${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
+  // trading strategies group by style (server order), variants nested under their parent
+  const scr = list.filter((x) => x.kind === "screener");
+  const topLevel = (x) => !x.variant_of || !scr.some((p) => p.key === x.variant_of);
+  const withVariants = (p) => item(p) + scr.filter((v) => v.variant_of === p.key).map((v) => item(v, true)).join("");
+  const styles = [...new Map(scr.map((x) => [x.style_label || "Trading strategies", x.style_rank ?? 99]))].sort((a, b) => a[1] - b[1]);
+  const stratNav = styles.map(([label]) => `<div class="nav-h">${esc(label)}</div>` +
+    scr.filter((x) => (x.style_label || "Trading strategies") === label && topLevel(x)).map(withVariants).join("")).join("");
+  const rest = [["Benchmark", "benchmark"], ["Long-term", "long-term"]].map(([t, k]) => {
+    const xs = list.filter((x) => x.kind === k); return xs.length ? `<div class="nav-h">${t}</div>${xs.map((x) => item(x)).join("")}` : ""; }).join("");
+  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">
+      <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
+      ${stratNav}${rest}
+    </aside><section id="stmain" class="scr-main">${LOADING}</section></div>`;
+  const main = $view.querySelector("#stmain");
+  if (!key) return setupsPage(alive, main);
+  if (key === "quality" && !tab) tab = "rules";
+  return strategyPage(alive, main, key, tab, mkt, runKey);
+}
+
+
+async function setupsPage(alive, root) {
+  const mkt = pageMarket();
+  document.title = "Today's setups · Trading";
+  root.innerHTML = LOADING;
+  const r = await api(`/api/setups?market=${mkt}`).catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  let show = store.get("setupsShow", "all");
+  const newest = r.runs?.length ? r.runs.map((x) => x.run).sort().at(-1) : null;
+  root.innerHTML = pageHead("Today's setups", {
+      context: `<span class="muted small">${newest ? `latest run ${prettyDate(newest)}` : "not run yet"}</span>${info("<p>Every strategy's trades and watch names from its latest run. Strategies run on demand — <b>Run strategies…</b> adds a run to the job queue.</p>")}`,
+      actions: `<button class="primary" id="runstrat" title="Run the strategies on today's data (adds a run to the job queue)">Run strategies…</button>` }) + `
+    ${r.error ? `<div class="empty"><b>Could not load setups</b><div class="muted">${esc(r.error)}</div></div>` : `
+    <div class="setup-runs">${r.runs.map((x) => `<a class="sec-card setup-run" href="#/strategies/${x.strategy}/setups/${mkt}">
+        <b>${esc(x.name)}</b><div class="small"><span class="${x.tradeable ? "pos" : "muted"}">${x.tradeable} tradeable</span> · ${x.watch} on watch</div>
+        <div class="muted small">${x.screened} from ${esc(x.screen || "its screen")} · ${prettyDate(x.run)}</div></a>`).join("")}</div>
+    <div class="chips" id="sshow">${[["all", "All", r.rows.length], ["trade", "Tradeable", r.rows.filter((x) => x.tradeable).length], ["watch", "On watch", r.rows.filter((x) => !x.tradeable).length]]
+      .map(([k, t, n]) => `<button class="chip ${k === show ? "on" : ""}" data-s="${k}">${t}<span>${n}</span></button>`).join("")}</div><div id="sclus"></div><div id="stbl"></div>`}`;
+  root.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
+  root.querySelector("#runstrat").onclick = () => startJob({ title: `Run strategies · ${mktInfo(mkt).name}`, targets: ["strategies"], market: mkt, screens: true });
+  if (r.error) return;
+  const draw = () => {
+    const xs = r.rows.filter((x) => show === "all" || (show === "trade" ? x.tradeable : !x.tradeable));
+    const cols = ["symbol", "name", "peer_group", "group_rs", "strategy", "decision", "setup", "price", "entry", "stop", "risk_pct", "target_r", "setup_quality", "wait_for"];
+    const hide = ["target_r", "setup_quality", "wait_for"];
+    dataTable(root.querySelector("#stbl"), cols, xs.map((x) => [x.symbol, x.name || "", x.peer_group || "", x.peer_rs ?? null, x.strategy_name, x.decision, x.setup, x.price, x.entry, x.stop, x.risk_pct, x.target_r, x.quality, x.wait_for || ""]), {
+      name: `setups_${mkt}`, sort: ["setup_quality", -1], hidden: hide,
+      rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((y) => y[0]), "Today's setups", location.hash),
+    });
+    root.querySelector("#sclus").innerHTML = clusterChips(xs.map((x) => x.peer_group));
+    wireClusters(root.querySelector("#sclus"), root.querySelector("#stbl"));
+  };
+  root.querySelector("#sshow").onclick = (e) => { const b = e.target.closest("[data-s]"); if (!b) return; show = b.dataset.s; store.set("setupsShow", show);
+    root.querySelectorAll("#sshow .chip").forEach((c) => c.classList.toggle("on", c === b)); draw(); };
+  draw();
+}
+
+const SCREEN_COLS = ["symbol", "name", "peer_group", "group_rs", "decision", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r", "sector", "setup_quality",
+  "pattern", "rs_vs_benchmark", "rsi", "earnings_in", "wait_for", "reason"];
+
+/** One strategy: Setups today (its latest run) · Rules (its screen + its own rules, entry, exit) · Backtests. */
+async function strategyPage(alive, root, key, tab, mkt, runKey) {
+  root.innerHTML = LOADING;
+  const d = await api(`/api/strategies/${encodeURIComponent(key)}`).catch(() => null);
+  if (!alive()) return;
+  if (!d) { root.innerHTML = `<div class="empty"><b>Strategy not found</b><div class="muted"><a href="#/strategies">Today's setups</a></div></div>`; return; }
+  const trades = d.kind === "screener";
+  const tabs = [...(trades ? [["setups", "Setups today"]] : []), ["rules", "Rules"], ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
+  tab = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
   document.title = `${d.name} · Strategies · Trading`;
+  const kind = { benchmark: "Benchmark", "long-term": "Long-term investing", screener: "Trading strategy" }[d.kind] || "Strategy";
+  root.innerHTML = `<div class="crumbs">${kind}</div>
+    <div class="page-head"><h1>${esc(d.name)}</h1><code>${esc(d.key)}</code>
+      ${d.kind === "long-term" ? `<span class="spacer"></span><a class="btn" href="#/quality">Open the Quality page →</a>` : ""}</div>
+    ${d.status ? `<div class="sd-badge"><span class="tag ${statusClass(d.status) === "watch" ? "warn" : statusClass(d.status) === "trade" ? "pos" : "neutral"}" title="${esc(d.status)}">${esc(shortStatus(d.status))}</span>${info(`<p>${mdInline(d.status)}</p>`)}</div>` : ""}
+    <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of <a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}</p>
+    ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
+  const host = root.querySelector("#stab");
+  if (tab === "setups") return strategySetups(host, alive, key, mkt, runKey);
+  if (tab === "backtests") return strategyBacktests(host, d, key);
+  strategyRules(host, d, key);
+}
 
-  const navItem = (x) => `<a class="nav-item ${x.key === key ? "active" : ""}" href="#/strategies/${x.key}" title="${esc(x.status)}">
-      <span><b class="sn">${esc(x.name)}</b><span class="muted small sk">${esc(x.key)}</span></span>${x.backtests ? `<span class="n" title="backtest reports">${x.backtests}</span>` : ""}</a>`;
-  const groups = [["screener", "Screening strategies"], ["long-term", "Long-term investing"], ["benchmark", "Benchmark"]].map(([k, t]) => {
-    const xs = list.filter((x) => x.kind === k);
-    return xs.length ? `<div class="nav-h">${t}</div>${xs.map(navItem).join("")}` : "";
-  }).join("");
-
-  const sec = (id, title, body) => (body ? `<section class="sd-sec" id="sd-${id}"><h2>${title}</h2>${body}</section>` : "");
-  const codeTable = (rows, head) => rows.length ? `<table class="dtab"><thead><tr><th>${head}</th><th>Rule</th></tr></thead><tbody>${rows.map((r) =>
-    `<tr><td><code>${esc(r.code)}</code></td><td>${mdInline(r.text) || '<span class="neg">Not documented</span>'}</td></tr>`).join("")}</tbody></table>` : "";
+function strategyRules(host, d, key) {
+  const codeTable = (rows, head, extra) => rows.length ? `<table class="dtab"><thead><tr><th>${head}</th>${extra ? `<th>${extra[0]}</th>` : ""}<th>Rule</th></tr></thead><tbody>${rows.map((r) =>
+    `<tr><td><code>${esc(r.code)}</code></td>${extra ? `<td>${extra[1](r)}</td>` : ""}<td>${mdInline(r.text) || '<span class="neg">Not documented</span>'}</td></tr>`).join("")}</tbody></table>` : "";
   const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ol>` : "");
   const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "");
-
+  const sec = (id, title, body) => (body ? `<section class="sd-sec" id="sd-${id}"><h2>${title}</h2>${body}</section>` : "");
   const sameAcross = d.params.every((p) => p.values.us === p.values.india);
   const params = d.params.length ? `<table class="dtab"><thead><tr><th>Parameter</th>${sameAcross ? "<th class='num'>Value</th>" : "<th class='num'>US</th><th class='num'>India</th>"}<th>Meaning</th></tr></thead><tbody>${
     d.params.map((p) => `<tr><td>${esc(p.label)}<div class="muted small"><code>${esc(p.source)}</code></div></td>${
       sameAcross ? `<td class="num">${esc(p.values.us)}</td>` : `<td class="num">${esc(p.values.us)}</td><td class="num">${esc(p.values.india)}</td>`}<td>${mdInline(p.meaning)}</td></tr>`).join("")}</tbody></table>
     <p class="muted small">Values are read live from the code and the market configs.</p>` : "";
-
-  const pv = (x) => (x == null ? "" : x);
-  const bts = d.backtests.length ? `<table class="dtab click"><thead><tr><th>Market</th><th>Run</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
-    d.backtests.map((b) => { const s = b.summary || {};
-      return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td><td class="num">${esc(pv(s.cagr))}</td>
-        <td class="num ${/^-/.test(s.excess_cagr || "") ? "neg" : s.excess_cagr ? "pos" : ""}">${esc(pv(s.excess_cagr))}</td><td class="num">${esc(pv(s.max_drawdown))}</td>
-        <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td></tr>`; }).join("")}</tbody></table>`
-    : `<p class="muted">No backtest reports loaded for this strategy yet.</p>`;
-  const screens = d.kind === "screener" ? (d.screens.length ? `<div class="tiles">${d.screens.map((x) => `<a class="tile link" href="#/screening/${x.market}/${key}">
-      <span>${x.market.toUpperCase()} · ${prettyDate(x.run)}</span><b>${x.tradeable} tradeable</b><span class="muted small">${x.watch} on watch · ${x.rows} screened</span></a>`).join("")}</div>`
-    : `<p class="muted">No recorded screening run yet.</p>`) : "";
-
+  const fromScreen = d.gates.filter((g) => g.screen), own = d.gates.filter((g) => !g.screen);
+  let step = 0;
+  const num = () => (fromScreen.length ? `${++step} · ` : "");
   const cmds = Object.entries(d.commands).map(([k, c]) => `<div class="cmd"><div class="muted small">${esc(k)}</div><pre><code>${esc(c)}</code></pre><button class="ghost copy" data-c="${esc(c)}">Copy</button></div>`).join("");
-  const toc = [["overview", "Overview"], ["rules", d.gates.length ? "Rules" : ""], ["entry", d.entry_rules.length ? (d.kind === "long-term" ? "Price" : "Entry & exit") : ""], ["params", "Parameters"],
-    ["decisions", d.decisions.length ? "Decisions" : ""], ["results", "Results"], ["commands", "Commands"], ["caveats", "Caveats"]].filter((t) => t[1]);
-
-  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">${groups}</aside><section class="sdoc">
-    <div class="crumbs"><a href="#/strategies">Strategies</a> / ${esc(d.kind === "benchmark" ? "Benchmark" : d.kind === "long-term" ? "Long-term investing" : "Screening strategy")}</div>
-    <div class="page-head"><h1>${esc(d.name)}</h1><code>${esc(d.key)}</code>
-      ${d.kind === "screener" ? `<span class="spacer"></span><a class="btn" href="#/screening/us/${key}">Latest screening →</a>` : ""}
-      ${d.kind === "long-term" ? `<span class="spacer"></span><a class="btn" href="#/quality">Open the Quality page →</a>` : ""}</div>
+  host.innerHTML = `<section class="sdoc sdoc-tab">
     ${d.status ? `<div class="sd-status ${statusClass(d.status)}"><b>Status</b> ${mdInline(d.status)}</div>` : ""}
-    <p class="sd-lead">${mdInline(d.description)}</p>
-    <nav class="sd-toc">${toc.map(([id, t]) => `<a data-sec="sd-${id}">${t}</a>`).join("")}</nav>
     ${sec("overview", "Overview", `${d.thesis ? `<p><b>Thesis.</b> ${mdInline(d.thesis)}</p>` : ""}<h3>How it works</h3>${ol(d.how_it_works)}`)}
-    ${d.gates.length || d.watch.length || d.setups.length ? `<section class="sd-sec" id="sd-rules"><h2>Rules</h2>
-      ${d.gates.length ? (d.kind === "long-term" ? `<h3>Quality tests <span class="muted small">— points out of 100</span></h3>${codeTable(d.gates, "Worth")}`
-        : `<h3>Hard gates <span class="muted small">— all must pass, or the stock is AVOID</span></h3>${codeTable(d.gates, "Gate")}`) : ""}
-      ${d.watch.length ? `<h3>Watch flags <span class="muted small">— don't disqualify, but cap or downgrade the decision</span></h3>${codeTable(d.watch, "Flag")}` : ""}
-      ${d.setups.length ? `<h3>Setups <span class="muted small">— the patterns that make a stock entry-eligible</span></h3>${codeTable(d.setups, "Setup")}` : ""}
-      <p class="muted small">These codes are the <code>gate_*</code>, <code>watch_*</code> and <code>setup_*</code> columns on the Screening page.</p></section>` : ""}
+    ${d.kind === "long-term" && d.gates.length ? sec("rules", "Quality tests", `<p class="muted small">Points out of 100.</p>${codeTable(d.gates, "Worth")}`) : ""}
+    ${d.kind !== "long-term" && (d.gates.length || d.watch.length || d.setups.length) ? `<section class="sd-sec" id="sd-rules"><h2>Rules</h2>
+      ${fromScreen.length ? `<h3>${num()}Qualify — from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen</h3>
+        ${codeTable(fromScreen, "Gate", ["Screen", (r) => `<code>${r.screen}</code>`])}` : ""}
+      ${own.length ? `<h3>${fromScreen.length ? `${num()}Trade rules — this strategy's own` : "Hard gates"} <span class="muted small">— all must pass, or the stock is AVOID</span></h3>${codeTable(own, "Gate")}` : ""}
+      ${d.setups.length ? `<h3>${num()}Setups <span class="muted small">— the patterns that make a stock entry-eligible</span></h3>${codeTable(d.setups, "Setup")}` : ""}
+      ${d.watch.length ? `<h3>Warning flags <span class="muted small">— don't disqualify, but cap or downgrade the decision</span></h3>${codeTable(d.watch, "Flag")}` : ""}
+      </section>` : ""}
     ${sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>Entry, stop and target</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
-    ${sec("params", "Parameters", params)}
     ${sec("decisions", "Decisions", d.decisions.length ? `<table class="dtab"><tbody>${d.decisions.map((x) => `<tr><td><span class="tag ${decisionClass(x.label)}">${esc(x.label)}</span></td><td>${esc(x.text)}</td></tr>`).join("")}</tbody></table>
       <p class="muted small">${esc(d.regime_note)}</p>` : "")}
-    ${sec("results", "Results", `${screens ? `<h3>Latest screening</h3>${screens}` : ""}<h3>Backtests</h3>${bts}`)}
-    ${sec("commands", "Commands", `${cmds}<p class="muted small">Run from <code>scripts/</code> with <code>PYTHONPATH=.</code>. Change <code>--market</code> to <code>india</code> as needed.</p>`)}
+    ${sec("params", "Parameters", params)}
+    ${sec("commands", "Commands", `${cmds}<p class="muted small">Run from <code>scripts/</code> with <code>PYTHONPATH=.</code>.</p>`)}
     ${sec("caveats", "Known caveats", ul(d.caveats))}
-    <p class="muted small sd-src">Generated from <code>${esc(d.source.file)}</code> · code last changed ${prettyDate(d.source.modified)}.
-      This page is built from the strategy's own code, so it always describes what the screener and backtester actually run.</p>
-  </section></div>`;
-
-  $view.querySelectorAll(".sd-toc a").forEach((a) => a.onclick = () => document.getElementById(a.dataset.sec)?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  $view.querySelectorAll("tr[data-href]").forEach((tr) => tr.onclick = () => go(tr.dataset.href));
-  $view.querySelectorAll(".copy").forEach((b) => b.onclick = async () => {
+    <p class="muted small sd-src">Generated from <code>${esc(d.source.file)}</code> · code last changed ${prettyDate(d.source.modified)} — built from the strategy's own code, so it describes what actually runs.</p></section>`;
+  host.querySelectorAll(".copy").forEach((b) => b.onclick = async () => {
     try { await navigator.clipboard.writeText(b.dataset.c); toast("Command copied", "ok"); } catch { toast("Copy failed — select the text instead", "err"); }
   });
 }
 
-// --------------------------------------------------------- screening page
+function strategyBacktests(host, d, key) {
+  const pv = (x) => (x == null ? "" : x);
+  const canRun = d.kind === "screener";  // the benchmark / quality pages are measured by their own commands
+  const runBtn = canRun ? `<div class="bt-run"><button class="primary sm" id="btrun" title="Queue a full-history backtest of this strategy (its documented exit policy) — slow; follow it on System → Runs">Backtest ${esc(mktInfo(pageMarket()).name)}…</button>
+      <span class="muted small">runs in the job queue — follow it on <a href="#/runs">System → Runs</a></span></div>` : "";
+  host.innerHTML = runBtn + (d.backtests.length ? `<table class="dtab click"><thead><tr><th>Market</th><th>Run</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
+      d.backtests.map((b) => { const s = b.summary || {};
+        return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td><td class="num">${esc(pv(s.cagr))}</td>
+          <td class="num ${/^-/.test(s.excess_cagr || "") ? "neg" : s.excess_cagr ? "pos" : ""}">${esc(pv(s.excess_cagr))}</td><td class="num">${esc(pv(s.max_drawdown))}</td>
+          <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td></tr>`; }).join("")}</tbody></table>
+      <p class="muted small">A backtest runs the whole strategy — screen, setups, entry, stop, exits, costs and position sizing — day by day. The command is under Rules › Commands.</p>`
+    : `<div class="empty"><b>No backtests loaded for this strategy</b><div class="muted">${canRun ? "Queue one with the button above, or run" : "Run"} the command under Rules › Commands; reports load into the app automatically.</div></div>`);
+  host.querySelector("#btrun")?.addEventListener("click", () =>
+    startJob({ title: `Backtest · ${mktInfo(pageMarket()).name}`, targets: ["backtest"], market: pageMarket(), screens: true, pick: key }));
+  host.querySelectorAll("tr[data-href]").forEach((tr) => tr.onclick = () => go(tr.dataset.href));
+}
 
-const SCREEN_COLS = ["symbol", "name", "sector", "decision", "price", "entry", "stop", "risk_pct", "target_r", "setup_quality",
-  "strategy_setup", "pattern", "rs_vs_benchmark", "rsi", "earnings_in", "wait_for", "reason"];
-
-async function screeningPage(alive, mkt, strat, runKey) {
-  mkt = mkt || store.get("scrMarket", "us");
-  store.set("scrMarket", mkt);
-  document.title = "Screening · Trading";
-  $view.innerHTML = LOADING;
+/** a strategy's latest (or chosen) run: every screened stock with its decision, plan and gates */
+async function strategySetups(host, alive, strat, mkt, runKey) {
+  mkt = pageMarket(mkt);
+  host.innerHTML = LOADING;
   const all = await api(`/api/screening/runs?market=${mkt}`);
   if (!alive()) return;
-  // a report-source run duplicates a history run from the same day: keep the history one
   const hist = all.filter((r) => r.source === "history");
-  const runs = all.filter((r) => r.source === "history" || !hist.some((h) => h.strategy === r.strategy && String(h.run).startsWith(r.run)));
-  const strategies = [...new Set(runs.map((r) => r.strategy))].sort();
-  strat = strategies.includes(strat) ? strat : strategies.includes(store.get("scrStrat")) ? store.get("scrStrat") : strategies[0];
-  const mine = runs.filter((r) => r.strategy === strat);
-  const run = mine.find((r) => r.run === runKey) || mine[0];
-  $view.innerHTML = `<div class="page-head"><h1>Screening</h1>
-      ${segmented([["us", "US"], ["india", "India"]], mkt, "mk")}
-      <label class="field"><span>Strategy</span><select id="strat">${strategies.map((s) => `<option ${s === strat ? "selected" : ""}>${esc(s)}</option>`).join("")}</select></label>
-      <a class="small" href="#/strategies/${encodeURIComponent(strat)}" title="What this strategy looks for, gate by gate">About this strategy →</a>
-      <label class="field"><span>Run</span><select id="run">${mine.map((r, i) => `<option value="${esc(r.run)}" ${r === run ? "selected" : ""}>${prettyDate(r.run)}${i === 0 ? " (latest)" : ""}${r.tradeable != null ? ` — ${r.tradeable} tradeable of ${r.rows}` : ""}</option>`).join("")}</select></label>
-    </div>
+  const runs = all.filter((r) => (r.source === "history" || !hist.some((h) => h.strategy === r.strategy && String(h.run).startsWith(r.run))) && r.strategy === strat);
+  const run = runs.find((r) => r.run === runKey) || runs[0];
+  const nav = (m, r) => go(`#/strategies/${strat}/setups/${m}${r ? "/" + encodeURIComponent(r) : ""}`);
+  const rDates = runs.map((r) => ({ value: r.run, label: `Run ${prettyDate(r.run)}${r.tradeable != null ? ` — ${r.tradeable} tradeable of ${r.rows}` : ""}` }));
+  host.innerHTML = `<div class="page-head sub">${run ? datePicker(rDates, run.run, "runs") : ""}<span class="spacer"></span>
+      <button id="run1" title="Run this strategy on today's data (adds a run to the job queue)">Run this strategy…</button></div>
     <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div>`;
-  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(`#/screening/${b.dataset.v}`));
-  const nav = (s, r) => go(`#/screening/${mkt}/${encodeURIComponent(s)}${r ? "/" + encodeURIComponent(r) : ""}`);
-  $view.querySelector("#strat").onchange = (e) => { store.set("scrStrat", e.target.value); nav(e.target.value); };
-  $view.querySelector("#run").onchange = (e) => nav(strat, e.target.value);
-  if (!run) { $view.querySelector("#tbl").innerHTML = `<div class="empty"><b>No screening runs for ${mkt.toUpperCase()}</b><div class="muted">Run the screener pipeline, then refresh.</div></div>`; return; }
-
+  host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => nav(b.dataset.v));
+  wireDatePicker(host, rDates, run?.run, (r, latest) => nav(mkt, latest ? null : r));
+  host.querySelector("#run1").onclick = () => startJob({ title: `Run ${strat} · ${mktInfo(mkt).name}`, targets: ["strategies"], market: mkt, screens: true, pick: strat });
+  if (!run) { host.querySelector("#tbl").innerHTML = `<div class="empty"><b>No runs for ${MKT_BADGE[mkt]} yet</b><div class="muted">Run the strategies job, then refresh.</div></div>`; return; }
   const q = new URLSearchParams({ source: run.source, market: mkt, strategy: strat, run: run.run });
   if (run.id) q.set("id", run.id);
   const t = await api(`/api/screening/table?${q}`);
@@ -1636,28 +2314,34 @@ async function screeningPage(alive, mkt, strat, runKey) {
   const decisions = Object.keys(counts).filter((d) => d && d !== "null").sort();
   const nTrade = t.rows.filter((r) => r[ti] === true).length;
   let activeDec = store.get("scrDec", "tradeable");
-  if (activeDec !== "all" && activeDec !== "tradeable" && !counts[activeDec]) activeDec = "tradeable";
-  let allCols = store.get("scrAllCols", false);
-  const dec = $view.querySelector("#dec");
+  if (!["all", "tradeable", "watch"].includes(activeDec) && !counts[activeDec]) activeDec = "tradeable";
+  const dec = host.querySelector("#dec");
+  const isWatch = (r) => /^WATCH/i.test(r[di] || "");
+  const nWatch = t.rows.filter(isWatch).length;
+  // three chips (Tradeable · Watch · All); the exact decision is a select beside them
   const drawChips = () => {
-    dec.innerHTML = [["tradeable", "Tradeable", nTrade, "trade"], ["all", "All", t.rows.length, ""], ...decisions.map((d) => [d, d, counts[d], decisionClass(d)])]
-      .map(([v, txt, n, cls]) => `<button class="chip ${cls} ${v === activeDec ? "on" : ""}" data-d="${esc(v)}">${esc(txt)}<span>${n}</span></button>`).join("") +
-      `<span class="spacer"></span><label class="check"><input type="checkbox" id="allcols" ${allCols ? "checked" : ""}> Show all ${t.columns.length} columns</label>`;
+    const main = ["tradeable", "watch", "all"].includes(activeDec);
+    dec.innerHTML = [["tradeable", "Tradeable", nTrade, "trade"], ["watch", "Watch", nWatch, "watch"], ["all", "All", t.rows.length]]
+      .map(([v, txt, n, cls]) => `<button class="chip ${cls || ""} ${v === activeDec ? "on" : ""}" data-d="${esc(v)}">${esc(txt)}<span>${n}</span></button>`).join("") +
+      `<select id="decsel" title="Filter by the exact decision" class="${main ? "" : "on"}"><option value="">Any decision</option>${decisions.map((d) => `<option value="${esc(d)}" ${d === activeDec ? "selected" : ""}>${esc(d)} (${counts[d]})</option>`).join("")}</select>`;
   };
+  // the essentials first; the other ~40 columns are one click away under Columns
+  const order = [...SCREEN_COLS.map((c) => t.columns.indexOf(c)).filter((i) => i >= 0)];
+  const keep = [...order, ...t.columns.map((_, i) => i).filter((i) => !order.includes(i))];
+  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "decision", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
   const draw = () => {
     drawChips();
-    const keep = allCols ? [si, ...t.columns.map((_, i) => i).filter((i) => i !== si)] : SCREEN_COLS.map((c) => t.columns.indexOf(c)).filter((i) => i >= 0);
-    const rows = t.rows.filter((r) => activeDec === "all" || (activeDec === "tradeable" ? r[ti] === true : r[di] === activeDec));
-    const host = $view.querySelector("#tbl");
-    if (!rows.length) { host.innerHTML = `<div class="empty"><b>Nothing ${activeDec === "tradeable" ? "tradeable" : "here"} in this run</b><div class="muted">Try “All” to see every screened name.</div></div>`; return; }
-    dataTable(host, keep.map((i) => t.columns[i]), rows.map((r) => keep.map((i) => r[i])), {
-      name: `${mkt}_${strat}_${run.run}`,
+    const rows = t.rows.filter((r) => activeDec === "all" || (activeDec === "tradeable" ? r[ti] === true : activeDec === "watch" ? isWatch(r) : r[di] === activeDec));
+    const tbl = host.querySelector("#tbl");
+    if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>Nothing ${activeDec === "tradeable" ? "tradeable" : "here"} in this run</b><div class="muted">Try “All” to see every stock the screen passed to this strategy.</div></div>`; return; }
+    dataTable(tbl, keep.map((i) => t.columns[i]), rows.map((r) => keep.map((i) => r[i])), {
+      name: `setups_${strat}`, hidden: keep.map((i) => t.columns[i]).filter((c) => !DEFAULT_SHOWN.has(c)),
       rowClick: (row, visible) => openChartFromList(mkt, row[keep.indexOf(si)], visible.map((r) => r[keep.indexOf(si)]),
         `${strat} · ${activeDec === "all" ? "all" : activeDec.toLowerCase()}`, location.hash),
     });
   };
   dec.onclick = (e) => { const b = e.target.closest("button[data-d]"); if (b) { activeDec = b.dataset.d; store.set("scrDec", activeDec); draw(); } };
-  dec.onchange = (e) => { if (e.target.id === "allcols") { allCols = e.target.checked; store.set("scrAllCols", allCols); draw(); } };
+  dec.onchange = (e) => { if (e.target.id === "decsel") { activeDec = e.target.value || "all"; store.set("scrDec", activeDec); draw(); } };
   draw();
 }
 
@@ -1680,7 +2364,7 @@ async function reportsPage(alive) {
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav"></aside><section class="rep-main"></section></div>`;
   const nav = $view.querySelector(".rep-nav"), main = $view.querySelector(".rep-main");
   const save = () => { store.set("repState", st); draw(); };
-  if (!list.length) { main.innerHTML = `<div class="empty"><b>No reports loaded yet</b><div class="muted">Press <b>Refresh reports</b> (top right) after a backtest or screening run.</div></div>`; return; }
+  if (!list.length) { main.innerHTML = `<div class="empty"><b>No reports loaded yet</b><div class="muted">Press <b>Load reports</b> (top right) after a backtest or screening run.</div></div>`; return; }
 
   function draw() {
     const mk = list.filter(inMarket);
@@ -1755,15 +2439,32 @@ async function reportPage(alive, id, tab) {
   };
   if (tab === "report") {
     body.innerHTML = `<article class="md">${marked.parse(r.markdown)}</article>`;
+    // ```pattern <key>``` fences in the learning guides draw that pattern with real candles (learn.js)
+    body.querySelectorAll(".md pre > code.language-pattern").forEach((c) => {
+      const p = Learn.get(c.textContent.trim());
+      if (p) c.parentElement.outerHTML = `<figure class="lp-md">${Learn.svg(p)}<figcaption><a href="#/learn/${p.key}">${esc(p.name)}</a> — open it in Learn</figcaption></figure>`;
+    });
     body.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
+    // research docs link to siblings as relative *.md files — open those as their ingested report, not as a dead URL
+    body.querySelectorAll('.md a[href$=".md"]').forEach((a) => {
+      const f = a.getAttribute("href");
+      if (/^(https?:)?\/\//.test(f) || f.includes("/")) return;
+      a.onclick = async (e) => {
+        e.preventDefault();
+        const runs = await api("/api/reports?kind=research").catch(() => []);
+        const t = runs.find((x) => x.run === f.replace(/\.md$/, ""));
+        if (t) go(t.run.startsWith("learn-") ? `#/learn/${t.run.replace(/^learn-/, "")}` : `#/reports/${t.id}`);
+        else toast("That document is not loaded — click Load reports on the Reports archive", "err");
+      };
+    });
   } else if (tab === "equity") {
     body.innerHTML = `<div id="eqchart"></div><div id="eqt"></div>`;
     const t = await api(`/api/reports/${id}/tables/equity`);
     if (!alive()) return;
-    const chart = LC.createChart(body.querySelector("#eqchart"), { autoSize: true, ...CHART_THEME });
+    const chart = LC.createChart(body.querySelector("#eqchart"), { autoSize: true, ...chartTheme() });
     const ci = (n) => t.columns.indexOf(n), ei = ci("equity") >= 0 ? ci("equity") : 1, di = ci("drawdown_pct");
     const series = (idx) => t.rows.filter((x) => x[idx] != null).map((x) => ({ time: String(x[0]).slice(0, 10), value: x[idx] }));
-    chart.addSeries(LC.AreaSeries, { lineColor: "#2962ff", topColor: "rgba(41,98,255,.25)", bottomColor: "rgba(41,98,255,0)", lineWidth: 2, title: "Equity" }, 0).setData(series(ei));
+    chart.addSeries(LC.AreaSeries, { lineColor: cssVar("--series"), topColor: alpha(cssVar("--series"), .2), bottomColor: alpha(cssVar("--series"), 0), lineWidth: 2, title: "Equity" }, 0).setData(series(ei));
     if (di >= 0) {
       chart.addSeries(LC.AreaSeries, { lineColor: "#ef5350", topColor: "rgba(239,83,80,.05)", bottomColor: "rgba(239,83,80,.35)", lineWidth: 1, title: "Drawdown %" }, 1).setData(series(di));
       try { chart.panes()[1].setHeight(130); } catch {}
@@ -1800,6 +2501,339 @@ async function reportPage(alive, id, tab) {
 function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 
 let lastRoute = null;
+// ------------------------------------------------------------- notes page
+
+const NOTE_TEMPLATES = {
+  blank: { label: "Blank note", make: (sym) => ({ title: sym ? `${sym.symbol.replace(/\.NS$/, "")} — notes` : "", body: "", tags: [] }) },
+  journal: { label: "Daily journal", make: () => { const d = new Date().toISOString().slice(0, 10); return { title: `Journal — ${longDate(d)}`, tags: ["journal"],
+    body: "## Market\n- Tone:\n- Breadth / leading groups:\n\n## Positions\n| Stock | Plan | Action |\n|---|---|---|\n|  |  |  |\n\n## Watching\n- \n\n## Lessons\n- \n" }; } },
+  plan: { label: "Trade plan", make: (sym) => ({ title: `Plan — ${sym ? sym.symbol.replace(/\.NS$/, "") : ""}`, tags: ["plan"],
+    body: "## Setup\n\n## Entry / stop / target\n- Entry:\n- Stop:\n- Target:\n- Size / risk:\n\n## Why now\n\n## What would prove me wrong\n" }) },
+  review: { label: "Trade review", make: (sym) => ({ title: `Review — ${sym ? sym.symbol.replace(/\.NS$/, "") : ""}`, tags: ["review"],
+    body: "## What happened\n\n## What I did well\n\n## What I'd do differently\n\n## Lesson\n" }) },
+};
+
+/** Notes: list + search on the left, a Markdown editor with live preview on the right; saves as you type. */
+/** The rich editor's HTML back to Markdown (notes are stored as Markdown: search, the chart's notes panel
+ *  and "Copy as Markdown" read it). Covers what the editor produces: paragraphs, headings, bold / italic /
+ *  strikethrough / code, links, bullet / numbered / check lists (nested), quotes, code blocks, rules, tables. */
+function htmlToMd(root) {
+  const inline = (n) => [...n.childNodes].map((c) => {
+    if (c.nodeType === 3) return c.textContent.replace(/\u00a0/g, " ");
+    if (c.nodeType !== 1) return "";
+    const t = c.tagName.toLowerCase(), x = inline(c);
+    if (t === "br") return "\n";
+    if ((t === "strong" || t === "b") && x.trim()) return `**${x}**`;
+    if ((t === "em" || t === "i") && x.trim()) return `_${x}_`;
+    if ((t === "s" || t === "strike" || t === "del") && x.trim()) return `~~${x}~~`;
+    if (t === "code") return "`" + c.textContent + "`";
+    if (t === "a") return `[${x || c.getAttribute("href")}](${c.getAttribute("href") || ""})`;
+    if (t === "img") return `![${c.getAttribute("alt") || ""}](${c.getAttribute("src") || ""})`;
+    if (t === "input") return "";
+    if (BLOCK.has(t)) return "\n\n" + blockOf(c).trim() + "\n\n";
+    return x;
+  }).join("");
+  const list = (n, ind) => [...n.children].filter((li) => li.tagName === "LI").map((li, i) => {
+    const box = li.querySelector(":scope > input[type=checkbox]") || li.querySelector(":scope > p > input[type=checkbox]");
+    const mark = n.tagName === "OL" ? `${i + 1}. ` : "- ";
+    const own = document.createElement("div");
+    [...li.childNodes].forEach((c) => { if (!(c.nodeType === 1 && /^(UL|OL)$/.test(c.tagName))) own.append(c.cloneNode(true)); });
+    const text = inline(own).replace(/\n+/g, " ").trim();
+    const sub = [...li.children].filter((c) => /^(UL|OL)$/.test(c.tagName)).map((c) => list(c, ind + (n.tagName === "OL" ? "   " : "  "))).join("\n");
+    return `${ind}${mark}${box ? (box.checked ? "[x] " : "[ ] ") : ""}${text}` + (sub ? "\n" + sub : "");
+  }).join("\n");
+  const BLOCK = new Set(["ul", "ol", "p", "div", "blockquote", "pre", "table", "h1", "h2", "h3", "h4", "h5", "h6", "hr"]);
+  const block = (n) => [...n.childNodes].map((c) => {
+    if (c.nodeType === 3) return c.textContent.trim() ? c.textContent.replace(/\u00a0/g, " ") + "\n\n" : "";
+    return c.nodeType === 1 ? blockOf(c) : "";
+  }).join("");
+  // one element as Markdown block(s); a paragraph or div holding block elements (a list the browser put
+  // inside a <p>) is treated as a container
+  const blockOf = (c) => {
+    const t = c.tagName.toLowerCase();
+    if ((t === "p" || t === "div") && [...c.children].some((k) => BLOCK.has(k.tagName.toLowerCase()))) return block(c);
+    if (/^h[1-6]$/.test(t)) return "#".repeat(+t[1]) + " " + inline(c).trim() + "\n\n";
+    if (t === "ul" || t === "ol") return list(c, "") + "\n\n";
+    if (t === "blockquote") return block(c).trim().split("\n").map((l) => "> " + l).join("\n") + "\n\n";
+    if (t === "pre") return "```\n" + c.textContent.replace(/\n$/, "") + "\n```\n\n";
+    if (t === "hr") return "---\n\n";
+    if (t === "table") {
+      const rows = [...c.querySelectorAll("tr")].map((tr) => [...tr.children].map((td) => inline(td).replace(/\|/g, "\\|").replace(/\n/g, " ").trim()));
+      if (!rows.length) return "";
+      const w = Math.max(...rows.map((r) => r.length)), pad = (r) => [...r, ...Array(w - r.length).fill("")];
+      return [pad(rows[0]), Array(w).fill("---"), ...rows.slice(1).map(pad)].map((r) => `| ${r.join(" | ")} |`).join("\n") + "\n\n";
+    }
+    if (t === "br") return "\n";
+    const x = inline(c).trim();
+    return x ? x + "\n\n" : "";
+  };
+  return block(root).replace(/\n{3,}/g, "\n\n").trim() + "\n";
+}
+
+async function notesPage(alive, args) {
+  document.title = "Notes · Trading";
+  let filter = { q: store.get("notesQ", ""), tag: store.get("notesTag", null), market: null, symbol: null };
+  let openId = null, pendingNew = null;
+  if (args[0] === "sym") { filter.market = args[1]; filter.symbol = args[2]; }
+  else if (args[0] === "new") pendingNew = args[1] && args[2] ? { market: args[1], symbol: args[2] } : {};
+  else if (args[0]) openId = +args[0];
+  if (pendingNew) {  // create, then open it (an untouched new note is deleted again on leaving)
+    const sym = pendingNew.symbol ? pendingNew : null;
+    const n = await api("/api/notes", jsonReq("POST", { ...NOTE_TEMPLATES.blank.make(sym), symbols: sym ? [sym] : [] }));
+    store.set("notesFresh", n.id);
+    return go(`#/notes/${n.id}`);
+  }
+  const mode = () => (store.get("notesEditor", "rich") === "markdown" ? "markdown" : "rich");
+  $view.innerHTML = `<div class="notes">
+      <aside class="notes-list">
+        <div class="nl-head"><label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="nq" placeholder="Search notes" spellcheck="false"></label>
+          <button class="primary" id="nnew" title="New note">New</button></div>
+        <div class="nl-filter" id="nfilter"></div>
+        <div class="nl-items" id="nitems">${LOADING}</div>
+      </aside>
+      <section class="notes-ed" id="ned"><div class="empty"><b>Select a note, or create one</b><div class="muted">Notes are saved as you type. Format with the toolbar, or type # for a heading, - for a list, [] for a checklist.</div></div></section>
+    </div>`;
+  const $q = $view.querySelector("#nq");
+  $q.value = filter.q;
+  let list = [];
+  const sym = (x) => `<span class="mkt">${MKT_BADGE[x.market]}</span>${esc(x.symbol.replace(/\.NS$/, ""))}`;
+  async function loadList() {
+    const p = new URLSearchParams();
+    if (filter.q) p.set("q", filter.q);
+    if (filter.tag) p.set("tag", filter.tag);
+    if (filter.symbol) { p.set("market", filter.market); p.set("symbol", filter.symbol); }
+    const r = await api(`/api/notes?${p}`).catch(() => ({ notes: [], tags: [] }));
+    if (!alive()) return;
+    list = r.notes;
+    $view.querySelector("#nfilter").innerHTML = `${filter.symbol ? `<span class="chip on">${sym(filter)} <a href="#/notes" title="Clear">×</a></span>` : ""}
+      ${r.tags.map((t) => `<button class="chip ${t.tag === filter.tag ? "on" : ""}" data-t="${esc(t.tag)}">#${esc(t.tag)}<span>${t.count}</span></button>`).join("")}`;
+    $view.querySelectorAll("#nfilter [data-t]").forEach((b) => b.onclick = () => { filter.tag = filter.tag === b.dataset.t ? null : b.dataset.t; store.set("notesTag", filter.tag); loadList(); });
+    $view.querySelector("#nitems").innerHTML = list.length ? list.map((n) => `<a class="nl-item ${n.id === openId ? "cur" : ""}" href="#/notes/${n.id}">
+        <div class="nl-t">${n.pinned ? '<span class="pin" title="Pinned">●</span>' : ""}<b>${esc(n.title || "Untitled")}</b><span class="muted small">${ago(n.updated_at)}</span></div>
+        ${n.snippet ? `<div class="muted small nl-s">${esc(n.snippet)}</div>` : ""}
+        ${n.tags.length || n.symbols.length ? `<div class="nl-m">${n.symbols.map((x) => `<span class="nl-sym">${sym(x)}</span>`).join("")}${n.tags.map((t) => `<span class="nl-tag">#${esc(t)}</span>`).join("")}</div>` : ""}</a>`).join("")
+      : `<div class="muted small nl-none">${filter.q || filter.tag || filter.symbol ? "No notes match." : "No notes yet — click New."}</div>`;
+  }
+  let qt;
+  $q.oninput = () => { clearTimeout(qt); qt = setTimeout(() => { filter.q = $q.value.trim(); store.set("notesQ", filter.q); loadList(); }, 250); };
+  $view.querySelector("#nnew").onclick = (e) => {
+    const r = e.currentTarget.getBoundingClientRect(), s0 = filter.symbol ? { market: filter.market, symbol: filter.symbol } : null;
+    contextMenu(r.left, r.bottom + 4, s0 ? `New note for ${s0.symbol.replace(/\.NS$/, "")}` : "New note", Object.entries(NOTE_TEMPLATES).map(([k, t]) => ({ label: t.label, fn: async () => {
+      const n = await api("/api/notes", jsonReq("POST", { ...t.make(s0), symbols: s0 ? [s0] : [] }));
+      if (k === "blank") store.set("notesFresh", n.id);
+      go(`#/notes/${n.id}`);
+    } })));
+  };
+  await loadList();
+  if (!openId) return;
+
+  // ---- editor
+  const n = await api(`/api/notes/${openId}`).catch(() => null);
+  if (!alive()) return;
+  const ed = $view.querySelector("#ned");
+  if (!n) { ed.innerHTML = '<div class="empty"><b>Note not found</b><div class="muted">It may have been deleted.</div></div>'; return; }
+  let note = { ...n }, dirty = false, saving = false, timer;
+  ed.innerHTML = `<div class="ne-head">
+      <input class="ne-title" id="nt" placeholder="Title" value="${esc(note.title)}">
+      <span class="muted small ne-status" id="nst">Saved</span>
+      <button class="ibtn ${note.pinned ? "on" : ""}" id="npin" title="Pin to the top">${note.pinned ? "●" : "○"}</button>
+      <button class="ibtn" id="nmore" title="More">⋯</button></div>
+    <div class="ne-meta">
+      <div class="ne-syms" id="nsyms"></div>
+      <div class="search ne-symadd"><input id="nsymin" placeholder="+ link a stock" spellcheck="false"><ul hidden></ul></div>
+      <input class="ne-tags" id="ntags" placeholder="tags, comma separated" value="${esc(note.tags.join(", "))}">
+    </div>
+    <div class="ne-bar">
+      <div class="ne-tools rich-tools">
+        <select data-t="block" title="Text style"><option value="p">Text</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option></select>
+        ${[["bold", "<b>B</b>", "Bold (⌘B)"], ["italic", "<i>I</i>", "Italic (⌘I)"], ["strike", "<s>S</s>", "Strikethrough"], ["sep"], ["ul", "•≡", "Bullet list"], ["ol", "1≡", "Numbered list"], ["task", "☑", "Checklist"], ["sep"],
+           ["quote", "❝", "Quote"], ["code", "&lt;/&gt;", "Code"], ["link", "🔗", "Link (⌘K)"], ["table", "⊞", "Table"], ["hr", "―", "Divider"], ["date", "📅", "Insert today's date"], ["sep"], ["clear", "T̸", "Clear formatting"]]
+          .map(([k, t, title]) => k === "sep" ? '<span class="tsep"></span>' : `<button data-t="${k}" title="${title}">${t}</button>`).join("")}</div>
+      <div class="ne-tools md-tools">${[["b", "B", "Bold (⌘B)"], ["i", "I", "Italic (⌘I)"], ["h", "H", "Heading"], ["ul", "•", "Bullet list"], ["task", "☐", "Checklist item"], ["q", "❝", "Quote"], ["code", "</>", "Code"], ["link", "🔗", "Link"], ["table", "⊞", "Table"], ["date", "📅", "Insert today's date"]]
+        .map(([k, t, title]) => `<button data-t="${k}" title="${title}">${t}</button>`).join("")}</div>
+      <span class="spacer"></span>${segmented([["rich", "Rich"], ["markdown", "Markdown"]], mode(), "nmode")}</div>
+    <div class="ne-body mode-${mode()}"><div class="ne-rich md" id="nrich" contenteditable="true" spellcheck="true" data-ph="Start writing…"></div>
+      <textarea id="nbody" spellcheck="true" placeholder="Write in Markdown…">${esc(note.body)}</textarea><div class="ne-preview md" id="nprev"></div></div>
+    <div class="muted small ne-foot">Created ${clock(note.created_at)} · <span id="nupd">updated ${clock(note.updated_at)}</span></div>`;
+  const $t = ed.querySelector("#nt"), $b = ed.querySelector("#nbody"), $prev = ed.querySelector("#nprev"), $st = ed.querySelector("#nst");
+  const renderPrev = () => { $prev.innerHTML = $b.value.trim() ? marked.parse($b.value) : '<div class="muted small">Nothing to preview.</div>'; };
+  const renderSyms = () => {
+    ed.querySelector("#nsyms").innerHTML = note.symbols.map((x, i) => `<span class="ne-sym"><a href="#/chart/${x.market}/${encodeURIComponent(x.symbol)}" title="Open chart">${sym(x)}</a><button data-i="${i}" title="Unlink">×</button></span>`).join("");
+    ed.querySelectorAll(".ne-sym button").forEach((b) => b.onclick = () => { note.symbols.splice(+b.dataset.i, 1); renderSyms(); changed(); });
+  };
+  async function save() {
+    if (!dirty || saving) return;
+    saving = true; dirty = false; $st.textContent = "Saving…";
+    const tags = ed.querySelector("#ntags").value.split(",").map((x) => x.trim()).filter(Boolean);
+    try {
+      const r = await api(`/api/notes/${note.id}`, jsonReq("PUT", { title: $t.value, body: $b.value, tags, symbols: note.symbols, pinned: note.pinned }));
+      note = { ...note, ...r }; $st.textContent = "Saved"; store.set("notesFresh", null);
+      ed.querySelector("#nupd").textContent = `updated ${clock(r.updated_at)}`;
+      loadList();
+    } catch (err) { dirty = true; $st.textContent = "Not saved — retrying"; toast(err.message, "err"); }
+    finally { saving = false; if (dirty) { clearTimeout(timer); timer = setTimeout(save, 1500); } }
+  }
+  function changed() { dirty = true; $st.textContent = "Editing…"; clearTimeout(timer); timer = setTimeout(save, 800); }
+  renderPrev(); renderSyms();
+  $t.oninput = changed; ed.querySelector("#ntags").oninput = changed;
+  $b.oninput = () => { renderPrev(); changed(); };
+  // formatting helpers: wrap the selection, or prefix the current line(s)
+  const wrap = (a, b = a, ph = "text") => { const s0 = $b.selectionStart, s1 = $b.selectionEnd, sel = $b.value.slice(s0, s1) || ph;
+    $b.setRangeText(a + sel + b, s0, s1, "end"); $b.selectionStart = s0 + a.length; $b.selectionEnd = s0 + a.length + sel.length; $b.focus(); $b.oninput(); };
+  const prefix = (p) => { const s0 = $b.value.lastIndexOf("\n", $b.selectionStart - 1) + 1, s1 = $b.selectionEnd;
+    const block = $b.value.slice(s0, s1).split("\n").map((l) => p + l).join("\n"); $b.setRangeText(block, s0, s1, "end"); $b.focus(); $b.oninput(); };
+  const insert = (t) => { $b.setRangeText(t, $b.selectionStart, $b.selectionEnd, "end"); $b.focus(); $b.oninput(); };
+  ed.querySelector(".md-tools").onclick = (e) => {
+    const k = e.target.closest("[data-t]")?.dataset.t; if (!k) return;
+    ({ b: () => wrap("**"), i: () => wrap("_"), h: () => prefix("## "), ul: () => prefix("- "), task: () => prefix("- [ ] "), q: () => prefix("> "),
+       code: () => wrap("`"), link: () => wrap("[", "](https://)", "link text"),
+       table: () => insert("\n| Column | Column |\n|---|---|\n|  |  |\n"), date: () => insert(longDate(new Date().toISOString().slice(0, 10))) })[k]();
+  };
+  $b.onkeydown = (e) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key === "b") { e.preventDefault(); wrap("**"); }
+    else if (mod && e.key === "i") { e.preventDefault(); wrap("_"); }
+    else if (mod && e.key === "s") { e.preventDefault(); dirty = true; save(); }
+    else if (e.key === "Tab") { e.preventDefault(); insert("  "); }
+    e.stopPropagation();  // keep the app's single-key shortcuts out of the editor
+  };
+  $t.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); (mode() === "rich" ? $r : $b).focus(); } e.stopPropagation(); };
+  // ---- the rich editor: edits HTML (rendered from the Markdown), saves Markdown
+  const $r = ed.querySelector("#nrich");
+  const loadRich = () => {
+    $r.innerHTML = $b.value.trim() ? marked.parse($b.value) : "<p><br></p>";
+    $r.querySelectorAll("input[type=checkbox]").forEach((c) => { c.removeAttribute("disabled"); c.closest("li")?.classList.add("task"); });
+  };
+  const richChanged = () => { $b.value = htmlToMd($r); renderPrev(); changed(); };
+  document.execCommand("defaultParagraphSeparator", false, "p");
+  const cmd = (c, v = null) => { $r.focus(); document.execCommand(c, false, v); richChanged(); syncTools(); };
+  const selText = () => String(getSelection() || "");
+  const esch = (x) => x.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
+  const RICH = {
+    bold: () => cmd("bold"), italic: () => cmd("italic"), strike: () => cmd("strikeThrough"),
+    ul: () => cmd("insertUnorderedList"), ol: () => cmd("insertOrderedList"),
+    task: () => cmd("insertHTML", `<ul><li class="task"><input type="checkbox">&nbsp;${esch(selText())}</li></ul>`),
+    quote: () => cmd("formatBlock", document.queryCommandValue("formatBlock") === "blockquote" ? "p" : "blockquote"),
+    code: () => { const t = selText(); cmd("insertHTML", t.includes("\n") ? `<pre>${esch(t)}</pre><p><br></p>` : `<code>${esch(t || "code")}</code>&nbsp;`); },
+    link: async () => { const range = getSelection().rangeCount ? getSelection().getRangeAt(0).cloneRange() : null;
+      const url = await askText("Link", "https://", "https://…"); if (!url) return;
+      $r.focus(); if (range) { getSelection().removeAllRanges(); getSelection().addRange(range); }
+      if (range && !range.collapsed) cmd("createLink", url); else cmd("insertHTML", `<a href="${esc(url)}">${esch(url)}</a>&nbsp;`); },
+    table: () => cmd("insertHTML", `<table><thead><tr><th>Column</th><th>Column</th></tr></thead><tbody><tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table><p><br></p>`),
+    hr: () => cmd("insertHorizontalRule"),
+    date: () => cmd("insertText", longDate(new Date().toISOString().slice(0, 10))),
+    clear: () => { cmd("removeFormat"); cmd("formatBlock", "p"); },
+  };
+  const syncTools = () => {
+    if (mode() !== "rich") return;
+    const sel = ed.querySelector('.rich-tools [data-t="block"]'), fb = (document.queryCommandValue("formatBlock") || "p").toLowerCase();
+    sel.value = ["h1", "h2", "h3"].includes(fb) ? fb : "p";
+    [["bold", "bold"], ["italic", "italic"], ["strike", "strikeThrough"], ["ul", "insertUnorderedList"], ["ol", "insertOrderedList"]]
+      .forEach(([k, c]) => ed.querySelector(`.rich-tools [data-t="${k}"]`).classList.toggle("on", document.queryCommandState(c)));
+  };
+  ed.querySelector(".rich-tools").addEventListener("mousedown", (e) => { if (e.target.closest("button")) e.preventDefault(); });  // keep the selection
+  ed.querySelector(".rich-tools").onclick = (e) => { const k = e.target.closest("button[data-t]")?.dataset.t; if (k) RICH[k](); };
+  ed.querySelector('.rich-tools [data-t="block"]').onchange = (e) => cmd("formatBlock", e.target.value);
+  $r.oninput = richChanged;
+  document.addEventListener("selectionchange", () => { if ($r.contains(getSelection().anchorNode)) syncTools(); });
+  // checkboxes tick in place
+  $r.addEventListener("click", (e) => { if (e.target.matches("input[type=checkbox]")) { e.target.toggleAttribute("checked", e.target.checked); richChanged(); } });
+  // paste as plain text (formatting from web pages would come along otherwise)
+  $r.addEventListener("paste", (e) => { e.preventDefault(); document.execCommand("insertText", false, e.clipboardData.getData("text/plain")); });
+  // Markdown-style shortcuts at the start of a line: "# " heading, "- " list, "1. " numbered, "[] " checklist, "> " quote
+  $r.onkeydown = (e) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.key === "s") { e.preventDefault(); dirty = true; save(); }
+    else if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); RICH.link(); }
+    else if (e.key === " ") {
+      const sel = getSelection(), node = sel.anchorNode;
+      const blockEl = node && (node.nodeType === 3 ? node.parentElement : node).closest("p, div, h1, h2, h3, li");
+      const before = node && node.nodeType === 3 ? node.textContent.slice(0, sel.anchorOffset) : "";
+      const rules = { "#": ["formatBlock", "h1"], "##": ["formatBlock", "h2"], "###": ["formatBlock", "h3"], "-": ["insertUnorderedList"], "*": ["insertUnorderedList"],
+        "1.": ["insertOrderedList"], ">": ["formatBlock", "blockquote"], "[]": "task" };
+      if (blockEl && blockEl !== $r && node.textContent.trim() === before.trim() && rules[before.trim()] && blockEl.tagName !== "LI") {
+        e.preventDefault();
+        node.textContent = node.textContent.slice(sel.anchorOffset);
+        const r = rules[before.trim()];
+        if (r === "task") RICH.task(); else cmd(r[0], r[1] || null);
+      }
+    }
+    e.stopPropagation();   // keep the app's single-key shortcuts out of the editor
+  };
+  const setMode = (m) => {
+    store.set("notesEditor", m);
+    if (m === "rich") loadRich();   // pick up edits made in Markdown
+    ed.querySelector(".ne-body").className = `ne-body mode-${m}`;
+    ed.querySelector(".ne-bar").className = `ne-bar bar-${m}`;
+    ed.querySelectorAll(".nmode button").forEach((x) => x.classList.toggle("on", x.dataset.v === m));
+  };
+  ed.querySelectorAll(".nmode button").forEach((b) => b.onclick = () => setMode(b.dataset.v));
+  setMode(mode());
+  ed.querySelector("#npin").onclick = (e) => { note.pinned = !note.pinned; e.currentTarget.classList.toggle("on", note.pinned); e.currentTarget.textContent = note.pinned ? "●" : "○"; dirty = true; save(); };
+  symbolSearch(ed.querySelector("#nsymin"), ed.querySelector(".ne-symadd ul"), null, (s1, m1) => {
+    if (!note.symbols.some((x) => x.market === m1 && x.symbol === s1)) note.symbols.push({ market: m1, symbol: s1 });
+    ed.querySelector("#nsymin").value = ""; ed.querySelector(".ne-symadd ul").hidden = true; renderSyms(); changed();
+  });
+  ed.querySelector("#nmore").onclick = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    contextMenu(r.right - 210, r.bottom + 4, null, [
+      { label: "Duplicate", fn: async () => { const c = await api("/api/notes", jsonReq("POST", { title: `${$t.value} (copy)`, body: $b.value, tags: note.tags, symbols: note.symbols })); go(`#/notes/${c.id}`); } },
+      { label: "Copy as Markdown", fn: () => navigator.clipboard?.writeText(`# ${$t.value}\n\n${$b.value}`).then(() => toast("Copied", "ok")) },
+      { sep: true },
+      { label: "Delete note", danger: true, fn: async () => {
+        clearTimeout(timer); dirty = false;
+        const gone = await api(`/api/notes/${note.id}`, { method: "DELETE" });
+        toast(`Deleted “${gone.title || "Untitled"}”`, "ok", { label: "Undo", fn: async () => {
+          const back = await api("/api/notes", jsonReq("POST", { title: gone.title, body: gone.body, tags: gone.tags, symbols: gone.symbols, pinned: gone.pinned }));
+          go(`#/notes/${back.id}`);
+        } });
+        go("#/notes");
+      } },
+    ]);
+  };
+  if (!note.title && !note.body) $t.focus(); else if (store.get("notesFresh", null) === note.id) (mode() === "rich" ? $r : $b).focus();
+  // leaving the page: save pending edits; drop a new note that was never written in
+  const prev = cleanup;
+  cleanup = () => {
+    clearTimeout(timer);
+    if (dirty) save();
+    else if (store.get("notesFresh", null) === note.id && !$b.value.trim()) { store.set("notesFresh", null); api(`/api/notes/${note.id}`, { method: "DELETE" }).catch(() => {}); }
+    prev();
+  };
+}
+
+// ------------------------------------------------------------- TODO page
+
+/** TODO.md (repository root), rendered live: tick items here or in an editor; "Add" appends to Inbox. */
+async function todoPage(alive) {
+  document.title = "TODO · Trading";
+  $view.innerHTML = LOADING;
+  const t = await api("/api/todo").catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  if (t.error) { $view.innerHTML = `<div class="empty"><b>Could not read TODO.md</b><div class="muted">${esc(t.error)}</div></div>`; return; }
+  const taskLines = t.markdown.split("\n").filter((l) => /^\s*[-*] \[[ xX]\]/.test(l));
+  const open_ = taskLines.filter((l) => /\[ \]/.test(l)).length;
+  $view.innerHTML = `<div class="page-head"><h1>TODO</h1><span class="muted small">${open_} open · ${taskLines.length - open_} done · edit <code>${esc(t.path)}</code> directly, or add here</span></div>
+    <form class="todo-add" autocomplete="off"><input id="todoin" placeholder="Add an item to the Inbox… (Enter)" maxlength="500"><button class="primary" type="submit">Add</button></form>
+    <section class="sec-card md todo-md">${marked.parse(t.markdown)}</section>`;
+  // marked renders task lists as disabled checkboxes, in document order — the same order as taskLines
+  $view.querySelectorAll(".todo-md input[type=checkbox]").forEach((cb, i) => {
+    cb.disabled = false;
+    cb.closest("li")?.classList.toggle("done", cb.checked);
+    cb.onchange = async () => {
+      try { await api("/api/todo/toggle", jsonReq("POST", { index: i, line: taskLines[i] })); route(); }
+      catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); route(); }
+    };
+  });
+  const inp = $view.querySelector("#todoin");
+  $view.querySelector(".todo-add").onsubmit = async (e) => {
+    e.preventDefault();
+    if (!inp.value.trim()) return inp.focus();
+    try { await api("/api/todo", jsonReq("POST", { text: inp.value })); toast("Added to the Inbox", "ok"); route(); }
+    catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
+  };
+}
+
 // ------------------------------------------------------------- data status page
 
 const ST_ICON = { ok: "✓", partial: "!", failed: "✕", running: "", pending: "", skipped: "–", interrupted: "✕", warn: "!", stale: "✕", missing: "?" };
@@ -1826,75 +2860,362 @@ async function refreshStatusDot() {
     const s = await api("/api/status");
     const st = s.running.length ? "running" : s.overall;
     a.className = `dstatus st-${st}`;
-    a.querySelector("span").textContent = s.running.length ? "Updating…" : "Data";
+    // say what the dot means, not just "Data": current / behind / stale / missing / updating
+    const word = { ok: "Data current", warn: "Data behind", stale: "Data stale", missing: "Data missing", partial: "Data partly failed", failed: "Data update failed" };
+    const waiting = s.queue?.queued.length || 0, stalled = waiting && !s.worker?.alive;
+    if (stalled) a.className = "dstatus st-warn";
+    // compact: a dot and the current market's price date; words only when something is happening
+    const m = store.get("market", MKTS[0].key), pd = s.freshness[m]?.items.find((i) => i.key === "prices")?.date;
+    a.querySelector(".ds-l").textContent = stalled ? `Worker stopped · ${waiting} waiting` : s.running.length ? `Updating…${waiting ? ` +${waiting}` : ""}`
+      : pd ? prettyDate(pd).replace(/ \d{4}$/, "") : "No data";
     const line = (m) => { const f = s.freshness[m]; const p = f.items.find((i) => i.key === "prices"); return `${f.name}: prices ${p.date ? prettyDate(p.date) : "none"} (${ST_TEXT[p.status]})`; };
-    a.title = `Data status — ${line("us")} · ${line("india")}${s.latest_daily ? ` · last daily run ${clock(s.latest_daily.started_at)}: ${ST_TEXT[s.latest_daily.status]}` : ""}`;
+    a.title = `${word[st] || "Data status"} — ${MKTS.filter((x) => s.freshness[x.key]).map((x) => line(x.key)).join(" · ")}${s.latest_daily ? ` · last daily run ${clock(s.latest_daily.started_at)}: ${ST_TEXT[s.latest_daily.status]}` : ""} · checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Click for details.`;
     return s;
   } catch { a.className = "dstatus"; return null; }
 }
 refreshStatusDot();
 setInterval(refreshStatusDot, 120000);
 
+/** Confirm and start a job / pipeline (the server runs `python -m jobs run ...` in the background). */
+let _stratList = null;
+const strategyList = async () => (_stratList = _stratList || (await api("/api/strategies").catch(() => [])).filter((x) => x.kind === "screener"));
+
+/** Confirm a run and choose its options; it then joins the job queue (the worker runs one at a time). */
+async function runDialog({ title, targets, market, screens, resumeFrom, pick }) {
+  const strats = screens ? await strategyList() : [];
+  return new Promise((resolve) => {
+    const m = el(`<div class="smodal"><div class="smodal-card settings rundlg"><div class="sm-head"><b>${esc(title)}</b></div>
+      <div class="sm-form">
+        ${resumeFrom ? `<label class="rd-opt"><input type="radio" name="rmode" value="resume" checked><span>Resume from <b>${esc(resumeFrom)}</b> — where the last run failed</span></label>
+          <label class="rd-opt"><input type="radio" name="rmode" value="all"><span>Run every step again</span></label>` : ""}
+        ${screens ? `<h4>Strategies</h4><label class="rd-opt"><input type="checkbox" id="rd-all" ${pick ? "" : "checked"}><span><b>All strategies</b></span></label>
+          <div class="rd-strats">${strats.map((x) => `<label class="rd-opt"><input type="checkbox" class="rd-s" value="${x.key}" ${!pick || pick === x.key ? "checked" : ""} ${pick ? "" : "disabled"}><span>${esc(x.name)}</span></label>`).join("")}</div>` : ""}
+        <label class="rd-opt"><input type="checkbox" id="rd-force"><span>Force refresh — re-fetch data even where it looks current (slower)</span></label>
+        <div class="muted small">Same as running, from scripts/:</div><code class="rd-cmd"></code>
+        <div class="muted small">It joins the queue: the worker runs one job at a time, and this page follows it step by step.</div>
+      </div>
+      <div class="sm-foot"><span class="spacer"></span><button class="ghost" data-a="cancel">Cancel</button><button class="primary" data-a="ok">Add to queue</button></div></div></div>`);
+    document.body.append(m);
+    const all = m.querySelector("#rd-all");
+    if (all) all.onchange = () => m.querySelectorAll(".rd-s").forEach((c) => { c.disabled = all.checked; if (all.checked) c.checked = true; });
+    const spec = () => {
+      const resume = resumeFrom && m.querySelector('input[name="rmode"]:checked')?.value === "resume";
+      const picked = [...m.querySelectorAll(".rd-s:checked")].map((c) => c.value);
+      return { targets, market, strategies: screens ? (all.checked ? "all" : picked) : null,
+               from: resume ? resumeFrom : null, force: m.querySelector("#rd-force").checked };
+    };
+    const showCmd = () => { const x = spec(); const st = Array.isArray(x.strategies) ? x.strategies.join(",") : x.strategies;
+      m.querySelector(".rd-cmd").textContent = `python -m jobs enqueue ${x.targets.join(" ")} --market ${x.market}${st ? ` --strategies ${st}` : ""}${x.from ? ` --from ${x.from}` : ""}${x.force ? " --force" : ""}`;
+      m.querySelector('[data-a="ok"]').disabled = Array.isArray(x.strategies) && !x.strategies.length; };
+    m.onchange = showCmd; showCmd();
+    const done = (v) => { m.remove(); resolve(v); };
+    m.onclick = (e) => { const a = e.target.closest("button")?.dataset.a; if (a === "ok") done(spec()); if (a === "cancel" || e.target === m) done(null); };
+    m.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") done(null); };
+  });
+}
+async function startWorker() {
+  try { await api("/api/worker/start", { method: "POST" }); toast("Worker started", "ok"); setTimeout(() => route(), 2500); }
+  catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
+}
+/** add a run to the queue (after the Run dialog), and say where it stands */
+async function startJob(opts) {
+  const spec = await runDialog(opts);
+  if (!spec) return;
+  try {
+    const r = await api("/api/jobs/run", jsonReq("POST", spec));
+    const where = r.position === 0 ? "running now" : r.position === 1 ? "next in the queue" : `#${r.position} in the queue`;
+    if (!r.worker.alive) toast(`Queued, but the worker is not running — nothing will run until it starts`, "err", { label: "Start worker", fn: startWorker });
+    else toast(`${r.duplicate ? "Already queued" : "Queued"} — ${where}`, "ok");
+    refreshStatusDot();
+    if (location.hash.startsWith("#/status")) setTimeout(() => route(), 800);
+  } catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
+}
+/** the job a failed / partial run should resume from: its first step that did not finish */
+async function resumePoint(run) {
+  if (!run || !["partial", "failed", "interrupted"].includes(run.status)) return null;
+  const d = await api(`/api/status/run/${run.id}`).catch(() => null);
+  const st = d?.steps.find((x) => ["failed", "interrupted"].includes(x.status));
+  return st ? st.step.split(":")[0] : null;
+}
+
+const DAYS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
+const whenText = (x) => x.monthday ? `Monthly, day ${x.monthday} · ${x.at_time}`
+  : `${x.days === "mon,tue,wed,thu,fri" ? "Mon–Fri" : x.days === "tue,wed,thu,fri,sat" ? "Tue–Sat" : x.days.split(",").map((d) => d[0].toUpperCase() + d.slice(1)).join(", ")} · ${x.at_time}`;
+const whenNext = (iso) => { if (!iso) return "—"; const d = new Date(iso); return `${WEEKDAY[d.getDay()]} ${prettyDate(iso.slice(0, 10))} · ${iso.slice(11, 16)}`; };
+
+/** System → Schedules: when each pipeline runs on its own. The worker enqueues a schedule when it is due. */
+async function schedulesPage(alive) {
+  document.title = "Schedules · Trading";
+  $view.innerHTML = LOADING;
+  const d = await api("/api/schedules").catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  if (d.error) { $view.innerHTML = `<div class="empty"><b>Could not load schedules</b><div class="muted">${esc(d.error)}</div></div>`; return; }
+  const w = d.worker;
+  const mk = (m) => m === "all" ? "both markets" : (MKT_BADGE[m] || m);
+  $view.innerHTML = pageHead("Schedules", { context: info(`<p>Each schedule adds its run to the <a href="#/status">job queue</a> when it is due; the worker runs the queue one job at a time.</p>
+      <p>Times are this machine's local time (${esc(d.tz)}). A slot missed while the computer was asleep or the worker was stopped runs once, when the worker next looks.</p>
+      <p>On demand only (no schedule by default): <b>strategies</b> — today's setups — and <b>quality</b>. Add a schedule for either to make it automatic.</p>
+      <p>From a terminal: <code>python -m jobs schedules</code> · <code>python -m jobs queue</code></p>`),
+      actions: `<button class="primary" id="snew">+ New schedule</button>` }) + `
+    ${w.alive ? "" : `<div class="sd-status watch"><b>Worker stopped</b> Nothing below will run until the worker is running. <button class="primary sm" id="wkstart">Start worker</button></div>`}
+    <section class="sec-card runnow"><div class="sec-card-h"><h3>Run now</h3><span class="muted small">adds the run to the queue · per-market pipelines use ${esc(mktInfo(pageMarket()).name)} (header)</span></div>
+      <div class="runbtns">${d.targets.pipelines.map((p) => { const perM = !["weekly", "monthly"].includes(p.name);
+        return `<button data-pipe="${p.name}" data-m="${perM ? pageMarket() : "all"}" title="${esc(p.summary)}"><svg viewBox="0 0 20 20" class="play"><path d="M7 5l8 5-8 5z"/></svg>${esc(p.name[0].toUpperCase() + p.name.slice(1))}${perM ? ` · ${esc(mktInfo(pageMarket()).name)}` : ""}</button>`; }).join("")}</div></section>
+    <section class="sec-card"><table class="stt sched"><thead><tr><th>On</th><th>Schedule</th><th>When</th><th>Next run</th><th>Last run</th><th></th></tr></thead><tbody>
+      ${d.schedules.map((x) => `<tr class="${x.enabled ? "" : "off"}" data-id="${x.id}">
+        <td><label class="switch" title="${x.enabled ? "On — click to pause" : "Paused — click to turn on"}"><input type="checkbox" data-on ${x.enabled ? "checked" : ""}><i></i></label></td>
+        <td><b>${esc(x.name)}</b><div class="muted small"><code>${esc(x.command.replace(/^python -m jobs /, ""))}</code> · ${esc(mk(x.market))}</div></td>
+        <td>${esc(whenText(x))}</td>
+        <td>${x.enabled ? esc(whenNext(x.next_slot)) : '<span class="muted">paused</span>'}</td>
+        <td>${x.last ? `${stBadge(x.last.status === "ok" ? "ok" : x.last.status === "queued" ? "pending" : x.last.status === "running" ? "running" : x.last.status === "cancelled" ? "skipped" : "failed")}
+            ${x.last.run_id ? `<a class="small" href="#/runs/${x.last.run_id}">${x.last.finished_at ? clock(x.last.finished_at) : "steps"}</a>` : ""}` : '<span class="muted small">not yet</span>'}</td>
+        <td class="sacts"><button class="sm" data-run title="Add this run to the queue now">Run now</button><button class="sm" data-edit>Edit</button>
+          <button class="ibtn" data-del title="Delete this schedule">×</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">No schedules — add one.</td></tr>`}
+    </tbody></table></section>
+    `;
+  $view.querySelector("#wkstart")?.addEventListener("click", startWorker);
+  $view.querySelector("#snew").onclick = () => scheduleDialog(d, null);
+  $view.querySelectorAll("[data-pipe]").forEach((b) => b.onclick = () => startJob({ title: `Run ${b.dataset.pipe}${b.dataset.m === "all" ? "" : " · " + mktInfo(b.dataset.m).name}`,
+    targets: [b.dataset.pipe], market: b.dataset.m, screens: ["strategies", "backtest"].includes(b.dataset.pipe) }));
+  $view.querySelectorAll("tr[data-id]").forEach((tr) => {
+    const x = d.schedules.find((y) => y.id === +tr.dataset.id);
+    tr.querySelector("[data-on]").onchange = async (e) => { await api(`/api/schedules/${x.id}/enabled`, jsonReq("POST", { enabled: e.target.checked })); toast(e.target.checked ? `“${x.name}” is on` : `“${x.name}” paused`, "ok"); route(); };
+    tr.querySelector("[data-run]").onclick = async () => {
+      const r = await api(`/api/schedules/${x.id}/run`, { method: "POST" });
+      toast(`${r.duplicate ? "Already queued" : "Queued"} — ${r.position === 0 ? "running now" : r.position === 1 ? "next" : "#" + r.position + " in the queue"}`, "ok");
+      if (!d.worker.alive) toast("The worker is not running — start it to run the queue", "err", { label: "Start worker", fn: startWorker });
+      route();
+    };
+    tr.querySelector("[data-edit]").onclick = () => scheduleDialog(d, x);
+    tr.querySelector("[data-del]").onclick = async () => { if (!confirm(`Delete the schedule “${x.name}”?`)) return; await api(`/api/schedules/${x.id}`, { method: "DELETE" }); toast("Deleted", "ok"); route(); };
+  });
+}
+
+/** create / edit a schedule */
+async function scheduleDialog(d, x) {
+  const strats = await strategyList();
+  x = x || { name: "", targets: ["daily"], market: "india", opts: {}, days: "mon,tue,wed,thu,fri", monthday: null, at_time: "18:30", enabled: true };
+  const target = x.targets[0], days = new Set(x.days.split(","));
+  const stSel = x.opts?.strategies;
+  const m = el(`<div class="smodal"><div class="smodal-card settings rundlg"><div class="sm-head"><b>${x.id ? "Edit schedule" : "New schedule"}</b></div>
+    <div class="sm-form">
+      <label>Name <input id="sd-name" value="${esc(x.name)}" placeholder="e.g. Strategies · India after the close"></label>
+      <label>Run <select id="sd-target">
+        <optgroup label="Pipelines">${d.targets.pipelines.map((p) => `<option value="${p.name}" ${p.name === target ? "selected" : ""} title="${esc(p.summary)}">${p.name} — ${esc(p.jobs.join(" → "))}</option>`).join("")}</optgroup>
+        <optgroup label="Single jobs">${d.targets.jobs.map((j) => `<option value="${j.name}" ${j.name === target ? "selected" : ""}>${j.name}</option>`).join("")}</optgroup></select></label>
+      <label>Market <select id="sd-market"><option value="all" ${x.market === "all" ? "selected" : ""}>Both markets</option>${MKTS.map((k) => `<option value="${k.key}" ${k.key === x.market ? "selected" : ""}>${esc(k.name)}</option>`).join("")}</select></label>
+      <div id="sd-strats" hidden><h4>Strategies</h4><label class="rd-opt"><input type="checkbox" id="sd-all" ${!stSel || stSel.includes?.("all") ? "checked" : ""}><span><b>All strategies</b></span></label>
+        <div class="rd-strats">${strats.map((k) => `<label class="rd-opt"><input type="checkbox" class="sd-s" value="${k.key}" ${!stSel || stSel.includes?.("all") || stSel.includes?.(k.key) ? "checked" : ""}><span>${esc(k.name)}</span></label>`).join("")}</div></div>
+      <h4>When</h4>
+      <label class="rd-opt"><input type="radio" name="sd-mode" value="week" ${x.monthday ? "" : "checked"}><span>On these days</span></label>
+      <div class="sd-days">${DAYS.map(([k, t]) => `<label class="chip ${days.has(k) ? "on" : ""}"><input type="checkbox" value="${k}" ${days.has(k) ? "checked" : ""}>${t}</label>`).join("")}</div>
+      <label class="rd-opt"><input type="radio" name="sd-mode" value="month" ${x.monthday ? "checked" : ""}><span>Monthly, on day <input id="sd-md" type="number" min="1" max="28" value="${x.monthday || 1}" style="width:64px"></span></label>
+      <label>At <input id="sd-time" type="time" value="${esc(x.at_time)}"></label>
+      <label class="rd-opt"><input type="checkbox" id="sd-force" ${x.opts?.force ? "checked" : ""}><span>Force refresh — re-fetch even where data looks current</span></label>
+      <label class="rd-opt"><input type="checkbox" id="sd-on" ${x.enabled ? "checked" : ""}><span>On</span></label>
+    </div>
+    <div class="sm-foot"><span class="spacer"></span><button class="ghost" data-a="cancel">Cancel</button><button class="primary" data-a="ok">Save</button></div></div></div>`);
+  document.body.append(m);
+  const $ = (q) => m.querySelector(q);
+  const usesStrats = () => { const t = $("#sd-target").value; const picks = (j) => ["strategies", "backtest"].includes(j);
+    return picks(t) || (d.targets.pipelines.find((p) => p.name === t)?.jobs || []).some(picks); };
+  const sync = () => {
+    $("#sd-strats").hidden = !usesStrats();
+    m.querySelectorAll(".sd-s").forEach((c) => { c.disabled = $("#sd-all").checked; if ($("#sd-all").checked) c.checked = true; });
+    m.querySelectorAll(".sd-days label").forEach((l) => l.classList.toggle("on", l.querySelector("input").checked));
+  };
+  m.onchange = sync; sync();
+  const close = () => m.remove();
+  m.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Escape") close(); };
+  m.onclick = async (e) => {
+    const a = e.target.closest("button")?.dataset.a;
+    if (a === "cancel" || e.target === m) return close();
+    if (a !== "ok") return;
+    const month = m.querySelector('input[name="sd-mode"]:checked').value === "month";
+    const t = $("#sd-target").value, mkt = $("#sd-market").value;
+    const st = usesStrats() ? ($("#sd-all").checked ? ["all"] : [...m.querySelectorAll(".sd-s:checked")].map((c) => c.value)) : null;
+    const spec = { id: x.id, targets: [t], market: mkt, enabled: $("#sd-on").checked, at_time: $("#sd-time").value,
+      days: month ? "" : [...m.querySelectorAll(".sd-days input:checked")].map((c) => c.value).join(","), monthday: month ? +$("#sd-md").value : null,
+      opts: { strategies: st, force: $("#sd-force").checked },
+      name: $("#sd-name").value.trim() || `${t[0].toUpperCase() + t.slice(1)} · ${mkt === "all" ? "both markets" : (MKTS.find((k) => k.key === mkt) || {}).name}` };
+    try { await api("/api/schedules", jsonReq("POST", spec)); close(); toast("Schedule saved", "ok"); route(); }
+    catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
+  };
+}
+
+const Q_BY = { you: "you", schedule: "schedule", "command line": "command line", "breadth page": "Breadth page" };
+/** The job queue: worker health, what is running (Stop), what is waiting (cancel / run next), what just finished. */
+function queuePanel(s) {
+  const Q = s.queue, w = s.worker;
+  const what = (x) => `<code>${esc(x.command.replace(/^python -m jobs run /, ""))}</code>`;
+  const by = (x) => `<span class="muted small">${esc(Q_BY[x.requested_by] || x.requested_by)} · ${clock(x.created_at)}</span>`;
+  const worker = w.alive
+    ? `<span class="wk ok"><i></i>Worker running</span><span class="muted small">pid ${w.pid} · since ${clock(w.started_at)}</span>`
+    : `<span class="wk off"><i></i>Worker stopped</span><span class="muted small">queued runs and schedules wait until it runs.</span>
+       <button class="primary sm" id="wkstart">Start worker</button><span class="muted small">To keep it running across restarts: <code>${esc(s.worker_command)}</code></span>`;
+  return `<section class="sec-card qpanel"><div class="sec-card-h"><h3>Job queue</h3>${worker}</div>
+    ${Q.running ? `<div class="qrow run"><i class="spin"></i><b>Running</b>${what(Q.running)}${by(Q.running)}<span class="muted small">started ${clock(Q.running.started_at)}</span>
+        ${Q.running.run_id ? `<a class="small" href="#/runs/${Q.running.run_id}">steps →</a>` : ""}<span class="spacer"></span>
+        ${Q.running.cancel_requested ? '<span class="muted small">stopping…</span>' : `<button class="danger sm" data-qstop="${Q.running.id}">Stop</button>`}</div>`
+      : s.job_running && !s.job_running.from_queue
+        ? `<div class="qrow run"><i class="spin"></i><b>Running outside the queue</b><code>${esc(s.job_running.cmd)}</code><span class="muted small">started ${clock(s.job_running.started)} from a terminal — the worker waits for it to finish</span>
+            <a class="small" href="#/runs/${s.job_running.run_id}">steps →</a></div>`
+        : `<div class="qrow muted small">Nothing running.</div>`}
+    ${Q.queued.map((x, i) => `<div class="qrow"><span class="qn">${i + 1}</span><b>Waiting</b>${what(x)}${by(x)}<span class="spacer"></span>
+        ${i ? `<button class="sm" data-qfront="${x.id}" title="Run this next">Run next</button>` : ""}<button class="sm" data-qcancel="${x.id}">Cancel</button></div>`).join("")}
+    ${Q.recent.length ? `<details class="qrecent"><summary class="muted small">Recently finished (${Q.recent.length})</summary>
+      ${Q.recent.map((x) => `<div class="qrow">${stBadge(x.status === "ok" ? "ok" : x.status === "cancelled" ? "skipped" : x.status === "stopped" ? "interrupted" : "failed")}${what(x)}${by(x)}
+        <span class="muted small">${x.finished_at ? "finished " + clock(x.finished_at) : ""}</span>${x.run_id ? `<a class="small" href="#/runs/${x.run_id}">steps →</a>` : ""}${x.note ? `<span class="muted small">${esc(x.note)}</span>` : ""}</div>`).join("")}</details>` : ""}
+  </section>`;
+}
+function wireQueuePanel(root) {
+  const post = async (url, msg) => { try { await api(url, { method: "POST" }); toast(msg, "ok"); setTimeout(() => route(), 800); } catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); } };
+  root.querySelector("#wkstart")?.addEventListener("click", startWorker);
+  root.querySelectorAll("[data-qstop]").forEach((b) => b.onclick = () => {
+    if (confirm("Stop the running job? The step in progress is marked as stopped; you can resume it later.")) post(`/api/queue/${b.dataset.qstop}/cancel`, "Stopping…");
+  });
+  root.querySelectorAll("[data-qcancel]").forEach((b) => b.onclick = () => post(`/api/queue/${b.dataset.qcancel}/cancel`, "Removed from the queue"));
+  root.querySelectorAll("[data-qfront]").forEach((b) => b.onclick = () => post(`/api/queue/${b.dataset.qfront}/front`, "Moved to the front"));
+}
+
+const SRC_LABEL = { you: ["you", "pos"], curated: ["curated", "neutral"], rule: ["rule", "neutral"], suggested: ["suggested", "info"],
+  code: ["code", "neutral"], bse: ["BSE", "neutral"], other: ["unassigned", "warn"] };
+/** Library → Sub-industries: review and edit which sub-industry each tradable company belongs to. */
+async function subindustriesPage(alive, mkt, group) {
+  mkt = pageMarket(mkt);
+  document.title = "Sub-industries · Trading";
+  $view.innerHTML = LOADING;
+  const d = await api(`/api/subindustries?market=${mkt}`).catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  if (d.error) { $view.innerHTML = `<div class="empty"><b>Could not load sub-industries</b><div class="muted">${esc(d.error)}</div></div>`; return; }
+  const show = store.get("subShow", "review");
+  const list = d.groups.filter((g) => show === "all" || (show === "split" ? g.split : g.open > 0));
+  group = group ? decodeURIComponent(group) : (list[0] || d.groups[0])?.industry;
+  const g = d.groups.find((x) => x.industry === group) || list[0];
+  const c = d.coverage;
+  const href = (x) => `#/subindustries/${mkt}/${encodeURIComponent(x)}`;
+  $view.innerHTML = pageHead("Sub-industries", {
+      context: `<span class="muted small">${c.labelled.toLocaleString()} of ${c.in_split_groups.toLocaleString()} tradable stocks in split groups labelled · ${c.suggested} suggested · ${c.other} unassigned</span>${info(`
+        <p>A sub-industry splits an industry group that mixes businesses (Semiconductors → AI &amp; compute, Analog, Memory…). Coherent groups (Restaurants, Homebuilding) are not split.</p>
+        <p>Each label shows where it came from: <b>you</b> (your edits — always win) · <b>curated</b> (data/sub_industries.csv) · <b>rule</b> (US banks by size, asset managers vs BDCs) · <b>suggested</b> (proposed, awaiting your review) · <b>code</b> (an official code mapped in data/sub_industry_codes.csv) · <b>BSE</b> (India: BSE's own industry, where a group spans several) · <b>unassigned</b>.</p>
+        <p>Official codes: ${esc(d.scheme)}. Labelling a stock in an unsplit group splits that group. <code>python -m swing_screener.marketdata.subindustries --export</code> writes your labels into the curated CSV (for git).</p>`)}` })
+    + `<div class="rep-layout"><aside class="rep-nav strat-nav sub-nav">
+        ${segmented([["review", "Needs review"], ["split", "Split"], ["all", "All"]], show, "subshow")}
+        ${list.map((x) => `<a class="nav-item ${g && x.industry === g.industry ? "active" : ""}" href="${href(x.industry)}" title="${esc(x.sector || "")}">
+          <span><b class="sn">${esc(x.industry)}</b></span><span class="n" title="${x.open ? x.open + " to review" : x.members.length + " tradable stocks"}">${x.open || x.members.length}</span></a>`).join("") || '<div class="nav-empty muted small">Nothing to review.</div>'}
+      </aside><section id="submain" class="scr-main"></section></div>`;
+  $view.querySelectorAll(".subshow button").forEach((b) => b.onclick = () => { store.set("subShow", b.dataset.v); route(); });
+  const main = $view.querySelector("#submain");
+  if (!g) { main.innerHTML = '<div class="empty"><b>No groups</b></div>'; return; }
+  const counts = {}; g.members.forEach((m) => { if (m.sub) counts[m.sub] = (counts[m.sub] || 0) + 1; });
+  const subOpts = (cur) => `<option value="">— automatic —</option>${g.subs.map((x) => `<option ${x === cur ? "selected" : ""}>${esc(x)}</option>`).join("")}<option value="__new">+ New sub-industry…</option>`;
+  main.innerHTML = `<div class="page-head sub"><h2 class="sub-title">${esc(g.industry)}</h2><span class="muted small">${esc(g.sector || "")} · ${g.members.length} tradable stocks${g.split ? ` · ${g.subs.length} sub-industries` : " · not split"}</span>
+      <span class="spacer"></span>${g.members.some((m) => m.source === "suggested") ? `<button class="primary sm" id="acceptall">Accept all suggestions</button>` : ""}</div>
+    ${g.split ? `<div class="sub-chips">${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="chip-s ${k === "other" ? "dn" : ""}">${esc(k === "other" ? "unassigned" : k)} <b>${n}</b></span>`).join("")}</div>` : ""}
+    <div class="sub-bulk" hidden><span id="nsel"></span><select id="bulksub">${subOpts(null)}</select><button class="sm" id="bulkset">Set</button><button class="sm" id="bulkrevert">Revert to automatic</button></div>
+    <table class="stt subtab"><thead><tr><th><input type="checkbox" id="selall"></th><th>Company</th><th class="num">Mkt cap ($B)</th><th>Official code</th><th>Sub-industry</th><th>Source</th></tr></thead><tbody>
+      ${g.members.map((m, i) => `<tr data-i="${i}" class="${m.source === "other" ? "open" : ""}"><td><input type="checkbox" class="rs"></td>
+        <td class="symcell"><div><b><a href="#/chart/${mkt}/${encodeURIComponent(m.symbol)}">${esc(m.symbol.replace(/\.NS$/, ""))}</a></b><span>${esc(m.name || "")}</span></div></td>
+        <td class="num">${m.cap != null ? fmt(m.cap) : ""}</td><td class="muted small">${esc(m.code || "—")}</td>
+        <td><select class="rsub">${subOpts(m.source === "you" || m.source === "curated" || m.source === "suggested" || m.source === "rule" || m.source === "code" || m.source === "bse" ? m.sub : null).replace('<option value="">— automatic —</option>', `<option value="">${m.source === "you" ? "— revert to automatic —" : "— " + esc(m.sub && m.sub !== "other" ? m.sub : "unassigned") + " —"}</option>`)}</select></td>
+        <td><span class="tag ${(SRC_LABEL[m.source] || ["", "neutral"])[1]}">${(SRC_LABEL[m.source] || [m.source || "—"])[0]}</span></td></tr>`).join("")}</tbody></table>`;
+  const post = async (symbols, sub) => {
+    try { const r = await api("/api/subindustries", jsonReq("POST", { market: mkt, symbols, sub })); toast(`${r.changed} updated`, "ok"); route(); }
+    catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
+  };
+  const askNew = async () => { const v = await askText("New sub-industry", "", "e.g. Data-centre power & cooling"); return v && v.trim(); };
+  main.querySelectorAll("tr[data-i] .rsub").forEach((sel) => sel.onchange = async () => {
+    const m = g.members[+sel.closest("tr").dataset.i];
+    let v = sel.value;
+    if (v === "__new") { v = await askNew(); if (!v) { route(); return; } }
+    post([m.symbol], v || null);
+  });
+  const selected = () => [...main.querySelectorAll("tr[data-i]")].filter((tr) => tr.querySelector(".rs").checked).map((tr) => g.members[+tr.dataset.i].symbol);
+  const syncBulk = () => { const n = selected().length; main.querySelector(".sub-bulk").hidden = !n; main.querySelector("#nsel").textContent = `${n} selected`; };
+  main.querySelectorAll(".rs").forEach((c) => c.onchange = syncBulk);
+  main.querySelector("#selall").onchange = (e) => { main.querySelectorAll(".rs").forEach((c) => { c.checked = e.target.checked; }); syncBulk(); };
+  main.querySelector("#bulkset").onclick = async () => { let v = main.querySelector("#bulksub").value; if (v === "__new") v = await askNew(); if (v) post(selected(), v); };
+  main.querySelector("#bulkrevert").onclick = () => post(selected(), null);
+  main.querySelector("#acceptall")?.addEventListener("click", async () => {
+    const sug = g.members.filter((m) => m.source === "suggested");
+    const by = {}; sug.forEach((m) => { (by[m.sub] = by[m.sub] || []).push(m.symbol); });
+    for (const [sub, syms] of Object.entries(by)) await api("/api/subindustries", jsonReq("POST", { market: mkt, symbols: syms, sub }));
+    toast(`${sug.length} suggestions accepted`, "ok"); route();
+  });
+}
+
+/** System → Status: is my data current (per market), and the job queue. */
 async function statusPage(alive, runId) {
-  document.title = "Data status · Trading";
+  if (runId) return go(`#/runs/${runId}`);   // old links
+  document.title = "Status · Trading";
   $view.innerHTML = LOADING;
   const s = await refreshStatusDot() || await api("/api/status");
-  const run = runId ? await api(`/api/status/run/${runId}`).catch(() => null) : s.latest_daily;
   if (!alive()) return;
-  const live = (run && run.status === "running") || s.running.length;
-  const steps = run?.steps || [];
-  const done = steps.filter((x) => ["ok", "failed", "skipped", "interrupted"].includes(x.status)).length;
+  const live = s.running.length || s.job_running || s.queue.queued.length;
   const fresh = (m) => {
     const f = s.freshness[m];
-    return `<section class="sec-card"><div class="sec-card-h"><h3>${f.name}</h3><span class="muted small">expected trading day: ${prettyDate(f.expected)}</span></div>
-      <table class="stt">${f.items.map((i) => `<tr><td>${stBadge(i.status)}</td><td><b>${esc(i.label)}</b></td>
-        <td class="num">${i.kind === "session" ? (i.date ? prettyDate(i.date) : "—") : (i.date ? clock(i.date) : "—")}</td><td class="muted">${esc(i.text)}</td></tr>`).join("")}</table></section>`;
+    return `<section class="sec-card"><div class="sec-card-h"><h3>${esc(f.name)}</h3><span class="muted small">should have ${prettyDate(f.expected)}</span></div>
+      <table class="stt fresh">${f.items.map((i) => `<tr><td>${stBadge(i.status)}</td><td><b>${esc(i.label)}</b></td>
+        <td class="num">${i.kind === "session" ? (i.date ? prettyDate(i.date) : "—") : (i.date ? clock(i.date) : "—")}</td><td class="muted small">${esc(i.text)}</td></tr>`).join("")}</table></section>`;
   };
-  const stepRows = steps.map((x, i) => `<tr class="srow-${x.status}" data-i="${i}">
+  $view.innerHTML = pageHead("Status", { context: `${stBadge(s.running.length ? "running" : s.overall)}<span class="muted small">checked ${clock(s.now)}</span>`,
+      actions: `<button class="ghost" id="strefresh" title="Re-read the run log and data freshness (does not run anything)">Re-check</button>` })
+    + `${queuePanel(s)}<div class="sec-top">${MKTS.filter((x) => s.freshness[x.key]).map((x) => fresh(x.key)).join("")}</div>
+    <p class="muted small">Web viewer: ${s.freshness.viewer.reports} reports loaded, last ${clock(s.freshness.viewer.reports_loaded_at)}.</p>`;
+  $view.querySelector("#strefresh").onclick = () => route();
+  wireQueuePanel($view);
+  if (live) { const t = setTimeout(() => { if (alive()) route(); }, 5000); const prev = cleanup; cleanup = () => { clearTimeout(t); prev(); }; }
+}
+
+/** System → Runs: one run's steps and log (Resume when it failed part-way), the run history, and every job. */
+async function runsPage(alive, runId) {
+  document.title = "Runs · Trading";
+  $view.innerHTML = LOADING;
+  const s = await api("/api/status");
+  const run = runId ? await api(`/api/status/run/${runId}`).catch(() => null) : s.latest_daily;
+  if (!alive()) return;
+  const steps = run?.steps || [];
+  const done = steps.filter((x) => ["ok", "failed", "skipped", "interrupted"].includes(x.status)).length;
+  const resumable = run && ["partial", "failed", "interrupted"].includes(run.status) && run.args?.targets;
+  const stepRows = steps.map((x) => `<tr class="srow-${x.status}">
       <td>${stBadge(x.status)}</td><td><b>${esc(x.label || x.step)}</b>${x.market ? ` <span class="mkt">${MKT_BADGE[x.market] || x.market}</span>` : ""}</td>
       <td class="num muted">${x.started_at ? new Date(x.started_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}</td>
       <td class="num">${x.status === "running" ? dur((Date.now() - new Date(x.started_at)) / 1000) : dur(x.duration_s)}</td>
       <td class="sdetail">${esc(x.detail || "")}${x.error ? `<details><summary class="neg">${esc(x.error.split("\n")[0])}</summary><pre>${esc(x.error)}</pre></details>` : ""}</td></tr>`).join("");
-  $view.innerHTML = `<div class="page-head"><h1>Data status</h1>${stBadge(s.running.length ? "running" : s.overall)}
-      <span class="muted small">checked ${clock(s.now)}${live ? " · refreshing every 5 s while a job runs" : ""}</span><span class="spacer"></span>
-      <button class="ghost" id="strefresh">Refresh</button></div>
-    <div class="pipes">${s.pipelines.map((p) => `<a class="pipe ${run && p.last && p.last.id === run.id ? "cur" : ""}" ${p.last ? `href="#/status/${p.last.id}"` : ""} title="${esc(p.jobs.join(" → "))}">
-        <div class="pipe-h"><b>${p.name}</b>${p.market ? ` <span class="mkt">${MKT_BADGE[p.market]}</span>` : ""}<span class="spacer"></span>${p.last ? stBadge(p.last.status) : '<span class="muted small">never run</span>'}</div>
-        <div class="muted small">${p.last ? `${clock(p.last.started_at)} · ${ago(p.last.started_at)}${p.last.duration_s != null ? " · " + dur(p.last.duration_s) : ""}` : esc(p.summary)}</div></a>`).join("")}</div>
+  $view.innerHTML = pageHead("Runs") + `
     <section class="sec-card">
       ${run ? `<div class="sec-card-h"><h3>${runId ? `Run #${run.id}` : run.status === "running" ? "Running now" : "Latest run"}</h3>${stBadge(run.status)}
-          <span class="muted small">${esc(run.job)} · started ${clock(run.started_at)} (${ago(run.started_at)})
-          ${run.finished_at ? ` · finished ${clock(run.finished_at)} · took ${dur(run.duration_s)}` : run.status === "running" ? ` · running for ${dur((Date.now() - new Date(run.started_at)) / 1000)}` : ""}</span>
-          <span class="spacer"></span>${runId ? `<a href="#/status">latest run</a>` : ""}</div>
+          <span class="muted small">${esc(run.job)}${run.args?.markets ? " · " + esc(run.args.markets.map((m) => MKT_BADGE[m] || m).join(" + ")) : ""} · started ${clock(run.started_at)} (${ago(run.started_at)})
+          ${run.finished_at ? ` · took ${dur(run.duration_s)}` : run.status === "running" ? ` · running for ${dur((Date.now() - new Date(run.started_at)) / 1000)}` : ""}</span>
+          <span class="spacer"></span>${resumable ? `<button class="primary sm" id="resume">↻ Resume</button>` : ""}${runId ? `<a class="small" href="#/runs">latest run</a>` : ""}</div>
         <div class="stprog"><i style="width:${steps.length ? (done / steps.length) * 100 : 0}%"></i></div>
         <div class="muted small" style="margin:4px 0 8px">${done} of ${steps.length} steps done${run.summary ? ` · ${esc(run.summary)}` : ""}${run.args?.strategies ? ` · strategies: ${esc(run.args.strategies.join(", "))}` : ""}</div>
         <table class="stt steps"><thead><tr><th></th><th>Step</th><th class="num">Started</th><th class="num">Took</th><th>Result</th></tr></thead><tbody>${stepRows}</tbody></table>
         ${run.log_tail ? `<details class="stlog"><summary>Log — last ${run.log_tail.length} lines of ${esc(run.log_path.split("/").slice(-1)[0])}</summary><pre>${esc(run.log_tail.join("\n"))}</pre></details>` : ""}`
-      : `<div class="empty"><b>No run recorded yet</b><div class="muted">Run the daily pipeline from a terminal:</div><code>${esc(s.command)}</code>
-          <div class="muted small">Suggested schedule (cron lines, one per market close): <code>${esc(s.schedule_command)}</code></div></div>`}
+      : `<div class="empty"><b>No run recorded yet</b><div class="muted">Run a pipeline from <a href="#/schedules">Schedules</a>.</div></div>`}
     </section>
-    <section class="sec-card"><div class="sec-card-h"><h3>Jobs</h3><span class="muted small">each job's latest run · <code>python -m jobs list</code> · run one with <code>python -m jobs run &lt;job&gt; --market us</code></span></div>
-      <table class="stt jobs"><thead><tr><th>Job</th><th>Layer</th><th>Cadence</th><th>US</th><th>India</th><th>What it does</th></tr></thead><tbody>
-      ${s.jobs.map((j) => { const c = (x) => x ? `<span title="${esc(x.detail || "")}">${stBadge(x.status)} <span class="muted small">${clock(x.at)}</span></span>` : '<span class="muted small">never</span>';
-        return `<tr><td><b>${esc(j.name)}</b></td><td><span class="layer l-${j.layer}">${j.layer}</span></td><td class="muted">${j.cadence}${j.network ? "" : " · offline"}</td>
-          ${j.per_market ? `<td>${c(j.last.us)}</td><td>${c(j.last.india)}</td>` : `<td colspan="2">${c(j.last.all)}</td>`}<td class="muted small">${esc(j.summary.split(": ").slice(1).join(": ") || j.summary)}</td></tr>`; }).join("")}
-      </tbody></table></section>
-    <div class="sec-top">${fresh("us")}${fresh("india")}</div>
-    <section class="sec-card"><div class="sec-card-h"><h3>Run history</h3><span class="muted small">daily runs and standalone commands · click one for its steps and log</span></div>
+    <section class="sec-card"><div class="sec-card-h"><h3>History</h3><span class="muted small">click a run for its steps and log</span></div>
       ${s.runs.length ? `<table class="stt hist"><thead><tr><th></th><th>Started</th><th>Job</th><th class="num">Took</th><th>Steps</th><th>Notes</th></tr></thead><tbody>
         ${s.runs.map((r) => `<tr data-id="${r.id}" class="${run && r.id === run.id ? "cur" : ""}"><td>${stBadge(r.status)}</td><td>${clock(r.started_at)} <span class="muted small">${ago(r.started_at)}</span></td>
-          <td><b>${esc(r.job)}</b>${r.args?.market ? ` <span class="mkt">${MKT_BADGE[r.args.market] || r.args.market}</span>` : ""}${r.args?.markets ? ` <span class="muted small">${esc(r.args.markets.map((m) => MKT_BADGE[m]).join(" + "))}</span>` : ""}</td>
+          <td><b>${esc(r.job)}</b>${r.args?.markets ? ` <span class="muted small">${esc(r.args.markets.map((m) => MKT_BADGE[m] || m).join(" + "))}</span>` : ""}</td>
           <td class="num">${dur(r.duration_s)}</td>
           <td class="small">${r.steps ? `<span class="pos">${r.steps.ok} ok</span>${r.steps.failed ? ` · <span class="neg">${r.steps.failed} failed</span>` : ""}${r.steps.skipped ? ` · <span class="muted">${r.steps.skipped} skipped</span>` : ""}` : ""}</td>
-          <td class="muted small">${esc(r.summary || "")}</td></tr>`).join("")}</tbody></table>`
-        : '<div class="muted small">Nothing recorded yet.</div>'}
-      <p class="muted small">Web viewer: ${s.freshness.viewer.reports} reports loaded, last at ${clock(s.freshness.viewer.reports_loaded_at)}. Daily update: <code>${esc(s.command)}</code></p></section>`;
-  $view.querySelector("#strefresh").onclick = () => route();
-  $view.querySelectorAll(".stt.hist tbody tr").forEach((tr) => tr.onclick = () => go(`#/status/${tr.dataset.id}`));
-  if (live) {
-    const t = setTimeout(() => { if (alive()) route(); }, 5000);
-    const prev = cleanup; cleanup = () => { clearTimeout(t); prev(); };
-  }
+          <td class="muted small">${esc(r.summary || "")}</td></tr>`).join("")}</tbody></table>` : '<div class="muted small">Nothing recorded yet.</div>'}</section>
+    <details class="sec-card alljobs"><summary><h3>All jobs</h3><span class="muted small">each job's latest run per market — run a single job</span></summary>
+      <table class="stt jobs"><thead><tr><th>Job</th><th>Layer</th><th>Cadence</th>${MKTS.map((m) => `<th>${esc(m.name)}</th>`).join("")}<th>What it does</th></tr></thead><tbody>
+      ${s.jobs.map((j) => { const rb = (m) => `<button class="ibtn jrun" data-job="${j.name}" data-m="${m}" title="Run ${esc(j.name)}${m === "all" ? "" : " for " + MKT_BADGE[m]}"><svg viewBox="0 0 20 20" class="play"><path d="M7 5l8 5-8 5z"/></svg></button>`;
+        const c = (x, m) => (x ? `<span title="${esc(x.detail || "")}">${stBadge(x.status)} <span class="muted small">${clock(x.at)}</span></span>` : '<span class="muted small">never</span>') + rb(m);
+        return `<tr><td><b>${esc(j.name)}</b></td><td><span class="layer l-${j.layer}">${j.layer}</span></td><td class="muted">${j.cadence}${j.network ? "" : " · offline"}</td>
+          ${j.per_market ? MKTS.map((m) => `<td>${c(j.last[m.key], m.key)}</td>`).join("") : `<td colspan="${MKTS.length}">${c(j.last.all, "all")}</td>`}<td class="muted small">${esc(j.summary.split(": ").slice(1).join(": ") || j.summary)}</td></tr>`; }).join("")}
+      </tbody></table></details>`;
+  $view.querySelectorAll(".stt.hist tbody tr").forEach((tr) => tr.onclick = () => go(`#/runs/${tr.dataset.id}`));
+  $view.querySelectorAll(".jrun").forEach((b) => b.onclick = () => startJob({ title: `Run ${b.dataset.job}${b.dataset.m === "all" ? "" : " · " + MKT_BADGE[b.dataset.m]}`,
+    targets: [b.dataset.job], market: b.dataset.m, screens: ["strategies", "backtest"].includes(b.dataset.job) }));
+  $view.querySelector("#resume")?.addEventListener("click", async () => {
+    const t = run.args.targets, m = run.args.markets?.length === 1 ? run.args.markets[0] : "all";
+    startJob({ title: `Resume ${t.join(" + ")}`, targets: t, market: m, screens: t.some((x) => ["strategies", "backtest"].includes(x)), resumeFrom: await resumePoint(run) });
+  });
+  if (run?.status === "running") { const t = setTimeout(() => { if (alive()) route(); }, 5000); const prev = cleanup; cleanup = () => { clearTimeout(t); prev(); }; }
 }
 
 // ------------------------------------------------------------- navigation
@@ -1902,40 +3223,148 @@ async function statusPage(alive, runId) {
 /** Top-level sections in the order of a review — market, ideas, the stock, what I track, does it work —
  *  each with its pages (shown inline in the header, next to the open section, when there is more than one). */
 const SECTIONS = [
-  { key: "markets", label: "Markets", pages: [["breadth", "Breadth"], ["sectors", "Sectors"], ["movers", "Movers"]] },
-  { key: "ideas", label: "Ideas", pages: [["screening", "Screening"], ["quality", "Quality"]] },
-  { key: "chart", label: "Chart", pages: [["chart", "Chart"]] },
-  { key: "watchlists", label: "Watchlists", pages: [["watchlist", "Watchlists"]] },
-  { key: "research", label: "Research", pages: [["reports", "Reports"], ["strategies", "Strategies"], ["playbook", "Playbook"]] },
+  { key: "markets", label: "Markets", pages: [["postmarket", "Post-market", "The day's recap after the close"], ["breadth", "Breadth", "How healthy is the market — risk, not direction"],
+    ["sectors", "Sectors", "Leading sectors, industry groups and their leaders"], ["movers", "Movers", "Top gainers and losers"]] },
+  { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"]] },
+  { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"]] },
+  { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"]] },
+  { key: "watchlists", label: "Watchlists", pages: [["watchlist", "Watchlists", "Your lists and the screener's picks"]] },
+  { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"], ["playbook", "Playbook", "Sector analysis: method and roadmap"],
+    ["learn", "Learn", "Learning material: chart patterns and candlesticks"],
+    ["todo", "TODO", "Ideas and follow-ups"], ["subindustries", "Sub-industries", "Which sub-industry each company belongs to — review and edit"]] },
+  { key: "system", label: "System", pages: [["status", "Status", "Is the data current? And the job queue"], ["runs", "Runs", "Every run, its steps and log"],
+    ["schedules", "Schedules", "When each pipeline runs — and run one now"], ["reports", "Reports archive", "Every backtest and screening report the scripts wrote"]] },
 ];
+/** the nav entry a URL belongs to: screens and strategies have one entry per screen / strategy */
+function pageIdOf(parts) {
+  const p = parts[0] || "chart";
+  return p === "screening" ? "strategies" : p === "quality" ? "screens" : p;
+}
 const PAGE_SECTION = Object.fromEntries(SECTIONS.flatMap((s) => s.pages.map(([p]) => [p, s])));
-const $nav = document.getElementById("nav");
+const sectionOf = (id) => PAGE_SECTION[id] || PAGE_SECTION[id.split("/")[0]] || null;
+const $nav = document.getElementById("nav"),
+  $navbtn = document.getElementById("navbtn"), $navpanel = document.getElementById("navpanel");
 
 /** highlight the section and tab; each section and tab reopens the exact page you were last on */
+/** Top bar: one link per section (a section opens its first page — Markets opens Post-market). A section
+ *  with several pages shows them as a tab row under the header, the same tabs pattern pages use inside. */
 function renderNav(page) {
-  const sec = PAGE_SECTION[page] || null;  // pages outside the sections (Data status) highlight none
-  if (sec) { store.set(`navLast:${sec.key}`, location.hash); store.set(`navPage:${page}`, location.hash); }
-  $nav.innerHTML = SECTIONS.map((s, i) => {
-    const link = `<a href="${esc(store.get(`navLast:${s.key}`, `#/${s.pages[0][0]}`))}" data-sec="${s.key}"
-      class="sec ${s === sec ? "active" : ""}" title="${esc(s.pages.map((p) => p[1]).join(" · "))} (Alt+${i + 1})">${s.label}</a>`;
-    if (s !== sec || s.pages.length < 2) return link;
-    // the open section's pages, inline next to it
-    return `<span class="sec-group">${link}<span class="sec-tabs">${s.pages.map(([p, t]) =>
-      `<a href="${esc(p === page ? location.hash : store.get(`navPage:${p}`, `#/${p}`))}" class="tab ${p === page ? "active" : ""}">${t}</a>`).join("")}</span></span>`;
-  }).join("");
+  const sec = sectionOf(page);
+  // remember the page you were on — but only under its own name: Quality lives in the Screens section,
+  // yet "Screens" must keep opening the screens, not the last Quality view
+  const first = location.hash.replace(/^#\//, "").split("/")[0] || "chart";
+  if (sec && first === page) store.set(`navPage:${page}`, location.hash);
+  if (store.get("navPage:screens", "").startsWith("#/quality")) store.set("navPage:screens", null);   // clean up the old value
+  const pageHref = (p) => esc(p === page ? location.hash : withMarket(store.get(`navPage:${p}`, `#/${p}`)));
+  const secHref_ = (s) => esc(`#/${s.pages[0][0]}`);   // a section link always opens its home page
+  $nav.innerHTML = SECTIONS.map((s, i) => `<a href="${secHref_(s)}" data-sec="${s.key}" data-href="${secHref_(s)}" class="sec ${s === sec ? "active" : ""}"
+      title="${esc(s.pages.map((x) => x[1]).join(" · "))} (Alt+${i + 1})">${s.label}</a>`).join("");
+  const sub = document.getElementById("subnav");
+  sub.hidden = !(sec && sec.pages.length > 1);
+  sub.innerHTML = sub.hidden ? "" : `<nav class="ptabs subtabs">${sec.pages.map(([p, t, d]) => `<a href="${pageHref(p)}" class="${p === page ? "active" : ""}" title="${esc(d)}">${t}</a>`).join("")}
+    <span class="spacer"></span><span class="muted small sub-hint">Alt+[ / ] previous / next</span></nav>`;
+  const cur = sec && sec.pages.find(([p]) => p === page);
+  $navbtn.innerHTML = `<svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg><b>${sec ? sec.label : "Menu"}</b>${cur && sec.pages.length > 1 ? `<span>› ${cur[1]}</span>` : ""}`;
+  $navpanel.innerHTML = SECTIONS.map((s, i) => `<div class="np-sec ${s === sec ? "cur" : ""}"><a class="np-h" href="${secHref_(s)}">${s.label}<kbd>Alt+${i + 1}</kbd></a>
+    ${s.pages.length > 1 ? `<div class="np-pages">${s.pages.map(([p, t]) => `<a href="${pageHref(p)}" class="${p === page ? "active" : ""}">${t}</a>`).join("")}</div>` : ""}</div>`).join("");
+  closeNavPanel();
+  syncMarketSel(page);
 }
-// Alt+1…5: jump to a section; Alt+[ / Alt+]: previous / next tab in the section
+function closeNavPanel() { $navpanel.hidden = true; $navbtn.setAttribute("aria-expanded", "false"); }
+$navbtn.onclick = (e) => { e.stopPropagation(); $navpanel.hidden = !$navpanel.hidden; $navbtn.setAttribute("aria-expanded", String(!$navpanel.hidden)); };
+document.addEventListener("click", (e) => { if (!$navpanel.hidden && !$navpanel.contains(e.target)) closeNavPanel(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeNavPanel(); });
+// Alt+1…N: jump to a section (N = number of SECTIONS; the ? help lists them from SECTIONS); Alt+[ / Alt+]: previous / next tab in the section
 document.addEventListener("keydown", (e) => {
   if (!e.altKey || e.metaKey || e.ctrlKey || e.target.closest?.("input, select, textarea")) return;
   const n = /^Digit([1-9])$/.exec(e.code)?.[1];
-  if (n && SECTIONS[n - 1]) { e.preventDefault(); go($nav.querySelector(`[data-sec="${SECTIONS[n - 1].key}"]`).getAttribute("href")); return; }
+  if (n && SECTIONS[n - 1]) { e.preventDefault(); go($nav.querySelector(`[data-sec="${SECTIONS[n - 1].key}"]`).dataset.href); return; }
+  if (e.code === "Digit0") { e.preventDefault(); go("#/status"); return; }
   if (e.code === "BracketLeft" || e.code === "BracketRight") {
-    const page = location.hash.replace(/^#\//, "").split("/")[0] || "chart", sec = PAGE_SECTION[page];
+    const page = pageIdOf(location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent)), sec = sectionOf(page);
     if (!sec || sec.pages.length < 2) return;
     const i = sec.pages.findIndex(([p]) => p === page), j = (i + (e.code === "BracketRight" ? 1 : -1) + sec.pages.length) % sec.pages.length;
-    e.preventDefault(); go(store.get(`navPage:${sec.pages[j][0]}`, `#/${sec.pages[j][0]}`));
+    e.preventDefault(); go(withMarket(store.get(`navPage:${sec.pages[j][0]}`, `#/${sec.pages[j][0]}`)));
   }
 });
+
+// ⌘K / Ctrl+K: go anywhere — a page by name, or a stock by symbol or company name
+function openPalette() {
+  if (document.querySelector(".palette")) return;
+  const pages = [...SECTIONS.flatMap((s) => s.pages.map(([p, t, d]) => ({ kind: "page", label: t, sub: `${s.label} · ${d}`, href: withMarket(store.get(`navPage:${p}`, `#/${p}`)) }))),
+    ...THEMES.map(([k, t]) => ({ kind: "page", label: `Theme: ${t}`, sub: "Change the colour theme", theme: k }))];
+  const m = el(`<div class="smodal palette"><div class="pal-card"><input placeholder="Go to a page, or a stock (symbol or company)…" spellcheck="false"><div class="pal-list"></div>
+    <div class="pal-foot muted small">↑ ↓ to move · Enter to open · Esc to close</div></div></div>`);
+  document.body.append(m);
+  const inp = m.querySelector("input"), host = m.querySelector(".pal-list");
+  let items = [], cur = 0, timer, seq = 0, state = "";   // state: "" | "searching" | "failed"
+  const draw = () => {
+    host.innerHTML = items.map((x, i) => `<div class="pal-it ${i === cur ? "sel" : ""}" data-i="${i}"><span class="pal-k">${x.kind === "page" ? "Page" : MKT_BADGE[x.market]}</span>
+      <b>${esc(x.label)}</b><span class="muted small">${esc(x.sub || "")}</span></div>`).join("")
+      + (state === "searching" ? '<div class="muted small pal-none"><span class="spin"></span> Searching stocks…</div>'
+        : state === "failed" ? '<div class="small pal-none neg">Stock search failed — is the web server running?</div>'
+        : items.length ? "" : `<div class="muted small pal-none">No page or stock matches “${esc(inp.value.trim())}”. Try a ticker (AAPL, RELIANCE) or part of a company name.</div>`);
+    host.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
+  };
+  const update = async () => {
+    const q = inp.value.trim().toLowerCase(), my = ++seq;
+    const pg = pages.filter((p) => !q || p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q));
+    items = pg.slice(0, q ? 6 : 20); cur = 0; state = q ? "searching" : ""; draw();
+    if (q.length < 1) return;
+    const syms = await api(`/api/symbols?q=${encodeURIComponent(q)}&limit=8`).catch(() => null);
+    if (my !== seq) return;
+    state = syms ? "" : "failed";
+    items = [...pg.slice(0, 5), ...(syms || []).map((r) => ({ kind: "symbol", market: r.market, label: r.symbol.replace(/\.NS$/, ""), sub: r.name || r.sector || "",
+      href: `#/chart/${r.market}/${encodeURIComponent(r.symbol)}` }))];
+    cur = 0; draw();
+  };
+  const close = () => { m.remove(); };
+  const pick = (i) => { const x = items[i]; if (!x) return; close(); if (x.theme) applyTheme(x.theme); else go(x.href); };
+  inp.oninput = () => { clearTimeout(timer); timer = setTimeout(update, 90); };
+  inp.onkeydown = (e) => {
+    e.stopPropagation();
+    if (e.key === "ArrowDown") { cur = Math.min(cur + 1, items.length - 1); draw(); e.preventDefault(); }
+    else if (e.key === "ArrowUp") { cur = Math.max(cur - 1, 0); draw(); e.preventDefault(); }
+    else if (e.key === "Enter") { e.preventDefault(); pick(cur); }
+    else if (e.key === "Escape") close();
+  };
+  host.onclick = (e) => { const it = e.target.closest("[data-i]"); if (it) pick(+it.dataset.i); };
+  m.onclick = (e) => { if (e.target === m) close(); };
+  inp.focus(); update();
+}
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
+}, true);
+
+/** Learn: a menu of every candlestick and chart pattern (learn.js), each drawn with real candles;
+ *  the long-form guides (research/learn-*.md) open as their ingested reports */
+async function learnPage(alive, topic) {
+  $view.innerHTML = LOADING;
+  const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => x.run.startsWith("learn-")).sort((a, b) => a.run.localeCompare(b.run));
+  if (!alive()) return;
+  const guide = runs.find((x) => x.run === `learn-${topic}`);
+  if (guide) return reportPage(alive, guide.id);
+  // #/learn/candles and #/learn/charts open one family; a pattern opens in its own family's menu
+  const p = topic && Learn.get(topic), famView = ["candles", "charts"].includes(topic) ? topic : null;
+  const fam = p ? Learn.familyOf(p) : famView || store.get("learnFam", "candles");
+  store.set("learnFam", fam);
+  document.title = `${p ? p.name + " · " : ""}Learn · Trading`;
+  const guides = runs.length ? `<div class="nav-h">Full guides</div>${runs.map((x) => `<a class="nav-item" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}"><span><b class="sn">${esc((x.title || x.run).replace(/ — a field guide$/, ""))}</b></span></a>`).join("")}` : "";
+  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">
+      ${segmented([["candles", "Candlesticks"], ["charts", "Chart patterns"]], fam, "lpfam")}
+      <label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a pattern" spellcheck="false"></label>
+      <a class="nav-item ${p ? "" : "active"}" href="#/learn/${fam}"><span><b class="sn">All ${fam === "charts" ? "chart patterns" : "candlestick patterns"}</b></span></a>
+      ${Learn.nav(p?.key, fam)}${guides}
+    </aside><section class="scr-main lp-main">${p ? Learn.detail(p) : pageHead(famView === "charts" ? "Chart patterns" : famView === "candles" ? "Candlestick patterns" : "Learn", { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume. Pick one from the menu or a card below.</p><p>The long-form guides are <code>research/learn-*.md</code>.</p>") }) + Learn.overview(famView)}</section></div>`;
+  $view.querySelectorAll(".lpfam button").forEach((b) => b.onclick = () => go(`#/learn/${b.dataset.v}`));
+  const f = $view.querySelector("#lpf");
+  f.oninput = () => { const q = f.value.trim().toLowerCase();
+    $view.querySelectorAll(".lp-nav .nav-item[data-k]").forEach((a) => a.hidden = !!q && !a.dataset.k.includes(q));
+    $view.querySelectorAll(".lp-nav .nav-h").forEach((h) => { let e = h.nextElementSibling, any = false; while (e && !e.classList.contains("nav-h")) { if (e.dataset.k && !e.hidden) any = true; e = e.nextElementSibling; } h.hidden = !!q && !any; }); };
+  f.onkeydown = (e) => { if (e.key === "Enter") { const a = [...$view.querySelectorAll(".lp-nav .nav-item[data-k]")].find((x) => !x.hidden); if (a) go(a.getAttribute("href")); } };
+  $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
+  if (p) window.scrollTo(0, 0);
+}
 
 /** the sector-analysis playbook (research/sector-analysis-playbook.md), shown as its ingested report */
 async function playbookPage(alive) {
@@ -1944,7 +3373,7 @@ async function playbookPage(alive) {
   if (!alive()) return;
   const r = runs.find((x) => x.run === "sector-analysis-playbook");
   if (!r) {
-    $view.innerHTML = `<div class="empty"><b>Playbook not loaded</b><div class="muted">Click <b>Refresh reports</b> to load research/sector-analysis-playbook.md.</div></div>`;
+    $view.innerHTML = `<div class="empty"><b>Playbook not loaded</b><div class="muted">Click <b>Load reports</b> (top right) to load research/sector-analysis-playbook.md.</div></div>`;
     return;
   }
   return reportPage(alive, r.id);
@@ -1957,20 +3386,28 @@ async function route() {
   const seq = ++navSeq, alive = () => seq === navSeq;
   const parts = location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent);
   const page = parts[0] || "chart";
-  renderNav(page);
+  renderNav(pageIdOf(parts));
   document.body.dataset.page = page;
   try {
     if (page === "chart") await chartPage(alive, parts[1], parts[2], parts[3]);
-    else if (page === "screening") await screeningPage(alive, parts[1], parts[2], parts[3]);
+    else if (page === "screening") go(`#/strategies/${encodeURIComponent(parts[2] || "trend_pullback")}/setups/${parts[1] || ""}`);
+    else if (page === "screens") await screensPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "watchlist") await watchlistPage(alive, parts[1]);
-    else if (page === "strategies") await strategiesPage(alive, parts[1]);
+    else if (page === "strategies") await strategiesPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "quality") await qualityPage(alive, parts[1]);
     else if (page === "breadth") await breadthPage(alive, parts[1]);
     else if (page === "movers") await moversPage(alive, parts[1]);
+    else if (page === "postmarket") await postmarketPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "sectors") await sectorsPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "reports") await (parts[1] ? reportPage(alive, parts[1], parts[2]) : reportsPage(alive));
     else if (page === "playbook") await playbookPage(alive);
+    else if (page === "learn") await learnPage(alive, parts[1]);
     else if (page === "status") await statusPage(alive, parts[1]);
+    else if (page === "schedules") await schedulesPage(alive);
+    else if (page === "runs") await runsPage(alive, parts[1]);
+    else if (page === "subindustries") await subindustriesPage(alive, parts[1], parts[2]);
+    else if (page === "todo") await todoPage(alive);
+    else if (page === "notes") await notesPage(alive, parts.slice(1));
     else go("#/chart");
   } catch (e) {
     if (alive()) $view.innerHTML = `<div class="empty"><b>Something went wrong</b><div class="muted">${esc(e.message)}</div></div>`;
@@ -1978,18 +3415,73 @@ async function route() {
 }
 window.addEventListener("hashchange", route);
 
-document.getElementById("refresh").onclick = async (e) => {
-  const b = e.currentTarget;
-  b.disabled = true; b.classList.add("busy");
+/** Load report files the offline scripts wrote (backtests, screening reports, research notes) into the app. */
+async function loadReports() {
+  toast("Loading reports…");
   try {
     const before = (await api("/api/reports")).length;
     const r = await api("/api/ingest", { method: "POST" });
     const d = r.runs - before;
     toast(d > 0 ? `${d} new report${d > 1 ? "s" : ""} loaded` : d < 0 ? `${-d} removed — ${r.runs} reports` : `Up to date — ${r.runs} reports`, "ok");
     route();
-  } catch (err) { toast("Refresh failed: " + err.message, "err"); }
-  b.disabled = false; b.classList.remove("busy");
-};
+  } catch (err) { toast("Loading reports failed: " + err.message, "err"); }
+}
+
+// ------------------------------------------------------------- tooltips
+/** Icon-only buttons (chart tools, the right rail, ⋯, ×) get a tooltip after 250 ms — the browser's own
+ *  takes a second or more and is easy to miss. The title moves to data-tip while shown (no double tooltip). */
+{
+  const tip = el(`<div class="tip" hidden></div>`); document.body.append(tip);
+  let timer, cur = null;
+  const iconOnly = (b) => b.matches(".icon, .ibtn, .tools button, .rbar button, .sbtns button, .dtb button, .tmore, .star") || !b.textContent.trim() || b.textContent.trim().length <= 2;
+  const hide = () => { clearTimeout(timer); tip.hidden = true; if (cur && cur.dataset.tip != null) { cur.title = cur.dataset.tip; delete cur.dataset.tip; } cur = null; };
+  document.addEventListener("mouseover", (e) => {
+    const b = e.target.closest?.("button[title], a.ibtn[title], button[data-tip]");
+    if (b === cur) return;
+    hide();
+    if (!b || !iconOnly(b)) return;
+    cur = b;
+    timer = setTimeout(() => {
+      if (!cur || !cur.isConnected) return;
+      cur.dataset.tip = cur.title; cur.removeAttribute("title");
+      tip.textContent = cur.dataset.tip; tip.hidden = false;
+      const r = cur.getBoundingClientRect(), t = tip.getBoundingClientRect();
+      const side = r.left < 80 ? "right" : r.right > innerWidth - 80 ? "left" : "below";
+      const x = side === "right" ? r.right + 8 : side === "left" ? r.left - t.width - 8 : Math.min(innerWidth - t.width - 6, Math.max(6, r.left + r.width / 2 - t.width / 2));
+      const y = side === "below" ? r.bottom + 6 : r.top + r.height / 2 - t.height / 2;
+      tip.style.left = `${x}px`; tip.style.top = `${y}px`;
+    }, 250);
+  });
+  document.addEventListener("mousedown", hide, true);
+  addEventListener("scroll", hide, true);
+}
+
+// ------------------------------------------------------------- theme
+const THEMES = [["black", "Black", "#000"], ["graphite", "Graphite", "#1e1e21"], ["light", "Light", "#fff"], ["system", "Match system (Black / Light)", "linear-gradient(90deg,#000 50%,#fff 50%)"]];
+function applyTheme(t) {
+  store.set("theme", t);
+  const eff = t === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "black") : t;
+  if (document.documentElement.dataset.theme !== eff) { document.documentElement.dataset.theme = eff; route(); }   // re-render so charts pick up the colours
+}
+matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => { if (store.get("theme", "black") === "system") applyTheme("system"); });
+{
+  const btn = document.getElementById("thmbtn"), pop = document.getElementById("thmpop");
+  const draw = () => { const cur = store.get("theme", "black"), dens = store.get("density", "comfortable");
+    pop.innerHTML = `<div class="tfly-h">Theme</div>` + THEMES.map(([k, t, sw]) => `<button data-t="${k}" class="${k === cur ? "cur" : ""}"><span class="thm-sw" style="background:${sw}"></span>${t}${k === cur ? " ✓" : ""}</button>`).join("")
+      + `<div class="tfly-h">Density</div>` + [["comfortable", "Comfortable — for reading"], ["compact", "Compact — more rows on screen"]]
+        .map(([k, t]) => `<button data-d="${k}" class="${k === dens ? "cur" : ""}">${t}${k === dens ? " ✓" : ""}</button>`).join("")
+      + `<div class="cm-sep"></div><button data-act="help">Keyboard shortcuts<kbd>?</kbd></button>
+         <button data-act="load" title="Load report files written by the offline scripts (backtests, screening reports, research notes). Market data comes from the daily jobs.">Load reports from disk</button>`; };
+  btn.onclick = (e) => { e.stopPropagation(); draw(); pop.hidden = !pop.hidden; };
+  pop.onclick = (e) => {
+    const b = e.target.closest("[data-t]"); if (b) { applyTheme(b.dataset.t); pop.hidden = true; return; }
+    const d = e.target.closest("[data-d]"); if (d) { store.set("density", d.dataset.d); document.documentElement.dataset.density = d.dataset.d; pop.hidden = true; route(); return; }
+    const a = e.target.closest("[data-act]"); if (!a) return;
+    pop.hidden = true;
+    if (a.dataset.act === "help") HELP.hidden = false; else loadReports();
+  };
+  document.addEventListener("click", (e) => { if (!pop.hidden && !e.target.closest(".thm")) pop.hidden = true; });
+}
 
 // keyboard help
 const HELP = el(`<div class="help" hidden><div class="help-card"><h3>Keyboard shortcuts</h3>
@@ -1999,7 +3491,8 @@ const HELP = el(`<div class="help" hidden><div class="help-card"><h3>Keyboard sh
   <dt>Drag the price axis</dt><dd>Stretch / squeeze the price scale</dd><dt>Alt + R</dt><dd>Reset the chart view</dd>
   <dt>Shift + drag</dt><dd>Measure</dd><dt>Esc</dt><dd>Cancel drawing / deselect</dd><dt>Del</dt><dd>Delete the selected drawing</dd>
   <dt>⌘ / Ctrl + Z</dt><dd>Undo the last drawing change</dd>
-  <dt>Alt + 1 … 5</dt><dd>Markets / Ideas / Chart / Watchlists / Research</dd><dt>Alt + [ / ]</dt><dd>Previous / next tab in the section</dd>
+  <dt>⌘ / Ctrl + K</dt><dd>Go anywhere: a page, or a stock by symbol or company name</dd>
+  <dt>Alt + 1 … ${SECTIONS.length}</dt><dd>${SECTIONS.map((x) => x.label).join(" / ")}</dd><dt>Alt + 0</dt><dd>Data status</dd><dt>Alt + [ / ]</dt><dd>Previous / next tab in the section</dd>
   <dt>?</dt><dd>Show this help</dd></dl>
   <button class="ghost">Close</button></div></div>`);
 document.body.append(HELP);
@@ -2008,5 +3501,5 @@ document.addEventListener("keydown", (e) => {
   if ((e.key === "?" || (e.key === "/" && e.shiftKey)) && !e.target.closest?.("input, select, textarea")) { HELP.hidden = !HELP.hidden; e.preventDefault(); e.stopImmediatePropagation(); }
   else if (e.key === "Escape") HELP.hidden = true;
 }, true);
-document.getElementById("help").onclick = () => (HELP.hidden = false);
 route();
+document.getElementById("palbtn").onclick = () => openPalette();

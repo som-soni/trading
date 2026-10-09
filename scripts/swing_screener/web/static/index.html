@@ -4,25 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Trading</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='4' fill='%232962ff'/%3E%3Cpath d='M4 14l4-5 3 3 5-7' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Crect width='20' height='20' rx='4' fill='%23f59e0b'/%3E%3Cpath d='M4 14l4-5 3 3 5-7' stroke='white' stroke-width='2' fill='none'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/static/style.css">
+<script>(function () { var t, q = new URLSearchParams(location.search).get("theme");
+  try { if (q) localStorage.setItem("theme", JSON.stringify(q)); t = JSON.parse(localStorage.getItem("theme")); } catch (e) { t = q; }
+  t = t || "black"; if (t === "system") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "black";
+  document.documentElement.dataset.theme = t;
+  try { document.documentElement.dataset.density = JSON.parse(localStorage.getItem("density")) || "comfortable"; } catch (e) {} })();</script>
 </head>
 <body>
 <header>
-  <a class="brand" href="#/chart"><svg viewBox="0 0 20 20"><rect width="20" height="20" rx="5"/><path d="M4 14l4-5 3 3 5-7"/></svg>Trading</a>
+  <a class="brand" href="#/chart"><svg viewBox="0 0 20 20"><rect width="20" height="20" rx="5"/><path d="M4 14l4-5 3 3 5-7"/></svg><span>Trading</span></a>
+  <button class="navbtn" id="navbtn" aria-haspopup="true" aria-expanded="false"></button>
   <nav id="nav"></nav>
   <span class="spacer"></span>
-  <a id="dstatus" class="dstatus" href="#/status" title="Data status"><i></i><span>Data</span></a>
-  <button class="ghost icon" id="help" title="Keyboard shortcuts (?)">?</button>
-  <button id="refresh" title="Load new report files from disk into the database">
-    <svg viewBox="0 0 20 20"><path d="M16 10a6 6 0 1 1-2-4.5M16 3v4h-4"/></svg>Refresh reports</button>
+  <label class="mktsel" title="Market — applies to every page"><select id="mktsel" aria-label="Market"></select></label>
+  <button class="ghost icon" id="palbtn" title="Go to a page or a stock (⌘K)" aria-label="Go to"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg></button>
+  <a id="dstatus" class="dstatus" href="#/status" title="Data status"><i></i><span class="ds-l"></span></a>
+  <span class="menu thm"><button class="ghost icon" id="thmbtn" title="Settings — theme, density, shortcuts, load reports" aria-label="Settings" aria-haspopup="true"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2.2M10 15.3v2.2M2.5 10h2.2M15.3 10h2.2M4.7 4.7l1.6 1.6M13.7 13.7l1.6 1.6M4.7 15.3l1.6-1.6M13.7 6.3l1.6-1.6"/></svg></button>
+    <div class="menu-pop thm-pop" id="thmpop" hidden></div></span>
 </header>
+<div class="navpanel" id="navpanel" hidden></div>
+<div id="subnav" hidden></div>
 <main id="view"></main>
 <div id="toasts"></div>
 <script src="/static/vendor/lightweight-charts.js"></script>
 <script src="/static/vendor/marked.js"></script>
 <script src="/static/drawings.js"></script>
 <script src="/static/studies.js"></script>
+<script src="/static/learn.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

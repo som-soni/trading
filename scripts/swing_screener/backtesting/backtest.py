@@ -56,6 +56,16 @@ logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 from ..paths import REPORTS_DIR as REPORT_DIR  # noqa: F401
 
+# Live progress hook. The `backtest` job (jobs/registry.py) points this at its run-log step so the
+# Runs page shows movement during a long run ("scanned 1,200/2,148 symbols…"); the CLI leaves it
+# unset and relies on the logger. Callers may invoke it per item — the consumer throttles.
+on_progress = None
+
+
+def _progress(text: str) -> None:
+    if on_progress:
+        on_progress(text)
+
 
 @dataclass
 class Trade:
@@ -414,6 +424,7 @@ def collect_signals(
             date=current_date, symbol=symbol, setup=plan.setup,
             entry=plan.entry, stop=plan.stop, target=plan.target,
             decision=dec.label_before, quality=dec.setup_quality,
+            meta=strategy.signal_meta(ctx, result, plan),
         ))
 
     _save_signals(new_signal_rows)
@@ -488,6 +499,36 @@ def rerank_signals(
         logger.info("rerank(%s): %d of %d signals had no score, ranked last",
                     kind, missing, len(signals))
     return out
+
+
+def filter_weak_groups(signals: "list", market_key: str, min_rs: int) -> tuple[list, dict]:
+    """Drop signals whose industry group was rated below `min_rs` on the signal's own date.
+
+    A portfolio-level filter, like `--rank-by`: the strategy's rules and its cached signals are unchanged,
+    so a run with the filter and one without compare the same signal set. Group RS is the Sectors page's
+    rating rebuilt point in time for every signal date (analytics/group_history.py: prices up to that
+    day; today's industry classification). A group too small to be rated (fewer than 3 liquid members)
+    is kept — unknown is not weak. Industry group rather than sub-industry: the group-strength study found
+    the finer level predicted no better, and it carries less classification look-ahead."""
+    from ..analytics import group_history
+    from ..marketdata import industries
+    ind = industries.load(market_key)
+    dates = sorted({pd.Timestamp(s.date).date() for s in signals})
+    logger.info("Group filter: rating industry groups on %d signal dates (computed once, then stored)...", len(dates))
+    ratings = group_history.ensure(market_key, dates)
+    kept, dropped, unrated = [], 0, 0
+    for s in signals:
+        g = (ind.get(s.symbol) or (None, None))[1]
+        rs = (ratings.get(pd.Timestamp(s.date).date(), {}).get("industry", {}) or {}).get(g) if g else None
+        if rs is None:
+            unrated += 1
+            kept.append(s)
+        elif rs >= min_rs:
+            kept.append(s)
+        else:
+            dropped += 1
+    logger.info("Group filter (industry-group RS >= %d): kept %d, dropped %d, unrated %d (kept)", min_rs, len(kept), dropped, unrated)
+    return kept, {"min_rs": min_rs, "kept": len(kept), "dropped": dropped, "unrated": unrated}
 
 
 def _close_trade(pos: dict, exit_date: pd.Timestamp, reason: str, exit_price: float) -> Trade:
@@ -621,6 +662,7 @@ def collect_portfolio_signals(
             all_signals.extend(sigs)
             # enriched, not raw: the exit policies read atr14/sma50 off the bar
             prices[sym] = ind.enrich_daily(raw)
+        _progress(f"scanning history: {i + 1:,}/{len(candidates):,} symbols · {len(all_signals):,} signals so far")
         if (i + 1) % 100 == 0:
             logger.info(
                 "Scanned %d/%d symbols, %d signals so far",
@@ -685,7 +727,8 @@ def _point_in_time_candidates(
     )
     candidates: list[str] = []
     excluded_today = 0
-    for sym in tickers:
+    for i, sym in enumerate(tickers):
+        _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify")
         raw = cache.load_cached(market_key, sym)
         if raw is None or len(raw) < 260:
             continue
@@ -719,10 +762,20 @@ def run_portfolio_backtest(
     risk_pct: float | None = None,
     max_position_pct: float | None = None,
     rank_by: str = "setup",
+    min_group_rs: int | None = None,
+    min_rs: int | None = None,
+    use_market_filter: bool = False,
+    spec_costs: bool = False,
+    max_open_risk_pct: float | None = None,
+    max_adv_pct: float | None = None,
 ):
     """Portfolio-level backtest: one capital pool, a position cap and costs.
 
+    `min_rs`, `use_market_filter`, `spec_costs`, `max_open_risk_pct` and `max_adv_pct` are the
+    Minervini spec's portfolio rules (backtesting/spec.py); `rank_by="rs"` is its PF-03 ranking.
+
     Returns (trades_df, Performance, PortfolioResult)."""
+    from . import spec as spec_mod
     from . import metrics
     from .portfolio_sim import ExitPolicy, simulate, trades_to_df as p_trades_to_df
 
@@ -748,6 +801,7 @@ def run_portfolio_backtest(
     start = pd.Timestamp(start_date)
     logger.info("Strategy: %s (%s)", strategy.key, strategy.name)
 
+    _progress("selecting point-in-time candidates")
     candidates = _point_in_time_candidates(cfg, strategy, market_key, start)
     candidates = sample_candidates(candidates, sample, include=include) if sample else (
         candidates[:limit] if limit else candidates
@@ -765,14 +819,44 @@ def run_portfolio_backtest(
         market_key, cfg, strategy, start, candidates, deep_data,
         use_signal_cache=use_signal_cache, accept_labels=accept_labels,
     )
-    if rank_by != "setup":
+    spec_notes = []
+    # the base count runs before any filter: a base counts whether or not its breakout was tradable
+    if any(s.meta.get("base_id") is not None for s in all_signals):
+        all_signals = spec_mod.base_numbers(all_signals, prices, market_key, strategy.key)
+    if min_rs is not None:
+        all_signals, r = spec_mod.filter_min_rs(all_signals, market_key, min_rs)
+        spec_notes.append(f"RS rating (TT-08): signals from stocks rated below {min_rs} (1-99 across the tradable universe "
+                          f"on the signal date) skipped: {r['below']} below, {r['unrated']} outside the rated universe, {r['kept']} kept.")
+    if use_market_filter and all_signals:
+        all_signals, m = spec_mod.market_filter(all_signals, market_key)
+        spec_notes.append(f"Market filter (MKT-01): {m['blocked']} signals blocked on days the benchmark was below its "
+                          f"200-day average or its 50-day was below its 200-day (open on {m['days_open_pct']}% of days).")
+    if spec_costs:
+        all_signals = spec_mod.annotate_costs(all_signals, prices, market_key)
+    if rank_by == "rs":
+        all_signals = spec_mod.rank_rs_then_tightness(all_signals)
+        logger.info("Ranked %d signals by RS, then tightness", len(all_signals))
+    elif rank_by != "setup":
         all_signals = rerank_signals(all_signals, prices, rank_by)
         logger.info("Re-ranked %d signals by '%s' for slot competition",
                     len(all_signals), rank_by)
+    if not all_signals:
+        raise ValueError("no signals left after the portfolio filters — nothing to simulate")
+    _progress(f"{len(all_signals):,} signals after filters · simulating the portfolio day by day")
+    group_note = None
+    if min_group_rs is not None:
+        all_signals, g = filter_weak_groups(all_signals, market_key, min_group_rs)
+        group_note = (f"Group filter: signals whose industry group was rated below RS {g['min_rs']} on the signal date were "
+                      f"skipped ({g['dropped']} dropped, {g['kept']} kept, of which {g['unrated']} in groups too small to rate). "
+                      "Group RS is rebuilt point in time from prices; the industry classification is today's.")
 
+    sim_kw = {}
+    if spec_costs:
+        sim_kw.update(cost_bps=spec_mod.COST_BPS[market_key], slippage_bps=spec_mod.SLIPPAGE_BPS[market_key])
     result = simulate(
         all_signals, prices, cfg, start,
         max_positions=max_positions, exit_policy=policy,
+        max_open_risk_pct=max_open_risk_pct, max_adv_pct=max_adv_pct, **sim_kw,
     )
     tdf = p_trades_to_df(result.trades)
 
@@ -786,16 +870,21 @@ def run_portfolio_backtest(
         "SURVIVORSHIP BIAS: the universe is today's listed names, so companies "
         "delisted or acquired during the window are absent entirely. This "
         "flatters results and cannot be fixed without point-in-time constituent data.",
-        f"Costs modelled: {cfg.slippage_bps:.0f}bps slippage per side plus "
-        f"{cfg.currency_symbol}{cfg.commission_per_order:.2f} per order. Real spreads on "
-        "thin names can exceed this.",
+        (f"Costs modelled (spec C-01/C-02): {spec_mod.COST_BPS[market_key]:g}bps charges plus "
+         f"{spec_mod.SLIPPAGE_BPS[market_key]:g}bps slippage per side, {spec_mod.ILLIQUID_SLIPPAGE_BPS[market_key]:g}bps "
+         "for stocks trading less than the illiquid threshold a day." if spec_costs else
+         f"Costs modelled: {cfg.slippage_bps:.0f}bps slippage per side plus "
+         f"{cfg.currency_symbol}{cfg.commission_per_order:.2f} per order. Real spreads on "
+         "thin names can exceed this."),
         "Signals are generated and filled on daily bars; intraday path within a bar "
         "is unknown, so a bar touching both stop and target is scored as a stop.",
         f"{result.signals_seen} signals were generated; {result.signals_taken} were taken, "
         f"{result.signals_missed_no_slot} passed up with all {cap} slots full, "
         f"{result.signals_missed_no_cash} for insufficient cash.",
         f"Exit policy: {policy.label()}.",
-    ]
+    ] + ([group_note] if group_note else []) + spec_notes + (
+        [f"Skipped at the fill: " + ", ".join(f"{v} {k}" for k, v in sorted(result.skipped.items(), key=lambda x: -x[1])) + "."]
+        if result.skipped else [])
     perf = metrics.compute(
         equity=result.equity, positions_open=result.positions_open, trades=tdf,
         max_open_positions=cap, costs_paid=result.costs_paid,
@@ -846,7 +935,10 @@ def print_summary(df: pd.DataFrame, currency_symbol: str) -> None:
     print(f"Total P&L (incl. open, mark-to-market): {currency_symbol}{df['pnl'].sum():,.2f}")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> dict | None:
+    """CLI entry point. `argv` lets the `backtest` job (jobs/registry.py) run it in-process with the
+    same arguments the command line would take; the portfolio branch returns {run_dir, trades, perf}
+    so the job can record a result line."""
     parser = argparse.ArgumentParser(description="Walk-forward backtest")
     parser.add_argument("--market", choices=list(MARKETS.keys()), required=True)
     parser.add_argument("--start", required=True, help="YYYY-MM-DD")
@@ -881,10 +973,22 @@ def main() -> None:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "ma", "donchian"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "ma", "donchian", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
-        "stop+target; the others test whether letting winners run beats capping them.",
+        "stop+target; the others test whether letting winners run beats capping them. "
+        "'minervini' is the spec's EX-01..EX-07 (research/minervini-backtest-spec.md).",
     )
+    parser.add_argument("--spec", action="store_true",
+                        help="the Minervini spec's portfolio rules: --exit-mode minervini, 8 positions, RS rating >= 70, "
+                             "RS-then-tightness ranking, 6%% open-risk cap, 5%% traded-value cap and the spec's costs "
+                             "(each can still be overridden by its own flag)")
+    parser.add_argument("--min-rs", type=int, default=None, help="skip signals whose RS rating (1-99, cross-sectional) is below this")
+    parser.add_argument("--market-filter", action="store_true", help="MKT-01: no new buys while the benchmark is below its 200-day")
+    parser.add_argument("--max-open-risk", type=float, default=None, help="PF-04: cap on open risk, %% of equity")
+    parser.add_argument("--max-adv-pct", type=float, default=None, help="SL-06: largest order, %% of 50-day traded value")
+    parser.add_argument("--partial-r", type=float, default=None, help="minervini exits: sell a third at this R (0 = off; default 3)")
+    parser.add_argument("--fail-days", type=int, default=None, help="minervini exits: failed-breakout window (default 5; 0 = off)")
+    parser.add_argument("--time-stop", type=int, default=None, help="minervini exits: EX-07 after this many sessions (default off)")
     parser.add_argument(
         "--no-target", action="store_true",
         help="drop the fixed profit target so winners can run (use with a trailing exit mode)",
@@ -908,7 +1012,10 @@ def main() -> None:
     parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
     parser.add_argument("--risk-pct", type=float, default=None,
                         help="risk per trade as a fraction, e.g. 0.005 (default: market config)")
-    parser.add_argument("--rank-by", default="setup", choices=list(RANK_MODES),
+    parser.add_argument("--min-group-rs", type=int, default=None,
+                        help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
+                             "on the signal date — e.g. 50 to avoid weak groups")
+    parser.add_argument("--rank-by", default="setup", choices=list(RANK_MODES) + ["rs"],
                         help="how to rank signals competing for a slot. 'setup' "
                              "(default) keeps the strategy's own score; 'momentum' "
                              "is 12-1 month return; 'random' is the control")
@@ -919,7 +1026,7 @@ def main() -> None:
     parser.add_argument("--no-ingest", action="store_true",
                     help="skip updating the viewer database after the run")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     labels = tuple(x.strip() for x in args.accept_labels.split(",") if x.strip())
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -937,16 +1044,33 @@ def main() -> None:
             "\nNOTE: per-symbol mode assumes unlimited capital and zero costs. "
             "Run without --per-symbol for an achievable portfolio result."
         )
-        return
+        return None
 
     from . import metrics
 
     cfg = MARKETS[args.market]
     from .portfolio_sim import ExitPolicy
 
+    from . import spec as spec_mod
+    from ..strategies import minervini_spec as ms
+    if args.spec:
+        if args.exit_mode == "bracket":
+            args.exit_mode, args.no_target = "minervini", True
+        if args.max_positions is None:
+            args.max_positions = ms.MAX_POSITIONS
+        if args.min_rs is None:
+            args.min_rs = 70
+        if args.rank_by == "setup":
+            args.rank_by = "rs"
+        if args.max_open_risk is None:
+            args.max_open_risk = ms.MAX_OPEN_RISK_PCT
+        if args.max_adv_pct is None:
+            args.max_adv_pct = ms.MAX_ADV_PCT
+    extra = {k: v for k, v in (("partial_r", args.partial_r), ("fail_days", args.fail_days),
+                               ("time_stop_days", args.time_stop)) if v is not None}
     policy = ExitPolicy(
         mode=args.exit_mode, use_target=not args.no_target,
-        atr_mult=args.atr_mult, ma_col=args.ma_col, donchian_bars=args.donchian_bars,
+        atr_mult=args.atr_mult, ma_col=args.ma_col, donchian_bars=args.donchian_bars, **extra,
     )
     tdf, perf, result = run_portfolio_backtest(
         args.market, args.start, args.limit, args.deep_lookback_days,
@@ -955,7 +1079,10 @@ def main() -> None:
         sample=args.sample, refresh_history=args.refresh_history,
         include=[x.strip() for x in args.include.split(",") if x.strip()],
         risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
-        rank_by=args.rank_by,
+        rank_by=args.rank_by, min_group_rs=args.min_group_rs,
+        min_rs=args.min_rs, use_market_filter=args.market_filter, spec_costs=args.spec,
+        max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
+        max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
     )
     from ..paths import run_dir
 
@@ -966,6 +1093,16 @@ def main() -> None:
         run += f"_cap{args.max_position_pct * 100:g}pct"
     if args.rank_by != "setup":
         run += f"_rank{args.rank_by}"
+    if args.min_group_rs is not None:
+        run += f"_grp{args.min_group_rs}"
+    if args.spec:
+        run += "_spec"
+    elif args.min_rs is not None:
+        run += f"_rs{args.min_rs}"
+    if args.market_filter:
+        run += "_mkt"
+    if args.accept_labels != "TRADE - HIGH CONFIDENCE":
+        run += "_" + "+".join("".join(w[0] for w in x.split() if w[0].isalpha()) for x in labels)
     run += f"_sample{args.sample}" if args.sample else ""
     out = run_dir(args.market, args.strategy, run)
     tdf.to_csv(out / "trades.csv", index=False)
@@ -998,7 +1135,22 @@ def main() -> None:
             + (f" --max-positions {args.max_positions}" if args.max_positions else "")
             + (f" --exit-mode {args.exit_mode}" if args.exit_mode != "bracket" else "")
             + (" --no-target" if args.no_target else "")
+            + (f" --ma-col {args.ma_col}" if args.exit_mode == "ma" else "")
+            + (f" --rank-by {args.rank_by}" if args.rank_by != "setup" else "")
+            + (f" --min-group-rs {args.min_group_rs}" if args.min_group_rs is not None else "")
+            + (" --spec" if args.spec else (f" --min-rs {args.min_rs}" if args.min_rs is not None else ""))
+            + (" --market-filter" if args.market_filter else "")
+            + (f" --accept-labels '{args.accept_labels}'" if args.accept_labels != "TRADE - HIGH CONFIDENCE" else "")
+            + (f" --partial-r {args.partial_r:g}" if args.partial_r is not None else "")
+            + (f" --fail-days {args.fail_days}" if args.fail_days is not None else "")
+            + (f" --time-stop {args.time_stop}" if args.time_stop is not None else "")
         )
+        spec_md = None
+        if args.exit_mode == "minervini" or args.spec:
+            spec_md = spec_mod.breakdown(tdf, result.equity, cfg.currency_symbol)
+            n_gap = spec_mod.trades_over_suspect_gaps(tdf, args.market)
+            spec_md += (f"\n\nData check: {n_gap} of {len(tdf)} trades were held across a split-shaped gap that is still in "
+                        "the source's own price history (marketdata/splits.py) — a likely false crash.\n")
         md = report_mod.write_report(
             out,
             f"{cfg.name} — {get_strategy(args.strategy).name}, {args.start} onward",
@@ -1006,8 +1158,11 @@ def main() -> None:
             cfg.currency_symbol,
             args.max_positions if args.max_positions is not None else cfg.max_open_positions,
             _bench_c, cmd,
+            extra_sections=[("Breakdown (spec section 13)", spec_md)] if spec_md else None,
         )
         print(f"Report  -> {md}")
+        if spec_md:
+            print(spec_md)
     except Exception as e:  # a chart failure must not lose the run's results
         logger.warning("markdown report not generated (%s: %s)", type(e).__name__, e)
     print()
@@ -1017,6 +1172,8 @@ def main() -> None:
     if not getattr(args, "no_ingest", False):
         from ..web.ingest import ingest_after_run
         ingest_after_run()
+    return {"run_dir": out, "trades": len(tdf), "perf": perf}
+
 
 if __name__ == "__main__":
     main()

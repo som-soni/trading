@@ -40,7 +40,6 @@ import pandas as pd
 
 from ..config.base import MarketConfig
 from ..core import chart_patterns as cp
-from ..core import indicators as ind
 from ..core import swings as sw
 from ..core.context import StockContext
 from .base import (
@@ -73,7 +72,10 @@ class ChartPatternStrategy(Strategy):
         "Breakouts from a named base — cup-and-handle, double bottom, flat "
         "base, bull flag, ascending triangle, or VCP."
     )
+    style = "breakout"
     gate_codes = ("P1", "P2", "P3", "P4", "P5", "P6", "P7")
+    screen_key = "near_highs"
+    screen_gates = {"P1": "H1", "P2": "H2", "P3": "H3"}
     watch_codes = ("XP1", "XP2", "XP3", "XP4", "XP5")
     # bullish bases only — a topping structure can never become a setup in a
     # long-only book; it enters through the XP5 veto instead
@@ -149,6 +151,11 @@ class ChartPatternStrategy(Strategy):
         "setup, capped at WATCH.",
     )
     caveats = (
+        "**RE-MEASURED 2026-10-09: -5.60% CAGR, 139 trades, -0.309R per trade "
+        "(t = -1.90), profit factor 0.62.** The earlier -4.08% / -0.213R "
+        "figures below came from a 4 October run; the data has since "
+        "extended and the `near_highs` screen was formalised, so the "
+        "baseline itself moved. Quote one vintage or the other, not a mix.",
         "**A DAY OF DETECTOR REFINEMENT MOVED EXPECTANCY BY 0.001R.** "
         "Tightening the handle, anchoring the cup to the prior peak, adding "
         "CUPNH and the XP5 topping veto took per-trade expectancy from -0.214R "
@@ -214,6 +221,8 @@ class ChartPatternStrategy(Strategy):
         "Backtested and lost money: US 2020-2026, 300-symbol sample, bracket "
         "exit, -4.08% CAGR vs the benchmark's +13.63%, -0.213R per trade over "
         "146 trades. No demonstrated edge."
+        " Measured before the 2026-10 cost fix (exit slippage was charged twice); re-measured runs moved by "
+        "−0.8 to +0.9 points of CAGR (the extra cash changes which later signals are taken), so re-run before relying on it."
     )
     gate_docs = {
         "P1": "The close must be above the 200-day SMA. Every pattern here is a "
@@ -450,32 +459,10 @@ class ChartPatternStrategy(Strategy):
                 "pattern_actionable": bool(actionable),
             })
 
-        sma200 = d["sma200"].iloc[-1]
-        high_252 = d["high_252"].iloc[-1]
-
-        # P1: long-term structure intact. Every pattern here is a
-        # CONTINUATION setup; the same shapes below a falling SMA200 are
-        # bear-market rallies.
-        if pd.isna(sma200) or close <= sma200:
-            result.fail("P1", "close at/below SMA200")
-        else:
-            result.ok("P1")
-
-        # P2: SMA200 not falling
-        state = ind.slope_state(d["sma200"], 20, 0.5)
-        if state == "falling":
-            result.fail("P2", "SMA200 falling")
-        else:
-            result.ok("P2", f"SMA200 {state}")
-
-        # P3: near the highs. A base that completes 30% below the 52-week
-        # high is a recovery attempt, not a breakout.
-        if pd.isna(high_252):
-            result.fail("P3", "insufficient history for the 52-week high")
-        elif close >= high_252 * 0.85:
-            result.ok("P3")
-        else:
-            result.fail("P3", "more than 15% below the 52-week high")
+        # P1-P3: the Near-highs screen's criteria H1-H3 (above a rising 200-day, within 15% of the high).
+        # Every pattern here is a CONTINUATION setup; the same shapes below a falling SMA200 are
+        # bear-market rallies, and a base 30% below the high is a recovery attempt, not a breakout.
+        self.apply_screen(ctx, result)
 
         # P4: volatility sane
         atr_pct = d["atr_pct"].iloc[-1]
@@ -832,6 +819,7 @@ class ChartPatternCupStrategy(ChartPatternStrategy):
         "The chart-pattern strategy restricted to CUP and CUPNH — the only "
         "two detectors that are rare in random data."
     )
+    variant_of = "chart_pattern"  # style is inherited from ChartPatternStrategy
     setup_codes = (cp.CUP, cp.CUPNH)
     allowed_codes = (cp.CUP, cp.CUPNH)
 

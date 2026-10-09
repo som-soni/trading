@@ -58,7 +58,10 @@ class DonchianStrategy(Strategy):
         "Classical trend following: buy an N-day high, exit on an M-day low, "
         "stop at a volatility multiple, and filter almost nothing."
     )
+    style = "trend"
     gate_codes = ("N1", "N2")
+    screen_key = "above_200"
+    screen_gates = {"N1": "A1"}
     watch_codes = ("XN1", "XN2")
     setup_codes = (DC01, DC02)
     min_bars = 260
@@ -125,6 +128,8 @@ class DonchianStrategy(Strategy):
         "(India full universe 7.34% CAGR vs 11.68%; US 500-sample 5.78% vs "
         "~12.8%). Trade shape is sound (profit factor ~1.2) but signal "
         "selection among tied breakouts is arbitrary."
+        " Measured before the 2026-10 cost fix (exit slippage was charged twice); re-measured runs moved by "
+        "−0.8 to +0.9 points of CAGR (the extra cash changes which later signals are taken), so re-run before relying on it."
     )
     gate_docs = {
         "N1": (
@@ -248,14 +253,8 @@ class DonchianStrategy(Strategy):
         ctx.extras["channel_high"] = ch_high
         ctx.extras["channel_low"] = ch_low
 
-        # N1: long-only concession — don't buy breakouts under the 200-day
-        sma200 = d["sma200"].iloc[-1]
-        if pd.isna(sma200):
-            result.fail("N1", "insufficient history for SMA200")
-        elif close > sma200:
-            result.ok("N1")
-        else:
-            result.fail("N1", "close below SMA200")
+        # N1: long-only concession — don't buy breakouts under the 200-day (the Above-200 screen's A1)
+        self.apply_screen(ctx, result)
 
         # N2: the breakout has already run away
         if atr14 and close > ch_high + atr14:

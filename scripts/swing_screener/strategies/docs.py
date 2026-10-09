@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .. import paths
 from ..config import MARKETS
-from . import _REGISTRY, LABELS
+from . import _REGISTRY, LABELS, STYLES
 
 # What each decision label means. Shared by every Strategy subclass: the
 # labels and the downgrade ladder are defined once, in strategies/base.py.
@@ -78,8 +78,13 @@ def strategy_doc(key: str) -> dict:
         backtest += " " + cls.backtest_args
     return {
         "key": key, "kind": "screener", "name": cls.name, "description": r(cls.description), "status": r(cls.status),
+        "style": cls.style, "style_label": STYLES.get(cls.style, ""),
+        "style_rank": list(STYLES).index(cls.style) if cls.style in STYLES else len(STYLES),
+        "variant_of": ({"key": cls.variant_of, "name": type(_REGISTRY[cls.variant_of]).name}
+                       if cls.variant_of in _REGISTRY else None),
         "thesis": r(cls.thesis), "how_it_works": [r(s) for s in cls.how_it_works], "caveats": [r(s) for s in cls.caveats],
-        "gates": [{"code": c, "text": r(cls.gate_docs.get(c, ""))} for c in cls.gate_codes],
+        "gates": [{"code": c, "text": r(cls.gate_docs.get(c, "")), "screen": cls.screen_gates.get(c)} for c in cls.gate_codes],
+        "screen": _screen_ref(cls),
         "watch": [{"code": c, "text": r(cls.watch_docs.get(c, ""))} for c in cls.watch_codes],
         "setups": [{"code": c, "text": r(cls.setup_docs.get(c, ""))} for c in cls.setup_codes],
         "entry_rules": [r(s) for s in cls.entry_rules], "exit_rules": [r(s) for s in cls.exit_rules],
@@ -94,6 +99,27 @@ def strategy_doc(key: str) -> dict:
         },
         "source": _source_info(cls),
     }
+
+
+def _screen_ref(cls) -> dict | None:
+    """The screen a strategy draws its candidates from, and which of its gates are that screen's criteria."""
+    if not cls.screen_key:
+        return None
+    from ..screens import get_screen
+    sc = get_screen(cls.screen_key)
+    return {"key": sc.key, "name": sc.name, "description": sc.description,
+            "gates": {g: c for g, c in cls.screen_gates.items()}}
+
+
+def screen_doc(key: str) -> dict:
+    """A screen's documentation: criteria rendered from screens/criteria.py's live constants, and the strategies that use it."""
+    from ..screens import get_screen
+    sc = get_screen(key)
+    users = [{"key": k, "name": type(s).name, "gates": dict(type(s).screen_gates)} for k, s in sorted(_REGISTRY.items())
+             if type(s).screen_key == key]
+    return {"key": sc.key, "kind": "screen", "name": sc.name, "description": sc.description, "thesis": sc.thesis,
+            "criteria": sc.docs(), "rank_rs": sc.rank_rs, "used_by": users,
+            "source": _source_info(type(sc)) | {"file": "scripts/swing_screener/screens/__init__.py"}}
 
 
 def baseline_doc() -> dict:
@@ -150,6 +176,21 @@ def check() -> list[str]:
         for attr in ("thesis", "status", "how_it_works", "caveats", "entry_rules", "exit_rules", "param_docs"):
             if not getattr(cls, attr):
                 problems.append(f"{where}: `{attr}` is empty")
+        if cls.style not in STYLES:
+            problems.append(f"{where}: style {cls.style!r} is not one of {sorted(STYLES)} — every strategy "
+                            "declares its trading-style family (strategies/base.py STYLES)")
+        if cls.variant_of:
+            if cls.variant_of == key:
+                problems.append(f"{where}: variant_of points at itself")
+            elif cls.variant_of not in _REGISTRY:
+                problems.append(f"{where}: variant_of '{cls.variant_of}' is not a registered strategy")
+            else:
+                parent = type(_REGISTRY[cls.variant_of])
+                if parent.variant_of:
+                    problems.append(f"{where}: variant_of '{cls.variant_of}' is itself a variant — variants nest one level only")
+                if parent.style != cls.style:
+                    problems.append(f"{where}: style '{cls.style}' differs from its parent '{cls.variant_of}' "
+                                    f"('{parent.style}') — a variant shows under its parent's style group")
         for codes_attr, docs_attr in (("gate_codes", "gate_docs"), ("watch_codes", "watch_docs"), ("setup_codes", "setup_docs")):
             codes, docs = set(getattr(cls, codes_attr)), getattr(cls, docs_attr)
             for c in sorted(codes - set(docs)):
@@ -164,11 +205,34 @@ def check() -> list[str]:
                 cls.render_doc(t)
             except (KeyError, IndexError, ValueError) as exc:
                 problems.append(f"{where}: placeholder {exc} does not resolve in: {t[:80]!r}")
+        if cls.screen_key:
+            from ..screens import SCREENS
+            if cls.screen_key not in SCREENS:
+                problems.append(f"{where}: screen_key '{cls.screen_key}' is not a screen")
+            else:
+                codes = {c.code for c in SCREENS[cls.screen_key].criteria}
+                for g, c in cls.screen_gates.items():
+                    if g not in cls.gate_codes:
+                        problems.append(f"{where}: screen_gates maps '{g}', which is not in gate_codes")
+                    if c not in codes:
+                        problems.append(f"{where}: screen_gates maps '{g}' to '{c}', not a criterion of screen '{cls.screen_key}'")
+        else:
+            problems.append(f"{where}: no screen_key — every strategy draws its candidates from a screen")
         for label, src, _ in cls.param_docs:
             try:
                 _resolve_param(cls, src)
             except (KeyError, AttributeError):
                 problems.append(f"{where}: param '{label}' points at '{src}', which does not exist")
+    from ..screens import SCREENS
+    for key, sc in SCREENS.items():  # every screen's criteria must render (placeholders resolve) and be documented
+        try:
+            for d in sc.docs():
+                if not d["text"].strip():
+                    problems.append(f"screen {key}: criterion {d['code']} has no description")
+        except (KeyError, IndexError, ValueError) as exc:
+            problems.append(f"screen {key}: placeholder {exc} does not resolve")
+        if not (sc.name and sc.description and sc.thesis):
+            problems.append(f"screen {key}: name, description and thesis are required")
     try:
         from fundamentals import quality as qmod
         c = qmod.criteria()  # renders every rule text with the live constants: a renamed constant fails here

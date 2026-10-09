@@ -15,11 +15,12 @@ from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .. import paths
+from ..config import MARKETS
 from ..marketdata import freshness
 from ..marketdata import names as names_mod
 from ..marketdata.db import get_connection, py_value
@@ -45,8 +46,9 @@ def _startup() -> None:
     qual.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
     threading.Thread(target=_prewarm_sectors, daemon=True).start()
+    threading.Thread(target=lambda: [(_names(m), _liquidity(m)) for m in tuple(MARKETS)], daemon=True).start()  # first search is instant
     names_mod.init_schema()
-    missing = [m for m in ("us", "india") if not names_mod.load(m)]
+    missing = [m for m in tuple(MARKETS) if not names_mod.load(m)]
     if missing:  # first run: fetch company names in the background (a few seconds; the UI shows tickers meanwhile)
         threading.Thread(target=lambda: [names_mod.refresh(m) for m in missing], daemon=True).start()
 
@@ -75,7 +77,7 @@ def _universe() -> dict[str, list[dict]]:
     """Symbol list per market from the universe files + sector caches (no
     DISTINCT scan over 20M price rows)."""
     out = {}
-    for market in ("us", "india"):
+    for market in tuple(MARKETS):
         f = paths.DATA_DIR / f"universe_{market}.csv"
         syms = pd.read_csv(f, keep_default_na=False)["ticker"].astype(str).str.strip().tolist() if f.exists() else []  # "NA" is a ticker
         syms = [x for x in syms if x]
@@ -95,6 +97,30 @@ def _indices() -> dict[str, list[str]]:
     return out
 
 
+@app.get("/api/markets")
+def markets_api():
+    """The markets the app knows (config/MARKETS): the web app builds its market selector, badges and
+    currency formatting from this, so adding a country needs no UI change."""
+    from ..config import MARKETS
+    return [{"key": k, "name": c.name, "exchange": c.exchange, "badge": c.badge or c.name, "flag": c.flag,
+             "currency": c.currency_symbol, "suffix": c.symbol_suffix, "tz": c.tz} for k, c in MARKETS.items()]
+
+
+_liq_cache: dict = {}
+
+
+def _liquidity(market: str) -> dict[str, float]:
+    """symbol -> percentile (0-1) of 20-day traded value in the latest stock snapshot; ranks search hits."""
+    from ..screens import snapshot
+    ds = snapshot.dates(market)
+    if not ds:
+        return {}
+    if _liq_cache.get(market, (None,))[0] != ds[-1]:
+        df = snapshot.load(market, ds[-1])
+        _liq_cache[market] = (ds[-1], dict(zip(df["symbol"], df["value20"].rank(pct=True).fillna(0))))
+    return _liq_cache[market][1]
+
+
 @app.get("/api/symbols")
 def symbols(market: str | None = None, q_: str = Query("", alias="q"), limit: int = 40):
     """Symbol search across every market (or one, with `market`), by ticker or company name. Matching
@@ -104,7 +130,7 @@ def symbols(market: str | None = None, q_: str = Query("", alias="q"), limit: in
     base = lambda s: s.upper().removesuffix(".NS")
     by_name = len(needle) >= 2
     hits = []
-    for m in ([market] if market else ["us", "india"]):
+    for m in ([market] if market else list(MARKETS)):
         names = _names(m)
         for r in _universe().get(m, []):
             nm = names_mod.lookup(names, r["symbol"]) or ""
@@ -115,10 +141,15 @@ def symbols(market: str | None = None, q_: str = Query("", alias="q"), limit: in
             if needle in s.upper() or (by_name and needle in nm.upper()):
                 hits.append({"symbol": s, "name": nm or None, "sector": "index series", "market": m, "type": "index"})
 
+    liq = {m: _liquidity(m) for m in (list(MARKETS) if not market else [market])}
+
     def rank(r):
+        """exact ticker; then a ticker or company name starting with the text; then a word in the name
+        starting with it; then the rest — within each, the most traded first (so "micro" puts Microsoft
+        above a micro-cap), indices after stocks."""
         b, nm = base(r["symbol"]), (r["name"] or "").upper()
-        return (b != needle, not b.startswith(needle), not (nm.startswith(needle) or f" {needle}" in nm),
-                r["type"] != "stock", len(r["symbol"]))
+        return (b != needle, not (b.startswith(needle) or nm.startswith(needle)), f" {needle}" not in nm,
+                r["type"] != "stock", -liq.get(r["market"], {}).get(r["symbol"], 0), len(r["symbol"]))
     hits.sort(key=rank)
     return hits[:limit]
 
@@ -219,7 +250,25 @@ def symbol_context(market: str, symbol: str):
                 latest.append({"run_id": name, "strategy": strat, "decision": rec.get("decision"),
                                **{k: rec.get(k) for k in ("entry", "stop", "target_r", "setup_quality",
                                                           "strategy_setup", "sector")}})
-    return {"latest": latest, "history": history, "name": _name(market, symbol)}
+    return {"latest": latest, "history": history, "name": _name(market, symbol), "classification": _classification(market, symbol)}
+
+
+_class_cache: dict[str, tuple[float, dict, dict]] = {}
+
+
+def _classification(market: str, symbol: str) -> dict | None:
+    """sector › industry group › sub-industry of one stock (cached; the tables change monthly)."""
+    import time
+    from ..marketdata import industries as ind_mod, subindustries
+    hit = _class_cache.get(market)
+    if not hit or time.time() - hit[0] > 600:
+        hit = (time.time(), ind_mod.load(market), subindustries.load(market))
+        _class_cache[market] = hit
+    ind, sub = hit[1].get(symbol), hit[2].get(symbol)
+    if not ind:
+        return None
+    return {"sector": ind[0], "industry": ind[1], "sub": sub[1] if sub and sub[1] != "other" else None,
+            "sub_key": subindustries.label(*sub) if sub and sub[1] != "other" else None}
 
 
 # ------------------------------------------------------------- screening
@@ -246,6 +295,27 @@ def screening_runs(market: str | None = None):
     return runs
 
 
+def _peers(market: str) -> dict[str, dict]:
+    """symbol -> {peer_group, peer_rs, peer_rank, peer_count} from the latest stock snapshot — the context
+    every list shows (leader of a leading group, or not)."""
+    df = _snap(market)
+    if df is None or "peer_group" not in df.columns:
+        return {}
+    num = lambda v: None if v is None or v != v else int(v)
+    return {s: {"peer_group": g if isinstance(g, str) else None, "peer_rs": num(r), "peer_rank": num(k), "peer_count": num(n)}
+            for s, g, r, k, n in zip(df["symbol"], df["peer_group"], df["peer_rs"], df["peer_rank"], df["peer_count"])}
+
+
+def _with_peer_cols(market: str, t: dict) -> dict:
+    """Append peer group / group RS / rank-in-group columns to a strategy table."""
+    cols, rows = t["columns"], t["rows"]
+    if "symbol" not in cols or "peer_group" in cols:
+        return t
+    si, P = cols.index("symbol"), _peers(market)
+    return {"columns": [*cols, "peer_group", "group_rs", "peer_rank"],
+            "rows": [[*r, *(lambda p: [p.get("peer_group"), p.get("peer_rs"), p.get("peer_rank")])(P.get(r[si], {}))] for r in rows]}
+
+
 @app.get("/api/screening/table")
 def screening_table(source: str, market: str, strategy: str, run: str, id: int | None = None):
     if source == "history":
@@ -257,11 +327,11 @@ def screening_table(source: str, market: str, strategy: str, run: str, id: int |
             raise HTTPException(404)
         records = [r[0] for r in rows]
         cols = list(records[0].keys())
-        return _with_name_col(market, cols, [[r.get(c) for c in cols] for r in records])
+        return _with_peer_cols(market, _with_name_col(market, cols, [[r.get(c) for c in cols] for r in records]))
     t = q("SELECT columns, rows FROM report_tables WHERE run_id=%s AND name='candidates'", (id,))
     if not t:
         raise HTTPException(404)
-    return _with_name_col(market, t[0][0], t[0][1])
+    return _with_peer_cols(market, _with_name_col(market, t[0][0], t[0][1]))
 
 
 def _with_name_col(market: str, cols: list, rows: list) -> dict:
@@ -417,6 +487,9 @@ def strategies():
     for k in strat_docs.keys():
         d = strat_docs.strategy_doc(k)
         out.append({"key": k, "name": d["name"], "kind": d["kind"], "status": d["status"], "description": d["description"],
+                    "screen_name": (d.get("screen") or {}).get("name"),
+                    "style_label": d.get("style_label") or "", "style_rank": d.get("style_rank", 99),
+                    "variant_of": (d.get("variant_of") or {}).get("key"),
                     "backtests": bt.get(k, 0), "screens": [x for x in screens if x["strategy"] == k]})
     return out
 
@@ -445,24 +518,36 @@ import numpy as np
 from ..analytics import breadth as br
 
 _breadth_jobs: dict[str, subprocess.Popen] = {}
+_breadth_tried: dict = {}     # market -> the price day a top-up was last asked for
 _sector_cache: dict[tuple, dict] = {}
 
 
 def _breadth_topup(market: str) -> bool:
-    """Start a background top-up when prices are newer than the stored breadth. Returns True while running."""
+    """Ask for a breadth top-up when prices are newer than the stored breadth. Returns True while one is
+    queued or running. Goes through the job queue (so it never collides with a running pipeline); when no
+    worker is running it starts the job directly, as before."""
+    jq = _jq()
+    busy = [x for x in [jq.items(0)["running"], *jq.items(0)["queued"]] if x and "breadth" in x["targets"] and x["market"] in (market, "all")]
+    if busy:
+        return True
     job = _breadth_jobs.get(market)
     if job and job.poll() is None:
         return True
     last_price = q("SELECT max(date) FROM prices WHERE market=%s", (market,))[0][0]
     last_br = q("SELECT max(date) FROM breadth_daily WHERE market=%s", (market,))[0][0]
-    if last_br is None or (last_price and last_price > last_br and (job is None or job.returncode is not None)):
-        if job is not None and job.returncode is not None and last_br is not None and last_price > last_br:
+    if last_br is None or (last_price and last_price > last_br):
+        tried = _breadth_tried.get(market)
+        if tried == last_price:
             # a finished top-up that still leaves the newest day out means that day is a partial load
-            # (e.g. a holiday with stray rows) — don't relaunch forever
+            # (e.g. a holiday with stray rows) — don't ask again for the same day
             return False
-        env = {**__import__("os").environ, "PYTHONPATH": str(paths.SCRIPTS_DIR)}
-        _breadth_jobs[market] = subprocess.Popen([sys.executable, "-m", "jobs", "run", "breadth", "--market", market],
-                                                 cwd=str(paths.SCRIPTS_DIR), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        _breadth_tried[market] = last_price
+        if jq.worker_status()["alive"]:
+            jq.enqueue(["breadth"], market, {}, requested_by="breadth page", skip_if_running=True)
+        else:
+            env = {**__import__("os").environ, "PYTHONPATH": str(paths.SCRIPTS_DIR)}
+            _breadth_jobs[market] = subprocess.Popen([sys.executable, "-m", "jobs", "run", "breadth", "--market", market],
+                                                     cwd=str(paths.SCRIPTS_DIR), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return True
     return False
 
@@ -696,8 +781,9 @@ def breadth_page(market: str = "india"):
 def _last_prices(keys: list[tuple]) -> dict:
     if not keys:
         return {}
+    # the last 30 days only: the latest bar is in there, and the (market, date) index keeps it fast
     rows = q("""SELECT DISTINCT ON (market, symbol) market, symbol, date, close, sma200, high_252, rsi14
-                FROM prices WHERE (market, symbol) IN %s ORDER BY market, symbol, date DESC""", (tuple(keys),))
+                FROM prices WHERE (market, symbol) IN %s AND date >= current_date - 30 ORDER BY market, symbol, date DESC""", (tuple(keys),))
     return {(m, s): {"date": d.isoformat(), "close": c, "sma200": a, "high_252": h, "rsi14": r} for m, s, d, c, a, h, r in rows}
 
 
@@ -745,7 +831,7 @@ def quality_criteria():
 @app.post("/api/quality/watch")
 def quality_track(market: str = Body(...), symbol: str = Body(...), note: str | None = Body(None), target: float | None = Body(None)):
     symbol = symbol.strip().upper()
-    if market not in ("us", "india"):
+    if market not in tuple(MARKETS):
         raise HTTPException(400, "market must be us or india")
     if not _known_symbol(market, symbol):
         raise HTTPException(404, f"{symbol} is not a known {market.upper()} symbol"
@@ -835,6 +921,7 @@ def movers(market: str = "us", period: str = "1D", universe: str = "liquid", lim
     now, then = _rows_on(market, d1), _rows_on(market, d0)
     eq, liq = _equities(market, d1), MOVER_LIQUID[market]
     sectors = {sym: sec for sym, sec in q("SELECT symbol, sector FROM symbol_kind WHERE market=%s AND sector NOT IN ('', 'Unknown')", (market,))}
+    P = _peers(market)
     sectors.update({r["symbol"]: r["sector"] for r in _universe().get(market, []) if r["sector"] not in (None, "", "Unknown")})
     rows = []
     for sym, (c, v, vs, dv) in now.items():
@@ -844,7 +931,7 @@ def movers(market: str = "us", period: str = "1D", universe: str = "liquid", lim
             continue
         rows.append({"symbol": sym, "name": _name(market, sym), "sector": sectors.get(sym), "last": c, "chg": c - then[sym][0],
                      "pct": (c / then[sym][0] - 1) * 100, "volume": v, "rel_vol": v / vs if v and vs else None,
-                     "value": c * v if v else None, "avg_value": dv})
+                     "value": c * v if v else None, "avg_value": dv, **P.get(sym, {})})
     rows.sort(key=lambda r: r["pct"], reverse=True)
     adv = sum(r["pct"] > 0 for r in rows)
     dec = sum(r["pct"] < 0 for r in rows)
@@ -885,7 +972,7 @@ def _sector_data(market: str, wait: bool = True) -> tuple[dict | None, bool]:
 
 
 def _prewarm_sectors() -> None:
-    for m in ("us", "india"):
+    for m in tuple(MARKETS):
         try:
             _sector_data(m)
         except Exception as exc:  # noqa: BLE001 - the page computes on demand instead
@@ -894,8 +981,8 @@ def _prewarm_sectors() -> None:
 
 @app.get("/api/sectors")
 def sectors_api(market: str = "us", level: str = "industry"):
-    if level not in ("industry", "sector"):
-        raise HTTPException(400, "level must be industry or sector")
+    if level not in ("industry", "sector", "sub"):
+        raise HTTPException(400, "level must be sector, industry or sub")
     data, updating = _sector_data(market, wait=market not in _sector_cache)
     if data.get("empty"):
         return data
@@ -913,11 +1000,587 @@ def sector_group(market: str, level: str, group: str):
     if not g:
         raise HTTPException(404, f"no {level} '{group}' in {market}")
     members = data["members"]
-    sub = [x for x in data["industry"] if x["sector"] == group] if level == "sector" else []
+    # the level below: a sector's industry groups, an industry group's sub-industries
+    child_level = {"sector": "industry", "industry": "sub"}.get(level)
+    key = "sector" if level == "sector" else "industry"
+    children = [x for x in data.get(child_level, []) if x[key] == group] if child_level else []
     return {"market": market, "date": data["date"], "level": level, "doc": data["doc"], "market_ret": data["market_ret"],
             "group": {k: v for k, v in g.items() if k != "members"},
-            "members": [members[s] for s in g["members"]],
-            "industries": [{k: v for k, v in x.items() if k not in ("series", "members")} for x in sub]}
+            "members": [members[s] for s in g["members"]], "child_level": child_level,
+            "children": [{k: v for k, v in x.items() if k not in ("series", "members")} for x in children]}
+
+
+# ------------------------------------------------------------- screens & today's setups
+
+def _latest_strategy_rows(market: str) -> dict:
+    """strategy -> (run_id, rows) of each strategy's latest screening run in universe_history."""
+    out = {}
+    for strategy, run in q("SELECT strategy, max(run_id) FROM universe_history WHERE market=%s GROUP BY strategy", (market,)):
+        rows = q("SELECT symbol, full_row FROM universe_history WHERE market=%s AND strategy=%s AND run_id=%s", (market, strategy, run))
+        out[strategy] = (run, rows)
+    return out
+
+
+def _setups_by_symbol(market: str) -> dict:
+    """symbol -> [{strategy, decision, setup, entry, stop}] for names a strategy marks tradeable or on watch."""
+    from ..strategies import _REGISTRY
+    out: dict[str, list] = {}
+    for strategy, (run, rows) in _latest_strategy_rows(market).items():
+        if strategy not in _REGISTRY:
+            continue
+        for sym, fr in rows:
+            if fr.get("tradeable") is True or fr.get("watchlist_candidate") is True:
+                out.setdefault(sym, []).append({"strategy": strategy, "decision": fr.get("decision"), "setup": fr.get("strategy_setup"),
+                                                "entry": fr.get("entry"), "stop": fr.get("stop"), "tradeable": fr.get("tradeable") is True})
+    return out
+
+
+_snap_cache: dict = {}
+
+
+def _snap(market: str, d=None):
+    """A snapshot (screens/snapshot.py) as a DataFrame, cached in memory by (market, date)."""
+    from ..screens import snapshot
+    ds = snapshot.dates(market)
+    if not ds:
+        return None
+    d = pd.Timestamp(d).date() if d else ds[-1]
+    if d not in ds:
+        raise HTTPException(404, f"no snapshot for {market} {d}")
+    key = (market, d, snapshot._path(market, d).stat().st_mtime)
+    if key not in _snap_cache:
+        if len(_snap_cache) > 80:
+            _snap_cache.clear()
+        df = snapshot.load(market, d)
+        if d != ds[-1]:   # past snapshots carry no classification: show today's (a company rarely changes industry)
+            latest = snapshot.load(market, ds[-1]).set_index("symbol")
+            for k in ("sector", "industry", "sub_industry"):
+                if k in df.columns and df[k].isna().all():
+                    df[k] = df["symbol"].map(latest[k])
+        _snap_cache[key] = df
+    return _snap_cache[key]
+
+
+def _screen_def(key: str) -> dict:
+    """A built-in screen ('stage2') or one of yours ('u12'): name, description, conditions, docs."""
+    from ..screens import definitions
+    from ..strategies import docs as sdocs
+    if key in definitions.builtin():
+        d = sdocs.screen_doc(key)
+        return {"key": key, "builtin": True, "name": d["name"], "description": d["description"], "thesis": d["thesis"],
+                "criteria": d["criteria"], "used_by": d["used_by"], "conditions": definitions.builtin()[key]["conditions"], "sort_by": "rs_rank"}
+    if key in definitions.presets():
+        p = definitions.presets()[key]
+        return {"key": key, "builtin": True, "preset": True, "name": p["name"], "description": p["description"], "thesis": p["thesis"],
+                "criteria": None, "used_by": [], "conditions": p["conditions"], "sort_by": "rs_rank"}
+    if key.startswith("u") and key[1:].isdigit():
+        u = definitions.get_user(int(key[1:]))
+        if u:
+            return {"key": key, "builtin": False, "id": u["id"], "name": u["name"], "description": u["description"], "conditions": u["conditions"],
+                    "sort_by": u["sort_by"] or "rs_rank", "columns": u["columns"], "used_by": []}
+    raise HTTPException(404, f"unknown screen {key}")
+
+
+def _query(market: str, conditions: list, d=None, sort_by: str = "rs_rank", limit: int = 1000) -> dict:
+    from ..screens import definitions, snapshot
+    df = _snap(market, d)
+    if df is None:
+        return {"empty": True, "command": f"python -m jobs run screens --market {market}"}
+    try:
+        m = definitions.mask(df, conditions)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    hit = df[m]
+    if sort_by in hit.columns:
+        hit = hit.sort_values(sort_by, ascending=False, na_position="last")
+    day = df.attrs["date"]
+    ds = snapshot.dates(market)
+    prev_d = max((x for x in ds if x < day), default=None)
+    prev = set(_snap(market, prev_d).loc[lambda x: definitions.mask(x, conditions), "symbol"]) if prev_d else None
+    setups = _setups_by_symbol(market) if day == ds[-1] else {}
+    rows = []
+    for rec in hit.head(limit).to_dict("records"):
+        rec = {k: (None if isinstance(v, float) and v != v else v) for k, v in rec.items()}
+        rec["name"] = _name(market, rec["symbol"])
+        rec["new"] = prev is not None and rec["symbol"] not in prev
+        rec["setups"] = setups.get(rec["symbol"], [])
+        rows.append(rec)
+    return {"market": market, "date": day.isoformat(), "dates": [x.isoformat() for x in reversed(ds)], "count": int(m.sum()),
+            "universe": len(df), "tradable": int(df["tradable"].sum()), "prev_date": prev_d.isoformat() if prev_d else None,
+            "dropped": sorted(prev - set(hit["symbol"])) if prev is not None else [], "rows": rows}
+
+
+@app.get("/api/screen-fields")
+def screen_fields(market: str = "us"):
+    """The fields a screen can test, and for text fields (sector, industry…) the values present in the market's latest snapshot."""
+    from ..screens import definitions, snapshot
+    df = _snap(market)
+    text = [k for k, _l, _g, kd, _d in snapshot.FIELDS if kd == "text"]
+    values = {k: sorted(df[k].dropna().astype(str).unique().tolist()) for k in text if df is not None and k in df.columns}
+    return {"fields": [{"key": k, "label": l, "group": g, "kind": kd, "description": d} for k, l, g, kd, d in snapshot.FIELDS],
+            "ops": list(definitions.OPS), "values": values}
+
+
+@app.get("/api/screens")
+def screens_api(market: str = "us"):
+    """Every screen — built-in and yours — with today's count, the change since the previous session and the top names."""
+    from ..screens import definitions
+    df = _snap(market)
+    items = [{"key": k, "builtin": True, **{x: v for x, v in _screen_def(k).items() if x in ("name", "description", "used_by")},
+              "conditions": v["conditions"]} for k, v in definitions.builtin().items()]
+    items += [{"key": k, "builtin": True, "preset": True, "name": v["name"], "description": v["description"], "used_by": [],
+               "conditions": v["conditions"]} for k, v in definitions.presets().items()]
+    items += [{"key": f"u{u['id']}", "builtin": False, "name": u["name"], "description": u["description"], "conditions": u["conditions"], "used_by": []}
+              for u in definitions.list_user()]
+    if df is None:
+        return {"market": market, "date": None, "screens": items, "command": f"python -m jobs run screens --market {market}"}
+    from ..screens import snapshot
+    ds = snapshot.dates(market)
+    prev = _snap(market, ds[-2]) if len(ds) > 1 else None
+    for it in items:
+        try:
+            m = definitions.mask(df, it["conditions"])
+            it["count"] = int(m.sum())
+            it["prev_count"] = int(definitions.mask(prev, it["conditions"]).sum()) if prev is not None else None
+            top = df[m].sort_values("rs_rank", ascending=False).head(10)
+            it["top"] = [{"symbol": s_, "name": _name(market, s_), "rs": None if r != r else int(r)} for s_, r in zip(top["symbol"], top["rs_rank"])]
+        except ValueError as exc:
+            it["error"] = str(exc)
+    return {"market": market, "date": df.attrs["date"].isoformat(), "tradable": int(df["tradable"].sum()), "universe": len(df), "screens": items}
+
+
+@app.get("/api/screens/{key}")
+def screen_api(key: str, market: str = "us", date: str | None = None):
+    d = _screen_def(key)
+    return {"def": d, **_query(market, d["conditions"], date, d.get("sort_by") or "rs_rank")}
+
+
+def _study(market: str, conditions: list) -> dict:
+    from ..screens import study
+    try:
+        r = study.study(market, conditions)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    if r.get("summary") and not r.get("empty"):
+        r["compare"] = study.compare(market)
+    return r
+
+
+@app.get("/api/screens/{key}/study")
+def screen_study_api(key: str, market: str = "us"):
+    """Forward returns of the screen's qualifiers on each month-end vs all tradable stocks (screens/study.py)."""
+    return _study(market, _screen_def(key)["conditions"])
+
+
+@app.post("/api/screens/study")
+def screen_study_draft(spec: dict = Body(...)):
+    return _study(spec.get("market") or "us", spec.get("conditions") or [])
+
+
+@app.post("/api/screens/query")
+def screen_query(spec: dict = Body(...)):
+    """Run unsaved conditions (the screen builder's live preview)."""
+    return _query(spec.get("market") or "us", spec.get("conditions") or [], spec.get("date"), spec.get("sort_by") or "rs_rank", int(spec.get("limit") or 1000))
+
+
+@app.post("/api/screens")
+def screen_save(spec: dict = Body(...)):
+    from ..screens import definitions
+    try:
+        u = definitions.save_user(spec.get("name", ""), spec.get("conditions") or [], spec.get("description", ""), spec.get("sort_by"),
+                                  spec.get("columns"), spec.get("id"))
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:  # noqa: BLE001 - e.g. the name is taken
+        raise HTTPException(400, "a screen with that name already exists" if "unique" in str(exc).lower() else str(exc))
+    return {"key": f"u{u['id']}", **u}
+
+
+@app.delete("/api/screens/{key}")
+def screen_delete(key: str):
+    from ..screens import definitions
+    if not (key.startswith("u") and key[1:].isdigit()):
+        raise HTTPException(400, "built-in screens cannot be deleted")
+    definitions.delete_user(int(key[1:]))
+    return {"ok": True}
+
+
+def _class_cache_load(market: str):
+    """(symbol -> (sector, industry, cap), symbol -> (industry, sub)), cached like _classification."""
+    _classification(market, "")
+    hit = _class_cache[market]
+    return hit[1], hit[2]
+
+
+@app.get("/api/setups")
+def setups_api(market: str = "us"):
+    """Today's setups: every strategy's tradeable and on-watch names from its latest run."""
+    from ..strategies import _REGISTRY
+    from ..strategies import docs as sdocs
+    out, runs, P = [], [], _peers(market)
+    for strategy, (run, rows) in sorted(_latest_strategy_rows(market).items()):
+        if strategy not in _REGISTRY:
+            continue
+        doc = sdocs.strategy_doc(strategy)
+        picks = [(sym, fr) for sym, fr in rows if fr.get("tradeable") is True or fr.get("watchlist_candidate") is True]
+        runs.append({"strategy": strategy, "name": doc["name"], "run": run, "screened": len(rows),
+                     "tradeable": sum(1 for _, fr in picks if fr.get("tradeable") is True), "watch": sum(1 for _, fr in picks if fr.get("tradeable") is not True),
+                     "screen": doc["screen"]["name"] if doc.get("screen") else None})
+        for sym, fr in picks:
+            out.append({"strategy": strategy, "strategy_name": doc["name"], "symbol": sym, "name": _name(market, sym),
+                        "tradeable": fr.get("tradeable") is True, "decision": fr.get("decision"), "setup": fr.get("strategy_setup"),
+                        "price": fr.get("price"), "entry": fr.get("entry"), "stop": fr.get("stop"), "risk_pct": fr.get("risk_pct"),
+                        "target_r": fr.get("target_r"), "quality": fr.get("setup_quality"), "sector": fr.get("sector"),
+                        "wait_for": fr.get("wait_for"), "run": run, **P.get(sym, {})})
+    return {"market": market, "runs": runs, "rows": out}
+
+
+# ------------------------------------------------------------- run jobs from the web app
+
+# The web app views data; jobs produce it. Run / Resume / Stop / schedules go through the job queue
+# (jobs/queue.py); one worker (`python -m jobs worker`) runs it — the same `python -m jobs run ...` the
+# terminal would — and the run log records every run, so the Data status page follows it live.
+# Changing anything is allowed only from this machine.
+_LOCAL = {"127.0.0.1", "::1", "localhost"}
+
+
+def _jq():
+    from jobs import queue
+    return queue
+
+
+def _job_running() -> dict | None:
+    """The run in progress, if any: the queue's running item, or any run the run log shows as alive."""
+    it = _jq().items(0)["running"]
+    if it:
+        return {"item": it["id"], "cmd": it["command"].replace("python -m jobs run ", ""), "started": it["started_at"], "from_queue": True}
+    for r in status_mod.runs(q, 10):
+        if r["status"] == "running":
+            return {"run_id": r["id"], "cmd": r["job"], "started": r["started_at"], "from_queue": False}
+    return None
+
+
+def _require_local(request: Request) -> None:
+    if (request.client.host if request.client else None) not in _LOCAL:
+        raise HTTPException(403, "jobs can only be started from the machine running the web app")
+
+
+@app.post("/api/jobs/run")
+def jobs_run(request: Request, spec: dict = Body(...)):
+    """Queue a run. spec: targets, market, strategies ('all' or [..]), from, force."""
+    _require_local(request)
+    from jobs.registry import JOBS, PIPELINES
+    targets = [t for t in spec.get("targets") or [] if t in JOBS or t in PIPELINES]
+    if not targets or len(targets) != len(spec.get("targets") or []):
+        raise HTTPException(400, f"unknown job or pipeline in {spec.get('targets')}")
+    market = spec.get("market") or "all"
+    if market not in ("all", *MARKETS):
+        raise HTTPException(400, f"unknown market {market}")
+    st = spec.get("strategies")
+    opts = {"strategies": (["all"] if st == "all" else st) or None, "from": spec.get("from"), "force": bool(spec.get("force"))}
+    jq = _jq()
+    it = jq.enqueue(targets, market, opts, requested_by="you")
+    return {"ok": True, "item": it["id"], "duplicate": bool(it.get("duplicate")), "position": jq.position(it["id"]),
+            "command": it["command"], "worker": jq.worker_status()}
+
+
+@app.post("/api/jobs/stop")
+def jobs_stop(request: Request, spec: dict = Body(default={})):
+    """Stop the running queue item (or the one given); the run log then shows it as stopped."""
+    _require_local(request)
+    jq = _jq()
+    iid = (spec or {}).get("item") or (jq.items(0)["running"] or {}).get("id")
+    if not iid:
+        raise HTTPException(409, "nothing from the queue is running")
+    return {"ok": True, "result": jq.cancel(int(iid))}
+
+
+@app.get("/api/queue")
+def queue_api():
+    jq = _jq()
+    return {**jq.items(15), "worker": jq.worker_status()}
+
+
+@app.post("/api/queue/{iid}/cancel")
+def queue_cancel(request: Request, iid: int):
+    _require_local(request)
+    return {"result": _jq().cancel(iid)}
+
+
+@app.post("/api/queue/{iid}/front")
+def queue_front(request: Request, iid: int):
+    _require_local(request)
+    _jq().to_front(iid)
+    return {"ok": True}
+
+
+@app.post("/api/worker/start")
+def worker_start(request: Request):
+    """Start a worker in the background (it survives a server restart). Prefer the launchd agent, which also
+    restarts it after a crash or a reboot: python -m jobs worker --install"""
+    _require_local(request)
+    jq = _jq()
+    if jq.worker_status()["alive"]:
+        return {"ok": True, "already": True}
+    import datetime as _dt
+    import os
+    out = paths.LOGS_DIR / "worker.log"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "PYTHONPATH": str(paths.SCRIPTS_DIR)}
+    with open(out, "a") as f:
+        f.write(f"\n--- started from the web app {_dt.datetime.now():%Y-%m-%d %H:%M:%S} ---\n")
+        f.flush()
+        subprocess.Popen([sys.executable, "-m", "jobs", "worker"], cwd=str(paths.SCRIPTS_DIR), env=env, stdout=f,
+                         stderr=subprocess.STDOUT, start_new_session=True)
+    return {"ok": True}
+
+
+@app.get("/api/schedules")
+def schedules_api():
+    from jobs.registry import JOBS, PIPELINES
+    from ..strategies import list_strategies
+    jq = _jq()
+    last = {}
+    for r in q("""SELECT DISTINCT ON (schedule_id) schedule_id, id, status, finished_at, run_id FROM job_queue
+                  WHERE schedule_id IS NOT NULL ORDER BY schedule_id, id DESC"""):
+        last[r[0]] = {"item": r[1], "status": r[2], "finished_at": r[3].isoformat() if r[3] else None, "run_id": r[4]}
+    return {"schedules": [{**x, "last": last.get(x["id"]), "command": "python -m jobs " + " ".join(jq.command_for(x["targets"], x["market"], x["opts"]))}
+                          for x in jq.schedules()],
+            "targets": {"pipelines": [{"name": k, "summary": v["summary"], "jobs": [j if isinstance(j, str) else j[0] for j in v["jobs"]]} for k, v in PIPELINES.items()],
+                        "jobs": [{"name": j.name, "summary": j.summary, "per_market": j.per_market} for j in JOBS.values()]},
+            "strategies": list_strategies(), "worker": jq.worker_status(),
+            "tz": __import__("datetime").datetime.now().astimezone().tzname()}
+
+
+@app.post("/api/schedules")
+def schedule_save(request: Request, spec: dict = Body(...)):
+    _require_local(request)
+    from jobs.registry import JOBS, PIPELINES
+    if not spec.get("targets") or any(t not in JOBS and t not in PIPELINES for t in spec["targets"]):
+        raise HTTPException(400, "choose what to run")
+    try:
+        return _jq().save_schedule(spec)
+    except (ValueError, AssertionError) as exc:
+        raise HTTPException(400, str(exc) or "invalid schedule")
+
+
+@app.post("/api/schedules/{sid}/enabled")
+def schedule_enabled(request: Request, sid: int, spec: dict = Body(...)):
+    _require_local(request)
+    _jq().set_enabled(sid, bool(spec.get("enabled")))
+    return {"ok": True}
+
+
+@app.post("/api/schedules/{sid}/run")
+def schedule_run_now(request: Request, sid: int):
+    _require_local(request)
+    jq = _jq()
+    s = next((x for x in jq.schedules() if x["id"] == sid), None)
+    if not s:
+        raise HTTPException(404)
+    it = jq.enqueue(s["targets"], s["market"], s["opts"], requested_by="you", schedule_id=sid)
+    return {"item": it["id"], "duplicate": bool(it.get("duplicate")), "position": jq.position(it["id"])}
+
+
+@app.delete("/api/schedules/{sid}")
+def schedule_delete(request: Request, sid: int):
+    _require_local(request)
+    _jq().delete_schedule(sid)
+    return {"ok": True}
+
+
+# ------------------------------------------------------------- sub-industries (review & edit)
+
+@app.get("/api/subindustries")
+def subindustries_api(market: str = "us"):
+    """Every industry group with tradable members: its members' sub-industry, where the label came from, and
+    their official code — for Library → Sub-industries."""
+    from ..marketdata import classcodes, industries as ind_mod, subindustries as sub_mod
+    from ..screens import snapshot
+    ind, detail = ind_mod.load(market), sub_mod.load_detail(market)
+    try:
+        codes = classcodes.load(market)
+    except Exception:  # noqa: BLE001
+        codes = {}
+    snap = snapshot.load(market)
+    trad = set(snap.loc[snap["tradable"], "symbol"]) if not snap.empty else set()
+    cap = dict(zip(snap["symbol"], snap["market_cap_usd"])) if "market_cap_usd" in snap else {}
+    groups: dict[str, dict] = {}
+    for sym, (sec, indus, _c) in ind.items():
+        if sym not in trad:
+            continue
+        g = groups.setdefault(indus, {"industry": indus, "sector": sec, "members": []})
+        d = detail.get(sym)
+        mc = cap.get(sym)
+        g["members"].append({"symbol": sym, "name": _name(market, sym), "cap": None if mc is None or mc != mc else round(float(mc), 2),
+                             "sub": d[1] if d else None, "source": d[2] if d else None, "code": (codes.get(sym) or {}).get("code")})
+    out = []
+    for g in groups.values():
+        g["members"].sort(key=lambda x: -(x["cap"] or 0))
+        g["split"] = any(m["sub"] for m in g["members"])
+        g["subs"] = sorted({m["sub"] for m in g["members"] if m["sub"] and m["sub"] != "other"})
+        g["open"] = sum(1 for m in g["members"] if m["source"] in ("other", "suggested"))
+        out.append(g)
+    out.sort(key=lambda g: (g["sector"] or "", g["industry"]))
+    split_members = [m for g in out if g["split"] for m in g["members"]]
+    return {"market": market, "groups": out,
+            "coverage": {"tradable": len(trad), "in_split_groups": len(split_members),
+                         "labelled": sum(1 for m in split_members if m["source"] not in ("other",)),
+                         "reviewed": sum(1 for m in split_members if m["source"] in ("you", "curated", "rule")),
+                         "suggested": sum(1 for m in split_members if m["source"] == "suggested"),
+                         "other": sum(1 for m in split_members if m["source"] == "other")},
+            "scheme": {"us": "Nasdaq industry (SIC-based)", "india": "BSE industry"}.get(market, "")}
+
+
+@app.post("/api/subindustries")
+def subindustries_set(request: Request, spec: dict = Body(...)):
+    """Label stocks (spec: market, symbols, sub — null/empty reverts them to the automatic label)."""
+    _require_local(request)
+    from ..marketdata import industries as ind_mod, subindustries as sub_mod
+    market = spec.get("market") or "us"
+    ind = ind_mod.load(market)
+    n = 0
+    for sym in spec.get("symbols") or []:
+        if sym in ind:
+            sub_mod.set_label(market, sym, ind[sym][1], (spec.get("sub") or "").strip() or None)
+            n += 1
+    _class_cache.pop(market, None)   # the chart details pick up the new label
+    return {"ok": True, "changed": n}
+
+
+# ------------------------------------------------------------- chart drawings
+# The drawing layer's items are opaque client JSON; the server only keys them by
+# market+symbol so annotations survive browsers and machines (see chart_drawings.py).
+
+from .. import chart_drawings as draw_mod
+
+
+@app.get("/api/drawings/{market}/{symbol}")
+def drawings_get(market: str, symbol: str):
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    return draw_mod.get(market, symbol.upper())
+
+
+@app.put("/api/drawings/{market}/{symbol}")
+def drawings_put(market: str, symbol: str, body: dict = Body(...)):
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    items = body.get("items")
+    if not isinstance(items, list):
+        raise HTTPException(422, "items must be a list")
+    return draw_mod.put(market, symbol.upper(), items)
+
+
+# ------------------------------------------------------------- notes
+
+from .. import notes as notes_mod
+
+
+@app.get("/api/notes")
+def notes_list(q: str = "", tag: str | None = None, market: str | None = None, symbol: str | None = None):
+    return {"notes": notes_mod.search(q.strip(), tag, market, symbol), "tags": notes_mod.tags()}
+
+
+@app.get("/api/notes/{nid}")
+def notes_get(nid: int):
+    n = notes_mod.get(nid)
+    if not n:
+        raise HTTPException(404, "note not found")
+    return n
+
+
+@app.post("/api/notes")
+def notes_create(note: dict = Body(...)):
+    return notes_mod.create(note.get("title", ""), note.get("body", ""), note.get("tags"), note.get("symbols"), bool(note.get("pinned")))
+
+
+@app.put("/api/notes/{nid}")
+def notes_update(nid: int, note: dict = Body(...)):
+    n = notes_mod.update(nid, **{k: note.get(k) for k in ("title", "body", "tags", "symbols", "pinned")})
+    if not n:
+        raise HTTPException(404, "note not found")
+    return n
+
+
+@app.delete("/api/notes/{nid}")
+def notes_delete(nid: int):
+    n = notes_mod.delete(nid)
+    if not n:
+        raise HTTPException(404, "note not found")
+    return n
+
+
+# ------------------------------------------------------------- TODO list
+
+TODO_PATH = paths.REPO_ROOT / "TODO.md"
+_TASK = re.compile(r"^(\s*[-*] \[)([ xX])(\].*)$")
+
+
+@app.get("/api/todo")
+def todo_get():
+    """TODO.md at the repository root, read live (so edits made in an editor show at once)."""
+    text = TODO_PATH.read_text() if TODO_PATH.exists() else "# TODO\n\n## Inbox\n"
+    return {"markdown": text, "path": str(TODO_PATH.relative_to(paths.REPO_ROOT))}
+
+
+@app.post("/api/todo")
+def todo_add(text: str = Body(..., embed=True)):
+    """Append an item under '## Inbox' (created if missing)."""
+    item = " ".join(text.split())
+    if not item:
+        raise HTTPException(400, "empty item")
+    md = TODO_PATH.read_text() if TODO_PATH.exists() else "# TODO\n"
+    lines = md.splitlines()
+    line = f"- [ ] {item} _(added {__import__('datetime').date.today().isoformat()})_"
+    try:
+        i = next(k for k, l in enumerate(lines) if l.strip().lower() == "## inbox")
+        j = next((k for k in range(i + 1, len(lines)) if lines[k].startswith("## ")), len(lines))
+        while j > i + 1 and not lines[j - 1].strip():
+            j -= 1
+        lines.insert(j, line)
+        if j == i + 1:
+            lines.insert(i + 1, "")
+    except StopIteration:
+        lines += ["", "## Inbox", "", line]
+    TODO_PATH.write_text("\n".join(lines).rstrip() + "\n")
+    return {"ok": True}
+
+
+@app.post("/api/todo/toggle")
+def todo_toggle(index: int = Body(...), line: str = Body(...)):
+    """Tick / untick the index-th task line, if it still reads as the client saw it."""
+    lines = TODO_PATH.read_text().splitlines()
+    tasks = [k for k, l in enumerate(lines) if _TASK.match(l)]
+    if index >= len(tasks) or lines[tasks[index]].strip() != line.strip():
+        raise HTTPException(409, "TODO.md changed since it was loaded — reload the page")
+    m = _TASK.match(lines[tasks[index]])
+    lines[tasks[index]] = m.group(1) + (" " if m.group(2) in "xX" else "x") + m.group(3)
+    TODO_PATH.write_text("\n".join(lines) + "\n")
+    return {"ok": True}
+
+
+# ------------------------------------------------------------- post-market
+
+@app.get("/api/postmarket")
+def postmarket_api(market: str = "us", date: str | None = None):
+    """One day's post-market analysis (analytics/postmarket.py) and the stored history's tone timeline."""
+    from ..analytics import postmarket as pm
+    pm.init_schema()
+    hist = q("""SELECT date, payload->'tone'->>'label', (payload->'tone'->>'score')::int,
+                       (payload->'counts'->>'up')::int, (payload->'counts'->>'down')::int
+                FROM postmarket_daily WHERE market=%s ORDER BY date DESC LIMIT 400""", (market,))
+    if not hist:
+        return {"market": market, "empty": True, "command": f"python -m jobs run postmarket --market {market} --days 60"}
+    d = date or hist[0][0].isoformat()
+    row = q("SELECT payload, generated_at FROM postmarket_daily WHERE market=%s AND date=%s", (market, d))
+    if not row:
+        raise HTTPException(404, f"no post-market analysis stored for {market} {d}")
+    payload = row[0][0]
+    for sig in (payload.get("tone") or {}).get("signals", []):   # stored before the bearish wording existed
+        sig.setdefault("text_not", pm.TONE_RULES_NOT.get(sig.get("key"), "Not met: " + sig.get("text", "")))
+    return {"payload": payload, "generated_at": row[0][1].isoformat(),
+            "history": [{"date": h[0].isoformat(), "tone": h[1], "score": h[2], "up": h[3], "down": h[4]} for h in hist]}
 
 
 # ------------------------------------------------------------- data status
@@ -952,14 +1615,15 @@ def status_api():
     pipes = [p["last"] for p in overview["pipelines"] if p["last"]]
     running = [r for r in runs if r["status"] == "running"]
     daily = running[0] if running else max(pipes, key=lambda r: r["started_at"]) if pipes else (runs[0] if runs else None)
-    worst = max((i["status"] for m in ("us", "india") for i in fresh[m]["items"] if i["key"] in ("prices", "breadth", "screening")),
+    worst = max((i["status"] for m in tuple(MARKETS) for i in fresh[m]["items"] if i["key"] in ("prices", "breadth", "screening")),
                 key=["ok", "warn", "missing", "stale"].index, default="ok")
     return {"now": __import__("datetime").datetime.now().astimezone().isoformat(), "freshness": fresh, "runs": runs,
             "latest_daily": status_mod.run_detail(q, daily["id"]) if daily else None,
             "jobs": overview["jobs"], "pipelines": overview["pipelines"],
             "running": [r["id"] for r in running], "overall": worst,
-            "command": f"cd {paths.SCRIPTS_DIR} && PYTHONPATH=. .venv/bin/python -m jobs run daily --strategies all",
-            "schedule_command": f"cd {paths.SCRIPTS_DIR} && PYTHONPATH=. .venv/bin/python -m jobs schedule"}
+            "job_running": _job_running(), "queue": _jq().items(8), "worker": _jq().worker_status(),
+            "command": f"cd {paths.SCRIPTS_DIR} && PYTHONPATH=. .venv/bin/python -m jobs run daily",
+            "worker_command": f"cd {paths.SCRIPTS_DIR} && PYTHONPATH=. .venv/bin/python -m jobs worker --install"}
 
 
 @app.get("/api/status/run/{rid}")
@@ -999,12 +1663,14 @@ def _with_prices(items: list[dict]) -> list[dict]:
                 (tuple(missing),)):
             last.setdefault((m, sym), []).append(close)
     sectors = {(m, r["symbol"]): r["sector"] for m, rs in _universe().items() for r in rs}
+    peers: dict = {}
     for e in items:
         closes = last.get((e["market"], e["symbol"]), [])
         e["last"] = closes[0] if closes else None
         e["change_pct"] = (closes[0] / closes[1] - 1) * 100 if len(closes) > 1 and closes[1] else None
         e["sector"] = sectors.get((e["market"], e["symbol"]))
         e["name"] = _name(e["market"], e["symbol"])
+        e.update(peers.setdefault(e["market"], _peers(e["market"])).get(e["symbol"], {}))
         if e.get("added_at") is not None and not isinstance(e["added_at"], str):
             e["added_at"] = e["added_at"].isoformat()
     return items

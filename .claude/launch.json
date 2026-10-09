@@ -4,8 +4,9 @@
     {
       "name": "trading-web",
       "runtimeExecutable": "/bin/sh",
-      "runtimeArgs": ["-c", "cd scripts && PYTHONPATH=. .venv/bin/python -m swing_screener.web --no-ingest"],
-      "port": 8000
+      "runtimeArgs": ["-c", "cd scripts && PYTHONPATH=. .venv/bin/python -m swing_screener.web --no-ingest --port ${PORT:-8000}"],
+      "port": 8000,
+      "autoPort": true
     }
   ]
 }

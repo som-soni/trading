@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import socket
+import time
 import traceback
 
 from .marketdata import db
@@ -86,9 +87,22 @@ class Step:
         self.stats: dict | None = None
         self.status: str | None = None   # set "skipped" to record a deliberate skip
         self.ok = True
+        self._progress_at = 0.0
 
     def skip(self, why: str) -> None:
         self.status, self.detail = "skipped", why
+
+    def progress(self, text: str, every: float = 2.0) -> None:
+        """Live progress for a long step: written to the step's `detail` while it still runs, so the
+        Runs page shows movement instead of a silent step. Call it as often as you like — writes are
+        throttled to one per `every` seconds. The final `detail` set at the end overwrites it; if the
+        step crashes instead, the last progress line stays, showing how far it got."""
+        self.detail = text
+        now = time.monotonic()
+        if self.id is None or now - self._progress_at < every:
+            return
+        self._progress_at = now
+        _exec("UPDATE job_steps SET detail=%s WHERE id=%s", (text, self.id))
 
 
 class Run:
@@ -141,8 +155,12 @@ class Run:
                 _exec("UPDATE job_steps SET status=%s, finished_at=now(), detail=%s, stats=%s WHERE id=%s",
                       (s.status or "ok", s.detail, json.dumps(s.stats, default=str) if s.stats else None, s.id))
 
-    def finish(self, summary: str | None = None) -> str:
+    def finish(self, summary: str | None = None, stopped: bool = False) -> str:
         status = "failed" if self.critical_failure else "partial" if self.failed_steps else "ok"
+        if self.id is not None and stopped:  # stopped from outside (Stop button, Ctrl+C): the step in progress did not finish
+            _exec("UPDATE job_steps SET status='failed', finished_at=now(), error='stopped before it finished' WHERE run_id=%s AND status='running'",
+                  (self.id,))
+            summary = summary or "stopped"
         if self.id is not None:
             _exec("UPDATE job_steps SET status='skipped', detail=COALESCE(detail, 'not reached') WHERE run_id=%s AND status IN ('pending','running')",
                   (self.id,))
@@ -156,9 +174,9 @@ def run(job: str, args: dict | None = None, plan: list[tuple] | None = None, log
     r = Run(job, args, plan, log_path)
     try:
         yield r
-    except BaseException:
+    except BaseException as exc:
         r.critical_failure = True
-        r.finish()
+        r.finish(stopped=isinstance(exc, (KeyboardInterrupt, SystemExit)))
         raise
     else:
         r.finish()

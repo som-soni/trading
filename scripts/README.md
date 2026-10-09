@@ -70,7 +70,10 @@ manual tools, grouped by what they are for:
 | `--strategy {trend_pullback,breakout,donchian,chart_pattern}` | which strategy to run |
 | `--sample N` | seeded RANDOM subset of N candidates — **prefer over `--limit`**, which slices alphabetically and is therefore biased |
 | `--max-positions N` | position cap (default: the market config's 10) |
-| `--exit-mode {bracket,trail_atr,ma,donchian}` | how open positions are managed |
+| `--exit-mode {bracket,trail_atr,ma,donchian,minervini}` | how open positions are managed; `minervini` is the spec's EX-01…EX-07 (failed breakout, breakeven at 2R, a third at 3R, climax, 50-day break on volume) |
+| `--spec` | the Minervini spec's portfolio rules in one flag: `minervini` exits, 8 positions, RS rating ≥ 70, RS-then-tightness ranking, 6% open-risk cap, 5% traded-value cap, the spec's costs; adds the section-13 breakdown (year, setup, exit, base number, in/out of sample) to the report |
+| `--min-rs N` `--market-filter` `--rank-by rs` `--max-open-risk` `--max-adv-pct` | the spec's rules one at a time (TT-08, MKT-01, PF-03, PF-04, SL-06) |
+| `--partial-r` `--fail-days` `--time-stop` | `minervini` exit variants (section 9): partial at 2R/4R or 0 = off, failed-breakout window, EX-07 |
 | `--no-target` | drop the fixed profit target so winners can run |
 | `--atr-mult` `--ma-col` `--donchian-bars` | parameters for the above |
 | `--accept-labels` | which `classify()` labels to trade; add `"TRADE ON TRIGGER"` to test whether the confidence tiers separate outcomes |
@@ -188,28 +191,52 @@ layers above it produced (`jobs/registry.py`):
 | layer | jobs | network | cadence |
 |---|---|---|---|
 | reference | `universe`, `names`, `classify`, `industries` | yes | weekly / monthly |
-| data | `prices`, `indexes`, `earnings`, `fundamentals` | yes | prices & indexes daily, the rest weekly |
+| data | `prices`, `splits`, `indexes`, `earnings`, `fundamentals` | yes | prices & indexes daily, the rest weekly |
 | analytics | `breadth`, `sectors` | no | daily, after prices |
-| screening | `screen` (one step per strategy), `quality` | `screen` no, `quality` yes | daily / weekly |
-| publish | `report`, `ingest` | no | after screening |
+| screening | `screens` (the stock snapshot), `strategies` (one step per strategy), `screen_history`, `quality` | only `quality` | snapshot daily, history monthly; strategies and quality on demand |
+| publish | `postmarket` (daily), `report`, `ingest` (with strategies) | no | after their inputs |
 
-Data jobs never screen, and screening never downloads: `screen` reads stored
+Pipelines: **daily** (data only: universe check → prices → indexes → breadth →
+sectors → screens → postmarket), **strategies** (on demand: strategies — all by
+default — → report → ingest), **weekly** (universe, names, classify, splits —
+re-fetch the full history of stocks that split or issued bonus shares after
+their last full fetch — earnings, fundamentals), **monthly** (industries, subindustries, screen_history,
+group_research — the group-strength study, research/group-strength-study.md —
+ingest), **quality** (on demand).
+
+**Queue, worker, schedules** (`jobs/queue.py`, `jobs/worker.py`): the web app,
+schedules and `python -m jobs enqueue` add runs to a Postgres queue
+(`job_queue`); one worker (`python -m jobs worker`, kept alive by a launchd agent
+installed with `--install`) runs it one item at a time as `python -m jobs run
+...`, follows Stop requests (SIGTERM, SIGKILL after 30 s), waits while a run
+started outside the queue is going, and keeps following a run left behind by a
+previous worker. Schedules (`job_schedules`, edited in **System → Schedules**)
+are checked every 30 s; a due one is enqueued (not twice while it is still
+queued or running), and a slot missed while the machine slept runs once. The
+queue's functions are the only way in — an RQ or Celery backend would
+reimplement `jobs/queue.py` and nothing else.
+
+Data jobs never screen, and screening never downloads: `strategies` reads stored
 prices (`cache.offline()`) and refuses to run when they are two or more
 trading days behind (`--allow-stale` overrides). Every job is idempotent and
-records each step in the run log, which the web app's **Data status** page
+records each step in the run log, which the web app's **System → Status / Runs** pages
 shows.
 
 ```
 python -m jobs list                                 # every job and pipeline, with its last run per market
 python -m jobs run prices --market india            # just pull data
 python -m jobs run breadth sectors --market us      # just analytics
-python -m jobs run screen --market us --strategies all
-python -m jobs run daily --market india             # pipeline: universe (if stale) → prices → indexes → breadth → sectors → screen → report → ingest
+python -m jobs run screens strategies --market us --strategies all
+python -m jobs run daily --market india             # pipeline: universe (if stale) → prices → indexes → breadth → sectors → screens → postmarket
+python -m jobs run strategies --market india        # on demand: every strategy (or --strategies a,b) → report → ingest
+python -m jobs run postmarket --days 60             # post-market analysis, backfilling 60 sessions
 python -m jobs run daily --market us --from screen  # resume part-way
-python -m jobs run weekly                           # universe, names, classify, earnings, fundamentals, quality
-python -m jobs run monthly                          # re-classify industries
+python -m jobs run weekly                           # universe, names, classify, splits, earnings, fundamentals
+python -m jobs run monthly                          # re-classify industries, fill gaps in the month-end snapshots
 python -m jobs status                               # how current every dataset is
-python -m jobs schedule                             # suggested crontab: India after its close, US the next morning
+python -m jobs enqueue daily --market us            # add to the queue instead of running here
+python -m jobs queue | schedules | cancel <id>      # the queue, the schedules, cancel / stop an item
+python -m jobs worker [--install | --uninstall]     # run the queue (--install: as a launchd agent)
 ```
 
 Each run logs to `logs/jobs/<timestamp>_<name>.log` and prints a cross-market
@@ -561,6 +588,41 @@ Total R by pattern: `FLAT` -11.9 (57 trades), `DBOT` -7.5 (13), `ATRI` -4.7
 meaningful sample made money; 111 trades stopped out against 26 that reached a
 target.
 
+### Does the written spec help? (`chart_pattern` vs `chart_pattern_spec`)
+
+Both re-run 2026-10-09, same window, same seeded 300-symbol sample, same
+`near_highs` screen, same bracket exit; the only difference is the detector —
+`chart_pattern_spec` reads [`core/pattern_spec.py`](swing_screener/core/pattern_spec.py),
+built to [`research/chart-pattern-spec.md`](../research/chart-pattern-spec.md).
+
+| | chart_pattern | chart_pattern_spec |
+|---|---|---|
+| CAGR | -5.60% | **-0.93%** |
+| max drawdown | -40.0% | **-32.6%** |
+| trades / win rate | 139 / 15.3% | 253 / 23.0% |
+| avg R per trade | -0.306 | **-0.072** |
+| profit factor | 0.62 | 0.95 |
+| t-stat on avg R | -1.90 | -0.59 |
+| exposure | 79.3% | 93.9% |
+
+Difference **+0.234R, Welch t = 1.16**, bootstrap 95% CI [-0.16, +0.62],
+P(spec better) = 0.88. A stronger lean than the cup-only experiment's 0.66,
+and still short of a result: the interval spans zero, and P(the spec version's
+expectancy is positive) is 0.27. Both lose 14-19 points of CAGR to the
+benchmark.
+
+Three things the headline hides:
+
+- **73% of the spec version's trades are one pattern.** CUPNH took 185 of
+  253. CUP, FBASE, SYMM, FLAG and HTF took none at all. The run measured the
+  cup-without-handle, not the spec's eleven patterns.
+- **It is signal-saturated**: 942 signals, 253 taken, 85 refused for full
+  slots and 132 for cash. The position cap decided much of what got traded.
+- **The baseline moved.** `chart_pattern` measured -4.08% / -0.213R on
+  4 October and -5.60% / -0.306R on 9 October with no code change — the data
+  extended and the screen was formalised in between. Comparisons must use one
+  vintage.
+
 ### Does selectivity help? (`chart_pattern` vs `chart_pattern_cup`)
 
 Same window, same seeded 300-symbol sample, same exit; the only difference is
@@ -698,6 +760,7 @@ swing_screener/
   core/             market primitives, strategy-agnostic
     indicators.py    SMA/EMA/RSI/ATR/ADX (Wilder), resampling
     swings.py        swing highs/lows, H/L/P, overhead levels
+    vcp_spec.py      base and VCP detection as the Minervini backtest spec defines it (VCP-01…VCP-11)
     chart_patterns.py cup-and-handle, double bottom, flat base, flag,
                       ascending triangle, VCP — geometry only
     context.py       StockContext: the per-symbol frames every strategy reads
@@ -716,7 +779,9 @@ swing_screener/
 
   backtesting/      everything that evaluates a strategy
     backtest.py      signal generation + portfolio/per-symbol runners
-    portfolio_sim.py the engine: shared capital, position cap, costs, exits
+    portfolio_sim.py the engine: shared capital, position cap, costs, exits (incl. the Minervini spec's)
+    spec.py          the Minervini spec's portfolio rules: RS rating, market filter, base count, costs, breakdown
+    spec_sensitivity.py  the spec backtest with one parameter moved at a time (fast daily-only evaluation, parallel)
     metrics.py       equity-curve stats + ASCII equity curve
     report.py        markdown reports with charts
     baseline.py      cross-sectional momentum baseline
@@ -724,15 +789,20 @@ swing_screener/
 
   marketdata/       data in, storage (the only package that downloads)
     cache.py (incl. offline mode) db.py migrate.py universe.py names.py industries.py
-    refresh.py backfill.py index_data.py earnings.py fundamentals.py freshness.py
+    classcodes.py (official industry codes: BSE / Nasdaq) subindustries.py (sub-industry labels and their sources)
+    refresh.py backfill.py splits.py (split/bonus repair) index_data.py earnings.py fundamentals.py freshness.py
+
+  screens/          qualification only: criteria.py (shared with strategies), the four screens,
+                    snapshot.py (the daily stock snapshot + field catalog; month-ends kept for good),
+                    definitions.py (screens as conditions; your saved screens), study.py (forward returns)
 
   analytics/        market-wide measures from stored prices only
-    breadth.py sectors.py
+    breadth.py sectors.py postmarket.py
 
   screening/        the day-to-day screener
     screener.py pipeline.py daily.py output.py history.py inspect.py portfolio.py watchlist.py
 
-  runlog.py         run log: every job's steps, timestamps, results (Data status page)
+  runlog.py         run log: every job's steps, timestamps, results (System → Runs)
   web/              the read-only web viewer
 
 jobs/               the offline jobs: registry (layers, cadence, dependencies), runner, CLI

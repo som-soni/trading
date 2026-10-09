@@ -47,6 +47,7 @@ result has never been measured on a book that could afford its own signals.
 
 Every row is a completed backtest. **Append new strategies here.**
 `excess` = strategy CAGR − benchmark CAGR, same window and currency.
+Rows measured before 2026-10-09 carry a simulator cost bug (exit slippage charged twice); re-measured runs moved by −0.8 to +0.9 points of CAGR, in either direction — see the changelog.
 
 ### India (benchmark: Nifty 500 `^CRSLDX` — CAGR 11.68%, maxDD −38.3%, Sharpe 0.78)
 
@@ -534,6 +535,8 @@ Reports land in `reports/<market>/<strategy>/<run>/` — `report.md`,
 
 | date | change |
 |---|---|
+| 2026-10-09 | Fixed: the portfolio simulator charged exit slippage to cash twice (and trade P&L/R counted entry and exit slippage twice). Re-measured: India breakout sample 0.75%→0.77%, donchian sample −3.41%→−3.36%, Minervini 2013– India 4.38%→4.98% (with `--min-group-rs 50` 5.42%→6.30%), US −0.95%→−1.70% (group filter 0.93%→1.84%). Not a uniform uplift: the cash no longer lost changes which later signals the book takes. Rows in §2 measured before this date should be re-run before being relied on |
+| 2026-10-09 | `minervini_spec` (the written Minervini backtest spec, rule for rule): no edge in either market, at the defaults or at either end of any parameter's test range, in and out of sample (minervini-spec-sensitivity-*.md) |
 | 2026-10-04 | Minervini SEPA implemented (Trend Template + VCP detector); screeners run both markets; backtests queued |
 | 2026-10-04 | Measured the fundamental-data ceiling: 5 quarters, current restatement only — part 2 of SEPA is not backtestable (§5.7) |
 | 2026-10-04 | Ranking competing signals by 12-1 momentum beat a random control by +7.78pp CAGR (India donchian, full universe) |

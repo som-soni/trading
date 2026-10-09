@@ -9,7 +9,43 @@ reference → data → analytics → screening → publish). Keep the layers hon
 only `marketdata/` downloads; `analytics/` and screening read stored data
 (screening runs inside `cache.offline()`). A new recurring task is a new job
 in the registry (with its layer, cadence and `after` dependencies), not a new
-standalone cron script, so it is logged and shows on the Data status page.
+standalone script or cron entry, so it is logged and shows on the Data status
+page. Jobs are run by the queue (`jobs/queue.py` + `python -m jobs worker`):
+the portal, schedules (`job_schedules`, System → Schedules) and `jobs enqueue`
+only *ask* through `jobs/queue.py`'s functions — never write the queue tables
+elsewhere, so the backend stays swappable (RQ / Celery).
+
+## Markets come from config
+
+The markets are `scripts/swing_screener/config/MARKETS` (name, exchange, badge, flag,
+currency, ticker suffix, time zone). The web app reads them from `GET /api/markets`
+for its header market selector, badges and currency, and the server iterates
+`MARKETS` — don't hard-code `"us"` / `"india"` in new UI or endpoint code, so a new
+country stays a config entry plus its data pipeline.
+
+## Screens vs strategies
+
+A **screen** (`scripts/swing_screener/screens/`) only qualifies stocks — named
+criteria in `screens/criteria.py`, no entry, stop or decision — and is judged
+by a forward-return **screen study** (`screens/study.py`, over month-end
+snapshots). In the web app a screen is a list of conditions over the daily
+stock snapshot (`screens/snapshot.py`, field catalog `FIELDS`); the built-in
+screens' conditions live in `screens/definitions.py`, generated from the
+criteria constants, and must return exactly what the coded criteria return —
+`PYTHONPATH=. .venv/bin/python -m tests.test_screen_definitions` checks it, so
+run it after changing a criterion, a built-in definition or a snapshot field.
+A new field needs a `FIELDS` entry and a value in `snapshot._row` (point in
+time) or `_add_present` (present only). Built-in screens with no coded twin
+(e.g. "Strong stocks in leading groups", on the peer-group fields) are
+`definitions.presets()`: conditions only, thresholds as module constants. A **strategy**
+(`strategies/`) draws its candidates from one screen (`screen_key`; its
+`screen_gates` map its gate codes to that screen's criteria, evaluated by the
+same code) and adds its own trade rules, setups, entry/stop/target, exits and
+sizing; strategies are what get **backtested**. A qualification rule belongs in
+a screen criterion; a trade rule (earnings, volatility, setup quality) belongs
+in the strategy. A refactor that must not change behaviour is proven with
+`PYTHONPATH=. .venv/bin/python -m tests.golden_strategies --check` (record the
+baseline with `--write` before you start).
 
 ## Rule: every strategy change updates its Strategy page in the same change
 
@@ -25,6 +61,9 @@ sizing) — update, in the same change:
   `setup_docs`, `entry_rules`, `exit_rules`, `param_docs`, `backtest_args`
   (the contract is documented in `strategies/base.py`);
 - for the momentum baseline, `DOC` in `scripts/swing_screener/backtesting/baseline.py`;
+- for a screen, its `Criterion` docs and `name` / `description` / `thesis` in
+  `screens/__init__.py` (numbers as `{NAME}` placeholders of `screens/criteria.py`
+  constants) — the Screens pages and every strategy that uses the screen render them;
 - for the long-term quality tracker, `DOC`, `TESTS` and the threshold constants in
   `scripts/fundamentals/quality.py` — its Quality page and Strategies
   entry render every rule from those constants, so change a rule's text with its logic;

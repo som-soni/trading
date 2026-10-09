@@ -17,7 +17,6 @@ backtest.py before trusting it.
 
 import pandas as pd
 
-from ..core import indicators as ind
 from ..core import swings as sw
 from ..config.base import MarketConfig
 from ..core.context import StockContext
@@ -47,7 +46,10 @@ class BreakoutStrategy(Strategy):
         "Long breakouts to new 55-day highs out of a tight consolidation, "
         "confirmed by expanding volume."
     )
+    style = "breakout"
     gate_codes = ("B1", "B2", "B3", "B4", "B5", "B6", "B7")
+    screen_key = "near_highs"
+    screen_gates = {"B1": "H1", "B2": "H2"}
     watch_codes = ("XB1", "XB2", "XB3")
     setup_codes = (BO01, BO02)
     min_bars = 260
@@ -100,6 +102,8 @@ class BreakoutStrategy(Strategy):
         "Not validated, no demonstrated edge: thresholds are untuned defaults, and the one "
         "recorded run (US, 500-symbol sample, bracket exits) returned -1.74% CAGR, "
         "about 14.6 points a year behind SPY."
+        " Measured before the 2026-10 cost fix (exit slippage was charged twice); re-measured runs moved by "
+        "−0.8 to +0.9 points of CAGR (the extra cash changes which later signals are taken), so re-run before relying on it."
     )
     gate_docs = {
         "B1": "The latest close must be strictly above the 200-day SMA. A missing SMA200 fails.",
@@ -197,23 +201,11 @@ class BreakoutStrategy(Strategy):
         d = ctx.daily
         result = StrategyResult(entry_setup_codes=(BO01, BO02))
         close, atr14 = ctx.close, ctx.atr
-        sma50 = d["sma50"].iloc[-1]
-        sma200 = d["sma200"].iloc[-1]
         high_252 = d["high_252"].iloc[-1]
 
-        # B1: long-term structure intact
-        if pd.isna(sma200) or close <= sma200:
-            result.fail("B1", "close at/below SMA200")
-        else:
-            result.ok("B1")
-
-        # B2: SMA200 not falling — a breakout inside a long-term downtrend
-        # is a different (and worse) trade than one inside an uptrend
-        sma200_state = ind.slope_state(d["sma200"], 20, 0.5)
-        if sma200_state == "falling":
-            result.fail("B2", "SMA200 falling")
-        else:
-            result.ok("B2", f"SMA200 {sma200_state}")
+        # B1-B2: the Near-highs screen's H1 (above the 200-day) and H2 (200-day not falling);
+        # B3 below is this strategy's own, tighter, near-the-high rule
+        self.apply_screen(ctx, result)
 
         # B3: at or near the highs — breakouts are bought at highs, not mid-range
         if pd.isna(high_252):

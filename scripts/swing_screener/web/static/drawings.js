@@ -5,7 +5,9 @@
  * follow zoom, scroll and price-scale changes without any bookkeeping. Points
  * are stored as {t: epoch ms, p: price} rather than bar indices, so a drawing
  * made on the daily chart lands in the right place on weekly/monthly too.
- * Drawings persist per symbol in localStorage; the ruler (measure) is transient.
+ * Drawings persist per symbol on the server when a `remote` store is supplied
+ * (localStorage is kept as a cache and as the fallback when the server is
+ * unreachable); the ruler (measure) is transient.
  *
  * The toolbar mirrors TradingView's left panel: tool *families* behind one
  * button each (the button shows the last tool used from that family, the
@@ -28,6 +30,7 @@ const Drawings = (() => {
     fib: { label: "Fib retracement", pts: 2, key: "Alt + F" },
     rect: { label: "Rectangle", pts: 2, key: "Alt + Shift + R" },
     text: { label: "Text", pts: 1 },
+    callout: { label: "Callout", pts: 2 },
     long: { label: "Long position", pts: 1 }, short: { label: "Short position", pts: 1 },
     measure: { label: "Measure", pts: 2, key: "Shift + drag" },
   };
@@ -36,11 +39,12 @@ const Drawings = (() => {
     ["lines", "Trend line tools", ["trend", "ray", "extline", "hline", "hray", "vline", "crossline"]],
     ["fibs", "Fibonacci tools", ["fib"]],
     ["shapes", "Geometric shapes", ["rect"]],
-    ["notes", "Annotation tools", ["text"]],
+    ["notes", "Annotation tools", ["text", "callout"]],
     ["forecast", "Prediction and measurement tools", ["long", "short"]],
   ];
   const HOTKEYS = { KeyT: "trend", KeyH: "hline", KeyJ: "hray", KeyV: "vline", KeyC: "crossline", KeyF: "fib" };
-  const LINE_TYPES = new Set(["trend", "ray", "extline", "hline", "hray", "vline", "crossline", "rect"]);
+  const LINE_TYPES = new Set(["trend", "ray", "extline", "hline", "hray", "vline", "crossline", "rect", "callout"]);
+  const TEXT_WRAP = 320;  // px: longest line before a text / callout wraps
 
   const ICON = {
     cross: '<path d="M10 2v16M2 10h16"/>',
@@ -57,6 +61,7 @@ const Drawings = (() => {
     fib: '<path d="M2 3.5h16M2 7.5h16M2 12.5h16M2 16.5h16" stroke-dasharray="2 1.5"/><circle cx="4" cy="16.5" r="1.6"/><circle cx="16" cy="3.5" r="1.6"/>',
     rect: '<rect x="3" y="5" width="14" height="10" rx="1"/><circle cx="3" cy="5" r="1.5"/><circle cx="17" cy="15" r="1.5"/>',
     text: '<path d="M4 5.5V3h12v2.5M10 3v14M7.5 17h5"/>',
+    callout: '<rect x="6" y="2.5" width="12" height="8.5" rx="1.5"/><path d="M9.5 11l-6 5.5"/><circle cx="3" cy="17" r="1.4" fill="currentColor"/>',
     long: '<path d="M3 3h14v7H3z" fill="rgba(8,153,129,.45)" stroke="none"/><path d="M3 10h14v6H3z" fill="rgba(242,54,69,.45)" stroke="none"/><path d="M3 10h14"/>',
     short: '<path d="M3 4h14v6H3z" fill="rgba(242,54,69,.45)" stroke="none"/><path d="M3 10h14v7H3z" fill="rgba(8,153,129,.45)" stroke="none"/><path d="M3 10h14"/>',
     measure: '<path d="M2.5 14.5L14.5 2.5l3 3-12 12z"/><path d="M5.5 11.5l1.6 1.6M8.5 8.5l2 2M11.5 5.5l1.6 1.6"/>',
@@ -74,7 +79,10 @@ const Drawings = (() => {
   };
   const fmtP = (v) => (Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(3));
 
-  function create({ chart, series, chartEl, times, bars, key }) {
+  /** `remote` (optional): {exists, items, save(items), flush()} — the server-side store for this symbol.
+   *  When it exists its items win; a browser's old localStorage drawings are migrated up only when the
+   *  server has no row yet, so clearing on one machine cannot be undone by another machine's stale copy. */
+  function create({ chart, series, chartEl, times, bars, key, remote }) {
     const LC = LightweightCharts;
     const ts = chart.timeScale();
     const T = times.map((s) => Date.parse(s + "T00:00:00Z"));
@@ -82,14 +90,16 @@ const Drawings = (() => {
     const step = n > 1 ? (T[n - 1] - T[Math.max(0, n - 21)]) / Math.min(20, n - 1) : DAY;
     const storeKey = "draw:" + key;
 
-    let items = store.get(storeKey, []);
+    let items = remote && remote.exists ? remote.items : store.get(storeKey, []);
+    if (remote && !remote.exists && items.length) remote.save(items);
+    if (remote) store.set(storeKey, items);
     let draft = null, measure = null, selected = null, drag = null, downPx = null, hist = [];
     let tool = store.get("drawCursor", "cross"), cursorMode = tool;
     let color = store.get("drawColor", PALETTE[0]);
     const opts = store.get("drawOpts", { magnet: false, stay: false, lock: false, hide: false });
     let req = () => {}, listeners = [];
     const emit = () => listeners.forEach((f) => f());
-    const save = () => store.set(storeKey, items);
+    const save = () => { store.set(storeKey, items); remote && remote.save(items); };
     const snap = () => { hist.push(JSON.stringify(items)); if (hist.length > 60) hist.shift(); };
     const bboxes = new Map();  // text extents from the last paint, for hit testing
 
@@ -154,6 +164,20 @@ const Drawings = (() => {
     }
 
     // ---- painting
+    /** split on newlines, then word-wrap each line to maxw with the current ctx.font */
+    function wrapText(ctx, text, maxw = TEXT_WRAP) {
+      const out = [];
+      for (const raw of String(text || "").split("\n")) {
+        let line = "";
+        for (const word of raw.split(/\s+/).filter(Boolean)) {
+          const cand = line ? line + " " + word : word;
+          if (line && ctx.measureText(cand).width > maxw) { out.push(line); line = word; }
+          else line = cand;
+        }
+        out.push(line);
+      }
+      return out;
+    }
     function label(ctx, text, x, y, bg, align = "center") {
       ctx.font = "11px -apple-system, Segoe UI, sans-serif";
       const w = ctx.measureText(text).width + 10, h = 17;
@@ -193,11 +217,35 @@ const Drawings = (() => {
           break;
         }
         case "text": {
-          ctx.font = `${it.size || 14}px -apple-system, Segoe UI, sans-serif`; ctx.textBaseline = "top"; ctx.textAlign = "left";
-          ctx.fillStyle = it.color; ctx.fillText(it.text || "", a.x, a.y);
-          const tw = ctx.measureText(it.text || "").width;
-          bboxes.set(it.id, { x: a.x, y: a.y, w: tw, h: (it.size || 14) + 4 });
-          if (isSel) { ctx.strokeStyle = it.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(a.x - 3, a.y - 3, tw + 6, (it.size || 14) + 8); ctx.setLineDash([]); }
+          const size = it.size || 14, lh = Math.round(size * 1.35);
+          ctx.font = `${size}px -apple-system, Segoe UI, sans-serif`; ctx.textBaseline = "top"; ctx.textAlign = "left";
+          ctx.fillStyle = it.color;
+          const lines = wrapText(ctx, it.text);
+          let tw = 0;
+          lines.forEach((l, i) => { ctx.fillText(l, a.x, a.y + i * lh); tw = Math.max(tw, ctx.measureText(l).width); });
+          const th = (lines.length - 1) * lh + size + 4;
+          bboxes.set(it.id, { x: a.x, y: a.y, w: tw, h: th });
+          if (isSel) { ctx.strokeStyle = it.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(a.x - 3, a.y - 3, tw + 6, th + 6); ctx.setLineDash([]); }
+          break;
+        }
+        case "callout": {
+          const size = it.size || 13, lh = Math.round(size * 1.4), pad = 8;
+          ctx.font = `${size}px -apple-system, Segoe UI, sans-serif`;
+          const lines = wrapText(ctx, it.text);
+          let tw = 0;
+          lines.forEach((l) => { tw = Math.max(tw, ctx.measureText(l).width); });
+          const bw = tw + pad * 2, bh = (lines.length - 1) * lh + size + pad * 2;
+          // leader from the anchored bar to the nearest edge of the text box, dot on the bar
+          const lx = Math.max(b.x, Math.min(a.x, b.x + bw)), ly = Math.max(b.y, Math.min(a.y, b.y + bh));
+          ctx.lineWidth = it.width || 1.5; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(lx, ly); ctx.stroke();
+          ctx.fillStyle = it.color; ctx.beginPath(); ctx.arc(a.x, a.y, 2.5, 0, 7); ctx.fill();
+          const css = getComputedStyle(document.documentElement);
+          ctx.fillStyle = css.getPropertyValue("--panel").trim() || "#1e222d";
+          ctx.globalAlpha = 0.92; ctx.beginPath(); ctx.roundRect(b.x, b.y, bw, bh, 4); ctx.fill(); ctx.globalAlpha = 1;
+          ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(b.x, b.y, bw, bh, 4); ctx.stroke();
+          ctx.fillStyle = css.getPropertyValue("--strong").trim() || "#e8e8ea"; ctx.textBaseline = "top"; ctx.textAlign = "left";
+          lines.forEach((l, i) => ctx.fillText(l, b.x + pad, b.y + pad + i * lh));
+          bboxes.set(it.id, { x: b.x, y: b.y, w: bw, h: bh });
           break;
         }
         case "long": case "short": {
@@ -216,7 +264,8 @@ const Drawings = (() => {
         }
       }
       if (isSel && it.type !== "text") {
-        ctx.fillStyle = "#161a25"; ctx.strokeStyle = it.type === "long" || it.type === "short" || it.type === "fib" ? "#2962ff" : it.color; ctx.lineWidth = 2;
+        const css = getComputedStyle(document.documentElement);
+        ctx.fillStyle = css.getPropertyValue("--panel").trim(); ctx.strokeStyle = it.type === "long" || it.type === "short" || it.type === "fib" ? css.getPropertyValue("--accent").trim() : it.color; ctx.lineWidth = 2;
         for (const q of handles(it)) { ctx.beginPath(); ctx.arc(q.x, q.y, 4.5, 0, 7); ctx.fill(); ctx.stroke(); }
       }
     }
@@ -282,6 +331,12 @@ const Drawings = (() => {
         case "rect": return inBox(p, a.x, a.y, b.x, b.y) ? 0 : Infinity;
         case "fib": { const lv = fibLevels(it); return inBox(p, a.x, series.priceToCoordinate(lv[0].p), b.x, series.priceToCoordinate(lv.at(-1).p)) ? 0 : Infinity; }
         case "text": { const bb = bboxes.get(it.id); return bb && inBox(p, bb.x, bb.y, bb.x + bb.w, bb.y + bb.h) ? 0 : Infinity; }
+        case "callout": {
+          const bb = bboxes.get(it.id);
+          if (bb && inBox(p, bb.x, bb.y, bb.x + bb.w, bb.y + bb.h)) return 0;
+          const end = bb ? { x: Math.max(bb.x, Math.min(a.x, bb.x + bb.w)), y: Math.max(bb.y, Math.min(a.y, bb.y + bb.h)) } : b;
+          return segDist(p, a, end);
+        }
         case "long": case "short": { const bx = position(it); return bx && inBox(p, bx.x0, bx.tg.y, bx.x1, bx.st.y) ? 0 : Infinity; }
       }
       return Infinity;
@@ -303,7 +358,7 @@ const Drawings = (() => {
       if (!it) return;
       ftb.innerHTML = PALETTE.map((c) => `<button class="sw ${it.color === c ? "on" : ""}" data-c="${c}" style="--c:${c}" title="${c}"></button>`).join("") +
         (LINE_TYPES.has(it.type) ? `<span class="sep"></span>${[1, 2, 3].map((wd) => `<button class="wd ${(it.width || 2) === wd ? "on" : ""}" data-w="${wd}" title="${wd}px"><i style="height:${wd}px"></i></button>`).join("")}` : "") +
-        (it.type === "text" ? `<span class="sep"></span><button data-a="edit" title="Edit text">Edit</button>` : "") +
+        (it.type === "text" || it.type === "callout" ? `<span class="sep"></span><button data-a="edit" title="Edit text">Edit</button>` : "") +
         `<span class="sep"></span><span class="name">${TOOLS[it.type].label}</span><button data-a="del" title="Remove (Del)">${svg("trash")}</button>`;
     }
     ftb.addEventListener("mousedown", (e) => e.stopPropagation());
@@ -317,23 +372,31 @@ const Drawings = (() => {
       save(); renderFtb(); req();
     };
 
-    // ---- inline text editor
+    // ---- inline text editor (multi-line: Enter = new line, click away or ⌘/Ctrl+Enter = done)
     function editText(it, isNew = false) {
-      const a = toPx(it.pts[0]); if (!a) return;
-      const inp = document.createElement("input");
-      inp.className = "dtext"; inp.value = it.text || ""; inp.placeholder = "Text";
+      const a = toPx(it.type === "callout" && it.pts[1] ? it.pts[1] : it.pts[0]); if (!a) return;
+      const inp = document.createElement("textarea");
+      inp.className = "dtext"; inp.value = it.text || ""; inp.rows = 1;
+      inp.placeholder = "Text — Enter for a new line, Esc cancels";
       inp.style.left = a.x + "px"; inp.style.top = a.y - 4 + "px"; inp.style.color = it.color;
-      chartEl.append(inp); inp.focus(); inp.select();
+      chartEl.append(inp);
+      const fit = () => { inp.style.height = "0"; inp.style.height = Math.min(inp.scrollHeight + 2, 300) + "px"; };
+      inp.oninput = fit;
+      fit(); inp.focus(); inp.select();
       let done = false;
       const finish = (ok) => {
         if (done) return; done = true;
-        const v = inp.value.trim(); inp.remove();
-        if (ok && v) { snap(); it.text = v; if (isNew) items.push(it); selected = it.id; save(); }
+        const v = inp.value.replace(/\s+$/, ""); inp.remove();
+        if (ok && v.trim()) { snap(); it.text = v; if (isNew) items.push(it); selected = it.id; save(); }
         else if (isNew) selected = null;
         renderFtb(); req();
       };
       inp.addEventListener("mousedown", (e) => e.stopPropagation());
-      inp.onkeydown = (e) => { e.stopPropagation(); if (e.key === "Enter") finish(true); if (e.key === "Escape") finish(false); };
+      inp.onkeydown = (e) => {
+        e.stopPropagation();
+        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) finish(true);
+        if (e.key === "Escape") finish(false);
+      };
       inp.onblur = () => finish(true);
     }
 
@@ -354,6 +417,11 @@ const Drawings = (() => {
     }
     function commit(type, pts) {
       if (type === "measure") measure = { type, pts };
+      else if (type === "callout") {  // anchor + box placed; the item only lands once its text is confirmed
+        draft = null;
+        if (!opts.stay) setTool(cursorMode);
+        editText({ ...newItem(type, pts[0]), pts }, true); req(); return;
+      }
       else { snap(); const it = { ...newItem(type, pts[0]), pts }; items.push(it); selected = it.id; save(); }
       draft = null;
       if (!opts.stay || type === "measure") setTool(cursorMode);
@@ -426,7 +494,7 @@ const Drawings = (() => {
     }
     function onDbl(e) {
       const p = local(e); const it = hitItem(p);
-      if (it && it.type === "text") { e.stopPropagation(); selected = it.id; editText(it); }
+      if (it && (it.type === "text" || it.type === "callout")) { e.stopPropagation(); selected = it.id; editText(it); }
     }
     function undo() {
       if (!hist.length) return;
@@ -481,6 +549,7 @@ const Drawings = (() => {
         return n;
       },
       destroy() {
+        remote && remote.flush && remote.flush();
         chartEl.removeEventListener("mousedown", onDown, true);
         chartEl.removeEventListener("dblclick", onDbl, true);
         window.removeEventListener("mousemove", onMove);

@@ -19,6 +19,9 @@ For every Yahoo sector and industry (marketdata/industries.py) in a market:
   - Every member, ranked by the same RS composite, with distance from its
     52-week high, trend and quality score — the leaders inside the group.
 
+Three levels: sector (11), industry group (Yahoo, ~145) and, for large mixed
+groups, sub-industry (marketdata/subindustries.py: curated + rules).
+
 Only common stocks trading at least MIN_VALUE a day (20-day average) above
 MIN_PRICE count, and groups need MIN_MEMBERS of them. The web app's Sectors
 page shows this; `doc()` is the page's "how to read it" text, rendered from
@@ -181,6 +184,8 @@ def compute(market: str) -> dict:
 
     # ---- members
     nm, qual = names.load(market), _quality(market)
+    from ..marketdata import subindustries
+    subs = subindustries.load(market)
     hi252 = close.rolling(252, min_periods=200).max().iloc[-1]
     lo252 = close.rolling(252, min_periods=200).min().iloc[-1]
     members = {}
@@ -194,6 +199,7 @@ def compute(market: str) -> dict:
         lr = last.loc[sym]
         members[sym] = {
             "symbol": sym, "name": names.lookup(nm, sym), "sector": sec, "industry": indus, "cap": cap,
+            "sub": subs[sym][1] if sym in subs else None,
             "last": float(px.iloc[-1]), **{h: _ret(idx, b) for h, b in HORIZONS.items()},
             "rs_score": _rs_score(rel),
             "from_high": float(px.iloc[-1] / hi252[sym] - 1) if pd.notna(hi252.get(sym)) else None,
@@ -212,10 +218,14 @@ def compute(market: str) -> dict:
            "market_ret": {h: _ret(mkt_idx, b) for h, b in HORIZONS.items()},
            "bench": {"label": BENCH_INDEX[market][1],
                      **{h: _ret(bench[bench.index <= d1], b) for h, b in HORIZONS.items()}} if len(bench) else None}
-    for level, key in (("industry", 1), ("sector", 0)):
+    for level in ("industry", "sector", "sub"):
         groups = {}
         for sym, m in members.items():
-            groups.setdefault(ind[sym][key], []).append(sym)
+            if level == "sub":
+                if sym in subs and subs[sym][1] != "other":  # leftovers are not a group: not ranked
+                    groups.setdefault(subindustries.label(*subs[sym]), []).append(sym)
+            else:
+                groups.setdefault(ind[sym][1 if level == "industry" else 0], []).append(sym)
         rows, scores, prev_scores = {}, {}, {}
         for g, syms in groups.items():
             if len(syms) < MIN_MEMBERS:
@@ -238,6 +248,7 @@ def compute(market: str) -> dict:
             spark = rs_line.iloc[::-1].iloc[::5].iloc[::-1].tail(27)
             rows[g] = {
                 "group": g, "sector": ind[syms[0]][0], "n": len(syms),
+                "industry": ind[syms[0]][1] if level != "sector" else None,
                 "ew": {h: _ret(gidx, b) for h, b in HORIZONS.items()},
                 "rel": {h: (_ret(gidx, b) - _ret(mkt_idx, b)) if _ret(gidx, b) is not None else None for h, b in HORIZONS.items()},
                 "cw": cw,

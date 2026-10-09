@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS symbol_names (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (market, symbol)
 );
+ALTER TABLE symbol_names ADD COLUMN IF NOT EXISTS is_adr BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE symbol_names ADD COLUMN IF NOT EXISTS country TEXT;
 """
 
 US_URLS = ("https://www.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt",
@@ -84,6 +86,25 @@ def clean_us_name(raw: str) -> str:
     return head or name
 
 
+ADRS: set[str] = set()   # US listings of foreign companies (ADRs and foreign ordinaries), filled by fetch_us
+COUNTRY: dict[str, str] = {}
+NASDAQ_SCREENER_URL = "https://api.nasdaq.com/api/screener/stocks?tableonly=true&download=true"
+
+
+def fetch_us_countries() -> dict[str, str]:
+    """Country of incorporation per US-listed stock, from Nasdaq's stock screener (one request). The
+    symbol directories do not say reliably whether a listing is an ADR; the country does."""
+    try:
+        resp = requests.get(NASDAQ_SCREENER_URL, timeout=60, headers=_UA)
+        resp.raise_for_status()
+        rows = resp.json()["data"]["rows"]
+    except Exception as exc:  # noqa: BLE001 - names are still useful without countries
+        logger.warning("names: country lookup failed (%s)", exc)
+        return {}
+    return {r["symbol"].strip().replace("/", "-").replace(".", "-"): r["country"].strip()
+            for r in rows if r.get("symbol") and r.get("country")}
+
+
 def fetch_us() -> dict[str, str]:
     out: dict[str, str] = {}
     for url in US_URLS:
@@ -100,6 +121,8 @@ def fetch_us() -> dict[str, str]:
             sym = f[sym_i].strip().replace(".", "-")  # BRK.B is BRK-B in the price data
             if sym and f[name_i].strip():
                 out.setdefault(sym, clean_us_name(f[name_i]))
+                if re.search(r"Depositary (Shares?|Receipts?)|\bADRs?\b|\bADS\b", f[name_i], re.I):
+                    ADRS.add(sym)
     return out
 
 
@@ -134,14 +157,18 @@ def refresh(market: str) -> int:
     """Download the market's names and upsert them. Returns how many were stored."""
     init_schema()
     names = fetch_us() if market == "us" else fetch_india()
+    if market == "us":
+        COUNTRY.update(fetch_us_countries())
+        ADRS.update(s for s, c in COUNTRY.items() if c != "United States")
     if not names:
         return 0
     names.update(INDEX_NAMES[market])
     src = "nasdaqtrader" if market == "us" else "nse"
     db.execute_values(
-        """INSERT INTO symbol_names (market, symbol, name, source) VALUES %s
-           ON CONFLICT (market, symbol) DO UPDATE SET name=EXCLUDED.name, source=EXCLUDED.source, updated_at=now()""",
-        [(market, s, n, src) for s, n in names.items()])
+        """INSERT INTO symbol_names (market, symbol, name, source, is_adr, country) VALUES %s
+           ON CONFLICT (market, symbol) DO UPDATE SET name=EXCLUDED.name, source=EXCLUDED.source,
+             is_adr=EXCLUDED.is_adr, country=EXCLUDED.country, updated_at=now()""",
+        [(market, s, n, src, s in ADRS, COUNTRY.get(s) if market == "us" else "India") for s, n in names.items()])
     logger.info("names %s: %d stored", market, len(names))
     return len(names)
 

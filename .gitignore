@@ -9,6 +9,7 @@ logs/
 # local caches (Postgres is the system of record; these are derived)
 data/sector_cache_*.csv
 data/earnings_cache_*.csv
+data/snapshots/
 archive/cache/
 
 # python

@@ -1,0 +1,375 @@
+"""Minervini VCP, built to the written backtest specification (research/minervini-backtest-spec.md).
+
+A second, rule-for-rule version of `minervini`, kept alongside it so the two can be compared: the
+original stays the baseline. What differs from `minervini`:
+
+- **Base detection** (core/vcp_spec.py) anchors on the base high — the last confirmed swing high no
+  later close has exceeded — and measures every contraction from there, with the spec's numbers:
+  swing points of `SWING_K` bars each side, a prior advance of `PRIOR_ADVANCE_PCT`%, a base of
+  `BASE_MIN_DAYS`–`BASE_MAX_DAYS` sessions, `MIN_CONTRACTIONS`–`MAX_CONTRACTIONS` contractions each at
+  most `SHRINK` × the one before, the first no deeper than `MAX_FIRST_DEPTH_PCT`%, a final tight area of
+  `TIGHT_DAYS` sessions within `TIGHT_PCT`%, a pivot within `PIVOT_NEAR_HIGH` of the base high, and
+  volume drying up to `DRYUP_RATIO` × its average.
+- **MV-01 is the breakout day itself**, judged against the pivot frozen on the day before (the
+  breakout bar must not move its own pivot), and confirmed by volume, a close in the upper half of
+  the range and a close no more than `BUY_RANGE_PCT`% past the pivot. It is entered at the next
+  open (EN-01). **MV-02** is the coil below the pivot, entered by a buy-stop through it (EN-02).
+- **Stops** sit `STOP_BUFFER_PCT`% under the tight low and may be no more than `MAX_STOP_PCT`% below the
+  fill (checked at the fill, not at the signal). One entry per base.
+- **Exits** are the spec's EX-01 … EX-06: the stop, a failed breakout, breakeven at 2R, a third sold
+  at 3R, climax runs, and a 50-day break on volume — the portfolio simulator's `minervini` mode.
+
+The backtest adds the cross-sectional parts a one-symbol evaluation cannot do: the RS rating (TT-08),
+ranking by RS then tightness, the market filter, the base number, and the spec's costs
+(backtesting/backtest.py `--spec`).
+"""
+
+import pandas as pd
+
+from ..config.base import MarketConfig
+from ..core import vcp_spec
+from ..core.context import StockContext
+from ..screens.criteria import (  # noqa: F401 (doc placeholders)
+    MAX_PCT_BELOW_52W_HIGH, MIN_PCT_ABOVE_52W_LOW, RS_MIN_MOM, RS_MIN_RANK, SMA200_RISING_BARS,
+)
+from .base import LABELS, Decision, PlanChoice, Strategy, StrategyResult, TradePlan
+from .minervini import MinerviniStrategy
+from .trend_pullback import round_tick
+
+MV01 = "MV-01"   # confirmed breakout through the frozen pivot
+MV02 = "MV-02"   # coiled just below the pivot
+
+# ---- section 5: base and VCP (core/vcp_spec.py)
+SWING_K = 5
+MIN_SWING_PCT = 2.0
+PRIOR_ADVANCE_PCT = 30.0
+BASE_MIN_DAYS = 15
+BASE_MAX_DAYS = 325
+MIN_CONTRACTIONS = 2
+MAX_CONTRACTIONS = 6
+MAX_FIRST_DEPTH_PCT = 35.0
+SHRINK = 0.80
+TIGHT_DAYS = 10
+TIGHT_PCT = 10.0
+PIVOT_NEAR_HIGH = 0.90
+DRYUP_RATIO = 0.70
+VCP = vcp_spec.VcpParams(
+    swing_k=SWING_K, min_swing_pct=MIN_SWING_PCT, prior_advance_pct=PRIOR_ADVANCE_PCT,
+    base_min_days=BASE_MIN_DAYS, base_max_days=BASE_MAX_DAYS, min_contractions=MIN_CONTRACTIONS,
+    max_contractions=MAX_CONTRACTIONS, max_first_depth_pct=MAX_FIRST_DEPTH_PCT, shrink=SHRINK,
+    tight_days=TIGHT_DAYS, tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
+)
+
+# ---- section 6: setups
+COIL_PCT = 8.0          # MV-02: close within this % below the pivot
+VOL_MULT = 1.4          # MV-01a: breakout volume ≥ this × the 50-day average
+BUY_RANGE_PCT = 5.0     # MV-01b: close no more than this % above the pivot (and EN-01/EN-02 fills)
+UPPER_HALF = 0.5        # MV-01c: close in at least this fraction of the day's range
+
+# ---- section 8: stop
+STOP_BUFFER_PCT = 0.5   # SL-01: stop this % under the tight low
+MAX_STOP_PCT = 8.0      # SL-03: skip a fill whose stop is further below it than this
+NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a third at 3R)
+
+# ---- section 10 / backtest (backtesting/backtest.py --spec)
+MAX_POSITIONS = 8               # PF-02
+MAX_OPEN_RISK_PCT = 6.0         # PF-04
+MAX_ADV_PCT = 5.0               # SL-06
+EARNINGS_WARN_DAYS = 10
+
+
+class MinerviniSpecStrategy(Strategy):
+    key = "minervini_spec"
+    name = "Minervini VCP (to the backtest spec)"
+    description = (
+        "The written Minervini backtest specification, rule for rule: Trend Template, a base-high "
+        "anchored VCP, confirmed breakouts at the next open or buy-stops through the pivot, and the "
+        "spec's exits (failed breakout, breakeven, partial profit, climax, 50-day break)."
+    )
+    style = "breakout"
+    variant_of = "minervini"
+
+    gate_codes = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8")
+    watch_codes = ("B1", "B2", "B3", "B4")
+    setup_codes = (MV01, MV02)
+    extra_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
+                     "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio", "breakout_volume_ratio",
+                     "vcp_fail", "rs_mom")
+    extra_numeric_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
+                             "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio",
+                             "breakout_volume_ratio", "rs_mom")
+    needs_ctx_extras = True
+    screen_key = "stage2"
+    screen_gates = {"M1": "C1", "M2": "C2", "M3": "C3", "M4": "C4", "M5": "C5", "M6": "C6", "M7": "C7", "M8": "C8"}
+    min_bars = 300
+
+    thesis = (
+        "The same edge as Minervini's SEPA — buy Stage-2 leaders as a volatility contraction completes, "
+        "with small, capped losses against large winners — but tested exactly as the written "
+        "specification defines it, so that the result measures the method rather than one reading of it."
+    )
+    how_it_works = (
+        "Gates M1–M8 are the Trend Template (the Stage 2 screen's criteria): price above the 50/150/200-day "
+        "averages, the averages stacked, the 200-day rising over {SMA200_RISING_BARS} sessions, at least "
+        "{MIN_PCT_ABOVE_52W_LOW}% above the 52-week low and within {MAX_PCT_BELOW_52W_HIGH}% of the high, and "
+        "relative strength. The backtest applies the true cross-sectional RS rating of {RS_MIN_RANK}+ on top.",
+        "The base starts at the base high: the most recent confirmed swing high ({SWING_K} bars either side, "
+        "known only {SWING_K} bars later) that no close has exceeded since. It must follow a {PRIOR_ADVANCE_PCT}% "
+        "advance, last {BASE_MIN_DAYS}–{BASE_MAX_DAYS} sessions, start with the full template in force, and keep "
+        "the long averages in order every day of it.",
+        "Contractions run from each swing high to the lowest low before the next. There must be "
+        "{MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}, the first no deeper than {MAX_FIRST_DEPTH_PCT}% and each at most "
+        "{SHRINK} × the one before. Wiggles under {MIN_SWING_PCT}% are ignored.",
+        "The final tight area is the last {TIGHT_DAYS} sessions: its high is the pivot, its low the tight low. "
+        "It must span at most {TIGHT_PCT}%, the pivot must be within {PIVOT_NEAR_HIGH} of the base high, and its "
+        "volume must have dried up to {DRYUP_RATIO} × the 50-day average.",
+        "MV-02 (coiled): the base is complete and the close is within {COIL_PCT}% below the pivot. A buy-stop "
+        "rests just above the pivot.",
+        "MV-01 (breakout): the base was complete yesterday, yesterday's close was at or below yesterday's "
+        "pivot and today's close is above it — on at least {VOL_MULT} × average volume, in the upper half of "
+        "the day's range, and no more than {BUY_RANGE_PCT}% past the pivot. Bought at the next open.",
+    )
+    caveats = (
+        "**Survivorship bias.** The universe is today's listed stocks; companies delisted since are missing, "
+        "which flatters every result.",
+        "**Corporate actions.** Prices are adjusted when fetched; a split or bonus after a symbol's last full "
+        "fetch shows as a crash until its history is re-fetched (`marketdata.splits`).",
+        "**Relative strength** is applied twice: the per-stock gate M8 uses 12-1 month momentum of "
+        "{RS_MIN_MOM}+ (a stand-in that a one-symbol evaluation can compute), and the backtest's `--min-rs` "
+        "applies the true RS rating across the market. The stand-in rarely binds when the rating is 70+.",
+        "**The fundamental screen (SEPA part 2) is not part of the spec or the backtest** — there is no "
+        "point-in-time fundamental history.",
+        "**Circuit limits** (C-03, India) are not modelled: a stop on a locked day fills at the next open, "
+        "which daily bars cannot tell apart from a gap.",
+        "**Base number** counts the bases that produced a breakout since the trend last broke; it is "
+        "worked out by the backtest from the signal list, and only reported, not filtered on by default.",
+        "EN-03 (buying inside the tight area before any breakout) is not implemented.",
+        "The detector turns a chart-reading judgement into numbers; every threshold is a parameter of the "
+        "spec (section 11), most of them marked there as assumptions.",
+    )
+    status = (
+        "No demonstrated edge (India, 2010 onward, `--spec`). Confirmed breakouts (EN-01): 9 trades in 16 years, "
+        "CAGR −0.1% — the spec's base rules almost never complete on Indian daily data. Buy-stops (EN-02): 114 trades, "
+        "expectancy −0.03R, profit factor 0.86, CAGR 0.1% against the index's ~12%, max drawdown −8.6%; the "
+        "failed-breakout exit closes ~80% of trades for −0.3R each. No parameter at either end of the spec's test "
+        "ranges, and no failed-breakout window, gives an edge that holds both in and out of sample "
+        "(research/minervini-spec-sensitivity-india.md). US, same rules: EN-01 26 trades, −0.14R; EN-02 526 trades, "
+        "−0.02R, CAGR −0.8% (index ~13%), max drawdown −30% — +0.05R to 2019, −0.12R since; the stricter variants that "
+        "help in sample all turn negative after 2019 (research/minervini-spec-sensitivity-us.md)."
+    )
+
+    gate_docs = {
+        "M1": "TT-05: close above the 50-day average.",
+        "M2": "TT-01: close above the 150-day average.",
+        "M3": "TT-01: close above the 200-day average.",
+        "M4": "TT-02 and TT-04: the 50-day above the 150-day above the 200-day.",
+        "M5": "TT-03: the 200-day higher than {SMA200_RISING_BARS} sessions ago.",
+        "M6": "TT-06: close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low.",
+        "M7": "TT-07: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
+        "M8": "TT-08 stand-in: 12-1 month momentum of at least {RS_MIN_MOM}. The backtest also requires the "
+              "true RS rating of {RS_MIN_RANK}+ across the market.",
+    }
+    watch_docs = {
+        "B1": "Closed through the pivot on light volume — under {VOL_MULT} × the 50-day average (MV-01a), "
+              "so not a confirmed breakout.",
+        "B2": "Closed more than {BUY_RANGE_PCT}% past the pivot (MV-01b): extended beyond the buy range.",
+        "B3": "Closed through the pivot but in the lower half of the day's range (MV-01c).",
+        "B4": "Earnings are due within {EARNINGS_WARN_DAYS} days (live screen only).",
+    }
+    setup_docs = {
+        MV01: "Breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
+              "on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of the pivot.",
+        MV02: "Coiled: the base is complete and the close is within {COIL_PCT}% below the pivot.",
+    }
+    entry_rules = (
+        "MV-01 (EN-01): buy at the next session's open; skip it if that open is more than {BUY_RANGE_PCT}% "
+        "above the pivot or at or below the tight low.",
+        "MV-02 (EN-02): a buy-stop at the pivot plus 0.1%, resting for up to 10 sessions; it fills at the "
+        "stop price or the open if the stock gaps over it, is skipped if that is more than {BUY_RANGE_PCT}% "
+        "above the pivot, and is cancelled by a close below the tight low.",
+        "Stop: {STOP_BUFFER_PCT}% under the tight low. A fill whose stop is more than {MAX_STOP_PCT}% below "
+        "it is skipped. Size: 1% of equity at risk, capped at the market's position limit.",
+        "One entry per base: a base already traded is not entered again.",
+        "Target: a nominal {NOMINAL_TARGET_R}R, for sizing and reporting only.",
+    )
+    exit_rules = (
+        "In priority order, each session: EX-01 the stop (filled at the open if it gapped through); EX-02 a "
+        "close below the pivot within 5 sessions of entry — a failed breakout, sold at the next open; EX-03 "
+        "once the high reaches 2R, the stop rises to breakeven plus costs; EX-04 one third sold at 3R; EX-05 "
+        "a climax run once up 25% (the biggest up day on the biggest volume since entry, 8 of 10 up closes, "
+        "70% above the 200-day, or a 3% gap after a 50% gain), sold at the next open; EX-06 a close below "
+        "the 50-day average on at least average volume, sold at the next open.",
+        "Backtest: `--exit-mode minervini` in the portfolio simulator; the spec's run adds `--spec`, which "
+        "sets {MAX_POSITIONS} positions, a {MAX_OPEN_RISK_PCT}% open-risk cap, a {MAX_ADV_PCT}% liquidity cap, "
+        "RS ranking and the spec's costs.",
+    )
+    param_docs = (
+        ("Swing confirmation", "SWING_K", "Bars either side of a swing point; it is known only this many bars later."),
+        ("Prior advance", "PRIOR_ADVANCE_PCT", "Rise into the base high from the low of the 126 sessions before (VCP-01)."),
+        ("Base length, minimum", "BASE_MIN_DAYS", "Sessions from the base high (VCP-02)."),
+        ("Base length, maximum", "BASE_MAX_DAYS", "About 65 weeks (VCP-02)."),
+        ("Contractions, minimum", "MIN_CONTRACTIONS", "VCP-04."),
+        ("Contractions, maximum", "MAX_CONTRACTIONS", "VCP-04."),
+        ("First contraction, deepest", "MAX_FIRST_DEPTH_PCT", "VCP-05."),
+        ("Shrink factor", "SHRINK", "Each contraction at most this × the previous (VCP-06)."),
+        ("Tight area", "TIGHT_DAYS", "Sessions in the final tight area (VCP-08)."),
+        ("Tight-area span", "TIGHT_PCT", "Deepest final contraction and widest tight area (VCP-08)."),
+        ("Pivot near the base high", "PIVOT_NEAR_HIGH", "VCP-09."),
+        ("Volume dry-up", "DRYUP_RATIO", "Tight-area volume against its 50-day average (VCP-10)."),
+        ("Coil distance", "COIL_PCT", "MV-02: how far below the pivot still counts."),
+        ("Breakout volume", "VOL_MULT", "MV-01a."),
+        ("Buy range", "BUY_RANGE_PCT", "MV-01b, and the most a fill may sit above the pivot."),
+        ("Stop buffer", "STOP_BUFFER_PCT", "SL-01."),
+        ("Maximum stop", "MAX_STOP_PCT", "SL-03, checked at the fill."),
+        ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
+        ("Open-risk cap", "MAX_OPEN_RISK_PCT", "PF-04, with --spec."),
+        ("Liquidity cap", "MAX_ADV_PCT", "SL-06: largest order as a % of 50-day average traded value, with --spec."),
+        ("Minimum history", "min_bars", "Bars required before the template can judge a symbol."),
+    )
+    backtest_args = "--strategy minervini_spec --spec --accept-labels 'TRADE - HIGH CONFIDENCE'"
+
+    # ---------- screen ----------
+
+    def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
+        """The Trend Template and the market's liquidity floor, as of one row (shared with `minervini`)."""
+        return MinerviniStrategy.prefilter_row(self, cfg, last)
+
+    # ---------- evaluation ----------
+
+    def evaluate(self, ctx: StockContext) -> StrategyResult:
+        d = ctx.daily
+        result = StrategyResult(entry_setup_codes=self.setup_codes)
+        self.apply_screen(ctx, result)
+        e = ctx.extras
+        today, prev = vcp_spec.detect(d, VCP), vcp_spec.detect(d.iloc[:-1], VCP)
+        last = d.iloc[-1]
+        close, high, low, vol = (float(last[k]) for k in ("close", "high", "low", "volume"))
+        v50 = float(last["vol_sma50"]) if pd.notna(last.get("vol_sma50")) else float("nan")
+        prev_close = float(d["close"].iloc[-2])
+
+        breakout = bool(prev["ok"] and prev_close <= prev["pivot"] < close)
+        base = prev if breakout else today
+        vol_ratio = vol / v50 if v50 and v50 == v50 else float("nan")
+        rng = high - low
+        upper = (close - low) / rng if rng > 0 else 1.0
+        confirmed = {
+            "B1": not (vol_ratio >= VOL_MULT),
+            "B2": breakout and close > base["pivot"] * (1 + BUY_RANGE_PCT / 100),
+            "B3": upper < UPPER_HALF,
+        }
+        mv01 = breakout and not any(confirmed.values())
+        mv02 = bool(not breakout and today["ok"] and today["pivot"] * (1 - COIL_PCT / 100) <= close <= today["pivot"])
+        result.setups[MV01], result.setups[MV02] = mv01, mv02
+
+        for code in ("B1", "B2", "B3"):
+            on = bool(breakout and confirmed[code])
+            result.watch_flags[code] = on
+        if result.watch_flags["B1"]:
+            result.watch_notes["B1"] = f"volume {vol_ratio:.2f}× its 50-day average"
+        if result.watch_flags["B2"]:
+            result.watch_notes["B2"] = f"{(close / base['pivot'] - 1) * 100:.1f}% above the pivot"
+        if result.watch_flags["B3"]:
+            result.watch_notes["B3"] = f"closed at {upper * 100:.0f}% of the day's range"
+        ed = ctx.earnings_days_away
+        result.watch_flags["B4"] = bool(ed is not None and 0 <= ed <= EARNINGS_WARN_DAYS)
+        if result.watch_flags["B4"]:
+            result.watch_notes["B4"] = f"earnings in {ed} days"
+
+        depths = base.get("depths") or []
+        e.update(
+            pivot=base["pivot"], tight_low=base["tight_low"], base_high=base["bh"],
+            base_date=str(base["bh_date"].date()) if base["bh_date"] is not None else None,
+            base_days=base["base_days"], contractions=len(depths),
+            first_depth_pct=depths[0] if depths else None, last_depth_pct=depths[-1] if depths else None,
+            tightness_pct=base["tight_range_pct"], dryup_ratio=base["dryup"],
+            breakout_volume_ratio=vol_ratio if breakout else None,
+            vcp_fail=base["fail"], breakout=breakout,
+        )
+        result.recompute_first_fail()
+        return result
+
+    def entry_signal_fired(self, ctx: StockContext, result: StrategyResult) -> bool:
+        """MV-01 is bought at the next open, MV-02 by a resting buy-stop: both place an order today."""
+        return result.has_setup
+
+    def setup_quality(self, result: StrategyResult) -> float:
+        return 2.0 if result.setups.get(MV01) else (1.0 if result.setups.get(MV02) else 0.0)
+
+    # ---------- plan ----------
+
+    def build_plans(self, ctx: StockContext, result: StrategyResult, cfg: MarketConfig) -> PlanChoice:
+        if not result.has_setup:
+            return PlanChoice(None, None, "no active setup")
+        e = ctx.extras
+        pivot, tl = e.get("pivot"), e.get("tight_low")
+        if not pivot or tl is None or pd.isna(tl):
+            return PlanChoice(None, None, "missing pivot / tight low")
+        setup = MV01 if result.setups.get(MV01) else MV02
+        # MV-01 fills at tomorrow's open, whose best estimate today is the close; MV-02 at the buy-stop
+        entry = float(ctx.close) if setup == MV01 else round_tick(float(pivot) * 1.001, cfg.tick_size, "up")
+        stop = round_tick(float(tl) * (1 - STOP_BUFFER_PCT / 100), cfg.tick_size, "down")
+        if stop <= 0 or stop >= entry:
+            return PlanChoice(None, None, "degenerate stop")
+        target = entry + NOMINAL_TARGET_R * (entry - stop)
+        plan = TradePlan(plan="MV", setup=setup, entry=entry, stop=stop, target=target,
+                         risk_per_share=entry - stop, reward_per_share=target - entry,
+                         r_multiple=NOMINAL_TARGET_R, nearest_overhead_above_entry=None)
+        return PlanChoice(plan, None, f"{setup}: pivot {pivot:.2f}, stop {(entry - stop) / entry * 100:.1f}% below entry")
+
+    def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
+        """How the portfolio simulator should place and manage this order (portfolio_sim docstring)."""
+        e = ctx.extras
+        pivot, tl = float(e["pivot"]), float(e["tight_low"])
+        meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
+                "max_risk_pct": MAX_STOP_PCT / 100, "base_id": e.get("base_date"),
+                "tightness": e.get("tightness_pct")}
+        if plan.setup == MV01:
+            meta.update(order="open", min_open=tl)
+        else:
+            meta.update(order="stop", cancel_close_below=tl)
+        return meta
+
+    # ---------- decision ----------
+
+    def classify(self, ctx, result, plan, sizing_result, earnings_days_away, regime_downgrade_active) -> Decision:
+        q = self.setup_quality(result)
+        if not result.hard_gates_passed:
+            return Decision(LABELS["AVOID"], LABELS["AVOID"],
+                            f"fails trend template gate {result.first_hard_fail}: {result.hard_notes.get(result.first_hard_fail, '')}",
+                            0.0, 0.0, q)
+        if plan is None or not plan.is_valid:
+            return Decision(LABELS["AVOID"], LABELS["AVOID"], "no valid entry plan", 0.0, 0.0, q)
+        risk_pct = plan.risk_per_share / plan.entry * 100
+        if plan.setup == MV01:
+            label, reasons = "TRADE_HIGH_CONFIDENCE", ["confirmed breakout: buy at the next open"]
+        else:
+            label, reasons = "TRADE_ON_TRIGGER", ["coiled below the pivot: buy-stop through it"]
+        if risk_pct > MAX_STOP_PCT:
+            label = "WATCH_WAIT"
+            reasons.append(f"stop {risk_pct:.1f}% below entry exceeds the {MAX_STOP_PCT:g}% maximum")
+        label_before = label
+        if regime_downgrade_active and label in ("TRADE_HIGH_CONFIDENCE", "TRADE_ON_TRIGGER"):
+            label = "WATCH_WAIT"
+            reasons.append("market filter: no new buys")
+        return Decision(LABELS[label_before], LABELS[label], "; ".join(reasons), risk_pct, plan.r_multiple, q)
+
+    def watch_cap(self, result: StrategyResult) -> str:
+        return "TRADE_HIGH_CONFIDENCE"
+
+    def report_extras(self, ctx, result, plan) -> dict:
+        e = ctx.extras
+        pivot = e.get("pivot")
+
+        def r(k, n=2):
+            v = e.get(k)
+            return round(float(v), n) if v is not None and pd.notna(v) else None
+        return {
+            "pivot": r("pivot"), "tight_low": r("tight_low"),
+            "pct_from_pivot": round((ctx.close / pivot - 1) * 100, 2) if pivot else None,
+            "base_high": r("base_high"), "base_days": e.get("base_days"), "contractions": e.get("contractions"),
+            "first_depth_pct": r("first_depth_pct", 1), "last_depth_pct": r("last_depth_pct", 1),
+            "tightness_pct": r("tightness_pct", 1), "dryup_ratio": r("dryup_ratio"),
+            "breakout_volume_ratio": r("breakout_volume_ratio"), "vcp_fail": e.get("vcp_fail"),
+            "rs_mom": r("rs_mom", 3),
+        }
+

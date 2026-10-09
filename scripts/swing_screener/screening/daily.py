@@ -1,8 +1,9 @@
 """Daily run — now the `daily` pipeline of the jobs layer (scripts/jobs/).
 
-Kept so existing commands and cron entries keep working; it runs
+Kept so existing commands and cron entries keep working: it runs what the old daily run did — the data
+pipeline and then the strategies —
 
-    python -m jobs run daily [--market ...] [--strategies ...]
+    python -m jobs run daily strategies [--market ...] [--strategies ...]
 
 per market: universe list (when stale) -> prices -> index & VIX series ->
 market breadth -> sector ranking -> one screening step per strategy (stored
@@ -93,8 +94,8 @@ def main() -> None:
     from jobs import registry
     from jobs.runner import run
     if args.no_ingest:
-        registry.PIPELINES["daily"]["jobs"] = [j for j in registry.PIPELINES["daily"]["jobs"] if j != "ingest"]
-    sys.exit(run(["daily"], markets, {"strategies": keys, "universe_days": args.refresh_stale_days}))
+        registry.PIPELINES["strategies"]["jobs"] = [j for j in registry.PIPELINES["strategies"]["jobs"] if j != "ingest"]
+    sys.exit(run(["daily", "strategies"], markets, {"strategies": keys, "universe_days": args.refresh_stale_days}))
 
 
 if __name__ == "__main__":

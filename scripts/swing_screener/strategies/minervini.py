@@ -70,10 +70,10 @@ MV01 = "MV-01"  # VCP pivot breakout
 MV02 = "MV-02"  # coiled inside the final contraction, pivot not yet taken
 
 # --- Trend Template thresholds (Minervini's own numbers) ---
-MIN_PCT_ABOVE_52W_LOW = 30.0   # "at least 30% above the 52-week low"
-MAX_PCT_BELOW_52W_HIGH = 25.0  # "within 25% of the 52-week high"
-SMA200_RISING_BARS = 21        # "200-day trending up for at least a month"
-RS_MIN_MOM = 0.10              # RS proxy: 12-1 momentum floor
+# Trend Template thresholds live with the Stage 2 screen's criteria (one definition, shared)
+from ..screens.criteria import (  # noqa: E402
+    MAX_PCT_BELOW_52W_HIGH, MIN_PCT_ABOVE_52W_LOW, RS_MIN_MOM, SMA200_RISING_BARS,  # noqa: F401 (doc placeholders)
+)
 
 # --- VCP shape ---
 VCP_LOOKBACK = 120             # bars of base to examine
@@ -113,6 +113,7 @@ class MinerviniStrategy(Strategy):
         "contraction breakout, with a stop tight enough to keep the average "
         "loss near 7%."
     )
+    style = "breakout"
 
     gate_codes = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8")
     watch_codes = ("V1", "V2", "V3", "V4", "V5", "V6")
@@ -131,6 +132,8 @@ class MinerviniStrategy(Strategy):
         "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
     )
     needs_ctx_extras = True
+    screen_key = "stage2"
+    screen_gates = {"M1": "C1", "M2": "C2", "M3": "C3", "M4": "C4", "M5": "C5", "M6": "C6", "M7": "C7", "M8": "C8"}
     wants_live_fundamentals = True
     # 252 bars for the 52-week window + 21 to see the 200-day rising, plus the
     # 252+21 that 12-1 momentum needs: a symbol with less history cannot be
@@ -170,11 +173,9 @@ class MinerviniStrategy(Strategy):
         "measuring growth acceleration needs 8+ quarters of point-in-time "
         "data. The daily screener attaches current fundamentals as watch "
         "flags; no backtest here includes them.",
-        "Minervini raises the stop to breakeven once a trade advances. The "
-        "portfolio simulator has no breakeven-raise mode, so backtests run a "
-        "moving-average exit instead, which is more permissive.",
-        "'Sell into strength' (taking partial profits into an unusually fast "
-        "advance) is not modelled: positions here are all-or-nothing.",
+        "Minervini raises the stop to breakeven once a trade advances and sells "
+        "into strength; this version's backtest runs a plain 50-day exit instead "
+        "(all-or-nothing, no breakeven). `minervini_spec` runs the full exit set.",
         "The Trend Template is public and heavily data-mined. An in-sample "
         "edge on the same 13.75 years everything else here uses is weak "
         "evidence.",
@@ -182,7 +183,12 @@ class MinerviniStrategy(Strategy):
         "not fitted to returns — but they are still choices, and a different "
         "reading of 'contraction' would give different trades.",
     )
-    status = "Untested — no backtest has been run on this strategy yet."
+    status = (
+        "No demonstrated edge. Portfolio backtest 2013 onward, 50-day exit: India CAGR 5.0% (index 11.7%), "
+        "max drawdown −29%, 771 trades; US −1.7% (index 12.8%), max drawdown −43%, 1,286 trades. Skipping signals "
+        "from industry groups rated below 50 (`--min-group-rs 50`) helped in both: India 6.3%, US 1.8%. "
+        "See `minervini_spec` for the version built to the written specification."
+    )
 
     gate_docs = {
         "M1": "Close above the 50-day simple moving average.",
@@ -299,32 +305,11 @@ class MinerviniStrategy(Strategy):
         last = ctx.last
         close = ctx.close
 
-        s50 = float(last["sma50"]); s150 = float(last["sma150"])
-        s200 = float(last["sma200"]); s200_prev = float(last["sma200_21d_ago"])
-        lo52 = float(last["low_252"]); hi52 = float(last["high_252"])
-        mom = float(last["mom_12_1"]) if pd.notna(last.get("mom_12_1")) else float("nan")
+        s50 = float(last["sma50"])
 
-        # --- Trend Template ---
-        _g(result, "M1", close > s50, f"close {close:.2f} vs SMA50 {s50:.2f}")
-        _g(result, "M2", close > s150, f"close {close:.2f} vs SMA150 {s150:.2f}")
-        _g(result, "M3", close > s200, f"close {close:.2f} vs SMA200 {s200:.2f}")
-        _g(result, "M4", s50 > s150 > s200,
-           f"SMA50 {s50:.2f} / SMA150 {s150:.2f} / SMA200 {s200:.2f}")
-        _g(result, "M5", s200 > s200_prev,
-           f"SMA200 {s200:.2f} vs {s200_prev:.2f} {SMA200_RISING_BARS} bars ago")
-
-        pct_above_low = (close / lo52 - 1) * 100 if lo52 > 0 else float("nan")
-        _g(result, "M6", pct_above_low >= MIN_PCT_ABOVE_52W_LOW,
-           f"{pct_above_low:.1f}% above the 52-week low")
-        pct_below_high = (1 - close / hi52) * 100 if hi52 > 0 else float("nan")
-        _g(result, "M7", pct_below_high <= MAX_PCT_BELOW_52W_HIGH,
-           f"{pct_below_high:.1f}% below the 52-week high")
-        _g(result, "M8", pd.notna(mom) and mom >= RS_MIN_MOM,
-           f"12-1 momentum {mom:.3f}")
-
-        ctx.extras["pct_above_52w_low"] = pct_above_low
-        ctx.extras["pct_below_52w_high"] = pct_below_high
-        ctx.extras["rs_mom"] = mom
+        # --- Trend Template: the Stage 2 screen's criteria C1-C8, recorded as M1-M8
+        #     (screens/criteria.py; also sets the pct_above_52w_low / pct_below_52w_high / rs_mom extras)
+        self.apply_screen(ctx, result)
 
         # --- VCP structure ---
         contractions = sw.volatility_contractions(d, lookback=VCP_LOOKBACK)

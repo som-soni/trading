@@ -36,6 +36,15 @@ DOWNGRADE_MAP = {
     "AVOID": "AVOID",
 }
 
+# Trading-style families, in display order — the Strategies page groups its
+# sidebar by these. Every strategy declares one via `Strategy.style`;
+# docs.check() (and so tests/test_strategy_docs.py) rejects anything else.
+STYLES = {
+    "pullback": "Pullback / continuation",
+    "breakout": "Breakout from a base",
+    "trend": "Trend following",
+}
+
 
 @dataclass
 class StrategyResult:
@@ -161,8 +170,24 @@ class Strategy(ABC):
     # would be ranking a 2015 stock by a 2026 margin. See
     # marketdata/fundamentals.py.
     wants_live_fundamentals: bool = False
+
+    # ---- the screen this strategy draws its candidates from (screens/) -----------------------
+    # `screen_gates` maps this strategy's gate code -> the screen criterion it applies, in order.
+    # Those gates ARE the screen's criteria (same code path, screens/criteria.py); the strategy's
+    # other gates are its own trade rules. `apply_screen` records them on the result.
+    screen_key: str = ""
+    screen_gates: dict[str, str] = {}
     # minimum daily bars before this strategy will evaluate a symbol
     min_bars: int = 260
+
+    # --- classification, for the Strategies page sidebar ---
+    # `style` is the trading-style family this strategy belongs to (a key of
+    # STYLES above); `variant_of` names the registered strategy this one is a
+    # restriction or re-reading of, and nests it under that parent in the
+    # sidebar. docs.check() enforces both: style must be a STYLES key, and a
+    # variant must point at an existing non-variant parent of the same style.
+    style: str = ""
+    variant_of: str = ""
 
     # --- self-description, for reports ---
     # A report that lists symbols without saying what the strategy was looking
@@ -242,6 +267,17 @@ class Strategy(ABC):
         against today's row, which would leak the present into the past.
         Return (passed, reason_if_failed)."""
 
+    def apply_screen(self, ctx, result: "StrategyResult") -> None:
+        """Evaluate the screen's criteria and record them under this strategy's gate codes."""
+        from ..screens import get_screen
+        screen = get_screen(self.screen_key)
+        for gate, crit in self.screen_gates.items():
+            ok, note = screen.criterion(crit)(ctx)
+            if ok:
+                result.ok(gate, note)
+            else:
+                result.fail(gate, note)
+
     def passes_prefilter(self, cfg: MarketConfig, enriched_daily) -> tuple[bool, str]:
         """Screen a symbol as of the LAST row of `enriched_daily` — i.e. "now"
         for a live run, or as-of a date if the frame is sliced to it."""
@@ -304,6 +340,13 @@ class Strategy(ABC):
         self, ctx: StockContext, result: StrategyResult, plan: TradePlan | None
     ) -> dict:
         """Strategy-specific columns to merge into the report row."""
+        return {}
+
+    def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
+        """Order details for the portfolio simulator (backtesting/portfolio_sim.py, "Spec mode"):
+        an open-price order, a buy range, a per-base id, a maximum stop at the fill. Must read only
+        ctx.extras and the plan (a cached signal has no full price history). Default: none — a
+        resting buy-stop at plan.entry, as for every strategy that does not override this."""
         return {}
 
     def __repr__(self) -> str:  # pragma: no cover - debug convenience

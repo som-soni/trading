@@ -5,12 +5,12 @@ Layers (each reads only what the layers above it produced):
   reference   which symbols exist and what they are          universe, names, classify, industries
   data        raw time series and company data (network)     prices, indexes, earnings, fundamentals
   analytics   market-wide measures from stored prices        breadth, sectors
-  screening   stock selection from stored data               screen (one step per strategy), quality
+  screening   stock selection from stored data               screens, strategies (one step per strategy), backtest, quality
   publish     what the web app shows                         report, ingest
 
 Two rules keep the layers honest:
   * data jobs never screen, and analytics / screening never download prices
-    (`screen` runs inside `cache.offline()` and refuses to run on prices two or
+    (`strategies` runs inside `cache.offline()` and refuses to run on prices two or
     more trading days behind unless told to);
   * every job is idempotent — re-running costs little and changes nothing that
     is already current.
@@ -33,7 +33,7 @@ UNIVERSE_MAX_AGE_DAYS = 7      # `universe` re-fetches the list when older than 
 INDUSTRY_MAX_AGE_DAYS = 30     # `industries` re-classifies when older than this (or with --force)
 QUALITY_TOP = {"us": 500, "india": 300}   # `quality` scores the N most liquid companies (+ your tracked list)
 QUALITY_MAX_AGE_DAYS = 30      # statements newer than this are not re-fetched
-STALE_TRADING_DAYS = 2         # `screen` refuses prices this many trading days behind (holidays make 1 ambiguous)
+STALE_TRADING_DAYS = 2         # `strategies` refuses prices this many trading days behind (holidays make 1 ambiguous)
 
 
 class StaleData(RuntimeError):
@@ -91,7 +91,18 @@ def _names(ctx: Ctx) -> None:
 
 def _classify(ctx: Ctx) -> None:
     if ctx.market == "us":
-        ctx.step.skip("not needed: the US universe list already excludes ETFs and funds")
+        # closed-end funds and income trusts are not flagged as ETFs in the Nasdaq listing: identify them by
+        # name, industry and size (no network) and keep them out of breadth, sectors and movers
+        from swing_screener.analytics import breadth
+        from swing_screener.marketdata import db, subindustries
+        breadth.init_schema()
+        funds = subindustries.us_funds()
+        with db.get_connection().cursor() as cur:
+            cur.execute("DELETE FROM symbol_kind WHERE market='us' AND kind='FUND' AND NOT (symbol = ANY(%s))", (list(funds),))
+        db.execute_values("""INSERT INTO symbol_kind (market, symbol, kind, sector) VALUES %s
+                             ON CONFLICT (market, symbol) DO UPDATE SET kind=EXCLUDED.kind, checked_at=now()""",
+                          [("us", s, "FUND", "Closed-end fund") for s in sorted(funds)])
+        ctx.step.detail = f"{len(funds):,} closed-end funds / income trusts flagged (left out of breadth, sectors, movers)"
         return
     from swing_screener.analytics import breadth
     breadth.init_schema()
@@ -112,6 +123,39 @@ def _industries(ctx: Ctx) -> None:
     ctx.step.detail = f"{industries.refresh(ctx.market):,} stocks classified"
 
 
+def _group_research(ctx: Ctx) -> None:
+    """Research: does group strength improve forward returns? (screens/group_research.py) — writes
+    research/group-strength-study.md; the ingest job loads it into the Reports archive."""
+    from swing_screener.config import MARKETS as MCFG
+    from swing_screener.screens import group_research as gr
+    results = {m: gr.run(m) for m in MCFG}
+    gr.REPORT.write_text(gr.report(results))
+    head = []
+    for m, r in results.items():
+        p = next(x for x in r["pairs"] if x["title"] == "Group strength alone").get("1M")
+        if p:
+            head.append(f"{m}: strong − weak group {p['mean']:+.2f}%/month (t {p['t']:.1f})")
+    ctx.step.detail = f"{gr.REPORT.name} written · " + " · ".join(head)
+
+
+def _subindustries(ctx: Ctx) -> None:
+    """Official industry codes (BSE for India, Nasdaq for the US: marketdata/classcodes.py) for new listings
+    and codes older than 90 days, then the sub-industry coverage of tradable stocks."""
+    from swing_screener.marketdata import classcodes, subindustries
+    from swing_screener.screens import snapshot
+    snap = snapshot.load(ctx.market)
+    syms = list(snap["symbol"]) if not snap.empty else []
+    r = classcodes.refresh_india(syms, force=bool(ctx.opt("force"))) if ctx.market == "india" else classcodes.refresh_us()
+    d = subindustries.load_detail(ctx.market)
+    trad = set(snap.loc[snap["tradable"], "symbol"]) if not snap.empty else set()
+    split = [d[s] for s in trad if s in d]
+    other = sum(1 for x in split if x[2] == "other")
+    sug = sum(1 for x in split if x[2] == "suggested")
+    ctx.step.detail = (f"codes: {r['fetched']:,} fetched in {r['requests']:,} request(s) · tradable stocks in split groups: {len(split):,}, "
+                       f"{len(split) - other:,} labelled ({sug} suggested, awaiting review), {other} unassigned")
+    ctx.step.stats = {**r, "split": len(split), "other": other, "suggested": sug}
+
+
 # ------------------------------------------------------------------ data
 
 def _prices(ctx: Ctx) -> None:
@@ -125,6 +169,19 @@ def _prices(ctx: Ctx) -> None:
                        f"{len(r['stale'])} lagging · {r['elapsed_s']:.0f}s · {freshness.describe(st)}")
     ctx.step.stats = {"requested": r["requested"], "updated": r["updated"], "failed": len(r["failed"]),
                       "lagging": len(r["stale"]), "latest": st["latest"], "lag": st["lag"]}
+
+
+def _splits(ctx: Ctx) -> None:
+    from swing_screener.marketdata import splits
+    sus = splits.detect(ctx.market)
+    if sus.empty:
+        ctx.step.detail = "no split-shaped gaps since each symbol's last full fetch"
+        ctx.step.stats = {"gaps": 0}
+        return
+    r = splits.repair(ctx.market, sus)
+    ctx.step.detail = (f"{r['gaps']} split-shaped gap(s) in {r['symbols']} symbol(s): full history re-fetched for {r['fixed']}; "
+                       f"{r['gaps'] - r['still_there']} repaired, {r['still_there']} still there (real moves or a source error)")
+    ctx.step.stats = r
 
 
 def _indexes(ctx: Ctx) -> None:
@@ -208,13 +265,14 @@ def _sectors(ctx: Ctx) -> None:
         cur.execute(SECTOR_DAILY_SCHEMA)
     rows = [(ctx.market, r["date"], level, g["group"], g["sector"], g["n"], g["rs"], g["rs_prev"], g["quadrant"],
              g["ew"]["1M"], g["ew"]["3M"], g["ew"]["6M"], g["ew"]["12M"], g["rel"]["3M"], g["above50"], g["above200"],
-             g["highs"], g["lows"]) for level in ("industry", "sector") for g in r[level]]
+             g["highs"], g["lows"]) for level in ("industry", "sector", "sub") for g in r.get(level, [])]
     db.execute_values("""INSERT INTO sector_daily VALUES %s ON CONFLICT (market, date, level, grp) DO UPDATE SET
         sector=EXCLUDED.sector, n=EXCLUDED.n, rs=EXCLUDED.rs, rs_prev=EXCLUDED.rs_prev, quadrant=EXCLUDED.quadrant,
         ew_1m=EXCLUDED.ew_1m, ew_3m=EXCLUDED.ew_3m, ew_6m=EXCLUDED.ew_6m, ew_12m=EXCLUDED.ew_12m, rel_3m=EXCLUDED.rel_3m,
         above50=EXCLUDED.above50, above200=EXCLUDED.above200, highs=EXCLUDED.highs, lows=EXCLUDED.lows""", rows)
     top = ", ".join(g["group"] for g in r["industry"][:3])
-    ctx.step.detail = f"{len(r['industry'])} industry groups, {len(r['sector'])} sectors ranked for {r['date']} · leading: {top}"
+    ctx.step.detail = (f"{len(r['sector'])} sectors, {len(r['industry'])} industry groups, {len(r.get('sub', []))} sub-industries "
+                       f"ranked for {r['date']} · leading: {top}")
 
 
 # ------------------------------------------------------------------ screening
@@ -230,7 +288,69 @@ def _check_prices(market: str, allow_stale: bool) -> str:
     return freshness.describe(st)
 
 
-def _screen_steps(ctx: Ctx) -> list:
+def _screens(ctx: Ctx) -> None:
+    """The day's stock snapshot (screens/snapshot.py): every field the screens filter on; screens query it live."""
+    from swing_screener.screens import definitions, snapshot
+    df = snapshot.build(ctx.market)
+    counts = {k: int(definitions.mask(df, v["conditions"]).sum()) for k, v in {**definitions.builtin(), **definitions.presets()}.items()}
+    ctx.step.detail = (f"snapshot of {len(df):,} stocks ({int(df['tradable'].sum()):,} tradable) for {df.attrs.get('date', '')} · "
+                       + " · ".join(f"{k} {v}" for k, v in counts.items()))
+    ctx.step.stats = {"stocks": len(df), "tradable": int(df["tradable"].sum()), **counts}
+
+
+def _screen_history(ctx: Ctx) -> None:
+    """Month-end snapshots for the screen study (screens/snapshot.py --backfill): builds any of the last
+    `years` (default 5) years' month-ends that are missing. The daily job keeps each month's last session
+    itself, so after the first run this is a cheap gap check; studies are then computed on demand."""
+    from swing_screener.screens import snapshot, study
+    n = snapshot.backfill(ctx.market, float(ctx.opt("years") or 5), bool(ctx.opt("force")))
+    ctx.step.detail = f"{n} month-end snapshots built · {len(study.month_end_dates(ctx.market))} month-ends available to the study"
+    ctx.step.stats = {"built": n}
+
+
+BACKTEST_START = "2013-01-01"   # `backtest` simulates from here unless the request sets `start`
+
+
+def _backtest_steps(ctx: Ctx) -> list:
+    """One step per picked strategy. Each runs the full walk-forward backtest with that strategy's
+    documented arguments (`Strategy.backtest_args` — its real exit policy, the same command the
+    Strategies page shows), reports live progress to the run log, and leaves the report for the
+    `ingest` job to load. Offline and slow: it reads stored prices only."""
+    from swing_screener.strategies import DEFAULT_STRATEGY, list_strategies
+    keys = ctx.opt("strategies") or [DEFAULT_STRATEGY]
+    if keys == ["all"]:
+        keys = list_strategies()
+
+    def one(key):
+        def fn(c: Ctx) -> None:
+            import shlex
+            from swing_screener.backtesting import backtest as bt
+            from swing_screener.marketdata import cache
+            from swing_screener.strategies import get_strategy
+            cls = type(get_strategy(key))
+            start = str(c.opt("start") or BACKTEST_START)
+            argv = ["--market", c.market, "--start", start, "--strategy", key] + shlex.split(cls.backtest_args or "")
+            if c.opt("sample"):
+                argv += ["--sample", str(int(c.opt("sample")))]
+            argv += ["--no-ingest"]   # the pipeline's own ingest job loads the report
+            bt.on_progress = c.step.progress
+            try:
+                with cache.offline():   # stored prices only — the `prices` job downloads
+                    r = bt.main(argv)
+            finally:
+                bt.on_progress = None
+            if r:
+                p = r["perf"]
+                c.step.detail = (f"{r['trades']} trades · CAGR {p.cagr_pct:+.2f}% · max DD {p.max_drawdown_pct:.1f}% · "
+                                 f"avg {p.avg_r:+.2f}R · {r['run_dir']}")
+                c.step.stats = {"trades": r["trades"], "cagr_pct": round(p.cagr_pct, 2),
+                                "max_drawdown_pct": round(p.max_drawdown_pct, 1), "avg_r": round(p.avg_r, 3),
+                                "start": start, "run_dir": str(r["run_dir"])}
+        return (f"backtest:{key}", f"backtest · {key}", fn)
+    return [one(k) for k in keys]
+
+
+def _strategy_steps(ctx: Ctx) -> list:
     from swing_screener.strategies import DEFAULT_STRATEGY, list_strategies
     keys = ctx.opt("strategies") or [DEFAULT_STRATEGY]
     if keys == ["all"]:
@@ -247,7 +367,7 @@ def _screen_steps(ctx: Ctx) -> list:
             watch = int((df["watchlist_candidate"] == True).sum()) if "watchlist_candidate" in df else 0  # noqa: E712
             c.step.detail = f"{len(df):,} screened · {trade} tradeable · {watch} watchlist · {note}"
             c.step.stats = {"screened": len(df), "tradeable": trade, "watchlist": watch}
-        return (f"screen:{key}", f"screening · {key}", fn)
+        return (f"strategy:{key}", f"strategy · {key}", fn)
     return [one(k) for k in keys]
 
 
@@ -272,6 +392,22 @@ def _quality(ctx: Ctx) -> None:
 
 
 # ------------------------------------------------------------------ publish
+
+def _postmarket(ctx: Ctx) -> None:
+    """The day's post-market analysis (analytics/postmarket.py), stored per day; `--days N` backfills."""
+    from swing_screener.analytics import postmarket
+    days = int(ctx.opt("days", 1))
+    done = postmarket.run(ctx.market, days=days, force=bool(ctx.opt("force")))
+    if not done:
+        ctx.step.skip(f"already stored for the last {days} session(s)")
+        return
+    with postmarket.db.get_connection().cursor() as cur:
+        cur.execute("SELECT payload->'tone'->>'label', payload->'counts' FROM postmarket_daily WHERE market=%s AND date=%s",
+                    (ctx.market, done[-1]))
+        tone, counts = cur.fetchone()
+    ctx.step.detail = (f"{len(done)} day(s) analysed, latest {done[-1]} · tone {tone} · "
+                       f"{counts['up']:,} up / {counts['down']:,} down · {counts['new_highs']} new highs, {counts['new_lows']} lows")
+
 
 def _report(ctx: Ctx) -> None:
     """The consolidated daily review, from each strategy's latest run per market (screened in the last day)."""
@@ -318,25 +454,49 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("names", "reference", "company names: from the exchanges' symbol lists", "weekly", True, _names),
     Job("classify", "reference", "stock vs fund labels: India ETFs/funds kept out of breadth", "weekly", True, _classify, after=("prices",)),
     Job("industries", "reference", "industry classification: sector, industry and market cap (Sectors page)", "monthly", True, _industries),
+    Job("subindustries", "reference", "sub-industries: official industry codes (BSE / Nasdaq) and the sub-industry coverage", "monthly", True,
+        _subindustries, after=("industries",)),
     Job("prices", "data", "prices: daily bars for the whole universe", "daily", True, _prices, after=("universe",)),
+    Job("splits", "data", "splits & bonus issues: re-fetch the full history of stocks that split after their last full fetch",
+        "weekly", True, _splits, after=("prices",)),
     Job("indexes", "data", "index & VIX series: benchmarks, volatility, total-return series", "daily", True, _indexes),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
     Job("breadth", "analytics", "market breadth: advancers, highs/lows, % above averages", "daily", False, _breadth, after=("prices",)),
     Job("sectors", "analytics", "sector ranking: RS ratings, rotation, breadth per group (kept daily)", "daily", False, _sectors,
         after=("prices", "industries")),
-    Job("screen", "screening", "screening: every strategy over stored prices", "daily", False, after=("prices",), expand=_screen_steps),
-    Job("quality", "screening", "quality scores: fetch statements and score companies", "weekly", True, _quality),
-    Job("report", "publish", "consolidated report: the daily review across strategies and markets", "daily", False, _report,
-        per_market=False, after=("screen",)),
-    Job("ingest", "publish", "load reports into the web app", "daily", False, _ingest, per_market=False),
+    Job("screens", "screening", "screens: the day's stock snapshot (~45 fields per stock) every screen queries", "daily", False, _screens,
+        after=("prices",)),
+    Job("screen_history", "screening", "screen history: month-end stock snapshots the screen study reads (fills gaps)", "monthly",
+        False, _screen_history, after=("prices",)),
+    Job("strategies", "screening", "strategies: today's setups — entry, stop, target and decision per strategy", "on demand", False,
+        after=("prices",), expand=_strategy_steps),
+    Job("backtest", "screening", "backtest: walk-forward simulation of a strategy's full history, with its documented exit policy (slow)",
+        "on demand", False, after=("prices",), expand=_backtest_steps),
+    Job("group_research", "screening", "research: does group strength improve forward returns? (writes research/group-strength-study.md)",
+        "monthly", False, _group_research, per_market=False, after=("screen_history",)),
+    Job("quality", "screening", "quality scores: fetch statements and score companies", "on demand", True, _quality),
+    Job("postmarket", "publish", "post-market analysis: the day's tone, indices, breadth, sectors, movers, watchlists, screener changes",
+        "daily", False, _postmarket, after=("prices",)),
+    Job("report", "publish", "consolidated report: the daily review across strategies and markets", "on demand", False, _report,
+        per_market=False, after=("strategies",)),
+    Job("ingest", "publish", "load reports into the web app", "on demand", False, _ingest, per_market=False),
 ]}
 
-# A pipeline is an ordered list of jobs, optionally with per-job options.
+# A pipeline is an ordered list of jobs, optionally with per-job options, and `defaults` for options the
+# request does not set. Scheduled (jobs/queue.py DEFAULT_SCHEDULES): daily, weekly, monthly — data only.
+# On demand (Run in the portal, or schedule them yourself): strategies, quality.
 PIPELINES: dict[str, dict] = {
-    "daily": {"summary": "after each market's close: prices, indexes, breadth, sectors, screening, report",
-              "jobs": ["universe", "prices", "indexes", "breadth", "sectors", "screen", "report", "ingest"]},
-    "weekly": {"summary": "reference data, earnings dates, fundamentals, quality scores",
-               "jobs": [("universe", {"force": True}), "names", "classify", "earnings", "fundamentals", "quality"]},
-    "monthly": {"summary": "re-classify industries (Sectors page)", "jobs": [("industries", {"force": True})]},
+    "daily": {"summary": "after each market's close — data only: prices, indexes, breadth, sectors, the screens' snapshot, post-market analysis",
+              "jobs": ["universe", "prices", "indexes", "breadth", "sectors", "screens", "postmarket"]},
+    "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
+                   "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
+    "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
+                 "jobs": ["backtest", "ingest"]},
+    "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, fundamentals; split & bonus repair",
+               "jobs": [("universe", {"force": True}), "names", "classify", "splits", "earnings", "fundamentals"]},
+    "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
+                "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},
+    "quality": {"summary": "on demand: fetch financial statements and score companies (the Quality screen) — slow, network-heavy",
+                "jobs": ["quality"]},
 }

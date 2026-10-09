@@ -36,6 +36,15 @@ class MarketConfig:
 
     screener: ScreenerThresholds
 
+    # how the web app shows the market (it builds its market list from MARKETS, so a new country is
+    # a config entry plus its data pipeline — no UI change)
+    exchange: str = ""          # "NSE", "NYSE · Nasdaq"
+    badge: str = ""             # short tag next to symbols: "US", "NSE"
+    flag: str = ""              # emoji flag for the market selector
+    symbol_suffix: str = ""     # data-provider suffix hidden in the UI (".NS")
+    fx_to_usd: str = ""         # index_series (this market) quoting local currency per US$1, e.g. "USDINR";
+                                # empty when prices are already in US$
+
     tick_size: float = 0.01
     min_history_days: int = 260
     sector_limit_per_sector: int = 3
