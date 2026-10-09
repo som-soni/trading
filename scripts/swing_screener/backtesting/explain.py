@@ -87,8 +87,138 @@ def find_trades(market: str, strategy: str, symbol: str, run: str | None = None)
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
 
 
+def _extras_on(market: str, strategy: str, symbol: str, date) -> dict:
+    """The strategy's own stashed values for one bar (pivot, tight low, ...)."""
+    with db.get_connection() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT extras, setups FROM backtest_signals WHERE market=%s AND "
+            "strategy=%s AND symbol=%s AND date=%s",
+            (market, strategy, symbol, pd.Timestamp(date).date()),
+        )
+        row = cur.fetchone()
+    return {"extras": _jload(row[0]), "setups": _jload(row[1])} if row else {}
+
+
+def _why_exit(reason: str, bar, policy_ma: str, pivot, entry: float,
+              initial_stop: float, stop_on_exit) -> list[str]:
+    """Restate the rule that fired, with the numbers from that bar.
+
+    The exit ladder is checked in a fixed order each session, so naming the
+    rule is only half an explanation -- the useful half is the comparison it
+    made. "TREND_EXIT" means nothing; "close 108.54 below SMA50 109.12 on
+    volume 1.4x its average" is the thing you can argue with.
+    """
+    c = float(bar.get("close", float("nan")))
+    lo = float(bar.get("low", float("nan")))
+    ma = float(bar.get(policy_ma, float("nan")))
+    vol = float(bar.get("volume", float("nan")))
+    v50 = float(bar.get("vol_sma50", float("nan")))
+    out = []
+    if reason in ("STOP", "BREAKEVEN_STOP"):
+        where = "the initial stop" if reason == "STOP" else "a stop raised to breakeven"
+        out.append(f"EX-01 {where}: the bar's low {lo:,.2f} touched {stop_on_exit:,.2f}")
+        if reason == "BREAKEVEN_STOP":
+            out.append(f"      (initial stop was {initial_stop:,.2f}; it had been raised "
+                       f"after the trade reached its breakeven trigger)")
+    elif reason == "FAILED_BREAKOUT":
+        pv = f"{pivot:,.2f}" if pivot else "the pivot"
+        out.append(f"EX-02 failed breakout: closed {c:,.2f}, back below the pivot {pv}, "
+                   f"within the spec's grace window of the entry")
+        out.append("      The breakout did not hold. This is the rule doing its job, not a loss "
+                   "to tune away.")
+    elif reason == "CLIMAX":
+        out.append(f"EX-05 climax: closed {c:,.2f}, {(c / entry - 1) * 100:+.1f}% from entry, "
+                   f"on an exhaustion signature (biggest daily gain on biggest volume, a run "
+                   f"of up days, extension above the 200-day, or a gap)")
+        out.append("      Selling into strength, by design.")
+    elif reason == "TREND_EXIT":
+        out.append(f"EX-06 trend break: closed {c:,.2f} below {policy_ma.upper()} {ma:,.2f}")
+        if v50 == v50 and vol == vol and v50 > 0:
+            # Whether the break had to carry volume depends on the run's
+            # `trend_volume` setting, which is not recorded in trades.csv --
+            # so report the ratio and let it speak, rather than asserting a
+            # requirement that may not have applied. A sub-1.0x ratio here
+            # means the confirmation was off for this run.
+            out.append(f"      volume {vol:,.0f} vs 50-day average {v50:,.0f} "
+                       f"({vol / v50:.2f}x)"
+                       + ("" if vol >= v50 else
+                          " — below average, so this run did not require volume confirmation"))
+    elif reason == "TIME_STOP":
+        out.append(f"EX-07 time stop: still below entry+1R after the allowed holding period")
+    elif reason == "OPEN":
+        out.append("still open at the end of the window; marked at the final close")
+    else:
+        out.append(f"{reason}")
+    return out
+
+
+def explain_trades(market: str, strategy: str, symbol: str, tr, px, cfg,
+                   policy_ma: str = "sma50") -> None:
+    """Entry and exit of each trade, restated as the rules that produced them."""
+    from ..core import indicators as ind
+
+    enriched = ind.enrich_daily(px)
+    seen = set()
+    for _, t in tr.iterrows():
+        ed = pd.Timestamp(t["entry_date"])
+        xd = pd.Timestamp(t["exit_date"]) if pd.notna(t.get("exit_date")) else None
+        key = (ed, xd, t.get("exit_reason"))
+        if key in seen:       # the same trade reproduced across run variants
+            continue
+        seen.add(key)
+
+        entry, istop = float(t["entry_price"]), float(t["initial_stop"])
+        ctx = _extras_on(market, strategy, symbol, ed - pd.Timedelta(days=1)) or \
+              _extras_on(market, strategy, symbol, ed)
+        ex = ctx.get("extras") or {}
+        pivot = ex.get("pivot") or ex.get("base_high") or ex.get("channel_high")
+        setups = [k for k, v in (ctx.get("setups") or {}).items() if v]
+
+        print(f"\n  {'=' * 72}")
+        print(f"  {ed.date()} -> {xd.date() if xd is not None else '(open)'}   "
+              f"{t.get('exit_reason')}   {t.get('r_multiple'):+.3f}R   "
+              f"{int(t.get('holding_days', 0))} days")
+        print(f"  {'-' * 72}")
+        print("  ENTRY")
+        if setups:
+            print(f"    setup {', '.join(setups)}")
+        if pivot:
+            print(f"    pivot (the level the breakout had to clear): {float(pivot):,.2f}")
+        print(f"    filled at {entry:,.2f}", end="")
+        if pivot and entry > float(pivot) * 1.002:
+            print(f"  — {(entry / float(pivot) - 1) * 100:+.1f}% above the pivot, so the "
+                  f"buy-stop filled at the open rather than at the level")
+        else:
+            print()
+        print(f"    stop {istop:,.2f}, i.e. {(1 - istop / entry) * 100:.1f}% of entry at risk")
+
+        print("  EXIT")
+        bar = enriched.loc[xd] if (xd is not None and xd in enriched.index) else None
+        if bar is None:
+            print(f"    no bar for {xd}")
+        else:
+            for line in _why_exit(str(t.get("exit_reason")), bar, policy_ma, pivot,
+                                  entry, istop, float(t.get("stop", istop))):
+                print(f"    {line}")
+
+        # what the trade gave up, which is the question a losing run really asks
+        if xd is not None:
+            held = px.loc[ed:xd]
+            if not held.empty:
+                mfe = (float(held["high"].max()) / entry - 1) * 100
+                print(f"  WHILE HELD: best close-to-high {mfe:+.1f}% from entry")
+            after = px.loc[xd:]
+            if len(after) > 1:
+                peak = float(after["high"].max())
+                nxt = float(px["close"].iloc[-1])
+                print(f"  AFTER THE EXIT: peaked at {peak:,.2f} "
+                      f"({(peak / entry - 1) * 100:+.0f}% vs entry), "
+                      f"latest close {nxt:,.2f} ({(nxt / entry - 1) * 100:+.0f}%)")
+
+
 def explain(market: str, symbol: str, strategy_key: str, run: str | None = None,
-            show: int = 15) -> None:
+            show: int = 15, detail: bool = True, policy_ma: str = "sma50") -> None:
     cfg = MARKETS[market]
     strat = get_strategy(strategy_key)
     sig = load_signal_history(market, strategy_key, symbol)
@@ -185,6 +315,9 @@ def explain(market: str, symbol: str, strategy_key: str, run: str | None = None,
         if "exit_reason" in tr:
             print("    exits: " + ", ".join(f"{k} x{v}" for k, v in
                                             Counter(tr["exit_reason"]).most_common()))
+        if detail:
+            print(f"\n  --- why each entry and exit sat where it did ---")
+            explain_trades(market, strategy_key, symbol, tr, px, cfg, policy_ma)
 
 
 def main() -> None:
@@ -196,8 +329,13 @@ def main() -> None:
     ap.add_argument("--run", default=None,
                     help="limit trades to one run directory (default: every run)")
     ap.add_argument("--show", type=int, default=15, help="signal dates to list")
+    ap.add_argument("--no-detail", action="store_true",
+                    help="skip the per-trade entry/exit explanation")
+    ap.add_argument("--ma-col", default="sma50",
+                    help="the moving average the run's exit policy used")
     args = ap.parse_args()
-    explain(args.market, args.symbol, args.strategy, args.run, args.show)
+    explain(args.market, args.symbol, args.strategy, args.run, args.show,
+            detail=not args.no_detail, policy_ma=args.ma_col)
 
 
 if __name__ == "__main__":
