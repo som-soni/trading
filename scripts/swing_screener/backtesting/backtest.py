@@ -988,6 +988,17 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--max-adv-pct", type=float, default=None, help="SL-06: largest order, %% of 50-day traded value")
     parser.add_argument("--partial-r", type=float, default=None, help="minervini exits: sell a third at this R (0 = off; default 3)")
     parser.add_argument("--fail-days", type=int, default=None, help="minervini exits: failed-breakout window (default 5; 0 = off)")
+    # Exposed so the exit ladder can be TESTED rather than argued about. The
+    # breakeven stop is the sharpest suspect: trades exiting on it reached a
+    # median 2.75R while held and realised -0.04R, i.e. it converts winners
+    # into scratches, and it was the one rule with no flag.
+    parser.add_argument("--breakeven-r", type=float, default=None,
+                        help="minervini exits: raise the stop to breakeven once the high "
+                             "reaches entry + this x R (0 = off; default 2)")
+    parser.add_argument("--no-trend-volume", action="store_true",
+                        help="minervini exits: let a trend break fire without volume confirmation")
+    parser.add_argument("--no-climax", action="store_true",
+                        help="minervini exits: disable the climax (sell into strength) rule")
     parser.add_argument("--time-stop", type=int, default=None, help="minervini exits: EX-07 after this many sessions (default off)")
     parser.add_argument(
         "--no-target", action="store_true",
@@ -1067,6 +1078,9 @@ def main(argv: list[str] | None = None) -> dict | None:
         if args.max_adv_pct is None:
             args.max_adv_pct = ms.MAX_ADV_PCT
     extra = {k: v for k, v in (("partial_r", args.partial_r), ("fail_days", args.fail_days),
+                               ("breakeven_r", args.breakeven_r),
+                               ("trend_volume", False if args.no_trend_volume else None),
+                               ("climax", False if args.no_climax else None),
                                ("time_stop_days", args.time_stop)) if v is not None}
     policy = ExitPolicy(
         mode=args.exit_mode, use_target=not args.no_target,
