@@ -119,8 +119,11 @@ def _load_cached_signal(
     with conn.cursor() as cur:
         cur.execute(
             f"SELECT {', '.join(_SIGNAL_FIELDS)} FROM backtest_signals "
-            f"WHERE market=%s AND strategy=%s AND symbol=%s AND date=%s",
-            (market_key, strategy.key, symbol, date.date()),
+            f"WHERE market=%s AND strategy=%s AND symbol=%s AND date=%s "
+            # a row written by a different version of the rules is not a hit: it
+            # describes detections the current code would not make
+            f"AND spec_id = %s",
+            (market_key, strategy.key, symbol, date.date(), strategy.spec_id()),
         )
         row = cur.fetchone()
     if row is None:
@@ -172,6 +175,7 @@ def _signal_row(
         json.dumps({k: bool(v) for k, v in result.watch_flags.items()}),
         json.dumps(result.watch_notes),
         json.dumps({k: db.py_value(v) for k, v in (ctx.extras or {}).items()}),
+        strategy.spec_id(),
     )
 
 
@@ -182,12 +186,12 @@ def _save_signals(rows: list[tuple]) -> None:
         INSERT INTO backtest_signals
             (market, strategy, symbol, date, hard_gates_passed, first_failed_gate,
              hard_gates, has_setup, setups, h_value, h_index, l_value, p_value,
-             prior_swing_low, overhead_levels, watch_flags, watch_notes, extras)
+             prior_swing_low, overhead_levels, watch_flags, watch_notes, extras, spec_id)
         VALUES %s
         ON CONFLICT (market, strategy, symbol, date) DO UPDATE SET
             hard_gates=EXCLUDED.hard_gates, setups=EXCLUDED.setups,
             watch_flags=EXCLUDED.watch_flags, watch_notes=EXCLUDED.watch_notes,
-            extras=EXCLUDED.extras
+            extras=EXCLUDED.extras, spec_id=EXCLUDED.spec_id
     """
     db.execute_values(query, rows)
 

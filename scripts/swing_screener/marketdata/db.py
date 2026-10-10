@@ -117,8 +117,14 @@ CREATE TABLE IF NOT EXISTS backtest_signals (
     -- very numbers build_plans() needs (donchian's channel_high, breakout's
     -- pivot), and the strategy silently produces zero signals.
     extras JSONB,
+    -- the strategy version+fingerprint that produced this row. Without it a cached
+    -- signal outlives the rules that made it: changing the VCP detector left 1.37M rows
+    -- keyed only by strategy name, so the next backtest silently replayed the OLD
+    -- detections and the fix appeared to do nothing.
+    spec_id VARCHAR(32),
     PRIMARY KEY (market, strategy, symbol, date)
 );
+ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS spec_id VARCHAR(32);
 """
 
 
