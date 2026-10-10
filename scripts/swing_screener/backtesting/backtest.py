@@ -55,6 +55,7 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 from ..paths import REPORTS_DIR as REPORT_DIR  # noqa: F401
+from . import funnel as funnel_mod
 
 # Live progress hook. The `backtest` job (jobs/registry.py) points this at its run-log step so the
 # Runs page shows movement during a long run ("scanned 1,200/2,148 symbols…"); the CLI leaves it
@@ -357,6 +358,7 @@ def collect_signals(
     symbol: str, raw_daily: pd.DataFrame, cfg: MarketConfig, start_date: pd.Timestamp,
     strategy=None, market_key: str = "", use_signal_cache: bool = True,
     accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
+    fn: "funnel.Funnel | None" = None,
 ) -> list:
     """Every bar on which the strategy would have placed an order.
 
@@ -383,6 +385,8 @@ def collect_signals(
     for current_date in sim_dates:
         if not bool(screened_in.get(current_date, False)):
             continue
+        if fn:
+            fn.reached("bars")
 
         cached = (
             _load_cached_signal(market_key, strategy, symbol, current_date)
@@ -393,36 +397,73 @@ def collect_signals(
         else:
             slice_df = raw_daily.loc[:current_date]
             if len(slice_df) < strategy.min_bars:
+                if fn:
+                    fn.dropped("bars", "not enough history yet")
                 continue
             try:
                 ctx = ctx_mod.build_context(symbol, slice_df, earnings_days_away=None)
             except Exception:
+                if fn:
+                    fn.dropped("bars", "context could not be built")
                 continue
             if ctx is None:
+                if fn:
+                    fn.dropped("bars", "context could not be built")
                 continue
             try:
                 result = strategy.evaluate(ctx)
             except Exception:
+                if fn:
+                    fn.dropped("bars", "the strategy raised while evaluating")
                 continue
             if market_key:
                 new_signal_rows.append(
                     _signal_row(market_key, strategy, symbol, current_date, ctx, result)
                 )
 
-        if not result.hard_gates_passed or not result.has_setup:
+        if not result.hard_gates_passed:
+            if fn:
+                fn.dropped("bars", f"hard gate {result.first_hard_fail}"
+                           if result.first_hard_fail else "a hard gate")
             continue
+        if fn:
+            fn.reached("hard_gates")
+        if not result.has_setup:
+            # the strategy's own code for an incomplete setup (minervini records
+            # the VCP gate that refused); otherwise just "no setup"
+            if fn:
+                fn.dropped("hard_gates", ctx.extras.get("vcp_fail") or "no setup formed")
+            continue
+        if fn:
+            fn.reached("setup")
         if not strategy.entry_signal_fired(ctx, result):
+            if fn:
+                fn.dropped("setup", "entry trigger did not fire")
             continue
-        plan = strategy.build_plans(ctx, result, cfg).chosen
+        if fn:
+            fn.reached("entry")
+        choice = strategy.build_plans(ctx, result, cfg)
+        plan = choice.chosen
         if plan is None or not plan.is_valid:
+            # choice.reason is the rule that refused, in its own words -- this
+            # is where a reward-to-risk minimum shows up
+            if fn:
+                fn.dropped("entry", choice.reason if plan is None else "plan not valid")
             continue
+        if fn:
+            fn.reached("plan")
         # sizing here is only an input to classify (it mirrors the live
         # pipeline); the portfolio engine does the real sizing off current
         # equity, so `too_large` is deliberately NOT a filter at this stage
         sz = sizing.size_position(cfg, plan.entry, plan.stop, vix_above_threshold=False)
         dec = strategy.classify(ctx, result, plan, sz, None, False)
         if dec.label_before not in accept_labels:
+            if fn:
+                fn.dropped("plan", f'decision was "{dec.label_before}", not accepted'
+                           if dec.label_before else "no decision")
             continue
+        if fn:
+            fn.reached("accepted")
 
         out.append(Signal(
             date=current_date, symbol=symbol, setup=plan.setup,
@@ -644,6 +685,7 @@ def collect_portfolio_signals(
     candidates: list[str], deep_data: dict | None = None,
     use_signal_cache: bool = True,
     accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
+    fn: "funnel_mod.Funnel | None" = None,
 ):
     """Scan every candidate once and return (signals, enriched price frames).
 
@@ -660,7 +702,7 @@ def collect_portfolio_signals(
             raw = cache.load_cached(market_key, sym)
         sigs = collect_signals(
             sym, raw, cfg, start, strategy=strategy, market_key=market_key,
-            use_signal_cache=use_signal_cache, accept_labels=accept_labels,
+            use_signal_cache=use_signal_cache, accept_labels=accept_labels, fn=fn,
         )
         if sigs:
             all_signals.extend(sigs)
@@ -713,7 +755,8 @@ def sample_candidates(
 
 
 def _point_in_time_candidates(
-    cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp
+    cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp,
+    fn: "funnel_mod.Funnel | None" = None,
 ) -> list[str]:
     """Symbols that would have been screened in on AT LEAST ONE bar in the
     window -- not the ones that pass today.
@@ -746,6 +789,11 @@ def _point_in_time_candidates(
         "Pre-filter (%s): %d/%d symbols qualify on >=1 bar in the window",
         strategy.key, len(candidates), len(tickers),
     )
+    if fn:
+        fn.set_count("symbols", len(tickers))
+        fn.set_count("candidates", len(candidates))
+        fn.dropped("symbols", "never passed the pre-filter in the window",
+                   len(tickers) - len(candidates))
     logger.info(
         "  of those, %d would have been MISSED by selecting on today's row",
         excluded_today,
@@ -806,7 +854,8 @@ def run_portfolio_backtest(
     logger.info("Strategy: %s (%s)", strategy.key, strategy.name)
 
     _progress("selecting point-in-time candidates")
-    candidates = _point_in_time_candidates(cfg, strategy, market_key, start)
+    fn = funnel_mod.Funnel()
+    candidates = _point_in_time_candidates(cfg, strategy, market_key, start, fn=fn)
     candidates = sample_candidates(candidates, sample, include=include) if sample else (
         candidates[:limit] if limit else candidates
     )
@@ -821,7 +870,7 @@ def run_portfolio_backtest(
 
     all_signals, prices = collect_portfolio_signals(
         market_key, cfg, strategy, start, candidates, deep_data,
-        use_signal_cache=use_signal_cache, accept_labels=accept_labels,
+        use_signal_cache=use_signal_cache, accept_labels=accept_labels, fn=fn,
     )
     spec_notes = []
     # the base count runs before any filter: a base counts whether or not its breakout was tradable
@@ -831,8 +880,11 @@ def run_portfolio_backtest(
         all_signals, r = spec_mod.filter_min_rs(all_signals, market_key, min_rs)
         spec_notes.append(f"RS rating (TT-08): signals from stocks rated below {min_rs} (1-99 across the tradable universe "
                           f"on the signal date) skipped: {r['below']} below, {r['unrated']} outside the rated universe, {r['kept']} kept.")
+        fn.dropped("accepted", f"RS rating below {min_rs}", r["below"])
+        fn.dropped("accepted", "outside the rated universe", r["unrated"])
     if use_market_filter and all_signals:
         all_signals, m = spec_mod.market_filter(all_signals, market_key)
+        fn.dropped("accepted", "market filter: benchmark below its 200-day", m["blocked"])
         spec_notes.append(f"Market filter (MKT-01): {m['blocked']} signals blocked on days the benchmark was below its "
                           f"200-day average or its 50-day was below its 200-day (open on {m['days_open_pct']}% of days).")
     if spec_costs:
@@ -846,10 +898,12 @@ def run_portfolio_backtest(
                     len(all_signals), rank_by)
     if not all_signals:
         raise ValueError("no signals left after the portfolio filters — nothing to simulate")
+    fn.set_count("ranked", len(all_signals))
     _progress(f"{len(all_signals):,} signals after filters · simulating the portfolio day by day")
     group_note = None
     if min_group_rs is not None:
         all_signals, g = filter_weak_groups(all_signals, market_key, min_group_rs)
+        fn.dropped("ranked", f"industry group rated below RS {g['min_rs']}", g["dropped"])
         group_note = (f"Group filter: signals whose industry group was rated below RS {g['min_rs']} on the signal date were "
                       f"skipped ({g['dropped']} dropped, {g['kept']} kept, of which {g['unrated']} in groups too small to rate). "
                       "Group RS is rebuilt point in time from prices; the industry classification is today's.")
@@ -863,6 +917,13 @@ def run_portfolio_backtest(
         max_open_risk_pct=max_open_risk_pct, max_adv_pct=max_adv_pct, **sim_kw,
     )
     tdf = p_trades_to_df(result.trades)
+    # what the simulator refused: slots, cash, and the per-fill checks it records
+    fn.set_count("taken", len(result.trades))
+    fn.dropped("ranked", "all position slots full", result.signals_missed_no_slot)
+    fn.dropped("ranked", "not enough cash", result.signals_missed_no_cash)
+    for _reason, _n in (getattr(result, "skipped", None) or {}).items():
+        fn.dropped("ranked", _reason, _n)
+    result.funnel = fn
 
     bench_raw = cache.load_cached(market_key, cfg.benchmark_ticker)
     bench_close = None
@@ -1172,6 +1233,9 @@ def main(argv: list[str] | None = None) -> dict | None:
         "positions_open": result.positions_open,
         "drawdown_pct": metrics.drawdown_series(result.equity) * 100,
     }).to_csv(out / "equity.csv")
+    _fn = getattr(result, "funnel", None)
+    if _fn is not None:
+        _fn.write(out)
     print()
     print(metrics.format_report(
         perf, cfg.currency_symbol,
@@ -1219,7 +1283,8 @@ def main(argv: list[str] | None = None) -> dict | None:
             cfg.currency_symbol,
             args.max_positions if args.max_positions is not None else cfg.max_open_positions,
             _bench_c, cmd,
-            extra_sections=[("Breakdown (spec section 13)", spec_md)] if spec_md else None,
+            extra_sections=([("Funnel", _fn.render_md())] if _fn is not None and _fn.render_md() else [])
+                           + ([("Breakdown (spec section 13)", spec_md)] if spec_md else []) or None,
         )
         print(f"Report  -> {md}")
         if spec_md:

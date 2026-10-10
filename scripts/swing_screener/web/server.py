@@ -363,6 +363,24 @@ def reports(kind: str | None = None, market: str | None = None):
     ]
 
 
+@app.get("/api/reports/{rid}/funnel")
+def report_funnel(rid: int):
+    """The run's funnel: how many candidates reached each stage, and why the rest
+    stopped. Read from funnel.json in the run directory, which the backtest writes
+    as it goes — reconstructing it afterwards from the signal cache gets it wrong
+    (extras["contractions"] is recorded before the gate that rejects the base) and
+    the cache does not outlive the run anyway."""
+    r = q("SELECT source_path FROM report_runs WHERE id=%s", (rid,))
+    if not r:
+        raise HTTPException(404)
+    from ..backtesting import funnel as funnel_mod
+    from .. import paths
+    data = funnel_mod.load(paths.REPO_ROOT / r[0][0]) if r[0][0] else None
+    if data is None:
+        raise HTTPException(404, "this run has no funnel (it predates the funnel, or did not finish)")
+    return data
+
+
 @app.get("/api/reports/{rid}")
 def report(rid: int):
     r = q("SELECT id, kind, market, strategy, run_name, title, markdown, summary "

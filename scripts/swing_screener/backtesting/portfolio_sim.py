@@ -357,6 +357,7 @@ def simulate(
                     triggered.append((sym, order, bar))
                 continue
             if today > order["expires"]:
+                skip("the resting order expired unfilled")
                 del pending[sym]
                 continue
             if bar["high"] >= order["entry"]:
@@ -388,7 +389,8 @@ def simulate(
                     del pending[sym]
                     continue
             elif raw_entry >= order["target"]:
-                del pending[sym]  # gapped past the whole reward
+                skip("gapped past the whole reward")
+                del pending[sym]
                 continue
             if meta.get("base_id") is not None and (sym, meta["base_id"]) in bases_entered:
                 skip("base already entered")
@@ -398,6 +400,7 @@ def simulate(
             entry = _slip(raw_entry, slip, "buy")
             risk_per_share = entry - order["stop"]
             if risk_per_share <= 0:
+                skip("fill at or below the stop")
                 del pending[sym]
                 continue
             if risk_per_share / entry > meta.get("max_risk_pct", math.inf):
@@ -461,7 +464,11 @@ def simulate(
 
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
-            if s.symbol in positions or s.symbol in pending:
+            if s.symbol in positions:
+                skip("already holding this symbol")
+                continue
+            if s.symbol in pending:
+                skip("an order is already resting in this symbol")
                 continue
             pending[s.symbol] = {
                 "entry": s.entry, "stop": s.stop, "target": s.target,
