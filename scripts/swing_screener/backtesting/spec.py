@@ -173,12 +173,26 @@ def rank_rs_then_tightness(signals: list) -> list:
 
 
 def _breakout_bases(market: str, strategy_key: str) -> dict:
-    """{symbol: [(date, base_id)]}: every bar the strategy judged an MV-01 breakout with the template
-    passing, from its cached evaluations (backtest_signals) — whether or not a run trades MV-01."""
+    """{symbol: [(date, base_id)]}: every bar on which a base produced ANY entry setup, from the
+    strategy's cached evaluations — whether or not a run trades it.
+
+    The spec says to record a base number "for every completed base" and then, in the next
+    sentence, to increase it "each time a base produces an MV-01 signal". Those agreed when MV-01
+    was the only entry. It no longer is, and MV-01 is now the rarest event in the system -- 27
+    bars in the whole India universe -- so counting only MV-01 made the number almost always 1:
+    209 of 210 trades came back "base 1" and the --max-base filter dropped nothing at all. A base
+    that resolves into a cheat is still a base the advance has used up, which is what Minervini is
+    counting when he says later bases are riskier, so any setup advances the count."""
     with db.get_connection().cursor() as cur:
+        # Scoped to the CURRENT spec_id. Without it the count mixes detections made
+        # by different rule versions that happen to share the cache -- the same
+        # failure the signal cache's own spec_id column was added to prevent.
+        from ..strategies import get_strategy
         cur.execute("""SELECT symbol, date, extras->>'base_date' FROM backtest_signals
-                       WHERE market=%s AND strategy=%s AND hard_gates_passed AND (setups->>'MV-01')::boolean
-                       ORDER BY symbol, date""", (market, strategy_key))
+                       WHERE market=%s AND strategy=%s AND spec_id=%s
+                         AND hard_gates_passed AND has_setup
+                       ORDER BY symbol, date""",
+                    (market, strategy_key, get_strategy(strategy_key).spec_id()))
         out: dict = {}
         for sym, d, bid in cur.fetchall():
             if bid:
@@ -187,8 +201,8 @@ def _breakout_bases(market: str, strategy_key: str) -> dict:
 
 
 def base_numbers(signals: list, prices: dict, market: str, strategy_key: str) -> list:
-    """Base number per signal: 1 + the other bases of this stock that produced an MV-01 breakout (traded
-    or not) before the signal and since the trend last broke (TT-01 … TT-04 failing BASE_RESET_DAYS
+    """Base number per signal: 1 + the other bases of this stock that produced a setup (traded or
+    not) before the signal and since the trend last broke (TT-01 … TT-04 failing BASE_RESET_DAYS
     sessions in a row)."""
     breakouts = _breakout_bases(market, strategy_key)
     out = list(signals)
