@@ -75,6 +75,13 @@ NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a
 # books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
 # a target floor: a setup projecting less is skipped, not padded.
 MIN_STRUCTURAL_R = 2.0
+# How far above the BASE HIGH a swing high has to sit before it counts as
+# external supply rather than part of the base's own ceiling. A base's ceiling
+# is not a single line: `swings.overhead_levels` collects every swing high, and
+# a consolidation prints several within a hair of its high (both sides of the
+# range, every retest of the pivot). `chart_pattern.overhead_cluster_atr` is the
+# same guard for the same reason.
+OVERHEAD_CLUSTER_ATR = 1.0
 
 # ---- section 10 / backtest (backtesting/backtest.py --spec)
 MAX_POSITIONS = 8               # PF-02
@@ -86,8 +93,19 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "2.3"
+    version = "2.4"
     changelog = (
+        ("2.4", "2026-10-10",
+         "Overhead cap fixed (OVERHEAD_CLUSTER_ATR). v2.2 capped the measured move at the "
+         "nearest swing high above the BASE HIGH rather than above entry, but a strict "
+         "`> base_high` test still lands on the base's own ceiling: `overhead_levels` "
+         "collects every swing high and a consolidation prints several within a hair of its "
+         "high, so the cap was the level being broken out of. Over the 15 India v2.3 "
+         "breakouts, 8 were capped within 1.5% of their own base high — GODREJPROP's target "
+         "was pinned to 1697.85 against a 1697.85 base high — dropping the median projection "
+         "from 1.81R to 0.90R, so MIN_STRUCTURAL_R rejected them for an artefact of the "
+         "base's definition rather than for a lack of upside. Only supply at least one ATR "
+         "above the base high is now binding, the same guard chart_pattern already used."),
         ("2.3", "2026-10-10",
          "Zig-zag threshold now shrinks with the contractions (zigzag_shrink_ratio): one "
          "threshold cannot see a VCP, since it must be wide enough for a 20% first "
@@ -235,7 +253,10 @@ class MinerviniSpecStrategy(Strategy):
         "Stop: {STOP_BUFFER_PCT}% under the tight low. A fill whose stop is more than {MAX_STOP_PCT}% below "
         "it is skipped. Size: 1% of equity at risk, capped at the market's position limit.",
         "One entry per base: a base already traded is not entered again.",
-        "Target: a nominal {NOMINAL_TARGET_R}R, for sizing and reporting only.",
+        "Target: the base's measured move — its first (deepest) contraction projected from entry — "
+        "capped by overhead supply at least {OVERHEAD_CLUSTER_ATR} ATR above the base high. A setup "
+        "projecting under {MIN_STRUCTURAL_R}R on that basis is refused rather than padded up to it. "
+        "{NOMINAL_TARGET_R}R remains the nominal figure used for sizing and reporting.",
     )
     exit_rules = (
         "In priority order, each session: EX-01 the stop (filled at the open if it gapped through); EX-02 a "
@@ -266,6 +287,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Buy range", "BUY_RANGE_PCT", "MV-01b, and the most a fill may sit above the pivot."),
         ("Stop buffer", "STOP_BUFFER_PCT", "SL-01."),
         ("Maximum stop", "MAX_STOP_PCT", "SL-03, checked at the fill."),
+        ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused."),
+        ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Open-risk cap", "MAX_OPEN_RISK_PCT", "PF-04, with --spec."),
         ("Liquidity cap", "MAX_ADV_PCT", "SL-06: largest order as a % of 50-day average traded value, with --spec."),
@@ -371,10 +394,22 @@ class MinerviniSpecStrategy(Strategy):
         # being resolved, not external resistance. Capping at entry made the base's
         # OWN high the ceiling and crushed every projection: TITAN's 2017 setup, a
         # base the strategy actually traded, scored 0.84R instead of 2.28R.
+        # ... but `> base_high` is not enough on its own: the levels a hair above
+        # the base high ARE the base high, so the cap still landed on the base's
+        # own structure. Measured over the 15 India v2.3 breakouts, 8 were capped
+        # within 1.5% of their own base high (GODREJPROP at 1697.85 against a
+        # 1697.85 base high, THERMAX at 5699.95 against 5699.95), which dropped
+        # the median projection from 1.81R to 0.90R and rejected them for an
+        # artefact of the base's own definition. Only supply at least
+        # OVERHEAD_CLUSTER_ATR above the base high can cap the move.
         ceiling_from = max(entry, float(bh)) if bh else entry
-        nearest_above = sw.nearest_overhead_above(ceiling_from, ctx.overhead)
-        if nearest_above is not None and nearest_above < target:
-            target = nearest_above
+        cluster_edge = ceiling_from + OVERHEAD_CLUSTER_ATR * ctx.atr
+        nearest_above = sw.nearest_overhead_above(ceiling_from, ctx.overhead)  # reported, not binding
+        binding = min((lvl for lvl in ctx.overhead if lvl >= cluster_edge), default=None)
+        if binding is not None and binding < target:
+            target = binding
+        ctx.extras["overhead_caps_target"] = bool(binding is not None and binding < entry + measured_move) \
+            if measured_move == measured_move else None
         structural_r = (target - entry) / risk if risk > 0 else float("nan")
         ctx.extras["structural_r"] = round(structural_r, 2) if structural_r == structural_r else None
         ctx.extras["measured_move"] = round(measured_move, 2) if measured_move == measured_move else None

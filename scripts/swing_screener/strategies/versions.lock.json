@@ -301,7 +301,7 @@
   },
   "minervini_spec": {
     "family": "minervini",
-    "fingerprint": "4987db8b",
+    "fingerprint": "d35fdfa3",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -321,6 +321,7 @@
       "MIN_STRUCTURAL_R": 2.0,
       "MIN_SWING_PCT": 2.0,
       "NOMINAL_TARGET_R": 3.0,
+      "OVERHEAD_CLUSTER_ATR": 1.0,
       "PIVOT_NEAR_HIGH": 0.9,
       "PRIOR_ADVANCE_PCT": 30.0,
       "RS_MIN_MOM": 0.1,
@@ -378,7 +379,7 @@
         "B4"
       ]
     },
-    "version": "2.3"
+    "version": "2.4"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
