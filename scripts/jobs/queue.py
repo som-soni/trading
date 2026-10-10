@@ -143,6 +143,8 @@ def command_for(targets: list, market: str, opts: dict) -> list[str]:
     # shipped rules and looked like it had succeeded.
     for kv in (opts.get("vcp") or []):
         cmd += ["--vcp", str(kv)]
+    if opts.get("accept_labels"):
+        cmd += ["--accept-labels", str(opts["accept_labels"])]
     return cmd
 
 

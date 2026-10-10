@@ -334,6 +334,9 @@ def _backtest_steps(ctx: Ctx) -> list:
                 argv += ["--sample", str(int(c.opt("sample")))]
             for kv in (c.opt("vcp") or []):
                 argv += ["--vcp", str(kv)]
+            if c.opt("accept_labels"):
+                # after backtest_args on purpose: argparse keeps the last --accept-labels
+                argv += ["--accept-labels", str(c.opt("accept_labels"))]
             argv += ["--no-ingest"]   # the pipeline's own ingest job loads the report
             bt.on_progress = c.step.progress
             try:
