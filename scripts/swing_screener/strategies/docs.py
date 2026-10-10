@@ -194,6 +194,11 @@ def quality_doc() -> dict:
               for k, v in vars(qmod).items() if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)]
     return {
         "key": c["key"], "kind": "long-term", "name": c["name"], "description": c["description"], "status": c["status"],
+        # The tracker is not a registered Strategy, so it has no SpecMeta to read these
+        # from — they are stated here for the same reason baseline_doc states them. Without
+        # `is_current` the sidebar read it as superseded and hung a lone "v1.0" badge on the
+        # one strategy that has no other version to be behind.
+        "family": "quality", "version": "1.0", "spec_id": "", "is_current": True,
         "selection": "fundamental", "selection_label": SELECTION["fundamental"],
         "selection_rank": list(SELECTION).index("fundamental"),
         "behaviour": "quality_value", "behaviour_label": BEHAVIOURS["quality_value"],
