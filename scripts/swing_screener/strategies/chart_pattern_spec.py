@@ -128,8 +128,8 @@ class ChartPatternSpecStrategy(Strategy):
         ("1.0", "2026-10-10",
          "v1 baseline, built to the written detection specification: twelve patterns with section-referenced definitions - cup, cup-no-handle, double bottom, triple bottom, inverse head-and-shoulders, flat base, bull flag, ascending triangle, symmetrical triangle, falling wedge, rectangle and high tight flag."),
     )
-    key = "chart_pattern_spec"
-    name = "Chart patterns (to the detection spec)"
+    key = "chart_pattern"
+    name = "Classical chart-pattern breakout"
     description = (
         "The written chart-pattern specification, rule for rule: eleven "
         "patterns detected with ATR-scaled tolerances, fitted trendlines and "

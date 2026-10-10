@@ -98,8 +98,8 @@ class MinerviniSpecStrategy(Strategy):
         ("1.0", "2026-10-10",
          "v1 baseline of the Minervini SEPA implementation: Trend Template gates (TT-01-08) with point-in-time RS, the VCP detector (VCP-01-11) segmented by an ATR-scaled zig-zag whose threshold shrinks with the contractions, the MV-01/MV-02 setups, the exit ladder (EX-01-07), a 2:1 minimum reward-to-risk measured from the base's own measured move, and overhead supply binding only at least OVERHEAD_CLUSTER_ATR above the base high. Earlier iteration history is in the git log."),
     )
-    key = "minervini_spec"
-    name = "Minervini VCP (to the backtest spec)"
+    key = "minervini"
+    name = "Minervini SEPA (trend template + VCP)"
     description = (
         "The written Minervini backtest specification, rule for rule: Trend Template, a base-high "
         "anchored VCP, confirmed breakouts at the next open or buy-stops through the pivot, and the "
@@ -249,7 +249,9 @@ class MinerviniSpecStrategy(Strategy):
         ("Liquidity cap", "MAX_ADV_PCT", "SL-06: largest order as a % of 50-day average traded value, with --spec."),
         ("Minimum history", "min_bars", "Bars required before the template can judge a symbol."),
     )
-    backtest_args = "--strategy minervini_spec --spec --accept-labels 'TRADE - HIGH CONFIDENCE'"
+    # No --strategy here: jobs/registry.py already passes "--strategy <key>", and a second
+    # one wins on argparse, so naming the key twice broke the moment the key was renamed.
+    backtest_args = "--spec --accept-labels 'TRADE - HIGH CONFIDENCE'"
 
     # ---------- screen ----------
 

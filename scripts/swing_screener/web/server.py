@@ -1542,7 +1542,7 @@ from .. import chart_drawings as draw_mod
 
 
 @app.get("/api/vcp/{market}/{symbol}")
-def vcp_boxes(market: str, symbol: str, strategy: str = "minervini_spec", limit: int = 40):
+def vcp_boxes(market: str, symbol: str, strategy: str = "minervini", limit: int = 40):
     """The base each setup was built on, as rectangles for the chart.
 
     Entry and exit arrows say WHERE a trade happened; they say nothing about the

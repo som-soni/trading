@@ -348,7 +348,7 @@ const Learn = (() => {
       sections: [
         ["Rules here", ["Each contraction ≤ 0.8× the prior one; the final one ≤ 12%.", "Volume dries up into the right side; the breakout comes on expansion."]],
         ["Why traders like it", ["The stop is **close** — the final contraction's low — so even a modest move pays a high reward:risk."]],
-        ["In this app", ["The entry pattern of `minervini` and `minervini_spec`. A cup with handle *is* a two-contraction VCP; a high tight flag is a one-contraction VCP."]],
+        ["In this app", ["The entry pattern of the `minervini` strategy. A cup with handle *is* a two-contraction VCP; a high tight flag is a one-contraction VCP."]],
       ],
     },
     // ------------------------------------------------------------------ tops
@@ -377,7 +377,7 @@ const Learn = (() => {
       path: [[0, 60], [10, 68], [20, 76], [30, 85], [33, 90], [35, 96], [37, 104], [38, 111], [39, 118], [40, 123], [41, 119], [43, 113], [45, 109], [47, 106], [49, 103]],
       nz: [[0, 0.8], [30, 0.8], [36, 1.6], [40, 2.2], [43, 1.4], [49, 1]], vol: [[0, 0.9], [30, 1], [35, 1.8], [39, 3], [40, 3.6], [41, 2.6], [44, 1.4], [49, 1.1]], seed: 21,
       marks: [{ i: 37, at: "low", text: "Steepest leg of the move", side: "below" }, { i: 40, at: "high", text: "Record volume, widest bars", side: "above" }, { i: 44, at: "low", text: "The reversal", side: "below" }],
-      sections: [["What to do", ["Minervini and O'Neil both sell *into* strength here; the `minervini_spec` exit rules include a climax exit for exactly this."]]],
+      sections: [["What to do", ["Minervini and O'Neil both sell *into* strength here; the `minervini` exit rules include a climax exit for exactly this."]]],
     },
   ];
   const BY = Object.fromEntries(P.map((p) => [p.key, p]));

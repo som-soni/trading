@@ -588,14 +588,18 @@ Total R by pattern: `FLAT` -11.9 (57 trades), `DBOT` -7.5 (13), `ATRI` -4.7
 meaningful sample made money; 111 trades stopped out against 26 that reached a
 target.
 
-### Does the written spec help? (`chart_pattern` vs `chart_pattern_spec`)
+### Does the written spec help? (`chart_pattern_legacy` vs `chart_pattern`)
+
+> Key names: the spec detector is now registered as `chart_pattern`, and the earlier
+> seven-pattern implementation it replaced is unregistered as `chart_pattern_legacy`.
+> This comparison was run when they were `chart_pattern` and `chart_pattern_spec`.
 
 Both re-run 2026-10-09, same window, same seeded 300-symbol sample, same
 `near_highs` screen, same bracket exit; the only difference is the detector —
-`chart_pattern_spec` reads [`core/pattern_spec.py`](swing_screener/core/pattern_spec.py),
+The spec detector reads [`core/pattern_spec.py`](swing_screener/core/pattern_spec.py),
 built to [`research/chart-pattern-spec.md`](../research/chart-pattern-spec.md).
 
-| | chart_pattern | chart_pattern_spec |
+| | chart_pattern_legacy | chart_pattern (spec) |
 |---|---|---|
 | CAGR | -5.60% | **-0.93%** |
 | max drawdown | -40.0% | **-32.6%** |
@@ -623,7 +627,7 @@ Three things the headline hides:
   extended and the screen was formalised in between. Comparisons must use one
   vintage.
 
-### Does selectivity help? (`chart_pattern` vs `chart_pattern_cup`)
+### Does selectivity help? (`chart_pattern_legacy` vs `chart_pattern_cup`)
 
 Same window, same seeded 300-symbol sample, same exit; the only difference is
 that the `_cup` variant switches off the five detectors that fire on random

@@ -74,7 +74,7 @@ def _ratings(market: str, dates: list) -> dict:
 def load(market: str, start: str = START) -> None:
     t0 = time.time()
     cfg = MARKETS[market]
-    strat = get_strategy("minervini_spec")
+    strat = get_strategy("minervini")
     st = pd.Timestamp(start)
     syms = _point_in_time_candidates(cfg, strat, market, st)
     frames, masks = {}, {}
@@ -110,7 +110,7 @@ def _apply(kind, name, value) -> None:
 def signals(kind=None, name=None, value=None) -> list:
     """Every order minervini_spec would place, for both entry modes, with one parameter changed."""
     _apply(kind, name, value)
-    strat, cfg = get_strategy("minervini_spec"), _DATA["cfg"]
+    strat, cfg = get_strategy("minervini"), _DATA["cfg"]
     out = []
     for sym, e in _DATA["frames"].items():
         m = _DATA["masks"][sym]
@@ -218,7 +218,7 @@ def check(market: str) -> None:
     """The daily-only shortcut must reproduce the cached default run's signals exactly."""
     sigs = signals()
     with db.get_connection().cursor() as cur:
-        cur.execute("""SELECT symbol, date, setups FROM backtest_signals WHERE market=%s AND strategy='minervini_spec'
+        cur.execute("""SELECT symbol, date, setups FROM backtest_signals WHERE market=%s AND strategy='minervini'
                        AND hard_gates_passed AND date >= %s""", (market, START))
         rows = cur.fetchall()
     cached = {(s, pd.Timestamp(d)) for s, d, st in rows if st.get("MV-01") or st.get("MV-02")}

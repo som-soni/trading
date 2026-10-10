@@ -113,7 +113,7 @@ class MinerviniStrategy(Strategy):
         ("1.0", "2026-10-05",
          "First implementation, built from a prose description of SEPA. Approximates the exits with a 50-day moving-average break because the simulator had no mode for the real selling rules."),
     )
-    key = "minervini"
+    key = "minervini_legacy"
     name = "Minervini SEPA (trend template + VCP)"
     description = (
         "Stage-2 uptrend by the Trend Template, entered on a volatility "
@@ -182,7 +182,7 @@ class MinerviniStrategy(Strategy):
         "flags; no backtest here includes them.",
         "Minervini raises the stop to breakeven once a trade advances and sells "
         "into strength; this version's backtest runs a plain 50-day exit instead "
-        "(all-or-nothing, no breakeven). `minervini_spec` runs the full exit set.",
+        "(all-or-nothing, no breakeven). the registered `minervini` strategy runs the full exit set.",
         "The Trend Template is public and heavily data-mined. An in-sample "
         "edge on the same 13.75 years everything else here uses is weak "
         "evidence.",
@@ -194,7 +194,7 @@ class MinerviniStrategy(Strategy):
         "No demonstrated edge. Portfolio backtest 2013 onward, 50-day exit: India CAGR 5.0% (index 11.7%), "
         "max drawdown −29%, 771 trades; US −1.7% (index 12.8%), max drawdown −43%, 1,286 trades. Skipping signals "
         "from industry groups rated below 50 (`--min-group-rs 50`) helped in both: India 6.3%, US 1.8%. "
-        "See `minervini_spec` for the version built to the written specification."
+        "Superseded by the registered `minervini` strategy, built to the written specification."
     )
 
     gate_docs = {
@@ -267,7 +267,7 @@ class MinerviniStrategy(Strategy):
         ("Maximum chase above pivot", "MAX_PCT_ABOVE_PIVOT", "Beyond this the breakout entry has passed."),
         ("Minimum history", "min_bars", "Bars required before the template can judge a symbol."),
     )
-    backtest_args = "--strategy minervini --exit-mode ma --ma-col sma50 --no-target"
+    backtest_args = "--exit-mode ma --ma-col sma50 --no-target"
 
     # ---------- pre-filter ----------
 

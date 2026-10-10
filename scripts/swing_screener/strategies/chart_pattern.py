@@ -73,7 +73,7 @@ class ChartPatternStrategy(Strategy):
         ("1.0", "2026-10-07",
          "First implementation: seven detectors (cup, cup-no-handle, double bottom, flat base, bull flag, ascending triangle, VCP)."),
     )
-    key = "chart_pattern"
+    key = "chart_pattern_legacy"
     name = "Classical chart-pattern breakout"
     description = (
         "Breakouts from a named base — cup-and-handle, double bottom, flat "
@@ -856,7 +856,7 @@ class ChartPatternCupStrategy(ChartPatternStrategy):
         "The chart-pattern strategy restricted to CUP and CUPNH — the only "
         "two detectors that are rare in random data."
     )
-    variant_of = "chart_pattern"  # style is inherited from ChartPatternStrategy
+    variant_of = "chart_pattern_legacy"  # style is inherited from ChartPatternStrategy
     setup_codes = (cp.CUP, cp.CUPNH)
     allowed_codes = (cp.CUP, cp.CUPNH)
 

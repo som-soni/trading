@@ -16,7 +16,7 @@ entry trigger or the portfolio refusing to fund it, and those have completely
 different fixes.
 
     python3 -m swing_screener.backtesting.explain --market us --symbol NVDA \\
-        --strategy minervini_spec
+        --strategy minervini
     python3 -m swing_screener.backtesting.explain --market india --symbol ICICIBANK.NS \\
         --strategy minervini --run 2013-01-01_ma-sma50-noTarget
 

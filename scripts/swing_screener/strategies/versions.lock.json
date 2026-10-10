@@ -29,9 +29,9 @@
     },
     "version": "1.0"
   },
-  "chart_pattern_spec": {
+  "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "a5c3ff70",
+    "fingerprint": "280bd9f8",
     "params": {
       "ATR_MULT": 1.5,
       "BO_BUFFER": 0.5,
@@ -100,7 +100,7 @@
       "PARAMS.tr_scale_days": 40,
       "TOL_ATR_MULT": 0.75,
       "TOL_PCT": 3.0,
-      "_key": "chart_pattern_spec",
+      "_key": "chart_pattern",
       "gate_codes": [
         "S1",
         "S2",
@@ -157,9 +157,9 @@
     },
     "version": "1.0"
   },
-  "minervini_spec": {
+  "minervini": {
     "family": "minervini",
-    "fingerprint": "d35fdfa3",
+    "fingerprint": "9d9873a1",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -214,7 +214,7 @@
       "VCP.zigzag_pct": 3.0,
       "VCP.zigzag_shrink_ratio": 0.35,
       "VOL_MULT": 1.4,
-      "_key": "minervini_spec",
+      "_key": "minervini",
       "gate_codes": [
         "M1",
         "M2",
