@@ -230,6 +230,23 @@ class SpecMeta:
             codes = getattr(cls, attr, None)
             if codes:
                 params[attr] = list(codes)
+        # A strategy whose rules live in a dataclass defined in ANOTHER module was only
+        # fingerprinted on the fields it happened to override via its own module constants.
+        # minervini_spec builds `VCP = VcpParams(...)` from its constants, so changing a
+        # VcpParams DEFAULT altered the detector's behaviour and the version gate passed —
+        # exactly the silent drift this is supposed to prevent. Expand any module-level
+        # dataclass instance into its numeric fields.
+        import dataclasses as _dc
+        import sys
+
+        mod = sys.modules.get(cls.__module__)
+        for name, val in sorted(vars(mod).items() if mod else []):
+            if name.startswith("_") or not _dc.is_dataclass(val) or isinstance(val, type):
+                continue
+            for f in _dc.fields(val):
+                v = getattr(val, f.name, None)
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    params[f"{name}.{f.name}"] = v
         params["_key"] = cls.key
         return params
 

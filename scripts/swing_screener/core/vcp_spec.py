@@ -30,6 +30,25 @@ import pandas as pd
 class VcpParams:
     swing_k: int = 5                 # swing points: k bars each side  [assumption]
     min_swing_pct: float = 2.0       # contractions shallower than this are wiggles  [assumption]
+    zigzag_atr_mult: float = 1.5     # the zig-zag threshold is at least this many ATRs. A FIXED
+                                     # percentage cannot work across stocks: MU's median ATR is
+                                     # 3.79% of close, so a 3% threshold sits below one day's
+                                     # normal range and turns daily noise into legs -- it found a
+                                     # median of 12 contractions in MU's bases where VCP-04 allows
+                                     # 6. A floor of one ATR is the minimum that can distinguish a
+                                     # reversal from a single bar; 1.5 leaves headroom.
+                                     # NOT YET VALIDATED UNIVERSE-WIDE.  [assumption]
+    zigzag_pct: float = 3.0          # a leg turns only after a reversal this large, in BOTH
+                                     # directions. Segmenting on swing highs alone split one
+                                     # pullback into two whenever a 2-3 day bounce made a new
+                                     # swing high: 100 -> 92 -> 94 -> 80 read as 8% then 15%,
+                                     # so the "second" leg was deeper and VCP-06 rejected a
+                                     # genuine 20% contraction.  [assumption]
+    base_sma200_floor: float = 0.97  # VCP-03 during the base: the close may dip this far below
+                                     # the 200-day. Requiring close > SMA150 every day
+                                     # contradicted VCP-05, which permits a first contraction of
+                                     # up to 35% -- a 25-35% pullback routinely breaks the
+                                     # 150-day in a healthy Stage 2 name.  [assumption]
     prior_advance_pct: float = 30.0  # VCP-01: BH this far above the lowest low of the prior 126 bars
     prior_window: int = 126
     base_min_days: int = 15          # VCP-02: about 3 weeks …
@@ -53,6 +72,29 @@ def _swings(series: pd.Series, k: int, how: str) -> np.ndarray:
     return (series == ext).to_numpy()
 
 
+def _zigzag(high: np.ndarray, low: np.ndarray, pct: float) -> list[tuple[int, float, str]]:
+    """Alternating (index, price, 'H'/'L') pivots; each needs a `pct`% reversal to confirm.
+
+    Uses only bars up to the one being judged, so it cannot look ahead: a pivot is appended
+    at the moment the reversal confirms it, never retroactively from later data.
+    """
+    piv: list[tuple[int, float, str]] = []
+    hi_i = lo_i = 0
+    direction = 0
+    for j in range(1, len(high)):
+        if direction >= 0 and high[j] >= high[hi_i]:
+            hi_i = j
+        if direction <= 0 and low[j] <= low[lo_i]:
+            lo_i = j
+        if direction >= 0 and low[j] <= high[hi_i] * (1 - pct / 100):
+            piv.append((hi_i, float(high[hi_i]), "H"))
+            direction, lo_i = -1, j
+        elif direction <= 0 and high[j] >= low[lo_i] * (1 + pct / 100):
+            piv.append((lo_i, float(low[lo_i]), "L"))
+            direction, hi_i = 1, j
+    return piv
+
+
 def _template_ok(row) -> bool:
     """TT-01 … TT-07 on one enriched row (TT-08, RS, is applied cross-sectionally by the backtest)."""
     try:
@@ -66,13 +108,21 @@ def _template_ok(row) -> bool:
             and c >= 1.30 * lo and c >= 0.75 * hi)
 
 
-def _trend_held(d: pd.DataFrame) -> bool:
-    """TT-01 … TT-04 on every bar of the base (TT-05 may lapse in an early, deep contraction)."""
+def _trend_held(d: pd.DataFrame, floor: float = 0.97) -> bool:
+    """The long-term structure must hold through the base — not the full template.
+
+    Requiring the close above the 150-day on EVERY bar contradicted VCP-05, which allows a
+    first contraction of up to 35%: a pullback that deep routinely takes price under the
+    150-day for weeks in a perfectly healthy Stage 2 stock, so the two rules together
+    rejected most of the deeper bases Minervini accepts. What has to hold daily is the
+    moving-average structure; the full template is still checked on BH's bar and on the
+    signal day.
+    """
     try:
-        c, s50, s150, s200, s200p = (d[k] for k in ("close", "sma50", "sma150", "sma200", "sma200_21d_ago"))
+        c, s150, s200, s200p = (d[k] for k in ("close", "sma150", "sma200", "sma200_21d_ago"))
     except KeyError:
         return False
-    ok = (c > s150) & (c > s200) & (s150 > s200) & (s200 > s200p) & (s50 > s150) & (s50 > s200)
+    ok = (s150 > s200) & (s200 > s200p) & (c > floor * s200)
     return bool(ok.all())
 
 
@@ -82,7 +132,7 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     Returns {"ok", "fail" (first failing rule id, or None), "bh", "bh_date", "base_days", "prior_advance_pct",
     "depths", "lows", "pivot", "tight_low", "tight_range_pct", "dryup", "base_tt"}."""
     out = {"ok": False, "fail": None, "bh": None, "bh_date": None, "base_days": None, "prior_advance_pct": None,
-           "depths": [], "lows": [], "pivot": None, "tight_low": None, "tight_range_pct": None, "dryup": None, "base_tt": None}
+           "depths": [], "lows": [], "pivot": None, "tight_low": None, "tight_range_pct": None, "dryup": None, "base_tt": None, "zigzag_pct_used": None}
     d = daily.iloc[-p.lookback:]
     n = len(d)
     if n < 2 * p.swing_k + p.base_min_days + 5:
@@ -107,26 +157,58 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         out["fail"] = "VCP-02"
         return out
     prior = low[max(0, bh_i - p.prior_window): bh_i]
+    if len(prior) < p.prior_window:
+        out["fail"] = "VCP-01"          # not enough history to judge the prior advance
+        return out
     adv = (high[bh_i] / prior.min() - 1) * 100 if len(prior) and prior.min() > 0 else float("nan")
     out["prior_advance_pct"] = adv
     if not (adv >= p.prior_advance_pct):
         out["fail"] = "VCP-01"
         return out
     out["base_tt"] = _template_ok(d.iloc[bh_i])
-    if not out["base_tt"] or not _trend_held(d.iloc[bh_i:]):
+    if not out["base_tt"] or not _trend_held(d.iloc[bh_i:], p.base_sma200_floor):
         out["fail"] = "VCP-03"
         return out
 
-    # ---- step 2: the contractions
-    his = [bh_i] + [j for j in range(bh_i + 1, n) if is_hi[j]]
-    legs = []
-    for a, b in zip(his, his[1:] + [n]):
-        seg = low[a + 1: b] if b > a + 1 else low[a: a + 1]
-        if not len(seg):
-            continue
-        h, l = high[a], float(seg.min())
-        legs.append((h, l, (h - l) / h * 100 if h > 0 else float("nan")))
-    # wiggles out, but keep the last (open) contraction — the tightness rules judge it
+    # ---- step 2: the contractions, segmented by zig-zag
+    # A leg turns only after a `zigzag_pct` reversal in BOTH directions. Segmenting on swing
+    # highs alone made every 2-3 day bounce start a new contraction, which split one real
+    # pullback into two and left the "second" deeper than the "first" -- so VCP-06 rejected
+    # bases that had contracted perfectly well.
+    # scale the reversal threshold to the stock: a fixed percentage is noise on a volatile
+    # name and a wall on a quiet one
+    zz = p.zigzag_pct
+    if p.zigzag_atr_mult and "atr14" in d:
+        atr_pct = float(d["atr14"].iloc[bh_i]) / float(close[bh_i]) * 100 if close[bh_i] else float("nan")
+        if atr_pct == atr_pct:
+            zz = max(zz, p.zigzag_atr_mult * atr_pct)
+    out["zigzag_pct_used"] = round(zz, 2)
+    piv = _zigzag(high[bh_i:], low[bh_i:], zz)
+    piv = [(i + bh_i, v, k) for i, v, k in piv]
+    # BH is H_1 by definition; drop any pivot before it and any leading L
+    piv = [q for q in piv if q[0] >= bh_i]
+    while piv and piv[0][2] == "L":
+        piv.pop(0)
+    if not piv or piv[0][0] != bh_i:
+        piv.insert(0, (bh_i, float(high[bh_i]), "H"))
+
+    legs, last_low_i = [], None
+    for a, b in zip(piv, piv[1:]):
+        if a[2] == "H" and b[2] == "L":
+            h, l = a[1], b[1]
+            legs.append((h, l, (h - l) / h * 100 if h > 0 else float("nan")))
+            last_low_i = b[0]
+    # the final, still-open leg: from the last confirmed high to the lowest low since
+    if piv[-1][2] == "H":
+        seg = low[piv[-1][0]:]
+        if len(seg):
+            h, l = piv[-1][1], float(seg.min())
+            legs.append((h, l, (h - l) / h * 100 if h > 0 else float("nan")))
+    if not legs:
+        out["fail"] = "VCP-04"
+        return out
+    # the zig-zag already requires a real move in both directions, so a surviving leg is not
+    # a wiggle; the filter stays only for thresholds set above zigzag_pct
     legs = [g for k, g in enumerate(legs) if g[2] >= p.min_swing_pct or k == len(legs) - 1]
     out["depths"] = [round(g[2], 2) for g in legs]
     out["lows"] = [g[1] for g in legs]
@@ -144,7 +226,14 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         return out
 
     # ---- step 3: the final tight area and volume
-    ta = d.iloc[-p.tight_days:]
+    # The tight area is the bars since the last confirmed zig-zag low, capped at
+    # `tight_days`. A fixed 10-bar window pulled part of the previous decline in whenever
+    # the final contraction was shorter than that, failing the range check on a stock that
+    # had in fact tightened.
+    ta_start = n - p.tight_days
+    if last_low_i is not None:
+        ta_start = max(ta_start, min(last_low_i, n - 3))
+    ta = d.iloc[ta_start:]
     pivot, tl = float(ta["high"].max()), float(ta["low"].min())
     rng = (pivot - tl) / pivot * 100 if pivot > 0 else float("nan")
     out.update(pivot=pivot, tight_low=tl, tight_range_pct=rng)
@@ -154,7 +243,11 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     if pivot < p.pivot_near_high * high[bh_i]:
         out["fail"] = "VCP-09"
         return out
-    v50 = float(d["vol_sma50"].iloc[-1]) if "vol_sma50" in d else float("nan")
+    # Baseline from the bar BEFORE the tight area: the last bar's 50-day average already
+    # includes the quiet tight-area days, which drags it down and makes the dry-up test
+    # easier to pass than intended.
+    v_i = max(0, ta_start - 1)
+    v50 = float(d["vol_sma50"].iloc[v_i]) if "vol_sma50" in d else float("nan")
     dry = float(ta["volume"].mean()) / v50 if v50 and v50 == v50 else float("nan")
     out["dryup"] = dry
     if not (dry <= p.dryup_ratio):

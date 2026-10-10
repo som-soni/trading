@@ -81,8 +81,22 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "2.0"
+    version = "2.1"
     changelog = (
+        ("2.1", "2026-10-10",
+         "VCP detector corrected (core/vcp_spec.py). Contractions are now segmented by a "
+         "zig-zag requiring a real reversal in BOTH directions, not by swing highs alone: a "
+         "two-day bounce used to start a new leg, splitting one 20% pullback into 8% then "
+         "15% so the 'second' read deeper and VCP-06 rejected a valid base. The threshold is "
+         "ATR-scaled, because a fixed 3% sits below one day's range on a volatile name (MU's "
+         "median ATR is 3.79% of close) and turned noise into a median of 12 legs against a "
+         "limit of 6. The base-period trend rule no longer demands close > SMA150 every day, "
+         "which contradicted VCP-05's allowance of a 35% first contraction; it now requires "
+         "the MA structure plus close above 0.97x SMA200. The dry-up baseline is taken from "
+         "before the tight area rather than from a 50-day average that already includes it, "
+         "and the tight area runs from the last confirmed zig-zag low instead of a fixed "
+         "10 bars. A prior-advance window shorter than 126 bars now fails instead of "
+         "silently shortening."),
         ("2.0", "2026-10-09",
          "Rebuilt to the written backtest specification: base-high anchored VCP, confirmed breakouts, and the real exit ladder (failed breakout, breakeven, partial profit, climax, 50-day break) via --exit-mode minervini. Max stop 10% -> 8%; cross-sectional RS rank replaces v1's absolute momentum floor."),
     )

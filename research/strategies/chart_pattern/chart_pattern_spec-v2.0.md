@@ -1,6 +1,6 @@
 # Chart patterns (to the detection spec)
 
-`chart_pattern_spec` · family **chart_pattern** · **v2.0** · fingerprint `1c17e9be`
+`chart_pattern_spec` · family **chart_pattern** · **v2.0** · fingerprint `a5c3ff70`
 
 > Backtested 2026-10-09 and it loses, by less than its sibling: -0.93% CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol sample), against `chart_pattern`'s -5.60% and -0.309R on the same run. The +0.234R difference has a Welch t of 1.16 and a 95% interval of [-0.16, +0.62], so the spec's discipline is NOT demonstrated to help; both lose 14-19 points of CAGR to the benchmark.
 
