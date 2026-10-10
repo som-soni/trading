@@ -77,13 +77,27 @@ Two separate things, kept apart in code and in the web app:
   candidates from one screen and adds its own trade rules, setups,
   entry/stop/target, exits and sizing. Strategies are **backtested**.
 
-| Strategy | Draws from screen |
-|---|---|
-| Minervini SEPA | Stage 2 — Trend Template |
-| Minervini VCP, to the backtest spec | Stage 2 — Trend Template |
-| Trend pullback | Established uptrend |
-| Volume breakout, Chart patterns (and Cup-and-handle) | Near highs, rising 200-day |
-| Donchian channel | Above the 200-day |
+| Strategy | Key | Draws from screen |
+|---|---|---|
+| Minervini SEPA | `minervini` | Stage 2 — Trend Template |
+| Trend pullback | `trend_pullback` | Established uptrend |
+| Volume breakout | `breakout` | Near highs, rising 200-day |
+| Chart patterns | `chart_pattern` | Near highs, rising 200-day |
+| Donchian channel | `donchian` | Above the 200-day |
+
+One strategy per idea. Earlier implementations of the same two ideas
+(`minervini_legacy`, `chart_pattern_legacy`, `chart_pattern_cup`) are no longer
+registered — their modules stay in the tree, and the git history of their
+`status` attributes keeps their measured results readable.
+
+Every strategy carries a `version`, and `versions.lock.json` records the
+version alongside a fingerprint of its tunables. **A backtest refuses to start
+when the code's rules are not the ones recorded for its version**, naming the
+parameter that moved — so a result can always be mapped back to the rules that
+produced it. Change a threshold, raise `version`, add a changelog entry, then
+`python3 -m swing_screener.strategies.versions --update`. An unrecorded
+experiment can still run via `--vcp` / `--const`, which carry their own
+fingerprint into the run directory and signal cache.
 
 In the web app: **Screens** — one page, the screens on the left (built-in,
 Quality, yours, "+ New screen"), the chosen one on the right (Results ·
@@ -164,7 +178,7 @@ python3 -m swing_screener.screening.history --market india --list   # list recor
 # portfolio-level: one capital pool, position cap, costs — the default
 python3 -m swing_screener.backtesting.backtest --market india --start 2013-01-01
 
-# a seeded random subset, for speed (a full 14-year run takes ~9 hours)
+# a seeded random subset, for speed
 python3 -m swing_screener.backtesting.backtest --market india --start 2013-01-01 --sample 500
 
 # a different strategy
@@ -174,14 +188,39 @@ python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 --
 python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 \
     --exit-mode donchian --no-target
 
-# Minervini, exactly as research/minervini-backtest-spec.md defines it (EN-01: confirmed breakouts,
-# next open); "TRADE ON TRIGGER" instead gives EN-02 (buy-stops through the pivot)
+# Minervini, exactly as research/minervini-backtest-spec.md defines it. EN-01 is the confirmed
+# breakout (next open); add "TRADE ON TRIGGER" for EN-02, the buy-stop through the pivot. Taking
+# only EN-01 tests a small minority of the setups the strategy finds — on India, 27 of 831.
 python3 -m swing_screener.backtesting.backtest --market india --start 2010-01-01 \
-    --strategy minervini_spec --spec --accept-labels "TRADE - HIGH CONFIDENCE" [--market-filter]
+    --strategy minervini --spec \
+    --accept-labels "TRADE - HIGH CONFIDENCE,TRADE ON TRIGGER" [--market-filter]
+
+# just these names — the pre-filter still applies to each, and the report names them
+python3 -m swing_screener.backtesting.backtest --market us --start 2013-01-01 \
+    --strategy minervini --symbols NVDA,MU,GOOG
+
+# one-off experiments. Both change the spec fingerprint, so a variant gets its own
+# signal cache and run directory and cannot overwrite the shipped rules' results.
+python3 -m swing_screener.backtesting.backtest --market india --start 2010-01-01 \
+    --strategy minervini --vcp shrink=0.5 --const MIN_STRUCTURAL_R=0
 ```
 
 Produces `reports/<market>/<strategy>/<run>/` containing `report.md` (with
-charts), `trades.csv`, `equity.csv` and `figures/`.
+charts), `trades.csv`, `equity.csv`, `figures/` and `funnel.json`.
+
+**The funnel** is the part worth reading first. It counts what reached each
+stage — universe, pre-filter, hard gates, setup, entry trigger, trade plan,
+decision, ranking, trades — and why the rest stopped, taken from the rule that
+actually refused: the gate code for a hard gate, the strategy's own failure
+code for a setup, the plan's own sentence for a reward-to-risk floor. It names
+the symbols scanned when there are 25 or fewer. Where a loss cannot be
+attributed to a named rule it says so, rather than implying a complete account.
+`GET /api/reports/{id}/funnel` serves it, and it is a section in `report.md`.
+
+Scanning enriches each symbol once rather than once per bar, which is 4–5x
+faster than it was (minervini on five India symbols: 48.3s → 11.6s, signals
+byte-identical). Repeat runs of the same `spec_id` hit the signal cache and are
+faster again; changing a rule changes the `spec_id`, so the next run is cold.
 
 ### Compare a strategy against the momentum baseline
 

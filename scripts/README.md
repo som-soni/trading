@@ -67,7 +67,9 @@ manual tools, grouped by what they are for:
 | flag | effect |
 |---|---|
 | `--market {us,india}` `--start YYYY-MM-DD` | required |
-| `--strategy {trend_pullback,breakout,donchian,chart_pattern}` | which strategy to run |
+| `--strategy {trend_pullback,breakout,donchian,chart_pattern,minervini}` | which strategy to run |
+| `--symbols A,B,C` | restrict the whole run to these names (`--symbols NVDA,MU,GOOG`). The point-in-time pre-filter still applies to each, and names that never qualify are logged. A restriction, unlike `--include`, which ADDS to a sample. With `--spec` the RS filter ranks against the universe present in the run, so on a handful of symbols that ranking means little |
+| `--vcp KEY=VALUE` `--const NAME=VALUE` | one-off overrides of a `VcpParams` field or a numeric module constant (`--vcp shrink=0.5`, `--const MIN_STRUCTURAL_R=0`). Both change the spec fingerprint, so a variant gets its own signal cache and run directory. They are also the only way to run rules the version lock does not record |
 | `--sample N` | seeded RANDOM subset of N candidates — **prefer over `--limit`**, which slices alphabetically and is therefore biased |
 | `--max-positions N` | position cap (default: the market config's 10) |
 | `--exit-mode {bracket,trail_atr,ma,donchian,minervini}` | how open positions are managed; `minervini` is the spec's EX-01…EX-07 (failed breakout, breakeven at 2R, a third at 3R, climax, 50-day break on volume) |
@@ -79,6 +81,7 @@ manual tools, grouped by what they are for:
 | `--accept-labels` | which `classify()` labels to trade; add `"TRADE ON TRIGGER"` to test whether the confidence tiers separate outcomes |
 | `--per-symbol` | the OLD unlimited-capital mode, kept for comparison only |
 | `--no-signal-cache` | recompute gates from scratch — needed only when gate logic changed |
+| | A run refuses to start when the code's rules are not the ones `versions.lock.json` records for the strategy's version, naming the parameter that moved. Bump `version`, add a changelog entry, then `python3 -m swing_screener.strategies.versions --update`. `--vcp` / `--const` are the deliberate exception |
 | `--refresh-history` | pull fresh data first (skip if backfill already ran) |
 
 **`backtesting.baseline`**

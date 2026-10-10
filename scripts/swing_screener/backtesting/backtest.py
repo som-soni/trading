@@ -686,6 +686,17 @@ def run_backtest(
     return trades_to_df(all_trades)
 
 
+class NoSignals(ValueError):
+    """A run that found nothing. Still carries the funnel: "zero trades" is a
+    result, and the only useful thing about it is WHERE the candidates stopped,
+    which is exactly what the funnel records. Subclasses ValueError so existing
+    callers that catch that keep working."""
+
+    def __init__(self, message: str, funnel=None):
+        super().__init__(message)
+        self.funnel = funnel
+
+
 def collect_portfolio_signals(
     market_key: str, cfg: MarketConfig, strategy, start: pd.Timestamp,
     candidates: list[str], deep_data: dict | None = None,
@@ -722,7 +733,7 @@ def collect_portfolio_signals(
             )
     logger.info("Collected %d signals across %d symbols", len(all_signals), len(prices))
     if not all_signals:
-        raise ValueError("no signals produced — nothing to simulate")
+        raise NoSignals("no signals produced — nothing to simulate", fn)
     return all_signals, prices
 
 
@@ -873,6 +884,10 @@ def run_portfolio_backtest(
         if missing:
             logger.warning("  not in the point-in-time candidate set (no qualifying bar in the window): %s",
                            ", ".join(missing))
+        # attribute the cut, or it shows up as "not attributed to a named rule"
+        dropped_by_request = int(fn.counts.get("candidates", 0)) - len(candidates)
+        if dropped_by_request > 0:
+            fn.dropped("symbols", "not in --symbols", dropped_by_request)
         fn.set_count("candidates", len(candidates))
         fn.symbols = list(candidates)
     candidates = sample_candidates(candidates, sample, include=include) if sample else (
@@ -916,7 +931,7 @@ def run_portfolio_backtest(
         logger.info("Re-ranked %d signals by '%s' for slot competition",
                     len(all_signals), rank_by)
     if not all_signals:
-        raise ValueError("no signals left after the portfolio filters — nothing to simulate")
+        raise NoSignals("no signals left after the portfolio filters — nothing to simulate", fn)
     fn.set_count("ranked", len(all_signals))
     _progress(f"{len(all_signals):,} signals after filters · simulating the portfolio day by day")
     group_note = None
@@ -1242,19 +1257,38 @@ def main(argv: list[str] | None = None) -> dict | None:
         mode=args.exit_mode, use_target=not args.no_target,
         atr_mult=args.atr_mult, ma_col=args.ma_col, donchian_bars=args.donchian_bars, **extra,
     )
-    tdf, perf, result = run_portfolio_backtest(
-        args.market, args.start, args.limit, args.deep_lookback_days,
-        use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy,
-        accept_labels=labels, max_positions=args.max_positions, exit_policy=policy,
-        sample=args.sample, refresh_history=args.refresh_history,
-        include=[x.strip() for x in args.include.split(",") if x.strip()],
-        risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
-        rank_by=args.rank_by, min_group_rs=args.min_group_rs,
-        min_rs=args.min_rs, use_market_filter=args.market_filter, spec_costs=args.spec,
-        max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
-        max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
-        only_symbols=[x.strip() for x in args.symbols.split(",") if x.strip()],
-    )
+    try:
+        tdf, perf, result = run_portfolio_backtest(
+            args.market, args.start, args.limit, args.deep_lookback_days,
+            use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy,
+            accept_labels=labels, max_positions=args.max_positions, exit_policy=policy,
+            sample=args.sample, refresh_history=args.refresh_history,
+            include=[x.strip() for x in args.include.split(",") if x.strip()],
+            risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
+            rank_by=args.rank_by, min_group_rs=args.min_group_rs,
+            min_rs=args.min_rs, use_market_filter=args.market_filter, spec_costs=args.spec,
+            max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
+            max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
+            only_symbols=[x.strip() for x in args.symbols.split(",") if x.strip()],
+        )
+    except NoSignals as exc:
+        # "no trades" is a result. Write the funnel anyway -- without it the run
+        # leaves nothing at all behind, and WHERE the candidates stopped is the
+        # only informative thing about an empty run.
+        from ..paths import run_dir as _run_dir
+        out = _run_dir(args.market, args.strategy,
+                       f"{args.start}_{policy.label()}_{get_strategy(args.strategy).spec_id()}_NO-SIGNALS")
+        fn = getattr(exc, "funnel", None)
+        if fn is not None:
+            fn.write(out)
+            (out / "report.md").write_text(
+                f"# {MARKETS[args.market].name} — {get_strategy(args.strategy).name}, {args.start} onward\n\n"
+                f"**No trades: {exc}**\n\n" + fn.render_md())
+        logger.warning("%s — funnel written to %s", exc, out)
+        print(f"\nNo trades. The funnel says where the candidates stopped:\n")
+        print(fn.render_md() if fn is not None else "(no funnel recorded)")
+        print(f"Run dir -> {out}")
+        return None
     from ..paths import run_dir
 
     run = f"{args.start}_{policy.label()}"

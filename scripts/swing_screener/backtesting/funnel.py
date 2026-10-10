@@ -92,8 +92,15 @@ class Funnel:
     # ---- reading
     def rows(self) -> list[dict]:
         out = []
-        for key in _ORDER:
-            if key not in self.counts and not self.drops.get(key):
+        # Once any stage has been reached, show every later stage even at zero.
+        # Omitting them ends the table wherever the candidates ran out, hiding
+        # the "0 trades" that is the actual result.
+        seen = [i for i, k in enumerate(_ORDER) if k in self.counts or self.drops.get(k)]
+        last = len(_ORDER) - 1 if seen else -1
+        for i, key in enumerate(_ORDER):
+            if i > last and key not in self.counts and not self.drops.get(key):
+                continue
+            if i < (min(seen) if seen else 0) and key not in self.counts and not self.drops.get(key):
                 continue
             out.append({
                 "stage": key,
