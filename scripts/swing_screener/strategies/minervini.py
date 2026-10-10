@@ -114,7 +114,7 @@ class MinerviniStrategy(Strategy):
          "First implementation, built from a prose description of SEPA. Approximates the exits with a 50-day moving-average break because the simulator had no mode for the real selling rules."),
     )
     key = "minervini_legacy"
-    name = "Minervini SEPA (trend template + VCP)"
+    name = "Minervini SEPA (superseded)"
     description = (
         "Stage-2 uptrend by the Trend Template, entered on a volatility "
         "contraction breakout, with a stop tight enough to keep the average "

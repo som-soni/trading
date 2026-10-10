@@ -99,7 +99,7 @@ def _fmt(text: str) -> str:
 # reference text for the web page (rendered with the live constants above)
 DOC = {
     "key": "quality",
-    "name": "Quality companies at the right price",
+    "name": "Quality companies",
     "kind": "long-term",
     "description": "Track businesses with durable fundamentals, and get told when the price makes them worth buying.",
     "status": "Screening aid for long-term investing, not a backtested strategy. Not investment advice.",

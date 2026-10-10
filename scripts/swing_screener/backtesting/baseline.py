@@ -456,7 +456,7 @@ from ..strategies.base import PortfolioStrategy
 
 DOC = {
     "key": "momentum_baseline",
-    "name": "Cross-sectional momentum baseline",
+    "name": "Momentum baseline",
     "description": "Rank by 12-1 month momentum, hold the top N, rebalance on a calendar; the benchmark every strategy must beat.",
     "status": "Reference portfolio, not a screener strategy. Beats the index in India; not in the US (see research/momentum-trend-research.md).",
     "thesis": "Stocks that have outperformed over the past year keep outperforming for months (cross-sectional momentum), "

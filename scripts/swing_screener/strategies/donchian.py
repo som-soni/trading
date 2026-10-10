@@ -59,7 +59,7 @@ class DonchianStrategy(Strategy):
          "v1 baseline of the Donchian channel breakout strategy."),
     )
     key = "donchian"
-    name = "Donchian channel breakout"
+    name = "Donchian channel"
     description = (
         "Classical trend following: buy an N-day high, exit on an M-day low, "
         "stop at a volatility multiple, and filter almost nothing."

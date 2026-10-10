@@ -99,7 +99,7 @@ class MinerviniSpecStrategy(Strategy):
          "v1 baseline of the Minervini SEPA implementation: Trend Template gates (TT-01-08) with point-in-time RS, the VCP detector (VCP-01-11) segmented by an ATR-scaled zig-zag whose threshold shrinks with the contractions, the MV-01/MV-02 setups, the exit ladder (EX-01-07), a 2:1 minimum reward-to-risk measured from the base's own measured move, and overhead supply binding only at least OVERHEAD_CLUSTER_ATR above the base high. Earlier iteration history is in the git log."),
     )
     key = "minervini"
-    name = "Minervini SEPA (trend template + VCP)"
+    name = "Minervini SEPA"
     description = (
         "The written Minervini backtest specification, rule for rule: Trend Template, a base-high "
         "anchored VCP, confirmed breakouts at the next open or buy-stops through the pivot, and the "

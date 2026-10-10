@@ -47,7 +47,7 @@ class BreakoutStrategy(Strategy):
          "v1 baseline of the volume-confirmed breakout strategy."),
     )
     key = "breakout"
-    name = "Volume-confirmed breakout"
+    name = "Volume breakout"
     description = (
         "Long breakouts to new 55-day highs out of a tight consolidation, "
         "confirmed by expanding volume."

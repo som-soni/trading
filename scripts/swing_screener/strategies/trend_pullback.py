@@ -54,7 +54,7 @@ class TrendPullbackStrategy(Strategy):
          "v1 baseline of the trend-pullback / continuation strategy."),
     )
     key = "trend_pullback"
-    name = "Trend pullback / continuation"
+    name = "Trend pullback"
     description = (
         "Long pullbacks (TC-01) and tight continuation bases (TC-02) within an "
         "established uptrend, entered on a resumption signal above resistance."
