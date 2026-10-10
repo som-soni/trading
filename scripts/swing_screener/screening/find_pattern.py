@@ -36,7 +36,7 @@ from ..marketdata import cache, earnings
 from ..marketdata.universe import load_sector_cache
 from ..paths import REPORTS_DIR
 from . import links
-from ..strategies import get_strategy
+from ..strategies.chart_pattern import ChartPatternStrategy
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("find_pattern")
@@ -52,7 +52,12 @@ def scan_market(
     market: str, code: str, min_quality: float, require_liquidity: bool = True
 ) -> list[dict]:
     cfg = MARKETS[market]
-    strategy = get_strategy("chart_pattern")
+    # ChartPatternStrategy is no longer in the registry (chart_pattern_spec
+    # supersedes it there), so construct it directly: this screener is built on
+    # `core.chart_patterns` and its code vocabulary (FLAT, VCP, cp.TOPPING_CODES),
+    # whereas chart_pattern_spec detects via `core.pattern_spec` with different
+    # codes. Swapping in the spec strategy would not screen for the same patterns.
+    strategy = ChartPatternStrategy()
     topping = code in cp.TOPPING_CODES
     symbols = sorted(cache.cached_symbols(market))
     logger.info("%s: scanning %d cached symbols for %s", market, len(symbols), code)

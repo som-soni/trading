@@ -64,11 +64,23 @@ def register(strategy: Strategy) -> Strategy:
 register(TrendPullbackStrategy())
 register(DonchianStrategy())
 register(BreakoutStrategy())
-register(ChartPatternStrategy())
-register(ChartPatternCupStrategy())
 register(ChartPatternSpecStrategy())
-register(MinerviniStrategy())
 register(MinerviniSpecStrategy())
+
+# Superseded implementations, deliberately NOT registered: each covered the same
+# idea as the `_spec` strategy above it, which is built to the written detection
+# specification and is a superset of what it replaced. Two entries per idea meant
+# two strategies sharing a family and a version number, distinguishable only by
+# fingerprint, which is not something a result can be mapped to.
+#
+#   ChartPatternStrategy     -> ChartPatternSpecStrategy (7 patterns -> 12)
+#   ChartPatternCupStrategy  -> ChartPatternSpecStrategy (cup only -> 12)
+#   MinerviniStrategy        -> MinerviniSpecStrategy    (same screen, gates and
+#                               setups; the spec version is the one under active
+#                               development)
+#
+# The modules are still in the tree, so re-registering one is a single line. Their
+# measured results are in the git history of their `status` attributes.
 
 def portfolio_strategies() -> dict:
     """Registry of PORTFOLIO strategies, keyed like `_REGISTRY` but holding
