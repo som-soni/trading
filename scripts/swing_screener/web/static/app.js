@@ -1329,7 +1329,7 @@ async function postmarketPage(alive, mkt, date, tab) {
   $view.innerHTML = LOADING;
   const r = await api(`/api/postmarket?market=${mkt}${date ? `&date=${date}` : ""}`).catch((e) => ({ error: e.message }));
   if (!alive()) return;
-  const head = (context = "") => pageHead("Post-market", { context });
+  const head = (context = "") => pageHead("Post-market", { context, extra: marketSeg(mkt) });
   const pmInfo = (p, r) => info([p.doc.tone, p.doc.liquid, p.doc.volume, p.doc.highs_lows].map((t) => `<p>${esc(t)}</p>`).join("")
     + `<p>Watchlist and earnings sections reflect your lists and known dates at the time of analysis (generated ${clock(r.generated_at)}), so a backfilled day shows today's lists.</p>`, "How this is built");
   if (r.error || r.empty) {
@@ -2017,7 +2017,7 @@ async function screensPage(alive, key, mkt, tab, date) {
   const d = r.def;
   const href = (t, m = mkt, dd = date) => `#/screens/${key}/${m}/${t}${dd && m === mkt ? "/" + dd : ""}`;
   const sDates = r.dates.map((x, i) => ({ value: x, label: prettyDate(x) + (i > 0 && (r.dates[i - 1] || "").slice(0, 7) !== x.slice(0, 7) ? " · month-end" : "") }));
-  main.innerHTML = `<div class="crumbs"><a href="#/screens">← All screens</a></div>` + pageHead(esc(d.name), { context: datePicker(sDates, r.date),
+  main.innerHTML = `<div class="crumbs"><a href="#/screens">← All screens</a></div>` + pageHead(esc(d.name), { extra: marketSeg(mkt), context: datePicker(sDates, r.date),
       actions: (d.builtin ? `<button id="scust" title="Start a screen of your own from this one">Customise…</button>`
         : `<a class="btn" href="#/screens/${key}/${mkt}/edit">Edit</a><button class="danger" id="sdel">Delete</button>`)
         + `<a class="btn primary" href="#/screens/new/${mkt}">+ New screen</a>` }) + `
@@ -2095,7 +2095,8 @@ function screensOverview(main, list, mkt) {
       ${x.used_by?.length ? `<div class="muted small">Used by: ${x.used_by.map((u) => esc(u.name)).join(", ")}</div>` : ""}</a>`;
   };
   const builtins = list.screens.filter((x) => x.builtin), mine = list.screens.filter((x) => !x.builtin);
-  main.innerHTML = pageHead("Screens", { context: `<span class="muted small">${prettyDate(list.date)} · ${list.tradable?.toLocaleString()} tradable stocks</span>${info(`<p>Which stocks are worth a look today. A screen is a set of conditions over every stock's daily snapshot (about 50 fields) — it only qualifies stocks; a strategy adds the trade.</p><p>${list.tradable?.toLocaleString()} of ${list.universe?.toLocaleString()} stocks clear the tradable floor (price, liquidity, a year of history).</p>`)}`,
+  main.innerHTML = pageHead("Screens", { extra: marketSeg(mkt),
+      context: `<span class="muted small">${prettyDate(list.date)} · ${list.tradable?.toLocaleString()} tradable stocks</span>${info(`<p>Which stocks are worth a look today. A screen is a set of conditions over every stock's daily snapshot (about 50 fields) — it only qualifies stocks; a strategy adds the trade.</p><p>${list.tradable?.toLocaleString()} of ${list.universe?.toLocaleString()} stocks clear the tradable floor (price, liquidity, a year of history).</p>`)}`,
       actions: `<a class="btn primary" href="#/screens/new/${mkt}">+ New screen</a>` })
     + `
     <h3 class="ov-h">Built-in screens</h3><div class="scr-cards">${builtins.map(card).join("")}
@@ -2103,6 +2104,7 @@ function screensOverview(main, list, mkt) {
     <h3 class="ov-h">Your screens</h3><div class="scr-cards">${mine.map(card).join("")}
       <a class="sec-card scr-card scr-new" href="#/screens/new/${mkt}"><div class="scr-h"><b>+ New screen</b></div>
         <div class="muted small">Pick conditions from ~50 fields — returns, RS rank, moving averages, 52-week range, volume, trend, sector — and see the matching stocks as you build. Then study how it did over five years.</div></a></div>`;
+  main.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
 }
 
 /** The screen builder: conditions with a live preview; save as one of your screens. */
@@ -2298,6 +2300,7 @@ async function setupsPage(alive, root) {
   let show = store.get("setupsShow", "all");
   const newest = r.runs?.length ? r.runs.map((x) => x.run).sort().at(-1) : null;
   root.innerHTML = pageHead("Today's setups", {
+      extra: marketSeg(mkt),
       context: `<span class="muted small">${newest ? `latest run ${prettyDate(newest)}` : "not run yet"}</span>${info("<p>Every strategy's trades and watch names from its latest run. Strategies run on demand — <b>Run strategies…</b> adds a run to the job queue.</p>")}`,
       actions: `<button class="primary" id="runstrat" title="Run the strategies on today's data (adds a run to the job queue)">Run strategies…</button>` }) + `
     ${r.error ? `<div class="empty"><b>Could not load setups</b><div class="muted">${esc(r.error)}</div></div>` : `
@@ -2428,7 +2431,7 @@ async function strategySetups(host, alive, strat, mkt, runKey) {
   // strategy, which is screening history rather than anything to act on today;
   // a run's own page is still reachable by URL (.../setups/<market>/<run>).
   const label = run ? `Run ${prettyDate(run.run)}${run.tradeable != null ? ` — ${run.tradeable} tradeable of ${run.rows}` : ""}` : "";
-  host.innerHTML = `<div class="page-head sub">${run ? `<span class="run-label">${esc(label)}</span>` : ""}<span class="spacer"></span>
+  host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}${run ? `<span class="run-label">${esc(label)}</span>` : ""}<span class="spacer"></span>
       <button id="run1" title="Run this strategy on today's data (adds a run to the job queue)">Run this strategy…</button></div>
     <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div>`;
   host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => nav(b.dataset.v));
@@ -3088,7 +3091,7 @@ async function schedulesPage(alive) {
       <p>From a terminal: <code>python -m jobs schedules</code> · <code>python -m jobs queue</code></p>`),
       actions: `<button class="primary" id="snew">+ New schedule</button>` }) + `
     ${w.alive ? "" : `<div class="sd-status watch"><b>Worker stopped</b> Nothing below will run until the worker is running. <button class="primary sm" id="wkstart">Start worker</button></div>`}
-    <section class="sec-card runnow"><div class="sec-card-h"><h3>Run now</h3><span class="muted small">adds the run to the queue · per-market pipelines use ${esc(mktInfo(pageMarket()).name)} (header)</span></div>
+    <section class="sec-card runnow"><div class="sec-card-h"><h3>Run now</h3>${marketSeg(pageMarket())}<span class="muted small">adds the run to the queue · per-market pipelines use the chosen market</span></div>
       <div class="runbtns">${d.targets.pipelines.map((p) => { const perM = !["weekly", "monthly"].includes(p.name);
         return `<button data-pipe="${p.name}" data-m="${perM ? pageMarket() : "all"}" title="${esc(p.summary)}"><svg viewBox="0 0 20 20" class="play"><path d="M7 5l8 5-8 5z"/></svg>${esc(p.name[0].toUpperCase() + p.name.slice(1))}${perM ? ` · ${esc(mktInfo(pageMarket()).name)}` : ""}</button>`; }).join("")}</div></section>
     <section class="sec-card"><table class="stt sched"><thead><tr><th>On</th><th>Schedule</th><th>When</th><th>Next run</th><th>Last run</th><th></th></tr></thead><tbody>
@@ -3105,6 +3108,7 @@ async function schedulesPage(alive) {
     `;
   $view.querySelector("#wkstart")?.addEventListener("click", startWorker);
   $view.querySelector("#snew").onclick = () => scheduleDialog(d, null);
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
   $view.querySelectorAll("[data-pipe]").forEach((b) => b.onclick = () => startJob({ title: `Run ${b.dataset.pipe}${b.dataset.m === "all" ? "" : " · " + mktInfo(b.dataset.m).name}`,
     targets: [b.dataset.pipe], market: b.dataset.m, screens: ["strategies", "backtest"].includes(b.dataset.pipe) }));
   $view.querySelectorAll("tr[data-id]").forEach((tr) => {
@@ -3225,6 +3229,7 @@ async function subindustriesPage(alive, mkt, group) {
   const c = d.coverage;
   const href = (x) => `#/subindustries/${mkt}/${encodeURIComponent(x)}`;
   $view.innerHTML = pageHead("Sub-industries", {
+      extra: marketSeg(mkt),
       context: `<span class="muted small">${c.labelled.toLocaleString()} of ${c.in_split_groups.toLocaleString()} tradable stocks in split groups labelled · ${c.suggested} suggested · ${c.other} unassigned</span>${info(`
         <p>A sub-industry splits an industry group that mixes businesses (Semiconductors → AI &amp; compute, Analog, Memory…). Coherent groups (Restaurants, Homebuilding) are not split.</p>
         <p>Each label shows where it came from: <b>you</b> (your edits — always win) · <b>curated</b> (data/sub_industries.csv) · <b>rule</b> (US banks by size, asset managers vs BDCs) · <b>suggested</b> (proposed, awaiting your review) · <b>code</b> (an official code mapped in data/sub_industry_codes.csv) · <b>BSE</b> (India: BSE's own industry, where a group spans several) · <b>unassigned</b>.</p>
@@ -3235,6 +3240,7 @@ async function subindustriesPage(alive, mkt, group) {
           <span><b class="sn">${esc(x.industry)}</b></span><span class="n" title="${x.open ? x.open + " to review" : x.members.length + " tradable stocks"}">${x.open || x.members.length}</span></a>`).join("") || '<div class="nav-empty muted small">Nothing to review.</div>'}
       </aside><section id="submain" class="scr-main"></section></div>`;
   $view.querySelectorAll(".subshow button").forEach((b) => b.onclick = () => { store.set("subShow", b.dataset.v); route(); });
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(`#/subindustries/${b.dataset.v}`));
   const main = $view.querySelector("#submain");
   if (!g) { main.innerHTML = '<div class="empty"><b>No groups</b></div>'; return; }
   const counts = {}; g.members.forEach((m) => { if (m.sub) counts[m.sub] = (counts[m.sub] || 0) + 1; });

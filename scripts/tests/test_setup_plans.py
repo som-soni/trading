@@ -31,6 +31,10 @@ SYMBOLS = [("us", "NVDA"), ("us", "AVGO"), ("us", "LLY"), ("india", "BAJFINANCE.
 
 def main() -> int:
     strat = get_strategy("minervini")
+    # MV-03 is disabled by default (see its changelog entry), but the code path
+    # still has to work -- that is exactly the kind of branch that rots unseen.
+    import swing_screener.strategies.minervini_spec as ms
+    ms.LOW_CHEAT_ENABLED = 1
     seen, problems = {}, []
     for market, sym in SYMBOLS:
         cfg = MARKETS[market]

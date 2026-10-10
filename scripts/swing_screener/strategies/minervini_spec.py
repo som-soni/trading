@@ -70,6 +70,15 @@ BUY_RANGE_PCT = 5.0     # MV-01b: close no more than this % above the pivot (and
 UPPER_HALF = 0.5        # MV-01c: close in at least this fraction of the day's range
 
 # ---- section 8: stop
+# MV-03, the low cheat, is OFF. Minervini calls it the riskiest of his three
+# in-base entries and says he uses it sparingly, in stocks he already knows; the
+# India backtest agrees emphatically -- 25 trades, a 4% win rate and -0.515R
+# average, Rs257k of losses that turned a book the 3C had made Rs213k on into a
+# Rs101k loss. An int rather than a bool so spec_params fingerprints it: flipping
+# it has to change the spec_id, or two runs with different rules would share a
+# cache and a report directory. `--const LOW_CHEAT_ENABLED=1` puts it back.
+LOW_CHEAT_ENABLED = 0
+
 CHEAT_SHELF_DAYS = 7    # MV-03/MV-04: sessions in the shelf (mirrors VcpParams.cheat_shelf_days)
 CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpParams.cheat_shelf_pct)
 
@@ -98,8 +107,17 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.4"
+    version = "1.5"
     changelog = (
+        ("1.5", "2026-10-10",
+         "MV-03, the low cheat, is off by default (LOW_CHEAT_ENABLED). On India 2010 onward with "
+         "both entry modes, the three cheats and the pivot buy produced 210 trades: MV-04 made "
+         "Rs213,395 over 177 trades at +0.070R, while MV-03 lost Rs257,039 over 25 at -0.515R on a "
+         "4% win rate, turning a profitable book into a Rs101,290 loss on its own. Minervini "
+         "describes the low cheat as the riskiest of his three in-base entries, used sparingly and "
+         "only in stocks he knows well, so this is his own caveat showing up in the data rather "
+         "than a surprise. Kept as a switch rather than deleted: 25 trades is a thin basis for "
+         "removing an entry outright, and it should be confirmed on US data."),
         ("1.4", "2026-10-10",
          "The cheat entries (MV-03 low cheat, MV-04 \"3C\"). Minervini buys three points inside a "
          "base -- the lower third, the middle third and the pivot at the top -- and this spec only "
@@ -249,7 +267,8 @@ class MinerviniSpecStrategy(Strategy):
         MV01: "Breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
               "on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of the pivot.",
         MV02: "Coiled: the base is complete and the close is within {COIL_PCT}% below the pivot.",
-        MV03: "Low cheat: a shelf of {CHEAT_SHELF_DAYS} sessions spanning no more than "
+        MV03: "Low cheat (OFF by default, {LOW_CHEAT_ENABLED}; `--const LOW_CHEAT_ENABLED=1` enables it): "
+              "a shelf of {CHEAT_SHELF_DAYS} sessions spanning no more than "
               "{CHEAT_SHELF_PCT}% sits in the LOWER third of a base that has cleared VCP-01/02/03, and "
               "today's close went through its high. Taken while the base is still forming, so the stop "
               "is the shelf low rather than the base low. Minervini calls this the riskiest of his "
@@ -360,7 +379,7 @@ class MinerviniSpecStrategy(Strategy):
         # cross would be unsatisfiable. MV-01 freezes the pivot the same way.
         ch = prev if prev.get("cheat_ok") else None
         cheat_cross = bool(ch and prev_close <= ch["cheat_pivot"] < close)
-        mv03 = bool(cheat_cross and ch["cheat_zone"] == "low")
+        mv03 = bool(LOW_CHEAT_ENABLED and cheat_cross and ch["cheat_zone"] == "low")
         mv04 = bool(cheat_cross and ch["cheat_zone"] == "mid")
         result.setups[MV01], result.setups[MV02] = mv01, mv02
         result.setups[MV03], result.setups[MV04] = mv03, mv04
