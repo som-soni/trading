@@ -361,7 +361,18 @@ def simulate(
                 del pending[sym]
                 continue
             if bar["high"] >= order["entry"]:
-                triggered.append((sym, order, bar))
+                # A resting buy-stop fills on any intraday poke. When the signal asks
+                # for confirmation, a bar that pokes through and closes back below the
+                # level is not a breakout -- it is the thing the failed-breakout exit
+                # then sells at the next open, for a guaranteed small loss. Measured on
+                # India, 9 of 14 trades filled that way and 11 exited FAILED_BREAKOUT
+                # with a median hold of one day. Leave the order resting instead; the
+                # base is intact until it closes below the tight low.
+                lvl = meta.get("confirm_close_above")
+                if lvl is not None and float(bar["close"]) < float(lvl):
+                    skip("poked through the pivot but closed back below it")
+                else:
+                    triggered.append((sym, order, bar))
             elif bar["low"] <= order["stop"]:
                 del pending[sym]  # fell away before ever filling
             elif float(bar["close"]) < meta.get("cancel_close_below", -math.inf):
@@ -381,6 +392,11 @@ def simulate(
 
             if meta.get("order") == "open":
                 raw_entry = float(bar["open"])
+            elif meta.get("confirm_close_above") is not None:
+                # the close is what confirmed it, so the close is what you can pay:
+                # filling at the intraday stop price would be buying on information
+                # (how the bar closed) that did not exist at the moment of the touch
+                raw_entry = max(order["entry"], float(bar["close"]))
             else:
                 raw_entry = max(order["entry"], float(bar["open"]))  # gap fills worse
             if "max_fill" in meta:

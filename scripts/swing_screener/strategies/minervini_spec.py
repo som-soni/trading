@@ -93,8 +93,19 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-10",
+         "EN-02 now needs a confirming close. The resting buy-stop filled on any intraday "
+         "poke through the pivot, with no volume or close test, so it systematically bought "
+         "exactly what MV-01 is built to reject -- and EX-02 then sold it at the next open "
+         "as a failed breakout. Over India 2010 onward, 9 of 14 trades filled on a bar that "
+         "closed BELOW the entry (CDSL filled 956.78, closed 936.90) and 11 of 14 exited "
+         "FAILED_BREAKOUT with a median hold of one day, for -0.40R each. The order now fills "
+         "only on a bar that closes at or above the pivot, and fills AT that close: the close "
+         "is what confirmed it, so paying the intraday stop price would be buying on "
+         "information that did not exist at the touch. A poke that closes back below leaves "
+         "the order resting -- the base is intact until it closes below the tight low."),
         ("1.0", "2026-10-10",
          "v1 baseline of the Minervini SEPA implementation: Trend Template gates (TT-01-08) with point-in-time RS, the VCP detector (VCP-01-11) segmented by an ATR-scaled zig-zag whose threshold shrinks with the contractions, the MV-01/MV-02 setups, the exit ladder (EX-01-07), a 2:1 minimum reward-to-risk measured from the base's own measured move, and overhead supply binding only at least OVERHEAD_CLUSTER_ATR above the base high. Earlier iteration history is in the git log."),
     )
@@ -202,9 +213,11 @@ class MinerviniSpecStrategy(Strategy):
     entry_rules = (
         "MV-01 (EN-01): buy at the next session's open; skip it if that open is more than {BUY_RANGE_PCT}% "
         "above the pivot or at or below the tight low.",
-        "MV-02 (EN-02): a buy-stop at the pivot plus 0.1%, resting for up to 10 sessions; it fills at the "
-        "stop price or the open if the stock gaps over it, is skipped if that is more than {BUY_RANGE_PCT}% "
-        "above the pivot, and is cancelled by a close below the tight low.",
+        "MV-02 (EN-02): a buy-stop at the pivot plus 0.1%, resting for up to 10 sessions. It fills only on a "
+        "session that CLOSES at or above the pivot, and fills at that close (or the stop price if the close is "
+        "below it); a session that pokes through the pivot and closes back below leaves the order resting. It is "
+        "skipped if the fill would be more than {BUY_RANGE_PCT}% above the pivot, and cancelled by a close below "
+        "the tight low.",
         "Stop: {STOP_BUFFER_PCT}% under the tight low. A fill whose stop is more than {MAX_STOP_PCT}% below "
         "it is skipped. Size: 1% of equity at risk, capped at the market's position limit.",
         "One entry per base: a base already traded is not entered again.",
@@ -399,7 +412,7 @@ class MinerviniSpecStrategy(Strategy):
         if plan.setup == MV01:
             meta.update(order="open", min_open=tl)
         else:
-            meta.update(order="stop", cancel_close_below=tl)
+            meta.update(order="stop", cancel_close_below=tl, confirm_close_above=pivot)
         return meta
 
     # ---------- decision ----------
