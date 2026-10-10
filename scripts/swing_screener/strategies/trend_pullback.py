@@ -48,6 +48,11 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 class TrendPullbackStrategy(Strategy):
     selection = "time_series"
+    version = "1.0"
+    changelog = (
+        ("1.0", "2026-10-10",
+         "v1 baseline of the trend-pullback / continuation strategy."),
+    )
     key = "trend_pullback"
     name = "Trend pullback / continuation"
     description = (

@@ -41,6 +41,11 @@ BREAKOUT_LOOKBACK = 55
 
 class BreakoutStrategy(Strategy):
     selection = "time_series"
+    version = "1.0"
+    changelog = (
+        ("1.0", "2026-10-10",
+         "v1 baseline of the volume-confirmed breakout strategy."),
+    )
     key = "breakout"
     name = "Volume-confirmed breakout"
     description = (

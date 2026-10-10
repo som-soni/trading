@@ -1068,6 +1068,19 @@ def main(argv: list[str] | None = None) -> dict | None:
             kw[k] = type(cur)(float(v)) if isinstance(cur, (int, float)) else v
         mod.VCP = _dc.replace(mod.VCP, **kw)
         logger.info("VCP override %s -> spec %s", kw, get_strategy(args.strategy).spec_id())
+    # A backtest must be attributable to a recorded version. If the rules have
+    # moved without a version bump + `versions --update`, the report directory
+    # would claim a version whose rules no longer match, so refuse instead.
+    # `--vcp` is the deliberate exception: an override is an experiment that
+    # carries its own fingerprint into the run name and cache key.
+    if not args.vcp:
+        from ..strategies import versions as _versions
+        _stale = _versions.verify(args.strategy)
+        if _stale:
+            parser.error(
+                f"{_stale}\n    Bump `version` and add a changelog entry, then record it:\n"
+                f"      PYTHONPATH=. python3 -m swing_screener.strategies.versions --update\n"
+                f"    (an unrecorded experiment can still run via --vcp KEY=VALUE)")
     labels = tuple(x.strip() for x in args.accept_labels.split(",") if x.strip())
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 

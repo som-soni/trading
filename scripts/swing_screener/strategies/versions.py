@@ -69,6 +69,31 @@ def _param_diff(old: dict, new: dict) -> list[str]:
     return lines
 
 
+def verify(key: str) -> str | None:
+    """None when one strategy's rules match what the lock file records for its
+    version; otherwise an explanation of what moved.
+
+    The backtest calls this before it runs. A run whose rules are not the
+    recorded ones cannot be attributed to a version afterwards: the report
+    directory would say v1.0 while the code had quietly become something else,
+    which is the exact failure the lock file exists to prevent.
+    """
+    cls = all_specs().get(key)
+    if cls is None:
+        return None
+    fp, was = cls.fingerprint(), load_lock().get(key)
+    if was is None:
+        return (f"{key} is not recorded in {LOCK_PATH.name} (rules fingerprint {fp}).")
+    if was["fingerprint"] == fp and was["version"] == cls.version:
+        return None
+    what = (f"version v{was['version']} -> v{cls.version}"
+            if was["version"] != cls.version else f"version stayed v{cls.version}")
+    diff = _param_diff(was.get("params", {}), cls.spec_params())
+    return (f"{key}: the code's rules are not the ones recorded for this version "
+            f"({was['fingerprint']} -> {fp}, {what})."
+            + ("\n    What moved:\n" + "\n".join(diff) if diff else ""))
+
+
 def check() -> tuple[list[str], list[str]]:
     """Returns (problems, notes). A problem fails the check; a note does not."""
     lock, now = load_lock(), current_state()

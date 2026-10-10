@@ -93,55 +93,10 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "2.4"
+    version = "1.0"
     changelog = (
-        ("2.4", "2026-10-10",
-         "Overhead cap fixed (OVERHEAD_CLUSTER_ATR). v2.2 capped the measured move at the "
-         "nearest swing high above the BASE HIGH rather than above entry, but a strict "
-         "`> base_high` test still lands on the base's own ceiling: `overhead_levels` "
-         "collects every swing high and a consolidation prints several within a hair of its "
-         "high, so the cap was the level being broken out of. Over the 15 India v2.3 "
-         "breakouts, 8 were capped within 1.5% of their own base high — GODREJPROP's target "
-         "was pinned to 1697.85 against a 1697.85 base high — dropping the median projection "
-         "from 1.81R to 0.90R, so MIN_STRUCTURAL_R rejected them for an artefact of the "
-         "base's definition rather than for a lack of upside. Only supply at least one ATR "
-         "above the base high is now binding, the same guard chart_pattern already used."),
-        ("2.3", "2026-10-10",
-         "Zig-zag threshold now shrinks with the contractions (zigzag_shrink_ratio): one "
-         "threshold cannot see a VCP, since it must be wide enough for a 20% first "
-         "contraction and is then far too wide for the 3-5% ones that define the pattern, "
-         "so the late legs never confirmed and VCP-04 rejected textbook bases for having "
-         "too few. The zig-zag is also seeded with BH as its first high — starting with "
-         "direction unset let a wide BH bar confirm an 'L' first, after which the first "
-         "contraction was measured from a later, lower bar and VCP-05/VCP-06 saw the wrong "
-         "depth. The floor is 1.5 ATR, not the 0.75 first tried: at 0.75 (2.84% on MU, "
-         "under its 3.79% ATR) single bars became legs and the median leg count hit 13 "
-         "against VCP-04's limit of 6. Net effect on detections is close to nil; the fix "
-         "is a correctness one."),
-        ("2.2", "2026-10-10",
-         "Added Minervini's stated minimum reward-to-risk of 2:1 (MIN_STRUCTURAL_R), "
-         "which the implementation had been missing entirely — every valid pivot was "
-         "traded regardless of upside. Reward is now the base's measured move (its "
-         "high less its deepest low, i.e. the first contraction) projected from entry "
-         "and capped by overhead ABOVE the base high; previously `target = entry + 3 x "
-         "risk` restated the formula and reported an R the chart did not offer. "
-         "Setups projecting under 2R are refused, never padded up."),
-        ("2.1", "2026-10-10",
-         "VCP detector corrected (core/vcp_spec.py). Contractions are now segmented by a "
-         "zig-zag requiring a real reversal in BOTH directions, not by swing highs alone: a "
-         "two-day bounce used to start a new leg, splitting one 20% pullback into 8% then "
-         "15% so the 'second' read deeper and VCP-06 rejected a valid base. The threshold is "
-         "ATR-scaled, because a fixed 3% sits below one day's range on a volatile name (MU's "
-         "median ATR is 3.79% of close) and turned noise into a median of 12 legs against a "
-         "limit of 6. The base-period trend rule no longer demands close > SMA150 every day, "
-         "which contradicted VCP-05's allowance of a 35% first contraction; it now requires "
-         "the MA structure plus close above 0.97x SMA200. The dry-up baseline is taken from "
-         "before the tight area rather than from a 50-day average that already includes it, "
-         "and the tight area runs from the last confirmed zig-zag low instead of a fixed "
-         "10 bars. A prior-advance window shorter than 126 bars now fails instead of "
-         "silently shortening."),
-        ("2.0", "2026-10-09",
-         "Rebuilt to the written backtest specification: base-high anchored VCP, confirmed breakouts, and the real exit ladder (failed breakout, breakeven, partial profit, climax, 50-day break) via --exit-mode minervini. Max stop 10% -> 8%; cross-sectional RS rank replaces v1's absolute momentum floor."),
+        ("1.0", "2026-10-10",
+         "v1 baseline of the Minervini SEPA implementation: Trend Template gates (TT-01-08) with point-in-time RS, the VCP detector (VCP-01-11) segmented by an ATR-scaled zig-zag whose threshold shrinks with the contractions, the MV-01/MV-02 setups, the exit ladder (EX-01-07), a 2:1 minimum reward-to-risk measured from the base's own measured move, and overhead supply binding only at least OVERHEAD_CLUSTER_ATR above the base high. Earlier iteration history is in the git log."),
     )
     key = "minervini_spec"
     name = "Minervini VCP (to the backtest spec)"

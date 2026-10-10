@@ -123,10 +123,10 @@ def _live(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "2.0"
+    version = "1.0"
     changelog = (
-        ("2.0", "2026-10-09",
-         "Rebuilt to the written detection specification: twelve patterns with section-referenced definitions, adding triple bottom, inverse head-and-shoulders, symmetrical triangle, falling wedge, rectangle and high tight flag."),
+        ("1.0", "2026-10-10",
+         "v1 baseline, built to the written detection specification: twelve patterns with section-referenced definitions - cup, cup-no-handle, double bottom, triple bottom, inverse head-and-shoulders, flat base, bull flag, ascending triangle, symmetrical triangle, falling wedge, rectangle and high tight flag."),
     )
     key = "chart_pattern_spec"
     name = "Chart patterns (to the detection spec)"
