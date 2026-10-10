@@ -145,6 +145,8 @@ def command_for(targets: list, market: str, opts: dict) -> list[str]:
         cmd += ["--vcp", str(kv)]
     for kv in (opts.get("const") or []):
         cmd += ["--const", str(kv)]
+    for extra in (opts.get("bt") or []):
+        cmd += ["--bt", str(extra)]
     if opts.get("accept_labels"):
         cmd += ["--accept-labels", str(opts["accept_labels"])]
     return cmd

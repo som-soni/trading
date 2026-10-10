@@ -336,6 +336,8 @@ def _backtest_steps(ctx: Ctx) -> list:
                 argv += ["--vcp", str(kv)]
             for kv in (c.opt("const") or []):
                 argv += ["--const", str(kv)]
+            for extra in (c.opt("bt") or []):
+                argv += shlex.split(str(extra))   # appended last, so a passthrough wins
             if c.opt("accept_labels"):
                 # after backtest_args on purpose: argparse keeps the last --accept-labels
                 argv += ["--accept-labels", str(c.opt("accept_labels"))]
