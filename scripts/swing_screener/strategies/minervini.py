@@ -55,6 +55,7 @@ from ..config.base import MarketConfig
 from ..core import swings as sw
 from ..core.context import StockContext
 from .base import (
+    tradable_point_in_time,
     CAP_ORDER,
     DOWNGRADE_MAP,
     LABELS,
@@ -275,12 +276,9 @@ class MinerviniStrategy(Strategy):
         """The Trend Template IS the screen, so it belongs here rather than
         only in the gates: expressing it row-wise is what lets the backtest
         apply it as of each simulated bar instead of against today's row."""
-        if cfg.screener.min_price and last["close"] < cfg.screener.min_price:
-            return False, f"price {last['close']:.2f} < {cfg.screener.min_price}"
-        if cfg.screener.min_dollar_volume:
-            dv = last.get("dollar_vol_sma20")
-            if pd.isna(dv) or dv < cfg.screener.min_dollar_volume:
-                return False, f"liquidity below {cfg.screener.min_dollar_volume:,.0f}"
+        ok, why = tradable_point_in_time(cfg, last)
+        if not ok:
+            return False, why
 
         close = float(last["close"])
         s50, s150, s200 = last.get("sma50"), last.get("sma150"), last.get("sma200")

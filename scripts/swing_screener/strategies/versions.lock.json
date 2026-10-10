@@ -27,7 +27,7 @@
         "XB3"
       ]
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "chart_pattern": {
     "family": "chart_pattern",
@@ -129,7 +129,7 @@
         "XS3"
       ]
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "donchian": {
     "family": "donchian",
@@ -155,7 +155,7 @@
         "XN2"
       ]
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "minervini": {
     "family": "minervini",
@@ -237,7 +237,7 @@
         "B4"
       ]
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
@@ -297,6 +297,6 @@
         "X9"
       ]
     },
-    "version": "1.0"
+    "version": "1.1"
   }
 }

@@ -13,6 +13,8 @@ file in this package, not touching the pipeline.
 """
 
 from abc import ABC, abstractmethod
+
+import pandas as pd
 from dataclasses import dataclass, field
 
 from ..config.base import MarketConfig
@@ -270,6 +272,30 @@ class PortfolioStrategy(SpecMeta):
 
     kind: str = "portfolio"
     selection: str = "cross_sectional"
+
+
+def tradable_point_in_time(cfg, last) -> tuple[bool, str]:
+    """The liquidity floor a backtest may apply as of a past bar.
+
+    Deliberately NOT the price floor. `cfg.screener.min_price` exists to keep
+    live screening out of penny stocks, and on today's quote it does that. In a
+    backtest it is read against SPLIT-ADJUSTED history, where a winner's early
+    price is divided by every split it has done since -- so the filter deletes
+    exactly the stocks that went up the most, over exactly the years they went
+    up. NVDA traded about $15 in 2013 on $126m a day, 12x the liquidity floor;
+    stored back-adjusted through a 4:1 and a 10:1 split that is $0.39, under the
+    $10 floor, and NVDA does not clear it until 2020-07-08. SMCI not until 2023.
+
+    Dollar volume is split-invariant -- close falls by the split factor and
+    volume rises by it, so the product is unchanged -- so it carries the whole
+    liquidity test here. Live screening keeps the price floor, in
+    screens/base.py's `tradable`, where today's price really is today's price.
+    """
+    if cfg.screener.min_dollar_volume:
+        dv = last.get("dollar_vol_sma20")
+        if pd.isna(dv) or dv < cfg.screener.min_dollar_volume:
+            return False, f"liquidity below {cfg.screener.min_dollar_volume:,.0f}"
+    return True, "passed"
 
 
 class Strategy(SpecMeta, ABC):

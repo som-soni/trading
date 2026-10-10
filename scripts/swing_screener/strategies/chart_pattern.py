@@ -43,6 +43,7 @@ from ..core import chart_patterns as cp
 from ..core import swings as sw
 from ..core.context import StockContext
 from .base import (
+    tradable_point_in_time,
     CAP_ORDER,
     DOWNGRADE_MAP,
     LABELS,
@@ -397,14 +398,11 @@ class ChartPatternStrategy(Strategy):
     # ---------- screen ----------
 
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
-        if cfg.screener.min_price and last["close"] < cfg.screener.min_price:
-            return False, f"price {last['close']:.2f} < {cfg.screener.min_price}"
+        ok, why = tradable_point_in_time(cfg, last)
+        if not ok:
+            return False, why
         if pd.isna(last["sma200"]) or last["close"] <= last["sma200"]:
             return False, "close <= SMA200"
-        if cfg.screener.min_dollar_volume:
-            dv = last.get("dollar_vol_sma20")
-            if pd.isna(dv) or dv < cfg.screener.min_dollar_volume:
-                return False, f"liquidity below {cfg.screener.min_dollar_volume:,.0f}"
         if pd.isna(last["atr14"]) or not last["atr14"]:
             return False, "no ATR"
         if pd.isna(last["high_252"]) or last["close"] < last["high_252"] * 0.80:

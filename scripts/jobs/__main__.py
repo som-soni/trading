@@ -204,6 +204,9 @@ def _run_args(r) -> None:
                    help="`backtest`: which decision labels count as tradeable, comma separated "
                         "(e.g. 'TRADE - HIGH CONFIDENCE,TRADE ON TRIGGER'). Overrides the strategy's "
                         "own backtest_args; the run gets its own report directory.")
+    r.add_argument("--symbols", default=None, metavar="A,B,C",
+                   help="`backtest`: restrict the run to these symbols, e.g. --symbols NVDA,MU,GOOG. "
+                        "The report names them, and the run gets its own directory.")
     r.add_argument("--bt", action="append", default=None, metavar="'--flag VALUE'",
                    help="`backtest`: extra arguments passed straight through to the backtest, quoted, "
                         "e.g. --bt '--fail-days 0'. Repeatable. For the exit-policy and simulator flags "
@@ -227,7 +230,7 @@ def _opts(ap, a):
             ap.error(f"unknown strategies {bad}; choose from {list_strategies()}")
     opts = {"strategies": strategies, "force": a.force, "allow_stale": a.allow_stale,
             "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days,
-            "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt,
+            "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols,
             "accept_labels": a.accept_labels}
     unknown = [t for t in a.targets if t not in JOBS and t not in PIPELINES]
     if unknown:

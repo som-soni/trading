@@ -44,6 +44,7 @@ from ..config.base import MarketConfig
 from ..core import pattern_spec as ps
 from ..core.context import StockContext
 from .base import (
+    tradable_point_in_time,
     CAP_ORDER,
     DOWNGRADE_MAP,
     LABELS,
@@ -123,8 +124,19 @@ def _live(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-10",
+         "The point-in-time pre-filter no longer applies cfg.screener.min_price. The floor keeps "
+         "live screening out of penny stocks, but a backtest reads it against SPLIT-ADJUSTED "
+         "history, so it deleted the early years of exactly the stocks that went up most -- "
+         "splitting is what winners do. NVDA traded about $15 in 2013 on $126m a day, 12x the "
+         "liquidity floor; stored back-adjusted through a 4:1 and a 10:1 split that is $0.39, "
+         "under the $10 US floor, so NVDA did not qualify until 2020-07-08 and SMCI not until "
+         "2023. Liquidity is now carried by min_dollar_volume alone, which is split-invariant "
+         "(close falls by the split factor, volume rises by it). Live screening keeps the price "
+         "floor in screens/base.py, where today's price really is today's price. On NVDA this "
+         "takes evaluable bars from 815 to 1,841 of 3,464; India is unaffected (min_price=0)."),
         ("1.0", "2026-10-10",
          "v1 baseline, built to the written detection specification: twelve patterns with section-referenced definitions - cup, cup-no-handle, double bottom, triple bottom, inverse head-and-shoulders, flat base, bull flag, ascending triangle, symmetrical triangle, falling wedge, rectangle and high tight flag."),
     )
@@ -359,7 +371,7 @@ class ChartPatternSpecStrategy(Strategy):
         ("Minimum reward", "MIN_R",
          "A measured move projecting under {MIN_R}R is WATCH, not a trade."),
         ("Minimum price", "cfg.screener.min_price",
-         "Screen: closes below this price are excluded."),
+         "LIVE SCREENING ONLY: closes below this price are excluded. Not applied point in\n          time in a backtest -- see base.tradable_point_in_time."),
         ("Minimum liquidity", "cfg.screener.min_dollar_volume",
          "Screen: the 20-day average of close x volume must reach this."),
         ("Tick size", "cfg.tick_size",
@@ -377,12 +389,9 @@ class ChartPatternSpecStrategy(Strategy):
         rules (PT-01/PT-02), applied per pattern inside the detectors, so
         screening on trend here would double-count them — and would delete
         the reversal patterns, which form by definition after a decline."""
-        if cfg.screener.min_price and last["close"] < cfg.screener.min_price:
-            return False, f"price {last['close']:.2f} < {cfg.screener.min_price}"
-        if cfg.screener.min_dollar_volume:
-            dv = last.get("dollar_vol_sma20")
-            if pd.isna(dv) or dv < cfg.screener.min_dollar_volume:
-                return False, f"liquidity below {cfg.screener.min_dollar_volume:,.0f}"
+        ok, why = tradable_point_in_time(cfg, last)
+        if not ok:
+            return False, why
         if pd.isna(last.get("atr14")) or not last.get("atr14"):
             return False, "no ATR"
         return True, "passed"

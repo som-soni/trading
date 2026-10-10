@@ -798,6 +798,8 @@ def _point_in_time_candidates(
     if fn:
         fn.set_count("symbols", len(tickers))
         fn.set_count("candidates", len(candidates))
+        if len(candidates) <= funnel_mod.Funnel.MAX_NAMED:
+            fn.symbols = list(candidates)
         fn.dropped("symbols", "never passed the pre-filter in the window",
                    len(tickers) - len(candidates))
     logger.info(
@@ -826,6 +828,7 @@ def run_portfolio_backtest(
     spec_costs: bool = False,
     max_open_risk_pct: float | None = None,
     max_adv_pct: float | None = None,
+    only_symbols: list[str] | None = None,
 ):
     """Portfolio-level backtest: one capital pool, a position cap and costs.
 
@@ -862,6 +865,16 @@ def run_portfolio_backtest(
     _progress("selecting point-in-time candidates")
     fn = funnel_mod.Funnel()
     candidates = _point_in_time_candidates(cfg, strategy, market_key, start, fn=fn)
+    if only_symbols:
+        want = {s.strip().upper() for s in only_symbols if s and s.strip()}
+        missing = sorted(w for w in want if w not in {c.upper() for c in candidates})
+        candidates = [c for c in candidates if c.upper() in want]
+        logger.info("Restricted to %d requested symbol(s): %s", len(candidates), ", ".join(candidates) or "none")
+        if missing:
+            logger.warning("  not in the point-in-time candidate set (no qualifying bar in the window): %s",
+                           ", ".join(missing))
+        fn.set_count("candidates", len(candidates))
+        fn.symbols = list(candidates)
     candidates = sample_candidates(candidates, sample, include=include) if sample else (
         candidates[:limit] if limit else candidates
     )
@@ -1081,6 +1094,14 @@ def main(argv: list[str] | None = None) -> dict | None:
         "Prefer this over --limit, which slices alphabetically.",
     )
     parser.add_argument(
+        "--symbols", default="",
+        help="comma-separated symbols to restrict the ENTIRE run to, e.g. --symbols NVDA,MU,GOOG. "
+             "The point-in-time pre-filter still applies to each, so this shows what the strategy "
+             "would have done on those names and nothing else. Unlike --include it is a restriction, "
+             "not an addition. Note the RS filter ranks a signal against the universe present in the "
+             "run, so on a handful of symbols that ranking is not meaningful.",
+    )
+    parser.add_argument(
         "--include", default="",
         help="comma-separated symbols to force into the sample, in ADDITION to "
         "the seeded draw (keeps the run comparable to one without it)",
@@ -1232,6 +1253,7 @@ def main(argv: list[str] | None = None) -> dict | None:
         min_rs=args.min_rs, use_market_filter=args.market_filter, spec_costs=args.spec,
         max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
         max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
+        only_symbols=[x.strip() for x in args.symbols.split(",") if x.strip()],
     )
     from ..paths import run_dir
 
@@ -1253,6 +1275,9 @@ def main(argv: list[str] | None = None) -> dict | None:
     if args.accept_labels != "TRADE - HIGH CONFIDENCE":
         run += "_" + "+".join("".join(w[0] for w in x.split() if w[0].isalpha()) for x in labels)
     run += f"_sample{args.sample}" if args.sample else ""
+    if args.symbols:
+        picked = [x.strip().upper() for x in args.symbols.split(",") if x.strip()]
+        run += "_only-" + ("+".join(picked) if len(picked) <= 4 else f"{len(picked)}syms")
     # The strategy's version and parameter fingerprint belong in the run name:
     # without them a result cannot be traced to the rules that produced it, and
     # two versions of the same strategy silently overwrite each other's reports.

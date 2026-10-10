@@ -23,6 +23,7 @@ from ..core import demand_supply as ds_mod
 from ..config.base import MarketConfig
 from ..core.context import StockContext
 from .base import (
+    tradable_point_in_time,
     CAP_ORDER,
     DOWNGRADE_MAP,
     LABELS,
@@ -48,8 +49,19 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 class TrendPullbackStrategy(Strategy):
     selection = "time_series"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-10",
+         "The point-in-time pre-filter no longer applies cfg.screener.min_price. The floor keeps "
+         "live screening out of penny stocks, but a backtest reads it against SPLIT-ADJUSTED "
+         "history, so it deleted the early years of exactly the stocks that went up most -- "
+         "splitting is what winners do. NVDA traded about $15 in 2013 on $126m a day, 12x the "
+         "liquidity floor; stored back-adjusted through a 4:1 and a 10:1 split that is $0.39, "
+         "under the $10 US floor, so NVDA did not qualify until 2020-07-08 and SMCI not until "
+         "2023. Liquidity is now carried by min_dollar_volume alone, which is split-invariant "
+         "(close falls by the split factor, volume rises by it). Live screening keeps the price "
+         "floor in screens/base.py, where today's price really is today's price. On NVDA this "
+         "takes evaluable bars from 815 to 1,841 of 3,464; India is unaffected (min_price=0)."),
         ("1.0", "2026-10-10",
          "v1 baseline of the trend-pullback / continuation strategy."),
     )
@@ -270,18 +282,15 @@ class TrendPullbackStrategy(Strategy):
     # ---------- pre-filter ----------
 
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
-        if cfg.screener.min_price and last["close"] < cfg.screener.min_price:
-            return False, f"price {last['close']:.2f} < {cfg.screener.min_price}"
+        ok, why = tradable_point_in_time(cfg, last)
+        if not ok:
+            return False, why
         if pd.isna(last["sma50"]) or pd.isna(last["sma200"]) or last["sma50"] <= last["sma200"]:
             return False, "SMA50 <= SMA200"
         if pd.isna(last["adx14"]) or last["adx14"] <= cfg.screener.adx_min:
             return False, f"ADX14 <= {cfg.screener.adx_min}"
         if pd.isna(last["atr_pct"]) or last["atr_pct"] <= cfg.screener.atr_pct_min:
             return False, f"ATR% <= {cfg.screener.atr_pct_min}"
-        if cfg.screener.min_dollar_volume:
-            dv = last.get("dollar_vol_sma20")
-            if pd.isna(dv) or dv < cfg.screener.min_dollar_volume:
-                return False, f"liquidity below {cfg.screener.min_dollar_volume:,.0f}"
         return True, "passed"
 
     # ---------- gates / flags / setups ----------

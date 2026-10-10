@@ -65,9 +65,12 @@ def normalise(reason: object) -> str:
 class Funnel:
     """Counts per stage, and the reasons for each drop."""
 
+    MAX_NAMED = 25   # beyond this a list is noise, so only the count is shown
+
     def __init__(self) -> None:
         self.counts: collections.Counter = collections.Counter()
         self.drops: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+        self.symbols: list[str] = []   # the names actually scanned, when few enough to name
 
     # ---- recording
     def reached(self, stage: str, n: int = 1) -> None:
@@ -114,7 +117,7 @@ class Funnel:
         return out
 
     def to_dict(self) -> dict:
-        return {"stages": self.rows()}
+        return {"stages": self.rows(), "symbols": list(self.symbols)}
 
     def write(self, run_dir: Path) -> Path:
         path = Path(run_dir) / "funnel.json"
@@ -126,8 +129,17 @@ class Funnel:
         rows = self.rows()
         if not rows:
             return ""
-        out = ["### Funnel — what became a trade, and where the rest stopped", "",
-               "| Stage | Reached | Lost here | Why |", "|---|---:|---:|---|"]
+        out = ["### Funnel — what became a trade, and where the rest stopped", ""]
+        # Say plainly what this run covered. A result from three symbols and one
+        # from three thousand read identically otherwise.
+        scanned = self.counts.get("candidates", 0)
+        if self.symbols:
+            named = ", ".join(self.symbols[:self.MAX_NAMED])
+            more = f" (+{len(self.symbols) - self.MAX_NAMED} more)" if len(self.symbols) > self.MAX_NAMED else ""
+            out += [f"**Scanned {len(self.symbols)} symbol{'' if len(self.symbols) == 1 else 's'}:** {named}{more}", ""]
+        elif scanned:
+            out += [f"**Scanned {scanned:,} symbols** (every name passing the point-in-time pre-filter).", ""]
+        out += ["| Stage | Reached | Lost here | Why |", "|---|---:|---:|---|"]
         for i, r in enumerate(rows):
             nxt_row = rows[i + 1] if i + 1 < len(rows) else None
             # only subtract across stages counting the same unit
