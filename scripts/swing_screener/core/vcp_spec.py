@@ -42,6 +42,18 @@ import pandas as pd
 @dataclass(frozen=True)
 class VcpParams:
     swing_k: int = 5                 # swing points: k bars each side  [assumption]
+    # How decisively a close must clear the base high before the base counts as
+    # resolved. The spec (line 86) ends a base on ANY close above BH, which makes
+    # a base impossible to hold in the stocks this strategy targets: a leader
+    # making new highs resets the base, and VCP-02 then wants 15 more sessions
+    # from the new swing high. 88% of VCP-02's rejections are "no base" or "base
+    # too young", and the detector finds 0 bases in NVDA, CELH, SMCI, BAJFINANCE
+    # and TRENT across 13 years. A base's ceiling is a zone, not a line -- the
+    # same reasoning as chart_pattern.overhead_cluster_atr and the overhead cap
+    # in minervini_spec -- so a marginal poke leaves the base intact and only a
+    # decisive close resolves it. 0 reproduces the spec exactly.
+    bh_break_atr: float = 1.0        # ATRs above BH a close must clear  [assumption]
+    bh_break_pct: float = 2.0        # fallback when ATR is unavailable  [assumption]
     min_swing_pct: float = 2.0       # contractions shallower than this are wiggles  [assumption]
     zigzag_atr_mult: float = 1.5     # the zig-zag threshold is at least this many ATRs. A FIXED
                                      # percentage cannot work across stocks: MU's median ATR is
@@ -190,10 +202,15 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     is_hi = _swings(d["high"], p.swing_k, "max")
 
     # ---- step 1: the base high in force on day t
+    atr = d["atr14"].to_numpy(float) if "atr14" in d.columns else np.full(n, np.nan)
     bh_i = None
     for j in range(n):
-        if bh_i is not None and close[j] > high[bh_i]:
-            bh_i = None                                   # a close above BH: that base is gone
+        if bh_i is not None:
+            # a DECISIVE close above BH resolves the base; a poke does not
+            margin = (p.bh_break_atr * atr[j] if atr[j] == atr[j]
+                      else high[bh_i] * p.bh_break_pct / 100)
+            if close[j] > high[bh_i] + margin:
+                bh_i = None
         if bh_i is None and is_hi[j]:
             bh_i = j
     if bh_i is None:

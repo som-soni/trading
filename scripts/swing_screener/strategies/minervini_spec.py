@@ -93,8 +93,20 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-10",
+         "The base high is a zone, not a line (VcpParams.bh_break_atr). The spec ends a base "
+         "on ANY close above BH, so a leader making new highs can never hold one: VCP-02 then "
+         "wants 15 more sessions from a fresh swing high. Across ten leaders in both markets "
+         "the detector found 13 bases in 13 years and ZERO volume-confirmed breakouts, with "
+         "NVDA (+1554%), CELH, SMCI, BAJFINANCE (+2063%) and TRENT yielding no base at all. "
+         "A close must now clear BH by bh_break_atr x ATR to resolve the base, the same "
+         "zone-not-line reasoning as chart_pattern.overhead_cluster_atr and this strategy's "
+         "own OVERHEAD_CLUSTER_ATR. Measured: 'no base high at all' rejections fall 966 -> 738 "
+         "(-24%) and detected breakouts rise 8 -> 11. It is a CORRECTNESS fix and nothing more "
+         "-- bases stay at 13 and MV-01 stays at 0, because the freed bars fail VCP-04 (451) "
+         "and VCP-06 (521) instead. bh_break_atr=0 reproduces the spec exactly."),
         ("1.2", "2026-10-10",
          "The point-in-time pre-filter no longer applies cfg.screener.min_price. The floor keeps "
          "live screening out of penny stocks, but a backtest reads it against SPLIT-ADJUSTED "
