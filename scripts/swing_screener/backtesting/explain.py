@@ -100,6 +100,15 @@ def _extras_on(market: str, strategy: str, symbol: str, date) -> dict:
     return {"extras": _jload(row[0]), "setups": _jload(row[1])} if row else {}
 
 
+# EX-05 and EX-06 are QUEUED: the rule fires on one session's close and the
+# position is sold at the NEXT session's open. Explaining them from the exit
+# bar reads the wrong day's numbers -- on TCS 2010-04-26 that showed volume at
+# 0.67x average and concluded the run "did not require volume confirmation",
+# when the rule had in fact fired the session before on 1.14x. Anything in here
+# is explained from the bar that triggered it.
+_QUEUED_EXITS = {"TREND_EXIT", "CLIMAX"}
+
+
 def _why_exit(reason: str, bar, policy_ma: str, pivot, entry: float,
               initial_stop: float, stop_on_exit) -> list[str]:
     """Restate the rule that fired, with the numbers from that bar.
@@ -135,15 +144,13 @@ def _why_exit(reason: str, bar, policy_ma: str, pivot, entry: float,
     elif reason == "TREND_EXIT":
         out.append(f"EX-06 trend break: closed {c:,.2f} below {policy_ma.upper()} {ma:,.2f}")
         if v50 == v50 and vol == vol and v50 > 0:
-            # Whether the break had to carry volume depends on the run's
-            # `trend_volume` setting, which is not recorded in trades.csv --
-            # so report the ratio and let it speak, rather than asserting a
-            # requirement that may not have applied. A sub-1.0x ratio here
-            # means the confirmation was off for this run.
+            # The run's `trend_volume` setting is not recorded in trades.csv, so
+            # report the ratio and say what it implies rather than asserting a
+            # requirement that may not have applied.
             out.append(f"      volume {vol:,.0f} vs 50-day average {v50:,.0f} "
                        f"({vol / v50:.2f}x)"
                        + ("" if vol >= v50 else
-                          " — below average, so this run did not require volume confirmation"))
+                          " — below average, so volume confirmation was off for this run"))
     elif reason == "TIME_STOP":
         out.append(f"EX-07 time stop: still below entry+1R after the allowed holding period")
     elif reason == "OPEN":
@@ -194,11 +201,18 @@ def explain_trades(market: str, strategy: str, symbol: str, tr, px, cfg,
         print(f"    stop {istop:,.2f}, i.e. {(1 - istop / entry) * 100:.1f}% of entry at risk")
 
         print("  EXIT")
+        reason = str(t.get("exit_reason"))
         bar = enriched.loc[xd] if (xd is not None and xd in enriched.index) else None
+        if bar is not None and reason in _QUEUED_EXITS:
+            # step back to the session whose close actually fired the rule
+            pos = enriched.index.get_loc(xd)
+            if pos > 0:
+                xd, bar = enriched.index[pos - 1], enriched.iloc[pos - 1]
+                print(f"    (fired on {xd.date()}'s close; sold at the next open)")
         if bar is None:
             print(f"    no bar for {xd}")
         else:
-            for line in _why_exit(str(t.get("exit_reason")), bar, policy_ma, pivot,
+            for line in _why_exit(reason, bar, policy_ma, pivot,
                                   entry, istop, float(t.get("stop", istop))):
                 print(f"    {line}")
 
