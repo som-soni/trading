@@ -39,6 +39,8 @@ from .trend_pullback import round_tick
 
 MV01 = "MV-01"   # confirmed breakout through the frozen pivot
 MV02 = "MV-02"   # coiled just below the pivot
+MV03 = "MV-03"   # low cheat: a shelf in the lower third of the base
+MV04 = "MV-04"   # cheat / 3C: a shelf in the middle third of the base
 
 # ---- section 5: base and VCP (core/vcp_spec.py)
 SWING_K = 5
@@ -68,6 +70,9 @@ BUY_RANGE_PCT = 5.0     # MV-01b: close no more than this % above the pivot (and
 UPPER_HALF = 0.5        # MV-01c: close in at least this fraction of the day's range
 
 # ---- section 8: stop
+CHEAT_SHELF_DAYS = 7    # MV-03/MV-04: sessions in the shelf (mirrors VcpParams.cheat_shelf_days)
+CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpParams.cheat_shelf_pct)
+
 STOP_BUFFER_PCT = 0.5   # SL-01: stop this % under the tight low
 MAX_STOP_PCT = 8.0      # SL-03: skip a fill whose stop is further below it than this
 NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a third at 3R)
@@ -93,8 +98,20 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.3"
+    version = "1.4"
     changelog = (
+        ("1.4", "2026-10-10",
+         "The cheat entries (MV-03 low cheat, MV-04 \"3C\"). Minervini buys three points inside a "
+         "base -- the lower third, the middle third and the pivot at the top -- and this spec only "
+         "ever implemented the last, which is why it found nothing in stocks that never complete a "
+         "textbook VCP. A cheat is a short shelf with a pivot of its own, and it runs off any base "
+         "clearing VCP-01/02/03 rather than a completed VCP, because a cheat is taken while the base "
+         "is still FORMING; waiting for completion IS the pivot buy. Its stop is the SHELF low, not "
+         "the base low, which is the reason he takes it. Measured over ten leaders in both markets, "
+         "2013 onward: valid trade plans 10 -> 74, with cheats appearing in 9 of 10 names including "
+         "NVDA, BAJFINANCE, TRENT and SMCI, which produce no full VCP base at all. Median R 2.92 "
+         "(MV-04) and 3.34 (MV-03) against 2.45 for the pivot buy, and every cheat plan clears the "
+         "2:1 minimum. Whether they MAKE money is a separate question the backtest has to answer."),
         ("1.3", "2026-10-10",
          "The base high is a zone, not a line (VcpParams.bh_break_atr). The spec ends a base "
          "on ANY close above BH, so a leader making new highs can never hold one: VCP-02 then "
@@ -143,7 +160,7 @@ class MinerviniSpecStrategy(Strategy):
 
     gate_codes = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8")
     watch_codes = ("B1", "B2", "B3", "B4")
-    setup_codes = (MV01, MV02)
+    setup_codes = (MV01, MV02, MV03, MV04)
     extra_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                      "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio", "breakout_volume_ratio",
                      "vcp_fail", "rs_mom")
@@ -232,6 +249,13 @@ class MinerviniSpecStrategy(Strategy):
         MV01: "Breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
               "on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of the pivot.",
         MV02: "Coiled: the base is complete and the close is within {COIL_PCT}% below the pivot.",
+        MV03: "Low cheat: a shelf of {CHEAT_SHELF_DAYS} sessions spanning no more than "
+              "{CHEAT_SHELF_PCT}% sits in the LOWER third of a base that has cleared VCP-01/02/03, and "
+              "today's close went through its high. Taken while the base is still forming, so the stop "
+              "is the shelf low rather than the base low. Minervini calls this the riskiest of his "
+              "three in-base entries and uses it mainly in stocks he already knows.",
+        MV04: "Cheat (\"3C\"): the same shelf in the MIDDLE third of the base — the cup-completion "
+              "cheat, entered as the base recovers but before it reaches its old high.",
     }
     entry_rules = (
         "MV-01 (EN-01): buy at the next session's open; skip it if that open is more than {BUY_RANGE_PCT}% "
@@ -243,6 +267,9 @@ class MinerviniSpecStrategy(Strategy):
         "the tight low.",
         "Stop: {STOP_BUFFER_PCT}% under the tight low. A fill whose stop is more than {MAX_STOP_PCT}% below "
         "it is skipped. Size: 1% of equity at risk, capped at the market's position limit.",
+        "MV-03 / MV-04 (cheats): bought at the close of the session that clears the shelf high, stopped "
+        "{STOP_BUFFER_PCT}% under the SHELF low rather than the base low — a nearby stop is the reason "
+        "the entry exists. The objective is the base high plus the base's measured move from there.",
         "One entry per base: a base already traded is not entered again.",
         "Target: the base's measured move — its first (deepest) contraction projected from entry — "
         "capped by overhead supply at least {OVERHEAD_CLUSTER_ATR} ATR above the base high. A setup "
@@ -278,6 +305,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Buy range", "BUY_RANGE_PCT", "MV-01b, and the most a fill may sit above the pivot."),
         ("Stop buffer", "STOP_BUFFER_PCT", "SL-01."),
         ("Maximum stop", "MAX_STOP_PCT", "SL-03, checked at the fill."),
+        ("Cheat shelf length", "CHEAT_SHELF_DAYS", "Sessions in the shelf a cheat is bought from (MV-03/MV-04)."),
+        ("Cheat shelf tightness", "CHEAT_SHELF_PCT", "Widest shelf, high to low, that counts as a cheat."),
         ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused."),
         ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
@@ -320,7 +349,21 @@ class MinerviniSpecStrategy(Strategy):
         }
         mv01 = breakout and not any(confirmed.values())
         mv02 = bool(not breakout and today["ok"] and today["pivot"] * (1 - COIL_PCT / 100) <= close <= today["pivot"])
+        # The cheat entries. Minervini buys three points in a base -- the low cheat
+        # (lower third), the cheat/"3C" (middle third) and the pivot buy at the top
+        # -- and only the last was implemented. A cheat is taken while the base is
+        # still FORMING, so it runs off any base clearing VCP-01/02/03 rather than a
+        # completed VCP, and its stop is the shelf low rather than the base low,
+        # which is the whole reason he takes it: the stop is near.
+        # yesterday's shelf, not today's: the shelf's high is the max over a window
+        # that INCLUDES the current bar, so today's close can never exceed it and the
+        # cross would be unsatisfiable. MV-01 freezes the pivot the same way.
+        ch = prev if prev.get("cheat_ok") else None
+        cheat_cross = bool(ch and prev_close <= ch["cheat_pivot"] < close)
+        mv03 = bool(cheat_cross and ch["cheat_zone"] == "low")
+        mv04 = bool(cheat_cross and ch["cheat_zone"] == "mid")
         result.setups[MV01], result.setups[MV02] = mv01, mv02
+        result.setups[MV03], result.setups[MV04] = mv03, mv04
 
         for code in ("B1", "B2", "B3"):
             on = bool(breakout and confirmed[code])
@@ -337,6 +380,10 @@ class MinerviniSpecStrategy(Strategy):
             result.watch_notes["B4"] = f"earnings in {ed} days"
 
         depths = base.get("depths") or []
+        if ch is not None:
+            e.update(cheat_pivot=ch["cheat_pivot"], cheat_low=ch["cheat_low"],
+                     cheat_zone=ch["cheat_zone"], cheat_pos=ch["cheat_pos"],
+                     cheat_range_pct=ch["cheat_range_pct"], base_low=ch.get("base_low"))
         e.update(
             pivot=base["pivot"], tight_low=base["tight_low"], base_high=base["bh"],
             base_date=str(base["bh_date"].date()) if base["bh_date"] is not None else None,
@@ -354,7 +401,13 @@ class MinerviniSpecStrategy(Strategy):
         return result.has_setup
 
     def setup_quality(self, result: StrategyResult) -> float:
-        return 2.0 if result.setups.get(MV01) else (1.0 if result.setups.get(MV02) else 0.0)
+        if result.setups.get(MV01):
+            return 2.0
+        if result.setups.get(MV02):
+            return 1.0
+        # a cheat is a lower-confidence entry than the pivot buy, and the low cheat
+        # lower than the 3C -- he describes it as the riskiest of the three
+        return 0.8 if result.setups.get(MV04) else (0.6 if result.setups.get(MV03) else 0.0)
 
     # ---------- plan ----------
 
@@ -362,13 +415,30 @@ class MinerviniSpecStrategy(Strategy):
         if not result.has_setup:
             return PlanChoice(None, None, "no active setup")
         e = ctx.extras
+        cheat = result.setups.get(MV03) or result.setups.get(MV04)
         pivot, tl = e.get("pivot"), e.get("tight_low")
-        if not pivot or tl is None or pd.isna(tl):
+        # Only the pivot buy needs the FINAL tight area. A cheat is taken while the
+        # base is still forming, so that area does not exist yet -- requiring it here
+        # rejected 122 of 133 cheats before they reached their own branch.
+        if not cheat and (not pivot or tl is None or pd.isna(tl)):
             return PlanChoice(None, None, "missing pivot / tight low")
-        setup = MV01 if result.setups.get(MV01) else MV02
-        # MV-01 fills at tomorrow's open, whose best estimate today is the close; MV-02 at the buy-stop
-        entry = float(ctx.close) if setup == MV01 else round_tick(float(pivot) * 1.001, cfg.tick_size, "up")
-        stop = round_tick(float(tl) * (1 - STOP_BUFFER_PCT / 100), cfg.tick_size, "down")
+        if cheat:
+            # A cheat is bought at its shelf, not the base's pivot, and stopped under
+            # the SHELF low. That nearby stop is the entire point of the entry: the
+            # base low is far away mid-base, and risking down to it would make the
+            # trade worse than the pivot buy rather than better.
+            setup = MV03 if result.setups.get(MV03) else MV04
+            cp, cl = e.get("cheat_pivot"), e.get("cheat_low")
+            if not cp or cl is None or pd.isna(cl):
+                return PlanChoice(None, None, "missing cheat shelf")
+            pivot = float(cp)
+            entry = float(ctx.close)          # confirmed by the close, as EN-02 is since v1.1
+            stop = round_tick(float(cl) * (1 - STOP_BUFFER_PCT / 100), cfg.tick_size, "down")
+        else:
+            setup = MV01 if result.setups.get(MV01) else MV02
+            # MV-01 fills at tomorrow's open, whose best estimate today is the close; MV-02 at the buy-stop
+            entry = float(ctx.close) if setup == MV01 else round_tick(float(pivot) * 1.001, cfg.tick_size, "up")
+            stop = round_tick(float(tl) * (1 - STOP_BUFFER_PCT / 100), cfg.tick_size, "down")
         if stop <= 0 or stop >= entry:
             return PlanChoice(None, None, "degenerate stop")
         risk = entry - stop
@@ -378,8 +448,16 @@ class MinerviniSpecStrategy(Strategy):
         # the base high less its deepest low, which (because VCP-06 forces each
         # contraction to shrink) is the first contraction's low.
         bh, first_depth = e.get("base_high"), e.get("first_depth_pct")
-        measured_move = (float(bh) * float(first_depth) / 100
-                         if bh and first_depth else float("nan"))
+        if cheat and bh:
+            # A cheat is bought below the old high, so the nearest objective is that
+            # high; the base's own measured move is projected from there. first_depth
+            # is absent when the base never reached the contraction step, in which
+            # case the old high alone is the objective.
+            measured_move = float(bh) - entry + (float(bh) * float(first_depth) / 100
+                                                 if first_depth else 0.0)
+        else:
+            measured_move = (float(bh) * float(first_depth) / 100
+                             if bh and first_depth else float("nan"))
         target = entry + measured_move if measured_move == measured_move else entry + risk
         # Overhead supply caps the move — but measured from the BASE HIGH, not from
         # entry. The pivot sits below the base high by construction (VCP-09 only

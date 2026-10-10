@@ -53,6 +53,16 @@ class VcpParams:
     # in minervini_spec -- so a marginal poke leaves the base intact and only a
     # decisive close resolves it. 0 reproduces the spec exactly.
     bh_break_atr: float = 1.0        # ATRs above BH a close must clear  [assumption]
+    # The "cheat" entries. Minervini describes three entry points inside a base --
+    # the low cheat (lower third), the cheat or "3C" (middle third) and the pivot
+    # buy at the top -- and this spec only ever implemented the last. A cheat is a
+    # short shelf with a pivot of its own, bought before the stock has recovered to
+    # its old high, which is why its stop is nearby: the shelf low, not the base
+    # low. These are measured on any base that clears VCP-01/02/03, because a cheat
+    # is taken while the base is still FORMING -- waiting for the full VCP to
+    # complete is the pivot buy, by definition.
+    cheat_shelf_days: int = 7        # bars in the shelf  [assumption]
+    cheat_shelf_pct: float = 8.0     # shelf high-to-low range, % of the high  [assumption]
     bh_break_pct: float = 2.0        # fallback when ATR is unavailable  [assumption]
     min_swing_pct: float = 2.0       # contractions shallower than this are wiggles  [assumption]
     zigzag_atr_mult: float = 1.5     # the zig-zag threshold is at least this many ATRs. A FIXED
@@ -192,7 +202,9 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     Returns {"ok", "fail" (first failing rule id, or None), "bh", "bh_date", "base_days", "prior_advance_pct",
     "depths", "lows", "pivot", "tight_low", "tight_range_pct", "dryup", "base_tt"}."""
     out = {"ok": False, "fail": None, "bh": None, "bh_date": None, "base_days": None, "prior_advance_pct": None,
-           "depths": [], "lows": [], "pivot": None, "tight_low": None, "tight_range_pct": None, "dryup": None, "base_tt": None, "zigzag_pct_used": None}
+           "depths": [], "lows": [], "pivot": None, "tight_low": None, "tight_range_pct": None, "dryup": None, "base_tt": None, "zigzag_pct_used": None,
+           "base_low": None, "cheat_ok": False, "cheat_pivot": None, "cheat_low": None,
+           "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None}
     d = daily.iloc[-p.lookback:]
     n = len(d)
     if n < 2 * p.swing_k + p.base_min_days + 5:
@@ -234,6 +246,25 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     if not out["base_tt"] or not _trend_held(d.iloc[bh_i:], p.base_sma200_floor):
         out["fail"] = "VCP-03"
         return out
+
+    # ---- the cheat shelf, recorded for ANY legitimate base (VCP-01/02/03), whether
+    # or not the contraction gates below ever pass. Where the shelf sits in the base
+    # is what separates a low cheat from a cheat from the pivot buy.
+    base_low = float(low[bh_i:].min())
+    span = high[bh_i] - base_low
+    sh = d.iloc[-p.cheat_shelf_days:]
+    sh_hi, sh_lo = float(sh["high"].max()), float(sh["low"].min())
+    sh_rng = (sh_hi - sh_lo) / sh_hi * 100 if sh_hi > 0 else float("nan")
+    out["base_low"] = base_low
+    out["cheat_pivot"], out["cheat_low"], out["cheat_range_pct"] = sh_hi, sh_lo, sh_rng
+    pos = (sh_hi - base_low) / span if span > 0 else float("nan")
+    out["cheat_pos"] = pos
+    out["cheat_zone"] = (None if pos != pos else
+                         "low" if pos < 1 / 3 else "mid" if pos < 2 / 3 else "high")
+    # a shelf must be tight, and must sit BELOW the base high -- at or above it the
+    # stock has recovered its old high and the entry is the pivot buy, not a cheat
+    out["cheat_ok"] = bool(sh_rng == sh_rng and sh_rng <= p.cheat_shelf_pct
+                           and sh_hi < high[bh_i] and len(sh) >= p.cheat_shelf_days)
 
     # ---- step 2: the contractions, segmented by zig-zag
     # A leg turns only after a `zigzag_pct` reversal in BOTH directions. Segmenting on swing
