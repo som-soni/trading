@@ -592,5 +592,28 @@ class MinerviniStrategy(Strategy):
         }
 
 
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """Pivot and tight-area low of the VCP, with the contraction story. This strategy's
+        detector stores no base start date, so there is no box — the spec twin draws one."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        out = super().chart_anatomy(sig)
+        if e.get("pivot"):
+            out.append({"shape": "level", "bars": 50, "to": d, "price": float(e["pivot"]),
+                        "role": "pivot", "label": f"pivot {e['pivot']:g} — last contraction's high"})
+        tl = e.get("tight_low")
+        if tl == tl and tl:
+            out.append({"shape": "level", "bars": 20, "to": d, "price": float(tl),
+                        "role": "support", "label": f"tight-area low {tl:g}"})
+        if e.get("contraction_legs"):
+            vol = e.get("tight_volume_ratio")
+            out = [s for s in out if s["shape"] != "note"]
+            out.append({"shape": "note", "at": d, "price": e.get("pivot") or sig.get("h_value"),
+                        "text": f"VCP {d}: {e['contraction_legs']} contraction legs, the last "
+                                f"{e.get('last_contraction_pct', float('nan')):.1f}% deep (must be ≤ {VCP_TIGHT_PCT:g}%)"
+                                + (f"; tight-area volume {vol:.2f}× the 50-day average." if vol == vol and vol is not None else ".")})
+        return out
+
+
 def _g(result: StrategyResult, code: str, passed: bool, note: str) -> None:
     (result.ok if passed else result.fail)(code, note)

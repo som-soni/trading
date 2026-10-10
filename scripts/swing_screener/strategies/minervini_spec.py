@@ -444,3 +444,32 @@ class MinerviniSpecStrategy(Strategy):
             "rs_mom": r("rs_mom", 3),
         }
 
+
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The base box the VCP was anchored to, its pivot and tight-area low, and a note saying
+        how the base was identified — all from the signal's own cached extras (see base.py)."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        out: list[dict] = []
+        bh, bd, tl = e.get("base_high"), e.get("base_date"), e.get("tight_low")
+        if bh and bd:
+            depths = (f"{e['first_depth_pct']:g}% → {e['last_depth_pct']:g}%"
+                      if e.get("first_depth_pct") is not None and e.get("last_depth_pct") is not None else "?")
+            out.append({"shape": "box", "from": str(bd), "to": d, "top": float(bh),
+                        "bottom": float(tl) if tl else float(bh) * (1 - (e.get("first_depth_pct") or 10) / 100),
+                        "role": "base", "label": f"base {e.get('base_days', '?')}d · {e.get('contractions', '?')}c {depths}"})
+            note = (f"Base: highest high {bh:g} on {bd}, {e.get('base_days', '?')} sessions. "
+                    f"{e.get('contractions', '?')} contractions shrinking {depths} (each must be ≤ {SHRINK:g}× the one before). ")
+            if e.get("tightness_pct") is not None:
+                note += f"Final tight area {e['tightness_pct']:g}% deep"
+                note += f", volume {e['dryup_ratio']:g}× the 50-day average (dry-up). " if e.get("dryup_ratio") is not None else ". "
+            note += (f"VCP rejected: {e['vcp_fail']}." if e.get("vcp_fail")
+                     else f"Pivot {e['pivot']:g} — the final contraction's high; a buy-stop goes just above it." if e.get("pivot") else "")
+            out.append({"shape": "note", "at": d, "price": float(bh), "text": note})
+        if e.get("pivot"):
+            out.append({"shape": "level", "from": str(bd) if bd else None, "bars": None if bd else 40, "to": d,
+                        "price": float(e["pivot"]), "role": "pivot", "label": f"pivot {e['pivot']:g}"})
+        if tl:
+            out.append({"shape": "level", "from": str(bd) if bd else None, "bars": None if bd else 40, "to": d,
+                        "price": float(tl), "role": "support", "label": f"tight-area low {tl:g} — the stop's anchor"})
+        return out or super().chart_anatomy(sig)

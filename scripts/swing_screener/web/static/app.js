@@ -404,6 +404,11 @@ async function chartPage(alive, market, symbol, tf) {
 
   let sideReady = false;  // the panel renders once the symbol's context has loaded
   let symNotes = null;    // promise of this stock's notes, for the details panel
+  // trade-debug overlay state — declared before the first renderSide(), which can hit the
+  // restored Trades tab before the chart (and its data) exists
+  let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1;
+  let applyAnnotations = () => { if (dr) dr.annotate(vcpAnnotations); };
+  let zoomToTrade = () => {};
   const viewKey = `${market}:${symbol}:${tf}`;
   let chart = null;
   // rebuild the chart (for an indicator change) without losing the user's zoom / scroll
@@ -465,14 +470,18 @@ async function chartPage(alive, market, symbol, tf) {
   const want = store.get("tradeRun:" + market, "") + "";
   sel.value = [...sel.options].some((o) => o.value === want) ? want : "";
   sel.onchange = () => { store.set("tradeRun:" + market, sel.value); route(); };
+  // a backtest run is on: offer its trades as a side panel (click a trade -> its anatomy)
+  if (sel.value) {
+    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="trades" title="Backtest trades — click one to zoom to it and see the structure the strategy traded on">
+      <svg viewBox="0 0 20 20"><path d="M3 17V3M3 17h14"/><path d="M5 13l3.5-5 3 3L16 5"/></svg></button>`);
+  } else if (prefs.tab === "trades") prefs.tab = "wl";
+  syncPanel();
 
   // drag-panning of the plot is done by our own handler below (both axes, TradingView style), so the
   // library's horizontal-only drag is off; wheel zoom, touch and the axis drag-to-scale stay native
   chart = LC.createChart(chartEl, { autoSize: true, ...chartTheme(), crosshair: { mode: LC.CrosshairMode.Normal },
     handleScroll: { mouseWheel: true, pressedMouseMove: false, horzTouchDrag: true, vertTouchDrag: false } });
   const prevCleanup = cleanup;
-  let dr;
-  let vcpAnnotations = [];   // strategy-drawn base boxes, applied after Drawings is created
   cleanup = () => { prevCleanup(); dr && dr.destroy(); chart.remove(); };
   let main, times;
   const rows = px.ohlc ? px.candles : px.line;
@@ -516,32 +525,65 @@ async function chartPage(alive, market, symbol, tf) {
       LC.createSeriesMarkers(main, marks);
     }
 
-    // Auto-annotate the structure the strategy claimed to see. Arrows say WHERE a
-    // trade happened and nothing about WHY, so the base itself is drawn: a box from
-    // its high to the signal, spanning the tight-area low to the base high, with the
-    // pivot the breakout had to clear. A completed VCP is solid, one that failed is
-    // dashed and labelled with the rule that rejected it — so a chart shows the near
-    // misses too, not only the trades.
+    // Auto-annotate the structure the strategy claimed to see, per executed trade: the base box,
+    // the pivot, the contraction story, the trade's own stop/target — straight from the signal
+    // record the run wrote (/api/reports/{id}/trade-anatomy), so the chart shows WHY each trade
+    // fired, not just where. The old VCP layer stays for the near misses: bases the detector saw
+    // that never became one of this run's trades (dashed, labelled with the rejecting rule).
     const stratKey = (tradeRuns.find((r) => String(r.id) === String(sel.value)) || {}).strategy;
     if (stratKey) {
-      const boxes = await api(`/api/vcp/${market}/${encodeURIComponent(symbol)}?strategy=${encodeURIComponent(stratKey)}`).catch(() => []);
+      const [anat, boxes] = await Promise.all([
+        api(`/api/reports/${sel.value}/trade-anatomy?symbol=${encodeURIComponent(symbol)}`).catch(() => []),
+        api(`/api/vcp/${market}/${encodeURIComponent(symbol)}?strategy=${encodeURIComponent(stratKey)}`).catch(() => []),
+      ]);
       if (!alive()) return;
+      anatomy = anat || [];
+      const ts = (d) => { const s = snap(d); return s ? Date.parse(s + "T00:00:00Z") : null; };
+      const idxOf = (d) => { const s = snap(d); return s ? times.indexOf(s) : -1; };
+      // near misses only: a base that one of this run's trades was built on is drawn by its trade
+      const traded = new Set(anatomy.flatMap((t) => t.shapes.filter((s) => s.shape === "box" && s.from).map((s) => `${s.from}`)));
       const ann = [];
-      (boxes || []).forEach((b) => {
-        const t0 = snap(b.from), t1 = snap(b.to);
-        if (!t0 || !t1) return;
+      (boxes || []).filter((b) => !traded.has(`${b.from}`)).forEach((b) => {
+        const t0 = ts(b.from), t1 = ts(b.to);
+        if (t0 == null || t1 == null) return;
         const done = b.complete;
-        ann.push({
-          type: "rect", pts: [{ t: t0, p: b.high }, { t: t1, p: b.low }],
+        ann.push({ type: "rect", pts: [{ t: t0, p: b.high }, { t: t1, p: b.low }],
           color: done ? "#26a69a" : "#8a8a8a", width: done ? 2 : 1, dash: !done,
-          text: `VCP ${b.contractions}c${done ? "" : " · " + (b.fail || "incomplete")}`,
-        });
-        if (b.pivot) ann.push({
-          type: "trend", pts: [{ t: t0, p: b.pivot }, { t: t1, p: b.pivot }],
-          color: "#26a69a", width: 1, dash: true,
-        });
+          text: `VCP ${b.contractions}c${done ? "" : " · " + (b.fail || "incomplete")}` });
+        if (b.pivot) ann.push({ type: "trend", pts: [{ t: t0, p: b.pivot }, { t: t1, p: b.pivot }],
+          color: "#26a69a", width: 1, dash: true });
       });
       vcpAnnotations = ann;   // applied once Drawings exists, further down
+      // anatomy shapes -> overlay items; the selected trade stays vivid, the rest dim to context
+      const ROLE = { base: "#2962ff", pivot: "#26a69a", stop: "#ef5350", target: "#26a69a", support: "#8a8a8a", level: "#ff9800" };
+      const items = (t, i) => {
+        const dim = selTrade >= 0 && selTrade !== i;
+        const withNotes = selTrade === i || (selTrade < 0 && anatomy.length <= 3);
+        return t.shapes.map((s) => {
+          const col = dim ? "#4b5063" : ROLE[s.role] || ROLE.level;
+          const t1 = ts(s.to || s.at || t.entry_date); if (t1 == null) return null;
+          const i1 = idxOf(s.to || s.at || t.entry_date);
+          const t0 = s.from ? ts(s.from) : s.bars && i1 >= 0 ? Date.parse(times[Math.max(0, i1 - s.bars)] + "T00:00:00Z") : t1;
+          if (s.shape === "box") return { type: "rect", pts: [{ t: t0, p: s.top }, { t: t1, p: s.bottom }],
+            color: col, width: dim ? 1 : 2, dash: !!s.dash, text: dim ? "" : s.label || "" };
+          if (s.shape === "level") return { type: "trend", pts: [{ t: t0, p: s.price }, { t: t1, p: s.price }],
+            color: col, width: 1, dash: s.dash !== false, text: dim ? "" : s.label || "" };
+          if (s.shape === "note" && withNotes && s.text) {
+            const p = s.price ?? t.entry_price;
+            return { type: "callout", pts: [{ t: t1, p }, { t: Date.parse(times[Math.max(0, (i1 < 0 ? times.length - 1 : i1) - 45)] + "T00:00:00Z"), p: p * 1.07 }],
+              color: col, width: 1, text: s.text };
+          }
+          return null;
+        }).filter(Boolean);
+      };
+      applyAnnotations = () => { if (dr) dr.annotate([...vcpAnnotations, ...anatomy.flatMap(items)]); };
+      zoomToTrade = (t) => {
+        const ids = t.shapes.map((s) => (s.from ? idxOf(s.from) : s.bars ? idxOf(s.to || t.entry_date) - s.bars : -1)).filter((x) => x >= 0);
+        const i0 = Math.min(...(ids.length ? ids : [idxOf(t.signal_date || t.entry_date)]).filter((x) => x >= 0), idxOf(t.entry_date));
+        const i1 = Math.max(idxOf(t.exit_date || t.entry_date), i0);
+        if (i0 >= 0) chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, i0 - 8), to: i1 + 14 });
+      };
+      if (prefs.tab === "trades") renderSide();   // the panel rendered before the trades arrived
     }
   }
 
@@ -810,7 +852,7 @@ async function chartPage(alive, market, symbol, tf) {
   }).catch(() => null);
   if (!alive()) return;
   dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}`, remote });
-  dr.annotate(vcpAnnotations);   // read-only: never saved, never erasable
+  applyAnnotations();   // read-only: never saved, never erasable
   const unmountTools = Drawings.mountToolbar($("#tools"), dr, {
     count: () => studies.length,
     removeAll: () => removeStudies(studies.map((e) => e.s.id), `${studies.length} indicator${studies.length === 1 ? "" : "s"}`),
@@ -907,10 +949,26 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="wlrows">${list.items.map((it, i) => `<a class="wlr nolast ${i === pos ? "cur" : ""}" href="${hrefFor(it.m, it.s)}">
         <span class="wsym"><span class="dotm ${it.m}"></span>${esc(it.s.replace(/\.NS$/, ""))}</span></a>`).join("")}</div>`;
   }
+  /** the chosen backtest run's trades in this symbol — click one to zoom the chart to it and
+   *  light up its anatomy (the rest of the overlay dims to context) */
+  function tradesPanelHtml() {
+    // looked up from the DOM, not the `sel` binding: the panel can render (restored tab) before
+    // the select's const is initialized further down the page build
+    const run = tradeRuns.find((r) => String(r.id) === String(($("#trades") || {}).value || ""));
+    const rows = anatomy.map((t, i) => `<div class="btr ${i === selTrade ? "cur" : ""}" data-i="${i}">
+        <div class="btr-h"><b>${prettyDate(t.entry_date)} → ${t.exit_date ? prettyDate(t.exit_date) : "open"}</b>
+          <span class="${(t.r_multiple ?? 0) >= 0 ? "pos" : "neg"}">${t.r_multiple > 0 ? "+" : ""}${t.r_multiple ?? "?"}R</span></div>
+        <div class="muted small">${esc([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · "))}</div>
+        ${t.note ? `<div class="btr-note small">${esc(t.note)}</div>` : ""}</div>`).join("");
+    return `<section><h3>Backtest trades</h3><div class="muted small">${run ? esc(`${run.strategy} · ${run.run}`) : ""}</div>
+      <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div></section>
+      <div class="btrs">${rows || '<div class="muted small">This run has no trades in this symbol.</div>'}</div>`;
+  }
   function renderSide() {
     if (!sideReady || !prefs.tab) return;
     const body = $("#side .side-body");
-    body.innerHTML = prefs.tab === "wl" ? wlPanelHtml() : prefs.tab === "list" ? `<div class="wlpanel">${listPanelHtml()}</div>` : infoHtml();
+    body.innerHTML = prefs.tab === "wl" ? wlPanelHtml() : prefs.tab === "list" ? `<div class="wlpanel">${listPanelHtml()}</div>`
+      : prefs.tab === "trades" ? `<div class="wlpanel">${tradesPanelHtml()}</div>` : infoHtml();
     body.querySelectorAll(".wlr.cur").forEach((c) => c.scrollIntoView({ block: "nearest" }));
     const $notes = body.querySelector("#wlnotes");
     if ($notes) {  // this stock's notes (fetched once per chart)
@@ -919,6 +977,16 @@ async function chartPage(alive, market, symbol, tf) {
         $notes.innerHTML = `<div class="wld-nh"><span class="muted small">Notes</span><span class="spacer"></span>
             ${ns.length ? `<a class="small" href="#/notes/sym/${market}/${encodeURIComponent(symbol)}">all ${ns.length}</a>` : ""}<a class="small" href="#/notes/new/${market}/${encodeURIComponent(symbol)}">+ note</a></div>
           ${ns.slice(0, 3).map((n) => `<a class="wld-note" href="#/notes/${n.id}"><b>${esc(n.title || "Untitled")}</b><span class="muted small">${ago(n.updated_at)}</span></a>`).join("")}`; });
+    }
+    if (prefs.tab === "trades") {
+      body.querySelectorAll(".btr").forEach((el) => el.onclick = () => {
+        const i = +el.dataset.i;
+        selTrade = selTrade === i ? -1 : i;
+        applyAnnotations();
+        if (selTrade >= 0) zoomToTrade(anatomy[selTrade]);
+        renderSide();
+      });
+      return;
     }
     if (prefs.tab !== "wl") return;
     const redraw = async () => { await loadWl(); syncStar(); renderSide(); };

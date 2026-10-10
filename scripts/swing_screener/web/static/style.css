@@ -425,6 +425,13 @@ td.acts svg { width: 15px; height: 15px; }
 .strat-nav .st-dot.trade { background: var(--up); } .strat-nav .st-dot.watch { background: var(--warn); }
 .sdoc { min-width: 0; max-width: 1040px; }
 .bt-run { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+/* backtest trades panel on the chart */
+.btrs { display: grid; gap: 6px; padding: 8px 10px; overflow: auto; }
+.btr { border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; cursor: pointer; }
+.btr:hover { background: var(--panel-2); }
+.btr.cur { background: var(--accent-soft); border-color: var(--accent); }
+.btr-h { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.btr-note { margin-top: 4px; color: var(--text); line-height: 1.4; }
 .sdoc .page-head code { color: var(--muted); }
 a.btn { display: inline-flex; align-items: center; height: var(--h); padding: 0 12px; border-radius: var(--radius); background: var(--panel-2); border: 1px solid var(--line-2); color: var(--text); }
 a.btn:hover { border-color: var(--line-3); color: var(--strong); }

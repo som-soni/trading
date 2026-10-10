@@ -401,6 +401,70 @@ def report_table(rid: int, name: str, symbol: str | None = None):
     return {"columns": cols, "rows": rows}
 
 
+@app.get("/api/reports/{rid}/trade-anatomy")
+def trade_anatomy(rid: int, symbol: str):
+    """Everything the chart needs to debug one backtest run's trades in this symbol: per trade, the
+    structure the strategy saw at the signal (drawn from the `backtest_signals` row the run itself
+    wrote — never a re-detection that current code could change) plus the trade's own stop/target
+    levels. Shapes are the schema of `Strategy.chart_anatomy` (strategies/base.py)."""
+    run = q("SELECT market, strategy FROM report_runs WHERE id=%s", (rid,))
+    if not run:
+        raise HTTPException(404)
+    market, strat_key = run[0]
+    t = report_table(rid, "trades", symbol)
+    from ..strategies import get_strategy
+    try:
+        strat = get_strategy(strat_key)
+    except KeyError:
+        strat = None
+    cols = t["columns"]
+    c = lambda n: cols.index(n) if n in cols else None  # noqa: E731
+    v = lambda row, n: (row[c(n)] if c(n) is not None else None)  # noqa: E731
+    _j = lambda x: x if isinstance(x, (dict, list)) or x is None else json.loads(x)  # noqa: E731
+    out = []
+    for row in t["rows"]:
+        entry_d, exit_d = v(row, "entry_date"), v(row, "exit_date")
+        sig_row = q(
+            """SELECT date, hard_gates_passed, first_failed_gate, hard_gates, has_setup, setups,
+                      h_value, h_index, l_value, p_value, prior_swing_low, overhead_levels,
+                      watch_flags, watch_notes, extras
+               FROM backtest_signals
+               WHERE market=%s AND strategy=%s AND symbol=%s AND has_setup
+                 AND date <= %s AND date >= %s::date - interval '45 days'
+               ORDER BY date DESC LIMIT 1""",
+            (market, strat_key, symbol, entry_d, entry_d),
+        )
+        shapes, note, sig_date = [], "", None
+        if sig_row and strat:
+            (sd, gp, ff, gates, hs, setups, hv, hi, lv, pv, psl, over, wf, wn, ex) = sig_row[0]
+            sig = {"date": sd, "hard_gates_passed": gp, "first_failed_gate": ff, "hard_gates": _j(gates),
+                   "has_setup": hs, "setups": _j(setups), "h_value": hv, "h_index": hi, "l_value": lv,
+                   "p_value": pv, "prior_swing_low": psl, "overhead_levels": _j(over),
+                   "watch_flags": _j(wf), "watch_notes": _j(wn), "extras": _j(ex)}
+            try:
+                shapes = strat.chart_anatomy(sig)
+            except Exception as exc:  # noqa: BLE001 — one bad signal must not blank the whole panel
+                shapes = [{"shape": "note", "at": str(sd), "text": f"anatomy unavailable ({type(exc).__name__}: {exc})"}]
+            sig_date = str(sd)
+            note = " ".join(s["text"] for s in shapes if s.get("shape") == "note")
+        # the trade's own levels, spanning the holding period — same for every strategy
+        stop = v(row, "initial_stop") or v(row, "stop")
+        if stop and exit_d:
+            shapes.append({"shape": "level", "from": str(entry_d), "to": str(exit_d), "price": float(stop),
+                           "role": "stop", "label": f"stop {stop:g}", "dash": True})
+        target = v(row, "target")
+        if target and exit_d:
+            shapes.append({"shape": "level", "from": str(entry_d), "to": str(exit_d), "price": float(target),
+                           "role": "target", "label": f"target {target:g}", "dash": True})
+        out.append({"entry_date": str(entry_d), "exit_date": str(exit_d) if exit_d else None,
+                    "signal_date": sig_date, "setup": v(row, "setup"), "decision": v(row, "decision"),
+                    "entry_price": v(row, "entry_price"), "exit_price": v(row, "exit_price"),
+                    "exit_reason": v(row, "exit_reason"), "r_multiple": v(row, "r_multiple"),
+                    "pnl": v(row, "pnl"), "holding_days": v(row, "holding_days"),
+                    "note": note, "shapes": shapes})
+    return out
+
+
 @app.get("/api/trade-runs")
 def trade_runs(market: str, symbol: str):
     """Backtest runs that traded this symbol, for the chart's trade overlay."""
