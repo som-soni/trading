@@ -301,7 +301,7 @@
   },
   "minervini_spec": {
     "family": "minervini",
-    "fingerprint": "bb0dbb05",
+    "fingerprint": "4987db8b",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -350,7 +350,10 @@
       "VCP.tight_days": 10,
       "VCP.tight_pct": 10.0,
       "VCP.zigzag_atr_mult": 1.5,
+      "VCP.zigzag_floor_atr_mult": 1.5,
+      "VCP.zigzag_floor_pct": 1.5,
       "VCP.zigzag_pct": 3.0,
+      "VCP.zigzag_shrink_ratio": 0.35,
       "VOL_MULT": 1.4,
       "_key": "minervini_spec",
       "gate_codes": [
@@ -375,7 +378,7 @@
         "B4"
       ]
     },
-    "version": "2.2"
+    "version": "2.3"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

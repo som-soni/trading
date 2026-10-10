@@ -86,8 +86,20 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "2.2"
+    version = "2.3"
     changelog = (
+        ("2.3", "2026-10-10",
+         "Zig-zag threshold now shrinks with the contractions (zigzag_shrink_ratio): one "
+         "threshold cannot see a VCP, since it must be wide enough for a 20% first "
+         "contraction and is then far too wide for the 3-5% ones that define the pattern, "
+         "so the late legs never confirmed and VCP-04 rejected textbook bases for having "
+         "too few. The zig-zag is also seeded with BH as its first high — starting with "
+         "direction unset let a wide BH bar confirm an 'L' first, after which the first "
+         "contraction was measured from a later, lower bar and VCP-05/VCP-06 saw the wrong "
+         "depth. The floor is 1.5 ATR, not the 0.75 first tried: at 0.75 (2.84% on MU, "
+         "under its 3.79% ATR) single bars became legs and the median leg count hit 13 "
+         "against VCP-04's limit of 6. Net effect on detections is close to nil; the fix "
+         "is a correctness one."),
         ("2.2", "2026-10-10",
          "Added Minervini's stated minimum reward-to-risk of 2:1 (MIN_STRUCTURAL_R), "
          "which the implementation had been missing entirely — every valid pivot was "

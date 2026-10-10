@@ -6,11 +6,24 @@ the first rule that fails. Every number is a field of `VcpParams` (the spec's §
 VCP-03 covers both halves of the spec's base-period trend rule: the full template (TT-01 … TT-07)
 on BH's bar, and TT-01 … TT-04 on every bar from BH to day t.
 
-Swing points (§3): a bar is a swing high if its high is the highest of the k bars before and the k bars
-after it. A swing at bar i is therefore only known at the close of bar i + k; the rolling window used
-here needs all k later bars, so the newest k bars of the frame can never be swing points — no
-look-ahead. Contractions shallower than `min_swing_pct` are wiggles and are dropped (the last, open
-contraction is kept: the tightness rules judge it instead).
+Swing points (§3) locate the BASE HIGH only: a bar is a swing high if its high is the highest of the
+k bars before and the k bars after it, so a swing at bar i is known only at the close of bar i + k and
+the newest k bars can never be swing points — no look-ahead.
+
+Contractions are NOT segmented by those swings. They come from a zig-zag (`_zigzag`) that requires a
+real reversal in both directions, because a two-day bounce used to start a new leg and split one
+pullback into two. Its threshold starts at `max(zigzag_pct, zigzag_atr_mult x ATR%)` and then shrinks
+to `zigzag_shrink_ratio` x the depth just measured — a VCP's late contractions are far smaller than
+its first, and one fixed threshold cannot see both — never falling below a floor of
+`max(zigzag_floor_pct, zigzag_floor_atr_mult x ATR%)`, since a reversal smaller than an ATR is
+indistinguishable from a single bar.
+
+The base-period trend rule checks the moving-average STRUCTURE every day plus a close above
+`base_sma200_floor` x SMA200; requiring close > SMA150 daily contradicted VCP-05, which permits a
+first contraction of up to 35%. The full template still applies on BH's bar and on the signal day.
+
+The tight area runs from the last confirmed zig-zag low to day t, capped at `tight_days`, and its
+volume baseline is taken from the bar BEFORE it so the quiet days do not lower their own benchmark.
 
 Base high (BH): walking forward, a confirmed swing high starts a base; a later CLOSE above it discards
 that base, and the next confirmed swing high starts a new one. BH is the high of the base in force on
@@ -38,6 +51,21 @@ class VcpParams:
                                      # 6. A floor of one ATR is the minimum that can distinguish a
                                      # reversal from a single bar; 1.5 leaves headroom.
                                      # NOT YET VALIDATED UNIVERSE-WIDE.  [assumption]
+    zigzag_shrink_ratio: float = 0.35  # after each contraction the threshold drops to this
+                                     # fraction of the depth just measured. ONE threshold for
+                                     # the whole base cannot see a VCP: it has to be wide
+                                     # enough for the first contraction (20%+) and is then far
+                                     # too wide for the 3-5% ones that define the pattern, so
+                                     # the later legs never confirm and VCP-04 rejects a
+                                     # textbook base for having too few.  [assumption]
+    zigzag_floor_pct: float = 1.5    # …but never below this, or noise becomes legs again
+    zigzag_floor_atr_mult: float = 1.5    # …or this many ATRs, whichever is larger. The SAME
+                                     # volatility floor the initial threshold respects: a
+                                     # "reversal" smaller than one ATR is indistinguishable
+                                     # from a single bar wherever it occurs in the base. At the
+                                     # 0.75 first suggested (2.84% on MU, under its 3.79% ATR)
+                                     # the shrinking threshold put the median leg count at 13
+                                     # against VCP-04's limit of 6; at 1.5 it is back to 6.
     zigzag_pct: float = 3.0          # a leg turns only after a reversal this large, in BOTH
                                      # directions. Segmenting on swing highs alone split one
                                      # pullback into two whenever a 2-3 day bounce made a new
@@ -72,26 +100,46 @@ def _swings(series: pd.Series, k: int, how: str) -> np.ndarray:
     return (series == ext).to_numpy()
 
 
-def _zigzag(high: np.ndarray, low: np.ndarray, pct: float) -> list[tuple[int, float, str]]:
-    """Alternating (index, price, 'H'/'L') pivots; each needs a `pct`% reversal to confirm.
+def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
+            floor_pct: float, ratio: float) -> list[tuple[int, float, str]]:
+    """Alternating (index, price, 'H'/'L') pivots, starting from a KNOWN high at bar 0,
+    with a reversal threshold that shrinks as the contractions do.
 
-    Uses only bars up to the one being judged, so it cannot look ahead: a pivot is appended
-    at the moment the reversal confirms it, never retroactively from later data.
+    Two things this gets right that a fixed threshold does not:
+
+    * **The threshold tracks the pattern.** A VCP contracts 20%, then 8%, then 3%. One
+      threshold wide enough to confirm the first is far too wide for the last, so the
+      small late contractions never produce a pivot and the base looks like a single
+      long leg. After each confirmed low the next threshold becomes `ratio` x the depth
+      just measured, floored so noise cannot creep back in.
+    * **It starts on the right foot.** Beginning with direction unset and both
+      candidates on bar 0 let a wide BH bar confirm an 'L' first, which was then
+      discarded — and the next 'H' was a later, LOWER bar, so the first contraction was
+      measured from the wrong place and VCP-05/VCP-06 saw the wrong depth. BH is known,
+      so it is seeded as the first high and the search starts looking for a low.
+
+    Uses only bars up to the one being judged: a pivot is appended when the reversal
+    confirms it, never retroactively from later data.
     """
-    piv: list[tuple[int, float, str]] = []
+    if not len(high):
+        return []
+    piv: list[tuple[int, float, str]] = [(0, float(high[0]), "H")]
     hi_i = lo_i = 0
-    direction = 0
+    direction, thr = -1, first_pct
     for j in range(1, len(high)):
-        if direction >= 0 and high[j] >= high[hi_i]:
+        if direction > 0 and high[j] >= high[hi_i]:
             hi_i = j
-        if direction <= 0 and low[j] <= low[lo_i]:
+        if direction < 0 and low[j] <= low[lo_i]:
             lo_i = j
-        if direction >= 0 and low[j] <= high[hi_i] * (1 - pct / 100):
+        if direction > 0 and low[j] <= high[hi_i] * (1 - thr / 100):
             piv.append((hi_i, float(high[hi_i]), "H"))
             direction, lo_i = -1, j
-        elif direction <= 0 and high[j] >= low[lo_i] * (1 + pct / 100):
+        elif direction < 0 and high[j] >= low[lo_i] * (1 + thr / 100):
             piv.append((lo_i, float(low[lo_i]), "L"))
+            prev_high = piv[-2][1]
+            depth = (prev_high - low[lo_i]) / prev_high * 100 if prev_high > 0 else 0.0
             direction, hi_i = 1, j
+            thr = max(floor_pct, ratio * depth)
     return piv
 
 
@@ -178,19 +226,18 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # scale the reversal threshold to the stock: a fixed percentage is noise on a volatile
     # name and a wall on a quiet one
     zz = p.zigzag_pct
-    if p.zigzag_atr_mult and "atr14" in d:
-        atr_pct = float(d["atr14"].iloc[bh_i]) / float(close[bh_i]) * 100 if close[bh_i] else float("nan")
-        if atr_pct == atr_pct:
-            zz = max(zz, p.zigzag_atr_mult * atr_pct)
+    atr_pct = float("nan")
+    if "atr14" in d and close[bh_i]:
+        atr_pct = float(d["atr14"].iloc[bh_i]) / float(close[bh_i]) * 100
+    if p.zigzag_atr_mult and atr_pct == atr_pct:
+        zz = max(zz, p.zigzag_atr_mult * atr_pct)
+    floor = p.zigzag_floor_pct
+    if p.zigzag_floor_atr_mult and atr_pct == atr_pct:
+        floor = max(floor, p.zigzag_floor_atr_mult * atr_pct)
     out["zigzag_pct_used"] = round(zz, 2)
-    piv = _zigzag(high[bh_i:], low[bh_i:], zz)
-    piv = [(i + bh_i, v, k) for i, v, k in piv]
-    # BH is H_1 by definition; drop any pivot before it and any leading L
-    piv = [q for q in piv if q[0] >= bh_i]
-    while piv and piv[0][2] == "L":
-        piv.pop(0)
-    if not piv or piv[0][0] != bh_i:
-        piv.insert(0, (bh_i, float(high[bh_i]), "H"))
+    # seeded with BH as the first high, so no leading-L cleanup is needed
+    piv = [(i + bh_i, v, k) for i, v, k in
+           _zigzag(high[bh_i:], low[bh_i:], zz, floor, p.zigzag_shrink_ratio)]
 
     legs, last_low_i = [], None
     for a, b in zip(piv, piv[1:]):
@@ -209,7 +256,12 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         return out
     # the zig-zag already requires a real move in both directions, so a surviving leg is not
     # a wiggle; the filter stays only for thresholds set above zigzag_pct
-    legs = [g for k, g in enumerate(legs) if g[2] >= p.min_swing_pct or k == len(legs) - 1]
+    # No wiggle filter: the zig-zag's reversal threshold already decided what counts as a
+    # leg, and a second fixed cut could only delete legs it had judged real — which was
+    # how the first contraction sometimes stopped starting at BH, so VCP-05 measured the
+    # wrong one. `min_swing_pct` is kept only for callers that want a stricter floor.
+    if p.min_swing_pct > p.zigzag_floor_pct:
+        legs = [g for k, g in enumerate(legs) if g[2] >= p.min_swing_pct or k == len(legs) - 1]
     out["depths"] = [round(g[2], 2) for g in legs]
     out["lows"] = [g[1] for g in legs]
     if not (p.min_contractions <= len(legs) <= p.max_contractions):
