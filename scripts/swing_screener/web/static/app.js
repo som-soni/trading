@@ -501,8 +501,11 @@ async function chartPage(alive, market, symbol, tf) {
   if (sel.value && px.ohlc) {
     const t = await api(`/api/reports/${sel.value}/tables/trades?symbol=${encodeURIComponent(symbol)}`).catch(() => null);
     if (!alive()) return;
+    // `snap` maps a date onto the nearest charted bar; the VCP annotation below needs it
+    // too, so it is declared here rather than inside the trades block
+    const snap = (d) => times.find((x) => x >= d);
     if (t) {
-      const c = (n) => t.columns.indexOf(n), snap = (d) => times.find((x) => x >= d);
+      const c = (n) => t.columns.indexOf(n);
       const marks = [];
       t.rows.forEach((r) => {
         const a = snap(r[c("entry_date")]), b = snap(r[c("exit_date")]), pnl = r[c("pnl")], rm = r[c("r_multiple")];
