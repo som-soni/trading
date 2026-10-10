@@ -2413,6 +2413,14 @@ function strategyBacktests(host, d, key) {
       <span class="muted small">runs in the job queue — follow it on <a href="#/runs">System → Runs</a></span></div>` : "";
   host.innerHTML = runBtn + (d.backtests.length ? `<table class="dtab click"><thead><tr><th>Market</th><th>Run</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
       d.backtests.map((b) => { const s = b.summary || {};
+        // A run that found nothing has no CAGR to show. Four blank cells read as a
+        // broken row, so say what happened — the funnel in the report says where
+        // the candidates stopped.
+        if (!s.cagr) {
+          return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td>
+            <td class="num muted" colspan="4">no trades — open for the funnel</td>
+            <td class="muted">${prettyDate(b.generated_at)}</td></tr>`;
+        }
         return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td><td class="num">${esc(pv(s.cagr))}</td>
           <td class="num ${/^-/.test(s.excess_cagr || "") ? "neg" : s.excess_cagr ? "pos" : ""}">${esc(pv(s.excess_cagr))}</td><td class="num">${esc(pv(s.max_drawdown))}</td>
           <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td></tr>`; }).join("")}</tbody></table>
