@@ -28,6 +28,7 @@ import pandas as pd
 
 from ..config.base import MarketConfig
 from ..core import vcp_spec
+from ..core import swings as sw
 from ..core.context import StockContext
 from ..screens.criteria import (  # noqa: F401 (doc placeholders)
     MAX_PCT_BELOW_52W_HIGH, MIN_PCT_ABOVE_52W_LOW, RS_MIN_MOM, RS_MIN_RANK, SMA200_RISING_BARS,
@@ -70,6 +71,10 @@ UPPER_HALF = 0.5        # MV-01c: close in at least this fraction of the day's r
 STOP_BUFFER_PCT = 0.5   # SL-01: stop this % under the tight low
 MAX_STOP_PCT = 8.0      # SL-03: skip a fill whose stop is further below it than this
 NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a third at 3R)
+# Minervini's stated minimum reward-to-risk (ChartMill's SEPA write-up and the
+# books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
+# a target floor: a setup projecting less is skipped, not padded.
+MIN_STRUCTURAL_R = 2.0
 
 # ---- section 10 / backtest (backtesting/backtest.py --spec)
 MAX_POSITIONS = 8               # PF-02
@@ -81,8 +86,16 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "2.1"
+    version = "2.2"
     changelog = (
+        ("2.2", "2026-10-10",
+         "Added Minervini's stated minimum reward-to-risk of 2:1 (MIN_STRUCTURAL_R), "
+         "which the implementation had been missing entirely — every valid pivot was "
+         "traded regardless of upside. Reward is now the base's measured move (its "
+         "high less its deepest low, i.e. the first contraction) projected from entry "
+         "and capped by overhead ABOVE the base high; previously `target = entry + 3 x "
+         "risk` restated the formula and reported an R the chart did not offer. "
+         "Setups projecting under 2R are refused, never padded up."),
         ("2.1", "2026-10-10",
          "VCP detector corrected (core/vcp_spec.py). Contractions are now segmented by a "
          "zig-zag requiring a real reversal in BOTH directions, not by swing highs alone: a "
@@ -330,11 +343,47 @@ class MinerviniSpecStrategy(Strategy):
         stop = round_tick(float(tl) * (1 - STOP_BUFFER_PCT / 100), cfg.tick_size, "down")
         if stop <= 0 or stop >= entry:
             return PlanChoice(None, None, "degenerate stop")
-        target = entry + NOMINAL_TARGET_R * (entry - stop)
+        risk = entry - stop
+        # Reward has to come from the CHART, not from the risk. `entry + 3 * risk`
+        # restates the formula and reports an R the setup does not offer -- the same
+        # trap breakout.py documents. The measured move of a VCP is its own depth:
+        # the base high less its deepest low, which (because VCP-06 forces each
+        # contraction to shrink) is the first contraction's low.
+        bh, first_depth = e.get("base_high"), e.get("first_depth_pct")
+        measured_move = (float(bh) * float(first_depth) / 100
+                         if bh and first_depth else float("nan"))
+        target = entry + measured_move if measured_move == measured_move else entry + risk
+        # Overhead supply caps the move — but measured from the BASE HIGH, not from
+        # entry. The pivot sits below the base high by construction (VCP-09 only
+        # requires it within 90%), so everything between them is the consolidation
+        # being resolved, not external resistance. Capping at entry made the base's
+        # OWN high the ceiling and crushed every projection: TITAN's 2017 setup, a
+        # base the strategy actually traded, scored 0.84R instead of 2.28R.
+        ceiling_from = max(entry, float(bh)) if bh else entry
+        nearest_above = sw.nearest_overhead_above(ceiling_from, ctx.overhead)
+        if nearest_above is not None and nearest_above < target:
+            target = nearest_above
+        structural_r = (target - entry) / risk if risk > 0 else float("nan")
+        ctx.extras["structural_r"] = round(structural_r, 2) if structural_r == structural_r else None
+        ctx.extras["measured_move"] = round(measured_move, 2) if measured_move == measured_move else None
+
+        # Minervini's stated hard rule: a minimum reward-to-risk of 2:1, ideally 3:1.
+        # "If the stock's realistic upside isn't at least twice the distance to your
+        # stop, the trade isn't worth taking even if everything else lines up."
+        # Rejected here rather than padded up to look acceptable.
+        if not (structural_r >= MIN_STRUCTURAL_R):
+            return PlanChoice(
+                None, None,
+                f"projects only {structural_r:.2f}R against the {MIN_STRUCTURAL_R:g}:1 minimum",
+            )
+
         plan = TradePlan(plan="MV", setup=setup, entry=entry, stop=stop, target=target,
-                         risk_per_share=entry - stop, reward_per_share=target - entry,
-                         r_multiple=NOMINAL_TARGET_R, nearest_overhead_above_entry=None)
-        return PlanChoice(plan, None, f"{setup}: pivot {pivot:.2f}, stop {(entry - stop) / entry * 100:.1f}% below entry")
+                         risk_per_share=risk, reward_per_share=target - entry,
+                         r_multiple=round(structural_r, 2),
+                         nearest_overhead_above_entry=nearest_above)
+        return PlanChoice(plan, None,
+                          f"{setup}: pivot {pivot:.2f}, stop {(entry - stop) / entry * 100:.1f}% "
+                          f"below entry, projects {structural_r:.2f}R")
 
     def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
         """How the portfolio simulator should place and manage this order (portfolio_sim docstring)."""
