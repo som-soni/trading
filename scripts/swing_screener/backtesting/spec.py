@@ -113,6 +113,35 @@ def filter_min_rs(signals: list, market: str, min_rs: int) -> tuple[list, dict]:
     return kept, {"min_rs": min_rs, "kept": len(kept), "below": low, "unrated": unrated}
 
 
+def filter_max_base_no(signals: list, max_base: int) -> tuple[list, dict]:
+    """Keep only signals from the first `max_base` bases of a stock's advance.
+
+    Minervini treats later bases as riskier -- by a third or fourth base the move
+    is well advanced and the supply that the earlier bases absorbed has been
+    replaced by holders sitting on gains. The spec records a base number for this
+    reason and says in as many words to test a filter allowing only bases 1 to 3;
+    until now the number was computed for the report and never acted on.
+
+    Signals with no base number (the strategy did not supply a base_id) are KEPT,
+    not dropped: an unknown base number is not evidence of a late base, and
+    silently discarding them would make the filter look more selective than it is.
+    """
+    kept, late, unknown = [], 0, 0
+    for s in signals:
+        bn = s.meta.get("base_no")
+        if bn is None:
+            unknown += 1
+            kept.append(s)
+            continue
+        if int(bn) > max_base:
+            late += 1
+            continue
+        kept.append(s)
+    logger.info("Base-number filter (<= %d): kept %d, dropped %d as late-stage, %d without a base number",
+                max_base, len(kept), late, unknown)
+    return kept, {"max_base": max_base, "kept": len(kept), "late": late, "unknown": unknown}
+
+
 # ---------------------------------------------------------------- market filter (MKT-01)
 
 def market_ok(market: str) -> pd.Series:

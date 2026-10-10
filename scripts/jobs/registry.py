@@ -338,6 +338,8 @@ def _backtest_steps(ctx: Ctx) -> list:
                 argv += ["--const", str(kv)]
             if c.opt("symbols"):
                 argv += ["--symbols", str(c.opt("symbols"))]
+            if c.opt("max_base"):
+                argv += ["--max-base", str(c.opt("max_base"))]
             for extra in (c.opt("bt") or []):
                 argv += shlex.split(str(extra))   # appended last, so a passthrough wins
             if c.opt("accept_labels"):

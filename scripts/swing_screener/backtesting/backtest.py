@@ -835,6 +835,7 @@ def run_portfolio_backtest(
     rank_by: str = "setup",
     min_group_rs: int | None = None,
     min_rs: int | None = None,
+    max_base_no: int | None = None,
     use_market_filter: bool = False,
     spec_costs: bool = False,
     max_open_risk_pct: float | None = None,
@@ -910,6 +911,13 @@ def run_portfolio_backtest(
     # the base count runs before any filter: a base counts whether or not its breakout was tradable
     if any(s.meta.get("base_id") is not None for s in all_signals):
         all_signals = spec_mod.base_numbers(all_signals, prices, market_key, strategy.key)
+    if max_base_no is not None:
+        all_signals, b = spec_mod.filter_max_base_no(all_signals, max_base_no)
+        spec_notes.append(
+            f"Base number: only the first {max_base_no} bases of a stock's advance are traded "
+            f"({b['late']} signals dropped as late-stage, {b['kept']} kept"
+            + (f", {b['unknown']} had no base number and were kept)." if b["unknown"] else ")."))
+        fn.dropped("accepted", f"base number above {max_base_no}", b["late"])
     if min_rs is not None:
         all_signals, r = spec_mod.filter_min_rs(all_signals, market_key, min_rs)
         spec_notes.append(f"RS rating (TT-08): signals from stocks rated below {min_rs} (1-99 across the tradable universe "
@@ -1133,6 +1141,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--min-group-rs", type=int, default=None,
                         help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
                              "on the signal date — e.g. 50 to avoid weak groups")
+    parser.add_argument("--max-base", type=int, default=None, metavar="N",
+                        help="trade only the first N bases of a stock's advance (Minervini treats later "
+                             "bases as riskier; the spec suggests testing 1-3). Off by default: the spec "
+                             "says to TEST it, not to adopt it, so it stays opt-in.")
     parser.add_argument("--const", action="append", default=None, metavar="NAME=VALUE",
                         help="override a numeric module constant of the strategy for this run, e.g. "
                              "--const MIN_STRUCTURAL_R=0. Repeatable. Like --vcp it changes the spec "
@@ -1266,7 +1278,8 @@ def main(argv: list[str] | None = None) -> dict | None:
             include=[x.strip() for x in args.include.split(",") if x.strip()],
             risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
             rank_by=args.rank_by, min_group_rs=args.min_group_rs,
-            min_rs=args.min_rs, use_market_filter=args.market_filter, spec_costs=args.spec,
+                min_rs=args.min_rs, max_base_no=args.max_base, use_market_filter=args.market_filter,
+            spec_costs=args.spec,
             max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
             max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
             only_symbols=[x.strip() for x in args.symbols.split(",") if x.strip()],
