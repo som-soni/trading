@@ -48,6 +48,11 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 class TrendPullbackStrategy(Strategy):
     selection = "time_series"
+    version = "1.0"
+    changelog = (
+        ("1.0", "2026-10-10",
+         "v1 baseline of the trend-pullback / continuation strategy."),
+    )
     key = "trend_pullback"
     name = "Trend pullback / continuation"
     description = (
@@ -776,3 +781,18 @@ class TrendPullbackStrategy(Strategy):
                 else "down"
             ),
         }
+
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The default anatomy (H resistance, prior swing low) is already this strategy's story;
+        add which pullback setup fired and the watch context."""
+        out = super().chart_anatomy(sig)
+        active = [k for k, v in (sig.get("setups") or {}).items() if v]
+        names = {"TC-01": "pullback to support in an uptrend", "TC-02": "tight continuation base",
+                 "TC-04": "higher-low reversal"}
+        if active:
+            what = "; ".join(f"{c} — {names.get(c, c)}" for c in active)
+            out = [s for s in out if s["shape"] != "note"]
+            out.append({"shape": "note", "at": str(sig["date"]), "price": sig.get("h_value"),
+                        "text": f"Setup {what}. Entry goes above the resumption level H {sig.get('h_value'):.2f}; "
+                                f"the stop belongs under the prior swing low."})
+        return out

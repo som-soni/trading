@@ -123,10 +123,10 @@ def _live(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "2.0"
+    version = "1.0"
     changelog = (
-        ("2.0", "2026-10-09",
-         "Rebuilt to the written detection specification: twelve patterns with section-referenced definitions, adding triple bottom, inverse head-and-shoulders, symmetrical triangle, falling wedge, rectangle and high tight flag."),
+        ("1.0", "2026-10-10",
+         "v1 baseline, built to the written detection specification: twelve patterns with section-referenced definitions - cup, cup-no-handle, double bottom, triple bottom, inverse head-and-shoulders, flat base, bull flag, ascending triangle, symmetrical triangle, falling wedge, rectangle and high tight flag."),
     )
     key = "chart_pattern_spec"
     name = "Chart patterns (to the detection spec)"
@@ -638,6 +638,33 @@ class ChartPatternSpecStrategy(Strategy):
             "pattern_note": e.get("pattern_note"),
             "first_failed_rule": e.get("first_failed_rule"),
         }
+
+
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The spec levels of the traded pattern — trigger, invalidation and measured target —
+        with the detector's own note. The spec stores levels, not the pattern's start date, so
+        the lines span a fixed window rather than the exact body."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        out: list[dict] = []
+        if e.get("pattern") and e.get("trigger"):
+            out.append({"shape": "level", "bars": 60, "to": d, "price": float(e["trigger"]),
+                        "role": "pivot", "label": f"trigger {e['trigger']:g} — confirms {e['pattern']}"})
+            if e.get("invalidation"):
+                out.append({"shape": "level", "bars": 60, "to": d, "price": float(e["invalidation"]),
+                            "role": "support", "label": f"invalidation {e['invalidation']:g} — the pattern is wrong below this"})
+            if e.get("measured_target"):
+                out.append({"shape": "level", "bars": 20, "to": d, "price": float(e["measured_target"]),
+                            "role": "target", "label": f"measured target {e['measured_target']:g}", "dash": True})
+            note = f"{e['pattern']} ({e.get('pattern_state', '')}): {e.get('pattern_note') or 'spec geometry matched'}"
+            if e.get("height"):
+                note += f" · height {e['height']:g} projected above the trigger"
+            if e.get("topping_pattern"):
+                note += f" · WARNING: topping {e['topping_pattern']} ({e.get('topping_state', '')})"
+            out.append({"shape": "note", "at": d, "price": float(e["trigger"]), "text": note})
+        else:
+            out = super().chart_anatomy(sig)
+        return out
 
 
 # Which label to trade when several fire at once. Ordered by how selective the

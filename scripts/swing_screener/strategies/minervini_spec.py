@@ -75,6 +75,13 @@ NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a
 # books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
 # a target floor: a setup projecting less is skipped, not padded.
 MIN_STRUCTURAL_R = 2.0
+# How far above the BASE HIGH a swing high has to sit before it counts as
+# external supply rather than part of the base's own ceiling. A base's ceiling
+# is not a single line: `swings.overhead_levels` collects every swing high, and
+# a consolidation prints several within a hair of its high (both sides of the
+# range, every retest of the pivot). `chart_pattern.overhead_cluster_atr` is the
+# same guard for the same reason.
+OVERHEAD_CLUSTER_ATR = 1.0
 
 # ---- section 10 / backtest (backtesting/backtest.py --spec)
 MAX_POSITIONS = 8               # PF-02
@@ -86,44 +93,10 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "2.3"
+    version = "1.0"
     changelog = (
-        ("2.3", "2026-10-10",
-         "Zig-zag threshold now shrinks with the contractions (zigzag_shrink_ratio): one "
-         "threshold cannot see a VCP, since it must be wide enough for a 20% first "
-         "contraction and is then far too wide for the 3-5% ones that define the pattern, "
-         "so the late legs never confirmed and VCP-04 rejected textbook bases for having "
-         "too few. The zig-zag is also seeded with BH as its first high — starting with "
-         "direction unset let a wide BH bar confirm an 'L' first, after which the first "
-         "contraction was measured from a later, lower bar and VCP-05/VCP-06 saw the wrong "
-         "depth. The floor is 1.5 ATR, not the 0.75 first tried: at 0.75 (2.84% on MU, "
-         "under its 3.79% ATR) single bars became legs and the median leg count hit 13 "
-         "against VCP-04's limit of 6. Net effect on detections is close to nil; the fix "
-         "is a correctness one."),
-        ("2.2", "2026-10-10",
-         "Added Minervini's stated minimum reward-to-risk of 2:1 (MIN_STRUCTURAL_R), "
-         "which the implementation had been missing entirely — every valid pivot was "
-         "traded regardless of upside. Reward is now the base's measured move (its "
-         "high less its deepest low, i.e. the first contraction) projected from entry "
-         "and capped by overhead ABOVE the base high; previously `target = entry + 3 x "
-         "risk` restated the formula and reported an R the chart did not offer. "
-         "Setups projecting under 2R are refused, never padded up."),
-        ("2.1", "2026-10-10",
-         "VCP detector corrected (core/vcp_spec.py). Contractions are now segmented by a "
-         "zig-zag requiring a real reversal in BOTH directions, not by swing highs alone: a "
-         "two-day bounce used to start a new leg, splitting one 20% pullback into 8% then "
-         "15% so the 'second' read deeper and VCP-06 rejected a valid base. The threshold is "
-         "ATR-scaled, because a fixed 3% sits below one day's range on a volatile name (MU's "
-         "median ATR is 3.79% of close) and turned noise into a median of 12 legs against a "
-         "limit of 6. The base-period trend rule no longer demands close > SMA150 every day, "
-         "which contradicted VCP-05's allowance of a 35% first contraction; it now requires "
-         "the MA structure plus close above 0.97x SMA200. The dry-up baseline is taken from "
-         "before the tight area rather than from a 50-day average that already includes it, "
-         "and the tight area runs from the last confirmed zig-zag low instead of a fixed "
-         "10 bars. A prior-advance window shorter than 126 bars now fails instead of "
-         "silently shortening."),
-        ("2.0", "2026-10-09",
-         "Rebuilt to the written backtest specification: base-high anchored VCP, confirmed breakouts, and the real exit ladder (failed breakout, breakeven, partial profit, climax, 50-day break) via --exit-mode minervini. Max stop 10% -> 8%; cross-sectional RS rank replaces v1's absolute momentum floor."),
+        ("1.0", "2026-10-10",
+         "v1 baseline of the Minervini SEPA implementation: Trend Template gates (TT-01-08) with point-in-time RS, the VCP detector (VCP-01-11) segmented by an ATR-scaled zig-zag whose threshold shrinks with the contractions, the MV-01/MV-02 setups, the exit ladder (EX-01-07), a 2:1 minimum reward-to-risk measured from the base's own measured move, and overhead supply binding only at least OVERHEAD_CLUSTER_ATR above the base high. Earlier iteration history is in the git log."),
     )
     key = "minervini_spec"
     name = "Minervini VCP (to the backtest spec)"
@@ -235,7 +208,10 @@ class MinerviniSpecStrategy(Strategy):
         "Stop: {STOP_BUFFER_PCT}% under the tight low. A fill whose stop is more than {MAX_STOP_PCT}% below "
         "it is skipped. Size: 1% of equity at risk, capped at the market's position limit.",
         "One entry per base: a base already traded is not entered again.",
-        "Target: a nominal {NOMINAL_TARGET_R}R, for sizing and reporting only.",
+        "Target: the base's measured move — its first (deepest) contraction projected from entry — "
+        "capped by overhead supply at least {OVERHEAD_CLUSTER_ATR} ATR above the base high. A setup "
+        "projecting under {MIN_STRUCTURAL_R}R on that basis is refused rather than padded up to it. "
+        "{NOMINAL_TARGET_R}R remains the nominal figure used for sizing and reporting.",
     )
     exit_rules = (
         "In priority order, each session: EX-01 the stop (filled at the open if it gapped through); EX-02 a "
@@ -266,6 +242,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Buy range", "BUY_RANGE_PCT", "MV-01b, and the most a fill may sit above the pivot."),
         ("Stop buffer", "STOP_BUFFER_PCT", "SL-01."),
         ("Maximum stop", "MAX_STOP_PCT", "SL-03, checked at the fill."),
+        ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused."),
+        ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Open-risk cap", "MAX_OPEN_RISK_PCT", "PF-04, with --spec."),
         ("Liquidity cap", "MAX_ADV_PCT", "SL-06: largest order as a % of 50-day average traded value, with --spec."),
@@ -371,10 +349,22 @@ class MinerviniSpecStrategy(Strategy):
         # being resolved, not external resistance. Capping at entry made the base's
         # OWN high the ceiling and crushed every projection: TITAN's 2017 setup, a
         # base the strategy actually traded, scored 0.84R instead of 2.28R.
+        # ... but `> base_high` is not enough on its own: the levels a hair above
+        # the base high ARE the base high, so the cap still landed on the base's
+        # own structure. Measured over the 15 India v2.3 breakouts, 8 were capped
+        # within 1.5% of their own base high (GODREJPROP at 1697.85 against a
+        # 1697.85 base high, THERMAX at 5699.95 against 5699.95), which dropped
+        # the median projection from 1.81R to 0.90R and rejected them for an
+        # artefact of the base's own definition. Only supply at least
+        # OVERHEAD_CLUSTER_ATR above the base high can cap the move.
         ceiling_from = max(entry, float(bh)) if bh else entry
-        nearest_above = sw.nearest_overhead_above(ceiling_from, ctx.overhead)
-        if nearest_above is not None and nearest_above < target:
-            target = nearest_above
+        cluster_edge = ceiling_from + OVERHEAD_CLUSTER_ATR * ctx.atr
+        nearest_above = sw.nearest_overhead_above(ceiling_from, ctx.overhead)  # reported, not binding
+        binding = min((lvl for lvl in ctx.overhead if lvl >= cluster_edge), default=None)
+        if binding is not None and binding < target:
+            target = binding
+        ctx.extras["overhead_caps_target"] = bool(binding is not None and binding < entry + measured_move) \
+            if measured_move == measured_move else None
         structural_r = (target - entry) / risk if risk > 0 else float("nan")
         ctx.extras["structural_r"] = round(structural_r, 2) if structural_r == structural_r else None
         ctx.extras["measured_move"] = round(measured_move, 2) if measured_move == measured_move else None
@@ -454,3 +444,32 @@ class MinerviniSpecStrategy(Strategy):
             "rs_mom": r("rs_mom", 3),
         }
 
+
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The base box the VCP was anchored to, its pivot and tight-area low, and a note saying
+        how the base was identified — all from the signal's own cached extras (see base.py)."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        out: list[dict] = []
+        bh, bd, tl = e.get("base_high"), e.get("base_date"), e.get("tight_low")
+        if bh and bd:
+            depths = (f"{e['first_depth_pct']:g}% → {e['last_depth_pct']:g}%"
+                      if e.get("first_depth_pct") is not None and e.get("last_depth_pct") is not None else "?")
+            out.append({"shape": "box", "from": str(bd), "to": d, "top": float(bh),
+                        "bottom": float(tl) if tl else float(bh) * (1 - (e.get("first_depth_pct") or 10) / 100),
+                        "role": "base", "label": f"base {e.get('base_days', '?')}d · {e.get('contractions', '?')}c {depths}"})
+            note = (f"Base: highest high {bh:g} on {bd}, {e.get('base_days', '?')} sessions. "
+                    f"{e.get('contractions', '?')} contractions shrinking {depths} (each must be ≤ {SHRINK:g}× the one before). ")
+            if e.get("tightness_pct") is not None:
+                note += f"Final tight area {e['tightness_pct']:g}% deep"
+                note += f", volume {e['dryup_ratio']:g}× the 50-day average (dry-up). " if e.get("dryup_ratio") is not None else ". "
+            note += (f"VCP rejected: {e['vcp_fail']}." if e.get("vcp_fail")
+                     else f"Pivot {e['pivot']:g} — the final contraction's high; a buy-stop goes just above it." if e.get("pivot") else "")
+            out.append({"shape": "note", "at": d, "price": float(bh), "text": note})
+        if e.get("pivot"):
+            out.append({"shape": "level", "from": str(bd) if bd else None, "bars": None if bd else 40, "to": d,
+                        "price": float(e["pivot"]), "role": "pivot", "label": f"pivot {e['pivot']:g}"})
+        if tl:
+            out.append({"shape": "level", "from": str(bd) if bd else None, "bars": None if bd else 40, "to": d,
+                        "price": float(tl), "role": "support", "label": f"tight-area low {tl:g} — the stop's anchor"})
+        return out or super().chart_anatomy(sig)

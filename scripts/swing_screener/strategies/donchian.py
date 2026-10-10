@@ -53,6 +53,11 @@ DC02 = "DC-02"  # coiled just under the channel high
 
 class DonchianStrategy(Strategy):
     selection = "time_series"
+    version = "1.0"
+    changelog = (
+        ("1.0", "2026-10-10",
+         "v1 baseline of the Donchian channel breakout strategy."),
+    )
     key = "donchian"
     name = "Donchian channel breakout"
     description = (
@@ -419,3 +424,21 @@ class DonchianStrategy(Strategy):
             "exit_channel": self.exit_channel,
             "pct_from_channel": round((ctx.close / ch - 1) * 100, 2) if ch else None,
         }
+
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The entry and exit channels — the whole strategy is these two lines."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        out: list[dict] = []
+        if e.get("channel_high"):
+            out.append({"shape": "level", "bars": self.entry_channel, "to": d, "price": float(e["channel_high"]),
+                        "role": "pivot", "label": f"{self.entry_channel}-day high {e['channel_high']:g} — buy its break"})
+        if e.get("channel_low"):
+            out.append({"shape": "level", "bars": self.exit_channel, "to": d, "price": float(e["channel_low"]),
+                        "role": "support", "label": f"{self.exit_channel}-day low {e['channel_low']:g} — exit on its break"})
+        if e.get("channel_high"):
+            out.append({"shape": "note", "at": d, "price": float(e["channel_high"]),
+                        "text": f"Donchian entry {d}: price took out the {self.entry_channel}-day high "
+                                f"{e['channel_high']:g}. No pattern claim — the channel break IS the signal; "
+                                f"the exit trails the {self.exit_channel}-day low."})
+        return out or super().chart_anatomy(sig)

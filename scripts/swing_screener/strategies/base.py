@@ -443,5 +443,36 @@ class Strategy(SpecMeta, ABC):
         resting buy-stop at plan.entry, as for every strategy that does not override this."""
         return {}
 
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The structure this strategy saw at one signal, as shapes for the chart's trade-debug
+        overlay (web: Backtest trades → the trades panel). `sig` is one `backtest_signals` row as a
+        dict — the exact record written when the backtest evaluated that bar (date, hard_gates,
+        setups, h_value/h_index, prior_swing_low, watch_notes, extras, all parsed) — so the overlay
+        shows what the run actually traded on, never a re-detection that current code might change.
+
+        Shapes (dates are ISO strings; `bars` may replace `from` when only a bar count is known):
+          {"shape": "box",   "from"|"bars", "to", "top", "bottom", "label", "role", "dash"?}
+          {"shape": "level", "from"|"bars", "to", "price", "label", "role", "dash"?}
+          {"shape": "note",  "at", "price"?, "text"}   # the WHY — rendered as a callout + panel text
+        Roles (the chart's colour key): base, pivot, stop, target, support, level.
+
+        Default: the resistance the entry had to clear (H), the prior swing low, and a note naming
+        the active setups. Override to draw the strategy's own anatomy — the base, the contractions,
+        the pattern — and to say how it was identified."""
+        d = str(sig["date"])
+        out: list[dict] = []
+        if sig.get("h_value") and sig.get("h_index"):
+            out.append({"shape": "level", "from": str(sig["h_index"]), "to": d, "price": sig["h_value"],
+                        "label": f"H {sig['h_value']:.2f} — the resistance the entry had to clear", "role": "pivot"})
+        if sig.get("prior_swing_low"):
+            out.append({"shape": "level", "bars": 60, "to": d, "price": sig["prior_swing_low"],
+                        "label": "prior swing low — structural support", "role": "support"})
+        active = [k for k, v in (sig.get("setups") or {}).items() if v]
+        if active:
+            notes = [str(v) for v in (sig.get("watch_notes") or {}).values() if v][:2]
+            out.append({"shape": "note", "at": d, "price": sig.get("h_value"),
+                        "text": f"Setup {', '.join(active)} on {d}" + (" · " + " · ".join(notes) if notes else "")})
+        return out
+
     def __repr__(self) -> str:  # pragma: no cover - debug convenience
         return f"<Strategy {self.key}>"

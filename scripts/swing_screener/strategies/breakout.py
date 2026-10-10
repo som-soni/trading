@@ -41,6 +41,11 @@ BREAKOUT_LOOKBACK = 55
 
 class BreakoutStrategy(Strategy):
     selection = "time_series"
+    version = "1.0"
+    changelog = (
+        ("1.0", "2026-10-10",
+         "v1 baseline of the volume-confirmed breakout strategy."),
+    )
     key = "breakout"
     name = "Volume-confirmed breakout"
     description = (
@@ -447,3 +452,18 @@ class BreakoutStrategy(Strategy):
             # it names the thing explicitly
             "structural_r": round(sr, 2) if isinstance(sr, float) and sr == sr else None,
         }
+
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The 55-day-high pivot the breakout had to clear, plus the shared default (resistance,
+        swing low, setup note). The consolidation itself has no stored geometry, so the pivot and
+        the note carry the story."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        out = super().chart_anatomy(sig)
+        if e.get("breakout_pivot"):
+            out.append({"shape": "level", "bars": 55, "to": d, "price": float(e["breakout_pivot"]),
+                        "role": "pivot", "label": f"pivot {e['breakout_pivot']:g} — highest high of the last 55 days"})
+            out.append({"shape": "note", "at": d, "price": float(e["breakout_pivot"]),
+                        "text": f"BO setup {d}: new 55-day high out of a tight consolidation; the trigger needs "
+                                f"expanding volume. Structural R {e.get('structural_r', '?')} (what the base projects)."})
+        return out

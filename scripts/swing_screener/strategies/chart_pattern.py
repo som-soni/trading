@@ -805,6 +805,36 @@ class ChartPatternStrategy(Strategy):
         }
 
 
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The traded pattern's body as a box (pivot down to the structural stop, over its stored
+        bar length), plus the detector's own note, score, flaws and topping warning — the full
+        'why was this a base' record the detector wrote at the signal."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        out: list[dict] = []
+        pat, piv, stop = e.get("pattern"), e.get("pattern_pivot"), e.get("pattern_stop")
+        if pat and piv and stop:
+            bars = int(e.get("pattern_length") or 30)
+            depth = e.get("pattern_depth_pct")
+            out.append({"shape": "box", "bars": bars, "to": d, "top": float(piv), "bottom": float(stop),
+                        "role": "base", "label": f"{pat} · {bars} bars" + (f" · {depth:.1f}% deep" if isinstance(depth, (int, float)) else "")})
+            out.append({"shape": "level", "bars": bars + 10, "to": d, "price": float(piv),
+                        "role": "pivot", "label": f"pivot {piv:g} — a close above it on expanding volume triggers"})
+            out.append({"shape": "level", "bars": bars, "to": d, "price": float(stop),
+                        "role": "support", "label": f"structural stop {stop:g}"})
+            note = f"{pat} identified: {e.get('pattern_note') or 'geometry matched'} · quality {e.get('pattern_quality', '?')} (0.45 needed)"
+            if e.get("pattern_flaws"):
+                note += f" · flaws: {e['pattern_flaws']}"
+            if e.get("pattern_move"):
+                note += f" · measured move +{e['pattern_move']:g} above the pivot"
+            if e.get("topping_pattern"):
+                note += f" · WARNING: topping structure {e['topping_pattern']} ({e.get('topping_note', '')})"
+            out.append({"shape": "note", "at": d, "price": float(piv), "text": note})
+        else:
+            out = super().chart_anatomy(sig)
+        return out
+
+
 class ChartPatternCupStrategy(ChartPatternStrategy):
     """The same machinery, restricted to the cup — the selectivity experiment.
 
