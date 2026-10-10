@@ -569,8 +569,11 @@ async function chartPage(alive, market, symbol, tf) {
           if (s.shape === "level") return { type: "trend", pts: [{ t: t0, p: s.price }, { t: t1, p: s.price }],
             color: col, width: 1, dash: s.dash !== false, text: dim ? "" : s.label || "" };
           if (s.shape === "note" && withNotes && s.text) {
+            // the text box is pinned to the pane's top strip (pts[1].f = fraction of pane height),
+            // so the note never covers the bars it explains; the leader still drops to the anchor
             const p = s.price ?? t.entry_price;
-            return { type: "callout", pts: [{ t: t1, p }, { t: Date.parse(times[Math.max(0, (i1 < 0 ? times.length - 1 : i1) - 45)] + "T00:00:00Z"), p: p * 1.07 }],
+            const bx = Math.min(times.length - 1, (i1 < 0 ? times.length - 1 : i1) + 2);
+            return { type: "callout", pts: [{ t: t1, p }, { t: Date.parse(times[bx] + "T00:00:00Z"), f: 0.05 }],
               color: col, width: 1, text: s.text };
           }
           return null;

@@ -187,7 +187,11 @@ const Drawings = (() => {
     }
     function paintItem(ctx, it, w, h, isSel) {
       const a = toPx(it.pts[0]); if (!a) return;
-      const b = it.pts[1] ? toPx(it.pts[1]) : a; if (!b) return;
+      // a point may carry `f` (fraction of the pane height, 0 = top) instead of a price `p`:
+      // annotations use it to pin a callout's text box to the top strip, clear of the bars,
+      // while its anchor (pts[0]) stays glued to the bar and price it explains
+      const fracPx = (pt) => { const x = ts.logicalToCoordinate(msToLogical(pt.t)); return x == null ? null : { x, y: h * pt.f }; };
+      const b = it.pts[1] ? (it.pts[1].f != null ? fracPx(it.pts[1]) : toPx(it.pts[1])) : a; if (!b) return;
       ctx.strokeStyle = it.color; ctx.lineWidth = it.width || 2; ctx.setLineDash(it.dash ? [5, 4] : []);
       ctx.beginPath();
       switch (it.type) {
