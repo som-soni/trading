@@ -188,7 +188,7 @@ const Drawings = (() => {
     function paintItem(ctx, it, w, h, isSel) {
       const a = toPx(it.pts[0]); if (!a) return;
       const b = it.pts[1] ? toPx(it.pts[1]) : a; if (!b) return;
-      ctx.strokeStyle = it.color; ctx.lineWidth = it.width || 2; ctx.setLineDash([]);
+      ctx.strokeStyle = it.color; ctx.lineWidth = it.width || 2; ctx.setLineDash(it.dash ? [5, 4] : []);
       ctx.beginPath();
       switch (it.type) {
         case "trend": ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); break;
@@ -201,7 +201,12 @@ const Drawings = (() => {
           label(ctx, fmtP(it.pts[0].p), w - 4, a.y, it.color, "right"); break;
         case "rect": {
           const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), rw = Math.abs(a.x - b.x), rh = Math.abs(a.y - b.y);
-          ctx.fillStyle = it.color + "2e"; ctx.fillRect(x, y, rw, rh); ctx.strokeRect(x, y, rw, rh); break;
+          // a lighter wash for an annotation than for a user's own box, so the chart
+          // reads as price-with-notes rather than price-under-paint
+          ctx.fillStyle = it.color + (it.auto ? "18" : "2e");
+          ctx.fillRect(x, y, rw, rh); ctx.strokeRect(x, y, rw, rh);
+          if (it.text) label(ctx, it.text, x + 2, y - 10, it.color, "left");
+          break;
         }
         case "fib": {
           const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), lv = fibLevels(it);
@@ -300,6 +305,8 @@ const Drawings = (() => {
           draw: (target) => target.useMediaCoordinateSpace(({ context: ctx }) => {
             const { w, h } = area();
             ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
+            // strategy annotations first, so a user's own drawing always sits on top
+            auto.forEach((it) => paintItem(ctx, it, w, h, false));
             if (!opts.hide) items.forEach((it) => paintItem(ctx, it, w, h, it.id === selected));
             if (draft && draft.type !== "measure") paintItem(ctx, { ...draft, color, width: 2 }, w, h, false);
             const m = measure || (draft && draft.type === "measure" ? draft : null);
@@ -532,7 +539,14 @@ const Drawings = (() => {
     }
     applyCursor();
 
+    let auto = [];
     const api = {
+      /** Read-only annotations drawn by a strategy, not by the user: never saved, never
+       *  selectable, never erasable, and replaced wholesale on each call. Kept apart from
+       *  `items` so "clear drawings" cannot delete them and they cannot be persisted into
+       *  someone's saved chart. */
+      annotate(list) { auto = (list || []).map((x, i) => ({ ...x, id: `auto-${i}`, auto: true })); req(); },
+      clearAnnotations() { auto = []; req(); },
       get tool() { return tool; }, get count() { return items.length; }, opts,
       setTool, undo,
       onChange(fn) { listeners.push(fn); fn(); },

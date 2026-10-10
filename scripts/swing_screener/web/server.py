@@ -1477,6 +1477,63 @@ def subindustries_set(request: Request, spec: dict = Body(...)):
 from .. import chart_drawings as draw_mod
 
 
+@app.get("/api/vcp/{market}/{symbol}")
+def vcp_boxes(market: str, symbol: str, strategy: str = "minervini_spec", limit: int = 40):
+    """The base each setup was built on, as rectangles for the chart.
+
+    Entry and exit arrows say WHERE a trade happened; they say nothing about the
+    structure the strategy claimed to see. The detector already records that per bar
+    (base_date, base_high, tight_low, pivot, contractions), so the chart can show the
+    base itself rather than asking the reader to take the entry on trust.
+
+    Returns one box per setup bar: the base from its high date to the signal, spanning
+    the tight-area low to the base high, plus the pivot the breakout had to clear.
+    """
+    rows = q(
+        "SELECT date, extras FROM backtest_signals "
+        "WHERE market=%s AND strategy=%s AND symbol=%s AND has_setup "
+        "AND extras IS NOT NULL ORDER BY date DESC LIMIT %s",
+        (market, strategy, symbol, limit),
+    )
+    # One base spans many bars, and each bar records it again — drawing all of them
+    # stacks a dozen near-identical rectangles on the same spot. Keep one box per
+    # distinct base, widened to the last bar that still saw it, and prefer the bar
+    # where the VCP actually completed (that is the one with a pivot).
+    seen: dict = {}
+    out = []
+    for date, extras in rows:
+        e = extras if isinstance(extras, dict) else json.loads(extras or "{}")
+        bh, bd = e.get("base_high"), e.get("base_date")
+        if not bh or not bd:
+            continue
+        key = (str(bd), round(float(bh), 4))
+        prev = seen.get(key)
+        if prev is not None:
+            prev["to"] = max(prev["to"], str(date))
+            if e.get("pivot") and not prev.get("pivot"):
+                prev.update(pivot=float(e["pivot"]), complete=not e.get("vcp_fail"),
+                            fail=e.get("vcp_fail"))
+                if e.get("tight_low"):
+                    prev["low"] = float(e["tight_low"])
+            continue
+        low = e.get("tight_low")
+        seen[key] = {
+            "from": str(bd), "to": str(date),
+            "high": float(bh),
+            # a base whose VCP never completed has no tight low; fall back to the
+            # base high less its first contraction so the box still has a floor
+            "low": float(low) if low else round(float(bh) * (1 - (e.get("first_depth_pct") or 0) / 100), 4),
+            "pivot": float(e["pivot"]) if e.get("pivot") else None,
+            "contractions": e.get("contractions"),
+            "first_depth_pct": e.get("first_depth_pct"),
+            "last_depth_pct": e.get("last_depth_pct"),
+            "complete": not e.get("vcp_fail"),
+            "fail": e.get("vcp_fail"),
+        }
+        out.append(seen[key])
+    return out
+
+
 @app.get("/api/drawings/{market}/{symbol}")
 def drawings_get(market: str, symbol: str):
     if market not in MARKETS:

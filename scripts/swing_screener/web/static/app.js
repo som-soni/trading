@@ -472,6 +472,7 @@ async function chartPage(alive, market, symbol, tf) {
     handleScroll: { mouseWheel: true, pressedMouseMove: false, horzTouchDrag: true, vertTouchDrag: false } });
   const prevCleanup = cleanup;
   let dr;
+  let vcpAnnotations = [];   // strategy-drawn base boxes, applied after Drawings is created
   cleanup = () => { prevCleanup(); dr && dr.destroy(); chart.remove(); };
   let main, times;
   const rows = px.ohlc ? px.candles : px.line;
@@ -510,6 +511,34 @@ async function chartPage(alive, market, symbol, tf) {
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
       LC.createSeriesMarkers(main, marks);
+    }
+
+    // Auto-annotate the structure the strategy claimed to see. Arrows say WHERE a
+    // trade happened and nothing about WHY, so the base itself is drawn: a box from
+    // its high to the signal, spanning the tight-area low to the base high, with the
+    // pivot the breakout had to clear. A completed VCP is solid, one that failed is
+    // dashed and labelled with the rule that rejected it — so a chart shows the near
+    // misses too, not only the trades.
+    const stratKey = (tradeRuns.find((r) => String(r.id) === String(sel.value)) || {}).strategy;
+    if (stratKey) {
+      const boxes = await api(`/api/vcp/${market}/${encodeURIComponent(symbol)}?strategy=${encodeURIComponent(stratKey)}`).catch(() => []);
+      if (!alive()) return;
+      const ann = [];
+      (boxes || []).forEach((b) => {
+        const t0 = snap(b.from), t1 = snap(b.to);
+        if (!t0 || !t1) return;
+        const done = b.complete;
+        ann.push({
+          type: "rect", pts: [{ t: t0, p: b.high }, { t: t1, p: b.low }],
+          color: done ? "#26a69a" : "#8a8a8a", width: done ? 2 : 1, dash: !done,
+          text: `VCP ${b.contractions}c${done ? "" : " · " + (b.fail || "incomplete")}`,
+        });
+        if (b.pivot) ann.push({
+          type: "trend", pts: [{ t: t0, p: b.pivot }, { t: t1, p: b.pivot }],
+          color: "#26a69a", width: 1, dash: true,
+        });
+      });
+      vcpAnnotations = ann;   // applied once Drawings exists, further down
     }
   }
 
@@ -778,6 +807,7 @@ async function chartPage(alive, market, symbol, tf) {
   }).catch(() => null);
   if (!alive()) return;
   dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}`, remote });
+  dr.annotate(vcpAnnotations);   // read-only: never saved, never erasable
   const unmountTools = Drawings.mountToolbar($("#tools"), dr, {
     count: () => studies.length,
     removeAll: () => removeStudies(studies.map((e) => e.s.id), `${studies.length} indicator${studies.length === 1 ? "" : "s"}`),
