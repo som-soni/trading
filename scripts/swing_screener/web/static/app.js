@@ -215,41 +215,24 @@ const WL_COLS = [["symbol", "Symbol"], ["last", "Last"], ["chg", "Chg"], ["chang
 /** absolute day change of a watchlist row (the API gives last close and % change) */
 const chgOf = (e) => (e.last != null && e.change_pct != null ? e.last - e.last / (1 + e.change_pct / 100) : null);
 
-/** The market is one setting for the whole app: a page opened without one in its URL shows the market you
- *  last chose anywhere, and choosing one on any page sets it everywhere. `extra` are page-specific
- *  combined views ("both", "all") — kept in the URL only, never remembered as the market. */
+/** The market is one remembered setting shared by every market-scoped page: a page opened without one
+ *  in its URL shows the market you last chose anywhere, and choosing one on any page sets it everywhere.
+ *  There is no global selector — each market-scoped page shows its own switcher (marketSeg), because
+ *  plenty of pages (watchlists, reports, status…) cover every market at once and a header control
+ *  would claim an authority it does not have there. `extra` are page-specific combined views
+ *  ("both", "all") — kept in the URL only, never remembered as the market. */
 function pageMarket(m, extra = []) {
-  if (isMarket(m)) { if (store.get("market", null) !== m) store.set("market", m); syncMarketSel(); return m; }
+  if (isMarket(m)) { if (store.get("market", null) !== m) store.set("market", m); return m; }
   const g = store.get("market", MKTS[0].key);
   return extra.includes(m) ? m : isMarket(g) ? g : MKTS[0].key;
 }
-/** The market is chosen once, in the header. A page with a combined view (Movers, Quality) adds a toggle
- *  between the header's market and "All markets"; other pages show nothing here. */
+/** The market switcher, rendered by each market-scoped page next to its title: every market, plus the
+ *  page's own combined views (e.g. [["both", "US + India"]]). Pages wire `.mk button` themselves,
+ *  since switching usually means navigating to the market's own URL. */
 function marketSeg(m, extra = []) {
-  if (!extra.length) return "";
-  const g = pageMarket();
-  return segmented([[g, mktInfo(g).name], ...extra.map(([k]) => [k, "All markets"])], m, "mk");
+  return segmented([...MKTS.map((x) => [x.key, `${x.flag} ${esc(x.name)}`]), ...extra], m, "mk");
 }
-// pages where the header market does not apply (they list every market, or a single record)
-const MARKETLESS = new Set(["watchlist", "notes", "todo", "playbook", "learn", "reports", "status", "runs"]);   // subindustries uses the market
-function syncMarketSel(page) {
-  const sel = document.getElementById("mktsel"); if (!sel) return;
-  const m = store.get("market", MKTS[0].key);
-  if (sel.options.length !== MKTS.length) sel.innerHTML = MKTS.map((x) => `<option value="${x.key}">${x.flag} ${esc(x.name)} · ${esc(x.exchange)}</option>`).join("");
-  sel.value = isMarket(m) ? m : MKTS[0].key;
-  page = page || pageIdOf(location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent));
-  const na = MARKETLESS.has(page);
-  sel.parentElement.classList.toggle("na", na);
-  sel.parentElement.title = na ? "This page covers every market" : "Market — applies to every page";
-}
-document.getElementById("mktsel").onchange = (e) => {
-  const m = e.target.value; store.set("market", m); refreshStatusDot();
-  const parts = location.hash.replace(/^#\//, "").split("/");
-  if ((parts[0] || "chart") === "chart") return go(`#/chart/${m}/${encodeURIComponent(store.get("lastSymbol:" + m, m === "us" ? "AAPL" : "RELIANCE.NS"))}`);
-  const h = location.hash.split("/").map((x) => (isMarket(x) || x === "both" || x === "all" ? m : x)).join("/");
-  if (h !== location.hash) go(h); else route();
-};
-api("/api/markets").then((xs) => { if (xs?.length) { MKTS = xs; Object.assign(MKT_BADGE, Object.fromEntries(xs.map((m) => [m.key, m.badge]))); syncMarketSel(); } }).catch(() => {});
+api("/api/markets").then((xs) => { if (xs?.length) { MKTS = xs; Object.assign(MKT_BADGE, Object.fromEntries(xs.map((m) => [m.key, m.badge]))); } }).catch(() => {});
 /** ⓘ — an explanation kept out of the way: a small button that opens the text in a popover.
  *  `html` is trusted markup built by the page (escape any data inside it); `label` turns it into a text button. */
 const INFO = new Map();
@@ -3415,7 +3398,6 @@ function renderNav(page) {
   $navpanel.innerHTML = SECTIONS.map((s, i) => `<div class="np-sec ${s === sec ? "cur" : ""}"><a class="np-h" href="${secHref_(s)}">${s.label}<kbd>Alt+${i + 1}</kbd></a>
     ${s.pages.length > 1 ? `<div class="np-pages">${s.pages.map(([p, t]) => `<a href="${pageHref(p)}" class="${p === page ? "active" : ""}">${t}</a>`).join("")}</div>` : ""}</div>`).join("");
   closeNavPanel();
-  syncMarketSel(page);
 }
 function closeNavPanel() { $navpanel.hidden = true; $navbtn.setAttribute("aria-expanded", "false"); }
 $navbtn.onclick = (e) => { e.stopPropagation(); $navpanel.hidden = !$navpanel.hidden; $navbtn.setAttribute("aria-expanded", String(!$navpanel.hidden)); };

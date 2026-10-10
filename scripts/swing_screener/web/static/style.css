@@ -923,14 +923,12 @@ button.sm, a.btn.sm { height: 26px; padding: 0 10px; font-size: 12px; }
 .tag.neutral { background: var(--panel-2); color: var(--muted); }
 
 /* ---------- header: market selector, section tab row */
-.mktsel select { height: 30px; font-weight: 600; color: var(--strong); max-width: 220px; }
-.mktsel.na { opacity: .45; }
 #subnav { position: sticky; top: 48px; z-index: 25; background: var(--bg); border-bottom: 1px solid var(--line); padding: 0 16px; }
 #subnav[hidden] { display: none; }
 .subtabs { margin: 0; border-bottom: 0; align-items: center; }
 .subtabs a { padding: 9px 14px; }
 .sub-hint { padding-right: 4px; }
-@media (max-width: 760px) { #subnav { display: none; } .mktsel select { max-width: 120px; } }
+@media (max-width: 760px) { #subnav { display: none; } }
 
 /* ---------- page header band: title · context (date, view) · actions on the right */
 .ph-ctx, .ph-act { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

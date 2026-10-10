@@ -506,14 +506,25 @@ class MinerviniSpecStrategy(Strategy):
     def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
         """How the portfolio simulator should place and manage this order (portfolio_sim docstring)."""
         e = ctx.extras
-        pivot, tl = float(e["pivot"]), float(e["tight_low"])
+        # A cheat has no FINAL tight area -- its base is still forming -- so its
+        # levels are the shelf's. Reading e["pivot"] unconditionally here is the
+        # same mistake build_plans made, and it crashed the run rather than
+        # degrading, because the cheat path never set those keys.
+        if plan.setup in (MV03, MV04):
+            pivot, tl = float(e["cheat_pivot"]), float(e["cheat_low"])
+        else:
+            pivot, tl = float(e["pivot"]), float(e["tight_low"])
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": MAX_STOP_PCT / 100, "base_id": e.get("base_date"),
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:
             meta.update(order="open", min_open=tl)
-        else:
+        elif plan.setup == MV02:
             meta.update(order="stop", cancel_close_below=tl, confirm_close_above=pivot)
+        else:
+            # the shelf was cleared on today's close, so the fill is the next open,
+            # as MV-01 does; cancel if it closes back under the shelf low
+            meta.update(order="open", min_open=tl)
         return meta
 
     # ---------- decision ----------
@@ -529,8 +540,14 @@ class MinerviniSpecStrategy(Strategy):
         risk_pct = plan.risk_per_share / plan.entry * 100
         if plan.setup == MV01:
             label, reasons = "TRADE_HIGH_CONFIDENCE", ["confirmed breakout: buy at the next open"]
-        else:
+        elif plan.setup == MV02:
             label, reasons = "TRADE_ON_TRIGGER", ["coiled below the pivot: buy-stop through it"]
+        else:
+            # a cheat is neither coiled nor a buy-stop: it cleared its shelf on the close
+            where = "lower" if plan.setup == MV03 else "middle"
+            label = "TRADE_ON_TRIGGER"
+            reasons = [f"cheat: cleared a shelf in the {where} third of the base, "
+                       f"stopped under the shelf low"]
         if risk_pct > MAX_STOP_PCT:
             label = "WATCH_WAIT"
             reasons.append(f"stop {risk_pct:.1f}% below entry exceeds the {MAX_STOP_PCT:g}% maximum")
@@ -579,6 +596,14 @@ class MinerviniSpecStrategy(Strategy):
             if e.get("tightness_pct") is not None:
                 note += f"Final tight area {e['tightness_pct']:g}% deep"
                 note += f", volume {e['dryup_ratio']:g}× the 50-day average (dry-up). " if e.get("dryup_ratio") is not None else ". "
+            if e.get("cheat_pivot") and e.get("cheat_zone"):
+                out.append({"shape": "box", "bars": CHEAT_SHELF_DAYS, "to": d,
+                            "top": float(e["cheat_pivot"]), "bottom": float(e["cheat_low"]),
+                            "role": "base", "dash": True,
+                            "label": f"cheat shelf · {e['cheat_zone']} third of the base"})
+                note += (f"Cheat shelf {e['cheat_low']:g}-{e['cheat_pivot']:g} in the "
+                         f"{e['cheat_zone']} third of the base; bought on the close through its "
+                         f"high, stopped under its low. ")
             note += (f"VCP rejected: {e['vcp_fail']}." if e.get("vcp_fail")
                      else f"Pivot {e['pivot']:g} — the final contraction's high; a buy-stop goes just above it." if e.get("pivot") else "")
             out.append({"shape": "note", "at": d, "price": float(bh), "text": note})
