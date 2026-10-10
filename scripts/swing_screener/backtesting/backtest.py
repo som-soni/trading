@@ -380,7 +380,12 @@ def collect_signals(
     if len(sim_dates) < 2:
         return out
 
-    screened_in = strategy.prefilter_mask(cfg, ind.enrich_daily(raw_daily))
+    # Enrich once per symbol, not once per bar: build_context used to re-derive the
+    # daily/weekly/monthly frames on every qualifying bar of a growing slice, which
+    # is quadratic and was ~89% of a scan. tests/test_context_frames.py checks the
+    # sliced context is identical to the rebuilt one.
+    frames = ctx_mod.prepare_frames(raw_daily)
+    screened_in = strategy.prefilter_mask(cfg, frames.daily)
 
     for current_date in sim_dates:
         if not bool(screened_in.get(current_date, False)):
@@ -395,13 +400,14 @@ def collect_signals(
         if cached is not None:
             ctx, result = cached
         else:
-            slice_df = raw_daily.loc[:current_date]
-            if len(slice_df) < strategy.min_bars:
+            bars_so_far = int(raw_daily.index.searchsorted(current_date, side="right"))
+            if bars_so_far < strategy.min_bars:
                 if fn:
                     fn.dropped("bars", "not enough history yet")
                 continue
             try:
-                ctx = ctx_mod.build_context(symbol, slice_df, earnings_days_away=None)
+                ctx = ctx_mod.build_context(symbol, raw_daily, earnings_days_away=None,
+                                            frames=frames, as_of=current_date)
             except Exception:
                 if fn:
                     fn.dropped("bars", "context could not be built")
