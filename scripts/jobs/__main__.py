@@ -204,6 +204,9 @@ def _run_args(r) -> None:
                    help="`backtest`: which decision labels count as tradeable, comma separated "
                         "(e.g. 'TRADE - HIGH CONFIDENCE,TRADE ON TRIGGER'). Overrides the strategy's "
                         "own backtest_args; the run gets its own report directory.")
+    r.add_argument("--const", action="append", default=None, metavar="NAME=VALUE",
+                   help="`backtest`: override a numeric module constant, e.g. --const MIN_STRUCTURAL_R=0. "
+                        "Repeatable. The variant gets its own fingerprint, cache and run directory.")
     r.add_argument("--vcp", action="append", default=None, metavar="KEY=VALUE",
                    help="`backtest`: override a VcpParams field, e.g. --vcp base_min_days=5. "
                         "Repeatable. The variant gets its own fingerprint, cache and run directory.")
@@ -220,7 +223,7 @@ def _opts(ap, a):
             ap.error(f"unknown strategies {bad}; choose from {list_strategies()}")
     opts = {"strategies": strategies, "force": a.force, "allow_stale": a.allow_stale,
             "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days,
-            "start": a.start, "sample": a.sample, "vcp": a.vcp,
+            "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const,
             "accept_labels": a.accept_labels}
     unknown = [t for t in a.targets if t not in JOBS and t not in PIPELINES]
     if unknown:

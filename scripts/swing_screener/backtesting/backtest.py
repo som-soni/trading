@@ -1097,6 +1097,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--min-group-rs", type=int, default=None,
                         help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
                              "on the signal date — e.g. 50 to avoid weak groups")
+    parser.add_argument("--const", action="append", default=None, metavar="NAME=VALUE",
+                        help="override a numeric module constant of the strategy for this run, e.g. "
+                             "--const MIN_STRUCTURAL_R=0. Repeatable. Like --vcp it changes the spec "
+                             "fingerprint, so the variant gets its own signal cache and run directory.")
     parser.add_argument("--vcp", action="append", default=None, metavar="KEY=VALUE",
                         help="override a VcpParams field for this run, e.g. --vcp base_min_days=5. "
                              "Repeatable. Changes the spec fingerprint, so the variant gets its own "
@@ -1122,7 +1126,10 @@ def main(argv: list[str] | None = None) -> dict | None:
         import dataclasses as _dc
         import importlib
 
-        mod = importlib.import_module(f"..strategies.{args.strategy}", __package__)
+        # The module, not the key: renaming minervini_spec's key to "minervini" left
+        # the module as minervini_spec.py, so importing by key silently loaded the
+        # RETIRED minervini.py instead of the registered strategy's own module.
+        mod = importlib.import_module(type(get_strategy(args.strategy)).__module__)
         if not hasattr(mod, "VCP"):
             parser.error(f"--vcp: {args.strategy} has no VCP parameters to override")
         kw = {}
@@ -1135,19 +1142,37 @@ def main(argv: list[str] | None = None) -> dict | None:
             kw[k] = type(cur)(float(v)) if isinstance(cur, (int, float)) else v
         mod.VCP = _dc.replace(mod.VCP, **kw)
         logger.info("VCP override %s -> spec %s", kw, get_strategy(args.strategy).spec_id())
+    if args.const:
+        # Same contract as --vcp, for the tunables that are module constants rather
+        # than VcpParams fields (MIN_STRUCTURAL_R, MAX_STOP_PCT, VOL_MULT ...).
+        # spec_params() reads every uppercase numeric module constant, so the
+        # fingerprint moves here too and the variant cannot overwrite the shipped run.
+        import importlib
+
+        mod = importlib.import_module(type(get_strategy(args.strategy)).__module__)
+        applied = {}
+        for item in args.const:
+            k, _, v = item.partition("=")
+            k = k.strip()
+            cur = getattr(mod, k, None)
+            if not k.isupper() or not isinstance(cur, (int, float)) or isinstance(cur, bool):
+                parser.error(f"--const: {args.strategy} has no numeric constant {k!r}")
+            setattr(mod, k, type(cur)(float(v)))
+            applied[k] = getattr(mod, k)
+        logger.info("const override %s -> spec %s", applied, get_strategy(args.strategy).spec_id())
     # A backtest must be attributable to a recorded version. If the rules have
     # moved without a version bump + `versions --update`, the report directory
     # would claim a version whose rules no longer match, so refuse instead.
     # `--vcp` is the deliberate exception: an override is an experiment that
     # carries its own fingerprint into the run name and cache key.
-    if not args.vcp:
+    if not args.vcp and not args.const:
         from ..strategies import versions as _versions
         _stale = _versions.verify(args.strategy)
         if _stale:
             parser.error(
                 f"{_stale}\n    Bump `version` and add a changelog entry, then record it:\n"
                 f"      PYTHONPATH=. python3 -m swing_screener.strategies.versions --update\n"
-                f"    (an unrecorded experiment can still run via --vcp KEY=VALUE)")
+                f"    (an unrecorded experiment can still run via --vcp / --const)")
     labels = tuple(x.strip() for x in args.accept_labels.split(",") if x.strip())
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
