@@ -1030,6 +1030,11 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--min-group-rs", type=int, default=None,
                         help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
                              "on the signal date — e.g. 50 to avoid weak groups")
+    parser.add_argument("--vcp", action="append", default=None, metavar="KEY=VALUE",
+                        help="override a VcpParams field for this run, e.g. --vcp base_min_days=5. "
+                             "Repeatable. Changes the spec fingerprint, so the variant gets its own "
+                             "signal cache and run directory and cannot be confused with the "
+                             "shipped rules.")
     parser.add_argument("--rank-by", default="setup", choices=list(RANK_MODES) + ["rs"],
                         help="how to rank signals competing for a slot. 'setup' "
                              "(default) keeps the strategy's own score; 'momentum' "
@@ -1042,6 +1047,27 @@ def main(argv: list[str] | None = None) -> dict | None:
                     help="skip updating the viewer database after the run")
 
     args = parser.parse_args(argv)
+    if getattr(args, "vcp", None):
+        # Rebind the strategy module's VCP before anything reads it. spec_params()
+        # expands that dataclass, so the fingerprint -- and therefore the signal cache
+        # namespace and the run directory -- change automatically: an experiment cannot
+        # silently reuse or overwrite the shipped rules' results.
+        import dataclasses as _dc
+        import importlib
+
+        mod = importlib.import_module(f"..strategies.{args.strategy}", __package__)
+        if not hasattr(mod, "VCP"):
+            parser.error(f"--vcp: {args.strategy} has no VCP parameters to override")
+        kw = {}
+        for item in args.vcp:
+            k, _, v = item.partition("=")
+            k = k.strip()
+            if not hasattr(mod.VCP, k):
+                parser.error(f"--vcp: unknown VcpParams field {k!r}")
+            cur = getattr(mod.VCP, k)
+            kw[k] = type(cur)(float(v)) if isinstance(cur, (int, float)) else v
+        mod.VCP = _dc.replace(mod.VCP, **kw)
+        logger.info("VCP override %s -> spec %s", kw, get_strategy(args.strategy).spec_id())
     labels = tuple(x.strip() for x in args.accept_labels.split(",") if x.strip())
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 

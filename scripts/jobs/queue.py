@@ -137,6 +137,12 @@ def command_for(targets: list, market: str, opts: dict) -> list[str]:
     for k in ("universe_days", "quality_top", "days", "start", "sample"):
         if opts.get(k) is not None:
             cmd += ["--" + k.replace("_", "-"), str(opts[k])]
+    # repeatable flags, one occurrence per value. Anything missing here is silently
+    # dropped on the way to the worker's subprocess: --vcp was stored in opts and
+    # honoured by the backtest job, but never reached it, so the variant ran the
+    # shipped rules and looked like it had succeeded.
+    for kv in (opts.get("vcp") or []):
+        cmd += ["--vcp", str(kv)]
     return cmd
 
 

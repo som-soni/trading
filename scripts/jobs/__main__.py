@@ -200,6 +200,9 @@ def _run_args(r) -> None:
     r.add_argument("--days", type=int, default=None, help="`postmarket`: also analyse this many latest sessions (backfill)")
     r.add_argument("--start", default=None, help="`backtest`: simulate from this date (YYYY-MM-DD, default 2013-01-01)")
     r.add_argument("--sample", type=int, default=None, help="`backtest`: a seeded random subset of N candidates (faster, unbiased)")
+    r.add_argument("--vcp", action="append", default=None, metavar="KEY=VALUE",
+                   help="`backtest`: override a VcpParams field, e.g. --vcp base_min_days=5. "
+                        "Repeatable. The variant gets its own fingerprint, cache and run directory.")
 
 
 def _opts(ap, a):
@@ -213,7 +216,7 @@ def _opts(ap, a):
             ap.error(f"unknown strategies {bad}; choose from {list_strategies()}")
     opts = {"strategies": strategies, "force": a.force, "allow_stale": a.allow_stale,
             "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days,
-            "start": a.start, "sample": a.sample}
+            "start": a.start, "sample": a.sample, "vcp": a.vcp}
     unknown = [t for t in a.targets if t not in JOBS and t not in PIPELINES]
     if unknown:
         ap.error(f"unknown job or pipeline {unknown}. Jobs: {', '.join(JOBS)}. Pipelines: {', '.join(PIPELINES)}")

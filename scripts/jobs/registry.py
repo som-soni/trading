@@ -332,6 +332,8 @@ def _backtest_steps(ctx: Ctx) -> list:
             argv = ["--market", c.market, "--start", start, "--strategy", key] + shlex.split(cls.backtest_args or "")
             if c.opt("sample"):
                 argv += ["--sample", str(int(c.opt("sample")))]
+            for kv in (c.opt("vcp") or []):
+                argv += ["--vcp", str(kv)]
             argv += ["--no-ingest"]   # the pipeline's own ingest job loads the report
             bt.on_progress = c.step.progress
             try:
