@@ -2430,12 +2430,14 @@ async function strategySetups(host, alive, strat, mkt, runKey) {
   const runs = all.filter((r) => (r.source === "history" || !hist.some((h) => h.strategy === r.strategy && String(h.run).startsWith(r.run))) && r.strategy === strat);
   const run = runs.find((r) => r.run === runKey) || runs[0];
   const nav = (m, r) => go(`#/strategies/${strat}/setups/${m}${r ? "/" + encodeURIComponent(r) : ""}`);
-  const rDates = runs.map((r) => ({ value: r.run, label: `Run ${prettyDate(r.run)}${r.tradeable != null ? ` — ${r.tradeable} tradeable of ${r.rows}` : ""}` }));
-  host.innerHTML = `<div class="page-head sub">${run ? datePicker(rDates, run.run, "runs") : ""}<span class="spacer"></span>
+  // The latest run only. A picker over every past run listed ~50 entries per
+  // strategy, which is screening history rather than anything to act on today;
+  // a run's own page is still reachable by URL (.../setups/<market>/<run>).
+  const label = run ? `Run ${prettyDate(run.run)}${run.tradeable != null ? ` — ${run.tradeable} tradeable of ${run.rows}` : ""}` : "";
+  host.innerHTML = `<div class="page-head sub">${run ? `<span class="run-label">${esc(label)}</span>` : ""}<span class="spacer"></span>
       <button id="run1" title="Run this strategy on today's data (adds a run to the job queue)">Run this strategy…</button></div>
     <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div>`;
   host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => nav(b.dataset.v));
-  wireDatePicker(host, rDates, run?.run, (r, latest) => nav(mkt, latest ? null : r));
   host.querySelector("#run1").onclick = () => startJob({ title: `Run ${strat} · ${mktInfo(mkt).name}`, targets: ["strategies"], market: mkt, screens: true, pick: strat });
   if (!run) { host.querySelector("#tbl").innerHTML = `<div class="empty"><b>No runs for ${MKT_BADGE[mkt]} yet</b><div class="muted">Run the strategies job, then refresh.</div></div>`; return; }
   const q = new URLSearchParams({ source: run.source, market: mkt, strategy: strat, run: run.run });
