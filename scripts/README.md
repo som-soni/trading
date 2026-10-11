@@ -74,6 +74,7 @@ manual tools, grouped by what they are for:
 | `--max-positions N` | position cap (default: the market config's 10) |
 | `--exit-mode {bracket,trail_atr,ma,donchian,minervini}` | how open positions are managed; `minervini` is the spec's EX-01…EX-07 (failed breakout, breakeven at 2R, a third at 3R, climax, 50-day break on volume) |
 | `--spec` | the Minervini spec's portfolio rules in one flag: `minervini` exits, 8 positions, RS rating ≥ 70, RS-then-tightness ranking, 6% open-risk cap, 5% traded-value cap, the spec's costs; adds the section-13 breakdown (year, setup, exit, base number, in/out of sample) to the report |
+| `--fundamentals {covered,acceptable,leader}` | SEPA part 2, point in time: keep signals whose company's results public on the signal date score at least this (Fundamentals page tests, no F7). `covered` = any scorable company — the control, since filings start in 2021 for part of the universe |
 | `--min-rs N` `--market-filter` `--rank-by rs` `--max-open-risk` `--max-adv-pct` | the spec's rules one at a time (TT-08, MKT-01, PF-03, PF-04, SL-06) |
 | `--partial-r` `--fail-days` `--time-stop` | `minervini` exit variants (section 9): partial at 2R/4R or 0 = off, failed-breakout window, EX-07 |
 | `--no-target` | drop the fixed profit target so winners can run |

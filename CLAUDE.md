@@ -89,6 +89,11 @@ sizing) — update, in the same change:
 - for the long-term quality tracker, `DOC`, `TESTS` and the threshold constants in
   `scripts/fundamentals/quality.py` — its Quality page and Strategies
   entry render every rule from those constants, so change a rule's text with its logic;
+- for the Fundamentals (company) page's strategy sections, `DOC`, `TESTS` and the
+  threshold constants of the view (`scripts/fundamentals/sepa.py` for Minervini) — the
+  page renders every rule from them; `fundamentals/growth.py` holds the shared metrics
+  and `fundamentals/company.py` the page's tables; run
+  `PYTHONPATH=. .venv/bin/python -m tests.test_fundamentals`;
 - for a new strategy, register it in `strategies/__init__.py` and fill every
   attribute above — the page and the test pick it up automatically.
 

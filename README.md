@@ -487,6 +487,50 @@ Statements are fetched with yfinance (~1.5 s per company) and re-fetched only
 when older than 30 days; prices come from the database, so the price verdicts
 update with every new close without re-running anything. Not investment advice.
 
+### Fundamentals: one company's financials (screener.in style)
+
+**Chart → Fundamentals** (`#/company/<market>/<symbol>`) shows the stock you are looking at the
+way screener.in does: key ratios (market cap, price, 52-week high / low, P/E, book value, dividend
+yield, ROCE, ROE, face value, debt / equity), the last 12 quarters' results, the profit & loss by
+fiscal year with a TTM column, compounded sales / profit / price growth and average ROE, the balance
+sheet, cash flows, ratios (debtor and inventory days, ROCE, ROE, OPM), the shareholding pattern
+(India: promoters / FII / DII / public each quarter) and peers from the stock's peer group. India is
+shown in ₹ crore, the US in $ million (`MarketConfig.money_unit`). A company not fetched yet has a
+**Fetch now** button: a queue item, ahead of long jobs, that fetches and scores just that company.
+
+Strategy sections sit at the bottom: today **Minervini SEPA** (`fundamentals/sepa.py`) — his eight
+tests on the quarterly results, a verdict (LEADER / ACCEPTABLE / WEAK) and the CODE 33 badge. The
+verdict is also a snapshot field, so **Screens → Minervini leaders in Stage 2** lists the stocks that
+pass both the Trend Template and his fundamentals. Another strategy's view is a module with `key`,
+`criteria()` and `evaluate(metrics)`, listed in `fundamentals/growth.py`'s `views()`.
+
+Where the numbers come from (`marketdata/financials.py`):
+
+- **US — SEC EDGAR** XBRL company facts (free, official): ~10 years of 10-K and 20 quarters of 10-Q
+  figures. Quarters as first reported, with the year-ago figure from the same filing (Q4 = the 10-K's
+  year minus the nine months); annual and balance-sheet figures as last restated. Set
+  `SEC_USER_AGENT=<name> <email>` in `scripts/.env`.
+- **India — NSE results filings** (the legacy feed to Dec 2024, then SEBI's Integrated Filing): one
+  XBRL document per quarter, consolidated where filed; Q4 documents carry the full year, the
+  year-end balance sheet and (from about FY2020) the cash flow; banks are mapped from their own
+  layout. Annual history goes back as far as NSE's records do (about 7 years for most companies).
+  Shareholding from NSE's quarterly shareholding-pattern filings. Documents are cached once parsed.
+- **yfinance** as the fallback (foreign filers, ADRs, gaps: ~5 quarters, 4 years), for the EPS
+  estimates, and for the profile (description, website, holders).
+
+```bash
+python3 -m jobs enqueue company_financials --market all     # fetch new filings and recompute (also in the weekly pipeline)
+python3 -m swing_screener.marketdata.financials --market us --symbols NVDA,AAPL --force   # one-off
+python3 -m fundamentals.growth --market india                 # recompute from what is stored
+```
+
+The weekly job covers the 1,500 (US) / 500 (India) most liquid tradable stocks plus every Stage-2
+stock, and only re-fetches a company when a new quarter's results could be out. The first run is
+slow (a few hours for India). The stored filing dates make this backtestable:
+`backtesting/fundamental_filter.py` judges each signal on the quarters that were public on its own
+date (`--fundamentals covered|acceptable|leader`), with `covered` as the control, since fundamental
+history exists for only part of the universe and only from 2021. Not investment advice.
+
 ### Re-render a finished run as a report
 
 ```bash
@@ -512,7 +556,7 @@ trading/
       marketdata/     cache, Postgres, universes, backfill
       screening/      the daily screener pipeline
       web/            read-only viewer (FastAPI + static JS) and report ingest
-    fundamentals/     long-term investing: quality scores + "is the price right?" (separate from swing trading)
+    fundamentals/     quality scores + "is the price right?" (long-term), company financials (company.py), growth metrics (growth.py), strategy views (sepa.py)
     tests/            behaviour-preservation harness
   data/           inputs: universe lists, earnings overrides
   reports/        generated output — one directory per run (gitignored)

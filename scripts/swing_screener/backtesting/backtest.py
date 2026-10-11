@@ -858,8 +858,12 @@ def run_portfolio_backtest(
     max_open_risk_pct: float | None = None,
     max_adv_pct: float | None = None,
     only_symbols: list[str] | None = None,
+    fundamentals: str | None = None,
 ):
     """Portfolio-level backtest: one capital pool, a position cap and costs.
+
+    `fundamentals` ("covered" / "acceptable" / "leader") applies Minervini's SEPA fundamental tests
+    to each signal from the results public on its date (backtesting/fundamental_filter.py).
 
     `min_rs`, `use_market_filter`, `spec_costs`, `max_open_risk_pct` and `max_adv_pct` are the
     Minervini spec's portfolio rules (backtesting/spec.py); `rank_by="rs"` is its PF-03 ranking.
@@ -950,6 +954,17 @@ def run_portfolio_backtest(
         fn.dropped("accepted", "market filter: benchmark below its 200-day", m["blocked"])
         spec_notes.append(f"Market filter (MKT-01): {m['blocked']} signals blocked on days the benchmark was below its "
                           f"200-day average or its 50-day was below its 200-day (open on {m['days_open_pct']}% of days).")
+    if fundamentals and all_signals:
+        from . import fundamental_filter
+        all_signals, f = fundamental_filter.filter_signals(all_signals, market_key, fundamentals)
+        v = f["verdicts"]
+        dropped = f["of"] - f["kept"]
+        fn.dropped("accepted", f"SEPA fundamentals below '{fundamentals}'", dropped)
+        spec_notes.append(
+            f"Fundamentals (SEPA part 2, level '{fundamentals}'): each signal judged on the quarterly results public on its "
+            f"date; {f['kept']} of {f['of']} kept. Verdicts: " + ", ".join(f"{n} {k}" for k, n in sorted(v.items(), key=lambda x: -x[1]))
+            + ". NO DATA means no scorable results then (fundamental history starts in 2021, for part of the universe); "
+              "F7 (estimates) is never available point in time.")
     if spec_costs:
         all_signals = spec_mod.annotate_costs(all_signals, prices, market_key)
     if rank_by == "rs":
@@ -1160,6 +1175,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
     parser.add_argument("--risk-pct", type=float, default=None,
                         help="risk per trade as a fraction, e.g. 0.005 (default: market config)")
+    parser.add_argument("--fundamentals", default=None, choices=["covered", "acceptable", "leader"],
+                        help="SEPA part 2, point in time: keep signals whose company's results public on the signal date "
+                             "score 'leader', 'acceptable'+ or can be scored at all ('covered' — the control, since "
+                             "fundamental history exists only from 2021 and for part of the universe)")
     parser.add_argument("--min-group-rs", type=int, default=None,
                         help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
                              "on the signal date — e.g. 50 to avoid weak groups")
@@ -1320,6 +1339,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
             max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
             only_symbols=[x.strip() for x in args.symbols.split(",") if x.strip()],
+            fundamentals=args.fundamentals,
         )
     except NoSignals as exc:
         # "no trades" is a result. Write the funnel anyway -- without it the run
@@ -1356,6 +1376,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         run += f"_rs{args.min_rs}"
     if args.market_filter:
         run += "_mkt"
+    if args.fundamentals:
+        run += f"_fund{args.fundamentals}"
     if args.accept_labels != "TRADE - HIGH CONFIDENCE":
         run += "_" + "+".join("".join(w[0] for w in x.split() if w[0].isalpha()) for x in labels)
     run += f"_sample{args.sample}" if args.sample else ""
@@ -1407,6 +1429,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (f" --ma-col {args.ma_col}" if args.exit_mode == "ma" else "")
             + (f" --rank-by {args.rank_by}" if args.rank_by != "setup" else "")
             + (f" --min-group-rs {args.min_group_rs}" if args.min_group_rs is not None else "")
+            + (f" --fundamentals {args.fundamentals}" if args.fundamentals else "")
             + (" --spec" if args.spec else (f" --min-rs {args.min_rs}" if args.min_rs is not None else ""))
             + (" --market-filter" if args.market_filter else "")
             + (f" --accept-labels '{args.accept_labels}'" if args.accept_labels != "TRADE - HIGH CONFIDENCE" else "")

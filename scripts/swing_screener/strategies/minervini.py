@@ -176,11 +176,11 @@ class MinerviniStrategy(Strategy):
         "the cross-sectional RS Rating.",
     )
     caveats = (
-        "**The fundamental screen (SEPA part 2) is NOT implemented.** "
-        "yfinance carries 5 quarters of current-restatement financials; "
-        "measuring growth acceleration needs 8+ quarters of point-in-time "
-        "data. The daily screener attaches current fundamentals as watch "
-        "flags; no backtest here includes them.",
+        "**The fundamental screen (SEPA part 2) is optional in the backtest and covers 2022 onward only.** "
+        "`--fundamentals leader|acceptable|covered` applies the Fundamentals page's SEPA tests to each signal "
+        "from the quarterly results public on its date (backtesting/fundamental_filter.py). Stored filings start "
+        "in 2021 and cover part of the universe, so compare against `covered` (any scorable company), not the "
+        "full run; F7 (beat estimates) is never available point in time.",
         "Minervini raises the stop to breakeven once a trade advances and sells "
         "into strength; this version's backtest runs a plain 50-day exit instead "
         "(all-or-nothing, no breakeven). the registered `minervini` strategy runs the full exit set.",

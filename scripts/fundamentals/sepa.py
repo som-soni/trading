@@ -72,7 +72,8 @@ DOC = {
     "caveats": (
         "Growth from a loss is not measurable, so it does not pass F1 — Minervini treats turnarounds case by case.",
         "One-off gains and charges are not removed; Minervini would look through them.",
-        "The Minervini strategy's backtests do not use these tests: there is no point-in-time fundamental history in them yet.",
+        "Backtests can apply these tests point in time (`--fundamentals`, from the results public on each signal's date), "
+        "from 2022 onward only — stored filings start in 2021 — and without F7, whose estimates are not stored historically.",
     ),
 }
 

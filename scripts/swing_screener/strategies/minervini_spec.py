@@ -234,8 +234,11 @@ class MinerviniSpecStrategy(Strategy):
         "**Relative strength** is applied twice: the per-stock gate M8 uses 12-1 month momentum of "
         "{RS_MIN_MOM}+ (a stand-in that a one-symbol evaluation can compute), and the backtest's `--min-rs` "
         "applies the true RS rating across the market. The stand-in rarely binds when the rating is 70+.",
-        "**The fundamental screen (SEPA part 2) is not part of the spec or the backtest** — there is no "
-        "point-in-time fundamental history.",
+        "**The fundamental screen (SEPA part 2) is not part of the spec; it is optional in the backtest and covers 2022 onward only.** "
+        "`--fundamentals leader|acceptable|covered` applies the Fundamentals page's SEPA tests to each signal "
+        "from the quarterly results public on its date (backtesting/fundamental_filter.py). Stored filings start "
+        "in 2021 and cover part of the universe, so compare against `covered` (any scorable company), not the "
+        "full run; F7 (beat estimates) is never available point in time.",
         "**Circuit limits** (C-03, India) are not modelled: a stop on a locked day fills at the next open, "
         "which daily bars cannot tell apart from a gap.",
         "**Base number** counts the bases that produced a breakout since the trend last broke; it is "

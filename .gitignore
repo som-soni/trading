@@ -10,6 +10,7 @@ logs/
 data/sector_cache_*.csv
 data/earnings_cache_*.csv
 data/snapshots/
+data/sec_company_tickers.json
 archive/cache/
 
 # python

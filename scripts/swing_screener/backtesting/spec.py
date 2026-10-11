@@ -297,6 +297,8 @@ def breakdown(trades: pd.DataFrame, equity: pd.Series, currency: str) -> str:
     if "base_no" in t and t["base_no"].notna().any():
         t["base"] = t["base_no"].apply(lambda b: "—" if b != b or b is None else (f"base {int(b)}" if b < 4 else "base 4+"))
         sections.insert(2, ("By base number", "base"))
+    if "sepa" in t and t["sepa"].notna().any():
+        sections.insert(2, ("By SEPA fundamentals verdict (on the signal date)", "sepa"))
     out = ["### Overall", "", *L, ""]
     for title, col in sections:
         out += [f"### {title}", "", head]

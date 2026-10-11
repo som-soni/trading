@@ -700,7 +700,7 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
             "pnl": round(t.pnl, 2), "r_multiple": round(t.r_multiple, 3),
             "holding_days": t.holding_days,
             **({"partial_shares": t.partial_shares, "pivot": t.meta.get("pivot"), "base_id": t.meta.get("base_id"),
-                "base_no": t.meta.get("base_no"), "rs": t.meta.get("rs")} if t.meta else {}),
+                "base_no": t.meta.get("base_no"), "rs": t.meta.get("rs"), "sepa": t.meta.get("sepa")} if t.meta else {}),
         }
         for t in trades
     ]
@@ -711,5 +711,5 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
         "pnl", "r_multiple", "holding_days",
     ]
     if any(t.meta for t in trades):
-        cols += ["partial_shares", "pivot", "base_id", "base_no", "rs"]
+        cols += ["partial_shares", "pivot", "base_id", "base_no", "rs", "sepa"]
     return pd.DataFrame(rows, columns=cols)
