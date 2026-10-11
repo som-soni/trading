@@ -2758,6 +2758,73 @@ async function reportsPage(alive) {
   draw();
 }
 
+/** The funnel, stage by stage, with the stocks at each one.
+ *
+ * The report's own Funnel table is a flat record of counts. This reads the same run's
+ * funnel.json through the API and lets a stage be opened: which stocks were still alive
+ * after it, and the names behind each reason the rest stopped. A stage's symbol count is
+ * NOT its bar count — a stock is listed once if it reached the stage on any bar, while
+ * the funnel counts bars — so the two are labelled separately rather than set side by side.
+ */
+async function funnelTab(body, id, r, alive) {
+  body.innerHTML = LOADING;
+  const f = await api(`/api/reports/${id}/funnel`).catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  if (f.error) { body.innerHTML = `<div class="empty"><b>No funnel for this run</b><div class="muted">${esc(f.error)}</div></div>`; return; }
+  const open = new Set();
+  const nf = (n) => Number(n).toLocaleString();
+
+  const chip = (sym) => `<button class="sym-chip" data-sym="${esc(sym)}" title="Open ${esc(sym)} on the chart">${esc(sym.replace(/\.NS$/, ""))}</button>`;
+
+  const stageBody = (st, detail) => {
+    if (!detail) return `<div class="fn-detail muted small">Loading the names…</div>`;
+    if (!detail.recorded) {
+      return `<div class="fn-detail muted small">This run recorded counts but not names — it predates per-stage symbols. Re-run the backtest to get them.</div>`;
+    }
+    const names = detail.symbols || [];
+    return `<div class="fn-detail">
+      ${names.length ? `<div class="fn-grp"><b>${nf(names.length)} stock${names.length === 1 ? "" : "s"} reached this stage</b>
+        <div class="syms">${names.map(chip).join("")}</div></div>` : ""}
+      ${(detail.drops || []).filter((d) => d.symbols.length).map((d) => `<div class="fn-grp">
+        <b>Stopped here — ${esc(d.reason)}</b> <span class="muted small">${nf(d.count)} ${esc(st.unit)}${d.truncated ? `, showing ${nf(d.symbols.length)} name${d.symbols.length === 1 ? "" : "s"}` : ""}</span>
+        <div class="syms">${d.symbols.map(chip).join("")}</div></div>`).join("")}
+    </div>`;
+  };
+
+  const cache = {};
+  const paint = () => {
+    body.innerHTML = `<p class="muted small">Every stage counts what reached it. The unit changes down the table — symbols, then bars, then signals — so a drop is only meaningful between two rows counting the same thing. Open a stage for the stocks behind it.</p>
+      <div class="fn-list">${f.stages.map((st) => {
+        const isOpen = open.has(st.stage);
+        return `<div class="fn-stage ${isOpen ? "open" : ""}" data-st="${esc(st.stage)}">
+          <button class="fn-head">
+            <i class="tw">${isOpen ? "▾" : "▸"}</i>
+            <span class="fn-lab">${esc(st.label)}</span>
+            <span class="fn-n">${nf(st.count)} <em>${esc(st.unit)}</em></span>
+            ${st.symbol_count ? `<span class="fn-sym">${nf(st.symbol_count)} stocks</span>` : ""}
+            <span class="fn-why muted small">${(st.drops || []).slice(0, 3).map((d) => `${esc(d.reason)} (${nf(d.count)})`).join(" · ")}${(st.drops || []).length > 3 ? ` · +${(st.drops || []).length - 3} more` : ""}</span>
+          </button>
+          ${isOpen ? stageBody(st, cache[st.stage]) : ""}</div>`;
+      }).join("")}</div>`;
+    body.querySelectorAll(".fn-head").forEach((b) => b.onclick = async () => {
+      const key = b.parentElement.dataset.st;
+      if (open.has(key)) { open.delete(key); paint(); return; }
+      open.add(key); paint();
+      if (!cache[key]) {
+        cache[key] = await api(`/api/reports/${id}/funnel/${key}`).catch((e) => ({ recorded: false, error: e.message, symbols: [], drops: [] }));
+        if (!alive()) return;
+        paint();
+      }
+    });
+    body.querySelectorAll(".sym-chip").forEach((b) => b.onclick = () => {
+      const all = [...b.closest(".syms").querySelectorAll(".sym-chip")].map((x) => x.dataset.sym);
+      openChartFromList(r.market, b.dataset.sym, all, `${r.strategy} funnel`, location.hash);
+    });
+  };
+  paint();
+}
+
+
 async function reportPage(alive, id, tab) {
   $view.innerHTML = LOADING;
   const r = await api(`/api/reports/${id}`).catch((e) => ({ error: e.message }));
@@ -2768,7 +2835,8 @@ async function reportPage(alive, id, tab) {
   }
   document.title = `${r.strategy} · ${r.run} · Trading`;
   const has = (n) => r.tables.some((t) => t.name === n);
-  const tabs = [["report", "Report"], ...(has("equity") ? [["equity", "Equity curve"]] : []), ...(has("trades") ? [["trades", `Trades (${r.tables.find((t) => t.name === "trades").rows})`]] : []),
+  const tabs = [["report", "Report"], ...(r.kind === "backtest" ? [["funnel", "Funnel"]] : []),
+    ...(has("equity") ? [["equity", "Equity curve"]] : []), ...(has("trades") ? [["trades", `Trades (${r.tables.find((t) => t.name === "trades").rows})`]] : []),
     ...(r.tables.length ? [["tables", `Data (${r.tables.length})`]] : [])];
   tab = tabs.some((t) => t[0] === tab) ? tab : "report";
   const s = r.summary || {};
@@ -2810,6 +2878,8 @@ async function reportPage(alive, id, tab) {
         else toast("That document is not loaded — click Load reports on the Reports archive", "err");
       };
     });
+  } else if (tab === "funnel") {
+    await funnelTab(body, id, r, alive);
   } else if (tab === "equity") {
     body.innerHTML = `<div id="eqchart"></div><div id="eqt"></div>`;
     const t = await api(`/api/reports/${id}/tables/equity`);

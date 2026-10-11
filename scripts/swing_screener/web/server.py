@@ -365,6 +365,9 @@ def reports(kind: str | None = None, market: str | None = None):
     ]
 
 
+_FUNNEL_SAMPLE = 12       # names shown inline before a stage has to be opened
+
+
 @app.get("/api/reports/{rid}/funnel")
 def report_funnel(rid: int):
     """The run's funnel: how many candidates reached each stage, and why the rest
@@ -380,7 +383,48 @@ def report_funnel(rid: int):
     data = funnel_mod.load(paths.REPO_ROOT / r[0][0]) if r[0][0] else None
     if data is None:
         raise HTTPException(404, "this run has no funnel (it predates the funnel, or did not finish)")
+    # The full name lists run to a few hundred KB on a wide universe, which is not
+    # worth shipping to open a report. Summarise here and serve one stage in full
+    # from the endpoint below, which is what expanding a row asks for.
+    for st in data.get("stages", []):
+        names = st.pop("symbols", None) or []
+        st["symbol_count"] = len(names)
+        st["sample"] = names[:_FUNNEL_SAMPLE]
+        for d in st.get("drops", []):
+            dn = d.pop("symbols", None) or []
+            d["symbol_count"] = len(dn)
+            d["sample"] = dn[:_FUNNEL_SAMPLE]
     return data
+
+
+@app.get("/api/reports/{rid}/funnel/{stage}")
+def report_funnel_stage(rid: int, stage: str):
+    """Every stock that reached one stage, and the names behind each of its drops.
+
+    A stage's symbol count is not its bar count: a stock is listed once if it reached
+    the stage on ANY bar, while the funnel's own figures count bars. Drop lists are
+    capped when recorded (Funnel.MAX_DROP_NAMES), so `truncated` says when the names
+    are a sample of a larger count rather than the whole of it.
+    """
+    r = q("SELECT source_path FROM report_runs WHERE id=%s", (rid,))
+    if not r:
+        raise HTTPException(404)
+    from ..backtesting import funnel as funnel_mod
+    from .. import paths
+    data = funnel_mod.load(paths.REPO_ROOT / r[0][0]) if r[0][0] else None
+    if data is None:
+        raise HTTPException(404, "this run has no funnel")
+    st = next((x for x in data.get("stages", []) if x["stage"] == stage), None)
+    if st is None:
+        raise HTTPException(404, f"no stage {stage!r} in this funnel")
+    names = st.get("symbols") or []
+    drops = [{"reason": d["reason"], "count": d["count"], "symbols": d.get("symbols") or [],
+              "truncated": len(d.get("symbols") or []) < d["count"] and bool(d.get("symbols"))}
+             for d in st.get("drops", [])]
+    return {"stage": stage, "label": st["label"], "unit": st["unit"], "count": st["count"],
+            "symbols": names, "symbol_count": len(names), "drops": drops,
+            # a run from before symbols were recorded: say so rather than showing an empty list
+            "recorded": bool(names) or any(d["symbols"] for d in drops)}
 
 
 @app.get("/api/reports/{rid}")

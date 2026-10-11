@@ -678,6 +678,26 @@ nav .nsec > .sec[aria-expanded="true"] { color: var(--strong); } nav .nsec > .se
 .dtab .st-ver { font-variant-numeric: tabular-nums; }
 .dtab .old { color: var(--warn); font-style: normal; font-size: 9px; margin-left: 4px; vertical-align: top; }
 
+/* the funnel, stage by stage (report → Funnel tab) */
+.fn-list { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }
+.fn-stage { border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.fn-stage.open { border-color: var(--accent); }
+.fn-head { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 8px 11px; background: none; border: 0;
+  color: var(--text); cursor: pointer; text-align: left; font-size: 13px; }
+.fn-head:hover { background: var(--panel-2); }
+.fn-head .tw { font-style: normal; color: var(--muted); width: 10px; flex: none; }
+.fn-head .fn-lab { font-weight: 500; flex: none; }
+.fn-head .fn-n { font-variant-numeric: tabular-nums; color: var(--strong); flex: none; }
+.fn-head .fn-n em { font-style: normal; color: var(--muted); font-size: 11px; }
+.fn-head .fn-sym { font-variant-numeric: tabular-nums; color: var(--accent); font-size: 12px; flex: none; }
+.fn-head .fn-why { margin-left: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fn-detail { padding: 4px 12px 12px 33px; border-top: 1px solid var(--line-2); }
+.fn-grp { margin-top: 10px; font-size: 13px; }
+.fn-grp .syms { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.sym-chip { font-size: 11px; padding: 2px 7px; border-radius: 10px; border: 1px solid var(--line-2);
+  background: var(--panel-2); color: var(--text); cursor: pointer; font-variant-numeric: tabular-nums; }
+.sym-chip:hover { border-color: var(--accent); color: var(--strong); }
+
 /* ---------- data status */
 .dstatus { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--line-2); color: var(--text); font-size: 12px; font-weight: 500; }
 .dstatus:hover { color: var(--strong); background: var(--panel-2); }

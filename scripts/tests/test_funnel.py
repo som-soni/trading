@@ -76,14 +76,73 @@ def _problems() -> list[str]:
     return bad
 
 
+def _symbol_problems() -> list[str]:
+    """The names behind each stage: recorded, merged and capped.
+
+    The counts and the names are two different quantities — a stage counts BARS while
+    its name list counts the stocks that reached it on any bar — so the one thing that
+    must hold is that a name never appears at a stage the stock did not reach.
+    """
+    bad = []
+    f = F.Funnel()
+    f.set_count("symbols", 4)
+    f.set_symbols("candidates", ["A", "B", "C"])
+    f.set_count("candidates", 3)
+    for sym in ("A", "B", "C"):
+        f.reached("bars", 10, symbol=sym)
+    f.reached("hard_gates", 5, symbol="A")
+    f.reached("hard_gates", 5, symbol="B")
+    f.dropped("bars", "hard gate VCP-02", 5, symbol="C")
+    rows = {r["stage"]: r for r in f.rows()}
+
+    if rows["hard_gates"]["symbols"] != ["A", "B"]:
+        bad.append(f"hard_gates named {rows['hard_gates']['symbols']}, expected ['A', 'B']")
+    if "C" in rows["hard_gates"]["symbols"]:
+        bad.append("C never reached hard_gates but is named there")
+    drop = next(d for d in rows["bars"]["drops"] if d["reason"] == "hard gate VCP-02")
+    if drop["symbols"] != ["C"]:
+        bad.append(f"the VCP-02 drop named {drop['symbols']}, expected ['C']")
+
+    # a bulk set replaces rather than adds to, so a later narrowing (--symbols) cannot
+    # leave a stage naming more stocks than its own count
+    f.set_symbols("candidates", ["A"])
+    if {r["stage"]: r for r in f.rows()}["candidates"]["symbols"] != ["A"]:
+        bad.append("set_symbols must replace the stage's names, not union with them")
+
+    # merging two per-symbol funnels keeps both sets
+    a, b = F.Funnel(), F.Funnel()
+    a.reached("setup", 1, symbol="A")
+    b.reached("setup", 1, symbol="B")
+    a.merge(b)
+    if {r["stage"]: r for r in a.rows()}["setup"]["symbols"] != ["A", "B"]:
+        bad.append("merge lost one side's names")
+
+    # the caps hold, and say so
+    big = F.Funnel()
+    many = [f"S{i:05d}" for i in range(F.Funnel.MAX_STAGE_NAMES + 50)]
+    big.set_symbols("candidates", many)
+    big.set_count("candidates", len(many))
+    for sym in many:
+        big.dropped("candidates", "too many", 1, symbol=sym)
+    row = {r["stage"]: r for r in big.rows()}["candidates"]
+    if len(row["symbols"]) != F.Funnel.MAX_STAGE_NAMES or not row["symbols_truncated"]:
+        bad.append(f"stage names not capped: {len(row['symbols'])}, truncated={row['symbols_truncated']}")
+    dn = row["drops"][0]
+    if len(dn["symbols"]) > F.Funnel.MAX_DROP_NAMES:
+        bad.append(f"drop names not capped: {len(dn['symbols'])}")
+    if dn["count"] != len(many):
+        bad.append("capping the names must not change the count")
+    return bad
+
+
 def main() -> int:
-    bad = _problems()
+    bad = _problems() + _symbol_problems()
     if bad:
         print("FAIL — funnel:")
         for b in bad:
             print("  " + b)
         return 1
-    print("OK — funnel arithmetic, units and reason grouping behave")
+    print("OK — funnel arithmetic, units, reason grouping and per-stage names behave")
     return 0
 
 

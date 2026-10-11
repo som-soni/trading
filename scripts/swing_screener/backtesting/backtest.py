@@ -405,7 +405,7 @@ def collect_signals(
         if not bool(screened_in.get(current_date, False)):
             continue
         if fn:
-            fn.reached("bars")
+            fn.reached("bars", symbol=symbol)
 
         cached = (
             _load_cached_signal(market_key, strategy, symbol, current_date)
@@ -417,24 +417,24 @@ def collect_signals(
             bars_so_far = int(raw_daily.index.searchsorted(current_date, side="right"))
             if bars_so_far < strategy.min_bars:
                 if fn:
-                    fn.dropped("bars", "not enough history yet")
+                    fn.dropped("bars", "not enough history yet", symbol=symbol)
                 continue
             try:
                 ctx = ctx_mod.build_context(symbol, raw_daily, earnings_days_away=None,
                                             frames=frames, as_of=current_date)
             except Exception:
                 if fn:
-                    fn.dropped("bars", "context could not be built")
+                    fn.dropped("bars", "context could not be built", symbol=symbol)
                 continue
             if ctx is None:
                 if fn:
-                    fn.dropped("bars", "context could not be built")
+                    fn.dropped("bars", "context could not be built", symbol=symbol)
                 continue
             try:
                 result = strategy.evaluate(ctx)
             except Exception:
                 if fn:
-                    fn.dropped("bars", "the strategy raised while evaluating")
+                    fn.dropped("bars", "the strategy raised while evaluating", symbol=symbol)
                 continue
             if market_key:
                 new_signal_rows.append(
@@ -444,34 +444,34 @@ def collect_signals(
         if not result.hard_gates_passed:
             if fn:
                 fn.dropped("bars", f"hard gate {result.first_hard_fail}"
-                           if result.first_hard_fail else "a hard gate")
+                           if result.first_hard_fail else "a hard gate", symbol=symbol)
             continue
         if fn:
-            fn.reached("hard_gates")
+            fn.reached("hard_gates", symbol=symbol)
         if not result.has_setup:
             # the strategy's own code for an incomplete setup (minervini records
             # the VCP gate that refused); otherwise just "no setup"
             if fn:
-                fn.dropped("hard_gates", ctx.extras.get("vcp_fail") or "no setup formed")
+                fn.dropped("hard_gates", ctx.extras.get("vcp_fail") or "no setup formed", symbol=symbol)
             continue
         if fn:
-            fn.reached("setup")
+            fn.reached("setup", symbol=symbol)
         if not strategy.entry_signal_fired(ctx, result):
             if fn:
-                fn.dropped("setup", "entry trigger did not fire")
+                fn.dropped("setup", "entry trigger did not fire", symbol=symbol)
             continue
         if fn:
-            fn.reached("entry")
+            fn.reached("entry", symbol=symbol)
         choice = strategy.build_plans(ctx, result, cfg)
         plan = choice.chosen
         if plan is None or not plan.is_valid:
             # choice.reason is the rule that refused, in its own words -- this
             # is where a reward-to-risk minimum shows up
             if fn:
-                fn.dropped("entry", choice.reason if plan is None else "plan not valid")
+                fn.dropped("entry", choice.reason if plan is None else "plan not valid", symbol=symbol)
             continue
         if fn:
-            fn.reached("plan")
+            fn.reached("plan", symbol=symbol)
         # sizing here is only an input to classify (it mirrors the live
         # pipeline); the portfolio engine does the real sizing off current
         # equity, so `too_large` is deliberately NOT a filter at this stage
@@ -480,10 +480,10 @@ def collect_signals(
         if dec.label_before not in accept_labels:
             if fn:
                 fn.dropped("plan", f'decision was "{dec.label_before}", not accepted'
-                           if dec.label_before else "no decision")
+                           if dec.label_before else "no decision", symbol=symbol)
             continue
         if fn:
-            fn.reached("accepted")
+            fn.reached("accepted", symbol=symbol)
 
         out.append(Signal(
             date=current_date, symbol=symbol, setup=plan.setup,
@@ -823,8 +823,11 @@ def _point_in_time_candidates(
     if fn:
         fn.set_count("symbols", len(tickers))
         fn.set_count("candidates", len(candidates))
+        fn.set_symbols("candidates", candidates)
         if len(candidates) <= funnel_mod.Funnel.MAX_NAMED:
             fn.symbols = list(candidates)
+        fn.drop_symbols["symbols"]["never passed the pre-filter in the window"] = set(
+            sorted(set(tickers) - set(candidates))[: funnel_mod.Funnel.MAX_DROP_NAMES])
         fn.dropped("symbols", "never passed the pre-filter in the window",
                    len(tickers) - len(candidates))
     logger.info(
@@ -915,6 +918,7 @@ def run_portfolio_backtest(
         if dropped_by_request > 0:
             fn.dropped("symbols", "not in --symbols", dropped_by_request)
         fn.set_count("candidates", len(candidates))
+        fn.set_symbols("candidates", candidates)
         fn.symbols = list(candidates)
     candidates = sample_candidates(candidates, sample, include=include) if sample else (
         candidates[:limit] if limit else candidates
@@ -977,6 +981,7 @@ def run_portfolio_backtest(
     if not all_signals:
         raise NoSignals("no signals left after the portfolio filters — nothing to simulate", fn)
     fn.set_count("ranked", len(all_signals))
+    fn.set_symbols("ranked", [s.symbol for s in all_signals])
     _progress(f"{len(all_signals):,} signals after filters · simulating the portfolio day by day")
     group_note = None
     if min_group_rs is not None:
@@ -998,6 +1003,7 @@ def run_portfolio_backtest(
     tdf = p_trades_to_df(result.trades)
     # what the simulator refused: slots, cash, and the per-fill checks it records
     fn.set_count("taken", len(result.trades))
+    fn.set_symbols("taken", [t.symbol for t in result.trades])
     fn.dropped("ranked", "all position slots full", result.signals_missed_no_slot)
     fn.dropped("ranked", "not enough cash", result.signals_missed_no_cash)
     for _reason, _n in (getattr(result, "skipped", None) or {}).items():

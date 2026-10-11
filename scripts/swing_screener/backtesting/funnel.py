@@ -66,19 +66,44 @@ class Funnel:
     """Counts per stage, and the reasons for each drop."""
 
     MAX_NAMED = 25   # beyond this a list is noise, so only the count is shown
+    # Per-reason name lists are for reading, not for completeness: the count beside
+    # them is always the true total. Capped so a rule that rejects 200,000 bars does
+    # not carry 200,000 strings through the run and into the JSON.
+    MAX_DROP_NAMES = 500
+    # A stage list is for looking a stock up, not for holding a universe. Capped so one
+    # run's funnel.json stays small enough to serve; `symbols_truncated` says when it bit.
+    MAX_STAGE_NAMES = 2000
 
     def __init__(self) -> None:
         self.counts: collections.Counter = collections.Counter()
         self.drops: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
         self.symbols: list[str] = []   # the names actually scanned, when few enough to name
+        # Which stocks got how far. A count says a stage lost 373,941 bars; these say
+        # which names were still alive after it, which is the question actually asked
+        # of a funnel ("did NVDA ever form a setup, and if not, where did it stop?").
+        # Keyed by stage; a symbol is recorded if it reached that stage on ANY bar, so
+        # these are symbol counts and do not match the bar counts beside them.
+        self.stage_symbols: dict[str, set] = collections.defaultdict(set)
+        self.drop_symbols: dict[str, dict] = collections.defaultdict(lambda: collections.defaultdict(set))
 
     # ---- recording
-    def reached(self, stage: str, n: int = 1) -> None:
+    def reached(self, stage: str, n: int = 1, symbol: str | None = None) -> None:
         self.counts[stage] += n
+        if symbol:
+            self.stage_symbols[stage].add(symbol)
 
-    def dropped(self, stage: str, reason: object, n: int = 1) -> None:
+    def dropped(self, stage: str, reason: object, n: int = 1, symbol: str | None = None) -> None:
         """Record n items that reached `stage` but go no further, and why."""
-        self.drops[stage][normalise(reason)] += n
+        key = normalise(reason)
+        self.drops[stage][key] += n
+        if symbol:
+            names = self.drop_symbols[stage][key]
+            if len(names) < self.MAX_DROP_NAMES:
+                names.add(symbol)
+
+    def set_symbols(self, stage: str, symbols) -> None:
+        """Name the stocks at a stage counted in bulk rather than one at a time."""
+        self.stage_symbols[stage] = set(symbols)
 
     def set_count(self, stage: str, n: int) -> None:
         self.counts[stage] = int(n)
@@ -88,6 +113,12 @@ class Funnel:
         self.counts.update(other.counts)
         for stage, reasons in other.drops.items():
             self.drops[stage].update(reasons)
+        for stage, names in other.stage_symbols.items():
+            self.stage_symbols[stage] |= names
+        for stage, reasons in other.drop_symbols.items():
+            for reason, names in reasons.items():
+                have = self.drop_symbols[stage][reason]
+                have |= set(list(names)[: max(0, self.MAX_DROP_NAMES - len(have))])
 
     # ---- reading
     def rows(self) -> list[dict]:
@@ -107,8 +138,11 @@ class Funnel:
                 "label": _LABEL[key],
                 "unit": _UNIT[key],
                 "count": int(self.counts.get(key, 0)),
-                "drops": [{"reason": r, "count": int(n)}
+                "drops": [{"reason": r, "count": int(n),
+                            "symbols": sorted(self.drop_symbols.get(key, {}).get(r, ()))}
                           for r, n in self.drops.get(key, collections.Counter()).most_common()],
+                "symbols": sorted(self.stage_symbols.get(key, ()))[: self.MAX_STAGE_NAMES],
+                "symbols_truncated": len(self.stage_symbols.get(key, ())) > self.MAX_STAGE_NAMES,
             })
         # A funnel whose reasons do not add up to its own losses is worse than no
         # funnel: it reads as a complete account while quietly omitting some of
@@ -120,7 +154,7 @@ class Funnel:
             lost = r["count"] - nxt["count"]
             gap = lost - sum(d["count"] for d in r["drops"])
             if lost > 0 and gap > 0:
-                r["drops"].append({"reason": "not attributed to a named rule", "count": int(gap)})
+                r["drops"].append({"reason": "not attributed to a named rule", "count": int(gap), "symbols": []})
         return out
 
     def to_dict(self) -> dict:
