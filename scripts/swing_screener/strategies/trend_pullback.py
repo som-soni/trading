@@ -22,6 +22,7 @@ from ..core import swings as sw
 from ..core import demand_supply as ds_mod
 from ..config.base import MarketConfig
 from ..core.context import StockContext
+from ..screens import criteria
 from .base import (
     tradable_point_in_time,
     CAP_ORDER,
@@ -424,7 +425,7 @@ class TrendPullbackStrategy(Strategy):
         result.watch_flags["X2"] = bool(below_50)
 
         # X3: at a rising SMA50 (positive flag)
-        sma50_state = ind.slope_state(d["sma50"], 10, 1.0)
+        sma50_state = criteria.sma50_state(ctx)
         at_rising_50 = (
             pd.notna(sma50)
             and pd.notna(atr14)

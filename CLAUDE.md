@@ -37,8 +37,30 @@ run it after changing a criterion, a built-in definition or a snapshot field.
 A new field needs a `FIELDS` entry and a value in `snapshot._row` (point in
 time) or `_add_present` (present only). Built-in screens with no coded twin
 (e.g. "Strong stocks in leading groups", on the peer-group fields) are
-`definitions.presets()`: conditions only, thresholds as module constants. A **strategy**
-(`strategies/`) draws its candidates from one screen (`screen_key`; its
+`definitions.presets()`: conditions only, thresholds as module constants.
+
+Screens overlap on purpose — `above_200` is deliberately a looser `near_highs`,
+because a different strategy draws from each — but a *question* is answered once.
+Several screens ask the same thing at different thresholds (whether the close is
+above the 200-day: C3, H1, A1; how far below the 52-week high: C7, H3, U7; whether
+an average is falling: H2, U4). Each of those lives in exactly one predicate in
+`screens/criteria.py`, and a criterion supplies only its own ceiling — named as a
+module constant, never a literal, so the Screens page renders the live value. Reach
+for the existing predicate instead of writing a second one, give a screen its own
+constant rather than borrowing another's (so tuning one screen cannot move another),
+and run `PYTHONPATH=. .venv/bin/python -m tests.test_screen_criteria`, which fails on
+a re-inlined predicate or a bare threshold.
+
+Naming follows from that: a criterion is named for the rule, and a screen keeping its
+own variant of a shared rule prefixes it with its screen key (`stage2_above_sma200`
+beside `above_sma200`); a threshold has one name per quantity, prefixed the same way
+(`UPTREND_MAX_PCT_BELOW_52W_HIGH` beside `MAX_PCT_BELOW_52W_HIGH`). Do not rename the
+Trend Template's unprefixed five — `MAX_PCT_BELOW_52W_HIGH`, `MIN_PCT_ABOVE_52W_LOW`,
+`RS_MIN_MOM`, `RS_MIN_RANK`, `SMA200_RISING_BARS`. A fingerprint is keyed on constant
+*names* (`strategies/base.py` `spec_params`), so renaming one of those fails the version
+gate and invalidates every stored signal for a change that alters no behaviour.
+
+A **strategy** (`strategies/`) draws its candidates from one screen (`screen_key`; its
 `screen_gates` map its gate codes to that screen's criteria, evaluated by the
 same code) and adds its own trade rules, setups, entry/stop/target, exits and
 sizing; strategies are what get **backtested**. A qualification rule belongs in

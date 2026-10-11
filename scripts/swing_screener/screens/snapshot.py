@@ -77,7 +77,7 @@ FIELDS = [
     ("holding_50d", "Holding the 50-day", "Trend & structure", "bool", "50-day above the 200-day, and price has not broken down through the 50-day "
                                                                        "(more than 2 ATR below it, or 5 closes in a row under it)."),
     ("mas_not_falling", "Averages not falling", "Trend & structure", "bool", "Neither the 50-day nor the 200-day is falling."),
-    ("sma200_not_falling", "200-day not falling", "Trend & structure", "bool", "The 200-day is not more than 0.5% below its value 20 sessions ago."),
+    ("sma200_not_falling", "200-day not falling", "Trend & structure", "bool", f"The 200-day is not more than {crit.SMA200_FALLING_PCT:g}% below its value {crit.SMA200_SLOPE_BARS} sessions ago."),
     ("higher_swing_lows", "Higher swing lows", "Trend & structure", "bool", "The last two confirmed swing lows (last ~50 sessions) are rising."),
     ("momentum_positive", "12-1M momentum positive", "Trend & structure", "bool", "The close a month ago is above the close a year ago."),
     ("trend_not_fading", "Trend not fading", "Trend & structure", "bool", "Not both a negative 3-month return and a flat or falling 50-day."),

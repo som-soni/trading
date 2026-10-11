@@ -3,6 +3,21 @@
 Each criterion takes a `StockContext` (core/context.py) and returns (passed, note). The code here was
 moved verbatim out of the strategies' gate code, so a strategy that qualifies stocks through a screen
 evaluates exactly as it did before (tests/golden_strategies.py proves it).
+
+Naming
+------
+A criterion is named for the rule it tests, not for the screen that uses it, because screens
+share rules: `above_sma200` serves both H1 and A1. A screen that keeps its *own variant* of a
+shared rule prefixes it with its screen key — `stage2_above_sma200` beside `above_sma200`,
+`uptrend_near_52w_high` beside `near_52w_high` — so the prefix always answers "whose version
+is this?" and never decorates a rule that only one screen has.
+
+Thresholds follow the same idea: one name per quantity (`MAX_PCT_BELOW_52W_HIGH`), prefixed with
+the screen key where a screen sets its own (`UPTREND_MAX_PCT_BELOW_52W_HIGH`). The Trend
+Template's are the unprefixed ones and have to stay that way: MAX_PCT_BELOW_52W_HIGH,
+MIN_PCT_ABOVE_52W_LOW, RS_MIN_MOM, RS_MIN_RANK and SMA200_RISING_BARS are keys in the minervini
+strategy's fingerprint (`strategies/base.py` spec_params), so renaming one fails the version gate
+and invalidates the stored signals for a change that alters no behaviour.
 """
 
 import pandas as pd
@@ -17,89 +32,133 @@ MAX_PCT_BELOW_52W_HIGH = 25.0
 RS_MIN_MOM = 0.10                # per-stock stand-in for an RS rank of 70+: 12-1 month momentum
 RS_MIN_RANK = 70                 # when a whole market is screened at once: the true 1-99 RS rank
 
-# ---- near highs
-NEAR_HIGH_MIN_FRAC = 0.85        # close at least this fraction of the 52-week high (within 15%)
-SMA200_FALLING_PCT = 0.5         # "falling": more than this % below its value SMA200_SLOPE_BARS ago
+# ---- near highs. Its own, tighter ceiling; the _FRAC form is the same number as a
+# fraction of the high, which is how the snapshot conditions express it.
+NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH = 15.0
+NEAR_HIGHS_MIN_FRAC_OF_52W_HIGH = 1 - NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH / 100
+
+# ---- established uptrend. Its own ceiling, deliberately not MAX_PCT_BELOW_52W_HIGH even
+# though the two currently agree: the screens serve different strategies, so tuning the
+# Trend Template must not silently move the uptrend screen.
+UPTREND_MAX_PCT_BELOW_52W_HIGH = 25.0
+UPTREND_MIN_FRAC_OF_52W_HIGH = 1 - UPTREND_MAX_PCT_BELOW_52W_HIGH / 100
+
+# ---- moving-average slope. "falling" means more than FALLING_PCT% below its value SLOPE_BARS ago.
+SMA200_FALLING_PCT = 0.5
 SMA200_SLOPE_BARS = 20
+SMA50_FALLING_PCT = 1.0
+SMA50_SLOPE_BARS = 10
+
+
+# ------------------------------------------------------------------ shared predicates
+# Several screens ask the same question at different thresholds: three ask whether the
+# close is above the 200-day (C3, H1, A1), three how far it is below the 52-week high
+# (C7, H3, U7), two whether the 200-day is falling (H2, U4). Each question is answered
+# in exactly one place below and each criterion only supplies its own ceiling, so two
+# screens cannot drift apart on what the question means.
+# tests/test_screen_criteria.py pins these against the per-screen criteria.
+
+def _above_sma(ctx, col: str) -> bool:
+    """Close strictly above a moving average; False when the average has no value yet."""
+    v = ctx.daily[col].iloc[-1]
+    return bool(pd.notna(v) and ctx.close > v)
+
+
+def _pct_below_52w_high(ctx) -> float:
+    """How far the close sits below the 52-week high, in percent. NaN — which fails every
+    comparison, so a stock without a usable high never qualifies — when the high is
+    missing or non-positive."""
+    high_252 = ctx.daily["high_252"].iloc[-1]
+    if pd.isna(high_252) or high_252 <= 0:
+        return float("nan")
+    return float((1 - ctx.close / high_252) * 100)
+
+
+def sma50_state(ctx) -> str:
+    return ind.slope_state(ctx.daily["sma50"], SMA50_SLOPE_BARS, SMA50_FALLING_PCT)
+
+
+def sma200_state(ctx) -> str:
+    return ind.slope_state(ctx.daily["sma200"], SMA200_SLOPE_BARS, SMA200_FALLING_PCT)
 
 
 # ------------------------------------------------------------------ long-term trend (200-day)
 
 def above_sma200(ctx) -> tuple[bool, str]:
-    sma200 = ctx.daily["sma200"].iloc[-1]
-    if pd.isna(sma200) or ctx.close <= sma200:
-        return False, "close at/below SMA200"
-    return True, ""
+    if _above_sma(ctx, "sma200"):
+        return True, ""
+    return False, "close at/below SMA200"
 
 
 def sma200_not_falling(ctx) -> tuple[bool, str]:
-    state = ind.slope_state(ctx.daily["sma200"], SMA200_SLOPE_BARS, SMA200_FALLING_PCT)
+    state = sma200_state(ctx)
     if state == "falling":
         return False, "SMA200 falling"
     return True, f"SMA200 {state}"
 
 
-def near_52w_high(ctx, min_frac: float = NEAR_HIGH_MIN_FRAC) -> tuple[bool, str]:
-    high_252 = ctx.daily["high_252"].iloc[-1]
-    if pd.isna(high_252):
+def near_52w_high(ctx) -> tuple[bool, str]:
+    pct = _pct_below_52w_high(ctx)
+    if pd.isna(pct):
         return False, "insufficient history for the 52-week high"
-    if ctx.close >= high_252 * min_frac:
+    if pct <= NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH:
         return True, ""
-    return False, f"more than {(1 - min_frac) * 100:.0f}% below the 52-week high"
+    return False, f"more than {NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH:g}% below the 52-week high"
 
 
 # ------------------------------------------------------------------ Stage 2 / Trend Template
 
-def _tt(ctx) -> dict:
+def _stage2_vals(ctx) -> dict:
     last = ctx.last
     return {"close": ctx.close, "s50": float(last["sma50"]), "s150": float(last["sma150"]), "s200": float(last["sma200"]),
             "s200_prev": float(last["sma200_21d_ago"]), "lo52": float(last["low_252"]), "hi52": float(last["high_252"]),
             "mom": float(last["mom_12_1"]) if pd.notna(last.get("mom_12_1")) else float("nan")}
 
 
-def tt_above_sma50(ctx):
-    v = _tt(ctx)
-    return v["close"] > v["s50"], f"close {v['close']:.2f} vs SMA50 {v['s50']:.2f}"
+def stage2_above_sma50(ctx):
+    v = _stage2_vals(ctx)
+    return _above_sma(ctx, "sma50"), f"close {v['close']:.2f} vs SMA50 {v['s50']:.2f}"
 
 
-def tt_above_sma150(ctx):
-    v = _tt(ctx)
-    return v["close"] > v["s150"], f"close {v['close']:.2f} vs SMA150 {v['s150']:.2f}"
+def stage2_above_sma150(ctx):
+    v = _stage2_vals(ctx)
+    return _above_sma(ctx, "sma150"), f"close {v['close']:.2f} vs SMA150 {v['s150']:.2f}"
 
 
-def tt_above_sma200(ctx):
-    v = _tt(ctx)
-    return v["close"] > v["s200"], f"close {v['close']:.2f} vs SMA200 {v['s200']:.2f}"
+def stage2_above_sma200(ctx):
+    """C3 asks exactly what H1 and A1 ask; only the note differs."""
+    v = _stage2_vals(ctx)
+    return _above_sma(ctx, "sma200"), f"close {v['close']:.2f} vs SMA200 {v['s200']:.2f}"
 
 
-def tt_stacked(ctx):
-    v = _tt(ctx)
+def stage2_stacked(ctx):
+    v = _stage2_vals(ctx)
     return v["s50"] > v["s150"] > v["s200"], f"SMA50 {v['s50']:.2f} / SMA150 {v['s150']:.2f} / SMA200 {v['s200']:.2f}"
 
 
-def tt_sma200_rising(ctx):
-    v = _tt(ctx)
+def stage2_sma200_rising(ctx):
+    v = _stage2_vals(ctx)
     return v["s200"] > v["s200_prev"], f"SMA200 {v['s200']:.2f} vs {v['s200_prev']:.2f} {SMA200_RISING_BARS} bars ago"
 
 
-def tt_off_low(ctx):
-    v = _tt(ctx)
+def stage2_off_low(ctx):
+    v = _stage2_vals(ctx)
     pct = (v["close"] / v["lo52"] - 1) * 100 if v["lo52"] > 0 else float("nan")
     ctx.extras["pct_above_52w_low"] = pct
     return pct >= MIN_PCT_ABOVE_52W_LOW, f"{pct:.1f}% above the 52-week low"
 
 
-def tt_near_high(ctx):
-    v = _tt(ctx)
-    pct = (1 - v["close"] / v["hi52"]) * 100 if v["hi52"] > 0 else float("nan")
+def stage2_near_high(ctx):
+    pct = _pct_below_52w_high(ctx)
     ctx.extras["pct_below_52w_high"] = pct
     return pct <= MAX_PCT_BELOW_52W_HIGH, f"{pct:.1f}% below the 52-week high"
 
 
-def tt_rs(ctx):
+def stage2_rs(ctx):
     """Per-stock RS stand-in (12-1 month momentum). The Stage 2 screen replaces it with the true
-    cross-sectional rank when it screens a whole market (screens/stage2.py)."""
-    v = _tt(ctx)
+    cross-sectional rank when it screens a whole market: the market-wide screen compares
+    the snapshot's `rs_rank` against RS_MIN_RANK (screens/definitions.py)."""
+    v = _stage2_vals(ctx)
     ctx.extras["rs_mom"] = v["mom"]
     return pd.notna(v["mom"]) and v["mom"] >= RS_MIN_MOM, f"12-1 momentum {v['mom']:.3f}"
 
@@ -138,12 +197,8 @@ def daily_structure(ctx):
     return False, "SMA50<=SMA200 or close broke down through SMA50"
 
 
-def sma50_state(ctx) -> str:
-    return ind.slope_state(ctx.daily["sma50"], 10, 1.0)
-
-
 def averages_not_falling(ctx):
-    s50, s200 = sma50_state(ctx), ind.slope_state(ctx.daily["sma200"], 20, 0.5)
+    s50, s200 = sma50_state(ctx), sma200_state(ctx)
     if s50 == "falling" or s200 == "falling":
         return False, f"SMA50 {s50}, SMA200 {s200}"
     return True, f"SMA50 {s50}, SMA200 {s200}"
@@ -164,13 +219,14 @@ def momentum_12_1_positive(ctx):
     return False, "12-1 month momentum negative"
 
 
-def within_25pct_of_high(ctx):
-    high_252 = ctx.daily["high_252"].iloc[-1]
-    if pd.isna(high_252):
-        return False, "insufficient history for 52-week high"
-    if ctx.close >= high_252 * 0.75:
+def uptrend_near_52w_high(ctx):
+    """The uptrend screen's own 52-week-high ceiling — looser than the Trend Template's."""
+    pct = _pct_below_52w_high(ctx)
+    if pd.isna(pct):
+        return False, "insufficient history for the 52-week high"
+    if pct <= UPTREND_MAX_PCT_BELOW_52W_HIGH:
         return True, ""
-    return False, "close more than 25% below the 52-week high"
+    return False, f"close more than {UPTREND_MAX_PCT_BELOW_52W_HIGH:g}% below the 52-week high"
 
 
 def trend_not_fading(ctx):

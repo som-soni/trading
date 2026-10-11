@@ -25,14 +25,14 @@ _SCREENS = [
                "order, well off the lows, near the highs, and stronger than most of the market. Minervini will not look "
                "at a stock that fails any of them.",
         criteria=(
-            Criterion("C1", c.tt_above_sma50, "Close above the 50-day moving average."),
-            Criterion("C2", c.tt_above_sma150, "Close above the 150-day moving average."),
-            Criterion("C3", c.tt_above_sma200, "Close above the 200-day moving average."),
-            Criterion("C4", c.tt_stacked, "Averages stacked for a Stage 2 advance: 50-day above 150-day above 200-day."),
-            Criterion("C5", c.tt_sma200_rising, "The 200-day is higher than {SMA200_RISING_BARS} sessions ago — rising for at least a month."),
-            Criterion("C6", c.tt_off_low, "Close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low."),
-            Criterion("C7", c.tt_near_high, "Close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high."),
-            Criterion("C8", c.tt_rs, "Relative strength: an RS rank of {RS_MIN_RANK}+ (1–99 across the market, recent quarter "
+            Criterion("C1", c.stage2_above_sma50, "Close above the 50-day moving average."),
+            Criterion("C2", c.stage2_above_sma150, "Close above the 150-day moving average."),
+            Criterion("C3", c.stage2_above_sma200, "Close above the 200-day moving average."),
+            Criterion("C4", c.stage2_stacked, "Averages stacked for a Stage 2 advance: 50-day above 150-day above 200-day."),
+            Criterion("C5", c.stage2_sma200_rising, "The 200-day is higher than {SMA200_RISING_BARS} sessions ago — rising for at least a month."),
+            Criterion("C6", c.stage2_off_low, "Close at least {MIN_PCT_ABOVE_52W_LOW:g}% above the 52-week low."),
+            Criterion("C7", c.stage2_near_high, "Close within {MAX_PCT_BELOW_52W_HIGH:g}% of the 52-week high."),
+            Criterion("C8", c.stage2_rs, "Relative strength: an RS rank of {RS_MIN_RANK}+ (1–99 across the market, recent quarter "
                                      "weighted double) when the whole market is screened; a single stock or a backtest uses "
                                      "12-1 month momentum of {RS_MIN_MOM}+ as the stand-in."),
         ),
@@ -52,7 +52,8 @@ _SCREENS = [
             Criterion("U4", c.averages_not_falling, "Neither the 50-day nor the 200-day is falling."),
             Criterion("U5", c.higher_swing_lows, "Higher swing lows over the last ~50 sessions."),
             Criterion("U6", c.momentum_12_1_positive, "Positive 12-1 month momentum (the close a month ago above the close a year ago)."),
-            Criterion("U7", c.within_25pct_of_high, "Close within 25% of the 52-week high."),
+            Criterion("U7", c.uptrend_near_52w_high,
+                      "Close within {UPTREND_MAX_PCT_BELOW_52W_HIGH:g}% of the 52-week high."),
             Criterion("U8", c.trend_not_fading, "Trend not fading: not both a negative 3-month return and a flat or falling 50-day."),
         ),
     ),
@@ -65,7 +66,7 @@ _SCREENS = [
             Criterion("H1", c.above_sma200, "Close above the 200-day moving average."),
             Criterion("H2", c.sma200_not_falling, "The 200-day is not falling (not more than {SMA200_FALLING_PCT}% below its value "
                                                   "{SMA200_SLOPE_BARS} sessions ago)."),
-            Criterion("H3", c.near_52w_high, "Close within 15% of the 52-week high."),
+            Criterion("H3", c.near_52w_high, "Close within {NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH:g}% of the 52-week high."),
         ),
     ),
     Screen(

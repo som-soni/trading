@@ -49,14 +49,14 @@ def builtin() -> dict[str, dict]:
             {"field": "mas_not_falling", "op": "is", "value": True},
             {"field": "higher_swing_lows", "op": "is", "value": True},
             {"field": "momentum_positive", "op": "is", "value": True},
-            {"field": "close", "op": ">=", "ref": "high_252", "mult": 0.75},
+            {"field": "close", "op": ">=", "ref": "high_252", "mult": c.UPTREND_MIN_FRAC_OF_52W_HIGH},
             {"field": "trend_not_fading", "op": "is", "value": True},
         ]},
         "near_highs": {"name": "Near highs, rising 200-day", "conditions": [
             T,
             {"field": "close", "op": ">", "ref": "sma200"},
             {"field": "sma200_not_falling", "op": "is", "value": True},
-            {"field": "close", "op": ">=", "ref": "high_252", "mult": c.NEAR_HIGH_MIN_FRAC},
+            {"field": "close", "op": ">=", "ref": "high_252", "mult": c.NEAR_HIGHS_MIN_FRAC_OF_52W_HIGH},
         ]},
         "above_200": {"name": "Above the 200-day", "conditions": [
             T,
