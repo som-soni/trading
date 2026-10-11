@@ -2167,10 +2167,12 @@ async function screensPage(alive, key, mkt, tab, date) {
         : `<a class="btn" href="#/screens/${key}/${mkt}/edit">Edit</a><button class="danger" id="sdel">Delete</button>`)
         + `<a class="btn primary" href="#/screens/new/${mkt}">+ New screen</a>` }) + `
     <p class="sd-lead">${esc(d.description || "")}</p>
+    ${staleBanner(r.stale_inputs, mkt)}
     ${tabsHtml([["results", `Results <span class="n">${r.count}</span>`, href("results")], ["criteria", "Criteria", href("criteria")], ["study", "Study", href("study")]], tab)}
     <div id="stab"></div>`;
   main.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(href(tab, b.dataset.v)));
   wireDatePicker(main, sDates, r.date, (dd, latest) => go(href(tab, mkt, latest ? null : dd)));
+  wireStale(main, mkt);
   main.querySelector("#scust")?.addEventListener("click", () => { store.set("scrDraftFrom", key); go(`#/screens/new/${mkt}`); });
   main.querySelector("#sdel")?.addEventListener("click", async () => {
     if (!confirm(`Delete the screen “${d.name}”?`)) return;
@@ -2229,6 +2231,27 @@ function screenResults(host, r, mkt, d, fs) {
 
 /** Screens home: every screen as a card — today's count, the change since the previous session, the top
  *  names by RS — your own screens beside the built-in ones, and a card to create a new one. */
+function staleBanner(stale, mkt) {
+  if (!stale?.length) return "";
+  const fields = [...new Set(stale.flatMap((x) => x.fields))];
+  const what = stale.map((x) => esc(x.label)).join(", ");
+  return `<div class="scr-stale" id="scrstale"><b>${what} changed after this snapshot was built.</b>
+    <span class="sx">${fields.length} field${fields.length === 1 ? "" : "s"} may be out of date: ${fields.map(esc).join(", ")}. Prices and the counts above are unaffected.</span>
+    <button id="scrrebuild" title="Queue the screens job for this market; it rebuilds the snapshot (about a minute)">Rebuild snapshot</button></div>`;
+}
+
+function wireStale(root, mkt) {
+  const b = root.querySelector("#scrrebuild");
+  if (!b) return;
+  b.onclick = async () => {
+    b.disabled = true;
+    try {
+      const r = await api(`/api/screens/rebuild?market=${mkt}`, { method: "POST" });
+      toast(r.duplicate ? "A snapshot rebuild is already queued" : "Snapshot rebuild queued — the Data status page tracks it", "ok");
+    } catch (e) { b.disabled = false; toast(`Could not queue the rebuild: ${e.message}`, "err"); }
+  };
+}
+
 function screensOverview(main, list, mkt) {
   const card = (x) => {
     const ch = x.prev_count != null ? x.count - x.prev_count : null;
@@ -2243,6 +2266,7 @@ function screensOverview(main, list, mkt) {
   main.innerHTML = pageHead("Screens", { extra: marketSeg(mkt),
       context: `<span class="muted small">${prettyDate(list.date)} · ${list.tradable?.toLocaleString()} tradable stocks</span>${info(`<p>Which stocks are worth a look today. A screen is a set of conditions over every stock's daily snapshot (about 50 fields) — it only qualifies stocks; a strategy adds the trade.</p><p>${list.tradable?.toLocaleString()} of ${list.universe?.toLocaleString()} stocks clear the tradable floor (price, liquidity, a year of history).</p>`)}`,
       actions: `<a class="btn primary" href="#/screens/new/${mkt}">+ New screen</a>` })
+    + staleBanner(list.stale_inputs, mkt)
     + `
     <h3 class="ov-h">Built-in screens</h3><div class="scr-cards">${builtins.map(card).join("")}
       <a class="sec-card scr-card" href="#/quality"><div class="scr-h"><b>Quality</b></div><div class="muted small">Long-term: companies with durable fundamentals, and when their price is right.</div></a></div>
@@ -2250,6 +2274,7 @@ function screensOverview(main, list, mkt) {
       <a class="sec-card scr-card scr-new" href="#/screens/new/${mkt}"><div class="scr-h"><b>+ New screen</b></div>
         <div class="muted small">Pick conditions from ~50 fields — returns, RS rank, moving averages, 52-week range, volume, trend, sector — and see the matching stocks as you build. Then study how it did over five years.</div></a></div>`;
   main.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
+  wireStale(main, mkt);
 }
 
 /** The screen builder: conditions with a live preview; save as one of your screens. */

@@ -1316,7 +1316,20 @@ def _query(market: str, conditions: list, d=None, sort_by: str = "rs_rank", limi
         rows.append(rec)
     return {"market": market, "date": day.isoformat(), "dates": [x.isoformat() for x in reversed(ds)], "count": int(m.sum()),
             "universe": len(df), "tradable": int(df["tradable"].sum()), "prev_date": prev_d.isoformat() if prev_d else None,
-            "dropped": sorted(prev - set(hit["symbol"])) if prev is not None else [], "rows": rows}
+            "dropped": sorted(prev - set(hit["symbol"])) if prev is not None else [], "rows": rows,
+            "stale_inputs": snapshot.stale_inputs(market, day)}
+
+
+@app.post("/api/screens/rebuild")
+def screens_rebuild(market: str = "us"):
+    """Ask for a fresh snapshot, because a source it copies from has moved (snapshot.stale_inputs).
+
+    Only *asks* — through jobs/queue.py, like the portal and the schedules — so the run is
+    logged and shows on the Data status page. A rebuild is ~48s, far too long to do in a
+    request, and `skip_if_running` means several tabs noticing at once still queue one job.
+    """
+    it = _jq().enqueue(["screens"], market, {}, requested_by="web: stale screen snapshot", skip_if_running=True)
+    return {"queued": it, "duplicate": bool(it.get("duplicate"))}
 
 
 @app.get("/api/screen-fields")
@@ -1355,7 +1368,8 @@ def screens_api(market: str = "us"):
             it["top"] = [{"symbol": s_, "name": _name(market, s_), "rs": None if r != r else int(r)} for s_, r in zip(top["symbol"], top["rs_rank"])]
         except ValueError as exc:
             it["error"] = str(exc)
-    return {"market": market, "date": df.attrs["date"].isoformat(), "tradable": int(df["tradable"].sum()), "universe": len(df), "screens": items}
+    return {"market": market, "date": df.attrs["date"].isoformat(), "tradable": int(df["tradable"].sum()), "universe": len(df),
+            "screens": items, "stale_inputs": snapshot.stale_inputs(market)}
 
 
 @app.get("/api/screens/{key}")

@@ -57,6 +57,35 @@ def _age_item(key: str, label: str, when, note: str = "") -> dict:
             "text": f"{age:.0f} days old (refresh every ~{ok - 1})" + (f" · {note}" if note else "")}
 
 
+def _snapshot_item(market: str, expected) -> dict:
+    """The screens' stock snapshot: which session it covers, and whether anything it copied
+    from has changed since it was built.
+
+    Two different faults, so both are reported. Being behind the session means prices moved
+    on; a changed input means the present-only columns (fundamentals, peer RS, earnings) are
+    out of date even though the date looks right — which is invisible from the data itself,
+    because the snapshot stores whatever those sources said at build time.
+    """
+    from ..screens import snapshot
+    ds = snapshot.dates(market)
+    d = ds[-1] if ds else None
+    held = f"{len(ds)} stored, back to {ds[0].isoformat()}" if ds else ""
+    item = _session_item("screens_snapshot", "Stock snapshot (screens)", d, expected)
+    stale = snapshot.stale_inputs(market) if d else []
+    if stale:
+        fields = sorted({f for x in stale for f in x["fields"]})
+        note = (", ".join(x["label"] for x in stale)
+                + f" changed after it was built, so {len(fields)} field(s) may be out of date — rerun the `screens` job")
+        # the session can be current while the snapshot is still wrong, so do not leave the text
+        # saying "up to date": the date is not what is behind here, the copied-in sources are
+        item["text"] = f"covers the latest session, but {note}" if item["status"] == "ok" else f"{item['text']} · {note}"
+        item["status"] = "warn" if item["status"] == "ok" else item["status"]
+        item["stale_inputs"] = stale
+    if held:
+        item["text"] += f" · {held}"
+    return item
+
+
 def _mtime(p) -> dt.datetime | None:
     return dt.datetime.fromtimestamp(p.stat().st_mtime, dt.timezone.utc) if p.exists() else None
 
@@ -81,6 +110,7 @@ def freshness(q, price_day) -> dict:
         latest = sorted(s for s, r in runs if r[:10] == (last or "")[:10])
         items.append(_session_item("screening", "Screening", last_d, exp,
                                    f"strategies run that day: {', '.join(latest)}" if latest else ""))
+        items.append(_snapshot_item(m, exp))
         items.append(_age_item("universe", "Universe list", _mtime(paths.DATA_DIR / f"universe_{m}.csv")))
         items.append(_age_item("industries", "Industry classification (Sectors)",
                                q("SELECT max(updated_at) FROM symbol_industry WHERE market=%s", (m,))[0][0]))

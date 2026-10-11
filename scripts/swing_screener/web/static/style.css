@@ -652,6 +652,13 @@ nav .nsec > .sec[aria-expanded="true"] { color: var(--strong); } nav .nsec > .se
   .brand span, header #refresh span { display: none; }
 }
 
+/* a screen's snapshot is older than something it copied from (snapshot.stale_inputs) */
+.scr-stale { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; padding: 7px 11px;
+  border-radius: 8px; background: var(--warn-soft); color: var(--warn-text); font-size: 12px; }
+.scr-stale b { font-weight: 600; }
+.scr-stale .sx { color: var(--muted); }
+.scr-stale button { margin-left: auto; }
+
 /* ---------- data status */
 .dstatus { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--line-2); color: var(--text); font-size: 12px; font-weight: 500; }
 .dstatus:hover { color: var(--strong); background: var(--panel-2); }

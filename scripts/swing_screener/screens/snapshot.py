@@ -17,6 +17,7 @@ than leak today's knowledge into the past.
 """
 
 import argparse
+import datetime as dt
 import logging
 import time
 from types import SimpleNamespace
@@ -242,6 +243,88 @@ def _add_present(market: str, df: pd.DataFrame, d) -> None:
         nxt = {str(s): pd.to_datetime(x, errors="coerce") for s, x in zip(e["symbol"], e["next_earnings_date"])}
         day = pd.Timestamp(d)
         df["earnings_days"] = df["symbol"].map(lambda s: (nxt[s] - day).days if s in nxt and pd.notna(nxt[s]) and nxt[s] >= day else None)
+
+
+# What `_add_present` copies in, and which of its columns each source feeds. The snapshot
+# stores these as of the moment it was built — that is the point, it is the only
+# point-in-time record of data that has no history of its own — but it also means a
+# source that lands afterwards leaves the columns it feeds silently wrong until the next
+# build. `stale_inputs` compares each source's last write against the snapshot file.
+#
+# Keep this beside `_add_present`: a new present-only field needs a row here too, or the
+# check stays quiet about it. `tests/test_snapshot_freshness.py` fails if a source names
+# a column that is not in PRESENT_ONLY.
+PRESENT_INPUTS = (
+    ("fundamentals", "Fundamentals (SEPA)",
+     ("eps_growth_q", "sales_growth_q", "roe", "sepa_verdict", "sepa_code33"),
+     ("sql", "SELECT max(computed_at) FROM fundamental_scores WHERE market=%s")),
+    ("quality", "Quality scores", ("quality",),
+     ("sql", "SELECT max(computed_at) FROM quality_scores WHERE market=%s")),
+    ("peer_rs", "Peer-group RS", ("group_rs", "peer_group", "peer_rs", "peer_rank", "peer_count"),
+     ("sql", "SELECT max(date) FROM sector_daily WHERE market=%s")),
+    ("industries", "Industry classification", ("sector", "industry", "market_cap"),
+     ("sql", "SELECT max(updated_at) FROM symbol_industry WHERE market=%s")),
+    ("earnings", "Earnings dates", ("earnings_days",), ("earnings_csv", "fetched_at")),
+)
+
+
+def _source_changed_at(market: str, how: tuple) -> "dt.datetime | None":
+    """When a present-only source last changed, as an aware datetime, or None if unknown."""
+    kind, what = how
+    if kind == "earnings_csv":
+        # the column, not the file's mtime: the job rewrites the whole CSV every run, so an
+        # mtime reports staleness on every build even when no row actually moved
+        from ..marketdata.earnings import earnings_cache_path
+        pth = earnings_cache_path(market)
+        if not pth.exists():
+            return None
+        col = pd.to_datetime(pd.read_csv(pth, usecols=[what])[what], errors="coerce").max()
+        return None if pd.isna(col) else pd.Timestamp(col).to_pydatetime().astimezone()
+    try:
+        with db.get_connection().cursor() as cur:
+            cur.execute(what, (market,))
+            got = cur.fetchone()[0]
+    except Exception:  # noqa: BLE001 — the table appears with its job's first run
+        return None
+    if got is None:
+        return None
+    if isinstance(got, dt.datetime):
+        return got if got.tzinfo else got.astimezone()
+    return dt.datetime.combine(got, dt.time(), tzinfo=dt.timezone.utc)   # a plain date column
+
+
+def stale_inputs(market: str, d=None) -> list[dict]:
+    """Sources that changed after this snapshot was built, newest first; [] when it is current.
+
+    Cheap on purpose — one query per source plus a stat, about a millisecond all told — so a
+    request can check it every time rather than trusting a schedule. Rebuilding is ~48s and
+    belongs in the job queue, not in a request: callers surface this and enqueue `screens`.
+
+    A source with no timestamp we can read is skipped rather than reported, so a table that
+    does not exist yet never looks like staleness.
+
+    Only ever answers for the newest snapshot. Every source is newer than a month-end
+    snapshot from 2021, and saying so would be wrong rather than merely noisy: a past
+    snapshot is a *record* of what those sources said that day, which is what makes the
+    screen study point-in-time. Nothing about it is out of date.
+    """
+    ds = dates(market)
+    if not ds:
+        return []
+    d = pd.Timestamp(d).date() if d is not None else ds[-1]
+    if d != ds[-1]:
+        return []
+    pth = _path(market, d)
+    if not pth.exists():
+        return []
+    built = dt.datetime.fromtimestamp(pth.stat().st_mtime).astimezone()
+    out = []
+    for key, label, fields, how in PRESENT_INPUTS:
+        when = _source_changed_at(market, how)
+        if when is not None and when > built:
+            out.append({"key": key, "label": label, "fields": list(fields),
+                        "changed_at": when.isoformat(), "built_at": built.isoformat()})
+    return sorted(out, key=lambda x: x["changed_at"], reverse=True)
 
 
 def _add_fundamentals(market: str, df: pd.DataFrame) -> None:
