@@ -204,6 +204,8 @@ def _run_args(r) -> None:
                    help="`backtest`: which decision labels count as tradeable, comma separated "
                         "(e.g. 'TRADE - HIGH CONFIDENCE,TRADE ON TRIGGER'). Overrides the strategy's "
                         "own backtest_args; the run gets its own report directory.")
+    r.add_argument("--pyramid", type=float, default=None, metavar="FRAC",
+                   help="`backtest`: build positions in two tranches, FRAC at entry (e.g. 0.5).")
     r.add_argument("--min-dollar-volume", type=float, default=None, metavar="X",
                    help="`backtest`: override the traded-value floor, e.g. 100e6 to drop small caps.")
     r.add_argument("--max-base", type=int, default=None, metavar="N",
@@ -234,7 +236,7 @@ def _opts(ap, a):
             ap.error(f"unknown strategies {bad}; choose from {list_strategies()}")
     opts = {"strategies": strategies, "force": a.force, "allow_stale": a.allow_stale,
             "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days,
-            "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols, "max_base": a.max_base, "min_dollar_volume": a.min_dollar_volume,
+            "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols, "max_base": a.max_base, "min_dollar_volume": a.min_dollar_volume, "pyramid": a.pyramid,
             "accept_labels": a.accept_labels}
     unknown = [t for t in a.targets if t not in JOBS and t not in PIPELINES]
     if unknown:

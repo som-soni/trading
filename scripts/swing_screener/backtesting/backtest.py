@@ -851,6 +851,8 @@ def run_portfolio_backtest(
     min_rs: int | None = None,
     max_base_no: int | None = None,
     min_dollar_volume: float | None = None,
+    pyramid_frac: float | None = None,
+    pyramid_add_pct: float = 2.0,
     use_market_filter: bool = False,
     spec_costs: bool = False,
     max_open_risk_pct: float | None = None,
@@ -975,7 +977,8 @@ def run_portfolio_backtest(
     result = simulate(
         all_signals, prices, cfg, start,
         max_positions=max_positions, exit_policy=policy,
-        max_open_risk_pct=max_open_risk_pct, max_adv_pct=max_adv_pct, **sim_kw,
+        max_open_risk_pct=max_open_risk_pct, max_adv_pct=max_adv_pct,
+        pyramid_frac=pyramid_frac, pyramid_add_pct=pyramid_add_pct, **sim_kw,
     )
     tdf = p_trades_to_df(result.trades)
     # what the simulator refused: slots, cash, and the per-fill checks it records
@@ -1160,6 +1163,13 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--min-group-rs", type=int, default=None,
                         help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
                              "on the signal date — e.g. 50 to avoid weak groups")
+    parser.add_argument("--pyramid", type=float, default=None, metavar="FRAC",
+                        help="build positions in two tranches: take FRAC of full size at entry "
+                             "(e.g. 0.5) and rest a buy-stop above it for the remainder. Minervini "
+                             "adds into strength, never into weakness, and the add is refused above "
+                             "the buy range so the average cost stays near the pivot.")
+    parser.add_argument("--pyramid-add-pct", type=float, default=2.0, metavar="PCT",
+                        help="how far above the entry the second tranche rests (default 2%%)")
     parser.add_argument("--min-dollar-volume", type=float, default=None, metavar="X",
                         help="override the market's traded-value floor for this run, e.g. "
                              "--min-dollar-volume 100e6 to drop small and micro caps. Point in time "
@@ -1303,7 +1313,9 @@ def main(argv: list[str] | None = None) -> dict | None:
             risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
             rank_by=args.rank_by, min_group_rs=args.min_group_rs,
                 min_rs=args.min_rs, max_base_no=args.max_base,
-            min_dollar_volume=args.min_dollar_volume, use_market_filter=args.market_filter,
+            min_dollar_volume=args.min_dollar_volume,
+            pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct,
+            use_market_filter=args.market_filter,
             spec_costs=args.spec,
             max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
             max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
@@ -1349,6 +1361,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     run += f"_sample{args.sample}" if args.sample else ""
     if args.min_dollar_volume:
         run += f"_dv{args.min_dollar_volume / 1e6:g}m"
+    if args.pyramid:
+        run += f"_pyr{args.pyramid:g}at{args.pyramid_add_pct:g}pct"
     if args.symbols:
         picked = [x.strip().upper() for x in args.symbols.split(",") if x.strip()]
         run += "_only-" + ("+".join(picked) if len(picked) <= 4 else f"{len(picked)}syms")

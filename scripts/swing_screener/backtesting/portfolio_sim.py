@@ -163,6 +163,12 @@ class PortfolioTrade:
     # Slippage is already inside entry_price / exit_price. `costs` reports it (with commission and
     # charges) as what the trade paid, so pnl subtracts `costs - slippage`: every cost counted once.
     slippage: float = 0.0
+    # Pyramiding. `entry_price` becomes the share-weighted average cost as tranches
+    # are added, which keeps both pnl and r_multiple correct without special-casing:
+    # sum((entry_i - stop) * shares_i) == (avg_entry - stop) * total_shares.
+    target_shares: int = 0         # full intended size; 0 when not pyramiding
+    add_price: float = float("nan")  # resting buy-stop for the remaining tranche
+    adds: int = 0
 
     @property
     def held(self) -> int:
@@ -227,13 +233,24 @@ def simulate(
     slippage_bps: float | None = None,
     max_open_risk_pct: float | None = None,
     max_adv_pct: float | None = None,
+    pyramid_frac: float | None = None,
+    pyramid_add_pct: float = 2.0,
 ) -> PortfolioResult:
     """Walk every trading day once, with one shared pool of capital.
 
     `cost_bps` is charged on every fill's notional (statutory charges and brokerage, C-01);
     `slippage_bps` overrides the market's; `max_open_risk_pct` caps the open risk across positions
     — (price − stop) × shares, summed — as a share of equity (PF-04); `max_adv_pct` skips an order
-    worth more than this share of the stock's 50-day average traded value (SL-06, needs meta["adv"])."""
+    worth more than this share of the stock's 50-day average traded value (SL-06, needs meta["adv"]).
+
+    `pyramid_frac` builds the position in two tranches instead of one: take this
+    fraction of full size at entry and rest a buy-stop `pyramid_add_pct` above it
+    for the remainder. Minervini adds into strength and never into weakness, and
+    the binding constraint is average cost -- the stop comes from the base, not
+    from what he paid, so an add that lifts the average far above the pivot widens
+    the loss if he is wrong. The add is therefore refused above meta["max_fill"],
+    the same buy-range ceiling the initial entry respects, and refused once any
+    partial profit has been taken. None or 1.0 keeps the old single-tranche fill."""
     cap = max_positions if max_positions is not None else cfg.max_open_positions
     policy = exit_policy or ExitPolicy()
     base_slip = cfg.slippage_bps if slippage_bps is None else slippage_bps
@@ -288,6 +305,46 @@ def simulate(
     eq_rows, pos_rows, cash_rows = [], [], []
 
     for today in all_dates:
+        # ---- 0. pyramid adds, before exits so a position that is added to and
+        # then stopped on the same bar pays for both, which is what would happen
+        # ----------------------------------------------------------------------
+        for sym, pos in list(positions.items()):
+            if not pos.target_shares or pos.shares >= pos.target_shares or pos.partial_shares:
+                continue
+            df = prices.get(sym)
+            if df is None or today not in df.index or today == pos.entry_date:
+                continue
+            bar = df.loc[today]
+            if not (float(bar["high"]) >= pos.add_price):
+                continue
+            fill = max(pos.add_price, float(bar["open"]))        # a gap fills worse
+            ceiling = pos.meta.get("max_fill")
+            if ceiling is not None and fill > float(ceiling):
+                skip("add would lift the average cost past the buy range")
+                pos.target_shares = 0
+                continue
+            want = pos.target_shares - pos.shares
+            fill_slipped = _slip(fill, pos.meta.get("slippage_bps", base_slip), "buy")
+            affordable = int((cash - cfg.commission_per_order) // (fill_slipped * (1 + fee_rate)))
+            add_n = min(want, max(0, affordable))
+            if add_n < 1:
+                skip("not enough cash to add")
+                pos.target_shares = 0
+                continue
+            fee = fill_slipped * add_n * fee_rate
+            extra = cfg.commission_per_order + (fill_slipped - fill) * add_n + fee
+            cash -= add_n * fill_slipped + cfg.commission_per_order + fee
+            costs_total += extra
+            # share-weighted average cost keeps pnl and r_multiple correct
+            pos.entry_price = ((pos.entry_price * pos.shares + fill_slipped * add_n)
+                               / (pos.shares + add_n))
+            pos.shares += add_n
+            pos.costs += extra
+            pos.slippage += (fill_slipped - fill) * add_n
+            pos.adds += 1
+            if pos.shares >= pos.target_shares:
+                pos.target_shares = 0
+
         # ---- 1. exits ----------------------------------------------------
         for sym, pos in list(positions.items()):
             df = prices.get(sym)
@@ -459,6 +516,12 @@ def simulate(
             # skip the breakout. Under-filling puts LESS than risk_pct at risk
             # on that position, never more, so this cannot inflate leverage --
             # it only stops a fully-invested book from being deaf for months.
+            full_shares = shares
+            if pyramid_frac and 0 < pyramid_frac < 1:
+                # the first tranche only; the rest rests above as a buy-stop
+                shares = int(shares * pyramid_frac)
+                if shares < 1:
+                    shares = full_shares          # too small to split meaningfully
             affordable = int((cash - cfg.commission_per_order) // (entry * (1 + fee_rate)))
             if affordable < shares:
                 shares = affordable
@@ -479,6 +542,9 @@ def simulate(
                 initial_stop=order["stop"],
                 target=order["target"], shares=shares, costs=cost, meta=dict(meta),
                 slippage=(entry - raw_entry) * shares,
+                target_shares=(full_shares if pyramid_frac and shares < full_shares else 0),
+                add_price=(entry * (1 + pyramid_add_pct / 100)
+                           if pyramid_frac and shares < full_shares else float("nan")),
             )
             if meta.get("base_id") is not None:
                 bases_entered.add((sym, meta["base_id"]))

@@ -343,6 +343,8 @@ def _backtest_steps(ctx: Ctx) -> list:
                 argv += ["--max-base", str(c.opt("max_base"))]
             if c.opt("min_dollar_volume"):
                 argv += ["--min-dollar-volume", repr(float(c.opt("min_dollar_volume")))]
+            if c.opt("pyramid"):
+                argv += ["--pyramid", str(c.opt("pyramid"))]
             for extra in (c.opt("bt") or []):
                 argv += shlex.split(str(extra))   # appended last, so a passthrough wins
             if c.opt("accept_labels"):

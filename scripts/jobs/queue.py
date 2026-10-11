@@ -153,6 +153,8 @@ def command_for(targets: list, market: str, opts: dict) -> list[str]:
         cmd += ["--max-base", str(opts["max_base"])]
     if opts.get("min_dollar_volume"):
         cmd += ["--min-dollar-volume", repr(float(opts["min_dollar_volume"]))]
+    if opts.get("pyramid"):
+        cmd += ["--pyramid", str(opts["pyramid"])]
     if opts.get("accept_labels"):
         cmd += ["--accept-labels", str(opts["accept_labels"])]
     return cmd
