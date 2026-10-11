@@ -93,10 +93,18 @@ FIELDS = [
     ("market_cap_usd", "Market cap ($B)", "Fundamentals", "num", "Market capitalisation in US$ billions — converted at the session's USD rate (USDINR for India), so markets compare directly."),
     ("quality", "Quality score", "Fundamentals", "num", "Quality score 0–100 from the Quality page, where scored."),
     ("earnings_days", "Days to earnings", "Fundamentals", "num", "Calendar days to the next known earnings date."),
+    ("eps_growth_q", "EPS growth (latest quarter)", "Fundamentals", "pct", "Latest quarter's EPS against the same quarter a year earlier, "
+                                                                            "from the filings (Fundamentals page)."),
+    ("sales_growth_q", "Sales growth (latest quarter)", "Fundamentals", "pct", "Latest quarter's sales against the same quarter a year earlier."),
+    ("roe", "Return on equity", "Fundamentals", "pct", "Trailing-twelve-month net income over average equity (Fundamentals page)."),
+    ("sepa_verdict", "Minervini SEPA verdict", "Fundamentals", "text", "Minervini's fundamental tests on the quarterly results: "
+                                                                          "LEADER, ACCEPTABLE, WEAK or NO DATA (Fundamentals page)."),
+    ("sepa_code33", "Minervini Code 33", "Fundamentals", "bool", "EPS growth, sales growth and net margin all rising for three quarters."),
 ]
 FIELD_KEYS = [f[0] for f in FIELDS]
 PRESENT_ONLY = ("sector", "industry", "sub_industry", "group_rs", "peer_group", "peer_rs", "peer_rank", "peer_count",
-                "market_cap", "market_cap_usd", "quality", "earnings_days")
+                "market_cap", "market_cap_usd", "quality", "earnings_days", "eps_growth_q", "sales_growth_q", "roe",
+                "sepa_verdict", "sepa_code33")
 
 
 def _path(market: str, d) -> "pd.Path":
@@ -226,6 +234,7 @@ def _add_present(market: str, df: pd.DataFrame, d) -> None:
     df["group_rs"] = df["industry"].map(grs)
     add_peers(df, grs, subrs)
     df["quality"] = df["symbol"].map(qual)
+    _add_fundamentals(market, df)
     from ..marketdata.earnings import earnings_cache_path
     p = earnings_cache_path(market)
     if p.exists():
@@ -233,6 +242,22 @@ def _add_present(market: str, df: pd.DataFrame, d) -> None:
         nxt = {str(s): pd.to_datetime(x, errors="coerce") for s, x in zip(e["symbol"], e["next_earnings_date"])}
         day = pd.Timestamp(d)
         df["earnings_days"] = df["symbol"].map(lambda s: (nxt[s] - day).days if s in nxt and pd.notna(nxt[s]) and nxt[s] >= day else None)
+
+
+def _add_fundamentals(market: str, df: pd.DataFrame) -> None:
+    """The Fundamentals page's figures (fundamentals/growth.py) and its Minervini SEPA view, where computed."""
+    with db.get_connection().cursor() as cur:
+        try:
+            cur.execute("""SELECT symbol, (metrics->'eps_g'->>0)::float, (metrics->'rev_g'->>0)::float, (metrics->>'roe')::float,
+                                  views->'sepa'->>'verdict', (views->'sepa'->>'code33')::boolean
+                           FROM fundamental_scores WHERE market=%s""", (market,))
+            rows = {r[0]: r[1:] for r in cur.fetchall()}
+        except Exception:  # noqa: BLE001 — the table appears with the first `fundamental_scores` run
+            rows = {}
+    for i, key in enumerate(("eps_growth_q", "sales_growth_q", "roe", "sepa_verdict", "sepa_code33")):
+        pct = key in ("eps_growth_q", "sales_growth_q", "roe")   # pct fields are percentages (12.5 = 12.5%)
+        df[key] = df["symbol"].map(lambda s, i=i, pct=pct: (rows[s][i] * 100 if pct else rows[s][i])
+                                   if s in rows and rows[s][i] is not None else None)
 
 
 def add_peers(df: pd.DataFrame, grs: dict, subrs: dict) -> None:

@@ -25,6 +25,7 @@ from ..marketdata import freshness
 from ..marketdata import names as names_mod
 from ..marketdata.db import get_connection, py_value
 from fundamentals import quality as qual  # long-term investing package (scripts/fundamentals)
+from fundamentals import growth as growth_mod  # quarterly fundamentals + strategy views (scripts/fundamentals)
 from ..screening import watchlist as wl
 from ..strategies import docs as _strat_docs_initial  # noqa: F401  (loaded once; see _strategy_docs)
 from . import ingest as ingest_mod
@@ -44,6 +45,7 @@ def q(sql: str, params: tuple = ()) -> list[tuple]:
 def _startup() -> None:
     ingest_mod.init_schema()
     qual.init_schema()
+    growth_mod.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
     threading.Thread(target=_prewarm_sectors, daemon=True).start()
     threading.Thread(target=lambda: [(_names(m), _liquidity(m)) for m in tuple(MARKETS)], daemon=True).start()  # first search is instant
@@ -956,6 +958,83 @@ def quality(market: str | None = None, symbol: str | None = None):
 @app.get("/api/quality/criteria")
 def quality_criteria():
     return qual.criteria()
+
+
+# --------------------------------------------------------- fundamentals (quarterly results)
+# Quarterly results are fetched (marketdata/financials.py) and computed (fundamentals/growth.py) offline, with each
+# strategy's view of them (fundamentals/sepa.py, ...); this joins them with the day's stock snapshot so the page
+# shows the technical side (Trend Template, RS) next to them.
+
+_FUND_METRICS = ("eps_g", "rev_g", "margin", "margin_prior", "eps_annual_basis", "eps_cagr", "roe", "roe_source",
+                 "surprise", "surprise_current", "latest_end", "latest_fiscal", "latest_filed", "quarters", "source", "basis",
+                 "split_adjusted", "stale")
+
+
+@app.get("/api/fundamentals")
+def fundamentals_rows(market: str, symbol: str | None = None):
+    """Every company of a market with stored quarterly results (or one, with its quarterly series for the charts)."""
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    from ..screens import definitions
+    sql, args = "SELECT symbol, metrics, views, computed_at FROM fundamental_scores WHERE market=%s", (market,)
+    if symbol:
+        sql, args = sql + " AND symbol=%s", (market, symbol)
+    stored = q(sql, args)
+    try:
+        snap = _snap(market)
+    except HTTPException:
+        snap = None
+    tech = {}
+    if snap is not None and len(snap):
+        stage2 = definitions.mask(snap, definitions.builtin()["stage2"]["conditions"])
+        for sym, s2, rs, sector in zip(snap["symbol"], stage2, snap["rs_rank"], snap["sector"]):
+            tech[sym] = {"stage2": bool(s2), "rs_rank": py_value(rs), "sector": py_value(sector)}
+    out = []
+    for sym, m, views, computed in stored:
+        row = {"market": market, "symbol": sym, "name": m.get("name") or _name(market, sym), "computed_at": computed.isoformat(),
+               **{k: m.get(k) for k in _FUND_METRICS}, "eps_annual": (m.get("eps_annual") or [None])[0],
+               "views": views, **tech.get(sym, {"stage2": None})}
+        if symbol:
+            row["series"] = m.get("series")
+        out.append(row)
+    cov = {f"{st}{'' if st != 'ok' else ' · ' + (src or '?')}": n for st, src, n in
+           q("SELECT status, source, count(*) FROM quarterly_fetch WHERE market=%s GROUP BY 1, 2", (market,))}
+    return {"rows": out, "snapshot_date": str(snap.attrs.get("date")) if snap is not None and len(snap) else None,
+            "coverage": cov, "source": MARKETS[market].quarterly_source}
+
+
+@app.get("/api/company")
+def company_page(market: str, symbol: str):
+    """One company's financials, screener.in style (fundamentals/company.py)."""
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    from fundamentals import company
+    try:
+        snap = _snap(market)
+    except HTTPException:
+        snap = None
+    d = company.build(market, symbol, snap)
+    d["name"] = d.get("name") or _name(market, symbol)
+    pending = [it for it in _jq().items(50)["queued"] + ([_jq().items(0)["running"]] if _jq().items(0)["running"] else [])
+               if it and "financials" in it.get("command", "") and symbol in it.get("command", "")]
+    d["fetch_pending"] = pending[0]["id"] if pending else None
+    return json.loads(json.dumps(d, default=str))
+
+
+@app.post("/api/company/fetch")
+def company_fetch(request: Request, market: str = Body(...), symbol: str = Body(...)):
+    """Fetch one company's filings now: a queue item (ahead of long jobs) that fetches, then re-scores it."""
+    _require_local(request)
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    it = _jq().enqueue(["company_financials"], market, {"symbols": symbol, "force": True}, requested_by="web: company page", priority=10)
+    return {"item": it["id"], "duplicate": bool(it.get("duplicate"))}
+
+
+@app.get("/api/fundamentals/criteria")
+def fundamentals_criteria():
+    """The page's explanation: the shared data (sources, method, caveats), then each strategy view's rules."""
+    return growth_mod.criteria()
 
 
 @app.post("/api/quality/watch")

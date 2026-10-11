@@ -53,6 +53,14 @@ class MarketConfig:
     # columns ticker,sector; override per market if a live source exists
     universe_source: str = "csv"
 
+    # financials source for the Fundamentals page (marketdata/financials.py):
+    # "sec_edgar" (SEC XBRL company facts) or "nse" (NSE results filings); yfinance is the fallback
+    # for any company the source has nothing for, and for a market that names none
+    quarterly_source: str = ""
+    # how the Fundamentals page shows money: the unit's label and what one unit is in the market's currency
+    money_unit: str = ""         # "$ M", "₹ Cr"
+    money_divisor: float = 1.0   # 1e6, 1e7
+
     # maps the data provider's own sector taxonomy (e.g. yfinance's
     # "Financial Services", "Healthcare") onto the keys used in
     # sector_index_map (GICS/SPDR-style names) — without this, sectors

@@ -437,7 +437,18 @@ def simulate(
                 del pending[sym]
                 continue
             if max_open_risk_pct is not None:
-                open_risk = sum(max(0.0, _last_close(p, prices, today) - p.stop) * p.held for p in positions.values())
+                # CAPITAL at risk, not distance-to-stop. Measuring from the last
+                # close made a winner consume budget in proportion to its gain: a
+                # position up 50% with a trailing stop still ate a large share of
+                # the cap while risking house money, so a handful of winners shut
+                # the book to everything else. 2,113 of 3,225 fill-stage rejections
+                # in the US run were this cap, and NVDA took 1 trade from 31 setups
+                # because of it. Minervini frees risk budget by raising stops to
+                # breakeven, which only works if a stop at or above entry counts as
+                # zero risk -- which is what capping at the entry price does.
+                open_risk = sum(
+                    max(0.0, min(_last_close(p, prices, today), p.entry_price) - p.stop) * p.held
+                    for p in positions.values())
                 if open_risk + risk_per_share * shares > max_open_risk_pct * equity_now:
                     skip("open-risk cap")
                     if meta.get("order") == "open":

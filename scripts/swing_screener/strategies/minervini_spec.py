@@ -179,13 +179,23 @@ class MinerviniSpecStrategy(Strategy):
     gate_codes = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8")
     watch_codes = ("B1", "B2", "B3", "B4")
     setup_codes = (MV01, MV02, MV03, MV04)
-    extra_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
+    extra_columns = ("fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
+                     "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                      "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio", "breakout_volume_ratio",
                      "vcp_fail", "rs_mom")
     extra_numeric_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                              "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio",
                              "breakout_volume_ratio", "rs_mom")
     needs_ctx_extras = True
+    # SEPA part 2. The screener fetches current fundamentals for rows that already
+    # cleared the screen and annotates them (revenue/earnings YoY, gross-margin
+    # change, fundamentals_ok). LIVE ONLY, and deliberately not a gate: the stored
+    # figures are a single present-day snapshot -- one fetched_at, no record of when
+    # each was published, 9% of the US universe and 6% of India -- so a backtest
+    # using them would be reading the future, selecting only firms that still report
+    # today, and discarding 90% of the universe for want of data. The flag was set
+    # on the legacy minervini and was lost when that strategy was unregistered.
+    wants_live_fundamentals = True
     screen_key = "stage2"
     screen_gates = {"M1": "C1", "M2": "C2", "M3": "C3", "M4": "C4", "M5": "C5", "M6": "C6", "M7": "C7", "M8": "C8"}
     min_bars = 300

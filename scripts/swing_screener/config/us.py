@@ -4,6 +4,8 @@ US_CONFIG = MarketConfig(
     name="US",
     currency_symbol="$",
     exchange="NYSE · Nasdaq", badge="US", flag="🇺🇸",
+    quarterly_source="sec_edgar",
+    money_unit="$ M", money_divisor=1e6,
     tz="America/New_York",
     account_size=50_000,
     risk_pct=0.01,

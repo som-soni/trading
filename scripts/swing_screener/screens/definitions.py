@@ -74,7 +74,16 @@ LEADER_MIN_RS = 70       # the stock's own RS rank
 
 
 def presets() -> dict[str, dict]:
+    stage2 = builtin()["stage2"]["conditions"]
     return {
+        "minervini_leaders": {
+            "name": "Minervini leaders in Stage 2",
+            "description": "Stage-2 stocks (the Trend Template) whose quarterly results pass Minervini's fundamental tests (verdict LEADER).",
+            "thesis": ("Minervini's SEPA wants both halves: a stock already in a Stage-2 uptrend, and a business whose earnings and sales "
+                       "are growing strongly and accelerating, with expanding margins. The verdict comes from the Fundamentals page "
+                       "(fundamentals/sepa.py): EPS growth, EPS acceleration, sales growth, margins and no slowdown must pass, and "
+                       "annual EPS growth and ROE must not fail. Present-only: it is not available for past snapshots, so it cannot be studied."),
+            "conditions": [*stage2, {"field": "sepa_verdict", "op": "in", "value": ["LEADER"]}]},
         "leaders": {
             "name": "Strong stocks in leading groups",
             "description": f"Strong stocks (RS {LEADER_MIN_RS}+) in the strongest peer groups (group RS {LEADER_GROUP_RS}+), in an uptrend.",

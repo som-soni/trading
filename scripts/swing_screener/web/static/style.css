@@ -1133,3 +1133,37 @@ table.subtab tr.open td { background: var(--warn-soft); }
 
 /* the strategy Setups header: which run is shown (latest only) */
 .run-label { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Fundamentals: the company page */
+.co-head { flex-wrap: wrap; gap: 10px; }
+.co-head .wl-add { margin: 0; }
+.co-sub { margin: -6px 0 10px; }
+.co-nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 2px; flex-wrap: wrap; background: var(--bg); border-bottom: 1px solid var(--line); padding: 6px 0; margin-bottom: 8px; }
+.co-nav a { padding: 4px 10px; border-radius: var(--radius); color: var(--muted); font-size: 13px; }
+.co-nav a:hover { background: var(--hover); color: var(--text); }
+.co-sec { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; scroll-margin-top: 48px; }
+.co-sec h2 { font-size: 16px; margin: 0 0 10px; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.co-ratios { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 24px; }
+.co-ratios > div { display: flex; justify-content: space-between; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.co-ratios b { font-variant-numeric: tabular-nums; text-align: right; }
+.co-about { margin-top: 10px; } .co-about summary { cursor: pointer; color: var(--muted); } .co-about p { max-width: 900px; line-height: 1.5; }
+.fin-wrap { overflow-x: auto; }
+table.fin { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.fin th, table.fin td { padding: 5px 10px; border-bottom: 1px solid var(--line); text-align: right; }
+table.fin thead th { color: var(--muted); font-weight: 500; }
+table.fin tbody th { text-align: left; font-weight: 400; position: sticky; left: 0; background: var(--panel); min-width: 170px; }
+table.fin tr.strong th, table.fin tr.strong td { font-weight: 600; color: var(--strong); }
+table.fin tr.pctrow td { color: var(--muted); }
+table.fin td.neg { color: var(--down-text); }
+table.fin tr.self th, table.fin tr.self td { background: var(--accent-soft); }
+table.fin.peers tbody th a { color: var(--link); }
+.fin-note { margin-top: 6px; }
+.cg { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 14px; }
+.cg-box { border: 1px solid var(--line-2); border-radius: var(--radius); padding: 10px 12px; }
+.cg-box table { width: 100%; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.cg-box td { padding: 2px 0; } .cg-box td:last-child { text-align: right; font-weight: 600; } .cg-box td.neg { color: var(--down-text); }
+.co-holders { display: flex; gap: 16px; }
+@media (max-width: 640px) { .co-sec { padding: 12px; } table.fin tbody th { min-width: 130px; } }
+
+/* strategy views (Minervini SEPA) */
+.sepa-tests td { vertical-align: top; }

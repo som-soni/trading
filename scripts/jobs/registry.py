@@ -3,9 +3,9 @@
 Layers (each reads only what the layers above it produced):
 
   reference   which symbols exist and what they are          universe, names, classify, industries
-  data        raw time series and company data (network)     prices, indexes, earnings, fundamentals
+  data        raw time series and company data (network)     prices, indexes, earnings, fundamentals, financials
   analytics   market-wide measures from stored prices        breadth, sectors
-  screening   stock selection from stored data               screens, strategies (one step per strategy), backtest, quality
+  screening   stock selection from stored data               screens, strategies (one step per strategy), backtest, quality, fundamental_scores
   publish     what the web app shows                         report, ingest
 
 Two rules keep the layers honest:
@@ -33,6 +33,7 @@ UNIVERSE_MAX_AGE_DAYS = 7      # `universe` re-fetches the list when older than 
 INDUSTRY_MAX_AGE_DAYS = 30     # `industries` re-classifies when older than this (or with --force)
 QUALITY_TOP = {"us": 500, "india": 300}   # `quality` scores the N most liquid companies (+ your tracked list)
 QUALITY_MAX_AGE_DAYS = 30      # statements newer than this are not re-fetched
+FINANCIALS_TOP = {"us": 1500, "india": 500}    # `financials` covers the N most liquid tradable stocks + every Stage-2 stock
 STALE_TRADING_DAYS = 2         # `strategies` refuses prices this many trading days behind (holidays make 1 ambiguous)
 
 
@@ -406,6 +407,42 @@ def _quality(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _financials(ctx: Ctx) -> None:
+    """Company financials for the Fundamentals page: the most liquid tradable stocks plus every stock passing
+    the Trend Template in the latest snapshot (the technical leaders, whose businesses matter most); any other
+    company is fetched when you open it (the page's "Fetch now", with --symbols).
+    Only companies whose results may have changed are fetched (financials.due); --force fetches all."""
+    from swing_screener.marketdata import financials
+    from swing_screener.screens import definitions, snapshot
+    financials.init_schema()
+    if ctx.opt("symbols"):
+        syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()]
+    else:
+        snap = snapshot.load(ctx.market)
+        if snap.empty:
+            ctx.step.skip("no stock snapshot yet: run `screens` first (the list is its most liquid and Stage-2 stocks)")
+            return
+        tradable = snap[snap["tradable"] == True]  # noqa: E712
+        skip = financials.no_data(ctx.market)     # funds, ETFs: nothing filed at the last look
+        liquid = [s for s in tradable.sort_values("value20", ascending=False)["symbol"] if s not in skip][:FINANCIALS_TOP[ctx.market]]
+        stage2 = snap[definitions.mask(snap, definitions.builtin()["stage2"]["conditions"])]["symbol"]
+        syms = list(dict.fromkeys([*liquid, *(s for s in stage2 if s not in skip)]))
+    r = financials.run(ctx.market, syms, force=bool(ctx.opt("force")))
+    ctx.step.detail = f"{len(syms):,} companies · " + ", ".join(f"{k.replace('_', ' ')} {v:,}" for k, v in r.items())
+    ctx.step.stats = r
+
+
+def _fundamental_scores(ctx: Ctx) -> None:
+    from fundamentals import growth
+    syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()] if ctx.opt("symbols") else None
+    r = growth.run(ctx.market, syms)
+    if not r["companies"]:
+        ctx.step.skip("no quarterly results stored yet: run `financials` first")
+        return
+    ctx.step.detail = ", ".join(f"{k.replace('_', ' ')} {v:,}" for k, v in r.items())
+    ctx.step.stats = r
+
+
 # ------------------------------------------------------------------ publish
 
 def _postmarket(ctx: Ctx) -> None:
@@ -477,6 +514,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("indexes", "data", "index & VIX series: benchmarks, volatility, total-return series", "daily", True, _indexes),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
+    Job("financials", "data", "company financials: quarterly and annual results, balance sheet, cash flow, shareholding "
+        "(SEC / NSE filings) for the Fundamentals page", "weekly", True, _financials, after=("screens",)),
     Job("breadth", "analytics", "market breadth: advancers, highs/lows, % above averages", "daily", False, _breadth, after=("prices",)),
     Job("sectors", "analytics", "sector ranking: RS ratings, rotation, breadth per group (kept daily)", "daily", False, _sectors,
         after=("prices", "industries")),
@@ -491,6 +530,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("group_research", "screening", "research: does group strength improve forward returns? (writes research/group-strength-study.md)",
         "monthly", False, _group_research, per_market=False, after=("screen_history",)),
     Job("quality", "screening", "quality scores: fetch statements and score companies", "on demand", True, _quality),
+    Job("fundamental_scores", "screening", "fundamentals: growth, margins and returns from the stored quarterly results, "
+        "and each strategy's view of them (Minervini SEPA)", "weekly", False, _fundamental_scores, after=("financials",)),
     Job("postmarket", "publish", "post-market analysis: the day's tone, indices, breadth, sectors, movers, watchlists, screener changes",
         "daily", False, _postmarket, after=("prices",)),
     Job("report", "publish", "consolidated report: the daily review across strategies and markets", "on demand", False, _report,
@@ -508,10 +549,14 @@ PIPELINES: dict[str, dict] = {
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
                  "jobs": ["backtest", "ingest"]},
-    "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, fundamentals; split & bonus repair",
-               "jobs": [("universe", {"force": True}), "names", "classify", "splits", "earnings", "fundamentals"]},
+    "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, fundamentals, company financials "
+                          "and their scores; split & bonus repair",
+               "jobs": [("universe", {"force": True}), "names", "classify", "splits", "earnings", "fundamentals", "financials", "fundamental_scores"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},
     "quality": {"summary": "on demand: fetch financial statements and score companies (the Quality screen) — slow, network-heavy",
                 "jobs": ["quality"]},
+    "company_financials": {"summary": "on demand: fetch new filings and recompute the Fundamentals page (the first run is slow); "
+                                      "with --symbols, just those companies",
+                           "jobs": ["financials", "fundamental_scores"]},
 }

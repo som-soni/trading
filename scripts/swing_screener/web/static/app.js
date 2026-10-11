@@ -411,7 +411,7 @@ async function chartPage(alive, market, symbol, tf) {
   cleanup = () => { document.removeEventListener("keydown", onKey); };
 
   const bench = BENCH[market];
-  const [px, ctx, tradeRuns, bpx, wlLists, wlMember, qrows] = await Promise.all([
+  const [px, ctx, tradeRuns, bpx, wlLists, wlMember, qrows, srows] = await Promise.all([
     api(`/api/prices?market=${market}&symbol=${encodeURIComponent(symbol)}&tf=${tf}&bars=${ALL_BARS}`).catch((e) => ({ error: e.message })),
     api(`/api/symbol-context?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => ({ latest: [], history: [] })),
     api(`/api/trade-runs?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => []),
@@ -419,8 +419,9 @@ async function chartPage(alive, market, symbol, tf) {
     WL.lists().catch(() => []),
     WL.membership(market, symbol).catch(() => ({ lists: [] })),
     api(`/api/quality?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => []),
+    api(`/api/fundamentals?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => ({ rows: [] })),
   ]);
-  const qrow = qrows[0];
+  const qrow = qrows[0], srow = srows.rows?.[0];
   // watchlists: the active one is shown in the side panel; ☆ toggles this symbol in it
   let wlAll = wlLists, wlCur = WL.active(wlAll), wl = [], member = new Set(wlMember.lists.map(String));
   const loadWl = async () => {
@@ -884,7 +885,15 @@ async function chartPage(alive, market, symbol, tf) {
         <div class="kv"><span>${qrow.financial ? "ROE" : "ROIC"} <b>${pc(qrow.financial ? qrow.roe_avg : qrow.roic_avg)}</b></span><span>Rev <b>${pc(qrow.rev_cagr)}</b>/yr</span>
           <span>P/E <b>${qrow.pe ? qrow.pe.toFixed(1) : "—"}</b></span><span>Value <b class="${qrow.value === "Attractive" ? "pos" : qrow.value === "Expensive" ? "neg" : ""}">${esc(qrow.value || "—")}</b></span></div>
         ${(qrow.flags || []).length ? `<div class="muted small">${esc(qrow.flags.join(" · "))}</div>` : ""}</div></section>` : "";
-    return `${qHtml}<section><h3>Screener — latest</h3>${plans || '<div class="muted small">Not in any screening run.</div>'}</section>
+    const sv = srow?.views?.sepa;
+    const sHtml = srow ? `<section><h3>Quarterly fundamentals <a class="muted" href="${companyHref(market, symbol)}">financials</a></h3>
+      <div class="plan"><div class="kv"><span>EPS <b class="${(srow.eps_g?.[0] ?? 0) >= 0 ? "pos" : "neg"}">${esc(sepaPct(srow.eps_g?.[0]) || "—")}</b>
+          <span class="muted small">${(srow.eps_g || []).slice(1, 3).map((v) => esc(sepaPct(v) || "—")).join(" · ")}</span></span>
+          <span>Sales <b>${esc(sepaPct(srow.rev_g?.[0]) || "—")}</b></span><span>ROE <b>${srow.roe == null ? "—" : `${(srow.roe * 100).toFixed(0)}%`}</b></span></div>
+        ${sv ? `<div class="row"><span class="muted small">Minervini SEPA · ${sv.passed}/${sv.scored} tests</span>
+          <span>${sv.code33 ? '<span class="tag trade">CODE 33</span> ' : ""}<span class="tag ${sepaClass(sv.verdict)}">${esc(sv.verdict)}</span></span></div>` : ""}
+        <div class="muted small">latest ${esc(srow.latest_fiscal || prettyDate(srow.latest_end))} · <a href="${companyHref(market, symbol)}">full financials →</a></div></div></section>` : "";
+    return `${qHtml}${sHtml}<section><h3>Screener — latest</h3>${plans || '<div class="muted small">Not in any screening run.</div>'}</section>
       <section><h3>Decision history</h3>${hist || '<div class="muted small">None.</div>'}</section>`;
   }
   /** TradingView's details block under the watchlist: the open symbol's price, day change, 52-week range and verdicts */
@@ -1951,6 +1960,142 @@ async function qualityPage(alive, mkt) {
   $view.querySelector("#qchips").onclick = (e) => { const b = e.target.closest("[data-v]"); if (b) { view = b.dataset.v; store.set("qView", view); draw(); } };
   $view.querySelector("#qpending").onclick = (e) => { const b = e.target.closest(".copy"); if (b) navigator.clipboard.writeText(b.dataset.c).then(() => toast("Command copied", "ok"), () => {}); };
   draw();
+}
+
+// ------------------------------------------------------------ fundamentals: one company's financials (screener.in style)
+
+const sepaClass = (v) => (v === "LEADER" ? "trade" : v === "ACCEPTABLE" ? "watch" : v === "WEAK" ? "avoid" : "");
+const sepaPct = (v, d = 0) => (v == null ? "" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(d)}%`);
+const FUND_SOURCE = { sec_edgar: "SEC filings", nse: "NSE filings", yfinance: "Yahoo (fallback)" };
+const bareSymbol = (x) => { const m = MKTS.find((k) => k.suffix && String(x).endsWith(k.suffix)); return m ? String(x).slice(0, -m.suffix.length) : String(x); };
+const companyHref = (m, s) => `#/company/${m}/${encodeURIComponent(s)}`;
+
+/** one strategy view's tests for one company */
+function viewTestsHtml(res, vc) {
+  const lbl = Object.fromEntries(vc.tests.map((t) => [t.key, t]));
+  return `<table class="dtab sepa-tests"><tbody>${Object.entries(res.tests || {}).map(([k, t]) => `<tr>
+      <td><span class="tag ${t.status === "pass" ? "trade" : t.status === "fail" ? "avoid" : ""}">${t.status === "na" ? "n/a" : t.status}</span></td>
+      <td><b>${k}</b> ${esc(lbl[k]?.label || "")}<div class="muted small">${esc(lbl[k]?.text || "")}</div></td>
+      <td class="num">${typeof t.value !== "number" ? "" : k === "F2" ? String(t.value)
+        : k === "F4" || k === "F8" ? `${t.value > 0 ? "+" : ""}${(t.value * 100).toFixed(1)} pt` : esc(sepaPct(t.value, 1))}
+        ${t.detail ? `<div class="muted small">${esc(t.detail)}</div>` : ""}</td></tr>`).join("")}</tbody></table>`;
+}
+
+async function companyPage(alive, market, symbol) {
+  market = pageMarket(market);
+  symbol = symbol || store.get("lastSymbol:" + market, market === "us" ? "AAPL" : "RELIANCE.NS");
+  store.set("lastMarket", market); store.set("lastSymbol:" + market, symbol);
+  document.title = `${bareSymbol(symbol)} fundamentals · Trading`;
+  $view.innerHTML = LOADING;
+  const d = await api(`/api/company?market=${market}&symbol=${encodeURIComponent(symbol)}`);
+  if (!alive()) return;
+  const loc = d.currency === "₹" ? "en-IN" : "en-US";       // ₹ figures grouped the Indian way (1,23,456)
+  const money = (v) => (v == null ? "" : (v / d.divisor).toLocaleString(loc, { maximumFractionDigits: Math.abs(v / d.divisor) < 10 ? 1 : 0 }));
+  const fmtv = (kind, v) => (v == null ? "" : kind === "money" ? money(v) : kind === "pct" ? `${(v * 100).toFixed(0)}%`
+    : kind === "per_share" ? v.toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : Math.round(v).toLocaleString(loc));
+  const colLabel = (c) => { const m = String(c).match(/^(\d{4})-(\d{2})/); return m ? `${MONTHS[+m[2] - 1]} ${m[1]}` : c; };
+  const BOLD = new Set(["sales", "operating_profit", "net_profit", "total_liabilities", "total_assets", "cfo", "fcf", "eps"]);
+  const table = (t, note = "") => !t || !t.rows?.length ? `<div class="muted small">Not in the filings stored for this company.</div>`
+    : `<div class="fin-wrap"><table class="fin"><thead><tr><th></th>${t.columns.map((c) => `<th>${esc(colLabel(c))}</th>`).join("")}</tr></thead>
+       <tbody>${t.rows.map((r) => `<tr class="${BOLD.has(r.key) ? "strong" : ""} ${r.kind === "pct" ? "pctrow" : ""}"><th>${esc(r.label)}</th>${r.values.map((v) => `<td class="${v < 0 ? "neg" : ""}">${fmtv(r.kind, v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+       ${note ? `<div class="muted small fin-note">${note}</div>` : ""}`;
+  const st = d.status || {};
+  const unitNote = `Figures in ${esc(d.unit)} · ${esc(FUND_SOURCE[st.source] || st.source || "")}${st.basis && st.basis !== "as reported" ? ` · ${esc(st.basis)}` : ""}`;
+  const fetchBtn = d.fetch_pending ? `<button class="btn" disabled>Fetch queued (#${d.fetch_pending})…</button>`
+    : `<button class="btn" id="cfetch" title="Fetch this company's filings now (a queue item, ahead of long jobs)">${st.status ? "Refresh from filings" : "Fetch now"}</button>`;
+  const head = `<div class="crumbs"><a href="#/chart/${market}/${encodeURIComponent(symbol)}">← Chart</a></div>
+    <div class="page-head co-head"><h1>${esc(d.name || bareSymbol(symbol))}</h1><span class="mkt">${MKT_BADGE[market] || market}</span><span class="muted">${esc(bareSymbol(symbol))}</span>
+      <span class="spacer"></span>
+      <form class="wl-add" autocomplete="off" id="cosearch"><div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input placeholder="Search a company" spellcheck="false"><ul hidden></ul></div></form>
+      <a class="btn" href="#/chart/${market}/${encodeURIComponent(symbol)}">Chart</a>${fetchBtn}</div>
+    <div class="muted small co-sub">${[d.sector, d.industry].filter(Boolean).map(esc).join(" › ")}${d.profile?.website ? ` · <a href="${esc(d.profile.website)}" target="_blank" rel="noopener">${esc(d.profile.website.replace(/^https?:\/\/(www\.)?/, ""))}</a>` : ""}
+      ${st.fetched_at ? ` · fetched ${esc(prettyDate(st.fetched_at))}` : ""}${d.latest?.end ? ` · latest results ${esc(colLabel(d.latest.end))}${d.latest.filed ? ` (filed ${esc(prettyDate(d.latest.filed))})` : ""}` : ""}${d.latest?.stale ? ` · <b>stale</b>` : ""}</div>`;
+  if (!d.quarters) {
+    $view.innerHTML = head + `<div class="empty"><b>${st.status === "none" ? "Nothing filed for this symbol" : st.status === "error" ? "The last fetch failed" : "Not fetched yet"}</b>
+      <div class="muted">${st.status === "none" ? "No results filings at the source (a fund or ETF?)." : st.error ? esc(st.error) : "The weekly job fetches the most liquid stocks and every Stage-2 stock; this one has not been fetched yet. Fetch it now — it takes a few seconds to a minute once the queue reaches it."}</div></div>`;
+    wire();
+    return;
+  }
+  const r = d.ratios_top || {};
+  const pc = (v, dp = 1) => (v == null ? "—" : `${(v * 100).toFixed(dp)}%`);
+  const cur = (v) => (v == null ? "—" : `${d.currency} ${v.toLocaleString(loc, { maximumFractionDigits: 2 })}`);
+  const ratio = [["Market cap", r.market_cap == null ? "—" : `${d.currency} ${money(r.market_cap)} ${esc(d.unit.replace(/^\S+\s*/, ""))}`],
+    ["Current price", cur(r.price)], ["High / Low", r.high_52w ? `${cur(r.high_52w)} / ${r.low_52w?.toLocaleString(loc, { maximumFractionDigits: 2 })}` : "—"],
+    ["Stock P/E", r.pe == null ? "—" : r.pe.toFixed(1)], ["Book value", cur(r.book_value)], ["Dividend yield", pc(r.dividend_yield, 2)],
+    ["ROCE", pc(r.roce)], ["ROE", pc(r.roe)], ...(r.face_value ? [["Face value", cur(r.face_value)]] : []),
+    ...(r.debt_to_equity != null ? [["Debt to equity", r.debt_to_equity.toFixed(2)]] : []),
+    ["Sales (TTM)", r.sales_ttm == null ? "—" : `${money(r.sales_ttm)} ${esc(d.unit)}`], ["Profit (TTM)", r.profit_ttm == null ? "—" : `${money(r.profit_ttm)} ${esc(d.unit)}`],
+    ["EPS (TTM)", r.eps_ttm == null ? "—" : cur(r.eps_ttm)], ["RS rank", r.rs_rank == null ? "—" : Math.round(r.rs_rank)]];
+  const g = d.growth || {};
+  const gbox = (title, rows) => `<div class="cg-box"><b>${title}</b><table>${(rows || []).map(([k, v]) => `<tr><td>${esc(k)}:</td><td class="${v < 0 ? "neg" : ""}">${v == null ? "—" : `${(v * 100).toFixed(0)}%`}</td></tr>`).join("")}</table></div>`;
+  const shp = d.shareholding || [];
+  const shpRows = [["promoters", "Promoters"], ["fii", "FIIs"], ["dii", "DIIs"], ["government", "Government"], ["public", "Public"]]
+    .filter(([k]) => shp.some((x) => x[k] != null));
+  const shpHtml = shp.length ? `<div class="fin-wrap"><table class="fin"><thead><tr><th></th>${shp.map((x) => `<th>${esc(colLabel(x.period_end))}</th>`).join("")}</tr></thead><tbody>
+      ${shpRows.map(([k, l]) => `<tr><th>${l}</th>${shp.map((x) => `<td>${x[k] == null ? "" : `${(x[k] * 100).toFixed(2)}%`}</td>`).join("")}</tr>`).join("")}
+      ${shp.some((x) => x.shareholders) ? `<tr><th>No. of shareholders</th>${shp.map((x) => `<td>${x.shareholders ? x.shareholders.toLocaleString(loc) : ""}</td>`).join("")}</tr>` : ""}</tbody></table></div>
+      <div class="muted small fin-note">From the quarterly shareholding-pattern filings on NSE; FII / DII from the detailed filing (read for the latest quarters).</div>`
+    : d.holders && Object.keys(d.holders).length ? `<div class="kv co-holders">${d.holders.heldPercentInstitutions != null ? `<span>Institutions <b>${pc(d.holders.heldPercentInstitutions)}</b></span>` : ""}
+        ${d.holders.heldPercentInsiders != null ? `<span>Insiders <b>${pc(d.holders.heldPercentInsiders)}</b></span>` : ""}</div><div class="muted small fin-note">Current only (Yahoo); US filers report no quarterly shareholding pattern.</div>`
+    : `<div class="muted small">No shareholding data.</div>`;
+  const peers = d.peers || [];
+  const peerHtml = peers.length > 1 ? `<div class="fin-wrap"><table class="fin peers"><thead><tr><th>Name</th><th>Price</th><th>P/E</th><th>Mkt cap (${esc(d.unit)})</th><th>Sales growth (Q)</th><th>EPS growth (Q)</th><th>ROE</th><th>RS</th></tr></thead><tbody>
+      ${peers.map((p) => `<tr class="${p.self ? "self" : ""}"><th><a href="${companyHref(market, p.symbol)}">${esc(bareSymbol(p.symbol))}</a></th><td>${p.close?.toLocaleString(loc, { maximumFractionDigits: 2 }) ?? ""}</td>
+        <td>${p.pe == null ? "" : p.pe.toFixed(1)}</td><td>${p.market_cap == null ? "" : money(p.market_cap)}</td><td class="${p.sales_g < 0 ? "neg" : ""}">${sepaPct(p.sales_g)}</td>
+        <td class="${p.eps_g < 0 ? "neg" : ""}">${sepaPct(p.eps_g)}</td><td>${p.roe == null ? "" : `${(p.roe * 100).toFixed(0)}%`}</td><td>${p.rs_rank == null ? "" : Math.round(p.rs_rank)}</td></tr>`).join("")}</tbody></table></div>
+      <div class="muted small fin-note">Peer group: ${esc(String(d.peer_group || "").split(" › ").at(-1))} (Sectors page). P/E and growth only where a company's filings are stored.</div>`
+    : `<div class="muted small">No peer group for this stock.</div>`;
+  const viewsHtml = (d.views || []).map((v) => {
+    const res = v.result;
+    return `<section class="co-sec" id="co-view-${esc(v.key)}"><h2>${esc(v.name)} ${res ? `<span class="tag ${sepaClass(res.verdict)}">${esc(res.verdict)}</span>${res.code33 ? ' <span class="tag trade">CODE 33</span>' : ""} <span class="muted small">${res.passed}/${res.scored} tests pass</span>` : ""}
+        ${v.strategy ? `<a class="muted small" href="#/strategies/${encodeURIComponent(v.strategy)}">the strategy →</a>` : ""}</h2>
+      <p class="muted small">${esc(v.description)} ${esc(v.thesis || "")}</p>
+      ${res ? viewTestsHtml(res, v) : '<div class="muted small">Not scored yet.</div>'}
+      <details class="qhow"><summary>Verdicts and caveats</summary><ul class="sd-list">${v.verdicts.map((x) => `<li>${esc(x)}</li>`).join("")}${v.caveats.map((x) => `<li class="muted">${esc(x)}</li>`).join("")}</ul></details></section>`;
+  }).join("");
+  const SECS = [["overview", "Overview"], ["quarters", "Quarters"], ["pl", "Profit & Loss"], ["bs", "Balance Sheet"], ["cf", "Cash Flows"],
+    ["ratios", "Ratios"], ["shp", "Shareholding"], ["peers", "Peers"], ...(d.views || []).map((v) => [`view-${v.key}`, v.name])];
+  $view.innerHTML = head + `<nav class="co-nav">${SECS.map(([k, t]) => `<a href="#co-${k}" data-sec="co-${k}">${esc(t)}</a>`).join("")}</nav>
+    <section class="co-sec" id="co-overview"><div class="co-ratios">${ratio.map(([k, v]) => `<div><span class="muted">${k}</span><b>${v}</b></div>`).join("")}</div>
+      ${d.profile?.about ? `<details class="co-about"><summary>About</summary><p>${esc(d.profile.about)}</p></details>` : ""}</section>
+    <section class="co-sec" id="co-quarters"><h2>Quarterly results <span class="muted small">${unitNote}</span></h2>${table(d.quarters,
+      `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`)}</section>
+    <section class="co-sec" id="co-pl"><h2>Profit &amp; Loss <span class="muted small">${unitNote}</span></h2>${table(d.profit_loss,
+      d.layout === "bank" ? "Banks: revenue is interest earned; financing profit = revenue − interest − expenses (incl. provisions), before other income." : "")}
+      <div class="cg">${gbox("Compounded sales growth", g.sales)}${gbox("Compounded profit growth", g.profit)}${gbox("Stock price CAGR", g.price)}${gbox("Return on equity", g.roe)}</div></section>
+    <section class="co-sec" id="co-bs"><h2>Balance Sheet <span class="muted small">${unitNote}</span></h2>${table(d.balance_sheet, "Year ends, and the latest half-year / quarter end where filed.")}</section>
+    <section class="co-sec" id="co-cf"><h2>Cash Flows <span class="muted small">${unitNote}</span></h2>${table(d.cash_flow, d.layout !== "us" ? "Indian results filings carry the cash flow from about FY2020." : "")}</section>
+    <section class="co-sec" id="co-ratios"><h2>Ratios</h2>${table(d.ratios, "Debtor and inventory days on sales; ROCE = (profit before tax + interest) / (equity + borrowings) at the year end.")}</section>
+    <section class="co-sec" id="co-shp"><h2>Shareholding pattern</h2>${shpHtml}</section>
+    <section class="co-sec" id="co-peers"><h2>Peer comparison</h2>${peerHtml}</section>
+    ${viewsHtml}`;
+  $view.querySelector(".co-nav").onclick = (e) => {
+    const a = e.target.closest("[data-sec]"); if (!a) return;
+    e.preventDefault(); document.getElementById(a.dataset.sec)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  wire();
+
+  function wire() {
+    const f = $view.querySelector("#cosearch");
+    if (f) symbolSearch(f.querySelector("input"), f.querySelector("ul"), market, (s) => go(companyHref(market, s)));
+    if (f) f.onsubmit = (e) => { e.preventDefault(); const v = f.querySelector("input").value.trim().toUpperCase(); if (v) go(companyHref(market, v)); };
+    const b = $view.querySelector("#cfetch");
+    if (b) b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const res = await api("/api/company/fetch", jsonReq("POST", { market, symbol }));
+        toast(res.duplicate ? `Already queued (#${res.item})` : `Queued #${res.item} — the page refreshes when it is done`, "ok");
+        route();
+      } catch (err) { b.disabled = false; toast(err.message.replace(/^\d+ /, ""), "err"); }
+    };
+    if (d.fetch_pending) {   // check back until the queue item is done, then show the new figures
+      const t = setInterval(async () => {
+        const x = await api(`/api/company?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => null);
+        if (x && !x.fetch_pending) { clearInterval(t); if (alive()) route(); }
+      }, 10000);
+      const prev = cleanup; cleanup = () => { clearInterval(t); prev(); };
+    }
+  }
 }
 
 // ------------------------------------------------------------ strategies
@@ -3363,7 +3508,8 @@ const SECTIONS = [
     ["sectors", "Sectors", "Leading sectors, industry groups and their leaders"], ["movers", "Movers", "Top gainers and losers"]] },
   { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"]] },
   { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"]] },
-  { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"]] },
+  { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"],
+    ["company", "Fundamentals", "The company's financials: quarterly results, profit & loss, balance sheet, cash flows, ratios, shareholding, peers"]] },
   { key: "watchlists", label: "Watchlists", pages: [["watchlist", "Watchlists", "Your lists and the screener's picks"]] },
   { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"], ["playbook", "Playbook", "Sector analysis: method and roadmap"],
     ["learn", "Learn", "Learning material: chart patterns and candlesticks"],
@@ -3374,7 +3520,7 @@ const SECTIONS = [
 /** the nav entry a URL belongs to: screens and strategies have one entry per screen / strategy */
 function pageIdOf(parts) {
   const p = parts[0] || "chart";
-  return p === "screening" ? "strategies" : p === "quality" ? "screens" : p;
+  return p === "screening" ? "strategies" : p === "quality" ? "screens" : p === "fundamentals" || p === "sepa" ? "company" : p;
 }
 const PAGE_SECTION = Object.fromEntries(SECTIONS.flatMap((s) => s.pages.map(([p]) => [p, s])));
 const sectionOf = (id) => PAGE_SECTION[id] || PAGE_SECTION[id.split("/")[0]] || null;
@@ -3390,8 +3536,16 @@ function renderNav(page) {
   // yet "Screens" must keep opening the screens, not the last Quality view
   const first = location.hash.replace(/^#\//, "").split("/")[0] || "chart";
   if (sec && first === page) store.set(`navPage:${page}`, location.hash);
-  if (store.get("navPage:screens", "").startsWith("#/quality")) store.set("navPage:screens", null);   // clean up the old value
-  const pageHref = (p) => esc(p === page ? location.hash : withMarket(store.get(`navPage:${p}`, `#/${p}`)));
+  if (/^#\/(quality|fundamentals|sepa)/.test(store.get("navPage:screens", ""))) store.set("navPage:screens", null);   // clean up the old value
+  // Chart and Fundamentals are two views of one stock: each tab opens the stock on screen — read from the URL,
+  // since the nav is drawn before the page stores it — else the stock you were last looking at
+  const stockHref = (p) => {
+    const [cur, um, us] = location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent);
+    const onStock = (cur === "chart" || cur === "company") && isMarket(um) && us;
+    const m = onStock ? um : store.get("lastMarket", MKTS[0]?.key || "us"), s = onStock ? us : store.get("lastSymbol:" + m, null);
+    return s ? `#/${p}/${m}/${encodeURIComponent(s)}` : `#/${p}`;
+  };
+  const pageHref = (p) => esc(p === page ? location.hash : p === "chart" || p === "company" ? stockHref(p) : withMarket(store.get(`navPage:${p}`, `#/${p}`)));
   const secHref_ = (s) => esc(`#/${s.pages[0][0]}`);   // a section link always opens its home page
   $nav.innerHTML = SECTIONS.map((s, i) => `<a href="${secHref_(s)}" data-sec="${s.key}" data-href="${secHref_(s)}" class="sec ${s === sec ? "active" : ""}"
       title="${esc(s.pages.map((x) => x[1]).join(" · "))} (Alt+${i + 1})">${s.label}</a>`).join("");
@@ -3530,6 +3684,8 @@ async function route() {
     else if (page === "watchlist") await watchlistPage(alive, parts[1]);
     else if (page === "strategies") await strategiesPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "quality") await qualityPage(alive, parts[1]);
+    else if (page === "company") await companyPage(alive, parts[1], parts[2]);
+    else if (page === "fundamentals" || page === "sepa") go(`#/company/${parts[1] || ""}`);   // the page's earlier names
     else if (page === "breadth") await breadthPage(alive, parts[1]);
     else if (page === "movers") await moversPage(alive, parts[1]);
     else if (page === "postmarket") await postmarketPage(alive, parts[1], parts[2], parts[3]);

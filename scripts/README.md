@@ -194,18 +194,18 @@ layers above it produced (`jobs/registry.py`):
 | layer | jobs | network | cadence |
 |---|---|---|---|
 | reference | `universe`, `names`, `classify`, `industries` | yes | weekly / monthly |
-| data | `prices`, `splits`, `indexes`, `earnings`, `fundamentals` | yes | prices & indexes daily, the rest weekly |
+| data | `prices`, `splits`, `indexes`, `earnings`, `fundamentals`, `financials` (SEC / NSE company financials and shareholding) | yes | prices & indexes daily, the rest weekly |
 | analytics | `breadth`, `sectors` | no | daily, after prices |
-| screening | `screens` (the stock snapshot), `strategies` (one step per strategy), `screen_history`, `quality` | only `quality` | snapshot daily, history monthly; strategies and quality on demand |
+| screening | `screens` (the stock snapshot), `strategies` (one step per strategy), `screen_history`, `quality`, `fundamental_scores` (the Fundamentals page) | only `quality` | snapshot daily, history monthly, fundamental_scores weekly; strategies and quality on demand |
 | publish | `postmarket` (daily), `report`, `ingest` (with strategies) | no | after their inputs |
 
 Pipelines: **daily** (data only: universe check → prices → indexes → breadth →
 sectors → screens → postmarket), **strategies** (on demand: strategies — all by
 default — → report → ingest), **weekly** (universe, names, classify, splits —
 re-fetch the full history of stocks that split or issued bonus shares after
-their last full fetch — earnings, fundamentals), **monthly** (industries, subindustries, screen_history,
+their last full fetch — earnings, fundamentals, financials, fundamental_scores), **monthly** (industries, subindustries, screen_history,
 group_research — the group-strength study, research/group-strength-study.md —
-ingest), **quality** (on demand).
+ingest), **quality** (on demand), **company_financials** (on demand: financials → fundamental_scores; `--symbols` for just those companies).
 
 **Queue, worker, schedules** (`jobs/queue.py`, `jobs/worker.py`): the web app,
 schedules and `python -m jobs enqueue` add runs to a Postgres queue
