@@ -416,7 +416,33 @@ def report_table(rid: int, name: str, symbol: str | None = None):
     if symbol and "symbol" in cols:
         i = cols.index("symbol")
         rows = [x for x in rows if x[i] == symbol]
+    if name == "trades" and "symbol" in cols and "mkt_cap_usd_b" not in cols:
+        # TODAY'S market cap ($B, USD — the snapshot's cross-market figure), joined at serve time:
+        # trades.csv records no cap, and no point-in-time cap history exists, so this is the current
+        # size of each name, old runs included. Inserted right after `symbol`; every consumer
+        # (trades tab, chart overlay, trade anatomy) looks columns up by name, never by position.
+        caps = _mkt_caps(rid)
+        if caps:
+            i = cols.index("symbol")
+            cols = [*cols[:i + 1], "mkt_cap_usd_b", *cols[i + 1:]]
+            rows = [[*x[:i + 1], caps.get(x[i]), *x[i + 1:]] for x in rows]
     return {"columns": cols, "rows": rows}
+
+
+def _mkt_caps(rid: int) -> dict:
+    """symbol -> market cap in US$ billions from the run's market's latest stock snapshot ({} when
+    the market is 'all' or no snapshot has been built yet)."""
+    run = q("SELECT market FROM report_runs WHERE id=%s", (rid,))
+    if not run or run[0][0] not in MARKETS:
+        return {}
+    try:
+        snap = _snap(run[0][0])
+    except HTTPException:
+        return {}
+    if snap is None or "market_cap_usd" not in snap:
+        return {}
+    return {s: (None if c is None or c != c else round(float(c), 2))
+            for s, c in zip(snap["symbol"], snap["market_cap_usd"])}
 
 
 @app.get("/api/reports/{rid}/trade-anatomy")

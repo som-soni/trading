@@ -190,7 +190,21 @@ def _save_signals(rows: list[tuple]) -> None:
              prior_swing_low, overhead_levels, watch_flags, watch_notes, extras, spec_id)
         VALUES %s
         ON CONFLICT (market, strategy, symbol, date) DO UPDATE SET
-            hard_gates=EXCLUDED.hard_gates, setups=EXCLUDED.setups,
+            -- EVERY column, not a subset. Leaving has_setup, hard_gates_passed and
+            -- the swing structure out left a row claiming the new spec_id while
+            -- carrying the old version's values: NVDA came back with MV-04 true on
+            -- 31 rows and has_setup false on 30 of them, because has_setup was
+            -- written before the cheats existed and never refreshed. That makes a
+            -- row internally inconsistent -- fresh setups beside a stale context --
+            -- and every diagnostic that reads has_setup silently wrong.
+            hard_gates_passed=EXCLUDED.hard_gates_passed,
+            first_failed_gate=EXCLUDED.first_failed_gate,
+            hard_gates=EXCLUDED.hard_gates, has_setup=EXCLUDED.has_setup,
+            setups=EXCLUDED.setups,
+            h_value=EXCLUDED.h_value, h_index=EXCLUDED.h_index,
+            l_value=EXCLUDED.l_value, p_value=EXCLUDED.p_value,
+            prior_swing_low=EXCLUDED.prior_swing_low,
+            overhead_levels=EXCLUDED.overhead_levels,
             watch_flags=EXCLUDED.watch_flags, watch_notes=EXCLUDED.watch_notes,
             extras=EXCLUDED.extras, spec_id=EXCLUDED.spec_id
     """
@@ -836,6 +850,7 @@ def run_portfolio_backtest(
     min_group_rs: int | None = None,
     min_rs: int | None = None,
     max_base_no: int | None = None,
+    min_dollar_volume: float | None = None,
     use_market_filter: bool = False,
     spec_costs: bool = False,
     max_open_risk_pct: float | None = None,
@@ -860,6 +875,10 @@ def run_portfolio_backtest(
     # into a full run without editing the market config. `max_positions` x
     # `max_position_pct` can exceed 100% of capital, in which case the book
     # runs out of cash before it runs out of slots -- see the sizing sweep.
+    if min_dollar_volume is not None:
+        import dataclasses as _dc
+        cfg = _dc.replace(cfg, screener=_dc.replace(cfg.screener, min_dollar_volume=min_dollar_volume))
+        logger.info("Traded-value floor overridden: %s%,.0f/day", cfg.currency_symbol, min_dollar_volume)
     if risk_pct is not None or max_position_pct is not None:
         import dataclasses as _dc
         cfg = _dc.replace(
@@ -1141,6 +1160,11 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--min-group-rs", type=int, default=None,
                         help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
                              "on the signal date — e.g. 50 to avoid weak groups")
+    parser.add_argument("--min-dollar-volume", type=float, default=None, metavar="X",
+                        help="override the market's traded-value floor for this run, e.g. "
+                             "--min-dollar-volume 100e6 to drop small and micro caps. Point in time "
+                             "(SMA20 of close x volume per bar), unlike a market-cap filter, which "
+                             "would use today's cap and so look ahead.")
     parser.add_argument("--max-base", type=int, default=None, metavar="N",
                         help="trade only the first N bases of a stock's advance (Minervini treats later "
                              "bases as riskier; the spec suggests testing 1-3). Off by default: the spec "
@@ -1278,7 +1302,8 @@ def main(argv: list[str] | None = None) -> dict | None:
             include=[x.strip() for x in args.include.split(",") if x.strip()],
             risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
             rank_by=args.rank_by, min_group_rs=args.min_group_rs,
-                min_rs=args.min_rs, max_base_no=args.max_base, use_market_filter=args.market_filter,
+                min_rs=args.min_rs, max_base_no=args.max_base,
+            min_dollar_volume=args.min_dollar_volume, use_market_filter=args.market_filter,
             spec_costs=args.spec,
             max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
             max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
@@ -1322,6 +1347,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     if args.accept_labels != "TRADE - HIGH CONFIDENCE":
         run += "_" + "+".join("".join(w[0] for w in x.split() if w[0].isalpha()) for x in labels)
     run += f"_sample{args.sample}" if args.sample else ""
+    if args.min_dollar_volume:
+        run += f"_dv{args.min_dollar_volume / 1e6:g}m"
     if args.symbols:
         picked = [x.strip().upper() for x in args.symbols.split(",") if x.strip()]
         run += "_only-" + ("+".join(picked) if len(picked) <= 4 else f"{len(picked)}syms")
