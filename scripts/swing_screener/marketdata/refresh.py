@@ -110,9 +110,8 @@ def main() -> None:
         print(f"    {', '.join(sorted(r['stale'])[:20])}"
               f"{' ...' if len(r['stale']) > 20 else ''}")
     print()
-    print("Screeners can now run against warm data, e.g.:")
-    print(f"  python3 -m swing_screener.screening.trend_template "
-          f"--market {args.market} --no-refresh")
+    print("Screens can now run against warm data, e.g.:")
+    print(f"  python3 -m jobs run screens --market {args.market}")
 
 
 if __name__ == "__main__":
