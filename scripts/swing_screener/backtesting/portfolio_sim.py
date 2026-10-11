@@ -99,7 +99,7 @@ class ExitPolicy:
     donchian_bars: int = 50      # for donchian
     # ---- minervini (research/minervini-backtest-spec.md, section 9)
     fail_days: int = 5           # EX-02: a close below the pivot within this many sessions of entry (0 = off)
-    breakeven_r: float = 2.0     # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
+    breakeven_r: float = 2.5     # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
     partial_r: float = 3.0       # EX-04: sell `partial_frac` at entry + this × R (0 = off)
     partial_frac: float = 1 / 3
     climax: bool = True          # EX-05
@@ -221,6 +221,53 @@ def _slip(price: float, bps: float, side: str) -> float:
     return price * (1 + adj) if side == "buy" else price * (1 - adj)
 
 
+@dataclass
+class Exposure:
+    """PE-01…PE-04: size the next entry from how the last few trades went.
+
+    Minervini does not risk the same fraction every time. He opens at a pilot size,
+    and only pays full size once the account is making money — so a losing streak
+    costs progressively less and a winning one is pressed. The point is drawdown,
+    not return: the same trades taken in the same order should end in a similar
+    place having fallen less far along the way.
+
+    The state is deliberately read ONCE at the top of each session, before that day's
+    exits, so a trade closing this morning cannot resize a fill this afternoon. Every
+    input is therefore a trade that closed on an earlier session.
+
+    `press` (PE-04) is off unless press_net_r is set.
+    """
+
+    enabled: bool = False
+    window: int = 10             # PE-01: closed trades in the rolling window
+    warmup: int = 5              # PE-02: pilot size until this many trades have closed
+    pilot_frac: float = 0.5      # PE-02: fraction of risk_pct while the window is not paying
+    press_net_r: float | None = None   # PE-04: net R over the window that unlocks the press
+    press_frac: float = 1.25     # PE-04: fraction of risk_pct when pressing
+    press_slots: int = 2         # PE-04: extra concurrent positions when pressing
+
+    def state(self, closed: list) -> tuple[float, int, str]:
+        """(risk multiplier, extra slots, why) from the trades closed before today."""
+        if not self.enabled:
+            return 1.0, 0, "flat"
+        window = [t for t in closed[-self.window:] if t.r_multiple is not None]
+        net_r = sum(t.r_multiple for t in window)
+        last_two = [t for t in closed[-2:] if t.r_multiple is not None]
+        two_losses = len(last_two) == 2 and all(t.r_multiple < 0 for t in last_two)
+        if len(closed) < self.warmup:
+            return self.pilot_frac, 0, "pilot: warming up"
+        if two_losses:
+            return self.pilot_frac, 0, "pilot: two losses in a row"
+        if net_r <= 0:
+            return self.pilot_frac, 0, f"pilot: net {net_r:+.1f}R over the last {len(window)}"
+        if self.press_net_r is not None and net_r >= self.press_net_r:
+            return self.press_frac, self.press_slots, f"press: net {net_r:+.1f}R"
+        return 1.0, 0, f"full: net {net_r:+.1f}R"
+
+
+_FLAT = Exposure()   # disabled: every entry risks the full risk_pct
+
+
 def simulate(
     signals: list[Signal],
     prices: dict[str, pd.DataFrame],
@@ -232,6 +279,8 @@ def simulate(
     cost_bps: float = 0.0,
     slippage_bps: float | None = None,
     max_open_risk_pct: float | None = None,
+    exposure: "Exposure | None" = None,
+    regime_ok: "pd.Series | None" = None,
     max_adv_pct: float | None = None,
     pyramid_frac: float | None = None,
     pyramid_add_pct: float = 2.0,
@@ -305,6 +354,13 @@ def simulate(
     eq_rows, pos_rows, cash_rows = [], [], []
 
     for today in all_dates:
+        # ---- progressive exposure: fixed for the whole session, computed from trades
+        # that closed on EARLIER sessions. Reading it here rather than at the fill is
+        # the whole point — today's stop-out must not resize today's entry.
+        risk_mult, extra_slots, exposure_why = (exposure or _FLAT).state(closed)
+        risk_pct_today = cfg.risk_pct * risk_mult
+        slots_today = cap + extra_slots
+
         # ---- 0. pyramid adds, before exits so a position that is added to and
         # then stopped on the same bar pays for both, which is what would happen
         # ----------------------------------------------------------------------
@@ -393,6 +449,16 @@ def simulate(
             close_out(sym, pos, raw, reason, today)
 
         # ---- 2. resting orders -------------------------------------------
+        # PF-06 / MKT-01: in risk-off, nothing new is bought. Signals are already
+        # filtered out before the simulation, but an order placed while the market
+        # was open can still be resting when it closes, and filling it would buy a
+        # breakout the regime rule says to refuse. The filter never forces an exit,
+        # so open positions above are untouched.
+        if regime_ok is not None and not bool(regime_ok.asof(today)):
+            for sym in list(pending):
+                skip("cancelled: market filter is risk-off")
+                del pending[sym]
+
         # Rank the ones that triggered today, because slots are scarce.
         triggered = []
         for sym, order in list(pending.items()):
@@ -441,7 +507,7 @@ def simulate(
             if sym in positions:
                 del pending[sym]
                 continue
-            if len(positions) >= cap:
+            if len(positions) >= slots_today:
                 missed_slot += 1
                 if meta.get("order") == "open":
                     del pending[sym]
@@ -484,7 +550,7 @@ def simulate(
             equity_now = cash + sum(
                 _mark(p, prices, today) for p in positions.values()
             )
-            risk_budget = equity_now * cfg.risk_pct
+            risk_budget = equity_now * risk_pct_today
             shares = int(risk_budget // risk_per_share)
             max_notional = equity_now * cfg.max_position_pct
             if shares * entry > max_notional:

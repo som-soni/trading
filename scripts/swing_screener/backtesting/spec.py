@@ -144,19 +144,31 @@ def filter_max_base_no(signals: list, max_base: int) -> tuple[list, dict]:
 
 # ---------------------------------------------------------------- market filter (MKT-01)
 
-def market_ok(market: str) -> pd.Series:
-    """Per date: benchmark close > its SMA200 and SMA50 > SMA200."""
+MKT_CONFIRM_DAYS = 5     # sessions MKT-01 must hold before risk-on resumes [assumption; test 1-10]
+
+
+def market_ok(market: str, confirm_days: int = 0) -> pd.Series:
+    """Per date: benchmark close > its SMA200 and SMA50 > SMA200 (MKT-01).
+
+    With `confirm_days`, risk-on resumes only after MKT-01 has held that many sessions
+    in a row. Risk-OFF still bites immediately — the delay is there so a benchmark
+    oscillating around its 200-day does not turn the gate on and off every other day,
+    not to keep buying into a market that has just rolled over.
+    """
     b = cache.load_cached(market, MARKETS[market].benchmark_ticker)
     c = b["close"].astype(float)
     s50, s200 = c.rolling(50).mean(), c.rolling(200).mean()
-    return (c > s200) & (s50 > s200)
+    ok = (c > s200) & (s50 > s200)
+    if confirm_days and confirm_days > 1:
+        ok = ok & (ok.rolling(int(confirm_days)).sum() >= int(confirm_days))
+    return ok
 
 
-def market_filter(signals: list, market: str) -> tuple[list, dict]:
-    ok = market_ok(market)
+def market_filter(signals: list, market: str, confirm_days: int = 0) -> tuple[list, dict]:
+    ok = market_ok(market, confirm_days)
     kept = [s for s in signals if bool(ok.asof(pd.Timestamp(s.date)))]
     logger.info("Market filter: kept %d of %d signals", len(kept), len(signals))
-    return kept, {"kept": len(kept), "blocked": len(signals) - len(kept),
+    return kept, {"kept": len(kept), "blocked": len(signals) - len(kept), "confirm_days": int(confirm_days or 0),
                   "days_open_pct": round(float(ok[ok.index >= min(s.date for s in signals)].mean()) * 100, 1) if signals else None}
 
 

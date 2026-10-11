@@ -16,7 +16,7 @@ original stays the baseline. What differs from `minervini`:
   open (EN-01). **MV-02** is the coil below the pivot, entered by a buy-stop through it (EN-02).
 - **Stops** sit `STOP_BUFFER_PCT`% under the tight low and may be no more than `MAX_STOP_PCT`% below the
   fill (checked at the fill, not at the signal). One entry per base.
-- **Exits** are the spec's EX-01 … EX-06: the stop, a failed breakout, breakeven at 2R, a third sold
+- **Exits** are the spec's EX-01 … EX-06: the stop, a failed breakout, breakeven at {BREAKEVEN_R}R, a third sold
   at 3R, climax runs, and a 50-day break on volume — the portfolio simulator's `minervini` mode.
 
 The backtest adds the cross-sectional parts a one-symbol evaluation cannot do: the RS rating (TT-08),
@@ -97,7 +97,23 @@ MIN_STRUCTURAL_R = 2.0
 # same guard for the same reason.
 OVERHEAD_CLUSTER_ATR = 1.0
 
+# EX-03's trigger. Mirrors ExitPolicy.breakeven_r, which is what a --spec run
+# actually gets; tests/test_minervini_exits.py fails if the two drift apart.
+# Raised from 2.0: trades exiting on the breakeven stop had reached a median 2.75R
+# while held and realised -0.04R, so the stop was converting winners into scratches.
+BREAKEVEN_R = 2.5
+
 # ---- section 10 / backtest (backtesting/backtest.py --spec)
+# PE-01..PE-04 (progressive exposure), off unless --pe. Minervini does not risk a flat
+# fraction every time: he opens small and only pays full size once the account is making
+# money, so a losing run costs progressively less. The state is read once per session from
+# trades that closed EARLIER, never from the session being sized.
+PE_WINDOW = 10                  # PE-01: closed trades in the rolling window
+PE_WARMUP = 5                   # PE-02: pilot size until this many trades have closed
+PE_PILOT_FRAC = 0.5             # PE-02: fraction of the risk budget at pilot size
+PE_PRESS_NET_R = 4.0            # PE-04: net R that unlocks the press (only with --pe-press)
+MKT_CONFIRM_DAYS = 5            # MKT-01: sessions risk-on must hold before new buys resume
+
 MAX_POSITIONS = 8               # PF-02
 MAX_OPEN_RISK_PCT = 6.0         # PF-04
 MAX_ADV_PCT = 5.0               # SL-06
@@ -107,8 +123,22 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.5"
+    version = "1.6"
     changelog = (
+        ("1.6", "2026-10-12",
+         "Progressive exposure, and the market filter made to bite. PE-01..PE-04 size an entry from "
+         "the recent record instead of risking a flat 1% every time: a pilot at half risk "
+         "while the last 10 closed trades are not net positive, after two losing trades in "
+         "a row, or during the first 5; full risk otherwise; an optional press above +4R. "
+         "The state is read once per session BEFORE that day's exits, so every input is a trade that "
+         "closed earlier -- this is sizing, not prediction. The aim is drawdown, not return. "
+         "MKT-01 already blocked new signals, but an order placed while the market was open could "
+         "still be resting when it closed and would fill into a market the rule refuses; those are now "
+         "cancelled, and --mkt-confirm requires MKT-01 to hold N sessions before risk-on resumes so the "
+         "gate does not flap around the 200-day (risk-off still bites at once). EX-03's breakeven trigger "
+         "rises to 2.5R: trades exiting on it had reached a median 2.75R while held and "
+         "realised -0.04R, so it was turning winners into scratches. Open positions are never forced out "
+         "by the filter."),
         ("1.5", "2026-10-10",
          "MV-03, the low cheat, is off by default (LOW_CHEAT_ENABLED). On India 2010 onward with "
          "both entry modes, the three cheats and the pivot buy produced 210 trades: MV-04 made "
@@ -314,13 +344,26 @@ class MinerviniSpecStrategy(Strategy):
     exit_rules = (
         "In priority order, each session: EX-01 the stop (filled at the open if it gapped through); EX-02 a "
         "close below the pivot within 5 sessions of entry — a failed breakout, sold at the next open; EX-03 "
-        "once the high reaches 2R, the stop rises to breakeven plus costs; EX-04 one third sold at 3R; EX-05 "
+        "once the high reaches {BREAKEVEN_R}R, the stop rises to breakeven plus costs; EX-04 one third sold at 3R; EX-05 "
         "a climax run once up 25% (the biggest up day on the biggest volume since entry, 8 of 10 up closes, "
         "70% above the 200-day, or a 3% gap after a 50% gain), sold at the next open; EX-06 a close below "
         "the 50-day average on at least average volume, sold at the next open.",
         "Backtest: `--exit-mode minervini` in the portfolio simulator; the spec's run adds `--spec`, which "
         "sets {MAX_POSITIONS} positions, a {MAX_OPEN_RISK_PCT}% open-risk cap, a {MAX_ADV_PCT}% liquidity cap, "
         "RS ranking and the spec's costs.",
+        "Sizing (PE-01 … PE-04, `--pe`, off by default): every entry risks the same fraction unless "
+        "progressive exposure is on, in which case an entry risks half that fraction while the last "
+        "{PE_WINDOW} closed trades are not net positive, after two losing trades in a row, or during the "
+        "first {PE_WARMUP} trades of the run, and the full fraction otherwise. `--pe-press` additionally "
+        "allows 1.25x and two extra positions once the window is {PE_PRESS_NET_R}R up. The rule is read "
+        "once per session from trades that closed on EARLIER sessions, so a stop-out this morning cannot "
+        "resize an entry this afternoon. It aims at drawdown, not return.",
+        "Market filter (MKT-01, PF-06, `--market-filter`): in risk-off — benchmark below its 200-day, or "
+        "its 50-day below its 200-day — no new entry is taken and any resting buy-stop is cancelled, "
+        "because an order placed while the market was open would otherwise fill into one the rule "
+        "refuses. Open positions are never forced out. `--mkt-confirm` makes risk-on wait for MKT-01 to "
+        "hold that many sessions ({MKT_CONFIRM_DAYS} is the suggested setting) so the gate does not flap "
+        "around the 200-day; risk-off still bites immediately.",
     )
     param_docs = (
         ("Swing confirmation", "SWING_K", "Bars either side of a swing point; it is known only this many bars later."),
@@ -345,6 +388,12 @@ class MinerviniSpecStrategy(Strategy):
         ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused."),
         ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
+        ("Breakeven trigger", "BREAKEVEN_R", "EX-03: R gained before the stop moves to breakeven plus costs."),
+        ("Exposure window", "PE_WINDOW", "PE-01: closed trades judged for sizing, with --pe."),
+        ("Exposure warm-up", "PE_WARMUP", "PE-02: trades sized as pilots at the start of a run, with --pe."),
+        ("Pilot fraction", "PE_PILOT_FRAC", "PE-02: share of the risk budget at pilot size, with --pe."),
+        ("Press threshold", "PE_PRESS_NET_R", "PE-04: net R over the window that unlocks 1.25x, with --pe-press."),
+        ("Risk-on confirmation", "MKT_CONFIRM_DAYS", "MKT-01: sessions risk-on must hold, with --mkt-confirm."),
         ("Open-risk cap", "MAX_OPEN_RISK_PCT", "PF-04, with --spec."),
         ("Liquidity cap", "MAX_ADV_PCT", "SL-06: largest order as a % of 50-day average traded value, with --spec."),
         ("Minimum history", "min_bars", "Bars required before the template can judge a symbol."),

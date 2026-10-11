@@ -345,6 +345,11 @@ def _backtest_steps(ctx: Ctx) -> list:
                 argv += ["--min-dollar-volume", repr(float(c.opt("min_dollar_volume")))]
             if c.opt("pyramid"):
                 argv += ["--pyramid", str(c.opt("pyramid"))]
+            if c.opt("pe"):
+                argv.append("--pe")
+            for _k in ("pe_window", "pe_warmup", "pe_pilot", "pe_press", "mkt_confirm"):
+                if c.opt(_k) is not None:
+                    argv += ["--" + _k.replace("_", "-"), str(c.opt(_k))]
             for extra in (c.opt("bt") or []):
                 argv += shlex.split(str(extra))   # appended last, so a passthrough wins
             if c.opt("accept_labels"):

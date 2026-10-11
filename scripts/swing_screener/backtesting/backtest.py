@@ -857,6 +857,8 @@ def run_portfolio_backtest(
     pyramid_frac: float | None = None,
     pyramid_add_pct: float = 2.0,
     use_market_filter: bool = False,
+    mkt_confirm: int = 0,
+    exposure: "portfolio_sim.Exposure | None" = None,
     spec_costs: bool = False,
     max_open_risk_pct: float | None = None,
     max_adv_pct: float | None = None,
@@ -953,8 +955,9 @@ def run_portfolio_backtest(
                           f"on the signal date) skipped: {r['below']} below, {r['unrated']} outside the rated universe, {r['kept']} kept.")
         fn.dropped("accepted", f"RS rating below {min_rs}", r["below"])
         fn.dropped("accepted", "outside the rated universe", r["unrated"])
+    regime_ok = spec_mod.market_ok(market_key, mkt_confirm) if use_market_filter else None
     if use_market_filter and all_signals:
-        all_signals, m = spec_mod.market_filter(all_signals, market_key)
+        all_signals, m = spec_mod.market_filter(all_signals, market_key, mkt_confirm)
         fn.dropped("accepted", "market filter: benchmark below its 200-day", m["blocked"])
         spec_notes.append(f"Market filter (MKT-01): {m['blocked']} signals blocked on days the benchmark was below its "
                           f"200-day average or its 50-day was below its 200-day (open on {m['days_open_pct']}% of days).")
@@ -998,7 +1001,8 @@ def run_portfolio_backtest(
         all_signals, prices, cfg, start,
         max_positions=max_positions, exit_policy=policy,
         max_open_risk_pct=max_open_risk_pct, max_adv_pct=max_adv_pct,
-        pyramid_frac=pyramid_frac, pyramid_add_pct=pyramid_add_pct, **sim_kw,
+        pyramid_frac=pyramid_frac, pyramid_add_pct=pyramid_add_pct,
+        exposure=exposure, regime_ok=regime_ok, **sim_kw,
     )
     tdf = p_trades_to_df(result.trades)
     # what the simulator refused: slots, cash, and the per-fill checks it records
@@ -1085,6 +1089,15 @@ def print_summary(df: pd.DataFrame, currency_symbol: str) -> None:
     print(f"Total P&L (incl. open, mark-to-market): {currency_symbol}{df['pnl'].sum():,.2f}")
 
 
+def _exposure_from(args):
+    """PE-01..PE-04 from the command line, or None when --pe was not asked for."""
+    if not getattr(args, "pe", False):
+        return None
+    from .portfolio_sim import Exposure
+    return Exposure(enabled=True, window=args.pe_window, warmup=args.pe_warmup,
+                    pilot_frac=args.pe_pilot, press_net_r=args.pe_press)
+
+
 def main(argv: list[str] | None = None) -> dict | None:
     """CLI entry point. `argv` lets the `backtest` job (jobs/registry.py) run it in-process with the
     same arguments the command line would take; the portfolio branch returns {run_dir, trades, perf}
@@ -1167,6 +1180,24 @@ def main(argv: list[str] | None = None) -> dict | None:
              "not an addition. Note the RS filter ranks a signal against the universe present in the "
              "run, so on a handful of symbols that ranking is not meaningful.",
     )
+    parser.add_argument(
+        "--pe", action="store_true",
+        help="progressive exposure (PE-01..PE-04): enter at a pilot size while the recent record is "
+             "not paying, full size once it is. Sizing is read once per session from trades closed on "
+             "EARLIER sessions, so today's stop-out cannot resize today's entry.",
+    )
+    parser.add_argument("--pe-window", type=int, default=10, metavar="N",
+                        help="PE-01: closed trades in the rolling window (default 10; test 5-20)")
+    parser.add_argument("--pe-warmup", type=int, default=5, metavar="N",
+                        help="PE-02: pilot size until this many trades have closed (default 5)")
+    parser.add_argument("--pe-pilot", type=float, default=0.5, metavar="FRAC",
+                        help="PE-02: fraction of --risk-pct at pilot size (default 0.5; test 0.33-0.66)")
+    parser.add_argument("--pe-press", type=float, default=None, metavar="NET_R",
+                        help="PE-04, off by default: net R over the window that unlocks 1.25x risk and "
+                             "two extra position slots (the spec suggests +4)")
+    parser.add_argument("--mkt-confirm", type=int, default=0, metavar="N",
+                        help="with --market-filter: sessions MKT-01 must hold before risk-on resumes, so the "
+                             "gate does not flap around the 200-day (test 1-10). Risk-off still bites at once.")
     parser.add_argument(
         "--include", default="",
         help="comma-separated symbols to force into the sample, in ADDITION to "
@@ -1340,7 +1371,8 @@ def main(argv: list[str] | None = None) -> dict | None:
                 min_rs=args.min_rs, max_base_no=args.max_base,
             min_dollar_volume=args.min_dollar_volume,
             pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct,
-            use_market_filter=args.market_filter,
+            use_market_filter=args.market_filter, mkt_confirm=args.mkt_confirm,
+            exposure=_exposure_from(args),
             spec_costs=args.spec,
             max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
             max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
@@ -1381,7 +1413,9 @@ def main(argv: list[str] | None = None) -> dict | None:
     elif args.min_rs is not None:
         run += f"_rs{args.min_rs}"
     if args.market_filter:
-        run += "_mkt"
+        run += "_mkt" + (f"c{args.mkt_confirm}" if args.mkt_confirm else "")
+    if args.pe:
+        run += f"_pe{args.pe_window}w{args.pe_pilot:g}" + (f"press{args.pe_press:g}" if args.pe_press is not None else "")
     if args.fundamentals:
         run += f"_fund{args.fundamentals}"
     if args.accept_labels != "TRADE - HIGH CONFIDENCE":

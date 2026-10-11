@@ -204,6 +204,13 @@ def _run_args(r) -> None:
                    help="`backtest`: which decision labels count as tradeable, comma separated "
                         "(e.g. 'TRADE - HIGH CONFIDENCE,TRADE ON TRIGGER'). Overrides the strategy's "
                         "own backtest_args; the run gets its own report directory.")
+    r.add_argument("--pe", action="store_true",
+                   help="backtest: progressive exposure (PE-01..PE-04)")
+    r.add_argument("--pe-window", type=int, default=None, metavar="N")
+    r.add_argument("--pe-warmup", type=int, default=None, metavar="N")
+    r.add_argument("--pe-pilot", type=float, default=None, metavar="FRAC")
+    r.add_argument("--pe-press", type=float, default=None, metavar="NET_R")
+    r.add_argument("--mkt-confirm", type=int, default=None, metavar="N")
     r.add_argument("--pyramid", type=float, default=None, metavar="FRAC",
                    help="`backtest`: build positions in two tranches, FRAC at entry (e.g. 0.5).")
     r.add_argument("--min-dollar-volume", type=float, default=None, metavar="X",
@@ -237,6 +244,8 @@ def _opts(ap, a):
     opts = {"strategies": strategies, "force": a.force, "allow_stale": a.allow_stale,
             "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days,
             "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols, "max_base": a.max_base, "min_dollar_volume": a.min_dollar_volume, "pyramid": a.pyramid,
+            "pe": a.pe, "pe_window": a.pe_window, "pe_warmup": a.pe_warmup, "pe_pilot": a.pe_pilot,
+            "pe_press": a.pe_press, "mkt_confirm": a.mkt_confirm,
             "accept_labels": a.accept_labels}
     unknown = [t for t in a.targets if t not in JOBS and t not in PIPELINES]
     if unknown:

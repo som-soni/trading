@@ -119,6 +119,20 @@ def test_legacy_bracket_pnl_reconciles_with_equity():
     assert abs(t.pnl - change) < 1e-6, (t.pnl, change)
 
 
+def test_breakeven_constant_matches_the_policy_default():
+    """minervini_spec documents EX-03's trigger; ExitPolicy is what a --spec run actually gets.
+
+    They are two declarations of one number, in modules that cannot import each other without a
+    cycle, so nothing but this stops the Strategy page from advertising a trigger the backtest
+    does not use.
+    """
+    from swing_screener.backtesting.portfolio_sim import ExitPolicy
+    from swing_screener.strategies import minervini_spec
+    assert ExitPolicy().breakeven_r == minervini_spec.BREAKEVEN_R, (
+        f"minervini_spec.BREAKEVEN_R={minervini_spec.BREAKEVEN_R} but a --spec run gets "
+        f"{ExitPolicy().breakeven_r} from ExitPolicy")
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

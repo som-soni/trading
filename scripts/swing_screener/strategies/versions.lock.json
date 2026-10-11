@@ -159,10 +159,11 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "75bd22a2",
+    "fingerprint": "39a21ebf",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
+      "BREAKEVEN_R": 2.5,
       "BUY_RANGE_PCT": 5.0,
       "CHEAT_SHELF_DAYS": 7,
       "CHEAT_SHELF_PCT": 8.0,
@@ -181,8 +182,13 @@
       "MIN_PCT_ABOVE_52W_LOW": 30.0,
       "MIN_STRUCTURAL_R": 2.0,
       "MIN_SWING_PCT": 2.0,
+      "MKT_CONFIRM_DAYS": 5,
       "NOMINAL_TARGET_R": 3.0,
       "OVERHEAD_CLUSTER_ATR": 1.0,
+      "PE_PILOT_FRAC": 0.5,
+      "PE_PRESS_NET_R": 4.0,
+      "PE_WARMUP": 5,
+      "PE_WINDOW": 10,
       "PIVOT_NEAR_HIGH": 0.9,
       "PRIOR_ADVANCE_PCT": 30.0,
       "RS_MIN_MOM": 0.1,
@@ -246,7 +252,7 @@
         "B4"
       ]
     },
-    "version": "1.5"
+    "version": "1.6"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
