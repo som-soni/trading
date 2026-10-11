@@ -104,6 +104,24 @@ BULLISH: dict[str, tuple[str, object]] = {
     FLAG: ("§9.2", lambda d: ps.detect_flag(d, PARAMS)),
     HTF: ("§9.3", lambda d: ps.detect_flag(d, PARAMS, high_tight=True)),
 }
+# what each code is, in words: the Strategies page lists these, and the
+# backtest's trades panel names the pattern a trade was taken on with them
+PATTERN_NAMES = {
+    CUP: "Cup with handle", CUPNH: "Cup without handle", DBOT: "Double bottom",
+    TBOT: "Triple bottom", IHS: "Inverse head and shoulders",
+    ATRI: "Ascending triangle", SYMM: "Symmetrical triangle", FWDG: "Falling wedge",
+    RECT: "Rectangle", FBASE: "Flat base", FLAG: "Bull flag or pennant",
+    HTF: "High tight flag",
+}
+# the detectors' point names, as the chart labels them
+POINT_NAMES = {
+    "A": "left lip", "B": "low", "C": "right lip", "D": "handle low",
+    "B1": "low 1", "P1": "peak", "B2": "low 2", "P2": "peak", "B3": "low 3",
+    "LS": "left shoulder", "N1": "neck", "HD": "head", "N2": "neck",
+    "RS": "right shoulder", "P0": "pole start", "X": "flag low", "S": "start",
+}
+# a double bottom reuses the cup's letters for different points
+POINT_NAMES_BY_CODE = {DBOT: {"B": "low 1", "C": "peak", "D": "low 2"}}
 BEARISH = {
     "double top": lambda d: ps.detect_double_top(d, PARAMS),
     "head and shoulders top": lambda d: ps.detect_head_shoulders(d, PARAMS),
@@ -143,10 +161,15 @@ class ChartPatternSpecStrategy(Strategy):
     key = "chart_pattern"
     name = "Chart patterns"
     description = (
-        "The written chart-pattern specification, rule for rule: eleven "
-        "patterns detected with ATR-scaled tolerances, fitted trendlines and "
-        "prior-trend context, traded at the spec's own trigger, invalidation "
-        "and measured move."
+        "The written chart-pattern specification, rule for rule. It trades "
+        "breakouts from twelve bullish patterns — cup with handle, cup without "
+        "handle, double bottom, triple bottom, inverse head and shoulders, "
+        "ascending triangle, symmetrical triangle, falling wedge, rectangle, "
+        "flat base, bull flag or pennant, and high tight flag — and vetoes a "
+        "chart showing a double top, head and shoulders top, rising wedge or "
+        "descending triangle. Detected with ATR-scaled tolerances, fitted "
+        "trendlines and prior-trend context; traded at the spec's own trigger, "
+        "invalidation and measured move."
     )
     style = "breakout"
     # The same screen as `chart_pattern`, deliberately: the question this
@@ -163,7 +186,7 @@ class ChartPatternSpecStrategy(Strategy):
     setup_codes = tuple(BULLISH)
     needs_ctx_extras = True
     extra_columns = (
-        "pattern", "pattern_state", "trigger", "invalidation", "measured_target",
+        "pattern", "pattern_name", "pattern_state", "trigger", "invalidation", "measured_target",
         "pct_from_trigger", "structural_r", "topping_pattern", "pattern_note",
         "first_failed_rule",
     )
@@ -194,9 +217,21 @@ class ChartPatternSpecStrategy(Strategy):
         "**Each pattern carries its own context rule** — a prior uptrend for "
         "continuations, a prior downtrend for reversals — so the same shape "
         "after a rise and after a fall are not treated as one thing.",
-        "**Setups** are the eleven bullish types, each detected by its own "
-        "numbered rules; the report names which fired and, when none did, the "
-        "first rule that failed.",
+        "**Patterns it detects (setups, long only):** cup with handle (CUP), "
+        "cup without handle (CUPNH), double bottom (DBOT), triple bottom "
+        "(TBOT), inverse head and shoulders (IHS), ascending triangle (ATRI), "
+        "symmetrical triangle (SYMM), falling wedge (FWDG), rectangle (RECT), "
+        "flat base (FBASE), bull flag or pennant (FLAG) and high tight flag "
+        "(HTF) — eleven pattern types, the cup counted with and without its "
+        "handle. Each is detected by its own numbered rules; the report names "
+        "which fired and, when none did, the first rule that failed.",
+        "**Patterns it detects as vetoes, never traded:** double top, head and "
+        "shoulders top, rising wedge and descending triangle. A confirmed one "
+        "fails gate S2; one still forming raises flag XS1.",
+        "**Which pattern a trade was taken on** is the highest-priority live "
+        "match on the signal bar; it is the trade's `setup`, named in the "
+        "backtest trades panel, and the chart draws that pattern — its swing "
+        "points, fitted lines, trigger, invalidation and measured target.",
         "**Gates S1-S5** require a live bullish pattern, no CONFIRMED topping "
         "pattern on the same chart, no earnings inside {EARNINGS_DAYS} trading "
         "days, ATR under {MAX_ATR_PCT}% of price, and price no more than "
@@ -438,7 +473,9 @@ class ChartPatternSpecStrategy(Strategy):
                 "invalidation": float(lv.invalidation),
                 "height": float(lv.height),
                 "measured_target": float(lv.target),
+                "pattern_name": PATTERN_NAMES.get(code, code),
                 "pattern_note": _note(res),
+                "pattern_geometry": _geometry(code, res),
             })
         if top_name is not None:
             ctx.extras["topping_pattern"] = top_name
@@ -634,6 +671,7 @@ class ChartPatternSpecStrategy(Strategy):
         trig = e.get("trigger")
         return {
             "pattern": e.get("pattern"),
+            "pattern_name": e.get("pattern_name"),
             "pattern_state": e.get("pattern_state"),
             "trigger": round(float(trig), 2) if trig else None,
             "invalidation": round(float(e["invalidation"]), 2)
@@ -649,31 +687,66 @@ class ChartPatternSpecStrategy(Strategy):
         }
 
 
+    setup_names = PATTERN_NAMES
+
     def chart_anatomy(self, sig: dict) -> list[dict]:
-        """The spec levels of the traded pattern — trigger, invalidation and measured target —
-        with the detector's own note. The spec stores levels, not the pattern's start date, so
-        the lines span a fixed window rather than the exact body."""
+        """The traded pattern as the detector saw it on the signal bar — its swing points joined
+        in order, its fitted lines (triangle and wedge boundaries, channel, neckline, flat-base
+        range) — plus the spec levels: trigger, invalidation and measured target. The geometry is
+        the `pattern_geometry` the run itself recorded; a signal written without it draws the
+        levels alone."""
         e = sig.get("extras") or {}
         d = str(sig["date"])
+        code = e.get("pattern")
+        if not (code and e.get("trigger")):
+            return super().chart_anatomy(sig)
+        name = e.get("pattern_name") or PATTERN_NAMES.get(code, code)
+        geo = e.get("pattern_geometry") or {}
+        pts = geo.get("points") or []
+        start = pts[0]["date"] if pts else None
+        for ln in geo.get("lines") or []:
+            start = min(start or ln["from"], ln["from"])
         out: list[dict] = []
-        if e.get("pattern") and e.get("trigger"):
-            out.append({"shape": "level", "bars": 60, "to": d, "price": float(e["trigger"]),
-                        "role": "pivot", "label": f"trigger {e['trigger']:g} — confirms {e['pattern']}"})
-            if e.get("invalidation"):
-                out.append({"shape": "level", "bars": 60, "to": d, "price": float(e["invalidation"]),
-                            "role": "support", "label": f"invalidation {e['invalidation']:g} — the pattern is wrong below this"})
-            if e.get("measured_target"):
-                out.append({"shape": "level", "bars": 20, "to": d, "price": float(e["measured_target"]),
-                            "role": "target", "label": f"measured target {e['measured_target']:g}", "dash": True})
-            note = f"{e['pattern']} ({e.get('pattern_state', '')}): {e.get('pattern_note') or 'spec geometry matched'}"
-            if e.get("height"):
-                note += f" · height {e['height']:g} projected above the trigger"
-            if e.get("topping_pattern"):
-                note += f" · WARNING: topping {e['topping_pattern']} ({e.get('topping_state', '')})"
-            out.append({"shape": "note", "at": d, "price": float(e["trigger"]), "text": note})
-        else:
-            out = super().chart_anatomy(sig)
+        if len(pts) >= 2:
+            out.append({"shape": "path", "from": pts[0]["date"], "to": pts[-1]["date"], "role": "base",
+                        "points": [{"at": q["date"], "price": q["price"], "label": q["label"]} for q in pts],
+                        "label": name})
+        for ln in geo.get("lines") or []:
+            out.append({"shape": "line", "from": ln["from"], "to": ln["to"], "p0": ln["p0"], "p1": ln["p1"],
+                        "role": "base", "label": ln["name"]})
+        span = {"from": start} if start else {"bars": 60}
+        out.append({"shape": "level", **span, "to": d, "price": float(e["trigger"]),
+                    "role": "pivot", "label": f"trigger {e['trigger']:g} — confirms the {name.lower()}"})
+        if e.get("invalidation"):
+            out.append({"shape": "level", **span, "to": d, "price": float(e["invalidation"]),
+                        "role": "support", "label": f"invalidation {e['invalidation']:g} — the pattern is wrong below this"})
+        if e.get("measured_target"):
+            out.append({"shape": "level", "bars": 20, "to": d, "price": float(e["measured_target"]),
+                        "role": "target", "label": f"measured target {e['measured_target']:g}", "dash": True})
+        note = f"Pattern: {name} ({code}, {e.get('pattern_state', '')})"
+        if e.get("pattern_note"):
+            note += f" · {e['pattern_note']}"
+        if e.get("height"):
+            note += f" · height {e['height']:g} projected above the trigger"
+        if e.get("topping_pattern"):
+            note += f" · WARNING: topping {e['topping_pattern']} ({e.get('topping_state', '')})"
+        out.append({"shape": "note", "at": d, "price": float(e["trigger"]), "text": note})
         return out
+
+
+def _geometry(code: str, res: dict) -> dict:
+    """The matched pattern's swing points (in time order) and fitted lines, as plain JSON for the
+    signal record, so the chart can draw the shape the run traded on without re-detecting it."""
+    pts = sorted(res.get("points", {}).items(), key=lambda kv: kv[1]["pos"])
+    names = {**POINT_NAMES, **POINT_NAMES_BY_CODE.get(code, {})}
+    return {
+        "points": [{"label": names.get(k, k), "date": str(pd.Timestamp(v["date"]).date()),
+                    "price": round(float(v["price"]), 4)} for k, v in pts],
+        "lines": [{"name": k, "from": str(pd.Timestamp(v["from"]).date()),
+                   "to": str(pd.Timestamp(v["to"]).date()),
+                   "p0": round(float(v["p0"]), 4), "p1": round(float(v["p1"]), 4)}
+                  for k, v in (res.get("lines") or {}).items()],
+    }
 
 
 # Which label to trade when several fire at once. Ordered by how selective the

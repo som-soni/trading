@@ -295,6 +295,12 @@ def fit_line(points: list[tuple[int, float]]) -> Line | None:
     return Line(float(slope), float(intercept))
 
 
+def segment(line: Line, a: int, b: int, idx: pd.Index) -> dict:
+    """A fitted line between bars a and b, for drawing — the detectors keep it
+    in result["lines"] beside result["points"]; no rule reads it."""
+    return {"from": idx[a], "to": idx[b], "p0": line.at(a), "p1": line.at(b)}
+
+
 def touches(line: Line, points: list[Swing], t: float) -> int:
     """TL-02: swing points within `t` of the line."""
     n = 0
@@ -1096,6 +1102,7 @@ def detect_hs(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
                 found.append(out)
                 continue
 
+        out["lines"] = {"neckline": segment(neck, n1.pos, t_pos, idx)}
         neck_t = neck.at(t_pos)
         neck_hd = neck.at(hd.pos)
         height = hd.price - neck_hd if top else neck_hd - hd.price
@@ -1244,6 +1251,8 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
     rect = kind == RECTANGLE
     rules = RC_RULES if rect else TR_RULES
     dur = t_pos - s_pos
+    out["lines"] = {"upper": segment(upper, s_pos, t_pos, d.index),
+                    "lower": segment(lower, s_pos, t_pos, d.index)}
     out["metrics"].update({
         "duration_days": dur, "touches_upper": tu, "touches_lower": tl,
         "upper_slope": upper.pct_slope(mid), "lower_slope": lower.pct_slope(mid),
@@ -1396,6 +1405,8 @@ def detect_flat_base(daily: pd.DataFrame, p: PatternParams = PatternParams()) ->
     start = n - best_n
     w_hi, w_lo = float(high[start:].max()), float(low[start:].min())
     out["points"] = {"S": {"pos": start, "price": w_hi, "date": d.index[start]}}
+    out["lines"] = {"upper": segment(Line(0.0, w_hi), start, t_pos, d.index),
+                    "lower": segment(Line(0.0, w_lo), start, t_pos, d.index)}
     out["metrics"].update({
         "window_days": best_n,
         "depth_pct": (w_hi - w_lo) / w_hi * 100,
@@ -1547,6 +1558,8 @@ def detect_flag(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
         out["fail"] = "FL-04"
         return out
     upper, lower, tu, tl = fit
+    out["lines"] = {"upper": segment(upper, p1_pos, t_pos, idx),
+                    "lower": segment(lower, p1_pos, t_pos, idx)}
     mid = (p1_pos + t_pos) / 2
     su, sl = upper.pct_slope(mid), lower.pct_slope(mid)
     out["metrics"].update({"upper_slope": su, "lower_slope": sl,

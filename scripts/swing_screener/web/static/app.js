@@ -552,6 +552,17 @@ async function chartPage(alive, market, symbol, tf) {
             color: col, width: dim ? 1 : 2, dash: !!s.dash, text: dim ? "" : s.label || "" };
           if (s.shape === "level") return { type: "trend", pts: [{ t: t0, p: s.price }, { t: t1, p: s.price }],
             color: col, width: 1, dash: s.dash !== false, text: dim ? "" : s.label || "" };
+          if (s.shape === "line") return { type: "trend", pts: [{ t: t0, p: s.p0 }, { t: t1, p: s.p1 }],
+            color: col, width: dim ? 1 : 2, dash: !!s.dash, text: "" };
+          if (s.shape === "path") {
+            // the pattern itself: its swing points joined in order, each point named (dimmed: line only)
+            const P = (s.points || []).map((q) => ({ t: ts(q.at), p: q.price, label: q.label })).filter((q) => q.t != null);
+            return [
+              ...P.slice(1).map((q, j) => ({ type: "trend", pts: [{ t: P[j].t, p: P[j].p }, { t: q.t, p: q.p }],
+                color: col, width: dim ? 1 : 2.5, dash: false, text: "" })),
+              ...(dim ? [] : P.map((q) => ({ type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }))),
+            ];
+          }
           if (s.shape === "note" && withNotes && s.text) {
             // the text box is pinned to the pane's top strip (pts[1].f = fraction of pane height),
             // so the note never covers the bars it explains; the leader still drops to the anchor
@@ -561,7 +572,7 @@ async function chartPage(alive, market, symbol, tf) {
               color: col, width: 1, text: s.text };
           }
           return null;
-        }).filter(Boolean);
+        }).flat().filter(Boolean);
       };
       applyAnnotations = () => { if (dr) dr.annotate([...vcpAnnotations, ...anatomy.flatMap(items)]); };
       zoomToTrade = (t) => {
@@ -953,6 +964,7 @@ async function chartPage(alive, market, symbol, tf) {
     const rows = anatomy.map((t, i) => `<div class="btr ${i === selTrade ? "cur" : ""}" data-i="${i}">
         <div class="btr-h"><b>${prettyDate(t.entry_date)} → ${t.exit_date ? prettyDate(t.exit_date) : "open"}</b>
           <span class="${(t.r_multiple ?? 0) >= 0 ? "pos" : "neg"}">${t.r_multiple > 0 ? "+" : ""}${t.r_multiple ?? "?"}R</span></div>
+        ${t.setup_name ? `<div class="small">Pattern: <b>${esc(t.setup_name)}</b></div>` : ""}
         <div class="muted small">${esc([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · "))}</div>
         ${t.note ? `<div class="btr-note small">${esc(t.note)}</div>` : ""}</div>`).join("");
     return `<section><h3>Backtest trades</h3><div class="muted small">${run ? esc(`${run.strategy} · ${run.run}`) : ""}</div>

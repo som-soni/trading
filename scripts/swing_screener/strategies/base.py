@@ -311,6 +311,9 @@ class Strategy(SpecMeta, ABC):
     gate_codes: tuple[str, ...] = ()
     watch_codes: tuple[str, ...] = ()
     setup_codes: tuple[str, ...] = ()
+    # setup code -> what it is in words, for the backtest trades panel (a trade's `setup` is
+    # the code); a code missing here is shown as the bare code
+    setup_names: dict[str, str] = {}
     # extra report columns this strategy's report_extras() returns, and which
     # of them are numeric. Declared here so output.py never needs to know any
     # strategy's specifics — previously breakout_pivot/pct_from_pivot were
@@ -479,6 +482,9 @@ class Strategy(SpecMeta, ABC):
         Shapes (dates are ISO strings; `bars` may replace `from` when only a bar count is known):
           {"shape": "box",   "from"|"bars", "to", "top", "bottom", "label", "role", "dash"?}
           {"shape": "level", "from"|"bars", "to", "price", "label", "role", "dash"?}
+          {"shape": "line",  "from", "to", "p0", "p1", "label", "role", "dash"?}   # a sloped line
+          {"shape": "path",  "from", "to", "points": [{"at", "price", "label"}], "label", "role"}
+                                                       # swing points joined in order, each labelled
           {"shape": "note",  "at", "price"?, "text"}   # the WHY — rendered as a callout + panel text
         Roles (the chart's colour key): base, pivot, stop, target, support, level.
 

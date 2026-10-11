@@ -547,7 +547,9 @@ def trade_anatomy(rid: int, symbol: str):
             shapes.append({"shape": "level", "from": str(entry_d), "to": str(exit_d), "price": float(target),
                            "role": "target", "label": f"target {target:g}", "dash": True})
         out.append({"entry_date": str(entry_d), "exit_date": str(exit_d) if exit_d else None,
-                    "signal_date": sig_date, "setup": v(row, "setup"), "decision": v(row, "decision"),
+                    "signal_date": sig_date, "setup": v(row, "setup"),
+                    "setup_name": (strat.setup_names.get(v(row, "setup")) if strat else None),
+                    "decision": v(row, "decision"),
                     "entry_price": v(row, "entry_price"), "exit_price": v(row, "exit_price"),
                     "exit_reason": v(row, "exit_reason"), "r_multiple": v(row, "r_multiple"),
                     "pnl": v(row, "pnl"), "holding_days": v(row, "holding_days"),
