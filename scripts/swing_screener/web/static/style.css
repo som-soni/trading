@@ -659,6 +659,25 @@ nav .nsec > .sec[aria-expanded="true"] { color: var(--strong); } nav .nsec > .se
 .scr-stale .sx { color: var(--muted); }
 .scr-stale button { margin-left: auto; }
 
+/* backtests: which rule set produced a run (server.py _run_versions) */
+.bt-vers { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; }
+.bt-vers .chip { font-size: 12px; padding: 3px 10px; border-radius: 12px; border: 1px solid var(--line-2);
+  background: var(--panel); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.bt-vers .chip:hover { background: var(--panel-2); color: var(--strong); }
+.bt-vers .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bt-vers .chip .n { opacity: .7; font-variant-numeric: tabular-nums; }
+.bt-vers .chip .cur { color: var(--up); font-style: normal; font-size: 9px; }
+.bt-vers .chip.on .cur { color: #fff; }
+.bt-vdet { border: 1px solid var(--line-2); border-radius: 8px; padding: 10px 12px; margin: 0 0 12px; background: var(--panel); font-size: 13px; }
+.bt-vdet .vh { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.bt-vdet .vc { margin: 6px 0; }
+.bt-vdet .vc.warn-t { color: var(--warn-text); }
+.bt-vdet .vsince { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-2); }
+.bt-vdet .vsince ul { margin: 6px 0 0; padding-left: 18px; }
+.bt-vdet .vsince li { margin: 3px 0; }
+.dtab .st-ver { font-variant-numeric: tabular-nums; }
+.dtab .old { color: var(--warn); font-style: normal; font-size: 9px; margin-left: 4px; vertical-align: top; }
+
 /* ---------- data status */
 .dstatus { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--line-2); color: var(--text); font-size: 12px; font-weight: 500; }
 .dstatus:hover { color: var(--strong); background: var(--panel-2); }

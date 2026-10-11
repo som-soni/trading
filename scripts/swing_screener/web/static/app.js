@@ -2567,24 +2567,74 @@ function strategyBacktests(host, d, key) {
   const canRun = d.kind === "screener";  // the benchmark / quality pages are measured by their own commands
   const runBtn = canRun ? `<div class="bt-run"><button class="primary sm" id="btrun" title="Queue a full-history backtest of this strategy (its documented exit policy) — slow; follow it on System → Runs">Backtest ${esc(mktInfo(pageMarket()).name)}…</button>
       <span class="muted small">runs in the job queue — follow it on <a href="#/runs">System → Runs</a></span></div>` : "";
-  host.innerHTML = runBtn + (d.backtests.length ? `<table class="dtab click"><thead><tr><th>Market</th><th>Run</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
-      d.backtests.map((b) => { const s = b.summary || {};
+  const vers = d.versions || [];
+  // A run's spec_id is version + the fingerprint of the rules behind it. Show the bare
+  // version when it is unambiguous, and the whole spec_id when the same version number
+  // covers more than one rule set — then the number alone does not identify the run.
+  const vlabel = (v) => (v.ambiguous ? v.spec_id : "v" + v.version);
+  let sel = store.get("btVer:" + key, null);
+  if (sel && !vers.some((v) => v.spec_id === sel)) sel = null;   // a filter from before a reload
+
+  const chips = () => vers.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Version</span>
+    <button class="chip ${sel ? "" : "on"}" data-v="">All <span class="n">${d.backtests.length}</span></button>
+    ${vers.map((v) => `<button class="chip ${sel === v.spec_id ? "on" : ""}" data-v="${esc(v.spec_id)}" title="${esc(v.spec_id)}${v.is_current ? " — the rules as they stand now" : ""}">
+        ${esc(vlabel(v))}${v.is_current ? '<i class="cur" title="current">●</i>' : ""} <span class="n">${v.runs}</span></button>`).join("")}</div>`;
+
+  const detail = () => {
+    const v = vers.find((x) => x.spec_id === sel);
+    if (!v) return "";
+    const since = v.since || [];
+    return `<div class="bt-vdet">
+      <div class="vh"><b>${esc(v.spec_id)}</b>${v.is_current ? '<span class="tag pos">current</span>' : `<span class="tag">superseded</span>`}
+        ${v.date ? `<span class="muted small">${prettyDate(v.date)}</span>` : ""}
+        <span class="muted small">${v.runs} backtest${v.runs === 1 ? "" : "s"}</span></div>
+      ${v.changed ? `<p class="vc"><b>What v${esc(v.version)} changed:</b> ${mdInline(v.changed)}</p>` : ""}
+      ${v.ambiguous ? `<p class="vc warn-t">Another rule set also calls itself v${esc(v.version)} — same version number, different fingerprint. Compare these runs by the full spec id, not the number.</p>` : ""}
+      ${since.length ? `<div class="vsince"><b>${since.length} change${since.length === 1 ? "" : "s"} since, so these runs do not reflect the current rules:</b>
+        <ul>${since.map((c) => `<li><b>v${esc(c.version)}</b> ${mdInline(c.change)}</li>`).join("")}</ul></div>`
+        : v.is_current ? `<p class="muted small">Nothing has changed since — these runs reflect the strategy as it stands.</p>` : ""}
+    </div>`;
+  };
+
+  // computed per paint, not once: `sel` changes when a chip is clicked
+  const table = () => { const shown = sel ? d.backtests.filter((b) => b.spec_id === sel) : d.backtests;
+    return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th>Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
+      shown.map((b) => { const s = b.summary || {};
+        const v = vers.find((x) => x.spec_id === b.spec_id);
+        const vcell = b.spec_id
+          ? `<td><span class="st-ver" title="${esc(b.spec_id)}${v && !v.is_current ? " — superseded" : ""}">${esc(v ? vlabel(v) : "v" + b.version)}</span>${v && !v.is_current ? '<i class="old" title="not the current rules">▲</i>' : ""}</td>`
+          : `<td class="muted" title="this run predates version stamping">—</td>`;
         // A run that found nothing has no CAGR to show. Four blank cells read as a
         // broken row, so say what happened — the funnel in the report says where
         // the candidates stopped.
         if (!s.cagr) {
-          return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td>
+          return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td>${vcell}
             <td class="num muted" colspan="4">no trades — open for the funnel</td>
             <td class="muted">${prettyDate(b.generated_at)}</td></tr>`;
         }
-        return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td><td class="num">${esc(pv(s.cagr))}</td>
+        return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td>${vcell}<td class="num">${esc(pv(s.cagr))}</td>
           <td class="num ${/^-/.test(s.excess_cagr || "") ? "neg" : s.excess_cagr ? "pos" : ""}">${esc(pv(s.excess_cagr))}</td><td class="num">${esc(pv(s.max_drawdown))}</td>
           <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td></tr>`; }).join("")}</tbody></table>
-      <p class="muted small">A backtest runs the whole strategy — screen, setups, entry, stop, exits, costs and position sizing — day by day. The command is under Rules › Commands.</p>`
-    : `<div class="empty"><b>No backtests loaded for this strategy</b><div class="muted">${canRun ? "Queue one with the button above, or run" : "Run"} the command under Rules › Commands; reports load into the app automatically.</div></div>`);
-  host.querySelector("#btrun")?.addEventListener("click", () =>
-    startJob({ title: `Backtest · ${mktInfo(pageMarket()).name}`, targets: ["backtest"], market: pageMarket(), screens: true, pick: key }));
-  host.querySelectorAll("tr[data-href]").forEach((tr) => tr.onclick = () => go(tr.dataset.href));
+      <p class="muted small">A backtest runs the whole strategy — screen, setups, entry, stop, exits, costs and position sizing — day by day. The command is under Rules › Commands.
+      Each run is stamped with the spec id of the rules that produced it, so a result always maps to a version.</p>`
+    : `<div class="empty"><b>No backtests on this version</b><div class="muted">Nothing has been run against ${esc(sel || "")} yet.</div></div>`; };
+
+  const paint = () => {
+    host.innerHTML = runBtn + (d.backtests.length ? chips() + detail() + table()
+      : `<div class="empty"><b>No backtests loaded for this strategy</b><div class="muted">${canRun ? "Queue one with the button above, or run" : "Run"} the command under Rules › Commands; reports load into the app automatically.</div></div>`);
+    host.querySelectorAll(".bt-vers .chip").forEach((b) => b.onclick = () => {
+      sel = b.dataset.v || null;
+      store.set("btVer:" + key, sel);
+      paint();
+      wireBtRun();
+    });
+    host.querySelectorAll("tr[data-href]").forEach((tr) => tr.onclick = () => go(tr.dataset.href));
+  };
+  const wireBtRun = () =>
+    host.querySelector("#btrun")?.addEventListener("click", () =>
+      startJob({ title: `Backtest · ${mktInfo(pageMarket()).name}`, targets: ["backtest"], market: pageMarket(), screens: true, pick: key }));
+  paint();
+  wireBtRun();
 }
 
 /** a strategy's latest (or chosen) run: every screened stock with its decision, plan and gates */

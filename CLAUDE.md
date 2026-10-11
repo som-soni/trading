@@ -102,6 +102,20 @@ class attribute (e.g. `{entry_channel}`), not as literals, so the page shows the
 live value and a threshold change cannot leave stale text behind. After a new
 backtest, update `status` if the measured result changed.
 
+**A behaviour change also bumps `version` and adds a `changelog` entry**
+(`(version, ISO date, what changed and why)`, newest first). That is not
+bookkeeping: the backtester stamps the strategy's `spec_id` — `v<version>-<fingerprint>`
+— into each run directory, ingest lifts it into `report_runs.spec_id`, and the
+Strategies page's **Backtests** tab groups runs by it, so selecting a version shows
+that entry plus everything that landed after it ("these runs do not reflect the
+current rules"). An un-bumped change makes two different rule sets share a version
+number; the page then shows the full spec id and says so, because the number alone
+no longer identifies the run. `strategies/versions.lock.json` is the gate —
+`PYTHONPATH=. .venv/bin/python -m tests.test_strategy_versions` fails when a
+fingerprint moves without a version bump. Note the fingerprint is keyed on numeric
+constants, so a change it cannot see (new code paths, a changed default that is not
+a module constant) still needs the bump by hand.
+
 Then run, from `scripts/`:
 
 ```bash

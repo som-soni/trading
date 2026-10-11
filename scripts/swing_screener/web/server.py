@@ -626,15 +626,64 @@ def taxonomy():
             "selection": [{"key": k, "label": v} for k, v in SELECTION.items()]}
 
 
+def _vtuple(v: str) -> tuple:
+    try:
+        return tuple(int(x) for x in str(v).split("."))
+    except ValueError:
+        return (0,)
+
+
+def _run_versions(d: dict) -> list[dict]:
+    """The rule sets that actually produced this strategy's stored backtests.
+
+    A run's spec_id is its version AND the fingerprint of the rules behind it, so two
+    runs labelled v1.3 are not necessarily the same strategy — a fingerprint moving
+    under a fixed version number is exactly the drift `versions.lock.json` guards, and
+    the page should show it rather than hide it behind the version number.
+
+    Each entry carries `changed` (what that version did) and `since` (everything that
+    landed after it), so a reader looking at an old backtest can see what has moved.
+    """
+    log = d.get("changelog") or []
+    by_version = {e["version"]: e for e in log}
+    counts: dict[str, int] = {}
+    for b in d["backtests"]:
+        if b.get("spec_id"):
+            counts[b["spec_id"]] = counts.get(b["spec_id"], 0) + 1
+    current = d.get("spec_id")
+    if current and current not in counts:
+        counts[current] = 0          # the rules as they stand, even with nothing run on them yet
+    seen_versions: dict[str, int] = {}
+    for sid in counts:
+        v = sid.split("-")[0].lstrip("v")
+        seen_versions[v] = seen_versions.get(v, 0) + 1
+    out = []
+    for sid, n in counts.items():
+        v = sid.split("-")[0].lstrip("v")
+        e = by_version.get(v) or {}
+        out.append({
+            "spec_id": sid, "version": v, "runs": n, "is_current": sid == current,
+            "date": e.get("date"), "changed": e.get("change"),
+            # what landed after this version — the answer to "how is this run out of date?"
+            "since": [x for x in log if _vtuple(x["version"]) > _vtuple(v)],
+            # same version number, different rules: say so instead of quietly merging them
+            "ambiguous": seen_versions.get(v, 0) > 1,
+        })
+    out.sort(key=lambda x: (_vtuple(x["version"]), x["spec_id"]), reverse=True)
+    return out
+
+
 @app.get("/api/strategies/{key}")
 def strategy(key: str):
     strat_docs = _strategy_docs()
     if key not in strat_docs.keys():
         raise HTTPException(404, f"unknown strategy {key}")
     d = strat_docs.strategy_doc(key)
-    d["backtests"] = [{"id": i, "market": m, "run": r, "summary": s, "generated_at": g.isoformat() if g else None}
-                      for i, m, r, s, g in q("SELECT id, market, run_name, summary, generated_at FROM report_runs "
-                                             "WHERE strategy=%s AND kind='backtest' ORDER BY generated_at DESC NULLS LAST", (key,))]
+    d["backtests"] = [{"id": i, "market": m, "run": r, "summary": s, "generated_at": g.isoformat() if g else None,
+                       "spec_id": sp, "version": sp.split("-")[0].lstrip("v") if sp else None}
+                      for i, m, r, s, g, sp in q("SELECT id, market, run_name, summary, generated_at, spec_id FROM report_runs "
+                                                 "WHERE strategy=%s AND kind='backtest' ORDER BY generated_at DESC NULLS LAST", (key,))]
+    d["versions"] = _run_versions(d)
     d["screens"] = _latest_screens(key)
     return d
 

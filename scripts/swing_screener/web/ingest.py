@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS report_runs (
     generated_at TIMESTAMPTZ            -- report.md modification time: when the run was produced
 );
 ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ;
+ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS spec_id TEXT;   -- "v1.5-75bd22a2": which rule set produced it
+CREATE INDEX IF NOT EXISTS report_runs_spec ON report_runs (strategy, spec_id);
 CREATE TABLE IF NOT EXISTS report_figures (
     run_id INT NOT NULL REFERENCES report_runs(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -56,6 +58,19 @@ CREATE TABLE IF NOT EXISTS report_tables (
     PRIMARY KEY (run_id, name)
 );
 """
+
+# The backtester stamps the strategy's spec_id into the run directory name
+# (backtesting/backtest.py), which is the only record of WHICH rule set produced a
+# report. Lifting it into its own column is what lets the Strategies page group runs
+# by version instead of making a reader parse a 70-character directory name.
+# Not anchored to the end: a run that found nothing gets a "_NO-SIGNALS" suffix after it.
+_SPEC_ID = re.compile(r"_v(\d+(?:\.\d+)*)-([0-9a-f]{8})(?:_|$)")
+
+
+def spec_id_of(run_name: str) -> str | None:
+    m = _SPEC_ID.search(run_name or "")
+    return f"v{m.group(1)}-{m.group(2)}" if m else None
+
 
 _HEADLINE = {
     "total_return": r"Total return",
@@ -131,16 +146,16 @@ def _store(cur, source: str, meta: tuple, markdown: str, files: list[Path]) -> N
     # every bookmarked /#/reports/<id> link keeps working) across reloads
     cur.execute(
         """INSERT INTO report_runs
-           (source_path, kind, market, strategy, run_name, title, markdown, summary, signature, generated_at)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, to_timestamp(%s))
+           (source_path, kind, market, strategy, run_name, title, markdown, summary, signature, generated_at, spec_id)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, to_timestamp(%s), %s)
            ON CONFLICT (source_path) DO UPDATE SET
              kind=EXCLUDED.kind, market=EXCLUDED.market, strategy=EXCLUDED.strategy,
              run_name=EXCLUDED.run_name, title=EXCLUDED.title, markdown=EXCLUDED.markdown,
              summary=EXCLUDED.summary, signature=EXCLUDED.signature,
-             generated_at=EXCLUDED.generated_at, loaded_at=now()
+             generated_at=EXCLUDED.generated_at, spec_id=EXCLUDED.spec_id, loaded_at=now()
            RETURNING id""",
         (source, kind, market, strategy, run, _title(markdown, run), markdown,
-         json.dumps(_headline(markdown)), sig, files[0].stat().st_mtime),
+         json.dumps(_headline(markdown)), sig, files[0].stat().st_mtime, spec_id_of(run)),
     )
     run_id = cur.fetchone()[0]
     cur.execute("DELETE FROM report_figures WHERE run_id=%s", (run_id,))
