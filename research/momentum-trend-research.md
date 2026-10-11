@@ -535,6 +535,7 @@ Reports land in `reports/<market>/<strategy>/<run>/` — `report.md`,
 
 | date | change |
 |---|---|
+| 2026-10-12 | SEPA fundamentals added to the Minervini backtest point in time (`--fundamentals`, results public on each signal date; filings from 2021). Buy-stops, 2022-07 onward, vs the `covered` control: India +0.28R → acceptable +0.22R (16 trades) → leader +0.27R (7); US +0.02R → acceptable −0.18R (72) → leader −0.40R (19). Within the US control, LEADER trades did worst (−0.43R, 16) and WEAK best (+0.06R, 279). No evidence the fundamental tests add an edge over this window |
 | 2026-10-09 | Fixed: the portfolio simulator charged exit slippage to cash twice (and trade P&L/R counted entry and exit slippage twice). Re-measured: India breakout sample 0.75%→0.77%, donchian sample −3.41%→−3.36%, Minervini 2013– India 4.38%→4.98% (with `--min-group-rs 50` 5.42%→6.30%), US −0.95%→−1.70% (group filter 0.93%→1.84%). Not a uniform uplift: the cash no longer lost changes which later signals the book takes. Rows in §2 measured before this date should be re-run before being relied on |
 | 2026-10-09 | `minervini_spec` (the written Minervini backtest spec, rule for rule): no edge in either market, at the defaults or at either end of any parameter's test range, in and out of sample (minervini-spec-sensitivity-*.md) |
 | 2026-10-04 | Minervini SEPA implemented (Trend Template + VCP detector); screeners run both markets; backtests queued |

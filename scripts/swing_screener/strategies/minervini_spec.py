@@ -255,7 +255,10 @@ class MinerviniSpecStrategy(Strategy):
         "ranges, and no failed-breakout window, gives an edge that holds both in and out of sample "
         "(research/minervini-spec-sensitivity-india.md). US, same rules: EN-01 26 trades, −0.14R; EN-02 526 trades, "
         "−0.02R, CAGR −0.8% (index ~13%), max drawdown −30% — +0.05R to 2019, −0.12R since; the stricter variants that "
-        "help in sample all turn negative after 2019 (research/minervini-spec-sensitivity-us.md)."
+        "help in sample all turn negative after 2019 (research/minervini-spec-sensitivity-us.md). "
+        "Adding the SEPA fundamentals point in time (`--fundamentals`, buy-stops, 2022-07 onward) did not help: "
+        "against the `covered` control, LEADER-only fell from +0.28R to +0.27R per trade in India (7 trades) and "
+        "from +0.02R to −0.40R in the US (19 trades), with CAGR shrinking as trades vanished."
     )
 
     gate_docs = {
