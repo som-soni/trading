@@ -131,6 +131,9 @@ class PatternParams:
     db_days: tuple[int, int] = (20, 150)  # DB-04, DT-04
     db_second_volume: bool = False        # DB-05, off by default
     oneil_undercut: tuple[float, float] = (0.0, 5.0)  # O'Neil's W variant
+    # ...and its base, measured from the high before B (research/learn-bases.md §4):
+    oneil_depth: tuple[float, float] = (20.0, 35.0)   # OW-01: that high to the lower low, %
+    oneil_min_days: int = 35                          # OW-02: that high to D, about 7 weeks
     # §6 head and shoulders
     hs_prior_move: float = 20.0           # HS-01
     hs_min_head: float = 3.0              # HS-02
@@ -640,14 +643,17 @@ def _cup_with_lip(base: dict, c_swing: Swing, d: pd.DataFrame, high, low, close,
 
     H = max(A, C) - B
     if not require_handle:
-        # the spec's cup-without-handle variant: drop CH-07..CH-11, T = C.
+        # the spec's cup-without-handle variant: drop CH-07..CH-11. T is the
+        # OLD HIGH max(A, C), not C: CH-03 lets C sit up to 15% under A, and
+        # buying through C then buys under the left lip's overhead supply.
+        # O'Neil's buy point for a cup without a handle is the old high.
         # With no handle there is nothing to re-complete each bar: the cup is
         # finished once C is a confirmed swing (k_major bars after it prints),
         # so it walks §3.2 like a double bottom — BO-04 expires it max_wait
         # bars later without a breakout. Judging it with _cup_state instead
         # kept it live forever: ITC.NS traded a cup whose right lip was 20
         # months old, every time price came back to the rim.
-        return _finish(out, d, Levels(trigger=C, invalidation=B, height=H),
+        return _finish(out, d, Levels(trigger=max(A, C), invalidation=B, height=H),
                        c_pos, p.k_major, p, tol(float(close[t_pos]), atr_t, p))
 
     # D: the lowest low after C (day t's low counts — it is known at the close)
@@ -884,6 +890,23 @@ def detect_doubles(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
             out["fail"] = rules[1]
             found.append(out)
             continue
+
+        if oneil_w:
+            # OW-01 / OW-02: O'Neil sizes the W as a base, from the high it
+            # corrects, not as two lows — deep enough and long enough to have
+            # shaken out holders, not a two-week wobble
+            top = float(high[hp])
+            w_depth = (top - min(B, D)) / top * 100 if top else float("nan")
+            out["metrics"]["base_depth_pct"] = w_depth
+            out["metrics"]["base_days"] = dd.pos - hp
+            if not (p.oneil_depth[0] <= w_depth <= p.oneil_depth[1]):
+                out["fail"] = "OW-01"
+                found.append(out)
+                continue
+            if dd.pos - hp < p.oneil_min_days:
+                out["fail"] = "OW-02"
+                found.append(out)
+                continue
 
         # DB-03 / DT-03: the middle swing is a real move, not a pause
         if bull:

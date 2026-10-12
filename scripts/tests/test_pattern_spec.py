@@ -252,11 +252,18 @@ for rule, what, kw in MUTATIONS:
     check(f"§4 {rule} catches {what}", hit,
           f"got ok={r['ok']} fail={r['fail']}")
 
-# the cup-without-handle variant drops CH-07..CH-11 and triggers at C
+# the cup-without-handle variant drops CH-07..CH-11 and triggers at the old
+# high max(A, C) — O'Neil's buy point — not at a right lip that may sit under A
 nh = ps.detect_cup(build_cup(handle_depth=0.02), require_handle=False)
-check("§4 cup-without-handle ignores the handle rules and sets T = C",
-      nh["ok"] and abs(nh["levels"].trigger - nh["points"]["C"]["price"]) < 1e-9,
+old_high = max(nh["points"]["A"]["price"], nh["points"]["C"]["price"]) if nh["ok"] else None
+check("§4 cup-without-handle ignores the handle rules and sets T = max(A, C)",
+      nh["ok"] and abs(nh["levels"].trigger - old_high) < 1e-9,
       f"ok={nh['ok']} fail={nh['fail']}")
+low_lip = ps.detect_cup(build_cup(lip=0.90, handle_depth=0.02), require_handle=False)
+check("§4 a right lip 10% under A still triggers at A, not under the old high",
+      low_lip["ok"] and abs(low_lip["levels"].trigger - low_lip["points"]["A"]["price"]) < 1e-9,
+      f"ok={low_lip['ok']} fail={low_lip['fail']} "
+      f"T={low_lip['levels'].trigger if low_lip['levels'] else None}")
 
 # --------------------------------------------- §5 doubles and triples
 
@@ -338,11 +345,29 @@ w_chart = frame(np.concatenate([
     seg(76, 85, 22), seg(85, 74.5, 22),    # C, then a second low 2% under B
     np.linspace(74.5, 80, 16),
 ]))
-check("§5.1 O'Neil's W variant accepts an undercut inside an uptrend",
-      ps.detect_double_bottom(w_chart, oneil_w=True)["ok"],
-      f"fail={ps.detect_double_bottom(w_chart, oneil_w=True)['fail']}")
 check("§5.1 the same chart fails the classic DB-01",
       ps.detect_double_bottom(w_chart)["fail"] == "DB-01")
+check("§5.1 O'Neil's W rejects a 15.6% pullback as too shallow a base (OW-01)",
+      ps.detect_double_bottom(w_chart, oneil_w=True)["fail"] == "OW-01",
+      f"fail={ps.detect_double_bottom(w_chart, oneil_w=True)['fail']}")
+
+# a base-sized W: 22% off the high, second low 2% under the first, 64 bars
+w_deep = frame(np.concatenate([
+    seg(50, 90, 130),
+    seg(90, 70, 20),                       # B, 22% under the high
+    seg(70, 80, 22), seg(80, 68.6, 22),    # C, then a second low 2% under B
+    np.linspace(68.6, 75, 16),
+]))
+r = ps.detect_double_bottom(w_deep, oneil_w=True)
+check("§5.1 O'Neil's W variant accepts an undercut inside an uptrend",
+      r["ok"], f"fail={r['fail']}")
+w_quick = frame(np.concatenate([
+    seg(50, 90, 130), seg(90, 70, 8), seg(70, 80, 8), seg(80, 68.6, 8),
+    np.linspace(68.6, 75, 16),
+]))
+r = ps.detect_double_bottom(w_quick, oneil_w=True)
+check("§5.1 O'Neil's W rejects a base under seven weeks (OW-02)",
+      r["fail"] == "OW-02", f"fail={r['fail']}")
 
 dt = ps.detect_double_top(build_double(direction=ps.BEARISH))
 check("§5.2 a textbook M passes DT-01..DT-04", dt["ok"], f"failed {dt['fail']}")

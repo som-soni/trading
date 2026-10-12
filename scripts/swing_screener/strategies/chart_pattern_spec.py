@@ -67,10 +67,16 @@ BO_VOL = 1.4             # BO-02, x the 50-day average
 MAX_WAIT = 20            # BO-04, days from completion to expiry
 FAIL_DAYS = 10           # BO-05, days in which a close back through T fails it
 HORIZON = 60             # §3.3, bars over which an outcome is recorded
+# O'Neil's W (research/learn-bases.md §4), which DBOT is since v1.3
+W_UNDERCUT_MAX = 5.0     # the second low sits 0 to this % under the first
+W_MIN_DEPTH, W_MAX_DEPTH = 20.0, 35.0   # OW-01: the high before B to the lower low, %
+W_MIN_DAYS = 35          # OW-02: that high to the second low, about 7 weeks
 PARAMS = ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
     tol_pct=TOL_PCT, tol_atr_mult=TOL_ATR_MULT, bo_buffer=BO_BUFFER / 100, bo_vol=BO_VOL,
     max_wait=MAX_WAIT, fail_days=FAIL_DAYS, horizon=HORIZON,
+    oneil_undercut=(0.0, W_UNDERCUT_MAX), oneil_depth=(W_MIN_DEPTH, W_MAX_DEPTH),
+    oneil_min_days=W_MIN_DAYS,
 )
 
 # ---- this strategy's own trade rules (the spec stops at the levels)
@@ -95,7 +101,7 @@ RECT, FBASE, FLAG, HTF = "RECT", "FBASE", "FLAG", "HTF"
 BULLISH: dict[str, tuple[str, object]] = {
     CUP: ("§4", lambda d: ps.detect_cup(d, PARAMS)),
     CUPNH: ("§4", lambda d: ps.detect_cup(d, PARAMS, require_handle=False)),
-    DBOT: ("§5.1", lambda d: ps.detect_double_bottom(d, PARAMS)),
+    DBOT: ("§5.1", lambda d: ps.detect_double_bottom(d, PARAMS, oneil_w=True)),
     TBOT: ("§5", lambda d: ps.detect_triple_bottom(d, PARAMS)),
     IHS: ("§6.2", lambda d: ps.detect_head_shoulders(d, PARAMS, inverse=True)),
     ATRI: ("§7", lambda d: _of_kind(d, (ps.ASCENDING,))),
@@ -109,7 +115,7 @@ BULLISH: dict[str, tuple[str, object]] = {
 # what each code is, in words: the Strategies page lists these, and the
 # backtest's trades panel names the pattern a trade was taken on with them
 PATTERN_NAMES = {
-    CUP: "Cup with handle", CUPNH: "Cup without handle", DBOT: "Double bottom",
+    CUP: "Cup with handle", CUPNH: "Cup without handle", DBOT: "Double bottom (O'Neil W)",
     TBOT: "Triple bottom", IHS: "Inverse head and shoulders",
     ATRI: "Ascending triangle", SYMM: "Symmetrical triangle", FWDG: "Falling wedge",
     RECT: "Rectangle", FBASE: "Flat base", FLAG: "Bull flag or pennant",
@@ -144,8 +150,17 @@ def _live(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-12",
+         "Two buy rules brought in line with O'Neil (research/learn-bases.md §4). A cup "
+         "without a handle triggers at the OLD HIGH max(A, C), not at the right lip C: CH-03 "
+         "lets C sit up to 15% under A, so buying through C bought under the left lip's "
+         "overhead supply. DBOT is now O'Neil's W -- a continuation base after a prior "
+         "UPTREND, second low 0-{W_UNDERCUT_MAX}% under the first, {W_MIN_DEPTH}-{W_MAX_DEPTH}% "
+         "deep from the high it corrects and at least {W_MIN_DAYS} bars long -- in place of "
+         "the textbook reversal (two equal lows after a decline), which the near_highs screen "
+         "mostly excluded anyway."),
         ("1.2", "2026-10-12",
          "A cup without a handle now expires. It was judged as re-completing on every bar, so "
          "BO-04's clock never started and an old cup stayed live whenever price came back to "
@@ -205,8 +220,9 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 320
 
     status = (
-        "NOT YET RE-TESTED AT v1.2, which stops stale cups-without-handle from trading; the "
-        "figures below are v1.0 and are dominated by them. "
+        "NOT YET RE-TESTED AT v1.3. v1.2 stopped stale cups-without-handle from trading and "
+        "v1.3 moved two buy rules to O'Neil's (cup without handle at the old high, DBOT as "
+        "his W); the figures below are v1.0 and are dominated by stale cups. "
         "Backtested 2026-10-09 and it loses, by less than its sibling: -0.93% "
         "CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol "
         "sample), against `chart_pattern`'s -5.60% and -0.309R on the same "
@@ -266,7 +282,8 @@ class ChartPatternSpecStrategy(Strategy):
         "FLAG and HTF took NONE. Whatever the backtest measured, it measured "
         "the cup-without-handle — the weaker O'Neil variant — not the spec's "
         "breadth. DBOT was the only pattern with positive expectancy (+0.05R "
-        "on 15 trades, which is nothing).",
+        "on 15 trades, which is nothing) -- and that was the textbook "
+        "reversal DBOT, replaced in v1.3 by O'Neil's W.",
         "**It is signal-saturated.** 942 signals produced 253 trades: 85 were "
         "passed up with all 10 slots full and 132 for insufficient cash, and "
         "exposure ran at 93.9% against `chart_pattern`'s 79.3%. A position "
@@ -293,9 +310,13 @@ class ChartPatternSpecStrategy(Strategy):
         "`PatternParams.db_max_peak` exists to test a cap.",
         "**The reversal patterns are mostly unreachable through this "
         "screen.** `near_highs` wants price within 15% of the 52-week high "
-        "above a rising 200-day, while DBOT and IHS require a prior DOWNTREND "
+        "above a rising 200-day, while TBOT and IHS require a prior DOWNTREND "
         "(PT-02) and form well below the highs. They are implemented and "
-        "tested, and they will rarely fire here. Measuring them needs a "
+        "tested, and they will rarely fire here. DBOT left this group in v1.3: "
+        "O'Neil's W follows an uptrend. It still collides with the screen "
+        "another way: a W {W_MIN_DEPTH}-{W_MAX_DEPTH}% deep triggers at a middle "
+        "peak that can itself sit more than 15% under the 52-week high, and then "
+        "the screen drops it. Measuring them needs a "
         "screen that does not demand an uptrend — a deliberate follow-up, not "
         "an oversight: changing the screen would also break the like-for-like "
         "comparison with `chart_pattern` that this strategy exists for.",
@@ -338,13 +359,18 @@ class ChartPatternSpecStrategy(Strategy):
              "drifting down in the upper half of the cup on volume below 0.8x "
              "its 50-day average. T is the handle's high.",
         CUPNH: "§4 the same cup read before a handle exists, with price still "
-               "at the rim. T is the right lip C. O'Neil treats it as the "
+               "at the rim. T is the OLD HIGH, the higher of the two lips -- "
+               "O'Neil's buy point -- since the right lip may sit up to 15% "
+               "under the left. O'Neil treats it as the "
                "weaker variant, which is why it is a separate code. It is "
                "complete {K_MAJOR} bars after C and void {MAX_WAIT} bars later "
                "without a breakout.",
-        DBOT: "§5.1 double bottom: two lows about equal within tolerance, at "
-              "least 20 days apart, with a middle peak at least 10% above "
-              "them. T is that peak.",
+        DBOT: "§5.1 O'Neil's W, a continuation base: a prior uptrend into the "
+              "high it corrects, a second low 0-{W_UNDERCUT_MAX}% UNDER the "
+              "first (the shakeout), {W_MIN_DEPTH}-{W_MAX_DEPTH}% deep from that "
+              "high and at least {W_MIN_DAYS} bars long, with a middle peak at "
+              "least 10% above the lows. T is that peak. (The spec's textbook "
+              "reversal -- two equal lows after a decline -- is not traded.)",
         TBOT: "§5 triple bottom: the same with a third low, all three level. "
               "T is the higher of the two middle peaks.",
         IHS: "§6.2 inverse head and shoulders: three lows with the middle one "
