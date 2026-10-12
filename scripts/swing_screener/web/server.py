@@ -854,6 +854,16 @@ def _dedupe_events(events: list) -> list:
     return out
 
 
+@app.get("/api/macro")
+def macro_strip(market: str = "india"):
+    """The Breadth page's macro strip: rates, the dollar, oil, metals and credit that matter to this market
+    (marketdata/macro.py STRIP), each with its last close, 1-day and 1-month change and a 3-month sparkline."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..marketdata import macro
+    return {"market": market, "series": macro.latest(market)}
+
+
 @app.get("/api/breadth")
 def breadth_page(market: str = "india"):
     if market not in br.INDEXES:

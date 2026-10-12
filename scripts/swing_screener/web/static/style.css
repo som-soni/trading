@@ -1230,3 +1230,10 @@ table.fin.peers tbody th a { color: var(--link); }
 .lp-toc a:hover { color: var(--text); }
 .lp-toc a.on { color: var(--strong); font-weight: 600; }
 @media (max-width: 1100px) { .lp-guide { grid-template-columns: minmax(0, 1fr); } .lp-toc { display: none; } }
+
+/* Breadth page: the macro strip (rates, dollar, oil, metals, credit) */
+.mstrip { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; margin: 10px 0 14px; }
+.mtile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); cursor: help; min-width: 0; }
+.mtile .mt-l { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mtile .mt-v { font-size: 17px; font-weight: 600; color: var(--strong); margin: 2px 0; }
+.mtile .mt-c { white-space: nowrap; font-size: 11px; } .mtile .spark { display: block; margin-top: 4px; width: 100%; }

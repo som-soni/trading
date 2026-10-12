@@ -1472,6 +1472,22 @@ const pctCls = (v) => (v == null ? "" : v >= 0 ? "pos" : "neg");
 const secHref = (m, level, g) => `#/sectors/${m}/${level}${g ? "/" + encodeURIComponent(g) : ""}`;
 const rsBadge = (rs) => (rs == null ? "" : `<span class="rsb ${rs >= 80 ? "hi" : rs >= 50 ? "mid" : "lo"}">${rs}</span>`);
 
+/** The Breadth page's macro strip (/api/macro): rates, the dollar, oil, metals and credit for this market —
+ *  value, 1-day and 1-month change (points for a yield), a 3-month sparkline, and why it matters on hover. */
+async function macroStrip(el, mkt) {
+  const d = await api(`/api/macro?market=${mkt}`).catch(() => null);
+  if (!el.isConnected) return;
+  if (!d?.series?.length) { el.remove(); return; }
+  const num = (v, dp = 2) => v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  const chg = (v, u) => (v == null ? "—" : `<span class="${v >= 0 ? "pos" : "neg"}">${v > 0 ? "+" : ""}${u === "bp" ? `${num(v, Math.abs(v) < 10 ? 1 : 0)}bp` : `${num(v, Math.abs(v) < 10 ? 2 : 1)}%`}</span>`);
+  const val = (x) => (x.unit === "%" ? `${num(x.close)}%` : x.unit === "₹" ? `₹${num(x.close)}` : `${num(x.close)}${x.unit === "index" ? "" : ` <span class="muted small">${esc(x.unit)}</span>`}`);
+  el.innerHTML = d.series.map((x) => `<div class="mtile" title="${esc(x.label)} — ${esc(x.why)} Last close ${esc(x.date)}.">
+      <div class="mt-l">${esc(x.short)}</div>
+      <div class="mt-v">${val(x)}</div>
+      <div class="mt-c"><span class="muted">1D</span> ${chg(x.d1, x.change_unit)} <span class="muted">1M</span> ${chg(x.m1, x.change_unit)}</div>
+      ${sparkSvg(x.spark, 120, 24)}</div>`).join("");
+}
+
 /** a sparkline of a group's RS line (values relative to its first point) */
 function sparkSvg(vals, w = 90, h = 22) {
   if (!vals || vals.length < 2) return "";
@@ -1778,6 +1794,7 @@ async function breadthPage(alive, mkt) {
     <tr class="members" data-for="${i}" hidden><td colspan="7"><div class="wl">${x.members.map((m) => `<a href="#/chart/${mkt}/${encodeURIComponent(m.symbol)}" title="3M ${pc(m.r3m)} · 1M ${pc(m.r1m)}">${esc(m.symbol)} <span class="${m.r3m >= 0 ? "pos" : "neg"}">${pc(m.r3m, 0)}</span></a>`).join("")}</div></td></tr>`).join("");
 
   $view.innerHTML = head + `<div class="bsub">Today · ${idxLine} · ${info("<p>Each reading is ranked against every trading day since 2015 and compared with a week, a month and three months ago.</p><p>Slow changes matter most: markets rarely turn in a day.</p>", "How to read this page")}</div>
+    <div class="mstrip" id="mstrip"></div>
     <div class="bcards">${b.cards.map(card).join("")}</div>
     ${b.events.length ? `<h2>What changed in the last 5 sessions</h2><div class="bevents">${b.events.map((e) => `<div><span class="muted">${prettyDate(e.date)}</span> ${esc(e.text)}</div>`).join("")}</div>` : ""}
     <h2>Charts <span class="seg brange">${["6M", "1Y", "3Y", "All"].map((r) => `<button data-r="${r}" class="${r === store.get("brRange", "1Y") ? "on" : ""}">${r}</button>`).join("")}</span></h2>
@@ -1834,6 +1851,7 @@ async function breadthPage(alive, mkt) {
     const end = b.date, start = r === "All" ? null : new Date(Date.parse(end) - { "6M": 182, "1Y": 365, "3Y": 1095 }[r] * 864e5).toISOString().slice(0, 10);
     charts.forEach((c) => { if (start) c.timeScale().setVisibleRange({ from: start, to: end }); else c.timeScale().fitContent(); });
   };
+  macroStrip($view.querySelector("#mstrip"), mkt);   // its own request: the page never waits on it
   const rangeBar = $view.querySelector(".brange");
   rangeBar.onclick = (e) => { const x = e.target.closest("[data-r]"); if (!x) return; store.set("brRange", x.dataset.r);
     rangeBar.querySelectorAll("button").forEach((y) => y.classList.toggle("on", y === x)); setRange(x.dataset.r); };
