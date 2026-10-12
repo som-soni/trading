@@ -640,9 +640,15 @@ def _cup_with_lip(base: dict, c_swing: Swing, d: pd.DataFrame, high, low, close,
 
     H = max(A, C) - B
     if not require_handle:
-        # the spec's cup-without-handle variant: drop CH-07..CH-11, T = C
-        return _cup_state(out, Levels(trigger=C, invalidation=B, height=H),
-                          close, volume, a.pos, t_pos, p)
+        # the spec's cup-without-handle variant: drop CH-07..CH-11, T = C.
+        # With no handle there is nothing to re-complete each bar: the cup is
+        # finished once C is a confirmed swing (k_major bars after it prints),
+        # so it walks §3.2 like a double bottom — BO-04 expires it max_wait
+        # bars later without a breakout. Judging it with _cup_state instead
+        # kept it live forever: ITC.NS traded a cup whose right lip was 20
+        # months old, every time price came back to the rim.
+        return _finish(out, d, Levels(trigger=C, invalidation=B, height=H),
+                       c_pos, p.k_major, p, tol(float(close[t_pos]), atr_t, p))
 
     # D: the lowest low after C (day t's low counts — it is known at the close)
     hseg = low[c_pos + 1: t_pos + 1]
@@ -698,9 +704,11 @@ def _cup_with_lip(base: dict, c_swing: Swing, d: pd.DataFrame, high, low, close,
 
 def _cup_state(out: dict, lv: Levels, close, volume, start_pos: int,
                t_pos: int, p: PatternParams) -> dict:
-    """A cup re-completes every bar — D is the lowest low after C *including*
-    day t — so BO-04's expiry clock never starts and the only question at t is
-    whether today's close broke out. Doubles and head-and-shoulders complete
+    """A cup WITH A HANDLE re-completes every bar — D is the lowest low after
+    C *including* day t — so BO-04's expiry clock never starts (CH-09's 25-day
+    handle limit does that job) and the only question at t is whether today's
+    close broke out. A cup without a handle completes once, at C, and uses
+    `_finish`. Doubles and head-and-shoulders complete
     once, in the past, and need the full `state_at` walk."""
     out["levels"] = lv
     fired = broke_out(float(close[t_pos]), rv(volume, t_pos, vol50(volume, start_pos)), lv, p)

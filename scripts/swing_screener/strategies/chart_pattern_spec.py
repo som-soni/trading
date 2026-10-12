@@ -144,8 +144,16 @@ def _live(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-10-12",
+         "A cup without a handle now expires. It was judged as re-completing on every bar, so "
+         "BO-04's clock never started and an old cup stayed live whenever price came back to "
+         "its rim: ITC.NS traded a cup whose right lip (2013-09-20) was 20 months old. It now "
+         "completes once, {K_MAJOR} bars after the right lip, and walks §3.2 like a double "
+         "bottom — void after {MAX_WAIT} bars without a breakout, or on a close under the cup "
+         "low. CUPNH was 185 of 253 trades in the 2026-10-09 run, so every result measured "
+         "before this version is dominated by stale cups."),
         ("1.1", "2026-10-10",
          "The point-in-time pre-filter no longer applies cfg.screener.min_price. The floor keeps "
          "live screening out of penny stocks, but a backtest reads it against SPLIT-ADJUSTED "
@@ -197,6 +205,8 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 320
 
     status = (
+        "NOT YET RE-TESTED AT v1.2, which stops stale cups-without-handle from trading; the "
+        "figures below are v1.0 and are dominated by them. "
         "Backtested 2026-10-09 and it loses, by less than its sibling: -0.93% "
         "CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol "
         "sample), against `chart_pattern`'s -5.60% and -0.309R on the same "
@@ -238,6 +248,9 @@ class ChartPatternSpecStrategy(Strategy):
         "pattern on the same chart, no earnings inside {EARNINGS_DAYS} trading "
         "days, ATR under {MAX_ATR_PCT}% of price, and price no more than "
         "{MAX_CHASE_PCT}% past the trigger.",
+        "**Patterns expire.** A double, triple, head and shoulders or cup without a handle "
+        "completes once and is void if it does not break out within {MAX_WAIT} bars (BO-04); "
+        "a cup with a handle is bounded by its handle's 5-25 days instead.",
         "**Entry** is a tick through T x (1 + {BO_BUFFER}%), the level BO-01 "
         "calls a breakout, or the market price if price has already cleared "
         "it. **Target** is BO-06's measured move, T + H.",
@@ -246,7 +259,9 @@ class ChartPatternSpecStrategy(Strategy):
         "at WATCH.",
     )
     caveats = (
-        "**73% of its trades are one pattern.** CUPNH took 185 of 253; DBOT "
+        "**73% of its trades were one pattern — before v1.2.** Until v1.2 a cup without a "
+        "handle never expired, so a years-old cup traded every time price revisited its rim; "
+        "much of the count below is that bug. CUPNH took 185 of 253; DBOT "
         "15, IHS 18, FWDG 15, RECT 10, ATRI 4, TBOT 6; and CUP, FBASE, SYMM, "
         "FLAG and HTF took NONE. Whatever the backtest measured, it measured "
         "the cup-without-handle — the weaker O'Neil variant — not the spec's "
@@ -324,7 +339,9 @@ class ChartPatternSpecStrategy(Strategy):
              "its 50-day average. T is the handle's high.",
         CUPNH: "§4 the same cup read before a handle exists, with price still "
                "at the rim. T is the right lip C. O'Neil treats it as the "
-               "weaker variant, which is why it is a separate code.",
+               "weaker variant, which is why it is a separate code. It is "
+               "complete {K_MAJOR} bars after C and void {MAX_WAIT} bars later "
+               "without a breakout.",
         DBOT: "§5.1 double bottom: two lows about equal within tolerance, at "
               "least 20 days apart, with a middle peak at least 10% above "
               "them. T is that peak.",
