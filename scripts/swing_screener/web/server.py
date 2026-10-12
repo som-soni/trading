@@ -527,7 +527,7 @@ def trade_anatomy(rid: int, symbol: str):
         shapes, note, sig_date = [], "", None
         if sig_row and strat:
             (sd, gp, ff, gates, hs, setups, hv, hi, lv, pv, psl, over, wf, wn, ex) = sig_row[0]
-            sig = {"date": sd, "hard_gates_passed": gp, "first_failed_gate": ff, "hard_gates": _j(gates),
+            sig = {"market": market, "symbol": symbol, "date": sd, "hard_gates_passed": gp, "first_failed_gate": ff, "hard_gates": _j(gates),
                    "has_setup": hs, "setups": _j(setups), "h_value": hv, "h_index": hi, "l_value": lv,
                    "p_value": pv, "prior_swing_low": psl, "overhead_levels": _j(over),
                    "watch_flags": _j(wf), "watch_notes": _j(wn), "extras": _j(ex)}

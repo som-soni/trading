@@ -136,6 +136,9 @@ def _load_cached_signal(
     # dict and the strategy silently emits no signals. Treat that as a miss.
     if getattr(strategy, "needs_ctx_extras", False) and not vals.get("extras"):
         return None
+    # ...nor one written before the strategy recorded something it now reads
+    if not strategy.cached_signal_ok(vals.get("extras") or {}):
+        return None
 
     daily = cache.load_cached_with_indicators(market_key, symbol, date, tail=70)
     if daily is None or len(daily) < 15:

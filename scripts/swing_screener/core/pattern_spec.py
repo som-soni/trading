@@ -301,14 +301,30 @@ def segment(line: Line, a: int, b: int, idx: pd.Index) -> dict:
     return {"from": idx[a], "to": idx[b], "p0": line.at(a), "p1": line.at(b)}
 
 
-def touches(line: Line, points: list[Swing], t: float) -> int:
-    """TL-02: swing points within `t` of the line."""
-    n = 0
+def touching(line: Line, points: list[Swing], t: float) -> list[Swing]:
+    """TL-02: the swing points within `t` of the line."""
+    out = []
     for s in points:
         v = line.at(s.pos)
         if v and abs(s.price - v) / v <= t:
-            n += 1
-    return n
+            out.append(s)
+    return out
+
+
+def touches(line: Line, points: list[Swing], t: float) -> int:
+    """TL-02: how many swing points lie within `t` of the line."""
+    return len(touching(line, points, t))
+
+
+def _mark_touches(res: dict, upper: Line, lower: Line, pts: list[Swing], lo: int,
+                  hi: int, t: float, idx: pd.Index) -> None:
+    """Record, for drawing, the swings each fitted line touches (TL-02's count,
+    as points). No rule reads them."""
+    for name, line, kind in (("upper", upper, "H"), ("lower", lower, "L")):
+        seg = (res.get("lines") or {}).get(name)
+        if seg is not None:
+            seg["touches"] = [{"date": idx[q.pos], "price": q.price} for q in touching(
+                line, [q for q in pts if q.kind == kind and lo <= q.pos <= hi], t)]
 
 
 def contained(
@@ -1240,6 +1256,7 @@ def detect_boundaries(daily: pd.DataFrame, p: PatternParams = PatternParams()) -
             out["kind"] = kind
             res = _boundary_rules(out, d, kind, upper, lower, anchor.pos, tu, tl,
                                   close, volume, t_pos, t_hi, mid, t_frac, p)
+            _mark_touches(res, upper, lower, pts, anchor.pos, t_hi, t_frac, idx)
             found.append(res)
     return found
 
@@ -1560,6 +1577,7 @@ def detect_flag(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
     upper, lower, tu, tl = fit
     out["lines"] = {"upper": segment(upper, p1_pos, t_pos, idx),
                     "lower": segment(lower, p1_pos, t_pos, idx)}
+    _mark_touches(out, upper, lower, pts, p1_pos, t_hi, t_frac, idx)
     mid = (p1_pos + t_pos) / 2
     su, sl = upper.pct_slope(mid), lower.pct_slope(mid)
     out["metrics"].update({"upper_slope": su, "lower_slope": sl,

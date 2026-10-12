@@ -472,10 +472,16 @@ class Strategy(SpecMeta, ABC):
         resting buy-stop at plan.entry, as for every strategy that does not override this."""
         return {}
 
+    def cached_signal_ok(self, extras: dict) -> bool:
+        """Whether a cached `backtest_signals` row (same spec_id) is still complete enough to
+        reuse. Override when the strategy starts recording a new extra that changes no rule —
+        so no version bump — and a row written before it should be recomputed, not reused."""
+        return True
+
     def chart_anatomy(self, sig: dict) -> list[dict]:
         """The structure this strategy saw at one signal, as shapes for the chart's trade-debug
         overlay (web: Backtest trades → the trades panel). `sig` is one `backtest_signals` row as a
-        dict — the exact record written when the backtest evaluated that bar (date, hard_gates,
+        dict plus its market and symbol — the exact record written when the backtest evaluated that bar (date, hard_gates,
         setups, h_value/h_index, prior_swing_low, watch_notes, extras, all parsed) — so the overlay
         shows what the run actually traded on, never a re-detection that current code might change.
 
@@ -485,6 +491,8 @@ class Strategy(SpecMeta, ABC):
           {"shape": "line",  "from", "to", "p0", "p1", "label", "role", "dash"?}   # a sloped line
           {"shape": "path",  "from", "to", "points": [{"at", "price", "label"}], "label", "role"}
                                                        # swing points joined in order, each labelled
+                                                       # (a point with label "" is a curve vertex)
+          {"shape": "dots",  "points": [{"at", "price", "label"?}], "label", "role"}   # markers, e.g. line touches
           {"shape": "note",  "at", "price"?, "text"}   # the WHY — rendered as a callout + panel text
         Roles (the chart's colour key): base, pivot, stop, target, support, level.
 

@@ -38,6 +38,8 @@ is asked about one bar at a time, so the detectors are called fresh at day t.
 Their per-bar states (BO-01..BO-05) are what this strategy reads.
 """
 
+import math
+
 import pandas as pd
 
 from ..config.base import MarketConfig
@@ -689,6 +691,14 @@ class ChartPatternSpecStrategy(Strategy):
 
     setup_names = PATTERN_NAMES
 
+    def cached_signal_ok(self, extras: dict) -> bool:
+        """A pattern row saved before its geometry (and each line's touches) was recorded is
+        recomputed, so the chart can draw it; the rules did not change, so the version did not."""
+        if not extras.get("pattern"):
+            return True
+        geo = extras.get("pattern_geometry")
+        return bool(geo) and all("touches" in ln for ln in geo.get("lines") or [])
+
     def chart_anatomy(self, sig: dict) -> list[dict]:
         """The traded pattern as the detector saw it on the signal bar — its swing points joined
         in order, its fitted lines (triangle and wedge boundaries, channel, neckline, flat-base
@@ -702,18 +712,29 @@ class ChartPatternSpecStrategy(Strategy):
             return super().chart_anatomy(sig)
         name = e.get("pattern_name") or PATTERN_NAMES.get(code, code)
         geo = e.get("pattern_geometry") or {}
+        cup_r2 = None
         pts = geo.get("points") or []
         start = pts[0]["date"] if pts else None
         for ln in geo.get("lines") or []:
             start = min(start or ln["from"], ln["from"])
         out: list[dict] = []
-        if len(pts) >= 2:
-            out.append({"shape": "path", "from": pts[0]["date"], "to": pts[-1]["date"], "role": "base",
-                        "points": [{"at": q["date"], "price": q["price"], "label": q["label"]} for q in pts],
-                        "label": name})
+        if code in (CUP, CUPNH) and len(pts) >= 3:
+            fitted = _cup_from_prices(sig, pts)
+            path, cup_r2 = fitted if fitted else (_cup_curve(pts), None)
+            low = pts[1]
+            out.append({"shape": "dots", "role": "base", "label": "cup low",
+                        "points": [{"at": low["date"], "price": low["price"], "label": low["label"]}]})
+        else:
+            path = [{"at": q["date"], "price": q["price"], "label": q["label"]} for q in pts]
+        if len(path) >= 2:
+            out.append({"shape": "path", "from": path[0]["at"], "to": path[-1]["at"], "role": "base",
+                        "points": path, "label": name})
         for ln in geo.get("lines") or []:
             out.append({"shape": "line", "from": ln["from"], "to": ln["to"], "p0": ln["p0"], "p1": ln["p1"],
                         "role": "base", "label": ln["name"]})
+            if ln.get("touches"):
+                out.append({"shape": "dots", "role": "base", "label": f"{ln['name']} line touches",
+                            "points": [{"at": q["date"], "price": q["price"]} for q in ln["touches"]]})
         span = {"from": start} if start else {"bars": 60}
         out.append({"shape": "level", **span, "to": d, "price": float(e["trigger"]),
                     "role": "pivot", "label": f"trigger {e['trigger']:g} — confirms the {name.lower()}"})
@@ -724,6 +745,8 @@ class ChartPatternSpecStrategy(Strategy):
             out.append({"shape": "level", "bars": 20, "to": d, "price": float(e["measured_target"]),
                         "role": "target", "label": f"measured target {e['measured_target']:g}", "dash": True})
         note = f"Pattern: {name} ({code}, {e.get('pattern_state', '')})"
+        if cup_r2 is not None:
+            note += f" · fitted cup R² {cup_r2:.2f}"
         if e.get("pattern_note"):
             note += f" · {e['pattern_note']}"
         if e.get("height"):
@@ -744,9 +767,84 @@ def _geometry(code: str, res: dict) -> dict:
                     "price": round(float(v["price"]), 4)} for k, v in pts],
         "lines": [{"name": k, "from": str(pd.Timestamp(v["from"]).date()),
                    "to": str(pd.Timestamp(v["to"]).date()),
-                   "p0": round(float(v["p0"]), 4), "p1": round(float(v["p1"]), 4)}
+                   "p0": round(float(v["p0"]), 4), "p1": round(float(v["p1"]), 4),
+                   "touches": [{"date": str(pd.Timestamp(q["date"]).date()),
+                                "price": round(float(q["price"]), 4)}
+                               for q in v.get("touches") or []]}
                   for k, v in (res.get("lines") or {}).items()],
     }
+
+
+def _cup_from_prices(sig: dict, pts: list[dict]) -> tuple[list[dict], float] | None:
+    """The cup as a U FITTED to the closes from the left lip A to the right lip C, by least
+    squares, and the fit's R². The curve is the chord from A to C minus a depth k times a U
+    profile (4v(1-v))^q, where v remaps time so the bottom can sit off-centre at m. k is solved
+    in closed form; the roundness q and the bottom's position m are searched on a grid. So it
+    starts and ends exactly at the lips, its shape comes from the prices, and the gap between
+    it and the candles — summarised by R² — shows how cup-like the base really is. Any handle
+    (D) is joined on straight. None when no prices are stored."""
+    import numpy as np
+
+    from ..marketdata import cache
+
+    if not (sig.get("market") and sig.get("symbol")):
+        return None
+    daily = cache.load_cached(sig["market"], sig["symbol"])
+    if daily is None or daily.empty:
+        return None
+    a, c = pts[0], pts[2]
+    close = daily["close"][(daily.index >= pd.Timestamp(a["date"])) & (daily.index <= pd.Timestamp(c["date"]))]
+    n = len(close)
+    if n < 10:
+        return None
+    y = close.to_numpy(float)
+    u = np.linspace(0.0, 1.0, n)
+    chord = a["price"] + (c["price"] - a["price"]) * u
+    resid = chord - y                           # how far below the chord each close sits
+    best = None
+    for m in np.arange(0.25, 0.751, 0.05):
+        v = np.where(u < m, u / (2 * m), 0.5 + (u - m) / (2 * (1 - m)))
+        base = 4 * v * (1 - v)
+        for q in (0.3, 0.4, 0.5, 0.7, 1.0, 1.5):
+            g = base ** q
+            k = max(float(resid @ g / (g @ g)), 0.0)
+            sse = float(((resid - k * g) ** 2).sum())
+            if best is None or sse < best[0]:
+                best = (sse, chord - k * g)
+    sse, fit = best
+    sst = float(((y - y.mean()) ** 2).sum())
+    r2 = 1 - sse / sst if sst else float("nan")
+    path = [{"at": str(t.date()), "price": float(v), "label": ""} for t, v in zip(close.index, fit)]
+    path[0]["label"], path[-1]["label"] = a["label"], c["label"]
+    return path + [{"at": q["date"], "price": q["price"], "label": q["label"]} for q in pts[3:]], r2
+
+
+def _cup_curve(pts: list[dict], steps: int = 24) -> list[dict]:
+    """Fallback when no prices are stored: a cup drawn as the U that CH-05 demands rather than a V: from each lip
+    down to the low B along a quarter-sine, steep at the lip and flat at the
+    bottom, so the drawn bottom is rounded. It runs through the detector's own
+    A, B and C, and any handle (D) is joined on straight. Dates between the
+    points are business days, which the chart snaps to its nearest bar."""
+    a, b, c = pts[0], pts[1], pts[2]
+
+    def side(p0: dict, p1: dict, down: bool) -> list[dict]:
+        days = pd.bdate_range(p0["date"], p1["date"])
+        if len(days) < 3:
+            return []
+        out = []
+        for i in range(1, steps):
+            u = i / steps                          # 0 at p0, 1 at p1
+            f = 1 - math.sin(math.pi / 2 * u) if down else 1 - math.cos(math.pi / 2 * u)
+            hi = p0["price"] if down else p1["price"]
+            out.append({"at": str(days[round(u * (len(days) - 1))].date()),
+                        "price": b["price"] + (hi - b["price"]) * f, "label": ""})
+        return out
+
+    pt = lambda q: {"at": q["date"], "price": q["price"], "label": q["label"]}  # noqa: E731
+    out = ([pt(a)] + side(a, b, True) + [pt(b)] + side(b, c, False) + [pt(c)]
+           + [pt(q) for q in pts[3:]])
+    # one vertex per date: two on one bar (a holiday snapped to its neighbour) draw a vertical step
+    return [q for i, q in enumerate(out) if q["label"] or i == 0 or q["at"] != out[i - 1]["at"]]
 
 
 # Which label to trade when several fire at once. Ordered by how selective the

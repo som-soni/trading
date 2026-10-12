@@ -560,9 +560,15 @@ async function chartPage(alive, market, symbol, tf) {
             return [
               ...P.slice(1).map((q, j) => ({ type: "trend", pts: [{ t: P[j].t, p: P[j].p }, { t: q.t, p: q.p }],
                 color: col, width: dim ? 1 : 2.5, dash: false, text: "" })),
-              ...(dim ? [] : P.map((q) => ({ type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }))),
+              // the named points get a dot and a label; unnamed ones are curve vertices (a rounded cup)
+              ...(dim ? [] : P.filter((q) => q.label).flatMap((q) => [
+                { type: "dot", pts: [{ t: q.t, p: q.p }], color: col },
+                { type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }])),
             ];
           }
+          if (s.shape === "dots") return dim ? [] : (s.points || []).map((q) => ({ t: ts(q.at), p: q.price, label: q.label }))
+            .filter((q) => q.t != null).flatMap((q) => [{ type: "dot", pts: [{ t: q.t, p: q.p }], color: col },
+              ...(q.label ? [{ type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }] : [])]);
           if (s.shape === "note" && withNotes && s.text) {
             // the text box is pinned to the pane's top strip (pts[1].f = fraction of pane height),
             // so the note never covers the bars it explains; the leader still drops to the anchor

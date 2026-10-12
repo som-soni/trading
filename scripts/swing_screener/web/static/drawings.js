@@ -196,6 +196,7 @@ const Drawings = (() => {
       ctx.beginPath();
       switch (it.type) {
         case "trend": ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); break;
+        case "dot": ctx.fillStyle = it.color; ctx.arc(a.x, a.y, it.r || 3.5, 0, 7); ctx.fill(); break;
         case "ray": { const f = farPoint(a, b, w); ctx.moveTo(a.x, a.y); ctx.lineTo(f.x, f.y); ctx.stroke(); break; }
         case "extline": { const f = farPoint(a, b, w), g = farPoint(b, a, w); ctx.moveTo(g.x, g.y); ctx.lineTo(f.x, f.y); ctx.stroke(); break; }
         case "hline": ctx.moveTo(0, a.y); ctx.lineTo(w, a.y); ctx.stroke(); label(ctx, fmtP(it.pts[0].p), w - 4, a.y, it.color, "right"); break;
