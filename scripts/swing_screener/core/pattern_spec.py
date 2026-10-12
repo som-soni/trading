@@ -134,6 +134,9 @@ class PatternParams:
     # ...and its base, measured from the high before B (research/learn-bases.md §4):
     oneil_depth: tuple[float, float] = (20.0, 35.0)   # OW-01: that high to the lower low, %
     oneil_min_days: int = 35                          # OW-02: that high to D, about 7 weeks
+    # TL-LV: a triple's three extremes may not STEP in one direction by more than
+    # this % first to third. 0 keeps the spec (all three within tol only).
+    triple_max_drift: float = 0.0
     # §6 head and shoulders
     hs_prior_move: float = 20.0           # HS-01
     hs_min_head: float = 3.0              # HS-02
@@ -824,6 +827,9 @@ def _finish(out: dict, daily: pd.DataFrame, lv: Levels, last_pos: int,
 
 DB_RULES = ("DB-01", "DB-02", "DB-03", "DB-04", "DB-05")
 DT_RULES = ("DT-01", "DT-02", "DT-03", "DT-04")
+# the order a near-miss got through, for _pick: the added rules sit where they run
+OW_RULES = ("DB-01", "DB-02", "OW-01", "OW-02", "DB-03", "DB-04", "DB-05")
+TB_RULES = ("DB-01", "DB-02", "TL-LV", "DB-03", "DB-04")
 
 
 def detect_doubles(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
@@ -964,7 +970,8 @@ def _pick(cands: list[dict], rules: tuple[str, ...]) -> dict:
 
 def detect_double_bottom(daily: pd.DataFrame, p: PatternParams = PatternParams(),
                          *, oneil_w: bool = False) -> dict:
-    return _pick(detect_doubles(daily, p, direction=BULLISH, oneil_w=oneil_w), DB_RULES)
+    return _pick(detect_doubles(daily, p, direction=BULLISH, oneil_w=oneil_w),
+                 OW_RULES if oneil_w else DB_RULES)
 
 
 def detect_double_top(daily: pd.DataFrame, p: PatternParams = PatternParams()) -> dict:
@@ -1006,6 +1013,17 @@ def detect_triples(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
             out["fail"] = rules[1]
             found.append(out)
             continue
+        # TL-LV: level, not stepping. tol alone lets 192.6 -> 194.5 -> 197.1
+        # through (ITC.NS 2015, 2.3% apart): a rising floor inside a range, not
+        # three tests of one support. Lows that wobble (low, higher, lower)
+        # are left alone — only a monotonic step is a trend.
+        drift = (e3.price - e1.price) / e1.price * 100 if e1.price else float("nan")
+        out["metrics"]["extreme_drift_pct"] = drift
+        stepping = (e1.price < e2.price < e3.price) or (e1.price > e2.price > e3.price)
+        if p.triple_max_drift and stepping and abs(drift) > p.triple_max_drift:
+            out["fail"] = "TL-LV"
+            found.append(out)
+            continue
         extreme = min(extremes) if bull else max(extremes)
         trigger = max(m1.price, m2.price) if bull else min(m1.price, m2.price)
         size = ((trigger - extreme) / extreme * 100 if bull
@@ -1030,7 +1048,7 @@ def detect_triples(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
 
 
 def detect_triple_bottom(daily: pd.DataFrame, p: PatternParams = PatternParams()) -> dict:
-    return _pick(detect_triples(daily, p, direction=BULLISH), DB_RULES)
+    return _pick(detect_triples(daily, p, direction=BULLISH), TB_RULES)
 
 
 def detect_triple_top(daily: pd.DataFrame, p: PatternParams = PatternParams()) -> dict:

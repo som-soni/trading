@@ -71,12 +71,13 @@ HORIZON = 60             # §3.3, bars over which an outcome is recorded
 W_UNDERCUT_MAX = 5.0     # the second low sits 0 to this % under the first
 W_MIN_DEPTH, W_MAX_DEPTH = 20.0, 35.0   # OW-01: the high before B to the lower low, %
 W_MIN_DAYS = 35          # OW-02: that high to the second low, about 7 weeks
+TRIPLE_MAX_DRIFT = 1.5   # TL-LV: a triple's lows may not step one way by more than this %
 PARAMS = ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
     tol_pct=TOL_PCT, tol_atr_mult=TOL_ATR_MULT, bo_buffer=BO_BUFFER / 100, bo_vol=BO_VOL,
     max_wait=MAX_WAIT, fail_days=FAIL_DAYS, horizon=HORIZON,
     oneil_undercut=(0.0, W_UNDERCUT_MAX), oneil_depth=(W_MIN_DEPTH, W_MAX_DEPTH),
-    oneil_min_days=W_MIN_DAYS,
+    oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT,
 )
 
 # ---- this strategy's own trade rules (the spec stops at the levels)
@@ -150,8 +151,14 @@ def _live(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.3"
+    version = "1.4"
     changelog = (
+        ("1.4", "2026-10-12",
+         "A triple bottom's lows must be LEVEL, not stepping (TL-LV): when each low is higher "
+         "than the last, or each lower, the first-to-third drift may not exceed "
+         "{TRIPLE_MAX_DRIFT}%. The spec only asked all three to be within tolerance (3% here), "
+         "which let ITC.NS's 2015 range through -- lows 192.6, 194.5, 197.1, a rising floor "
+         "with spike peaks, traded on 2 Nov 2015 and stopped at -1R."),
         ("1.3", "2026-10-12",
          "Two buy rules brought in line with O'Neil (research/learn-bases.md §4). A cup "
          "without a handle triggers at the OLD HIGH max(A, C), not at the right lip C: CH-03 "
@@ -220,9 +227,10 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 320
 
     status = (
-        "NOT YET RE-TESTED AT v1.3. v1.2 stopped stale cups-without-handle from trading and "
+        "NOT YET RE-TESTED AT v1.4. v1.2 stopped stale cups-without-handle from trading, "
         "v1.3 moved two buy rules to O'Neil's (cup without handle at the old high, DBOT as "
-        "his W); the figures below are v1.0 and are dominated by stale cups. "
+        "his W) and v1.4 requires a triple bottom's lows to be level; the figures below are "
+        "v1.0 and are dominated by stale cups. "
         "Backtested 2026-10-09 and it loses, by less than its sibling: -0.93% "
         "CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol "
         "sample), against `chart_pattern`'s -5.60% and -0.309R on the same "
@@ -371,8 +379,11 @@ class ChartPatternSpecStrategy(Strategy):
               "high and at least {W_MIN_DAYS} bars long, with a middle peak at "
               "least 10% above the lows. T is that peak. (The spec's textbook "
               "reversal -- two equal lows after a decline -- is not traded.)",
-        TBOT: "§5 triple bottom: the same with a third low, all three level. "
-              "T is the higher of the two middle peaks.",
+        TBOT: "§5 triple bottom: three lows after a decline, all within "
+              "tolerance of each other AND level -- lows that step up (or "
+              "down) each time may drift no more than {TRIPLE_MAX_DRIFT}% "
+              "first to third, since a rising floor is a range, not three "
+              "tests of one support. T is the higher of the two middle peaks.",
         IHS: "§6.2 inverse head and shoulders: three lows with the middle one "
              "lowest and the shoulders level, under a neckline sloping no "
              "more than 0.3% per day. T is the neckline at today's bar, so it "

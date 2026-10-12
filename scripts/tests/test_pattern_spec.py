@@ -384,6 +384,21 @@ triple = frame(np.concatenate([
 ]))
 tb = ps.detect_triple_bottom(triple)
 check("§5 a triple bottom is detected", tb["ok"], f"fail={tb['fail']}")
+# TL-LV: lows stepping up 1.0% then 1.3% (ITC.NS 2015's shape) are a rising
+# floor, not a level one — rejected when the drift cap is set, accepted by the
+# spec's tol alone
+stair = frame(np.concatenate([
+    seg(150, 100, 60),
+    seg(100, 112, 12), seg(112, 101, 12), seg(101, 112, 12), seg(112, 102.3, 12),
+    np.linspace(102.3, 108, 16),
+]))
+check("§5 the spec's tol alone accepts lows stepping up 2.3%",
+      ps.detect_triple_bottom(stair)["ok"], f"fail={ps.detect_triple_bottom(stair)['fail']}")
+r = ps.detect_triple_bottom(stair, ps.PatternParams(triple_max_drift=1.5))
+check("§5 TL-LV rejects lows stepping up 2.3% under a 1.5% cap",
+      r["fail"] == "TL-LV", f"ok={r['ok']} fail={r['fail']}")
+check("§5 TL-LV leaves the level triple bottom alone",
+      ps.detect_triple_bottom(triple, ps.PatternParams(triple_max_drift=1.5))["ok"])
 if tb["ok"]:
     check("§5 its trigger is the HIGHER of the two middle peaks",
           abs(tb["levels"].trigger - max(tb["points"]["P1"]["price"],
