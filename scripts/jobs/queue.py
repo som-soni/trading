@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+from zoneinfo import ZoneInfo
 
 from swing_screener.marketdata import db
 
@@ -66,24 +67,38 @@ CREATE TABLE IF NOT EXISTS job_schedules (
     last_slot TIMESTAMPTZ,                              -- the latest slot already enqueued
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- a schedule's own time zone (e.g. America/New_York): its days and time are read there, so a market
+-- routine follows that market's clock through daylight saving. NULL: this machine's local time.
+ALTER TABLE job_schedules ADD COLUMN IF NOT EXISTS tz TEXT;
 CREATE TABLE IF NOT EXISTS job_worker (
     id INT PRIMARY KEY DEFAULT 1,
     pid INT, host TEXT, started_at TIMESTAMPTZ, heartbeat_at TIMESTAMPTZ, current_item INT, note TEXT
 );
 """
 
-# The default schedules (created once, when the table is empty). Times are this machine's local time
-# and assume India: NSE closes 15:30 IST and its data settles by ~17:30; the NYSE closes ~01:30/02:30 IST.
+# The default schedules (created once, when the table is empty). The market routines run on each market's
+# own clock (`tz`): the close routine once the day's data has settled (NSE closes 15:30 IST, the NYSE 16:00
+# New York), the open routine 75-90 minutes before the bell (09:15 IST, 09:30 New York). The rest use this
+# machine's local time.
 DEFAULT_SCHEDULES = [
-    {"name": "Daily data · India", "targets": ["daily"], "market": "india", "days": "mon,tue,wed,thu,fri", "at_time": "18:30"},
-    {"name": "Daily data · US", "targets": ["daily"], "market": "us", "days": "tue,wed,thu,fri,sat", "at_time": "07:00"},
+    {"name": "Market close · India", "targets": ["close"], "market": "india", "days": "mon,tue,wed,thu,fri",
+     "at_time": "18:30", "tz": "Asia/Kolkata"},
+    {"name": "Market close · US", "targets": ["close"], "market": "us", "days": "mon,tue,wed,thu,fri",
+     "at_time": "18:00", "tz": "America/New_York"},
+    {"name": "Market open · India", "targets": ["open"], "market": "india", "days": "mon,tue,wed,thu,fri",
+     "at_time": "08:00", "tz": "Asia/Kolkata"},
+    {"name": "Market open · US", "targets": ["open"], "market": "us", "days": "mon,tue,wed,thu,fri",
+     "at_time": "08:00", "tz": "America/New_York"},
     {"name": "Weekly reference data", "targets": ["weekly"], "market": "all", "days": "sat", "at_time": "10:00"},
     {"name": "Monthly classification", "targets": ["monthly"], "market": "all", "monthday": 1, "at_time": "09:00"},
 ]
 
 _COLS = ("id, targets, market, opts, requested_by, schedule_id, priority, status, created_at, started_at, finished_at, "
          "pid, run_id, exit_code, cancel_requested, command, out_path, note")
-_SCOLS = "id, name, targets, market, opts, days, monthday, at_time, enabled, last_slot, created_at"
+_SCOLS = "id, name, targets, market, opts, days, monthday, at_time, enabled, last_slot, created_at, tz"
+# Scheduled runs go ahead of on-demand work (a backtest queued by hand can take hours); the worker still
+# finishes whatever is running first — it never stops a job to make room.
+SCHEDULE_PRIORITY = 10
 _ACTIVE = ("queued", "running")
 
 
@@ -293,6 +308,12 @@ def _local_now() -> dt.datetime:
     return dt.datetime.now().astimezone()
 
 
+def _now_in(s: dict, now: dt.datetime | None) -> dt.datetime:
+    """`now` on the schedule's clock: its own time zone if it has one, else this machine's."""
+    now = now or _local_now()
+    return now.astimezone(ZoneInfo(s["tz"])) if s.get("tz") else now
+
+
 def _slot_on(day: dt.date, at_time: str, tz) -> dt.datetime:
     h, m = (int(x) for x in at_time.split(":"))
     return dt.datetime(day.year, day.month, day.day, h, m, tzinfo=tz)
@@ -306,7 +327,7 @@ def _runs_on(s: dict, day: dt.date) -> bool:
 
 def latest_slot(s: dict, now: dt.datetime | None = None) -> dt.datetime | None:
     """The most recent time (≤ now) the schedule was meant to run, looking back up to 40 days."""
-    now = now or _local_now()
+    now = _now_in(s, now)
     for back in range(0, 41):
         day = (now - dt.timedelta(days=back)).date()
         if _runs_on(s, day):
@@ -319,7 +340,7 @@ def latest_slot(s: dict, now: dt.datetime | None = None) -> dt.datetime | None:
 def next_slot(s: dict, now: dt.datetime | None = None) -> dt.datetime | None:
     if not s.get("enabled", True):
         return None
-    now = now or _local_now()
+    now = _now_in(s, now)
     for ahead in range(0, 41):
         day = (now + dt.timedelta(days=ahead)).date()
         if _runs_on(s, day):
@@ -344,17 +365,23 @@ def save_schedule(s: dict) -> dict:
     monthday = int(s["monthday"]) if s.get("monthday") else None
     if not monthday and not days:
         raise ValueError("pick at least one weekday, or a day of the month")
-    probe = {"days": days, "monthday": monthday, "at_time": f"{h:02d}:{m:02d}"}
+    tz = s.get("tz") or None
+    if tz:
+        try:
+            ZoneInfo(tz)
+        except (KeyError, ValueError):
+            raise ValueError(f"unknown time zone {tz!r}") from None
+    probe = {"days": days, "monthday": monthday, "at_time": f"{h:02d}:{m:02d}", "tz": tz}
     last = latest_slot(probe)
     vals = (s.get("name") or " + ".join(s["targets"]), json.dumps(s["targets"]), s.get("market") or "all",
             json.dumps({k: v for k, v in (s.get("opts") or {}).items() if v not in (None, False, "", [])}, sort_keys=True),
-            days or "mon", monthday, probe["at_time"], bool(s.get("enabled", True)), last)
+            days or "mon", monthday, probe["at_time"], bool(s.get("enabled", True)), last, tz)
     if s.get("id"):
         r = _q(f"""UPDATE job_schedules SET name=%s, targets=%s, market=%s, opts=%s, days=%s, monthday=%s, at_time=%s, enabled=%s,
-                   last_slot=%s WHERE id=%s RETURNING {_SCOLS}""", (*vals, s["id"]), fetch="one")
+                   last_slot=%s, tz=%s WHERE id=%s RETURNING {_SCOLS}""", (*vals, s["id"]), fetch="one")
     else:
-        r = _q(f"""INSERT INTO job_schedules (name, targets, market, opts, days, monthday, at_time, enabled, last_slot)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING {_SCOLS}""", vals, fetch="one")
+        r = _q(f"""INSERT INTO job_schedules (name, targets, market, opts, days, monthday, at_time, enabled, last_slot, tz)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING {_SCOLS}""", vals, fetch="one")
     return _sched(r)
 
 

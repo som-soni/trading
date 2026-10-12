@@ -197,10 +197,22 @@ layers above it produced (`jobs/registry.py`):
 | reference | `universe`, `names`, `classify`, `industries` | yes | weekly / monthly |
 | data | `prices`, `splits`, `indexes`, `earnings`, `fundamentals`, `financials` (SEC / NSE company financials and shareholding) | yes | prices & indexes daily, the rest weekly |
 | analytics | `breadth`, `sectors` | no | daily, after prices |
-| screening | `screens` (the stock snapshot), `strategies` (one step per strategy), `screen_history`, `quality`, `fundamental_scores` (the Fundamentals page) | only `quality` | snapshot daily, history monthly, fundamental_scores weekly; strategies and quality on demand |
-| publish | `postmarket` (daily), `report`, `ingest` (with strategies) | no | after their inputs |
+| screening | `screens` (the stock snapshot), `strategies` (one step per strategy), `screen_history`, `quality`, `fundamental_scores` (the Fundamentals page) | only `quality` | snapshot daily, history monthly, fundamental_scores weekly; strategies after each close; quality on demand |
+| publish | `postmarket` (daily), `report`, `ingest` (with strategies), `readiness` (before the open) | no | after their inputs |
 
-Pipelines: **daily** (data only: universe check → prices → indexes → breadth →
+**Market routines**, scheduled per market on that market's own clock (a schedule's
+`tz`), so they hold through daylight saving:
+
+| Routine | When | What |
+|---|---|---|
+| **close** | Mon–Fri 18:30 Kolkata · 18:00 New York | the day's data (universe check → prices → indexes → breadth → sectors → screens → postmarket), then every strategy's setups → report → ingest — tomorrow's trades are ready without a manual run |
+| **open** | Mon–Fri 08:00 Kolkata · 08:00 New York | catch up a price load the close missed → refresh earnings dates → re-run only the strategies whose setups predate the latest prices (report and ingest only if one did) → `readiness`, which fails, red on the Data status page, when prices or any strategy's setups are not current |
+
+Scheduled runs enter the queue ahead of runs queued by hand (`SCHEDULE_PRIORITY`),
+but the worker never interrupts a running job: a multi-hour backtest that is
+already running delays the routine until it ends.
+
+Pipelines: **close** and **open** (above), **daily** (data only: universe check → prices → indexes → breadth →
 sectors → screens → postmarket), **strategies** (on demand: strategies — all by
 default — → report → ingest), **weekly** (universe, names, classify, splits —
 re-fetch the full history of stocks that split or issued bonus shares after
@@ -231,7 +243,9 @@ python -m jobs list                                 # every job and pipeline, wi
 python -m jobs run prices --market india            # just pull data
 python -m jobs run breadth sectors --market us      # just analytics
 python -m jobs run screens strategies --market us --strategies all
-python -m jobs run daily --market india             # pipeline: universe (if stale) → prices → indexes → breadth → sectors → screens → postmarket
+python -m jobs run close --market india             # the close routine: the daily data, then every strategy → report → ingest
+python -m jobs run open --market us                 # the open routine: catch up, earnings, stale strategies, readiness check
+python -m jobs run daily --market india             # data only: universe (if stale) → prices → indexes → breadth → sectors → screens → postmarket
 python -m jobs run strategies --market india        # on demand: every strategy (or --strategies a,b) → report → ingest
 python -m jobs run postmarket --days 60             # post-market analysis, backfilling 60 sessions
 python -m jobs run daily --market us --from screen  # resume part-way

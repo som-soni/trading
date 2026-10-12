@@ -138,7 +138,8 @@ def _follow(item: dict, proc: subprocess.Popen | None, tick) -> None:
 
 def _enqueue_due() -> None:
     for s, slot in queue.due_schedules():
-        it = queue.enqueue(s["targets"], s["market"], s["opts"], requested_by="schedule", schedule_id=s["id"], skip_if_running=True)
+        it = queue.enqueue(s["targets"], s["market"], s["opts"], requested_by="schedule", schedule_id=s["id"],
+                           priority=queue.SCHEDULE_PRIORITY, skip_if_running=True)
         queue.mark_slot(s["id"], slot)
         logger.info("schedule '%s' (%s): %s", s["name"], slot.strftime("%a %d %b %H:%M"),
                     "already queued" if it.get("duplicate") else f"queued as item #{it['id']}")

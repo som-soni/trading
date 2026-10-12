@@ -3429,9 +3429,14 @@ async function resumePoint(run) {
 }
 
 const DAYS = [["mon", "Mon"], ["tue", "Tue"], ["wed", "Wed"], ["thu", "Thu"], ["fri", "Fri"], ["sat", "Sat"], ["sun", "Sun"]];
-const whenText = (x) => x.monthday ? `Monthly, day ${x.monthday} · ${x.at_time}`
-  : `${x.days === "mon,tue,wed,thu,fri" ? "Mon–Fri" : x.days === "tue,wed,thu,fri,sat" ? "Tue–Sat" : x.days.split(",").map((d) => d[0].toUpperCase() + d.slice(1)).join(", ")} · ${x.at_time}`;
-const whenNext = (iso) => { if (!iso) return "—"; const d = new Date(iso); return `${WEEKDAY[d.getDay()]} ${prettyDate(iso.slice(0, 10))} · ${iso.slice(11, 16)}`; };
+// a schedule with its own clock (a market's time zone) says so: "Mon–Fri · 08:00 New York"
+const tzCity = (tz) => tz ? " " + tz.split("/").pop().replace(/_/g, " ") : "";
+const whenText = (x) => x.monthday ? `Monthly, day ${x.monthday} · ${x.at_time}${tzCity(x.tz)}`
+  : `${x.days === "mon,tue,wed,thu,fri" ? "Mon–Fri" : x.days === "tue,wed,thu,fri,sat" ? "Tue–Sat" : x.days.split(",").map((d) => d[0].toUpperCase() + d.slice(1)).join(", ")} · ${x.at_time}${tzCity(x.tz)}`;
+// the next run in THIS machine's time, whatever clock the schedule keeps
+const whenNext = (iso) => { if (!iso) return "—"; const d = new Date(iso), p2 = (n) => String(n).padStart(2, "0");
+  const ymd = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
+  return `${WEEKDAY[d.getDay()]} ${prettyDate(ymd)} · ${p2(d.getHours())}:${p2(d.getMinutes())}`; };
 
 /** System → Schedules: when each pipeline runs on its own. The worker enqueues a schedule when it is due. */
 async function schedulesPage(alive) {
@@ -3443,8 +3448,8 @@ async function schedulesPage(alive) {
   const w = d.worker;
   const mk = (m) => m === "all" ? "both markets" : (MKT_BADGE[m] || m);
   $view.innerHTML = pageHead("Schedules", { context: info(`<p>Each schedule adds its run to the <a href="#/status">job queue</a> when it is due; the worker runs the queue one job at a time.</p>
-      <p>Times are this machine's local time (${esc(d.tz)}). A slot missed while the computer was asleep or the worker was stopped runs once, when the worker next looks.</p>
-      <p>On demand only (no schedule by default): <b>strategies</b> — today's setups — and <b>quality</b>. Add a schedule for either to make it automatic.</p>
+      <p>Times are this machine's local time (${esc(d.tz)}) unless a schedule names a market's clock: the market open and close routines follow that market's time zone, so they stay put through daylight saving. <b>Next run</b> is always local time. Scheduled runs go ahead of runs queued by hand, but wait for whatever is already running. A slot missed while the computer was asleep or the worker was stopped runs once, when the worker next looks.</p>
+      <p><b>close</b> runs the day's data and every strategy's setups after each market's close; <b>open</b> catches up anything the close missed, refreshes earnings dates and checks everything is ready before the bell. On demand only: <b>quality</b>.</p>
       <p>From a terminal: <code>python -m jobs schedules</code> · <code>python -m jobs queue</code></p>`),
       actions: `<button class="primary" id="snew">+ New schedule</button>` }) + `
     ${w.alive ? "" : `<div class="sd-status watch"><b>Worker stopped</b> Nothing below will run until the worker is running. <button class="primary sm" id="wkstart">Start worker</button></div>`}
@@ -3502,6 +3507,8 @@ async function scheduleDialog(d, x) {
       <div class="sd-days">${DAYS.map(([k, t]) => `<label class="chip ${days.has(k) ? "on" : ""}"><input type="checkbox" value="${k}" ${days.has(k) ? "checked" : ""}>${t}</label>`).join("")}</div>
       <label class="rd-opt"><input type="radio" name="sd-mode" value="month" ${x.monthday ? "checked" : ""}><span>Monthly, on day <input id="sd-md" type="number" min="1" max="28" value="${x.monthday || 1}" style="width:64px"></span></label>
       <label>At <input id="sd-time" type="time" value="${esc(x.at_time)}"></label>
+      <label>Clock <select id="sd-tz"><option value="" ${x.tz ? "" : "selected"}>This machine (${esc(d.tz)})</option>
+        ${[...new Set(MKTS.map((k) => k.tz).filter(Boolean).concat(x.tz ? [x.tz] : []))].map((z) => `<option value="${esc(z)}" ${z === x.tz ? "selected" : ""}>${esc(MKTS.filter((k) => k.tz === z).map((k) => k.name).join(" / ") || z)} — ${esc(z)}</option>`).join("")}</select></label>
       <label class="rd-opt"><input type="checkbox" id="sd-force" ${x.opts?.force ? "checked" : ""}><span>Force refresh — re-fetch even where data looks current</span></label>
       <label class="rd-opt"><input type="checkbox" id="sd-on" ${x.enabled ? "checked" : ""}><span>On</span></label>
     </div>
@@ -3525,7 +3532,7 @@ async function scheduleDialog(d, x) {
     const month = m.querySelector('input[name="sd-mode"]:checked').value === "month";
     const t = $("#sd-target").value, mkt = $("#sd-market").value;
     const st = usesStrats() ? ($("#sd-all").checked ? ["all"] : [...m.querySelectorAll(".sd-s:checked")].map((c) => c.value)) : null;
-    const spec = { id: x.id, targets: [t], market: mkt, enabled: $("#sd-on").checked, at_time: $("#sd-time").value,
+    const spec = { id: x.id, targets: [t], market: mkt, enabled: $("#sd-on").checked, at_time: $("#sd-time").value, tz: $("#sd-tz").value || null,
       days: month ? "" : [...m.querySelectorAll(".sd-days input:checked")].map((c) => c.value).join(","), monthday: month ? +$("#sd-md").value : null,
       opts: { strategies: st, force: $("#sd-force").checked },
       name: $("#sd-name").value.trim() || `${t[0].toUpperCase() + t.slice(1)} · ${mkt === "all" ? "both markets" : (MKTS.find((k) => k.key === mkt) || {}).name}` };

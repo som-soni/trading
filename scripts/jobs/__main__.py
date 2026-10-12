@@ -52,7 +52,7 @@ def cmd_list() -> None:
         print(f"{j.name:16s}{j.layer:11s}{'yes' if j.network else 'no':5s}{j.cadence:9s}{cols[0]:24s}{cols[1]:24s}{j.summary}")
     print("\nPIPELINES")
     for name, p in PIPELINES.items():
-        jobs = " → ".join(j if isinstance(j, str) else f"{j[0]}(force)" for j in p["jobs"])
+        jobs = " → ".join(j if isinstance(j, str) else f"{j[0]}({', '.join(j[1])})" for j in p["jobs"])
         print(f"  {name:9s}{p['summary']}\n  {'':9s}{jobs}")
 
 
@@ -89,11 +89,13 @@ def cmd_schedules() -> None:
     from . import queue
     w = queue.worker_status()
     print(f"Worker: {'running (pid %s)' % w['pid'] if w['alive'] else 'NOT running — start it: python -m jobs worker (or --launchd to keep it running)'}\n")
-    print(f"{'ID':4s}{'ON':4s}{'WHEN':28s}{'NEXT':20s}WHAT")
+    print(f"{'ID':4s}{'ON':4s}{'WHEN':36s}{'NEXT (local)':20s}WHAT")
     for x in queue.schedules():
-        when = f"day {x['monthday']} monthly" if x["monthday"] else x["days"]
-        nxt = x["next_slot"][:16].replace("T", " ") if x["next_slot"] else "—"
-        print(f"{x['id']:<4d}{'yes' if x['enabled'] else 'no':4s}{when + ' ' + x['at_time']:28s}{nxt:20s}{x['name']}  "
+        when = (f"day {x['monthday']} monthly" if x["monthday"] else x["days"])
+        at = x["at_time"] + (f" {x['tz'].split('/')[-1].replace('_', ' ')}" if x.get("tz") else "")
+        nxt = (f"{dt.datetime.fromisoformat(x['next_slot']).astimezone():%Y-%m-%d %H:%M}"
+               if x["next_slot"] else "—")
+        print(f"{x['id']:<4d}{'yes' if x['enabled'] else 'no':4s}{when + ' ' + at:36s}{nxt:20s}{x['name']}  "
               f"(python -m jobs {' '.join(queue.command_for(x['targets'], x['market'], x['opts']))})")
 
 

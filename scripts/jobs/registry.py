@@ -289,6 +289,49 @@ def _check_prices(market: str, allow_stale: bool) -> str:
     return freshness.describe(st)
 
 
+def _last_ok(step: str, market: str | None):
+    """When `step` last finished OK for `market` (None: a market-wide step), from the run log (job_steps).
+    A step name ending in ':' matches every step with that prefix (e.g. "strategy:")."""
+    from swing_screener.marketdata import db
+    op, name = ("LIKE", step + "%") if step.endswith(":") else ("=", step)
+    with db.get_connection().cursor() as cur:
+        cur.execute(f"SELECT max(finished_at) FROM job_steps WHERE step {op} %s AND market IS NOT DISTINCT FROM %s "
+                    "AND status='ok'", (name, market))
+        return cur.fetchone()[0]
+
+
+def _newer(step: str, market: str | None, than: str, than_market: str | None) -> bool:
+    """Whether `step` last succeeded after `than` did — e.g. a strategy ran since the last report."""
+    a, b = _last_ok(step, market), _last_ok(than, than_market)
+    return bool(a and (b is None or a > b))
+
+
+def _strategy_current(market: str, key: str) -> bool:
+    """A strategy's setups are current when it last ran after the last successful price load."""
+    ran, priced = _last_ok(f"strategy:{key}", market), _last_ok("prices", market)
+    return bool(ran and priced and ran >= priced)
+
+
+def _readiness(ctx: Ctx) -> None:
+    """Before the open: is everything the day's decisions read in place? Prices for the last session, and
+    every strategy's setups computed on them. Fails — red on the Data status page — when not, naming what
+    is missing; a one-session lag only warns, since exchange holidays are not modelled."""
+    from swing_screener.marketdata import freshness
+    from swing_screener.strategies import list_strategies
+    st = freshness.price_status(ctx.market)
+    stale = [k for k in list_strategies() if not _strategy_current(ctx.market, k)]
+    problems = []
+    if st["latest"] is None or st["lag"] >= STALE_TRADING_DAYS:
+        problems.append(freshness.describe(st))
+    if stale:
+        problems.append(f"setups not run on the latest prices: {', '.join(stale)}")
+    ctx.step.stats = {"price_lag": st["lag"], "stale_strategies": len(stale)}
+    if problems:
+        raise StaleData("not ready for the open — " + "; ".join(problems))
+    ctx.step.detail = (f"ready: {freshness.describe(st)}, setups current for all {len(list_strategies())} strategies"
+                       + (" · one session behind — a holiday, or the close routine has not finished" if st["lag"] else ""))
+
+
 def _screens(ctx: Ctx) -> None:
     """The day's stock snapshot (screens/snapshot.py): every field the screens filter on; screens query it live."""
     from swing_screener.screens import definitions, snapshot
@@ -385,6 +428,9 @@ def _strategy_steps(ctx: Ctx) -> list:
         def fn(c: Ctx) -> None:
             from swing_screener.marketdata import cache
             from swing_screener.screening import pipeline
+            if c.opt("only_stale") and _strategy_current(c.market, key):
+                c.step.skip("already ran on the latest prices")
+                return
             note = _check_prices(c.market, bool(c.opt("allow_stale")))
             with cache.offline():  # stored prices only — the `prices` job downloads
                 df = pipeline.run(c.market, refresh_universe=False, strategy_key=key)
@@ -478,6 +524,9 @@ def _report(ctx: Ctx) -> None:
     from swing_screener.marketdata import db
     from swing_screener.paths import REPORTS_DIR
     from swing_screener.screening import candidates_report
+    if ctx.opt("only_new") and not any(_newer("strategy:", m, "report", None) for m in MARKETS):
+        ctx.step.skip("no strategy has run since the last report")
+        return
     since = (dt.datetime.now() - dt.timedelta(hours=30)).strftime("%Y-%m-%d_%H%M%S")
     by_strategy: dict[str, dict] = {}
     with db.get_connection().cursor() as cur:
@@ -504,6 +553,9 @@ def _report(ctx: Ctx) -> None:
 
 def _ingest(ctx: Ctx) -> None:
     from swing_screener.web.ingest import ingest
+    if ctx.opt("only_new") and not _newer("report", None, "ingest", None):
+        ctx.step.skip("no new report since the last load")
+        return
     r = ingest()
     ctx.step.detail = f"{r['runs']} report runs in the viewer"
 
@@ -543,15 +595,30 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "and each strategy's view of them (Minervini SEPA)", "weekly", False, _fundamental_scores, after=("financials",)),
     Job("postmarket", "publish", "post-market analysis: the day's tone, indices, breadth, sectors, movers, watchlists, screener changes",
         "daily", False, _postmarket, after=("prices",)),
+    Job("readiness", "publish", "readiness check: before the open, prices for the last session and every strategy's setups "
+        "computed on them", "daily, before the open", False, _readiness),
     Job("report", "publish", "consolidated report: the daily review across strategies and markets", "on demand", False, _report,
         per_market=False, after=("strategies",)),
     Job("ingest", "publish", "load reports into the web app", "on demand", False, _ingest, per_market=False),
 ]}
 
 # A pipeline is an ordered list of jobs, optionally with per-job options, and `defaults` for options the
-# request does not set. Scheduled (jobs/queue.py DEFAULT_SCHEDULES): daily, weekly, monthly — data only.
+# request does not set. Scheduled (jobs/queue.py DEFAULT_SCHEDULES): close and open per market on that market's
+# clock, weekly and monthly. `daily` (data only) is kept for running the data part alone.
 # On demand (Run in the portal, or schedule them yourself): strategies, quality.
 PIPELINES: dict[str, dict] = {
+    "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
+                         "loaded into the app, so tomorrow's trades are ready without a manual run",
+              "jobs": ["universe", "prices", "indexes", "breadth", "sectors", "screens", "postmarket",
+                       "strategies", "report", "ingest"],
+              "defaults": {"strategies": ["all"]}},
+    "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates, "
+                        "re-run only the strategies left stale, then check everything is ready",
+             # report and ingest only when a strategy actually re-ran: the report reads the last 30 hours,
+             # so re-running it on a Monday morning would replace Friday's review with an empty one
+             "jobs": ["prices", "earnings", ("strategies", {"only_stale": True}), ("report", {"only_new": True}),
+                      ("ingest", {"only_new": True}), "readiness"],
+             "defaults": {"strategies": ["all"]}},
     "daily": {"summary": "after each market's close — data only: prices, indexes, breadth, sectors, the screens' snapshot, post-market analysis",
               "jobs": ["universe", "prices", "indexes", "breadth", "sectors", "screens", "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
