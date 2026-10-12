@@ -195,7 +195,7 @@ layers above it produced (`jobs/registry.py`):
 | layer | jobs | network | cadence |
 |---|---|---|---|
 | reference | `universe`, `names`, `classify`, `industries` | yes | weekly / monthly |
-| data | `prices`, `splits`, `indexes`, `earnings`, `fundamentals`, `financials` (SEC / NSE company financials and shareholding) | yes | prices & indexes daily, the rest weekly |
+| data | `prices`, `splits`, `indexes` (benchmarks, VIX, total-return series, and the macro series in `marketdata/macro.py`: US 10y/5y yields, dollar index, WTI and Brent crude, gold, copper, high-yield credit), `earnings`, `fundamentals`, `financials` (SEC / NSE company financials and shareholding) | yes | prices & indexes daily, the rest weekly |
 | analytics | `breadth`, `sectors` | no | daily, after prices |
 | screening | `screens` (the stock snapshot), `strategies` (one step per strategy), `screen_history`, `quality`, `fundamental_scores` (the Fundamentals page) | only `quality` | snapshot daily, history monthly, fundamental_scores weekly; strategies after each close; quality on demand |
 | publish | `postmarket` (daily), `report`, `ingest` (with strategies), `readiness` (before the open) | no | after their inputs |

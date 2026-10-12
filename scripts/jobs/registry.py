@@ -187,14 +187,20 @@ def _splits(ctx: Ctx) -> None:
 
 def _indexes(ctx: Ctx) -> None:
     from swing_screener.analytics import breadth
-    from swing_screener.marketdata import index_data
+    from swing_screener.marketdata import index_data, macro
     got = breadth.fetch_indexes(ctx.market)
     index_data.refresh(ctx.market)
+    mac = macro.refresh(ctx.market)
     missing = [k for k, n in got.items() if not n]
     if len(missing) == len(got):
         raise RuntimeError("no index series could be fetched")
+    mac_missing = [k for k, n in mac.items() if not n]
     ctx.step.detail = (f"{len(got) - len(missing)}/{len(got)} index & VIX series"
-                       + (f" · missing {', '.join(missing)}" if missing else "") + " · total-return series refreshed")
+                       + (f" · missing {', '.join(missing)}" if missing else "")
+                       + f" · {len(mac) - len(mac_missing)}/{len(mac)} macro series ({', '.join(mac)})"
+                       + (f" · missing {', '.join(mac_missing)}" if mac_missing else "")
+                       + " · total-return series refreshed")
+    ctx.step.stats = {"indexes": len(got) - len(missing), "macro": len(mac) - len(mac_missing)}
 
 
 def _screened_symbols(market: str, strategies: list[str] | None = None) -> list[str]:
@@ -572,7 +578,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("prices", "data", "prices: daily bars for the whole universe", "daily", True, _prices, after=("universe",)),
     Job("splits", "data", "splits & bonus issues: re-fetch the full history of stocks that split after their last full fetch",
         "weekly", True, _splits, after=("prices",)),
-    Job("indexes", "data", "index & VIX series: benchmarks, volatility, total-return series", "daily", True, _indexes),
+    Job("indexes", "data", "index, VIX & macro series: benchmarks, volatility, total-return series, and rates, the dollar, "
+        "oil, gold, copper and credit (marketdata/macro.py)", "daily", True, _indexes),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
     Job("financials", "data", "company financials: quarterly and annual results, balance sheet, cash flow, shareholding "

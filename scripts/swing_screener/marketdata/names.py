@@ -58,11 +58,14 @@ INDEX_NAMES = {
               "NIFTY_HEALTHCARE.NS": "Nifty Healthcare", "NIFTY_PVT_BANK.NS": "Nifty Private Bank",
               "NIFTY50": "Nifty 50", "NIFTY50_TR": "Nifty 50 Total Return", "NIFTY500": "Nifty 500", "NEXT50": "Nifty Next 50",
               "MIDCAP": "Nifty Midcap 100", "SENSEX": "BSE Sensex", "INDIAVIX": "India VIX", "GOLD": "Gold (INR)",
-              "USDINR": "US dollar in rupees", "US_IN_INR": "S&P 500 in rupees", "CASH_FUND": "Liquid fund (cash proxy)"},
+              "USDINR": "US dollar in rupees", "US_IN_INR": "S&P 500 in rupees", "CASH_FUND": "Liquid fund (cash proxy)",
+              "BRENT": "Brent crude oil"},
     "us": {"^VIX": "CBOE Volatility Index", "SPX": "S&P 500", "SP500_TR": "S&P 500 Total Return", "SP500_PRICE_LONG": "S&P 500 (long history)",
            "NDX": "Nasdaq 100", "NASDAQ100": "Nasdaq 100", "RUT": "Russell 2000", "RUSSELL2000": "Russell 2000", "VIX": "CBOE Volatility Index",
            "TOTAL_MKT": "US total market", "INTL": "International stocks", "BONDS": "US bonds", "BONDS_LONG": "Long-term US Treasuries",
-           "GOLD": "Gold", "CASH_YIELD": "Cash (T-bill yield)"},
+           "GOLD": "Gold", "CASH_YIELD": "Cash (T-bill yield)",
+           "US10Y": "US 10-year Treasury yield", "US5Y": "US 5-year Treasury yield", "DXY": "US Dollar Index",
+           "WTI": "WTI crude oil", "GOLD_FUT": "Gold (futures)", "COPPER": "Copper", "HYG": "High-yield corporate bonds"},
 }
 
 # "Apple Inc. Common Stock", "Alphabet Inc. - Class A Common Stock", "Shell plc American Depositary Shares ..."
