@@ -12,6 +12,8 @@ Written findings. Code lives in `scripts/`, generated output in `reports/`.
 | [snapshot-freshness.md](snapshot-freshness.md) | Why the screens filter a stored daily snapshot rather than computing live (measured: ~48 s to rebuild vs 2.2 ms to mask; 11 of 54 fields have no point-in-time history), and the narrow fix for the staleness it causes — have the latest snapshot detect when its inputs have moved and enqueue a rebuild, instead of silently serving empty screens |
 | [sector-taxonomy.md](sector-taxonomy.md) | Proposal: sectors → industry groups → sub-industries (with liquid-stock counts per market), data-hygiene fixes (US closed-end funds, ADRs), proposed sub-industry splits for large mixed groups, and themes |
 | [learn-chart-patterns.md](learn-chart-patterns.md) | Learning material: reading chart patterns — the bases this app detects (cup/handle, double bottom, flat base, flag, triangle, VCP), topping structures, breakout quality, and what the backtests here actually found |
+| [learn-bases.md](learn-bases.md) | Learning material: what a base is, Stage 2 and base counts, the common base types, and a step-by-step guide to recognising a base while it is still forming |
+| [learn-vcp.md](learn-vcp.md) | Learning material: the volatility contraction pattern — anatomy and footprint, reading one step by step, pivot and cheat entries, stops, common mistakes, how the app detects it and what the backtests found |
 | [learn-candlestick-patterns.md](learn-candlestick-patterns.md) | Learning material: reading candles — anatomy, the single/two/three-bar patterns, context rules, and how the screener's candle commentary uses them |
 
 Files named `learn-*.md` are teaching material, not findings; the web app
