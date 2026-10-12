@@ -1874,7 +1874,11 @@ async function qualityPage(alive, mkt) {
         <input id="qt" type="number" step="any" placeholder="Buy below (optional)" title="Your own buy-below price: the row is flagged AT YOUR PRICE once the close reaches it">
         <input id="qn" placeholder="Note (optional)"><button class="primary" type="submit">Track</button>
       </form></div>
-    <div class="chips" id="qchips"></div><div id="qpending"></div><div id="qt-host"></div>
+    <div class="chips" id="qchips"></div>
+    <div class="qgroup-bar"><span class="muted small">Group by</span>${segmented([["none", "None"], ["sector", "Sector"], ["industry", "Industry group"], ["sub", "Sub-sector"]], store.get("qGroup", "none"), "qgb")}
+      <span class="muted small">Quality at least</span>${segmented([["0", "Any"], ["50", "50"], ["60", "60"], ["70", "70"], ["80", "80"]], String(store.get("qMinQ", 0)), "qmq")}
+      <span id="qcrumb"></span></div>
+    <div id="qpending"></div><div id="qt-host"></div>
     <details class="qhow"><summary>How the signals work</summary><div class="md qmd">
       <p><b>${esc(crit.thesis)}</b></p>
       <h3>1 · Is it a great business? <span class="muted small">Quality score out of 100 — ${crit.high_quality_score}+ with no red flag counts as high quality</span></h3>
@@ -1913,32 +1917,66 @@ async function qualityPage(alive, mkt) {
   ];
   const pct = (v) => (v == null ? "" : `${(v * 100).toFixed(Math.abs(v) < 0.1 ? 1 : 0)}%`);
   const num = (v) => (v == null ? "" : fmt(+v.toFixed(2)));
+  // grouping for long-term research: sector -> industry group -> sub-sector (the sub-industry where the
+  // group is split into businesses, else the industry group itself)
+  const subSector = (r) => (r.sub_industry ? `${r.industry} › ${r.sub_industry}` : r.industry || "Unclassified");
+  const GROUP = { sector: (r) => r.sector || "Unclassified", industry: (r) => r.industry || "Unclassified", sub: subSector };
+  let group = store.get("qGroup", "none"), minQ = +store.get("qMinQ", 0), picked = store.get("qPicked", null);
+  const median = (xs) => { const v = xs.filter((x) => x != null).sort((a, b) => a - b); return v.length ? v[Math.floor((v.length - 1) / 2)] : null; };
+  const groupTable = (host, rowsIn) => {
+    const by = new Map();
+    for (const r of rowsIn) { const k = GROUP[group](r); if (!by.has(k)) by.set(k, []); by.get(k).push(r); }
+    const cols = ["group", "sector", "companies", "high quality", "best", "median", "buy zone", "accumulate", "median mkt cap $B", "top companies"];
+    const data = [...by.entries()].map(([k, xs]) => {
+      const top = [...xs].sort((a, b) => (b.quality ?? -1) - (a.quality ?? -1)).slice(0, 3).map((x) => x.symbol.replace(/\.NS$/, ""));
+      return [k, group === "sector" ? "" : (xs[0].sector || ""), xs.length, xs.filter(high).length,
+        Math.max(...xs.map((x) => x.quality ?? -1)), median(xs.map((x) => x.quality)),
+        xs.filter((x) => x.zone === "BUY ZONE").length, xs.filter((x) => x.zone === "ACCUMULATE").length,
+        median(xs.map((x) => x.market_cap_usd)), top.join(" · ")];
+    });
+    dataTable(host, cols, data, {
+      name: `quality_groups_${group}`, sort: ["high quality", -1], noStack: true, hidden: group === "sector" ? ["sector"] : [],
+      format: { best: (v) => (v < 0 ? "" : String(v)), median: (v) => (v == null ? "" : String(Math.round(v))),
+        "median mkt cap $B": (v) => (v == null ? "" : v >= 10 ? v.toFixed(0) : v.toFixed(1)) },
+      rowClick: (row) => { picked = row[0]; store.set("qPicked", picked); draw(); },
+    });
+  };
   const draw = () => {
     $view.querySelector("#qchips").innerHTML = views.map(([k, t, xs]) => `<button class="chip ${k === view ? "on" : ""} ${k === "buy" || k === "yourprice" ? "trade" : k === "accumulate" ? "watch" : ""}" data-v="${k}">${t}<span>${xs.length}</span></button>`).join("");
-    const shown = views.find((v) => v[0] === view)[2];
+    const inView = views.find((v) => v[0] === view)[2];
+    const passQ = (r) => !minQ || (r.quality != null && r.quality >= minQ);
+    const grouped = group !== "none";
+    if (grouped && picked && !inView.some((r) => GROUP[group](r) === picked)) picked = null;
+    const shown = inView.filter((r) => passQ(r) && (!grouped || !picked || GROUP[group](r) === picked));
+    const crumb = $view.querySelector("#qcrumb");
+    crumb.innerHTML = grouped && picked ? `<span class="qpick">${esc(picked)} <button class="ghost sm" title="Back to all groups">✕</button></span>` : "";
+    if (grouped && picked) crumb.querySelector("button").onclick = () => { picked = null; store.set("qPicked", null); draw(); };
     const pending = shown.filter((r) => r.tracked && r.quality == null);
     $view.querySelector("#qpending").innerHTML = pending.length ? `<div class="qpend"><b>${pending.length} tracked compan${pending.length > 1 ? "ies have" : "y has"} no fundamentals yet</b> —
       price signals are shown; to score ${pending.length > 1 ? "them" : "it"}, run from <code>scripts/</code>: <code>${esc(QCMD())}</code>
       <button class="ghost copy" data-c="PYTHONPATH=. ${esc(QCMD())}">Copy</button></div>` : "";
     const host = $view.querySelector("#qt-host");
+    if (grouped && !picked && shown.length) { groupTable(host, shown); return; }
     if (!shown.length) {
       host.innerHTML = `<div class="empty"><b>${view === "tracked" ? "You're not tracking any companies yet" : "No companies in this view"}</b>
         <div class="muted">${view === "tracked" ? "Add one with “Track a company” above, or ★ any row under High quality / All scored." : rows.some((r) => r.quality != null) ? "Try another view." : "Run the fundamentals script to score companies (see “How the signals work”)."}</div></div>`;
       return;
     }
-    const cols = ["symbol", "name", "market", "sector", "quality", "f", "roic / roe", "rev growth", "eps growth", "op margin", "fcf conv", "net debt/ebitda",
+    const cols = ["symbol", "name", "market", "sector", "industry", "sub-sector", "mkt cap $B", "quality", "f", "roic / roe", "rev growth", "eps growth", "op margin", "fcf conv", "net debt/ebitda",
       "last", "p/e", "p/e vs own", "fcf yield", "peg", "off 52w high", "vs 200d", "rsi", "value", "zone", "buy below", "signals", "note"];
-    const data = shown.map((r) => [r.symbol, r.name || "", r.market.toUpperCase(), r.sector || "", r.quality, r.f_score ?? null,
+    const data = shown.map((r) => [r.symbol, r.name || "", r.market.toUpperCase(), r.sector || "", r.industry || "",
+      r.sub_industry || "", r.market_cap_usd ?? null, r.quality, r.f_score ?? null,
       r.financial ? r.roe_avg : r.roic_avg, r.rev_cagr, r.eps_cagr, r.financial ? null : r.op_margin, r.financial ? null : r.fcf_conversion,
       r.net_cash ? -0.0001 : r.net_debt_ebitda, r.close, r.pe, r.pe_vs_own, r.fcf_yield, r.peg, r.drawdown, r.vs_200dma, r.rsi,
       r.value || (r.quality == null ? "pending" : ""), r.at_your_price ? "AT YOUR PRICE" : r.zone || "", r.target,
       [...(r.timing || []), ...(r.flags || [])].join(" · "), r.note || ""]);
     const P = (c) => [c, pct];
     dataTable(host, cols, data, {
-      name: `quality_${mkt}_${view}`, sort: ["quality", -1],
+      name: `quality_${mkt}_${view}`, sort: ["quality", -1], hidden: ["industry"],
       format: Object.fromEntries([...["roic / roe", "rev growth", "eps growth", "op margin", "fcf conv", "p/e vs own", "fcf yield", "off 52w high", "vs 200d"].map(P),
         ["net debt/ebitda", (v) => (v === -0.0001 ? "net cash" : num(v))], ["p/e", num], ["peg", num], ["rsi", (v) => (v == null ? "" : v.toFixed(0))],
-        ["quality", (v) => (v == null ? "pending" : String(v))]]),
+        ["quality", (v) => (v == null ? "pending" : String(v))],
+        ["mkt cap $B", (v) => (v == null ? "" : v >= 10 ? v.toFixed(0) : v.toFixed(1))]]),
       signed: ["rev growth", "eps growth"], inverse: ["p/e vs own"],
       tags: { value: valueClass, zone: zoneClass },
       rowClass: (row) => (shown.find((x) => x.symbol === row[0] && x.market === row[2].toLowerCase())?.high_quality ? "hq" : ""),
@@ -1970,6 +2008,12 @@ async function qualityPage(alive, mkt) {
     });
   };
   $view.querySelector("#qchips").onclick = (e) => { const b = e.target.closest("[data-v]"); if (b) { view = b.dataset.v; store.set("qView", view); draw(); } };
+  const onSeg = (sel, fn) => $view.querySelector(sel).onclick = (e) => {
+    const b = e.target.closest("button[data-v]"); if (!b) return;
+    $view.querySelectorAll(`${sel} button`).forEach((x) => x.classList.toggle("on", x === b)); fn(b.dataset.v); draw();
+  };
+  onSeg(".qgb", (v) => { group = v; picked = null; store.set("qGroup", v); store.set("qPicked", null); });
+  onSeg(".qmq", (v) => { minQ = +v; store.set("qMinQ", minQ); });
   $view.querySelector("#qpending").onclick = (e) => { const b = e.target.closest(".copy"); if (b) navigator.clipboard.writeText(b.dataset.c).then(() => toast("Command copied", "ok"), () => {}); };
   draw();
 }
@@ -2837,6 +2881,29 @@ async function funnelTab(body, id, r, alive) {
 }
 
 
+/** A research document's markdown into `host`: ```pattern fences drawn with real candles (learn.js),
+ *  wide tables wrapped, links to sibling *.md files opened as their ingested document. Returns the article. */
+function renderResearchMd(host, markdown) {
+  host.innerHTML = `<article class="md">${marked.parse(markdown)}</article>`;
+  host.querySelectorAll(".md pre > code.language-pattern").forEach((c) => {
+    const p = Learn.get(c.textContent.trim());
+    if (p) c.parentElement.outerHTML = `<figure class="lp-md">${Learn.svg(p)}<figcaption><a href="#/learn/${p.key}">${esc(p.name)}</a> — open it in Learn</figcaption></figure>`;
+  });
+  host.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
+  host.querySelectorAll('.md a[href$=".md"]').forEach((a) => {
+    const f = a.getAttribute("href");
+    if (/^(https?:)?\/\//.test(f) || f.includes("/")) return;
+    a.onclick = async (e) => {
+      e.preventDefault();
+      const runs = await api("/api/reports?kind=research").catch(() => []);
+      const t = runs.find((x) => x.run === f.replace(/\.md$/, ""));
+      if (t) go(t.run.startsWith("learn-") ? `#/learn/${t.run.replace(/^learn-/, "")}` : `#/reports/${t.id}`);
+      else toast("That document is not loaded — click Load reports on the Reports archive", "err");
+    };
+  });
+  return host.querySelector("article");
+}
+
 async function reportPage(alive, id, tab) {
   $view.innerHTML = LOADING;
   const r = await api(`/api/reports/${id}`).catch((e) => ({ error: e.message }));
@@ -2871,25 +2938,7 @@ async function reportPage(alive, id, tab) {
     };
   };
   if (tab === "report") {
-    body.innerHTML = `<article class="md">${marked.parse(r.markdown)}</article>`;
-    // ```pattern <key>``` fences in the learning guides draw that pattern with real candles (learn.js)
-    body.querySelectorAll(".md pre > code.language-pattern").forEach((c) => {
-      const p = Learn.get(c.textContent.trim());
-      if (p) c.parentElement.outerHTML = `<figure class="lp-md">${Learn.svg(p)}<figcaption><a href="#/learn/${p.key}">${esc(p.name)}</a> — open it in Learn</figcaption></figure>`;
-    });
-    body.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
-    // research docs link to siblings as relative *.md files — open those as their ingested report, not as a dead URL
-    body.querySelectorAll('.md a[href$=".md"]').forEach((a) => {
-      const f = a.getAttribute("href");
-      if (/^(https?:)?\/\//.test(f) || f.includes("/")) return;
-      a.onclick = async (e) => {
-        e.preventDefault();
-        const runs = await api("/api/reports?kind=research").catch(() => []);
-        const t = runs.find((x) => x.run === f.replace(/\.md$/, ""));
-        if (t) go(t.run.startsWith("learn-") ? `#/learn/${t.run.replace(/^learn-/, "")}` : `#/reports/${t.id}`);
-        else toast("That document is not loaded — click Load reports on the Reports archive", "err");
-      };
-    });
+    renderResearchMd(body, r.markdown);
   } else if (tab === "funnel") {
     await funnelTab(body, id, r, alive);
   } else if (tab === "equity") {
@@ -3786,22 +3835,30 @@ document.addEventListener("keydown", (e) => {
  *  the long-form guides (research/learn-*.md) open as their ingested reports */
 async function learnPage(alive, topic) {
   $view.innerHTML = LOADING;
-  const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => x.run.startsWith("learn-")).sort((a, b) => a.run.localeCompare(b.run));
+  // guides in reading order: single candles, then multi-week patterns, then bases and the VCP built on them
+  const ORDER = ["learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp"];
+  const rank = (x) => (ORDER.includes(x.run) ? ORDER.indexOf(x.run) : ORDER.length);
+  const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => x.run.startsWith("learn-"))
+    .sort((a, b) => rank(a) - rank(b) || a.run.localeCompare(b.run));
   if (!alive()) return;
   const guide = runs.find((x) => x.run === `learn-${topic}`);
-  if (guide) return reportPage(alive, guide.id);
   // #/learn/candles and #/learn/charts open one family; a pattern opens in its own family's menu
-  const p = topic && Learn.get(topic), famView = ["candles", "charts"].includes(topic) ? topic : null;
+  const p = !guide && topic && Learn.get(topic), famView = ["candles", "charts"].includes(topic) ? topic : null;
   const fam = p ? Learn.familyOf(p) : famView || store.get("learnFam", "candles");
   store.set("learnFam", fam);
-  document.title = `${p ? p.name + " · " : ""}Learn · Trading`;
-  const guides = runs.length ? `<div class="nav-h">Full guides</div>${runs.map((x) => `<a class="nav-item" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}"><span><b class="sn">${esc((x.title || x.run).replace(/ — a field guide$/, ""))}</b></span></a>`).join("")}` : "";
+  const guideTitle = (x) => (x.title || x.run).replace(/ — a field guide$/, "");
+  const guideLabel = (x) => guideTitle(x).split(" — ")[0];   // the menu shows the short name; the page the full title
+  document.title = `${p ? p.name + " · " : guide ? guideTitle(guide) + " · " : ""}Learn · Trading`;
+  // the full guides come first: they are the reading material, the catalogue below is the reference
+  const guides = runs.length ? `<div class="nav-h">Guides</div>${runs.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}"><span><b class="sn">${esc(guideLabel(x))}</b></span></a>`).join("")}` : "";
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">
+      ${guides}
+      <div class="nav-h">Pattern catalogue</div>
       ${segmented([["candles", "Candlesticks"], ["charts", "Chart patterns"]], fam, "lpfam")}
       <label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a pattern" spellcheck="false"></label>
-      <a class="nav-item ${p ? "" : "active"}" href="#/learn/${fam}"><span><b class="sn">All ${fam === "charts" ? "chart patterns" : "candlestick patterns"}</b></span></a>
-      ${Learn.nav(p?.key, fam)}${guides}
-    </aside><section class="scr-main lp-main">${p ? Learn.detail(p) : pageHead(famView === "charts" ? "Chart patterns" : famView === "candles" ? "Candlestick patterns" : "Learn", { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume. Pick one from the menu or a card below.</p><p>The long-form guides are <code>research/learn-*.md</code>.</p>") }) + Learn.overview(famView)}</section></div>`;
+      <a class="nav-item ${p || guide ? "" : "active"}" href="#/learn/${fam}"><span><b class="sn">All ${fam === "charts" ? "chart patterns" : "candlestick patterns"}</b></span></a>
+      ${Learn.nav(p?.key, fam)}
+    </aside><section class="scr-main lp-main">${guide ? `<div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>` : p ? Learn.detail(p) : pageHead(famView === "charts" ? "Chart patterns" : famView === "candles" ? "Candlestick patterns" : "Learn", { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume. Pick one from the menu or a card below.</p><p>The long-form guides are <code>research/learn-*.md</code>.</p>") }) + Learn.overview(famView)}</section></div>`;
   $view.querySelectorAll(".lpfam button").forEach((b) => b.onclick = () => go(`#/learn/${b.dataset.v}`));
   const f = $view.querySelector("#lpf");
   f.oninput = () => { const q = f.value.trim().toLowerCase();
@@ -3810,6 +3867,38 @@ async function learnPage(alive, topic) {
   f.onkeydown = (e) => { if (e.key === "Enter") { const a = [...$view.querySelectorAll(".lp-nav .nav-item[data-k]")].find((x) => !x.hidden); if (a) go(a.getAttribute("href")); } };
   $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
   if (p) window.scrollTo(0, 0);
+  if (guide) await learnGuide(alive, guide);
+}
+
+/** One long-form guide inside the Learn layout, with an "On this page" list of its sections. */
+async function learnGuide(alive, guide) {
+  const r = await api(`/api/reports/${guide.id}`).catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  const body = $view.querySelector("#lpg-body"), toc = $view.querySelector(".lp-toc");
+  if (r.error) { body.innerHTML = `<div class="empty"><b>Guide not found</b><div class="muted">Reload the documents from the Reports archive (Load reports).</div></div>`; return; }
+  const art = renderResearchMd(body, r.markdown);
+  // anchors for every section, so the contents can jump to them (and a section can be linked)
+  const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const heads = [...art.querySelectorAll("h2, h3")];
+  heads.forEach((h) => { h.id = "s-" + slug(h.textContent); });
+  if (heads.length > 2) {
+    toc.hidden = false;
+    toc.innerHTML = `<div class="nav-h">On this page</div>` + heads.map((h) =>
+      `<a href="#" data-s="${h.id}" class="${h.tagName === "H3" ? "sub" : ""}">${esc(h.textContent)}</a>`).join("");
+    toc.onclick = (e) => {
+      const a = e.target.closest("a[data-s]"); if (!a) return;
+      e.preventDefault();
+      document.getElementById(a.dataset.s)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    // highlight the section being read
+    const links = new Map([...toc.querySelectorAll("a[data-s]")].map((a) => [a.dataset.s, a]));
+    const obs = new IntersectionObserver((es) => {
+      const vis = es.filter((x) => x.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+      if (vis) { links.forEach((a) => a.classList.remove("on")); links.get(vis.target.id)?.classList.add("on"); }
+    }, { rootMargin: "-60px 0px -70% 0px" });
+    heads.forEach((h) => obs.observe(h));
+  }
+  window.scrollTo(0, 0);
 }
 
 /** the sector-analysis playbook (research/sector-analysis-playbook.md), shown as its ingested report */

@@ -1213,3 +1213,20 @@ table.fin.peers tbody th a { color: var(--link); }
 
 /* strategy views (Minervini SEPA) */
 .sepa-tests td { vertical-align: top; }
+
+/* Quality page: group by sector / industry / sub-sector */
+.qgroup-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 4px 0 10px; }
+.qgroup-bar .seg { height: 28px; }
+.qpick { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 10px; border: 1px solid var(--accent);
+  background: var(--accent-soft); border-radius: 14px; font-size: 12px; color: var(--strong); }
+
+/* Learn: a long-form guide beside its "On this page" contents */
+.lp-guide { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 24px; align-items: start; }
+.lp-guide .md { max-width: 860px; }
+.lp-toc { position: sticky; top: 72px; max-height: calc(100vh - 96px); overflow: auto; display: flex; flex-direction: column;
+  gap: 2px; padding-left: 12px; border-left: 1px solid var(--line-2); font-size: 12.5px; }
+.lp-toc a { color: var(--muted); text-decoration: none; padding: 3px 0; line-height: 1.35; }
+.lp-toc a.sub { padding-left: 12px; font-size: 12px; }
+.lp-toc a:hover { color: var(--text); }
+.lp-toc a.on { color: var(--strong); font-weight: 600; }
+@media (max-width: 1100px) { .lp-guide { grid-template-columns: minmax(0, 1fr); } .lp-toc { display: none; } }

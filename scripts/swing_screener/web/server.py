@@ -1026,6 +1026,17 @@ def quality(market: str | None = None, symbol: str | None = None):
     keys = sorted(set(scored) | set(watch))
     prices = _last_prices(keys)
     sectors = {(m, r["symbol"]): r["sector"] for m, rs in _universe().items() for r in rs}
+    from ..screens import snapshot
+    # classification and size from the latest stock snapshot, the one the Screens pages query: sector, industry
+    # group, sub-industry (where the group is split) and US$ market cap
+    klass = {}
+    for m in {k[0] for k in keys}:
+        try:
+            df = snapshot.load(m)
+        except Exception:  # noqa: BLE001 — no snapshot yet: rows simply go unclassified
+            continue
+        for r in df[["symbol", "sector", "industry", "sub_industry", "market_cap_usd"]].itertuples(index=False):
+            klass[(m, r.symbol)] = r
     out = []
     for k in keys:
         sc, tests, m, computed = scored.get(k, (None, None, None, None))
@@ -1037,6 +1048,11 @@ def quality(market: str | None = None, symbol: str | None = None):
                "quality": sc, "tests": tests, "computed_at": computed.isoformat() if computed else None,
                "name": (m or {}).get("name"), "sector": (m or {}).get("sector") or sectors.get(k),
                "error": errors.get(k)}
+        c = klass.get(k)
+        if c is not None:
+            val = lambda v: None if v is None or v != v else v  # noqa: E731 — NaN from the parquet -> null
+            row.update(sector=val(c.sector) or row["sector"], industry=val(c.industry), sub_industry=val(c.sub_industry),
+                       market_cap_usd=val(c.market_cap_usd))
         if m:
             row.update({x: m.get(x) for x in ("roic_avg", "roe_avg", "rev_cagr", "eps_cagr", "op_margin", "fcf_conversion",
                                                "net_debt_ebitda", "net_cash", "f_score", "financial", "n_years", "fiscal_end", "pe_hist_median")})
