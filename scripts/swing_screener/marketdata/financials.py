@@ -64,7 +64,13 @@ from ..paths import DATA_DIR
 logger = logging.getLogger(__name__)
 
 FIELDS = ("revenue", "net_income", "eps", "gross_profit", "operating_income", "pretax_income")
-LOOKBACK_QUARTERS = 20        # five years of quarters: the 3-year annual test needs 16
+# How many quarters to keep, per source, because the two cost completely different things.
+# EDGAR returns a company's WHOLE XBRL history in one `companyfacts` response, so depth is
+# free -- we were downloading seventeen years of a company and discarding twelve. NSE has no
+# bulk endpoint: `choose_filings` downloads one XBRL document per quarter, so every extra
+# quarter is another request, and its legacy feed only reaches back about seven years anyway.
+SEC_LOOKBACK_QUARTERS = 68    # ~17 years: XBRL was phased in over 2009-2011, so this is the practical floor
+LOOKBACK_QUARTERS = 20        # NSE: five years of quarters; the 3-year annual test needs 16
 ANNUAL_YEARS_BACK = 10        # annual P&L / balance sheet / cash flow kept for this many fiscal years
 SHP_DETAIL_QUARTERS = 4       # India: the detailed shareholding filing (FII / DII split, ~0.5 MB each) for this many
                               # quarters at the first fetch; one new quarter at a time after that
@@ -355,7 +361,7 @@ def parse_sec(facts_json: dict) -> list[dict]:
                             full_year[field][end] = (filed, float(f["val"]))
                 if full_year[field]:
                     break
-    ends = sorted(set(per_field["revenue"]) | set(per_field["net_income"]) | set(per_field["eps"]))[-LOOKBACK_QUARTERS:]
+    ends = sorted(set(per_field["revenue"]) | set(per_field["net_income"]) | set(per_field["eps"]))[-SEC_LOOKBACK_QUARTERS:]
     rows = []
     for end in ends:
         base = next((per_field[f][end] for f in ("eps", "net_income", "revenue") if end in per_field[f]))

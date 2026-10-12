@@ -155,6 +155,8 @@ def command_for(targets: list, market: str, opts: dict) -> list[str]:
         cmd += ["--min-dollar-volume", repr(float(opts["min_dollar_volume"]))]
     if opts.get("pyramid"):
         cmd += ["--pyramid", str(opts["pyramid"])]
+    if opts.get("market_filter"):
+        cmd.append("--market-filter")
     if opts.get("pe"):
         cmd.append("--pe")
     for k in ("pe_window", "pe_warmup", "pe_pilot", "pe_press", "mkt_confirm"):

@@ -345,6 +345,8 @@ def _backtest_steps(ctx: Ctx) -> list:
                 argv += ["--min-dollar-volume", repr(float(c.opt("min_dollar_volume")))]
             if c.opt("pyramid"):
                 argv += ["--pyramid", str(c.opt("pyramid"))]
+            if c.opt("market_filter"):
+                argv.append("--market-filter")
             if c.opt("pe"):
                 argv.append("--pe")
             for _k in ("pe_window", "pe_warmup", "pe_pilot", "pe_press", "mkt_confirm"):
