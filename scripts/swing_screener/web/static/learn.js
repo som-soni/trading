@@ -23,6 +23,7 @@ const Learn = (() => {
     ["triple", "Three-candle patterns"],
     ["bases", "Bullish chart patterns"],
     ["tops", "Topping structures"],
+    ["levels", "Supply & demand"],
   ];
 
   // context bars the candlestick examples sit on
@@ -290,6 +291,35 @@ const Learn = (() => {
       ],
     },
     {
+      key: "triple-bottom", group: "bases", name: "Triple bottom", code: "TBOT", bias: "bull",
+      summary: "Three sell-offs to the same area, each finding fewer sellers; the third ideally undercuts the rest — the final shakeout — before the breakout through the middle peaks.",
+      path: [[0, 100], [5, 92], [9, 85], [12, 82], [16, 88], [20, 92], [24, 87], [27, 83], [30, 81.5], [34, 87.5], [38, 91.5], [41, 86], [44, 80.8], [46, 84.5], [49, 89.5], [51, 93.5], [52, 97], [54, 99.5]],
+      nz: [[0, 1], [44, 0.8], [51, 0.6], [52, 1]], vol: [[0, 1.2], [12, 1.4], [30, 1.1], [44, 0.9], [51, 0.6], [52, 2.3], [54, 1.3]], seed: 17,
+      lines: [{ y: { high: [37, 39] }, cls: "pivot", label: "Pivot = highest middle peak", from: 20 }, { y: { low: [43, 45] }, cls: "stop", label: "Stop = third low", from: 42 }],
+      marks: [{ i: 12, at: "low", text: "Low 1", side: "below" }, { i: 30, at: "low", text: "Low 2", side: "below" },
+        { i: 44, at: "low", text: "Low 3 undercuts: shakeout", side: "below" }, { i: 52, at: "high", text: "Breakout", side: "above" }],
+      sections: [
+        ["Trigger / invalidation / target", ["Trigger: the highest peak between the lows.", "Invalidation: the third low.", "Measured move: pivot minus the lowest low, projected up."]],
+        ["Read it as", ["A double bottom that needed one more test — more time, same logic: the supply at that level is finished."]],
+        ["In this app", ["Detected as `TBOT` by the spec strategy (`chart_pattern_spec`, research/chart-pattern-spec.md)."]],
+      ],
+    },
+    {
+      key: "inverse-head-and-shoulders", group: "bases", name: "Inverse head and shoulders", code: "IHS", bias: "bull",
+      summary: "The mirror of the top: three sell-offs with the middle one deepest, then a higher low — the first higher low after a decline, the definition of a downtrend losing its structure.",
+      path: [[0, 108], [4, 100], [8, 93], [11, 89], [14, 92.5], [17, 95], [20, 89], [24, 81], [26, 79], [29, 86], [32, 94], [35, 91], [38, 87.5], [40, 86.5], [43, 90.5], [45, 93.5], [46, 97.5], [48, 100.5], [50, 102.5]],
+      nz: [[0, 1.1], [26, 1], [40, 0.7], [46, 1]], vol: [[0, 1.3], [11, 1.2], [26, 1.5], [35, 0.9], [40, 0.7], [46, 2.4], [50, 1.4]], seed: 14,
+      lines: [{ a: [16, { high: [15, 17] }], b: [32, { high: [31, 33] }], cls: "neck", label: "Neckline = trigger", extend: 50 },
+        { y: { low: [39, 41] }, cls: "stop", label: "Stop = right shoulder low", from: 38 }],
+      marks: [{ i: 11, at: "low", text: "Left shoulder", side: "below" }, { i: 26, at: "low", text: "Head", side: "below" },
+        { i: 40, at: "low", text: "Right shoulder: higher low", side: "below" }, { i: 46, at: "high", text: "Neckline break", side: "above" }],
+      sections: [
+        ["Trigger / invalidation / target", ["Trigger: the neckline through the two rally highs.", "Invalidation: the right shoulder's low.", "Measured move: head to neckline, projected up from the break."]],
+        ["Volume tells the story", ["Heaviest selling into the head, drying up through the right shoulder, expanding on the break — accumulation replacing distribution."]],
+        ["In this app", ["Detected as `IHS` by the spec strategy (`chart_pattern_spec`)."]],
+      ],
+    },
+    {
       key: "flat-base", group: "bases", name: "Flat base / Darvas box", code: "FLAT", bias: "bull",
       summary: "The strongest stocks barely pull back at all: after an advance, price moves sideways in a tight box while time, not price, does the correcting.",
       path: [[0, 70], [5, 76], [10, 84], [14, 92], [16, 96], [18, 94.5], [21, 95.8], [24, 93.8], [27, 96.2], [30, 94.2], [33, 96], [36, 94.6], [39, 96.3], [41, 95.6], [42, 99.5], [44, 102.5], [46, 104]],
@@ -300,6 +330,19 @@ const Learn = (() => {
         ["Read it as", ["Boxes stack — a breakout from one box becomes the floor of the next (Darvas's original observation)."]],
         ["Trigger / invalidation / target", ["Trigger: the box high. Invalidation: the box low.", "Measured move: the **prior advance**, not the box height — a tight box's own height is too small to be a target."]],
         ["In this app", ["Detected as `FLAT`; demands a prior advance of 20% or more."]],
+      ],
+    },
+    {
+      key: "rectangle", group: "bases", name: "Rectangle", code: "RECT", bias: "bull",
+      summary: "Two horizontal lines tested over and over: sellers defend the top, buyers defend the bottom, until one side runs out. After an advance, it usually resolves upward.",
+      path: [[0, 72], [4, 80], [8, 88], [10, 92], [13, 85.2], [16, 91.6], [19, 84.8], [22, 91.8], [25, 85.4], [28, 91.5], [31, 85], [33, 88.5], [34, 92.5], [35, 95.5], [37, 98]],
+      nz: [[0, 1.1], [10, 0.9], [33, 0.7], [34, 1]], vol: [[0, 1.3], [10, 1.1], [25, 0.8], [33, 0.6], [34, 2.3], [37, 1.4]], seed: 19,
+      lines: [{ y: { high: [9, 33] }, cls: "pivot", label: "Pivot = range top", from: 9 }, { y: { low: [12, 32] }, cls: "stop", label: "Stop = range bottom", from: 11 }],
+      marks: [{ i: 4, at: "low", text: "Prior advance", side: "left" }, { i: 25, at: "low", text: "3+ touches of each line", side: "below" }, { i: 34, at: "high", text: "Breakout", side: "above" }],
+      sections: [
+        ["Rectangle vs flat base", ["Same horizontal logic, different temperature: a flat base is a tight drift (≤ ~15% deep, closes clustered); a rectangle swings the full range repeatedly — each boundary is genuinely fought over."]],
+        ["Trigger / invalidation / target", ["Trigger: the range top. Invalidation: the range bottom.", "Measured move: the range's height above the breakout."]],
+        ["In this app", ["Detected as `RECT` by the spec strategy (`chart_pattern_spec`)."]],
       ],
     },
     {
@@ -338,6 +381,35 @@ const Learn = (() => {
       ],
     },
     {
+      key: "symmetrical-triangle", group: "bases", name: "Symmetrical triangle", code: "SYMM", bias: "bull",
+      summary: "Lower highs meeting higher lows: both sides lose conviction and the range coils to a point. Direction-neutral by shape — in an uptrend, trade it only as a continuation, on the upper line's break.",
+      path: [[0, 74], [4, 82], [8, 92], [10, 97], [13, 87.6], [16, 94.4], [19, 89], [22, 93.2], [25, 90.2], [28, 92.6], [30, 90.8], [32, 92], [33, 95], [35, 98], [37, 100.5]],
+      nz: [[0, 1.1], [10, 0.9], [30, 0.5], [33, 1]], vol: [[0, 1.3], [10, 1.2], [22, 0.8], [31, 0.5], [33, 2.2], [37, 1.4]], seed: 23,
+      lines: [{ a: [10, { high: [10, 10] }], b: [30, { high: [27, 29] }], cls: "trend", label: "Lower highs", extend: 34 },
+        { a: [13, { low: [13, 13] }], b: [30, { low: [29, 31] }], cls: "trend", label: "Higher lows", extend: 34 },
+        { y: { low: [29, 31] }, cls: "stop", label: "Stop = last higher low", from: 28 }],
+      marks: [{ i: 4, at: "low", text: "Prior advance decides the bias", side: "left" }, { i: 33, at: "high", text: "Breaks the upper line", side: "above" }],
+      sections: [
+        ["Trigger / invalidation / target", ["Trigger: the upper line (continuation only — skip it after a decline).", "Invalidation: the last higher low.", "Measured move: the triangle's height at its left edge.", "Breaks from the middle third of the coil are the reliable ones; a ride into the apex usually fizzles."]],
+        ["In this app", ["Detected as `SYMM` by the spec strategy (`chart_pattern_spec`); the plain `chart_pattern` strategy deliberately skips it — only the *ascending* triangle has an unambiguous bullish mechanism."]],
+      ],
+    },
+    {
+      key: "falling-wedge", group: "bases", name: "Falling wedge", code: "FWDG", bias: "bull",
+      summary: "Both lines slope down but converge: price keeps falling, yet each swing covers less ground and volume dries up — selling pressure exhausting itself. It resolves through the upper line.",
+      path: [[0, 70], [5, 80], [10, 92], [12, 96], [15, 88.6], [18, 92.2], [21, 86.4], [24, 89.6], [27, 84.8], [30, 87.4], [32, 83.8], [34, 86.2], [35, 89.5], [37, 93.5], [39, 96.5]],
+      nz: [[0, 1.1], [12, 0.9], [32, 0.5], [35, 1]], vol: [[0, 1.3], [12, 1.2], [24, 0.8], [32, 0.5], [35, 2.2], [39, 1.4]], seed: 27,
+      lines: [{ a: [12, { high: [12, 12] }], b: [34, { high: [33, 35] }], cls: "trend", label: "Falling highs", extend: 36 },
+        { a: [15, { low: [15, 15] }], b: [32, { low: [31, 33] }], cls: "trend", label: "Falling lows, flattening", extend: 36 },
+        { y: { low: [31, 33] }, cls: "stop", label: "Stop = wedge low", from: 30 }],
+      marks: [{ i: 5, at: "low", text: "Prior advance", side: "left" }, { i: 35, at: "high", text: "Breaks the upper line", side: "above" }],
+      sections: [
+        ["Why falling is bullish", ["A wedge that falls while contracting is a pullback losing momentum — the mirror (rising wedge) is bearish for the same reason."]],
+        ["Trigger / invalidation / target", ["Trigger: the upper line. Invalidation: the wedge's low.", "Measured move: the wedge's height at its left edge."]],
+        ["In this app", ["Detected as `FWDG` by the spec strategy (`chart_pattern_spec`)."]],
+      ],
+    },
+    {
       key: "vcp", group: "bases", name: "Volatility contraction (VCP)", code: "VCP", bias: "bull",
       summary: "Minervini's generalization: what matters is not the shape's name but that each pullback is shallower than the last, on drying-up volume, ending in a tight shelf near the highs.",
       path: [[0, 70], [6, 82], [11, 100], [16, 90], [20, 75], [24, 84], [28, 93], [31, 98.5], [34, 93], [37, 87], [40, 92], [43, 97.5], [45, 95], [47, 92.6], [49, 95], [51, 98], [52, 96.6], [53, 95.3], [54, 96.4], [55, 97.4], [56, 102.5], [58, 105.5]],
@@ -349,6 +421,47 @@ const Learn = (() => {
         ["Rules here", ["Each contraction ≤ 0.8× the prior one; the final one ≤ 12%.", "Volume dries up into the right side; the breakout comes on expansion."]],
         ["Why traders like it", ["The stop is **close** — the final contraction's low — so even a modest move pays a high reward:risk."]],
         ["In this app", ["The entry pattern of the `minervini` strategy. A cup with handle *is* a two-contraction VCP; a high tight flag is a one-contraction VCP."]],
+      ],
+    },
+    {
+      key: "ascending-base", group: "bases", name: "Ascending base", bias: "bull",
+      summary: "Three pullbacks of 10–20%, each from a higher high to a higher low, usually while the market itself corrects: the stock is bought on every dip it is offered. Buy the break of the third high.",
+      path: [[0, 70], [5, 78], [9, 86], [12, 90], [16, 79.2], [20, 86], [24, 93], [28, 82.8], [32, 90], [36, 97], [40, 87.4], [44, 94], [47, 96.2], [49, 95.2], [51, 96.4], [52, 100.5], [54, 103.5]],
+      nz: [[0, 1.1], [12, 1], [47, 0.6], [52, 1]], vol: [[0, 1.2], [12, 1.3], [16, 1.1], [28, 1], [40, 0.9], [49, 0.6], [52, 2.4], [54, 1.4]], seed: 31,
+      lines: [{ y: { high: [35, 37] }, cls: "pivot", label: "Pivot = third high", from: 34 }, { y: { low: [39, 41] }, cls: "stop", label: "Stop = third pullback's low", from: 38 }],
+      marks: [{ i: 16, at: "low", text: "−12%", side: "below" }, { i: 28, at: "low", text: "Higher low, −11%", side: "below" },
+        { i: 40, at: "low", text: "Higher low, −10%", side: "below" }, { i: 52, at: "high", text: "Breakout", side: "above" }],
+      sections: [
+        ["The giveaway", ["Each pullback is **shallower or equal**, never deeper, and both the highs and the lows ascend — three flags stacked up a staircase, often against a falling market. O'Neil found it in the biggest winners' mid-advance."]],
+        ["Trigger / invalidation / target", ["Trigger: the third pullback's high.", "Invalidation: the third pullback's low.", "Rough target: the prior leg's height, as with a flag."]],
+        ["In this app", ["No dedicated detector — by the rules it reads as stacked `FLAG`s or wide VCP legs. Recognise it by eye on the chart page; the three-higher-lows structure is the tell."]],
+      ],
+    },
+    {
+      key: "base-on-base", group: "bases", name: "Base on base", bias: "bull",
+      summary: "A base breaks out, the market caps the move, and a second base forms directly on top of the first — the spring coils twice. Resolution from the upper base tends to be powerful.",
+      path: [[0, 68], [4, 76], [8, 84], [10, 88], [13, 86.4], [16, 88.2], [19, 86], [22, 88], [24, 87], [26, 92], [28, 94], [31, 92.4], [34, 94.2], [37, 92.2], [40, 94], [42, 93.2], [43, 97.5], [45, 100.5]],
+      nz: [[0, 1.1], [10, 0.7], [26, 0.9], [28, 0.6], [42, 0.5], [43, 1]], vol: [[0, 1.3], [10, 1], [24, 0.7], [26, 1.6], [28, 0.8], [42, 0.55], [43, 2.3], [45, 1.4]], seed: 33,
+      lines: [{ y: { high: [27, 42] }, cls: "pivot", label: "Pivot = upper box high", from: 26 }, { y: { low: [29, 42] }, cls: "stop", label: "Stop = upper box low", from: 28 }],
+      marks: [{ i: 18, at: "low", text: "Base 1", side: "below" }, { i: 26, at: "high", text: "Breakout stalls (weak market)", side: "above" },
+        { i: 37, at: "low", text: "Base 2 forms ON TOP of base 1", side: "below" }, { i: 43, at: "high", text: "Breakout", side: "above" }],
+      sections: [
+        ["Read it as", ["The stock wanted to go; the market would not let it. Holding the first breakout's level while building again is strength, not failure — the lower base's top should roughly floor the upper base."]],
+        ["Trigger / invalidation", ["Trigger: the upper base's high. Invalidation: the upper base's low."]],
+        ["In this app", ["Not detected as one unit — it shows as two consecutive `FLAT` bases. The `minervini` spec's base counting (`base_no` on its trades) numbers them, so a backtest trade from base 2 is visible as such."]],
+      ],
+    },
+    {
+      key: "three-weeks-tight", group: "bases", name: "Three weeks tight", bias: "bull",
+      summary: "Three consecutive weekly closes within about 1% of each other after an advance — institutions sitting on the offer and the bid alike. An add-on point for a position already working, not a fresh entry.",
+      path: [[0, 74], [4, 82], [8, 90], [11, 95], [13, 94.4], [15, 95.2], [17, 94.6], [19, 95.3], [21, 94.7], [23, 95.2], [25, 94.9], [26, 95.1], [27, 98], [29, 100.5]],
+      nz: [[0, 1.1], [11, 0.35], [26, 0.3], [27, 1]], vol: [[0, 1.3], [10, 1.4], [12, 0.7], [26, 0.5], [27, 2.2], [29, 1.4]], seed: 37,
+      lines: [{ y: { high: [11, 26] }, cls: "pivot", label: "Pivot = tight-area high", from: 10 }, { y: { low: [12, 26] }, cls: "stop", label: "Stop = tight-area low", from: 11 }],
+      marks: [{ i: 4, at: "low", text: "An advance already underway", side: "left" }, { i: 19, at: "low", text: "3 weekly closes within ~1% (drawn as dailies)", side: "below" }, { i: 27, at: "high", text: "Breakout", side: "above" }],
+      sections: [
+        ["Why it matters", ["Nobody holding is selling and nobody waiting is being offered a dip: a weekly-chart signature of institutional accumulation. O'Neil used it to **add** to winners, sized smaller than the original buy."]],
+        ["Trigger / invalidation", ["Trigger: the high of the tight area. Invalidation: its low — the stop is naturally very close, like a VCP's final shelf."]],
+        ["In this app", ["A weekly-close pattern, so the daily detectors treat it as a very tight `FLAT`; check the weekly chart (1W) to confirm the three closes."]],
       ],
     },
     // ------------------------------------------------------------------ tops
@@ -378,6 +491,66 @@ const Learn = (() => {
       nz: [[0, 0.8], [30, 0.8], [36, 1.6], [40, 2.2], [43, 1.4], [49, 1]], vol: [[0, 0.9], [30, 1], [35, 1.8], [39, 3], [40, 3.6], [41, 2.6], [44, 1.4], [49, 1.1]], seed: 21,
       marks: [{ i: 37, at: "low", text: "Steepest leg of the move", side: "below" }, { i: 40, at: "high", text: "Record volume, widest bars", side: "above" }, { i: 44, at: "low", text: "The reversal", side: "below" }],
       sections: [["What to do", ["Minervini and O'Neil both sell *into* strength here; the `minervini` exit rules include a climax exit for exactly this."]]],
+    },
+    // ------------------------------------------------------------------ levels (supply & demand)
+    {
+      key: "demand-zone", group: "levels", name: "Demand zone", bias: "bull",
+      summary: "Where a decline stopped and a strong rally left: the pause before departure marks prices where buyers absorbed everything offered — and were left wanting more. Price returning there tends to find them again.",
+      path: [[0, 101], [3, 95], [6, 88], [9, 83.5], [11, 82.4], [13, 83.6], [15, 82.6], [17, 83.2], [18, 84], [19, 88], [21, 93], [23, 98], [25, 102.5], [28, 99], [31, 94.5], [34, 90], [37, 86.5], [39, 84.6], [41, 83.6], [43, 87.5], [45, 92], [47, 96.5]],
+      nz: [[0, 1.1], [9, 0.5], [18, 0.5], [19, 1], [25, 1], [38, 0.6], [43, 1]],
+      vol: [[0, 1.2], [9, 1.5], [13, 0.7], [18, 0.6], [19, 1.8], [25, 2.2], [28, 0.9], [39, 0.6], [43, 1.9], [47, 1.3]], seed: 41,
+      zones: [{ y0: { low: [9, 17] }, y1: { high: [11, 18] }, from: 8, cls: "dem", label: "Demand zone — the pause before departure" }],
+      lines: [{ y: { low: [9, 17] }, cls: "stop", label: "Stop: just under the zone", from: 36 }],
+      marks: [{ i: 11, at: "low", text: "Sellers exhausted: the decline stops", side: "below" },
+        { i: 25, at: "high", text: "Strong departure — the proof the demand was real", side: "above" },
+        { i: 41, at: "low", text: "First retest: buyers return", side: "below" }],
+      sections: [
+        ["What makes a zone strong", ["A **fast, large departure** — the stronger the rally that left, the more unfilled buying it implies.",
+          "**Little time at the level** — quick absorption beats a long grind (a long grind is a range, not a zone).",
+          "**Freshness** — the first retest is the one that works; every touch consumes the resting demand.",
+          "It sits inside a larger uptrend; catching falling knives at old zones in a downtrend is a different (worse) trade."]],
+        ["Trading the retest", ["Entry: **evidence inside the zone**, not the touch itself — a hammer, an engulfing bar, a tight shelf (see the candlestick patterns).",
+          "Stop: just under the zone — if real demand is there, price should not trade through it.", "Target: in front of the next supply zone above, not inside it."]],
+        ["In this app", ["`prior_swing_low` and the support levels on the chart are the single-line version of this idea.",
+          "A `trend_pullback` TC-01 entry *is* a demand-zone retest — the pullback into prior support, triggered by the resumption through H rather than by the touch."]],
+      ],
+    },
+    {
+      key: "supply-zone", group: "levels", name: "Supply zone / overhead supply", bias: "bear",
+      summary: "Where a rally stalled and a markdown left: everyone who bought that pause is now trapped under water, and their selling waits at breakeven. Rallies back into the zone meet it.",
+      path: [[0, 70], [3, 76], [6, 83], [9, 89], [11, 93], [13, 91.8], [15, 93.4], [17, 92.2], [19, 93.2], [20, 90], [22, 85], [24, 79], [26, 75.5], [29, 79], [32, 83.5], [35, 87.5], [38, 90.5], [40, 92], [42, 88.5], [44, 84.5], [46, 81]],
+      nz: [[0, 1.1], [11, 0.6], [19, 0.6], [20, 1.1], [26, 1], [40, 0.7], [42, 1]],
+      vol: [[0, 1.2], [11, 1.5], [15, 0.8], [19, 0.7], [20, 1.7], [26, 2.1], [29, 0.9], [38, 0.7], [40, 0.6], [42, 1.8], [46, 1.3]], seed: 43,
+      zones: [{ y0: { low: [13, 19] }, y1: { high: [11, 19] }, from: 10, cls: "sup", label: "Supply zone — where the rally was absorbed" }],
+      marks: [{ i: 11, at: "high", text: "Rally stalls: sellers absorb", side: "above" },
+        { i: 26, at: "low", text: "Strong markdown — the proof", side: "below" },
+        { i: 40, at: "high", text: "The rally back into the zone is sold", side: "above" }],
+      sections: [
+        ["Why it is there", ["Buyers of the pause are **trapped**: the markdown put them under water, and 'get me out at breakeven' sell orders wait where they bought.",
+          "The same anchoring makes old swing highs and left-behind bases resistance — **overhead supply** in O'Neil's language. A stock at all-time highs has none, which is half the case for buying strength."]],
+        ["Reading a rally into supply", ["Weakening volume as it approaches, then a reversal bar inside the zone, is the classic rejection sequence.",
+          "A rally that pushes **through** on expanding volume consumed the supply — the zone's job is done and it flips role (see role reversal)."]],
+        ["In this app", ["Overhead supply is computed, not eyeballed: `core/context.py` builds `overhead_levels` from the swing highs above price (daily, weekly, monthly), and every trade plan records `nearest_overhead_above_entry`.",
+          "The `chart_pattern` strategy caps its target at the nearest overhead level at least 1 ATR above entry; `trend_pullback`'s own rule refuses an entry placed directly beneath overhead within 3%."]],
+      ],
+    },
+    {
+      key: "role-reversal", group: "levels", name: "Role reversal (polarity)", bias: "bull",
+      summary: "The level that capped price becomes the level that holds it: once resistance breaks, the sellers who defended it are done, the trapped shorts cover into dips, and breakeven buyers defend their entry.",
+      path: [[0, 80], [3, 85], [6, 89.6], [9, 86], [12, 89.8], [15, 85.5], [18, 89.7], [20, 87.5], [22, 90.5], [23, 93.5], [25, 96.5], [27, 94], [29, 91.5], [31, 90.4], [33, 93], [35, 97], [37, 100.5], [39, 103]],
+      nz: [[0, 1], [20, 0.8], [23, 1], [31, 0.6], [33, 1]],
+      vol: [[0, 1.1], [6, 1.2], [18, 0.9], [22, 1], [23, 2.2], [25, 1.5], [31, 0.6], [33, 1.6], [39, 1.3]], seed: 47,
+      lines: [{ y: { high: [5, 19] }, cls: "pivot", label: "Resistance → support", from: 4 },
+        { y: { low: [30, 32] }, cls: "stop", label: "Stop: under the reclaimed level", from: 29 }],
+      marks: [{ i: 6, at: "high", text: "Sold here…", side: "above" }, { i: 18, at: "high", text: "…and here", side: "above" },
+        { i: 23, at: "high", text: "Breakout", side: "above" }, { i: 31, at: "low", text: "Retest from above HOLDS", side: "below" }],
+      sections: [
+        ["Why it works", ["Three groups flip sides at the same price: breakout buyers defend their entry, shorts from the old resistance cover, and the sellers who made the level are out of stock."]],
+        ["The retest trade", ["A shallow, quiet pullback to the broken level that holds is the **second chance** at a breakout — often with a tighter stop than the breakout itself offered.",
+          "A close back **below** the level is the failure signal: the breakout found supply after all."]],
+        ["In this app", ["Darvas's 'boxes stack' is this: each box's broken top becomes the next box's floor (`FLAT`).",
+          "The `minervini` spec trades the mirror — its failed-breakout exit fires exactly when a reclaimed pivot is lost again within a few days."]],
+      ],
     },
   ];
   const BY = Object.fromEntries(P.map((p) => [p.key, p]));
@@ -443,6 +616,13 @@ const Learn = (() => {
         if (!thumb) g += `<text class="lp-bandl" x="${f(c0 + slot / 2)}" y="${T - 6}" text-anchor="middle">confirm</text>`;
       }
     }
+    // supply / demand zones: a translucent band between two price levels, from a bar to the right edge
+    for (const z of p.zones || []) {
+      const ya = Y(lvl(z.y0)), yb = Y(lvl(z.y1));
+      const x0 = X(z.from ?? 0) - slot / 2, x1 = X(z.to ?? n - 1) + slot / 2;
+      g += `<rect class="lp-zone ${z.cls}" x="${f(x0)}" y="${f(Math.min(ya, yb))}" width="${f(x1 - x0)}" height="${f(Math.abs(yb - ya))}" rx="3"/>`;
+      if (z.label && !thumb) g += `<text class="lp-zonel ${z.cls}" x="${f(x0 + 6)}" y="${f(Math.min(ya, yb) - 6)}">${esc(z.label)}</text>`;
+    }
     // lines: horizontal levels and two-point trend lines
     for (const ln of p.lines || []) {
       let x1, y1, x2, y2;
@@ -505,7 +685,7 @@ const Learn = (() => {
   }
 
   // the two families the menu switches between
-  const FAMILIES = { candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"] };
+  const FAMILIES = { candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops", "levels"] };
   const familyOf = (p) => (FAMILIES.charts.includes(p.group) ? "charts" : "candles");
   const groupsOf = (fam) => GROUPS.filter(([g]) => !fam || FAMILIES[fam].includes(g));
 

@@ -97,8 +97,11 @@ _COLS = ("id, targets, market, opts, requested_by, schedule_id, priority, status
          "pid, run_id, exit_code, cancel_requested, command, out_path, note")
 _SCOLS = "id, name, targets, market, opts, days, monthday, at_time, enabled, last_slot, created_at, tz"
 # Scheduled runs go ahead of on-demand work (a backtest queued by hand can take hours); the worker still
-# finishes whatever is running first — it never stops a job to make room.
+# finishes whatever is running first — it never stops a job to make room. Data-freshness asks from the
+# web app (a stale snapshot, setups behind the prices, a breadth top-up) sit between the two: ahead of
+# research batches, behind the schedules that refresh everything anyway.
 SCHEDULE_PRIORITY = 10
+DATA_PRIORITY = 5
 _ACTIVE = ("queued", "running")
 
 
@@ -224,6 +227,18 @@ def position(item_id: int) -> int | None:
         return 0
     ids = [x["id"] for x in it["queued"]]
     return ids.index(item_id) + 1 if item_id in ids else None
+
+
+def set_priority(item_id: int, priority: int) -> str:
+    """Re-rank a WAITING item (higher runs first; FIFO within a priority). A running item cannot be
+    moved — the worker never stops a job to make room — and a finished one has nowhere to go."""
+    it = get(item_id)
+    if not it:
+        return "unknown"
+    if it["status"] != "queued":
+        return it["status"]
+    _q("UPDATE job_queue SET priority=%s WHERE id=%s AND status='queued'", (priority, item_id), fetch=None)
+    return "queued"
 
 
 def cancel(item_id: int) -> str:

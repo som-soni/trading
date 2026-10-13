@@ -770,7 +770,7 @@ def _breadth_topup(market: str) -> bool:
             return False
         _breadth_tried[market] = last_price
         if jq.worker_status()["alive"]:
-            jq.enqueue(["breadth"], market, {}, requested_by="breadth page", skip_if_running=True)
+            jq.enqueue(["breadth"], market, {}, requested_by="breadth page", priority=jq.DATA_PRIORITY, skip_if_running=True)
         else:
             env = {**__import__("os").environ, "PYTHONPATH": str(paths.SCRIPTS_DIR)}
             _breadth_jobs[market] = subprocess.Popen([sys.executable, "-m", "jobs", "run", "breadth", "--market", market],
@@ -1441,6 +1441,45 @@ def _query(market: str, conditions: list, d=None, sort_by: str = "rs_rank", limi
             "stale_inputs": snapshot.stale_inputs(market, day)}
 
 
+_snap_jobs: dict[str, subprocess.Popen] = {}
+_snap_tried: dict[str, tuple] = {}   # market -> the stale signature a rebuild was last asked for
+
+
+def _snapshot_topup(market: str, stale: list) -> bool:
+    """Ask for a snapshot rebuild whenever its inputs moved (snapshot.stale_inputs — newer prices
+    included), so the screens follow the stored data instead of waiting for the next scheduled run.
+    Same shape as _breadth_topup: serve what is stored, queue the `screens` job (or run it directly
+    when no worker is alive), and return True while one is queued or running so the page can refresh
+    itself. A signature memo stops a finished run that could not resolve the staleness (e.g. a
+    partial price day) from being asked for again and again."""
+    if not stale:
+        _snap_tried.pop(market, None)
+        return False
+    jq = _jq()
+    from jobs.registry import PIPELINES
+    runs_screens = lambda targets: any(  # noqa: E731 — a target is the screens job, or a pipeline containing it
+        t == "screens" or "screens" in [j if isinstance(j, str) else j[0] for j in PIPELINES.get(t, {}).get("jobs", [])]
+        for t in targets)
+    busy = [x for x in [jq.items(0)["running"], *jq.items(0)["queued"]]
+            if x and runs_screens(x["targets"]) and x["market"] in (market, "all")]
+    if busy:
+        return True
+    job = _snap_jobs.get(market)
+    if job and job.poll() is None:
+        return True
+    sig = tuple((s["key"], s["changed_at"]) for s in stale)
+    if _snap_tried.get(market) == sig:
+        return False
+    _snap_tried[market] = sig
+    if jq.worker_status()["alive"]:
+        jq.enqueue(["screens"], market, {}, requested_by="web: stale screen snapshot", priority=jq.DATA_PRIORITY, skip_if_running=True)
+    else:
+        env = {**__import__("os").environ, "PYTHONPATH": str(paths.SCRIPTS_DIR)}
+        _snap_jobs[market] = subprocess.Popen([sys.executable, "-m", "jobs", "run", "screens", "--market", market],
+                                              cwd=str(paths.SCRIPTS_DIR), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return True
+
+
 @app.post("/api/screens/rebuild")
 def screens_rebuild(market: str = "us"):
     """Ask for a fresh snapshot, because a source it copies from has moved (snapshot.stale_inputs).
@@ -1449,7 +1488,7 @@ def screens_rebuild(market: str = "us"):
     logged and shows on the Data status page. A rebuild is ~48s, far too long to do in a
     request, and `skip_if_running` means several tabs noticing at once still queue one job.
     """
-    it = _jq().enqueue(["screens"], market, {}, requested_by="web: stale screen snapshot", skip_if_running=True)
+    it = _jq().enqueue(["screens"], market, {}, requested_by="web: stale screen snapshot", priority=_jq().DATA_PRIORITY, skip_if_running=True)
     return {"queued": it, "duplicate": bool(it.get("duplicate"))}
 
 
@@ -1473,7 +1512,8 @@ def screens_api(market: str = "us"):
               "conditions": v["conditions"]} for k, v in definitions.builtin().items()]
     items += [{"key": k, "builtin": True, "preset": True, "name": v["name"], "description": v["description"], "used_by": [],
                "conditions": v["conditions"]} for k, v in definitions.presets().items()]
-    items += [{"key": f"u{u['id']}", "builtin": False, "name": u["name"], "description": u["description"], "conditions": u["conditions"], "used_by": []}
+    items += [{"key": f"u{u['id']}", "id": u["id"], "builtin": False, "name": u["name"], "description": u["description"],
+               "conditions": u["conditions"], "sort_by": u["sort_by"], "columns": u["columns"], "used_by": []}
               for u in definitions.list_user()]
     if df is None:
         return {"market": market, "date": None, "screens": items, "command": f"python -m jobs run screens --market {market}"}
@@ -1489,14 +1529,26 @@ def screens_api(market: str = "us"):
             it["top"] = [{"symbol": s_, "name": _name(market, s_), "rs": None if r != r else int(r)} for s_, r in zip(top["symbol"], top["rs_rank"])]
         except ValueError as exc:
             it["error"] = str(exc)
+    stale = snapshot.stale_inputs(market)
     return {"market": market, "date": df.attrs["date"].isoformat(), "tradable": int(df["tradable"].sum()), "universe": len(df),
-            "screens": items, "stale_inputs": snapshot.stale_inputs(market)}
+            "screens": items, "stale_inputs": stale, "updating": _snapshot_topup(market, stale)}
 
 
 @app.get("/api/screens/{key}")
 def screen_api(key: str, market: str = "us", date: str | None = None):
     d = _screen_def(key)
-    return {"def": d, **_query(market, d["conditions"], date, d.get("sort_by") or "rs_rank")}
+    out = {"def": d, **_query(market, d["conditions"], date, d.get("sort_by") or "rs_rank")}
+    if date is None and not out.get("empty"):   # a past session is a record; only "latest" can be stale
+        from ..screens import snapshot
+        out["stale_inputs"] = snapshot.stale_inputs(market)
+        out["updating"] = _snapshot_topup(market, out["stale_inputs"])
+        # provenance for the page's "offline data" label: when the screens job last derived the fields
+        import datetime as _dt
+        ds = snapshot.dates(market)
+        p = snapshot._path(market, ds[-1]) if ds else None
+        if p is not None and p.exists():
+            out["built_at"] = _dt.datetime.fromtimestamp(p.stat().st_mtime).astimezone().isoformat(timespec="minutes")
+    return out
 
 
 def _study(market: str, conditions: list) -> dict:
@@ -1556,6 +1608,46 @@ def _class_cache_load(market: str):
     return hit[1], hit[2]
 
 
+_setups_tried: dict[str, str] = {}   # market -> the prices-finished timestamp a re-run was last asked for
+
+
+def _setups_topup(market: str, runs: list) -> dict | None:
+    """Today's setups follow the stored data the same way the screens do: when the `prices` job
+    finished AFTER the oldest of the strategies' latest runs, those decisions were made on older
+    bars — ask the queue for a fresh `strategies` pipeline (all strategies), keep serving what is
+    stored, and let the page refresh itself. Returns None when current, else {"updating": bool}."""
+    import datetime as dt
+    if not runs:
+        return None   # never run at all: starting a multi-minute pipeline on a page visit would surprise
+    try:
+        oldest = min(dt.datetime.strptime(str(r["run"])[:17], "%Y-%m-%d_%H%M%S") for r in runs)
+    except ValueError:
+        return None
+    r = q("SELECT max(finished_at) FROM job_steps WHERE step='prices' AND market=%s AND status='ok'", (market,))
+    pts = r[0][0] if r else None
+    if pts is None or pts.astimezone().replace(tzinfo=None) <= oldest:
+        return None
+    jq = _jq()
+    from jobs.registry import PIPELINES
+    runs_strats = lambda targets: any(  # noqa: E731 — the strategies job, or a pipeline containing it
+        t == "strategies" or "strategies" in [j if isinstance(j, str) else j[0] for j in PIPELINES.get(t, {}).get("jobs", [])]
+        for t in targets)
+    busy = [x for x in [jq.items(0)["running"], *jq.items(0)["queued"]] if x and runs_strats(x["targets"]) and x["market"] in (market, "all")]
+    if busy:
+        return {"updating": True}
+    sig = pts.isoformat()
+    if _setups_tried.get(market) == sig:   # a finished re-run that could not help: don't loop
+        return {"updating": False}
+    _setups_tried[market] = sig
+    if jq.worker_status()["alive"]:
+        jq.enqueue(["strategies"], market, {"strategies": ["all"]}, requested_by="web: setups behind prices", priority=jq.DATA_PRIORITY, skip_if_running=True)
+    else:
+        env = {**__import__("os").environ, "PYTHONPATH": str(paths.SCRIPTS_DIR)}
+        subprocess.Popen([sys.executable, "-m", "jobs", "run", "strategies", "--market", market, "--strategies", "all"],
+                         cwd=str(paths.SCRIPTS_DIR), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return {"updating": True}
+
+
 @app.get("/api/setups")
 def setups_api(market: str = "us"):
     """Today's setups: every strategy's tradeable and on-watch names from its latest run."""
@@ -1576,7 +1668,7 @@ def setups_api(market: str = "us"):
                         "price": fr.get("price"), "entry": fr.get("entry"), "stop": fr.get("stop"), "risk_pct": fr.get("risk_pct"),
                         "target_r": fr.get("target_r"), "quality": fr.get("setup_quality"), "sector": fr.get("sector"),
                         "wait_for": fr.get("wait_for"), "run": run, **P.get(sym, {})})
-    return {"market": market, "runs": runs, "rows": out}
+    return {"market": market, "runs": runs, "rows": out, "behind": _setups_topup(market, runs)}
 
 
 # ------------------------------------------------------------- run jobs from the web app

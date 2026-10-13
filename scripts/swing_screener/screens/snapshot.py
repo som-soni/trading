@@ -319,6 +319,20 @@ def stale_inputs(market: str, d=None) -> list[dict]:
         return []
     built = dt.datetime.fromtimestamp(pth.stat().st_mtime).astimezone()
     out = []
+    # newer prices make the WHOLE snapshot stale, not just copied fields: every indicator,
+    # return and RS rank is computed from the bars, so a snapshot behind the prices table is
+    # a screen answering yesterday's question with yesterday's data
+    try:
+        with db.get_connection().cursor() as cur:
+            cur.execute("SELECT max(date) FROM prices WHERE market=%s", (market,))
+            last_price = cur.fetchone()[0]
+        if last_price is not None and last_price > d:
+            out.append({"key": "prices", "label": f"Prices (newer trading day, {last_price.isoformat()})",
+                        "fields": ["every price-derived field"],
+                        "changed_at": dt.datetime.combine(last_price, dt.time(23, 59)).astimezone().isoformat(),
+                        "built_at": built.isoformat()})
+    except Exception:  # noqa: BLE001 — a prices table we cannot read is not staleness
+        pass
     for key, label, fields, how in PRESENT_INPUTS:
         when = _source_changed_at(market, how)
         if when is not None and when > built:
