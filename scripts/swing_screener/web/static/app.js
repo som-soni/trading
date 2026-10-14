@@ -513,8 +513,13 @@ async function chartPage(alive, market, symbol, tf) {
       const marks = [];
       t.rows.forEach((r) => {
         const a = snap(r[c("entry_date")]), b = snap(r[c("exit_date")]), pnl = r[c("pnl")], rm = r[c("r_multiple")];
-        if (a) marks.push({ time: a, position: "belowBar", shape: "arrowUp", color: "#2196f3", text: "Buy" });
-        if (b) marks.push({ time: b, position: "aboveBar", shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", text: `${r[c("exit_reason")]} ${rm > 0 ? "+" : ""}${rm}R` });
+        const ep = +r[c("entry_price")], xp = +r[c("exit_price")];
+        // pinned to the FILL price, not under the bar's low: a marker below the candle reads as a
+        // fill below the trigger line when the trade actually bought through it
+        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", text: `Buy ${fmt(ep)}`,
+          ...(ep > 0 ? { position: "atPriceBottom", price: ep } : { position: "belowBar" }) });
+        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", text: `${r[c("exit_reason")]} ${rm > 0 ? "+" : ""}${rm}R`,
+          ...(xp > 0 ? { position: "atPriceTop", price: xp } : { position: "aboveBar" }) });
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
       LC.createSeriesMarkers(main, marks);

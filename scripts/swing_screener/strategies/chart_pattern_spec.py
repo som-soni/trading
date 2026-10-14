@@ -72,13 +72,18 @@ W_UNDERCUT_MAX = 5.0     # the second low sits 0 to this % under the first
 W_MIN_DEPTH, W_MAX_DEPTH = 20.0, 35.0   # OW-01: the high before B to the lower low, %
 W_MIN_DAYS = 35          # OW-02: that high to the second low, about 7 weeks
 TRIPLE_MAX_DRIFT = 1.5   # TL-LV: a triple's lows may not step one way by more than this %
+CUP_RIGHT_LEFT_MIN = 0.5  # CH-06: a cup's recovery (B to C) takes at least this × its decline (A to B)
 PARAMS = ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
     tol_pct=TOL_PCT, tol_atr_mult=TOL_ATR_MULT, bo_buffer=BO_BUFFER / 100, bo_vol=BO_VOL,
     max_wait=MAX_WAIT, fail_days=FAIL_DAYS, horizon=HORIZON,
     oneil_undercut=(0.0, W_UNDERCUT_MAX), oneil_depth=(W_MIN_DEPTH, W_MAX_DEPTH),
-    oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT,
+    oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT, right_left_min=CUP_RIGHT_LEFT_MIN,
 )
+# bars after the breakout bar on which a pattern is still an entry. The detector keeps a confirmed
+# pattern "live" for HORIZON bars to record its outcome; that is NOT an entry window — buying on
+# any of those bars buys pullbacks into an old pivot and re-buys after a stop.
+BREAKOUT_MAX_AGE = 0
 
 # ---- this strategy's own trade rules (the spec stops at the levels)
 MAX_CHASE_PCT = 4.0      # S5: how far past the trigger price may already be
@@ -144,15 +149,39 @@ def _of_kind(daily, kinds: tuple[str, ...]) -> dict:
 
 
 def _live(res: dict) -> bool:
-    """Complete or freshly confirmed — not an old breakout still on the books."""
+    """Complete, or confirmed within the outcome horizon — a topping pattern vetoes for that long."""
     return bool(res.get("ok") and res.get("metrics", {}).get("is_live"))
+
+
+def _tradeable(res: dict) -> bool:
+    """A bullish pattern worth acting on: COMPLETE (a buy-stop can rest at its trigger) or
+    breaking out on this very bar — never an old breakout still inside its outcome horizon."""
+    if not res.get("ok"):
+        return False
+    if res.get("state") == ps.COMPLETE:
+        return bool(res.get("metrics", {}).get("is_live"))
+    age = res.get("metrics", {}).get("bars_since_breakout")
+    return res.get("state") == ps.CONFIRMED and age is not None and age <= BREAKOUT_MAX_AGE
 
 
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.4"
+    version = "1.5"
     changelog = (
+        ("1.5", "2026-10-13",
+         "Entries only on the breakout bar, and one entry per pattern. The detector keeps a "
+         "confirmed pattern live for {HORIZON} bars to record its outcome, and that window was "
+         "also the entry window: every bar up to {HORIZON} days after a breakout re-fired the "
+         "signal, so the strategy bought pullbacks into an old pivot and re-bought after a stop. "
+         "In the v1.1 India run, 120 of 600 trades (20%) re-used a pattern another trade had "
+         "already traded and 82 (13%) entered more than 5% above the trigger; AAPL bought the "
+         "same Dec 2025 cup on 10 Jun 2026 and again on 29 Jun, both well after its breakout. "
+         "Gate S1 now admits a CONFIRMED pattern only on its breakout bar ({BREAKOUT_MAX_AGE} "
+         "bars after), and each pattern carries its identity (code + first key point) so the "
+         "simulator never enters it twice (EN-04). Cups must also recover in at least "
+         "{CUP_RIGHT_LEFT_MIN}x the time they took to fall (CH-06): AAPL's cup fell for 30 "
+         "bars and recovered in 13, a V the spec's 25%-of-the-cup floor let through."),
         ("1.4", "2026-10-12",
          "A triple bottom's lows must be LEVEL, not stepping (TL-LV): when each low is higher "
          "than the last, or each lower, the first-to-third drift may not exceed "
@@ -227,10 +256,11 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 320
 
     status = (
-        "NOT YET RE-TESTED AT v1.4. v1.2 stopped stale cups-without-handle from trading, "
+        "NOT YET RE-TESTED AT v1.5. v1.2 stopped stale cups-without-handle from trading, "
         "v1.3 moved two buy rules to O'Neil's (cup without handle at the old high, DBOT as "
-        "his W) and v1.4 requires a triple bottom's lows to be level; the figures below are "
-        "v1.0 and are dominated by stale cups. "
+        "his W), v1.4 requires a triple bottom's lows to be level and v1.5 buys only on the "
+        "breakout bar, once per pattern; the figures below are v1.0, dominated by stale cups "
+        "and inflated by late and repeat entries. "
         "Backtested 2026-10-09 and it loses, by less than its sibling: -0.93% "
         "CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol "
         "sample), against `chart_pattern`'s -5.60% and -0.309R on the same "
@@ -268,10 +298,13 @@ class ChartPatternSpecStrategy(Strategy):
         "match on the signal bar; it is the trade's `setup`, named in the "
         "backtest trades panel, and the chart draws that pattern — its swing "
         "points, fitted lines, trigger, invalidation and measured target.",
-        "**Gates S1-S5** require a live bullish pattern, no CONFIRMED topping "
-        "pattern on the same chart, no earnings inside {EARNINGS_DAYS} trading "
-        "days, ATR under {MAX_ATR_PCT}% of price, and price no more than "
-        "{MAX_CHASE_PCT}% past the trigger.",
+        "**Gates S1-S5** require a bullish pattern that is complete or breaking "
+        "out on this bar, no CONFIRMED topping pattern on the same chart, no "
+        "earnings inside {EARNINGS_DAYS} trading days, ATR under {MAX_ATR_PCT}% "
+        "of price, and price no more than {MAX_CHASE_PCT}% past the trigger.",
+        "**One entry per pattern, on its breakout bar.** A pattern that broke out "
+        "earlier is history even while its outcome is still being recorded, and a "
+        "pattern already traded is never bought again — stopped out or not.",
         "**Patterns expire.** A double, triple, head and shoulders or cup without a handle "
         "completes once and is void if it does not break out within {MAX_WAIT} bars (BO-04); "
         "a cup with a handle is bounded by its handle's 5-25 days instead.",
@@ -283,6 +316,11 @@ class ChartPatternSpecStrategy(Strategy):
         "at WATCH.",
     )
     caveats = (
+        "**Every result before v1.5 includes late and repeat entries.** A pattern "
+        "stayed an entry signal for {HORIZON} bars after its breakout: in the v1.1 "
+        "India run 20% of trades re-used a pattern another trade had already traded "
+        "and 13% entered more than 5% above the trigger. Those runs measure that "
+        "behaviour as much as the patterns.",
         "**73% of its trades were one pattern — before v1.2.** Until v1.2 a cup without a "
         "handle never expired, so a years-old cup traded every time price revisited its rim; "
         "much of the count below is that bug. CUPNH took 185 of 253; DBOT "
@@ -333,9 +371,11 @@ class ChartPatternSpecStrategy(Strategy):
         "columns show the rest.",
     )
     gate_docs = {
-        "S1": "A bullish pattern must be COMPLETE or newly CONFIRMED on this "
-              "bar. A pattern that broke out more than its outcome horizon ago, "
-              "or that BO-03/BO-04 voided, is history and does not qualify.",
+        "S1": "A bullish pattern must be COMPLETE (its buy-stop can rest at the "
+              "trigger) or break out ON THIS BAR — BO-01 and BO-02 met today, at "
+              "most {BREAKOUT_MAX_AGE} bars after the breakout bar. A pattern that "
+              "broke out earlier is history even while its {HORIZON}-bar outcome is "
+              "still being recorded, and one that BO-03/BO-04 voided never qualifies.",
         "S2": "No CONFIRMED topping pattern (double top, head and shoulders "
               "top, rising wedge, descending triangle) on the same chart. A "
               "long bought inside a confirmed top is the trade this screener "
@@ -363,9 +403,10 @@ class ChartPatternSpecStrategy(Strategy):
     }
     setup_docs = {
         CUP: "§4 cup with handle: a rounded correction of "
-             "12-33% recovering to its left lip, then a 5-25 day handle "
-             "drifting down in the upper half of the cup on volume below 0.8x "
-             "its 50-day average. T is the handle's high.",
+             "12-33% recovering to its left lip — the recovery taking at least "
+             "{CUP_RIGHT_LEFT_MIN}x as long as the decline, so a fast V does not "
+             "count — then a 5-25 day handle drifting down in the upper half of "
+             "the cup on volume below 0.8x its 50-day average. T is the handle's high.",
         CUPNH: "§4 the same cup read before a handle exists, with price still "
                "at the rim. T is the OLD HIGH, the higher of the two lips -- "
                "O'Neil's buy point -- since the right lip may sit up to 15% "
@@ -424,6 +465,10 @@ class ChartPatternSpecStrategy(Strategy):
         "**Rejected as a trade** when the stop is more than {MAX_RISK_PCT}% "
         "below the entry or the measured move projects under {MIN_R}R; the "
         "row is kept as WATCH with the reason.",
+        "**Once per pattern, on its breakout bar.** The signal fires only on the "
+        "bar the breakout is confirmed; in a backtest each pattern carries its "
+        "identity (code and first key point) and the simulator skips a pattern "
+        "already entered (EN-04), so a stop-out is final for that pattern.",
     )
     exit_rules = (
         "Live: the plan's fixed bracket — the stop under the pattern's low, "
@@ -452,6 +497,12 @@ class ChartPatternSpecStrategy(Strategy):
          "({BO_BUFFER}%)."),
         ("Breakout volume", "BO_VOL",
          "BO-02: and do it on {BO_VOL}x the 50-day average volume."),
+        ("Breakout age", "BREAKOUT_MAX_AGE",
+         "Bars after its breakout bar on which a confirmed pattern is still an "
+         "entry ({BREAKOUT_MAX_AGE}: the breakout bar only)."),
+        ("Cup symmetry", "CUP_RIGHT_LEFT_MIN",
+         "CH-06, beyond the spec: a cup's recovery (B to C) must take at least "
+         "{CUP_RIGHT_LEFT_MIN}x as many bars as its decline (A to B)."),
         ("Actionable band", "MAX_CHASE_PCT",
          "Gate S5 wants the close between {MAX_BELOW_TRIGGER_PCT}% below the "
          "trigger and {MAX_CHASE_PCT}% above it."),
@@ -501,7 +552,7 @@ class ChartPatternSpecStrategy(Strategy):
                 res = detect(d)
             except (IndexError, ValueError, ZeroDivisionError, KeyError):
                 continue
-            live = _live(res)
+            live = _tradeable(res)
             result.setups[code] = live
             if live and (best is None or _priority(code) < _priority(best[0])):
                 best = (code, res)
@@ -532,6 +583,9 @@ class ChartPatternSpecStrategy(Strategy):
                 "pattern_name": PATTERN_NAMES.get(code, code),
                 "pattern_note": _note(res),
                 "pattern_geometry": _geometry(code, res),
+                "bars_since_breakout": res["metrics"].get("bars_since_breakout"),
+                # §11's identity, so the simulator enters each pattern once (EN-04)
+                "pattern_anchor": str(ps.anchor_of(res).date()) if ps.anchor_of(res) is not None else None,
             })
         if top_name is not None:
             ctx.extras["topping_pattern"] = top_name
@@ -627,8 +681,15 @@ class ChartPatternSpecStrategy(Strategy):
     # ---------- entry ----------
 
     def entry_signal_fired(self, ctx: StockContext, result: StrategyResult) -> bool:
-        """BO-01 and BO-02, which the detector already evaluated at day t."""
-        return ctx.extras.get("pattern_state") == ps.CONFIRMED
+        """BO-01 and BO-02, met ON day t — not a breakout from earlier in the outcome horizon."""
+        age = ctx.extras.get("bars_since_breakout")
+        return ctx.extras.get("pattern_state") == ps.CONFIRMED and age is not None and age <= BREAKOUT_MAX_AGE
+
+    def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
+        """One entry per pattern (EN-04): a pattern already traded — stopped out or not — is not
+        bought again, even if it re-fires (a resting buy-stop on a COMPLETE pattern can)."""
+        anchor = ctx.extras.get("pattern_anchor")
+        return {"base_id": f"{ctx.extras.get('pattern')}:{anchor}"} if anchor else {}
 
     def build_plans(
         self, ctx: StockContext, result: StrategyResult, cfg: MarketConfig

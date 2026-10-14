@@ -31,11 +31,13 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "80a56063",
+    "fingerprint": "27607b13",
     "params": {
       "ATR_MULT": 1.5,
       "BO_BUFFER": 0.5,
       "BO_VOL": 1.4,
+      "BREAKOUT_MAX_AGE": 0,
+      "CUP_RIGHT_LEFT_MIN": 0.5,
       "EARNINGS_DAYS": 10,
       "FAIL_DAYS": 10,
       "HORIZON": 60,
@@ -89,6 +91,7 @@
       "PARAMS.prior_window": 120,
       "PARAMS.rc_min_touches": 4,
       "PARAMS.rc_min_touches_side": 2,
+      "PARAMS.right_left_min": 0.5,
       "PARAMS.round_frac": 0.15,
       "PARAMS.round_min_days": 5,
       "PARAMS.side_frac": 0.25,
@@ -136,7 +139,7 @@
         "XS3"
       ]
     },
-    "version": "1.4"
+    "version": "1.5"
   },
   "donchian": {
     "family": "donchian",

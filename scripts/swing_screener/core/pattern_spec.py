@@ -116,6 +116,7 @@ class PatternParams:
     round_frac: float = 0.15              # CH-05
     round_min_days: int = 5               # CH-05
     side_frac: float = 0.25               # CH-06
+    right_left_min: float = 0.0           # CH-06: right side ≥ this × left side (0 = spec only)
     handle_half: float = 0.5              # CH-07 (O'Neil)
     handle_depth: tuple[float, float] = (3.0, 12.0)  # CH-08 (O'Neil)
     handle_days: tuple[int, int] = (5, 25)           # CH-09 (O'Neil)
@@ -639,8 +640,13 @@ def _cup_with_lip(base: dict, c_swing: Swing, d: pd.DataFrame, high, low, close,
         out["fail"] = "CH-05"
         return out
 
-    # CH-06: balanced sides
-    if (b_pos - a.pos) < p.side_frac * cup_len or (c_pos - b_pos) < p.side_frac * cup_len:
+    # CH-06: balanced sides. The spec's 25%-of-the-cup floor admits a lopsided V
+    # (AAPL Dec 2025: 30 bars down, 13 up = 30% of a 44-bar cup); `right_left_min`
+    # additionally makes the recovery take a fair share of the decline's time —
+    # a fast V-shaped recovery has not shown the sellers to be exhausted.
+    left, right = b_pos - a.pos, c_pos - b_pos
+    out["metrics"]["right_to_left"] = round(right / left, 2) if left else None
+    if left < p.side_frac * cup_len or right < p.side_frac * cup_len or right < p.right_left_min * left:
         out["fail"] = "CH-06"
         return out
 
@@ -750,14 +756,17 @@ def detect_cup(daily: pd.DataFrame, p: PatternParams = PatternParams(),
 # --------------------------------------------- §3 state, without §11
 
 def state_at(daily: pd.DataFrame, lv: Levels, completed_pos: int,
-             p: PatternParams, t: float) -> tuple[str, int | None]:
-    """Walk §3.2 forward from completion to day t.
+             p: PatternParams, t: float) -> tuple[str, int | None, str | None]:
+    """Walk §3.2 forward from completion to day t: (state, breakout bar, the rule that voided it).
 
     §11's tracker would do this incrementally; run over a frame it gives the
     same answer and makes BO-04 usable without a store. That matters more
     than it sounds: without expiry, a detector evaluated on one bar happily
     reports a double bottom whose second low printed three years ago as
     "complete, waiting for a breakout".
+
+    Both BO-03 and BO-04 end in VOID, so the rule is returned with it: a
+    pattern that simply ran out of time is not one whose low was broken.
     """
     close = daily["close"].to_numpy(float)
     volume = daily["volume"].to_numpy(float)
@@ -766,15 +775,15 @@ def state_at(daily: pd.DataFrame, lv: Levels, completed_pos: int,
     for i in range(completed_pos, t_pos + 1):
         c = float(close[i])
         if voided(c, lv):                                          # BO-03
-            return VOID, None
+            return VOID, None, "BO-03"
         if broke_out(c, rv(volume, i, v50), lv, p):                # BO-01, BO-02
             for j in range(i + 1, t_pos + 1):                      # BO-05
                 if broke_back(close, i, j, lv, t, p):
-                    return FAILED, i
-            return CONFIRMED, i
+                    return FAILED, i, None
+            return CONFIRMED, i, None
         if expired(i - completed_pos, p):                          # BO-04
-            return VOID, None
-    return COMPLETE, None
+            return VOID, None, "BO-04"
+    return COMPLETE, None, None
 
 
 def _runs(points: list[Swing], n: int, first: str) -> list[list[Swing]]:
@@ -806,7 +815,7 @@ def _finish(out: dict, daily: pd.DataFrame, lv: Levels, last_pos: int,
     out["levels"] = lv
     completed = min(last_pos + k, len(daily) - 1)
     out["metrics"]["completed_pos"] = completed
-    out["state"], out["breakout_pos"] = state_at(daily, lv, completed, p, t_frac)
+    out["state"], out["breakout_pos"], void_rule = state_at(daily, lv, completed, p, t_frac)
     # §11 records outcomes "until the horizon ends", so a confirmed pattern
     # older than that has finished its life: it is history, not a signal. The
     # spec names no terminal state for it, so the age is exposed rather than
@@ -819,7 +828,7 @@ def _finish(out: dict, daily: pd.DataFrame, lv: Levels, last_pos: int,
         out["breakout_pos"] is not None and t_pos - out["breakout_pos"] <= p.horizon)
     out["ok"] = out["state"] in (COMPLETE, CONFIRMED)
     if not out["ok"]:
-        out["fail"] = "BO-03" if out["state"] == VOID else "BO-05"
+        out["fail"] = void_rule if out["state"] == VOID else "BO-05"
     return out
 
 
