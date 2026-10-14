@@ -5,10 +5,41 @@ const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
-const api = async (url, init) => {
+const _fetchJson = async (url, init) => {
   const r = await fetch(url, init);
   if (!r.ok) throw new Error(`${r.status} ${(await r.json().catch(() => ({}))).detail || r.statusText}`);
-  return r.json();
+  return r.text();
+};
+/* Page data is kept for a while (stale-while-revalidate): coming back to a tab draws it at once from the
+ * last copy, while a fresh copy loads behind it; if that differs, the page redraws in place (same URL, so
+ * the scroll is kept) — unless you are typing in a field. Live endpoints (status, queue, the wait poll,
+ * notes, schedules, search) are never cached, and any write clears the cache, so an edit is never hidden
+ * behind an older copy. */
+const API_CACHE = new Map();                 // url -> {t: ms, text}
+const API_CACHE_MAX_MS = 10 * 60e3, API_REVALIDATE_AFTER_MS = 15e3;
+const CACHEABLE = /^\/api\/(postmarket|breadth|sectors|movers|screens|setups|quality|strategies|company|fundamentals|news|reports|prices|vcp|trade|watchlists)\b/;
+const _revalidating = new Set();
+const api = async (url, init) => {
+  const method = (init?.method || "GET").toUpperCase();
+  if (method !== "GET") { const text = await _fetchJson(url, init); API_CACHE.clear(); return JSON.parse(text); }
+  if (!CACHEABLE.test(url)) return JSON.parse(await _fetchJson(url, init));
+  const hit = API_CACHE.get(url), now = Date.now();
+  if (hit && now - hit.t < API_CACHE_MAX_MS) {
+    if (now - hit.t > API_REVALIDATE_AFTER_MS && !_revalidating.has(url)) {
+      _revalidating.add(url);
+      const hash = location.hash;
+      _fetchJson(url, init).then((text) => {
+        const changed = text !== hit.text;
+        API_CACHE.set(url, { t: Date.now(), text });
+        const typing = document.activeElement?.closest?.("input, textarea, select, [contenteditable]");
+        if (changed && location.hash === hash && !typing) route();
+      }).catch(() => {}).finally(() => _revalidating.delete(url));
+    }
+    return JSON.parse(hit.text);
+  }
+  const text = await _fetchJson(url, init);
+  API_CACHE.set(url, { t: Date.now(), text });
+  return JSON.parse(text);
 };
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const el = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
@@ -36,6 +67,35 @@ const signed = (v, d = 2) => (v > 0 ? "+" : "") + v.toFixed(d);
 /** status → badge variant. Five variants only (style.css): positive (trade / ok / leading), warning (watch /
  *  behind / weakening), negative (avoid / failed / lagging), info (running / improving), neutral (the rest). */
 const decisionClass = (d) => /^TRADE/i.test(d) ? "trade" : /^WATCH/i.test(d) ? "watch" : /^AVOID/i.test(d) ? "avoid" : "neutral";
+/** what each decision state means — shown on hover wherever a decision tag appears */
+const DECISION_HELP = [
+  [/^TRADE\W*HIGH/i, "TRADE — HIGH CONFIDENCE: every gate passed and the entry signal has already fired. Take the trade at the plan's entry, with its stop."],
+  [/^TRADE ON TRIGGER/i, "TRADE ON TRIGGER: the setup is valid but has not fired yet. Place the order at the entry price; it only fills if price gets there."],
+  [/^WATCH/i, "WATCH — WAIT: a setup is forming or a watch flag caps it (extended, earnings near, weak volume…). Keep it on the list; do not buy yet."],
+  [/^AVOID/i, "AVOID: a hard gate failed (trend, liquidity, risk too wide…). Not a trade for this strategy today."],
+  [/^NO SETUP/i, "NO SETUP: the stock passed the screen but shows none of this strategy's setups today."],
+];
+const decisionHelp = (d) => (DECISION_HELP.find(([re]) => re.test(String(d || ""))) || [null, ""])[1];
+const decisionTag = (d) => `<span class="tag ${decisionClass(d)}" title="${esc(decisionHelp(d))}">${esc(d)}</span>`;
+/** "TC-01 / A (Plan A (pullback))" -> "TC-01 · Plan A pullback": the setup code, then the plan in plain words
+ *  (the stored string keeps the old nested form; the full text stays in the tooltip) */
+function setupFmt(s) {
+  const m = String(s ?? "").match(/^(\S+) \/ (\S+) \((.*)\)$/);
+  if (!m) return String(s ?? "");
+  const [, code, plan, reason] = m;
+  const why = reason.replace(/\(([^()]*)\)/g, "$1").replace(new RegExp(`^${code.replace(/[-.]/g, "\\$&")}[:\\s]+`), "").trim();
+  if (!/^[A-Z]$/.test(plan) || new RegExp(`\\bplan ${plan}\\b`, "i").test(why)) return why ? `${code} · ${why}` : code;
+  return `${code} · Plan ${plan}${why ? " — " + why : ""}`;
+}
+/** header tooltips: what a column means, where its name alone does not say */
+const COL_HELP = {
+  group_rs: "Group RS: the RS rating (1–99) of the stock's peer group — its sub-industry, else its industry group — against every other group. 80+ leading, under 50 lagging.",
+  peer_rs: "Group RS: the RS rating (1–99) of the stock's peer group — its sub-industry, else its industry group — against every other group. 80+ leading, under 50 lagging.",
+  peer_rank: "The stock's place among its peer group's tradable stocks by RS rank (1 = strongest).",
+  rs_rank: "RS rank: the stock's relative strength (1–99) against every stock in the market — 40% the last quarter, 20% each of the three before.",
+  decision: "The strategy's verdict today. Hover a decision for what it means.",
+  setup: "The setup code and the entry plan it produced.", strategy_setup: "The setup code and the entry plan it produced.",
+};
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 /** "2026-10-03_171703" / "2026-10-03" / ISO timestamp -> "3 Oct 2026 · 17:17" */
 function prettyDate(s) {
@@ -86,7 +146,9 @@ function dataTable(host, columns, rows, opts = {}) {
   let sortCol = opts.sort ? columns.indexOf(opts.sort[0]) : -1, sortDir = opts.sort ? opts.sort[1] : 1;
   let filter = "", limit = opts.limit || 300, visible = [];
   host.innerHTML = `<div class="tbar"><label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
-      <input placeholder="Filter rows" spellcheck="false"></label><span class="muted count"></span><span class="spacer"></span>
+      <input placeholder="Filter rows" spellcheck="false"></label><span class="muted count"></span>
+      ${opts.rowClick && opts.rowHint !== false ? `<span class="muted small rowhint">${esc(opts.rowHint || "Click a row to open its chart — ↑ / ↓ there step through this list")}</span>` : ""}<span class="spacer"></span>
+      <span class="hscroll" hidden><button class="sm" data-dir="-1" title="Scroll to the columns on the left">‹ <span></span></button><button class="sm" data-dir="1" title="Scroll to the columns on the right"><span></span> ›</button></span>
       <span class="menu"><button class="sm colsbtn" title="Choose which columns to show">Columns</button><div class="menu-pop cols-pop" hidden></div></span>
       <button class="sm csv" title="Download the rows shown as CSV">Export CSV</button></div>
     <div class="tablefade"><div class="tablewrap"><table class="data"><thead></thead><tbody></tbody></table></div></div>
@@ -101,13 +163,28 @@ function dataTable(host, columns, rows, opts = {}) {
     fade.classList.toggle("pin2", nameCol);
     if (nameCol) { const th = thead.querySelector("th"); if (th) fade.style.setProperty("--c1w", th.getBoundingClientRect().width + "px"); }
   };
-  // fade the edge that has more columns behind it
+  // fade the edge that has more columns behind it, and say how many are off-screen on each side: the native
+  // scrollbar sits at the bottom of a long table and (on macOS) only shows while scrolling, so it is no hint
+  const hs = host.querySelector(".hscroll"), [hsL, hsR] = hs.querySelectorAll("button");
   const edges = () => {
-    fade.classList.toggle("more-r", wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 2);
-    fade.classList.toggle("more-l", wrap.scrollLeft > 2);
+    const r = wrap.scrollLeft + wrap.clientWidth < wrap.scrollWidth - 2, l = wrap.scrollLeft > 2;
+    fade.classList.toggle("more-r", r);
+    fade.classList.toggle("more-l", l);
+    hs.hidden = !(r || l);
+    if (hs.hidden) return;
+    const box = wrap.getBoundingClientRect(), ths = [...thead.querySelectorAll("th")];
+    const pinned = parseFloat(getComputedStyle(fade).getPropertyValue("--c1w")) || (ths[0]?.getBoundingClientRect().width || 0);
+    const offR = ths.filter((th) => th.getBoundingClientRect().right > box.right + 2).length;
+    const offL = ths.slice(1).filter((th) => th.getBoundingClientRect().left < box.left + pinned - 2).length;
+    hsR.disabled = !r; hsL.disabled = !l;
+    hsR.querySelector("span").textContent = offR ? `${offR} more` : "";
+    hsL.querySelector("span").textContent = offL ? `${offL}` : "";
   };
+  hs.onclick = (e) => { const b = e.target.closest("button[data-dir]"); if (b) wrap.scrollBy({ left: +b.dataset.dir * wrap.clientWidth * 0.7, behavior: "smooth" }); };
   wrap.addEventListener("scroll", edges, { passive: true });
-  new ResizeObserver(() => { pin2(); edges(); }).observe(wrap);
+  // the table too: filling or re-filtering it changes its width without resizing the wrap
+  const ro = new ResizeObserver(() => { pin2(); edges(); });
+  ro.observe(wrap); ro.observe(host.querySelector("table.data"));
   const pop = host.querySelector(".cols-pop");
   host.querySelector(".colsbtn").onclick = (e) => {
     e.stopPropagation();
@@ -135,12 +212,13 @@ function dataTable(host, columns, rows, opts = {}) {
   const bareSym = (v) => { const x = String(v ?? ""); const sfx = MKTS.find((m) => m.suffix && x.endsWith(m.suffix)); return sfx ? x.slice(0, -sfx.suffix.length) : x; };
   // peer-group columns, wherever they appear: the short name (sub-industry, else industry group) and a coloured RS badge
   const isPeer = (c) => /^(peer_group|peer group)$/i.test(c), isGrpRs = (c) => /^(group_rs|peer_rs|peer group rs)$/i.test(c);
+  const isSetup = (c) => /^(setup|strategy_setup)$/i.test(c);
   const peerFmt = (v) => (v ? String(v).split(" › ").at(-1) : "");
   const fmtFor = columns.map((c) => (opts.format && opts.format[c]) || (c === "symbol" ? bareSym : isPeer(c) ? peerFmt : fmt));
   const autoTags = Object.fromEntries(columns.filter(isGrpRs).map((c) => [c, (v) => (v >= 80 ? "pos" : v >= 50 ? "warn" : "neg")]));
   opts = { ...opts, tags: { ...autoTags, ...(opts.tags || {}) } };
   const header = () => {
-    thead.innerHTML = "<tr>" + cols.map((i) => `<th data-i="${i}" class="${numeric[i] ? "num" : ""}" title="${esc(columns[i])}">${esc(label(columns[i]))}` +
+    thead.innerHTML = "<tr>" + cols.map((i) => `<th data-i="${i}" class="${numeric[i] ? "num" : ""}" title="${esc(COL_HELP[columns[i]] || label(columns[i]))}">${esc(label(columns[i]))}` +
       `<span class="arrow">${i === sortCol ? (sortDir > 0 ? "▲" : "▼") : ""}</span></th>`).join("") + (opts.actions ? "<th></th>" : "") + "</tr>";
   };
   function draw() {
@@ -156,9 +234,10 @@ function dataTable(host, columns, rows, opts = {}) {
     tbody.innerHTML = visible.slice(0, limit).map((row, ri) => `<tr class="${opts.rowClick ? "click" : ""} ${opts.rowClass ? opts.rowClass(row) : ""}" data-r="${ri}">` +
       cols.map((i) => {
         const v = row[i];
-        if (i === decCol && v) return `<td><span class="tag ${decisionClass(v)}">${esc(v)}</span></td>`;
+        if (i === decCol && v) return `<td>${decisionTag(v)}</td>`;
+        if (isSetup(columns[i]) && v) return `<td title="${esc(v)}">${esc(setupFmt(v))}</td>`;
         if (stack && i === cols[0]) return `<td class="symcell"><div title="${esc(row[1] || "")}"><b>${esc(fmtFor[i](v, row))}</b>${row[1] ? `<span>${esc(row[1])}</span>` : ""}</div></td>`;
-        if (opts.tags && opts.tags[columns[i]] && v) return `<td><span class="tag ${opts.tags[columns[i]](v)}">${esc(v)}</span></td>`;
+        if (opts.tags && opts.tags[columns[i]] && v) return `<td><span class="tag ${opts.tags[columns[i]](v)}"${isGrpRs(columns[i]) ? ` title="Group RS ${esc(v)} — ${esc(RS_WORDS(v))}"` : ""}>${esc(v)}</span></td>`;
         let cls = typeof v === "number" ? "num" : "";
         if (typeof v === "number" && (opts.inverse || []).includes(columns[i])) cls += v < 0 ? " pos" : v > 0 ? " neg" : "";  // lower is better
         else if (typeof v === "number" && (SIGNED_COL.test(columns[i]) || (opts.signed || []).includes(columns[i]))) cls += v < 0 ? " neg" : v > 0 ? " pos" : "";
@@ -230,8 +309,23 @@ function pageMarket(m, extra = []) {
  *  page's own combined views (e.g. [["both", "US + India"]]). Pages wire `.mk button` themselves,
  *  since switching usually means navigating to the market's own URL. */
 function marketSeg(m, extra = []) {
-  return segmented([...MKTS.map((x) => [x.key, `${x.flag} ${esc(x.name)}`]), ...extra], m, "mk");
+  return segmented([...MKTS.map((x) => [x.key, `${x.flag} ${esc(x.name)}`]), ...extra], m, "mk") + freshBadge(m);
 }
+/** "data through 13 Oct" beside the market toggle — amber when that market's prices are behind — so the
+ *  staleness the Status page reports is visible where you act on the data. Filled from the status check
+ *  the header already makes (FRESH); repainted in place when that check comes back. */
+let FRESH = null;
+function freshBadgeInner(m, flag = false) {
+  const p = FRESH?.[m]?.items?.find((i) => i.key === "prices");
+  if (!p || !p.date) return "";
+  const behind = p.status && p.status !== "ok";
+  const short = behind ? (String(p.text || "").split(/ — | · /)[0] || "behind") : "";
+  return `<span class="freshb ${behind ? "warn" : ""}" title="${esc(`${FRESH[m].name || m}: prices ${prettyDate(p.date)} — ${p.text || ""}. System → Status for details.`)}">${flag ? `${mktInfo(m).flag || ""} ` : ""}data through ${esc(prettyDate(p.date).replace(/ \d{4}$/, ""))}${behind ? ` · ${esc(short)}` : ""}</span>`;
+}
+const freshBadge = (m, flag = false) => (MKTS.some((x) => x.key === m) ? `<a class="freshwrap" href="#/status" data-fm="${esc(m)}" ${flag ? "data-flag" : ""}>${freshBadgeInner(m, flag)}</a>` : "");
+/** every market, with its flag: for pages that mix markets (Watchlists) */
+const freshBadges = () => MKTS.map((x) => freshBadge(x.key, true)).join("");
+function paintFresh() { document.querySelectorAll(".freshwrap[data-fm]").forEach((a) => { a.innerHTML = freshBadgeInner(a.dataset.fm, a.hasAttribute("data-flag")); }); }
 api("/api/markets").then((xs) => { if (xs?.length) { MKTS = xs; Object.assign(MKT_BADGE, Object.fromEntries(xs.map((m) => [m.key, m.badge]))); } }).catch(() => {});
 /** ⓘ — an explanation kept out of the way: a small button that opens the text in a popover.
  *  `html` is trusted markup built by the page (escape any data inside it); `label` turns it into a text button. */
@@ -290,6 +384,8 @@ function withMarket(hash) {
   if (/^#\/(chart|watchlist|reports|notes)\b/.test(hash)) return hash;   // there the market belongs to a symbol or record, not the view
   return hash.split("/").map((x) => (isMarket(x) ? m : x)).join("/");
 }
+/** The one back-link style: "← Where you came from" in a row above the page title (extra links after it). */
+const backLink = (href, label, extra = "") => `<div class="crumbs back"><a href="${href}">← ${esc(label)}</a>${extra}</div>`;
 function segmented(options, current, cls = "") {
   return `<div class="seg ${cls}">${options.map(([v, t]) => `<button data-v="${esc(v)}" class="${v === current ? "on" : ""}">${t}</button>`).join("")}</div>`;
 }
@@ -626,6 +722,7 @@ async function chartPage(alive, market, symbol, tf) {
 
   const bars = tf === "D" ? 130 : tf === "W" ? 104 : 60;  // open zoomed in on recent history
   requestAnimationFrame(() => {  // after autoSize has laid out the panes
+    if (!alive()) return;   // left (or re-rendered) before this frame: the chart is already removed
     // each indicator pane ~20% of the height, but the price pane always keeps at least half
     const per = Math.round(chartEl.clientHeight * Math.min(0.2, 0.5 / Math.max(nPanes, 1)));
     for (let i = 1; i <= nPanes; i++) try { chart.panes()[i].setHeight(per); } catch {}
@@ -775,8 +872,9 @@ async function chartPage(alive, market, symbol, tf) {
     } else ohlcEl.innerHTML = `<span class="muted">${prettyDate(d.time)}</span> ${fmt(d.value)}`;
     rowEls.forEach(({ e, vals }) => { if (vals) vals.innerHTML = Studies.legendValues(e, i); });
     let top = 0;
-    for (let p = 1; p <= nPanes; p++) {
-      top += chart.panes()[p - 1].getHeight() + 1;
+    const panes = chart.panes();   // empty once the chart is removed, which a late event can still reach
+    for (let p = 1; p <= nPanes && panes[p - 1]; p++) {
+      top += panes[p - 1].getHeight() + 1;
       paneLegends[p].style.top = top + 4 + "px";
     }
   };
@@ -950,14 +1048,14 @@ async function chartPage(alive, market, symbol, tf) {
   function infoHtml() {
     const plans = ctx.latest.map((l) => {
       const risk = l.entry > 0 && l.stop > 0 ? ((l.entry - l.stop) / l.entry) * 100 : null;
-      return `<div class="plan"><div class="row"><b>${esc(l.strategy)}</b><span class="tag ${decisionClass(l.decision)}">${esc(l.decision)}</span></div>
+      return `<div class="plan"><div class="row"><b>${esc(l.strategy)}</b>${decisionTag(l.decision)}</div>
         ${l.strategy_setup ? `<div class="muted small">${esc(l.strategy_setup)}</div>` : ""}
         ${l.entry > 0 ? `<div class="kv"><span>Entry <b>${fmt(l.entry)}</b></span><span>Stop <b class="neg">${fmt(l.stop)}</b></span>
           ${risk != null ? `<span>Risk <b>${risk.toFixed(1)}%</b></span>` : ""}${l.target_r ? `<span>Target <b class="pos">${fmt(+l.target_r)}R</b></span>` : ""}</div>` : ""}
         <div class="muted small">${prettyDate(String(l.run_id).replace(/^screener\//, ""))}</div></div>`;
     }).join("");
     const hist = ctx.history.slice(0, 20).map((h) => `<div class="dhist"><span class="muted">${prettyDate(h.run_id)}</span><span>${esc(h.strategy)}</span>
-      <span class="tag ${decisionClass(h.decision)}">${esc(h.decision)}</span></div>`).join("");
+      ${decisionTag(h.decision)}</div>`).join("");
     const pc = (v) => (v == null ? "—" : `${(v * 100).toFixed(0)}%`);
     const qHtml = qrow && qrow.quality != null ? `<section><h3>Fundamentals <a class="muted" href="#/quality/${market}">quality page</a></h3>
       <div class="plan"><div class="row"><b>Quality ${qrow.quality}/100 <span class="muted small">F ${qrow.f_score ?? "—"}</span></b>
@@ -991,7 +1089,7 @@ async function chartPage(alive, market, symbol, tf) {
           <div class="wld-52v small"><span>${fmt(q.lo)}</span><span>${fmt(q.hi)}</span></div></div>` : ""}
       <div class="wld-notes" id="wlnotes"></div>
       <div class="wld-kv">
-        ${best ? `<span class="muted">Screener</span><span><span class="tag ${decisionClass(best.decision)}">${esc(best.decision)}</span></span>` : ""}
+        ${best ? `<span class="muted">Screener</span><span>${decisionTag(best.decision)}</span>` : ""}
         ${qrow?.quality != null ? `<span class="muted">Quality</span><span><b>${qrow.quality}</b>/100 · ${esc(qrow.at_your_price ? "AT YOUR PRICE" : qrow.zone || "")}</span>` : ""}
         ${qrow?.pe ? `<span class="muted">P/E</span><span>${qrow.pe.toFixed(1)}</span>` : ""}
       </div>`;
@@ -1253,7 +1351,7 @@ async function watchlistPage(alive, lid) {
   const items = cur ? await WL.items(cur.id) : [];
   if (!alive()) return;
   const screener = !!cur?.builtin;
-  $view.innerHTML = `<div class="page-head"><h1>Watchlists</h1><span class="spacer"></span>
+  $view.innerHTML = `<div class="page-head"><h1>Watchlists</h1>${freshBadges()}<span class="spacer"></span>
       ${cur && !screener ? `<form class="wl-add" autocomplete="off">
         <div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="wls" placeholder="Add symbol — any market" spellcheck="false"><ul hidden></ul></div>
         <input id="wln" placeholder="Note (optional)"><button class="primary" type="submit">Add</button></form>` : ""}</div>
@@ -1263,6 +1361,8 @@ async function watchlistPage(alive, lid) {
         <button class="ghost" id="wlnew">+ New list</button></aside>
       <div class="wl-main">
         ${cur ? `<div class="wl-title"><h2>${esc(cur.name)}</h2>${screener ? "" : '<button class="ibtn" id="wlmenu" title="List menu">⋯</button>'}</div>` : ""}
+        ${screener ? `<p class="sd-lead">Filled automatically after each strategy run: every stock a strategy marked <b>tradeable or on watch</b>, kept until you hide it.
+          Today's verdicts are in <a href="#/strategies">Today's setups</a>; the lists they are drawn from are the <a href="#/screens">Screens</a>.</p>` : ""}
         <div id="wlt"></div>
         <p class="muted small">${screener
           ? "Screener picks come from the latest full run of each strategy (tradeable or watchlist candidate) and refresh every run. Removing one hides it until it drops off the screen and is flagged again."
@@ -1343,12 +1443,17 @@ async function watchlistPage(alive, lid) {
 
 const MOVER_PERIODS = [["1D", "1D"], ["1W", "1W"], ["1M", "1M"], ["3M", "3M"], ["6M", "6M"], ["YTD", "YTD"], ["1Y", "1Y"]];
 const MKT_NAME = { us: "US", india: "India" };
-/** traded value in the market's own units: $12.3M / $1.2B, ₹45 Cr */
+/** One money amount, the app-wide way: the currency first, then a short scale — $4.9T, $20.2B, $703M;
+ *  ₹1,23,456 Cr in India, where crores are how amounts are read (grouped the Indian way). Tables of
+ *  figures (financial statements) keep one unit for the whole table instead. */
 function moneyShort(v, market) {
   if (v == null) return "";
-  if (market === "india") { const cr = v / 1e7; return `₹${cr >= 100 ? Math.round(cr).toLocaleString() : cr.toFixed(1)} Cr`; }
-  return v >= 1e9 ? `$${(v / 1e9).toFixed(1)}B` : `$${(v / 1e6).toFixed(v >= 1e8 ? 0 : 1)}M`;
+  const neg = v < 0 ? "−" : "", a = Math.abs(v);
+  if (market === "india") { const cr = a / 1e7; return `${neg}₹${cr >= 100 ? Math.round(cr).toLocaleString("en-IN") : cr.toFixed(1)} Cr`; }
+  return `${neg}$` + (a >= 1e12 ? `${(a / 1e12).toFixed(1)}T` : a >= 1e9 ? `${(a / 1e9).toFixed(1)}B` : `${(a / 1e6).toFixed(a >= 1e8 ? 0 : 1)}M`);
 }
+/** a statement table's unit in words: "$ M" -> "$ millions", "₹ Cr" -> "₹ crore" */
+const unitWords = (u) => String(u || "").replace(/\s*M$/, " millions").replace(/\s*Cr$/, " crore").replace(/\s*B$/, " billions");
 
 async function moversPage(alive, mkt) {
   const prefs = { period: "1D", universe: "liquid", ...store.get("moversPrefs", {}) };
@@ -1370,7 +1475,7 @@ async function moversPage(alive, mkt) {
   const table = (d, kind) => {
     const rows = d[kind];
     if (!rows.length) return `<div class="muted small mv-none">No ${kind === "gainers" ? "gainers" : "losers"}.</div>`;
-    return `<table class="mvt"><thead><tr><th>#</th><th>Symbol</th><th class="mv-g" title="Peer group (sub-industry, else industry group) and its RS rating">Group</th><th class="num">Last</th><th class="num">Chg%</th>
+    return `<table class="mvt"><thead><tr><th>#</th><th>Symbol</th><th class="mv-g" title="${esc(COL_HELP.group_rs)}">Group · RS</th><th class="num">Last</th><th class="num">Chg%</th>
         <th class="num" title="Volume on the last day ÷ its 50-day average">Rel vol</th><th class="num" title="Traded value on the last day">Value</th></tr></thead>
       <tbody>${rows.map((r, i) => `<tr data-k="${kind}" data-i="${i}">
         <td class="muted">${i + 1}</td>
@@ -1419,7 +1524,21 @@ const TONE_CLS = { Strong: "t-strong", Positive: "t-pos", Mixed: "t-mixed", Weak
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const longDate = (iso) => { const d = new Date(iso + "T00:00:00"); return `${WEEKDAY[d.getDay()]} ${prettyDate(iso)}`; };
 
-const PM_TABS = [["summary", "Summary"], ["sectors", "Sectors"], ["stocks", "Stocks"], ["yours", "Yours"]];
+/** "3 of 6" in context: how many of the sessions on record scored this low or lower (or this high or higher),
+ *  using only sessions up to the one shown — the Breadth page's base-rate framing applied to the tone score. */
+function toneBaseRate(history, date, score) {
+  const past = (history || []).filter((h) => h.date <= date && h.score != null);
+  if (past.length < 20 || score == null) return "";
+  const low = score <= 3, n = past.filter((h) => (low ? h.score <= score : h.score >= score)).length;
+  return `${n} of the last ${past.length} sessions scored ${score} or ${low ? "lower" : "higher"}`;
+}
+const PM_TABS = [["summary", "Summary"], ["sectors", "Sectors"], ["stocks", "Stocks"], ["yours", "Your lists"]];
+const PM_TAB_HELP = {
+  summary: "The day's verdict: the six market-tone signals, indexes, breadth and what stood out",
+  sectors: "How sectors and industry groups did today, and whose RS rating moved",
+  stocks: "The day's biggest gainers and losers, volume surges and new 52-week highs and lows",
+  yours: "Every stock on your watchlists and in Screener picks, with how it did today — biggest moves first",
+};
 async function postmarketPage(alive, mkt, date, tab) {
   mkt = pageMarket(mkt);
   if (date === "latest") date = null;
@@ -1459,14 +1578,24 @@ async function postmarketPage(alive, mkt, date, tab) {
   const ind = p.sectors.industry, rs = p.sector_rs;
   const timeline = H.slice(0, 60).reverse().map((h) => `<a href="${pmHref(h.date)}" class="tl ${TONE_CLS[h.tone] || ""} ${h.date === p.date ? "cur" : ""}" title="${longDate(h.date)} — ${h.tone} (${h.score}/6) · ${h.up?.toLocaleString()} up / ${h.down?.toLocaleString()} down"></a>`).join("");
   const pmDates = H.map((h) => ({ value: h.date, label: `${longDate(h.date)} · ${h.tone}` }));
+  const wireTimeline = () => {
+    const strip = $view.querySelector(".pm-tl"), read = $view.querySelector(".pm-tl-read");
+    if (!strip || !read) return;
+    const idle = read.textContent;
+    strip.onmouseover = (e) => { const a = e.target.closest(".tl"); if (a) read.textContent = a.title; };
+    strip.onmouseleave = () => { read.textContent = idle; };
+  };
   $view.innerHTML = head(datePicker(pmDates, p.date) + pmInfo(p, r)) + `
     <div class="pm-tl" title="Market tone, last ${Math.min(60, H.length)} sessions (oldest left) — click a day">${timeline}</div>
-    <nav class="ptabs pm-tabs">${PM_TABS.map(([k, t]) => `<a data-t="${k}" class="${k === tab ? "active" : ""}">${t}${
+    <div class="pm-tl-legend muted small"><span class="pm-tl-read">Market tone, last ${Math.min(60, H.length)} sessions, oldest on the left — hover a day for its numbers, click it to open that session.</span>
+      <span class="spacer"></span>${Object.entries(TONE_CLS).map(([t, c]) => `<span class="pm-key"><i class="tl ${c}"></i>${t}</span>`).join("")}</div>
+    <nav class="ptabs pm-tabs">${PM_TABS.map(([k, t]) => `<a data-t="${k}" class="${k === tab ? "active" : ""}" title="${esc(PM_TAB_HELP[k] || "")}">${t}${
       k === "stocks" ? ` <span class="n">${p.movers.gainers.length + p.movers.losers.length}</span>` : k === "yours" ? ` <span class="n">${p.watchlists.length}</span>` : ""}</a>`).join("")}</nav>
     <div class="pmtab" data-t="summary">
     <div class="pm-hero sec-card">
       <div><div class="muted small">${esc(p.market_name)} · ${longDate(p.date)} <span class="muted">(vs ${prettyDate(p.prev_date)})</span></div>
         <div class="pm-tone ${TONE_CLS[p.tone.label]}">${p.tone.label}<span>${p.tone.score} of ${p.tone.of} signals bullish</span></div>
+        ${toneBaseRate(H, p.date, p.tone.score) ? `<div class="muted small">${toneBaseRate(H, p.date, p.tone.score)}.</div>` : ""}
         <div class="pm-ad"><span class="pos">${p.counts.up.toLocaleString()} up</span><span class="adbar"><i class="up" style="width:${(p.counts.up / Math.max(1, p.counts.up + p.counts.down)) * 100}%"></i><i class="dn" style="width:${(p.counts.down / Math.max(1, p.counts.up + p.counts.down)) * 100}%"></i></span><span class="neg">${p.counts.down.toLocaleString()} down</span>
           <span class="muted small">· ${p.counts.new_highs} new highs / ${p.counts.new_lows} new lows among ${p.counts.liquid.toLocaleString()} liquid stocks</span></div></div>
       <div class="pm-sigw"><div class="sa-k">The six signals · ${p.tone.score} bullish</div>
@@ -1514,6 +1643,7 @@ async function postmarketPage(alive, mkt, date, tab) {
     `;
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(`#/postmarket/${b.dataset.v}`));
   wireDatePicker($view, pmDates, p.date, (d, latest) => go(pmHref(latest ? null : d)));
+  wireTimeline();
   // tabs switch in place (no reload); the URL keeps the tab so a date change or a reload returns to it
   const showTab = (t) => {
     tab = t; store.set("pmTab", t);
@@ -1542,7 +1672,8 @@ const SEC_H = ["1W", "1M", "3M", "6M", "12M"];
 const pct1 = (v, d = 1) => (v == null ? "" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(d)}%`);
 const pctCls = (v) => (v == null ? "" : v >= 0 ? "pos" : "neg");
 const secHref = (m, level, g) => `#/sectors/${m}/${level}${g ? "/" + encodeURIComponent(g) : ""}`;
-const rsBadge = (rs) => (rs == null ? "" : `<span class="rsb ${rs >= 80 ? "hi" : rs >= 50 ? "mid" : "lo"}">${rs}</span>`);
+const RS_WORDS = (rs) => `${rs >= 80 ? "a leading" : rs >= 50 ? "a middling" : "a lagging"} group: its RS rating (1–99) against every other group; 80+ leading, under 50 lagging`;
+const rsBadge = (rs, what = "Group RS") => (rs == null ? "" : `<span class="rsb ${rs >= 80 ? "hi" : rs >= 50 ? "mid" : "lo"}" title="${esc(what)} ${rs} — ${esc(RS_WORDS(rs))}">${rs}</span>`);
 
 /** The Breadth page's macro strip (/api/macro): rates, the dollar, oil, metals and credit for this market —
  *  value, 1-day and 1-month change (points for a yield), a 3-month sparkline, and why it matters on hover. */
@@ -1749,7 +1880,7 @@ async function sectorGroupPage(alive, mkt, level, group) {
   if (d.error) { $view.innerHTML = `<div class="empty"><b>${esc(group)}</b><div class="muted">${esc(d.error)}</div><a href="${secHref(mkt, level)}">Back to sectors</a></div>`; return; }
   const g = d.group, dr = g.rs != null && g.rs_prev != null ? g.rs - g.rs_prev : null;
   const ret = (o, h) => `<td class="num ${pctCls(o[h])}">${pct1(o[h])}</td>`;
-  $view.innerHTML = `<div class="page-head"><a class="muted" href="${secHref(mkt, level)}">← Sectors</a>
+  $view.innerHTML = backLink(secHref(mkt, level), "Sectors") + `<div class="page-head">
       <h1>${esc(groupParts(g.group)[0])}</h1>
       ${level === "industry" ? `<a class="muted" href="${secHref(mkt, "sector", g.sector)}">${esc(g.sector)}</a>` : ""}
       ${level === "sub" ? `<a class="muted" href="${secHref(mkt, "sector", g.sector)}">${esc(g.sector)}</a><span class="muted">›</span><a class="muted" href="${secHref(mkt, "industry", g.industry)}">${esc(g.industry)}</a>` : ""}
@@ -1961,7 +2092,7 @@ async function qualityPage(alive, mkt) {
   let view = store.get("qView", "tracked");
   if (view === "tracked" && !rows.some((r) => r.tracked)) view = "all";
   // Quality is one of the screens: the same way back to the others, and to building your own
-  $view.innerHTML = `<div class="crumbs scr-crumbs"><a href="#/screens">← All screens</a><span class="muted">·</span><a href="#/screens/new/${mkt === "all" ? pageMarket() : mkt}">+ New screen</a></div>
+  $view.innerHTML = backLink("#/screens", "All screens", `<span class="muted">·</span><a href="#/screens/new/${mkt === "all" ? pageMarket() : mkt}">+ New screen</a>`) + `
     <div class="page-head"><h1>Quality companies</h1>${marketSeg(mkt, [["all", "US + India"]])}
       <span class="spacer"></span>
       <form class="wl-add" autocomplete="off">
@@ -2034,7 +2165,7 @@ async function qualityPage(alive, mkt) {
       name: `quality_groups_${group}`, sort: ["high quality", -1], noStack: true, hidden: group === "sector" ? ["sector"] : [],
       format: { best: (v) => (v < 0 ? "" : String(v)), median: (v) => (v == null ? "" : String(Math.round(v))),
         "median mkt cap $B": (v) => (v == null ? "" : v >= 10 ? v.toFixed(0) : v.toFixed(1)) },
-      rowClick: (row) => { picked = row[0]; store.set("qPicked", picked); draw(); },
+      rowClick: (row) => { picked = row[0]; store.set("qPicked", picked); draw(); }, rowHint: "Click a group to see its companies",
     });
   };
   const draw = () => {
@@ -2198,7 +2329,7 @@ async function stockNewsPage(alive, market, symbol) {
   store.set("lastMarket", market); store.set("lastSymbol:" + market, symbol);
   document.title = `${bareSymbol(symbol)} news · Trading`;
   const enc = encodeURIComponent(symbol);
-  $view.innerHTML = `<div class="crumbs"><a href="#/chart/${market}/${enc}">← Chart</a></div>
+  $view.innerHTML = backLink(`#/chart/${market}/${enc}`, "Chart") + `
     <div class="page-head co-head"><h1 id="nwname">${esc(bareSymbol(symbol))}</h1><span class="mkt">${MKT_BADGE[market] || market}</span><span class="muted">${esc(bareSymbol(symbol))}</span>
       <span class="spacer"></span>
       <form class="wl-add" autocomplete="off" id="nwsearch"><div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input placeholder="Search a company" spellcheck="false"><ul hidden></ul></div></form>
@@ -2230,10 +2361,10 @@ async function companyPage(alive, market, symbol) {
        <tbody>${t.rows.map((r) => `<tr class="${BOLD.has(r.key) ? "strong" : ""} ${r.kind === "pct" ? "pctrow" : ""}"><th>${esc(r.label)}</th>${r.values.map((v) => `<td class="${v < 0 ? "neg" : ""}">${fmtv(r.kind, v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
        ${note ? `<div class="muted small fin-note">${note}</div>` : ""}`;
   const st = d.status || {};
-  const unitNote = `Figures in ${esc(d.unit)} · ${esc(FUND_SOURCE[st.source] || st.source || "")}${st.basis && st.basis !== "as reported" ? ` · ${esc(st.basis)}` : ""}`;
+  const unitNote = `Figures in ${esc(unitWords(d.unit))} · ${esc(FUND_SOURCE[st.source] || st.source || "")}${st.basis && st.basis !== "as reported" ? ` · ${esc(st.basis)}` : ""}`;
   const fetchBtn = d.fetch_pending ? `<button class="btn" disabled>Fetch queued (#${d.fetch_pending})…</button>`
     : `<button class="btn" id="cfetch" title="Fetch this company's filings now (a queue item, ahead of long jobs)">${st.status ? "Refresh from filings" : "Fetch now"}</button>`;
-  const head = `<div class="crumbs"><a href="#/chart/${market}/${encodeURIComponent(symbol)}">← Chart</a></div>
+  const head = backLink(`#/chart/${market}/${encodeURIComponent(symbol)}`, "Chart") + `
     <div class="page-head co-head"><h1>${esc(d.name || bareSymbol(symbol))}</h1><span class="mkt">${MKT_BADGE[market] || market}</span><span class="muted">${esc(bareSymbol(symbol))}</span>
       <span class="spacer"></span>
       <form class="wl-add" autocomplete="off" id="cosearch"><div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input placeholder="Search a company" spellcheck="false"><ul hidden></ul></div></form>
@@ -2249,12 +2380,12 @@ async function companyPage(alive, market, symbol) {
   const r = d.ratios_top || {};
   const pc = (v, dp = 1) => (v == null ? "—" : `${(v * 100).toFixed(dp)}%`);
   const cur = (v) => (v == null ? "—" : `${d.currency} ${v.toLocaleString(loc, { maximumFractionDigits: 2 })}`);
-  const ratio = [["Market cap", r.market_cap == null ? "—" : `${d.currency} ${money(r.market_cap)} ${esc(d.unit.replace(/^\S+\s*/, ""))}`],
+  const ratio = [["Market cap", r.market_cap == null ? "—" : moneyShort(r.market_cap, market)],
     ["Current price", cur(r.price)], ["High / Low", r.high_52w ? `${cur(r.high_52w)} / ${r.low_52w?.toLocaleString(loc, { maximumFractionDigits: 2 })}` : "—"],
     ["Stock P/E", r.pe == null ? "—" : r.pe.toFixed(1)], ["Book value", cur(r.book_value)], ["Dividend yield", pc(r.dividend_yield, 2)],
     ["ROCE", pc(r.roce)], ["ROE", pc(r.roe)], ...(r.face_value ? [["Face value", cur(r.face_value)]] : []),
     ...(r.debt_to_equity != null ? [["Debt to equity", r.debt_to_equity.toFixed(2)]] : []),
-    ["Sales (TTM)", r.sales_ttm == null ? "—" : `${money(r.sales_ttm)} ${esc(d.unit)}`], ["Profit (TTM)", r.profit_ttm == null ? "—" : `${money(r.profit_ttm)} ${esc(d.unit)}`],
+    ["Sales (TTM)", r.sales_ttm == null ? "—" : moneyShort(r.sales_ttm, market)], ["Profit (TTM)", r.profit_ttm == null ? "—" : moneyShort(r.profit_ttm, market)],
     ["EPS (TTM)", r.eps_ttm == null ? "—" : cur(r.eps_ttm)], ["RS rank", r.rs_rank == null ? "—" : Math.round(r.rs_rank)]];
   const g = d.growth || {};
   const gbox = (title, rows) => `<div class="cg-box"><b>${title}</b><table>${(rows || []).map(([k, v]) => `<tr><td>${esc(k)}:</td><td class="${v < 0 ? "neg" : ""}">${v == null ? "—" : `${(v * 100).toFixed(0)}%`}</td></tr>`).join("")}</table></div>`;
@@ -2269,9 +2400,9 @@ async function companyPage(alive, market, symbol) {
         ${d.holders.heldPercentInsiders != null ? `<span>Insiders <b>${pc(d.holders.heldPercentInsiders)}</b></span>` : ""}</div><div class="muted small fin-note">Current only (Yahoo); US filers report no quarterly shareholding pattern.</div>`
     : `<div class="muted small">No shareholding data.</div>`;
   const peers = d.peers || [];
-  const peerHtml = peers.length > 1 ? `<div class="fin-wrap"><table class="fin peers"><thead><tr><th>Name</th><th>Price</th><th>P/E</th><th>Mkt cap (${esc(d.unit)})</th><th>Sales growth (Q)</th><th>EPS growth (Q)</th><th>ROE</th><th>RS</th></tr></thead><tbody>
+  const peerHtml = peers.length > 1 ? `<div class="fin-wrap"><table class="fin peers"><thead><tr><th>Name</th><th>Price</th><th>P/E</th><th>Mkt cap</th><th>Sales growth (Q)</th><th>EPS growth (Q)</th><th>ROE</th><th>RS</th></tr></thead><tbody>
       ${peers.map((p) => `<tr class="${p.self ? "self" : ""}"><th><a href="${companyHref(market, p.symbol)}">${esc(bareSymbol(p.symbol))}</a></th><td>${p.close?.toLocaleString(loc, { maximumFractionDigits: 2 }) ?? ""}</td>
-        <td>${p.pe == null ? "" : p.pe.toFixed(1)}</td><td>${p.market_cap == null ? "" : money(p.market_cap)}</td><td class="${p.sales_g < 0 ? "neg" : ""}">${sepaPct(p.sales_g)}</td>
+        <td>${p.pe == null ? "" : p.pe.toFixed(1)}</td><td>${p.market_cap == null ? "" : moneyShort(p.market_cap, market)}</td><td class="${p.sales_g < 0 ? "neg" : ""}">${sepaPct(p.sales_g)}</td>
         <td class="${p.eps_g < 0 ? "neg" : ""}">${sepaPct(p.eps_g)}</td><td>${p.roe == null ? "" : `${(p.roe * 100).toFixed(0)}%`}</td><td>${p.rs_rank == null ? "" : Math.round(p.rs_rank)}</td></tr>`).join("")}</tbody></table></div>
       <div class="muted small fin-note">Peer group: ${esc(String(d.peer_group || "").split(" › ").at(-1))} (Sectors page). P/E and growth only where a company's filings are stored.</div>`
     : `<div class="muted small">No peer group for this stock.</div>`;
@@ -2415,7 +2546,7 @@ async function screensPage(alive, key, mkt, tab, date) {
       <a class="nav-item new ${key === "new" ? "active" : ""}" href="#/screens/new/${mkt}"><span><b class="sn">+ New screen</b></span></a>
       <div class="nav-h">Built-in</div>${builtins.map(item).join("")}
       <a class="nav-item" href="#/quality" title="Long-term: fundamentals, and when the price is right"><span><b class="sn">Quality</b></span></a>
-      <div class="nav-h">My screens</div>${mine.map(item).join("") || `<div class="nav-empty muted small">None yet</div>`}
+      <div class="nav-h">My screens</div>${mine.map(item).join("") || `<a class="nav-empty small" href="#/screens/new/${mkt}">None yet — build one from ~50 fields →</a>`}
     </aside><section id="scrmain" class="scr-main">${LOADING}</section></div>`;
   const main = $view.querySelector("#scrmain");
   if (list.error || !list.date) {
@@ -2445,7 +2576,7 @@ async function screensPage(alive, key, mkt, tab, date) {
       ${d.criteria?.length ? `<p><b>In plain words:</b></p>${d.criteria.map((c) => `<p><code>${c.code}</code> ${esc(c.text)}</p>`).join("")}` : ""}
       <p>“Tradable” is the market's floor — minimum price and 20-day traded value, a year of history, a valid ATR — the same floor the strategies use.</p>
       ${d.used_by?.length ? `<p>Strategies drawing from this screen evaluate the same criteria with the same code, then add their own trade rules.</p>` : ""}`);
-  main.innerHTML = `<div class="crumbs"><a href="#/screens">← All screens</a></div>` + pageHead(esc(d.name), { extra: marketSeg(mkt),
+  main.innerHTML = backLink("#/screens", "All screens") + pageHead(esc(d.name), { extra: marketSeg(mkt),
       context: `<span class="muted small" title="The web app only views offline data: the prices job syncs the bars after each close, and the screens job derives the ~50 fields every screen queries. This page always shows the newest build and asks for a rebuild by itself when the data moves.">
         offline data · fields computed ${builtAt || "—"} · prices through ${prettyDate(r.date)}</span>`,
       actions: (d.builtin ? "" : `<a class="btn" href="#/screens/${key}/${mkt}/edit" title="Rename, re-describe or edit in the full builder">Edit…</a><button class="danger" id="sdel">Delete</button>`)
@@ -2598,6 +2729,20 @@ function wireStale(root, mkt) {
   };
 }
 
+/** the Quality screen's card: the same shape as the others, but its list is long-term — scored on demand
+ *  from financial statements, not rebuilt every session — so it says so instead of a daily change */
+function qualityCard(qs, mkt) {
+  const desc = "Long-term: companies with durable fundamentals, and when their price is right.";
+  if (!qs || !qs.scored) return `<a class="sec-card scr-card" href="#/quality/${mkt}"><div class="scr-h"><b>Quality</b><span class="tag info">long-term</span></div>
+      <div><span class="scr-n">—</span> <span class="muted small">no companies scored yet</span></div><div class="muted small scr-desc">${desc}</div>
+      <div class="muted small">Scores come from financial statements: run the <code>quality</code> job (System → Schedules, or <code>python -m jobs enqueue quality</code>).</div></a>`;
+  return `<a class="sec-card scr-card" href="#/quality/${mkt}" title="Open the Quality screen">
+      <div class="scr-h"><b>Quality</b><span class="tag info" title="Scored from financial statements and refreshed on demand, not every session">long-term</span></div>
+      <div><span class="scr-n">${qs.high}</span> <span class="muted small">high quality (score ${qs.threshold}+, no red flag) of ${qs.scored.toLocaleString()} scored</span></div>
+      <div class="muted small scr-desc">${desc}</div>
+      ${qs.top.length ? `<div class="scr-top">${qs.top.map((t) => `<span class="chip-s" title="${esc(t.name || "")} — quality ${t.quality}">${esc(t.symbol.replace(/\.NS$/, ""))}</span>`).join("")}</div>` : ""}
+      <div class="muted small">Scores refreshed ${prettyDate(qs.refreshed)} — a long-term list, so no daily change</div></a>`;
+}
 function screensOverview(main, list, mkt, alive, fs) {
   const card = (x) => {
     const ch = x.prev_count != null ? x.count - x.prev_count : null;
@@ -2617,10 +2762,13 @@ function screensOverview(main, list, mkt, alive, fs) {
   main.innerHTML = pageHead("Screens", { extra: marketSeg(mkt),
       context: `<span class="muted small">${prettyDate(list.date)} · ${list.tradable?.toLocaleString()} tradable stocks</span>${info(`<p>Which stocks are worth a look today. A screen is a set of conditions over every stock's daily snapshot (about 50 fields) — it only qualifies stocks; a strategy adds the trade.</p><p>${list.tradable?.toLocaleString()} of ${list.universe?.toLocaleString()} stocks clear the tradable floor (price, liquidity, a year of history).</p>`)}`,
       actions: `<a class="btn primary" href="#/screens/new/${mkt}">+ New screen</a>` })
+    + `<p class="sd-lead">A screen only says <b>which stocks qualify</b> today — conditions over every stock's daily snapshot, no entry or stop.
+        Each strategy draws its candidates from one screen and adds the trade: that is <a href="#/strategies">Today's setups</a>;
+        the names a strategy marks tradeable or on watch also collect in <a href="#/watchlist/screener">Screener picks</a>.</p>`
     + staleBanner(list.stale_inputs, mkt, list.updating)
     + `
     <h3 class="ov-h">Built-in screens</h3><div class="scr-cards">${builtins.map(card).join("")}
-      <a class="sec-card scr-card" href="#/quality"><div class="scr-h"><b>Quality</b></div><div class="muted small">Long-term: companies with durable fundamentals, and when their price is right.</div></a></div>
+      ${qualityCard(list.quality, mkt)}</div>
     <h3 class="ov-h">Your screens</h3><div class="scr-cards">${mine.map(card).join("")}
       <a class="sec-card scr-card scr-new" href="#/screens/new/${mkt}"><div class="scr-h"><b>+ New screen</b></div>
         <div class="muted small">Pick conditions from ~50 fields — returns, RS rank, moving averages, 52-week range, volume, trend, sector — and see the matching stocks as you build. Then study how it did over five years.</div></a></div>`;
@@ -2795,14 +2943,14 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   // rather than sitting in separate trailing sections, so momentum_baseline
   // appears next to what it should be compared with.
   const all = list.filter((x) => x.behaviour_label);
-  // Group by market behaviour, then by selection within it. EVERY behaviour in
-  // the taxonomy is rendered, including ones with no strategies: all eight
-  // strategies here are trend/momentum bets, and without the empty rows the
-  // sidebar would imply the space has been explored when one idea has been
-  // tried eight ways. The blanks are the map of what is still untested.
+  // Group by market behaviour, then by selection within it. Behaviours with no strategy yet are still
+  // listed — every strategy here is a trend/momentum bet, and hiding the blanks would imply the space has
+  // been explored when one idea has been tried several ways — but folded into one "not yet explored"
+  // entry, so they map what is untested without taking the sidebar's room.
+  const untried = (tax.behaviours || []).filter((b) => !all.some((x) => x.behaviour === b.key));
   const stratNav = (tax.behaviours || []).map((b) => {
     const mine = all.filter((x) => x.behaviour === b.key);
-    if (!mine.length) return `<div class="nav-h">${esc(b.label)}</div><div class="nav-empty">nothing yet</div>`;
+    if (!mine.length) return "";
     const subs = [...new Map(mine.map((x) => [x.selection_label, x.selection_rank ?? 99]))].sort((a, b2) => a[1] - b2[1]);
     const body = subs.map(([slabel]) => (subs.length > 1 ? `<div class="nav-sub-h">${esc(slabel)}</div>` : "") +
       mine.filter((x) => x.selection_label === slabel && (x.kind !== "screener" || topLevel(x)))
@@ -2814,6 +2962,8 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
       ${stratNav}${rest}
+      ${untried.length ? `<details class="nav-untried"><summary class="nav-h">Not yet explored (${untried.length})</summary>
+        <div class="nav-empty muted small">Kinds of market behaviour no strategy here trades yet: ${untried.map((b) => esc(b.label)).join(" · ")}.</div></details>` : ""}
     </aside><section id="stmain" class="scr-main">${LOADING}</section></div>`;
   const main = $view.querySelector("#stmain");
   if (!key) return setupsPage(alive, main);
@@ -2834,6 +2984,9 @@ async function setupsPage(alive, root) {
       extra: marketSeg(mkt),
       context: `<span class="muted small">${newest ? `latest run ${prettyDate(newest)}` : "not run yet"}</span>${info("<p>Every strategy's trades and watch names from its latest run. Strategies run on demand — <b>Run strategies…</b> adds a run to the job queue.</p>")}`,
       actions: `<button class="primary" id="runstrat" title="Run the strategies on today's data (adds a run to the job queue)">Run strategies…</button>` }) + `
+    <p class="sd-lead">Each strategy's <b>verdict for today</b> — entry, stop, target and decision — on the stocks its
+      <a href="#/screens">screen</a> qualified (each strategy's page names its screen). The names marked tradeable or on watch
+      also collect in <a href="#/watchlist/screener">Screener picks</a>, so they stay on hand after today.</p>
     ${r.behind ? `<div class="scr-stale"><b>Newer prices have loaded since these runs — the setups below were decided on older bars.</b>
       <span class="sx refresh-wait">${r.behind.updating ? '<span class="spin"></span> A re-run of every strategy is queued — this page refreshes itself when the new runs land.'
         : "A refresh could not be queued automatically — use <b>Run strategies…</b>"}</span></div>` : ""}
@@ -2963,7 +3116,9 @@ function strategyBacktests(host, d, key) {
 
   // computed per paint, not once: `sel` changes when a chip is clicked
   const table = () => { const shown = sel ? d.backtests.filter((b) => b.spec_id === sel) : d.backtests;
-    return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th>Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
+    const runCell = (b) => { const rp = runParts(b.run);
+      return rp ? `<td title="${esc(b.run)}">${prettyDate(rp.start)} · ${esc(rp.exit)}${rp.options.length ? `<div class="muted small">${esc(rp.options.join(" · "))}</div>` : ""}</td>` : `<td>${esc(b.run)}</td>`; };
+    return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
       shown.map((b) => { const s = b.summary || {};
         const v = vers.find((x) => x.spec_id === b.spec_id);
         const vcell = b.spec_id
@@ -2973,11 +3128,11 @@ function strategyBacktests(host, d, key) {
         // broken row, so say what happened — the funnel in the report says where
         // the candidates stopped.
         if (!s.cagr) {
-          return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td>${vcell}
+          return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td>${runCell(b)}${vcell}
             <td class="num muted" colspan="4">no trades — open for the funnel</td>
             <td class="muted">${prettyDate(b.generated_at)}</td></tr>`;
         }
-        return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td><td>${esc(b.run)}</td>${vcell}<td class="num">${esc(pv(s.cagr))}</td>
+        return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td>${runCell(b)}${vcell}<td class="num">${esc(pv(s.cagr))}</td>
           <td class="num ${/^-/.test(s.excess_cagr || "") ? "neg" : s.excess_cagr ? "pos" : ""}">${esc(pv(s.excess_cagr))}</td><td class="num">${esc(pv(s.max_drawdown))}</td>
           <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td></tr>`; }).join("")}</tbody></table>
       <p class="muted small">A backtest runs the whole strategy — screen, setups, entry, stop, exits, costs and position sizing — day by day. The command is under Rules › Commands.
@@ -3065,6 +3220,45 @@ async function strategySetups(host, alive, strat, mkt, runKey) {
 
 // ------------------------------------------------------------ reports page
 
+/** A backtest run directory name -> its parts in words. Names are `<start>_<exit policy>[_<option>…][_v<version>-<fp>]`
+ *  (backtesting/backtest.py builds them); an unknown token is kept as it is. Not a backtest name -> null. */
+function runParts(run) {
+  const t = String(run || "").split("_");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t[0] || "")) return null;
+  const out = { start: t[0], exit: "", options: [], version: "", raw: run };
+  const exitWords = (x) => {
+    const [mode, ...rest] = x.split("-");
+    const base = { minervini: "Minervini exits", ma: "moving-average exit", bracket: "stop + target", donchian: "Donchian exit", trail_atr: "ATR trailing stop" }[mode] || mode;
+    const bits = rest.map((y) => (/^sma(\d+)$/.test(y) ? `SMA${y.slice(3)}` : y === "noTarget" ? "no target" : y === "withTarget" ? "" : y === "noFail" ? "no failed-breakout exit"
+      : /^fail(\d+)$/.test(y) ? `fail ${y.slice(4)}d` : /^(\d+)d$/.test(y) ? `${y.slice(0, -1)} days` : /^([\d.]+)ATR$/.test(y) ? `${y.slice(0, -3)}×ATR` : y)).filter(Boolean);
+    return bits.length ? `${base} (${bits.join(", ")})` : base;
+  };
+  out.exit = t[1] ? exitWords(t[1]) : "";
+  const LABEL = { THC: "high-confidence", TOT: "on-trigger" };
+  for (const x of t.slice(2)) {
+    let m;
+    if ((m = x.match(/^v(\d[\d.]*)-([0-9a-f]+)$/))) out.version = `v${m[1]}`;
+    else if (x === "spec") out.options.push("spec rules");
+    else if (x === "rankrs") out.options.push("ranked by RS");
+    else if ((m = x.match(/^rank(\w+)$/))) out.options.push(`ranked by ${m[1]}`);
+    else if (x === "mkt") out.options.push("market filter");
+    else if ((m = x.match(/^mktc(\d+)$/))) out.options.push(`market filter, ${m[1]}-day confirm`);
+    else if ((m = x.match(/^fund(\w+)$/))) out.options.push(`fundamentals: ${m[1]}`);
+    else if ((m = x.match(/^grp(\d+)$/))) out.options.push(`group RS ≥ ${m[1]}`);
+    else if ((m = x.match(/^rs(\d+)$/))) out.options.push(`RS ≥ ${m[1]}`);
+    else if ((m = x.match(/^dv([\d.]+)m$/))) out.options.push(`liquidity ≥ ${m[1]}M/day`);
+    else if ((m = x.match(/^pyr([\d.]+)at([\d.]+)pct$/))) out.options.push(`pyramid ${m[1]} at +${m[2]}%`);
+    else if ((m = x.match(/^pe(\d+)w([\d.]+)(?:press([\d.]+))?$/))) out.options.push(`progressive exposure (${m[1]} trades, pilot ${m[2]}${m[3] ? `, press at ${m[3]}R` : ""})`);
+    else if ((m = x.match(/^risk([\d.]+)pct$/))) out.options.push(`risk ${m[1]}%`);
+    else if ((m = x.match(/^cap([\d.]+)pct$/))) out.options.push(`position cap ${m[1]}%`);
+    else if ((m = x.match(/^sample(\d+)$/))) out.options.push(`sample of ${m[1]}`);
+    else if ((m = x.match(/^only-(\d+)syms$/))) out.options.push(`${m[1]} symbols only`);
+    else if (x === "NO-SIGNALS") out.options.push("no signals");
+    else if (/^[A-Z]+([-+][A-Z]+)*$/.test(x) && x.split(/[-+]/).every((y) => LABEL[y])) out.options.push(`entries: ${x.split(/[-+]/).map((y) => LABEL[y]).join(" + ")}`);
+    else out.options.push(x);
+  }
+  return out;
+}
 const KIND_LABEL = { backtest: "Backtests", screener: "Screener reports", index: "Index investing", daily: "Daily review", research: "Research notes" };
 const KIND_ICON = {
   backtest: '<path d="M3 15l4-5 3 3 6-8"/>', screener: '<path d="M3 4h14l-5 7v5l-4-2v-3z"/>', index: '<path d="M4 16V9M10 16V4M16 16v-5"/>',
@@ -3105,19 +3299,21 @@ async function reportsPage(alive) {
 
     const rows = ofKind.filter((r) => st.strategy === "all" || r.strategy === st.strategy);
     const isBt = st.kind === "backtest";
-    const cols = ["id", "market", "strategy", "run", ...(isBt ? ["cagr %", "excess cagr %", "max dd %", "sharpe"] : ["title"]), "generated"];
+    const cols = ["id", "market", "strategy", ...(isBt ? ["from", "exit", "options", "version", "run"] : ["run"]),
+      ...(isBt ? ["cagr %", "excess cagr %", "max dd %", "sharpe"] : ["title"]), "generated"];
     const data = rows.map((r) => {
-      const s = r.summary || {};
-      return [r.id, r.market === "all" ? "—" : r.market.toUpperCase(), r.strategy, r.run,
+      const s = r.summary || {}, rp = isBt ? runParts(r.run) : null;
+      return [r.id, r.market === "all" ? "—" : r.market.toUpperCase(), r.strategy,
+        ...(isBt ? (rp ? [prettyDate(rp.start), rp.exit, rp.options.join(" · "), rp.version] : ["", "", "", ""]) : []), r.run,
         ...(isBt ? [pct(s.cagr), pct(s.excess_cagr), pct(s.max_drawdown), pct(s.sharpe)] : [r.title]), r.generated_at || ""];
     });
     const best = isBt ? rows.reduce((b, r) => (pct(r.summary?.excess_cagr) > pct(b?.summary?.excess_cagr ?? "-1e9") ? r : b), null) : null;
     main.innerHTML = `<div class="page-head"><h1>${KIND_LABEL[st.kind]}</h1><span class="muted">${st.market === "all" ? "Both markets" : st.market.toUpperCase()}${st.strategy === "all" ? "" : " · " + esc(st.strategy)} · ${rows.length} report${rows.length === 1 ? "" : "s"}</span>
       ${best ? `<span class="spacer"></span><span class="muted small">Best excess CAGR: <a href="#/reports/${best.id}">${esc(best.strategy)} · ${esc(best.run)}</a> <b class="${pct(best.summary.excess_cagr) >= 0 ? "pos" : "neg"}">${esc(best.summary.excess_cagr)}</b></span>` : ""}</div><div id="rt"></div>`;
     dataTable(main.querySelector("#rt"), cols, data, {
-      hidden: ["id"], name: `reports_${st.kind}`, sort: ["generated", -1],
+      hidden: ["id", ...(isBt ? ["run"] : [])], name: `reports_${st.kind}`, sort: ["generated", -1],
       format: { generated: prettyDate },  // sorting still uses the raw ISO value
-      rowClick: (row) => go(`#/reports/${row[0]}`),
+      rowClick: (row) => go(`#/reports/${row[0]}`), rowHint: "Click a run to open its report",
     });
   }
   draw();
@@ -3206,7 +3402,7 @@ function renderResearchMd(host, markdown) {
       e.preventDefault();
       const runs = await api("/api/reports?kind=research").catch(() => []);
       const t = runs.find((x) => x.run === f.replace(/\.md$/, ""));
-      if (t) go(t.run.startsWith("learn-") ? `#/learn/${t.run.replace(/^learn-/, "")}` : `#/reports/${t.id}`);
+      if (t) go(t.run.startsWith("learn-") ? `#/learn/${t.run.replace(/^learn-/, "")}` : t.kind === "research" ? `#/research/${t.run}` : `#/reports/${t.id}`);
       else toast("That document is not loaded — click Load reports on the Reports archive", "err");
     };
   });
@@ -3651,6 +3847,7 @@ async function refreshStatusDot() {
   const a = document.getElementById("dstatus");
   try {
     const s = await api("/api/status");
+    FRESH = s.freshness; paintFresh(); LAST_STATUS = s;
     const st = s.running.length ? "running" : s.overall;
     a.className = `dstatus st-${st}`;
     // say what the dot means, not just "Data": current / behind / stale / missing / updating
@@ -3668,6 +3865,40 @@ async function refreshStatusDot() {
 }
 refreshStatusDot();
 setInterval(refreshStatusDot, 120000);
+
+/* The header's status pill opens a small panel instead of leaving the page: what each lane is running,
+ * what the "+N" counts (the jobs waiting), how current each market's data is — and the way to System. */
+let LAST_STATUS = null;
+function statusPopover(s) {
+  const q = s.queue || {}, running = q.running_all || (q.running ? [q.running] : []), waiting = q.queued || [];
+  const job = (x) => `${(x.targets || []).join(" + ")}${x.market && x.market !== "all" ? ` · ${mktInfo(x.market).name}` : ""}`;
+  const lane = (x) => (x.lane && x.lane !== "main" ? ` <span class="tag">${esc(x.lane)} lane</span>` : "");
+  const fresh = MKTS.filter((m) => s.freshness?.[m.key]).map((m) => {
+    const p = s.freshness[m.key].items.find((i) => i.key === "prices");
+    return `<li class="${p?.status && p.status !== "ok" ? "warn" : ""}">${m.flag} ${esc(m.name)}: prices ${p?.date ? prettyDate(p.date) : "none"} — ${esc((p?.text || "").split(" · ")[0])}</li>`;
+  }).join("");
+  const lanes = s.lanes ? Object.entries(s.lanes).map(([k, w]) => `<span class="wk ${w.alive ? "ok" : "off"}"><i></i>${esc(k)}</span>`).join("") : "";
+  return `<div class="stpop" role="dialog" aria-label="What is running">
+    <div class="stpop-h"><b>Jobs</b>${lanes}</div>
+    ${running.length ? `<ul>${running.map((x) => `<li><span class="spin"></span> ${esc(job(x))}${lane(x)} <span class="muted small">since ${clock(x.started_at)}</span></li>`).join("")}</ul>` : '<div class="muted small">Nothing running.</div>'}
+    ${waiting.length ? `<div class="muted small">+${waiting.length} waiting in the queue${waiting.length ? `: ${waiting.slice(0, 3).map((x) => esc(job(x))).join(", ")}${waiting.length > 3 ? "…" : ""}` : ""}</div>` : ""}
+    <div class="stpop-h"><b>Data</b></div><ul class="small">${fresh}</ul>
+    <a class="small" href="#/status">System → Status for every dataset and the queue →</a></div>`;
+}
+document.getElementById("dstatus").addEventListener("click", (e) => {
+  if (!LAST_STATUS || e.metaKey || e.ctrlKey) return;     // no status yet, or opening Status in a new tab
+  e.preventDefault();
+  const open = document.querySelector(".stpop");
+  if (open) { open.remove(); return; }
+  const pill = e.currentTarget, box = pill.getBoundingClientRect();
+  const pop = el(statusPopover(LAST_STATUS));
+  pop.style.top = `${box.bottom + 6}px`; pop.style.right = `${Math.max(8, window.innerWidth - box.right)}px`;
+  document.body.append(pop);
+  const close = (ev) => { if (!pop.contains(ev.target) && ev.target !== pill && !pill.contains(ev.target)) { pop.remove(); document.removeEventListener("click", close); } };
+  setTimeout(() => document.addEventListener("click", close));
+  pop.querySelector('a[href="#/status"]').onclick = () => pop.remove();
+  refreshStatusDot().then((fresh) => { if (fresh && document.body.contains(pop)) pop.innerHTML = el(statusPopover(fresh)).innerHTML; });
+});
 
 /** Confirm and start a job / pipeline (the server runs `python -m jobs run ...` in the background). */
 let _stratList = null;
@@ -4029,6 +4260,7 @@ async function runsPage(alive, runId) {
 /** Top-level sections in the order of a review — market, ideas, the stock, what I track, does it work —
  *  each with its pages (shown inline in the header, next to the open section, when there is more than one). */
 const SECTIONS = [
+  { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, today's setups, new picks and data health"]] },
   { key: "markets", label: "Markets", pages: [["postmarket", "Post-market", "The day's recap after the close"], ["breadth", "Breadth", "How healthy is the market — risk, not direction"],
     ["sectors", "Sectors", "Leading sectors, industry groups and their leaders"], ["movers", "Movers", "Top gainers and losers"]] },
   { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"]] },
@@ -4037,15 +4269,17 @@ const SECTIONS = [
     ["company", "Fundamentals", "The company's financials: quarterly results, profit & loss, balance sheet, cash flows, ratios, shareholding, peers"],
     ["news", "News", "Headlines, filings and exchange announcements, and key events — earnings, dividends, splits, analyst ratings"]] },
   { key: "watchlists", label: "Watchlists", pages: [["watchlist", "Watchlists", "Your lists and the screener's picks"]] },
-  { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"], ["playbook", "Playbook", "Sector analysis: method and roadmap"],
-    ["learn", "Learn", "Learning material: chart patterns and candlesticks"],
-    ["todo", "TODO", "Ideas and follow-ups"], ["subindustries", "Sub-industries", "Which sub-industry each company belongs to — review and edit"]] },
+  // Library is reading material; the data-maintenance tools (TODO, sub-industry labels) live under System
+  { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"],
+    ["research", "Research", "The research notes: findings, studies, specifications and the sector playbook"],
+    ["learn", "Learn", "Learning material: candlesticks, chart patterns, bases and the VCP"]] },
   { key: "system", label: "System", pages: [["status", "Status", "Is the data current? And the job queue"], ["runs", "Runs", "Every run, its steps and log"],
-    ["schedules", "Schedules", "When each pipeline runs — and run one now"], ["reports", "Reports archive", "Every backtest and screening report the scripts wrote"]] },
+    ["schedules", "Schedules", "When each pipeline runs — and run one now"], ["reports", "Reports archive", "Every backtest and screening report the scripts wrote"],
+    ["subindustries", "Sub-industries", "Which sub-industry each company belongs to — review and edit"], ["todo", "TODO", "Ideas and follow-ups"]] },
 ];
 /** the nav entry a URL belongs to: screens and strategies have one entry per screen / strategy */
 function pageIdOf(parts) {
-  const p = parts[0] || "chart";
+  const p = parts[0] || "today";
   return p === "screening" ? "strategies" : p === "quality" ? "screens" : p === "fundamentals" || p === "sepa" ? "company" : p;
 }
 const PAGE_SECTION = Object.fromEntries(SECTIONS.flatMap((s) => s.pages.map(([p]) => [p, s])));
@@ -4053,16 +4287,13 @@ const sectionOf = (id) => PAGE_SECTION[id] || PAGE_SECTION[id.split("/")[0]] || 
 const $nav = document.getElementById("nav"),
   $navbtn = document.getElementById("navbtn"), $navpanel = document.getElementById("navpanel");
 
-/** highlight the section and tab; each section and tab reopens the exact page you were last on */
+/** The root page of a tab, in the market you are on. Clicking a tab always lands here — never on a
+ *  drill-down remembered from an earlier visit (Back / Forward still restore those). */
+const tabRoot = (p) => withMarket(`#/${p}`);
 /** Top bar: one link per section (a section opens its first page — Markets opens Post-market). A section
  *  with several pages shows them as a tab row under the header, the same tabs pattern pages use inside. */
 function renderNav(page) {
   const sec = sectionOf(page);
-  // remember the page you were on — but only under its own name: Quality lives in the Screens section,
-  // yet "Screens" must keep opening the screens, not the last Quality view
-  const first = location.hash.replace(/^#\//, "").split("/")[0] || "chart";
-  if (sec && first === page) store.set(`navPage:${page}`, location.hash);
-  if (/^#\/(quality|fundamentals|sepa)/.test(store.get("navPage:screens", ""))) store.set("navPage:screens", null);   // clean up the old value
   // Chart, Fundamentals and News are views of one stock: each tab opens the stock on screen — read from the URL,
   // since the nav is drawn before the page stores it — else the stock you were last looking at
   const stockHref = (p) => {
@@ -4071,14 +4302,13 @@ function renderNav(page) {
     const m = onStock ? um : store.get("lastMarket", MKTS[0]?.key || "us"), s = onStock ? us : store.get("lastSymbol:" + m, null);
     return s ? `#/${p}/${m}/${encodeURIComponent(s)}` : `#/${p}`;
   };
-  const pageHref = (p) => esc(p === page ? location.hash : ["chart", "company", "news"].includes(p) ? stockHref(p) : withMarket(store.get(`navPage:${p}`, `#/${p}`)));
+  const pageHref = (p) => esc(["chart", "company", "news"].includes(p) ? stockHref(p) : tabRoot(p));
   const secHref_ = (s) => esc(`#/${s.pages[0][0]}`);   // a section link always opens its home page
   $nav.innerHTML = SECTIONS.map((s, i) => `<a href="${secHref_(s)}" data-sec="${s.key}" data-href="${secHref_(s)}" class="sec ${s === sec ? "active" : ""}"
       title="${esc(s.pages.map((x) => x[1]).join(" · "))} (Alt+${i + 1})">${s.label}</a>`).join("");
   const sub = document.getElementById("subnav");
   sub.hidden = !(sec && sec.pages.length > 1);
-  sub.innerHTML = sub.hidden ? "" : `<nav class="ptabs subtabs">${sec.pages.map(([p, t, d]) => `<a href="${pageHref(p)}" class="${p === page ? "active" : ""}" title="${esc(d)}">${t}</a>`).join("")}
-    <span class="spacer"></span><span class="muted small sub-hint">Alt+[ / ] previous / next</span></nav>`;
+  sub.innerHTML = sub.hidden ? "" : `<nav class="ptabs subtabs">${sec.pages.map(([p, t, d]) => `<a href="${pageHref(p)}" class="${p === page ? "active" : ""}" title="${esc(d)} — Alt+[ / Alt+] for the previous / next tab">${t}</a>`).join("")}</nav>`;
   const cur = sec && sec.pages.find(([p]) => p === page);
   $navbtn.innerHTML = `<svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg><b>${sec ? sec.label : "Menu"}</b>${cur && sec.pages.length > 1 ? `<span>› ${cur[1]}</span>` : ""}`;
   $navpanel.innerHTML = SECTIONS.map((s, i) => `<div class="np-sec ${s === sec ? "cur" : ""}"><a class="np-h" href="${secHref_(s)}">${s.label}<kbd>Alt+${i + 1}</kbd></a>
@@ -4099,14 +4329,14 @@ document.addEventListener("keydown", (e) => {
     const page = pageIdOf(location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent)), sec = sectionOf(page);
     if (!sec || sec.pages.length < 2) return;
     const i = sec.pages.findIndex(([p]) => p === page), j = (i + (e.code === "BracketRight" ? 1 : -1) + sec.pages.length) % sec.pages.length;
-    e.preventDefault(); go(withMarket(store.get(`navPage:${sec.pages[j][0]}`, `#/${sec.pages[j][0]}`)));
+    e.preventDefault(); go(tabRoot(sec.pages[j][0]));
   }
 });
 
 // ⌘K / Ctrl+K: go anywhere — a page by name, or a stock by symbol or company name
 function openPalette() {
   if (document.querySelector(".palette")) return;
-  const pages = [...SECTIONS.flatMap((s) => s.pages.map(([p, t, d]) => ({ kind: "page", label: t, sub: `${s.label} · ${d}`, href: withMarket(store.get(`navPage:${p}`, `#/${p}`)) }))),
+  const pages = [...SECTIONS.flatMap((s) => s.pages.map(([p, t, d]) => ({ kind: "page", label: t, sub: `${s.label} · ${d}`, href: tabRoot(p) }))),
     ...THEMES.map(([k, t]) => ({ kind: "page", label: `Theme: ${t}`, sub: "Change the colour theme", theme: k }))];
   const m = el(`<div class="smodal palette"><div class="pal-card"><input placeholder="Go to a page, or a stock (symbol or company)…" spellcheck="false"><div class="pal-list"></div>
     <div class="pal-foot muted small">↑ ↓ to move · Enter to open · Esc to close</div></div></div>`);
@@ -4114,17 +4344,19 @@ function openPalette() {
   const inp = m.querySelector("input"), host = m.querySelector(".pal-list");
   let items = [], cur = 0, timer, seq = 0, state = "";   // state: "" | "searching" | "failed"
   const draw = () => {
-    host.innerHTML = items.map((x, i) => `<div class="pal-it ${i === cur ? "sel" : ""}" data-i="${i}"><span class="pal-k">${x.kind === "page" ? "Page" : MKT_BADGE[x.market]}</span>
+    host.innerHTML = items.map((x, i) => `<div class="pal-it ${i === cur ? "sel" : ""}" data-i="${i}"><span class="pal-k">${x.kind === "page" ? "Page" : x.kind === "recent" ? "Recent" : MKT_BADGE[x.market]}</span>
       <b>${esc(x.label)}</b><span class="muted small">${esc(x.sub || "")}</span></div>`).join("")
       + (state === "searching" ? '<div class="muted small pal-none"><span class="spin"></span> Searching stocks…</div>'
         : state === "failed" ? '<div class="small pal-none neg">Stock search failed — is the web server running?</div>'
         : items.length ? "" : `<div class="muted small pal-none">No page or stock matches “${esc(inp.value.trim())}”. Try a ticker (AAPL, RELIANCE) or part of a company name.</div>`);
     host.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
   };
+  const recent = (store.get("recentVisits", []) || []).filter((x) => x.hash !== location.hash)
+    .map((x) => ({ kind: "recent", label: x.label, sub: x.hash.replace(/^#\//, "").split("/")[0], href: x.hash }));
   const update = async () => {
     const q = inp.value.trim().toLowerCase(), my = ++seq;
     const pg = pages.filter((p) => !q || p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q));
-    items = pg.slice(0, q ? 6 : 20); cur = 0; state = q ? "searching" : ""; draw();
+    items = q ? pg.slice(0, 6) : [...recent, ...pg].slice(0, 24); cur = 0; state = q ? "searching" : ""; draw();
     if (q.length < 1) return;
     const syms = await api(`/api/symbols?q=${encodeURIComponent(q)}&limit=8`).catch(() => null);
     if (my !== seq) return;
@@ -4190,6 +4422,29 @@ async function learnPage(alive, topic) {
   if (guide) await learnGuide(alive, guide);
 }
 
+/** Library → Research: every research note (research/*.md, except the learn-* guides) in a sidebar, the
+ *  chosen one beside its "On this page" contents. Opens on the sector playbook. */
+async function researchPage(alive, slug) {
+  $view.innerHTML = LOADING;
+  const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => !x.run.startsWith("learn-"))
+    .sort((a, b) => String(a.title || a.run).localeCompare(String(b.title || b.run)));
+  if (!alive()) return;
+  if (!runs.length) { $view.innerHTML = `<div class="empty"><b>No research notes loaded</b><div class="muted">Load them from System → Reports archive (Load reports).</div></div>`; return; }
+  const doc = runs.find((x) => x.run === slug) || runs.find((x) => x.run === "sector-analysis-playbook") || runs[0];
+  const title = (x) => (x.title || x.run).replace(/ — a field guide$/, "");
+  // the menu shows the short name (before the "—"), unless two notes would then read the same
+  const head = (x) => title(x).split(" — ")[0];
+  const short = (x) => (runs.filter((y) => head(y) === head(x)).length > 1 ? title(x) : head(x));
+  document.title = `${title(doc)} · Research · Trading`;
+  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">
+      <div class="nav-h">Research notes (${runs.length})</div>
+      ${runs.map((x) => `<a class="nav-item ${x.id === doc.id ? "active" : ""}" href="#/research/${esc(x.run)}" title="${esc(title(x))}"><span><b class="sn">${esc(short(x))}</b></span></a>`).join("")}
+      <div class="nav-empty muted small">Learning guides are under <a href="#/learn">Learn</a>; backtest and screening reports under System → <a href="#/reports">Reports archive</a>.</div>
+    </aside><section class="scr-main lp-main"><div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div></section></div>`;
+  $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
+  await learnGuide(alive, doc);
+}
+
 /** One long-form guide inside the Learn layout, with an "On this page" list of its sections. */
 async function learnGuide(alive, guide) {
   const r = await api(`/api/reports/${guide.id}`).catch((e) => ({ error: e.message }));
@@ -4221,17 +4476,96 @@ async function learnGuide(alive, guide) {
   window.scrollTo(0, 0);
 }
 
-/** the sector-analysis playbook (research/sector-analysis-playbook.md), shown as its ingested report */
-async function playbookPage(alive) {
+
+// ------------------------------------------------------------ Today: the daily starting point
+
+/** Today: one page to start the day on — each market's verdict, whether the data can be trusted, today's
+ *  tradeable setups and the new screener picks — each linking to its full page. Everything here is read
+ *  from the pages' own endpoints, so it says exactly what they say. */
+async function todayPage(alive, mkt) {
+  mkt = pageMarket(mkt);
+  document.title = "Today · Trading";
   $view.innerHTML = LOADING;
-  const runs = await api("/api/reports?kind=research").catch(() => []);
+  const get = (u) => api(u).catch(() => null);
+  const [status, setups, picks, ...pms] = await Promise.all([get("/api/status"), get(`/api/setups?market=${mkt}`),
+    get("/api/watchlists/screener/items"), ...MKTS.map((m) => get(`/api/postmarket?market=${m.key}`)),
+    ...MKTS.map((m) => get(`/api/breadth?market=${m.key}`))]);
   if (!alive()) return;
-  const r = runs.find((x) => x.run === "sector-analysis-playbook");
-  if (!r) {
-    $view.innerHTML = `<div class="empty"><b>Playbook not loaded</b><div class="muted">Click <b>Load reports</b> (top right) to load research/sector-analysis-playbook.md.</div></div>`;
-    return;
-  }
-  return reportPage(alive, r.id);
+  const post = Object.fromEntries(MKTS.map((m, i) => [m.key, pms[i]]));
+  const breadth = Object.fromEntries(MKTS.map((m, i) => [m.key, pms[MKTS.length + i]]));
+  if (status) { FRESH = status.freshness; }
+
+  // ---- 1. the market, per market: post-market tone, its six signals, and breadth's base rates
+  const marketCard = (m) => {
+    const p = post[m.key]?.payload, h = post[m.key]?.history?.[0], b = breadth[m.key];
+    if (!p) return `<div class="sec-card td-mkt"><div class="td-mh"><b>${m.flag} ${esc(m.name)}</b></div><div class="muted small">No post-market analysis yet — it runs with the market close routine.</div></div>`;
+    const t = p.tone || {};
+    const sig = (t.signals || []).map((x) => `<li class="${x.ok ? "pos" : "neg"}">${x.ok ? "✓" : "✗"} ${esc(x.ok ? x.text : x.text_not || x.text)}</li>`).join("");
+    const rates = (b?.cards || []).filter((c) => c.text).slice(0, 2).map((c) => `<li><b>${esc(c.title)}</b> ${esc(c.value ?? "")} — <span class="muted">${esc(c.text)}</span></li>`).join("");
+    return `<div class="sec-card td-mkt">
+      <div class="td-mh"><b>${m.flag} ${esc(m.name)}</b>${freshBadge(m.key)}</div>
+      <div class="td-tone"><span class="td-tl tl ${TONE_CLS[t.label] || ""}"></span><b>${esc(t.label || "—")}</b>
+        <span class="muted small">${t.score ?? "?"} of ${t.of ?? 6} signals · ${prettyDate(p.date)}${h ? ` · ${h.up?.toLocaleString()} up / ${h.down?.toLocaleString()} down` : ""}</span></div>
+      ${toneBaseRate(post[m.key]?.history, p.date, t.score) ? `<div class="muted small td-sub">${toneBaseRate(post[m.key].history, p.date, t.score)}.</div>` : ""}
+      <ul class="td-sig">${sig}</ul>
+      ${rates ? `<div class="muted small td-sub">Breadth, against history since 2015</div><ul class="td-rates small">${rates}</ul>` : ""}
+      <a class="small td-more" href="#/postmarket/${m.key}">Post-market recap →</a> <a class="small td-more" href="#/breadth/${m.key}">Breadth →</a></div>`;
+  };
+
+  // ---- 2. data health: can today's numbers be trusted?
+  const issues = [];
+  if (status) {
+    for (const m of MKTS) {
+      const f = status.freshness?.[m.key];
+      for (const it of (f?.items || [])) if (it.status && it.status !== "ok" && ["prices", "breadth", "screening"].includes(it.key))
+        issues.push(`${m.flag} ${esc(m.name)} ${esc(it.label.toLowerCase())}: ${esc(it.text || it.status)}`);
+    }
+    const lanes = status.lanes || {};
+    if (!status.worker?.alive) issues.push(`The job worker is stopped — nothing queued or scheduled will run. <a href="#/status">Start it</a>`);
+    else if (lanes.fast && !lanes.fast.alive) issues.push("The fast lane is stopped — screen and setup refreshes will wait behind longer jobs.");
+    const dayAgo = Date.now() - 864e5;
+    const failed = (status.runs || []).filter((x) => x.status === "failed" && new Date(x.started_at).getTime() > dayAgo);
+    if (failed.length) issues.push(`${failed.length} run${failed.length > 1 ? "s" : ""} failed in the last 24 h: ${failed.slice(0, 3).map((x) => `<a href="#/runs/${x.id}">${esc(x.job)}</a>`).join(", ")}`);
+  } else issues.push("Could not reach the status check.");
+  const running = status?.queue?.running_all || (status?.queue?.running ? [status.queue.running] : []);
+  const waiting = status?.queue?.queued?.length || 0;
+  const health = `<div class="sec-card td-health ${issues.length ? "warn" : "ok"}">
+      <div class="td-hh"><b>${issues.length ? "Data health — check before trading" : "Data health — all current"}</b><span class="spacer"></span><a class="small" href="#/status">System status →</a></div>
+      ${issues.length ? `<ul class="td-issues">${issues.map((x) => `<li>${x}</li>`).join("")}</ul>` : `<div class="muted small">Prices, breadth and the screens are up to date for every market.</div>`}
+      ${running.length || waiting ? `<div class="muted small">${running.length ? `Running: ${running.map((x) => esc(`${(x.targets || []).join(" + ")}${x.market && x.market !== "all" ? ` · ${mktInfo(x.market).name}` : ""}${x.lane && x.lane !== "main" ? ` (${x.lane} lane)` : ""}`)).join(", ")}` : ""}${waiting ? `${running.length ? " · " : ""}${waiting} waiting in the queue` : ""}</div>` : ""}</div>`;
+
+  // ---- 3. today's setups for the chosen market: what can be traded now
+  const rows = setups?.rows || [];
+  const trade = rows.filter((x) => x.tradeable).sort((a, b) => (/HIGH/.test(b.decision) - /HIGH/.test(a.decision)) || ((b.quality ?? 0) - (a.quality ?? 0)));
+  const watchN = rows.length - trade.length;
+  const runChips = (setups?.runs || []).map((x) => `<a class="chip-s" href="#/strategies/${x.strategy}/setups/${mkt}" title="${esc(x.name)}: ${x.tradeable} tradeable, ${x.watch} on watch — run ${prettyDate(x.run)}">${esc(x.name)} <b>${x.tradeable}</b></a>`).join("");
+
+  // ---- 4. screener picks: what is new on the list since the last session
+  const mine = (picks || []).filter((x) => x.market === mkt);
+  const newest = mine.length ? mine.map((x) => x.added_at).sort().at(-1) : null;
+  const fresh = newest ? mine.filter((x) => new Date(newest) - new Date(x.added_at) < 20 * 3600e3) : [];
+  const pickChip = (x) => `<a class="chip-s" href="#/chart/${x.market}/${encodeURIComponent(x.symbol)}" title="${esc(x.name || "")} — ${esc((x.strategies || []).map((s) => `${s.strategy}: ${s.decision}`).join(" · "))}">${esc(bareSymbol(x.symbol))}</a>`;
+
+  $view.innerHTML = pageHead("Today", { extra: marketSeg(mkt),
+      context: `<span class="muted small">${new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</span>${info("<p>Your starting point each day: how each market closed, whether the data behind everything is current, what can be traded today, and what is new on the screener list. Each part opens its full page.</p><p>The market toggle chooses the market for setups and picks; both markets' verdicts are always shown.</p>")}` })
+    + `<div class="td-grid">${MKTS.map(marketCard).join("")}</div>${health}
+    <div class="sec-card td-setups"><div class="td-hh"><h3>Today's setups · ${esc(mktInfo(mkt).name)}</h3>
+        <span class="muted small">${trade.length} tradeable · ${watchN} on watch</span><span class="spacer"></span><a class="small" href="#/strategies">All setups →</a></div>
+      ${setups?.behind ? `<div class="muted small td-warn">Newer prices have loaded since these runs — the decisions below were made on older bars.</div>` : ""}
+      <div class="scr-top td-runs">${runChips || '<span class="muted small">No strategy runs yet for this market.</span>'}</div>
+      <div id="td-tbl"></div></div>
+    <div class="sec-card td-picks"><div class="td-hh"><h3>Screener picks · ${esc(mktInfo(mkt).name)}</h3>
+        <span class="muted small">${mine.length} on the list${fresh.length ? ` · ${fresh.length} added in the latest run` : ""}</span><span class="spacer"></span><a class="small" href="#/watchlist/screener">Open the list →</a></div>
+      ${fresh.length ? `<div class="muted small">New:</div><div class="scr-top">${fresh.slice(0, 40).map(pickChip).join("")}</div>`
+        : `<div class="muted small">${mine.length ? "Nothing new in the latest run." : "Stocks a strategy marks tradeable or on watch collect here after each run."}</div>`}</div>`;
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/today/${b.dataset.v}`); });
+  const host = $view.querySelector("#td-tbl");
+  if (!trade.length) { host.innerHTML = `<div class="muted small">${rows.length ? "No tradeable setups today — the names above are on watch." : ""}</div>`; return; }
+  const cols = ["symbol", "name", "peer_group", "group_rs", "strategy", "decision", "setup", "price", "entry", "stop", "risk_pct", "target_r"];
+  dataTable(host, cols, trade.map((x) => [x.symbol, x.name || "", x.peer_group || "", x.peer_rs ?? null, x.strategy_name, x.decision, x.setup, x.price, x.entry, x.stop, x.risk_pct, x.target_r]), {
+    name: "today_setups", limit: 15,
+    rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((x) => x[0]), "Today's setups", location.hash),
+  });
 }
 
 async function route() {
@@ -4240,11 +4574,12 @@ async function route() {
   if (location.hash !== lastRoute) { window.scrollTo(0, 0); lastRoute = location.hash; }
   const seq = ++navSeq, alive = () => seq === navSeq;
   const parts = location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent);
-  const page = parts[0] || "chart";
+  const page = parts[0] || "today";
   renderNav(pageIdOf(parts));
   document.body.dataset.page = page;
   try {
-    if (page === "chart") await chartPage(alive, parts[1], parts[2], parts[3]);
+    if (page === "today") await todayPage(alive, parts[1]);
+    else if (page === "chart") await chartPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "screening") go(`#/strategies/${encodeURIComponent(parts[2] || "trend_pullback")}/setups/${parts[1] || ""}`);
     else if (page === "screens") await screensPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "watchlist") await watchlistPage(alive, parts[1]);
@@ -4258,7 +4593,8 @@ async function route() {
     else if (page === "postmarket") await postmarketPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "sectors") await sectorsPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "reports") await (parts[1] ? reportPage(alive, parts[1], parts[2]) : reportsPage(alive));
-    else if (page === "playbook") await playbookPage(alive);
+    else if (page === "playbook") go("#/research/sector-analysis-playbook");   // its own tab, before Research listed every note
+    else if (page === "research") await researchPage(alive, parts[1]);
     else if (page === "learn") await learnPage(alive, parts[1]);
     else if (page === "status") await statusPage(alive, parts[1]);
     else if (page === "schedules") await schedulesPage(alive);
@@ -4266,10 +4602,19 @@ async function route() {
     else if (page === "subindustries") await subindustriesPage(alive, parts[1], parts[2]);
     else if (page === "todo") await todoPage(alive);
     else if (page === "notes") await notesPage(alive, parts.slice(1));
-    else go("#/chart");
+    else go("#/today");
+    if (alive()) rememberVisit();
   } catch (e) {
     if (alive()) $view.innerHTML = `<div class="empty"><b>Something went wrong</b><div class="muted">${esc(e.message)}</div></div>`;
   }
+}
+/** the pages you opened recently, newest first — ⌘K lists them before you type */
+function rememberVisit() {
+  const label = document.title.replace(/ · Trading$/, "").trim();
+  if (!label || label === "Trading") return;
+  const hash = location.hash || "#/today";
+  const xs = (store.get("recentVisits", []) || []).filter((x) => x.hash !== hash && x.label !== label);
+  store.set("recentVisits", [{ hash, label }, ...xs].slice(0, 8));
 }
 window.addEventListener("hashchange", route);
 
@@ -4343,15 +4688,25 @@ matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => { i
 
 // keyboard help
 const HELP = el(`<div class="help" hidden><div class="help-card"><h3>Keyboard shortcuts</h3>
-  <dl><dt>Type a letter</dt><dd>Search symbols (on the chart)</dd><dt>↑ / ↓</dt><dd>Previous / next symbol in the list you opened it from</dd>
-  <dt>Alt + T / H / J / V / C / F</dt><dd>Trend line / horizontal line / horizontal ray / vertical line / cross line / Fib retracement</dd>
-  <dt>Drag the chart</dt><dd>Pan left/right and up/down (up/down turns auto-scale off; click “auto” to restore)</dd>
-  <dt>Drag the price axis</dt><dd>Stretch / squeeze the price scale</dd><dt>Alt + R</dt><dd>Reset the chart view</dd>
-  <dt>Shift + drag</dt><dd>Measure</dd><dt>Esc</dt><dd>Cancel drawing / deselect</dd><dt>Del</dt><dd>Delete the selected drawing</dd>
-  <dt>⌘ / Ctrl + Z</dt><dd>Undo the last drawing change</dd>
-  <dt>⌘ / Ctrl + K</dt><dd>Go anywhere: a page, or a stock by symbol or company name</dd>
-  <dt>Alt + 1 … ${SECTIONS.length}</dt><dd>${SECTIONS.map((x) => x.label).join(" / ")}</dd><dt>Alt + 0</dt><dd>Data status</dd><dt>Alt + [ / ]</dt><dd>Previous / next tab in the section</dd>
+  <h4>Anywhere</h4>
+  <dl><dt>⌘ / Ctrl + K</dt><dd>Go anywhere: a page, or a stock by symbol or company name</dd>
+  <dt>Alt + 1 … ${SECTIONS.length}</dt><dd>${SECTIONS.map((x) => x.label).join(" / ")}</dd>
+  <dt>Alt + 0</dt><dd>Data status</dd>
+  <dt>Alt + [ / ]</dt><dd>Previous / next tab in the section</dd>
   <dt>?</dt><dd>Show this help</dd></dl>
+  <h4>On the chart</h4>
+  <dl><dt>Type a letter</dt><dd>Search symbols</dd>
+  <dt>↑ / ↓</dt><dd>Previous / next symbol in the list you opened it from</dd>
+  <dt>Alt + T / H / J</dt><dd>Trend line / horizontal line / horizontal ray</dd>
+  <dt>Alt + V / C / F</dt><dd>Vertical line / cross line / Fib retracement</dd>
+  <dt>Alt + R</dt><dd>Reset the chart view</dd>
+  <dt>Esc</dt><dd>Cancel drawing / deselect</dd>
+  <dt>Del</dt><dd>Delete the selected drawing</dd>
+  <dt>⌘ / Ctrl + Z</dt><dd>Undo the last drawing change</dd></dl>
+  <h4>Mouse, on the chart</h4>
+  <dl class="mouse"><dt>Drag the chart</dt><dd>Pan left/right and up/down (up/down turns auto-scale off; click “auto” to restore)</dd>
+  <dt>Drag the price axis</dt><dd>Stretch / squeeze the price scale</dd>
+  <dt>Shift + drag</dt><dd>Measure</dd></dl>
   <button class="ghost">Close</button></div></div>`);
 document.body.append(HELP);
 HELP.onclick = (e) => { if (e.target === HELP || e.target.tagName === "BUTTON") HELP.hidden = true; };

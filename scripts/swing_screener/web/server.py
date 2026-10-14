@@ -1646,7 +1646,23 @@ def screens_api(market: str = "us"):
             it["error"] = str(exc)
     stale = snapshot.stale_inputs(market)
     return {"market": market, "date": df.attrs["date"].isoformat(), "tradable": int(df["tradable"].sum()), "universe": len(df),
-            "screens": items, "stale_inputs": stale, "updating": _snapshot_topup(market, stale)}
+            "screens": items, "stale_inputs": stale, "updating": _snapshot_topup(market, stale), "quality": _quality_summary(market)}
+
+
+def _quality_summary(market: str) -> dict | None:
+    """The Quality screen's card on the Screens overview: how many companies are scored, how many count
+    as high quality (fundamentals/quality.py — the score threshold and no red flag), the best of them,
+    and when the scores were last refreshed (they are long-term and refreshed on demand, not daily)."""
+    if not q("SELECT to_regclass('quality_scores') IS NOT NULL")[0][0]:
+        return None
+    rows = q("SELECT symbol, quality_score, metrics, computed_at FROM quality_scores WHERE market=%s", (market,))
+    if not rows:
+        return {"scored": 0, "high": 0, "top": [], "refreshed": None}
+    high = [(s_, sc, m) for s_, sc, m, _ in rows if m and qual.is_high_quality({**m, "quality_score": sc})]
+    high.sort(key=lambda x: -(x[1] or 0))
+    return {"scored": len(rows), "high": len(high), "threshold": qual.HIGH_QUALITY_SCORE,
+            "top": [{"symbol": s_, "name": (m or {}).get("name") or _name(market, s_), "quality": sc} for s_, sc, m in high[:8]],
+            "refreshed": max(c for *_, c in rows).isoformat()}
 
 
 @app.get("/api/screens/{key}")
