@@ -3425,7 +3425,11 @@ function renderResearchMd(host, markdown) {
  *    tf:     D | W | M — bar size (default: by span — monthly past 12 years, weekly past 2)
  *    rebase: 100 — every line restated as 100 at `from`, on one scale (compare growth, not levels)
  *    line:   <expr> | <label> | <flags>   (repeat; flags: right, pane2, log, zero)
- *            expr = market:SERIES, or two joined by " - " (a spread) or " / " (a ratio)
+ *            expr = a ref, or two joined by " - " (a spread) or " / " (a ratio). A ref is market:SERIES
+ *            (index_series or prices) or market:breadth.FIELD (breadth_daily: pct50, pct5, highs, lows, hl,
+ *            adv, dec, ad, adline, up4, dn4, up25m, dn25m), optionally with one transform on the daily data:
+ *            @sma50 (any N: its N-day average), @dd (% below its running high), @dist25 (O'Neil distribution
+ *            days in the last 25 sessions: down 0.2%+ on higher volume — needs a series with volume)
  *    band:   <from> <to> | <label>   a shaded period (repeat)
  *    mark:   <date> | <label>         an arrow on the first line (repeat)
  *    caption: what to look at
@@ -3444,14 +3448,30 @@ function parseSeriesSpec(text) {
   }
   return s;
 }
-/** one stored series' daily closes -> [[date, close]] */
+/** one stored series' daily values -> [[date, value, volume?]], then its @transform if any */
 async function seriesDaily(ref) {
   if (!seriesCache.has(ref)) {
-    const [market, symbol] = ref.split(":");
-    seriesCache.set(ref, api(`/api/prices?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&tf=D&bars=${ALL_BARS}`)
-      .then((r) => (r.candles ? r.candles.map((c) => [c.time, c.close]) : (r.line || []).map((c) => [c.time, c.value]))));
+    const [base, mod] = ref.split("@"), [market, symbol] = base.split(":");
+    const raw = symbol.startsWith("breadth.")
+      ? api(`/api/breadth-series?market=${encodeURIComponent(market)}&field=${encodeURIComponent(symbol.slice(8))}`).then((r) => r.line.map((c) => [c.time, c.value]))
+      : api(`/api/prices?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&tf=D&bars=${ALL_BARS}`)
+        .then((r) => (r.candles ? r.candles.map((c, i) => [c.time, c.close, r.volume?.[i]?.value]) : (r.line || []).map((c) => [c.time, c.value])));
+    seriesCache.set(ref, raw.then((xs) => (mod ? seriesTransform(xs, mod, ref) : xs)));
   }
   return seriesCache.get(ref);
+}
+/** @smaN, @dd, @dist25 on daily [[date, value, volume?]] (see the fence grammar above) */
+function seriesTransform(xs, mod, ref) {
+  const sma = mod.match(/^sma(\d+)$/), dist = mod.match(/^dist(\d+)$/);
+  if (sma) { const n = +sma[1]; let sum = 0;
+    return xs.map(([d, v], i) => { sum += v; if (i >= n) sum -= xs[i - n][1]; return i >= n - 1 ? [d, sum / n] : null; }).filter(Boolean); }
+  if (mod === "dd") { let hi = -Infinity; return xs.map(([d, v]) => { hi = Math.max(hi, v); return [d, (v / hi - 1) * 100]; }); }
+  if (dist) {
+    if (!xs.some((x) => x[2])) throw new Error(`${ref}: no volume stored for this series`);
+    const n = +dist[1], flag = xs.map((x, i) => (i && x[2] && xs[i - 1][2] && x[1] <= xs[i - 1][1] * 0.998 && x[2] > xs[i - 1][2] ? 1 : 0));
+    let c = 0; return xs.map(([d], i) => { c += flag[i]; if (i >= n) c -= flag[i - n]; return [d, c]; });
+  }
+  throw new Error(`unknown transform @${mod}`);
 }
 /** the period a day falls in, so series on different calendars line up: the week's Friday, the month's end */
 function periodKey(d, tf) {
@@ -3524,7 +3544,7 @@ async function drawSeriesFigure(fig, spec) {
     const pts = times.filter((t) => t >= lo && t <= hi);
     if (!pts.length) continue;
     for (const pane of panes) {
-      const h = chart.addSeries(LC.AreaSeries, { priceScaleId: "band", lineVisible: false, topColor: cssVar("--warn-soft"), bottomColor: cssVar("--warn-soft"),
+      const h = chart.addSeries(LC.AreaSeries, { priceScaleId: `band${pane}`, lineVisible: false, topColor: cssVar("--warn-soft"), bottomColor: cssVar("--warn-soft"),
         priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
         autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) }, pane);
       h.priceScale().applyOptions({ visible: false, scaleMargins: { top: 0, bottom: 0 } });
@@ -4523,14 +4543,16 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn is organised by TOPIC — Macro, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
+/** Learn is organised by TOPIC — Macro, Market health, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
  *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
  *  appears in the menu once. #/learn is the hub; #/learn/candles, /charts, /levels a topic's pattern grid;
  *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
 const GUIDE_ORDER = ["learn-macro-rates", "learn-macro-yield-curve", "learn-macro-inflation", "learn-macro-cycle", "learn-macro-currencies", "learn-macro-liquidity-credit", "learn-macro-commodities", "learn-macro-calendar",
+  "learn-health-trend", "learn-health-breadth", "learn-health-volatility", "learn-health-distribution",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
 const GUIDE_TOPIC = {"learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
+  "learn-health-trend": "health", "learn-health-breadth": "health", "learn-health-volatility": "health", "learn-health-distribution": "health",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
 const GUIDE_BLURB = {
@@ -4542,6 +4564,10 @@ const GUIDE_BLURB = {
   "learn-macro-liquidity-credit": "QE and QT, credit spreads and volatility: the plumbing that warns before stocks do.",
   "learn-macro-commodities": "Oil, gold and copper as reads on inflation, fear and growth, and what they mean for India.",
   "learn-macro-calendar": "The US and India events that move markets, and how a swing trader plans around them.",
+  "learn-health-trend": "Is the market in an uptrend? Index averages, stages, drawdowns, and the regime the app's strategies obey.",
+  "learn-health-breadth": "How many stocks are taking part: % above averages, new highs vs lows, the A/D line, and narrow rallies.",
+  "learn-health-volatility": "VIX, India VIX and sentiment: what fear prices, when extremes matter, and how the app sizes for it.",
+  "learn-health-distribution": "O'Neil's distribution days and follow-through days: spotting tops and new uptrends from index volume.",
   "learn-candlestick-patterns": "Reading candles: anatomy, the one-, two- and three-bar patterns, context, and how the screener's candle notes use them.",
   "learn-chart-patterns": "The bases this app detects, topping structures, how to judge a breakout — and what the backtests found.",
   "learn-bases": "What a base is, Stage 2 and base counts, the common base types, and how to spot one while it is still forming.",
@@ -4555,7 +4581,7 @@ const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$
  *  for the topic, "Supply and demand") is just "Field guide" */
 const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
   return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
-const LEARN_TOPICS = ["macro", "candles", "charts", "levels"];
+const LEARN_TOPICS = ["macro", "health", "candles", "charts", "levels"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;
@@ -4607,7 +4633,7 @@ async function learnPage(alive, topic, sub) {
   /** a small topic's patterns, one card each, in place of its grid */
   const patternCards = (f) => Learn.PATTERNS.filter((x) => Learn.familyOf(x) === f).map((x) => `<a class="sec-card lp-hubc" href="#/learn/${x.key}">
       <b>${esc(x.name)}</b><div class="lp-hubthumbs one">${Learn.svg(x, { thumb: true })}</div></a>`).join("");
-  const hub = () => pageHead("Learn", { context: info("<p>Organised by topic. Each has <b>guides</b> to read start to finish; the chart topics also have their <b>patterns</b> to look up, every one drawn with real candles, with how to read it. The macro guides chart stored market data.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
+  const hub = () => pageHead("Learn", { context: info("<p>Organised by topic. Each has <b>guides</b> to read start to finish; the chart topics also have their <b>patterns</b> to look up, every one drawn with real candles, with how to read it. The macro and market-health guides chart stored market data.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
     + `<p class="sd-lead">Read a topic's guides, then look its patterns up. Findings and studies are under <a href="#/research">Research</a>.</p>
     ${LEARN_TOPICS.map((t) => `<h3 class="ov-h">${esc(Learn.FAMILY_LABEL[t])}</h3><div class="lp-hub">${guidesIn(t).map(guideCard).join("")}${hasGrid(t) ? patternsCard(t) : patternCards(t)}</div>`).join("")}
     ${more.length ? `<h3 class="ov-h">More guides</h3><div class="lp-hub">${more.map(guideCard).join("")}</div>` : ""}

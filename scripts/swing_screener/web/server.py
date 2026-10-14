@@ -979,6 +979,28 @@ def macro_strip(market: str = "india"):
     return {"market": market, "series": macro.latest(market)}
 
 
+# breadth_daily as single series for the guides' ```series charts (`us:breadth.pct50`); counts, or % of the day's n
+BREADTH_FIELDS = {
+    "pct50": "above50 * 100.0 / n", "pct5": "above5 * 100.0 / n", "highs": "highs", "lows": "lows", "hl": "highs - lows",
+    "adv": "adv", "dec": "dec", "ad": "adv - dec", "up4": "up4", "dn4": "dn4", "up25m": "up25m", "dn25m": "dn25m",
+}
+
+
+@app.get("/api/breadth-series")
+def breadth_series(market: str, field: str):
+    """One breadth measure over time; `adline` is the cumulative advance-decline line."""
+    if market not in br.INDEXES:
+        raise HTTPException(400, "unknown market")
+    if field not in BREADTH_FIELDS and field != "adline":
+        raise HTTPException(400, f"field must be one of {', '.join([*BREADTH_FIELDS, 'adline'])}")
+    rows = q(f"SELECT date, {BREADTH_FIELDS.get(field, 'adv - dec')} FROM breadth_daily WHERE market=%s AND n > 0 ORDER BY date", (market,))
+    vals, run = [], 0.0
+    for d, v in rows:
+        run = run + float(v) if field == "adline" else float(v)
+        vals.append({"time": d.strftime("%Y-%m-%d"), "value": round(run, 3)})
+    return {"market": market, "field": field, "line": vals}
+
+
 @app.get("/api/breadth")
 def breadth_page(market: str = "india"):
     if market not in br.INDEXES:
