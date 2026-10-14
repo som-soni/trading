@@ -16,6 +16,8 @@ const Studies = (() => {
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  /** a custom study whose result arrives later (a server request) rewrites its legend note in place */
+  const setNote = (id, text) => document.querySelectorAll(`.srow[data-id="${id}"] .snote`).forEach((el) => { el.textContent = text; el.title = text; });
 
   // ------------------------------------------------------------- math
   const nul = (n) => new Array(n).fill(null);
@@ -319,6 +321,44 @@ const Studies = (() => {
         return { series: [], note: n ? `${n} plan${n > 1 ? "s" : ""}` : "no screener plan for this symbol",
           setVisible: (on) => { lines.forEach((x) => main.removePriceLine(x)); lines = on ? specs.map((o) => main.createPriceLine({ ...o, axisLabelVisible: true })) : []; } };
       } },
+    // ---- chart patterns, detected ON DEMAND by the chart_pattern strategy's own detectors (server side,
+    // /api/patterns): one implementation of the rules, drawn exactly as a backtest trade's pattern is.
+    // As of the bar at the right edge of the view, so scrolling back shows what was live on that day.
+    patterns: { name: "Chart patterns (live detection)", short: "Patterns", cat: "Screener", overlay: true, custom: true,
+      label: (p) => `Patterns${p.show === "Best match" ? " · best" : ""}${p.asOf === "Last bar" ? " · last bar" : ""}`,
+      params: { show: { type: "select", def: "All live", options: ["All live", "Best match"] },
+        asOf: { type: "select", def: "Right edge of the view", options: ["Right edge of the view", "Last bar"] },
+        topping: { type: "select", def: "Yes", options: ["Yes", "No"] } },
+      plots: [{ k: "bull", t: "Bullish pattern", c: "#ab47bc" }, { k: "bear", t: "Topping pattern", c: "#ef5350" }],  // purple: not the blue of a backtest trade's pattern
+      draw({ chart, times, p, col, tf, ctx, id }) {
+        if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
+        let on = true, seq = 0, asked, timer = null, shapes = [];
+        const paint = () => ctx.annotate(id, on ? shapes : [], { base: col("bull"), stop: col("bear") });
+        const load = async (date) => {
+          if (date === asked) return;
+          asked = date;
+          const my = ++seq;
+          setNote(id, "detecting…");
+          const q = `show=${p.show === "Best match" ? "best" : "all"}&topping=${p.topping === "Yes" ? 1 : 0}${date ? `&date=${date}` : ""}`;
+          const r = await fetch(`/api/patterns/${ctx.market}/${encodeURIComponent(ctx.symbol)}?${q}`)
+            .then((x) => (x.ok ? x.json() : null)).catch(() => null);
+          if (my !== seq) return;   // a newer request (the view moved) owns the drawing
+          shapes = (r?.matches || []).flatMap((m) => m.shapes);
+          const names = (r?.matches || []).map((m) => `${m.name} (${m.state}${m.tradeable ? ", tradeable" : ""})`);
+          setNote(id, !r ? "detection failed" : `${r.as_of}: ${names.length ? names.join(" · ") : r.note || "no live pattern"}`);
+          paint();
+        };
+        if (p.asOf === "Last bar") load(null);
+        else {
+          const edge = () => {
+            const r = chart.timeScale().getVisibleLogicalRange();
+            return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : null;
+          };
+          chart.timeScale().subscribeVisibleLogicalRangeChange(() => { clearTimeout(timer); timer = setTimeout(() => load(edge()), 250); });
+          timer = setTimeout(() => load(edge()), 0);
+        }
+        return { series: [], note: "detecting…", setVisible: (v) => { on = v; paint(); } };
+      } },
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },
@@ -448,7 +488,7 @@ const Studies = (() => {
       if ((def.needsVolume && !hasVolume(bars)) || (def.needsBench && !ctx.bench)) { out.push({ s, def, skipped: true, pane: def.overlay ? 0 : null }); continue; }
       if (def.custom) {
         const col = (k) => s.colors[k] || def.plots.find((x) => x.k === k).c;
-        const r = def.draw({ chart, main: ctx.main, times, bars, p: s.params, col, tf: ctx.tf, plans: ctx.plans });
+        const r = def.draw({ chart, main: ctx.main, times, bars, p: s.params, col, tf: ctx.tf, plans: ctx.plans, ctx, id: s.id });
         if (s.hidden) r.setVisible(false);
         out.push({ s, def, pane: 0, series: r.series || [], vals: {}, fmt: () => "", note: r.note, setVisible: r.setVisible });
         continue;
@@ -493,7 +533,7 @@ const Studies = (() => {
   function legendRow(e) {
     const { s, def } = e;
     const note = e.skipped ? `<span class="muted">${def.needsBench ? "no index data" : "no volume data"}</span>`
-      : e.note ? `<span class="muted">${esc(e.note)}</span>` : "";
+      : e.note ? `<span class="muted snote">${esc(e.note)}</span>` : "";
     return `<div class="srow ${s.hidden || e.skipped ? "off" : ""}" data-id="${s.id}"><span class="sname" title="Click to select, double-click for settings">${esc(label(s))}</span>${note}<span class="svals"></span>${btns(s)}</div>`;
   }
   function legendValues(e, i) {

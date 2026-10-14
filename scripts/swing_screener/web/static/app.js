@@ -397,7 +397,10 @@ async function chartPage(alive, market, symbol, tf) {
   // trade-debug overlay state — declared before the first renderSide(), which can hit the
   // restored Trades tab before the chart (and its data) exists
   let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1;
-  let applyAnnotations = () => { if (dr) dr.annotate(vcpAnnotations); };
+  // three read-only layers share the annotation overlay: VCP near misses, the chosen backtest run's
+  // trades, and studies that draw shapes (Indicators -> Chart patterns); each sets its own part
+  let tradeItems = () => [], studyItems = () => [];
+  const applyAnnotations = () => { if (dr) dr.annotate([...vcpAnnotations, ...tradeItems(), ...studyItems()]); };
   let zoomToTrade = () => {};
   const viewKey = `${market}:${symbol}:${tf}`;
   let chart = null;
@@ -503,7 +506,54 @@ async function chartPage(alive, market, symbol, tf) {
     else { B.O.push(d.value); B.H.push(d.value); B.L.push(d.value); B.C.push(d.value); B.V.push(0); }
   });
   const benchMap = bpx ? new Map((bpx.line || bpx.candles).map((d) => [d.time, d.value ?? d.close])) : null;
-  const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [] } });
+  // Shapes in the Strategy.chart_anatomy schema (strategies/base.py) -> annotation items. Used by the
+  // backtest-trade overlay and by studies that draw patterns, so a pattern looks the same in both.
+  const ROLE = { base: "#2962ff", pivot: "#26a69a", stop: "#ef5350", target: "#26a69a", support: "#8a8a8a", level: "#ff9800" };
+  const barOf = (d) => times.find((x) => x >= d);   // a date onto the nearest charted bar at or after it
+  const tsOf = (d) => { const s = barOf(d); return s ? Date.parse(s + "T00:00:00Z") : null; };
+  const idxOf = (d) => { const s = barOf(d); return s ? times.indexOf(s) : -1; };
+  const shapeItems = (shapes, { dim = false, withNotes = false, at = null, price = null, roles = {} } = {}) => shapes.map((s) => {
+    const col = dim ? "#4b5063" : roles[s.role] || ROLE[s.role] || ROLE.level;
+    const t1 = tsOf(s.to || s.at || at); if (t1 == null) return null;
+    const i1 = idxOf(s.to || s.at || at);
+    const t0 = s.from ? tsOf(s.from) : s.bars && i1 >= 0 ? Date.parse(times[Math.max(0, i1 - s.bars)] + "T00:00:00Z") : t1;
+    if (s.shape === "box") return { type: "rect", pts: [{ t: t0, p: s.top }, { t: t1, p: s.bottom }],
+      color: col, width: dim ? 1 : 2, dash: !!s.dash, text: dim ? "" : s.label || "" };
+    if (s.shape === "level") return { type: "trend", pts: [{ t: t0, p: s.price }, { t: t1, p: s.price }],
+      color: col, width: 1, dash: s.dash !== false, text: dim ? "" : s.label || "" };
+    if (s.shape === "line") return { type: "trend", pts: [{ t: t0, p: s.p0 }, { t: t1, p: s.p1 }],
+      color: col, width: dim ? 1 : 2, dash: !!s.dash, text: "" };
+    if (s.shape === "path") {
+      // the pattern itself: its swing points joined in order, each point named (dimmed: line only)
+      const P = (s.points || []).map((q) => ({ t: tsOf(q.at), p: q.price, label: q.label })).filter((q) => q.t != null);
+      return [
+        ...P.slice(1).map((q, j) => ({ type: "trend", pts: [{ t: P[j].t, p: P[j].p }, { t: q.t, p: q.p }],
+          color: col, width: dim ? 1 : 2.5, dash: false, text: "" })),
+        // the named points get a dot and a label; unnamed ones are curve vertices (a rounded cup)
+        ...(dim ? [] : P.filter((q) => q.label).flatMap((q) => [
+          { type: "dot", pts: [{ t: q.t, p: q.p }], color: col },
+          { type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }])),
+      ];
+    }
+    if (s.shape === "dots") return dim ? [] : (s.points || []).map((q) => ({ t: tsOf(q.at), p: q.price, label: q.label }))
+      .filter((q) => q.t != null).flatMap((q) => [{ type: "dot", pts: [{ t: q.t, p: q.p }], color: col },
+        ...(q.label ? [{ type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }] : [])]);
+    if (s.shape === "note" && withNotes && s.text) {
+      // the text box is pinned to the pane's top strip (pts[1].f = fraction of pane height),
+      // so the note never covers the bars it explains; the leader still drops to the anchor
+      const p = s.price ?? price;
+      const bx = Math.min(times.length - 1, (i1 < 0 ? times.length - 1 : i1) + 2);
+      return { type: "callout", pts: [{ t: t1, p }, { t: Date.parse(times[bx] + "T00:00:00Z"), f: 0.05 }],
+        color: col, width: 1, text: s.text };
+    }
+    return null;
+  }).flat().filter(Boolean);
+  // studies that draw shapes hand them over here, keyed by study id; the overlay redraws at once
+  const studyShapes = new Map();
+  studyItems = () => [...studyShapes.values()].flatMap(({ shapes, roles }) => shapeItems(shapes, { roles }));
+  const annotate = (key, shapes, roles) => { studyShapes.set(key, { shapes, roles }); applyAnnotations(); };
+  const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
+    market, symbol, annotate: px.ohlc ? annotate : null } });
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
 
   // (the screener's entry / stop / target lines are now an opt-in indicator: Indicators -> Screener)
@@ -545,8 +595,7 @@ async function chartPage(alive, market, symbol, tf) {
       ]);
       if (!alive()) return;
       anatomy = anat || [];
-      const ts = (d) => { const s = snap(d); return s ? Date.parse(s + "T00:00:00Z") : null; };
-      const idxOf = (d) => { const s = snap(d); return s ? times.indexOf(s) : -1; };
+      const ts = tsOf;
       // near misses only: a base that one of this run's trades was built on is drawn by its trade
       const traded = new Set(anatomy.flatMap((t) => t.shapes.filter((s) => s.shape === "box" && s.from).map((s) => `${s.from}`)));
       const ann = [];
@@ -562,48 +611,9 @@ async function chartPage(alive, market, symbol, tf) {
       });
       vcpAnnotations = ann;   // applied once Drawings exists, further down
       // anatomy shapes -> overlay items; the selected trade stays vivid, the rest dim to context
-      const ROLE = { base: "#2962ff", pivot: "#26a69a", stop: "#ef5350", target: "#26a69a", support: "#8a8a8a", level: "#ff9800" };
-      const items = (t, i) => {
-        const dim = selTrade >= 0 && selTrade !== i;
-        const withNotes = selTrade === i || (selTrade < 0 && anatomy.length <= 3);
-        return t.shapes.map((s) => {
-          const col = dim ? "#4b5063" : ROLE[s.role] || ROLE.level;
-          const t1 = ts(s.to || s.at || t.entry_date); if (t1 == null) return null;
-          const i1 = idxOf(s.to || s.at || t.entry_date);
-          const t0 = s.from ? ts(s.from) : s.bars && i1 >= 0 ? Date.parse(times[Math.max(0, i1 - s.bars)] + "T00:00:00Z") : t1;
-          if (s.shape === "box") return { type: "rect", pts: [{ t: t0, p: s.top }, { t: t1, p: s.bottom }],
-            color: col, width: dim ? 1 : 2, dash: !!s.dash, text: dim ? "" : s.label || "" };
-          if (s.shape === "level") return { type: "trend", pts: [{ t: t0, p: s.price }, { t: t1, p: s.price }],
-            color: col, width: 1, dash: s.dash !== false, text: dim ? "" : s.label || "" };
-          if (s.shape === "line") return { type: "trend", pts: [{ t: t0, p: s.p0 }, { t: t1, p: s.p1 }],
-            color: col, width: dim ? 1 : 2, dash: !!s.dash, text: "" };
-          if (s.shape === "path") {
-            // the pattern itself: its swing points joined in order, each point named (dimmed: line only)
-            const P = (s.points || []).map((q) => ({ t: ts(q.at), p: q.price, label: q.label })).filter((q) => q.t != null);
-            return [
-              ...P.slice(1).map((q, j) => ({ type: "trend", pts: [{ t: P[j].t, p: P[j].p }, { t: q.t, p: q.p }],
-                color: col, width: dim ? 1 : 2.5, dash: false, text: "" })),
-              // the named points get a dot and a label; unnamed ones are curve vertices (a rounded cup)
-              ...(dim ? [] : P.filter((q) => q.label).flatMap((q) => [
-                { type: "dot", pts: [{ t: q.t, p: q.p }], color: col },
-                { type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }])),
-            ];
-          }
-          if (s.shape === "dots") return dim ? [] : (s.points || []).map((q) => ({ t: ts(q.at), p: q.price, label: q.label }))
-            .filter((q) => q.t != null).flatMap((q) => [{ type: "dot", pts: [{ t: q.t, p: q.p }], color: col },
-              ...(q.label ? [{ type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }] : [])]);
-          if (s.shape === "note" && withNotes && s.text) {
-            // the text box is pinned to the pane's top strip (pts[1].f = fraction of pane height),
-            // so the note never covers the bars it explains; the leader still drops to the anchor
-            const p = s.price ?? t.entry_price;
-            const bx = Math.min(times.length - 1, (i1 < 0 ? times.length - 1 : i1) + 2);
-            return { type: "callout", pts: [{ t: t1, p }, { t: Date.parse(times[bx] + "T00:00:00Z"), f: 0.05 }],
-              color: col, width: 1, text: s.text };
-          }
-          return null;
-        }).flat().filter(Boolean);
-      };
-      applyAnnotations = () => { if (dr) dr.annotate([...vcpAnnotations, ...anatomy.flatMap(items)]); };
+      const items = (t, i) => shapeItems(t.shapes, { dim: selTrade >= 0 && selTrade !== i,
+        withNotes: selTrade === i || (selTrade < 0 && anatomy.length <= 3), at: t.entry_date, price: t.entry_price });
+      tradeItems = () => anatomy.flatMap(items);
       zoomToTrade = (t) => {
         const ids = t.shapes.map((s) => (s.from ? idxOf(s.from) : s.bars ? idxOf(s.to || t.entry_date) - s.bars : -1)).filter((x) => x >= 0);
         const i0 = Math.min(...(ids.length ? ids : [idxOf(t.signal_date || t.entry_date)]).filter((x) => x >= 0), idxOf(t.entry_date));

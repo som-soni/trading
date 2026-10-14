@@ -923,6 +923,51 @@ def _dedupe_events(events: list) -> list:
     return out
 
 
+_pattern_daily: dict = {}   # (market, symbol) -> (last stored date, enriched daily frame)
+_pattern_hits: dict = {}    # (market, symbol, as_of, show_all, topping) -> response
+
+
+@app.get("/api/patterns/{market}/{symbol}")
+def chart_patterns_live(market: str, symbol: str, date: str | None = None, show: str = "all", topping: int = 1):
+    """The chart's Patterns indicator: chart patterns detected ON DEMAND on the stored daily bars up to
+    `date` (default: the last bar) — the chart_pattern strategy's own detectors and drawing, nothing
+    precomputed. Exploration only: what a backtest actually traded comes from its signal record
+    (trade-anatomy), never from here, since current code may detect differently."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..core import indicators as ind
+    from ..marketdata import cache
+    from ..strategies import get_strategy
+    strat = get_strategy("chart_pattern")
+    last = q("SELECT max(date) FROM prices WHERE market=%s AND symbol=%s", (market, symbol))
+    last = last[0][0] if last else None
+    if last is None:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    hit = _pattern_daily.get((market, symbol))
+    if hit is None or hit[0] != last:
+        raw = cache.load_cached(market, symbol)
+        if raw is None or raw.empty:
+            raise HTTPException(404, f"no prices stored for {symbol}")
+        if len(_pattern_daily) > 64:
+            _pattern_daily.clear()
+        hit = _pattern_daily[(market, symbol)] = (last, ind.enrich_daily(raw))
+    daily = hit[1]
+    if date:
+        daily = daily[daily.index <= pd.Timestamp(date)]
+    if len(daily) < strat.min_bars:
+        return {"as_of": str(daily.index[-1].date()) if len(daily) else None, "matches": [],
+                "note": f"needs {strat.min_bars} bars of history; {len(daily)} stored"}
+    as_of = str(daily.index[-1].date())
+    key = (market, symbol, as_of, show == "all", bool(topping), strat.spec_id())
+    if key not in _pattern_hits:
+        if len(_pattern_hits) > 512:
+            _pattern_hits.clear()
+        _pattern_hits[key] = {"as_of": as_of, "spec_id": strat.spec_id(),
+                              "matches": strat.detect_live(daily, market, symbol, show_all=show == "all",
+                                                           topping=bool(topping))}
+    return _pattern_hits[key]
+
+
 @app.get("/api/macro")
 def macro_strip(market: str = "india"):
     """The Breadth page's macro strip: rates, the dollar, oil, metals and credit that matter to this market

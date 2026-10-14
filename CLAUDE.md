@@ -4,6 +4,15 @@ Screening and backtesting run offline as scripts (`scripts/`, run with
 `PYTHONPATH=.`). The web app in `scripts/swing_screener/web/` only *views*
 results; it never runs a strategy. See `README.md` and `scripts/README.md`.
 
+One exception: a chart indicator may run a strategy's *detectors* on demand, for
+exploration — the Chart patterns indicator calls `/api/patterns`, which runs
+`ChartPatternSpecStrategy.detect_live` on stored prices up to the date asked. It
+reuses the strategy's own detectors and drawing (`chart_anatomy`), so there is one
+implementation of the rules, never a second copy in JavaScript. It never makes a
+trade decision (entry, stop, sizing), and it never stands in for a run's record:
+what a backtest traded is drawn from that run's stored signals (`trade-anatomy`),
+because current code may detect differently from the code that ran.
+
 Scheduled offline work is a set of layered jobs (`scripts/jobs/registry.py`:
 reference → data → analytics → screening → publish). Keep the layers honest:
 only `marketdata/` downloads; `analytics/` and screening read stored data

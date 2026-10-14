@@ -134,8 +134,9 @@ POINT_NAMES = {
     "LS": "left shoulder", "N1": "neck", "HD": "head", "N2": "neck",
     "RS": "right shoulder", "P0": "pole start", "X": "flag low", "S": "start",
 }
-# a double bottom reuses the cup's letters for different points
-POINT_NAMES_BY_CODE = {DBOT: {"B": "low 1", "C": "peak", "D": "low 2"}}
+# a double bottom reuses the cup's letters for different points, and a double top mirrors it
+POINT_NAMES_BY_CODE = {DBOT: {"B": "low 1", "C": "peak", "D": "low 2"},
+                       "double top": {"B": "top 1", "C": "trough", "D": "top 2"}}
 BEARISH = {
     "double top": lambda d: ps.detect_double_top(d, PARAMS),
     "head and shoulders top": lambda d: ps.detect_head_shoulders(d, PARAMS),
@@ -827,6 +828,9 @@ class ChartPatternSpecStrategy(Strategy):
             return super().chart_anatomy(sig)
         name = e.get("pattern_name") or PATTERN_NAMES.get(code, code)
         geo = e.get("pattern_geometry") or {}
+        # a topping pattern (the chart indicator draws them; a trade never is one) breaks DOWN
+        bear = e.get("direction") == "bearish"
+        shape_role = "stop" if bear else "base"
         cup_r2 = None
         pts = geo.get("points") or []
         start = pts[0]["date"] if pts else None
@@ -837,38 +841,85 @@ class ChartPatternSpecStrategy(Strategy):
             fitted = _cup_from_prices(sig, pts)
             path, cup_r2 = fitted if fitted else (_cup_curve(pts), None)
             low = pts[1]
-            out.append({"shape": "dots", "role": "base", "label": "cup low",
+            out.append({"shape": "dots", "role": shape_role, "label": "cup low",
                         "points": [{"at": low["date"], "price": low["price"], "label": low["label"]}]})
         else:
             path = [{"at": q["date"], "price": q["price"], "label": q["label"]} for q in pts]
         if len(path) >= 2:
-            out.append({"shape": "path", "from": path[0]["at"], "to": path[-1]["at"], "role": "base",
+            out.append({"shape": "path", "from": path[0]["at"], "to": path[-1]["at"], "role": shape_role,
                         "points": path, "label": name})
         for ln in geo.get("lines") or []:
             out.append({"shape": "line", "from": ln["from"], "to": ln["to"], "p0": ln["p0"], "p1": ln["p1"],
-                        "role": "base", "label": ln["name"]})
+                        "role": shape_role, "label": ln["name"]})
             if ln.get("touches"):
-                out.append({"shape": "dots", "role": "base", "label": f"{ln['name']} line touches",
+                out.append({"shape": "dots", "role": shape_role, "label": f"{ln['name']} line touches",
                             "points": [{"at": q["date"], "price": q["price"]} for q in ln["touches"]]})
         span = {"from": start} if start else {"bars": 60}
         out.append({"shape": "level", **span, "to": d, "price": float(e["trigger"]),
-                    "role": "pivot", "label": f"trigger {e['trigger']:g} — confirms the {name.lower()}"})
+                    "role": "stop" if bear else "pivot",
+                    "label": f"{'breakdown' if bear else 'trigger'} {e['trigger']:.2f} — confirms the {name.lower()}"})
         if e.get("invalidation"):
             out.append({"shape": "level", **span, "to": d, "price": float(e["invalidation"]),
-                        "role": "support", "label": f"invalidation {e['invalidation']:g} — the pattern is wrong below this"})
+                        "role": "support", "label": f"invalidation {e['invalidation']:.2f} — the pattern is wrong "
+                                                    f"{'above' if bear else 'below'} this"})
         if e.get("measured_target"):
             out.append({"shape": "level", "bars": 20, "to": d, "price": float(e["measured_target"]),
-                        "role": "target", "label": f"measured target {e['measured_target']:g}", "dash": True})
-        note = f"Pattern: {name} ({code}, {e.get('pattern_state', '')})"
+                        "role": "stop" if bear else "target", "label": f"measured target {e['measured_target']:.2f}",
+                        "dash": True})
+        note = f"Pattern: {name} ({code if code != name else 'topping'}, {e.get('pattern_state', '')})"
         if cup_r2 is not None:
             note += f" · fitted cup R² {cup_r2:.2f}"
         if e.get("pattern_note"):
             note += f" · {e['pattern_note']}"
         if e.get("height"):
-            note += f" · height {e['height']:g} projected above the trigger"
+            note += f" · height {e['height']:.2f} projected {'below' if bear else 'above'} the trigger"
         if e.get("topping_pattern"):
             note += f" · WARNING: topping {e['topping_pattern']} ({e.get('topping_state', '')})"
         out.append({"shape": "note", "at": d, "price": float(e["trigger"]), "text": note})
+        return out
+
+
+    def detect_live(self, daily: pd.DataFrame, market: str, symbol: str, *, show_all: bool = True,
+                    topping: bool = True) -> list[dict]:
+        """What the detectors see on the last bar of `daily` — the chart's Patterns indicator, which
+        asks on demand instead of reading stored signals. The same detectors and the same drawing
+        as a backtest trade (`chart_anatomy`), so a pattern looks identical in both places; but this
+        is exploration, not a record of what any run traded. Bullish matches are the live ones
+        (complete, or confirmed within the outcome horizon), best first by the strategy's own
+        priority; `tradeable` marks the ones it would act on. Topping patterns are drawn in red."""
+        date = daily.index[-1].date()
+        found: list[tuple[str, dict, str]] = []
+        for code, (_section, detect) in BULLISH.items():
+            try:
+                res = detect(daily)
+            except (IndexError, ValueError, ZeroDivisionError, KeyError):
+                continue
+            if _live(res):
+                found.append((code, res, "bullish"))
+        found.sort(key=lambda x: _priority(x[0]))
+        if not show_all:
+            found = found[:1]
+        if topping:
+            for name, detect in BEARISH.items():
+                try:
+                    res = detect(daily)
+                except (IndexError, ValueError, ZeroDivisionError, KeyError):
+                    continue
+                if _live(res):
+                    found.append((name, res, "bearish"))
+        out = []
+        for code, res, direction in found:
+            lv = res["levels"]
+            name = PATTERN_NAMES.get(code, code[:1].upper() + code[1:])
+            extras = {"pattern": code, "pattern_name": name, "pattern_state": res["state"], "direction": direction,
+                      "trigger": float(lv.trigger), "invalidation": float(lv.invalidation), "height": float(lv.height),
+                      "measured_target": float(lv.target), "pattern_note": _note(res),
+                      "pattern_geometry": _geometry(code, res)}
+            shapes = self.chart_anatomy({"market": market, "symbol": symbol, "date": date, "extras": extras})
+            out.append({"code": code, "name": name, "direction": direction, "state": res["state"],
+                        "tradeable": direction == "bullish" and _tradeable(res),
+                        "trigger": round(float(lv.trigger), 4), "invalidation": round(float(lv.invalidation), 4),
+                        "target": round(float(lv.target), 4), "shapes": shapes})
         return out
 
 
