@@ -124,11 +124,10 @@ class TrendPullbackStrategy(Strategy):
     # _compute_watch_flags() or class attributes (max_stop_*), not module
     # constants, so they are written out as numbers here; keep in sync.
     status = (
-        "No demonstrated edge: portfolio backtest from 2013 with bracket exits "
-        "returned -0.87% CAGR in the US (SPY 12.79%) and +0.57% in India "
-        "(index 11.68%); seven alternative exit policies did not rescue it."
-        " Measured before the 2026-10 cost fix (exit slippage was charged twice); re-measured runs moved by "
-        "−0.8 to +0.9 points of CAGR (the extra cash changes which later signals are taken), so re-run before relying on it."
+        "No demonstrated edge: portfolio backtest from 2013 with bracket exits (v1.1, "
+        "measured 2026-10-13/14 after the cost fix) returned 1.75% CAGR in the US (SPY 12.8%, "
+        "max drawdown -46.5%) and 2.30% in India (index 11.7%, max drawdown -32.1%); seven "
+        "alternative exit policies did not rescue it."
     )
     gate_docs = {
         "W1": "Passes when the latest weekly close is above the 30-week EMA AND that "

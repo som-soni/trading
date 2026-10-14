@@ -141,13 +141,11 @@ class DonchianStrategy(Strategy):
     # interpolated with f-strings here (same as how_it_works) rather than
     # `{NAME}` placeholders.
     status = (
-        "No demonstrated edge: backtested with a 50-day channel exit and no "
-        "target, it trailed the index in both markets on the widest runs "
-        "(India full universe 7.34% CAGR vs 11.68%; US 500-sample 5.78% vs "
-        "~12.8%). Trade shape is sound (profit factor ~1.2) but signal "
-        "selection among tied breakouts is arbitrary."
-        " Measured before the 2026-10 cost fix (exit slippage was charged twice); re-measured runs moved by "
-        "−0.8 to +0.9 points of CAGR (the extra cash changes which later signals are taken), so re-run before relying on it."
+        "No demonstrated edge: backtested from 2013 on the full universe with a 50-day "
+        "channel exit and no target (v1.1, measured 2026-10-13 after the cost fix), it "
+        "trailed the index in both markets: India 7.68% CAGR vs 11.7% (max drawdown "
+        "-44.2%), US 6.53% vs 12.8% (max drawdown -49.3%). Trade shape is sound (profit "
+        "factor ~1.2 in earlier runs) but signal selection among tied breakouts is arbitrary."
     )
     gate_docs = {
         "N1": (

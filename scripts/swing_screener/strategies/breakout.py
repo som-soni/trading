@@ -117,11 +117,9 @@ class BreakoutStrategy(Strategy):
 
     # --- full reference documentation (generated Strategy page) ---
     status = (
-        "Not validated, no demonstrated edge: thresholds are untuned defaults, and the one "
-        "recorded run (US, 500-symbol sample, bracket exits) returned -1.74% CAGR, "
-        "about 14.6 points a year behind SPY."
-        " Measured before the 2026-10 cost fix (exit slippage was charged twice); re-measured runs moved by "
-        "−0.8 to +0.9 points of CAGR (the extra cash changes which later signals are taken), so re-run before relying on it."
+        "Not validated, no demonstrated edge: thresholds are untuned defaults. Full US backtest "
+        "from 2013 (v1.1, bracket exits, measured 2026-10-12 after the cost fix): 2.15% CAGR "
+        "against SPY's 12.8%, max drawdown -29.7%. India not yet run at full size."
     )
     gate_docs = {
         "B1": "The latest close must be strictly above the 200-day SMA. A missing SMA200 fails.",

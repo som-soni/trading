@@ -257,12 +257,12 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 320
 
     status = (
-        "NOT YET RE-TESTED AT v1.5. v1.2 stopped stale cups-without-handle from trading, "
-        "v1.3 moved two buy rules to O'Neil's (cup without handle at the old high, DBOT as "
-        "his W), v1.4 requires a triple bottom's lows to be level and v1.5 buys only on the "
-        "breakout bar, once per pattern; the figures below are v1.0, dominated by stale cups "
-        "and inflated by late and repeat entries. "
-        "Backtested 2026-10-09 and it loses, by less than its sibling: -0.93% "
+        "No demonstrated edge at v1.5. India, full universe from 2013 (bracket exits, measured "
+        "2026-10-14): 3.61% CAGR against the index's 11.6%, max drawdown -27.8%. The US full run "
+        "at v1.5 is in progress. (v1.2 stopped stale cups-without-handle from trading, v1.3 moved "
+        "two buy rules to O'Neil's, v1.4 requires a triple bottom's lows to be level and v1.5 buys "
+        "only on the breakout bar, once per pattern.) The earlier v1.0 comparison, dominated by stale "
+        "cups and late and repeat entries: backtested 2026-10-09 it lost by less than its sibling: -0.93% "
         "CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol "
         "sample), against `chart_pattern`'s -5.60% and -0.309R on the same "
         "run. The +0.234R difference has a Welch t of 1.16 and a 95% interval "

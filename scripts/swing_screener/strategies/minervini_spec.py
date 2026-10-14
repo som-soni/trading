@@ -288,7 +288,9 @@ class MinerviniSpecStrategy(Strategy):
         "help in sample all turn negative after 2019 (research/minervini-spec-sensitivity-us.md). "
         "Adding the SEPA fundamentals point in time (`--fundamentals`, buy-stops, 2022-07 onward) did not help: "
         "against the `covered` control, LEADER-only fell from +0.28R to +0.27R per trade in India (7 trades) and "
-        "from +0.02R to −0.40R in the US (19 trades), with CAGR shrinking as trades vanished."
+        "from +0.02R to −0.40R in the US (19 trades), with CAGR shrinking as trades vanished. With US filings "
+        "back to 2009, the 2010-onward grid (v1.6) agrees: `covered` +0.03R over 487 trades, `acceptable` -0.10R "
+        "(115), `leader` +0.04R (24 — +0.58R to 2019, -0.72R since), against +0.04R unfiltered."
     )
 
     gate_docs = {
