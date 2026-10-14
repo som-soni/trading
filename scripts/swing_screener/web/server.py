@@ -621,7 +621,8 @@ def stock_news(market: str, symbol: str, refresh: bool = False):
                                            WHERE market=%s AND symbol=%s ORDER BY date DESC""", (market, symbol))]
     filings = {"sec_edgar": "SEC 8-K filings", "nse": "NSE announcements, corporate actions and board meetings"}
     sources = ["Google News", filings.get(MARKETS[market].quarterly_source, ""), "Yahoo"]
-    return {"market": market, "symbol": symbol, "fetched_at": fetched_at.isoformat() if fetched_at else None,
+    return {"market": market, "symbol": symbol, "name": _name(market, symbol),
+            "fetched_at": fetched_at.isoformat() if fetched_at else None,
             "note": note, "pending": pending, "news": news, "events": events,
             "sources": " · ".join(x for x in sources if x)}
 

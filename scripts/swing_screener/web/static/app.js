@@ -1040,45 +1040,17 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div></section>
       <div class="btrs">${rows || '<div class="muted small">This run has no trades in this symbol.</div>'}</div>`;
   }
-  /** News & events: what is coming (earnings, ex-dates, results meetings), the headlines and exchange
-   *  announcements, the key events behind them (filings, dividends, splits), and analyst rating changes */
-  function newsPanelHtml(d) {
-    // inside the function: a restored News tab renders before chartPage reaches any const below it
-    const EV_LABEL = { earnings: "Earnings", results: "Results", dividend: "Dividend", split: "Split", bonus: "Bonus",
-      board_meeting: "Board meeting", filing: "Filing", rating: "Rating", action: "Corporate action" };
-    if (!d || d.error) return `<section><h3>News & events</h3><div class="muted small">${esc(d?.error || "Loading…")}</div></section>`;
-    const today = new Date().toISOString().slice(0, 10);
-    const link = (u, t) => (u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>` : esc(t));
-    const ev = (e) => `<div class="nw-ev"><span class="nw-d">${prettyDate(e.date)}</span><span class="tag nw-k ${e.kind}">${EV_LABEL[e.kind] || e.kind}</span>
-        <span class="nw-t">${link(e.url, e.title)}${e.kind === "earnings" && e.detail?.eps_estimate != null ? ` <span class="muted">· EPS est. ${(+e.detail.eps_estimate).toFixed(2)}</span>` : ""}</span></div>`;
-    const upcoming = d.events.filter((e) => e.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1));
-    const past = d.events.filter((e) => e.date < today && e.kind !== "rating").slice(0, 15);
-    const ratings = d.events.filter((e) => e.kind === "rating").slice(0, 6);
-    const head = d.news.slice(0, 30).map((n) => `<div class="nw-it">${link(n.url, n.title)}
-        <div class="muted small">${esc(n.kind === "announcement" ? "NSE announcement" : n.source || "")}${n.published_at ? ` · ${ago(n.published_at)}` : ""}</div></div>`).join("");
-    const status = d.pending ? `<span class="spin"></span> Fetching the latest${d.pending === "now" ? "" : ` (queue #${d.pending})`}…`
-      : d.fetched_at ? `Updated ${ago(d.fetched_at)}` : "Not fetched yet";
-    return `<section><div class="wld-nh"><h3>News & events</h3><span class="spacer"></span>
-        ${d.pending ? "" : '<a class="small" href="#" id="nwrefresh" title="Fetch the latest now">Refresh</a>'}</div>
-        <div class="muted small" title="${esc(d.note || "")}">${status}</div></section>
-      ${upcoming.length ? `<section><h3>Upcoming</h3>${upcoming.map(ev).join("")}</section>` : ""}
-      <section><h3>Headlines</h3>${head || `<div class="muted small">${d.pending ? "Coming shortly." : "No headlines in the last month."}</div>`}</section>
-      ${past.length ? `<section><h3>Key events</h3>${past.map(ev).join("")}</section>` : ""}
-      ${ratings.length ? `<section><h3>Analyst ratings</h3>${ratings.map(ev).join("")}</section>` : ""}
-      <p class="muted small nw-src">Sources: ${esc(d.sources || "")}. Refreshed each morning for watchlists and
-        strategy picks, on demand for any other chart.</p>`;
-  }
   function renderSide() {
     if (!sideReady || !prefs.tab) return;
     const body = $("#side .side-body");
     body.innerHTML = prefs.tab === "wl" ? wlPanelHtml() : prefs.tab === "list" ? `<div class="wlpanel">${listPanelHtml()}</div>`
       : prefs.tab === "trades" ? `<div class="wlpanel">${tradesPanelHtml()}</div>`
-      : prefs.tab === "news" ? `<div class="wlpanel nwpanel">${newsPanelHtml(null)}</div>` : infoHtml();
+      : prefs.tab === "news" ? `<div class="wlpanel nwpanel">${newsHtml(null)}</div>` : infoHtml();
     if (prefs.tab === "news") {
       loadNews().then((d) => {
         const host = body.querySelector(".nwpanel"); if (!host || !alive()) return;
-        host.innerHTML = newsPanelHtml(d);
-        host.querySelector("#nwrefresh")?.addEventListener("click", (e) => { e.preventDefault(); loadNews(true).then(onNews); });
+        host.innerHTML = newsHtml(d);
+        host.querySelector("[data-nwrefresh]")?.addEventListener("click", (e) => { e.preventDefault(); loadNews(true).then(onNews); });
       });
       return;
     }
@@ -2161,6 +2133,84 @@ function viewTestsHtml(res, vc) {
         ${t.detail ? `<div class="muted small">${esc(t.detail)}</div>` : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 
+/** News & events for one stock (/api/news; marketdata/news.py fills it): what is coming (earnings,
+ *  ex-dates, results meetings), the headlines and exchange announcements, the key events behind them
+ *  (filings, dividends, splits) and analyst rating changes. The chart's side panel stacks it; `page`
+ *  (the company page) sets headlines beside the events and leaves the title to the page's own heading. */
+function newsHtml(d, { page = false } = {}) {
+  const EV_LABEL = { earnings: "Earnings", results: "Results", dividend: "Dividend", split: "Split", bonus: "Bonus",
+    board_meeting: "Board meeting", filing: "Filing", rating: "Rating", action: "Corporate action" };
+  const title = page ? "" : "<h3>News & events</h3>";
+  if (!d || d.error) return `<section>${title}<div class="muted small">${esc(d?.error || "Loading…")}</div></section>`;
+  const today = new Date().toISOString().slice(0, 10);
+  const link = (u, t) => (u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>` : esc(t));
+  const ev = (e) => `<div class="nw-ev"><span class="nw-d">${prettyDate(e.date)}</span><span class="tag nw-k ${e.kind}">${EV_LABEL[e.kind] || e.kind}</span>
+      <span class="nw-t">${link(e.url, e.title)}${e.kind === "earnings" && e.detail?.eps_estimate != null ? ` <span class="muted">· EPS est. ${(+e.detail.eps_estimate).toFixed(2)}</span>` : ""}</span></div>`;
+  const upcoming = d.events.filter((e) => e.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1));
+  const past = d.events.filter((e) => e.date < today && e.kind !== "rating").slice(0, page ? 25 : 15);
+  const ratings = d.events.filter((e) => e.kind === "rating").slice(0, page ? 10 : 6);
+  const items = d.news.slice(0, page ? 40 : 30).map((n) => `<div class="nw-it">${link(n.url, n.title)}
+      <div class="muted small">${esc(n.kind === "announcement" ? "NSE announcement" : n.source || "")}${n.published_at ? ` · ${ago(n.published_at)}` : ""}</div></div>`).join("");
+  const status = d.pending ? `<span class="spin"></span> Fetching the latest${d.pending === "now" ? "" : ` (queue #${d.pending})`}…`
+    : d.fetched_at ? `Updated ${ago(d.fetched_at)}` : "Not fetched yet";
+  const top = `<section><div class="wld-nh">${title}${page ? `<span class="muted small" title="${esc(d.note || "")}">${status}</span>` : ""}<span class="spacer"></span>
+      ${d.pending ? "" : '<a class="small" href="#" data-nwrefresh title="Fetch the latest now">Refresh</a>'}</div>
+      ${page ? "" : `<div class="muted small" title="${esc(d.note || "")}">${status}</div>`}</section>`;
+  const up = upcoming.length ? `<section><h3>Upcoming</h3>${upcoming.map(ev).join("")}</section>` : "";
+  const heads = `<section><h3>Headlines</h3>${items || `<div class="muted small">${d.pending ? "Coming shortly." : "No headlines in the last month."}</div>`}</section>`;
+  const keyEv = past.length ? `<section><h3>Key events</h3>${past.map(ev).join("")}</section>` : "";
+  const rat = ratings.length ? `<section><h3>Analyst ratings</h3>${ratings.map(ev).join("")}</section>` : "";
+  const src = `<p class="muted small nw-src">Sources: ${esc(d.sources || "")}. Refreshed each morning for watchlists and
+      strategy picks, on demand for any other stock.</p>`;
+  return page ? `${top}<div class="nw-page"><div>${heads}</div><div>${up}${keyEv}${rat}</div></div>${src}`
+    : `${top}${up}${heads}${keyEv}${rat}${src}`;
+}
+
+/** Put a stock's news & events into `host` and keep it current: render when it loads, wire Refresh,
+ *  and check back every few seconds while a fetch is pending (the server asks for one when nothing
+ *  is stored or it is a day old). */
+function mountNews(host, market, symbol, alive, { onData, ...opts } = {}) {
+  let poll = null;
+  const url = (refresh) => `/api/news/${market}/${encodeURIComponent(symbol)}${refresh ? "?refresh=1" : ""}`;
+  const show = (d) => {
+    if (!alive() || !host.isConnected) { clearInterval(poll); return; }
+    host.innerHTML = newsHtml(d, opts);
+    if (onData && d && !d.error) onData(d);
+    host.querySelector("[data-nwrefresh]")?.addEventListener("click", (e) => { e.preventDefault(); load(true); });
+    if (d && d.pending && !poll) {
+      let tries = 0;
+      poll = setInterval(async () => {
+        if (!alive() || !host.isConnected || ++tries > 50) { clearInterval(poll); poll = null; return; }
+        const x = await api(url(false)).catch(() => null);
+        if (x && !x.pending) { clearInterval(poll); poll = null; show(x); }
+      }, 6000);
+    }
+  };
+  const load = (refresh) => api(url(refresh)).catch((e) => ({ error: e.message })).then(show);
+  load(false);
+  const prev = cleanup; cleanup = () => { clearInterval(poll); prev(); };
+}
+
+/** Chart › News: one stock's headlines and key events, a view beside Chart and Fundamentals. */
+async function stockNewsPage(alive, market, symbol) {
+  market = pageMarket(market);
+  symbol = symbol || store.get("lastSymbol:" + market, market === "us" ? "AAPL" : "RELIANCE.NS");
+  store.set("lastMarket", market); store.set("lastSymbol:" + market, symbol);
+  document.title = `${bareSymbol(symbol)} news · Trading`;
+  const enc = encodeURIComponent(symbol);
+  $view.innerHTML = `<div class="crumbs"><a href="#/chart/${market}/${enc}">← Chart</a></div>
+    <div class="page-head co-head"><h1 id="nwname">${esc(bareSymbol(symbol))}</h1><span class="mkt">${MKT_BADGE[market] || market}</span><span class="muted">${esc(bareSymbol(symbol))}</span>
+      <span class="spacer"></span>
+      <form class="wl-add" autocomplete="off" id="nwsearch"><div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input placeholder="Search a company" spellcheck="false"><ul hidden></ul></div></form>
+      <a class="btn" href="#/chart/${market}/${enc}">Chart</a><a class="btn" href="#/company/${market}/${enc}">Fundamentals</a></div>
+    <section class="co-sec"><div class="nwpage">${newsHtml(null, { page: true })}</div></section>`;
+  const f = $view.querySelector("#nwsearch");
+  symbolSearch(f.querySelector("input"), f.querySelector("ul"), market, (s) => go(`#/news/${market}/${encodeURIComponent(s)}`));
+  f.onsubmit = (e) => { e.preventDefault(); const v = f.querySelector("input").value.trim().toUpperCase(); if (v) go(`#/news/${market}/${encodeURIComponent(v)}`); };
+  mountNews($view.querySelector(".nwpage"), market, symbol, alive, { page: true,
+    onData: (d) => { const h = $view.querySelector("#nwname"); if (h && d.name) h.textContent = d.name; } });   // the name arrives with the news
+}
+
 async function companyPage(alive, market, symbol) {
   market = pageMarket(market);
   symbol = symbol || store.get("lastSymbol:" + market, market === "us" ? "AAPL" : "RELIANCE.NS");
@@ -2187,7 +2237,7 @@ async function companyPage(alive, market, symbol) {
     <div class="page-head co-head"><h1>${esc(d.name || bareSymbol(symbol))}</h1><span class="mkt">${MKT_BADGE[market] || market}</span><span class="muted">${esc(bareSymbol(symbol))}</span>
       <span class="spacer"></span>
       <form class="wl-add" autocomplete="off" id="cosearch"><div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input placeholder="Search a company" spellcheck="false"><ul hidden></ul></div></form>
-      <a class="btn" href="#/chart/${market}/${encodeURIComponent(symbol)}">Chart</a>${fetchBtn}</div>
+      <a class="btn" href="#/chart/${market}/${encodeURIComponent(symbol)}">Chart</a><a class="btn" href="#/news/${market}/${encodeURIComponent(symbol)}">News</a>${fetchBtn}</div>
     <div class="muted small co-sub">${[d.sector, d.industry].filter(Boolean).map(esc).join(" › ")}${d.profile?.website ? ` · <a href="${esc(d.profile.website)}" target="_blank" rel="noopener">${esc(d.profile.website.replace(/^https?:\/\/(www\.)?/, ""))}</a>` : ""}
       ${st.fetched_at ? ` · fetched ${esc(prettyDate(st.fetched_at))}` : ""}${d.latest?.end ? ` · latest results ${esc(colLabel(d.latest.end))}${d.latest.filed ? ` (filed ${esc(prettyDate(d.latest.filed))})` : ""}` : ""}${d.latest?.stale ? ` · <b>stale</b>` : ""}</div>`;
   if (!d.quarters) {
@@ -3984,7 +4034,8 @@ const SECTIONS = [
   { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"]] },
   { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"]] },
   { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"],
-    ["company", "Fundamentals", "The company's financials: quarterly results, profit & loss, balance sheet, cash flows, ratios, shareholding, peers"]] },
+    ["company", "Fundamentals", "The company's financials: quarterly results, profit & loss, balance sheet, cash flows, ratios, shareholding, peers"],
+    ["news", "News", "Headlines, filings and exchange announcements, and key events — earnings, dividends, splits, analyst ratings"]] },
   { key: "watchlists", label: "Watchlists", pages: [["watchlist", "Watchlists", "Your lists and the screener's picks"]] },
   { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"], ["playbook", "Playbook", "Sector analysis: method and roadmap"],
     ["learn", "Learn", "Learning material: chart patterns and candlesticks"],
@@ -4012,15 +4063,15 @@ function renderNav(page) {
   const first = location.hash.replace(/^#\//, "").split("/")[0] || "chart";
   if (sec && first === page) store.set(`navPage:${page}`, location.hash);
   if (/^#\/(quality|fundamentals|sepa)/.test(store.get("navPage:screens", ""))) store.set("navPage:screens", null);   // clean up the old value
-  // Chart and Fundamentals are two views of one stock: each tab opens the stock on screen — read from the URL,
+  // Chart, Fundamentals and News are views of one stock: each tab opens the stock on screen — read from the URL,
   // since the nav is drawn before the page stores it — else the stock you were last looking at
   const stockHref = (p) => {
     const [cur, um, us] = location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent);
-    const onStock = (cur === "chart" || cur === "company") && isMarket(um) && us;
+    const onStock = ["chart", "company", "news"].includes(cur) && isMarket(um) && us;
     const m = onStock ? um : store.get("lastMarket", MKTS[0]?.key || "us"), s = onStock ? us : store.get("lastSymbol:" + m, null);
     return s ? `#/${p}/${m}/${encodeURIComponent(s)}` : `#/${p}`;
   };
-  const pageHref = (p) => esc(p === page ? location.hash : p === "chart" || p === "company" ? stockHref(p) : withMarket(store.get(`navPage:${p}`, `#/${p}`)));
+  const pageHref = (p) => esc(p === page ? location.hash : ["chart", "company", "news"].includes(p) ? stockHref(p) : withMarket(store.get(`navPage:${p}`, `#/${p}`)));
   const secHref_ = (s) => esc(`#/${s.pages[0][0]}`);   // a section link always opens its home page
   $nav.innerHTML = SECTIONS.map((s, i) => `<a href="${secHref_(s)}" data-sec="${s.key}" data-href="${secHref_(s)}" class="sec ${s === sec ? "active" : ""}"
       title="${esc(s.pages.map((x) => x[1]).join(" · "))} (Alt+${i + 1})">${s.label}</a>`).join("");
@@ -4200,6 +4251,7 @@ async function route() {
     else if (page === "strategies") await strategiesPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "quality") await qualityPage(alive, parts[1]);
     else if (page === "company") await companyPage(alive, parts[1], parts[2]);
+    else if (page === "news") await stockNewsPage(alive, parts[1], parts[2]);
     else if (page === "fundamentals" || page === "sepa") go(`#/company/${parts[1] || ""}`);   // the page's earlier names
     else if (page === "breadth") await breadthPage(alive, parts[1]);
     else if (page === "movers") await moversPage(alive, parts[1]);

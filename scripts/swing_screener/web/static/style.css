@@ -1253,3 +1253,7 @@ table.fin.peers tbody th a { color: var(--link); }
 .nw-it { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.35; }
 .nw-it a, .nw-ev a { color: var(--text); } .nw-it a:hover, .nw-ev a:hover { color: var(--accent-text); }
 .nw-src { margin-top: 8px; }
+/* the News tab: headlines beside the events */
+.nw-page { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 24px; }
+.nw-page section { margin-bottom: 12px; }
+@media (max-width: 900px) { .nw-page { grid-template-columns: 1fr; } }
