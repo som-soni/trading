@@ -1001,6 +1001,17 @@ def breadth_series(market: str, field: str):
     return {"market": market, "field": field, "line": vals}
 
 
+@app.get("/api/group-rs-series")
+def group_rs_series(market: str, level: str, grp: str):
+    """One peer group's 1–99 RS rating over time (group_rs_history), for the guides' ```series charts
+    (`us:grs.industry.Semiconductors`; underscores in the name stand for spaces)."""
+    rows = q("SELECT date, rs FROM group_rs_history WHERE market=%s AND level=%s AND grp=%s ORDER BY date",
+             (market, level, grp.replace("_", " ")))
+    if not rows:
+        raise HTTPException(404, f"no RS history for {level} group {grp!r}")
+    return {"market": market, "level": level, "grp": grp, "line": [{"time": d.strftime("%Y-%m-%d"), "value": float(v)} for d, v in rows]}
+
+
 @app.get("/api/breadth")
 def breadth_page(market: str = "india"):
     if market not in br.INDEXES:
