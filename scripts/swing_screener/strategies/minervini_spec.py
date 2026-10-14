@@ -123,8 +123,18 @@ EARNINGS_WARN_DAYS = 10
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.6"
+    version = "1.7"
     changelog = (
+        ("1.7", "2026-10-15",
+         "The market filter is on by default (`--spec` now implies `--market-filter`), because it is the "
+         "first change measured here to improve return AND drawdown together: US 2010 onward, 557 trades "
+         "to 490, expectancy +0.04R to +0.06R, profit factor 1.04 to 1.10, CAGR 0.65% to 1.34%, max "
+         "drawdown -43.5% to -28.6%, for 163 of 1,325 signals blocked. No rule changed, so the fingerprint "
+         "is unmoved; this bump marks the baseline every later run should be read against. The 5-session "
+         "re-entry delay added in 1.6 stays OFF: it returns most of the gain (CAGR 0.72%, drawdown -31.2%) "
+         "by sitting out the start of recoveries. Progressive exposure also stays off by default -- it cut "
+         "drawdown to -34.6% on its own, but the market filter does better on both axes and the two "
+         "overlap rather than stack (together: drawdown -27.6% but CAGR 0.53%)."),
         ("1.6", "2026-10-12",
          "Progressive exposure, and the market filter made to bite. PE-01..PE-04 size an entry from "
          "the recent record instead of risking a flat 1% every time: a pilot at half risk "
@@ -290,7 +300,13 @@ class MinerviniSpecStrategy(Strategy):
         "against the `covered` control, LEADER-only fell from +0.28R to +0.27R per trade in India (7 trades) and "
         "from +0.02R to −0.40R in the US (19 trades), with CAGR shrinking as trades vanished. With US filings "
         "back to 2009, the 2010-onward grid (v1.6) agrees: `covered` +0.03R over 487 trades, `acceptable` -0.10R "
-        "(115), `leader` +0.04R (24 — +0.58R to 2019, -0.72R since), against +0.04R unfiltered."
+        "(115), `leader` +0.04R (24 — +0.58R to 2019, -0.72R since), against +0.04R unfiltered. "
+        "The one rule that did pay is MKT-01 (`--market-filter`, now on by default): US 2010 onward, it "
+        "blocked 163 of 1,325 signals and took 557 trades to 490, expectancy +0.04R to +0.06R, profit "
+        "factor 1.04 to 1.10, P&L $5,137 to $11,198, CAGR 0.65% to 1.34%, max drawdown −43.5% to −28.6% "
+        "— still short of the index, but the first change measured here to improve return and drawdown "
+        "together. `--mkt-confirm 5` gives most of that back (CAGR 0.72%, drawdown −31.2%), so the "
+        "re-entry delay is off by default."
     )
 
     gate_docs = {
@@ -364,8 +380,10 @@ class MinerviniSpecStrategy(Strategy):
         "its 50-day below its 200-day — no new entry is taken and any resting buy-stop is cancelled, "
         "because an order placed while the market was open would otherwise fill into one the rule "
         "refuses. Open positions are never forced out. `--mkt-confirm` makes risk-on wait for MKT-01 to "
-        "hold that many sessions ({MKT_CONFIRM_DAYS} is the suggested setting) so the gate does not flap "
-        "around the 200-day; risk-off still bites immediately.",
+        "hold that many sessions so the gate does not flap around the 200-day; risk-off still bites "
+        "immediately. Measured, the delay costs more than the flapping does — at {MKT_CONFIRM_DAYS} "
+        "sessions US CAGR falls 1.34% to 0.72% and drawdown worsens — because it sits out the first "
+        "days of a recovery, which is when the breakouts that work fire. It is off by default.",
     )
     param_docs = (
         ("Swing confirmation", "SWING_K", "Bars either side of a swing point; it is known only this many bars later."),
@@ -402,7 +420,7 @@ class MinerviniSpecStrategy(Strategy):
     )
     # No --strategy here: jobs/registry.py already passes "--strategy <key>", and a second
     # one wins on argparse, so naming the key twice broke the moment the key was renamed.
-    backtest_args = "--spec --accept-labels 'TRADE - HIGH CONFIDENCE'"
+    backtest_args = "--spec --market-filter --accept-labels 'TRADE - HIGH CONFIDENCE'"
 
     # ---------- screen ----------
 
