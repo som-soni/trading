@@ -1012,6 +1012,47 @@ def group_rs_series(market: str, level: str, grp: str):
     return {"market": market, "level": level, "grp": grp, "line": [{"time": d.strftime("%Y-%m-%d"), "value": float(v)} for d, v in rows]}
 
 
+FUND_FIELDS = ("eps", "eps_ttm", "eps_g", "rev_g", "revenue", "margin", "pe")
+
+
+@app.get("/api/fund-series")
+def fund_series(market: str, symbol: str, field: str):
+    """One company's fundamentals over time for the guides' ```series charts (`us:fund.NVDA.eps_g`), each
+    quarter dated on the day it was filed — what the market knew then (period end + 45 days when no filing
+    date is stored). eps / eps_ttm are on today's share basis (fundamentals/growth.py), eps_g / rev_g are
+    year-over-year %, margin is net margin %, and pe is the daily close over the trailing EPS known that day
+    (blank while trailing EPS is not positive)."""
+    import datetime as dt
+    from fundamentals import growth
+    from ..marketdata import financials
+    if field not in FUND_FIELDS:
+        raise HTTPException(400, f"field must be one of {', '.join(FUND_FIELDS)}")
+    rows = financials.load(market, [symbol]).get(symbol)
+    if not rows:
+        raise HTTPException(404, f"no stored quarters for {symbol}")
+    ser = growth.growth_series(rows)
+    known = [r.get("filed") or (r["period_end"] + dt.timedelta(days=45)) for r in rows]
+    pts = []
+    for i, x in enumerate(ser):
+        v = {"eps": x["eps_adj"], "eps_g": x["eps_g"] and x["eps_g"] * 100, "rev_g": x["rev_g"] and x["rev_g"] * 100,
+             "revenue": x["rev"], "margin": x["margin"] and x["margin"] * 100,
+             "eps_ttm": growth.ttm(ser[: i + 1], 0)}.get(field if field != "pe" else "eps_ttm")
+        if v is not None:
+            pts.append((pd.Timestamp(known[i]), float(v)))
+    pts.sort()
+    if field == "pe":
+        px = q("SELECT date, close FROM prices WHERE market=%s AND symbol=%s ORDER BY date", (market, symbol))
+        if not px or not pts:
+            raise HTTPException(404, f"no prices or trailing EPS for {symbol}")
+        eps = pd.Series(dict(pts)).groupby(level=0).last().sort_index()
+        close = pd.Series({pd.Timestamp(d): float(c) for d, c in px if c})
+        e = eps.reindex(close.index.union(eps.index)).ffill().reindex(close.index)
+        pe = (close / e)[e > 0].dropna()
+        pts = list(pe.items())
+    return {"market": market, "symbol": symbol, "field": field,
+            "line": [{"time": d.strftime("%Y-%m-%d"), "value": round(v, 4)} for d, v in pts]}
+
+
 @app.get("/api/breadth")
 def breadth_page(market: str = "india"):
     if market not in br.INDEXES:

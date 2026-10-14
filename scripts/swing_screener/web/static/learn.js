@@ -689,10 +689,10 @@ const Learn = (() => {
   }
 
   // the topics the menu is organised by, each a set of pattern groups (the topics before candles have guides only)
-  const FAMILIES = { macro: [], health: [], sectors: [], risk: [], candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"], levels: ["levels"] };
+  const FAMILIES = { macro: [], health: [], sectors: [], fundamentals: [], risk: [], candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"], levels: ["levels"] };
   const familyOf = (p) => Object.keys(FAMILIES).find((f) => FAMILIES[f].includes(p.group)) || "candles";
   const groupsOf = (fam) => GROUPS.filter(([g]) => !fam || FAMILIES[fam].includes(g));
-  const FAMILY_LABEL = { macro: "Macro", health: "Market health", sectors: "Sectors & groups", risk: "Risk & trade management", candles: "Candlesticks", charts: "Chart patterns", levels: "Supply & demand" };
+  const FAMILY_LABEL = { macro: "Macro", health: "Market health", sectors: "Sectors & groups", fundamentals: "Fundamentals", risk: "Risk & trade management", candles: "Candlesticks", charts: "Chart patterns", levels: "Supply & demand" };
   const countOf = (fam) => P.filter((p) => familyOf(p) === fam).length;
   const keyOf = (p) => (p.name + " " + (p.code || "") + " " + p.key).toLowerCase();
 
