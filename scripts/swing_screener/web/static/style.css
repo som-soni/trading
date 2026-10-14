@@ -1320,7 +1320,7 @@ table.data tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var(--accen
 .stpop li.warn { color: var(--warn); }
 .stpop .wk { font-size: 11.5px; }
 
-/* Learn: the hub's cards, catalogue search, and guide mentions that link to the catalogue */
+/* Learn: the hub cards, pattern-grid search, and guide mentions that link to a pattern */
 .lp-hub { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 18px; }
 .lp-hubc { display: grid; gap: 6px; text-decoration: none; color: inherit; }
 .lp-hubc:hover { border-color: var(--line-3); }
@@ -1332,7 +1332,7 @@ table.data tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var(--accen
 .lp-crumbs { margin-bottom: 4px; }
 a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 
-/* Learn: a menu with three sub-menus (Guides, the two catalogues), each opening and closing in place */
+/* Learn: a menu with one sub-menu per topic (its guides, then its patterns), each opening and closing in place */
 .lp-search { margin: 6px 0 8px; }
 .lp-sec { margin: 2px 0; }
 .lp-sec > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 5px;

@@ -4394,10 +4394,14 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn has two halves that must never share a name: the GUIDES (long-form reading, research/learn-*.md)
- *  and the two pattern CATALOGUES (every pattern drawn, learn.js). #/learn is the hub that introduces both;
- *  #/learn/candles and #/learn/charts are the catalogues; #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
+/** Learn is organised by TOPIC — Candlesticks, Chart patterns — and each topic holds both its guides
+ *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
+ *  appears in the menu once. #/learn is the hub; #/learn/candles and #/learn/charts a topic's pattern grid;
+ *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
 const GUIDE_ORDER = ["learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
+/** the topic a guide belongs to; a guide not listed here goes under "More guides" */
+const GUIDE_TOPIC = { "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
+  "learn-vcp": "charts", "learn-supply-demand": "charts" };
 const GUIDE_BLURB = {
   "learn-candlestick-patterns": "Reading candles: anatomy, the one-, two- and three-bar patterns, context, and how the screener's candle notes use them.",
   "learn-chart-patterns": "The bases this app detects, topping structures, how to judge a breakout — and what the backtests found.",
@@ -4405,10 +4409,12 @@ const GUIDE_BLURB = {
   "learn-vcp": "Minervini's volatility contraction pattern: reading one step by step, entries, stops, mistakes and the evidence.",
   "learn-supply-demand": "Why price levels exist: demand and supply zones, role reversal, scoring a zone, and how the strategies use them.",
 };
-/** a guide's name in menus and links: "Candlestick patterns: field guide", "Bases", "VCP" — never the same as a catalogue's */
+/** a guide's name in links and titles: "Candlestick patterns: field guide", "Bases", "VCP" */
 const guideTitle = (x) => String(x.title || x.run);
 const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$/.test(t) ? t.replace(/ — a field guide$/, ": field guide") : t.split(" — ")[0]; };
-const FAMILY_SHORT = { candles: "Candlesticks", charts: "Chart patterns" };
+/** inside its topic the topic is already named, so "Candlestick patterns: field guide" is just "Field guide" */
+const guideShort = (x) => (/: field guide$/.test(guideLabel(x)) ? "Field guide" : guideLabel(x));
+const LEARN_TOPICS = ["candles", "charts"];
 
 async function learnPage(alive, topic, sub) {
   $view.innerHTML = LOADING;
@@ -4418,44 +4424,48 @@ async function learnPage(alive, topic, sub) {
   if (!alive()) return;
   const guide = runs.find((x) => x.run === `learn-${topic}`);
   const p = !guide && topic && Learn.get(topic);
-  const catView = ["candles", "charts"].includes(topic) ? topic : null;
-  const onCatalogue = !!(p || catView);
-  let fam = p ? Learn.familyOf(p) : catView || store.get("learnFam", "candles");
-  if (onCatalogue) store.set("learnFam", fam);
+  const catView = LEARN_TOPICS.includes(topic) ? topic : null;
+  const topicOf = (g) => GUIDE_TOPIC[g.run] || "more";
+  const guidesIn = (t) => runs.filter((x) => topicOf(x) === t);
+  const fam = p ? Learn.familyOf(p) : catView || (guide && topicOf(guide)) || store.get("learnFam", "candles");
+  if (LEARN_TOPICS.includes(fam)) store.set("learnFam", fam);
   document.title = `${p ? p.name + " · " : guide ? guideLabel(guide) + " · " : catView ? Learn.FAMILY_LABEL[catView] + " · " : ""}Learn · Trading`;
 
-  // ---- sidebar: one menu, three sub-menus — Guides, the Candlestick catalogue, the Chart pattern catalogue.
-  // The sub-menu holding the page you are on is open; the others are closed until you open them.
-  const openSec = guide || !topic ? "guides" : onCatalogue ? fam : "guides";
+  // ---- sidebar: one sub-menu per topic, each with its guides first and then its patterns.
+  // The topic holding the page you are on is open; the others are closed until you open them.
+  const openSec = topic ? fam : null;
   const sec = (key, title, count, body) => `<details class="lp-sec" data-sec="${key}" ${key === openSec ? "open" : ""}>
       <summary><span>${esc(title)}</span>${count != null ? `<span class="n">${count}</span>` : ""}</summary><div class="lp-sub">${body}</div></details>`;
-  const guideItems = runs.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}" data-k="${esc(guideLabel(x).toLowerCase())}"><span><b class="sn">${esc(guideLabel(x))}</b></span></a>`).join("")
-    || '<div class="nav-empty muted small">No guides loaded.</div>';
-  const catItems = (f) => `<a class="nav-item lp-allp ${catView === f ? "active" : ""}" href="#/learn/${f}"><span><b class="sn">All patterns</b></span></a>${Learn.nav(p?.key, f)}`;
+  const guideItems = (list, short) => list.length ? `<div class="nav-h">${list.length > 1 ? "Guides" : "Guide"}</div>` + list.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}" data-k="${esc((guideLabel(x) + " guide").toLowerCase())}"><span><b class="sn">${esc(short ? guideShort(x) : guideLabel(x))}</b></span></a>`).join("") : "";
+  const topicItems = (t) => guideItems(guidesIn(t), true) + `<div class="nav-h">Patterns</div>`
+    + `<a class="nav-item lp-allp ${catView === t ? "active" : ""}" href="#/learn/${t}"><span><b class="sn">All ${Learn.countOf(t)} patterns</b></span></a>${Learn.nav(p?.key, t)}`;
+  const more = guidesIn("more");
   const menu = `<a class="nav-item ${!topic ? "active" : ""}" href="#/learn"><span><b class="sn">Learn — start here</b></span></a>
     <label class="filter lp-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a guide or pattern" spellcheck="false"></label>
-    ${sec("guides", "Guides", runs.length, guideItems)}
-    ${sec("candles", Learn.FAMILY_LABEL.candles, Learn.countOf("candles"), catItems("candles"))}
-    ${sec("charts", Learn.FAMILY_LABEL.charts, Learn.countOf("charts"), catItems("charts"))}
+    ${LEARN_TOPICS.map((t) => sec(t, Learn.FAMILY_LABEL[t], null, topicItems(t))).join("")}
+    ${more.length ? sec("more", "More guides", more.length, guideItems(more, false)) : ""}
     <div class="nav-empty muted small lp-none" hidden></div>`;
 
   // ---- main pane
-  const hub = () => pageHead("Learn", { context: info("<p>Two kinds of material: <b>guides</b> to read start to finish, and two <b>catalogues</b> to look a pattern up — every pattern drawn with real candles, with how to read it.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
-    + `<p class="sd-lead">Guides to read, and catalogues to look things up. Findings and studies are under <a href="#/research">Research</a>.</p>
-    <h3 class="ov-h">Guides — read these</h3><div class="lp-hub">${runs.map((x) => `<a class="sec-card lp-hubc" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}">
-      <b>${esc(guideLabel(x))}</b><span class="muted small">${esc(GUIDE_BLURB[x.run] || guideTitle(x))}</span></a>`).join("") || '<div class="muted small">No guides loaded — System → Reports archive → Load reports.</div>'}</div>
-    <h3 class="ov-h">Pattern catalogues — look things up</h3><div class="lp-hub">${["candles", "charts"].map((f) => {
-      const sample = Learn.PATTERNS.filter((x) => Learn.familyOf(x) === f && x.group !== "basics").slice(0, 3);
-      return `<a class="sec-card lp-hubc lp-hubcat" href="#/learn/${f}"><b>${Learn.FAMILY_LABEL[f]}</b><span class="muted small">${Learn.countOf(f)} patterns, each drawn with real candles: ${f === "candles" ? "single candles to three-bar reversals" : "bases, topping structures and supply & demand"}.</span>
-        <div class="lp-hubthumbs">${sample.map((x) => Learn.svg(x, { thumb: true })).join("")}</div></a>`; }).join("")}</div>`;
-  const catalogueHead = (f) => pageHead(Learn.FAMILY_LABEL[f], { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume.</p><p>For the reasoning behind them, read the guides — see Learn.</p>") })
+  const guideCard = (x) => `<a class="sec-card lp-hubc" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}">
+      <b>${esc(guideLabel(x))}</b><span class="muted small">${esc(GUIDE_BLURB[x.run] || guideTitle(x))}</span></a>`;
+  const patternsCard = (f) => {
+    const sample = Learn.PATTERNS.filter((x) => Learn.familyOf(x) === f && x.group !== "basics").slice(0, 3);
+    return `<a class="sec-card lp-hubc lp-hubcat" href="#/learn/${f}"><b>All ${Learn.countOf(f)} patterns</b><span class="muted small">Each drawn with real candles: ${f === "candles" ? "single candles to three-bar reversals" : "bases, topping structures and supply & demand"}.</span>
+        <div class="lp-hubthumbs">${sample.map((x) => Learn.svg(x, { thumb: true })).join("")}</div></a>`; };
+  const hub = () => pageHead("Learn", { context: info("<p>Two topics — candlesticks and chart patterns. Each has <b>guides</b> to read start to finish and its <b>patterns</b> to look up, every one drawn with real candles, with how to read it.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
+    + `<p class="sd-lead">Read a topic's guides, then look its patterns up. Findings and studies are under <a href="#/research">Research</a>.</p>
+    ${LEARN_TOPICS.map((t) => `<h3 class="ov-h">${esc(Learn.FAMILY_LABEL[t])}</h3><div class="lp-hub">${guidesIn(t).map(guideCard).join("")}${patternsCard(t)}</div>`).join("")}
+    ${more.length ? `<h3 class="ov-h">More guides</h3><div class="lp-hub">${more.map(guideCard).join("")}</div>` : ""}
+    ${runs.length ? "" : '<div class="muted small">No guides loaded — System → Reports archive → Load reports.</div>'}`;
+  const patternsHead = (f) => pageHead(`${Learn.FAMILY_LABEL[f]}: all patterns`, { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume.</p><p>For the reasoning behind them, read this topic's guides — at the top of its menu.</p>") })
     + `<div class="muted small lp-gridnone" hidden></div>`;
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">${menu}</aside>
     <section class="scr-main lp-main">${guide ? `<div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>`
-      : p ? Learn.detail(p) : catView ? catalogueHead(catView) + Learn.overview(catView) : hub()}</section></div>`;
+      : p ? Learn.detail(p) : catView ? patternsHead(catView) + Learn.overview(catView) : hub()}</section></div>`;
 
   // ---- search: every sub-menu at once (each opens while you search, and closes again when you clear it),
-  // the catalogue grid with it, and an explicit "nothing matches"
+  // the pattern grid with it, and an explicit "nothing matches"
   const f = $view.querySelector("#lpf");
   const secs = [...$view.querySelectorAll(".lp-sec")];
   const wasOpen = new Map(secs.map((d) => [d, d.open]));
@@ -4481,7 +4491,7 @@ async function learnPage(alive, topic, sub) {
       grid.querySelectorAll(".lp-gh").forEach((h) => { const g = h.nextElementSibling; h.hidden = g.hidden = searching && ![...g.querySelectorAll(".lp-card")].some((c) => !c.hidden); });
       const msg = grid.querySelector(".lp-gridnone"), other = catView === "candles" ? "charts" : "candles";
       msg.hidden = !searching || shown > 0;
-      msg.innerHTML = counts[other] ? `Nothing in the ${esc(Learn.FAMILY_LABEL[catView].toLowerCase())} matches “${esc(f.value.trim())}” — ${counts[other]} in the <a href="#/learn/${other}">${esc(Learn.FAMILY_LABEL[other].toLowerCase())}</a> do (shown in the menu).`
+      msg.innerHTML = counts[other] ? `Nothing in ${esc(Learn.FAMILY_LABEL[catView].toLowerCase())} matches “${esc(f.value.trim())}” — ${counts[other]} in the <a href="#/learn/${other}">${esc(Learn.FAMILY_LABEL[other].toLowerCase())}</a> match (shown in the menu).`
         : `Nothing matches “${esc(f.value.trim())}”.`;
     }
   };
@@ -4495,7 +4505,7 @@ async function learnPage(alive, topic, sub) {
   if (guide) await learnGuide(alive, guide);
 }
 
-/** In a guide, link the first mention of each catalogued pattern to its page, so the two halves of Learn
+/** In a guide, link the first mention of each drawn pattern to its page, so guides and patterns
  *  connect. Names match whole words, longest first ("Gravestone doji" before "Doji"); headings, code,
  *  figures and existing links are left alone. */
 function linkPatternMentions(root) {
@@ -4515,7 +4525,7 @@ function linkPatternMentions(root) {
       if (!m) continue;
       const hit = node.splitText(m.index), rest = hit.splitText(m[0].length);
       const a = document.createElement("a");
-      a.href = `#/learn/${pt.key}`; a.className = "lp-mention"; a.title = `${pt.name} — open it in the catalogue`; a.textContent = hit.nodeValue;
+      a.href = `#/learn/${pt.key}`; a.className = "lp-mention"; a.title = `${pt.name} — open the pattern`; a.textContent = hit.nodeValue;
       hit.replaceWith(a); done.add(pt.key); node = rest;
     }
   }
