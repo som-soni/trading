@@ -4394,14 +4394,14 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn is organised by TOPIC — Candlesticks, Chart patterns — and each topic holds both its guides
+/** Learn is organised by TOPIC — Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
  *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
- *  appears in the menu once. #/learn is the hub; #/learn/candles and #/learn/charts a topic's pattern grid;
+ *  appears in the menu once. #/learn is the hub; #/learn/candles, /charts, /levels a topic's pattern grid;
  *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
 const GUIDE_ORDER = ["learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
 const GUIDE_TOPIC = { "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
-  "learn-vcp": "charts", "learn-supply-demand": "charts" };
+  "learn-vcp": "charts", "learn-supply-demand": "levels" };
 const GUIDE_BLURB = {
   "learn-candlestick-patterns": "Reading candles: anatomy, the one-, two- and three-bar patterns, context, and how the screener's candle notes use them.",
   "learn-chart-patterns": "The bases this app detects, topping structures, how to judge a breakout — and what the backtests found.",
@@ -4412,9 +4412,13 @@ const GUIDE_BLURB = {
 /** a guide's name in links and titles: "Candlestick patterns: field guide", "Bases", "VCP" */
 const guideTitle = (x) => String(x.title || x.run);
 const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$/.test(t) ? t.replace(/ — a field guide$/, ": field guide") : t.split(" — ")[0]; };
-/** inside its topic the topic is already named, so "Candlestick patterns: field guide" is just "Field guide" */
-const guideShort = (x) => (/: field guide$/.test(guideLabel(x)) ? "Field guide" : guideLabel(x));
-const LEARN_TOPICS = ["candles", "charts"];
+/** inside its topic the topic is already named, so "Candlestick patterns: field guide" (or a guide named
+ *  for the topic, "Supply and demand") is just "Field guide" */
+const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
+  return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
+const LEARN_TOPICS = ["candles", "charts", "levels"];
+const TOPIC_BLURB = { candles: "single candles to three-bar reversals", charts: "bases and topping structures",
+  levels: "demand and supply zones, and role reversal" };
 
 async function learnPage(alive, topic, sub) {
   $view.innerHTML = LOADING;
@@ -4436,14 +4440,14 @@ async function learnPage(alive, topic, sub) {
   const openSec = topic ? fam : null;
   const sec = (key, title, count, body) => `<details class="lp-sec" data-sec="${key}" ${key === openSec ? "open" : ""}>
       <summary><span>${esc(title)}</span>${count != null ? `<span class="n">${count}</span>` : ""}</summary><div class="lp-sub">${body}</div></details>`;
-  const guideItems = (list, short) => list.length ? `<div class="nav-h">${list.length > 1 ? "Guides" : "Guide"}</div>` + list.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}" data-k="${esc((guideLabel(x) + " guide").toLowerCase())}"><span><b class="sn">${esc(short ? guideShort(x) : guideLabel(x))}</b></span></a>`).join("") : "";
-  const topicItems = (t) => guideItems(guidesIn(t), true) + `<div class="nav-h">Patterns</div>`
+  const guideItems = (list, t) => list.length ? `<div class="nav-h">${list.length > 1 ? "Guides" : "Guide"}</div>` + list.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}" data-k="${esc((guideLabel(x) + " guide").toLowerCase())}"><span><b class="sn">${esc(t ? guideShort(x, t) : guideLabel(x))}</b></span></a>`).join("") : "";
+  const topicItems = (t) => guideItems(guidesIn(t), t) + `<div class="nav-h">Patterns</div>`
     + `<a class="nav-item lp-allp ${catView === t ? "active" : ""}" href="#/learn/${t}"><span><b class="sn">All ${Learn.countOf(t)} patterns</b></span></a>${Learn.nav(p?.key, t)}`;
   const more = guidesIn("more");
   const menu = `<a class="nav-item ${!topic ? "active" : ""}" href="#/learn"><span><b class="sn">Learn — start here</b></span></a>
     <label class="filter lp-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a guide or pattern" spellcheck="false"></label>
     ${LEARN_TOPICS.map((t) => sec(t, Learn.FAMILY_LABEL[t], null, topicItems(t))).join("")}
-    ${more.length ? sec("more", "More guides", more.length, guideItems(more, false)) : ""}
+    ${more.length ? sec("more", "More guides", more.length, guideItems(more, null)) : ""}
     <div class="nav-empty muted small lp-none" hidden></div>`;
 
   // ---- main pane
@@ -4451,9 +4455,9 @@ async function learnPage(alive, topic, sub) {
       <b>${esc(guideLabel(x))}</b><span class="muted small">${esc(GUIDE_BLURB[x.run] || guideTitle(x))}</span></a>`;
   const patternsCard = (f) => {
     const sample = Learn.PATTERNS.filter((x) => Learn.familyOf(x) === f && x.group !== "basics").slice(0, 3);
-    return `<a class="sec-card lp-hubc lp-hubcat" href="#/learn/${f}"><b>All ${Learn.countOf(f)} patterns</b><span class="muted small">Each drawn with real candles: ${f === "candles" ? "single candles to three-bar reversals" : "bases, topping structures and supply & demand"}.</span>
+    return `<a class="sec-card lp-hubc lp-hubcat" href="#/learn/${f}"><b>All ${Learn.countOf(f)} patterns</b><span class="muted small">Each drawn with real candles: ${TOPIC_BLURB[f]}.</span>
         <div class="lp-hubthumbs">${sample.map((x) => Learn.svg(x, { thumb: true })).join("")}</div></a>`; };
-  const hub = () => pageHead("Learn", { context: info("<p>Two topics — candlesticks and chart patterns. Each has <b>guides</b> to read start to finish and its <b>patterns</b> to look up, every one drawn with real candles, with how to read it.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
+  const hub = () => pageHead("Learn", { context: info("<p>Three topics — candlesticks, chart patterns, and supply &amp; demand. Each has <b>guides</b> to read start to finish and its <b>patterns</b> to look up, every one drawn with real candles, with how to read it.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
     + `<p class="sd-lead">Read a topic's guides, then look its patterns up. Findings and studies are under <a href="#/research">Research</a>.</p>
     ${LEARN_TOPICS.map((t) => `<h3 class="ov-h">${esc(Learn.FAMILY_LABEL[t])}</h3><div class="lp-hub">${guidesIn(t).map(guideCard).join("")}${patternsCard(t)}</div>`).join("")}
     ${more.length ? `<h3 class="ov-h">More guides</h3><div class="lp-hub">${more.map(guideCard).join("")}</div>` : ""}
@@ -4489,9 +4493,9 @@ async function learnPage(alive, topic, sub) {
       let shown = 0;
       grid.querySelectorAll(".lp-card[data-k]").forEach((c) => { const hit = !q || c.dataset.k.includes(q); c.hidden = !hit; if (hit) shown++; });
       grid.querySelectorAll(".lp-gh").forEach((h) => { const g = h.nextElementSibling; h.hidden = g.hidden = searching && ![...g.querySelectorAll(".lp-card")].some((c) => !c.hidden); });
-      const msg = grid.querySelector(".lp-gridnone"), other = catView === "candles" ? "charts" : "candles";
+      const msg = grid.querySelector(".lp-gridnone"), others = LEARN_TOPICS.filter((t) => t !== catView && counts[t]);
       msg.hidden = !searching || shown > 0;
-      msg.innerHTML = counts[other] ? `Nothing in ${esc(Learn.FAMILY_LABEL[catView].toLowerCase())} matches “${esc(f.value.trim())}” — ${counts[other]} in the <a href="#/learn/${other}">${esc(Learn.FAMILY_LABEL[other].toLowerCase())}</a> match (shown in the menu).`
+      msg.innerHTML = others.length ? `Nothing in ${esc(Learn.FAMILY_LABEL[catView].toLowerCase())} matches “${esc(f.value.trim())}” — ${others.map((t) => `${counts[t]} in <a href="#/learn/${t}">${esc(Learn.FAMILY_LABEL[t].toLowerCase())}</a>`).join(", ")} match (shown in the menu).`
         : `Nothing matches “${esc(f.value.trim())}”.`;
     }
   };

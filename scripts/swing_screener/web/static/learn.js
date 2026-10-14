@@ -23,7 +23,7 @@ const Learn = (() => {
     ["triple", "Three-candle patterns"],
     ["bases", "Bullish chart patterns"],
     ["tops", "Topping structures"],
-    ["levels", "Supply & demand"],
+    ["levels", "Zones and levels"],
   ];
 
   // context bars the candlestick examples sit on
@@ -686,11 +686,11 @@ const Learn = (() => {
       <div class="lp-pn">${prev ? `<a href="#/learn/${prev.key}">← ${esc(prev.name)}</a>` : "<span></span>"}${next ? `<a href="#/learn/${next.key}">${esc(next.name)} →</a>` : ""}</div>`;
   }
 
-  // the two families the menu switches between
-  const FAMILIES = { candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops", "levels"] };
-  const familyOf = (p) => (FAMILIES.charts.includes(p.group) ? "charts" : "candles");
+  // the topics the menu is organised by, each a set of groups
+  const FAMILIES = { candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"], levels: ["levels"] };
+  const familyOf = (p) => Object.keys(FAMILIES).find((f) => FAMILIES[f].includes(p.group)) || "candles";
   const groupsOf = (fam) => GROUPS.filter(([g]) => !fam || FAMILIES[fam].includes(g));
-  const FAMILY_LABEL = { candles: "Candlesticks", charts: "Chart patterns" };
+  const FAMILY_LABEL = { candles: "Candlesticks", charts: "Chart patterns", levels: "Supply & demand" };
   const countOf = (fam) => P.filter((p) => familyOf(p) === fam).length;
   const keyOf = (p) => (p.name + " " + (p.code || "") + " " + p.key).toLowerCase();
 
