@@ -688,11 +688,11 @@ const Learn = (() => {
       <div class="lp-pn">${prev ? `<a href="#/learn/${prev.key}">← ${esc(prev.name)}</a>` : "<span></span>"}${next ? `<a href="#/learn/${next.key}">${esc(next.name)} →</a>` : ""}</div>`;
   }
 
-  // the topics the menu is organised by, each a set of groups
-  const FAMILIES = { candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"], levels: ["levels"] };
+  // the topics the menu is organised by, each a set of pattern groups (Macro has guides only)
+  const FAMILIES = { macro: [], candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"], levels: ["levels"] };
   const familyOf = (p) => Object.keys(FAMILIES).find((f) => FAMILIES[f].includes(p.group)) || "candles";
   const groupsOf = (fam) => GROUPS.filter(([g]) => !fam || FAMILIES[fam].includes(g));
-  const FAMILY_LABEL = { candles: "Candlesticks", charts: "Chart patterns", levels: "Supply & demand" };
+  const FAMILY_LABEL = { macro: "Macro", candles: "Candlesticks", charts: "Chart patterns", levels: "Supply & demand" };
   const countOf = (fam) => P.filter((p) => familyOf(p) === fam).length;
   const keyOf = (p) => (p.name + " " + (p.code || "") + " " + p.key).toLowerCase();
 

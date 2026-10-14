@@ -3387,6 +3387,7 @@ async function funnelTab(body, id, r, alive) {
 
 
 /** A research document's markdown into `host`: ```pattern fences drawn with real candles (learn.js),
+ *  ```series fences charted from stored data (below),
  *  wide tables wrapped, links to sibling *.md files opened as their ingested document. Returns the article. */
 function renderResearchMd(host, markdown) {
   host.innerHTML = `<article class="md">${marked.parse(markdown)}</article>`;
@@ -3394,6 +3395,7 @@ function renderResearchMd(host, markdown) {
     const p = Learn.get(c.textContent.trim());
     if (p) c.parentElement.outerHTML = `<figure class="lp-md">${Learn.svg(p)}<figcaption><a href="#/learn/${p.key}">${esc(p.name)}</a> — open it in Learn</figcaption></figure>`;
   });
+  renderSeriesFigures(host);
   host.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
   // links between documents are written as filenames ("learn-chart-patterns.md"); show the document's title
   const named = [...host.querySelectorAll('.md a[href$=".md"]')].filter((a) => /\.md$/i.test(a.textContent.trim()));
@@ -3413,6 +3415,133 @@ function renderResearchMd(host, markdown) {
     };
   });
   return host.querySelector("article");
+}
+
+/** ```series fences: a chart of STORED data (index_series, prices) inside a guide, so a claim like "the
+ *  10-year doubled while the Nasdaq fell a third" is drawn from the database rather than from memory.
+ *  One `key: value` per line:
+ *    title:  the figure's heading
+ *    from:   / to:   the date range (YYYY-MM-DD; `to` defaults to the latest stored day)
+ *    tf:     D | W | M — bar size (default: by span — monthly past 12 years, weekly past 2)
+ *    rebase: 100 — every line restated as 100 at `from`, on one scale (compare growth, not levels)
+ *    line:   <expr> | <label> | <flags>   (repeat; flags: right, pane2, log, zero)
+ *            expr = market:SERIES, or two joined by " - " (a spread) or " / " (a ratio)
+ *    band:   <from> <to> | <label>   a shaded period (repeat)
+ *    mark:   <date> | <label>         an arrow on the first line (repeat)
+ *    caption: what to look at
+ *  The data's actual first and last dates are printed under the chart. */
+const SERIES_COLORS = ["--series", "--accent", "--info", "--mkt-in", "--up"];
+const seriesCache = new Map();
+function parseSeriesSpec(text) {
+  const s = { lines: [], bands: [], marks: [] };
+  for (const raw of text.split("\n")) {
+    const m = raw.match(/^\s*([a-z]+)\s*:\s*(.*)$/); if (!m) continue;
+    const [, k, v] = m, parts = v.split("|").map((x) => x.trim());
+    if (k === "line") s.lines.push({ expr: parts[0], label: parts[1] || parts[0], flags: new Set((parts[2] || "").split(/\s+/).filter(Boolean)) });
+    else if (k === "band") { const [a, b] = parts[0].split(/\s+/); s.bands.push({ from: a, to: b, label: parts[1] || "" }); }
+    else if (k === "mark") s.marks.push({ date: parts[0], label: parts[1] || "" });
+    else s[k] = v.trim();
+  }
+  return s;
+}
+/** one stored series' daily closes -> [[date, close]] */
+async function seriesDaily(ref) {
+  if (!seriesCache.has(ref)) {
+    const [market, symbol] = ref.split(":");
+    seriesCache.set(ref, api(`/api/prices?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&tf=D&bars=${ALL_BARS}`)
+      .then((r) => (r.candles ? r.candles.map((c) => [c.time, c.close]) : (r.line || []).map((c) => [c.time, c.value]))));
+  }
+  return seriesCache.get(ref);
+}
+/** the period a day falls in, so series on different calendars line up: the week's Friday, the month's end */
+function periodKey(d, tf) {
+  if (tf === "D") return d;
+  const t = new Date(d + "T00:00:00Z");
+  if (tf === "W") t.setUTCDate(t.getUTCDate() + ((5 - t.getUTCDay() + 7) % 7));
+  else t.setUTCDate(1), t.setUTCMonth(t.getUTCMonth() + 1), t.setUTCDate(0);
+  return t.toISOString().slice(0, 10);
+}
+/** an expression's values, last close per period: Map(periodKey -> value), with .first / .last the actual
+ *  first and last trading days used (a period key can be a Friday or month-end after the data stops) */
+async function seriesExpr(expr, tf, from, to) {
+  const m = expr.match(/^(\S+)\s+([-/])\s+(\S+)$/);
+  const per = async (ref) => { const out = new Map();
+    for (const [d, v] of await seriesDaily(ref)) if (d >= from && d <= to && v != null) {
+      out.set(periodKey(d, tf), v); out.first ??= d; out.last = d; }
+    return out; };
+  if (!m) return per(expr);
+  const [a, b] = await Promise.all([per(m[1]), per(m[3])]), out = new Map();
+  for (const [k, va] of a) { const vb = b.get(k); if (vb != null) out.set(k, m[2] === "-" ? va - vb : vb ? va / vb : null); }
+  out.first = a.first > b.first ? a.first : b.first; out.last = a.last < b.last ? a.last : b.last;
+  return out;
+}
+function renderSeriesFigures(host) {
+  host.querySelectorAll(".md pre > code.language-series").forEach((c) => {
+    const spec = parseSeriesSpec(c.textContent);
+    const fig = document.createElement("figure");
+    fig.className = "lp-md lps";
+    fig.innerHTML = `${spec.title ? `<div class="lps-t">${esc(spec.title)}</div>` : ""}<div class="lps-leg small"></div>
+      <div class="lps-chart" style="height:${spec.lines.some((l) => l.flags.has("pane2")) ? 400 : 300}px"></div>
+      <figcaption>${spec.caption ? `${esc(spec.caption)} ` : ""}<span class="lps-src"></span></figcaption>`;
+    c.parentElement.replaceWith(fig);
+    drawSeriesFigure(fig, spec).catch((e) => { fig.querySelector(".lps-chart").outerHTML = `<div class="muted small">Chart unavailable: ${esc(e.message)}</div>`; });
+  });
+}
+async function drawSeriesFigure(fig, spec) {
+  if (!spec.lines.length) throw new Error("no line: in the fence");
+  const from = spec.from || "1900-01-01", to = spec.to || "9999-12-31";
+  const spanYears = ((to < "9999" ? Date.parse(to) : Date.now()) - Date.parse(from)) / 3.156e10;
+  const tf = spec.tf || (spanYears > 12 ? "M" : spanYears > 2 ? "W" : "D");
+  const data = await Promise.all(spec.lines.map((l) => seriesExpr(l.expr, tf, from, to)));
+  const missing = spec.lines.filter((l, i) => !data[i].size).map((l) => l.expr);
+  if (missing.length) throw new Error(`no stored data for ${missing.join(", ")} in this range`);
+  const el_ = fig.querySelector(".lps-chart");
+  const chart = LC.createChart(el_, { autoSize: true, ...chartTheme(), handleScroll: false, handleScale: false,
+    leftPriceScale: { visible: spec.lines.some((l) => !l.flags.has("right") && !l.flags.has("pane2")) && spec.lines.some((l) => l.flags.has("right")), borderColor: cssVar("--line-2") } });
+  { const prev = cleanup; cleanup = () => { chart.remove(); prev(); }; }
+  const times = [...new Set(data.flatMap((d) => [...d.keys()]))].sort();
+  const series = spec.lines.map((l, i) => {
+    let pts = [...data[i]].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+    if (spec.rebase) { const base = pts[0][1]; pts = pts.map(([t, v]) => [t, (v / base) * +spec.rebase]); }
+    const pane = l.flags.has("pane2") ? 1 : 0;
+    const scale = pane ? "right" : spec.lines.some((x) => x.flags.has("right")) && !l.flags.has("right") ? "left" : "right";
+    const s = chart.addSeries(LC.LineSeries, { color: cssVar(SERIES_COLORS[i % SERIES_COLORS.length]), lineWidth: i ? 1.5 : 2,
+      priceScaleId: scale, priceLineVisible: false, lastValueVisible: true, title: "" }, pane);
+    s.setData(pts.map(([t, v]) => ({ time: t, value: +v.toFixed(4) })));
+    if (l.flags.has("zero")) s.createPriceLine({ price: 0, color: cssVar("--line-3"), lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+    s.lps = { scale, pane };
+    return s;
+  });
+  // scale modes only once every pane exists: a pane created later copies the first pane's scale options
+  series.forEach((s, i) => { const l = spec.lines[i];
+    chart.priceScale(s.lps.scale, s.lps.pane).applyOptions({ mode: l.flags.has("log") ? LC.PriceScaleMode.Logarithmic : LC.PriceScaleMode.Normal }); });
+  if (spec.lines.some((l) => l.flags.has("pane2"))) chart.panes()[1]?.setHeight(130);
+  // shaded periods: a full-height area on a hidden scale, one series per period and pane (an area series
+  // joins across gaps, so two periods in one series would shade everything between them)
+  const panes = [...new Set(spec.lines.map((l) => (l.flags.has("pane2") ? 1 : 0)))];
+  for (const band of spec.bands) {
+    const lo = periodKey(band.from, tf), hi = periodKey(band.to || "9999-12-31", tf);
+    const pts = times.filter((t) => t >= lo && t <= hi);
+    if (!pts.length) continue;
+    for (const pane of panes) {
+      const h = chart.addSeries(LC.AreaSeries, { priceScaleId: "band", lineVisible: false, topColor: cssVar("--warn-soft"), bottomColor: cssVar("--warn-soft"),
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) }, pane);
+      h.priceScale().applyOptions({ visible: false, scaleMargins: { top: 0, bottom: 0 } });
+      h.setData(pts.map((t) => ({ time: t, value: 1 })));
+    }
+  }
+  if (spec.marks.length) {
+    const ts = [...data[0].keys()].sort();
+    LC.createSeriesMarkers(series[0], spec.marks.map((m) => ({ time: ts.find((t) => t >= periodKey(m.date, tf)) || ts[ts.length - 1],
+      position: "aboveBar", shape: "arrowDown", color: cssVar("--accent"), text: m.label })).sort((a, b) => (a.time < b.time ? -1 : 1)));
+  }
+  chart.timeScale().fitContent();
+  const fmtD = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+  fig.querySelector(".lps-leg").innerHTML = spec.lines.map((l, i) => `<span><i style="background:${cssVar(SERIES_COLORS[i % SERIES_COLORS.length])}"></i>${esc(l.label)}${l.flags.has("right") && !l.flags.has("pane2") ? " (right axis)" : ""}${l.flags.has("log") ? " · log scale" : ""}</span>`).join("")
+    + [...new Set(spec.bands.map((b) => b.label).filter(Boolean))].map((x) => `<span><i class="band"></i>${esc(x)}</span>`).join("");
+  const first = data.map((d) => d.first).sort()[0], last = data.map((d) => d.last).sort().pop();
+  fig.querySelector(".lps-src").textContent = `Stored data, ${fmtD(first)} – ${fmtD(last)}, ${{ D: "daily", W: "weekly", M: "monthly" }[tf]} closes${spec.rebase ? `, rebased to ${spec.rebase}` : ""}.`;
 }
 
 async function reportPage(alive, id, tab) {
@@ -4394,15 +4523,25 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn is organised by TOPIC — Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
+/** Learn is organised by TOPIC — Macro, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
  *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
  *  appears in the menu once. #/learn is the hub; #/learn/candles, /charts, /levels a topic's pattern grid;
  *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
-const GUIDE_ORDER = ["learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
+const GUIDE_ORDER = ["learn-macro-rates", "learn-macro-yield-curve", "learn-macro-inflation", "learn-macro-cycle", "learn-macro-currencies", "learn-macro-liquidity-credit", "learn-macro-commodities", "learn-macro-calendar",
+  "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
-const GUIDE_TOPIC = { "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
+const GUIDE_TOPIC = {"learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
+   "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
 const GUIDE_BLURB = {
+  "learn-macro-rates": "What the Fed and the RBI do, why the price of money sets every valuation, and which sectors feel it first.",
+  "learn-macro-yield-curve": "Bond yields, the shape of the curve, inversions and recessions, and why the 10-year moves growth stocks.",
+  "learn-macro-inflation": "CPI, core and India's food-heavy basket: how inflation reaches rates, margins and sector leadership.",
+  "learn-macro-cycle": "Jobs, PMIs and GDP, the four phases of the cycle, and the ratios that show rotation as it happens.",
+  "learn-macro-currencies": "The dollar, the rupee and foreign flows: who wins and loses when currencies move.",
+  "learn-macro-liquidity-credit": "QE and QT, credit spreads and volatility: the plumbing that warns before stocks do.",
+  "learn-macro-commodities": "Oil, gold and copper as reads on inflation, fear and growth, and what they mean for India.",
+  "learn-macro-calendar": "The US and India events that move markets, and how a swing trader plans around them.",
   "learn-candlestick-patterns": "Reading candles: anatomy, the one-, two- and three-bar patterns, context, and how the screener's candle notes use them.",
   "learn-chart-patterns": "The bases this app detects, topping structures, how to judge a breakout — and what the backtests found.",
   "learn-bases": "What a base is, Stage 2 and base counts, the common base types, and how to spot one while it is still forming.",
@@ -4416,7 +4555,7 @@ const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$
  *  for the topic, "Supply and demand") is just "Field guide" */
 const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
   return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
-const LEARN_TOPICS = ["candles", "charts", "levels"];
+const LEARN_TOPICS = ["macro", "candles", "charts", "levels"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;
@@ -4468,7 +4607,7 @@ async function learnPage(alive, topic, sub) {
   /** a small topic's patterns, one card each, in place of its grid */
   const patternCards = (f) => Learn.PATTERNS.filter((x) => Learn.familyOf(x) === f).map((x) => `<a class="sec-card lp-hubc" href="#/learn/${x.key}">
       <b>${esc(x.name)}</b><div class="lp-hubthumbs one">${Learn.svg(x, { thumb: true })}</div></a>`).join("");
-  const hub = () => pageHead("Learn", { context: info("<p>Three topics — candlesticks, chart patterns, and supply &amp; demand. Each has <b>guides</b> to read start to finish and its <b>patterns</b> to look up, every one drawn with real candles, with how to read it.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
+  const hub = () => pageHead("Learn", { context: info("<p>Organised by topic. Each has <b>guides</b> to read start to finish; the chart topics also have their <b>patterns</b> to look up, every one drawn with real candles, with how to read it. The macro guides chart stored market data.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
     + `<p class="sd-lead">Read a topic's guides, then look its patterns up. Findings and studies are under <a href="#/research">Research</a>.</p>
     ${LEARN_TOPICS.map((t) => `<h3 class="ov-h">${esc(Learn.FAMILY_LABEL[t])}</h3><div class="lp-hub">${guidesIn(t).map(guideCard).join("")}${hasGrid(t) ? patternsCard(t) : patternCards(t)}</div>`).join("")}
     ${more.length ? `<h3 class="ov-h">More guides</h3><div class="lp-hub">${more.map(guideCard).join("")}</div>` : ""}

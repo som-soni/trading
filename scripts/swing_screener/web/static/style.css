@@ -1347,3 +1347,10 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .lp-sub { padding-left: 14px; border-left: 1px solid var(--line-2); margin: 0 0 6px 13px; }
 .lp-sub .nav-h { margin: 8px 0 2px; font-size: 10.5px; }
 .lp-sub .nav-item { padding: 5px 8px; }
+
+/* Learn: ```series figures — stored data charted inside a guide */
+.lps .lps-t { font-weight: 600; color: var(--strong); margin-bottom: 4px; }
+.lps .lps-leg { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); margin-bottom: 6px; }
+.lps .lps-leg i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+.lps .lps-leg i.band { height: 10px; background: var(--warn-soft); border: 1px solid var(--warn); }
+.lps .lps-chart { width: 100%; }
