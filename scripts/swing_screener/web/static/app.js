@@ -4424,17 +4424,20 @@ async function learnPage(alive, topic, sub) {
   if (onCatalogue) store.set("learnFam", fam);
   document.title = `${p ? p.name + " · " : guide ? guideLabel(guide) + " · " : catView ? Learn.FAMILY_LABEL[catView] + " · " : ""}Learn · Trading`;
 
-  // ---- sidebar: guides first (reading), then the catalogues (reference)
-  const guides = `<a class="nav-item ${!topic ? "active" : ""}" href="#/learn"><span><b class="sn">Learn — start here</b></span></a>
-    ${runs.length ? `<div class="nav-h">Guides</div>${runs.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}"><span><b class="sn">${esc(guideLabel(x))}</b></span></a>`).join("")}` : ""}`;
-  const famLists = ["candles", "charts"].map((f) => `<div class="lpl" data-fam="${f}" ${onCatalogue && f === fam ? "" : "hidden"}>
-      <div class="nav-h lp-famh" hidden>${FAMILY_SHORT[f]}</div>${Learn.nav(p?.key, f)}</div>`).join("");
-  const catalogue = `<div class="nav-h">Pattern catalogues</div>
-    ${onCatalogue ? segmented([["candles", "Candlesticks"], ["charts", "Chart patterns"]], fam, "lpfam") : ""}
-    <label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a pattern (both catalogues)" spellcheck="false"></label>
-    <div class="lp-catlinks" ${onCatalogue ? "hidden" : ""}>${["candles", "charts"].map((f) => `<a class="nav-item" href="#/learn/${f}"><span><b class="sn">${Learn.FAMILY_LABEL[f]}</b><span class="muted small sk">${Learn.countOf(f)} patterns</span></span></a>`).join("")}</div>
-    ${onCatalogue ? `<a class="nav-item lp-all ${catView ? "active" : ""}" href="#/learn/${fam}"><span><b class="sn">${Learn.FAMILY_LABEL[fam]} — all patterns</b></span></a>` : ""}
-    ${famLists}<div class="nav-empty muted small lp-none" hidden></div>`;
+  // ---- sidebar: one menu, three sub-menus — Guides, the Candlestick catalogue, the Chart pattern catalogue.
+  // The sub-menu holding the page you are on is open; the others are closed until you open them.
+  const openSec = guide || !topic ? "guides" : onCatalogue ? fam : "guides";
+  const sec = (key, title, count, body) => `<details class="lp-sec" data-sec="${key}" ${key === openSec ? "open" : ""}>
+      <summary><span>${esc(title)}</span>${count != null ? `<span class="n">${count}</span>` : ""}</summary><div class="lp-sub">${body}</div></details>`;
+  const guideItems = runs.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}" data-k="${esc(guideLabel(x).toLowerCase())}"><span><b class="sn">${esc(guideLabel(x))}</b></span></a>`).join("")
+    || '<div class="nav-empty muted small">No guides loaded.</div>';
+  const catItems = (f) => `<a class="nav-item lp-allp ${catView === f ? "active" : ""}" href="#/learn/${f}"><span><b class="sn">All patterns</b></span></a>${Learn.nav(p?.key, f)}`;
+  const menu = `<a class="nav-item ${!topic ? "active" : ""}" href="#/learn"><span><b class="sn">Learn — start here</b></span></a>
+    <label class="filter lp-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a guide or pattern" spellcheck="false"></label>
+    ${sec("guides", "Guides", runs.length, guideItems)}
+    ${sec("candles", Learn.FAMILY_LABEL.candles, Learn.countOf("candles"), catItems("candles"))}
+    ${sec("charts", Learn.FAMILY_LABEL.charts, Learn.countOf("charts"), catItems("charts"))}
+    <div class="nav-empty muted small lp-none" hidden></div>`;
 
   // ---- main pane
   const hub = () => pageHead("Learn", { context: info("<p>Two kinds of material: <b>guides</b> to read start to finish, and two <b>catalogues</b> to look a pattern up — every pattern drawn with real candles, with how to read it.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
@@ -4447,40 +4450,30 @@ async function learnPage(alive, topic, sub) {
         <div class="lp-hubthumbs">${sample.map((x) => Learn.svg(x, { thumb: true })).join("")}</div></a>`; }).join("")}</div>`;
   const catalogueHead = (f) => pageHead(Learn.FAMILY_LABEL[f], { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume.</p><p>For the reasoning behind them, read the guides — see Learn.</p>") })
     + `<div class="muted small lp-gridnone" hidden></div>`;
-  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">${guides}${catalogue}</aside>
+  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">${menu}</aside>
     <section class="scr-main lp-main">${guide ? `<div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>`
       : p ? Learn.detail(p) : catView ? catalogueHead(catView) + Learn.overview(catView) : hub()}</section></div>`;
 
-  // ---- the toggle switches the sidebar list; it navigates only from a catalogue index (to the other one)
-  $view.querySelectorAll(".lpfam button").forEach((b) => b.onclick = () => {
-    if (catView) { go(`#/learn/${b.dataset.v}`); return; }
-    fam = b.dataset.v; store.set("learnFam", fam);
-    $view.querySelectorAll(".lpfam button").forEach((x) => x.classList.toggle("on", x === b));
-    const all = $view.querySelector(".lp-all");
-    if (all) { all.href = `#/learn/${fam}`; all.querySelector(".sn").textContent = `${Learn.FAMILY_LABEL[fam]} — all patterns`; }
-    filter();
-  });
-
-  // ---- search: both catalogues at once, the grid with the sidebar, and an explicit "nothing matches"
+  // ---- search: every sub-menu at once (each opens while you search, and closes again when you clear it),
+  // the catalogue grid with it, and an explicit "nothing matches"
   const f = $view.querySelector("#lpf");
+  const secs = [...$view.querySelectorAll(".lp-sec")];
+  const wasOpen = new Map(secs.map((d) => [d, d.open]));
   const filter = () => {
     const q = f.value.trim().toLowerCase(), searching = !!q;
-    const lists = [...$view.querySelectorAll(".lpl")];
     const counts = {};
-    for (const l of lists) {
-      const lf = l.dataset.fam;
+    for (const d of secs) {
       let n = 0;
-      l.querySelectorAll(".nav-item[data-k]").forEach((a) => { const hit = !q || a.dataset.k.includes(q); a.hidden = !hit; if (hit) n++; });
-      l.querySelectorAll(".nav-h:not(.lp-famh)").forEach((h) => { let e = h.nextElementSibling, any = false; while (e && !e.classList.contains("nav-h")) { if (e.dataset.k && !e.hidden) any = true; e = e.nextElementSibling; } h.hidden = searching && !any; });
-      counts[lf] = n;
-      l.hidden = searching ? n === 0 : !(onCatalogue && lf === fam);
-      l.querySelector(".lp-famh").hidden = !searching;
+      d.querySelectorAll(".nav-item[data-k]").forEach((a) => { const hit = !q || a.dataset.k.includes(q); a.hidden = !hit; if (hit) n++; });
+      d.querySelectorAll(".lp-allp").forEach((a) => { a.hidden = searching; });
+      d.querySelectorAll(".nav-h").forEach((h) => { let e = h.nextElementSibling, any = false; while (e && !e.classList.contains("nav-h")) { if (e.dataset.k && !e.hidden) any = true; e = e.nextElementSibling; } h.hidden = searching && !any; });
+      counts[d.dataset.sec] = n;
+      d.hidden = searching && n === 0;
+      d.open = searching ? n > 0 : wasOpen.get(d);
     }
-    $view.querySelector(".lp-catlinks").hidden = onCatalogue || searching;
-    const none = $view.querySelector(".lp-none"), total = (counts.candles || 0) + (counts.charts || 0);
+    const none = $view.querySelector(".lp-none"), total = Object.values(counts).reduce((x, y) => x + y, 0);
     none.hidden = !searching || total > 0;
-    none.textContent = `No pattern in either catalogue matches “${f.value.trim()}”. Try a name like hammer, doji, cup or flag.`;
-    // the catalogue grid follows the search too
+    none.textContent = `Nothing matches “${f.value.trim()}”. Try a name like hammer, doji, cup, flag or VCP.`;
     if (catView) {
       const grid = $view.querySelector(".lp-main");
       let shown = 0;
@@ -4488,12 +4481,14 @@ async function learnPage(alive, topic, sub) {
       grid.querySelectorAll(".lp-gh").forEach((h) => { const g = h.nextElementSibling; h.hidden = g.hidden = searching && ![...g.querySelectorAll(".lp-card")].some((c) => !c.hidden); });
       const msg = grid.querySelector(".lp-gridnone"), other = catView === "candles" ? "charts" : "candles";
       msg.hidden = !searching || shown > 0;
-      msg.innerHTML = counts[other] ? `Nothing in the ${esc(Learn.FAMILY_LABEL[catView].toLowerCase())} matches “${esc(f.value.trim())}” — ${counts[other]} in the <a href="#/learn/${other}">${esc(Learn.FAMILY_LABEL[other].toLowerCase())}</a> do (listed in the menu).`
+      msg.innerHTML = counts[other] ? `Nothing in the ${esc(Learn.FAMILY_LABEL[catView].toLowerCase())} matches “${esc(f.value.trim())}” — ${counts[other]} in the <a href="#/learn/${other}">${esc(Learn.FAMILY_LABEL[other].toLowerCase())}</a> do (shown in the menu).`
         : `Nothing matches “${esc(f.value.trim())}”.`;
     }
   };
+  // remember the open/closed state you choose (until you search)
+  secs.forEach((d) => d.addEventListener("toggle", () => { if (!f.value.trim()) wasOpen.set(d, d.open); }));
   f.oninput = filter;
-  f.onkeydown = (e) => { if (e.key === "Enter") { const a = [...$view.querySelectorAll(".lpl:not([hidden]) .nav-item[data-k]")].find((x) => !x.hidden); if (a) go(a.getAttribute("href")); } };
+  f.onkeydown = (e) => { if (e.key === "Enter") { const a = [...$view.querySelectorAll(".lp-sec .nav-item[data-k]")].find((x) => !x.hidden); if (a) go(a.getAttribute("href")); } };
   $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
   if (p) window.scrollTo(0, 0);
   if (catView && sub) document.getElementById(`g-${sub}`)?.scrollIntoView({ block: "start" });
