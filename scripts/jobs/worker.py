@@ -8,9 +8,22 @@ Each item runs as `python -m jobs run ...` in its own process group — exactly 
 records as "stopped"; SIGKILL if it has not exited 30 s later). The item's final status comes from the
 run log when the run got that far (ok / partial → failed / interrupted → stopped), else from the exit code.
 
-Only one worker runs at a time (a Postgres advisory lock). If the worker restarts while an item's process
-is still alive, it keeps following that process instead of starting another. Every few seconds it writes a
-heartbeat, which the portal shows as "worker running" / "worker stopped".
+Work runs in three LANES, one process each (jobs/queue.py):
+
+  main      the market routines, downloads and everything else, in queue order
+  backtest  backtests and other long research on stored data (jobs/registry.py RESEARCH_JOBS)
+  fast      short jobs on stored data — screens, breadth, setups, reports (FAST_JOBS)
+
+so a scheduled close routine never waits behind a backtest, and the page that asked for a screens rebuild
+gets it in a minute. No lane starts an item that clashes with another's (the same job for the same market,
+or a fast job while that market's data is being downloaded). `python -m jobs worker` runs the main lane and
+keeps the other two running beside it as child processes; `--lane fast|backtest` runs only that lane,
+`--no-fast` / `--no-backtest-lane` leave one out (then the main lane runs its work).
+
+One worker per lane (a Postgres advisory lock each). If a lane restarts while one of its items is still
+running, it keeps following that process instead of starting another. Every few seconds each lane writes
+a heartbeat, which the portal shows. Only the main lane enqueues schedules and waits for runs started
+outside the queue.
 """
 
 from __future__ import annotations
@@ -34,6 +47,7 @@ logger = logging.getLogger("jobs.worker")
 POLL_S = 2            # how often it looks for work while idle
 SCHEDULE_EVERY_S = 30 # how often it checks the schedules
 KILL_AFTER_S = 30     # after Stop: SIGKILL if the job has not exited by then
+FAST_RESTART_S = 30   # a lane child that died is restarted after this long
 
 _stop = False
 
@@ -145,21 +159,58 @@ def _enqueue_due() -> None:
                     "already queued" if it.get("duplicate") else f"queued as item #{it['id']}")
 
 
-def run_forever() -> int:
+def _start_lane(lane: str) -> subprocess.Popen:
+    """Another lane's worker, as a child of the main one (its log beside the main worker's)."""
+    log = paths.LOGS_DIR / f"worker-{lane}.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    env = {**os.environ, "PYTHONPATH": str(paths.SCRIPTS_DIR)}
+    f = open(log, "a")   # noqa: SIM115 — the child keeps writing to it
+    f.write(f"\n--- {lane} lane started by the main worker {dt.datetime.now():%Y-%m-%d %H:%M:%S} ---\n")
+    f.flush()
+    return subprocess.Popen([sys.executable, "-m", "jobs", "worker", "--lane", lane], cwd=str(paths.SCRIPTS_DIR),
+                            env=env, stdout=f, stderr=subprocess.STDOUT)
+
+
+def run_forever(lane: str = "main", fast_child: bool = True, backtest_child: bool = True) -> int:
     global _stop
     queue.init_schema()
     lock_conn = psycopg2.connect()
     lock_conn.autocommit = True
-    if not queue.try_worker_lock(lock_conn):
-        print("Another worker is already running (only one runs at a time).")
+    if not queue.try_worker_lock(lock_conn, lane):
+        print(f"Another {lane}-lane worker is already running (only one runs per lane).")
         return 1
+    from .registry import choose_for
+    choose = choose_for(lane)
+    main = lane == "main"
     started = dt.datetime.now().astimezone()
     host, me = socket.gethostname(), os.getpid()
     last_sched = [0.0]
+    wanted = [ln for ln, on in (("fast", fast_child), ("backtest", backtest_child)) if on] if main else []
+    children: dict = {ln: {"proc": None, "died_at": 0.0} for ln in wanted}
 
-    def tick(cur=None):
-        """heartbeat, and enqueue any schedule that has come due (also while a job is running)"""
-        queue.heartbeat(me, host, started, cur)
+    def supervise() -> None:
+        """main lane: keep the other lanes' children running"""
+        if _stop:
+            return
+        for ln, child in children.items():
+            p = child["proc"]
+            if p is not None and p.poll() is None:
+                continue
+            if p is not None and child["died_at"] == 0.0:
+                child["died_at"] = time.time()
+                logger.warning("%s lane exited (code %s); restarting in %ds", ln, p.returncode, FAST_RESTART_S)
+            if p is None or time.time() - child["died_at"] >= FAST_RESTART_S:
+                if queue.worker_status(ln)["alive"]:
+                    continue      # that lane was started separately (--lane …) and is running
+                child["proc"], child["died_at"] = _start_lane(ln), 0.0
+                logger.info("%s lane started (pid %d)", ln, child["proc"].pid)
+
+    def tick(cur=None, note: str = ""):
+        """heartbeat; the main lane also enqueues due schedules and keeps the fast lane alive (also while a job runs)"""
+        queue.heartbeat(me, host, started, cur, note, lane)
+        if not main:
+            return
+        supervise()
         if time.time() - last_sched[0] >= SCHEDULE_EVERY_S:
             try:
                 _enqueue_due()
@@ -172,14 +223,14 @@ def run_forever() -> int:
         _stop = True
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
-    logger.info("worker %d started on %s", me, host)
+    logger.info("%s-lane worker %d started on %s", lane, me, host)
 
-    # an item left "running" by a previous worker: keep following its process if it is still alive
-    q = queue.items()
-    if q["running"]:
-        it = q["running"]
+    # items this lane left "running": keep following their processes if still alive
+    for it in queue.items()["running_all"]:
+        if (it.get("lane") or "main") != lane:
+            continue
         if _alive(it["pid"]):
-            logger.info("following item #%d left running by the previous worker (pid %s)", it["id"], it["pid"])
+            logger.info("following item #%d left running by the previous %s-lane worker (pid %s)", it["id"], lane, it["pid"])
             _follow(it, None, tick)
         else:
             queue.finish(it["id"], _final_status(it, None) if it.get("run_id") else "interrupted", None, "the worker stopped while it ran")
@@ -187,12 +238,13 @@ def run_forever() -> int:
     try:
         while not _stop:
             tick()
-            outside = _outside_run()
-            if outside:
-                queue.heartbeat(me, host, started, None, f"waiting for run #{outside['run_id']} started outside the queue")
-                time.sleep(POLL_S * 5)
-                continue
-            item = queue.claim_next()
+            if main:
+                outside = _outside_run()
+                if outside:
+                    tick(None, f"waiting for run #{outside['run_id']} started outside the queue")
+                    time.sleep(POLL_S * 5)
+                    continue
+            item = queue.claim_next(lane, choose)
             if not item:
                 time.sleep(POLL_S)
                 continue
@@ -205,8 +257,12 @@ def run_forever() -> int:
                 queue.finish(item["id"], "failed", None, f"{type(exc).__name__}: {exc}")
     finally:
         # a job still running keeps running (its own process group); the next worker picks it up
-        queue.worker_stopped()
-        logger.info("worker %d stopped", me)
+        for child in children.values():
+            p = child["proc"]
+            if p is not None and p.poll() is None:
+                p.terminate()    # the other lanes stop with the main one (their running jobs keep running)
+        queue.worker_stopped(lane)
+        logger.info("%s-lane worker %d stopped", lane, me)
     return 0
 
 

@@ -9,7 +9,13 @@ the command line or the jobs themselves:
     cancel(id)                                    drop a waiting item, or stop the running one
     to_front(id)                                  run a waiting item next
     claim_next() / mark_running() / finish()      the worker's side
-    heartbeat() / worker_status()                 is a worker alive, and what is it doing
+    heartbeat() / worker_status() / lanes()       is a worker alive, and what is it doing
+
+Work runs in LANES, each its own worker process: the main lane runs the market routines, downloads and
+everything else, in order; the backtest lane runs backtests and other long research on stored data; the
+fast lane runs only short jobs on stored data (jobs/registry.py `fast_item` / `research_item`). So a screens
+rebuild or a scheduled close routine never waits hours behind a backtest. A lane has its own lock and
+heartbeat row; an item records the lane that ran it.
 
 Schedules ("daily · India at 18:30, Mon–Fri") live here too: `due_schedules()` is what the worker checks
 every minute; a due schedule simply enqueues its run. A slot missed while the machine slept runs once
@@ -30,7 +36,9 @@ from swing_screener.marketdata import db
 
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 WORKER_ALIVE_S = 20          # a worker that has not checked in for this long is considered stopped
-LOCK_KEY = 742_003_117       # pg advisory lock: one worker at a time
+LOCK_KEY = 742_003_117       # pg advisory lock: one worker per lane (LOCK_KEY + the lane's index in LANES)
+LANES = ("main", "fast", "backtest")
+_LANE_ROW = {"main": 1, "fast": 2, "backtest": 3}   # job_worker.id per lane
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS job_queue (
@@ -54,6 +62,7 @@ CREATE TABLE IF NOT EXISTS job_queue (
     note TEXT
 );
 CREATE INDEX IF NOT EXISTS job_queue_status ON job_queue (status, priority DESC, id);
+ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS lane TEXT;   -- the worker lane that ran it (main | fast)
 CREATE TABLE IF NOT EXISTS job_schedules (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,
@@ -94,7 +103,7 @@ DEFAULT_SCHEDULES = [
 ]
 
 _COLS = ("id, targets, market, opts, requested_by, schedule_id, priority, status, created_at, started_at, finished_at, "
-         "pid, run_id, exit_code, cancel_requested, command, out_path, note")
+         "pid, run_id, exit_code, cancel_requested, command, out_path, note, lane")
 _SCOLS = "id, name, targets, market, opts, days, monthday, at_time, enabled, last_slot, created_at, tz"
 # Scheduled runs go ahead of on-demand work (a backtest queued by hand can take hours); the worker still
 # finishes whatever is running first — it never stops a job to make room. Data-freshness asks from the
@@ -206,13 +215,15 @@ def enqueue(targets: list, market: str = "all", opts: dict | None = None, reques
 
 
 def items(recent: int = 15) -> dict:
-    """{"running": item|None, "queued": [...] in run order, "recent": [...] newest first}."""
+    """{"running": item|None (the main lane's, else any), "running_all": [every running item],
+    "queued": [...] in run order, "recent": [...] newest first}."""
     init_schema()
     act = [_item(r) for r in _q(f"SELECT {_COLS} FROM job_queue WHERE status = ANY(%s) ORDER BY priority DESC, id", (list(_ACTIVE),))]
     done = [_item(r) for r in _q(f"SELECT {_COLS} FROM job_queue WHERE status <> ALL(%s) ORDER BY finished_at DESC NULLS LAST, id DESC LIMIT %s",
                                  (list(_ACTIVE), recent))]
-    return {"running": next((x for x in act if x["status"] == "running"), None),
-            "queued": [x for x in act if x["status"] == "queued"], "recent": done}
+    run = [x for x in act if x["status"] == "running"]
+    return {"running": next((x for x in run if (x.get("lane") or "main") == "main"), run[0] if run else None),
+            "running_all": run, "queued": [x for x in act if x["status"] == "queued"], "recent": done}
 
 
 def get(item_id: int) -> dict | None:
@@ -223,7 +234,7 @@ def get(item_id: int) -> dict | None:
 def position(item_id: int) -> int | None:
     """1 = next to run (0 = running)."""
     it = items()
-    if it["running"] and it["running"]["id"] == item_id:
+    if any(x["id"] == item_id for x in it["running_all"]):
         return 0
     ids = [x["id"] for x in it["queued"]]
     return ids.index(item_id) + 1 if item_id in ids else None
@@ -262,12 +273,32 @@ def to_front(item_id: int) -> None:
 
 # ------------------------------------------------------------------ the worker's side
 
-def claim_next() -> dict | None:
-    """Take the next waiting item (FOR UPDATE SKIP LOCKED: safe even if two workers ever ran)."""
-    r = _q(f"""UPDATE job_queue SET status='running', started_at=now() WHERE id = (
-                 SELECT id FROM job_queue WHERE status='queued' ORDER BY priority DESC, id FOR UPDATE SKIP LOCKED LIMIT 1)
-               RETURNING {_COLS}""", fetch="one")
-    return _item(r) if r else None
+def claim_next(lane: str = "main", choose=None) -> dict | None:
+    """Take the next waiting item for `lane`. `choose(queued, running) -> item | None` picks from the waiting
+    items (in run order) given what is running in every lane — the worker supplies it, because which jobs
+    are short and which ones clash is the job registry's knowledge, not the queue's. Without it: the first.
+    The claim itself is atomic (a lane racing another for the same item simply loses and tries again)."""
+    for _ in range(5):
+        queued = [_item(x) for x in _q(f"SELECT {_COLS} FROM job_queue WHERE status='queued' ORDER BY priority DESC, id")]
+        if not queued:
+            return None
+        running = [_item(x) for x in _q(f"SELECT {_COLS} FROM job_queue WHERE status='running'")]
+        pick = choose(queued, running) if choose else queued[0]
+        if not pick:
+            return None
+        r = _q(f"""UPDATE job_queue SET status='running', started_at=now(), lane=%s WHERE id=%s AND status='queued'
+                   RETURNING {_COLS}""", (lane, pick["id"]), fetch="one")
+        if r:
+            return _item(r)
+    return None
+
+
+def set_lane(item_id: int, lane: str) -> None:
+    """Hand a RUNNING item to another lane's worker (it follows the process from there) — e.g. a backtest
+    the main lane started before the backtest lane existed, so the main lane is free again."""
+    if lane not in LANES:
+        raise ValueError(f"unknown lane {lane!r}")
+    _q("UPDATE job_queue SET lane=%s WHERE id=%s AND status='running'", (lane, item_id), fetch=None)
 
 
 def mark_running(item_id: int, pid: int, out_path: str) -> None:
@@ -288,25 +319,33 @@ def stop_requested(item_id: int) -> bool:
     return bool(r and r[0])
 
 
-def heartbeat(pid: int, host: str, started_at: dt.datetime, current_item: int | None, note: str = "") -> None:
-    _q("""INSERT INTO job_worker (id, pid, host, started_at, heartbeat_at, current_item, note) VALUES (1, %s, %s, %s, now(), %s, %s)
+def heartbeat(pid: int, host: str, started_at: dt.datetime, current_item: int | None, note: str = "", lane: str = "main") -> None:
+    _q("""INSERT INTO job_worker (id, pid, host, started_at, heartbeat_at, current_item, note) VALUES (%s, %s, %s, %s, now(), %s, %s)
           ON CONFLICT (id) DO UPDATE SET pid=EXCLUDED.pid, host=EXCLUDED.host, started_at=EXCLUDED.started_at,
           heartbeat_at=now(), current_item=EXCLUDED.current_item, note=EXCLUDED.note""",
-       (pid, host, started_at, current_item, note), fetch=None)
+       (_LANE_ROW[lane], pid, host, started_at, current_item, note), fetch=None)
 
 
-def worker_stopped() -> None:
-    _q("UPDATE job_worker SET heartbeat_at = now() - interval '1 day', current_item = NULL, note='stopped' WHERE id=1", fetch=None)
+def worker_stopped(lane: str = "main") -> None:
+    _q("UPDATE job_worker SET heartbeat_at = now() - interval '1 day', current_item = NULL, note='stopped' WHERE id=%s",
+       (_LANE_ROW[lane],), fetch=None)
 
 
-def worker_status() -> dict:
+def worker_status(lane: str = "main") -> dict:
+    """One lane's worker (the main lane by default — the one that runs everything and the schedules)."""
     init_schema()
-    r = _q("SELECT pid, host, started_at, heartbeat_at, current_item, note, now() FROM job_worker WHERE id=1", fetch="one")
+    r = _q("SELECT pid, host, started_at, heartbeat_at, current_item, note, now() FROM job_worker WHERE id=%s",
+           (_LANE_ROW[lane],), fetch="one")
     if not r or not r[3]:
-        return {"alive": False, "seen": None}
+        return {"alive": False, "seen": None, "lane": lane}
     age = (r[6] - r[3]).total_seconds()
     return {"alive": age <= WORKER_ALIVE_S, "pid": r[0], "host": r[1], "started_at": _iso(r[2]), "seen": _iso(r[3]),
-            "seen_s_ago": round(age), "current_item": r[4], "note": r[5]}
+            "seen_s_ago": round(age), "current_item": r[4], "note": r[5], "lane": lane}
+
+
+def lanes() -> dict:
+    """{lane: worker_status(lane)} for every lane."""
+    return {ln: worker_status(ln) for ln in LANES}
 
 
 # ------------------------------------------------------------------ schedules
@@ -428,8 +467,8 @@ def mark_slot(sid: int, slot: dt.datetime) -> None:
     _q("UPDATE job_schedules SET last_slot=%s WHERE id=%s", (slot, sid), fetch=None)
 
 
-def try_worker_lock(conn) -> bool:
-    """Hold the single-worker lock on `conn` (released when that connection closes)."""
+def try_worker_lock(conn, lane: str = "main") -> bool:
+    """Hold `lane`'s single-worker lock on `conn` (released when that connection closes)."""
     with conn.cursor() as cur:
-        cur.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY,))
+        cur.execute("SELECT pg_try_advisory_lock(%s)", (LOCK_KEY + LANES.index(lane),))
         return bool(cur.fetchone()[0])

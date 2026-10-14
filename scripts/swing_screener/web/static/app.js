@@ -2402,11 +2402,7 @@ async function screensPage(alive, key, mkt, tab, date) {
     <div id="stab"></div>`;
   main.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(href(tab, b.dataset.v)));
   wireStale(main, mkt);
-  if (r.updating) {   // refresh when the rebuild lands — but never throw away an edit in progress
-    const tick = () => { const t = setTimeout(() => { if (!alive()) return; if (modified()) tick(); else route(); }, 8000);
-      const prev = cleanup; cleanup = () => { clearTimeout(t); prev(); }; };
-    tick();
-  }
+  if (r.updating) watchRefresh(alive, mkt, "screens", modified);   // refresh when the rebuild lands — never over an edit in progress
   main.querySelector("#sdel")?.addEventListener("click", async () => {
     if (!confirm(`Delete the screen “${d.name}”?`)) return;
     await api(`/api/screens/${key}`, { method: "DELETE" }); store.set("scrKey", "stage2"); toast(`Deleted “${d.name}”`, "ok"); go(`#/screens/stage2/${mkt}`);
@@ -2490,12 +2486,43 @@ function staleBanner(stale, mkt, updating) {
   const pricesStale = stale.some((x) => x.key === "prices");
   return `<div class="scr-stale" id="scrstale"><b>${what} changed after this snapshot was built.</b>
     <span class="sx">${fields.length} field${fields.length === 1 ? "" : "s"} may be out of date: ${fields.map(esc).join(", ")}.${pricesStale ? "" : " Prices and the counts above are unaffected."}</span>
-    ${updating ? `<span class="sx"><span class="spin"></span> Rebuilding now (about a minute) — this page refreshes itself when the new snapshot lands.</span>`
+    ${updating ? `<span class="sx refresh-wait"><span class="spin"></span> A rebuild is queued — this page refreshes itself when the new snapshot lands.</span>`
       : `<button id="scrrebuild" title="Queue the screens job for this market; it rebuilds the snapshot (about a minute)">Rebuild snapshot</button>`}</div>`;
 }
-/** while a rebuild is queued or running, re-render the page every few seconds until it lands */
-function pollSnapshot(alive, ms = 8000) {
-  const t = setTimeout(() => { if (alive()) route(); }, ms);
+/** A page that asked the queue for fresher data (a screens snapshot, a strategies re-run): check /api/wait
+ *  quietly and re-render ONCE, when the work has landed — its completion signature moved, or the job it saw
+ *  pending is no longer pending — never on a timer. Meanwhile the `.refresh-wait` line says what the job is
+ *  queued behind, since one worker runs one job at a time and a backtest ahead of it can take hours.
+ *  `busy()` holds the re-render while you are editing. */
+function watchRefresh(alive, mkt, target, busy = () => false, every = 15000) {
+  let first, seenPending = false, t = null;
+  const since = (iso) => {
+    if (!iso) return "";
+    const h = (Date.now() - new Date(iso).getTime()) / 3.6e6;
+    return h < 1 ? `${Math.max(1, Math.round(h * 60))} min` : h < 48 ? `${Math.round(h)} h` : `${Math.round(h / 24)} days`;
+  };
+  const say = (w) => {
+    const el = $view.querySelector(".refresh-wait");
+    if (!el) return;
+    el.innerHTML = w.running ? `<span class="spin"></span> Updating now — this page refreshes itself when it lands.`
+      : w.fast_lane ? `<span class="spin"></span> Queued for the fast lane — starts within moments; this page refreshes itself when it lands.`
+      : w.behind ? `<span class="spin"></span> Queued, #${w.behind.position} in line — waiting for <b>${esc(w.behind.what)}</b> (running ${since(w.behind.started_at)}) to finish. The page refreshes itself when the update lands; meanwhile you are seeing the stored data. <a href="#/status">Queue</a>`
+      : !w.worker_alive ? `The job worker is not running, so the update will not start. <a href="#/status">Start it</a>`
+      : w.pending ? `<span class="spin"></span> Queued — starts next.` : `<span class="spin"></span> Updating…`;
+  };
+  const tick = async () => {
+    if (!alive()) return;
+    const w = await api(`/api/wait?market=${encodeURIComponent(mkt)}&target=${target}`).catch(() => null);
+    if (!alive()) return;
+    if (w) {
+      if (first === undefined) first = w.sig;
+      seenPending = seenPending || w.pending;
+      say(w);
+      if ((w.sig !== first || (seenPending && !w.pending)) && !busy()) { route(); return; }
+    }
+    t = setTimeout(tick, every);
+  };
+  tick();
   const prev = cleanup; cleanup = () => { clearTimeout(t); prev(); };
 }
 
@@ -2540,11 +2567,7 @@ function screensOverview(main, list, mkt, alive, fs) {
   main.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
   wireStale(main, mkt);
   let editing = null;   // only one card's editor open at a time; while open, the updating-poll keeps hands off
-  if (list.updating) {
-    const tick = () => { const t = setTimeout(() => { if (!alive()) return; if (editing) tick(); else route(); }, 8000);
-      const prev = cleanup; cleanup = () => { clearTimeout(t); prev(); }; };
-    tick();
-  }
+  if (list.updating) watchRefresh(alive, mkt, "screens", () => !!editing);
   // inline rule editing on a card: the same editor as a screen's own page, with live counts
   main.querySelectorAll(".scr-card[data-key] [data-edit]").forEach((btn) => btn.onclick = (e) => {
     e.preventDefault(); e.stopPropagation();
@@ -2752,7 +2775,7 @@ async function setupsPage(alive, root) {
       context: `<span class="muted small">${newest ? `latest run ${prettyDate(newest)}` : "not run yet"}</span>${info("<p>Every strategy's trades and watch names from its latest run. Strategies run on demand — <b>Run strategies…</b> adds a run to the job queue.</p>")}`,
       actions: `<button class="primary" id="runstrat" title="Run the strategies on today's data (adds a run to the job queue)">Run strategies…</button>` }) + `
     ${r.behind ? `<div class="scr-stale"><b>Newer prices have loaded since these runs — the setups below were decided on older bars.</b>
-      <span class="sx">${r.behind.updating ? '<span class="spin"></span> Re-running every strategy now (a few minutes) — this page refreshes itself when the new runs land.'
+      <span class="sx refresh-wait">${r.behind.updating ? '<span class="spin"></span> A re-run of every strategy is queued — this page refreshes itself when the new runs land.'
         : "A refresh could not be queued automatically — use <b>Run strategies…</b>"}</span></div>` : ""}
     ${r.error ? `<div class="empty"><b>Could not load setups</b><div class="muted">${esc(r.error)}</div></div>` : `
     <div class="setup-runs">${r.runs.map((x) => `<a class="sec-card setup-run" href="#/strategies/${x.strategy}/setups/${mkt}">
@@ -2762,7 +2785,7 @@ async function setupsPage(alive, root) {
       .map(([k, t, n]) => `<button class="chip ${k === show ? "on" : ""}" data-s="${k}">${t}<span>${n}</span></button>`).join("")}</div><div id="sclus"></div><div id="stbl"></div>`}`;
   root.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); route(); });
   root.querySelector("#runstrat").onclick = () => startJob({ title: `Run strategies · ${mktInfo(mkt).name}`, targets: ["strategies"], market: mkt, screens: true });
-  if (r.behind?.updating) pollSnapshot(alive, 15000);   // a full strategies run takes minutes, not seconds
+  if (r.behind?.updating) watchRefresh(alive, mkt, "strategies");
   if (r.error) return;
   const draw = () => {
     const xs = r.rows.filter((x) => show === "all" || (show === "trade" ? x.tradeable : !x.tradeable));
@@ -3767,14 +3790,17 @@ function queuePanel(s) {
   const Q = s.queue, w = s.worker;
   const what = (x) => `<code>${esc(x.command.replace(/^python -m jobs run /, ""))}</code>`;
   const by = (x) => `<span class="muted small">${esc(Q_BY[x.requested_by] || x.requested_by)} · ${clock(x.created_at)}</span>`;
+  const fast = s.lanes?.fast;
   const worker = w.alive
-    ? `<span class="wk ok"><i></i>Worker running</span><span class="muted small">pid ${w.pid} · since ${clock(w.started_at)}</span>`
+    ? `<span class="wk ok"><i></i>Worker running</span><span class="muted small">pid ${w.pid} · since ${clock(w.started_at)}</span>
+       ${fast ? `<span class="wk ${fast.alive ? "ok" : "off"}" title="The fast lane runs short jobs on stored data — screens, breadth, setups, reports — beside the other lanes, so they never wait behind a backtest"><i></i>Fast lane ${fast.alive ? "running" : "stopped"}</span>` : ""}
+       ${s.lanes?.backtest ? `<span class="wk ${s.lanes.backtest.alive ? "ok" : "off"}" title="The backtest lane runs backtests and other long research, so the market routines in the main lane never wait behind them"><i></i>Backtest lane ${s.lanes.backtest.alive ? "running" : "stopped"}</span>` : ""}`
     : `<span class="wk off"><i></i>Worker stopped</span><span class="muted small">queued runs and schedules wait until it runs.</span>
        <button class="primary sm" id="wkstart">Start worker</button><span class="muted small">To keep it running across restarts: <code>${esc(s.worker_command)}</code></span>`;
   return `<section class="sec-card qpanel"><div class="sec-card-h"><h3>Job queue</h3>${worker}</div>
-    ${Q.running ? `<div class="qrow run"><i class="spin"></i><b>Running</b>${what(Q.running)}${by(Q.running)}<span class="muted small">started ${clock(Q.running.started_at)}</span>
-        ${Q.running.run_id ? `<a class="small" href="#/runs/${Q.running.run_id}">steps →</a>` : ""}<span class="spacer"></span>
-        ${Q.running.cancel_requested ? '<span class="muted small">stopping…</span>' : `<button class="danger sm" data-qstop="${Q.running.id}">Stop</button>`}</div>`
+    ${(Q.running_all || (Q.running ? [Q.running] : [])).length ? (Q.running_all || [Q.running]).map((x) => `<div class="qrow run"><i class="spin"></i><b>Running</b>${x.lane && x.lane !== "main" ? `<span class="tag">${esc(x.lane)} lane</span>` : ""}${what(x)}${by(x)}<span class="muted small">started ${clock(x.started_at)}</span>
+        ${x.run_id ? `<a class="small" href="#/runs/${x.run_id}">steps →</a>` : ""}<span class="spacer"></span>
+        ${x.cancel_requested ? '<span class="muted small">stopping…</span>' : `<button class="danger sm" data-qstop="${x.id}">Stop</button>`}</div>`).join("")
       : s.job_running && !s.job_running.from_queue
         ? `<div class="qrow run"><i class="spin"></i><b>Running outside the queue</b><code>${esc(s.job_running.cmd)}</code><span class="muted small">started ${clock(s.job_running.started)} from a terminal — the worker waits for it to finish</span>
             <a class="small" href="#/runs/${s.job_running.run_id}">steps →</a></div>`

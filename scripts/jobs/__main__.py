@@ -102,10 +102,14 @@ def cmd_schedules() -> None:
 def cmd_queue() -> None:
     from . import queue
     q = queue.items(10)
-    w = queue.worker_status()
-    print(f"Worker: {'running' if w['alive'] else 'NOT running'}")
+    ln = queue.lanes()
+    print("Worker: " + " · ".join(f"{k} lane {'running' if w['alive'] else 'NOT running'}" for k, w in ln.items()))
     row = lambda x: f"  #{x['id']:<5d} {x['status']:10s} {(x['created_at'] or '')[:16].replace('T', ' ')}  {x['requested_by']:12s} {x['command']}"
-    print("Running:"), print(row(q["running"]) if q["running"] else "  —")
+    print("Running:")
+    for x in q["running_all"]:
+        print(row(x) + f"   [{x.get('lane') or 'main'} lane]")
+    if not q["running_all"]:
+        print("  —")
     print("Waiting:"), [print(row(x)) for x in q["queued"]] or print("  —")
     print("Recent:"), [print(row(x)) for x in q["recent"]]
 
@@ -124,6 +128,11 @@ def main() -> None:
     w.add_argument("--launchd", action="store_true", help="print a macOS launchd agent that keeps the worker running")
     w.add_argument("--install", action="store_true", help="write that agent to ~/Library/LaunchAgents and load it")
     w.add_argument("--uninstall", action="store_true", help="unload and remove the agent")
+    w.add_argument("--lane", choices=["main", "fast", "backtest"], default="main",
+                   help="which lane to run (default main, which also keeps the fast and backtest lanes running)")
+    w.add_argument("--no-fast", action="store_true", help="main lane: do not start the fast lane beside it")
+    w.add_argument("--no-backtest-lane", action="store_true",
+                   help="main lane: do not start the backtest lane (the main lane then runs backtests itself)")
     for name, helptext in (("run", "run jobs and/or pipelines now, in this terminal"), ("enqueue", "add jobs and/or pipelines to the queue")):
         _run_args(sub.add_parser(name, help=helptext))
     a = ap.parse_args()
@@ -186,7 +195,7 @@ def cmd_worker(a) -> None:
         p.unlink(missing_ok=True)
         print(f"Removed {p}")
         return
-    sys.exit(worker.run_forever())
+    sys.exit(worker.run_forever(a.lane, fast_child=not a.no_fast, backtest_child=not a.no_backtest_lane))
 
 
 def _run_args(r) -> None:

@@ -823,7 +823,7 @@ def _breadth_topup(market: str) -> bool:
     queued or running. Goes through the job queue (so it never collides with a running pipeline); when no
     worker is running it starts the job directly, as before."""
     jq = _jq()
-    busy = [x for x in [jq.items(0)["running"], *jq.items(0)["queued"]] if x and "breadth" in x["targets"] and x["market"] in (market, "all")]
+    busy = [x for x in [*jq.items(0)["running_all"], *jq.items(0)["queued"]] if x and "breadth" in x["targets"] and x["market"] in (market, "all")]
     if busy:
         return True
     job = _breadth_jobs.get(market)
@@ -1205,7 +1205,7 @@ def company_page(market: str, symbol: str):
         snap = None
     d = company.build(market, symbol, snap)
     d["name"] = d.get("name") or _name(market, symbol)
-    pending = [it for it in _jq().items(50)["queued"] + ([_jq().items(0)["running"]] if _jq().items(0)["running"] else [])
+    pending = [it for it in _jq().items(50)["queued"] + _jq().items(0)["running_all"]
                if it and "financials" in it.get("command", "") and symbol in it.get("command", "")]
     d["fetch_pending"] = pending[0]["id"] if pending else None
     return json.loads(json.dumps(d, default=str))
@@ -1529,7 +1529,7 @@ def _snapshot_topup(market: str, stale: list) -> bool:
     runs_screens = lambda targets: any(  # noqa: E731 — a target is the screens job, or a pipeline containing it
         t == "screens" or "screens" in [j if isinstance(j, str) else j[0] for j in PIPELINES.get(t, {}).get("jobs", [])]
         for t in targets)
-    busy = [x for x in [jq.items(0)["running"], *jq.items(0)["queued"]]
+    busy = [x for x in [*jq.items(0)["running_all"], *jq.items(0)["queued"]]
             if x and runs_screens(x["targets"]) and x["market"] in (market, "all")]
     if busy:
         return True
@@ -1701,7 +1701,7 @@ def _setups_topup(market: str, runs: list) -> dict | None:
     runs_strats = lambda targets: any(  # noqa: E731 — the strategies job, or a pipeline containing it
         t == "strategies" or "strategies" in [j if isinstance(j, str) else j[0] for j in PIPELINES.get(t, {}).get("jobs", [])]
         for t in targets)
-    busy = [x for x in [jq.items(0)["running"], *jq.items(0)["queued"]] if x and runs_strats(x["targets"]) and x["market"] in (market, "all")]
+    busy = [x for x in [*jq.items(0)["running_all"], *jq.items(0)["queued"]] if x and runs_strats(x["targets"]) and x["market"] in (market, "all")]
     if busy:
         return {"updating": True}
     sig = pts.isoformat()
@@ -1754,6 +1754,48 @@ def _jq():
     return queue
 
 
+# what each auto-refreshing page waits for: the job a page asked the queue for, and the job_steps rows
+# whose completion means its data has changed
+_WAIT_TARGETS = {"screens": ("screens", "screens"), "strategies": ("strategies", "strategy:%")}
+
+
+@app.get("/api/wait")
+def wait_status(market: str, target: str):
+    """For a page waiting on a refresh it asked for (a screens snapshot, a strategies re-run): is that
+    work still pending, what is it queued behind, and a signature that changes when it lands. The page
+    polls this instead of re-rendering itself, and re-renders once, when `sig` moves or nothing is pending."""
+    if target not in _WAIT_TARGETS:
+        raise HTTPException(400, f"target must be one of {sorted(_WAIT_TARGETS)}")
+    job, step_like = _WAIT_TARGETS[target]
+    from jobs.registry import PIPELINES
+    hits = lambda targets: any(  # noqa: E731 — the job itself, or a pipeline containing it
+        t == job or job in [j if isinstance(j, str) else j[0] for j in PIPELINES.get(t, {}).get("jobs", [])] for t in targets)
+    jq = _jq()
+    it = jq.items(0)
+    running, queued = it["running"], it["queued"]
+    mine_running = any(hits(x["targets"]) and x["market"] in (market, "all") for x in it["running_all"])
+    mine_queued = [x for x in queued if hits(x["targets"]) and x["market"] in (market, "all")]
+    behind = None
+    if mine_queued and not mine_running and running:
+        cmd = running.get("command")
+        cmd = " ".join(cmd) if isinstance(cmd, (list, tuple)) else (cmd or "")
+        behind = {"id": running["id"], "what": running.get("note") or cmd.replace("python -m jobs run ", "") or ", ".join(running["targets"]),
+                  "started_at": running.get("started_at"),
+                  "position": [x["id"] for x in queued].index(mine_queued[0]["id"]) + 1}
+    r = q("SELECT max(finished_at) FROM job_steps WHERE step LIKE %s AND market=%s AND status='ok'", (step_like, market))
+    last = r[0][0] if r else None
+    lanes = jq.lanes()
+    fast_ok = bool(mine_queued) and lanes["fast"]["alive"] and _fast_item(mine_queued[0])
+    return {"pending": mine_running or bool(mine_queued), "running": mine_running,
+            "behind": None if fast_ok else behind, "fast_lane": fast_ok,
+            "worker_alive": lanes["main"]["alive"] or lanes["fast"]["alive"], "sig": last.isoformat() if last else None}
+
+
+def _fast_item(item: dict) -> bool:
+    from jobs.registry import fast_item
+    return fast_item(item)
+
+
 def _job_running() -> dict | None:
     """The run in progress, if any: the queue's running item, or any run the run log shows as alive."""
     it = _jq().items(0)["running"]
@@ -1803,7 +1845,7 @@ def jobs_stop(request: Request, spec: dict = Body(default={})):
 @app.get("/api/queue")
 def queue_api():
     jq = _jq()
-    return {**jq.items(15), "worker": jq.worker_status()}
+    return {**jq.items(15), "worker": jq.worker_status(), "lanes": jq.lanes()}
 
 
 @app.post("/api/queue/{iid}/cancel")
@@ -2191,7 +2233,7 @@ def status_api():
             "latest_daily": status_mod.run_detail(q, daily["id"]) if daily else None,
             "jobs": overview["jobs"], "pipelines": overview["pipelines"],
             "running": [r["id"] for r in running], "overall": worst,
-            "job_running": _job_running(), "queue": _jq().items(8), "worker": _jq().worker_status(),
+            "job_running": _job_running(), "queue": _jq().items(8), "worker": _jq().worker_status(), "lanes": _jq().lanes(),
             "command": f"cd {paths.SCRIPTS_DIR} && PYTHONPATH=. .venv/bin/python -m jobs run daily",
             "worker_command": f"cd {paths.SCRIPTS_DIR} && PYTHONPATH=. .venv/bin/python -m jobs worker --install"}
 

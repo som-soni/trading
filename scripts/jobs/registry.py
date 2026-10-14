@@ -678,3 +678,87 @@ PIPELINES: dict[str, dict] = {
                                       "with --symbols, just those companies",
                            "jobs": ["financials", "fundamental_scores"]},
 }
+
+
+# ------------------------------------------------------------------ worker lanes (jobs/worker.py)
+# The fast lane runs only these: short jobs that read stored data (seconds to a few minutes), so a
+# page's screens rebuild or a setups refresh does not wait hours behind a backtest in the main lane.
+# Anything not listed — backtests, downloads, month-end history, research — stays in the main lane.
+FAST_JOBS = frozenset({"breadth", "sectors", "screens", "strategies", "postmarket", "report", "ingest", "readiness"})
+# The backtest lane runs these: long jobs on stored data (minutes to many hours, no downloads), so a
+# scheduled market routine in the main lane never waits behind one. Downloads stay in the main lane, so
+# two lanes never hit the data sources at once.
+RESEARCH_JOBS = frozenset({"backtest", "screen_history", "group_research"})
+# short, idempotent publishing steps that may run in two lanes at once: they do not count as a clash, or a
+# close routine ending in `ingest` would wait hours for a backtest that also ends in one
+CLASH_EXEMPT = frozenset({"ingest", "report"})
+# jobs that WRITE what the fast jobs read: while one runs for a market, no fast job starts for it
+FEED_LAYERS = ("reference", "data")
+
+
+def item_jobs(targets: list) -> list[str]:
+    """The job names a queue item runs: its targets, with each pipeline expanded."""
+    out = []
+    for t in targets:
+        if t in PIPELINES:
+            out += [j if isinstance(j, str) else j[0] for j in PIPELINES[t]["jobs"]]
+        else:
+            out.append(t)
+    return out
+
+
+def fast_item(item: dict) -> bool:
+    """Every job of the item is a fast one."""
+    jobs = item_jobs(item["targets"])
+    return bool(jobs) and all(j in FAST_JOBS for j in jobs)
+
+
+def research_item(item: dict) -> bool:
+    """A backtest-lane item: long research on stored data (publishing steps aside)."""
+    jobs = [j for j in item_jobs(item["targets"]) if j not in CLASH_EXEMPT]
+    return bool(jobs) and all(j in RESEARCH_JOBS for j in jobs)
+
+
+def _markets_overlap(a: str | None, b: str | None) -> bool:
+    return (a or "all") == "all" or (b or "all") == "all" or a == b
+
+
+def clashes(item: dict, running: list) -> bool:
+    """Starting `item` now would collide with a running item: the same job for the same market (two
+    writers of one dataset), or — for a fast item — a data download in progress for that market (it
+    would read a half-written update)."""
+    mine = set(item_jobs(item["targets"])) - CLASH_EXEMPT
+    for r in running:
+        if not _markets_overlap(item.get("market"), r.get("market")):
+            continue
+        theirs = set(item_jobs(r["targets"])) - CLASH_EXEMPT
+        if mine & theirs:
+            return True
+        if fast_item(item) and any(JOBS[j].layer in FEED_LAYERS for j in theirs if j in JOBS):
+            return True
+    return False
+
+
+def choose_for(lane: str):
+    """The claim policy of a lane, for queue.claim_next.
+
+    main      the queue in order, leaving research items to the backtest lane while that lane is alive;
+              it WAITS when its next item clashes rather than skip ahead (skipping could start a
+              multi-hour job in front of a routine that only had to wait a minute)
+    backtest  the first research item that does not clash
+    fast      the first fast item that does not clash"""
+    from . import queue
+
+    def main(queued, running):
+        bt_alive = queue.worker_status("backtest")["alive"]
+        mine = [x for x in queued if not (bt_alive and research_item(x))]
+        if not mine:
+            return None
+        return None if clashes(mine[0], running) else mine[0]
+
+    def backtest(queued, running):
+        return next((x for x in queued if research_item(x) and not clashes(x, running)), None)
+
+    def fast(queued, running):
+        return next((x for x in queued if fast_item(x) and not clashes(x, running)), None)
+    return {"main": main, "fast": fast, "backtest": backtest}[lane]
