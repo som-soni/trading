@@ -1327,6 +1327,8 @@ table.data tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var(--accen
 .lp-hubc b { color: var(--strong); }
 .lp-hubthumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 4px; }
 .lp-hubthumbs svg { width: 100%; height: 60px; }
+.lp-hubthumbs.one { grid-template-columns: 1fr; }
+.lp-hubthumbs.one svg { height: 90px; }
 .lp-famh { margin-top: 8px; }
 .lp-none, .lp-gridnone { padding: 6px 2px; }
 .lp-crumbs { margin-bottom: 4px; }

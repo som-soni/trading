@@ -669,14 +669,16 @@ const Learn = (() => {
 
   const BIAS = { bull: ["Bullish", "up"], bear: ["Bearish", "dn"], neutral: ["Neutral", "flat"] };
 
-  /** the detail view of one pattern */
-  function detail(p) {
+  /** the detail view of one pattern; `topicHref` replaces the topic's pattern grid as the way back up
+   *  (for a topic too small to have one) */
+  function detail(p, { topicHref } = {}) {
     const i = P.indexOf(p), prev = P[i - 1], next = P[i + 1], [bl, bc] = BIAS[p.bias];
     const meta = [`<span class="lp-bias ${bc}">${bl}</span>`, p.bars ? `<span class="chip-s">${p.bars} bar${p.bars > 1 ? "s" : ""}</span>` : "",
       p.code ? `<span class="chip-s" title="detector code in core/chart_patterns.py">${esc(p.code)}</span>` : ""].join("");
-    // the way back up: the topic, then this pattern's group within it
+    // the way back up: the topic, then this pattern's group within its grid
     const fam = familyOf(p), grp = GROUPS.find((x) => x[0] === p.group)[1];
-    const crumbs = `<div class="crumbs back lp-crumbs"><a href="#/learn">Learn</a> › <a href="#/learn/${fam}">${esc(FAMILY_LABEL[fam])}</a> › <a href="#/learn/${fam}/${p.group}">${esc(grp)}</a></div>`;
+    const crumbs = `<div class="crumbs back lp-crumbs"><a href="#/learn">Learn</a> › ${topicHref ? `<a href="${topicHref}">${esc(FAMILY_LABEL[fam])}</a>`
+      : `<a href="#/learn/${fam}">${esc(FAMILY_LABEL[fam])}</a> › <a href="#/learn/${fam}/${p.group}">${esc(grp)}</a>`}</div>`;
     const legend = p.path ? `<div class="lp-legend small muted"><span><i class="pivot"></i>pivot / trigger</span><span><i class="stop"></i>stop / invalidation</span>${p.lines?.some((x) => x.cls === "neck") ? '<span><i class="neck"></i>breakdown level</span>' : ""}<span>Illustration — idealized, not real data</span></div>`
       : p.hi && !p.wide ? `<div class="lp-legend small muted"><span>Faded candles = the context the pattern forms in</span>${p.confirm != null ? "<span>“confirm” = the next bar that validates it</span>" : ""}</div>` : "";
     return `${crumbs}<div class="lp-head"><h2>${esc(p.name)}</h2>${meta}</div>
