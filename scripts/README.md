@@ -222,11 +222,19 @@ ingest), **quality** (on demand), **company_financials** (on demand: financials 
 
 **Queue, worker, schedules** (`jobs/queue.py`, `jobs/worker.py`): the web app,
 schedules and `python -m jobs enqueue` add runs to a Postgres queue
-(`job_queue`); one worker (`python -m jobs worker`, kept alive by a launchd agent
-installed with `--install`) runs it one item at a time as `python -m jobs run
-...`, follows Stop requests (SIGTERM, SIGKILL after 30 s), waits while a run
-started outside the queue is going, and keeps following a run left behind by a
-previous worker. Schedules (`job_schedules`, edited in **System → Schedules**)
+(`job_queue`); the worker (`python -m jobs worker`, kept alive by a launchd agent
+installed with `--install`) runs it in three **lanes**, one process each, each
+one item at a time as `python -m jobs run ...`: **main** (the market routines,
+downloads and everything else, in queue order), **backtest** (backtests and other
+long research on stored data — `RESEARCH_JOBS`) and **fast** (short jobs on stored
+data — screens, breadth, setups, reports — `FAST_JOBS`). The main worker starts
+and supervises the other two, so a scheduled routine never waits behind a
+backtest and a screens rebuild a page asked for runs within a minute. No lane
+starts an item that clashes with another's (the same job for the same market, or
+a fast job while that market's data downloads); `tests/test_job_lanes.py` checks
+the routing. Each lane follows Stop requests (SIGTERM, SIGKILL after 30 s) and
+keeps following a run its previous worker left behind; the main lane also waits
+while a run started outside the queue is going. Schedules (`job_schedules`, edited in **System → Schedules**)
 are checked every 30 s; a due one is enqueued (not twice while it is still
 queued or running), and a slot missed while the machine slept runs once. The
 queue's functions are the only way in — an RQ or Celery backend would

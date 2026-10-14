@@ -205,8 +205,8 @@ are on its Strategies page under Backtests):
   ([India](minervini-spec-sensitivity-india.md), [US](minervini-spec-sensitivity-us.md)).
 - **Adding Minervini's earnings and sales tests did not help** over 2022–2026
   either (the research log, [momentum-trend-research.md](momentum-trend-research.md)).
-- **Context helped more than shape:** in the earlier Minervini version
-  (`minervini_legacy`), skipping stocks in weak industry groups improved results
+- **Context helped more than shape:** in the earlier, looser Minervini
+  version (since retired), skipping stocks in weak industry groups improved results
   in both markets.
 
 What this does *not* show: that discretionary VCP trading cannot work.

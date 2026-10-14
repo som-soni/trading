@@ -152,7 +152,7 @@ vcp
 Trigger: the final contraction's high. Invalidation: the final contraction's
 low — which is what makes VCPs attractive: the stop is *close*, so the
 reward:risk on even a modest move is high. This is the entry pattern of the
-`minervini` and `minervini_spec` strategies;
+`minervini` strategy;
 [minervini-backtest-spec.md](minervini-backtest-spec.md) pins it down
 formally.
 
@@ -174,7 +174,7 @@ above it.
 - **Climax run.** Not a geometric pattern: after a long advance, the steepest
   rally of the whole move — biggest weekly gains, widest bars, exhaustion
   gaps, often on record volume. It marks the moment the last buyers arrive.
-  Minervini and O'Neil both sell *into* strength here; the `minervini_spec`
+  Minervini and O'Neil both sell *into* strength here; the `minervini`
   exit rules include a climax exit for exactly this.
 
 ---
@@ -197,7 +197,7 @@ real breakout from a head-fake, in rough order of importance:
    pivot means the base is being distributed, not accumulated.
 4. **Follow-through.** Real breakouts tend not to look back much: a close
    back below the pivot within days is the single most useful failure signal
-   (the `minervini_spec` strategy exits on exactly that). A *shallow, quiet*
+   (the `minervini` strategy exits on exactly that). A *shallow, quiet*
    first pullback to the pivot that holds is normal and is often the second
    chance — the "retest".
 5. **Market and group.** Breakouts fail in bulk in weak markets and weak

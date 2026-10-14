@@ -22,7 +22,11 @@ standalone script or cron entry, so it is logged and shows on the Data status
 page. Jobs are run by the queue (`jobs/queue.py` + `python -m jobs worker`):
 the portal, schedules (`job_schedules`, System → Schedules) and `jobs enqueue`
 only *ask* through `jobs/queue.py`'s functions — never write the queue tables
-elsewhere, so the backend stays swappable (RQ / Celery).
+elsewhere, so the backend stays swappable (RQ / Celery). The worker runs three
+lanes (main: routines and downloads; backtest: `RESEARCH_JOBS`; fast: short
+stored-data jobs, `FAST_JOBS` in `jobs/registry.py`): a new job runs in the
+main lane unless you add it to one of those sets on purpose — then run
+`PYTHONPATH=. .venv/bin/python -m tests.test_job_lanes`.
 
 ## Markets come from config
 

@@ -254,8 +254,8 @@ Where they earn their keep in a swing workflow like this one:
 1. **Entry-day quality.** On the day price takes out your trigger, a
    full-bodied close in the top of the range on above-average volume is the
    breakout behaving; a shooting-star close back under the pivot on the same
-   volume is the first sign of a failed breakout (the `minervini_spec` exit
-   spec treats a close back below the pivot as exactly that).
+   volume is the first sign of a failed breakout (the `minervini` strategy's exit
+   rules treat a close back below the pivot as exactly that).
 2. **Stop placement.** Reversal candles give natural invalidation points —
    the hammer's low, the engulfing bar's low — usually tighter and more
    honest than a percentage.
