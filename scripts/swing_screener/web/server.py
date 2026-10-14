@@ -497,10 +497,10 @@ def trade_anatomy(rid: int, symbol: str):
     structure the strategy saw at the signal (drawn from the `backtest_signals` row the run itself
     wrote — never a re-detection that current code could change) plus the trade's own stop/target
     levels. Shapes are the schema of `Strategy.chart_anatomy` (strategies/base.py)."""
-    run = q("SELECT market, strategy FROM report_runs WHERE id=%s", (rid,))
+    run = q("SELECT market, strategy, spec_id FROM report_runs WHERE id=%s", (rid,))
     if not run:
         raise HTTPException(404)
-    market, strat_key = run[0]
+    market, strat_key, run_spec = run[0]
     t = report_table(rid, "trades", symbol)
     from ..strategies import get_strategy
     try:
@@ -514,6 +514,10 @@ def trade_anatomy(rid: int, symbol: str):
     out = []
     for row in t["rows"]:
         entry_d, exit_d = v(row, "entry_date"), v(row, "exit_date")
+        # The signal cache keeps one row per rule version, so a bar can carry several readings.
+        # Only the run's own record may annotate its trade — another version's reading of the
+        # same bars is a different strategy. (Rows written before the key included the version
+        # were overwritten by later backtests; for those the note below says so.)
         sig_row = q(
             """SELECT date, hard_gates_passed, first_failed_gate, hard_gates, has_setup, setups,
                       h_value, h_index, l_value, p_value, prior_swing_low, overhead_levels,
@@ -521,10 +525,19 @@ def trade_anatomy(rid: int, symbol: str):
                FROM backtest_signals
                WHERE market=%s AND strategy=%s AND symbol=%s AND has_setup
                  AND date <= %s AND date >= %s::date - interval '45 days'
+                 AND (%s::text IS NULL OR spec_id = %s)
                ORDER BY date DESC LIMIT 1""",
-            (market, strat_key, symbol, entry_d, entry_d),
+            (market, strat_key, symbol, entry_d, entry_d, run_spec, run_spec),
         )
         shapes, note, sig_date = [], "", None
+        if not sig_row and run_spec:
+            newer = q("""SELECT spec_id FROM backtest_signals WHERE market=%s AND strategy=%s AND symbol=%s
+                           AND date <= %s AND date >= %s::date - interval '45 days' AND spec_id <> %s LIMIT 1""",
+                      (market, strat_key, symbol, entry_d, entry_d, run_spec))
+            if newer:
+                note = (f"No signal record from {run_spec} survives for this trade: it was overwritten "
+                        f"by a later version's backtest ({newer[0][0]}) before the signal cache kept every "
+                        f"version. Re-run this backtest to see what it traded on.")
         if sig_row and strat:
             (sd, gp, ff, gates, hs, setups, hv, hi, lv, pv, psl, over, wf, wn, ex) = sig_row[0]
             sig = {"market": market, "symbol": symbol, "date": sd, "hard_gates_passed": gp, "first_failed_gate": ff, "hard_gates": _j(gates),
@@ -561,8 +574,8 @@ def trade_anatomy(rid: int, symbol: str):
 def trade_runs(market: str, symbol: str):
     """Backtest runs that traded this symbol, for the chart's trade overlay."""
     out = []
-    for rid, strat, name, cols, rows in q(
-        "SELECT r.id, r.strategy, r.run_name, t.columns, t.rows FROM report_runs r "
+    for rid, strat, name, spec, cols, rows in q(
+        "SELECT r.id, r.strategy, r.run_name, r.spec_id, t.columns, t.rows FROM report_runs r "
         "JOIN report_tables t ON t.run_id=r.id AND t.name='trades' "
         "WHERE r.kind='backtest' AND r.market=%s ORDER BY r.strategy, r.run_name DESC", (market,)
     ):
@@ -571,7 +584,7 @@ def trade_runs(market: str, symbol: str):
         i = cols.index("symbol")
         n = sum(1 for x in rows if x[i] == symbol)
         if n:
-            out.append({"id": rid, "strategy": strat, "run": name, "trades": n})
+            out.append({"id": rid, "strategy": strat, "run": name, "spec_id": spec, "trades": n})
     return out
 
 
@@ -1892,7 +1905,7 @@ from .. import chart_drawings as draw_mod
 
 
 @app.get("/api/vcp/{market}/{symbol}")
-def vcp_boxes(market: str, symbol: str, strategy: str = "minervini", limit: int = 40):
+def vcp_boxes(market: str, symbol: str, strategy: str = "minervini", spec: str | None = None, limit: int = 40):
     """The base each setup was built on, as rectangles for the chart.
 
     Entry and exit arrows say WHERE a trade happened; they say nothing about the
@@ -1903,11 +1916,19 @@ def vcp_boxes(market: str, symbol: str, strategy: str = "minervini", limit: int 
     Returns one box per setup bar: the base from its high date to the signal, spanning
     the tight-area low to the base high, plus the pivot the breakout had to clear.
     """
+    # one version's detections only — the cache keeps every version's rows, and two versions'
+    # bases drawn together would show boxes no single run ever saw. Default: today's rules.
+    if spec is None:
+        from ..strategies import get_strategy
+        try:
+            spec = get_strategy(strategy).spec_id()
+        except KeyError:
+            spec = ""
     rows = q(
         "SELECT date, extras FROM backtest_signals "
-        "WHERE market=%s AND strategy=%s AND symbol=%s AND has_setup "
+        "WHERE market=%s AND strategy=%s AND symbol=%s AND spec_id=%s AND has_setup "
         "AND extras IS NOT NULL ORDER BY date DESC LIMIT %s",
-        (market, strategy, symbol, limit),
+        (market, strategy, symbol, spec, limit),
     )
     # One base spans many bars, and each bar records it again — drawing all of them
     # stacks a dozen near-identical rectangles on the same spot. Keep one box per

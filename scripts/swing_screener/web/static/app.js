@@ -530,11 +530,11 @@ async function chartPage(alive, market, symbol, tf) {
     // record the run wrote (/api/reports/{id}/trade-anatomy), so the chart shows WHY each trade
     // fired, not just where. The old VCP layer stays for the near misses: bases the detector saw
     // that never became one of this run's trades (dashed, labelled with the rejecting rule).
-    const stratKey = (tradeRuns.find((r) => String(r.id) === String(sel.value)) || {}).strategy;
+    const { strategy: stratKey, spec_id: runSpec } = tradeRuns.find((r) => String(r.id) === String(sel.value)) || {};
     if (stratKey) {
       const [anat, boxes] = await Promise.all([
         api(`/api/reports/${sel.value}/trade-anatomy?symbol=${encodeURIComponent(symbol)}`).catch(() => []),
-        api(`/api/vcp/${market}/${encodeURIComponent(symbol)}?strategy=${encodeURIComponent(stratKey)}`).catch(() => []),
+        api(`/api/vcp/${market}/${encodeURIComponent(symbol)}?strategy=${encodeURIComponent(stratKey)}${runSpec ? `&spec=${encodeURIComponent(runSpec)}` : ""}`).catch(() => []),
       ]);
       if (!alive()) return;
       anatomy = anat || [];

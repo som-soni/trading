@@ -120,12 +120,104 @@ CREATE TABLE IF NOT EXISTS backtest_signals (
     -- the strategy version+fingerprint that produced this row. Without it a cached
     -- signal outlives the rules that made it: changing the VCP detector left 1.37M rows
     -- keyed only by strategy name, so the next backtest silently replayed the OLD
-    -- detections and the fix appeared to do nothing.
-    spec_id VARCHAR(32),
-    PRIMARY KEY (market, strategy, symbol, date)
+    -- detections and the fix appeared to do nothing. It is part of the KEY: each
+    -- version's evaluation of a bar is its own row, so backtesting a new version
+    -- leaves the old run's record — what that run actually traded on — intact.
+    spec_id VARCHAR(32) NOT NULL DEFAULT '',
+    PRIMARY KEY (market, strategy, symbol, date, spec_id)
 );
 ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS spec_id VARCHAR(32);
 """
+
+# Tables created before the key included spec_id are moved over by ensure_signal_key().
+_SIGNAL_KEY_INDEX = "backtest_signals_key_spec"
+
+
+def _pid_alive(pid: int) -> bool:
+    import os
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def signal_key_has_spec(cur) -> bool:
+    """Whether backtest_signals' primary key includes spec_id (one row per version per bar)."""
+    cur.execute("""SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                   WHERE conrelid = 'backtest_signals'::regclass AND contype = 'p'""")
+    row = cur.fetchone()
+    return bool(row and "spec_id" in row[0])
+
+
+def signal_conflict_target() -> str:
+    """The ON CONFLICT target matching the table's CURRENT key — read per call, so a writer
+    keeps working across the key change below rather than caching a stale answer."""
+    with get_connection().cursor() as cur:
+        has = signal_key_has_spec(cur)
+    return "(market, strategy, symbol, date, spec_id)" if has else "(market, strategy, symbol, date)"
+
+
+def ensure_signal_key() -> None:
+    """Move backtest_signals onto the (…, date, spec_id) key, without blocking writers for
+    longer than a constraint swap. The unique index is built CONCURRENTLY (writes continue,
+    minutes on a large table); the swap itself is a catalog change.
+
+    Only call this where no process can still be writing with the OLD key: a writer whose
+    ON CONFLICT names (market, strategy, symbol, date) fails once that key is gone. The job
+    worker runs one job at a time, so a backtest calling this at its start is such a place —
+    any older backtest has finished. Idempotent: a no-op once the key includes spec_id."""
+    conn = get_connection()
+    with conn.cursor() as cur:
+        if signal_key_has_spec(cur):
+            return
+        cur.execute("""SELECT i.indisvalid FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
+                       WHERE c.relname = %s""", (_SIGNAL_KEY_INDEX,))
+        row = cur.fetchone()
+        if row is not None and not row[0]:   # a concurrent build that was interrupted
+            cur.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {_SIGNAL_KEY_INDEX}")
+            row = None
+        if row is None:
+            logger.info("Building the versioned signal-cache key (concurrently; a few minutes)...")
+            cur.execute(f"""CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS {_SIGNAL_KEY_INDEX}
+                            ON backtest_signals (market, strategy, symbol, date, spec_id)""")
+        # another backtest still running (one started from a terminal while the queue's ran, or
+        # one launched before this code existed) may write with the old key: leave the swap to
+        # the next backtest rather than crash it
+        import os, socket   # noqa: E401
+        try:
+            cur.execute("""SELECT pid FROM job_runs WHERE status='running' AND job LIKE '%%backtest%%'
+                             AND host=%s AND pid <> %s""", (socket.gethostname(), os.getpid()))
+            others = [p for (p,) in cur.fetchall() if p and _pid_alive(p)]
+        except Exception:  # noqa: BLE001 — no run log yet: nothing else is recorded as running
+            others = []
+        if others:
+            logger.info("Signal-cache key swap deferred: backtest pid(s) %s still running", others)
+            return
+        cur.execute("UPDATE backtest_signals SET spec_id = '' WHERE spec_id IS NULL")
+        # a primary key needs spec_id NOT NULL, and proving that by itself scans the whole table
+        # under an exclusive lock; a validated CHECK lets SET NOT NULL skip the scan (PG 12+),
+        # and VALIDATE runs under a lock that lets writes continue
+        cur.execute("""DO $$ BEGIN
+                         ALTER TABLE backtest_signals ADD CONSTRAINT backtest_signals_spec_nn
+                           CHECK (spec_id IS NOT NULL) NOT VALID;
+                       EXCEPTION WHEN duplicate_object THEN NULL; END $$""")
+        cur.execute("ALTER TABLE backtest_signals VALIDATE CONSTRAINT backtest_signals_spec_nn")
+        cur.execute("BEGIN")
+        try:
+            cur.execute("ALTER TABLE backtest_signals ALTER COLUMN spec_id SET DEFAULT ''")
+            cur.execute("ALTER TABLE backtest_signals ALTER COLUMN spec_id SET NOT NULL")
+            cur.execute("ALTER TABLE backtest_signals DROP CONSTRAINT IF EXISTS backtest_signals_pkey")
+            cur.execute(f"ALTER TABLE backtest_signals ADD CONSTRAINT backtest_signals_pkey "
+                        f"PRIMARY KEY USING INDEX {_SIGNAL_KEY_INDEX}")
+            cur.execute("ALTER TABLE backtest_signals DROP CONSTRAINT backtest_signals_spec_nn")
+            cur.execute("COMMIT")
+        except Exception:
+            cur.execute("ROLLBACK")
+            raise
+    logger.info("Signal cache is now keyed by version: each version's rows are kept")
 
 
 def _legacy_setup_col_to_code(column: str) -> str:

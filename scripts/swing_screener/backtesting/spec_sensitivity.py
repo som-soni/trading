@@ -218,8 +218,10 @@ def check(market: str) -> None:
     """The daily-only shortcut must reproduce the cached default run's signals exactly."""
     sigs = signals()
     with db.get_connection().cursor() as cur:
+        from ..strategies import get_strategy
         cur.execute("""SELECT symbol, date, setups FROM backtest_signals WHERE market=%s AND strategy='minervini'
-                       AND hard_gates_passed AND date >= %s""", (market, START))
+                       AND spec_id=%s AND hard_gates_passed AND date >= %s""",
+                    (market, get_strategy("minervini").spec_id(), START))
         rows = cur.fetchall()
     cached = {(s, pd.Timestamp(d)) for s, d, st in rows if st.get("MV-01") or st.get("MV-02")}
     mine = {(s.symbol, pd.Timestamp(s.date)) for s in sigs}

@@ -45,14 +45,20 @@ def _jload(v):
     return v if isinstance(v, dict) else json.loads(v)
 
 
+def _spec(strategy: str) -> str:
+    """The signal cache holds one row per rule version; explain the rules that run today."""
+    from ..strategies import get_strategy
+    return get_strategy(strategy).spec_id()
+
+
 def load_signal_history(market: str, strategy: str, symbol: str) -> pd.DataFrame:
     with db.get_connection() as conn:
         cur = conn.cursor()
         cur.execute(
             "SELECT date, hard_gates_passed, first_failed_gate, hard_gates, "
             "has_setup, setups, watch_flags FROM backtest_signals "
-            "WHERE market=%s AND strategy=%s AND symbol=%s ORDER BY date",
-            (market, strategy, symbol),
+            "WHERE market=%s AND strategy=%s AND symbol=%s AND spec_id=%s ORDER BY date",
+            (market, strategy, symbol, _spec(strategy)),
         )
         rows = cur.fetchall()
     if not rows:
@@ -93,8 +99,8 @@ def _extras_on(market: str, strategy: str, symbol: str, date) -> dict:
         cur = conn.cursor()
         cur.execute(
             "SELECT extras, setups FROM backtest_signals WHERE market=%s AND "
-            "strategy=%s AND symbol=%s AND date=%s",
-            (market, strategy, symbol, pd.Timestamp(date).date()),
+            "strategy=%s AND symbol=%s AND date=%s AND spec_id=%s",
+            (market, strategy, symbol, pd.Timestamp(date).date(), _spec(strategy)),
         )
         row = cur.fetchone()
     return {"extras": _jload(row[0]), "setups": _jload(row[1])} if row else {}

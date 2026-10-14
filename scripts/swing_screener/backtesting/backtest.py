@@ -186,13 +186,24 @@ def _signal_row(
 def _save_signals(rows: list[tuple]) -> None:
     if not rows:
         return
-    query = """
+    try:
+        _upsert_signals(rows, db.signal_conflict_target())
+    except Exception as exc:  # noqa: BLE001
+        # the key moved between reading it and writing (db.ensure_signal_key swapping it
+        # mid-run): re-read it once rather than lose the rows or the run
+        if "ON CONFLICT" not in str(exc):
+            raise
+        _upsert_signals(rows, db.signal_conflict_target())
+
+
+def _upsert_signals(rows: list[tuple], target: str) -> None:
+    query = f"""
         INSERT INTO backtest_signals
             (market, strategy, symbol, date, hard_gates_passed, first_failed_gate,
              hard_gates, has_setup, setups, h_value, h_index, l_value, p_value,
              prior_swing_low, overhead_levels, watch_flags, watch_notes, extras, spec_id)
         VALUES %s
-        ON CONFLICT (market, strategy, symbol, date) DO UPDATE SET
+        ON CONFLICT {target} DO UPDATE SET
             -- EVERY column, not a subset. Leaving has_setup, hard_gates_passed and
             -- the swing structure out left a row claiming the new spec_id while
             -- carrying the old version's values: NVDA came back with MV-04 true on
@@ -667,6 +678,7 @@ def run_backtest(
     accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
 ) -> pd.DataFrame:
     db.init_schema()
+    db.ensure_signal_key()   # a backtest is where no older-code writer can still be running (see db)
     cfg = MARKETS[market_key]
     strategy = get_strategy(strategy_key)
     start = pd.Timestamp(start_date)
@@ -884,6 +896,7 @@ def run_portfolio_backtest(
     policy = exit_policy or ExitPolicy()
 
     db.init_schema()
+    db.ensure_signal_key()   # a backtest is where no older-code writer can still be running (see db)
     cfg = MARKETS[market_key]
     # Sizing overrides, so a sweep's winning (risk, cap) pair can be carried
     # into a full run without editing the market config. `max_positions` x

@@ -39,9 +39,9 @@ STATEMENTS = [
       AND EXISTS (SELECT 1 FROM information_schema.columns
                   WHERE table_name='backtest_signals' AND column_name='setup_tc01')
     """,
-    "ALTER TABLE backtest_signals DROP CONSTRAINT IF EXISTS backtest_signals_pkey",
-    "ALTER TABLE backtest_signals ADD PRIMARY KEY (market, strategy, symbol, date)",
 ]
+# the key itself (market, strategy, symbol, date, spec_id) is set by db.ensure_signal_key(),
+# which builds the index without blocking writers — re-adding a key here would undo it
 
 
 def migrate() -> None:
@@ -59,6 +59,7 @@ def migrate() -> None:
             # per-setup columns never existed
             logger.info("skipped (%s): %s", type(e).__name__, label)
     db.init_schema()  # create anything still missing
+    db.ensure_signal_key()
     logger.info("Migration complete — no data dropped.")
 
 
