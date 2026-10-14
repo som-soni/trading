@@ -32,9 +32,6 @@ DECISIONS = (
                            "test, or a cap applies. Worth watching, not buying."),
     (LABELS["AVOID"], "A hard gate failed (or the plan failed its risk checks). Not tradeable under this strategy."),
 )
-REGIME_NOTE = ("When the market regime is risk-off, every decision is downgraded one tier "
-               "(HIGH CONFIDENCE → ON TRIGGER → WATCH → AVOID); the reason column then says "
-               "'market-regime downgrade applied'.")
 
 
 def _resolve_param(cls, source: str) -> dict:
@@ -122,7 +119,7 @@ def strategy_doc(key: str) -> dict:
         "entry_rules": [r(s) for s in cls.entry_rules], "exit_rules": [r(s) for s in cls.exit_rules],
         "params": [{"label": label, "source": src, "meaning": r(meaning),
                     "values": {m: _fmt(v) for m, v in _resolve_param(cls, src).items()}} for label, src, meaning in cls.param_docs],
-        "decisions": [{"label": l, "text": t} for l, t in DECISIONS], "regime_note": REGIME_NOTE,
+        "decisions": [{"label": l, "text": t} for l, t in DECISIONS], "regime_note": r(cls.regime_note),
         "min_bars": cls.min_bars,
         "commands": {
             "Screen today": f"python3 -m swing_screener.screening.pipeline --market us --strategy {key}",

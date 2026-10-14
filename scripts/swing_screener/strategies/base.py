@@ -20,6 +20,13 @@ from dataclasses import dataclass, field
 from ..config.base import MarketConfig
 from ..core.context import StockContext
 
+# What a risk-off market regime does to a decision, for the Strategy page. This is the
+# default -- every strategy that classifies with DOWNGRADE_MAP on every tier -- and a
+# strategy whose classify() treats the regime differently overrides `regime_note`.
+REGIME_NOTE = ("When the market regime is risk-off, every decision is downgraded one tier "
+               "(HIGH CONFIDENCE → ON TRIGGER → WATCH → AVOID); the reason column then says "
+               "'market-regime downgrade applied'.")
+
 # Decision tiers, least to most permissive. Used to resolve "if several
 # caps apply, use the lowest".
 CAP_ORDER = ["AVOID", "WATCH_WAIT", "TRADE_ON_TRIGGER", "TRADE_HIGH_CONFIDENCE"]
@@ -340,6 +347,11 @@ class Strategy(SpecMeta, ABC):
     screen_gates: dict[str, str] = {}
     # minimum daily bars before this strategy will evaluate a symbol
     min_bars: int = 260
+    # What classify() does when `regime_downgrade_active` (a risk-off market), in words, for
+    # the Strategy page -- including the reason text it appends. Defaults to the shared
+    # one-tier downgrade; override it when classify() does anything else, and change it in
+    # the same change as that code. `{NAME}` placeholders render like the other docs.
+    regime_note: str = REGIME_NOTE
 
     # --- identity and versioning ---
     # `family` is the high-level strategy a reader thinks in terms of

@@ -367,6 +367,11 @@ class MinerviniSpecStrategy(Strategy):
         "hold that many sessions ({MKT_CONFIRM_DAYS} is the suggested setting) so the gate does not flap "
         "around the 200-day; risk-off still bites immediately.",
     )
+    regime_note = (
+        "When the market regime is risk-off, no new buys: HIGH CONFIDENCE and ON TRIGGER both become "
+        "WATCH, with the reason 'market filter: no new buys'. WATCH and AVOID are untouched, so the "
+        "watchlist of setting-up bases stays intact for the turn."
+    )
     param_docs = (
         ("Swing confirmation", "SWING_K", "Bars either side of a swing point; it is known only this many bars later."),
         ("Prior advance", "PRIOR_ADVANCE_PCT", "Rise into the base high from the low of the 126 sessions before (VCP-01)."),
