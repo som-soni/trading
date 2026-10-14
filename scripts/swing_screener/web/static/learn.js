@@ -673,11 +673,13 @@ const Learn = (() => {
   function detail(p) {
     const i = P.indexOf(p), prev = P[i - 1], next = P[i + 1], [bl, bc] = BIAS[p.bias];
     const meta = [`<span class="lp-bias ${bc}">${bl}</span>`, p.bars ? `<span class="chip-s">${p.bars} bar${p.bars > 1 ? "s" : ""}</span>` : "",
-      p.code ? `<span class="chip-s" title="detector code in core/chart_patterns.py">${esc(p.code)}</span>` : "",
-      `<span class="muted small">${esc(GROUPS.find((x) => x[0] === p.group)[1])}</span>`].join("");
+      p.code ? `<span class="chip-s" title="detector code in core/chart_patterns.py">${esc(p.code)}</span>` : ""].join("");
+    // the way back up: the catalogue, then this pattern's group within it
+    const fam = familyOf(p), grp = GROUPS.find((x) => x[0] === p.group)[1];
+    const crumbs = `<div class="crumbs back lp-crumbs"><a href="#/learn">Learn</a> › <a href="#/learn/${fam}">${esc(FAMILY_LABEL[fam])}</a> › <a href="#/learn/${fam}/${p.group}">${esc(grp)}</a></div>`;
     const legend = p.path ? `<div class="lp-legend small muted"><span><i class="pivot"></i>pivot / trigger</span><span><i class="stop"></i>stop / invalidation</span>${p.lines?.some((x) => x.cls === "neck") ? '<span><i class="neck"></i>breakdown level</span>' : ""}<span>Illustration — idealized, not real data</span></div>`
       : p.hi && !p.wide ? `<div class="lp-legend small muted"><span>Faded candles = the context the pattern forms in</span>${p.confirm != null ? "<span>“confirm” = the next bar that validates it</span>" : ""}</div>` : "";
-    return `<div class="lp-head"><h2>${esc(p.name)}</h2>${meta}</div>
+    return `${crumbs}<div class="lp-head"><h2>${esc(p.name)}</h2>${meta}</div>
       <p class="lp-sum">${fmt(p.summary)}</p>
       <section class="sec-card lp-fig">${svg(p)}${legend}</section>
       <div class="lp-secs">${(p.sections || []).map(([h, items]) => `<section class="sec-card"><h3>${esc(h)}</h3><ul>${items.map((x) => `<li>${fmt(x)}</li>`).join("")}</ul></section>`).join("")}</div>
@@ -688,18 +690,21 @@ const Learn = (() => {
   const FAMILIES = { candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops", "levels"] };
   const familyOf = (p) => (FAMILIES.charts.includes(p.group) ? "charts" : "candles");
   const groupsOf = (fam) => GROUPS.filter(([g]) => !fam || FAMILIES[fam].includes(g));
+  const FAMILY_LABEL = { candles: "Candlestick catalogue", charts: "Chart pattern catalogue" };
+  const countOf = (fam) => P.filter((p) => familyOf(p) === fam).length;
+  const keyOf = (p) => (p.name + " " + (p.code || "") + " " + p.key).toLowerCase();
 
   /** the overview: every pattern (or one family's) as a thumbnail card, grouped */
   function overview(fam) {
-    return groupsOf(fam).map(([g, label]) => `<h3 class="lp-gh">${esc(label)}</h3><div class="lp-grid">${P.filter((p) => p.group === g).map((p) =>
-      `<a class="lp-card sec-card" href="#/learn/${p.key}">${svg(p, { thumb: true })}<div><b>${esc(p.name)}</b><span class="lp-bias ${BIAS[p.bias][1]}">${BIAS[p.bias][0]}</span></div></a>`).join("")}</div>`).join("");
+    return groupsOf(fam).map(([g, label]) => `<h3 class="lp-gh" id="g-${g}">${esc(label)}</h3><div class="lp-grid">${P.filter((p) => p.group === g).map((p) =>
+      `<a class="lp-card sec-card" href="#/learn/${p.key}" data-k="${esc(keyOf(p))}">${svg(p, { thumb: true })}<div><b>${esc(p.name)}</b><span class="lp-bias ${BIAS[p.bias][1]}">${BIAS[p.bias][0]}</span></div></a>`).join("")}</div>`).join("");
   }
 
   /** the side menu: one family's patterns by group, the active one highlighted */
   function nav(active, fam) {
     return groupsOf(fam).map(([g, label]) => `<div class="nav-h">${esc(label)}</div>` + P.filter((p) => p.group === g).map((p) =>
-      `<a class="nav-item ${p.key === active ? "active" : ""}" href="#/learn/${p.key}" data-k="${esc((p.name + " " + (p.code || "")).toLowerCase())}"><span><b class="sn"><i class="lp-dot ${BIAS[p.bias][1]}"></i>${esc(p.name)}</b></span></a>`).join("")).join("");
+      `<a class="nav-item ${p.key === active ? "active" : ""}" href="#/learn/${p.key}" data-k="${esc(keyOf(p))}"><span><b class="sn"><i class="lp-dot ${BIAS[p.bias][1]}"></i>${esc(p.name)}</b></span></a>`).join("")).join("");
   }
 
-  return { GROUPS, PATTERNS: P, familyOf, get: (k) => BY[k], svg, detail, overview, nav };
+  return { GROUPS, FAMILIES, FAMILY_LABEL, PATTERNS: P, familyOf, countOf, get: (k) => BY[k], svg, detail, overview, nav };
 })();

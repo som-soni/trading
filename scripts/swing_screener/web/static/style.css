@@ -1319,3 +1319,15 @@ table.data tr.click:hover td:first-child { box-shadow: inset 3px 0 0 var(--accen
 .stpop ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .stpop li.warn { color: var(--warn); }
 .stpop .wk { font-size: 11.5px; }
+
+/* Learn: the hub's cards, catalogue search, and guide mentions that link to the catalogue */
+.lp-hub { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.lp-hubc { display: grid; gap: 6px; text-decoration: none; color: inherit; }
+.lp-hubc:hover { border-color: var(--line-3); }
+.lp-hubc b { color: var(--strong); }
+.lp-hubthumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 4px; }
+.lp-hubthumbs svg { width: 100%; height: 60px; }
+.lp-famh { margin-top: 8px; }
+.lp-none, .lp-gridnone { padding: 6px 2px; }
+.lp-crumbs { margin-bottom: 4px; }
+a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }

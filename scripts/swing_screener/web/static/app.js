@@ -3395,6 +3395,12 @@ function renderResearchMd(host, markdown) {
     if (p) c.parentElement.outerHTML = `<figure class="lp-md">${Learn.svg(p)}<figcaption><a href="#/learn/${p.key}">${esc(p.name)}</a> — open it in Learn</figcaption></figure>`;
   });
   host.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
+  // links between documents are written as filenames ("learn-chart-patterns.md"); show the document's title
+  const named = [...host.querySelectorAll('.md a[href$=".md"]')].filter((a) => /\.md$/i.test(a.textContent.trim()));
+  if (named.length) api("/api/reports?kind=research").then((runs) => named.forEach((a) => {
+    const t = runs.find((x) => x.run === a.getAttribute("href").replace(/\.md$/, ""));
+    if (t) { a.title = a.textContent; a.textContent = t.run.startsWith("learn-") ? `the ${guideLabel(t).replace(/: field guide$/, " field guide")} guide`.replace(/ guide guide$/, " guide") : guideTitle(t); }
+  })).catch(() => {});
   host.querySelectorAll('.md a[href$=".md"]').forEach((a) => {
     const f = a.getAttribute("href");
     if (/^(https?:)?\/\//.test(f) || f.includes("/")) return;
@@ -4344,24 +4350,29 @@ function openPalette() {
   const inp = m.querySelector("input"), host = m.querySelector(".pal-list");
   let items = [], cur = 0, timer, seq = 0, state = "";   // state: "" | "searching" | "failed"
   const draw = () => {
-    host.innerHTML = items.map((x, i) => `<div class="pal-it ${i === cur ? "sel" : ""}" data-i="${i}"><span class="pal-k">${x.kind === "page" ? "Page" : x.kind === "recent" ? "Recent" : MKT_BADGE[x.market]}</span>
+    host.innerHTML = items.map((x, i) => `<div class="pal-it ${i === cur ? "sel" : ""}" data-i="${i}"><span class="pal-k">${x.kind === "page" ? "Page" : x.kind === "recent" ? "Recent" : x.kind === "learn" ? "Learn" : MKT_BADGE[x.market]}</span>
       <b>${esc(x.label)}</b><span class="muted small">${esc(x.sub || "")}</span></div>`).join("")
       + (state === "searching" ? '<div class="muted small pal-none"><span class="spin"></span> Searching stocks…</div>'
         : state === "failed" ? '<div class="small pal-none neg">Stock search failed — is the web server running?</div>'
-        : items.length ? "" : `<div class="muted small pal-none">No page or stock matches “${esc(inp.value.trim())}”. Try a ticker (AAPL, RELIANCE) or part of a company name.</div>`);
+        : items.length ? "" : `<div class="muted small pal-none">No page, pattern or stock matches “${esc(inp.value.trim())}”. Try a ticker (AAPL, RELIANCE) or part of a company name.</div>`);
     host.querySelector(".sel")?.scrollIntoView({ block: "nearest" });
   };
+  const learnItems = Learn.PATTERNS.filter((x) => x.group !== "basics").map((x) => ({ kind: "learn", label: x.name,
+    sub: `${Learn.FAMILY_LABEL[Learn.familyOf(x)]} · ${(Learn.GROUPS.find((g) => g[0] === x.group) || [])[1] || ""}`, href: `#/learn/${x.key}` }));
+  api("/api/reports?kind=research").then((runs) => { runs.filter((x) => x.run.startsWith("learn-")).forEach((x) =>
+    learnItems.push({ kind: "learn", label: guideLabel(x), sub: "Learn · guide", href: `#/learn/${x.run.replace(/^learn-/, "")}` })); }).catch(() => {});
   const recent = (store.get("recentVisits", []) || []).filter((x) => x.hash !== location.hash)
     .map((x) => ({ kind: "recent", label: x.label, sub: x.hash.replace(/^#\//, "").split("/")[0], href: x.hash }));
   const update = async () => {
     const q = inp.value.trim().toLowerCase(), my = ++seq;
     const pg = pages.filter((p) => !q || p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q));
-    items = q ? pg.slice(0, 6) : [...recent, ...pg].slice(0, 24); cur = 0; state = q ? "searching" : ""; draw();
+    const lr = q ? learnItems.filter((x) => x.label.toLowerCase().includes(q)).slice(0, 5) : [];
+    items = q ? [...pg.slice(0, 6), ...lr] : [...recent, ...pg].slice(0, 24); cur = 0; state = q ? "searching" : ""; draw();
     if (q.length < 1) return;
     const syms = await api(`/api/symbols?q=${encodeURIComponent(q)}&limit=8`).catch(() => null);
     if (my !== seq) return;
     state = syms ? "" : "failed";
-    items = [...pg.slice(0, 5), ...(syms || []).map((r) => ({ kind: "symbol", market: r.market, label: r.symbol.replace(/\.NS$/, ""), sub: r.name || r.sector || "",
+    items = [...pg.slice(0, 5), ...lr, ...(syms || []).map((r) => ({ kind: "symbol", market: r.market, label: r.symbol.replace(/\.NS$/, ""), sub: r.name || r.sector || "",
       href: `#/chart/${r.market}/${encodeURIComponent(r.symbol)}` }))];
     cur = 0; draw();
   };
@@ -4383,43 +4394,136 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn: a menu of every candlestick and chart pattern (learn.js), each drawn with real candles;
- *  the long-form guides (research/learn-*.md) open as their ingested reports */
-async function learnPage(alive, topic) {
+/** Learn has two halves that must never share a name: the GUIDES (long-form reading, research/learn-*.md)
+ *  and the two pattern CATALOGUES (every pattern drawn, learn.js). #/learn is the hub that introduces both;
+ *  #/learn/candles and #/learn/charts are the catalogues; #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
+const GUIDE_ORDER = ["learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
+const GUIDE_BLURB = {
+  "learn-candlestick-patterns": "Reading candles: anatomy, the one-, two- and three-bar patterns, context, and how the screener's candle notes use them.",
+  "learn-chart-patterns": "The bases this app detects, topping structures, how to judge a breakout — and what the backtests found.",
+  "learn-bases": "What a base is, Stage 2 and base counts, the common base types, and how to spot one while it is still forming.",
+  "learn-vcp": "Minervini's volatility contraction pattern: reading one step by step, entries, stops, mistakes and the evidence.",
+  "learn-supply-demand": "Why price levels exist: demand and supply zones, role reversal, scoring a zone, and how the strategies use them.",
+};
+/** a guide's name in menus and links: "Candlestick patterns: field guide", "Bases", "VCP" — never the same as a catalogue's */
+const guideTitle = (x) => String(x.title || x.run);
+const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$/.test(t) ? t.replace(/ — a field guide$/, ": field guide") : t.split(" — ")[0]; };
+const FAMILY_SHORT = { candles: "Candlesticks", charts: "Chart patterns" };
+
+async function learnPage(alive, topic, sub) {
   $view.innerHTML = LOADING;
-  // guides in reading order: single candles, then multi-week patterns, then bases and the VCP built on them
-  const ORDER = ["learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
-  const rank = (x) => (ORDER.includes(x.run) ? ORDER.indexOf(x.run) : ORDER.length);
+  const rank = (x) => (GUIDE_ORDER.includes(x.run) ? GUIDE_ORDER.indexOf(x.run) : GUIDE_ORDER.length);
   const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => x.run.startsWith("learn-"))
     .sort((a, b) => rank(a) - rank(b) || a.run.localeCompare(b.run));
   if (!alive()) return;
   const guide = runs.find((x) => x.run === `learn-${topic}`);
-  // #/learn/candles and #/learn/charts open one family; a pattern opens in its own family's menu
-  const p = !guide && topic && Learn.get(topic), famView = ["candles", "charts"].includes(topic) ? topic : null;
-  const fam = p ? Learn.familyOf(p) : famView || store.get("learnFam", "candles");
-  store.set("learnFam", fam);
-  const guideTitle = (x) => (x.title || x.run).replace(/ — a field guide$/, "");
-  const guideLabel = (x) => guideTitle(x).split(" — ")[0];   // the menu shows the short name; the page the full title
-  document.title = `${p ? p.name + " · " : guide ? guideTitle(guide) + " · " : ""}Learn · Trading`;
-  // the full guides come first: they are the reading material, the catalogue below is the reference
-  const guides = runs.length ? `<div class="nav-h">Guides</div>${runs.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}"><span><b class="sn">${esc(guideLabel(x))}</b></span></a>`).join("")}` : "";
-  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">
-      ${guides}
-      <div class="nav-h">Pattern catalogue</div>
-      ${segmented([["candles", "Candlesticks"], ["charts", "Chart patterns"]], fam, "lpfam")}
-      <label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a pattern" spellcheck="false"></label>
-      <a class="nav-item ${p || guide ? "" : "active"}" href="#/learn/${fam}"><span><b class="sn">All ${fam === "charts" ? "chart patterns" : "candlestick patterns"}</b></span></a>
-      ${Learn.nav(p?.key, fam)}
-    </aside><section class="scr-main lp-main">${guide ? `<div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>` : p ? Learn.detail(p) : pageHead(famView === "charts" ? "Chart patterns" : famView === "candles" ? "Candlestick patterns" : "Learn", { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume. Pick one from the menu or a card below.</p><p>The long-form guides are <code>research/learn-*.md</code>.</p>") }) + Learn.overview(famView)}</section></div>`;
-  $view.querySelectorAll(".lpfam button").forEach((b) => b.onclick = () => go(`#/learn/${b.dataset.v}`));
+  const p = !guide && topic && Learn.get(topic);
+  const catView = ["candles", "charts"].includes(topic) ? topic : null;
+  const onCatalogue = !!(p || catView);
+  let fam = p ? Learn.familyOf(p) : catView || store.get("learnFam", "candles");
+  if (onCatalogue) store.set("learnFam", fam);
+  document.title = `${p ? p.name + " · " : guide ? guideLabel(guide) + " · " : catView ? Learn.FAMILY_LABEL[catView] + " · " : ""}Learn · Trading`;
+
+  // ---- sidebar: guides first (reading), then the catalogues (reference)
+  const guides = `<a class="nav-item ${!topic ? "active" : ""}" href="#/learn"><span><b class="sn">Learn — start here</b></span></a>
+    ${runs.length ? `<div class="nav-h">Guides</div>${runs.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}" title="${esc(guideTitle(x))}"><span><b class="sn">${esc(guideLabel(x))}</b></span></a>`).join("")}` : ""}`;
+  const famLists = ["candles", "charts"].map((f) => `<div class="lpl" data-fam="${f}" ${onCatalogue && f === fam ? "" : "hidden"}>
+      <div class="nav-h lp-famh" hidden>${FAMILY_SHORT[f]}</div>${Learn.nav(p?.key, f)}</div>`).join("");
+  const catalogue = `<div class="nav-h">Pattern catalogues</div>
+    ${onCatalogue ? segmented([["candles", "Candlesticks"], ["charts", "Chart patterns"]], fam, "lpfam") : ""}
+    <label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a pattern (both catalogues)" spellcheck="false"></label>
+    <div class="lp-catlinks" ${onCatalogue ? "hidden" : ""}>${["candles", "charts"].map((f) => `<a class="nav-item" href="#/learn/${f}"><span><b class="sn">${Learn.FAMILY_LABEL[f]}</b><span class="muted small sk">${Learn.countOf(f)} patterns</span></span></a>`).join("")}</div>
+    ${onCatalogue ? `<a class="nav-item lp-all ${catView ? "active" : ""}" href="#/learn/${fam}"><span><b class="sn">${Learn.FAMILY_LABEL[fam]} — all patterns</b></span></a>` : ""}
+    ${famLists}<div class="nav-empty muted small lp-none" hidden></div>`;
+
+  // ---- main pane
+  const hub = () => pageHead("Learn", { context: info("<p>Two kinds of material: <b>guides</b> to read start to finish, and two <b>catalogues</b> to look a pattern up — every pattern drawn with real candles, with how to read it.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
+    + `<p class="sd-lead">Guides to read, and catalogues to look things up. Findings and studies are under <a href="#/research">Research</a>.</p>
+    <h3 class="ov-h">Guides — read these</h3><div class="lp-hub">${runs.map((x) => `<a class="sec-card lp-hubc" href="#/learn/${esc(x.run.replace(/^learn-/, ""))}">
+      <b>${esc(guideLabel(x))}</b><span class="muted small">${esc(GUIDE_BLURB[x.run] || guideTitle(x))}</span></a>`).join("") || '<div class="muted small">No guides loaded — System → Reports archive → Load reports.</div>'}</div>
+    <h3 class="ov-h">Pattern catalogues — look things up</h3><div class="lp-hub">${["candles", "charts"].map((f) => {
+      const sample = Learn.PATTERNS.filter((x) => Learn.familyOf(x) === f && x.group !== "basics").slice(0, 3);
+      return `<a class="sec-card lp-hubc lp-hubcat" href="#/learn/${f}"><b>${Learn.FAMILY_LABEL[f]}</b><span class="muted small">${Learn.countOf(f)} patterns, each drawn with real candles: ${f === "candles" ? "single candles to three-bar reversals" : "bases, topping structures and supply & demand"}.</span>
+        <div class="lp-hubthumbs">${sample.map((x) => Learn.svg(x, { thumb: true })).join("")}</div></a>`; }).join("")}</div>`;
+  const catalogueHead = (f) => pageHead(Learn.FAMILY_LABEL[f], { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume.</p><p>For the reasoning behind them, read the guides — see Learn.</p>") })
+    + `<div class="muted small lp-gridnone" hidden></div>`;
+  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">${guides}${catalogue}</aside>
+    <section class="scr-main lp-main">${guide ? `<div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>`
+      : p ? Learn.detail(p) : catView ? catalogueHead(catView) + Learn.overview(catView) : hub()}</section></div>`;
+
+  // ---- the toggle switches the sidebar list; it navigates only from a catalogue index (to the other one)
+  $view.querySelectorAll(".lpfam button").forEach((b) => b.onclick = () => {
+    if (catView) { go(`#/learn/${b.dataset.v}`); return; }
+    fam = b.dataset.v; store.set("learnFam", fam);
+    $view.querySelectorAll(".lpfam button").forEach((x) => x.classList.toggle("on", x === b));
+    const all = $view.querySelector(".lp-all");
+    if (all) { all.href = `#/learn/${fam}`; all.querySelector(".sn").textContent = `${Learn.FAMILY_LABEL[fam]} — all patterns`; }
+    filter();
+  });
+
+  // ---- search: both catalogues at once, the grid with the sidebar, and an explicit "nothing matches"
   const f = $view.querySelector("#lpf");
-  f.oninput = () => { const q = f.value.trim().toLowerCase();
-    $view.querySelectorAll(".lp-nav .nav-item[data-k]").forEach((a) => a.hidden = !!q && !a.dataset.k.includes(q));
-    $view.querySelectorAll(".lp-nav .nav-h").forEach((h) => { let e = h.nextElementSibling, any = false; while (e && !e.classList.contains("nav-h")) { if (e.dataset.k && !e.hidden) any = true; e = e.nextElementSibling; } h.hidden = !!q && !any; }); };
-  f.onkeydown = (e) => { if (e.key === "Enter") { const a = [...$view.querySelectorAll(".lp-nav .nav-item[data-k]")].find((x) => !x.hidden); if (a) go(a.getAttribute("href")); } };
+  const filter = () => {
+    const q = f.value.trim().toLowerCase(), searching = !!q;
+    const lists = [...$view.querySelectorAll(".lpl")];
+    const counts = {};
+    for (const l of lists) {
+      const lf = l.dataset.fam;
+      let n = 0;
+      l.querySelectorAll(".nav-item[data-k]").forEach((a) => { const hit = !q || a.dataset.k.includes(q); a.hidden = !hit; if (hit) n++; });
+      l.querySelectorAll(".nav-h:not(.lp-famh)").forEach((h) => { let e = h.nextElementSibling, any = false; while (e && !e.classList.contains("nav-h")) { if (e.dataset.k && !e.hidden) any = true; e = e.nextElementSibling; } h.hidden = searching && !any; });
+      counts[lf] = n;
+      l.hidden = searching ? n === 0 : !(onCatalogue && lf === fam);
+      l.querySelector(".lp-famh").hidden = !searching;
+    }
+    $view.querySelector(".lp-catlinks").hidden = onCatalogue || searching;
+    const none = $view.querySelector(".lp-none"), total = (counts.candles || 0) + (counts.charts || 0);
+    none.hidden = !searching || total > 0;
+    none.textContent = `No pattern in either catalogue matches “${f.value.trim()}”. Try a name like hammer, doji, cup or flag.`;
+    // the catalogue grid follows the search too
+    if (catView) {
+      const grid = $view.querySelector(".lp-main");
+      let shown = 0;
+      grid.querySelectorAll(".lp-card[data-k]").forEach((c) => { const hit = !q || c.dataset.k.includes(q); c.hidden = !hit; if (hit) shown++; });
+      grid.querySelectorAll(".lp-gh").forEach((h) => { const g = h.nextElementSibling; h.hidden = g.hidden = searching && ![...g.querySelectorAll(".lp-card")].some((c) => !c.hidden); });
+      const msg = grid.querySelector(".lp-gridnone"), other = catView === "candles" ? "charts" : "candles";
+      msg.hidden = !searching || shown > 0;
+      msg.innerHTML = counts[other] ? `Nothing in the ${esc(Learn.FAMILY_LABEL[catView].toLowerCase())} matches “${esc(f.value.trim())}” — ${counts[other]} in the <a href="#/learn/${other}">${esc(Learn.FAMILY_LABEL[other].toLowerCase())}</a> do (listed in the menu).`
+        : `Nothing matches “${esc(f.value.trim())}”.`;
+    }
+  };
+  f.oninput = filter;
+  f.onkeydown = (e) => { if (e.key === "Enter") { const a = [...$view.querySelectorAll(".lpl:not([hidden]) .nav-item[data-k]")].find((x) => !x.hidden); if (a) go(a.getAttribute("href")); } };
   $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
   if (p) window.scrollTo(0, 0);
+  if (catView && sub) document.getElementById(`g-${sub}`)?.scrollIntoView({ block: "start" });
   if (guide) await learnGuide(alive, guide);
+}
+
+/** In a guide, link the first mention of each catalogued pattern to its page, so the two halves of Learn
+ *  connect. Names match whole words, longest first ("Gravestone doji" before "Doji"); headings, code,
+ *  figures and existing links are left alone. */
+function linkPatternMentions(root) {
+  const reEsc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pats = Learn.PATTERNS.filter((x) => x.group !== "basics")
+    .map((x) => ({ key: x.key, name: x.name, word: x.name.split(/ \(| \/ | — /)[0] }))
+    .sort((a, b) => b.word.length - a.word.length);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentElement.closest("a, code, pre, h1, h2, h3, h4, figure, th") ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
+  const nodes = [];
+  while (walker.nextNode()) nodes.push(walker.currentNode);
+  const done = new Set();
+  for (let node of nodes) {
+    for (const pt of pats) {
+      if (done.has(pt.key) || !node.nodeValue) continue;
+      const m = node.nodeValue.match(new RegExp(`\\b${reEsc(pt.word)}s?\\b`, "i"));
+      if (!m) continue;
+      const hit = node.splitText(m.index), rest = hit.splitText(m[0].length);
+      const a = document.createElement("a");
+      a.href = `#/learn/${pt.key}`; a.className = "lp-mention"; a.title = `${pt.name} — open it in the catalogue`; a.textContent = hit.nodeValue;
+      hit.replaceWith(a); done.add(pt.key); node = rest;
+    }
+  }
 }
 
 /** Library → Research: every research note (research/*.md, except the learn-* guides) in a sidebar, the
@@ -4452,6 +4556,7 @@ async function learnGuide(alive, guide) {
   const body = $view.querySelector("#lpg-body"), toc = $view.querySelector(".lp-toc");
   if (r.error) { body.innerHTML = `<div class="empty"><b>Guide not found</b><div class="muted">Reload the documents from the Reports archive (Load reports).</div></div>`; return; }
   const art = renderResearchMd(body, r.markdown);
+  if (String(guide.run).startsWith("learn-")) linkPatternMentions(art);
   // anchors for every section, so the contents can jump to them (and a section can be linked)
   const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const heads = [...art.querySelectorAll("h2, h3")];
@@ -4595,7 +4700,7 @@ async function route() {
     else if (page === "reports") await (parts[1] ? reportPage(alive, parts[1], parts[2]) : reportsPage(alive));
     else if (page === "playbook") go("#/research/sector-analysis-playbook");   // its own tab, before Research listed every note
     else if (page === "research") await researchPage(alive, parts[1]);
-    else if (page === "learn") await learnPage(alive, parts[1]);
+    else if (page === "learn") await learnPage(alive, parts[1], parts[2]);
     else if (page === "status") await statusPage(alive, parts[1]);
     else if (page === "schedules") await schedulesPage(alive);
     else if (page === "runs") await runsPage(alive, parts[1]);
