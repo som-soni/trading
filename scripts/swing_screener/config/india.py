@@ -16,6 +16,7 @@ INDIA_CONFIG = MarketConfig(
     currency_symbol="₹",
     exchange="NSE", badge="NSE", flag="🇮🇳", symbol_suffix=".NS", fx_to_usd="USDINR",
     quarterly_source="nse",
+    news_locale="hl=en-IN&gl=IN&ceid=IN:en", news_term="share",
     money_unit="₹ Cr", money_divisor=1e7,
     tz="Asia/Kolkata",
     account_size=2_000_000,

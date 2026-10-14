@@ -349,6 +349,7 @@ async function chartPage(alive, market, symbol, tf) {
       <nav class="rbar" id="rbar">
         <button data-tab="wl" title="Watchlist"><svg viewBox="0 0 20 20"><path d="M7 5h10M7 10h10M7 15h10"/><circle cx="3.5" cy="5" r=".6"/><circle cx="3.5" cy="10" r=".6"/><circle cx="3.5" cy="15" r=".6"/></svg></button>
         <button data-tab="info" title="Symbol details — fundamentals, screener plan, decision history"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 9v5M10 6.2v.1"/></svg></button>
+        <button data-tab="news" title="News & key events — headlines, filings, exchange announcements, earnings, dividends, splits"><svg viewBox="0 0 20 20"><path d="M4 4h10v12H5a1 1 0 0 1-1-1z"/><path d="M14 7h2v8a1 1 0 0 1-2 0"/><path d="M6.5 7h5M6.5 10h5M6.5 13h3"/></svg></button>
         ${pos >= 0 && !String(list.label).startsWith("Watchlist") ? `<button data-tab="list" title="${esc(list.label)}"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4z"/><path d="M7 8h6M7 12h6"/></svg></button>` : ""}
       </nav></div>`;
   const $ = (s) => $view.querySelector(s);
@@ -387,6 +388,12 @@ async function chartPage(alive, market, symbol, tf) {
 
   let sideReady = false;  // the panel renders once the symbol's context has loaded
   let symNotes = null;    // promise of this stock's notes, for the details panel
+  // this stock's news & key events (marketdata/news.py); the server asks the queue for a fetch when
+  // none is stored or it is a day old, and `pending` names that queue item until it lands
+  let symNews = null, newsPoll = null, newsMarkers = null;
+  const loadNews = (refresh = false) => (symNews = (!refresh && symNews) ||
+    api(`/api/news/${market}/${encodeURIComponent(symbol)}${refresh ? "?refresh=1" : ""}`).catch((e) => ({ error: e.message })));
+  { const prev = cleanup; cleanup = () => { clearInterval(newsPoll); prev(); }; }
   // trade-debug overlay state — declared before the first renderSide(), which can hit the
   // restored Trades tab before the chart (and its data) exists
   let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1;
@@ -873,6 +880,36 @@ async function chartPage(alive, market, symbol, tf) {
   if (!alive()) return;
   dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}`, remote });
   applyAnnotations();   // read-only: never saved, never erasable
+  // key events on the price chart: E results / earnings, D ex-dividend, S split or bonus. An event
+  // after the last bar (an upcoming report) has no bar to sit on; it is in the News & events panel.
+  const EV_MARK = { results: ["E", "#7e57c2"], earnings: ["E", "#7e57c2"], dividend: ["D", "#26a69a"], split: ["S", "#ff9800"], bonus: ["S", "#ff9800"] };
+  const showEventMarkers = (d) => {
+    if (!d || !d.events || !alive()) return;
+    const seen = new Set(), ms = [];
+    d.events.forEach((e) => {
+      const m = EV_MARK[e.kind]; if (!m) return;
+      const t = times.find((x) => x >= e.date);
+      if (!t || seen.has(t + m[0])) return;
+      seen.add(t + m[0]);
+      ms.push({ time: t, position: "belowBar", shape: "circle", color: m[1], text: m[0], size: 0.7 });
+    });
+    ms.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+    if (newsMarkers) newsMarkers.setMarkers(ms); else newsMarkers = LC.createSeriesMarkers(main, ms);
+  };
+  // `function` (hoisted) because the panel's Refresh link calls it before this line has run
+  function onNews(d) {
+    showEventMarkers(d);
+    if (prefs.tab === "news") renderSide();
+    if (d && d.pending && !newsPoll) {   // a fetch is queued: check back until it lands
+      let tries = 0;
+      newsPoll = setInterval(async () => {
+        if (!alive() || ++tries > 50) { clearInterval(newsPoll); newsPoll = null; return; }
+        const x = await api(`/api/news/${market}/${encodeURIComponent(symbol)}`).catch(() => null);
+        if (x && !x.pending) { clearInterval(newsPoll); newsPoll = null; symNews = Promise.resolve(x); onNews(x); }
+      }, 6000);
+    }
+  }
+  loadNews().then(onNews);
   const unmountTools = Drawings.mountToolbar($("#tools"), dr, {
     count: () => studies.length,
     removeAll: () => removeStudies(studies.map((e) => e.s.id), `${studies.length} indicator${studies.length === 1 ? "" : "s"}`),
@@ -993,11 +1030,48 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div></section>
       <div class="btrs">${rows || '<div class="muted small">This run has no trades in this symbol.</div>'}</div>`;
   }
+  /** News & events: what is coming (earnings, ex-dates, results meetings), the headlines and exchange
+   *  announcements, the key events behind them (filings, dividends, splits), and analyst rating changes */
+  function newsPanelHtml(d) {
+    // inside the function: a restored News tab renders before chartPage reaches any const below it
+    const EV_LABEL = { earnings: "Earnings", results: "Results", dividend: "Dividend", split: "Split", bonus: "Bonus",
+      board_meeting: "Board meeting", filing: "Filing", rating: "Rating", action: "Corporate action" };
+    if (!d || d.error) return `<section><h3>News & events</h3><div class="muted small">${esc(d?.error || "Loading…")}</div></section>`;
+    const today = new Date().toISOString().slice(0, 10);
+    const link = (u, t) => (u ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(t)}</a>` : esc(t));
+    const ev = (e) => `<div class="nw-ev"><span class="nw-d">${prettyDate(e.date)}</span><span class="tag nw-k ${e.kind}">${EV_LABEL[e.kind] || e.kind}</span>
+        <span class="nw-t">${link(e.url, e.title)}${e.kind === "earnings" && e.detail?.eps_estimate != null ? ` <span class="muted">· EPS est. ${(+e.detail.eps_estimate).toFixed(2)}</span>` : ""}</span></div>`;
+    const upcoming = d.events.filter((e) => e.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1));
+    const past = d.events.filter((e) => e.date < today && e.kind !== "rating").slice(0, 15);
+    const ratings = d.events.filter((e) => e.kind === "rating").slice(0, 6);
+    const head = d.news.slice(0, 30).map((n) => `<div class="nw-it">${link(n.url, n.title)}
+        <div class="muted small">${esc(n.kind === "announcement" ? "NSE announcement" : n.source || "")}${n.published_at ? ` · ${ago(n.published_at)}` : ""}</div></div>`).join("");
+    const status = d.pending ? `<span class="spin"></span> Fetching the latest${d.pending === "now" ? "" : ` (queue #${d.pending})`}…`
+      : d.fetched_at ? `Updated ${ago(d.fetched_at)}` : "Not fetched yet";
+    return `<section><div class="wld-nh"><h3>News & events</h3><span class="spacer"></span>
+        ${d.pending ? "" : '<a class="small" href="#" id="nwrefresh" title="Fetch the latest now">Refresh</a>'}</div>
+        <div class="muted small" title="${esc(d.note || "")}">${status}</div></section>
+      ${upcoming.length ? `<section><h3>Upcoming</h3>${upcoming.map(ev).join("")}</section>` : ""}
+      <section><h3>Headlines</h3>${head || `<div class="muted small">${d.pending ? "Coming shortly." : "No headlines in the last month."}</div>`}</section>
+      ${past.length ? `<section><h3>Key events</h3>${past.map(ev).join("")}</section>` : ""}
+      ${ratings.length ? `<section><h3>Analyst ratings</h3>${ratings.map(ev).join("")}</section>` : ""}
+      <p class="muted small nw-src">Sources: ${esc(d.sources || "")}. Refreshed each morning for watchlists and
+        strategy picks, on demand for any other chart.</p>`;
+  }
   function renderSide() {
     if (!sideReady || !prefs.tab) return;
     const body = $("#side .side-body");
     body.innerHTML = prefs.tab === "wl" ? wlPanelHtml() : prefs.tab === "list" ? `<div class="wlpanel">${listPanelHtml()}</div>`
-      : prefs.tab === "trades" ? `<div class="wlpanel">${tradesPanelHtml()}</div>` : infoHtml();
+      : prefs.tab === "trades" ? `<div class="wlpanel">${tradesPanelHtml()}</div>`
+      : prefs.tab === "news" ? `<div class="wlpanel nwpanel">${newsPanelHtml(null)}</div>` : infoHtml();
+    if (prefs.tab === "news") {
+      loadNews().then((d) => {
+        const host = body.querySelector(".nwpanel"); if (!host || !alive()) return;
+        host.innerHTML = newsPanelHtml(d);
+        host.querySelector("#nwrefresh")?.addEventListener("click", (e) => { e.preventDefault(); loadNews(true).then(onNews); });
+      });
+      return;
+    }
     body.querySelectorAll(".wlr.cur").forEach((c) => c.scrollIntoView({ block: "nearest" }));
     const $notes = body.querySelector("#wlnotes");
     if ($notes) {  // this stock's notes (fetched once per chart)

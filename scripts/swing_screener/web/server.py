@@ -570,6 +570,62 @@ def trade_anatomy(rid: int, symbol: str):
     return out
 
 
+_news_jobs: dict = {}   # (market, symbol) -> a direct `jobs run news` process (see stock_news)
+
+
+@app.get("/api/news/{market}/{symbol}")
+def stock_news(market: str, symbol: str, refresh: bool = False):
+    """A stock's headlines and key events (marketdata/news.py fills them). A stock never fetched,
+    or last fetched more than a day ago, gets a fetch asked of the queue — the morning `news` job
+    covers watchlists and strategy picks only, so this is how any other chart fills in."""
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    from ..marketdata import news as news_mod
+    news_mod.init_schema()
+    symbol = symbol.upper()
+    st = q("SELECT fetched_at, note FROM stock_news_status WHERE market=%s AND symbol=%s", (market, symbol))
+    fetched_at, note = (st[0] if st else (None, None))
+    jq = _jq()
+    queued = [x for x in [jq.items(0)["running"], *jq.items(50)["queued"]]
+              if x and "news" in x["targets"] and symbol in str((x.get("opts") or {}).get("symbols", "")).split(",")]
+    direct = _news_jobs.get((market, symbol))
+    pending = queued[0]["id"] if queued else ("now" if direct and direct.poll() is None else None)
+    import datetime as _dt
+    stale = fetched_at is None or (_dt.datetime.now(_dt.timezone.utc) - fetched_at).total_seconds() > 86400
+    if (stale or refresh) and pending is None:
+        if jq.worker_status()["alive"] and jq.items(0)["running"] is None:
+            it = jq.enqueue(["news"], market, {"symbols": symbol, "force": True}, requested_by="web: chart news",
+                            priority=jq.SCHEDULE_PRIORITY, skip_if_running=True)
+            pending = it["id"]
+        else:
+            # the worker is busy (often with an hours-long backtest) or stopped: one symbol's news is a
+            # few seconds and writes only its own tables, so run it now rather than queue behind that —
+            # still as `jobs run`, so it is logged like any other run (same as the breadth top-up)
+            env = {**__import__("os").environ, "PYTHONPATH": str(paths.SCRIPTS_DIR)}
+            _news_jobs[(market, symbol)] = subprocess.Popen(
+                [sys.executable, "-m", "jobs", "run", "news", "--market", market, "--symbols", symbol, "--force"],
+                cwd=str(paths.SCRIPTS_DIR), env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            pending = "now"
+    news, seen = [], set()
+    for t, s, u, k, p in q("""SELECT title, source, url, kind, published_at FROM stock_news
+                             WHERE market=%s AND symbol=%s ORDER BY published_at DESC NULLS LAST LIMIT 120""",
+                          (market, symbol)):
+        key = news_mod.title_key(t)   # a syndicated story fetched on different days is still one headline
+        if key in seen:
+            continue
+        seen.add(key)
+        news.append({"title": t, "source": s, "url": u, "kind": k, "published_at": p.isoformat() if p else None})
+    news = news[:60]
+    events = [{"date": d.isoformat(), "kind": k, "title": t, "detail": dtl, "url": u, "source": s}
+              for d, k, t, dtl, u, s in q("""SELECT date, kind, title, detail, url, source FROM stock_events
+                                           WHERE market=%s AND symbol=%s ORDER BY date DESC""", (market, symbol))]
+    filings = {"sec_edgar": "SEC 8-K filings", "nse": "NSE announcements, corporate actions and board meetings"}
+    sources = ["Google News", filings.get(MARKETS[market].quarterly_source, ""), "Yahoo"]
+    return {"market": market, "symbol": symbol, "fetched_at": fetched_at.isoformat() if fetched_at else None,
+            "note": note, "pending": pending, "news": news, "events": events,
+            "sources": " · ".join(x for x in sources if x)}
+
+
 @app.get("/api/trade-runs")
 def trade_runs(market: str, symbol: str):
     """Backtest runs that traded this symbol, for the chart's trade overlay."""

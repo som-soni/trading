@@ -1243,3 +1243,13 @@ table.fin.peers tbody th a { color: var(--link); }
 .mtile .mt-l { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mtile .mt-v { font-size: 17px; font-weight: 600; color: var(--strong); margin: 2px 0; }
 .mtile .mt-c { white-space: nowrap; font-size: 11px; } .mtile .spark { display: block; margin-top: 4px; width: 100%; }
+/* chart side panel: News & events */
+.nwpanel section { margin-bottom: 12px; }
+.nw-ev { display: grid; grid-template-columns: auto auto 1fr; gap: 6px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.nw-ev .nw-d { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.nw-ev .nw-k { font-size: 10.5px; padding: 1px 5px; }
+.nw-ev .nw-k.earnings, .nw-ev .nw-k.results { color: #7e57c2; border-color: #7e57c2; }
+.nw-ev .nw-k.dividend { color: var(--up-text); } .nw-ev .nw-k.split, .nw-ev .nw-k.bonus { color: var(--warn-text); }
+.nw-it { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; line-height: 1.35; }
+.nw-it a, .nw-ev a { color: var(--text); } .nw-it a:hover, .nw-ev a:hover { color: var(--accent-text); }
+.nw-src { margin-top: 8px; }

@@ -224,6 +224,39 @@ def _earnings(ctx: Ctx) -> None:
     ctx.step.detail = f"{len(syms):,} screened / watchlisted symbols checked · {len(got):,} with a known next date"
 
 
+def _news_symbols(market: str) -> list[str]:
+    """What the morning news run covers: every watchlist, plus the names a strategy marks tradeable or
+    on watch in its latest run. Not the whole screened set (~2,000 names a day would be hours of
+    polite requests); any other stock is fetched on demand when its chart opens."""
+    from swing_screener.marketdata import db
+    from swing_screener.screening import watchlist
+    syms = set()
+    for lst in watchlist.lists():
+        syms |= {i["symbol"] for i in watchlist.items(lst["id"]) if i["market"] == market}
+    with db.get_connection().cursor() as cur:
+        cur.execute("""SELECT DISTINCT h.symbol FROM universe_history h JOIN (
+                         SELECT strategy, max(run_id) run_id FROM universe_history WHERE market=%s GROUP BY strategy) l
+                       ON l.strategy=h.strategy AND l.run_id=h.run_id
+                       WHERE h.market=%s AND (h.tradeable OR (h.full_row->>'watchlist_candidate')::boolean)""", (market, market))
+        syms |= {r[0] for r in cur.fetchall()}
+    return sorted(syms)
+
+
+def _news(ctx: Ctx) -> None:
+    from swing_screener.marketdata import news
+    if ctx.opt("symbols"):
+        syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()]
+    else:
+        syms = _news_symbols(ctx.market)
+    if not syms:
+        ctx.step.skip("no watchlisted or picked symbols to fetch news for")
+        return
+    r = news.refresh(ctx.market, syms, force=bool(ctx.opt("force")), progress=ctx.step.progress)
+    ctx.step.detail = (f"{r['fetched']:,} / {r['requested']:,} symbols fetched ({r['skipped_fresh']:,} still fresh) · "
+                       f"{r['headlines']:,} headlines · {r['events']:,} events · {r['failed']} failed")
+    ctx.step.stats = r
+
+
 def _fundamentals(ctx: Ctx) -> None:
     from swing_screener.marketdata import fundamentals
     from swing_screener.strategies import _REGISTRY
@@ -581,6 +614,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("indexes", "data", "index, VIX & macro series: benchmarks, volatility, total-return series, and rates, the dollar, "
         "oil, gold, copper and credit (marketdata/macro.py)", "daily", True, _indexes),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
+    Job("news", "data", "news & key events: headlines, filings, exchange announcements, earnings, dividends, splits "
+        "for watchlisted and picked stocks (marketdata/news.py)", "daily", True, _news),
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
     Job("financials", "data", "company financials: quarterly and annual results, balance sheet, cash flow, shareholding "
         "(SEC / NSE filings) for the Fundamentals page", "weekly", True, _financials, after=("screens",)),
@@ -619,11 +654,11 @@ PIPELINES: dict[str, dict] = {
               "jobs": ["universe", "prices", "indexes", "breadth", "sectors", "screens", "postmarket",
                        "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
-    "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates, "
+    "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
                         "re-run only the strategies left stale, then check everything is ready",
              # report and ingest only when a strategy actually re-ran: the report reads the last 30 hours,
              # so re-running it on a Monday morning would replace Friday's review with an empty one
-             "jobs": ["prices", "earnings", ("strategies", {"only_stale": True}), ("report", {"only_new": True}),
+             "jobs": ["prices", "earnings", "news", ("strategies", {"only_stale": True}), ("report", {"only_new": True}),
                       ("ingest", {"only_new": True}), "readiness"],
              "defaults": {"strategies": ["all"]}},
     "daily": {"summary": "after each market's close — data only: prices, indexes, breadth, sectors, the screens' snapshot, post-market analysis",
