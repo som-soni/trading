@@ -185,6 +185,24 @@ def _splits(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _fno_bhav(ctx: Ctx) -> None:
+    """NSE's daily derivatives bhavcopy (marketdata/derivatives.py): every index future and option
+    that traded, with its settle price and open interest. India only — US options history is not
+    freely available. Index derivatives only by default (~4,000-7,500 rows a day against 31,000-47,000
+    for everything); stock options are thin outside the top names and a backtest on thin strikes
+    flatters itself. Stage 1 of research/fno-scope.md: stored and reconciled, not yet traded."""
+    from swing_screener.marketdata import derivatives
+    if ctx.market != "india":
+        ctx.step.skip("NSE derivatives are India only")
+        return
+    start = dt.date.fromisoformat(str(ctx.opt("start"))) if ctx.opt("start") else None
+    out = derivatives.ingest(ctx.market, start=start,
+                             instruments=() if ctx.opt("all_instruments") else derivatives.INDEX_INSTRUMENTS)
+    ctx.step.detail = (f"{out['rows']:,} contract rows from {out['sessions']} sessions"
+                       + (f" · {out['no_file']} days had no file" if out["no_file"] else ""))
+    ctx.step.stats = out
+
+
 def _indexes(ctx: Ctx) -> None:
     from swing_screener.analytics import breadth
     from swing_screener.marketdata import index_data, macro
@@ -614,6 +632,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("indexes", "data", "index, VIX & macro series: benchmarks, volatility, total-return series, and rates, the dollar, "
         "oil, gold, copper and credit (marketdata/macro.py)", "daily", True, _indexes),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
+    Job("fno_bhav", "data", "F&O bhavcopy: NSE index futures and options, settle and open interest (India)",
+        "daily", True, _fno_bhav),
     Job("news", "data", "news & key events: headlines, filings, exchange announcements, earnings, dividends, splits "
         "for watchlisted and picked stocks (marketdata/news.py)", "daily", True, _news),
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
