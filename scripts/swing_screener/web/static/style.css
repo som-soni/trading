@@ -1266,9 +1266,9 @@ table.fin.peers tbody th a { color: var(--link); }
   background: var(--accent-soft); border-radius: 14px; font-size: 12px; color: var(--strong); }
 
 /* Learn: a long-form guide beside its "On this page" contents */
-/* the article fills the column and the contents sit right beside it; on a very wide screen the pair stops
-   growing (a line of 200 characters is hard to read) and the text gets a little larger instead */
-.lp-guide { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 24px; align-items: start; max-width: 1560px; }
+/* the article fills the window and the contents sit right beside it; on wider screens the text grows a step
+   instead of the lines getting ever longer */
+.lp-guide { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; align-items: start; }
 .lp-guide .md { max-width: none; }
 /* guide tables are prose in cells: let them wrap to the column instead of scrolling sideways */
 .lp-guide .md td { white-space: normal; min-width: 90px; vertical-align: top; }
@@ -1276,6 +1276,12 @@ table.fin.peers tbody th a { color: var(--link); }
   .lp-guide .md { font-size: 15px; padding: 12px 44px 32px; }
   .lp-guide .md h1 { font-size: 26px; } .lp-guide .md h2 { font-size: 19px; } .lp-guide .md h3 { font-size: 15.5px; }
   .lp-guide .md table { font-size: 13px; }
+}
+@media (min-width: 1900px) {
+  .lp-guide .md { font-size: 16px; padding: 14px 56px 36px; }
+  .lp-guide .md h1 { font-size: 28px; } .lp-guide .md h2 { font-size: 20px; } .lp-guide .md h3 { font-size: 16.5px; }
+  .lp-guide .md table { font-size: 14px; }
+  .lp-toc { font-size: 13.5px; }
 }
 .lp-toc { position: sticky; top: 72px; max-height: calc(100vh - 96px); overflow: auto; display: flex; flex-direction: column;
   gap: 2px; padding-left: 12px; border-left: 1px solid var(--line-2); font-size: 12.5px; }
