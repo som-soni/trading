@@ -275,7 +275,7 @@ Breadth does not pick stocks; it **sets how much risk to take**.
 
 **Combine** breadth with the index trend, credit and volatility ([liquidity and credit](learn-macro-liquidity-credit.md), [volatility](learn-health-volatility.md)). Two warnings together matter far more than one.
 
-Many trading systems check only the index itself: for example, whether the main indices are below their 50-day average. They compute breadth but do not act on it. If yours is one of them, breadth is a filter you apply yourself. [learn-strat-regime-filters](learn-strat-regime-filters.md) covers market filters inside a strategy.
+Many trading systems check only the index itself: for example, whether the main indices are below their 50-day average. They compute breadth but do not act on it. If yours is one of them, breadth is a filter you apply yourself. [Regime filters](learn-strat-regime-filters.md) covers market filters inside a strategy.
 
 ## 10. What the evidence says
 
@@ -304,4 +304,4 @@ Many trading systems check only the index itself: for example, whether the main 
 - Stan Weinstein, *Secrets for Profiting in Bull and Bear Markets* — breadth and stages.
 - Paul Desmond, "Identifying Bear Market Bottoms and New Bull Markets" (2002) — 90% days.
 - William J. O'Neil, *How to Make Money in Stocks* — leadership and the general market.
-- [learn-strat-regime-filters](learn-strat-regime-filters.md) — using market conditions as a filter in a strategy.
+- [Regime filters](learn-strat-regime-filters.md) — using market conditions as a filter in a strategy.

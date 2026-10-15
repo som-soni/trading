@@ -8,7 +8,7 @@
 - "The stocks that held up best in a sell-off lead the next rise" did not hold in three recent sell-offs. The strongest fifth did worse than average afterwards.
 - Use RS to choose where to look, not when to buy. Momentum crashes come right after sharp market rebounds.
 
-For basic words, start with [learn-start-here](learn-start-here.md). For a stock's trend, see [the stages guide](learn-price-stages.md); for the strength of whole groups, [the sectors guide](learn-sectors-groups.md). Trading methods built on RS are in [learn-strat-rs-leaders](learn-strat-rs-leaders.md) and [learn-strat-xs-momentum](learn-strat-xs-momentum.md).
+For basic words, start with [Start here](learn-start-here.md). For a stock's trend, see [the stages guide](learn-price-stages.md); for the strength of whole groups, [the sectors guide](learn-sectors-groups.md). Trading methods built on RS are in [Relative-strength leaders](learn-strat-rs-leaders.md) and [Cross-sectional momentum](learn-strat-xs-momentum.md).
 
 ---
 
@@ -282,7 +282,7 @@ In the same kind of month-end study, liquid stocks in groups rated 80+ beat thos
 
 A ranking is not yet a way to trade. Turning it into one adds choices: how many stocks to hold, how often to rebalance, a liquidity floor, and costs. Each choice moves the result, and costs bite hardest in small stocks (section 5.1).
 
-Rule-based momentum indices show what a plain version looks like. In India, the NSE publishes the Nifty 200 Momentum 30 index. It holds the 30 large and mid-cap stocks with the best risk-adjusted 6- and 12-month returns. The full method, with costs and a test you can run yourself, is in [learn-strat-xs-momentum](learn-strat-xs-momentum.md) and [learn-test-backtesting](learn-test-backtesting.md).
+Rule-based momentum indices show what a plain version looks like. In India, the NSE publishes the Nifty 200 Momentum 30 index. It holds the 30 large and mid-cap stocks with the best risk-adjusted 6- and 12-month returns. The full method, with costs and a test you can run yourself, is in [Cross-sectional momentum](learn-strat-xs-momentum.md) and [Backtesting honestly](learn-test-backtesting.md).
 
 ## 6. Weaknesses
 

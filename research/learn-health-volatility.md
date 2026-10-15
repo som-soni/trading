@@ -253,7 +253,7 @@ Sizing from the stop already **adjusts for each stock's volatility**. The stop s
 - **Halve risk and position count.** Correlations rise in high volatility, so your positions tend to fall together.
 - **Gaps ignore stops.** Size for the loss if the price gaps past your stop, not just for the stop distance.
 
-ATR-based stops, portfolio heat (the total risk across all open positions) and risk of ruin are covered in [learn-risk-sizing](learn-risk-sizing.md) and [learn-risk-stops-exits](learn-risk-stops-exits.md). Volatility as something to trade with options is in [learn-fno-volatility](learn-fno-volatility.md).
+ATR-based stops, portfolio heat (the total risk across all open positions) and risk of ruin are covered in [Position sizing](learn-risk-sizing.md) and [Stops and exits](learn-risk-stops-exits.md). Volatility as something to trade with options is in [Volatility for option traders](learn-fno-volatility.md).
 
 ## 12. What a trader does
 

@@ -142,7 +142,7 @@ Minervini's Trend Template (his chart checklist) did its job too. On 6 May 2024 
 | **I** | Institutional sponsorship, rising | no |
 | **M** | Market direction — buy only in a confirmed uptrend | no |
 
-**SEPA** (Mark Minervini) has five parts: trend (the Stage 2 Trend Template), fundamentals, catalyst, entry point and exit. His entry point is the VCP (volatility contraction pattern: a base whose pullbacks get smaller and quieter). The trading side is in [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+**SEPA** (Mark Minervini) has five parts: trend (the Stage 2 Trend Template), fundamentals, catalyst, entry point and exit. His entry point is the VCP (volatility contraction pattern: a base whose pullbacks get smaller and quieter). The trading side is in [SEPA and the VCP](learn-strat-vcp-sepa.md).
 
 SEPA's fundamental part is close to O'Neil's C and A. It puts more weight on **acceleration**, **margin expansion** and **beating estimates**. And it names one warning sign: two quarters of significant deceleration. "Code 33" is his shorthand for EPS growth, sales growth and margins all accelerating three quarters in a row.
 

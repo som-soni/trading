@@ -55,7 +55,7 @@ Adjust the rule of thumb to the data you are counting on.
 
 O'Neil also counted **stalling** days. Near a high, the index closes flat or barely up on higher volume, often in the lower half of the day's range. There is heavy trading but no progress. Spotting one is a judgement call. Treat a stalling day as extra evidence beside a cluster of distribution days, never on its own.
 
-The same counting works on a single stock. Over 25 sessions, count up days on higher volume (accumulation) and down days on higher volume (distribution). More of one than the other suggests whether demand or supply is in control. See [learn-price-volume](learn-price-volume.md).
+The same counting works on a single stock. Over 25 sessions, count up days on higher volume (accumulation) and down days on higher volume (distribution). More of one than the other suggests whether demand or supply is in control. See [Volume](learn-price-volume.md).
 
 ## 3. Distribution at real tops
 
@@ -238,10 +238,10 @@ For Indian traders, two reads are more reliable: breadth ([the breadth guide](le
 - **Count weekly, on more than one index.** In 2018 QQQ warned while SPY was quiet. In 2021 QQQ warned weeks before SPY's record.
 - **Act on clusters near highs, not on single days.** Take eight or more on the raw ETF count, while the index is still near its high and breadth is narrowing. That is the setting in which to stop adding, tighten stops on winners that have run far above their buy point, and take partial profits.
 - **Give less weight to mechanical volume:** expiry, rebalance and holiday sessions.
-- **After a decline, wait for the follow-through, then buy small.** Start with the leading stocks breaking out of sound bases ([learn-bases.md](learn-bases.md)), and add only as they work. If the index closes below the attempt's low, cut back and wait for the next attempt.
+- **After a decline, wait for the follow-through, then buy small.** Start with the leading stocks breaking out of sound bases ([Bases](learn-bases.md)), and add only as they work. If the index closes below the attempt's low, cut back and wait for the next attempt.
 - **Never let a count override a stop.** In February 2020 the count was low at the top.
 
-Using market signals like these as a rule inside a trading strategy is covered in [learn-strat-regime-filters](learn-strat-regime-filters.md).
+Using market signals like these as a rule inside a trading strategy is covered in [Regime filters](learn-strat-regime-filters.md).
 
 ## 8. What the evidence says
 

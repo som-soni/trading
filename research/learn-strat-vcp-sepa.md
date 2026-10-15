@@ -27,7 +27,7 @@ mark: 2020-12-15 | breakout, 2.65× volume
 caption: Two pullbacks, each smaller than the one before, with volume drying up into the second. The stop sat just under ₹813.
 ```
 
-That is a **volatility contraction pattern**: price swings that get smaller from left to right while volume fades. Each pullback is smaller because fewer holders are left who want to sell. When the last pullback is tiny and quiet, a small amount of buying can push the price through the top. The pattern's anatomy is covered in [learn-vcp](learn-vcp.md). This guide is about trading it.
+That is a **volatility contraction pattern**: price swings that get smaller from left to right while volume fades. Each pullback is smaller because fewer holders are left who want to sell. When the last pullback is tiny and quiet, a small amount of buying can push the price through the top. The pattern's anatomy is covered in [VCP](learn-vcp.md). This guide is about trading it.
 
 **SEPA** stands for Specific Entry Point Analysis. It has five parts: the trend, the fundamentals, a catalyst, the entry point and the exit. The VCP is the entry. The rest decides which VCPs are worth buying and how to get out.
 
@@ -45,7 +45,7 @@ It works poorly in:
 - **Choppy markets.** Tight stops get hit by ordinary noise.
 - **Low-priced, thinly traded stocks.** The pattern looks the same, but a few orders can move the price through the pivot or the stop.
 
-It suits stocks in Stage 2 of their price cycle (see [learn-price-stages](learn-price-stages.md)), with earnings and sales growth that is speeding up. Its stops are tighter than O'Neil's CAN SLIM, so it needs a precise entry and good liquidity.
+It suits stocks in Stage 2 of their price cycle (see [Stages and trend in a stock](learn-price-stages.md)), with earnings and sales growth that is speeding up. Its stops are tighter than O'Neil's CAN SLIM, so it needs a precise entry and good liquidity.
 
 **India.** Many NSE leaders are mid caps with price bands of 10% or 20% a day. A VCP breakout can lock at the upper band, and the buy-stop may not fill. A breakdown can also lock at the lower band, so the stop fills well below its level.
 
@@ -66,8 +66,8 @@ Each rule below is a condition a program can check. Section 4 gives the ranges.
   - the close is above the 50-day;
   - the close is at least 30% above its 52-week low;
   - the close is within 25% of its 52-week high;
-  - the stock's relative strength percentile is at least 70 (see [learn-price-rs](learn-price-rs.md)).
-- **Fundamentals.** Quarterly EPS growth of at least 20% on the same quarter a year earlier, and higher than the quarter before (acceleration). Sales growth of at least 15%. A stable or rising profit margin. Use announced numbers only (see [learn-fund-earnings](learn-fund-earnings.md)).
+  - the stock's relative strength percentile is at least 70 (see [Relative strength](learn-price-rs.md)).
+- **Fundamentals.** Quarterly EPS growth of at least 20% on the same quarter a year earlier, and higher than the quarter before (acceleration). Sales growth of at least 15%. A stable or rising profit margin. Use announced numbers only (see [Earnings that move stocks](learn-fund-earnings.md)).
 - **Catalyst (optional).** A new product, a sector tailwind, an earnings surprise. It cannot be coded well, so treat it as a tie-breaker.
 - **Market.** The index closes above its 50-day average, and the share of stocks above their own 50-day average is rising or above half.
 
@@ -111,7 +111,7 @@ vcp
 
 - Risk a fixed share of capital per trade. Minervini suggests around 1.25–2.5% at most; 0.5–1% is a cautious start.
 - Shares = (capital × risk %) ÷ (entry − stop). A 5% stop and 1% risk give a 20% position. Cap any one position at 25% of capital.
-- See [learn-risk-sizing](learn-risk-sizing.md).
+- See [Position sizing](learn-risk-sizing.md).
 
 ### Managing the trade
 
@@ -154,11 +154,11 @@ vcp
 
 ## 5. Variations
 
-- **Minervini's own books** (*Trade Like a Stock Market Wizard*, *Think & Trade Like a Champion*) are the source of the rules above. He also trades "power plays": stocks up 100% or more in under eight weeks that then go sideways briefly. That is close to the high tight flag in [learn-strat-flags](learn-strat-flags.md).
-- **O'Neil's CAN SLIM** uses the same idea with wider stops (7–8%) and named base shapes. See [learn-strat-canslim-breakout](learn-strat-canslim-breakout.md).
+- **Minervini's own books** (*Trade Like a Stock Market Wizard*, *Think & Trade Like a Champion*) are the source of the rules above. He also trades "power plays": stocks up 100% or more in under eight weeks that then go sideways briefly. That is close to the high tight flag in [Flags, pennants and high tight flags](learn-strat-flags.md).
+- **O'Neil's CAN SLIM** uses the same idea with wider stops (7–8%) and named base shapes. See [CAN SLIM breakouts](learn-strat-canslim-breakout.md).
 - **Stan Weinstein's stage analysis** supplies the trend filter that the Trend Template formalises: buy only in Stage 2.
 - **Shorter-term versions.** Some traders use the same tight setups but exit on a close below the 10-day or 20-day average. Exits come sooner; gains are smaller and more frequent.
-- **Box-style versions.** Darvas bought tight boxes at new highs with the stop at the box bottom, a simpler cousin of the VCP. See [learn-strat-darvas](learn-strat-darvas.md).
+- **Box-style versions.** Darvas bought tight boxes at new highs with the stop at the box bottom, a simpler cousin of the VCP. See [Darvas boxes](learn-strat-darvas.md).
 
 ## 6. Worked examples
 
@@ -292,7 +292,7 @@ What this shows:
 
 **What to test.** Start with the contraction ratio, the last-contraction limit, the breakout volume and the exit rule. Change one at a time. Prefer settings in a broad flat region of good results. Hold out the last few years and test them once.
 
-**What a good test reports.** Trades per year, win rate, average win and loss in R, expectancy after costs, the longest losing streak, drawdown, and results by market regime. Also report how many setups the rules found per year: a rule set that trades five times a year cannot be judged on a few years of data. See [learn-test-backtesting](learn-test-backtesting.md).
+**What a good test reports.** Trades per year, win rate, average win and loss in R, expectancy after costs, the longest losing streak, drawdown, and results by market regime. Also report how many setups the rules found per year: a rule set that trades five times a year cannot be judged on a few years of data. See [Backtesting honestly](learn-test-backtesting.md).
 
 ```
 each session t:
@@ -336,4 +336,4 @@ manage daily:
 - Andrew Lo, Harry Mamaysky and Jiang Wang, "Foundations of Technical Analysis", *Journal of Finance* (2000).
 - Narasimhan Jegadeesh and Sheridan Titman, "Returns to Buying Winners and Selling Losers", *Journal of Finance* (1993).
 - Thomas George and Chuan-Yang Hwang, "The 52-Week High and Momentum Investing", *Journal of Finance* (2004).
-- [learn-vcp](learn-vcp.md), [learn-bases](learn-bases.md), [learn-risk-stops-exits](learn-risk-stops-exits.md).
+- [VCP](learn-vcp.md), [Bases](learn-bases.md), [Stops and exits](learn-risk-stops-exits.md).

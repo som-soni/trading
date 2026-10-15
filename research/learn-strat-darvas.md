@@ -92,7 +92,7 @@ A sell-stop one tick below the box bottom, placed at the same time as the buy or
 
 ### Position size
 
-Darvas used an initial position and added more when a new box broke out ("pyramiding"). A rule-based version: risk 0.5–1% of capital on the first entry, with shares = (capital × risk %) ÷ (entry − stop). See [learn-risk-sizing](learn-risk-sizing.md).
+Darvas used an initial position and added more when a new box broke out ("pyramiding"). A rule-based version: risk 0.5–1% of capital on the first entry, with shares = (capital × risk %) ÷ (entry − stop). See [Position sizing](learn-risk-sizing.md).
 
 ### Managing the trade
 
@@ -119,10 +119,10 @@ Darvas used an initial position and added more when a new box broke out ("pyrami
 ## 5. Variations
 
 - **Darvas's original.** Boxes at all-time highs, earnings growth as a filter, orders placed in advance. His book claims he made about $2 million in under two years in the late 1950s.
-- **O'Neil's flat base.** A box at least five weeks long and at most 15% deep, usually after an earlier base. The pivot is the box top; the stop is 7–8% below the buy. See [learn-strat-canslim-breakout](learn-strat-canslim-breakout.md).
+- **O'Neil's flat base.** A box at least five weeks long and at most 15% deep, usually after an earlier base. The pivot is the box top; the stop is 7–8% below the buy. See [CAN SLIM breakouts](learn-strat-canslim-breakout.md).
 - **Rectangles.** Edwards and Magee, and later Thomas Bulkowski, describe the rectangle: a range with flat top and bottom, broken either way. The measured move is the range's height added to the breakout.
 - **Channel breakouts.** Richard Donchian's rule buys a close above the highest high of the last N sessions (often 20 or 55). It is a box without the confirmation rules.
-- **Tighter boxes.** Minervini's tight areas and the "three weeks tight" pattern (three weekly closes within about 1–1.5% of each other) are very narrow boxes. See [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+- **Tighter boxes.** Minervini's tight areas and the "three weeks tight" pattern (three weekly closes within about 1–1.5% of each other) are very narrow boxes. See [SEPA and the VCP](learn-strat-vcp-sepa.md).
 
 ```pattern
 flat-base
@@ -251,7 +251,7 @@ What this shows:
 
 **Costs.** In India, a delivery round trip costs about 0.25–0.35%. That covers STT of 0.1% each side, stamp duty of 0.015% on the buy, exchange fees, GST and depository charges. Buy-stops fill in a rush, so add 0.1–0.5% slippage in liquid stocks and more in small caps. A method with many small losses is very sensitive to these costs.
 
-**What to test.** The confirmation length (2–5 sessions), the maximum depth, a volume filter and a market filter. Report the distribution of trade results, not just the average: a few large winners carry the method. Check results year by year, and hold out the last few years for one final test. See [learn-test-backtesting](learn-test-backtesting.md).
+**What to test.** The confirmation length (2–5 sessions), the maximum depth, a volume filter and a market filter. Report the distribution of trade results, not just the average: a few large winners carry the method. Check results year by year, and hold out the last few years for one final test. See [Backtesting honestly](learn-test-backtesting.md).
 
 ```
 state = seek_top
@@ -289,4 +289,4 @@ each session t:
 - Thomas George and Chuan-Yang Hwang, "The 52-Week High and Momentum Investing", *Journal of Finance* (2004).
 - Robert Edwards and John Magee, *Technical Analysis of Stock Trends* (first edition 1948) — rectangles and other ranges.
 - Thomas Bulkowski, *Encyclopedia of Chart Patterns* (Wiley) — statistics on rectangles and other patterns.
-- [learn-bases](learn-bases.md), [learn-chart-patterns](learn-chart-patterns.md), [learn-risk-stops-exits](learn-risk-stops-exits.md).
+- [Bases](learn-bases.md), [Chart patterns](learn-chart-patterns.md), [Stops and exits](learn-risk-stops-exits.md).

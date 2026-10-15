@@ -8,7 +8,7 @@
 - On their own, candle patterns predict very little. Academic tests and our own event study on two markets both find almost no edge.
 - Use candles to describe what happened and to place stops, not as a reason to buy or sell.
 
-This guide covers single bars and short groups of bars. Its companion, [learn-chart-patterns](learn-chart-patterns.md), covers the shapes that several weeks of bars make.
+This guide covers single bars and short groups of bars. Its companion, [Chart patterns](learn-chart-patterns.md), covers the shapes that several weeks of bars make.
 
 ---
 
@@ -137,7 +137,7 @@ The body is the whole range, or nearly so, with almost no wicks. A green maruboz
 
 It is not a classical candlestick. An NR7 is the bar with the narrowest range of the last seven bars. Volatility tends to shrink before it expands.
 
-A cluster of NR7 or inside bars near a pivot is the daily-chart version of a volatility contraction pattern (VCP). In a VCP each pullback in a base is smaller than the last; see [learn-vcp](learn-vcp.md). The direction of the next move comes from which way the price breaks, not from the NR7 itself.
+A cluster of NR7 or inside bars near a pivot is the daily-chart version of a volatility contraction pattern (VCP). In a VCP each pullback in a base is smaller than the last; see [VCP](learn-vcp.md). The direction of the next move comes from which way the price breaks, not from the NR7 itself.
 
 ---
 
@@ -196,7 +196,7 @@ The evening star is the mirror image, at highs. A looser version is the **3-bar 
 
 Three full-bodied candles in a row in the same direction, each closing near its high (or, for crows, its low). After a long decline, three white soldiers mark a real change in how the stock trades.
 
-*Late* in an advance, three ever-larger white soldiers on rising volume start to look like a climax. A climax is a final burst of buying before a top. See the climax-run section in [learn-chart-patterns](learn-chart-patterns.md).
+*Late* in an advance, three ever-larger white soldiers on rising volume start to look like a climax. A climax is a final burst of buying before a top. See the climax-run section in [Chart patterns](learn-chart-patterns.md).
 
 ---
 
@@ -226,11 +226,11 @@ Three full-bodied candles in a row in the same direction, each closing near its 
 
 Candles are best used as a description of how the last few bars behaved at the levels that matter. Most swing methods enter on price levels and chart structure, such as a break through a pivot. They do not buy "because yesterday was a hammer". Candles help in three places.
 
-**1. Judging the entry day.** On the day the price moves through your entry trigger, look at the candle. A full-bodied close near the top of the range, on above-average volume, is what a healthy breakout looks like. A shooting-star close back under the pivot is the first sign of a failed breakout. See [learn-strat-failed-breakouts](learn-strat-failed-breakouts.md).
+**1. Judging the entry day.** On the day the price moves through your entry trigger, look at the candle. A full-bodied close near the top of the range, on above-average volume, is what a healthy breakout looks like. A shooting-star close back under the pivot is the first sign of a failed breakout. See [Failed breakouts and bull traps](learn-strat-failed-breakouts.md).
 
 **2. Placing the stop.** Reversal candles mark natural points where the idea is proven wrong: the hammer's low, the engulfing bar's low. These stops are usually tighter, and more tied to what the price actually did, than a fixed percentage.
 
-**3. Reading a pullback.** When you buy a dip in an uptrend, the candles show what kind of dip it is. An orderly pullback has small-range candles (inside bars, NR7s, dojis) with lower wicks near the rising 50-day average. Distribution has wide red marubozus on rising volume. The pullback can be the same depth with the opposite meaning. See [learn-strat-pullback-support](learn-strat-pullback-support.md).
+**3. Reading a pullback.** When you buy a dip in an uptrend, the candles show what kind of dip it is. An orderly pullback has small-range candles (inside bars, NR7s, dojis) with lower wicks near the rising 50-day average. Distribution has wide red marubozus on rising volume. The pullback can be the same depth with the opposite meaning. See [Pullback to support](learn-strat-pullback-support.md).
 
 ---
 
@@ -276,4 +276,4 @@ What this shows:
 - Steve Nison, *Japanese Candlestick Charting Techniques* — the book that introduced candles to Western traders. Read it for the vocabulary, not for win rates.
 - Thomas Bulkowski, *Encyclopedia of Candlestick Charts* — statistics for each pattern. It is the most honest source on how weak single patterns are.
 - Ben Marshall, Martin Young and Lawrence Rose, "Candlestick technical trading strategies: Can they create value for investors?", *Journal of Banking & Finance* (2006).
-- [learn-chart-patterns](learn-chart-patterns.md), [learn-strat-failed-breakouts](learn-strat-failed-breakouts.md), [learn-strat-pullback-support](learn-strat-pullback-support.md).
+- [Chart patterns](learn-chart-patterns.md), [Failed breakouts and bull traps](learn-strat-failed-breakouts.md), [Pullback to support](learn-strat-pullback-support.md).

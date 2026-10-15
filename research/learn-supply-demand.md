@@ -8,7 +8,7 @@
 - Old highs above the price are overhead supply: holders waiting to sell at breakeven. Stocks near their 52-week high have little of it.
 - Zones are a reading aid, not a proven edge. Their real use is deciding where a stop goes and where a target is asking too much.
 
-This guide explains what supply and demand mean on a chart, how to find and score zones, and when a level changes sides. A base is a demand zone being built; see [learn-bases](learn-bases.md). For the drawn chart shapes, see [learn-chart-patterns](learn-chart-patterns.md).
+This guide explains what supply and demand mean on a chart, how to find and score zones, and when a level changes sides. A base is a demand zone being built; see [Bases](learn-bases.md). For the drawn chart shapes, see [Chart patterns](learn-chart-patterns.md).
 
 ---
 
@@ -72,9 +72,9 @@ You identify a zone by the way the price *left* it, not by the pause itself:
 3. **Judge freshness.** Each time the price comes back to the zone, some of the waiting buy orders get filled and used up. The first retest (the first return to the zone) is the trade; the third is a coin flip. A zone the price has already broken through is gone, so do not keep buying as it falls.
 4. **Judge location.** The zone should sit inside a chart you would want to own anyway: a higher low in an uptrend, or a base inside a Stage 2 advance. The same shape at the bottom of a collapsing downtrend is an attempt to catch a falling knife.
 
-**Trading the retest.** Wait for evidence *inside* the zone: a hammer, a bullish engulfing bar or a tight shelf (see [learn-candlestick-patterns](learn-candlestick-patterns.md)). Enter on that. Put the stop just under the zone: if the demand is real, the price should not trade through it.
+**Trading the retest.** Wait for evidence *inside* the zone: a hammer, a bullish engulfing bar or a tight shelf (see [Candlestick patterns](learn-candlestick-patterns.md)). Enter on that. Put the stop just under the zone: if the demand is real, the price should not trade through it.
 
-Put the target just below the next supply above. The appeal is the reward compared with the risk. The stop is only a zone's width away, while the target is a whole swing's height away. The full trade is in [learn-strat-pullback-support](learn-strat-pullback-support.md).
+Put the target just below the next supply above. The appeal is the reward compared with the risk. The stop is only a zone's width away, while the target is a whole swing's height away. The full trade is in [Pullback to support](learn-strat-pullback-support.md).
 
 ## 3. Supply zones — where sellers are waiting
 
@@ -92,7 +92,7 @@ A rally that approaches one of these levels on fading volume is likely to meet s
 
 ## 4. Role reversal — levels change sides
 
-Salesforce in section 1 showed one direction: an old floor became a ceiling. The other direction is just as common. State Bank of India broke above about ₹614 in December 2023. In January 2024 it dipped under that level during the day, closed back above it, and then ran to about ₹725 (see [learn-strat-pullback-support](learn-strat-pullback-support.md)).
+Salesforce in section 1 showed one direction: an old floor became a ceiling. The other direction is just as common. State Bank of India broke above about ₹614 in December 2023. In January 2024 it dipped under that level during the day, closed back above it, and then ran to about ₹725 (see [Pullback to support](learn-strat-pullback-support.md)).
 
 ```pattern
 role-reversal
@@ -107,7 +107,7 @@ This is called the polarity principle: **broken resistance becomes support; brok
 In practice:
 
 - A shallow, quiet pullback to a broken pivot that holds is the **retest entry**: a second chance at a breakout, usually with a tighter stop.
-- A close back *below* the level the price just climbed above is the failure signal. A breakout that cannot hold its pivot ran into supply after all. See [learn-strat-failed-breakouts](learn-strat-failed-breakouts.md).
+- A close back *below* the level the price just climbed above is the failure signal. A breakout that cannot hold its pivot ran into supply after all. See [Failed breakouts and bull traps](learn-strat-failed-breakouts.md).
 
 ## 5. Scoring a zone — a checklist
 
@@ -126,7 +126,7 @@ ICICI Bank's May 2019 zone scores well. It left fast on heavy volume after four 
 
 Most swing methods do not draw boxes. But they use the same ideas under different names, and the zone vocabulary makes their rules easier to follow.
 
-- **A base is a demand zone being built.** In the sideways stretch after an advance ([learn-bases](learn-bases.md)), buyers take the shares that profit-takers sell. The pivot is the price at which the last of those sellers is gone. The breakout works *because* the sellers above it were used up inside the base. That is why wide-and-loose bases, where the selling was never fully taken up, fail more often.
+- **A base is a demand zone being built.** In the sideways stretch after an advance ([Bases](learn-bases.md)), buyers take the shares that profit-takers sell. The pivot is the price at which the last of those sellers is gone. The breakout works *because* the sellers above it were used up inside the base. That is why wide-and-loose bases, where the selling was never fully taken up, fail more often.
 - **Do not buy directly under supply.** A buy-stop order just under a level full of trapped sellers is likely to lose money. A common rule is to skip an entry that sits within about 3% below an old high. For a pullback entry, wait for the price to *resume* its rise through the swing high the pullback started from, rather than buying the first touch of support.
 - **Put targets just below supply, not inside it.** A measured-move target that sits above a fresh supply level expects the price to cut straight through it. Such targets often never get hit. Cap the target at the nearest old high that is at least one ATR above the entry.
 - **Put stops under demand.** Handle lows, tight-area lows and prior swing lows are all demand. Just below them is where the trade's premise, that buyers are here, is proven wrong.

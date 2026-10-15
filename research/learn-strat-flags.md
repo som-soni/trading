@@ -102,7 +102,7 @@ high-tight-flag
 
 ### Position size
 
-Risk 0.5–1% of capital per trade. Shares = (capital × risk %) ÷ (entry − stop). With a 20% stop and 1% risk, the position is 5% of capital. For high tight flags, consider half the normal risk, because gaps can jump past the stop. See [learn-risk-sizing](learn-risk-sizing.md).
+Risk 0.5–1% of capital per trade. Shares = (capital × risk %) ÷ (entry − stop). With a 20% stop and 1% risk, the position is 5% of capital. For high tight flags, consider half the normal risk, because gaps can jump past the stop. See [Position sizing](learn-risk-sizing.md).
 
 ### Managing the trade
 
@@ -135,8 +135,8 @@ Risk 0.5–1% of capital per trade. Shares = (capital × risk %) ÷ (entry − s
 
 - **Edwards and Magee** (*Technical Analysis of Stock Trends*) describe flags and pennants as pauses that "fly at half-mast": the move after the flag tends to repeat the pole. That is where the measured-move target comes from.
 - **Thomas Bulkowski** (*Encyclopedia of Chart Patterns*) catalogues thousands of flags, pennants and high tight flags. His high tight flag requires a rise of at least 90% in under two months and a pullback of no more than 20%. He reports it among the best-performing patterns, and warns that it is rare.
-- **William O'Neil** lists the high tight flag as the rarest of his bases: a rise of 100–120% in four to eight weeks, then a three-to-five-week pause of 10–25%. See [learn-strat-canslim-breakout](learn-strat-canslim-breakout.md).
-- **Mark Minervini** trades a similar "power play": a stock up 100% or more in under eight weeks that then pauses tightly. See [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+- **William O'Neil** lists the high tight flag as the rarest of his bases: a rise of 100–120% in four to eight weeks, then a three-to-five-week pause of 10–25%. See [CAN SLIM breakouts](learn-strat-canslim-breakout.md).
+- **Mark Minervini** trades a similar "power play": a stock up 100% or more in under eight weeks that then pauses tightly. See [SEPA and the VCP](learn-strat-vcp-sepa.md).
 - **Short-term traders** trade small flags on 5-minute or hourly charts with the same logic. The costs per trade are then much larger compared with the move.
 
 ## 6. Worked examples
@@ -283,7 +283,7 @@ What this shows:
 - The stop (flag low or a late tight low).
 - The exit (target, trailing average, time stop).
 
-Report results in R, with the full distribution. Because high tight flags are few, report the number of trades and use the median as well as the mean. Hold out recent years. See [learn-test-backtesting](learn-test-backtesting.md).
+Report results in R, with the full distribution. Because high tight flags are few, report the number of trades and use the median as well as the mean. Hold out recent years. See [Backtesting honestly](learn-test-backtesting.md).
 
 ```
 each session t, each liquid stock:
@@ -321,4 +321,4 @@ manage: stop first; sell half at target; rest on a close below the 20-day; time 
 - Mark Minervini, *Think & Trade Like a Champion* (2017) — the power play.
 - Andrew Lo, Harry Mamaysky and Jiang Wang, "Foundations of Technical Analysis", *Journal of Finance* (2000).
 - Narasimhan Jegadeesh and Sheridan Titman, "Returns to Buying Winners and Selling Losers", *Journal of Finance* (1993).
-- [learn-chart-patterns](learn-chart-patterns.md), [learn-price-volume](learn-price-volume.md), [learn-risk-stops-exits](learn-risk-stops-exits.md).
+- [Chart patterns](learn-chart-patterns.md), [Volume](learn-price-volume.md), [Stops and exits](learn-risk-stops-exits.md).

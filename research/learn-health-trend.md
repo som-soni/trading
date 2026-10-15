@@ -146,7 +146,7 @@ caption: 2021: Stage 2, not one weekly close below the line. Early 2022: Stage 3
 
 In 2021 the index closed below its 30-week line in **none of its 53 weeks**. In 2022 it closed below in **41 of 52**. In 2023 it closed below in 4 weeks. The line here is a 30-week simple average of weekly closes.
 
-Stan Weinstein described four stages in a stock's life, read off this 30-week moving average. He wrote them for stocks ([learn-bases.md](learn-bases.md), [learn-price-stages](learn-price-stages.md)), but they work just as well on an index:
+Stan Weinstein described four stages in a stock's life, read off this 30-week moving average. He wrote them for stocks ([Bases](learn-bases.md), [Stages and trend in a stock](learn-price-stages.md)), but they work just as well on an index:
 
 | Stage | Index above its 30-week line? | 30-week line | Trader's posture |
 |---|---|---|---|
@@ -248,7 +248,7 @@ Few of these readings need to change a decision directly. Two common uses:
 
 The downgrade switches on and off quickly. Take SPY (the S&P 500 fund) and QQQ (the Nasdaq 100 fund). Since 2010 both were below their 50-day on about 23% of sessions. That happened in seven or eight spells a year, with a median length of three sessions. **Read it as "be pickier today", not as a change in the market's condition.**
 
-A slower filter blocks new buys while the index is below its 200-day, or while its 50-day is below its 200-day. Open positions are left alone. Some versions wait a few sessions after the index recovers before buying again. [learn-strat-regime-filters](learn-strat-regime-filters.md) covers these filters as part of a strategy.
+A slower filter blocks new buys while the index is below its 200-day, or while its 50-day is below its 200-day. Open positions are left alone. Some versions wait a few sessions after the index recovers before buying again. [Regime filters](learn-strat-regime-filters.md) covers these filters as part of a strategy.
 
 ## 8. What a trader does with it
 
@@ -302,4 +302,4 @@ Two or three warnings together justify a rung down; one alone usually does not.
   market are read together, and trading smaller when the market is weak.
 - Mebane Faber, "A Quantitative Approach to Tactical Asset Allocation"
   (Journal of Wealth Management, 2007) — the 10-month moving-average rule.
-- [learn-strat-regime-filters](learn-strat-regime-filters.md) — market filters inside a trading strategy.
+- [Regime filters](learn-strat-regime-filters.md) — market filters inside a trading strategy.

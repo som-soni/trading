@@ -10,7 +10,7 @@
 
 This guide covers what a quarterly report contains, why growth is measured year over year, and why accelerating earnings sit behind most big winners. It then measures what a "beat" means and how big the results-day move usually is. Every reaction figure is measured on stored daily prices and filing dates, and the method is stated each time.
 
-Related guides: [the calendar guide](learn-macro-calendar.md) for earnings season, [learn-fund-valuation](learn-fund-valuation.md) for valuation, and [learn-fund-quality](learn-fund-quality.md) for margins, returns on capital and a full growth checklist.
+Related guides: [the calendar guide](learn-macro-calendar.md) for earnings season, [Valuation for traders](learn-fund-valuation.md) for valuation, and [Quality and the growth checklist](learn-fund-quality.md) for margins, returns on capital and a full growth checklist.
 
 ---
 
@@ -57,7 +57,7 @@ His **A** asks for strong annual growth over three years. That way one good quar
 
 **Minervini** looks only at stocks already in a Stage 2 uptrend (the rising phase of a stock's cycle). Then he wants **EPS, sales and margins accelerating together**. Three quarters in a row of all three rising is what he calls "Code 33". He treats **deceleration** — growth slowing two quarters running — as a sign the best of the move may be over.
 
-A checklist built on these ideas usually asks: EPS growth of at least 25%, growth accelerating, sales growth of at least 20% or rising, and margins up. It also flags two quarters of slowing growth. The full checklist and how to read it are in [the quality guide](learn-fund-quality.md). The trading method built on it is in [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+A checklist built on these ideas usually asks: EPS growth of at least 25%, growth accelerating, sales growth of at least 20% or rising, and margins up. It also flags two quarters of slowing growth. The full checklist and how to read it are in [the quality guide](learn-fund-quality.md). The trading method built on it is in [SEPA and the VCP](learn-strat-vcp-sepa.md).
 
 **Sales must confirm.** EPS can rise through share buybacks, a lower tax rate, cost cuts or a one-off gain. Revenue is much harder to manage. **Strong EPS on flat sales has a ceiling. Strong EPS on fast-rising sales does not — yet.**
 

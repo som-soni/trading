@@ -157,13 +157,13 @@ Two things to hold on to while reading any backtest result:
 
 | if you want to know | read |
 |---|---|
-| whether the market as a whole is healthy | [learn-health-trend.md](learn-health-trend.md), then [learn-health-breadth.md](learn-health-breadth.md) |
-| why interest rates move share prices | [learn-macro-rates.md](learn-macro-rates.md) |
-| how much to buy, and where the stop goes | [learn-risk-sizing.md](learn-risk-sizing.md), [learn-risk-stops-exits.md](learn-risk-stops-exits.md) |
-| whether a method makes money at all | [learn-risk-expectancy.md](learn-risk-expectancy.md) |
-| what the shapes on a chart mean | [learn-candlestick-patterns.md](learn-candlestick-patterns.md), [learn-chart-patterns.md](learn-chart-patterns.md) |
-| which trading strategies exist and how they compare | [learn-strat-overview.md](learn-strat-overview.md) |
-| how futures and options work | [learn-fno-overview.md](learn-fno-overview.md) |
+| whether the market as a whole is healthy | [Reading the market's trend](learn-health-trend.md), then [Breadth](learn-health-breadth.md) |
+| why interest rates move share prices | [Interest rates and central banks](learn-macro-rates.md) |
+| how much to buy, and where the stop goes | [Position sizing](learn-risk-sizing.md), [Stops and exits](learn-risk-stops-exits.md) |
+| whether a method makes money at all | [Expectancy](learn-risk-expectancy.md) |
+| what the shapes on a chart mean | [Candlestick patterns](learn-candlestick-patterns.md), [Chart patterns](learn-chart-patterns.md) |
+| which trading strategies exist and how they compare | [Strategies](learn-strat-overview.md) |
+| how futures and options work | [Futures & options](learn-fno-overview.md) |
 
 ## 9. Checklist
 

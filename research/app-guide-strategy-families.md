@@ -9,7 +9,7 @@ and — for the ones this app implements — what the backtests actually found.
 It is a companion to
 [app-guide-screens-strategies.md](app-guide-screens-strategies.md)
 (where a rule belongs) and
-[learn-system-filters.md](learn-system-filters.md) (how a candidate is
+[The filter stack](learn-system-filters.md) (how a candidate is
 narrowed to a trade).
 
 **Where this shows up in the app.** Every strategy in **Strategies** names

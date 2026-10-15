@@ -336,5 +336,5 @@ held through, rung respected? If so, take the next setup at normal size. Size is
 - Mark Douglas, *Trading in the Zone* — rules made in advance over any one outcome.
 - Atul Gawande, *The Checklist Manifesto* — why short written checklists work under pressure.
 - Mark Minervini, *Think & Trade Like a Champion* — a practitioner's risk, position and exit rules.
-- [learn-process-journal.md](learn-process-journal.md) and
-  [learn-process-biases.md](learn-process-biases.md) — the next two guides.
+- [Journaling and review](learn-process-journal.md) and
+  [Biases](learn-process-biases.md) — the next two guides.

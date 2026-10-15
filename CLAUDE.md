@@ -165,12 +165,18 @@ It fails on a guide missing from any registry, a registration with no file, a
 topic whose vocabulary disagrees across the two static files, a topic that
 would render an empty sub-menu, a missing H1 or a placeholder blurb.
 
-**The Learn section stands on its own.** Guides are written for a reader who
-has only this app: no references to outside documents, PDFs or private
-notes, and no IDs, archetype codes or vocabulary borrowed from them. Outside
-material may inform the structure of a guide; it is never cited in one, and
-its numbers are never quoted. Every figure in a guide comes from a constant
-or a measurement in this repository, and where neither exists the guide says
-so rather than asserting a number. Keep the house sections — "What the
-evidence says" and a checklist — and let them report nulls when that is what
-the backtests found.
+**The Learn section stands on its own.** It is a self-contained course —
+macro, the market, a stock, then strategies and F&O — readable without the app:
+no app page or menu names, file paths, code names, table names, or "this app".
+It may *use* the stored data (its ```series charts and measured examples), never
+describe where it lives. It never cites the owner's strategy backtests
+(`report_runs` / `report_tables`, strategy `status` texts): those strategies are
+still being refined. Evidence comes from published research (stated accurately),
+event studies on stored market data, simulations with stated assumptions, or
+illustrative textbook-rule trades labelled as such. Outside documents may inform
+a guide's structure but are never cited, and their numbers are never quoted.
+Write plainly: an "In short" block of 3–5 bullets, example before rule, short
+paragraphs and sentences, tables for numbers; link other guides by their title.
+`PYTHONPATH=. .venv/bin/python -m tests.test_learn_style` enforces the measurable
+part. App-specific material belongs in the app manual, `research/app-guide-*.md`
+(Library → Research), which may name pages, code and constants.

@@ -44,7 +44,7 @@ The name is a list of seven letters, each a filter on the stock or the market:
 | I | Institutional sponsorship | Are more funds buying the stock? |
 | M | Market direction | Is the overall market in an uptrend? |
 
-The base breakout is the entry; the letters decide which breakouts deserve your money. This guide covers both. For how bases form, read [learn-bases](learn-bases.md); for the shapes, [learn-chart-patterns](learn-chart-patterns.md).
+The base breakout is the entry; the letters decide which breakouts deserve your money. This guide covers both. For how bases form, read [Bases](learn-bases.md); for the shapes, [Chart patterns](learn-chart-patterns.md).
 
 ## 2. When it works and when it doesn't
 
@@ -75,9 +75,9 @@ The rules below are written so that each one can be checked by a program. Every 
 - **A — annual earnings.** Annual EPS grew at least 25% in each of the last three years. Return on equity is at least 17%.
 - **N — new high.** The pivot is within 15% of the 52-week high, and ideally the breakout makes a new 52-week high.
 - **S — supply and demand.** Over the last 50 sessions, total volume on up days exceeds total volume on down days.
-- **L — leader.** The stock's 12-month price performance ranks in the top 20% of all stocks (a percentile of 80 or more). See [learn-price-rs](learn-price-rs.md).
+- **L — leader.** The stock's 12-month price performance ranks in the top 20% of all stocks (a percentile of 80 or more). See [Relative strength](learn-price-rs.md).
 - **I — institutional sponsorship.** The number of funds holding the stock rose last quarter. In India, use the quarterly shareholding pattern: combined FII and DII holding is higher than a quarter ago.
-- **M — market direction.** The index (Nifty 500 or S&P 500) closes above its 50-day average. It has had at most 4 distribution days in the last 25 sessions. See [learn-health-distribution](learn-health-distribution.md).
+- **M — market direction.** The index (Nifty 500 or S&P 500) closes above its 50-day average. It has had at most 4 distribution days in the last 25 sessions. See [Distribution days and the follow-through day](learn-health-distribution.md).
 
 ### Setup
 
@@ -121,12 +121,12 @@ Sell if the price falls 7–8% below your buy price. O'Neil treats this as absol
 - **Profit target.** Sell most of the position when the gain reaches 20–25%.
 - **The 8-week rule.** If the stock gains 20% or more within three weeks (15 sessions) of the breakout, hold it for at least eight weeks (40 sessions) from the breakout. The stop still applies. The idea: a stock that moves this fast may be a big leader, and selling at 20% gives up the rest.
 - **Trend break.** After the 8 weeks, sell on a close below the 50-day average on volume at least 1.4 times average.
-- **Climax.** Sell into a run of unusually large up days late in a long advance (see [learn-price-volume](learn-price-volume.md)).
+- **Climax.** Sell into a run of unusually large up days late in a long advance (see [Volume](learn-price-volume.md)).
 - **Market.** When the M filter turns off, buy nothing new, and tighten stops on what you hold.
 
 ### Position size
 
-O'Neil ran concentrated portfolios of a handful of stocks. A rule-based version sizes each trade from its stop. Risk a fixed 0.5–1% of capital per trade. With an 8% stop and 1% risk, that is a position of 12.5% of capital. See [learn-risk-sizing](learn-risk-sizing.md).
+O'Neil ran concentrated portfolios of a handful of stocks. A rule-based version sizes each trade from its stop. Risk a fixed 0.5–1% of capital per trade. With an 8% stop and 1% risk, that is a position of 12.5% of capital. See [Position sizing](learn-risk-sizing.md).
 
 ### Managing the trade
 
@@ -148,7 +148,7 @@ O'Neil ran concentrated portfolios of a handful of stocks. A rule-based version 
 | Pivot vs 52-week high (N) | within 15% | Leadership | 0% means "only new highs" |
 | Up/down volume (S), 50 sessions | above 1.0 | Accumulation | Noisy on its own |
 | RS percentile (L) | 80 (70–90) | Leadership | See section 8: the effect is small in our data |
-| Distribution days allowed (M) | 4 in 25 sessions | Market health | See [learn-health-distribution](learn-health-distribution.md) |
+| Distribution days allowed (M) | 4 in 25 sessions | Market health | See [Distribution days and the follow-through day](learn-health-distribution.md) |
 | Prior advance into the base | 30% | Trend before the base | 20–50% |
 | Cup length | 7–65 weeks | Base maturity | Short cups fail more often |
 | Cup depth | 12–33% | Damage in the base | Up to 50% after a bear market |
@@ -167,9 +167,9 @@ O'Neil ran concentrated portfolios of a handful of stocks. A rule-based version 
 
 - **O'Neil's original**, in *How to Make Money in Stocks*. The rules above follow it. Later editions added a stricter view of the market direction, using follow-through days and distribution days.
 - **Gil Morales and Chris Kacher**, former O'Neil portfolio managers, in *Trade Like an O'Neil Disciple*. They add earlier entries: the "pocket pivot" (a volume surge inside the base, before the pivot) and the "buyable gap-up" (a large gap on news, bought with a stop near the gap day's low).
-- **Mark Minervini's SEPA** uses the same idea with a stricter trend filter and tighter bases. It is covered in [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
-- **Nicolas Darvas** bought new highs out of tight boxes a decade before O'Neil. His box is close to O'Neil's flat base. See [learn-strat-darvas](learn-strat-darvas.md).
-- **Flags and high tight flags** are the fastest bases. O'Neil lists the high tight flag as a separate, rare pattern. See [learn-strat-flags](learn-strat-flags.md).
+- **Mark Minervini's SEPA** uses the same idea with a stricter trend filter and tighter bases. It is covered in [SEPA and the VCP](learn-strat-vcp-sepa.md).
+- **Nicolas Darvas** bought new highs out of tight boxes a decade before O'Neil. His box is close to O'Neil's flat base. See [Darvas boxes](learn-strat-darvas.md).
+- **Flags and high tight flags** are the fastest bases. O'Neil lists the high tight flag as a separate, rare pattern. See [Flags, pennants and high tight flags](learn-strat-flags.md).
 
 ## 6. Worked examples
 
@@ -262,7 +262,7 @@ caption: The M letter turned off about two weeks before the stock's stop was hit
 
 **Published research that supports parts of the method:**
 
-- **Earnings surprises keep moving prices.** Stocks with strong earnings surprises tend to keep drifting in the same direction for weeks (Bernard and Thomas, 1989; Chan, Jegadeesh and Lakonishok, 1996). This supports the C letter. See [learn-fund-earnings](learn-fund-earnings.md).
+- **Earnings surprises keep moving prices.** Stocks with strong earnings surprises tend to keep drifting in the same direction for weeks (Bernard and Thomas, 1989; Chan, Jegadeesh and Lakonishok, 1996). This supports the C letter. See [Earnings that move stocks](learn-fund-earnings.md).
 - **Momentum.** Stocks that rose most over the past 3–12 months tended to keep outperforming over the next few months (Jegadeesh and Titman, 1993). This supports the L letter.
 - **Nearness to the 52-week high.** Stocks close to their 52-week high outperformed those far from it (George and Hwang, 2004). This supports the N letter.
 - **Unusual volume.** Stocks with unusually high trading volume tended to rise over the following month (Gervais, Kaniel and Mingelgrin, 2001). This is related to, but not the same as, breakout-day volume.
@@ -340,7 +340,7 @@ A round trip in India costs roughly 0.25–0.35% before slippage. Breakout entri
 
 - the number of trades per year, the win rate, and the average win and loss in R (multiples of the initial risk);
 - expectancy, the worst losing streak, and drawdown;
-- results split by market regime and by year. See [learn-test-backtesting](learn-test-backtesting.md).
+- results split by market regime and by year. See [Backtesting honestly](learn-test-backtesting.md).
 
 ```
 for each session t:
@@ -382,4 +382,4 @@ manage each open trade daily:
 - Narasimhan Jegadeesh and Sheridan Titman, "Returns to Buying Winners and Selling Losers", *Journal of Finance* (1993).
 - Thomas George and Chuan-Yang Hwang, "The 52-Week High and Momentum Investing", *Journal of Finance* (2004).
 - Simon Gervais, Ron Kaniel and Dan Mingelgrin, "The High-Volume Return Premium", *Journal of Finance* (2001).
-- [learn-bases](learn-bases.md), [learn-chart-patterns](learn-chart-patterns.md), [learn-health-distribution](learn-health-distribution.md), [learn-risk-stops-exits](learn-risk-stops-exits.md).
+- [Bases](learn-bases.md), [Chart patterns](learn-chart-patterns.md), [Distribution days and the follow-through day](learn-health-distribution.md), [Stops and exits](learn-risk-stops-exits.md).

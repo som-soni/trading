@@ -5,7 +5,7 @@ tells you what to *do about it*. They are judged differently, they fail
 differently, and the most common structural mistake in a trading system is
 letting one do the other's job.
 
-Companion guides: [learn-system-filters.md](learn-system-filters.md) (the
+Companion guides: [The filter stack](learn-system-filters.md) (the
 stages between a universe and a trade) and
 [app-guide-strategy-families.md](app-guide-strategy-families.md) (what the bet is).
 

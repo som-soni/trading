@@ -8,7 +8,7 @@
 - Context decides meaning. The same shape after a rise is a pause; after a fall it is usually just a bounce.
 - In broad data the shapes alone are a weak edge. Use them to place triggers and stops, and get the edge from the stock, the market and the exits.
 
-This guide covers the shapes that several weeks of bars make. Its companion, [learn-candlestick-patterns](learn-candlestick-patterns.md), covers single bars. For how traders turn each pattern into a full trade, see the strategy guides linked in each section.
+This guide covers the shapes that several weeks of bars make. Its companion, [Candlestick patterns](learn-candlestick-patterns.md), covers single bars. For how traders turn each pattern into a full trade, see the strategy guides linked in each section.
 
 ---
 
@@ -45,7 +45,7 @@ Three consequences follow:
 
 Each pattern below is described the same way: its key points, the context it needs, its shape, its volume, then its trigger, invalidation and target.
 
-For targets, the classical rule is the **measured move**. You add the pattern's height, or the height of the prior advance (the "pole"), to the pivot. Treat it as a first estimate, not a promise. Cap it at the real resistance above, such as an old high where sellers may be waiting (see [learn-supply-demand](learn-supply-demand.md)).
+For targets, the classical rule is the **measured move**. You add the pattern's height, or the height of the prior advance (the "pole"), to the pivot. Treat it as a first estimate, not a promise. Cap it at the real resistance above, such as an old high where sellers may be waiting (see [Supply and demand](learn-supply-demand.md)).
 
 ---
 
@@ -67,7 +67,7 @@ What makes a *good* cup:
 
 Red flags: V-shaped cups, handles that form in the lower half or drop fast, and wide, choppy price swings throughout.
 
-Trigger: a close above the handle high on rising volume. Invalidation: the handle low. Measured move: the cup's depth. A **cup without a handle** is the same cup with the price still at the rim; the pivot is the rim itself. For the full trade, see [learn-strat-canslim-breakout](learn-strat-canslim-breakout.md).
+Trigger: a close above the handle high on rising volume. Invalidation: the handle low. Measured move: the cup's depth. A **cup without a handle** is the same cup with the price still at the rim; the pivot is the rim itself. For the full trade, see [CAN SLIM breakouts](learn-strat-canslim-breakout.md).
 
 ### Double bottom
 
@@ -110,7 +110,7 @@ Boxes stack: a breakout from one box becomes the floor of the next. That was Nic
 flat-base
 ```
 
-Trigger: the box high. Invalidation: the box low. Measured move: a tight box's own height is too small to be a useful target, so some traders add the **prior advance** instead. For the full trade, see [learn-strat-darvas](learn-strat-darvas.md).
+Trigger: the box high. Invalidation: the box low. Measured move: a tight box's own height is too small to be a useful target, so some traders add the **prior advance** instead. For the full trade, see [Darvas boxes](learn-strat-darvas.md).
 
 ### Bull flag
 
@@ -122,7 +122,7 @@ The rare, famous variant is the **high tight flag**: a gain of 80% or more, of w
 bull-flag
 ```
 
-Trigger: the pole high. Invalidation: the flag low. Measured move: the pole height. The old saying is that "flags fly at half mast": the flag sits halfway up, and the move after it repeats the pole. For the full trade, see [learn-strat-flags](learn-strat-flags.md).
+Trigger: the pole high. Invalidation: the flag low. Measured move: the pole height. The old saying is that "flags fly at half mast": the flag sits halfway up, and the move after it repeats the pole. For the full trade, see [Flags, pennants and high tight flags](learn-strat-flags.md).
 
 ### Ascending triangle
 
@@ -144,7 +144,7 @@ A cup with handle *is* a VCP with two contractions: the cup, then the smaller ha
 vcp
 ```
 
-Trigger: the final contraction's high. Invalidation: the final contraction's low. That is what makes VCPs attractive: the stop is *close*, so even a modest move pays a lot compared with what you risk. See [learn-vcp](learn-vcp.md) for how to read one, and [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md) for the full trade.
+Trigger: the final contraction's high. Invalidation: the final contraction's low. That is what makes VCPs attractive: the stop is *close*, so even a modest move pays a lot compared with what you risk. See [VCP](learn-vcp.md) for how to read one, and [SEPA and the VCP](learn-strat-vcp-sepa.md) for the full trade.
 
 ---
 
@@ -184,12 +184,12 @@ A climax run marks the moment the last buyers arrive. Minervini and O'Neil both 
 The pattern makes the stock worth watching. The breakout is the actual trade. Here is what separates a real breakout from a false one, roughly in order of importance:
 
 1. **Volume.** On the breakout day, volume should be clearly above average. A common rule is at least 1.4 times the 50-day average. A pivot cleared on low volume is more likely to fail, as Amazon's was in 2022.
-2. **Where it closes.** You want a full-bodied close above the pivot, near the day's high (see [learn-candlestick-patterns](learn-candlestick-patterns.md)). A move above the pivot during the day that closes back inside the base is not a breakout.
+2. **Where it closes.** You want a full-bodied close above the pivot, near the day's high (see [Candlestick patterns](learn-candlestick-patterns.md)). A move above the pivot during the day that closes back inside the base is not a breakout.
 3. **Tightness just before.** The best breakouts come after the quietest final stretch: inside bars and NR7s (the narrowest bar of the last seven) at the pivot. Wide, choppy trading at the pivot means big holders are selling into the base (distribution), not buying.
 4. **Follow-through.** Real breakouts usually keep going without falling back much. A close back below the pivot, and then below the breakout day's low, is a strong sign of failure. A *shallow, quiet* first pullback to the pivot that holds is normal. It is often a second chance to buy, the "retest".
 5. **Market and group.** In weak markets and weak industry groups, breakouts fail in large numbers. Check the market's trend and the stock's group before you trust any breakout.
 
-What happens after a failure, and how to trade it, is in [learn-strat-failed-breakouts](learn-strat-failed-breakouts.md). Buying the retest is in [learn-strat-pullback-support](learn-strat-pullback-support.md).
+What happens after a failure, and how to trade it, is in [Failed breakouts and bull traps](learn-strat-failed-breakouts.md). Buying the retest is in [Pullback to support](learn-strat-pullback-support.md).
 
 ---
 

@@ -8,7 +8,7 @@
 - Measured on stored prices, a typical Stage 2 lasts five to six months from the day it qualifies. Most of the gain comes from a minority of long runs.
 - A trend filter narrows the list to better-than-average stocks. It is not a trading system on its own: the entry, stop and exit still decide the result.
 
-This guide is about the trend of a single stock. [The index trend guide](learn-health-trend.md) does the same for the whole market. For the basic words (moving average, 52-week high), start with [learn-start-here](learn-start-here.md).
+This guide is about the trend of a single stock. [The index trend guide](learn-health-trend.md) does the same for the whole market. For the basic words (moving average, 52-week high), start with [Start here](learn-start-here.md).
 
 ---
 
@@ -282,16 +282,16 @@ Looser trend filters, over six months, for comparison:
 
 A trend filter only says which stocks to look at. It does not say when to buy, where the stop goes or when to sell. Section 8 shows why that matters: the typical Stage 2 run gave back its gain before the 200-day rule said sell.
 
-Published research points the same way. Momentum portfolios have earned more than the market on average, but with rare, deep crashes, often when a bear market turns up sharply (Daniel and Moskowitz, 2016). Timing rules on a long average, such as a 10-month line, have mainly cut drawdowns on whole asset classes rather than raised returns (Faber, 2007). Neither result tells you how a single-stock trend rule will trade. That has to be tested with entries, stops and costs (see [learn-test-backtesting](learn-test-backtesting.md)).
+Published research points the same way. Momentum portfolios have earned more than the market on average, but with rare, deep crashes, often when a bear market turns up sharply (Daniel and Moskowitz, 2016). Timing rules on a long average, such as a 10-month line, have mainly cut drawdowns on whole asset classes rather than raised returns (Faber, 2007). Neither result tells you how a single-stock trend rule will trade. That has to be tested with entries, stops and costs (see [Backtesting honestly](learn-test-backtesting.md)).
 
 ## 10. What the trader does
 
-1. **Check the market's stage first** ([learn-health-trend](learn-health-trend.md)). Most stocks move with the market. Traders hold that breakouts fail more often while the index falls; that guide explains why. A market-level filter is covered in [learn-strat-regime-filters](learn-strat-regime-filters.md).
+1. **Check the market's stage first** ([Reading the market's trend](learn-health-trend.md)). Most stocks move with the market. Traders hold that breakouts fail more often while the index falls; that guide explains why. A market-level filter is covered in [Regime filters](learn-strat-regime-filters.md).
 2. **Fish in the Stage 2 list.** Start from the stocks passing the Trend Template. When the list is short, look at the names that stay on it: they are the leaders.
 3. **Prefer early Stage 2.** The 30-week line just turned up, a first or second base, the price not far above its 200-day. A stock three times its 200-day is late, however strong it looks.
-4. **Buy a setup, not a stage.** Stage 2 says *which* stock. The entry comes from a base and a breakout ([learn-bases](learn-bases.md), [learn-vcp](learn-vcp.md)), with a stop under it ([learn-risk-stops-exits](learn-risk-stops-exits.md)). Full methods built on Stage 2 are in [learn-strat-stage-analysis](learn-strat-stage-analysis.md) and [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+4. **Buy a setup, not a stage.** Stage 2 says *which* stock. The entry comes from a base and a breakout ([Bases](learn-bases.md), [VCP](learn-vcp.md)), with a stop under it ([Stops and exits](learn-risk-stops-exits.md)). Full methods built on Stage 2 are in [Stage analysis](learn-strat-stage-analysis.md) and [SEPA and the VCP](learn-strat-vcp-sepa.md).
 5. **Watch the swings in the stocks you own.** The first lower high, then a lower low, is the Stage 3 warning. Sell into strength or tighten the stop. Do not wait for the 200-day: by then Trent was 26% off its peak and Super Micro 47%.
-6. **Own nothing in Stage 4.** A stock below a falling 30-week line is not cheap; it is in a downtrend. Put it on a watchlist for the next Stage 1. Shorting Stage 4 is covered in [learn-strat-stage4-shorts](learn-strat-stage4-shorts.md).
+6. **Own nothing in Stage 4.** A stock below a falling 30-week line is not cheap; it is in a downtrend. Put it on a watchlist for the next Stage 1. Shorting Stage 4 is covered in [Shorting Stage 4 stocks](learn-strat-stage4-shorts.md).
 
 ## 11. What the evidence says
 

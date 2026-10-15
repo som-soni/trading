@@ -183,7 +183,7 @@ The same year, by company:
 
 High-P/E stocks lost most, while JPMorgan's P/E *rose*. That is the duration effect explained in [the rates guide](learn-macro-rates.md). The further in the future a company's profits lie, the more a rise in rates cuts their value today.
 
-A rate shock is a problem for the whole market. It shows first in the market's trend and breadth ([learn-health-trend](learn-health-trend.md)). The fix is to hold less in the market, not to hunt for low P/Es.
+A rate shock is a problem for the whole market. It shows first in the market's trend and breadth ([Reading the market's trend](learn-health-trend.md)). The fix is to hold less in the market, not to hunt for low P/Es.
 
 ### 7.2 Late in a run: extreme multiples
 
@@ -200,7 +200,7 @@ caption: A ×14.5 move, about ninefold of it from re-rating. From the March 2024
 
 A P/E that has risen several times over is not a sell signal. NVIDIA spent most of 2023 above 100× and kept rising. But a high multiple measures **fragility**. Nothing in the valuation holds the price up, so any disappointment cuts the price at once.
 
-So tighten the stop, sell part of the position into very fast, steep run-ups, and expect gaps ([learn-risk-stops-exits](learn-risk-stops-exits.md)).
+So tighten the stop, sell part of the position into very fast, steep run-ups, and expect gaps ([Stops and exits](learn-risk-stops-exits.md)).
 
 **Mean-reversion and value approaches** are where valuation earns its place. If you buy weakness, expecting the price to bounce back, you need a fair value for it to return *to*. A common rule set asks for high quality, an attractive valuation, and a pullback. It never buys a stock in free fall, such as one more than 15% below its 200-day average.
 
@@ -219,7 +219,7 @@ Median trailing P/E of seven US banks (JPM, BAC, WFC, GS, MS, USB, PNC) against 
 
 Banks earn their profit from borrowed money, and their profits rise and fall with the economy. They are valued on book value and trade at P/Es in the low teens. Software has high margins and recurring revenue, and needs little capital. So it usually trades at several times a bank's P/E. A bank at 18× is expensive; software at 25× may be cheap.
 
-The software median halved in 2025–26 (Adobe at 13×). That was a sector de-rating. It showed as weak group relative strength long before it looked like "cheapness" ([learn-sectors-groups](learn-sectors-groups.md)). Cyclical companies are the opposite trap: **their P/E is lowest when their earnings peak** ([learn-macro-cycle](learn-macro-cycle.md)).
+The software median halved in 2025–26 (Adobe at 13×). That was a sector de-rating. It showed as weak group relative strength long before it looked like "cheapness" ([Sectors and groups](learn-sectors-groups.md)). Cyclical companies are the opposite trap: **their P/E is lowest when their earnings peak** ([Growth and the business cycle](learn-macro-cycle.md)).
 
 ## 9. India — higher multiples as the norm
 
@@ -262,13 +262,13 @@ Government-owned (PSU) banks and energy companies sit low; Coal India was about 
 
 ## 10. What the trader does with valuation
 
-1. **Time entries with growth and price action**: trend, relative strength, base, breakout, accelerating earnings ([learn-fund-earnings](learn-fund-earnings.md)). None of these needs a valuation filter.
+1. **Time entries with growth and price action**: trend, relative strength, base, breakout, accelerating earnings ([Earnings that move stocks](learn-fund-earnings.md)). None of these needs a valuation filter.
 2. **Do not avoid or short a leader for a high P/E alone.** Big winners came disproportionately from high-P/E and loss-making stocks (section 4). Short a broken chart, not a high P/E.
 3. **Valuation is context and a risk flag.** Suppose the P/E has tripled in a year, or sits far above its own history while growth slows. Then use a smaller size, a tighter trailing stop, and sell into strength. Do not sell before the chart breaks.
 4. **Check the EPS before trusting the P/E** (one-offs, split errors).
 5. **Compare within the peer group.** A leader at twice its peers' P/E should be growing much faster.
-6. **When rates jump, hold less** in high-P/E stocks ([learn-macro-rates](learn-macro-rates.md)).
-7. **For long-term or buy-the-dip money, valuation comes first** ([learn-fund-quality](learn-fund-quality.md)).
+6. **When rates jump, hold less** in high-P/E stocks ([Interest rates and central banks](learn-macro-rates.md)).
+7. **For long-term or buy-the-dip money, valuation comes first** ([Quality and the growth checklist](learn-fund-quality.md)).
 
 ## 11. What the evidence says
 

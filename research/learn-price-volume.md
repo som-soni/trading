@@ -259,7 +259,7 @@ Results days usually have the heaviest volume of a stock's quarter. That is why 
 
 A gap on results is new information arriving all at once. The volume says how many holders acted on it. A **gap up on very heavy volume that holds** for the next days shows that many buyers changed their view of the company. Meta on 2 February 2023 (above: +23.3% on 4.7×) is another example. A gap that is sold back into within days, on heavy volume, says the opposite.
 
-**Many swing traders avoid new trades in the 10 days before results.** A results gap is something you react to afterwards, not something to hold through by design. Trading the reaction is covered in [learn-strat-earnings-gaps](learn-strat-earnings-gaps.md).
+**Many swing traders avoid new trades in the 10 days before results.** A results gap is something you react to afterwards, not something to hold through by design. Trading the reaction is covered in [Earnings gaps and episodic pivots](learn-strat-earnings-gaps.md).
 
 ## 9. India: what is different
 

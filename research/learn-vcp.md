@@ -8,7 +8,7 @@
 - Measure every VCP you study as a "footprint": weeks, deepest and last pullback, and number of pullbacks.
 - Strict VCPs are rare, and in broad data the shape alone did not beat other breakouts. Use it to time a low-risk entry in a stock you already have reasons to own.
 
-This guide is about reading the pattern. A VCP is a particular way of looking at a base, so read [learn-bases](learn-bases.md) first. For the full trading method built on it, see [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+This guide is about reading the pattern. A VCP is a particular way of looking at a base, so read [Bases](learn-bases.md) first. For the full trading method built on it, see [SEPA and the VCP](learn-strat-vcp-sepa.md).
 
 ---
 
@@ -130,8 +130,8 @@ The appeal is a much closer stop (the shelf low) and a lower price. The cost is 
 ## 6. Where the stop goes, and what happens next
 
 - **Initial stop:** just below the tight low. Never more than about 8% below your buy price; 10% is the absolute limit. If the chart needs a wider stop, don't take the trade, and never widen the stop.
-- **Size the position from the stop:** risk about 1% of the account per trade (see [learn-risk-sizing](learn-risk-sizing.md)). A tight VCP stop is what lets you hold a meaningful position while risking little.
-- **Failed breakout:** if the price closes back under the pivot within the first few days, the breakout may be failing. Good breakouts usually keep going without falling back much. See [learn-strat-failed-breakouts](learn-strat-failed-breakouts.md).
+- **Size the position from the stop:** risk about 1% of the account per trade (see [Position sizing](learn-risk-sizing.md)). A tight VCP stop is what lets you hold a meaningful position while risking little.
+- **Failed breakout:** if the price closes back under the pivot within the first few days, the breakout may be failing. Good breakouts usually keep going without falling back much. See [Failed breakouts and bull traps](learn-strat-failed-breakouts.md).
 - **Protect gains:** once the trade is up two to three times the initial risk, move the stop to your buy price (breakeven). It is common to sell part of the position while the price is still rising, for example a third at three times the risk.
 - **Exit on a climax or a trend break:** a run of unusually large up days late in a move, or a close under the 50-day average on heavy volume.
 
@@ -167,7 +167,7 @@ A good detector also records the first rule a stock fails, such as "contractions
 
 **Minervini's record.** He won the US Investing Championship in 1997 and describes his methods and results in his books. That shows the method can be traded well by a skilled trader. It does not show how often the pattern works for others.
 
-**Published research.** No academic study tests the VCP itself. Lo, Mamaysky and Wang (2000) found that computer-detected chart patterns carry a little information about future returns, far less than practitioners claim. The research behind momentum and the 52-week high supports the setting a VCP must sit in: a strong stock near its highs (see [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md)).
+**Published research.** No academic study tests the VCP itself. Lo, Mamaysky and Wang (2000) found that computer-detected chart patterns carry a little information about future returns, far less than practitioners claim. The research behind momentum and the 52-week high supports the setting a VCP must sit in: a strong stock near its highs (see [SEPA and the VCP](learn-strat-vcp-sepa.md)).
 
 **An event study on stored data.** The SEPA guide measured mechanical base breakouts on daily prices for today's NSE and US stock lists, 2010 to 2026. It then picked out the ones that met a strict VCP test. Outcome: did the price reach +20% before falling 8%, within 60 sessions?
 
@@ -182,7 +182,7 @@ What this shows:
 - **The shape alone added little.** VCP breakouts did not clearly beat other breakouts in either market.
 - **Volume dry-up made no visible difference** in that study.
 
-The method note, the stop-based results and the caveats are in [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+The method note, the stop-based results and the caveats are in [SEPA and the VCP](learn-strat-vcp-sepa.md).
 
 **Limits.** A rule-based test cannot capture the judgement in Minervini's own trading: reading the market, knowing the stock's story, and knowing when not to trade. The study uses today's stock lists (survivorship bias), no costs, and no earnings or relative-strength filters.
 
@@ -205,5 +205,5 @@ What it does show is that **the shape alone, applied by fixed rules, is not an e
 
 - Mark Minervini, *Trade Like a Stock Market Wizard* and *Think & Trade Like a Champion* — the VCP, the footprint, pivots, cheat entries and risk control.
 - Andrew Lo, Harry Mamaysky and Jiang Wang, "Foundations of Technical Analysis", *Journal of Finance* (2000).
-- [learn-chart-patterns](learn-chart-patterns.md) — the named bases, with drawings.
-- [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md) — the full SEPA method, with worked trades.
+- [Chart patterns](learn-chart-patterns.md) — the named bases, with drawings.
+- [SEPA and the VCP](learn-strat-vcp-sepa.md) — the full SEPA method, with worked trades.

@@ -89,7 +89,7 @@ In a strong uptrend, the price often dips back to a short average and then conti
 - **The turn:** the entry needs a close back above the 20-day and above a recent high. You buy the turn back up, not the dip itself.
 - **Warning:** a close below the 50-day while the longer trend still holds means wait for a trigger before buying.
 
-Be careful about evidence. Brock, Lakonishok and LeBaron (1992) found that simple moving-average rules on the Dow Jones index had predictive power over 1897–1986. Sullivan, Timmermann and White (1999) then allowed for the many rules that had been tried. The best rule did not keep working after 1986. Buying pullbacks to an average is a common method, not a proven one; [learn-strat-pullback-ma](learn-strat-pullback-ma.md) sets out how to trade and test it.
+Be careful about evidence. Brock, Lakonishok and LeBaron (1992) found that simple moving-average rules on the Dow Jones index had predictive power over 1897–1986. Sullivan, Timmermann and White (1999) then allowed for the many rules that had been tried. The best rule did not keep working after 1986. Buying pullbacks to an average is a common method, not a proven one; [Pullback to a moving average](learn-strat-pullback-ma.md) sets out how to trade and test it.
 
 ### 2.5 What moving averages add and what they repeat
 

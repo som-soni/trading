@@ -8,7 +8,7 @@
 - The breakout through the pivot is the trade. The base's low points give you a nearby, logical stop.
 - In broad data, breakouts from bases are only slightly better than a random liquid stock. Bases tell you *when* to act and where you are wrong, not *whether* the stock will rise.
 
-This guide explains what a base is, where it sits in a stock's life, the common types, and how to tell a base is forming while it is still forming. For the drawn shapes, see [learn-chart-patterns](learn-chart-patterns.md). For the volatility contraction pattern (VCP), Minervini's version of a base, see [learn-vcp](learn-vcp.md).
+This guide explains what a base is, where it sits in a stock's life, the common types, and how to tell a base is forming while it is still forming. For the drawn shapes, see [Chart patterns](learn-chart-patterns.md). For the volatility contraction pattern (VCP), Minervini's version of a base, see [VCP](learn-vcp.md).
 
 ---
 
@@ -48,7 +48,7 @@ The base is the period that makes the next leg up *possible*. The breakout is th
 
 ## 2. Where a base sits in a stock's life
 
-Stan Weinstein's four stages are the simplest map (see [learn-price-stages](learn-price-stages.md)):
+Stan Weinstein's four stages are the simplest map (see [Stages and trend in a stock](learn-price-stages.md)):
 
 | Stage | What price does | Bases here are… |
 |---|---|---|
@@ -105,7 +105,7 @@ The numbers are the usual ones from William O'Neil and Mark Minervini. They are 
 | **High tight flag** | 3–5 weeks of flag | ≤ 25% pullback | Rare: a 100%+ run in under 8 weeks, then a short tight pause |
 | **Ascending base** | 9–16 weeks | 10–20% per dip | Three pullbacks, each low higher than the last |
 | **Base on base** | — | — | A new base forms just above a prior one that broke out but did not run |
-| **VCP** | 3–65 weeks | first contraction ≤ ~35% | Any of the above where each pullback is smaller — see [learn-vcp](learn-vcp.md) |
+| **VCP** | 3–65 weeks | first contraction ≤ ~35% | Any of the above where each pullback is smaller — see [VCP](learn-vcp.md) |
 
 ```pattern
 cup-with-handle
@@ -127,7 +127,7 @@ Before looking for a base at all, check three things:
 
 - It is in **Stage 2**: it passes the Trend Template, or comes close.
 - It had a real **prior advance**: 30% or more into the high.
-- Its **relative strength** is high: a rating of 70 or more, ideally 80 or more (see [learn-price-rs](learn-price-rs.md)). Its industry group is not weak (see [learn-sectors-groups](learn-sectors-groups.md)).
+- Its **relative strength** is high: a rating of 70 or more, ideally 80 or more (see [Relative strength](learn-price-rs.md)). Its industry group is not weak (see [Sectors and groups](learn-sectors-groups.md)).
 
 A "base" in a stock that fails these checks is usually just a pause in Stage 1, 3 or 4.
 
@@ -175,7 +175,7 @@ If the market is correcting and the stock holds *above* its lows while it bases,
 - The moving averages flatten and come together. The 50-day average catches up to just below the price.
 - A **tight area** forms near the top of the base: a few days, or a week or two, of very small ranges on very low volume. Its high is the **pivot**.
 
-Now the base is ready. The trade is the move through the pivot on rising volume, typically 40–50% or more above average. You buy within about 5% of the pivot. How traders run that trade is in [learn-strat-canslim-breakout](learn-strat-canslim-breakout.md) and [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+Now the base is ready. The trade is the move through the pivot on rising volume, typically 40–50% or more above average. You buy within about 5% of the pivot. How traders run that trade is in [CAN SLIM breakouts](learn-strat-canslim-breakout.md) and [SEPA and the VCP](learn-strat-vcp-sepa.md).
 
 ### A quick way to remember it
 
@@ -208,7 +208,7 @@ If you want to find bases with a program, or just measure them consistently by h
 - **Trend through the base.** The Trend Template passes on the day of the base high, and the moving averages stay in order. Allow the close to dip slightly under the 200-day, because a deep first contraction can do that.
 - **Base number.** Count the earlier bases since the trend last broke. Reset the count when the moving averages have been out of order for about a month.
 
-The tightness and volume steps are the VCP rules; see [learn-vcp](learn-vcp.md).
+The tightness and volume steps are the VCP rules; see [VCP](learn-vcp.md).
 
 ## 8. What the evidence says
 
@@ -274,4 +274,4 @@ So: learn to *see* bases. They organise when you act and where your stop goes. B
 - Mark Minervini, *Trade Like a Stock Market Wizard* — Stage 2, the Trend Template, base counts and the VCP.
 - William O'Neil, *How to Make Money in Stocks* — the cup with handle, flat base, double bottom and the conventions for depth and length.
 - Stan Weinstein, *Secrets for Profiting in Bull and Bear Markets* — the four stages.
-- Nicolas Darvas, *How I Made $2,000,000 in the Stock Market* — the box theory behind the flat base. See also [learn-strat-darvas](learn-strat-darvas.md).
+- Nicolas Darvas, *How I Made $2,000,000 in the Stock Market* — the box theory behind the flat base. See also [Darvas boxes](learn-strat-darvas.md).

@@ -66,7 +66,7 @@ Many systematic traders use RSI only as a **warning flag**, never as a buy signa
 - **Extended:** RSI14 above 75 to 80. Wait for a pullback before buying.
 - **Weak momentum:** RSI14 below 40 while the close is still above the 50-day. Wait for a trigger, such as a close above a recent high.
 
-Some traders also smooth RSI with a 14-day average to reduce its day-to-day noise. Short-term mean-reversion traders use RSI the other way, buying very low readings; that method is in [learn-strat-rsi2](learn-strat-rsi2.md).
+Some traders also smooth RSI with a 14-day average to reduce its day-to-day noise. Short-term mean-reversion traders use RSI the other way, buying very low readings; that method is in [RSI(2) mean reversion](learn-strat-rsi2.md).
 
 ## 2. MACD — the gap between a fast and a slow average
 
@@ -143,7 +143,7 @@ Is a squeeze followed by a bigger move? On the section 5 sample, we marked each 
 | Share moving more than 10% | 27.7% | 24.9% | 26.0% | 24.7% |
 | Share of rises | 53.9% | 51.9% | 54.5% | 52.1% |
 
-**After a squeeze, the next month's move was no larger than usual.** A quiet stock tends to stay fairly quiet. A squeeze is a description of a tight range. It needs something else, such as a breakout on volume or a results date, to become a trade. Base and VCP methods use tightness that way: together with a pivot and volume (see [the VCP guide](learn-vcp.md) and [learn-strat-squeezes-bear-rallies](learn-strat-squeezes-bear-rallies.md)).
+**After a squeeze, the next month's move was no larger than usual.** A quiet stock tends to stay fairly quiet. A squeeze is a description of a tight range. It needs something else, such as a breakout on volume or a results date, to become a trade. Base and VCP methods use tightness that way: together with a pivot and volume (see [the VCP guide](learn-vcp.md) and [Short squeezes and bear-market rallies](learn-strat-squeezes-bear-rallies.md)).
 
 ### 3.3 What they add and what they repeat
 
