@@ -10,6 +10,11 @@ load cannot change the snapshot. Record before a refactor, check after:
 A clean check means every strategy produced exactly the same pre-filter result,
 gates, flags, setups, entry signal, plan, sizing and decision for every sampled
 symbol in both markets.
+
+The sampled symbols are stored in the baseline (`_symbols`) and a check re-uses
+that exact list: re-sampling from the universe file on every check made any
+universe update swap most of the sample and fail the check with no behaviour
+change at all.
 """
 
 import argparse
@@ -35,7 +40,16 @@ def _r(x, n=6):
         return str(x)
 
 
-def _sample(market: str) -> dict[str, pd.DataFrame]:
+def _sample(market: str, symbols: list[str] | None = None) -> dict[str, pd.DataFrame]:
+    """The market's sample: `symbols` (the baseline's own list) when given, else SAMPLE_PER_MARKET drawn
+    from the universe with SEED."""
+    if symbols is not None:
+        out = {}
+        for sym in symbols:
+            raw = cache.load_cached(market, sym)
+            if raw is not None:
+                out[sym] = raw[raw.index <= AS_OF]
+        return dict(sorted(out.items()))
     tickers = sorted(universe.load_universe(market))
     random.Random(SEED).shuffle(tickers)
     out = {}
@@ -81,11 +95,13 @@ def _snap(strategy, cfg, symbol: str, raw: pd.DataFrame) -> dict:
     return snap
 
 
-def build() -> dict:
+def build(symbols: dict | None = None) -> dict:
+    """Every strategy × sampled symbol snapshot, plus the sample itself under `_symbols`."""
     from swing_screener.strategies import get_strategy, list_strategies
-    out: dict = {}
+    out: dict = {"_symbols": {}}
     for market, cfg in MARKETS.items():
-        sample = _sample(market)
+        sample = _sample(market, (symbols or {}).get(market))
+        out["_symbols"][market] = list(sample)
         for key in list_strategies():
             strat = get_strategy(key)
             out[f"{market}/{key}"] = {s: _snap(strat, cfg, s, raw) for s, raw in sample.items()}
@@ -98,12 +114,14 @@ def main() -> None:
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--check", action="store_true")
     a = ap.parse_args()
-    snap = json.loads(json.dumps(build(), sort_keys=True, default=str))
+    base = None if a.write else json.loads(BASELINE_PATH.read_text())
+    if base is not None and "_symbols" not in base:
+        raise SystemExit("The baseline predates stored samples — record it again with --write.")
+    snap = json.loads(json.dumps(build(base["_symbols"] if base else None), sort_keys=True, default=str))
     if a.write:
         BASELINE_PATH.write_text(json.dumps(snap, indent=1, sort_keys=True))
         print(f"Wrote {BASELINE_PATH}")
         return
-    base = json.loads(BASELINE_PATH.read_text())
     diffs = []
     for group in sorted(set(base) | set(snap)):
         b, c = base.get(group, {}), snap.get(group, {})
@@ -117,7 +135,7 @@ def main() -> None:
         for d in diffs[:80]:
             print("  " + d)
         raise SystemExit(1)
-    print(f"IDENTICAL — {sum(len(v) for v in snap.values())} strategy × symbol snapshots match the baseline.")
+    print(f"IDENTICAL — {sum(len(v) for k, v in snap.items() if k != '_symbols')} strategy × symbol snapshots match the baseline.")
 
 
 if __name__ == "__main__":
