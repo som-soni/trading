@@ -13,7 +13,7 @@ import time
 
 import pandas as pd
 
-from . import db
+from . import db, frozen
 
 from ..core import indicators as ind
 from ..providers.base import DataProvider
@@ -93,6 +93,14 @@ def load_cached_with_indicators(market: str, symbol: str, as_of: pd.Timestamp, t
 def save_cached(market: str, symbol: str, df: pd.DataFrame) -> None:
     if df is None or df.empty:
         return
+    # the source's placeholder quotes for a non-trading stretch are not prices: drop them, and delete any
+    # already stored, so neither a re-fetch nor an append brings them back (marketdata/frozen.py)
+    clean = frozen.drop_frozen(df)
+    if len(clean) < len(df):
+        frozen.backup_and_delete(market, symbol, [d.date() for d in df.index.difference(clean.index)])
+        df = clean
+        if df.empty:
+            return
     enriched = ind.enrich_daily(df)
     rows = [
         (

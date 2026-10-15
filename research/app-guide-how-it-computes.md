@@ -23,7 +23,7 @@ are in the linked [Learn](learn-start-here.md) guides.
 
 | Data | Source | Where |
 |---|---|---|
-| Daily prices | Yahoo (yfinance), unadjusted for dividends (`auto_adjust=False`); splits as the source returns them, with the weekly `splits` job repairing gaps the incremental refresh missed | `providers/yfinance_provider.py`, `marketdata/splits.py` |
+| Daily prices | Yahoo (yfinance), unadjusted for dividends (`auto_adjust=False`); splits as the source returns them, with the weekly `splits` job repairing gaps the incremental refresh missed. The source's placeholder quotes for a non-trading stretch (`FROZEN_MIN_BARS` or more zero-volume bars at one price) are dropped on every save, and after a run of `FROZEN_RESET_BARS` or more the history restarts where trading resumes | `providers/yfinance_provider.py`, `marketdata/splits.py`, `marketdata/frozen.py` |
 | Indices, VIX, India VIX, USD/INR | Yahoo, stored in `index_series` | `analytics/breadth.py` (`INDEXES`, `VOL_INDEX`), `marketdata/index_data.py` |
 | Macro strip | Yahoo, raw closes | `marketdata/macro.py` (`SERIES`, `STRIP`) |
 | Quarterly and annual financials | US: SEC XBRL (`quarterly_source="sec_edgar"`); India: NSE results filings (`"nse"`); Yahoo as fallback | `marketdata/financials.py` |

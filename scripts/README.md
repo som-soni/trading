@@ -820,7 +820,7 @@ swing_screener/
   marketdata/       data in, storage (the only package that downloads)
     cache.py (incl. offline mode) db.py migrate.py universe.py names.py industries.py
     classcodes.py (official industry codes: BSE / Nasdaq) subindustries.py (sub-industry labels and their sources)
-    refresh.py backfill.py splits.py (split/bonus repair) index_data.py earnings.py fundamentals.py freshness.py
+    refresh.py backfill.py splits.py (split/bonus repair) frozen.py (drops placeholder quotes) index_data.py earnings.py fundamentals.py freshness.py
 
   screens/          qualification only: criteria.py (shared with strategies), the four screens,
                     snapshot.py (the daily stock snapshot + field catalog; month-ends kept for good),
