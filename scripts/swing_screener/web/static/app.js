@@ -3429,7 +3429,7 @@ function renderResearchMd(host, markdown) {
  *    from:   / to:   the date range (YYYY-MM-DD; `to` defaults to the latest stored day)
  *    tf:     D | W | M — bar size (default: by span — monthly past 12 years, weekly past 2)
  *    rebase: 100 — every line restated as 100 at `from`, on one scale (compare growth, not levels)
- *    line:   <expr> | <label> | <flags>   (repeat; flags: right, pane2, log, zero)
+ *    line:   <expr> | <label> | <flags>   (repeat; flags: right, pane2, log, zero, bars — columns, e.g. volume)
  *            expr = a ref, or two joined by " - " (a spread) or " / " (a ratio). A ref is market:SERIES
  *            (index_series or prices) or market:breadth.FIELD (breadth_daily: pct50, pct5, highs, lows, hl,
  *            adv, dec, ad, adline, up4, dn4, up25m, dn25m) or market:grs.LEVEL.Group_Name (a peer group's 1–99 RS
@@ -3437,7 +3437,11 @@ function renderResearchMd(host, markdown) {
  *            dated when filed: eps, eps_ttm, eps_g, rev_g, revenue, margin; pe is daily close / trailing EPS),
  *            optionally with one transform on the daily data:
  *            @sma50 (any N: its N-day average), @dd (% below its running high), @dist25 (O'Neil distribution
- *            days in the last 25 sessions: down 0.2%+ on higher volume — needs a series with volume)
+ *            days in the last 25 sessions: down 0.2%+ on higher volume — needs a series with volume), and the
+ *            indicators as core/indicators.py computes them: @ema21, @rsi14 (Wilder), @atr14 (Wilder; needs
+ *            high/low), @atrp14 (ATR as % of close), @macd / @macdsig / @macdhist (12-26-9), @bbup20 / @bblo20
+ *            (2 standard deviations), @chg63 (% change over N sessions), @vol (daily volume), @rvol50 (volume ÷
+ *            its N-day average)
  *    band:   <from> <to> | <label>   a shaded period (repeat)
  *    mark:   <date> | <label>         an arrow on the first line (repeat)
  *    caption: what to look at
@@ -3467,13 +3471,45 @@ async function seriesDaily(ref) {
         .then((r) => r.line.map((c) => [c.time, c.value])))(symbol.match(/^fund\.(.+)\.([a-z_]+)$/))
       : grs ? api(`/api/group-rs-series?market=${encodeURIComponent(market)}&level=${grs[1]}&grp=${encodeURIComponent(grs[2])}`).then((r) => r.line.map((c) => [c.time, c.value]))
       : api(`/api/prices?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&tf=D&bars=${ALL_BARS}`)
-        .then((r) => (r.candles ? r.candles.map((c, i) => [c.time, c.close, r.volume?.[i]?.value]) : (r.line || []).map((c) => [c.time, c.value])));
+        .then((r) => (r.candles ? r.candles.map((c, i) => [c.time, c.close, r.volume?.[i]?.value, c.high, c.low]) : (r.line || []).map((c) => [c.time, c.value])));
     seriesCache.set(ref, raw.then((xs) => (mod ? seriesTransform(xs, mod, ref) : xs)));
   }
   return seriesCache.get(ref);
 }
-/** @smaN, @dd, @dist25 on daily [[date, value, volume?]] (see the fence grammar above) */
+/** an exponential average as core/indicators.py: alpha 2/(n+1) (ema) or 1/n (Wilder), first n-1 values blank */
+function expAvg(vals, n, alpha) {
+  let e = null, k = 0;
+  return vals.map((v) => { if (v == null || Number.isNaN(v)) return null; e = e == null ? v : alpha * v + (1 - alpha) * e; k++; return k >= n ? e : null; });
+}
+/** @smaN, @dd, @dist25 and the indicators on daily [[date, value, volume?, high?, low?]] (see the fence grammar above) */
 function seriesTransform(xs, mod, ref) {
+  const m = mod.match(/^([a-z]+?)(\d*)$/), kind = m?.[1], n = m?.[2] ? +m[2] : null;
+  const dates = xs.map((x) => x[0]), close = xs.map((x) => x[1]);
+  const keep = (vals) => vals.map((v, i) => (v == null || !Number.isFinite(v) ? null : [dates[i], v])).filter(Boolean);
+  const needN = () => { if (!n) throw new Error(`@${mod}: give a length, e.g. @${kind}14`); return n; };
+  const smaOf = (vals, k) => { let sum = 0, cnt = 0; return vals.map((v, i) => { sum += v; cnt++; if (i >= k) { sum -= vals[i - k]; cnt--; } return i >= k - 1 ? sum / k : null; }); };
+  const sdOf = (vals, k) => vals.map((_, i) => { if (i < k - 1) return null; const w = vals.slice(i - k + 1, i + 1), mu = w.reduce((a, b) => a + b, 0) / k;
+    return Math.sqrt(w.reduce((a, b) => a + (b - mu) ** 2, 0) / (k - 1)); });
+  if (kind === "ema") return keep(expAvg(close, needN(), 2 / (needN() + 1)));
+  if (kind === "rsi") { const k = needN(), g = close.map((v, i) => (i ? Math.max(v - close[i - 1], 0) : null)), l = close.map((v, i) => (i ? Math.max(close[i - 1] - v, 0) : null));
+    const ag = expAvg(g, k, 1 / k), al = expAvg(l, k, 1 / k);
+    return keep(ag.map((a, i) => (a == null || al[i] == null ? null : al[i] === 0 ? 100 : 100 - 100 / (1 + a / al[i])))); }
+  if (kind === "atr" || kind === "atrp") { const k = needN();
+    if (!xs.some((x) => x[3] != null)) throw new Error(`${ref}: ATR needs daily highs and lows (a stock or ETF, not an index series)`);
+    const tr = xs.map((x, i) => (i ? Math.max(x[3] - x[4], Math.abs(x[3] - xs[i - 1][1]), Math.abs(x[4] - xs[i - 1][1])) : x[3] - x[4]));
+    const a = expAvg(tr, k, 1 / k); return keep(kind === "atr" ? a : a.map((v, i) => (v == null ? null : (v / close[i]) * 100))); }
+  if (kind === "macd" || kind === "macdsig" || kind === "macdhist") {
+    const f = expAvg(close, 12, 2 / 13), sl = expAvg(close, 26, 2 / 27), line = f.map((v, i) => (v == null || sl[i] == null ? null : v - sl[i]));
+    const sig = expAvg(line, 9, 2 / 10);
+    return keep(kind === "macd" ? line : kind === "macdsig" ? sig : line.map((v, i) => (v == null || sig[i] == null ? null : v - sig[i]))); }
+  if (kind === "bbup" || kind === "bblo") { const k = needN(), mid = smaOf(close, k), sd = sdOf(close, k);
+    return keep(mid.map((v, i) => (v == null ? null : v + (kind === "bbup" ? 2 : -2) * sd[i]))); }
+  if (kind === "chg") { const k = needN(); return keep(close.map((v, i) => (i >= k ? (v / close[i - k] - 1) * 100 : null))); }
+  if (kind === "vol" || kind === "rvol") {
+    if (!xs.some((x) => x[2])) throw new Error(`${ref}: no volume stored for this series`);
+    const vol = xs.map((x) => x[2] ?? 0);
+    if (kind === "vol") return keep(vol);
+    const avg = smaOf(vol, needN()); return keep(vol.map((v, i) => (avg[i] ? v / avg[i] : null))); }
   const sma = mod.match(/^sma(\d+)$/), dist = mod.match(/^dist(\d+)$/);
   if (sma) { const n = +sma[1]; let sum = 0;
     return xs.map(([d, v], i) => { sum += v; if (i >= n) sum -= xs[i - n][1]; return i >= n - 1 ? [d, sum / n] : null; }).filter(Boolean); }
@@ -3537,8 +3573,11 @@ async function drawSeriesFigure(fig, spec) {
     if (spec.rebase) { const base = pts[0][1]; pts = pts.map(([t, v]) => [t, (v / base) * +spec.rebase]); }
     const pane = l.flags.has("pane2") ? 1 : 0;
     const scale = pane ? "right" : spec.lines.some((x) => x.flags.has("right")) && !l.flags.has("right") ? "left" : "right";
-    const s = chart.addSeries(LC.LineSeries, { color: cssVar(SERIES_COLORS[i % SERIES_COLORS.length]), lineWidth: i ? 1.5 : 2,
-      priceScaleId: scale, priceLineVisible: false, lastValueVisible: true, title: "" }, pane);
+    const s = l.flags.has("bars")
+      ? chart.addSeries(LC.HistogramSeries, { color: cssVar(SERIES_COLORS[i % SERIES_COLORS.length]), priceScaleId: scale, priceLineVisible: false, lastValueVisible: false,
+        priceFormat: { type: "custom", minMove: 1, formatter: (v) => Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(v) } }, pane)
+      : chart.addSeries(LC.LineSeries, { color: cssVar(SERIES_COLORS[i % SERIES_COLORS.length]), lineWidth: i ? 1.5 : 2,
+        priceScaleId: scale, priceLineVisible: false, lastValueVisible: true, title: "" }, pane);
     s.setData(pts.map(([t, v]) => ({ time: t, value: +v.toFixed(4) })));
     if (l.flags.has("zero")) s.createPriceLine({ price: 0, color: cssVar("--line-3"), lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
     s.lps = { scale, pane };
@@ -3569,6 +3608,11 @@ async function drawSeriesFigure(fig, spec) {
       position: "aboveBar", shape: "arrowDown", color: cssVar("--accent"), text: m.label })).sort((a, b) => (a.time < b.time ? -1 : 1)));
   }
   chart.timeScale().fitContent();
+  // a chart drawn while its page is hidden starts at zero width; fit again whenever the box changes size
+  // (the user cannot zoom these charts, so re-fitting never undoes anything)
+  const ro = new ResizeObserver(() => chart.timeScale().fitContent());
+  ro.observe(el_);
+  { const prev = cleanup; cleanup = () => { ro.disconnect(); prev(); }; }
   const fmtD = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
   fig.querySelector(".lps-leg").innerHTML = spec.lines.map((l, i) => `<span><i style="background:${cssVar(SERIES_COLORS[i % SERIES_COLORS.length])}"></i>${esc(l.label)}${l.flags.has("right") && !l.flags.has("pane2") ? " (right axis)" : ""}${l.flags.has("log") ? " · log scale" : ""}</span>`).join("")
     + [...new Set(spec.bands.map((b) => b.label).filter(Boolean))].map((x) => `<span><i class="band"></i>${esc(x)}</span>`).join("");
@@ -4555,7 +4599,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn is organised by TOPIC — Macro, Market health, Sectors & groups, Fundamentals, Risk & trade management, Process & psychology, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
+/** Learn is organised by TOPIC — Macro, Market health, Sectors & groups, Fundamentals, Risk & trade management, Process & psychology, Price & volume, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
  *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
  *  appears in the menu once. #/learn is the hub; #/learn/candles, /charts, /levels a topic's pattern grid;
  *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
@@ -4565,6 +4609,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-fund-earnings", "learn-fund-valuation", "learn-fund-quality",
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
+  "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
 const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
@@ -4573,6 +4618,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-fund-earnings": "fundamentals", "learn-fund-valuation": "fundamentals", "learn-fund-quality": "fundamentals",
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
+  "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
 const GUIDE_BLURB = {
@@ -4596,6 +4642,10 @@ const GUIDE_BLURB = {
   "learn-risk-expectancy": "Win rate times average win against loss rate times average loss — measured on this app's own backtest trades.",
   "learn-risk-sizing": "Risk per trade, R, stop distance and position size: how much to buy, and how the app sizes it.",
   "learn-risk-stops-exits": "Initial stops, gaps through them, breakeven and trailing stops, targets, and selling into strength or weakness.",
+  "learn-price-stages": "A stock's four stages, the trend template, and how to tell an uptrend that is starting from one that is ending.",
+  "learn-price-volume": "What volume says about who is buying: breakouts on volume, dry-ups in bases, climaxes and distribution in a stock.",
+  "learn-price-rs": "Relative strength: the RS line and RS rating, why leaders show strength first, and how the app ranks it.",
+  "learn-price-indicators": "Moving averages, ATR, RSI, MACD and Bollinger Bands — what each adds beyond price, and what only repeats it.",
   "learn-process-plan": "A written plan and a daily and weekly routine — what to check, in what order, using this app's pages.",
   "learn-process-journal": "What to record on every trade, and how to review it to find what actually works — and what doesn't.",
   "learn-process-biases": "Loss aversion, FOMO, revenge trading, anchoring and overconfidence — what each costs, measured on the app's trades.",
@@ -4613,7 +4663,7 @@ const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$
  *  for the topic, "Supply and demand") is just "Field guide" */
 const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
   return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
-const LEARN_TOPICS = ["start", "macro", "health", "sectors", "fundamentals", "risk", "process", "candles", "charts", "levels"];
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "fundamentals", "risk", "process", "price", "candles", "charts", "levels"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;
