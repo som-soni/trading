@@ -45,8 +45,8 @@ The code: the RS rank is computed in `scripts/swing_screener/screens/snapshot.py
 Neither is the **RSI** (relative strength index). The RSI compares a stock's
 recent up days with its own recent down days. It never looks at the market or
 at other stocks. Despite the similar name it measures something different: how
-fast the stock itself has moved lately. It is covered in [the indicators
-guide](learn-price-indicators.md).
+fast the stock itself has moved lately. It is covered in [the momentum
+indicators guide](learn-price-oscillators.md).
 
 ## 2. The RS line
 

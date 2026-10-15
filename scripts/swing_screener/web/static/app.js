@@ -4609,7 +4609,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-fund-earnings", "learn-fund-valuation", "learn-fund-quality",
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
-  "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators",
+  "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
   "learn-test-backtesting", "learn-test-reading",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
@@ -4619,7 +4619,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-fund-earnings": "fundamentals", "learn-fund-valuation": "fundamentals", "learn-fund-quality": "fundamentals",
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
-  "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price",
+  "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
   "learn-test-backtesting": "testing", "learn-test-reading": "testing",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
@@ -4649,7 +4649,8 @@ const GUIDE_BLURB = {
   "learn-price-stages": "A stock's four stages, the trend template, and how to tell an uptrend that is starting from one that is ending.",
   "learn-price-volume": "What volume says about who is buying: breakouts on volume, dry-ups in bases, climaxes and distribution in a stock.",
   "learn-price-rs": "Relative strength: the RS line and RS rating, why leaders show strength first, and how the app ranks it.",
-  "learn-price-indicators": "Moving averages, ATR, RSI, MACD and Bollinger Bands — what each adds beyond price, and what only repeats it.",
+  "learn-price-indicators": "Moving averages, ATR and ADX — what an indicator is, and what each trend and volatility measure adds beyond price.",
+  "learn-price-oscillators": "RSI, MACD and Bollinger Bands, the Chart page's studies, and how much indicators repeat each other — measured.",
   "learn-process-plan": "A written plan and a daily and weekly routine — what to check, in what order, using this app's pages.",
   "learn-process-journal": "What to record on every trade, and how to review it to find what actually works — and what doesn't.",
   "learn-process-biases": "Loss aversion, FOMO, revenge trading, anchoring and overconfidence — what each costs, measured on the app's trades.",
