@@ -64,6 +64,7 @@ class MarketConfig:
     # how the Fundamentals page shows money: the unit's label and what one unit is in the market's currency
     money_unit: str = ""         # "$ M", "₹ Cr"
     money_divisor: float = 1.0   # 1e6, 1e7
+    currency_code: str = ""      # ISO code of the share prices ("USD", "INR"): a company whose statements are in another is not valued
 
     # maps the data provider's own sector taxonomy (e.g. yfinance's
     # "Financial Services", "Healthcare") onto the keys used in

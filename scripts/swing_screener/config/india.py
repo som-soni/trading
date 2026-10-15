@@ -14,6 +14,7 @@ from .base import MarketConfig, ScreenerThresholds
 INDIA_CONFIG = MarketConfig(
     name="India",
     currency_symbol="₹",
+    currency_code="INR",
     exchange="NSE", badge="NSE", flag="🇮🇳", symbol_suffix=".NS", fx_to_usd="USDINR",
     quarterly_source="nse",
     news_locale="hl=en-IN&gl=IN&ceid=IN:en", news_term="share",

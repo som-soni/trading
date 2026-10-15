@@ -3,6 +3,7 @@ from .base import MarketConfig, ScreenerThresholds
 US_CONFIG = MarketConfig(
     name="US",
     currency_symbol="$",
+    currency_code="USD",
     exchange="NYSE · Nasdaq", badge="US", flag="🇺🇸",
     quarterly_source="sec_edgar",
     money_unit="$ M", money_divisor=1e6,

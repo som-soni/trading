@@ -1223,6 +1223,20 @@ def load_shareholding(market: str, symbol: str) -> list[dict]:
         return [dict(zip(cols, r)) for r in cur.fetchall()]
 
 
+def statement_currency(market: str, meta: dict | None) -> str | None:
+    """The currency a company's stored statements are in, when it is not its share price's — else None.
+    SEC and NSE filings are in the market's own currency; Yahoo's statements are in the company's reporting
+    currency (TSMC in TWD, Novo in DKK, ICICI in INR) while its US listing trades in dollars. Such figures
+    cannot be set against the price (P/E, book value, dividend yield) without exchange rates, so the app
+    does not value them — the rule the Quality screen already applies (fundamentals/quality.py)."""
+    meta = meta or {}
+    if meta.get("source") != "yfinance":
+        return None
+    p = meta.get("profile") or {}
+    fin, price = p.get("financialCurrency"), p.get("currency") or MARKETS[market].currency_code
+    return fin if fin and price and fin != price else None
+
+
 def load_meta(market: str) -> dict[str, dict]:
     with db.get_connection().cursor() as cur:
         cur.execute("SELECT symbol, source, status, fetched_at, meta, error FROM quarterly_fetch WHERE market=%s", (market,))

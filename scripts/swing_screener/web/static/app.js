@@ -2506,13 +2506,19 @@ async function companyPage(alive, market, symbol) {
   const r = d.ratios_top || {};
   const pc = (v, dp = 1) => (v == null ? "—" : `${(v * 100).toFixed(dp)}%`);
   const cur = (v) => (v == null ? "—" : `${d.currency} ${v.toLocaleString(loc, { maximumFractionDigits: 2 })}`);
+  // statements in another currency than the price (a foreign company's US listing, from Yahoo): label them in
+  // that currency, and leave the price-based ratios out — they would need exchange rates
+  const sc = d.statement_currency;
+  const stmtCur = (v) => (v == null ? "—" : sc ? `${sc} ${v.toLocaleString(loc, { maximumFractionDigits: 2 })}` : cur(v));
+  const stmtMoney = (v) => (v == null ? "—" : !sc ? moneyShort(v, market)
+    : `${v < 0 ? "−" : ""}${sc} ${Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(Math.abs(v))}`);
   const ratio = [["Market cap", r.market_cap == null ? "—" : moneyShort(r.market_cap, market)],
     ["Current price", cur(r.price)], ["High / Low", r.high_52w ? `${cur(r.high_52w)} / ${r.low_52w?.toLocaleString(loc, { maximumFractionDigits: 2 })}` : "—"],
     ["Stock P/E", r.pe == null ? "—" : r.pe.toFixed(1)], ["Book value", cur(r.book_value)], ["Dividend yield", pc(r.dividend_yield, 2)],
     ["ROCE", pc(r.roce)], ["ROE", pc(r.roe)], ...(r.face_value ? [["Face value", cur(r.face_value)]] : []),
     ...(r.debt_to_equity != null ? [["Debt to equity", r.debt_to_equity.toFixed(2)]] : []),
-    ["Sales (TTM)", r.sales_ttm == null ? "—" : moneyShort(r.sales_ttm, market)], ["Profit (TTM)", r.profit_ttm == null ? "—" : moneyShort(r.profit_ttm, market)],
-    ["EPS (TTM)", r.eps_ttm == null ? "—" : cur(r.eps_ttm)], ["RS rank", r.rs_rank == null ? "—" : Math.round(r.rs_rank)]];
+    ["Sales (TTM)", stmtMoney(r.sales_ttm)], ["Profit (TTM)", stmtMoney(r.profit_ttm)],
+    ["EPS (TTM)", stmtCur(r.eps_ttm)], ["RS rank", r.rs_rank == null ? "—" : Math.round(r.rs_rank)]];
   const g = d.growth || {};
   const gbox = (title, rows) => `<div class="cg-box"><b>${title}</b><table>${(rows || []).map(([k, v]) => `<tr><td>${esc(k)}:</td><td class="${v < 0 ? "neg" : ""}">${v == null ? "—" : `${(v * 100).toFixed(0)}%`}</td></tr>`).join("")}</table></div>`;
   const shp = d.shareholding || [];
@@ -2544,6 +2550,7 @@ async function companyPage(alive, market, symbol) {
     ["ratios", "Ratios"], ["shp", "Shareholding"], ["peers", "Peers"], ...(d.views || []).map((v) => [`view-${v.key}`, v.name])];
   $view.innerHTML = head + `<nav class="co-nav">${SECS.map(([k, t]) => `<a href="#co-${k}" data-sec="co-${k}">${esc(t)}</a>`).join("")}</nav>
     <section class="co-sec" id="co-overview"><div class="co-ratios">${ratio.map(([k, v]) => `<div><span class="muted">${k}</span><b>${v}</b></div>`).join("")}</div>
+      ${sc ? `<div class="muted small fin-note">Statements are in ${esc(sc)}; the share price is in ${esc(d.currency_code || d.currency)}. P/E, book value and dividend yield are not shown, because they would need exchange rates — the same rule as the Quality screen.</div>` : ""}
       ${d.profile?.about ? `<details class="co-about"><summary>About</summary><p>${esc(d.profile.about)}</p></details>` : ""}</section>
     <section class="co-sec" id="co-quarters"><h2>Quarterly results <span class="muted small">${unitNote}</span></h2>${table(d.quarters,
       `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`)}</section>

@@ -1040,6 +1040,9 @@ def fund_series(market: str, symbol: str, field: str):
     rows = financials.load(market, [symbol]).get(symbol)
     if not rows:
         raise HTTPException(404, f"no stored quarters for {symbol}")
+    ccy = financials.statement_currency(market, financials.load_meta(market).get(symbol))
+    if field == "pe" and ccy:
+        raise HTTPException(422, f"{symbol}'s statements are in {ccy}, its price is not — no P/E without exchange rates")
     ser = growth.growth_series(rows)
     known = [r.get("filed") or (r["period_end"] + dt.timedelta(days=45)) for r in rows]
     pts = []

@@ -96,6 +96,9 @@ DOC = {
         "US: EPS is put on today's share basis where a split shows in the filings — a jump at a split ratio in the share "
         "count (or in the count the EPS implies), confirmed by the year-ago EPS each filing restates on its new basis.",
         "One-off gains and charges are not removed. Check the filing behind a big number.",
+        "Foreign companies whose statements (from Yahoo) are in another currency than their share price — TSMC in "
+        "Taiwan dollars, Novo in Danish kroner — show growth and margins, but no P/E, book value or dividend yield: "
+        "those would need exchange rates.",
         "Estimates are Yahoo's consensus, and its 'actual' EPS can be an adjusted figure rather than the filed one.",
         "Not investment advice: a screening aid over filings that can be restated.",
     ),

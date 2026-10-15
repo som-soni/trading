@@ -124,8 +124,10 @@ def build(market: str, symbol: str, snap=None) -> dict:
         srow = snap[snap["symbol"] == symbol].iloc[0].to_dict()
     scores = _scores(market, [symbol]).get(symbol)
     m = scores[0] if scores else growth.metrics(quarters, meta)
+    stmt_ccy = financials.statement_currency(market, meta)   # statements in another currency than the price: not valued
     out = {"market": market, "symbol": symbol, "name": meta.get("name") or profile.get("longName"), "layout": layout,
-           "unit": cfg.money_unit, "divisor": cfg.money_divisor, "currency": cfg.currency_symbol,
+           "unit": f"{stmt_ccy} M" if stmt_ccy else cfg.money_unit, "divisor": 1e6 if stmt_ccy else cfg.money_divisor,
+           "currency": cfg.currency_symbol, "currency_code": cfg.currency_code, "statement_currency": stmt_ccy,
            "status": {k: meta.get(k) for k in ("status", "source", "basis", "fetched_at", "error", "fallback_reason")},
            "profile": profile, "sector": srow.get("sector") or profile.get("sector"), "industry": srow.get("industry") or profile.get("industry"),
            "peer_group": srow.get("peer_group")}
@@ -233,8 +235,8 @@ def build(market: str, symbol: str, snap=None) -> dict:
     eq = lb.get("equity")
     out["ratios_top"] = {
         "market_cap": mcap, "price": price, "high_52w": srow.get("high_252"), "low_52w": srow.get("low_252"),
-        "pe": _div(price, m.get("eps_ttm")) if (m.get("eps_ttm") or 0) > 0 else None,
-        "book_value": _div(eq, shares), "dividend_yield": dy,
+        "pe": _div(price, m.get("eps_ttm")) if (m.get("eps_ttm") or 0) > 0 and not stmt_ccy else None,
+        "book_value": None if stmt_ccy else _div(eq, shares), "dividend_yield": None if stmt_ccy else dy,
         "roce": rdata[fends[-1]]["roce"] if fends else None, "roe": m.get("roe"),
         "face_value": face, "debt_to_equity": _div(lb.get("borrowings"), eq) if layout != "bank" else None,
         "sales_ttm": ttm.get("sales") if ttm else None, "profit_ttm": ttm.get("net_profit") if ttm else None,
@@ -252,10 +254,10 @@ def build(market: str, symbol: str, snap=None) -> dict:
         syms = list(grp["symbol"])
         if symbol not in syms:
             syms.append(symbol)
-        sc = _scores(market, syms)
+        sc, metas = _scores(market, syms), financials.load_meta(market)
         for _, r in snap[snap["symbol"].isin(syms)].sort_values("market_cap", ascending=False).iterrows():
             pm = (sc.get(r["symbol"]) or ({}, {}))[0]
-            et = pm.get("eps_ttm")
+            et = None if financials.statement_currency(market, metas.get(r["symbol"])) else pm.get("eps_ttm")
             peers.append({"symbol": r["symbol"], "close": r.get("close"), "market_cap": r.get("market_cap"),
                           "pe": _div(r.get("close"), et) if (et or 0) > 0 else None,
                           "sales_g": (pm.get("rev_g") or [None])[0], "eps_g": (pm.get("eps_g") or [None])[0], "roe": pm.get("roe"),
