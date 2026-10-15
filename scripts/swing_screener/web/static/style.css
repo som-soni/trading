@@ -1431,3 +1431,16 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .ev-card td:first-child { padding-right: 14px; white-space: nowrap; } .ev-card td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
 .ev-card .up { color: var(--up-text); } .ev-card .dn { color: var(--down-text); }
 .ev-card .ev-t { font-size: 11.5px; line-height: 1.4; }
+
+/* Learn: ```payoff figures — an option position's profit and loss against the underlying's price */
+.lpo-svg { width: 100%; height: auto; display: block; }
+.lpo-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.lpo-t { fill: var(--chart-text); font-size: 11px; }
+.lpo-zero { stroke: var(--line-3); stroke-width: 1; }
+.lpo-exp { fill: none; stroke: var(--accent); stroke-width: 2.2; }
+.lpo-pre { fill: none; stroke: var(--info); stroke-width: 1.6; stroke-dasharray: 5 4; }
+.lpo-gain { fill: var(--up-soft); stroke: none; }
+.lpo-loss { fill: var(--down-soft); stroke: none; }
+.lpo-spot { stroke: var(--line-3); stroke-width: 1; stroke-dasharray: 3 3; }
+.lpo-be { fill: var(--panel); stroke: var(--strong); stroke-width: 1.5; }
+.lpo-sum { margin-top: 6px; }

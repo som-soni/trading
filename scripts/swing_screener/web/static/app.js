@@ -3529,6 +3529,7 @@ function renderResearchMd(host, markdown) {
     if (p) c.parentElement.outerHTML = `<figure class="lp-md">${Learn.svg(p)}<figcaption><a href="#/learn/${p.key}">${esc(p.name)}</a> — open it in Learn</figcaption></figure>`;
   });
   renderSeriesFigures(host);
+  renderPayoffFigures(host);
   host.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
   // Plain-language definitions on the first use of each glossary term. The
   // guides are entered from the hub in any order, so a term explained in one
@@ -3676,6 +3677,97 @@ async function seriesExpr(expr, tf, from, to) {
   out.first = a.first > b.first ? a.first : b.first; out.last = a.last < b.last ? a.last : b.last;
   return out;
 }
+/** ```payoff fences: an option or futures position's profit and loss against the underlying's price, at expiry
+ *  and optionally some days before it (Black-Scholes, European, no dividends). One `key: value` per line:
+ *    title:      the figure's heading
+ *    underlying: the current price (a dashed marker)
+ *    lot:        units per contract (P&L is per lot); default 1
+ *    range:      <low> <high> — the price axis
+ *    leg:        buy|sell [<n>x] call|put <strike> @ <premium>   ·   buy|sell [<n>x] future|stock @ <price>  (repeat)
+ *    before:     <days>d <iv>% [r <rate>%] — also draw the value that many days before expiry
+ *    caption:    what to look at
+ *  Breakevens and the maximum profit and loss inside the range are printed under the chart. */
+function parsePayoffSpec(text) {
+  const s = { legs: [], lot: 1 };
+  for (const raw of text.split("\n")) {
+    const m = raw.match(/^\s*([a-z]+)\s*:\s*(.*)$/); if (!m) continue;
+    const [, k, v] = m;
+    if (k === "leg") {
+      const L = v.trim().toLowerCase().match(/^(buy|sell)\s+(?:(\d+)x\s+)?(call|put|future|stock)\s+(?:([\d.]+)\s+)?@\s*([\d.]+)$/);
+      if (!L) throw new Error(`cannot read leg "${v}"`);
+      s.legs.push({ side: L[1] === "buy" ? 1 : -1, n: +(L[2] || 1), kind: L[3], strike: L[4] != null ? +L[4] : null, price: +L[5] });
+    } else if (k === "range") { const [a, b] = v.trim().split(/\s+/).map(Number); s.lo = a; s.hi = b; }
+    else if (k === "before") { const m2 = v.match(/(\d+)\s*d\s+([\d.]+)\s*%(?:\s+r\s+([\d.]+)\s*%)?/); if (m2) s.before = { days: +m2[1], iv: +m2[2] / 100, r: +(m2[3] ?? 6.5) / 100 }; }
+    else if (k === "underlying" || k === "lot") s[k] = +v.trim();
+    else s[k] = v.trim();
+  }
+  if (!s.legs.length) throw new Error("no leg: in the fence");
+  return s;
+}
+function normCdf(x) { const t = 1 / (1 + 0.2316419 * Math.abs(x)), d = 0.3989423 * Math.exp(-x * x / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; }
+function bsPrice(kind, S, K, T, r, v) {
+  if (T <= 0 || v <= 0) return Math.max(kind === "call" ? S - K : K - S, 0);
+  const d1 = (Math.log(S / K) + (r + v * v / 2) * T) / (v * Math.sqrt(T)), d2 = d1 - v * Math.sqrt(T);
+  return kind === "call" ? S * normCdf(d1) - K * Math.exp(-r * T) * normCdf(d2) : K * Math.exp(-r * T) * normCdf(-d2) - S * normCdf(-d1);
+}
+function payoffAt(spec, S, before) {
+  return spec.legs.reduce((sum, l) => {
+    let v;
+    if (l.kind === "future" || l.kind === "stock") v = S - l.price;
+    else v = (before ? bsPrice(l.kind, S, l.strike, before.days / 365, before.r, before.iv)
+                     : Math.max(l.kind === "call" ? S - l.strike : l.strike - S, 0)) - l.price;
+    return sum + l.side * l.n * v;
+  }, 0) * spec.lot;
+}
+function renderPayoffFigures(host) {
+  host.querySelectorAll(".md pre > code.language-payoff").forEach((c) => {
+    const fig = document.createElement("figure");
+    fig.className = "lp-md lps lpo";
+    try {
+      const spec = parsePayoffSpec(c.textContent);
+      const strikes = spec.legs.map((l) => l.strike ?? l.price), mid = spec.underlying ?? strikes.reduce((a, b) => a + b, 0) / strikes.length;
+      const lo = spec.lo ?? Math.min(...strikes) * 0.9, hi = spec.hi ?? Math.max(...strikes) * 1.1, N = 240;
+      const xs = Array.from({ length: N + 1 }, (_, i) => lo + (hi - lo) * i / N);
+      const exp = xs.map((x) => payoffAt(spec, x)), pre = spec.before ? xs.map((x) => payoffAt(spec, x, spec.before)) : null;
+      const all = exp.concat(pre || []), ymin = Math.min(0, ...all), ymax = Math.max(0, ...all), pad = (ymax - ymin) * 0.08 || 1;
+      const W = 720, H = 300, L = 70, R = 16, T = 12, B = 34;
+      const X = (x) => L + (x - lo) / (hi - lo) * (W - L - R), Y = (y) => T + (ymax + pad - y) / (ymax - ymin + 2 * pad) * (H - T - B);
+      const path = (ys) => ys.map((y, i) => `${i ? "L" : "M"}${X(xs[i]).toFixed(1)},${Y(y).toFixed(1)}`).join("");
+      const fmtN = (v) => Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-IN") : (+v.toFixed(1)).toLocaleString("en-IN");
+      const ticks = Array.from({ length: 6 }, (_, i) => lo + (hi - lo) * i / 5);
+      const yt = Array.from({ length: 5 }, (_, i) => ymin - pad + (ymax - ymin + 2 * pad) * i / 4);
+      // breakevens: where the expiry line crosses zero
+      const be = [];
+      for (let i = 1; i <= N; i++) if ((exp[i - 1] < 0) !== (exp[i] < 0)) be.push(xs[i - 1] + (xs[i] - xs[i - 1]) * (0 - exp[i - 1]) / (exp[i] - exp[i - 1]));
+      const svg = `<svg class="lpo-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(spec.title || "payoff")}">
+        ${yt.map((v) => `<line class="lpo-grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="lpo-t" x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${fmtN(v)}</text>`).join("")}
+        ${ticks.map((v) => `<text class="lpo-t" x="${X(v)}" y="${H - 12}" text-anchor="middle">${fmtN(v)}</text>`).join("")}
+        <path class="lpo-gain" d="${path(exp.map((y) => Math.max(y, 0)))}L${X(hi)},${Y(0)}L${X(lo)},${Y(0)}Z"/>
+        <path class="lpo-loss" d="${path(exp.map((y) => Math.min(y, 0)))}L${X(hi)},${Y(0)}L${X(lo)},${Y(0)}Z"/>
+        <line class="lpo-zero" x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}"/>
+        ${pre ? `<path class="lpo-pre" d="${path(pre)}"/>` : ""}
+        <path class="lpo-exp" d="${path(exp)}"/>
+        ${spec.underlying ? `<line class="lpo-spot" x1="${X(spec.underlying)}" x2="${X(spec.underlying)}" y1="${T}" y2="${H - B}"/><text class="lpo-t" x="${X(spec.underlying) + 4}" y="${T + 10}">now ${fmtN(spec.underlying)}</text>` : ""}
+        ${be.map((b) => `<circle class="lpo-be" cx="${X(b)}" cy="${Y(0)}" r="3.5"/>`).join("")}
+      </svg>`;
+      const maxP = Math.max(...exp), maxL = Math.min(...exp);
+      // unlimited when the extreme sits at an edge of the axis and the line is still sloping there (a capped
+      // spread is flat at the edge: its maximum is its maximum)
+      const edge = (arr, v) => (Math.abs(arr[0] - v) < 1e-9 && Math.abs(arr[1] - arr[0]) > 1e-9) || (Math.abs(arr[N] - v) < 1e-9 && Math.abs(arr[N] - arr[N - 1]) > 1e-9);
+      fig.innerHTML = `${spec.title ? `<div class="lps-t">${esc(spec.title)}</div>` : ""}
+        <div class="lps-leg small"><span><i style="background:${cssVar("--accent")}"></i>At expiry</span>${pre ? `<span><i style="background:${cssVar("--info")}"></i>${spec.before.days} days before expiry (implied volatility ${(spec.before.iv * 100).toFixed(0)}%)</span>` : ""}
+          <span>Profit / loss per ${spec.lot > 1 ? `lot of ${spec.lot}` : "unit"}</span></div>${svg}
+        <div class="small muted lpo-sum">${spec.legs.map((l) => `${l.side > 0 ? "Buy" : "Sell"} ${l.n > 1 ? l.n + "× " : ""}${l.kind}${l.strike != null ? " " + fmtN(l.strike) : ""} @ ${fmtN(l.price)}`).join(" · ")}
+          <br>Breakeven${be.length === 1 ? "" : "s"}: ${be.length ? be.map(fmtN).join(", ") : "none in this range"} · Max profit: ${edge(exp, maxP) && maxP > 0 ? "keeps growing beyond this range" : fmtN(maxP)} · Max loss: ${edge(exp, maxL) && maxL < 0 ? "keeps growing beyond this range" : fmtN(maxL)}</div>
+        ${spec.caption ? `<figcaption>${esc(spec.caption)}</figcaption>` : ""}`;
+    } catch (e) {
+      fig.innerHTML = `<div class="muted small">Payoff diagram unavailable: ${esc(e.message)}</div>`;
+    }
+    c.parentElement.replaceWith(fig);
+  });
+}
+
 function renderSeriesFigures(host) {
   host.querySelectorAll(".md pre > code.language-series").forEach((c) => {
     const spec = parseSeriesSpec(c.textContent);
@@ -4759,6 +4851,9 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-test-backtesting": "testing", "learn-test-reading": "testing",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
+/** a sub-heading for a guide inside its topic's menu — for a topic large enough to need categories
+ *  (Strategies: "Trend following", "Breakouts from a base", ...). Guides without one sit under "Guides". */
+const GUIDE_GROUP = {};
 const GUIDE_BLURB = {
   "learn-start-here": "What a share, an index and a chart are; how a trade happens and what it costs; percent, annualised and R. The floor every other guide stands on.",
   "learn-macro-rates": "What the Fed and the RBI do, why the price of money sets every valuation, and which sectors feel it first.",
@@ -4841,7 +4936,9 @@ async function learnPage(alive, topic, sub) {
   const openSec = topic ? fam : null;
   const sec = (key, title, count, body) => `<details class="lp-sec" data-sec="${key}" ${key === openSec ? "open" : ""}>
       <summary><span>${esc(title)}</span>${count != null ? `<span class="n">${count}</span>` : ""}</summary><div class="lp-sub">${body}</div></details>`;
-  const guideItems = (list, t) => list.length ? `<div class="nav-h">${list.length > 1 ? "Guides" : "Guide"}</div>` + list.map((x) => `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="${guideHref(x)}" title="${esc(guideTitle(x))}" data-k="${esc((guideLabel(x) + " guide").toLowerCase())}"><span><b class="sn">${esc(t ? guideShort(x, t) : guideLabel(x))}</b></span></a>`).join("") : "";
+  const groupHead = (x, i, list) => (GUIDE_GROUP[x.run] || "") !== (i ? GUIDE_GROUP[list[i - 1].run] || "" : null)
+    ? `<div class="nav-h">${esc(GUIDE_GROUP[x.run] || (list.length > 1 ? "Guides" : "Guide"))}</div>` : "";
+  const guideItems = (list, t) => list.length ? list.map((x, i) => groupHead(x, i, list) + `<a class="nav-item ${guide && x.id === guide.id ? "active" : ""}" href="${guideHref(x)}" title="${esc(guideTitle(x))}" data-k="${esc((guideLabel(x) + " guide").toLowerCase())}"><span><b class="sn">${esc(t ? guideShort(x, t) : guideLabel(x))}</b></span></a>`).join("") : "";
   const topicItems = (t) => guideItems(guidesIn(t), t) + (hasGrid(t) ? `<div class="nav-h">Patterns</div>`
     + `<a class="nav-item lp-allp ${catView === t ? "active" : ""}" href="#/learn/${t}"><span><b class="sn">All ${Learn.countOf(t)} patterns</b></span></a>` : "") + Learn.nav(p?.key, t);
   const more = guidesIn("more");
