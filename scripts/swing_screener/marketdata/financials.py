@@ -544,9 +544,25 @@ NSE_TAGS = {
             "BasicEarningsLossPerShareFromContinuingAndDiscontinuedOperations", "BasicEarningsPerShareAfterExtraordinaryItems"),
     "pretax_income": ("ProfitBeforeTax", "ProfitLossFromOrdinaryActivitiesBeforeTax"),
 }
+
+
+def _nse_eps(vals: dict) -> float | None:
+    """One period's EPS: the first non-zero of NSE_TAGS["eps"] — except that some companies with no discontinued
+    operations file their continuing EPS in the discontinued-operations tags too, so the "continuing and
+    discontinued" total they file is twice the real one (Maruti, quarter and year to Mar-2024: 251.42 and 858.02
+    for 125.71 and 429.01). When the discontinued EPS repeats the continuing one, the document's own discontinued
+    profit is nil and the total is their sum, the continuing EPS is the answer."""
+    eps = next((x for x in (_num(vals.get(t)) for t in NSE_TAGS["eps"]) if x), None)
+    for kind in ("Diluted", "Basic"):
+        cont = _num(vals.get(f"{kind}EarningsLossPerShareFromContinuingOperations"))
+        disc = _num(vals.get(f"{kind}EarningsLossPerShareFromDiscontinuedOperations"))
+        if cont and disc == cont and eps is not None and abs(eps - 2 * cont) <= 0.01 * abs(cont) \
+                and not _num(vals.get("ProfitLossFromDiscontinuedOperationsAfterTax")):
+            return cont
+    return eps
 NSE_EQUITY = ("EquityAttributableToOwnersOfParent", "Equity", "TotalEquity")
 CONSOLIDATED_SHARE = 0.75     # consolidated when filed for at least this share of the recent quarters
-NSE_PARSER_VERSION = 6        # bump when parse_nse_xbrl changes: stored documents are then parsed again
+NSE_PARSER_VERSION = 7        # bump when parse_nse_xbrl changes: stored documents are then parsed again
 
 
 class _NseSession:
@@ -649,7 +665,7 @@ def _nse_pl(v: dict, bank: bool) -> dict:
         dep = n("DepreciationDepletionAndAmortisationExpense")
         expenses = total - (interest or 0) - (dep or 0) if total is not None else None
         op = sales - expenses if sales is not None and expenses is not None else None
-    eps = next((x for x in (_num(v.get(t)) for t in NSE_TAGS["eps"]) if x), None)
+    eps = _nse_eps(v)
     return _clean({"sales": sales, "expenses": expenses, "operating_profit": op, "other_income": n("OtherIncome"),
                    "interest": interest, "depreciation": dep, "exceptional": n("ExceptionalItemsBeforeTax", "ExceptionalItems"),
                    "pbt": n("ProfitBeforeTax", "ProfitLossFromOrdinaryActivitiesBeforeTax"), "tax": n("TaxExpense"),
@@ -747,12 +763,12 @@ def parse_nse_xbrl(content: bytes) -> dict | None:
     paid, face = _num(qv.get("PaidUpValueOfEquityShareCapital")), _num(qv.get("FaceValueOfEquityShareCapital"))
     out["shares"] = paid / face if paid and face else None
     # some documents carry 0 in the main EPS tag and the figure in another; failing all, net income / shares
-    eps = next((v for v in (_num(qv.get(n)) for n in NSE_TAGS["eps"]) if v), None)
+    eps = _nse_eps(qv)
     if eps is None and out["net_income"] is not None and out["shares"]:
         eps = out["net_income"] / out["shares"]
     out["eps"] = eps if eps is not None else out["eps"]
     out["net_income_fy"] = pick(yv, NSE_TAGS["net_income"]) if yv else None
-    out["eps_fy"] = next((v for v in (_num(yv.get(n)) for n in NSE_TAGS["eps"]) if v), None) if yv else None
+    out["eps_fy"] = _nse_eps(yv) if yv else None
     out["equity"] = pick(iv, NSE_EQUITY)
     bank = "InterestEarned" in qv and "RevenueFromOperations" not in qv
     out["layout"] = "bank" if bank else "industrial"
