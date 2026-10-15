@@ -192,7 +192,7 @@ Mark the two or three parameters you expect to matter most ("Key" above). Those 
 
 **Discretionary checklists.** Many discretionary traders use a checklist instead of code. It can still be a spec, if each line is true or false and the trader records which lines they overrode.
 
-**Screens and strategies.** Some traders split the spec in two: a screen that only qualifies stocks, and a strategy that adds the trade rules. [The screens and strategies guide](learn-system-screens-strategies.md) explains why that split helps.
+**Screens and strategies.** Some traders split the spec in two: a screen that only qualifies stocks, and a strategy that adds the trade rules. The split helps because the screen can be judged on its own — do the stocks it picks do better than the rest? — before any trade rules are added.
 
 ## 6. Worked examples — the example spec on three Indian stocks
 

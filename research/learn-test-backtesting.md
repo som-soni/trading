@@ -6,9 +6,7 @@ companies that survived, bad data, costs, fills and gaps, results that come from
 one kind of market, and samples too small to mean anything. Each one comes with a
 real example from this app and a measurement on its stored runs. Then come the
 defences: holding data back, robustness checks, and a checklist to run before a
-test. The companion guide,
-[Reading this app's backtests and screen studies](learn-test-reading.md), walks
-through one report number by number.
+test.
 
 **Where this shows in the app.** Each strategy's page on **Strategies** has a
 **Backtests** tab. It lists that strategy's stored runs grouped by version, and

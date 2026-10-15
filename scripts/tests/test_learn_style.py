@@ -57,8 +57,8 @@ NOT_YET_CONVERTED = {
     "learn-price-rs", "learn-price-stages", "learn-price-volume", "learn-process-biases",
     "learn-process-journal", "learn-process-plan", "learn-risk-expectancy", "learn-risk-portfolio",
     "learn-risk-sizing", "learn-risk-stops-exits", "learn-sectors-groups", "learn-start-here",
-    "learn-supply-demand", "learn-system-families", "learn-system-filters",
-    "learn-system-screens-strategies", "learn-test-backtesting", "learn-test-reading", "learn-vcp",
+    "learn-supply-demand", "learn-system-filters",
+    "learn-test-backtesting", "learn-vcp",
 }
 
 APP_REFERENCES = [

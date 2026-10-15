@@ -1,4 +1,4 @@
-# Reading this app's backtests and screen studies — what each number means, and when to doubt it
+# Using the app — reading its backtests and screen studies: what each number means, and when to doubt it
 
 Learning material. This guide reads one real stored backtest, number by
 number, as the app shows it, then one screen study. It then shows, on the

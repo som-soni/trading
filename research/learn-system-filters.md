@@ -5,11 +5,8 @@ system narrows its universe in stages, and each stage answers a *different*
 question. Mixing those questions together is the most common way a working
 system becomes an untestable one.
 
-This guide is a companion to
-[learn-system-screens-strategies.md](learn-system-screens-strategies.md),
-which covers where a rule belongs, and
-[learn-system-families.md](learn-system-families.md), which covers what the
-bet is.
+For the strategies themselves, see [the strategies map](learn-strat-overview.md);
+for turning one into rules, [writing your own strategy specification](learn-strat-spec.md).
 
 **Where this shows up in the app.** The stages below are real code, not a
 metaphor: the universe floor and the screens live in

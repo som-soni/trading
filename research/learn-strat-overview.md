@@ -260,4 +260,4 @@ Before you trade any of them with real money:
 - Jack Schwager, *Market Wizards* (New York Institute of Finance, 1989).
 - Andreas Clenow, *Stocks on the Move* (2015).
 - Larry Harris, *Trading and Exchanges* (Oxford University Press, 2003).
-- Related guides: [your trading plan](learn-process-plan.md), [expectancy](learn-risk-expectancy.md), [portfolio risk](learn-risk-portfolio.md), [reading a backtest](learn-test-reading.md).
+- Related guides: [your trading plan](learn-process-plan.md), [expectancy](learn-risk-expectancy.md), [portfolio risk](learn-risk-portfolio.md), [backtesting honestly](learn-test-backtesting.md).

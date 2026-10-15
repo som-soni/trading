@@ -312,7 +312,7 @@ for each day t with an up-leg (L, H) where H is confirmed by t:
             if (entry - stop) / entry <= max_risk: manage(entry, stop, H, L + ...)
 ```
 
-**A good test reports:** trades per year; win rate and average win and loss in R; expectancy after costs; worst losing streak; results by year and market regime; and the placebo comparison. If the placebo ratios do as well, the Fibonacci part of the rule is decoration. See [Backtesting](learn-test-backtesting.md) and [Reading a backtest](learn-test-reading.md).
+**A good test reports:** trades per year; win rate and average win and loss in R; expectancy after costs; worst losing streak; results by year and market regime; and the placebo comparison. If the placebo ratios do as well, the Fibonacci part of the rule is decoration. See [Backtesting](learn-test-backtesting.md).
 
 ## 10. Checklist
 

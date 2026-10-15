@@ -1,4 +1,4 @@
-# Screens and strategies — two different questions, and where each rule belongs
+# Using the app — screens and strategies: two different questions, and where each rule belongs
 
 Learning material: a screen tells you what is *worth looking at*; a strategy
 tells you what to *do about it*. They are judged differently, they fail
@@ -7,7 +7,7 @@ letting one do the other's job.
 
 Companion guides: [learn-system-filters.md](learn-system-filters.md) (the
 stages between a universe and a trade) and
-[learn-system-families.md](learn-system-families.md) (what the bet is).
+[app-guide-strategy-families.md](app-guide-strategy-families.md) (what the bet is).
 
 **Where this shows up in the app.** The **Screens** page lists each screen and
 its criteria; the **Strategies** page lists each strategy, the screen it draws

@@ -359,7 +359,7 @@ Add slippage of at least one tick each side for index futures, more for stocks. 
 - Test Strategy A over the longest history you have, then split it by year, by volatility level and by news versus non-news days.
 - Check whether the result survives a later entry (one bar late) and a worse fill (one more tick of slippage).
 - For Strategy B, count how often the trend-day test at mid-morning was right by the close. If it is barely better than the base rate of about one in five, the setup adds nothing.
-- Report trades, win rate, average win and loss, expectancy after costs, maximum drawdown and results by year. See [backtesting](learn-test-backtesting.md) and [reading a backtest](learn-test-reading.md).
+- Report trades, win rate, average win and loss, expectancy after costs, maximum drawdown and results by year. See [backtesting](learn-test-backtesting.md).
 
 ### Core logic
 

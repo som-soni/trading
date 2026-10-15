@@ -4836,9 +4836,8 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
   "learn-strat-overview", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
-  "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing",
-  "learn-system-families", "learn-system-filters", "learn-system-screens-strategies",
-  "learn-test-backtesting", "learn-test-reading",
+  "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing", "learn-system-filters",
+  "learn-test-backtesting",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
 const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
@@ -4849,10 +4848,8 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
   "learn-strat-overview": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
-  "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno",
-  "learn-system-families": "system", "learn-system-filters": "system",
-  "learn-system-screens-strategies": "system",
-  "learn-test-backtesting": "testing", "learn-test-reading": "testing",
+  "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno", "learn-system-filters": "system",
+  "learn-test-backtesting": "system",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
 /** a sub-heading for a guide inside its topic's menu — for a topic large enough to need categories
@@ -4972,11 +4969,8 @@ const GUIDE_BLURB = {
   "learn-risk-expectancy": "Win rate times average win against loss rate times average loss — measured on this app's own backtest trades.",
   "learn-risk-sizing": "Risk per trade, R, stop distance and position size: how much to buy, and how the app sizes it.",
   "learn-risk-stops-exits": "Initial stops, gaps through them, breakeven and trailing stops, targets, and selling into strength or weakness.",
-  "learn-system-families": "The handful of bets a strategy can make — trend continuation, base breakouts, channel following, momentum, mean reversion, reversals — what each needs to work, and what this app's backtests found.",
   "learn-system-filters": "How thousands of stocks become one trade: the six stages between a universe and a position, and why each must answer a different question.",
-  "learn-system-screens-strategies": "A screen says what is worth looking at; a strategy says what to do about it. Where each rule belongs, and how the two are judged differently.",
   "learn-test-backtesting": "Overfitting, look-ahead, survivorship and costs — how a backtest fools you, with this app's own examples.",
-  "learn-test-reading": "What each number in this app's backtests and screen studies means, and what would make you distrust a result.",
   "learn-price-stages": "A stock's four stages, the trend template, and how to tell an uptrend that is starting from one that is ending.",
   "learn-price-volume": "What volume says about who is buying: breakouts on volume, dry-ups in bases, climaxes and distribution in a stock.",
   "learn-price-rs": "Relative strength: the RS line and RS rating, why leaders show strength first, and how the app ranks it.",
@@ -5004,7 +4998,7 @@ const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerC
   return sub ? sub[0].toUpperCase() + sub.slice(1) : "Field guide"; };
 // the learning path: context (macro, the market) -> reading a stock (price, candles, patterns, levels, fundamentals)
 // -> trading it (risk, process) -> building and testing a system of your own
-const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles", "charts", "levels", "fundamentals", "strategies", "fno", "risk", "process", "system", "testing"];
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles", "charts", "levels", "fundamentals", "strategies", "fno", "risk", "process", "system"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;

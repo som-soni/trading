@@ -1,4 +1,4 @@
-# Strategy families — the handful of ways a trade can make money
+# Using the app — the strategy families it implements: the handful of ways a trade can make money
 
 Learning material: almost every systematic strategy belongs to one of a small
 number of families. Each family makes a different bet about what price does
@@ -7,7 +7,7 @@ characteristic way. This guide names the families, says what each one needs,
 and — for the ones this app implements — what the backtests actually found.
 
 It is a companion to
-[learn-system-screens-strategies.md](learn-system-screens-strategies.md)
+[app-guide-screens-strategies.md](app-guide-screens-strategies.md)
 (where a rule belongs) and
 [learn-system-filters.md](learn-system-filters.md) (how a candidate is
 narrowed to a trade).
