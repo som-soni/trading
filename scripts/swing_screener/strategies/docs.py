@@ -21,16 +21,17 @@ from .. import paths
 from ..config import MARKETS
 from . import _REGISTRY, BEHAVIOURS, LABELS, SELECTION, STYLES
 
-# What each decision label means. Shared by every Strategy subclass: the
-# labels and the downgrade ladder are defined once, in strategies/base.py.
+# What each decision label means, by label code. Shared by every Strategy subclass unless it
+# overrides a tier in `decision_docs`: the labels and the downgrade ladder are defined once,
+# in strategies/base.py.
 DECISIONS = (
-    (LABELS["TRADE_HIGH_CONFIDENCE"], "Every hard gate passes, an entry setup is present, the trade plan passes the strategy's "
-                                      "risk and reward checks, and nothing caps confidence."),
-    (LABELS["TRADE_ON_TRIGGER"], "A valid plan exists, but enter only if price trades through the entry level (a resting "
-                                 "buy-stop), or a watch flag / the market regime capped it to this tier."),
-    (LABELS["WATCH_WAIT"], "The trend qualifies but there is no valid entry yet — no setup, the plan fails the reward/risk "
-                           "test, or a cap applies. Worth watching, not buying."),
-    (LABELS["AVOID"], "A hard gate failed (or the plan failed its risk checks). Not tradeable under this strategy."),
+    ("TRADE_HIGH_CONFIDENCE", "Every hard gate passes, an entry setup is present, the trade plan passes the strategy's "
+                              "risk and reward checks, and nothing caps confidence."),
+    ("TRADE_ON_TRIGGER", "A valid plan exists, but enter only if price trades through the entry level (a resting "
+                         "buy-stop), or a watch flag / the market regime capped it to this tier."),
+    ("WATCH_WAIT", "The trend qualifies but there is no valid entry yet — no setup, the plan fails the reward/risk "
+                   "test, or a cap applies. Worth watching, not buying."),
+    ("AVOID", "A hard gate failed (or the plan failed its risk checks). Not tradeable under this strategy."),
 )
 
 
@@ -119,7 +120,7 @@ def strategy_doc(key: str) -> dict:
         "entry_rules": [r(s) for s in cls.entry_rules], "exit_rules": [r(s) for s in cls.exit_rules],
         "params": [{"label": label, "source": src, "meaning": r(meaning),
                     "values": {m: _fmt(v) for m, v in _resolve_param(cls, src).items()}} for label, src, meaning in cls.param_docs],
-        "decisions": [{"label": l, "text": t} for l, t in DECISIONS], "regime_note": r(cls.regime_note),
+        "decisions": [{"label": LABELS[c], "text": r(cls.decision_docs.get(c, t))} for c, t in DECISIONS], "regime_note": r(cls.regime_note),
         "min_bars": cls.min_bars,
         "commands": {
             "Screen today": f"python3 -m swing_screener.screening.pipeline --market us --strategy {key}",
@@ -248,7 +249,10 @@ def check() -> list[str]:
                 for c in sorted(set(docs) - codes):
                     problems.append(f"{where}: {docs_attr} documents '{c}', which is not in {codes_attr} (stale?)")
         texts = [cls.thesis, cls.status, cls.description, *cls.how_it_works, *cls.caveats, *cls.entry_rules, *cls.exit_rules,
-                 *cls.gate_docs.values(), *cls.watch_docs.values(), *cls.setup_docs.values(), *(p[2] for p in cls.param_docs)]
+                 *cls.gate_docs.values(), *cls.watch_docs.values(), *cls.setup_docs.values(), *(p[2] for p in cls.param_docs),
+                 cls.regime_note, *cls.decision_docs.values()]
+        for c in sorted(set(cls.decision_docs) - {c for c, _ in DECISIONS}):
+            problems.append(f"{where}: decision_docs documents '{c}', which is not a decision label code")
         for t in texts:
             try:
                 cls.render_doc(t)
