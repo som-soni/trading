@@ -134,6 +134,23 @@ def _quarters(eps: list, rev: list, ni: list | None = None, shares: list | None 
     return rows
 
 
+def test_sec_eps_scale_slips():
+    """A filing that tags EPS at the wrong scale (HAL Q2 2021: 260000 for $0.26) is divided back, against
+    net income / shares and the company's other quarters; a correct EPS beside a broken share count is kept."""
+    assert q.eps_scale(260000, 227e6, 890e6) == 1e6
+    assert q.eps_scale(260, 227e6, 890e6) == 1e3
+    assert q.eps_scale(0.26, 227e6, 890e6) == 1
+    assert q.eps_scale(660000, 370e6, 112e6) == 1e6        # slip and a later 5:1 split basis together
+    assert q.eps_scale(20.0, 1e9, 1e9) == 1                # a 20:1 split mismatch is not a scale slip
+    assert q.eps_scale(7000, 10e9) == 1                    # a genuinely large EPS (Berkshire A-like)
+    row = lambda eps, ni, sh: {"eps": eps, "net_income": ni, "shares": sh, "eps_prior": None, "eps_fy": None}
+    rows = q._fix_eps_scale([row(0.30, 260e6, 890e6), row(260000, 227e6, 890e6), row(0.25, 220e6, 890e6),
+                                      row(-0.2, -180e6, 890e6), row(215634000, -117e6, 215634000)])
+    assert [r["eps"] for r in rows] == [0.30, 0.26, 0.25, -0.2, None]   # rescaled; a share count in the EPS field dropped
+    nse = q._fix_eps_scale([row(2.74, 154e6, 2.8e13), row(3.1, 170e6, 5.6e7), row(2.9, 160e6, 5.6e7)])
+    assert [r["eps"] for r in nse] == [2.74, 3.1, 2.9]               # a mis-scaled share count leaves the EPS alone
+
+
 def test_split_factors():
     shares = [100, 101, 202, 203, 204, 280]                 # 1:1 bonus, then a 37% share issue
     eps = [1.0, 1.0, 0.5, 0.5, 0.5, 0.4]

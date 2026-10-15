@@ -1120,8 +1120,72 @@ def run(market: str, symbols: list[str], force: bool = False) -> dict:
     return stats
 
 
+# Some companies' own XBRL tags EPS with the wrong scale: Halliburton filed its Q2 2021 diluted EPS as 260000
+# for $0.26, and EDGAR publishes it as filed. A per-share figure off by a factor of 1,000 or 1,000,000 is
+# caught against the EPS the same period's net income and share count imply, and divided back — but only when
+# the figure is also far out of line with the company's own EPS in its other periods and the corrected one fits
+# them: NSE rows with a mis-scaled share count or a wrong net income must not have their (correct) EPS
+# "fixed". Stored rows keep what the filing says; `load` and `load_lines` correct it on the way out, so no
+# re-download is needed.
+EPS_SCALE_FACTORS = (1e6, 1e3)          # the scale slips seen in filings (thousands, millions)
+EPS_SCALE_TOL = 3.0                     # EPS / implied EPS within ×/÷ this of 1,000 counts as the thousands slip
+EPS_SCALE_MILLION_MIN = 1e4             # ... and anything past this as the millions slip: a split between the EPS's
+                                        # share basis and the stored count moves the ratio by up to 50, never 10,000
+EPS_SCALE_MIN_SHARES = 1e6              # without a share count: fewer implied shares than this is not a listed company
+EPS_SCALE_MIN_ABS = 1000.0              # ... and only an EPS this large is checked that way
+EPS_SCALE_OUTLIER = 30.0                # a slip is this many times the company's median |EPS|; the corrected one within it
+EPS_IMPOSSIBLE_SHARES = 1000            # an outlier EPS that implies fewer shares than this is not an EPS at all (some
+                                        # filings put the share count in the EPS concept): it is dropped, not rescaled
+
+
+def eps_scale(eps, net_income, shares=None) -> float:
+    """The factor a per-share figure was mis-scaled by (1 when it looks right): EPS against net income ÷
+    shares when the share count is known, else against the share count it implies."""
+    if not eps or not net_income:
+        return 1.0
+    if shares and shares > 0:
+        ratio = abs(eps) / abs(net_income / shares)
+        if ratio >= EPS_SCALE_MILLION_MIN:
+            return 1e6
+        return 1e3 if 1e3 / EPS_SCALE_TOL <= ratio <= 1e3 * EPS_SCALE_TOL else 1.0
+    if abs(eps) >= EPS_SCALE_MIN_ABS:
+        implied = abs(net_income / eps)
+        if implied < EPS_SCALE_MIN_SHARES / EPS_SCALE_FACTORS[-1]:
+            return next((k for k in sorted(EPS_SCALE_FACTORS) if implied * k >= EPS_SCALE_MIN_SHARES), 1.0)
+    return 1.0
+
+
+def _median_abs(vals) -> float | None:
+    v = sorted(abs(x) for x in vals if x)
+    return v[len(v) // 2] if v else None
+
+
+def _rescaled(v, net_income, shares, typical: float | None):
+    """v divided back by its scale slip — only when it is an outlier against `typical` (the company's median
+    |EPS|) and the corrected value is not."""
+    if not typical or abs(v) < EPS_SCALE_OUTLIER * typical:
+        return v
+    k = eps_scale(v, net_income, shares)
+    if k != 1 and abs(v) / k <= EPS_SCALE_OUTLIER * typical:
+        return v / k
+    if net_income and abs(net_income / v) < EPS_IMPOSSIBLE_SHARES:
+        return None
+    return v
+
+
+def _fix_eps_scale(rows: list[dict]) -> list[dict]:
+    """One company's quarters, with EPS scale slips divided back (see `eps_scale`)."""
+    typical = _median_abs(r.get("eps") for r in rows)
+    typical_fy = _median_abs(r.get("eps_fy") for r in rows)
+    for r in rows:
+        for e, n, t in (("eps", "net_income", typical), ("eps_prior", "net_income_prior", typical), ("eps_fy", "net_income_fy", typical_fy)):
+            if r.get(e) is not None:
+                r[e] = _rescaled(r[e], r.get(n), r.get("shares"), t)
+    return rows
+
+
 def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]:
-    """Stored quarters per symbol, oldest first."""
+    """Stored quarters per symbol, oldest first (EPS scale slips corrected: `eps_scale`)."""
     sql = f"SELECT symbol, {', '.join(COLUMNS)} FROM quarterly_results WHERE market=%s"
     args: tuple = (market,)
     if symbols is not None:
@@ -1131,16 +1195,24 @@ def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]
         cur.execute(sql + " ORDER BY symbol, period_end", args)
         for r in cur.fetchall():
             out[r[0]].append(dict(zip(COLUMNS, r[1:])))
-    return dict(out)
+    return {sym: _fix_eps_scale(rows) for sym, rows in out.items()}
 
 
 def load_lines(market: str, symbol: str) -> dict:
-    """{period_type: {period_end: {line: value}}} for one company."""
+    """{period_type: {period_end: {line: value}}} for one company (EPS scale slips corrected: `eps_scale`,
+    against the quarter's stored share count where there is one)."""
     out: dict = defaultdict(lambda: defaultdict(dict))
     with db.get_connection().cursor() as cur:
         cur.execute("SELECT period_type, period_end, line, value FROM financial_lines WHERE market=%s AND symbol=%s", (market, symbol))
         for pt, e, line, v in cur.fetchall():
             out[pt][e][line] = v
+        cur.execute("SELECT period_end, shares FROM quarterly_results WHERE market=%s AND symbol=%s", (market, symbol))
+        shares = dict(cur.fetchall())
+    for periods in out.values():
+        typical = _median_abs(lines.get("eps") for lines in periods.values())
+        for e, lines in periods.items():
+            if lines.get("eps") is not None:
+                lines["eps"] = _rescaled(lines["eps"], lines.get("net_profit"), shares.get(e), typical)
     return {pt: dict(v) for pt, v in out.items()}
 
 
