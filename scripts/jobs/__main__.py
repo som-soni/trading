@@ -224,6 +224,7 @@ def _run_args(r) -> None:
     r.add_argument("--pe-pilot", type=float, default=None, metavar="FRAC")
     r.add_argument("--pe-press", type=float, default=None, metavar="NET_R")
     r.add_argument("--mkt-confirm", type=int, default=None, metavar="N")
+    r.add_argument("--top-dollar-volume", type=int, default=None, metavar="N")
     r.add_argument("--pyramid", type=float, default=None, metavar="FRAC",
                    help="`backtest`: build positions in two tranches, FRAC at entry (e.g. 0.5).")
     r.add_argument("--min-dollar-volume", type=float, default=None, metavar="X",
@@ -258,7 +259,7 @@ def _opts(ap, a):
             "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days,
             "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols, "max_base": a.max_base, "min_dollar_volume": a.min_dollar_volume, "pyramid": a.pyramid,
             "market_filter": a.market_filter, "pe": a.pe, "pe_window": a.pe_window, "pe_warmup": a.pe_warmup, "pe_pilot": a.pe_pilot,
-            "pe_press": a.pe_press, "mkt_confirm": a.mkt_confirm,
+            "pe_press": a.pe_press, "mkt_confirm": a.mkt_confirm, "top_dollar_volume": a.top_dollar_volume,
             "accept_labels": a.accept_labels}
     unknown = [t for t in a.targets if t not in JOBS and t not in PIPELINES]
     if unknown:

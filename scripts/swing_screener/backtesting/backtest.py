@@ -868,6 +868,7 @@ def run_portfolio_backtest(
     min_group_rs: int | None = None,
     min_rs: int | None = None,
     max_base_no: int | None = None,
+    top_dollar_volume: int | None = None,
     min_dollar_volume: float | None = None,
     pyramid_frac: float | None = None,
     pyramid_add_pct: float = 2.0,
@@ -971,6 +972,14 @@ def run_portfolio_backtest(
                           f"on the signal date) skipped: {r['below']} below, {r['unrated']} outside the rated universe, {r['kept']} kept.")
         fn.dropped("accepted", f"RS rating below {min_rs}", r["below"])
         fn.dropped("accepted", "outside the rated universe", r["unrated"])
+    if top_dollar_volume and all_signals:
+        all_signals, tdv = spec_mod.filter_top_dollar_volume(all_signals, market_key, top_dollar_volume)
+        fn.dropped("accepted", f"outside the {top_dollar_volume} most-traded stocks", tdv["outside"])
+        spec_notes.append(
+            f"Traded-value rank: only signals whose stock was among the {top_dollar_volume} most-traded "
+            f"by 50-day average value ON THE SIGNAL DATE ({tdv['kept']} kept, {tdv['outside']} outside). "
+            "A rank, not a dollar floor, so it means the same thing in 2010 as in 2026; it stands in for "
+            "index membership, which cannot be reconstructed point in time here.")
     regime_ok = spec_mod.market_ok(market_key, mkt_confirm) if use_market_filter else None
     if use_market_filter and all_signals:
         all_signals, m = spec_mod.market_filter(all_signals, market_key, mkt_confirm)
@@ -1211,6 +1220,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--pe-press", type=float, default=None, metavar="NET_R",
                         help="PE-04, off by default: net R over the window that unlocks 1.25x risk and "
                              "two extra position slots (the spec suggests +4)")
+    parser.add_argument("--top-dollar-volume", type=int, default=None, metavar="N",
+                        help="keep only signals whose stock was among the N most-traded (50-day average "
+                             "value) on the signal date. A rank rather than --min-dollar-volume's absolute "
+                             "floor, so it carries the same meaning across the whole window.")
     parser.add_argument("--mkt-confirm", type=int, default=0, metavar="N",
                         help="with --market-filter: sessions MKT-01 must hold before risk-on resumes, so the "
                              "gate does not flap around the 200-day (test 1-10). Risk-off still bites at once.")
@@ -1388,6 +1401,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             min_dollar_volume=args.min_dollar_volume,
             pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct,
             use_market_filter=args.market_filter, mkt_confirm=args.mkt_confirm,
+            top_dollar_volume=args.top_dollar_volume,
             exposure=_exposure_from(args),
             spec_costs=args.spec,
             max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
@@ -1430,6 +1444,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         run += f"_rs{args.min_rs}"
     if args.market_filter:
         run += "_mkt" + (f"c{args.mkt_confirm}" if args.mkt_confirm else "")
+    if args.top_dollar_volume:
+        run += f"_top{args.top_dollar_volume}"
     if args.pe:
         run += f"_pe{args.pe_window}w{args.pe_pilot:g}" + (f"press{args.pe_press:g}" if args.pe_press is not None else "")
     if args.fundamentals:

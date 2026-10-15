@@ -186,7 +186,7 @@ def command_for(targets: list, market: str, opts: dict) -> list[str]:
         cmd.append("--market-filter")
     if opts.get("pe"):
         cmd.append("--pe")
-    for k in ("pe_window", "pe_warmup", "pe_pilot", "pe_press", "mkt_confirm"):
+    for k in ("pe_window", "pe_warmup", "pe_pilot", "pe_press", "mkt_confirm", "top_dollar_volume"):
         if opts.get(k) is not None:
             cmd += ["--" + k.replace("_", "-"), str(opts[k])]
     if opts.get("accept_labels"):

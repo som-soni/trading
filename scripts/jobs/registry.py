@@ -431,7 +431,7 @@ def _backtest_steps(ctx: Ctx) -> list:
                 argv.append("--market-filter")
             if c.opt("pe"):
                 argv.append("--pe")
-            for _k in ("pe_window", "pe_warmup", "pe_pilot", "pe_press", "mkt_confirm"):
+            for _k in ("pe_window", "pe_warmup", "pe_pilot", "pe_press", "mkt_confirm", "top_dollar_volume"):
                 if c.opt(_k) is not None:
                     argv += ["--" + _k.replace("_", "-"), str(c.opt(_k))]
             for extra in (c.opt("bt") or []):

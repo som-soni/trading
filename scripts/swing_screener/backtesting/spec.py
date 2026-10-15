@@ -113,6 +113,60 @@ def filter_min_rs(signals: list, market: str, min_rs: int) -> tuple[list, dict]:
     return kept, {"min_rs": min_rs, "kept": len(kept), "below": low, "unrated": unrated}
 
 
+def top_dollar_volume(market: str, dates: list, n: int) -> dict:
+    """{date: set of the `n` most-traded symbols by 50-day average traded value that day}.
+
+    A RANK, not a floor. `--min-dollar-volume` asks for an absolute number of dollars,
+    which means something different in 2010 than in 2026; this asks to be among the n
+    most-traded names at the time, which is what "a large-cap index member" actually
+    stands for and is computable point in time from prices alone. Real index membership
+    cannot be: nothing here stores constituents, and today's membership is an OUTCOME of
+    having grown, so applying it backwards would be lookahead of the worst kind.
+    """
+    dates = sorted({pd.Timestamp(d) for d in dates})
+    if not dates or not n:
+        return {}
+    since = dates[0] - pd.Timedelta(days=150)      # enough history for a 50-session mean
+    with db.get_connection().cursor() as cur:
+        cur.execute("""SELECT symbol, date, close, volume FROM prices
+                       WHERE market=%s AND date >= %s AND date <= %s AND close > 0 AND symbol NOT LIKE '^%%'""",
+                    (market, since.date(), dates[-1].date()))
+        raw = pd.DataFrame(cur.fetchall(), columns=["symbol", "date", "close", "volume"])
+    if raw.empty:
+        return {}
+    raw["date"] = pd.to_datetime(raw["date"])
+    value = (raw.pivot(index="date", columns="symbol", values="close").astype(float)
+             * raw.pivot(index="date", columns="symbol", values="volume").astype(float)).sort_index()
+    del raw
+    v50 = value.rolling(50, min_periods=40).mean()
+    out = {}
+    for d in dates:
+        row = v50[v50.index <= d]
+        if row.empty:
+            continue
+        top = row.iloc[-1].dropna().nlargest(n)
+        out[d] = set(top.index)
+    return out
+
+
+def filter_top_dollar_volume(signals: list, market: str, n: int) -> tuple[list, dict]:
+    """Keep signals whose stock was among the `n` most-traded on the signal date."""
+    ranks = top_dollar_volume(market, [s.date for s in signals], n)
+    kept, outside, unknown = [], 0, 0
+    for s in signals:
+        top = ranks.get(pd.Timestamp(s.date))
+        if top is None:
+            unknown += 1
+            kept.append(s)          # no ranking that day: do not silently drop the signal
+            continue
+        if s.symbol in top:
+            kept.append(s)
+        else:
+            outside += 1
+    logger.info("Top-%d traded filter: kept %d, outside %d, unranked %d", n, len(kept), outside, unknown)
+    return kept, {"n": n, "kept": len(kept), "outside": outside, "unranked": unknown}
+
+
 def filter_max_base_no(signals: list, max_base: int) -> tuple[list, dict]:
     """Keep only signals from the first `max_base` bases of a stock's advance.
 
