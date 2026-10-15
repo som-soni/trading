@@ -3397,6 +3397,11 @@ function renderResearchMd(host, markdown) {
   });
   renderSeriesFigures(host);
   host.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
+  // Plain-language definitions on the first use of each glossary term. The
+  // guides are entered from the hub in any order, so a term explained in one
+  // cannot be assumed known in another — see static/glossary.js.
+  // `const Glossary` is a script-scope binding, not a window property — test the name itself
+  if (typeof Glossary !== "undefined") { Glossary.annotate(host.querySelector("article")); Glossary.bind(); }
   // links between documents are written as filenames ("learn-chart-patterns.md"); show the document's title
   const named = [...host.querySelectorAll('.md a[href$=".md"]')].filter((a) => /\.md$/i.test(a.textContent.trim()));
   if (named.length) api("/api/reports?kind=research").then((runs) => named.forEach((a) => {
@@ -4550,25 +4555,28 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn is organised by TOPIC — Macro, Market health, Sectors & groups, Fundamentals, Risk & trade management, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
+/** Learn is organised by TOPIC — Macro, Market health, Sectors & groups, Fundamentals, Risk & trade management, Process & psychology, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
  *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
  *  appears in the menu once. #/learn is the hub; #/learn/candles, /charts, /levels a topic's pattern grid;
  *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
-const GUIDE_ORDER = ["learn-macro-rates", "learn-macro-yield-curve", "learn-macro-inflation", "learn-macro-cycle", "learn-macro-currencies", "learn-macro-liquidity-credit", "learn-macro-commodities", "learn-macro-calendar",
+const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield-curve", "learn-macro-inflation", "learn-macro-cycle", "learn-macro-currencies", "learn-macro-liquidity-credit", "learn-macro-commodities", "learn-macro-calendar",
   "learn-health-trend", "learn-health-breadth", "learn-health-volatility", "learn-health-distribution",
   "learn-sectors-groups",
   "learn-fund-earnings", "learn-fund-valuation", "learn-fund-quality",
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
+  "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
-const GUIDE_TOPIC = {"learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
+const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
   "learn-health-trend": "health", "learn-health-breadth": "health", "learn-health-volatility": "health", "learn-health-distribution": "health",
   "learn-sectors-groups": "sectors",
   "learn-fund-earnings": "fundamentals", "learn-fund-valuation": "fundamentals", "learn-fund-quality": "fundamentals",
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
+  "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
 const GUIDE_BLURB = {
+  "learn-start-here": "What a share, an index and a chart are; how a trade happens and what it costs; percent, annualised and R. The floor every other guide stands on.",
   "learn-macro-rates": "What the Fed and the RBI do, why the price of money sets every valuation, and which sectors feel it first.",
   "learn-macro-yield-curve": "Bond yields, the shape of the curve, inversions and recessions, and why the 10-year moves growth stocks.",
   "learn-macro-inflation": "CPI, core and India's food-heavy basket: how inflation reaches rates, margins and sector leadership.",
@@ -4588,6 +4596,9 @@ const GUIDE_BLURB = {
   "learn-risk-expectancy": "Win rate times average win against loss rate times average loss — measured on this app's own backtest trades.",
   "learn-risk-sizing": "Risk per trade, R, stop distance and position size: how much to buy, and how the app sizes it.",
   "learn-risk-stops-exits": "Initial stops, gaps through them, breakeven and trailing stops, targets, and selling into strength or weakness.",
+  "learn-process-plan": "A written plan and a daily and weekly routine — what to check, in what order, using this app's pages.",
+  "learn-process-journal": "What to record on every trade, and how to review it to find what actually works — and what doesn't.",
+  "learn-process-biases": "Loss aversion, FOMO, revenge trading, anchoring and overconfidence — what each costs, measured on the app's trades.",
   "learn-risk-portfolio": "Open risk across positions, correlation and sector clusters, drawdowns and the arithmetic of recovering.",
   "learn-candlestick-patterns": "Reading candles: anatomy, the one-, two- and three-bar patterns, context, and how the screener's candle notes use them.",
   "learn-chart-patterns": "The bases this app detects, topping structures, how to judge a breakout — and what the backtests found.",
@@ -4602,7 +4613,7 @@ const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$
  *  for the topic, "Supply and demand") is just "Field guide" */
 const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
   return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
-const LEARN_TOPICS = ["macro", "health", "sectors", "fundamentals", "risk", "candles", "charts", "levels"];
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "fundamentals", "risk", "process", "candles", "charts", "levels"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;
@@ -4627,7 +4638,7 @@ async function learnPage(alive, topic, sub) {
   if (catView && !hasGrid(catView)) { location.replace(topicHome(catView)); return; }
   const fam = p ? Learn.familyOf(p) : catView || (guide && topicOf(guide)) || store.get("learnFam", "candles");
   if (LEARN_TOPICS.includes(fam)) store.set("learnFam", fam);
-  document.title = `${p ? p.name + " · " : guide ? guideLabel(guide) + " · " : catView ? Learn.FAMILY_LABEL[catView] + " · " : ""}Learn · Trading`;
+  document.title = `${topic === "glossary" ? "Glossary · " : p ? p.name + " · " : guide ? guideLabel(guide) + " · " : catView ? Learn.FAMILY_LABEL[catView] + " · " : ""}Learn · Trading`;
 
   // ---- sidebar: one sub-menu per topic, each with its guides first and then its patterns.
   // The topic holding the page you are on is open; the others are closed until you open them.
@@ -4639,6 +4650,7 @@ async function learnPage(alive, topic, sub) {
     + `<a class="nav-item lp-allp ${catView === t ? "active" : ""}" href="#/learn/${t}"><span><b class="sn">All ${Learn.countOf(t)} patterns</b></span></a>` : "") + Learn.nav(p?.key, t);
   const more = guidesIn("more");
   const menu = `<a class="nav-item ${!topic ? "active" : ""}" href="#/learn"><span><b class="sn">Learn — start here</b></span></a>
+    <a class="nav-item ${topic === "glossary" ? "active" : ""}" href="#/learn/glossary" data-k="glossary terms definitions"><span><b class="sn">Glossary</b></span></a>
     <label class="filter lp-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="lpf" placeholder="Find a guide or pattern" spellcheck="false"></label>
     ${LEARN_TOPICS.map((t) => sec(t, Learn.FAMILY_LABEL[t], null, topicItems(t))).join("")}
     ${more.length ? sec("more", "More guides", more.length, guideItems(more, null)) : ""}
@@ -4654,6 +4666,25 @@ async function learnPage(alive, topic, sub) {
   /** a small topic's patterns, one card each, in place of its grid */
   const patternCards = (f) => Learn.PATTERNS.filter((x) => Learn.familyOf(x) === f).map((x) => `<a class="sec-card lp-hubc" href="#/learn/${x.key}">
       <b>${esc(x.name)}</b><div class="lp-hubthumbs one">${Learn.svg(x, { thumb: true })}</div></a>`).join("");
+  /** Every defined term, A-Z. The hover definitions inside a guide are for a
+   *  reader mid-sentence; this is for one who wants to look a word up, or to
+   *  see what vocabulary the guides assume before starting. */
+  const glossaryView = () => {
+    const terms = typeof Glossary === "undefined" ? [] : Glossary.all();
+    let letter = "";
+    const body = terms.map((e) => {
+      const L = e.t[0].toUpperCase(), head = L === letter ? "" : `<div class="gl-letter" id="gl-${L}">${L}</div>`;
+      letter = L;
+      const aka = (e.aka || []).filter((a) => a.toLowerCase() !== e.t.toLowerCase());
+      return head + `<div class="gl-item"><b>${esc(e.t)}</b>${aka.length ? `<span class="gl-aka">also: ${esc(aka.slice(0, 4).join(", "))}</span>` : ""}
+        <p>${esc(e.d)}</p>${e.eg ? `<p class="gl-eg">${esc(e.eg)}</p>` : ""}
+        ${e.more && runs.some((r) => r.run === e.more) ? `<p class="gl-more"><a href="#/learn/${esc(e.more.replace(/^learn-/, ""))}">Explained in full in ${esc(guideLabel(runs.find((r) => r.run === e.more)))}</a></p>` : ""}</div>`;
+    }).join("");
+    return pageHead("Glossary", { context: info("<p>Every term the guides define, in one place. Inside a guide these same definitions appear on the word itself — hover it, or tap on a phone — so you rarely need this page while reading.</p><p>A term is marked once per guide, at its first use.</p>") })
+      + `<p class="sd-lead">${terms.length} terms. In a guide, a <span style="text-decoration:underline dotted">dotted underline</span> means a definition is available on the word.</p>
+         <div class="gl-page">${body}</div>`;
+  };
+
   const hub = () => pageHead("Learn", { context: info("<p>Organised by topic. Each has <b>guides</b> to read start to finish; the chart topics also have their <b>patterns</b> to look up, every one drawn with real candles, with how to read it. The macro, market-health, sector and fundamentals guides chart stored data.</p><p>Findings and studies (backtests, research logs, specifications) are under Library → Research.</p>") })
     + `<p class="sd-lead">Read a topic's guides, then look its patterns up. Findings and studies are under <a href="#/research">Research</a>.</p>
     ${LEARN_TOPICS.map((t) => `<h3 class="ov-h">${esc(Learn.FAMILY_LABEL[t])}</h3><div class="lp-hub">${guidesIn(t).map(guideCard).join("")}${hasGrid(t) ? patternsCard(t) : patternCards(t)}</div>`).join("")}
@@ -4662,7 +4693,7 @@ async function learnPage(alive, topic, sub) {
   const patternsHead = (f) => pageHead(`${Learn.FAMILY_LABEL[f]}: all patterns`, { context: info("<p>Every pattern drawn with real candles. Candlestick patterns show the context they form in (faded) and the bar that confirms them; chart patterns show the pivot that triggers them and the level that invalidates them, with volume.</p><p>For the reasoning behind them, read this topic's guides — at the top of its menu.</p>") })
     + `<div class="muted small lp-gridnone" hidden></div>`;
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">${menu}</aside>
-    <section class="scr-main lp-main">${guide ? `<div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>`
+    <section class="scr-main lp-main">${topic === "glossary" ? glossaryView() : guide ? `<div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>`
       : p ? Learn.detail(p, { topicHref: hasGrid(fam) ? null : topicHome(fam) }) : catView ? patternsHead(catView) + Learn.overview(catView) : hub()}</section></div>`;
 
   // ---- search: every sub-menu at once (each opens while you search, and closes again when you clear it),

@@ -1,23 +1,27 @@
 # Candlestick patterns — a field guide
 
-Learning material: how to read daily and weekly candles, the patterns worth
-knowing, and how they are used in this project. Companion to
-[learn-chart-patterns.md](learn-chart-patterns.md) — candles are the
-single-bar vocabulary, chart patterns are the multi-week sentences.
+Learning material: how to read daily and weekly candles, which patterns are
+worth knowing, and how this project uses them. It is a companion to
+[learn-chart-patterns.md](learn-chart-patterns.md). A candle describes a
+single bar (one day or one week). A chart pattern describes the shape of
+several weeks of bars.
 
-**Where this shows up in the app.** The screener writes a one-line candle
-summary for every candidate (the `candles` column, built by
-`scripts/swing_screener/core/patterns.py`), and
-`python3 -m swing_screener.screening.inspect --symbol XYZ` prints the last
-five bars' stats with their detected patterns. The chart page draws raw
-candles. Nothing in any strategy *trades* a candlestick pattern — see
+**Where this shows up in the app.** The screener writes a one-line summary of
+the recent candles for every candidate. It goes in the `candles` column and is
+built by `scripts/swing_screener/core/patterns.py`. The command
+`python3 -m swing_screener.screening.inspect --symbol XYZ` prints the stats of
+the last five bars, with the patterns it detected. The chart page draws plain
+candles. No strategy buys or sells because of a candlestick pattern — see
 "How candles are used here" at the end for why.
 
 ---
 
 ## 1. Anatomy of a candle
 
-A candle compresses one session's auction into four prices:
+A candle sums up one trading session in four prices: the open, the high, the
+low and the close. The **body** spans the open and the close. The **wicks**
+(thin lines above and below the body) reach the high and the low. The
+**range** is the distance from the low to the high.
 
 ```pattern
 anatomy
@@ -25,15 +29,17 @@ anatomy
 
 Three questions tell you most of what one candle can say:
 
-1. **How big is the body relative to the range?** A large body means one side
-   controlled the session; a tiny body means a stand-off.
+1. **How big is the body compared with the range?** A large body means one
+   side controlled the session. A tiny body means neither side won.
 2. **Where in the range did it close?** A close in the top third means buyers
-   had the last word; the bottom third, sellers.
-3. **Which wick is long?** A long wick marks prices the market visited and
-   rejected — a long lower wick means dip-buyers absorbed the selling.
+   were in control at the end of the day. A close in the bottom third means
+   sellers were.
+3. **Which wick is long?** A long wick marks prices the stock traded at during
+   the session but could not hold. A long lower wick means buyers stepped in
+   on the dip and bought up the selling.
 
-The quantitative versions used by this project's commentary
-(`core/patterns.py`):
+The app's candle commentary measures these with numbers. The rules live in
+`core/patterns.py`:
 
 | Measure | Definition | Thresholds used |
 |---|---|---|
@@ -43,9 +49,9 @@ The quantitative versions used by this project's commentary
 | Gap % | open vs the prior close | a gap when beyond ±0.3% |
 | Volume ratio | volume / 50-day average volume | notable above 1.2 or below 0.8 |
 
-**Volume is half the message.** A reversal candle on 2× average volume is a
-statement; the same shape on 0.6× volume is noise. Every pattern below should
-be read with its volume ratio.
+**Volume matters as much as the shape.** A reversal candle on 2× average
+volume shows many traders acting. The same shape on 0.6× volume is noise.
+Read every pattern below together with its volume ratio.
 
 ---
 
@@ -53,83 +59,95 @@ be read with its volume ratio.
 
 A candlestick pattern is not a signal by itself. The same hammer means:
 
-- at the 50-day average after a 3-week pullback in an uptrend → *potential
-  resumption*, worth attention;
-- mid-air, in the middle of a range → nothing;
-- after a 40% collapse in a downtrend → usually just the first bounce that
-  gets sold again.
+- at the 50-day average after a 3-week pullback in an uptrend → the uptrend
+  *may be resuming*, so it is worth attention;
+- in the middle of a range, away from any level → nothing;
+- after a 40% collapse in a downtrend → usually just the first bounce, and
+  sellers push the price down again.
 
-Rules of thumb that survive contact with real charts:
+Rules of thumb that hold up on real charts:
 
 1. **Only read reversal candles at a level** — a prior low, a moving average
-   the stock respects, a pattern pivot, a gap edge. The candle marks *who won
-   the fight at the level*; without a level there is no fight to win.
-2. **Trend beats candle.** A bearish candle in a strong uptrend is usually a
-   pause. Do not short an uptrend on a shooting star; at most, tighten a stop.
-3. **Bigger timeframe, bigger meaning.** A weekly hammer at support outranks
-   five daily candles. The screener prints a weekly candle note for this
-   reason (`weekly_candle_note`).
-4. **Wait for the confirming close** when the candle is the whole case. A
-   hammer is only "confirmed" by the next bar closing above its body.
+   the stock has bounced from before, a pattern pivot, the edge of a gap. At a
+   level, buyers and sellers are both active, and the candle shows which side
+   won there. Away from a level, there is no contest to read.
+2. **The trend matters more than the candle.** A bearish candle in a strong
+   uptrend is usually just a pause. Do not bet against an uptrend because of
+   one shooting star. At most, tighten your stop.
+3. **A longer timeframe carries more meaning.** A weekly hammer at support
+   counts for more than five daily candles. That is why the screener also
+   prints a note on the weekly candle (`weekly_candle_note`).
+4. **Wait for the confirming close** when the candle is your only reason to
+   act. A hammer is only "confirmed" when the next bar closes above its body.
 
 ---
 
 ## 3. Single-candle patterns
 
-### Doji — stand-off
+### Doji — neither side wins
 
-Body ≤ ~10% of the range: open and close nearly equal.
+The body is ≤ ~10% of the range: the open and the close are nearly equal.
 
 ```pattern
 doji
 ```
 
-After a sustained advance, a doji on high volume says the buyers who drove
-the move met equal selling for the first time. In a quiet range it says
-nothing at all.
+After a long advance, a doji on high volume is a warning. The buyers who
+drove the move met as much selling as buying for the first time. In a quiet
+range, a doji says nothing at all.
 
-Variants: **gravestone** (long upper wick, close near the low — a failed
-rally, bearish at highs), **dragonfly** (long lower wick, close near the high
-— a rejected sell-off, bullish at support), **spinning top** (small body,
-wicks both sides — indecision, slightly weaker message than a doji).
+Variants:
 
-### Hammer — rejected sell-off
+- **Gravestone**: a long upper wick and a close near the low. A rally during
+  the day failed. It is bearish at highs.
+- **Dragonfly**: a long lower wick and a close near the high. A sell-off
+  during the day was bought back. It is bullish at support.
+- **Spinning top**: a small body with wicks on both sides. It shows
+  indecision, a slightly weaker message than a doji.
 
-Long lower wick (≥ 2× body), close in the top third, appearing **after a
-decline or pullback**. Sellers drove price down during the session; buyers
-took it all back.
+### Hammer — a sell-off that was bought back
+
+A long lower wick (≥ 2× the body) and a close in the top third, appearing
+**after a decline or pullback**. Sellers pushed the price down during the
+session. Buyers then bought it all the way back up.
 
 ```pattern
 hammer
 ```
 
-Bullish at support. The low of the hammer is the natural stop — if price
-trades back below it, the rejection failed.
+It is bullish at support. The low of the hammer is the natural place for a
+stop. If the price trades back below that low, the buying that made the
+hammer has failed.
 
-The identical shape after an *advance* is a **hanging man** — a warning, not
-a sell signal, and much weaker evidence than the hammer is.
+The same shape after an *advance* is called a **hanging man**. It is a
+warning, not a sell signal, and much weaker evidence than a hammer.
 
-### Shooting star — rejected rally
+### Shooting star — a rally that failed
 
-Mirror image: long upper wick (≥ 2× body), close in the bottom third, after
-an advance. Buyers pushed to new highs intraday and were overwhelmed.
-Meaningful at resistance or after a climactic run; a routine candle inside a
-base. The **inverted hammer** is the same shape after a decline — mildly
-bullish, needs next-bar confirmation.
+This is the mirror image of the hammer: a long upper wick (≥ 2× the body) and
+a close in the bottom third, after an advance. Buyers pushed the price to new
+highs during the day, then sellers took over and drove it back down. It means
+something at resistance or after a fast, steep run-up. Inside a base it is an
+ordinary candle. The **inverted hammer** is the same shape after a decline.
+It is mildly bullish and needs the next bar to confirm it.
 
-### Marubozu — total control
+### Marubozu — one side in full control
 
-A body that is (nearly) the whole range, no wicks. A green marubozu through a
-pivot on heavy volume is exactly the breakout bar you want; a red one through
-support is distribution. The commentary calls these "plain top-range close" /
-"plain bottom-range close" when no other pattern applies.
+The body is (nearly) the whole range, with no wicks. A green marubozu through
+a pivot on heavy volume is exactly the breakout bar you want. A red one
+through support is a sign of distribution — large holders selling. The
+commentary calls these "plain top-range close" / "plain bottom-range close"
+when no other pattern applies.
 
-### NR7 — the quiet before the move
+### NR7 — a quiet bar before a move
 
-Not a classical candlestick, but in the commentary: the narrowest range of
-the last 7 bars. Volatility contracts before it expands; a cluster of
-NR7/inside bars near a pivot is the daily-timeframe version of what the VCP
-strategies look for. Direction comes from the break, not from the NR7 itself.
+It is not a classical candlestick, but the commentary reports it: the bar
+with the narrowest range of the last 7 bars. Volatility tends to shrink
+before it expands. A cluster of NR7 or inside bars near a pivot is the
+daily-chart version of what the VCP strategies look for (VCP: volatility
+contraction pattern, where each pullback in a base is smaller than the last).
+The direction of the next move comes from which way the price breaks, not
+from the NR7 itself.
 
 ---
 
@@ -137,43 +155,48 @@ strategies look for. Direction comes from the break, not from the NR7 itself.
 
 ### Bullish engulfing
 
-A down candle, then an up candle whose body opens at or below the prior close
-and closes at or above the prior open — the second session completely
-retraces and reverses the first.
+A down candle, then an up candle. The up candle's body opens at or below the
+prior close and closes at or above the prior open. The second session wipes
+out the whole first session and then reverses it.
 
 ```pattern
 bullish-engulfing
 ```
 
-Strong at support after a pullback, on rising volume. Stop below the
-engulfing bar's low.
+It is strong at support after a pullback, on rising volume. Put the stop
+below the engulfing bar's low.
 
-**Bearish engulfing** is the mirror at highs. Both are among the few candle
-patterns with modest statistical support — and both still fail routinely
-against the prevailing trend.
+**Bearish engulfing** is the mirror image, at highs. Both are among the few
+candle patterns with some modest statistical support. Both still fail often
+when they go against the main trend.
 
 ### Harami / inside bar
 
-The second bar's range sits entirely inside the first's. The commentary flags
-this as **inside bar**: contraction, the market catching its breath. Like the
-NR7 it is direction-neutral — trade the break of the inside bar's range, in
-the direction of the trend, rather than the bar itself. The **outside bar**
-(engulfs the prior range both ways) is expansion; its close location decides
-who won.
+The second bar's range sits entirely inside the first bar's range. The
+commentary flags this as an **inside bar**. The range is shrinking: the
+market is pausing. Like the NR7, it does not point up or down. Trade the
+break of the inside bar's range, in the direction of the trend, rather than
+the bar itself. The **outside bar** is the opposite: its range covers the
+prior bar's range on both sides. The range is expanding, and where it closes
+in its range shows which side won.
 
 ### Piercing line / dark cloud cover
 
-Weaker cousins of the engulfing pair: the second body retraces more than half
-of the first body but does not engulf it. Piercing line (bullish, at lows):
-gap down, then a close above the midpoint of the prior red body. Dark cloud
-cover (bearish, at highs): gap up, then a close below the midpoint of the
-prior green body. Treat as "engulfing-lite" — same logic, less conviction.
+These are weaker versions of the engulfing pair. The second body takes back
+more than half of the first body but does not engulf it.
+
+- Piercing line (bullish, at lows): a gap down, then a close above the
+  midpoint of the prior red body.
+- Dark cloud cover (bearish, at highs): a gap up, then a close below the
+  midpoint of the prior green body.
+
+Read them the same way as an engulfing pattern, with less confidence.
 
 ### Tweezers
 
-Two consecutive bars with (nearly) equal lows (tweezer bottom) or highs
-(tweezer top) — the same level defended twice in a row. Mostly useful as
-evidence *for the level*, not as a pattern on its own.
+Two bars in a row with (nearly) equal lows (tweezer bottom) or equal highs
+(tweezer top). The same price level held twice in a row. They are mostly
+useful as evidence *that the level matters*, not as a pattern on their own.
 
 ---
 
@@ -181,26 +204,31 @@ evidence *for the level*, not as a pattern on its own.
 
 ### Morning star / evening star
 
-The classic three-act reversal. Morning star, at a low: a strong red bar
-(sellers in control), a small-bodied star that gaps or drifts lower
-(exhaustion), then a strong green bar closing well into the first bar's body
-(buyers take over).
+The classic reversal in three steps. A morning star forms at a low:
+
+- first, a strong red bar (sellers in control);
+- then a small-bodied bar, the "star", that gaps or drifts lower (the selling
+  is running out);
+- last, a strong green bar that closes well into the first bar's body (buyers
+  take over).
 
 ```pattern
 morning-star
 ```
 
-The evening star is the mirror at highs. The project's **3-bar reversal**
-flag is a loose version of this: close down, then a close back up through the
-first bar's open (bullish), or the mirror (bearish).
+The evening star is the mirror image, at highs. The project's **3-bar
+reversal** flag is a loose version of this. The bullish version is a close
+down, then a close back up through the first bar's open. The bearish version
+is the mirror.
 
 ### Three white soldiers / three black crows
 
-Three consecutive full-bodied candles in the same direction, each closing
-near its extreme. After a long decline, three white soldiers mark a genuine
-character change. *Late* in an advance, three accelerating white soldiers on
-expanding volume start to look like a climax — see the climax-top discussion
-in [learn-chart-patterns.md](learn-chart-patterns.md).
+Three full-bodied candles in a row in the same direction, each closing near
+its high (or, for crows, its low). After a long decline, three white soldiers
+mark a real change in how the stock trades. *Late* in an advance, three
+ever-larger white soldiers on rising volume start to look like a climax — a
+final burst of buying before a top. See the climax-top discussion in
+[learn-chart-patterns.md](learn-chart-patterns.md).
 
 ---
 
@@ -229,47 +257,54 @@ in [learn-chart-patterns.md](learn-chart-patterns.md).
 ## 7. How candles are used here — and the evidence
 
 **In this project candles are commentary, not signals.** The screener and
-`inspect` print them so that when you review a candidate you see at a glance
-how the last bars behaved at the levels that matter (the summary names the
-nearby SMA20/SMA50/pivot explicitly). The strategies' entries are level- and
-structure-based — a resumption through resistance, a pivot breakout — never
-"buy because yesterday was a hammer".
+`inspect` print them so that, when you review a candidate, you can see at a
+glance how the last bars behaved at the levels that matter. The summary names
+the nearby level explicitly: the 20-day average (SMA20), the 50-day average
+(SMA50) or the pivot. The strategies enter on price levels and chart
+structure — the price resuming its move through resistance, or breaking out
+through a pivot. They never "buy because yesterday was a hammer".
 
-That is deliberate, and the honest reading of the evidence:
+That is deliberate, and it is the honest reading of the evidence:
 
-- Academic tests of candlestick rules on daily equity data (e.g. Marshall,
+- Academic tests of candlestick rules on daily stock data (e.g. Marshall,
   Young & Rose 2006 on the Dow; Horton 2009; Fock et al. on intraday data)
-  find **no reliable stand-alone predictive value** after costs.
-- Bulkowski's large pattern catalogs find individual candle patterns barely
-  better than a coin flip on their own, improving only when filtered by trend
-  and confirmation — i.e. by exactly the context rules in §2.
-- Candle shapes depend on session mechanics: a stock that gaps every day
-  (earnings, ADRs, thin names) produces "patterns" constantly; a 24-hour
-  instrument produces different candles than an exchange session. The same
-  price path sampled differently gives different candles — a reason to treat
-  them as *description*, not *prediction*.
+  find **no reliable predictive value on their own** after costs.
+- Bulkowski's large pattern catalogs find that single candle patterns, on
+  their own, are barely better than a coin flip. They improve only when
+  filtered by trend and by confirmation — that is, by exactly the context
+  rules in §2.
+- Candle shapes depend on how the trading session works. A stock that gaps
+  every day (around earnings, ADRs — foreign shares listed in the US, thinly
+  traded names) produces "patterns" all the time. A market that trades 24
+  hours a day produces different candles from one with an exchange session.
+  The same price path, cut into bars differently, gives different candles.
+  That is a reason to treat candles as a *description* of what happened, not
+  a *prediction*.
 
-Where they earn their keep in a swing workflow like this one:
+Where they are useful in a swing-trading workflow like this one:
 
-1. **Entry-day quality.** On the day price takes out your trigger, a
-   full-bodied close in the top of the range on above-average volume is the
-   breakout behaving; a shooting-star close back under the pivot on the same
-   volume is the first sign of a failed breakout (the `minervini` strategy's exit
-   rules treat a close back below the pivot as exactly that).
-2. **Stop placement.** Reversal candles give natural invalidation points —
-   the hammer's low, the engulfing bar's low — usually tighter and more
-   honest than a percentage.
-3. **Pullback reading.** In a `trend_pullback`-style setup, contraction
+1. **How good the entry day looks.** On the day the price moves through your
+   entry trigger, a full-bodied close near the top of the range on
+   above-average volume is what a healthy breakout looks like. A
+   shooting-star close back under the pivot on the same volume is the first
+   sign of a failed breakout. (The `minervini` strategy's exit rules treat a
+   close back below the pivot as exactly that.)
+2. **Stop placement.** Reversal candles give natural points where the idea is
+   proven wrong — the hammer's low, the engulfing bar's low. These are
+   usually tighter, and more tied to what the price actually did, than a
+   fixed percentage.
+3. **Reading a pullback.** In a setup like the `trend_pullback` strategy's
+   (buying a dip in an uptrend), an orderly pullback looks like small-range
    candles (inside bars, NR7, dojis) with lower wicks near the rising 50-day
-   are what an orderly pullback looks like; wide red marubozus on expanding
-   volume are what distribution looks like. Same depth of pullback, opposite
-   conclusion.
+   average. Distribution looks like wide red marubozus on rising volume. The
+   pullback can be the same depth, and the conclusion opposite.
 
 ## Further reading
 
-- Steve Nison, *Japanese Candlestick Charting Techniques* — the source text
-  that brought candles west; read for vocabulary, not for win rates.
-- Thomas Bulkowski, *Encyclopedia of Candlestick Charts* — per-pattern
-  statistics; most honest about how weak single patterns are.
+- Steve Nison, *Japanese Candlestick Charting Techniques* — the book that
+  introduced candles to Western traders. Read it for the vocabulary, not for
+  win rates.
+- Thomas Bulkowski, *Encyclopedia of Candlestick Charts* — statistics for
+  each pattern. It is the most honest source on how weak single patterns are.
 - The pattern thresholds actually used here:
   `scripts/swing_screener/core/patterns.py`.

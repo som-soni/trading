@@ -20,6 +20,34 @@ Written findings. Code lives in `scripts/`, generated output in `reports/`.
 Files named `learn-*.md` are teaching material, not findings; the web app
 shows them under **Library → Learn**.
 
+## Writing a learning guide
+
+The `learn-*.md` guides are entered from the Learn hub **in any order**, so no
+guide may assume a term was explained in another one. Two mechanisms keep that
+true without every guide re-defining the same words:
+
+- **Vocabulary** lives once in `scripts/swing_screener/web/static/glossary.js`.
+  The renderer marks each term's first use in whatever document is on screen
+  and shows the definition on hover (tap on a phone), so prose does not have to
+  stop and define "basis point" for the fifth time. A new guide inherits the
+  whole vocabulary for free; a new *word* needs an entry there. Browse them all
+  at Learn → Glossary.
+- **Mechanisms** stay in the guide's own prose. "Why banks lend to each other
+  overnight" needs paragraphs and worked numbers — a tooltip that tries to
+  carry one hides the explanation instead of giving it. If a glossary entry is
+  growing past its one example, that is the signal it should be prose.
+
+Start a guide from first principles, the way `learn-macro-yield-curve.md` opens
+with what a bond actually is. `learn-start-here.md` is the floor every other
+guide stands on — share, index, chart, order, percent, annualised, R — so a
+guide may assume that page and nothing further.
+
+Two traps the glossary has already hit, both guarded by the `skip` field:
+a word that is also ordinary English ("the **gap** between them", "it
+**stops** where sellers appear"), and a word with two unrelated finance
+meanings (broker **margin** vs net interest **margin**). Marking those teaches
+the reader something false, which is worse than not marking the word.
+
 ## How to use the research log
 
 **Adding a strategy.** Run it, then append a row to the ledger in §2 under the

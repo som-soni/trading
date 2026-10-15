@@ -370,6 +370,39 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .md details { margin: 10px 0; background: var(--panel-2); border-radius: var(--radius); padding: 6px 12px; }
 .md summary { cursor: pointer; color: var(--muted); font-weight: 500; }
 
+/* ---------- glossary: a defined term inside a guide, and its popover.
+   The mark has to be visible enough to be discoverable but quiet enough that
+   a paragraph with four of them still reads as prose — hence a dotted
+   underline in the text colour, not a link colour or a background. */
+/* `display: inline` overrides the global button rule's inline-flex, which puts
+   a box around the word and breaks the text flow — "(QE/QT)" rendered as
+   "(QE /QT )". A marked term has to sit in the sentence like any other word. */
+.md .gl { display: inline; font: inherit; color: inherit; background: none; border: 0;
+  padding: 0; margin: 0; text-align: inherit; vertical-align: baseline;
+  cursor: help; text-decoration: underline dotted var(--line-3); text-underline-offset: 3px; }
+.md .gl:hover, .md .gl:focus-visible { color: var(--accent-text); text-decoration-color: var(--accent-line); outline: none; }
+.md .gl::after { content: ""; }
+
+.gl-pop { position: absolute; z-index: 55; background: var(--panel-2); border: 1px solid var(--line-2);
+  border-radius: 8px; padding: 10px 12px; box-shadow: 0 14px 34px var(--shadow-c); font-size: 13px; line-height: 1.5; }
+.gl-pop[hidden] { display: none; }
+.gl-pop b { color: var(--strong); display: block; margin-bottom: 3px; }
+.gl-pop p { margin: 0 0 6px; color: var(--text); }
+.gl-pop p:last-child { margin-bottom: 0; }
+.gl-pop .gl-eg { color: var(--muted); font-variant-numeric: tabular-nums; }
+.gl-pop .gl-see { color: var(--muted); font-size: 12px; border-top: 1px solid var(--line); padding-top: 6px; }
+
+/* the Glossary page: every term, A-Z */
+.gl-page { max-width: 980px; }
+.gl-letter { font-size: 13px; color: var(--muted); font-weight: 600; margin: 18px 0 6px; border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.gl-item { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.gl-item:last-child { border-bottom: 0; }
+.gl-item b { color: var(--strong); }
+.gl-item .gl-aka { color: var(--muted); font-size: 12px; margin-left: 6px; }
+.gl-item p { margin: 4px 0 0; }
+.gl-item .gl-eg { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.gl-item .gl-more { font-size: 12px; }
+
 /* ---------- indicator dialogs */
 .smodal { position: fixed; inset: 0; z-index: 70; background: var(--overlay); display: grid; place-items: center; }
 .smodal-card { background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; box-shadow: 0 24px 60px var(--shadow-c); display: flex; flex-direction: column; max-height: 82vh; }

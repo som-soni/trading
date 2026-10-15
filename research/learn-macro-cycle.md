@@ -7,59 +7,66 @@ economy does, and how to read the cycle live from ratios of stored prices —
 in the US and in India. Pairs with [the yield curve guide](learn-macro-yield-curve.md)
 (the classic recession warning) and [the liquidity and credit guide](learn-macro-liquidity-credit.md).
 
-**Where this shows in the app.** No GDP, jobs or PMI series are stored, so the
-app reads the cycle through prices. **Markets → Sectors** ranks sectors,
-industry groups and sub-industries by RS on a rotation chart (Leading,
-Weakening, Lagging, Improving); **Markets → Post-market** lists the day's
-rotation changes. **Markets → Breadth** carries the macro strip (copper, the
-10-year, HY credit) and the breadth measures.
+**Where this shows in the app.** The app stores no GDP, jobs or PMI data, so
+it reads the cycle through prices. **Markets → Sectors** ranks sectors,
+industry groups and sub-industries by RS on a rotation chart, with four
+zones: Leading, Weakening, Lagging, Improving. **Markets → Post-market** lists
+the day's moves between those zones. **Markets → Breadth** has the macro strip
+(copper, the 10-year, high-yield credit) and the breadth measures.
 
 ---
 
 ## 1. The cycle in one paragraph
 
-Credit expands, firms hire and invest, demand outruns capacity, inflation
-and rates rise, spending slows, firms cut, and a recession clears the
-excesses until falling rates start the next expansion. Lengths vary wildly —
-US expansions have lasted from one year to more than ten. **The cycle
-matters to a trader because earnings follow it, and the market prices the
-next phase months before the data confirms it** — the skill is noticing what
-the market is already pricing, not forecasting GDP.
+Credit expands. Firms hire and invest. Demand grows faster than the economy
+can produce, so inflation and rates rise. Spending slows, and firms cut back.
+A recession clears out the excesses, until falling rates start the next
+expansion. Lengths vary wildly: US expansions have lasted from one year to
+more than ten. **The cycle matters to a trader because earnings follow it.
+And the market moves to the next phase months before the data confirms it.**
+The skill is noticing what the market already expects, not forecasting GDP.
 
 ## 2. Measuring growth
 
 ### 2.1 GDP — the scorecard, and the slowest
 
-GDP is quarterly, published a month (US) or two (India) after the quarter,
-and revised. **By the time GDP confirms a recession, the market has usually
-priced it**; the NBER dates US recessions only months after they begin.
+GDP is quarterly. It is published a month (US) or two (India) after the
+quarter ends, and revised later. **By the time GDP confirms a recession, the
+market has usually already fallen on it.** The NBER, which officially dates US
+recessions, does so only months after they begin.
 
 ### 2.2 Jobs
 
-- **Non-farm payrolls** (US, BLS, usually the first Friday): a big mover, revised.
-- **Unemployment rate**: lags the cycle — it keeps rising after a recession
+- **Non-farm payrolls** (US, from the BLS, usually the first Friday): the
+  monthly count of jobs added. It moves markets a lot, and is revised later.
+- **Unemployment rate**: lags the cycle. It keeps rising after a recession
   ends, and peaks after stocks have bottomed.
-- **The Sahm rule** (Claudia Sahm): a recession signal when the three-month
-  average of the unemployment rate rises 0.5 percentage points above its low
-  of the previous twelve months. Applied to history, it flagged every US recession since 1970
-  early on (the rule dates from 2019), yet triggered in mid-2024 without a recession following (none had been declared through 2025).
-- **Initial jobless claims** (weekly): the timeliest labour data.
+- **The Sahm rule** (Claudia Sahm): a recession signal. It fires when the
+  three-month average of the unemployment rate rises 0.5 percentage points
+  above its low of the previous twelve months. The rule dates from 2019.
+  Applied to history, it flagged every US recession since 1970 early on. Yet
+  it triggered in mid-2024 without a recession following (none had been
+  declared through 2025).
+- **Initial jobless claims** (weekly new claims for unemployment benefit):
+  the most up-to-date labour data.
 
-India has no monthly payroll release; traders use the Periodic Labour Force
-Survey and, more usefully, proxies — auto sales, GST collections, credit growth.
+India has no monthly payroll release. Traders use the Periodic Labour Force
+Survey and, more usefully, stand-ins: auto sales, GST collections, credit
+growth.
 
 ### 2.3 PMIs — the 50 line
 
 Purchasing Managers' Indexes survey firms on orders, output, employment and
-prices. **Above 50 means expansion, below 50 contraction**, versus the prior
-month. They are timely (first business days of the month) and rarely revised.
+prices. **Above 50 means things grew compared with the month before; below 50
+means they shrank.** PMIs come out quickly (in the first business days of the
+month) and are rarely revised.
 
 - US: the **ISM** manufacturing and services indexes; S&P Global's PMIs.
 - India: the **HSBC India** manufacturing and services PMIs (S&P Global
   compiles them).
 
-The new-orders component leads the headline. A PMI falling from 58 to 52 is
-still expansion, but the direction is what stocks trade.
+The new-orders part of the survey turns before the headline number. A PMI
+falling from 58 to 52 still shows growth, but stocks react to the direction.
 
 ### 2.4 Leading versus lagging
 
@@ -78,21 +85,21 @@ indicators** — which is why waiting for the economy to confirm is too slow.
 | Phase | Economy | Rates and inflation | Sectors that have tended to lead |
 |---|---|---|---|
 | **Early recovery** | Output turns up from recession; unemployment still high | Policy rates low, curve steep | Consumer discretionary, financials, industrials, small caps, materials |
-| **Mid-cycle** | Steady growth, profits rising | Rates normalising | Technology, industrials, communication — broad participation |
-| **Late cycle** | Capacity tight, inflation rising | Central bank tightening, curve flattening | Energy, materials, then defensives start to gain |
-| **Recession** | Output and profits falling | Rates being cut, curve steepening from inversion | Staples, health care, utilities — the least-bad, and cash |
+| **Mid-cycle** | Steady growth, profits rising | Rates moving back to normal | Technology, industrials, communication — most stocks taking part |
+| **Late cycle** | Factories near full capacity, inflation rising | Central bank tightening, curve flattening | Energy, materials, then defensives start to gain |
+| **Recession** | Output and profits falling | Rates being cut, curve steepening from inversion | Staples, health care, utilities — the least bad — and cash |
 
 This is the classic sector-rotation map (it appears in Fidelity's and others'
 published business-cycle frameworks). **Treat it as a tendency, not a
-timetable.** Phases are only clear in hindsight; a single dominant theme
-(technology in the 2010s and 2020s) can override it; and markets move to the
-next phase's leaders before the phase arrives. Section 8 has the honest
+timetable.** Phases are only clear in hindsight. A single dominant theme
+(technology in the 2010s and 2020s) can override the map. And markets move to
+the next phase's leaders before the phase arrives. Section 8 has the honest
 caveats.
 
 ## 4. Markets lead the economy
 
 The single most useful fact about the cycle for a trader: **stocks bottom
-before earnings, and long before jobs.**
+before earnings do, and long before jobs do.**
 
 ### 2008–09
 
@@ -107,7 +114,7 @@ caption: Stocks bottomed in March 2009, three months before the recession ended 
 ```
 
 The S&P 500 total return fell about 55% from its October 2007 high to the low
-on **9 March 2009**. The NBER dates the recession's end to June 2009; the
+on **9 March 2009**. The NBER dates the recession's end to June 2009. The
 unemployment rate did not peak (at about 10%) until October 2009. Anyone
 waiting for jobs to improve bought far higher.
 
@@ -134,9 +141,10 @@ The same is true in India: the Nifty 50's 2020 low was also on 23 March
 
 ## 5. Reading the cycle live — ratios of stored prices
 
-Instead of forecasting GDP, watch what the market prefers. A **ratio** of a
-cyclical group to a defensive one rises when the market expects growth, and
-falls when it expects slowdown.
+Instead of forecasting GDP, watch what the market prefers. Divide the price of
+a cyclical group (one whose profits swing with the economy) by the price of a
+defensive one. That **ratio** rises when the market expects growth, and falls
+when it expects a slowdown.
 
 ### 5.1 Discretionary versus staples
 
@@ -151,13 +159,13 @@ caption: The ratio fell about 35% in 2022 as rates rose and the market priced a 
 ```
 
 XLY/XLP is the purest US "consumer confidence" ratio: what people *want* to
-buy versus what they *must* buy. On the stored data it rose from about 0.90
-at the March 2020 low to a peak near 1.47 in November 2021, fell to about
-0.85 at the end of 2022, and was back above 1.2 by the end of 2023. A caveat:
-XLY is dominated by Amazon and Tesla, so the ratio partly tracks two stocks.
-`us:XLI / us:XLU` (industrials versus utilities) is a broader cross-check: it
-hit its low on 2 March 2009, a week before the market, and its 2020 low on 18
-March.
+buy versus what they *must* buy. In the app's stored prices it rose from
+about 0.90 at the March 2020 low to a peak near 1.47 in November 2021. It fell
+to about 0.85 at the end of 2022, and was back above 1.2 by the end of 2023.
+A caveat: Amazon and Tesla make up much of XLY, so the ratio partly tracks
+two stocks. Industrials versus utilities (XLI/XLU) is a broader cross-check.
+It hit its low on 2 March 2009, a week before the market, and its 2020 low on
+18 March.
 
 ### 5.2 Copper versus gold
 
@@ -170,13 +178,14 @@ caption: For fifteen years the two moved together; since 2023 gold's surge has b
 ```
 
 Copper is bought by factories and builders; gold is bought for safety. Their
-ratio has been a well-known growth gauge that tracked the 10-year yield
-closely — both collapsed in 2008, both rose from 2020 to 2021. **But it has
-since diverged**: gold rose from about $1,800 at the start of 2022 to over
-$4,000, outpacing copper, so the ratio made its lowest level in the stored
-history (since 2000) in February 2026 while the 10-year was around 4%. Central
-bank gold buying, more than a recession, drove that. **A ratio that worked for
-years can stop working** — use it as one input among several.
+ratio has been a well-known gauge of growth. It tracked the 10-year yield
+closely: both collapsed in 2008, and both rose from 2020 to 2021. **But the
+two have since split apart.** Gold rose from about $1,800 at the start of 2022
+to over $4,000, outpacing copper. So the ratio hit its lowest level in
+the app's stored history (since 2000) in February 2026, while the 10-year was
+around 4%. Gold buying by central banks, more than a recession, drove that.
+**A ratio that worked for years can stop working** — use it as one input
+among several.
 
 ### 5.3 Small caps and the cycle
 
@@ -189,28 +198,31 @@ mark: 2020-03-23 | 2020 low
 caption: Small caps outran large caps out of both recession lows, then lost ground for most of the 2010s and 2020s.
 ```
 
-Small companies borrow more at floating rates, depend more on the domestic
-economy and have less pricing power, so they are hit harder in slowdowns and
-recover harder in early recoveries. From the March 2020 low to mid-March 2021,
-the Russell 2000 (IWM) rose about 138% against about 80% for the S&P 500 total
-return. But the ratio peaked in April 2011 and roughly halved by its April 2025
-low: **"small caps lead the recovery" is a phase, not a permanent edge**, and
-since 2011 the mega-caps have dominated.
+Small companies borrow more at floating rates (rates that reset as market
+rates move). They depend more on the home economy and have less pricing power.
+So they are hit harder in slowdowns and bounce harder in early recoveries.
+From the March 2020 low to mid-March 2021, the Russell 2000 (IWM) rose about
+138%, against about 80% for the S&P 500 total return. But the ratio peaked in
+April 2011 and roughly halved by its April 2025 low. **"Small caps lead the
+recovery" is a phase, not a permanent edge.** Since 2011 the very largest
+companies (mega-caps) have dominated.
 
 ## 6. India's cycle
 
-India's cycle is driven by different engines, and its data is slower:
+India's cycle is driven by different forces, and its data arrives more
+slowly:
 
-- **Credit growth.** Bank credit growth (RBI, fortnightly) is the backbone:
-  when banks lend freely, consumption and capex follow. It lags at turns —
-  banks lend most just before the cycle peaks — but its *trend* defines the
-  phase.
-- **Capex.** The private investment cycle (order books of capital-goods
-  companies, capacity utilisation in the RBI's OBICUS survey) and government
-  capex, set in the **Union Budget** each February.
+- **Credit growth.** Bank credit growth (published by the RBI every two
+  weeks) is the backbone. When banks lend freely, consumer spending and
+  business investment (capex) follow. At turning points it lags: banks lend
+  most just before the cycle peaks. But its *trend* tells you the phase.
+- **Capex.** Two parts. Private investment: order books of capital-goods
+  companies, and how much of their capacity factories are using (the RBI's
+  OBICUS survey). And government capex, set in the **Union Budget** each
+  February.
 - **Rural demand and the monsoon.** A good monsoon lifts farm incomes,
-  tractor and two-wheeler sales, and rural FMCG volumes. A bad one does the
-  reverse, and also feeds food inflation (see
+  tractor and two-wheeler sales, and rural sales of everyday consumer goods
+  (FMCG). A bad one does the reverse, and also pushes up food inflation (see
   [the inflation guide](learn-macro-inflation.md)).
 - **Government spending.** Central and state spending, especially before
   elections, can carry demand when private capex is weak.
@@ -220,11 +232,12 @@ India's cycle is driven by different engines, and its data is slower:
 
 ### Banks as the bellwether
 
-Bank Nifty (`^NSEBANK`) is India's cyclical bellwether: banks are the credit
-cycle. It falls harder than the index in a slowdown and leads the recovery
-when credit picks up. On the stored data it fell about 69% from January 2008
-to March 2009, and about 48% from January to March 2020, against about 38%
-for the Nifty 50. The `india:^NSEBANK / india:NIFTY50` ratio peaked in July 2019, before the
+Bank Nifty is India's cyclical bellwether — the index that signals where
+the cycle is going. Banks *are* the credit cycle. Bank Nifty falls harder than
+the broad index in a slowdown, and leads the recovery when lending picks up.
+In the app's stored prices it fell about 69% from January 2008 to March 2009.
+It fell about 48% from January to March 2020, against about 38% for the Nifty
+50. The ratio of Bank Nifty to the Nifty 50 peaked in July 2019, before the
 2020 shock, and fell about 29% to September 2020.
 
 ### Mid caps versus the Nifty
@@ -237,54 +250,57 @@ line: india:MIDCAP / india:NIFTY50 | Midcap 50 / Nifty 50 | pane2
 caption: Mid caps lost half their relative value from 2008 to 2013, and have about doubled against the Nifty since 2019.
 ```
 
-India's mid caps are the domestic-cycle amplifier. On the stored data (both
-price indices) the Midcap 50 / Nifty 50 ratio fell from about 0.62 in January
-2008 to about 0.31 in August 2013 — the years of high inflation, rate hikes
-and stalled capex — rose into a January 2018 peak, fell again to an April 2020
-low, and has since roughly doubled, to about 0.75. **A rising ratio says the
-domestic cycle — credit, capex, retail inflows — is doing the work**; a
-falling one says money is hiding in the large caps.
+India's mid caps magnify the home economy's cycle. In the app's stored prices
+(both price indices), the Midcap 50 / Nifty 50 ratio fell from about 0.62 in
+January 2008 to about 0.31 in August 2013. Those were years of high
+inflation, rate hikes and stalled capex. The ratio then rose to a January
+2018 peak, fell again to an April 2020 low, and has since roughly doubled, to
+about 0.75. **A rising ratio says the home economy — credit, capex, money
+from retail investors — is driving the market.** A falling one says investors
+are moving to the large caps, which they see as safer.
 
 ## 7. What a trader does with it
 
-1. **Let leadership tell you the phase.** On Markets → Sectors, early
-   cyclicals (homebuilders, banks, retailers, industrials) moving from
-   Improving into Leading after a decline is the early-recovery footprint;
-   utilities, staples and health care leading while the index stalls is the
-   late-cycle one.
+1. **Let leadership tell you the phase.** On Markets → Sectors, watch the
+   groups that lead early in a recovery (homebuilders, banks, retailers,
+   industrials). If they move from Improving into Leading after a decline,
+   that is the sign of an early recovery. If utilities, staples and health
+   care lead while the index stalls, that is the sign of a late cycle.
 2. **Do not wait for the economy.** By the time payrolls and GDP confirm a
-   recovery, the leaders have usually run.
-3. **Check the ratios weekly.** Rising together: risk on, favour cyclical
-   breakouts. Falling together: smaller positions, tighter selection, more cash.
+   recovery, the leading stocks have usually already made big gains.
+3. **Check the ratios weekly.** If they are rising together, the market is
+   willing to take risk: favour breakouts in cyclical stocks. If they are
+   falling together: smaller positions, pickier selection, more cash.
 4. **Fit the setups to the phase.** Breakouts tend to work best when many
-   groups are rising; late in the cycle leadership narrows and more fail —
-   demand more from each setup. The Breadth page and the strategies' market
-   regime already encode "is the tape healthy"; the cycle explains them.
+   groups are rising. Late in the cycle fewer groups lead and more breakouts
+   fail, so demand more from each setup. The Breadth page and the
+   strategies' market-regime check already ask "is the market healthy?"; the
+   cycle explains their answer.
 5. **India:** track credit growth, the monsoon, the Budget's capex number and
-   Bank Nifty's relative strength; lean towards mid-cap breakouts while the
+   Bank Nifty's relative strength. Lean towards mid-cap breakouts while the
    Midcap/Nifty ratio rises, and away from them when it falls.
 
 ## 8. What the evidence says
 
 - **Robust:** stocks lead the economy. In the US, the market has bottomed
-  before the end of most recessions, often months before, and unemployment
-  peaks later still. The 2009 and 2020 lows are the textbook cases.
+  before the end of most recessions, often months before. Unemployment peaks
+  later still. The 2009 and 2020 lows are the textbook cases.
 - **Robust:** cyclicals are more sensitive to the economy than defensives,
-  and lose relative ground in slowdowns.
+  and fall behind them in slowdowns.
 - **Noisy:** the four-phase sector rotation map. Academic tests of
   business-cycle sector rotation find that the gains are small once you
-  account for not knowing the phase in real time; most of the "edge" in
+  allow for not knowing the phase at the time. Most of the "edge" in
   textbook charts comes from dating the phases with hindsight.
 - **Noisy:** single indicators. The ISM manufacturing PMI stayed below 50
-  for most of 2023 and 2024, the Sahm rule triggered in 2024, and the
-  10-year/3-month curve was inverted from late 2022 to late 2024 — with no
-  recession following within the usual lag. Each had worked for decades.
-- **Structural shifts override the cycle.** US mega-cap technology dominated
-  through two cycles; small caps lost ground for over a decade; the
+  for most of 2023 and 2024. The Sahm rule triggered in 2024. The
+  10-year/3-month curve was inverted from late 2022 to late 2024. Yet no
+  recession followed within the usual delay. Each had worked for decades.
+- **Lasting changes can override the cycle.** US mega-cap technology
+  dominated through two cycles. Small caps lost ground for over a decade. The
   copper/gold ratio broke away from yields. Ratios are best read for their
   *change*, not their level.
-- **India:** data arrives later with larger revisions; Bank Nifty, the
-  mid-cap ratio and the Sectors page are more timely than GDP.
+- **India:** data arrives later and is revised more. Bank Nifty, the mid-cap
+  ratio and the Sectors page are more up to date than GDP.
 
 ## 9. Checklist
 
