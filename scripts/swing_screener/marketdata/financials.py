@@ -1184,6 +1184,84 @@ def _fix_eps_scale(rows: list[dict]) -> list[dict]:
     return rows
 
 
+# NSE filings carry their own slips, which the parser reads faithfully: a quarter whose every amount was entered in
+# lakh (IRCON Mar-2022, LIC Housing Dec-2021, PFC Dec-2023: revenue, profit and paid-up capital all 100x too small,
+# EPS right), a share count that is not one (Kaynes: trillions), and a net income taken from the wrong line (Maruti
+# Sep-2022, Zydus Mar-2024, Solar Industries Sep-2024: far from the company's usual profit and from its own EPS x
+# shares, EPS normal). Many more quarters carry a net income of exactly 0 beside a real EPS: the filing had no
+# figure, and 0 would read as a zero profit margin. Each is judged against the company's other quarters and
+# corrected on the way out: the unit slip scaled back (amounts and share count alike), the impossible share count,
+# the zero and the stray net income left blank rather than guessed. The reference share count is the one net income
+# / EPS implies (median over the quarters that have both), since the stored counts are what goes wrong.
+# Stored rows keep what the filing says.
+NSE_UNIT_SLIP_MIN = 30.0      # revenue and share count both this many times below the company's median: a unit slip ...
+NSE_UNIT_SLIP_TOL = 0.5       # ... the two off by the same power of ten (log10 within this), the factor a power of ten (±0.15)
+NSE_SHARES_OUTLIER = 30.0     # a share count this far from the median (no split or bonus is that big) is not a count
+NSE_PROFIT_OUTLIER = 5.0      # net income this far from the company's median |net income| ...
+NSE_PROFIT_VS_EPS = 3.0       # ... and this far from its own EPS x shares, with EPS itself normal, is from the wrong line
+NSE_EPS_NORMAL = 5.0          # "EPS normal": within this of the company's median |EPS|
+NSE_PER_SHARE = ("eps", "eps_prior", "eps_fy", "face_value", "dividend_ps")
+NSE_AMOUNTS = ("revenue", "revenue_prior", "net_income", "net_income_prior", "gross_profit", "gross_profit_prior",
+               "operating_income", "operating_income_prior", "pretax_income", "pretax_income_prior", "equity", "net_income_fy")
+
+
+def _log10(x) -> float:
+    import math
+    return math.log10(x)
+
+
+def nse_slips(rows: list[dict]) -> dict:
+    """One company's NSE quarters -> {period_end: {"scale": k} | {"shares": None} | {"net_income": None}, ...}:
+    the corrections `_fix_nse` applies (see the note above)."""
+    nse = [r for r in rows if r.get("source") == "nse"]
+    med = lambda k: _median_abs(r.get(k) for r in nse)  # noqa: E731
+    m_rev, m_ni, m_eps = med("revenue"), med("net_income"), med("eps")
+    m_sh = _median_abs(r["net_income"] / r["eps"] for r in nse if r.get("net_income") and r.get("eps")) or med("shares")
+    out: dict = {}
+    for r in nse:
+        fix: dict = {}
+        rev, sh, ni, eps = r.get("revenue"), r.get("shares"), r.get("net_income"), r.get("eps")
+        eps_normal = eps is not None and m_eps and abs(eps) <= NSE_EPS_NORMAL * m_eps and abs(eps) >= m_eps / NSE_EPS_NORMAL
+        if rev and sh and m_rev and m_sh and rev > 0 and sh > 0 and m_sh / sh >= NSE_UNIT_SLIP_MIN and m_rev / rev >= NSE_UNIT_SLIP_MIN:
+            ls, lr = _log10(m_sh / sh), _log10(m_rev / rev)
+            if abs(ls - lr) <= NSE_UNIT_SLIP_TOL and abs(ls - round(ls)) <= 0.15 and eps_normal:
+                fix["scale"] = 10.0 ** round(ls)
+        k = fix.get("scale", 1.0)
+        if "scale" not in fix and sh and m_sh and (sh / m_sh >= NSE_SHARES_OUTLIER or m_sh / sh >= NSE_SHARES_OUTLIER):
+            fix["shares"] = None
+        shares_ok = None if "shares" in fix else (sh * k if sh else None)
+        if ni == 0 and eps:
+            fix["net_income"] = None
+        elif ni is not None and m_ni and eps_normal and (shares_ok or m_sh):
+            ni_k, ref = ni * k, eps * (shares_ok or m_sh)
+            far_from_usual = abs(ni_k) >= NSE_PROFIT_OUTLIER * m_ni or abs(ni_k) <= m_ni / NSE_PROFIT_OUTLIER
+            far_from_eps = ref and (ni_k == 0 or (ni_k / ref) <= 0 or max(ni_k / ref, ref / ni_k) >= NSE_PROFIT_VS_EPS)
+            if far_from_usual and far_from_eps:
+                fix["net_income"] = None
+        if fix:
+            out[r["period_end"]] = fix
+    return out
+
+
+def _fix_nse(rows: list[dict]) -> list[dict]:
+    slips = nse_slips(rows)
+    for r in rows:
+        fix = slips.get(r["period_end"]) if r.get("source") == "nse" else None
+        if not fix:
+            continue
+        k = fix.get("scale")
+        if k:
+            for f in NSE_AMOUNTS:
+                if r.get(f) is not None:
+                    r[f] = r[f] * k
+            if r.get("shares"):
+                r["shares"] = r["shares"] * k
+        for f in ("shares", "net_income"):
+            if f in fix:
+                r[f] = None
+    return rows
+
+
 def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]:
     """Stored quarters per symbol, oldest first (EPS scale slips corrected: `eps_scale`)."""
     sql = f"SELECT symbol, {', '.join(COLUMNS)} FROM quarterly_results WHERE market=%s"
@@ -1195,7 +1273,14 @@ def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]
         cur.execute(sql + " ORDER BY symbol, period_end", args)
         for r in cur.fetchall():
             out[r[0]].append(dict(zip(COLUMNS, r[1:])))
-    return {sym: _fix_eps_scale(rows) for sym, rows in out.items()}
+    return {sym: _fix_eps_scale(_fix_nse(rows)) for sym, rows in out.items()}
+
+
+def _nse_slips_raw(market: str, symbol: str) -> dict:
+    """`nse_slips` over the company's stored quarters as filed (before any correction)."""
+    with db.get_connection().cursor() as cur:
+        cur.execute(f"SELECT {', '.join(COLUMNS)} FROM quarterly_results WHERE market=%s AND symbol=%s ORDER BY period_end", (market, symbol))
+        return nse_slips([dict(zip(COLUMNS, r)) for r in cur.fetchall()])
 
 
 def load_lines(market: str, symbol: str) -> dict:
@@ -1208,6 +1293,18 @@ def load_lines(market: str, symbol: str) -> dict:
             out[pt][e][line] = v
         cur.execute("SELECT period_end, shares FROM quarterly_results WHERE market=%s AND symbol=%s", (market, symbol))
         shares = dict(cur.fetchall())
+    slips = _nse_slips_raw(market, symbol)
+    for pt, periods in out.items():
+        for e, lines in periods.items():
+            fix = slips.get(e)
+            if not fix:
+                continue
+            if fix.get("scale"):          # the whole filing was in lakh: its quarter, its full year and its balance sheet
+                for line in list(lines):
+                    if line not in NSE_PER_SHARE and lines[line] is not None:
+                        lines[line] = lines[line] * fix["scale"]
+            if pt == "Q" and "net_income" in fix:
+                lines["net_profit"] = None
     for periods in out.values():
         typical = _median_abs(lines.get("eps") for lines in periods.values())
         for e, lines in periods.items():

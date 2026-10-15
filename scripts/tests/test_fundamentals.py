@@ -151,6 +151,25 @@ def test_sec_eps_scale_slips():
     assert [r["eps"] for r in nse] == [2.74, 3.1, 2.9]               # a mis-scaled share count leaves the EPS alone
 
 
+def test_nse_slips():
+    """NSE filings: a quarter entered in lakh is scaled back; an impossible share count and a net income of 0 (or
+    from the wrong line) beside a normal EPS are blanked, never guessed."""
+    import datetime as _dt
+    def nse(m, rev, ni, eps, sh):
+        return {"period_end": _dt.date(2024, m, 28), "source": "nse", "revenue": rev, "net_income": ni, "eps": eps, "shares": sh}
+    rows = [nse(1, 2000e7, 150e7, 1.6, 94e7), nse(2, 2100e7, 160e7, 1.7, 94e7), nse(3, 29.5e7, 2.4e7, 2.57, 0.94e7),
+            nse(4, 2200e7, 0.0, 1.8, 94e7), nse(5, 2300e7, 16e7, 1.9, 94e7), nse(6, 2250e7, 170e7, 1.8, 1e7),
+            nse(7, 2400e7, 180e7, 1.9, 94e7)]
+    fixed = q._fix_nse([dict(r) for r in rows])
+    assert abs(fixed[2]["revenue"] - 2950e7) < 1 and abs(fixed[2]["shares"] - 94e7) < 1 and fixed[2]["eps"] == 2.57   # lakh slip x100
+    assert fixed[3]["net_income"] is None                                    # 0 beside a real EPS: not reported
+    assert fixed[4]["net_income"] is None                                    # 10x off its EPS x shares: wrong line
+    assert fixed[5]["shares"] is None and fixed[5]["net_income"] == 170e7    # a placeholder count of 1 crore
+    assert [r["revenue"] for r in fixed[:2]] == [2000e7, 2100e7] and fixed[6]["net_income"] == 180e7
+    us = [{**r, "source": "sec_edgar"} for r in rows]
+    assert q._fix_nse([dict(r) for r in us]) == us                           # NSE rows only
+
+
 def test_split_factors():
     shares = [100, 101, 202, 203, 204, 280]                 # 1:1 bonus, then a 37% share issue
     eps = [1.0, 1.0, 0.5, 0.5, 0.5, 0.4]
