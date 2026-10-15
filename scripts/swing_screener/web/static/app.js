@@ -4835,6 +4835,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
+  "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing",
   "learn-system-families", "learn-system-filters", "learn-system-screens-strategies",
   "learn-test-backtesting", "learn-test-reading",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
@@ -4846,6 +4847,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
+  "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno",
   "learn-system-families": "system", "learn-system-filters": "system",
   "learn-system-screens-strategies": "system",
   "learn-test-backtesting": "testing", "learn-test-reading": "testing",
@@ -4853,8 +4855,41 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
 /** a sub-heading for a guide inside its topic's menu — for a topic large enough to need categories
  *  (Strategies: "Trend following", "Breakouts from a base", ...). Guides without one sit under "Guides". */
-const GUIDE_GROUP = {};
+const GUIDE_GROUP = {
+  "learn-fno-overview": "Start here",
+  "learn-fno-futures-basics": "Futures",
+  "learn-fno-futures-basis": "Futures",
+  "learn-fno-futures-trading": "Futures",
+  "learn-fno-options-basics": "Options basics",
+  "learn-fno-pricing-greeks": "Options basics",
+  "learn-fno-volatility": "Options basics",
+  "learn-fno-option-chain": "Options basics",
+  "learn-fno-expiry": "Options basics",
+  "learn-fno-directional": "Option strategies",
+  "learn-fno-income": "Option strategies",
+  "learn-fno-vol-strategies": "Option strategies",
+  "learn-fno-hedging": "Option strategies",
+  "learn-fno-event-trades": "Option strategies",
+  "learn-fno-india-rules": "Rules, costs and risk",
+  "learn-fno-risk-sizing": "Rules, costs and risk",
+};
 const GUIDE_BLURB = {
+  "learn-fno-overview": "What futures and options are for, how they differ, the honest odds for retail traders, and the order to read these guides in.",
+  "learn-fno-futures-basics": "Lots, contract value, margin, daily mark-to-market, expiry and settlement — how an Indian futures contract actually works.",
+  "learn-fno-futures-basis": "Why a future trades above the index, what rolling costs, and what open interest with price can and cannot tell you.",
+  "learn-fno-futures-trading": "Leverage done carefully, swing-shorting a stock through futures, hedging a portfolio with Nifty futures, and pair trades.",
+  "learn-fno-options-basics": "Calls and puts, moneyness, intrinsic and time value, buyer and seller payoffs, exercise, and physical settlement.",
+  "learn-fno-pricing-greeks": "What moves an option's price — the underlying, time, volatility — and delta, gamma, theta and vega with real Nifty examples.",
+  "learn-fno-volatility": "Implied against realised volatility, India VIX's history, IV rank and percentile, the skew, and the crush after events.",
+  "learn-fno-option-chain": "Reading a real Nifty chain: open interest and its change, the put/call ratio, max pain, and liquidity — and their limits.",
+  "learn-fno-expiry": "What happens in an option's last days: faster time decay, gamma risk, weekly expiries, pinning, and India's expiry-day rules.",
+  "learn-fno-directional": "Long calls and puts and debit spreads: trading a view with defined risk, and choosing the strike and the expiry.",
+  "learn-fno-income": "Covered calls, cash-secured puts, credit spreads and iron condors — why selling options wins often and loses big.",
+  "learn-fno-vol-strategies": "Straddles, strangles, butterflies, calendars and ratio spreads: trading volatility itself rather than direction.",
+  "learn-fno-hedging": "Protective puts, collars and index hedges for a stock portfolio, and what insurance costs over the years.",
+  "learn-fno-event-trades": "Results, RBI policy, the Budget and elections: the move options price in, the volatility crush, and what actually happened.",
+  "learn-fno-india-rules": "India's F&O rules, costs and tax in one place: lot sizes, margins, upfront premium, expiries, STT and a full round-trip cost.",
+  "learn-fno-risk-sizing": "Notional against margin, sizing by the maximum loss, gap risk, margin calls and assignment — and how F&O accounts blow up.",
   "learn-start-here": "What a share, an index and a chart are; how a trade happens and what it costs; percent, annualised and R. The floor every other guide stands on.",
   "learn-macro-rates": "What the Fed and the RBI do, why the price of money sets every valuation, and which sectors feel it first.",
   "learn-macro-yield-curve": "Bond yields, the shape of the curve, inversions and recessions, and why the 10-year moves growth stocks.",
@@ -4901,10 +4936,13 @@ const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$
 /** inside its topic the topic is already named, so "Candlestick patterns: field guide" (or a guide named
  *  for the topic, "Supply and demand") is just "Field guide" */
 const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
-  return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
+  if (/: field guide$/.test(l)) return "Field guide";
+  if (norm(l) !== norm(Learn.FAMILY_LABEL[t] || "")) return l;
+  const sub = guideTitle(x).split(" — ")[1];
+  return sub ? sub[0].toUpperCase() + sub.slice(1) : "Field guide"; };
 // the learning path: context (macro, the market) -> reading a stock (price, candles, patterns, levels, fundamentals)
 // -> trading it (risk, process) -> building and testing a system of your own
-const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles", "charts", "levels", "fundamentals", "risk", "process", "system", "testing"];
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles", "charts", "levels", "fundamentals", "fno", "risk", "process", "system", "testing"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;
