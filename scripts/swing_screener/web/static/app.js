@@ -410,14 +410,13 @@ api("/api/strategies").then((xs) => Studies.setStrategies(xs.filter((x) => x.kin
 const BENCH = { us: "SPY", india: "NIFTY50" };
 
 /** Key events on a price chart, the TradingView way: a row of lettered badges along the bottom of the
- *  price pane — E earnings / results, D ex-dividend (only those two, as on TradingView; splits and
- *  bonuses stay in the News & events panel) — each under the bar it falls on
+ *  price pane — E earnings / results, D ex-dividend, S split or bonus — each under the bar it falls on
  *  (upcoming ones in the empty space right of the last bar, hollow). Hover shows a card with the
  *  details (a past report with that quarter's EPS and revenue from `quarters`, the stored quarterly
  *  results; the next one with its EPS estimate); click calls onOpen. Returns { set(events), destroy() }. */
 function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
-  const KIND = { earnings: "E", results: "E", dividend: "D" };
-  const NAME = { E: "Earnings", D: "Dividend" };
+  const KIND = { earnings: "E", results: "E", dividend: "D", split: "S", bonus: "S" };
+  const NAME = { E: "Earnings", D: "Dividend", S: "Split" };
   const today = new Date().toISOString().slice(0, 10), last = times.at(-1);
   const strip = document.createElement("div"); strip.className = "ev-strip";
   const tip = document.createElement("div"); tip.className = "ev-tip"; tip.hidden = true;
@@ -452,7 +451,7 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
       if (det.amount != null) rows.push(["Amount", `${(MKTS.find((m) => m.key === market) || {}).currency || ""}${(+det.amount).toFixed(det.amount < 1 ? 3 : 2)} per share`]);
       if (det.pay_date) rows.push(["Pay date", prettyDate(det.pay_date)]);
       if (det.record_date) rows.push(["Record date", esc(det.record_date)]);
-    }
+    } else if (det.ratio) rows.push(["Ratio", `${det.ratio}:1`]);
     const when = up ? `${prettyDate(e.date)} · in ${days(today, e.date)} days` : prettyDate(e.date);
     return `<div class="ev-card"><div class="ev-h"><i class="ev-ic ${L}${up ? " soon" : ""}">${L}</i><b>${up ? "Upcoming " + NAME[L].toLowerCase() : NAME[L]}</b><span class="muted">${when}</span></div>
       ${rows.length ? `<table>${rows.map(([k, v]) => `<tr><td class="muted">${k}</td><td>${v}</td></tr>`).join("")}</table>` : ""}
@@ -1097,8 +1096,8 @@ async function chartPage(alive, market, symbol, tf) {
   if (!alive()) return;
   dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}`, remote });
   applyAnnotations();   // read-only: never saved, never erasable
-  // key events along the bottom of the price pane, TradingView style: E earnings / results and D ex-dividend
-  // only; hover for the details, click for the News & events panel. Upcoming events sit
+  // key events along the bottom of the price pane, TradingView style: E earnings / results, D ex-dividend,
+  // S split or bonus; hover for the details, click for the News & events panel. Upcoming events sit
   // in the empty space right of the last bar.
   const evStrip = eventStrip({ chart, chartEl, times, tf, market, quarters: srow?.series || [],
     onOpen: () => { prefs.tab = "news"; prefs.panel = true; store.set("chartPrefs", prefs); syncPanel(); renderSide(); } });
