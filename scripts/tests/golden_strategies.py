@@ -1,8 +1,9 @@
 """Behaviour-preservation harness for EVERY strategy, on frozen data.
 
-Like `golden_baseline.py` (trend pullback only), but covering all registered
-strategies, and with each symbol's history cut at AS_OF so that the daily price
-load cannot change the snapshot. Record before a refactor, check after:
+Covers all registered strategies, with each symbol's history cut at AS_OF so
+that the daily price load cannot change the snapshot. (It replaced an older
+trend-pullback-only harness that read live prices and drifted daily.) Record
+before a refactor, check after:
 
     PYTHONPATH=. python3 -m tests.golden_strategies --write
     PYTHONPATH=. python3 -m tests.golden_strategies --check

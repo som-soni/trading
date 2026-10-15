@@ -846,10 +846,12 @@ tests/
                      menu and every registration has a file; the topic
                      vocabulary matches across app.js and learn.js, and no
                      topic renders an empty sub-menu
-  golden_baseline.py  behaviour-preservation harness: records the full
-                     gate/flag/setup/plan/decision output for a fixed sample,
-                     so a refactor that changes behaviour shows up as a
-                     field-level diff rather than surfacing in a backtest
+  golden_strategies.py  behaviour-preservation harness for every registered
+                     strategy: records the full pre-filter/gate/flag/setup/
+                     plan/decision output for a stored sample of symbols on
+                     data cut at a fixed date, so a refactor that changes
+                     behaviour shows up as a field-level diff rather than
+                     surfacing in a backtest (--write before, --check after)
 ```
 
 Generated output lives **outside** this directory, at the repository root:

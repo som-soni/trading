@@ -6,7 +6,8 @@ needs to change.
 
 KNOWN DEFECTS in trend_pullback, found during the post-build review and
 deliberately NOT fixed during the extraction so that the refactor stayed
-behaviour-identical against tests/golden_baseline.py. Fix them as separate,
+behaviour-identical against the trend-pullback golden harness of the time (since
+retired; tests/golden_strategies.py now covers every strategy). Fix them as separate,
 individually verifiable changes:
 
   1. Plan B ignores overhead resistance. `_build_plan(which="B")` sets the
