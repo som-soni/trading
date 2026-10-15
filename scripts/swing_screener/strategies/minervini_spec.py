@@ -385,6 +385,19 @@ class MinerviniSpecStrategy(Strategy):
         "sessions US CAGR falls 1.34% to 0.72% and drawdown worsens — because it sits out the first "
         "days of a recovery, which is when the breakouts that work fire. It is off by default.",
     )
+    decision_docs = {
+        "TRADE_HIGH_CONFIDENCE": "A confirmed breakout (MV-01): every Trend Template gate passes and the stop is "
+                                 "within {MAX_STOP_PCT}% of entry. Buy at the next open. Watch flags never cap "
+                                 "this strategy's decision.",
+        "TRADE_ON_TRIGGER": "A valid plan that is not a confirmed breakout: either coiled within {COIL_PCT}% below "
+                            "the pivot (MV-02), entered only if price trades through it on a resting buy-stop, or a "
+                            "cheat (MV-03 / MV-04) that cleared its shelf on the close, bought at the next open and "
+                            "stopped under the shelf low. The market regime never caps a decision to this tier.",
+        "WATCH_WAIT": "A valid plan held back: its stop sits more than {MAX_STOP_PCT}% below entry, or the market "
+                      "filter allows no new buys (see the note below). Worth watching, not buying.",
+        "AVOID": "A Trend Template gate failed, or there is no valid entry plan — no breakout, coil or cheat setup, "
+                 "or a plan that fails its checks (such as projecting under {MIN_STRUCTURAL_R}:1).",
+    }
     regime_note = (
         "When the market regime is risk-off, no new buys: HIGH CONFIDENCE and ON TRIGGER both become "
         "WATCH, with the reason 'market filter: no new buys'. WATCH and AVOID are untouched, so the "

@@ -178,7 +178,7 @@ class MinerviniStrategy(Strategy):
     regime_note = (
         "When the market regime is risk-off, only the actionable tiers are downgraded, one tier each: "
         "HIGH CONFIDENCE → ON TRIGGER and ON TRIGGER → WATCH, with the reason 'general market not "
-        "supporting breakouts'. WATCH and AVOID are left as they are (the reason column adds 'general "
+        "supporting breakouts'. WATCH and AVOID are left as they are (a WATCH row's reason adds 'general "
         "market not supporting breakouts (watchlist only)'), so coiling bases stay on the watchlist for "
         "the turn — a watchlist entry carries no risk to reduce."
     )
@@ -552,7 +552,7 @@ class MinerviniStrategy(Strategy):
             if label in ("TRADE_HIGH_CONFIDENCE", "TRADE_ON_TRIGGER"):
                 label = DOWNGRADE_MAP[label]
                 reasons.append("general market not supporting breakouts")
-            else:
+            elif label == "WATCH_WAIT":
                 reasons.append(
                     "general market not supporting breakouts (watchlist only)"
                 )

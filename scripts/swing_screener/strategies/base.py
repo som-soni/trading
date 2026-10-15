@@ -352,6 +352,11 @@ class Strategy(SpecMeta, ABC):
     # one-tier downgrade; override it when classify() does anything else, and change it in
     # the same change as that code. `{NAME}` placeholders render like the other docs.
     regime_note: str = REGIME_NOTE
+    # Decision label code ("TRADE_ON_TRIGGER", ...) -> what that tier means for THIS strategy,
+    # replacing the shared text in strategies/docs.py DECISIONS for the Strategy page's
+    # Decisions table. Override a tier only when classify() reaches it differently from the
+    # shared description; `{NAME}` placeholders render like the other docs.
+    decision_docs: dict[str, str] = {}
 
     # --- identity and versioning ---
     # `family` is the high-level strategy a reader thinks in terms of
