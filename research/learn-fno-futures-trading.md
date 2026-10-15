@@ -370,13 +370,19 @@ Gatev, Goetzmann and Rouwenhorst (2006) found profits from pair trading in US st
 
 **Survivorship.** Today's F&O list leaves out stocks that collapsed or were removed. For shorts this hides some of the best trades; for longs and hedges it flatters results.
 
-**Costs (approximate, India).** Per round trip on a futures position, count brokerage, exchange transaction charges, STT on the sell side (raised from 1 October 2024), GST on brokerage and fees, stamp duty on the buy side and SEBI fees. Add slippage of at least one tick each way, and the bid–ask spread on every roll. Pairs pay all of this on two legs.
+**Costs (approximate, India).** Per round trip on a futures position, count brokerage, exchange transaction charges and STT on the sell side (raised from 1 October 2024). Also count GST on brokerage and fees, stamp duty on the buy side and SEBI fees. Add slippage of at least one tick each way, and the bid–ask spread on every roll. Pairs pay all of this on two legs.
 
 **Margin and cash.** Model the daily cash flow. A test that ignores margin calls can show a path no real account would survive.
 
 **Parameters to test.** The breakdown window, the stop multiple, the trailing window and the time stop for shorts; the beta window and the hedge trigger for hedges; the z-score window and thresholds for pairs. Change one at a time over a broad grid. Prefer a region of parameters that all work over one sharp peak.
 
-**What a good test reports.** Number of trades, win rate, average win and loss in R, expectancy per trade after costs, maximum drawdown, the worst single trade, the longest losing streak, and results split by market regime and by time period.
+**What a good test reports.**
+
+- Number of trades and win rate.
+- Average win and loss in R.
+- Expectancy per trade after costs.
+- Maximum drawdown, the worst single trade and the longest losing streak.
+- Results split by market regime and by time period.
 
 ```
 for each session t:

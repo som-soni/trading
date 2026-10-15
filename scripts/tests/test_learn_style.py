@@ -76,6 +76,7 @@ OWN_BACKTESTS = [r"\brun \d{2,4}\b", r"\bruns? (id|ids)\b", r"\bv\d+\.\d+-[0-9a-
 DATE = re.compile(r"\b\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}\b|"
                   r"\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}\b|\b\d{4}-\d{2}(-\d{2})?\b")
 NUMBER = re.compile(r"(?<![\w.])[-−+]?\d[\d,]*(?:\.\d+)?")
+LIST_ITEM = re.compile(r"^([-*+]|\d+[.)])\s+")
 
 
 def _prose(md: str) -> list[str]:
@@ -84,10 +85,14 @@ def _prose(md: str) -> list[str]:
     paras, cur = [], []
     for line in md.splitlines():
         s = line.strip()
-        if not s or s.startswith(("#", "|", "-", "*", ">", "1.", "2.", "3.", "4.", "5.", "6.", "7.", "8.", "9.")) or s == "---":
+        # a block boundary: a blank line, a heading, a table row, a quote, a rule, or a list item ("- ", "* ",
+        # "1. ") — but not a paragraph that opens in bold ("**Like this.**") or a wrapped line starting "1.5%"
+        if not s or s.startswith(("#", "|", ">")) or s == "---" or LIST_ITEM.match(s):
             if cur:
                 paras.append(" ".join(cur))
                 cur = []
+            continue
+        if line[:1] in (" ", "\t") and not cur:     # the continuation of a list item: part of the list, not prose
             continue
         cur.append(s)
     if cur:
@@ -125,9 +130,9 @@ def check_guide(name: str, md: str, guide_files: set[str]) -> list[str]:
     else:
         bullets = 0
         for l in lines[at + 1:]:
-            if l.strip().startswith(("- ", "* ")):
+            if LIST_ITEM.match(l):
                 bullets += 1
-            elif l.strip() and bullets:
+            elif l.strip() and bullets and not l[:1].isspace():
                 break
         lo, hi = IN_SHORT_BULLETS
         if not lo <= bullets <= hi:

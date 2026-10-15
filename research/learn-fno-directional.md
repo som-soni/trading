@@ -88,7 +88,7 @@ caption: Real premiums from the snapshot. Net cost 141.30 points (₹9,185 a lot
 
 ## 2. When it works and when it doesn't
 
-**It works when the move is larger than the market expects.** The market's expectation is visible. Add the at-the-money call and put of one expiry: this is the *straddle* price. At the snapshot, the 22,900 call and put for 27 October cost 240 + 214 = 454 points. The market was pricing a typical move of about ±2% by expiry.
+**It works when the move is larger than the market expects.** The market's expectation is visible. Add the at-the-money call and put of one expiry: this is the *straddle* price. At the snapshot, the 27 October call at 22,900 cost 240 points. The put at the same strike cost 214, so the straddle cost 454 points. The market was pricing a typical move of about ±2% by expiry.
 
 If your setup usually produces moves larger than that within the time left, buying options can pay. If it produces moves of about that size, you are paying full price for an average outcome.
 
@@ -367,7 +367,15 @@ The stop on the underlying did its job. The loss was still about half the premiu
 
 **Parameters to test, and how not to over-fit.** Test the expiry multiple, the strike (delta), and the spread width. Keep the stock setup fixed while you do it. Change one parameter at a time and look for a broad plateau of good results, not a single best value. Hold out the last two or three years as an untouched test period. See [backtesting](learn-test-backtesting.md) for the general method.
 
-**What a good test reports.** Number of trades; win rate; average win and loss as a multiple of premium; expectancy per trade after costs; the worst run of losses; results by year and by volatility level (low, middle and high India VIX). Compare with the same signals traded in shares or futures. If the options version does not beat that after costs, the option is adding cost, not value.
+**What a good test reports.**
+
+- Number of trades and win rate.
+- Average win and loss as a multiple of premium.
+- Expectancy per trade after costs.
+- The worst run of losses.
+- Results by year and by volatility level (low, middle and high India VIX).
+
+Compare with the same signals traded in shares or futures. If the options version does not beat that after costs, the option is adding cost, not value.
 
 A sketch of the core logic:
 

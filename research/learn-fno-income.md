@@ -35,7 +35,7 @@ That picture is the whole business of selling options:
 - **The odds favour you.** The put pays you if the Nifty does anything except fall more than 4% in eight sessions. Most of the time it doesn't.
 - **The payoff does not.** You can earn ₹2,083 at most, and lose many times that.
 
-**Why it can work.** Buyers of options are often buying insurance: fund managers protecting portfolios, traders capping risk. They will pay more than the expected loss to be protected. Market makers who take the other side charge for the risk of being wrong in a crash. The result is a **volatility risk premium**: the implied volatility in option prices tends to be above the volatility that follows. On the Nifty, India VIX was above the next month's realised volatility on about 4 days in 5 since 2010 (section 8).
+**Why it can work.** Buyers of options are often buying insurance: fund managers protecting portfolios, traders capping risk. They will pay more than the expected loss to be protected. Market makers who take the other side charge for the risk of being wrong in a crash. The result is a **volatility risk premium**: the implied volatility in option prices tends to be above the volatility that follows. On the Nifty, India VIX was above the next month's realised volatility on about four days in five since 2010 (section 8).
 
 **Who is on the other side.** Hedgers who want protection, and buyers who want a cheap, leveraged bet. Both pay for something other than a fair price, and the seller collects that difference.
 

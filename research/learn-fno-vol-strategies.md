@@ -114,7 +114,15 @@ leg: sell 2x call 23300 @ 79.9
 caption: Debit 28.1 points. Best case is Nifty at 23,300 at expiry: 271.9 points, or ₹17,674 per lot. Above about 23,572 the extra short call loses without limit. It pays for a moderate rise and punishes a sharp one.
 ```
 
-**Calendar spread.** Sell a near expiry and buy a later one at the same strike. Sell the 19 October 22,900 call at 146.6 and buy the 27 October 22,900 call at 240, for a debit of 93.4 points. The two legs expire on different days, so the payoff is not a fixed line. The table values the position at the 19 October expiry with a pricing model. The later call then has 8 days left.
+**Calendar spread.** Sell a near expiry and buy a later one at the same strike. Here both legs are 22,900 calls:
+
+| Leg | Expiry | Price (points) |
+|---|---|---|
+| Sell call | 19 October | 146.6 |
+| Buy call | 27 October | 240 |
+| Net debit | | 93.4 |
+
+The two legs expire on different days, so the payoff is not a fixed line. The table values the position at the 19 October expiry with a pricing model. The later call then has 8 days left.
 
 | Nifty at 19 Oct expiry | Value if 27 Oct IV is 10% | If IV is 12.2% (as now) | If IV is 13.6% |
 |---|---|---|---|

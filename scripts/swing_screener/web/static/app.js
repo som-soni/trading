@@ -410,13 +410,14 @@ api("/api/strategies").then((xs) => Studies.setStrategies(xs.filter((x) => x.kin
 const BENCH = { us: "SPY", india: "NIFTY50" };
 
 /** Key events on a price chart, the TradingView way: a row of lettered badges along the bottom of the
- *  price pane — E earnings / results, D ex-dividend, S split or bonus — each under the bar it falls on
+ *  price pane — E earnings / results, D ex-dividend (only those two, as on TradingView; splits and
+ *  bonuses stay in the News & events panel) — each under the bar it falls on
  *  (upcoming ones in the empty space right of the last bar, hollow). Hover shows a card with the
  *  details (a past report with that quarter's EPS and revenue from `quarters`, the stored quarterly
  *  results; the next one with its EPS estimate); click calls onOpen. Returns { set(events), destroy() }. */
 function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
-  const KIND = { earnings: "E", results: "E", dividend: "D", split: "S", bonus: "S" };
-  const NAME = { E: "Earnings", D: "Dividend", S: "Split" };
+  const KIND = { earnings: "E", results: "E", dividend: "D" };
+  const NAME = { E: "Earnings", D: "Dividend" };
   const today = new Date().toISOString().slice(0, 10), last = times.at(-1);
   const strip = document.createElement("div"); strip.className = "ev-strip";
   const tip = document.createElement("div"); tip.className = "ev-tip"; tip.hidden = true;
@@ -451,7 +452,7 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
       if (det.amount != null) rows.push(["Amount", `${(MKTS.find((m) => m.key === market) || {}).currency || ""}${(+det.amount).toFixed(det.amount < 1 ? 3 : 2)} per share`]);
       if (det.pay_date) rows.push(["Pay date", prettyDate(det.pay_date)]);
       if (det.record_date) rows.push(["Record date", esc(det.record_date)]);
-    } else if (det.ratio) rows.push(["Ratio", `${det.ratio}:1`]);
+    }
     const when = up ? `${prettyDate(e.date)} · in ${days(today, e.date)} days` : prettyDate(e.date);
     return `<div class="ev-card"><div class="ev-h"><i class="ev-ic ${L}${up ? " soon" : ""}">${L}</i><b>${up ? "Upcoming " + NAME[L].toLowerCase() : NAME[L]}</b><span class="muted">${when}</span></div>
       ${rows.length ? `<table>${rows.map(([k, v]) => `<tr><td class="muted">${k}</td><td>${v}</td></tr>`).join("")}</table>` : ""}
@@ -1096,8 +1097,8 @@ async function chartPage(alive, market, symbol, tf) {
   if (!alive()) return;
   dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}`, remote });
   applyAnnotations();   // read-only: never saved, never erasable
-  // key events along the bottom of the price pane, TradingView style: E earnings / results, D ex-dividend,
-  // S split or bonus; hover for the details, click for the News & events panel. Upcoming events sit
+  // key events along the bottom of the price pane, TradingView style: E earnings / results and D ex-dividend
+  // only; hover for the details, click for the News & events panel. Upcoming events sit
   // in the empty space right of the last bar.
   const evStrip = eventStrip({ chart, chartEl, times, tf, market, quarters: srow?.series || [],
     onOpen: () => { prefs.tab = "news"; prefs.panel = true; store.set("chartPrefs", prefs); syncPanel(); renderSide(); } });
@@ -4835,6 +4836,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
+  "learn-strat-overview", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
   "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing",
   "learn-system-families", "learn-system-filters", "learn-system-screens-strategies",
   "learn-test-backtesting", "learn-test-reading",
@@ -4847,6 +4849,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
+  "learn-strat-overview": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
   "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno",
   "learn-system-families": "system", "learn-system-filters": "system",
   "learn-system-screens-strategies": "system",
@@ -4856,6 +4859,36 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
 /** a sub-heading for a guide inside its topic's menu — for a topic large enough to need categories
  *  (Strategies: "Trend following", "Breakouts from a base", ...). Guides without one sit under "Guides". */
 const GUIDE_GROUP = {
+  "learn-strat-overview": "Start here",
+  "learn-strat-ma-trend": "Trend following",
+  "learn-strat-channel-breakout": "Trend following",
+  "learn-strat-stage-analysis": "Trend following",
+  "learn-strat-canslim-breakout": "Breakouts from a base",
+  "learn-strat-vcp-sepa": "Breakouts from a base",
+  "learn-strat-darvas": "Breakouts from a base",
+  "learn-strat-flags": "Breakouts from a base",
+  "learn-strat-pullback-ma": "Pullbacks in a trend",
+  "learn-strat-pullback-support": "Pullbacks in a trend",
+  "learn-strat-retracements": "Pullbacks in a trend",
+  "learn-strat-xs-momentum": "Momentum and relative strength",
+  "learn-strat-dual-momentum": "Momentum and relative strength",
+  "learn-strat-sector-rotation": "Momentum and relative strength",
+  "learn-strat-rs-leaders": "Momentum and relative strength",
+  "learn-strat-earnings-gaps": "Event-driven",
+  "learn-strat-pead": "Event-driven",
+  "learn-strat-index-news-events": "Event-driven",
+  "learn-strat-rsi2": "Mean reversion",
+  "learn-strat-bollinger-reversion": "Mean reversion",
+  "learn-strat-gap-fills": "Mean reversion",
+  "learn-strat-failed-breakouts": "Reversals and the short side",
+  "learn-strat-stage4-shorts": "Reversals and the short side",
+  "learn-strat-squeezes-bear-rallies": "Reversals and the short side",
+  "learn-strat-orb": "Intraday",
+  "learn-strat-vwap": "Intraday",
+  "learn-strat-intraday-momentum": "Intraday",
+  "learn-strat-spec": "Building your own",
+  "learn-strat-combining": "Building your own",
+  "learn-strat-regime-filters": "Building your own",
   "learn-fno-overview": "Start here",
   "learn-fno-futures-basics": "Futures",
   "learn-fno-futures-basis": "Futures",
@@ -4874,6 +4907,36 @@ const GUIDE_GROUP = {
   "learn-fno-risk-sizing": "Rules, costs and risk",
 };
 const GUIDE_BLURB = {
+  "learn-strat-overview": "The map of trading strategies: what a complete strategy is, the categories, and how to choose one that fits you.",
+  "learn-strat-ma-trend": "Own a stock or index while it is above a moving average and step aside below it — rules, parameters and whipsaws.",
+  "learn-strat-channel-breakout": "Donchian and Turtle-style trend following: buy the new high, exit on the new low, size by volatility.",
+  "learn-strat-stage-analysis": "Weinstein's method: buy the Stage 2 breakout above a rising 30-week line and hold until the stage turns.",
+  "learn-strat-canslim-breakout": "O'Neil's CAN SLIM: buying a leader as it clears a cup, double bottom or flat base, with his selling rules.",
+  "learn-strat-vcp-sepa": "Minervini's SEPA: the Trend Template, the volatility contraction, the pivot, and how he manages a trade.",
+  "learn-strat-darvas": "Darvas boxes: buying a breakout from a tight range at new highs and trailing the stop box by box.",
+  "learn-strat-flags": "Flags, pennants and high tight flags: buying the brief pause inside a fast move, and why they fail.",
+  "learn-strat-pullback-ma": "Buying a dip to the 21-day or 50-day average inside an uptrend, entering as it turns back up.",
+  "learn-strat-pullback-support": "Buying the retest of a breakout level or demand zone, with the stop just beyond it.",
+  "learn-strat-retracements": "Fibonacci retracements and measured moves, tested honestly: common reference levels, not magic ones.",
+  "learn-strat-xs-momentum": "Rank the market by its past year's return, hold the strongest, rotate monthly — and survive momentum crashes.",
+  "learn-strat-dual-momentum": "Antonacci's dual momentum: own the strongest asset, and step aside to bonds or cash when nothing beats cash.",
+  "learn-strat-sector-rotation": "Holding the strongest sectors and moving as leadership changes — by relative strength or the business cycle.",
+  "learn-strat-rs-leaders": "Buying the strongest stocks in the strongest groups as a correction ends, and when that works.",
+  "learn-strat-earnings-gaps": "Buying a big results-day gap on heavy volume — the episodic pivot — with its entry, stop and hold rules.",
+  "learn-strat-pead": "Post-earnings drift: trading the slow reaction to strong results, and where the effect is still alive.",
+  "learn-strat-index-news-events": "Index additions, splits and bonus issues, buybacks and block deals: trading the event calendar.",
+  "learn-strat-rsi2": "Connors' RSI(2): buying short, sharp dips in an uptrend and selling the bounce — on indices and stocks.",
+  "learn-strat-bollinger-reversion": "Buying the lower Bollinger band in a range, and recognising the trend that walks the band instead.",
+  "learn-strat-gap-fills": "Do gaps always fill? Measured, plus when to fade a gap and when to ride it.",
+  "learn-strat-failed-breakouts": "When a breakout fails: recognising the bull trap, exiting a long, and shorting it.",
+  "learn-strat-stage4-shorts": "Shorting a stock already in Stage 4: breakdowns, failed rallies to a falling line, and the risks of shorting.",
+  "learn-strat-squeezes-bear-rallies": "Short squeezes and bear-market rallies: why they happen, how to survive them, and whether to trade them.",
+  "learn-strat-orb": "The opening-range breakout: trading the first decisive move of the day, and the days it works best.",
+  "learn-strat-vwap": "VWAP pullbacks, VWAP reversion and anchored VWAP from an event — trading around the day's average price.",
+  "learn-strat-intraday-momentum": "Trend days and range days, and whether the morning predicts the afternoon — after realistic costs.",
+  "learn-strat-spec": "Turning an idea into a testable strategy: universe, setup, entry, stop, exits and sizing, every number named.",
+  "learn-strat-combining": "Choosing and combining strategies: matching them to market regimes, correlation, and splitting capital.",
+  "learn-strat-regime-filters": "Market trend, breadth and volatility filters on top of any strategy — how to choose one and what it costs.",
   "learn-fno-overview": "What futures and options are for, how they differ, the honest odds for retail traders, and the order to read these guides in.",
   "learn-fno-futures-basics": "Lots, contract value, margin, daily mark-to-market, expiry and settlement — how an Indian futures contract actually works.",
   "learn-fno-futures-basis": "Why a future trades above the index, what rolling costs, and what open interest with price can and cannot tell you.",
@@ -4942,7 +5005,7 @@ const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerC
   return sub ? sub[0].toUpperCase() + sub.slice(1) : "Field guide"; };
 // the learning path: context (macro, the market) -> reading a stock (price, candles, patterns, levels, fundamentals)
 // -> trading it (risk, process) -> building and testing a system of your own
-const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles", "charts", "levels", "fundamentals", "fno", "risk", "process", "system", "testing"];
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles", "charts", "levels", "fundamentals", "strategies", "fno", "risk", "process", "system", "testing"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;

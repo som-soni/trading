@@ -292,11 +292,11 @@ The cost was small because India VIX was low. In 2020, after the March crash, th
 
 **Protective puts are expensive on average.** Roni Israelov ("Pathetic Protection: The Elusive Benefits of Protective Puts", *Journal of Alternative Investments*, 2019) studied S&P 500 protective puts. He found they reduced risk less efficiently than simply holding less equity, because the premium paid exceeded the protection received on average. The same reason explains the volatility risk premium in the [income guide](learn-fno-income.md): insurers are paid for taking crash risk.
 
-**Collars.** Roni Israelov and Matthew Klein ("Risk and Return of Equity Index Collar Strategies", *Journal of Alternative Investments*, 2016) found that most of a collar's risk reduction came simply from holding less equity exposure, and that collars gave up return for it. Edward Szado and Thomas Schneeweis studied collars on the Nasdaq-100 ETF. They found collars reduced losses in the bear markets in their sample, at the cost of upside in rising periods.
+**Collars.** Roni Israelov and Matthew Klein studied collars ("Risk and Return of Equity Index Collar Strategies", *Journal of Alternative Investments*, 2016). They found that most of a collar's risk reduction came simply from holding less equity exposure, and that collars gave up return for it. Edward Szado and Thomas Schneeweis studied collars on the Nasdaq-100 ETF. They found collars reduced losses in the bear markets in their sample, at the cost of upside in rising periods.
 
 **An event study on the Nifty: the cost of permanent insurance.**
 
-*Method.* Every 21 sessions from January 2010 to August 2026 (195 months), buy a 30-day Nifty put 5% below the market and hold it for 21 sessions. Estimate the premium with Black-Scholes using India VIX. The payout is what the put is worth at the end. Both are measured as a percentage of the index level and summed by calendar year.
+*Method.* The test runs from January 2010 to August 2026, 195 months in all. Every 21 sessions, buy a 30-day Nifty put 5% below the market and hold it until the next purchase. Estimate the premium with Black-Scholes using India VIX. The payout is what the put is worth at the end. Both are measured as a percentage of the index level and summed by calendar year.
 
 | Year | Premium paid, % of portfolio | Payout, % of portfolio |
 |---|---|---|

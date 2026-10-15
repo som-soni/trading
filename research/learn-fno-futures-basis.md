@@ -60,7 +60,7 @@ caption: The two legs cancel. Wherever Reliance ends up on 27 October, the posit
 
 The gross gain is about ₹1,950 on ₹6 lakh of capital for 12 days. Costs eat most of it for an individual. STT on a share purchase and sale held for delivery is 0.1% each way, about ₹1,200 on ₹6 lakh. Brokerage, exchange charges and the futures leg come on top. That is why this trade belongs to institutions with low costs and spare cash.
 
-**A cross-check from the options market.** A call and a put at the same strike and expiry together imply a forward price — the price of the underlying for delivery on that date. That morning the 27 October 23,000 call cost ₹187.9 and the put ₹263.0. Their difference implies a forward near 22,925, close to the future's 22,940. The two quotes were taken about a minute apart.
+**A cross-check from the options market.** A call and a put at the same strike and expiry together imply a forward price — the price of the underlying for delivery on that date. That morning the 27 October 23,000 call cost ₹187.9. The put at the same strike cost ₹263.0. Their difference implies a forward near 22,925, close to the future's 22,940. The two quotes were taken about a minute apart.
 
 ## 3. Contango and backwardation
 
@@ -86,7 +86,7 @@ Single-stock futures vary more. The table shows the near-month basis for some of
 
 A stock future below its spot price usually has one of two causes. The first is a dividend due before expiry: the share price will drop by the dividend, while the future does not receive it. The second is heavy demand to be short, often from traders who cannot short shares overnight in the cash market. A snapshot cannot say which applies; a check of the company's announced record dates usually can.
 
-**Why it matters to a trader.** A short futures position in a stock that is in backwardation starts with a handicap: the future is already below the spot price and will rise toward it as expiry nears, if nothing else changes. A long position in strong contango pays the carry. Both are small next to a normal week's price move, but they are certain, while the price move is not.
+**Why it matters to a trader.** A short futures position in a stock that is in backwardation starts with a handicap. The future is already below the spot price and will rise toward it as expiry nears, if nothing else changes. A long position in strong contango pays the carry. Both are small next to a normal week's price move, but they are certain, while the price move is not.
 
 ## 4. The basis shrinks to zero at expiry
 
