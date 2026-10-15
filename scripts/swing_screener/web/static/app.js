@@ -3532,7 +3532,7 @@ function renderResearchMd(host, markdown) {
   const named = [...host.querySelectorAll('.md a[href$=".md"]')].filter((a) => /\.md$/i.test(a.textContent.trim()));
   if (named.length) api("/api/reports?kind=research").then((runs) => named.forEach((a) => {
     const t = runs.find((x) => x.run === a.getAttribute("href").replace(/\.md$/, ""));
-    if (t) { a.title = a.textContent; a.textContent = t.run.startsWith("learn-") ? `the ${guideLabel(t).replace(/: field guide$/, " field guide")} guide`.replace(/ guide guide$/, " guide") : guideTitle(t); }
+    if (t) { a.title = a.textContent; a.textContent = t.run.startsWith("learn-") ? `the ${guideLabel(t).replace(/: field guide$/, " field guide").replace(/^The /, "")} guide`.replace(/ guide guide$/, " guide") : guideTitle(t); }
   })).catch(() => {});
   host.querySelectorAll('.md a[href$=".md"]').forEach((a) => {
     const f = a.getAttribute("href");
@@ -4736,6 +4736,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
+  "learn-system-families", "learn-system-filters", "learn-system-screens-strategies",
   "learn-test-backtesting", "learn-test-reading",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
@@ -4746,6 +4747,8 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
+  "learn-system-families": "system", "learn-system-filters": "system",
+  "learn-system-screens-strategies": "system",
   "learn-test-backtesting": "testing", "learn-test-reading": "testing",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
@@ -4770,6 +4773,9 @@ const GUIDE_BLURB = {
   "learn-risk-expectancy": "Win rate times average win against loss rate times average loss — measured on this app's own backtest trades.",
   "learn-risk-sizing": "Risk per trade, R, stop distance and position size: how much to buy, and how the app sizes it.",
   "learn-risk-stops-exits": "Initial stops, gaps through them, breakeven and trailing stops, targets, and selling into strength or weakness.",
+  "learn-system-families": "The handful of bets a strategy can make — trend continuation, base breakouts, channel following, momentum, mean reversion, reversals — what each needs to work, and what this app's backtests found.",
+  "learn-system-filters": "How thousands of stocks become one trade: the six stages between a universe and a position, and why each must answer a different question.",
+  "learn-system-screens-strategies": "A screen says what is worth looking at; a strategy says what to do about it. Where each rule belongs, and how the two are judged differently.",
   "learn-test-backtesting": "Overfitting, look-ahead, survivorship and costs — how a backtest fools you, with this app's own examples.",
   "learn-test-reading": "What each number in this app's backtests and screen studies means, and what would make you distrust a result.",
   "learn-price-stages": "A stock's four stages, the trend template, and how to tell an uptrend that is starting from one that is ending.",
@@ -4794,7 +4800,7 @@ const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$
  *  for the topic, "Supply and demand") is just "Field guide" */
 const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
   return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
-const LEARN_TOPICS = ["start", "macro", "health", "sectors", "fundamentals", "risk", "process", "price", "testing", "candles", "charts", "levels"];
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "fundamentals", "risk", "process", "price", "system", "testing", "candles", "charts", "levels"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;

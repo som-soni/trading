@@ -140,3 +140,37 @@ placeholder, or a parameter row pointing at something that no longer exists.
 It cannot check that prose still matches behaviour — that is on you: re-read
 the affected `*_docs` entries against the code you changed. Restart the web
 server to see the updated page.
+
+## Rule: a Learn guide is registered in two files, and stands on its own
+
+A guide is one `research/learn-*.md`. The menu that lists it is assembled
+somewhere that cannot see it, so **nothing at runtime objects when the two
+disagree** — an unregistered guide simply never appears, and a topic missing
+from `learn.js` throws only when someone opens it.
+
+Adding a guide means registering it in three maps in `web/static/app.js`:
+`GUIDE_ORDER` (its position), `GUIDE_TOPIC` (its topic) and `GUIDE_BLURB`
+(the card's one-line description). A new **topic** also needs `LEARN_TOPICS`
+there, and `FAMILY_LABEL` (its sidebar label) plus `FAMILIES` (its pattern
+groups, `[]` for a guides-only topic) in `web/static/learn.js`. A guide is
+only visible after it is ingested: `python -m jobs enqueue ingest`.
+
+Then run, from `scripts/`:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m tests.test_learn_guides
+```
+
+It fails on a guide missing from any registry, a registration with no file, a
+topic whose vocabulary disagrees across the two static files, a topic that
+would render an empty sub-menu, a missing H1 or a placeholder blurb.
+
+**The Learn section stands on its own.** Guides are written for a reader who
+has only this app: no references to outside documents, PDFs or private
+notes, and no IDs, archetype codes or vocabulary borrowed from them. Outside
+material may inform the structure of a guide; it is never cited in one, and
+its numbers are never quoted. Every figure in a guide comes from a constant
+or a measurement in this repository, and where neither exists the guide says
+so rather than asserting a number. Keep the house sections — "What the
+evidence says" and a checklist — and let them report nulls when that is what
+the backtests found.

@@ -842,6 +842,10 @@ tests/
                      and asserts the detector finds it, that the current
                      bar never defines a pivot, and that a random walk
                      produces nothing. No database needed.
+  test_learn_guides.py  every research/learn-*.md is registered in the Learn
+                     menu and every registration has a file; the topic
+                     vocabulary matches across app.js and learn.js, and no
+                     topic renders an empty sub-menu
   golden_baseline.py  behaviour-preservation harness: records the full
                      gate/flag/setup/plan/decision output for a fixed sample,
                      so a refactor that changes behaviour shows up as a
@@ -851,6 +855,14 @@ tests/
 Generated output lives **outside** this directory, at the repository root:
 `reports/<market>/<strategy>/<run>/`, `logs/`, `data/`, `research/`.
 Superseded material lives in `archive/`.
+
+Adding a **Learn guide** means adding one `research/learn-*.md` and
+registering it in three maps in `web/static/app.js` (`GUIDE_ORDER`,
+`GUIDE_TOPIC`, `GUIDE_BLURB`); a new *topic* also needs `LEARN_TOPICS` there
+and `FAMILY_LABEL` + `FAMILIES` in `web/static/learn.js`. Run
+`PYTHONPATH=. .venv/bin/python -m tests.test_learn_guides` — nothing at
+runtime objects if those disagree, so an unregistered guide simply never
+appears.
 
 Adding a strategy means adding one file under `strategies/` and registering
 it. If that ever requires editing the pipeline, the backtester, the reporter
