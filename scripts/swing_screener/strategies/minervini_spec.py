@@ -385,6 +385,11 @@ class MinerviniSpecStrategy(Strategy):
         "sessions US CAGR falls 1.34% to 0.72% and drawdown worsens — because it sits out the first "
         "days of a recovery, which is when the breakouts that work fire. It is off by default.",
     )
+    regime_note = (
+        "When the market regime is risk-off, no new buys: HIGH CONFIDENCE and ON TRIGGER both become "
+        "WATCH, with the reason 'market filter: no new buys'. WATCH and AVOID are untouched, so the "
+        "watchlist of setting-up bases stays intact for the turn."
+    )
     param_docs = (
         ("Swing confirmation", "SWING_K", "Bars either side of a swing point; it is known only this many bars later."),
         ("Prior advance", "PRIOR_ADVANCE_PCT", "Rise into the base high from the low of the 126 sessions before (VCP-01)."),

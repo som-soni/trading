@@ -175,6 +175,13 @@ class MinerviniStrategy(Strategy):
         "Ranking among competing signals is 12-1 momentum, standing in for "
         "the cross-sectional RS Rating.",
     )
+    regime_note = (
+        "When the market regime is risk-off, only the actionable tiers are downgraded, one tier each: "
+        "HIGH CONFIDENCE → ON TRIGGER and ON TRIGGER → WATCH, with the reason 'general market not "
+        "supporting breakouts'. WATCH and AVOID are left as they are (the reason column adds 'general "
+        "market not supporting breakouts (watchlist only)'), so coiling bases stay on the watchlist for "
+        "the turn — a watchlist entry carries no risk to reduce."
+    )
     caveats = (
         "**The fundamental screen (SEPA part 2) is optional in the backtest and covers 2022 onward only.** "
         "`--fundamentals leader|acceptable|covered` applies the Fundamentals page's SEPA tests to each signal "
