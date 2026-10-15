@@ -379,7 +379,10 @@ large enough to say *don't contribute annually in India*, and nothing more.
   0.83%/yr from ^NSEI vs NIFTYBEES (2009-2026).
 - **Cash earns a real rate, on calendar days.** 13-week T-bill (^IRX, 1960
   onward) for the US; realised LIQUIDBEES yield for India, with a flat 6.5%
-  before 2009 where no series exists. Accrual is per calendar day — accruing
+  before 2009 where no series exists. (Since 2026-10-15 India's cash series is
+  Nippon India Liquid Fund's growth NAV from AMFI, 2006 onward: Yahoo stopped
+  recording LIQUIDBEES's dividends after Sep 2025, so it earned nothing from
+  then.) Accrual is per calendar day — accruing
   per *trading* bar pays only ~69% of real interest and penalises exactly the
   waiting strategies under test.
 - **Tax is simulated separately from the pre-tax run.** A taxed run pays its

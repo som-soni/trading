@@ -167,7 +167,8 @@ this is a separate store rather than a flag on `backtest.py`:
   traded levels. Price-only indices carry an empirically calibrated dividend
   accrual (`--calibrate-dividends`), never a guessed one.
 * **Cash earns a real rate** — the 13-week T-bill (`^IRX`, 1960 onward) for
-  the US, the realised LIQUIDBEES yield for India — accrued on *calendar*
+  the US, the realised yield of a liquid fund's growth NAV (Nippon India
+  Liquid Fund, from AMFI, 2006 onward) for India — accrued on *calendar*
   days. Every strategy that waits in cash is credited with the interest it
   would actually have earned.
 * **Tax is modelled, and reported beside the pre-tax figure.** Each strategy

@@ -24,6 +24,7 @@ with `auto_adjust=True`, and never writes to `prices`.
 """
 
 import argparse
+import datetime as dt
 import logging
 import warnings
 from dataclasses import dataclass
@@ -65,6 +66,7 @@ class Series:
     div_yield: float = 0.0      # annual, ADDED to price-only equity series
     expense_ratio: float = 0.0  # annual drag applied when held
     note: str = ""
+    amfi: tuple[int, int] | None = None   # (fund house, scheme code): a mutual fund NAV from AMFI, not Yahoo
 
     @property
     def synthetic_dividends(self) -> bool:
@@ -155,10 +157,17 @@ _INDIA = [
     # India/US split can be tested without inventing an FX conversion.
     Series("US_IN_INR", "MON100.NS", "india", "equity", True,
            "Nasdaq 100 in INR (MON100)", expense_ratio=0.0058, note="2011-03 onward"),
-    # Liquid fund TR — India's cash leg. Starts 2009, so the long Sensex
-    # window needs a constant before that (see cash_rate_series).
-    Series("CASH_FUND", "LIQUIDBEES.NS", "india", "cash", True,
-           "Liquid fund (LIQUIDBEES)", note="2009-01 onward"),
+    # Liquid fund TR — India's cash leg: the growth-option NAV of Nippon India
+    # Liquid Fund (regular plan), published by AMFI. A growth NAV reinvests the
+    # fund's income, so it is a total return with no dividends to track. It
+    # replaced LIQUIDBEES, which pays its income out as dividends: Yahoo stopped
+    # recording them after Sep 2025, so its "adjusted" close sat flat at 1,000
+    # and cash earned nothing. The NAV is net of the fund's fees. AMFI's history
+    # starts Apr 2006, so the long Sensex window still needs a constant before
+    # that (see cash_rate_series).
+    Series("CASH_FUND", "AMFI:100851", "india", "cash", True,
+           "Liquid fund (Nippon India Liquid Fund, growth NAV)", note="2006-04 onward",
+           amfi=(21, 100851)),
     Series("USDINR", "INR=X", "india", "fx", False,
            "USD/INR", note="2003-12 onward"),
 ]
@@ -287,23 +296,61 @@ def repair(df: pd.DataFrame, key: str = "") -> tuple[pd.DataFrame, list[str]]:
     return out, log
 
 
+AMFI_HISTORY = "https://portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx"
+AMFI_START = pd.Timestamp("2006-04-01")   # where AMFI's NAV history begins
+AMFI_CHUNK_YEARS = 4                      # one request per fund house per 4 years (~20 MB of text)
+
+
+def fetch_amfi(fund_house: int, scheme: int, start: pd.Timestamp | None = None) -> pd.DataFrame:
+    """One scheme's NAV history from AMFI, weekdays only (a liquid fund also prices weekends; that accrual
+    lands in Monday's NAV). Columns: close. Lines are `code;name;plan;option;isin;isin;nav;date`."""
+    import requests
+
+    navs: dict = {}
+    start, today = (AMFI_START if start is None else max(start, AMFI_START)), pd.Timestamp.today().normalize()
+    while start <= today:
+        end = min(start + pd.DateOffset(years=AMFI_CHUNK_YEARS) - pd.Timedelta(days=1), today)
+        r = requests.get(AMFI_HISTORY, params={"mf": fund_house, "tp": 1, "frmdt": start.strftime("%d-%b-%Y"),
+                                               "todt": end.strftime("%d-%b-%Y")},
+                         headers={"User-Agent": "Mozilla/5.0"}, timeout=180)
+        r.raise_for_status()
+        prefix = f"{scheme};"
+        for line in r.text.splitlines():
+            if line.startswith(prefix):
+                f = line.split(";")
+                try:
+                    navs[pd.Timestamp(dt.datetime.strptime(f[7].strip(), "%d-%b-%Y"))] = float(f[6])
+                except (ValueError, IndexError):
+                    continue          # "N.A." or a malformed line
+        start = end + pd.Timedelta(days=1)
+    if not navs:
+        raise ValueError(f"AMFI scheme {scheme}: no NAVs returned")
+    out = pd.DataFrame({"close": pd.Series(navs).sort_index()})
+    return out[out.index.dayofweek < 5]
+
+
 def fetch(series: Series) -> pd.DataFrame:
     """Full history for one series, dividend-adjusted where applicable.
 
     `auto_adjust=True` is the whole point of this module; the equity
-    provider in `providers/` deliberately does the opposite.
+    provider in `providers/` deliberately does the opposite. A mutual fund
+    (`amfi`) comes from AMFI's NAV history instead; a growth NAV is already
+    a total return.
     """
-    import yfinance as yf
+    if series.amfi:
+        out = fetch_amfi(*series.amfi)
+    else:
+        import yfinance as yf
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        raw = yf.Ticker(series.ticker).history(
-            period="max", interval="1d", auto_adjust=True
-        )
-    if raw is None or raw.empty:
-        raise ValueError(f"{series.ticker}: no data returned")
-    out = raw.rename(columns=str.lower)[["close"]].copy()
-    out.index = pd.to_datetime(out.index).tz_localize(None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            raw = yf.Ticker(series.ticker).history(
+                period="max", interval="1d", auto_adjust=True
+            )
+        if raw is None or raw.empty:
+            raise ValueError(f"{series.ticker}: no data returned")
+        out = raw.rename(columns=str.lower)[["close"]].copy()
+        out.index = pd.to_datetime(out.index).tz_localize(None)
     out = out[~out.index.duplicated(keep="last")].sort_index().dropna()
     # A yield series can legitimately be 0.0 (ZIRP 2009-2015); a price
     # series cannot, and a zero there is bad data.
@@ -361,6 +408,30 @@ def load(market: str, key: str) -> pd.Series:
     return s
 
 
+AMFI_OVERLAP_DAYS = 14   # an incremental AMFI fetch starts this far before the last stored date
+
+
+def _append_amfi(series: Series) -> bool:
+    """Extend a stored AMFI series with the NAVs since its last date — one small request instead of the full
+    history (~100 MB) every day. The stored series is on a repaired scale (a re-denomination chained through),
+    so new NAVs are scaled by stored / published on the last date both have. False when there is nothing stored
+    or no overlap, and the caller fetches it in full."""
+    try:
+        stored = load(series.market, series.key)
+    except ValueError:
+        return False
+    last = stored.index[-1]
+    new = fetch_amfi(*series.amfi, start=last - pd.Timedelta(days=AMFI_OVERLAP_DAYS))["close"]
+    common = new.index.intersection(stored.index)
+    if common.empty:
+        return False
+    k = stored[common[-1]] / new[common[-1]]
+    add = (new[new.index > last] * k).to_frame("close")
+    n = save(series, add) if not add.empty else 0
+    logger.info("%s:%-18s +%d NAVs after %s (AMFI, incremental)", series.market, series.key, n, last.date())
+    return True
+
+
 def refresh(market: str | None = None, keys: list[str] | None = None) -> None:
     init_schema()
     targets = [
@@ -368,6 +439,8 @@ def refresh(market: str | None = None, keys: list[str] | None = None) -> None:
         if (market is None or s.market == market) and (keys is None or s.key in keys)
     ]
     for s in targets:
+        if s.amfi and _append_amfi(s):
+            continue
         try:
             df = fetch(s)
         except Exception as e:  # noqa: BLE001 — one bad ticker must not stop the rest
@@ -446,9 +519,9 @@ def cash_rate_series(
         caveats.append("Cash earns the 13-week T-bill yield (^IRX), daily accrual.")
         return y.clip(lower=0.0), caveats
 
-    # India: LIQUIDBEES total return implies the realised liquid-fund rate,
-    # but only from 2009. Before that there is no series, so the pre-2009
-    # stretch takes a constant and says so.
+    # India: the liquid fund's growth NAV implies the realised liquid-fund
+    # rate, but only from Apr 2006. Before that there is no series, so the
+    # earlier stretch takes a constant and says so.
     fund = load("india", "CASH_FUND").reindex(index).ffill()
     r = fund.pct_change().rolling(63, min_periods=20).mean() * 252
     r = r.clip(lower=0.0)
@@ -457,12 +530,12 @@ def cash_rate_series(
     if missing.any():
         r = r.fillna(pre)
         caveats.append(
-            f"Cash: realised LIQUIDBEES yield from 2009; a flat {pre * 100:.2f}%/yr "
+            f"Cash: realised liquid-fund yield from Apr 2006; a flat {pre * 100:.2f}%/yr "
             f"before that ({int(missing.sum())} days), where no series exists. "
             f"Sweep it with --cash-rate."
         )
     else:
-        caveats.append("Cash earns the realised LIQUIDBEES liquid-fund yield.")
+        caveats.append("Cash earns the realised liquid-fund yield (Nippon India Liquid Fund NAV).")
     return r, caveats
 
 
