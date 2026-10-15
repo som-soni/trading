@@ -446,10 +446,11 @@ A stored result belongs to the code and data that produced it. Both change.
 - **Unchanged behaviour, proven.** `tests.golden_strategies` records every
   strategy's decisions for 120 sampled stocks per market on frozen data. A
   refactor that should change nothing must reproduce them exactly.
-- **Stored studies.** An old `screen_study` table was computed once, on
-  7 October 2026, on dates that were not month-ends (for example 24 September
-  2021). The Study tab ignores it and recomputes on request. Check the date and
-  method of any stored number before quoting it.
+- **Stored studies.** An old stored copy of the screen studies was computed
+  once, on 7 October 2026, on dates that were not month-ends (for example
+  24 September 2021), and was never updated. The Study tab ignored it and
+  recomputes on request; the copy was removed on 15 October 2026. Check the
+  date and method of any stored number before quoting it.
 - **Bug fixes.** A number measured before a fix (like the cost fix in §7) is a
   different measurement.
 

@@ -452,11 +452,12 @@ and 6-month windows overlap; sector and industry use today's classification.
 It adds that a study measures the screen alone, and a strategy is judged by
 its backtests.
 
-The unstated one: the database also holds an older stored copy of these
-studies (`screen_study`, computed 7 October 2026). Its dates fall around the
-23rd–25th of each month, not on month-ends, and its US Stage 2 6-month excess
-reads +2.98% against the page's +2.53%. The page does not use it. If you see
-a study number quoted elsewhere, check that it came from the Study tab.
+The unstated one: a study number quoted anywhere else is a copy, and copies
+go stale. Until 15 October 2026 the database held an old stored copy of these
+studies, computed once on 7 October 2026 on dates around the 23rd–25th of each
+month rather than on month-ends. Its US Stage 2 6-month excess read +2.98%
+against the page's +2.53%. Nothing used it, so it was removed. If you see a
+study number quoted elsewhere, check that it came from the Study tab.
 
 ## 8. Reading checklist
 
