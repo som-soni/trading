@@ -58,13 +58,11 @@ def backfill_max(market: str, batch_size: int = 20, pause: float = 2.0) -> dict:
     """Fetch the full available history of every universe symbol (and the indices the
     pipeline needs), resuming from `backfill_progress`."""
     from . import db
-    cfg = MARKETS[market]
     with db.get_connection().cursor() as cur:
         cur.execute(PROGRESS_SCHEMA)
         cur.execute("SELECT symbol FROM backfill_progress WHERE market=%s AND mode='max'", (market,))
         done = {r[0] for r in cur.fetchall()}
-    extras = [cfg.benchmark_ticker, *cfg.broad_index_symbols.values(), *cfg.sector_index_map.values()]
-    todo = [s for s in dict.fromkeys([*universe.load_universe(market), *[e for e in extras if e]]) if s not in done]
+    todo = [s for s in dict.fromkeys([*universe.load_universe(market), *universe.index_symbols(market)]) if s not in done]
     logger.info("%s: %d symbols to fetch at full history (%d already done)", market, len(todo), len(done))
     provider = YFinanceProvider(pause_sec=pause)
     stats = {"requested": len(todo), "fetched": 0, "empty": 0, "bars": 0}
@@ -115,7 +113,6 @@ def backfill_market(
     `only_short` skips symbols whose cache already holds at least
     `min_existing_bars` (default: 95% of the requested span), so a re-run
     after an interruption only fetches what is actually missing."""
-    cfg = MARKETS[market]
     want_bars = int(years * TRADING_DAYS_PER_YEAR)
     threshold = min_existing_bars if min_existing_bars is not None else int(want_bars * 0.95)
 
@@ -124,12 +121,7 @@ def backfill_market(
     # sector ones drive the sector-regime table in every daily report, and
     # omitting them here left 10 of India's 12 sector indices with no data
     # while their tickers were perfectly valid.
-    extras = [
-        cfg.benchmark_ticker,
-        *cfg.broad_index_symbols.values(),
-        *cfg.sector_index_map.values(),
-    ]
-    todo = list(dict.fromkeys([*tickers, *[e for e in extras if e]]))
+    todo = list(dict.fromkeys([*tickers, *universe.index_symbols(market)]))
 
     if only_short:
         keep = []

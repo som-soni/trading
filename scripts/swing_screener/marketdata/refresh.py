@@ -42,7 +42,10 @@ def refresh(
     lookback_days: int = DEFAULT_LOOKBACK_DAYS, batch_size: int = 50,
     force: bool = False,
 ) -> dict:
-    tickers = symbols if symbols else sorted(universe.load_universe(market))
+    # the whole universe plus the benchmark and index series stored beside it: they
+    # are not in the universe CSV, and without them the market filter reads a stale benchmark
+    tickers = symbols if symbols else list(dict.fromkeys(
+        [*sorted(universe.load_universe(market)), *universe.index_symbols(market)]))
     logger.info("Refreshing %d %s symbols (lookback %d days)...",
                 len(tickers), market, lookback_days)
 

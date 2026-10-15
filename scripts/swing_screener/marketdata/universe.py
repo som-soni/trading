@@ -61,6 +61,20 @@ def load_universe(market: str) -> list[str]:
     return df["ticker"].dropna().astype(str).str.strip().unique().tolist()
 
 
+def index_symbols(market: str) -> list[str]:
+    """The benchmark, broad indices and sector indices stored beside the stocks in `prices`.
+
+    They are not in the universe CSV (the US list drops ETFs, and indices are not
+    listed securities), so every job that fetches prices adds them: the daily
+    `prices` refresh as well as `backfill`. The daily refresh once left them out and
+    the benchmark that backtests' market filter and the live screens read froze at
+    the date of the last backfill."""
+    from ..config import MARKETS
+    cfg = MARKETS[market]
+    extras = [cfg.benchmark_ticker, *cfg.broad_index_symbols.values(), *cfg.sector_index_map.values()]
+    return list(dict.fromkeys(e for e in extras if e))
+
+
 _NON_COMMON_STOCK_KEYWORDS = (
     "warrant", "right", "rights", " unit", "units", "preferred",
     "depositary", "note", "debenture", " acquisition corp",
