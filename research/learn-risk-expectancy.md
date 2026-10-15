@@ -19,7 +19,9 @@ then [stops and exits](learn-risk-stops-exits.md) and
 (`r_multiple`) and a `Days held` column. Open a run from Strategies → (a
 strategy) → **Backtests**, or from System → Reports archive. The **Trades** tab
 shows the tiles *Trades*, *Win rate* and *Avg R* above the list. Avg R is the
-run's expectancy (open trades count as zero there). The figures in this guide
+run's expectancy over every row, including trades still open when the test
+ended, valued at their R on its last day; the figures in this guide use
+closed trades only, so they can differ slightly. The figures in this guide
 come from those stored trade tables (`report_tables`, name `trades`).
 
 ---

@@ -4599,7 +4599,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn is organised by TOPIC — Macro, Market health, Sectors & groups, Fundamentals, Risk & trade management, Process & psychology, Price & volume, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
+/** Learn is organised by TOPIC — Macro, Market health, Sectors & groups, Fundamentals, Risk & trade management, Process & psychology, Price & volume, Testing ideas, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
  *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
  *  appears in the menu once. #/learn is the hub; #/learn/candles, /charts, /levels a topic's pattern grid;
  *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
@@ -4610,6 +4610,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators",
+  "learn-test-backtesting", "learn-test-reading",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
 const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
@@ -4619,6 +4620,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price",
+  "learn-test-backtesting": "testing", "learn-test-reading": "testing",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
   "learn-vcp": "charts", "learn-supply-demand": "levels" };
 const GUIDE_BLURB = {
@@ -4642,6 +4644,8 @@ const GUIDE_BLURB = {
   "learn-risk-expectancy": "Win rate times average win against loss rate times average loss — measured on this app's own backtest trades.",
   "learn-risk-sizing": "Risk per trade, R, stop distance and position size: how much to buy, and how the app sizes it.",
   "learn-risk-stops-exits": "Initial stops, gaps through them, breakeven and trailing stops, targets, and selling into strength or weakness.",
+  "learn-test-backtesting": "Overfitting, look-ahead, survivorship and costs — how a backtest fools you, with this app's own examples.",
+  "learn-test-reading": "What each number in this app's backtests and screen studies means, and what would make you distrust a result.",
   "learn-price-stages": "A stock's four stages, the trend template, and how to tell an uptrend that is starting from one that is ending.",
   "learn-price-volume": "What volume says about who is buying: breakouts on volume, dry-ups in bases, climaxes and distribution in a stock.",
   "learn-price-rs": "Relative strength: the RS line and RS rating, why leaders show strength first, and how the app ranks it.",
@@ -4663,7 +4667,7 @@ const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$
  *  for the topic, "Supply and demand") is just "Field guide" */
 const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
   return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
-const LEARN_TOPICS = ["start", "macro", "health", "sectors", "fundamentals", "risk", "process", "price", "candles", "charts", "levels"];
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "fundamentals", "risk", "process", "price", "testing", "candles", "charts", "levels"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;
