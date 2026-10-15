@@ -7,6 +7,7 @@ read by the running code — moving or removing any of it cannot break a run.
 |---|---|---|---|
 | `prompts/` | The original LLM screener prompts the Python port was built from | the code in `scripts/swing_screener/strategies/` | 52 KB |
 | `cache/` | Parquet price cache, one file per symbol | the `prices` table in Postgres | 219 MB |
+| `learn-app-notes-2026-10-15/` | App-specific passages (page names, code paths, the app's own backtest figures) removed from the Learn guides when they were made standalone, verbatim, one file per guide | `research/app-guide-*.md` (the app manual) and the backtest reports | 0.3 MB |
 
 ---
 

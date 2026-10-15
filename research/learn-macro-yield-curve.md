@@ -1,17 +1,16 @@
 # Bond yields and the yield curve — the discount rate for everything
 
-Learning material: bond yields and prices, the shape of the curve,
-inversions and their record as a recession signal (good, slow, not
-infallible), the re-steepening that follows, real yields, and why the speed
-of a yield move matters. Companion to [the rates guide](learn-macro-rates.md)
-and [the business cycle guide](learn-macro-cycle.md).
+**In short**
 
-**Where this shows in the app.** The macro strip on Markets → Breadth (built
-by `scripts/swing_screener/marketdata/macro.py`) shows the US 10-year and
-5-year yields. Each tile shows the change over 1 day and over 1 month, in basis
-points. The India strip shows the US 10-year too. The charts below use the
-yields stored in the app. "The curve" in this guide means the **10-year yield
-minus the 3-month T-bill yield**.
+- When bond yields rise, bond prices fall. The longer the bond, the bigger the fall: long Treasuries lost about 29% in 2022.
+- The yield curve compares short and long yields. When short yields sit above long ones, the curve is inverted.
+- An inversion has come before every US recession since the late 1960s, but with a lead of months to more than a year. The 2022–24 inversion has not (yet) been followed by one.
+- The re-steepening after an inversion, often driven by emergency rate cuts, has tended to come closer to the trouble.
+- For stocks, a fast rise in the 10-year yield hurts more than a high level reached slowly.
+
+This guide covers bond yields and prices, and the shape of the yield curve. It covers inversions and their record as a recession signal: good, slow and not infallible. It then turns to the re-steepening that follows, to real yields, and to why the speed of a yield move matters. It is a companion to [the rates guide](learn-macro-rates.md) and [the business cycle guide](learn-macro-cycle.md).
+
+"The curve" in this guide means the **10-year Treasury yield minus the 3-month T-bill yield**.
 
 ---
 
@@ -20,6 +19,7 @@ minus the 3-month T-bill yield**.
 A bond is a loan with fixed payments. You lend the US Treasury $1,000 for ten
 years, collect a fixed coupon each year, and get the $1,000 back at the end.
 The **yield** is the annual return you lock in if you buy at today's price.
+
 The payments never change, so only the **price** can move. Say new bonds pay
 5% and an old one pays 2%. Nobody will pay full price for the old one, so its
 price falls until it too yields about 5%. Hence the rule:
@@ -43,23 +43,30 @@ mark: 2020-08-04 | TLT peak
 caption: As the 10-year rose from about 0.5% in 2020 to about 5% in October 2023, TLT lost about 48% of its price. "Safe" bonds had a worse drawdown than the S&P 500.
 ```
 
-2022 was the worst year for bonds in generations. **IEF (7–10 year) fell about
-14% and TLT (20 year+) about 29%** — in a year the S&P 500 fell 20%. The
-classic "60/40" portfolio (60% stocks, 40% bonds) lost on both parts. That is
-duration risk. It is the same arithmetic that hits long-duration growth stocks
+2022 was the worst year for bonds in generations:
+
+| 2022 | Change |
+|---|---|
+| 7–10 year Treasuries (IEF) | about −14% |
+| 20 year+ Treasuries (TLT) | about −29% |
+| S&P 500 | about −20% |
+
+The classic "60/40" portfolio holds 60% in stocks and the rest in bonds. In
+2022 it lost on both parts. That is duration risk. It is the same arithmetic that hits long-duration growth stocks
 ([the rates guide](learn-macro-rates.md), §3).
 
 ## 2. The curve and its shape
 
-The **yield curve** shows, for a single day, the yield on each maturity: 3
-months, 2, 5, 10 and 30 years. The two ends tell you different things:
+The **yield curve** shows, for a single day, the yield on each maturity. It
+runs from the shortest bills out to the 30-year bond. The 2-year, 5-year and
+10-year are the points most often quoted in between.
+The two ends tell you different things:
 
 - **The short end follows the policy rate.** A 3-month bill is a bet on where
   the Fed's rate will be over the next three months. It moves when the Fed
-  moves, or when the market becomes sure the Fed will. The 2-year (not stored
-  in the app) is the market's best single guess at Fed policy over the next
-  two years. The **5-year**, which the app does store, looks a little further
-  out.
+  moves, or when the market becomes sure the Fed will. The 2-year is the
+  market's best single guess at Fed policy over the next two years. The
+  **5-year** looks a little further out.
 - **The long end reflects what the market expects over the long run**:
   growth plus inflation, plus a **term premium**. Lenders want that extra pay
   for locking money up for a decade without knowing what inflation, government
@@ -72,8 +79,8 @@ months, 2, 5, 10 and 30 years. The two ends tell you different things:
 | **Flat** | Policy tight compared with the long-run outlook | Late in hiking cycles |
 | **Inverted** (short > long) | Market expects rates to *fall* — usually because growth will weaken | Late in the cycle, before most US recessions |
 
-In the history stored in the app, the 10-year peaked near 15.8% in September
-1981. Its low was near 0.5% in March 2020.
+Since the 1960s, the 10-year peaked near 15.8% in September 1981. Its low was
+near 0.5% in March 2020.
 
 ## 3. Steepening and flattening — bull and bear
 
@@ -96,7 +103,7 @@ strong. It is *bad* news when short yields collapse because of emergency cuts.
 
 An inverted curve says: **the market expects short rates to be lower in the
 future than they are now.** Usually that is because policy is tight enough
-to slow the economy, and the market expects cuts once it does. It also hurts
+to slow the economy. The market expects cuts once it does. It also hurts
 banks. They borrow short-term and lend long-term, so when short rates are
 above long ones, lending pays less and banks lend less.
 
@@ -117,8 +124,8 @@ band: 2020-02-01 2020-04-30 | Recession
 caption: In the lower pane, below the dashed zero line is an inversion. Every shaded recession since 1969 came after one; the lead time ranged from a few months to well over a year. The 2022–24 inversion, the deepest since the early 1980s, has not (as of this data) been followed by one.
 ```
 
-The record, using month-end values of the 10-year minus 3-month spread stored
-in the app (approximate):
+The record, using month-end values of the 10-year minus 3-month spread
+(approximate):
 
 | Inversion began | Recession began (NBER) | Lead time |
 |---|---|---|
@@ -183,18 +190,17 @@ from: 2021-06-01
 line: us:SP500_PRICE_LONG | S&P 500 | log
 line: us:US10Y - us:CASH_YIELD | 10y − 3m spread (points) | pane2 zero
 band: 2022-11-07 2024-12-13 | Curve inverted
-caption: About two years inverted — longer without a break than any earlier episode in the stored data since 1962 — with the S&P 500 up about 47% across it. In the latest stored data (October 2026) the spread is positive at about +1.2 points, with the 10-year near 5.2%.
+caption: About two years inverted — longer without a break than any earlier episode since 1962 — with the S&P 500 up about 47% across it. In mid-October 2026 the spread is positive at about +1.2 points, with the 10-year near 5.2%.
 ```
 
 ## 6. Real yields — and gold and growth stocks
 
-A **real yield** is the nominal yield minus expected inflation. A 10-year
-paying 4.5% when inflation is expected at 2.5% gives a real yield of about 2%.
-The market's own measure is the yield on inflation-protected Treasuries
-(TIPS — bonds whose payments rise with inflation). FRED, the St. Louis Fed's
-free data site, publishes it. **It is not stored in this app.** Read it on
-FRED, or estimate it from the 10-year and the inflation expectations discussed
-in [the inflation guide](learn-macro-inflation.md).
+Take a 10-year paying 4.5% when inflation is expected at 2.5%. Its **real
+yield** is about 2%: the nominal yield minus expected inflation. The market's
+own measure is the yield on inflation-protected Treasuries (TIPS — bonds whose
+payments rise with inflation). FRED, the St. Louis Fed's free data site,
+publishes it. You can also estimate it from the 10-year and the inflation
+expectations discussed in [the inflation guide](learn-macro-inflation.md).
 
 Real yields matter more than nominal ones for two groups:
 
@@ -235,13 +241,13 @@ The US 10-year is the benchmark that prices around the world are set from:
   the US 10-year, treated as risk-free.
 
 When it moves a full point, the price of everything set from it changes. That
-is why it sits on both markets' macro strips.
+is why traders in both the US and India watch it.
 
 ## 8. Speed matters more than level
 
 Stocks can live with almost any **level** of yields if it arrives slowly and
-growth comes with it. The S&P 500 rose through the 2004–06 hikes. The 1990s
-bull market lived with a 10-year between about 4% and 9%. What hurts is a
+growth comes with it. The S&P 500 rose through the 2004–06 hikes. In the 1990s
+bull market the long yield ranged from about 4% to 9%. What hurts is a
 **fast** move. Valuations do not have time to adjust, and investors who
 borrowed to hold must sell:
 
@@ -252,14 +258,12 @@ borrowed to hold must sell:
 | 2022 | about 1.6% → 4.2% by October | Bear market, about −25% peak to trough |
 | July–Oct 2023 | about 3.7% → 5.0% in three months | About −10%, until yields turned |
 
-A working rule of thumb, not a tested rule: **a 10-year rise of half a point
-or more in a month** (50bp or more on the macro strip's 1M change) is a cue to
-tighten stops on high-P/E stocks.
+Here is a working rule of thumb, not a tested rule. **A 10-year rise of half a
+point (50bp) or more in a month** is a cue to tighten stops on high-P/E stocks.
 
 ## 9. India: the G-sec
 
-India's benchmark is the **10-year government security (G-sec)**. It is not
-stored in this app, so these points are text only:
+India's benchmark is the **10-year government security (G-sec)**:
 
 - **It tracks the repo rate plus a spread.** It typically sits somewhat above
   the policy rate. It moves with expectations for RBI policy, for inflation
@@ -277,9 +281,9 @@ stored in this app, so these points are text only:
   them when yields fall and losses when yields rise), NBFCs and housing
   finance, real estate.
 
-The app stores no Indian yield curve. So the practical stand-in here is the
-**US 10-year and USD/INR on the India macro strip**. When both are rising
-fast, foreign selling in India is likely ([the currencies guide](learn-macro-currencies.md)).
+For a stock trader in India, a practical quick check is the **US 10-year and
+USD/INR**. When both are rising fast, foreign selling in India is likely
+([the currencies guide](learn-macro-currencies.md)).
 
 ## 10. What a trader does with it
 
@@ -325,7 +329,7 @@ fast, foreign selling in India is likely ([the currencies guide](learn-macro-cur
 
 ## 12. Checklist
 
-- [ ] US 10-year: level and 1-month change (macro strip) — fast or slow?
+- [ ] US 10-year: level and 1-month change — fast or slow?
 - [ ] US 5-year: is the market pricing more hikes or more cuts?
 - [ ] 10y−3m spread: inverted, flat, or re-steepening — and bull or bear?
 - [ ] Leadership consistent with the yield trend? Bonds hedging, or falling too?

@@ -1,56 +1,32 @@
 # Expectancy — what a trade is worth on average, measured in R
 
-Learning material. This guide covers:
+**In short**
 
-- R as the unit for every trade, and the expectancy formula;
-- why a strategy that loses most of the time can still make money;
-- what results really look like: a few big winners, many small losers;
-- losing streaks;
-- how many trades it takes before a backtest means anything;
-- expectancy per trade against per unit of time;
-- how costs eat a small edge.
+- Measure every trade in R, the amount you planned to lose. Buy at $50 with a stop at $47, and 1R is $3 a share.
+- Expectancy is the average result per trade in R. It needs both halves: how often you win, and how big the wins are next to the losses.
+- In trend-following, the typical trade is a small loss. A few large winners pay for everything, so cutting them short destroys the edge.
+- At a 30% win rate, ten losses in a row within 100 trades is typical. Real streaks run longer still, because losses bunch together in weak markets.
+- A small edge needs thousands of trades to prove, and a modest cost can erase it.
 
-The worked data is this app's own backtest trades, not textbook examples. This
-is the first of four guides on risk. Next is [position sizing](learn-risk-sizing.md),
-then [stops and exits](learn-risk-stops-exits.md) and
-[portfolio risk](learn-risk-portfolio.md).
+This is the first of four guides on risk. Next come [position sizing](learn-risk-sizing.md), [stops and exits](learn-risk-stops-exits.md) and [portfolio risk](learn-risk-portfolio.md).
 
-**Where this shows in the app.** Every backtest's trade list has an `R` column
-(`r_multiple`) and a `Days held` column. Open a run from Strategies → (a
-strategy) → **Backtests**, or from System → Reports archive. The **Trades** tab
-shows the tiles *Trades*, *Win rate* and *Avg R* above the list. Avg R is the
-run's expectancy over every row, including trades still open when the test
-ended, valued at their R on its last day; the figures in this guide use
-closed trades only, so they can differ slightly. The figures in this guide
-come from those stored trade tables (`report_tables`, name `trades`).
+> **The illustrative trades used in this guide.** To show what real results look like, we applied a simple textbook rule to stored daily prices. Entry: a stock closes above its highest high of the prior 55 sessions (the Turtle traders' long-term breakout); buy at the next open. Stop: 2 × ATR(14) below the entry. Exit: the first close below the lowest low of the prior 20 sessions, sold at the next open (a "trend exit"). Variants replace that exit with a fixed target at +2R or +3R. Signals from January 2010 to December 2025, at most one per stock per 20 sessions, on today's listed US and NSE companies with a close of at least $5 / ₹20 and 50-day average turnover of at least $20m / ₹10 crore. About 60,500 US and 17,600 Indian trades. No costs. Funds and ETFs were left out. So were 19 trades whose "loss" was an unadjusted corporate action, such as a special dividend, spin-off or demerger. These trades illustrate how results are shaped. They are not a test of a trading system: the stock lists contain only companies that survived, which flatters every average.
 
 ---
 
 ## 1. R — one unit of risk
 
-Before entering, you know two prices: the entry and the stop. The distance
-between them is the risk per share, and **that distance is 1R**. Every result
-is then expressed as a multiple of it:
+Buy at $50 with a stop at $47. The risk is $3 a share, and that $3 is 1R. Sell at $56 and the trade made +2R. Get stopped at $47 and it lost −1R. Sell at $48.50 and it lost −0.5R.
 
-- Buy at $50, stop $47: 1R = $3 a share. Sell at $56 → **+2R**. Stopped at
-  $47 → **−1R**. Sold at $48.50 → **−0.5R**.
-- Buy at ₹1,200, stop ₹1,128: 1R = ₹72. Sell at ₹1,416 → **+3R**.
+The same works in rupees. Buy at ₹1,200 with a stop at ₹1,128. Then 1R is ₹72. Sell at ₹1,416 and the result is +3R.
 
-Measuring in R **removes position size and currency**. A +2R trade is +2R
-whether you bought 10 shares or 1,000, in dollars or rupees. It also **ties the
-result to the decision made at entry**. That is why the app keeps the initial
-stop. Otherwise a trailing stop later raised above the entry would make R
-meaningless: the risk would seem to be zero or negative.
+Measuring in R removes position size and currency. A +2R trade is +2R whether you bought ten shares or a thousand, in dollars or in rupees. It also ties the result to the decision made at entry.
 
-In the app's backtests, R is **net of modelled costs**. The slippage is built
-into the fill prices. The charges are subtracted from the profit or loss
-before it is divided by the initial risk.
+So always keep the **initial** stop for measuring R. A trailing stop later raised above the entry would make the risk look zero or negative, and R would mean nothing. Subtract costs (charges and slippage) from the profit before dividing by the initial risk, so R is net of costs.
 
 ## 2. Expectancy — the formula
 
-> **Expectancy = (win % × average win) − (loss % × average loss)**, in R.
-
-It is simply the average R per trade. Three worked cases:
+Three traders keep records for a year:
 
 | Win rate | Avg win | Avg loss | Expectancy | Verdict |
 |---|---|---|---|---|
@@ -58,13 +34,15 @@ It is simply the average R per trade. Three worked cases:
 | 40% | +2.5R | −1.0R | 1.0 − 0.6 = **+0.40R** | Better, despite losing more often |
 | 70% | +0.5R | −1.5R | 0.35 − 0.45 = **−0.10R** | Loses money while "usually right" |
 
-The third row is the classic trap. Taking small profits quickly and letting
-losers run gives a high win rate — and a negative expectancy.
+The rule behind the table:
 
-### Why a 35–45% win rate can be profitable
+> **Expectancy = (win % × average win) − (loss % × average loss)**, in R.
 
-The win rate you need to break even depends only on the **payoff ratio**
-(average win ÷ average loss):
+It is simply the average R per trade. The third row is the classic trap. Taking small profits quickly and letting losers run gives a high win rate and a negative expectancy.
+
+### Why a 30–40% win rate can be profitable
+
+The win rate you need to break even depends only on the **payoff ratio**: the average win divided by the average loss.
 
 | Payoff ratio | Break-even win rate |
 |---|---|
@@ -74,253 +52,166 @@ The win rate you need to break even depends only on the **payoff ratio**
 | 3 : 1 | 25% |
 | 4 : 1 | 20% |
 
-(Break-even win rate = 1 ÷ (1 + payoff ratio).) Trend-following and breakout
-methods belong in the bottom rows. They lose small amounts often, and win big
-amounts rarely. **Every strategy backtested in this app wins between 20% and
-34% of the time** (table in §8). So whether they make money depends entirely
-on the payoff ratio.
+The formula is: break-even win rate = 1 ÷ (1 + payoff ratio). Trend-following and breakout methods live in the bottom rows. They lose small amounts often and win large amounts rarely.
+
+The illustrative breakout trades show it. With the trend exit, they won 29% of the time in the US and 28% in India. With a fixed target at +2R, the win rate rose to about 36%, but the average win shrank to about 2R. Whether a method makes money depends on the payoff ratio as much as the win rate.
 
 ## 3. The distribution of R — a fat right tail
 
-An average hides the shape. In a trend-following system, most trades are small
-losses. A fair number are scratches (closed near breakeven). A handful are very
-large wins. Those rare, very large wins are the "fat right tail" of the results.
-Three measurements on the app's trades, closed trades only:
+An average hides the shape of the results. Here are the illustrative breakout trades, closed trades only, before costs:
 
-| Run (closed trades) | Median trade | Trades ending near −1R (−0.8 to −1.2R) | Best 10% of trades | All other trades | Net |
-|---|---|---|---|---|---|
-| Minervini SEPA, US (551) | −0.42R | 33% | +213R | −189R | +24R |
-| Donchian channel, US (496) | −1.00R | 57% | +480R | −240R | +241R |
-| Donchian channel, India (437) | −1.01R | 58% | +389R | −206R | +183R |
-| Volume breakout, US (703) | −1.01R | 61% | +187R | −158R | +30R |
-| Chart patterns, India (515) | −1.01R | 65% | +198R | −126R | +73R |
+| Illustrative trades | US, trend exit | India, trend exit | US, +2R target | India, +2R target |
+|---|---|---|---|---|
+| Trades | 60,470 | 17,592 | 60,473 | 17,597 |
+| Win rate | 29.0% | 28.3% | 36.1% | 35.6% |
+| Median trade | −1.00R | −1.00R | −1.00R | −1.00R |
+| Trades ending near −1R (−0.8 to −1.2R) | 56% | 59% | 60% | 63% |
+| Sum of the best 10% of trades | +35,587R | +13,825R | +13,464R | +3,646R |
+| Sum of all other trades | −28,749R | −7,673R | −9,129R | −2,529R |
+| Share of all winning R from the best 10% | 75% | 78% | 30% | 29% |
+| Best single trade | +123.7R | +84.3R | +14.4R | +4.7R |
 
-Read across a row and the point is plain:
+Read down a column and the pattern is plain:
 
-- **The median trade is a loss.** In four of the five runs it is a full −1R.
-  The typical trade in a working strategy loses.
-- **The best tenth of the trades makes more than all the profit.** Without
-  them, every one of these runs loses money. Skipping a single setup "because
-  it looked tired" can throw away the year.
-- **The size of the big wins depends on the exit.** Donchian has no profit
-  target, and its best 10% of trades hold 82% of all winning R. The volume
-  breakout exits at a fixed target, and its best 10% hold only 36%. A fixed
-  target cuts off the biggest wins ([stops and exits](learn-risk-stops-exits.md)).
-- **Minervini's losses are smaller than −1R on average** (−0.68R). Its exits
-  often sell *before* the stop is hit: on a close below the 50-day, at a
-  breakeven stop, or when the breakout fails. So only a third of trades lose
-  the full 1R.
+- **The median trade is a full −1R loss.** The typical trade in a trend-following method loses.
+- **The best tenth of the trades makes more than the whole net profit.** Without them, every column loses money. Skipping a setup "because it looked tired" can throw away the year.
+- **The exit decides how big the big wins get.** With the trend exit, the best 10% of trades held three-quarters of all winning R. With a +2R target, they held under a third. A fixed target cuts off the largest wins ([stops and exits](learn-risk-stops-exits.md)).
+- **A target can still be overshot.** The US best trade under the +2R target was +14.4R, because the stock opened far above the target after news.
+
+The large wins also took time. With the trend exit, the median winner was held about three months (91 days in the US). The median loser lasted about two weeks.
 
 ### The left tail exists too
 
-A stop is an order, not a guarantee. When a stock opens below the stop, you are
-filled at the open, and the loss is larger than 1R. About 3–7% of the stop-outs
-in these runs lost more than 1.2R. The worst single trade in the US Donchian
-run lost 7.4R:
-
 ```series
-title: Relmada (RLMD), autumn 2022 — a −7.4R loss through a stop
+title: Relmada (RLMD), autumn 2022 — a stop that could not protect
 from: 2022-08-01
 to: 2022-12-30
 tf: D
 line: us:RLMD | Relmada (RLMD) | log
-mark: 2022-10-06 | Donchian entry about $34.6, stop $30.83
-mark: 2022-10-13 | Gap: filled about $6.7
-caption: The close went from $31.7 to $6.5 in one session, on a clinical-trial result. The backtest exits at the open, at −7.4R. At 1% risk that one trade cost 7.4% of the account.
+mark: 2022-10-06 | a buyer near $34.6, stop $30.83
+mark: 2022-10-13 | opened at $6.66
+caption: The close went from $31.69 to $6.47 in one session, on a clinical-trial result. A trader with that entry and stop would have sold at the open: a loss of about 7.4R. At 1% risk, that one trade cost 7.4% of the account.
 ```
 
-Expectancy already includes such trades. The backtester does not block trades
-before earnings, so earnings gaps are in the record
-([the calendar guide](learn-macro-calendar.md)).
+Relmada, a drug developer, closed at $31.69 on 12 October 2022. The next morning it opened at $6.66 after a failed trial. A trader who bought near $34.60 with a stop at $30.83 risked $3.77 a share. The sale at the open lost about $28, or 7.4R.
+
+A stop is an order, not a guarantee. When a stock opens below the stop, you are filled at the open, and the loss is larger than 1R. In the illustrative US trades, 9.3% of stop-outs filled more than 0.5% below the stop. They averaged −1.57R. In India the share was 4.6%, averaging −1.38R.
+
+Expectancy already includes such trades, provided you record them honestly. Many of the worst gaps come on results days ([the calendar guide](learn-macro-calendar.md)).
 
 ## 4. Losing streaks are normal
 
-With a 30% win rate, 70% of trades lose. Long runs of losses are not a sign
-that something broke. They are simple arithmetic. Below are simulated streaks.
-Each trade is an independent coin flip at the given win rate. There are 20,000
-sequences, and we record the longest run of losses in each:
+Picture a method that wins 30% of the time. It loses 70% of its trades, so long runs of losses are simple arithmetic. They are not a sign that something broke.
+
+We simulated it. Each trade is an independent coin flip at the given win rate. For each win rate we ran 20,000 sequences of 100 trades and recorded the longest run of losses in each:
 
 | Win rate | Longest losing streak in 100 trades (median) | 1 in 10 sequences at least | Chance of 8+ in a row |
 |---|---|---|---|
 | 30% | 10 | 15 | 85% |
 | 35% | 9 | 13 | 69% |
 | 40% | 7 | 11 | 49% |
-| 45% | 6 | 9–10 | 30% |
+| 45% | 6 | 10 | 30% |
 | 50% | 6 | 8 | 17% |
 
-And here are the app's runs. Each run's actual longest streak is compared with
-a simulation at that run's own win rate and number of trades:
+Real trades are worse than coin flips, because losses bunch together. To see it, we took the illustrative trades through a small portfolio. It held at most ten positions; when several stocks broke out on the same day, it picked among them at random. We ran 40 such portfolios per market, and compared each one's longest losing streak with shuffles of its own trades:
 
-| Run | Win rate | Trades | Longest actual streak | Simulated median (10th–90th pct) |
+| Illustrative 10-position portfolio | Trades (median) | Win rate | Longest actual streak (median of 40) | Same trades shuffled: median (10th–90th pct) |
 |---|---|---|---|---|
-| Minervini SEPA, US | 27.8% | 551 | 16 | 16 (13–22) |
-| Volume breakout, US | 34.3% | 703 | 20 | 13 (11–18) |
-| Donchian channel, US | 28.6% | 496 | 20 | 15 (12–21) |
-| Donchian channel, India | 27.2% | 437 | 29 | 16 (12–21) |
-| Trend pullback, India | 29.7% | 347 | 21 | 14 (10–19) |
+| US | 1,294 | 29% | 29 (range 21–38) | 18 (14–23) |
+| India | 1,138 | 28% | 27 (range 23–34) | 18 (15–24) |
 
-Two lessons. First, **15–20 losses in a row is ordinary** for these systems
-over a decade. Second, most actual streaks are *longer* than a coin flip
-predicts. Losses come in clusters, because trades taken in the same weak market
-fail together. The India Donchian run's 29-loss streak is far outside the
-simulation. That is correlation, the subject of
-[portfolio risk](learn-risk-portfolio.md). It is also why [the trend
-guide](learn-health-trend.md) has filters that keep you out of weak markets.
+Two lessons. First, **20–30 losses in a row is ordinary** for a method like this over 16 years. Second, the actual streaks were about ten trades longer than shuffling predicts. In 38 of the 40 US portfolios, the actual streak was longer than nine shuffles in ten.
 
-What a streak costs depends on position size. That is why [position
-sizing](learn-risk-sizing.md) comes next. 20 losses at 1% each leave the
-account about 18% down. At 5% each, they leave it about 64% down.
+Losses cluster because trades taken in the same weak market fail together. That is correlation, the subject of [portfolio risk](learn-risk-portfolio.md). It is also why [the trend guide](learn-health-trend.md) and [regime filters](learn-strat-regime-filters.md) try to keep you out of weak markets.
+
+What a streak costs depends on position size, which is why [position sizing](learn-risk-sizing.md) comes next. Twenty losses at 1% each leave the account about 18% down. At 5% each, they leave it about 64% down.
 
 ## 5. Sample size — when does expectancy mean anything?
 
-Expectancy from 30 trades is a guess. The uncertainty of an average is
-measured by its **standard error**: the standard deviation of R divided by
-√(number of trades). (The standard deviation measures how widely the R values
-are spread.) Roughly, the true expectancy lies within ±2 standard errors of the
-measured one.
+Suppose your first 30 trades averaged +0.3R. The spread of results was wide, with a standard deviation of 3R: some −1R losses, a few +10R wins. How sure can you be that the edge is real?
 
-| Run | Trades | Expectancy | Std dev of R | Std error | ±2 SE range | Trades needed for E = 2 SE |
-|---|---|---|---|---|---|---|
-| Minervini SEPA, US | 551 | +0.04R | 1.53 | 0.065 | −0.09 to +0.17 | ~5,000 |
-| Volume breakout, US | 703 | +0.04R | 1.56 | 0.059 | −0.08 to +0.16 | ~5,500 |
-| Chart patterns, India | 515 | +0.14R | 1.86 | 0.082 | −0.02 to +0.30 | ~700 |
-| Donchian channel, US | 496 | +0.49R | 4.83 | 0.217 | +0.05 to +0.92 | ~400 |
-| Donchian channel, India | 437 | +0.42R | 3.86 | 0.184 | +0.05 to +0.79 | ~340 |
+The uncertainty of an average is its **standard error**: the standard deviation of R divided by the square root of the number of trades. Here that is 3 ÷ √30, about 0.55R. Roughly, the true expectancy lies within two standard errors of the measured one: anywhere from −0.8R to +1.4R. Thirty trades told you almost nothing.
 
-The last column is (2 × std dev ÷ expectancy)². What it says:
+The table shows how many trades it takes before the measured edge is at least twice its standard error. The formula is (2 × standard deviation ÷ expectancy)².
 
-- **A small edge needs thousands of trades to prove.** At +0.04R with a
-  standard deviation of 1.5R, even 700 trades over 13 years cannot tell the
-  strategy apart from zero.
-- **Rare huge wins widen the error.** Donchian's huge winners make its
-  standard deviation three times larger. But its expectancy is ten times
-  larger, so it clears the bar in a few hundred trades.
-- **For a person** taking 50 trades a year, only a large edge can ever be
-  confirmed. Judge your record by R per setup over 100+ trades, not by last
-  month.
+| Kind of method | Expectancy | Std dev of R | Trades needed |
+|---|---|---|---|
+| Fixed +2R target, thin edge | +0.05R | 1.5R | 3,600 |
+| Fixed +2R target, decent edge | +0.15R | 1.5R | 400 |
+| Trend exit, thin edge | +0.10R | 2.75R | about 3,000 |
+| Trend exit, good edge | +0.30R | 3.0R | 400 |
+| Trend exit, large edge | +0.50R | 3.0R | 144 |
+
+The standard deviations come from the illustrative trades. They were about 1.5R with a fixed target, and 2.75–3.4R with the trend exit.
+
+- **A small edge needs thousands of trades to prove.** At +0.05R, even ten years of trading cannot tell it apart from zero.
+- **Rare huge wins widen the error.** A trend exit's big winners raise the standard deviation. Its edge must be larger to be detected in the same number of trades.
+- **For a person** taking 50 trades a year, only a large edge can ever be confirmed. Judge your record by R per setup over 100 or more trades, not by last month.
 
 ## 6. Per trade versus per unit of time
 
-Expectancy is per trade. But money is made per year, and capital tied up in a
-slow trade cannot be used for the next one. Two more numbers matter: how many
-trades a year the method finds, and how long each one keeps the money tied up.
+Two methods each risk 1% a trade. Method A averages +0.5R and holds trades for 100 days. Method B averages +0.2R and holds for 20 days. With the same money, B can take five trades for each one of A's: +1.0R against +0.5R.
 
-| Run | Expectancy | Trades a year | R a year | Mean days held | R per 100 position-days |
-|---|---|---|---|---|---|
-| Donchian channel, US | +0.49R | 36 | 17.5R | 97 | 0.50 |
-| Donchian channel, India | +0.42R | 32 | 13.4R | 105 | 0.40 |
-| Chart patterns, India | +0.14R | 37 | 5.3R | 43 | 0.33 |
-| Volume breakout, US | +0.04R | 51 | 2.2R | 29 | 0.15 |
-| Minervini SEPA, US | +0.04R | 33 | 1.4R | 32 | 0.13 |
+Expectancy is per trade, but money is made per year. Capital tied up in a slow trade cannot be used for the next one. Two more numbers matter: how many trades a year the method finds, and how long each one keeps the money busy.
 
-(Days are calendar days. "R per 100 position-days" = total R ÷ total days
-held × 100.) Donchian's winners take months: the median winner was held about
-200 days, against 19 for the median loser. Yet it still earns the most per day
-of capital used. The general rule: returns come from **expectancy × trades per
-year × risk per trade**, before drawdowns slow the compounding. A slightly
-lower expectancy with many more independent opportunities can beat a higher
-one that trades twice a year. But only if the edge is real (§5).
+The illustrative trades show the effect. "R per 100 position-days" is the total R divided by the total days held, times 100:
+
+| Illustrative trades | Expectancy | Mean days held | R per 100 position-days |
+|---|---|---|---|
+| US, trend exit | +0.11R | 45 | 0.25 |
+| US, +3R target | +0.12R | 38 | 0.31 |
+| US, +2R target | +0.07R | 26 | 0.28 |
+| India, trend exit | +0.35R | 47 | 0.74 |
+| India, +3R target | +0.15R | 34 | 0.44 |
+| India, +2R target | +0.06R | 23 | 0.27 |
+
+Days are calendar days. In the US sample, the +2R target earned less per trade than the trend exit but more per day of capital used. In India the trend exit won on both counts. Neither is a general law; the point is to measure both.
+
+The general rule: returns come from **expectancy × trades per year × risk per trade**. Drawdowns then slow the compounding. A lower expectancy with many more independent chances can beat a higher one that trades twice a year. But only if the edge is real (§5).
 
 ## 7. Costs and slippage eat a thin edge
 
-Costs are charged as a share of the position. R is a share of the risk. With a
-5% stop, a 0.1% cost is 0.02R. The app's runs, with costs as modelled:
+Suppose a round trip costs 0.3% of the position: charges on the buy and the sell, plus slippage. With a 5% stop, 1R is 5% of the position. So the cost is 0.3 ÷ 5 = 0.06R on every trade.
 
-| Run | Modelled costs | Mean cost per trade | Expectancy net | Gross |
-|---|---|---|---|---|
-| Minervini SEPA, US | 1bp charges + 5bp slippage per side | 0.024R | +0.043R | +0.067R |
-| Volume breakout, US | 5bp slippage per side | 0.022R | +0.042R | +0.064R |
-| Donchian channel, US | 5bp slippage per side | 0.016R | +0.486R | +0.501R |
-| Chart patterns, India | 10bp slippage per side | 0.033R | +0.141R | +0.174R |
-| Minervini SEPA, India (v1.5) | 12bp charges + 15bp slippage per side | 0.091R | +0.053R | +0.144R |
+Costs are charged as a share of the position, while R is a share of the risk. The tighter the stop, the bigger the same cost is in R:
 
-Costs already take a third of the small US edges. And the India runs other than
-Minervini model **slippage only — no STT, stamp duty or exchange charges**. The
-Minervini runs add them, because they follow the app's written Minervini
-backtest specification (`backtesting/spec.py` `COST_BPS`). Adding 0.24% per round trip (buy and sell) lowers the India
-chart-pattern expectancy from +0.14R to about +0.10R. The same extra 0.24%
-would take the US volume breakout (+0.04R) and Minervini (+0.04R) to zero or
-just below. **A small edge can vanish with one more realistic cost
-assumption.** Donchian barely notices. Costs take about the same small slice
-of R from every trade, and a large expectancy has room for them.
+| Round-trip cost | 3% stop | 5% stop | 8% stop |
+|---|---|---|---|
+| 0.1% | 0.033R | 0.020R | 0.013R |
+| 0.3% | 0.100R | 0.060R | 0.038R |
+| 0.5% | 0.167R | 0.100R | 0.063R |
 
-Halve the stop distance and the same cost doubles in R. Illiquid stocks cost
-more again: the Minervini specification doubles slippage for stocks trading
-less than ₹25 crore / $25 million a day.
+Now apply it to two methods with 5% stops and a 0.3% round trip:
 
-## 8. The app's strategies side by side
+| Method | Expectancy before costs | After 0.06R of costs |
+|---|---|---|
+| Thin edge | +0.05R | −0.01R |
+| Large edge | +0.40R | +0.34R |
 
-Each row is the strategy's most recent full-history run at its current version.
-(For India Minervini, the latest run is the previous version, v1.5.) Closed
-trades only. R is net of modelled costs. CAGR and drawdown come from the run's
-equity curve.
+A small edge can vanish with one realistic cost assumption. A large one barely notices. In the illustrative trades, the median stop was 4.6% below the entry in the US and 6.8% in India. So a 0.1% round trip costs about 0.02R per US trade. A 0.3% round trip costs about 0.05R per Indian trade.
 
-| Strategy | Market | Version | Period | Trades | Win % | Avg win | Avg loss | Expectancy | CAGR (benchmark) | Max drawdown |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Minervini SEPA | US | 1.6 | 2010–2026 | 551 | 27.8% | +1.94R | −0.68R | +0.04R | 0.7% (12.1%) | −43.5% |
-| Minervini SEPA | India | 1.5 | 2010–2026 | 192 | 19.8% | +2.10R | −0.45R | +0.05R | 0.5% (10.1%) | −16.1% |
-| Volume breakout | US | 1.1 | 2013–2026 | 703 | 34.3% | +2.14R | −1.05R | +0.04R | 2.2% (12.8%) | −29.7% |
-| Trend pullback | US | 1.1 | 2013–2026 | 863 | 26.7% | +2.93R | −1.08R | −0.01R | 1.8% (12.8%) | −46.5% |
-| Trend pullback | India | 1.1 | 2013–2026 | 347 | 29.7% | +2.92R | −1.07R | +0.12R | 2.3% (11.7%) | −32.1% |
-| Donchian channel | US | 1.1 | 2013–2026 | 496 | 28.6% | +4.13R | −0.98R | +0.49R | 6.5% (12.8%) | −49.3% |
-| Donchian channel | India | 1.1 | 2013–2026 | 437 | 27.2% | +4.02R | −0.93R | +0.42R | 7.7% (11.7%) | −44.2% |
-| Chart patterns | India | 1.5 | 2013–2026 | 515 | 32.0% | +2.68R | −1.05R | +0.14R | 3.6% (11.7%) | −27.8% |
+Indian delivery trades carry real charges. STT (securities transaction tax) is 0.1% on each side, plus stamp duty, exchange fees, GST and depository charges. That comes to roughly 0.25–0.35% a round trip before slippage. Illiquid stocks cost more again, because the gap between bid and ask is wider.
 
-Read it honestly:
+## 8. What the trader does
 
-- **None of these runs beat simply holding the benchmark index.** Half had
-  deeper drawdowns than it (US −34.1%, India −38.3% over the same years). A
-  positive expectancy is necessary, not sufficient. It has to be large enough,
-  come often enough and survive costs.
-- **Only Donchian's expectancy is clearly above zero**, given its sample size
-  (§5). The others are within two standard errors of zero.
-- **These are backtests.** The universe is today's listed names, so
-  survivorship bias flatters it. Earnings dates are not enforced. Fills come
-  from daily bars. Costs are modelled, not paid (`backtesting/backtest.py`,
-  `portfolio_sim.py`). Live trading adds hesitation, missed fills and bent
-  rules, which usually lower the number. Treat a backtest as an upper limit on
-  what the rules can do.
-- The *Backtests* tab of each strategy's page groups runs by version. A run at
-  an older version does not reflect the current rules.
+1. **Write the stop before the entry.** R does not exist without it. Record entry, initial stop and exit for every trade.
+2. **Compute R for every closed trade**, including the scratches and the gaps, net of costs.
+3. **Review by setup, not in total.** Tag each trade with its setup (breakout, pullback, VCP pivot…). After 30–50 trades per setup, compare win rate, average win, average loss and expectancy. Drop or fix the setup that drags the results down.
+4. **Watch the average loss.** If it creeps past −1R, either stops are being moved or positions are being held through gaps. Fix that before anything else.
+5. **Never cut your biggest winners short on purpose.** Taking profits early to "lock in" gains raises the win rate and lowers expectancy (§2, row three).
+6. **Expect the streak.** Decide in advance that 15 losses in a row is normal. Decide too what size you will be trading when it comes.
 
-## 9. What the trader does
+## 9. What the evidence says
 
-1. **Write the stop before the entry.** R does not exist without it. Record
-   entry, initial stop and exit for every trade.
-2. **Compute R for every closed trade**, including the scratches and the
-   gaps. The Notes page's *Trade plan* template has a "Size / risk" line. The
-   *Trade review* template is the place for the R result.
-3. **Review by setup, not in total.** Tag each trade with its setup
-   (breakout, pullback, VCP pivot…). After 30–50 trades per setup, compare
-   win rate, average win, average loss and expectancy. Drop or fix the setup
-   that drags the results down.
-4. **Watch the average loss.** If it creeps past −1R, either stops are being
-   moved or positions are being held through gaps. Fix that before anything
-   else.
-5. **Never cut your biggest winners short on purpose.** Taking profits early
-   to "lock in" gains raises the win rate and lowers expectancy (§2, row three).
-6. **Expect the streak.** Decide in advance that 15 losses in a row is normal.
-   Decide too what size you will be trading when it comes.
+- **Robust:** expectancy is just an average, and the arithmetic of payoff ratio and break-even win rate is exact.
+- **Robust:** trend-following returns depend on a few very large winners. The managed-futures literature documents it, as do Covel's and Faith's accounts of the Turtles. The illustrative trades show it in both markets.
+- **Robust:** losing streaks of 10–20 trades at 25–35% win rates follow from probability alone. Trades that move together make them longer.
+- **Folklore:** that a high win rate signals a good method, or that a 3:1 target "guarantees" profit. Neither says anything without the other half of the formula.
+- **Often missed:** small samples. Expectancy from a few dozen trades has an error bar wider than the number itself.
+- **Failure mode:** an edge that exists before costs and not after.
+- **Limits of the illustrations:** the trades come from one textbook rule on today's listed companies. Companies that failed and were delisted are missing, so the averages are flattered. There are no costs, fills use daily bars, and many trades overlap in time. Use them for the shape of the results, not for how much the rule earns.
 
-## 10. What the evidence says
-
-- **Robust:** expectancy is just an average, and the arithmetic of payoff
-  ratio and break-even win rate is exact. Trend-following returns are known to
-  depend on a few very large winners (the "fat right tail"). This is well
-  documented: the managed-futures literature, and Covel's and Faith's accounts
-  of the Turtles. It shows in every run here.
-- **Robust:** losing streaks of 10–20 trades at 25–35% win rates follow from
-  probability alone. Trades that move together make them longer.
-- **Folklore:** that a high win rate signals a good method, or that a 3:1
-  target "guarantees" profit. Neither says anything without the other half of
-  the formula. And a fixed target shrinks the big wins that pay for the rest.
-- **Often missed:** small samples. Expectancy from a few dozen trades has an
-  error bar wider than the number itself. A backtest of hundreds of trades can
-  still fail to separate a small edge from zero (§5).
-- **Failure mode:** an edge that exists before costs and not after. The small
-  US edges here are the size of plausible extra costs.
-
-## 11. Checklist
+## 10. Checklist
 
 - [ ] Every trade has an initial stop (so a 1R value) and, once closed, its R net of costs
 - [ ] Expectancy per setup recalculated monthly; sample size noted next to it
@@ -330,11 +221,7 @@ Read it honestly:
 
 ## Further reading
 
-- Van K. Tharp, *Trade Your Way to Financial Freedom* — R-multiples and
-  expectancy as a trader's core numbers.
-- Curtis Faith, *Way of the Turtle* — the Turtles' rules, sizing by volatility (their "N") and
-  what streaks and drawdowns felt like.
-- Michael Covel, *Trend Following* — the right tail and why trend followers
-  lose more often than they win.
-- Robert Carver, *Systematic Trading* — sample size, costs and over-fitting
-  in backtests.
+- Van K. Tharp, *Trade Your Way to Financial Freedom* — R-multiples and expectancy as a trader's core numbers.
+- Curtis Faith, *Way of the Turtle* — the Turtles' rules, sizing by volatility (their "N") and what streaks and drawdowns felt like.
+- Michael Covel, *Trend Following* — the right tail and why trend followers lose more often than they win.
+- Robert Carver, *Systematic Trading* — sample size, costs and over-fitting in backtests.

@@ -1,17 +1,14 @@
 # Interest rates and central banks — why the price of money moves every stock
 
-Learning material: what the Fed and the RBI do, policy rates vs market
-yields, why higher rates lower what any stock is worth, which sectors feel it
-first, past hiking and cutting cycles, and reading a central-bank meeting.
-Companion to [the yield curve guide](learn-macro-yield-curve.md) and
-[the inflation guide](learn-macro-inflation.md).
+**In short**
 
-**Where this shows in the app.** Markets → Breadth has a strip of macro tiles
-for each market (built by `scripts/swing_screener/marketdata/macro.py`). The
-US strip shows the 10-year and 5-year Treasury yields and the dollar. India's
-shows USD/INR and Brent crude, plus the US 10-year and the dollar, because
-those two drive foreign money into and out of India. Hover a tile to see *why*
-it matters. Markets → Sectors is where rotations caused by rates show up first.
+- A central bank sets one very short interest rate. The bond market sets the rest, including the 10-year yield that matters most for stocks.
+- Higher rates lower what a stock is worth even if the business does not change. Stocks whose profits lie far in the future fall most.
+- In 2022 the Fed's fastest hikes in 40 years sank technology stocks and lifted energy stocks.
+- Whether a cut is good news depends on why it comes. Cuts into a recession came with the worst bear markets; "insurance" cuts were followed by gains.
+- Markets move on surprises. Before a central-bank meeting, ask what is already expected.
+
+This guide covers what the Fed and the RBI do, and how policy rates differ from market yields. It shows why higher rates lower what any stock is worth and which sectors feel it first. It then looks at past hiking and cutting cycles and at how to read a central-bank meeting. It is a companion to [the yield curve guide](learn-macro-yield-curve.md) and [the inflation guide](learn-macro-inflation.md).
 
 ---
 
@@ -42,7 +39,7 @@ quoted as an annual rate, which makes one night's cost small:
 ```
 
 **Why the central bank gets to set it.** It is the only place reserves come
-from — it can create or drain them at will — and it runs two standing
+from, and it can create or drain them at will. It also runs two standing
 facilities that fence the market in. No bank lends below the floor, because it
 could deposit at the central bank instead; none borrows above the ceiling,
 because it could borrow from the central bank instead. The traded rate is
@@ -73,10 +70,11 @@ lending overnight 365 times in a row. So:
 
 Arbitrage keeps that roughly true: if a one-year loan paid far more than
 rolling overnight, lenders would crowd into the one-year and close the gap.
-That is the "floor plus a premium for time and risk" above — and it is why
-§2's point holds. The overnight rate anchors the near end tightly, while the
-10-year is mostly a vote on where the overnight rate is *heading*, so the two
-can move in opposite directions without either being wrong.
+That is the "floor plus a premium for time and risk" above.
+
+It also explains §2. The overnight rate fixes the shortest rates closely. The 10-year mostly
+reflects where buyers expect the overnight rate to *go*. So the two can move in
+opposite directions without either being wrong.
 
 | | Federal Reserve (US) | Reserve Bank of India |
 |---|---|---|
@@ -101,8 +99,8 @@ market.
 The market rate closest to the policy rate is the **3-month Treasury bill** — a
 three-month loan to the US government. Because it is so short, it simply tracks
 the Fed's rate: when the Fed's rate is 5%, a 3-month bill pays about 5%. It is,
-in effect, what you earn on cash, which is why the app stores it as
-`CASH_YIELD` and the charts here call it the cash yield.
+in effect, what you earn on cash, which is why the charts here call it the cash
+yield.
 
 Longer bonds are different. The yield on a **5-year** or **10-year** bond is
 the market's combined bet on three things:
@@ -149,8 +147,12 @@ A company earns $10 a year, forever. Its value is 10 ÷ the rate:
 Same earnings, **60% less value**. Real valuations are more complicated: they
 allow for growth, and they add extra return for risk on top of the bond yield.
 But two things still hold. Higher rates mean lower values. And the effect is
-uneven: **a rise from a low level does the most damage**. Going from 2% to 3%
-cuts the value by a third; going from 5% to 6% cuts it by a sixth.
+uneven: **a rise from a low level does the most damage**.
+
+| Rate move | Value at the old rate | Value at the new rate | Fall |
+|---|---|---|---|
+| 2% → 3% | $500 | $333 | a third |
+| 5% → 6% | $200 | $167 | a sixth |
 
 ### Near profits vs distant profits
 
@@ -171,13 +173,20 @@ why growth stocks react most to yields (§4).
 
 **Stocks compete with safe assets.** At the end of 2021 T-bills paid 0.03%, so
 almost anything beat cash. In 2023 they paid over 5%, so a stock had to earn
-enough to be worth its risk. A rough gauge is the **equity risk premium** —
-the extra return stocks offer over safe bonds. One simple version is the
-earnings yield (earnings ÷ price, the P/E turned upside down) minus the
-10-year yield. At a P/E of 20 the earnings yield is 5%. With a 1.5% 10-year
-that leaves a 3.5-point cushion (5% − 1.5%). With a 5% 10-year it leaves none.
-That is not a sign the market has topped, but it means **no cushion** if
-earnings disappoint.
+enough to be worth its risk.
+
+A rough gauge is the **equity risk premium** — the extra return stocks offer
+over safe bonds. One simple version is the earnings yield (earnings ÷ price,
+the P/E turned upside down) minus the 10-year yield. At a P/E of 20 the
+earnings yield is 5%:
+
+| 10-year yield | Earnings yield at a P/E of 20 | Cushion |
+|---|---|---|
+| 1.5% | 5% | 3.5 points |
+| 5% | 5% | none |
+
+No cushion is not a sign the market has topped. But it means nothing absorbs
+an earnings disappointment.
 
 Rates hit stocks twice. First, quickly, through the multiple — the P/E
 investors will pay. Then, slowly, through **earnings**, as the economy slows.
@@ -208,14 +217,19 @@ from about 1.6% to above 4%. And stocks sorted themselves by duration:
   margins, or earnings that hold up in a slowdown, offset the rate hit.
 
 Small companies carry more floating-rate debt (loans whose interest rate
-resets as rates rise). Yet in 2022 **small caps (IWM) fell less than the
-Nasdaq 100 (QQQ): −23% vs −34%**. The duration effect on valuations mattered
-more. In 2023 it flipped (QQQ +54%, IWM +15%). By then high rates had reached
-small companies' interest bills.
+resets as rates rise). Yet in 2022 **small caps fell less than the Nasdaq
+100**. The duration effect on valuations mattered more. In 2023 it flipped. By
+then high rates had reached small companies' interest bills.
+
+| | 2022 | 2023 |
+|---|---|---|
+| Small caps (IWM) | −23% | +15% |
+| Nasdaq 100 (QQQ) | −34% | +54% |
 
 **For a momentum trader:** a change in the rate trend changes *which* stocks
-lead. Markets → Sectors shows the rotation. The macro picture tells you *why*,
-and how long it may last.
+lead. The ranking of sectors by relative strength shows the rotation. The macro
+picture tells you *why*, and how long it may last. [The sector rotation
+strategy guide](learn-strat-sector-rotation.md) covers trading it.
 
 ## 5. The rate-sensitive sectors
 
@@ -228,7 +242,7 @@ and how long it may last.
 | **Long-duration growth** | Profits far in the future | P/Es cut hardest | P/Es rise fastest |
 
 Real estate is the textbook case. **XLRE fell about 38%** from the end of 2021
-to October 2023, when the 10-year neared 5%. Utilities held up in 2022. But
+to October 2023. By then the 10-year yield was nearing 5%. Utilities held up in 2022. But
 they **fell about 15%** in the first ten months of 2023, once T-bills paying
 above 5% made their dividends look thin.
 
@@ -264,9 +278,18 @@ ended when the Fed paused.
 
 **Cuts into a recession** (2001, 2007) came with the worst bear markets of
 the era. In those cases the Fed cuts *because* earnings are collapsing.
-**Insurance cuts** — cuts made to protect a still-growing economy against a
-slowdown (1995, 1998, 2019, 2024) — were followed by gains: in 1995 and 1998,
-about 20% over the next year. So the first cut is not a buy signal. **The
+
+**Insurance cuts** are cuts made to protect a still-growing economy against a
+slowdown. Gains followed each of the four the Fed made since the 1990s:
+
+| Insurance cut | S&P 500 afterwards |
+|---|---|
+| 1995 | about +20% over the next year |
+| 1998 | about +20% over the next year |
+| 2019 | +12% to the Feb 2020 peak |
+| 2024 | +17% a year later |
+
+So the first cut is not a buy signal. **The
 reason for the cut is the signal** — see the
 [business cycle guide](learn-macro-cycle.md).
 
@@ -293,12 +316,15 @@ caption: Each time the T-bill fell from about 5–6% to below 1%, the S&P 500 fe
 
 **Markets move on surprise, not news.** If futures put a hike at 95%, the hike
 itself does nothing: traders had already bet on it. That is what "priced in"
-means. A hold when a cut was expected, though, is a shock. Before a meeting,
-ask: *what does the market expect?* (CME FedWatch shows it). After it, ask:
-*was it more hawkish or dovish than that?* The 5-year on the macro strip gives
-a quick answer. On meeting days and the session after, prices swing more
-within the day and more breakouts fail. The
-[calendar guide](learn-macro-calendar.md) covers planning around them.
+means. A hold when a cut was expected, though, is a shock.
+
+Before a meeting, ask: *what does the market expect?* (CME FedWatch shows it).
+After it, ask: *was it more hawkish or dovish than that?* The move in the
+5-year Treasury yield that day gives a quick answer.
+
+On meeting days and the session after, prices swing more within the day and
+more breakouts fail. The [calendar guide](learn-macro-calendar.md) covers
+planning around them.
 
 ## 8. India: the RBI, liquidity and the US connection
 
@@ -356,8 +382,8 @@ rate-sensitive groups in India:
   In four months the US 10-year rose from about 1.6% to about 3.0%. USD/INR
   jumped from about 54 to above 68. The Nifty fell about 15% peak to trough.
 
-That is why the India macro strip shows the US 10-year and the dollar; see
-[the currencies guide](learn-macro-currencies.md).
+That is why an Indian trader should watch the US 10-year and the dollar as
+well as Indian data; see [the currencies guide](learn-macro-currencies.md).
 
 ## 9. What a trader does with it
 
@@ -365,8 +391,8 @@ That is why the India macro strip shows the US 10-year and the dollar; see
   hiking, holding or cutting? Is the long yield rising or falling? A rising
   long yield favours short-duration stocks (energy, financials, value). A
   falling one favours long-duration growth stocks.
-- **Check that the leading sectors agree** (Markets → Sectors). If they don't,
-  go with what prices are doing.
+- **Check that the leading sectors agree.** If they don't, go with what prices
+  are doing.
 - **Watch speed, not just level.** A 50bp jump in yields in a month hurts
   breakouts in high-P/E stocks more than a slow drift to the same level
   ([the yield curve guide](learn-macro-yield-curve.md)).
@@ -401,7 +427,7 @@ That is why the India macro strip shows the US 10-year and the dollar; see
 
 - [ ] Next Fed / RBI meeting and any surprise risk; the US 10-year's level and pace?
 - [ ] Cash yield vs the market's earnings yield: is there a cushion?
-- [ ] Leadership consistent with the rate trend (Markets → Sectors)?
+- [ ] Leadership consistent with the rate trend?
 - [ ] Rate-sensitive groups turning? Cuts coming: insurance or recession?
 - [ ] India: USD/INR, the US 10-year, RBI liquidity stance.
 - [ ] New positions sized down around FOMC / RBI decision days.

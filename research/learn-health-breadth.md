@@ -1,103 +1,62 @@
 # Breadth — how many stocks are taking part
 
-Learning material on market breadth: what it is, and why it measures **risk
-more than direction**. It covers the measures this app stores, and what
-divergences, washouts and breadth thrusts looked like in the stored data, in
-the US and India. It ends with how a trader turns breadth into a decision about
-how much to have at risk. Companion to [the trend guide](learn-health-trend.md)
-and [the volatility guide](learn-health-volatility.md).
+**In short**
 
-**Where this shows in the app.** Markets → **Breadth** ("How healthy is the
-market — risk, not direction"). The page is built from the app's daily breadth
-table, `breadth_daily` (computed by `scripts/swing_screener/analytics/breadth.py`
-and served by `/api/breadth` in `web/server.py`). Every reading is ranked
-against all trading days since 2015. Breadth also supplies three of the six
-**market tone** signals on Markets → Post-market (`analytics/postmarket.py`):
-*more stocks rose than fell*, *more new 52-week highs than lows*, *half or more
-of stocks above their 50-day average*.
+- An index is a weighted average, so it can rise while most stocks fall. Breadth counts how many stocks are actually going up.
+- Breadth measures risk more than direction. It tells you how many of your own trades are likely to work, not where the index goes next.
+- The most useful single number is the share of stocks above their 50-day average. Below 30% is a washout; above 70% is a strong, broad market.
+- An index making new highs while fewer stocks take part (a divergence) has come before many tops, but it can run for months. It is a reason to trade smaller, not to sell everything.
+- Deep washouts (under 15% of stocks above their 50-day) have tended to come near important lows. The selling is well advanced, but not always over.
+
+This guide covers what breadth is and the common ways to measure it. It shows what divergences, washouts and breadth thrusts looked like in the US and India since 2015. It ends with how a trader turns breadth into a decision about how much to have at risk. Companion guides cover [the index's trend](learn-health-trend.md) and [volatility](learn-health-volatility.md).
 
 ---
 
 ## 1. What breadth is — and what it is not
 
-An index is a weighted average. The S&P 500 gives its biggest companies a large
-share of the weight, and the Nifty 50 holds only fifty stocks. So an index can
-rise while most stocks fall. A trader who owns ten mid-sized breakouts does not
-own the index. **Breadth asks: how many stocks are actually going up?**
+On 6 October 2026 the S&P 500 closed at a record. On the same day only about a third of US stocks were above their 50-day average. The index was rising; the typical stock was not.
 
-The page's framing is the right one: breadth *"helps judge how risky the
-market is, **not** which way it will go."* Weak breadth means only a few stocks
-are pushing the index up, and few other breakouts are working alongside yours.
-Strong breadth means many setups work at once. **The index tells you the
-market's overall direction; breadth tells you how many of your own trades are
-likely to work.**
+That can happen because an index is a weighted average. The S&P 500 gives its biggest companies a large share of the weight, and the Nifty 50 holds only fifty stocks. A trader who owns ten mid-sized breakouts does not own the index. **Breadth asks: how many stocks are actually going up?**
 
-## 2. How this app builds breadth
+Breadth helps judge how risky the market is, **not** which way it will go. Weak breadth means only a few stocks are pushing the index up, and few other breakouts are working alongside yours. Strong breadth means many setups work at once. **The index tells you the market's overall direction; breadth tells you how many of your own trades are likely to work.**
 
-Every trading day since **2015**, the app takes the **1,000 most-traded
-stocks** in each market (`analytics/breadth.py`). They are ranked by 20-day
-average turnover (the money value traded per day). So the set changes over
-time as trading shifts between stocks. For those stocks it counts:
+## 2. How the breadth data here is built
 
-| Field | Definition in the code |
+A breadth count depends on which stocks you count. The figures in this guide use, for each market and each trading day since **2015**, the **1,000 most-traded stocks**. They are ranked by 20-day average turnover (the money value traded per day). So the set changes over time as trading shifts between stocks. For those stocks the data counts:
+
+| Measure | Definition |
 |---|---|
-| Rising / falling (`adv`, `dec`) | close above / below the previous close |
-| Up / down 4%+ (`up4`, `dn4`) | the day's big movers |
-| 52-week highs / lows | today's high (low) is the extreme of the last 252 bars; needs ~200 bars of history |
+| Rising / falling | close above / below the previous close |
+| Up / down 4%+ | the day's big movers |
+| 52-week highs / lows | today's high (low) is the extreme of the last 252 sessions; needs about 200 sessions of history |
 | Above the 5 / 50 DMA | close above its 5- / 50-day simple average |
-| Month ±25% (`up25m`, `dn25m`) | up / down 25%+ over the last 21 bars (±50% is stored too) |
+| Month ±25% | up / down 25%+ over the last 21 sessions |
 
-**Only common stocks count.** The US list of stocks already excludes ETFs.
-Closed-end funds (funds that trade like a stock) are also dropped when the
-app's classification job flags them (`classify`). India's symbols are
-classified as equity or fund, and funds are left out. Two consequences:
+**Only common stocks count.** Exchange-traded funds and closed-end funds (funds that trade like a stock) are left out. Two consequences follow.
 
-- **The two "1,000s" differ.** In the US the 1,000 most-traded are mostly
-  large and mid-sized companies. In India the same count reaches well into
-  small companies. So India's breadth is closer to a gauge of small and
-  mid-sized stocks (§8).
-- **The symbol list is today's** (a fixed ticker file). Stocks delisted since
-  2015 are probably missing. Missing them likely leaves out some losers, so
-  old readings may lean slightly strong.
+- **The two "1,000s" differ.** In the US the 1,000 most-traded are mostly large and mid-sized companies. In India the same count reaches well into small companies. So India's breadth is closer to a gauge of small and mid-sized stocks (§8).
+- **The stock list is today's.** Stocks delisted since 2015 are probably missing. Missing them likely leaves out some losers, so old readings may lean slightly strong.
 
-## 3. The Breadth page, card by card
+**Read every reading against its own history.** A good habit is to rank today's value against all days since 2015, and to compare it with one week, one month and three months ago. Slow changes matter most: markets rarely turn in a day.
 
-Each card shows today's value. A gauge ranks it against every day since 2015
-("Only N in 100 days since 2015 were…"). A table compares it with one week, one
-month and three months ago, because *"slow changes matter most: markets rarely
-turn in a day."*
+## 3. The common breadth views
 
-| Card (its real title) | What it shows | How to read it |
+Most breadth dashboards show some version of these:
+
+| View | What it shows | How to read it |
 |---|---|---|
-| **S&P 500 against its 50 DMA?** (Nifty 50 for India) | The index's % distance from its 50-day | The index's own short-term trend — the context |
-| **Stocks at a 52w high or low?** | New highs and lows, and the typical day over two weeks | Leadership against damage; ranked on the 10-day average of highs − lows |
-| **Stocks above their 5 & 50 DMA?** | % above the 5- and 50-day averages | 50-day: the average stock's trend; 5-day: short-term stretch |
-| **Stocks rising or falling?** | Advancers and decliners, and the two-week typical day | Participation; ranked on the 10-day average of rising − falling |
-| **Leading sectors, last 3 months?** | Best and worst sector against the average stock; sectors with most stocks above the 50-day | Where the strength is, and how widely shared |
-| **Options: expected vs actual?** | VIX / India VIX against the index's realised volatility | See [the volatility guide](learn-health-volatility.md) |
+| The index against its 50-day | The index's % distance from its 50-day | The index's own short-term trend — the context |
+| New 52-week highs and lows | Highs, lows, and their two-week average | Leadership against damage; read the 10-day average of highs − lows |
+| Stocks above their 5- and 50-day | % above each average | 50-day: the average stock's trend; 5-day: short-term stretch |
+| Stocks rising or falling | Advancers and decliners | Participation; read the 10-day average of rising − falling |
+| Leading sectors | Best and worst sectors, and the share of each sector above its 50-day | Where the strength is, and how widely shared |
+| Expected against actual volatility | VIX / India VIX against the index's realised volatility | See [the volatility guide](learn-health-volatility.md) |
 
-Below the cards come:
-
-- **What changed in the last 5 sessions**: 30% / 70% crossings, 90-day
-  extremes, the index crossing its 50-day.
-- Four **Charts**. The 50-day one has lines at **30% washout, 70% strong**.
-- **Sectors: where the strength is?**
-- **The last 30 days**, shaded where a reading is in its strongest or weakest
-  fifth since 2015.
+Useful lines on a chart of the share above the 50-day: **30% (washout)** and **70% (strong)**. Watch for crossings of those lines, new 90-day extremes, and the index crossing its own 50-day.
 
 ## 4. The measures
 
 ### 4.1 % above the 50-day — and the 5-day
-
-The most useful single number: *for how many stocks is the trend up?*
-
-| Since 2015 | US | India |
-|---|---|---|
-| Median % above 50-day | 59% | 56% |
-| 10th–90th percentile | 29–77% | 21–82% |
-| Days below 30% (the page's "washout") | 11% | 19% |
-| Days below 15% | 3.5% | 4.8% |
-| Days above 70% (the page's "strong") | 23% | 27% |
 
 ```series
 title: US stocks above their 50-day average, and the S&P 500, since 2015
@@ -112,41 +71,56 @@ mark: 2025-04-08 | 4.9% above
 caption: The lower pane swings from near 0% to over 90%. The deepest readings (2% in Dec 2018 and Mar 2020, under 5% in June and Sept 2022 and Apr 2025) came at or near the index's lows, not its highs.
 ```
 
-The **5-day** version is a short-term gauge of whether stocks have run up or
-sold off too far, too fast. The US median is 54%. It is under 20% on about 8% of
-days and over 80% on about 10%. Under 20% in an uptrend is a stretched
-pullback. Over 80% is a poor moment to chase.
+This is the most useful single number: *for how many stocks is the trend up?* It swings from near zero to over 90%. Its deepest readings came at or near the index's lows.
+
+| Since 2015 | US | India |
+|---|---|---|
+| Median % above 50-day | 59% | 56% |
+| 10th–90th percentile | 29–77% | 21–82% |
+| Days below 30% ("washout") | 11% | 19% |
+| Days below 15% | 3.5% | 4.8% |
+| Days above 70% ("strong") | 23% | 27% |
+
+The **5-day** version is a short-term gauge of whether stocks have run up or sold off too far, too fast.
+
+| US, % above the 5-day, since 2015 | |
+|---|---|
+| Median | 54% |
+| Days under 20% | about 8% |
+| Days over 80% | about 10% |
+
+Under 20% in an uptrend is a stretched pullback. Over 80% is a poor moment to chase.
 
 ### 4.2 New 52-week highs and lows
 
-Highs show **leadership**. A stock at a new high has no overhead supply: no
-earlier buyers sitting at a loss and waiting to sell. That is where breakout and
-trend strategies find candidates. Lows show **damage**. A typical US day since
-2015 had about **46 highs and 7 lows** among the 1,000; India about **31 and
-5**. In a panic the lows explode: **660** US lows on 12 March 2020 and **692**
-in India the next day. Read the **net** (highs minus lows) and its 10-day
-average, as the page does.
+On 12 March 2020, **660** of the 1,000 US stocks made a new 52-week low. The next day **692** Indian stocks did. On a typical day since 2015 there were far fewer:
+
+| Typical day since 2015 | New highs | New lows |
+|---|---|---|
+| US | about 46 | about 7 |
+| India | about 31 | about 5 |
+
+Highs show **leadership**. A stock at a new high has no overhead supply: no earlier buyers sitting at a loss and waiting to sell. That is where breakout and trend strategies find candidates. Lows show **damage**. Read the **net** (highs minus lows) and its 10-day average.
 
 ### 4.3 Advancers, decliners and the A/D line
 
-Take rising stocks minus falling stocks each day, and add the result to a
-running total. That running total is the **advance-decline line**. Its level
-means nothing; what matters is its direction compared with the index. Suppose
-the index makes a new high but the A/D line does not. Then fewer stocks took
-part in the last leg up. The common NYSE version counts every issue listed.
-The app's version has no thinly traded micro caps or bond funds in it.
+Take rising stocks minus falling stocks each day, and add the result to a running total. That running total is the **advance-decline line**. Its level means nothing; what matters is its direction compared with the index.
+
+Suppose the index makes a new high but the A/D line does not. Then fewer stocks took part in the last leg up. The common NYSE version counts every issue listed, including thinly traded micro caps and bond funds. The version here counts only the 1,000 most-traded common stocks.
 
 ### 4.4 Big movers: ±4% days and ±25% months
 
-A median US day has **24** stocks up 4%+ and **23** down. The record is **944**
-down on 12 March 2020. India is lopsided: **62** up and **24** down on a median
-day, until a panic (**943** down on 23 March 2020). Many stocks up 25% in a
-month means a hot market. Many down 25% means forced selling.
+| Stocks moving 4%+ in a day | US | India |
+|---|---|---|
+| Median day, up | 24 | 62 |
+| Median day, down | 23 | 24 |
+| Record day, down | 944 (12 March 2020) | 943 (23 March 2020) |
+
+India is lopsided: more stocks make big up moves on a normal day, until a panic. Many stocks up 25% in a month means a hot market. Many down 25% means forced selling.
 
 ## 5. Divergences — the index at a high, fewer stocks with it
 
-Here a **divergence** means the index makes a higher high while breadth makes a
-lower one.
+Here a **divergence** means the index makes a higher high while breadth makes a lower one.
 
 ### 5.1 The US, 2021
 
@@ -162,28 +136,22 @@ mark: 2022-01-03 | index peak
 caption: Highs − lows (10-day average) peaked at 164 on 10 May 2021 and was 53 when the S&P 500 made its high on 3 Jan 2022. The A/D line topped on 16 Nov 2021. By late January 2022 the net was negative.
 ```
 
-The S&P 500 gained about **30%** from the start of 2021 to its high on **3
-January 2022**. Meanwhile breadth weakened for months. Net highs (10-day
-average) peaked at **164** in May and were **53** on the final high. Only **33**
-stocks made new highs that day.
+The S&P 500 gained about **30%** from the start of 2021 to its high on **3 January 2022**. Meanwhile breadth weakened for months. Net highs (10-day average) peaked at **164** in May and were **53** on the final high. Only **33** stocks made new highs that day.
 
-The share above the 50-day (10-day average) fell in steps: about **83%** in
-early January 2021, **73%** at the end of April, **61%** at the end of October,
-**47%** at the end of December. On **10 December 2021** the index closed at a
-record while net highs were *negative* (about −10). The Russell 2000 (an index
-of small US companies) had peaked on **8 November 2021**.
+The share above the 50-day (10-day average) fell in steps:
 
-The divergence did not time the top: it ran for half a year. What it said was
-that risk was rising.
+| Date | % above the 50-day (10-day average) |
+|---|---|
+| Early January 2021 | about 83% |
+| End of April 2021 | 73% |
+| End of October 2021 | 61% |
+| End of December 2021 | 47% |
+
+On **10 December 2021** the index closed at a record while net highs were *negative* (about −10). The Russell 2000 (an index of small US companies) had peaked on **8 November 2021**.
+
+The divergence did not time the top: it ran for half a year. What it said was that risk was rising.
 
 ### 5.2 2024–2026: narrow highs come and go
-
-Periods when a handful of giant companies led the index show up in the data in
-bursts. At the **June 2024** highs only about **48%** of stocks were above their
-50-day. Net highs averaged **28**, against **104** at the March 2024 highs. The
-**19 February 2025** high had **57%** and a net of **37**. The index then fell
-**19%** to 8 April. Late 2024 was broad again (median **69%** above the 50-day
-on record days).
 
 ```series
 title: S&P 500 records with fewer stocks above their 50-day, 2023–2026
@@ -197,18 +165,24 @@ mark: 2026-10-06 | 34% above
 caption: Broad records (early and late 2024) were followed by more records; narrow ones (June 2024, Feb 2025) by a stall or a fall. The record of 6 Oct 2026 came with 34% above the 50-day.
 ```
 
-At the time of writing, the **6 October 2026** record had net highs (10-day
-average) near **−24**. That is the lowest participation on any S&P 500 record
-day since 2015. What follows is unknown. It is the situation in which breadth
-says *size down*, not *sell everything*.
+Periods when a handful of giant companies led the index show up in the data in bursts.
+
+| S&P 500 high | % above the 50-day | Net highs (10-day average) | What followed |
+|---|---|---|---|
+| March 2024 | — | 104 | More records |
+| June 2024 | about 48% | 28 | A stall |
+| Late 2024 (record days) | median 69% | — | More records |
+| 19 February 2025 | 57% | 37 | A 19% fall to 8 April |
+
+At the time of writing, the **6 October 2026** record had net highs (10-day average) near **−24**. That is the lowest participation on any S&P 500 record day since 2015. What follows is unknown. It is the situation in which breadth says *size down*, not *sell everything*.
 
 ## 6. Washouts — when almost nothing is above its 50-day
 
-The page calls **below 30%** a washout. The deep version is **below 10–15%**,
-which happens on under 5% of days in either market. It has tended to come near
-important lows. The table below lists each first close under 15% after a
-recovery above 40%. It shows the S&P 500's change 21, 42 and 63 sessions later
-(about one, two and three months).
+On 17 December 2018 fewer than 15% of US stocks were above their 50-day average. A week later, on Christmas Eve, only 2% were. Three months after that first day, the S&P 500 was 10.9% higher.
+
+A reading below 30% is a washout. The deep version is **below 10–15%**, which happens on under 5% of days in either market. It has tended to come near important lows.
+
+The table below lists each first close under 15% after a recovery above 40%. It shows how the index changed over the next one, two and three months (21, 42 and 63 sessions).
 
 | US — first day < 15% | Low (date) | +1m | +2m | +3m |
 |---|---|---|---|---|
@@ -223,55 +197,38 @@ recovery above 40%. It shows the S&P 500's change 21, 42 and 63 sessions later
 | 3 Oct 2023 | 12.7% (27 Oct) | +0.2% | +8.6% | +11.2% |
 | 4 Apr 2025 | 4.9% (8 Apr) | +10.5% | +17.1% | +22.7% |
 
-Three months on, the S&P 500 was higher after **9 of 10** (median **+5%**).
-Across all days since 2015 it was higher three months on **75%** of the time.
-One month on, it was higher after only 7 of 10. The first washout day of
-February 2020 was followed by a further **15%** fall. **A washout says the
-selling is well advanced, not that it is over.**
+| After a US washout | Higher | Median |
+|---|---|---|
+| One month on | 7 of 10 | — |
+| Three months on | 9 of 10 | +5% |
+| Any day since 2015, three months on | 75% of the time | — |
 
-**India** had **13** such episodes. The Nifty 50 was higher three months later
-after **11** (median **+6.4%**). The exceptions:
+The first washout day of February 2020 was followed by a further **15%** fall. **A washout says the selling is well advanced, not that it is over.**
 
-- the small-company bear market of 2018: first day 28 September, low **3.9%**
-  on 8 October, Nifty **−2.4%** three months on;
-- March 2020: low **0.6%** on 23 March; Nifty **−6.1%** from the first day, 9
-  March.
+**India** had **13** such episodes. The Nifty 50 was higher three months later after **11**, with a median of **+6.4%**. The exceptions:
 
-Two US washouts had **no Indian twin**. India's lowest reading was **43%** in
-September 2022 and **32%** in October 2023.
+- the small-company bear market of 2018: first day 28 September, low **3.9%** on 8 October, Nifty **−2.4%** three months on;
+- March 2020: low **0.6%** on 23 March; Nifty **−6.1%** from the first day, 9 March.
 
-**Small sample:** ten US and thirteen Indian episodes. No threshold here is a
-buy signal.
+Two US washouts had **no Indian twin**. India's lowest reading was **43%** in September 2022 and **32%** in October 2023.
 
 ## 7. Breadth thrusts — the other end of a washout
 
-In a **breadth thrust**, the market goes from deeply oversold (most stocks
-beaten down) to most stocks rising, within days. Martin Zweig's version takes
-the share of advancing stocks, advancers ÷ (advancers + decliners), and
-averages it over 10 days. A thrust is that average rising from below **0.40**
-to above **0.615** within 10 sessions.
+In a **breadth thrust**, the market goes from deeply oversold (most stocks beaten down) to most stocks rising, within days. Martin Zweig's version takes the share of advancing stocks, advancers ÷ (advancers + decliners), and averages it over 10 days. A thrust is that average rising from below **0.40** to above **0.615** within 10 sessions.
 
-The app does not compute one. A simple version, built from the stored counts of
-rising and falling stocks (`adv`, `dec`) with a 10-day exponential average,
-fired **11** times in the US since 2015. Ten of them have a full year behind
-them, and the S&P 500 was higher a year later after 9 of the 10. Three months
-later it was higher after only **7 of 11**. Two fired inside the 2022 bear
-market (March and September); the index was **18%** and **4%** lower three
-months on. In India it fired 7 times. The Nifty was higher three months later
-all 7 times, but a year later only 4 of 6.
+A simple version of this can be built from the daily counts of rising and falling stocks, using a 10-day exponential average. Here is how it did since 2015:
 
-**Read a thrust as "the washout is probably over", not "the bear market is
-over".** Let the index's trend ([trend guide](learn-health-trend.md)) confirm
-it.
+| Breadth thrust, since 2015 | US | India |
+|---|---|---|
+| Times it fired | 11 | 7 |
+| Index higher three months later | 7 of 11 | 7 of 7 |
+| Index higher a year later | 9 of 10 (with a full year) | 4 of 6 |
+
+Two US thrusts fired inside the 2022 bear market (March and September). Three months on, the index was **18%** and **4%** lower.
+
+**Read a thrust as "the washout is probably over", not "the bear market is over".** Let the index's trend ([trend guide](learn-health-trend.md)) confirm it.
 
 ## 8. India against the US
-
-India's breadth runs **broader in rallies and deeper in sell-offs**. On Nifty
-50 record days in 2023 the median share above the 50-day was **80–85%**. On
-S&P 500 record days in 2024–25 it was mostly **50–70%**. The 2023–24 rally was
-a boom in small and mid-sized companies. From the March 2023 low to late
-September 2024 the Nifty Midcap 50 rose about **106%** and the Nifty 50 about
-**54%**.
 
 ```series
 title: India's breadth faded before the Nifty peaked, then washed out, 2024–2025
@@ -285,13 +242,18 @@ band: 2025-01-27 2025-03-21 | below 15%, until back above 40%
 caption: About 82% of Indian stocks were above their 50-day in early July 2024 and 64% at the Nifty's high on 26 Sept. On 3 March 2025 under 7% were (the 10-day average shown here: 9%).
 ```
 
-The 2024 top was a divergence of its own. Net highs (10-day average) peaked
-near **153** in February 2024. They were about **72** at the Nifty 50's record
-on **26 September 2024**. The washout that followed was India's deepest since
-2020: **6.6%** above the 50-day on 3 March 2025. Yet the Nifty 50 was down only
-about **16%** from its peak. Holders of small and mid-sized stocks did far worse
-than the index suggested. That is the reason to watch India's breadth, not just
-the Nifty.
+The 2024 top in India was a divergence of its own. Net highs (10-day average) peaked near **153** in February 2024. They were about **72** at the Nifty 50's record on **26 September 2024**.
+
+The washout that followed was India's deepest since 2020: **6.6%** above the 50-day on 3 March 2025. Yet the Nifty 50 was down only about **16%** from its peak. Holders of small and mid-sized stocks did far worse than the index suggested. That is the reason to watch India's breadth, not just the Nifty.
+
+India's breadth runs **broader in rallies and deeper in sell-offs**:
+
+| | Median % above the 50-day on record days |
+|---|---|
+| Nifty 50 record days, 2023 | 80–85% |
+| S&P 500 record days, 2024–25 | mostly 50–70% |
+
+The 2023–24 rally was a boom in small and mid-sized companies. From the March 2023 low to late September 2024, the Nifty Midcap 50 rose about **106%**. The Nifty 50 rose about **54%**.
 
 ## 9. How a trader uses breadth
 
@@ -307,37 +269,22 @@ Breadth does not pick stocks; it **sets how much risk to take**.
 
 **Which signals to trust:**
 
-- **Most:** the % above the 50-day at its extremes, and new lows expanding
-  (damage is hard to fake).
+- **Most:** the % above the 50-day at its extremes, and new lows expanding (damage is hard to fake).
 - **Noisy:** daily advancers and decliners. Use the 10-day average.
-- **Least, on their own:** divergences used for *timing* (2021's ran six
-  months), and thrusts inside a bear market (2022).
+- **Least, on their own:** divergences used for *timing* (2021's ran six months), and thrusts inside a bear market (2022).
 
-**Combine** breadth with the index trend, credit and volatility
-([liquidity and credit](learn-macro-liquidity-credit.md),
-[volatility](learn-health-volatility.md)). Two warnings together matter far
-more than one.
+**Combine** breadth with the index trend, credit and volatility ([liquidity and credit](learn-macro-liquidity-credit.md), [volatility](learn-health-volatility.md)). Two warnings together matter far more than one.
 
-**What the app's strategies do with breadth.** The screener's market-regime
-check (`core/regime.py`) computes the share of its stocks above the 20- and
-50-day. But **no decision uses it**. The downgrade looks only at whether the
-first two broad indices (SPY and QQQ; Nifty 50 and Nifty 500) are below their
-50-day. Risk is halved only on the volatility index. Breadth is **your**
-filter.
+Many trading systems check only the index itself: for example, whether the main indices are below their 50-day average. They compute breadth but do not act on it. If yours is one of them, breadth is a filter you apply yourself. [learn-strat-regime-filters](learn-strat-regime-filters.md) covers market filters inside a strategy.
 
 ## 10. What the evidence says
 
-- **Robust:** deep washouts cluster near major lows, and returns afterwards have
-  been better than average. That holds in this data and in long NYSE studies
-  (Zweig; Desmond on 90% down days).
-- **Mostly true:** narrowing breadth comes before many tops (2021 US, 2024
-  India). But the lead runs from weeks to many months, and narrow markets can
-  keep rising (the stretches of 2023–24 led by a few giant companies).
+- **Robust:** deep washouts cluster near major lows, and returns afterwards have been better than average. That holds in this data and in long NYSE studies (Zweig; Desmond on 90% down days).
+- **Mostly true:** narrowing breadth comes before many tops (2021 US, 2024 India). But the lead runs from weeks to many months, and narrow markets can keep rising (the stretches of 2023–24 led by a few giant companies).
 - **Folklore:** that one divergence or one thrust times the market.
-- **Measurement matters:** a different set of stocks gives other dates and
-  levels. Compare a reading with its own history, as the page's ranks do.
-- **Sample:** 2015 onwards holds about ten real washouts per market. §6–7
-  describe what happened, not probabilities.
+- **Measurement matters:** a different set of stocks gives other dates and levels. Compare a reading with its own history.
+- **Sample:** 2015 onwards holds about ten real washouts per market. §6–7 describe what happened, not probabilities. No threshold here is a buy signal.
+- **Survivorship:** the stock lists are today's, so delisted losers are probably missing and old readings may lean slightly strong.
 
 ## 11. Checklist
 
@@ -347,7 +294,7 @@ filter.
 - [ ] Index at a high with fewer stocks above the 50-day than at the last high?
 - [ ] After a washout: a fast recovery or thrust, and the index back over its 50-day?
 - [ ] India: is the Nifty hiding weakness in small and mid-sized stocks?
-- [ ] "What changed in the last 5 sessions": any 30% / 70% crossing?
+- [ ] In the last five sessions: any crossing of 30% or 70%?
 - [ ] Set this week's position count and size from the table in §9
 
 ## Further reading
@@ -357,3 +304,4 @@ filter.
 - Stan Weinstein, *Secrets for Profiting in Bull and Bear Markets* — breadth and stages.
 - Paul Desmond, "Identifying Bear Market Bottoms and New Bull Markets" (2002) — 90% days.
 - William J. O'Neil, *How to Make Money in Stocks* — leadership and the general market.
+- [learn-strat-regime-filters](learn-strat-regime-filters.md) — using market conditions as a filter in a strategy.

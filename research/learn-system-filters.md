@@ -1,141 +1,115 @@
 # The filter stack — six questions between a universe and a trade
 
-Learning material: how thousands of stocks become one trade. Every systematic
-system narrows its universe in stages, and each stage answers a *different*
-question. Mixing those questions together is the most common way a working
-system becomes an untestable one.
+**In short**
 
-For the strategies themselves, see [the strategies map](learn-strat-overview.md);
-for turning one into rules, [writing your own strategy specification](learn-strat-spec.md).
+- A systematic trader narrows thousands of stocks to a few trades in stages. Each stage should answer one question.
+- The six questions: can it be traded, should I trade this market now, is the stock in the right condition, is there a setup, is there a reason for caution, and can the trade actually be placed?
+- Keep the stages separate. Then you can see what rejected a stock, tune one thing at a time and reuse each stage.
+- On index data, a market (regime) filter acts mainly on risk: it lowers volatility and drawdowns more than it raises returns.
+- Signals arrive in bunches. When your position limits refuse many of them, the limits are choosing your trades, not your rules.
 
-**Where this shows up in the app.** The stages below are real code, not a
-metaphor: the universe floor and the screens live in
-`scripts/swing_screener/screens/`, a strategy's gates and flags in
-`scripts/swing_screener/strategies/`, and the portfolio limits in
-`scripts/swing_screener/config/`. The **Screening** page shows the funnel for
-a run, stage by stage, with the count surviving each one.
+Take a US trader with a list of 5,000 stocks. In a made-up but typical day, a liquidity floor leaves 1,500 and a trend screen leaves 300. A setup rule leaves 12, and the account has room for 3.
+
+Each cut answered a different question. Mixing those questions together is the most common way a working system becomes one you cannot test.
+
+For the strategies themselves, see [the strategies map](learn-strat-overview.md). For turning one into rules, see [writing your own strategy specification](learn-strat-spec.md).
 
 ---
 
 ## 1. Why stages, and why they must stay separate
 
-A filter answers one question. Stack them in the wrong order, or let one
-stage answer two questions, and three things break:
+A filter answers one question. Stack filters in the wrong order, or let one stage answer two questions, and three things break:
 
-- **You cannot tell what rejected a stock.** "It didn't appear" is not a
-  diagnosis.
-- **You cannot tune one thing at a time.** Changing a liquidity floor silently
-  changes the trend test, because fewer names reach it.
-- **You cannot reuse anything.** A trend test buried inside one strategy
-  cannot feed another.
+- **You cannot tell what rejected a stock.** "It didn't appear" is not a diagnosis.
+- **You cannot tune one thing at a time.** Changing a liquidity floor silently changes the trend test, because fewer names reach it.
+- **You cannot reuse anything.** A trend test buried inside one strategy cannot feed another.
 
-The stages below go from the cheapest and most permanent to the most
-specific and most frequently changed.
+The stages below go from the cheapest and most permanent to the most specific and most often changed.
 
 ## 2. Tier 1 — can this instrument be traded at all?
 
-The permanent floor. Nothing below it is worth computing anything for.
+This is the permanent floor. Nothing below it is worth computing anything for. A typical floor uses price, liquidity and history:
 
-In this app it is price, liquidity and history:
-
-| | US | India |
+| | US example | India example |
 |---|---|---|
-| minimum price | $10 | no floor |
-| minimum liquidity (20-day average of price × volume) | $10,000,000 | ₹50,00,00,000 |
-| history | enough bars for the longest average the rules need |
+| minimum price | $10 | often none |
+| minimum liquidity (20-day average of price × volume) | $10 million a day | ₹50 crore a day |
+| history | enough bars for the longest average the rules need | same |
 
-These are deliberately crude. Their job is to remove what you could not trade
-at size even if you wanted to — not to express any view.
+These are deliberately crude. Their job is to remove what you could not trade at size even if you wanted to. They express no view.
+
+One trap: price data is usually adjusted for later splits, so a minimum *price* applied to old data can wrongly exclude a stock. Traded value (price × volume) is not changed by splits. The [backtesting guide](learn-test-backtesting.md) shows an example.
 
 ## 3. Tier 2 — should I be trading this market at all?
 
-A regime filter asks about the *market*, not the stock, and it gates whole
-families at once. The usual form: stand aside when the index is below a
-long-term average, or when breadth has collapsed.
+In February 2020 the Nifty 50 closed just below its 200-day average. Over the next four weeks it fell about 35%. A trader whose system stopped buying when the index lost its 200-day average was out for the whole fall. That rule is a **regime filter**.
 
-This is the stage most often skipped, and in this app's own testing it is the
-only change that ever improved both return and drawdown at the same time:
-applying a market filter to one strategy moved its US expectancy from +0.04R
-to +0.06R and its maximum drawdown from -43.5% to -28.6%, by blocking 163 of
-1,325 signals.
+A regime filter asks about the *market*, not the stock, and it gates whole families of trades at once. The usual form: stand aside when the index is below a long-term average, or when breadth has collapsed.
 
-That is worth sitting with. The rule that helped was not about which stock to
-buy.
+What it does is mainly about risk. On index data, days with the index below its 200-day average were about twice as volatile as days above it. Most of the worst days happened there — but so did most of the best days, because big rebounds come in falling markets.
+
+| Index, period | Volatility above the 200-day | Volatility below |
+|---|---|---|
+| S&P 500, 1929–2026 | 14.7% | 25.7% |
+| Nifty 50, 2008–2026 | 15.3% | 27.3% |
+
+Published work agrees. Faber (2007) and Zakamulin (2017) found that index trend filters mostly reduce volatility and drawdowns, with returns similar to holding. The full treatment, with the costs of whipsaw, is in [regime filters](learn-strat-regime-filters.md).
+
+This is the stage most often skipped. It is worth sitting with: a rule that is not about which stock to buy can change a system's risk more than any stock rule.
 
 ## 4. Tier 3 — is this stock in the right condition?
 
-Qualification: does this stock belong in the pool a strategy draws from. In
-this app this stage *is* the screen, and there are four:
+This stage is qualification: does this stock belong in the pool a strategy draws from? It is a **screen**. Common screens for long trades, from strict to loose:
 
-| screen | asks | criteria |
+| Screen | Asks | Typical number of conditions |
 |---|---|---|
-| **Stage 2 — Trend Template** | is this a confirmed long-term uptrend, stronger than most of the market | 8 |
-| **Established uptrend** | is the weekly and daily structure in order, near highs, not fading | 8 |
-| **Near highs, rising 200-day** | is price above a rising long-term average and close to its high | 3 |
+| **Stage 2 — Trend Template** | is this a confirmed long-term uptrend, stronger than most of the market? | 8 |
+| **Established uptrend** | is the weekly and daily structure in order, near highs, not fading? | about 8 |
+| **Near highs, rising 200-day** | is price above a rising long-term average and close to its high? | 3 |
 | **Above the 200-day** | the long-term filter alone | 1 |
 
-They overlap on purpose, because different strategies need different
-strictness — but each *question* is asked in exactly one place in the code,
-and a screen that wants a different threshold gets its own named constant.
-Otherwise tuning one screen silently moves another.
+Screens can overlap on purpose, because different strategies need different strictness. But ask each *question* in one place. If two screens test "how far below the 52-week high", write that test once and give each screen its own threshold. Otherwise tuning one screen silently moves another.
 
 ## 5. Tier 4 — is there a setup right now?
 
-The first stage that is specific to one strategy. These are the hard gates:
-fail one and the answer is no, with a reason.
+This is the first stage that is specific to one strategy. These are the hard gates: fail one and the answer is no, with a reason.
 
-What belongs here is a *trade* rule rather than a qualification rule: the
-pattern is complete, the stop is not absurdly wide, earnings are not inside
-ten days, volatility is sane, price has not already run away from the trigger.
+What belongs here is a *trade* rule rather than a qualification rule. Examples: the pattern is complete, the stop is not absurdly wide, and earnings are not due within ten days. Volatility is sane, and price has not already run away from the trigger.
 
-A useful discipline: a gate must be able to say which rule rejected the stock,
-and that reason must be readable by someone who did not write it. In this app
-every rejected row carries its first failing gate code, which is why the
-**Screening** page can show you *why* the universe collapsed on a given day
-rather than just that it did.
+A useful discipline: a gate must be able to say which rule rejected the stock. That reason must be readable by someone who did not write it. If each rejected stock carries its first failing rule, you can see *why* the list collapsed on a given day, not just that it did.
 
 ## 6. Tier 5 — is there a reason to be careful?
 
-Not every warning deserves a veto. A pattern can be real, the trend intact,
-and something still off — the breakout came on thin volume, the stock is
-extended far above its average, momentum is overbought, a topping structure is
-forming on the same chart.
+Not every warning deserves a veto. A pattern can be real and the trend intact, with something still off. The breakout came on thin volume. The stock is far above its average. Momentum is overbought, or a topping pattern is forming on the same chart.
 
-Treating these as hard rejections throws away good trades; ignoring them
-treats a weak signal as a strong one. The middle path is a flag that **caps
-the confidence** rather than removing the row: the trade is still listed, but
-it is downgraded from "take this" to "wait for confirmation".
+Treating these as hard rejections throws away good trades. Ignoring them treats a weak signal as a strong one. The middle path is a flag that **caps the confidence** rather than removing the stock. The trade is still listed, but it is downgraded from "take this" to "wait for confirmation".
 
-This also keeps the information visible. A row that disappears teaches you
-nothing; a row that says *"through the trigger on 0.6× volume"* teaches you
-what to look for next time.
+This also keeps the information visible. A stock that disappears teaches you nothing. A stock marked *"through the trigger on 0.6× volume"* teaches you what to look for next time.
 
 ## 7. Tier 6 — can this trade actually be placed?
 
-The last stage is arithmetic, and it is where most beginners' systems quietly
-fail. A perfect signal in a stock you cannot size, or one that would put a
-quarter of the account into a single name, is not a trade.
+The last stage is arithmetic, and it is where most beginners' systems quietly fail. A perfect signal in a stock you cannot size is not a trade. Neither is one that would put a quarter of the account into a single name.
 
-In this app: 1% of equity risked per trade (0.5% when volatility is high), a
-25% cap on any one position, at most 10 open at once, and modelled costs of
-5 basis points per side in the US and 10 in India.
+A typical set of limits:
 
-The position cap matters more than it sounds. In one backtest here, 942
-signals produced 253 trades: 85 were refused because all ten slots were full
-and 132 for want of cash. When that happens, the portfolio limits are picking
-your trades, not your rules.
+| Limit | Typical value |
+|---|---|
+| Risk per trade | 1% of equity (0.5% when volatility is high) |
+| Largest single position | 25% of equity |
+| Open positions | at most 10 |
+| Costs to allow for | about 0.05% per side in the US, 0.1% in India, before taxes |
+
+The position limit matters more than it sounds, because signals arrive in bunches. Take the 1,000 most-traded US stocks from 2015 to October 2026. On a typical day 46 of them made a new 52-week high. On the busiest tenth of days it was 112 or more, and on the quietest tenth 8 or fewer. India's figures were 31, 86 and 5.
+
+A ten-slot account fills on the first busy day and then refuses most later signals. When that happens, the portfolio limits are picking your trades, not your rules. How a system breaks ties — by relative strength, by volume, or by the order of the ticker list — then decides much of the result.
 
 ## 8. What the evidence says
 
-- **The regime stage has paid; the setup stage mostly has not.** The single
-  measured improvement in both return and drawdown came from a market filter.
-- **A stage that rejects nothing is not free** — it costs you the ability to
-  interpret the ones that do.
-- **Watch for the cap taking over.** If a large share of signals are refused
-  for want of slots or cash, the system is not expressing your rules, and the
-  fix is fewer signals rather than more capital.
-- **Order matters for cost, not for results.** Cheap, permanent filters first;
-  expensive, specific ones last.
+- **The regime stage acts mainly on risk.** On index data, the market below its 200-day average was about twice as volatile. Published tests find trend filters cut drawdowns more than they raise returns. Whether one helps a particular strategy has to be tested on that strategy's own signals.
+- **A stage that rejects nothing is not free.** It costs you the ability to interpret the ones that do.
+- **Watch for the limits taking over.** Signals cluster in strong markets. If many are refused for want of slots or cash, the system is not expressing your rules. The fix is fewer, better-ranked signals rather than more capital.
+- **Order matters for cost, not for results.** Cheap, permanent filters first; expensive, specific ones last.
+- **Limits:** the new-highs counts cover only the 1,000 most-traded stocks since 2015, from today's lists; the volatility figures are on indexes, not on any strategy.
 
 ## 9. Checklist
 
@@ -144,7 +118,7 @@ your trades, not your rules.
 3. Is the same question asked in two places with different numbers? Pick one.
 4. When a stock is rejected, can I see which rule did it?
 5. Do I have a regime stage at all, or does my system always trade?
-6. What share of my signals die at the portfolio limits?
+6. What share of my signals die at the portfolio limits? How do I break ties?
 
 ## Further reading
 
@@ -152,3 +126,4 @@ your trades, not your rules.
   sizing belongs at the end, not the beginning.
 - Perry Kaufman, *Trading Systems and Methods* — regime filters, and how a
   system's results change when one is added.
+- Mebane T. Faber, "A Quantitative Approach to Tactical Asset Allocation", *Journal of Wealth Management* (2007).

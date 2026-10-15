@@ -1,19 +1,14 @@
 # Inflation — how rising prices reach rates, margins and sector leadership
 
-Learning material: what inflation is and how the US and India measure it, why
-it is the variable central banks react to, the three ways it reaches a stock
-price (valuation, margins, sector leadership), and how the 1970s, 2021–22 and
-the 2023 disinflation played out on the stored data. Read it beside
-[the interest-rates guide](learn-macro-rates.md) — inflation is the *cause*,
-rates are the *response* — and [the commodities guide](learn-macro-commodities.md)
-for oil and metals in their own right.
+**In short**
 
-**Where this shows in the app.** The app does not store CPI itself, but it
-stores the things inflation moves. The macro strip on **Markets → Breadth**
-shows, for the US, the 10-year and 5-year yields, WTI crude, gold and copper.
-For India it shows Brent crude, USD/INR and the US 10-year. Each tile has a
-one-line *why*. **Markets → Sectors** is where a period of high inflation
-shows up: energy and materials climb the relative-strength (RS) table.
+- Inflation is the rate at which prices in general rise. Central banks raise rates to fight it, and higher rates lower what stocks are worth.
+- It reaches a share price three ways: lower P/Es, squeezed or widened margins, and a change in which sectors lead.
+- In 2021–22 energy stocks more than doubled while technology went nowhere. In the 1970s the S&P 500 went sideways for fourteen years and lost value after inflation.
+- Markets turn when inflation starts *falling*, long before it is back at target. They react to the surprise in each monthly number, not its level.
+- India's inflation is driven by food, the monsoon and crude oil, much more than US inflation is.
+
+This guide covers what inflation is and how the US and India measure it. It explains why central banks react to it and the three ways it reaches a stock price. It then follows three episodes on market data: the 1970s, the 2021–22 surge, and the slowdown in inflation that followed. Read it beside [the interest-rates guide](learn-macro-rates.md): inflation is the *cause*, rates are the *response*. [The commodities guide](learn-macro-commodities.md) covers oil and metals in their own right.
 
 ---
 
@@ -22,11 +17,14 @@ shows up: energy and materials climb the relative-strength (RS) table.
 Inflation is the rate at which prices in general rise — the same basket of
 goods costing more each year. A little is normal; the Fed and the RBI both aim
 for a positive rate. The trouble starts when inflation is **high, rising, or
-unpredictable**. Savers then demand higher yields. The central bank raises its
-policy rate. And investors pay less today for profits that arrive in the
-*future*. **For a trader, inflation's direction and surprises matter more than
-its level.** Markets already reflect the inflation path they expect. They move
-on the gap between the forecast and the number actually published.
+unpredictable**.
+
+Then savers demand higher yields, and the central bank raises its policy rate.
+Investors pay less today for profits that arrive in the *future*.
+
+**For a trader, inflation's direction and surprises matter more than its
+level.** Markets already reflect the inflation path they expect. They move on
+the gap between the forecast and the number actually published.
 
 ## 2. How it is measured
 
@@ -55,11 +53,13 @@ The big difference from the US: **food is close to half of India's CPI
 basket**. Food and beverages were about 46% on the 2012 base. Moving the
 series to a 2024 base lowers that share. But food still weighs far more than
 in the US, where it is roughly a seventh.
+
 So India's headline number is driven by the monsoon, vegetables and pulses. A
 single crop (tomatoes, onions) can move it by tenths of a percent in a month.
+
 WPI can run far above or below CPI. In 2022 WPI was in the mid-teens while CPI
-was around 7%, because commodity and fuel prices hit wholesale prices first
-and hardest.
+was around 7%. Commodity and fuel prices hit wholesale prices first and
+hardest.
 
 ## 3. Why inflation drives rates
 
@@ -70,7 +70,7 @@ prices). The chain:
 1. Inflation runs above target → the central bank raises its policy rate, or
    signals it will.
 2. Bond investors want a yield above expected inflation (a positive *real*
-   yield). So **long yields rise** too — the US 10-year on the strip.
+   yield). So **long yields rise** too, the US 10-year among them.
 3. Every asset valued on its future cash flows is now discounted at a higher
    rate. Growth stocks are hit most of all.
 
@@ -93,10 +93,12 @@ more than a 2-year one.
 Inflation is a cost to some companies and revenue to others. **Commodity
 producers** sell the thing whose price is rising. **Companies with pricing
 power** (strong brands, few competitors) can raise their own prices to cover
-costs, after a delay. Then there are companies **squeezed in the middle**.
-They buy commodities and sell into a competitive market: paints, tyres and
-FMCG (everyday consumer goods) in India; airlines and restaurants in the US.
-Their gross margins fall before they can raise prices.
+costs, after a delay.
+
+Then there are companies **squeezed in the middle**. They buy commodities and
+sell into a competitive market: paints, tyres and FMCG (everyday consumer
+goods) in India; airlines and restaurants in the US. Their gross margins fall
+before they can raise prices.
 
 ### 4.3 Sector leadership: who wins and who loses
 
@@ -128,12 +130,15 @@ line: us:SPY | S&P 500 (SPY)
 caption: Energy more than doubled over the two years while technology ended slightly below where it began — the inflation trade in one picture.
 ```
 
-In the app's stored prices, **XLE rose about 130%** from the start of 2021 to
-the end of 2022 (about +53% in 2022 alone). Meanwhile **XLK ended 2022 roughly
-3% below its January 2021 level**. It fell about a third from its December
-2021 peak to its October 2022 low. SPY lost about 19% in calendar 2022, with a
-peak-to-trough fall of about a quarter. Consumer discretionary (XLY) fell
-about 39% in 2022; staples (XLP) only about 3%.
+Energy was the clear winner and technology the loser:
+
+| Fund | 2021–22, two years | 2022 alone | Notes |
+|---|---|---|---|
+| Energy (XLE) | about +130% | about +53% | |
+| Technology (XLK) | about −3% | | fell about a third from its December 2021 peak to its October 2022 low |
+| S&P 500 (SPY) | | about −19% | peak-to-trough fall of about a quarter |
+| Consumer discretionary (XLY) | | about −39% | |
+| Consumer staples (XLP) | | about −3% | |
 
 ```series
 title: Oil and the 10-year yield, 2020–2023
@@ -146,13 +151,14 @@ band: 2022-03-16 2023-07-26 | Fed raising rates
 caption: Oil spiked first; the 10-year followed the monthly inflation numbers, from under 1% to about 5%.
 ```
 
-WTI went from about $48 at the start of 2021 to a closing high near $124 on
-8 March 2022, after Russia's invasion of Ukraine. The 10-year yield rose from
-about 0.9% in January 2021 to about 3.9% at the end of 2022. It peaked near
-5.0% in October 2023. **Note the order: oil peaked in March 2022, while yields
-kept rising for another year and a half.** That is because the Fed responds
-to core inflation (services, wages, housing), which changes direction far
-more slowly than oil.
+| | Start | Peak | Date of peak |
+|---|---|---|---|
+| WTI crude | about $48 (start of 2021) | near $124 | 8 March 2022, after Russia's invasion of Ukraine |
+| US 10-year yield | about 0.9% (January 2021) | near 5.0% | October 2023 (about 3.9% at the end of 2022) |
+
+**Note the order.** Oil peaked in March 2022, but yields kept rising for
+another year and a half. That is because the Fed responds to core inflation
+(services, wages, housing), which changes direction far more slowly than oil.
 
 ## 6. The 1970s — what a long inflation does
 
@@ -166,15 +172,18 @@ mark: 1974-10-03 | 1974 low
 caption: Fourteen years of going nowhere in nominal terms, while yields climbed to almost 16%.
 ```
 
-From the late-1968 high (about 108) to August 1982 (about 102), **the S&P 500
-price index went nowhere for almost fourteen years**. On the way it fell
-nearly half, from January 1973 to the October 1974 low. Dividends added a few
-percent a year. But consumer prices nearly tripled over the same span. So
-**after inflation, stock holders lost a large part of their purchasing
-power**. The 10-year yield rose from about 4% in 1965 to a peak near 15.8% in
-September 1981. By then the Fed, under Paul Volcker, was holding rates high
-enough to break inflation. The great bull market began in August 1982, as
-inflation and yields started a forty-year decline.
+The S&P 500 price index stood at about 108 at its late-1968 high. In August
+1982 it was at about 102. **It went nowhere for almost fourteen years.** On
+the way it fell nearly half, from January 1973 to the October 1974 low.
+
+Dividends added a few percent a year. But consumer prices nearly tripled over
+the same span. So **after inflation, stock holders lost a large part of their
+purchasing power**.
+
+The long yield climbed the whole time. The 10-year yield was about 4% in 1965.
+It peaked near 15.8% in September 1981. By then the Fed, under Paul Volcker, was holding rates high enough to
+break inflation. The great bull market began in August 1982, as inflation and
+yields started a forty-year decline.
 
 The lesson is not "the 1970s will repeat". It is that **a long stretch of
 high, unstable inflation keeps valuations down for years**. The steady rise
@@ -198,10 +207,16 @@ mark: 2023-10-19 | 10-year near 5%
 caption: The soft CPI report released in November 2022 started the turn; the late-2023 fall in yields drove the year-end rally.
 ```
 
-From early October 2022 to the end of 2023, **the Nasdaq 100 (QQQ) rose about
-50%** and the S&P 500 total return about 32%. XLK rose about 56% in 2023
-alone, while XLE was flat — a full reversal of 2022's leadership. Yields did
-not fall straight away. The 10-year rose to almost 5% in October 2023, then
+The leadership of 2022 reversed in full:
+
+| | Period | Change |
+|---|---|---|
+| Nasdaq 100 (QQQ) | early October 2022 to end of 2023 | about +50% |
+| S&P 500, total return | early October 2022 to end of 2023 | about +32% |
+| Technology (XLK) | 2023 | about +56% |
+| Energy (XLE) | 2023 | flat |
+
+Yields did not fall straight away. The 10-year rose to almost 5% in October 2023, then
 dropped to about 3.9% by year end. That final drop fuelled a sharp
 November–December rally.
 
@@ -267,10 +282,12 @@ mark: 2022-06-17 | Nifty 2022 low
 caption: While Brent spiked to about $128, the Nifty fell about 16% from its January high; it recovered as crude eased.
 ```
 
-In the app's stored prices, Brent went from about $51 at the start of 2021 to
-a closing high of about $128 on 8 March 2022. The Nifty 50 fell about 16.5%
-from its January 2022 high to its June 2022 low. USD/INR moved from about
-74.5 to above 82 over 2022 (the rupee lost about 11% against the dollar).
+| | Move |
+|---|---|
+| Brent crude | about $51 at the start of 2021 to a closing high of about $128 on 8 March 2022 |
+| Nifty 50 | about −16.5% from its January 2022 high to its June 2022 low |
+| USD/INR | about 74.5 to above 82 over 2022 (the rupee lost about 11% against the dollar) |
+
 India's CPI ran above the RBI's 6% upper band for much of 2022. The RBI
 raised its repo rate from May 2022, after the Fed had begun.
 
@@ -285,12 +302,12 @@ Upstream producers, which pump the oil, gain.
 2. **Mark CPI days.** Avoid new breakouts the day before a US CPI release.
    Trade smaller or tighten stops in rate-sensitive growth stocks (for India
    CPI, in financials).
-3. **Read leadership on the Sectors page.** While inflation is high, energy
-   and materials groups climb the RS table. Let the screens find those
-   leaders rather than fighting them by buying "cheap" tech.
-4. **Watch the strip.** A sharp jump in oil or the 10-year on Markets →
-   Breadth, on a day of weak breadth, is a reason to slow down. Periods of
-   high inflation are volatile: hold smaller and fewer positions.
+3. **Read sector leadership.** While inflation is high, energy and materials
+   groups rise in relative strength. Buy those leaders rather than fighting
+   them by buying "cheap" tech ([sector rotation](learn-strat-sector-rotation.md)).
+4. **Watch oil and the 10-year.** A sharp jump in either, on a day of weak
+   breadth, is a reason to slow down. Periods of high inflation are volatile:
+   hold smaller and fewer positions.
 5. **India:** a weak monsoon plus rising Brent and a falling rupee is the mix
    that pushes the RBI towards hikes and pulls foreign money out.
 
@@ -320,10 +337,10 @@ Upstream producers, which pump the oil, gain.
 - [ ] Last US CPI and core CPI: rising or falling on a 3- and 6-month basis?
 - [ ] Next US CPI date — which open positions are exposed to it?
 - [ ] What did India's last CPI show, and is it inside the RBI's 2–6% band?
-- [ ] WTI and Brent on the macro strip: trending, spiking or calm?
+- [ ] WTI and Brent: trending, spiking or calm?
 - [ ] US 10-year: rising or falling over the past month?
-- [ ] Sectors page: are energy and materials groups rising in RS, and is
-      technology falling? Which quadrant are they in?
+- [ ] Are energy and materials groups rising in relative strength, and is
+      technology falling?
 - [ ] India: monsoon progress, vegetable prices, USD/INR trend
 
 ## Further reading

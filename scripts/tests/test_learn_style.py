@@ -48,18 +48,7 @@ MAX_NUMBERS_PER_SENTENCE = 3
 IN_SHORT_WITHIN_LINES = 20      # the "In short" block must start this close to the top
 IN_SHORT_BULLETS = (3, 5)
 
-NOT_YET_CONVERTED = {
-    "learn-bases", "learn-candlestick-patterns", "learn-chart-patterns", "learn-fund-earnings",
-    "learn-fund-quality", "learn-fund-valuation", "learn-health-breadth", "learn-health-distribution",
-    "learn-health-trend", "learn-health-volatility", "learn-macro-calendar", "learn-macro-commodities",
-    "learn-macro-currencies", "learn-macro-cycle", "learn-macro-inflation", "learn-macro-liquidity-credit",
-    "learn-macro-rates", "learn-macro-yield-curve", "learn-price-indicators", "learn-price-oscillators",
-    "learn-price-rs", "learn-price-stages", "learn-price-volume", "learn-process-biases",
-    "learn-process-journal", "learn-process-plan", "learn-risk-expectancy", "learn-risk-portfolio",
-    "learn-risk-sizing", "learn-risk-stops-exits", "learn-sectors-groups", "learn-start-here",
-    "learn-supply-demand", "learn-system-filters",
-    "learn-test-backtesting", "learn-vcp",
-}
+NOT_YET_CONVERTED: set[str] = set()     # every guide meets the standard; keep it that way
 
 APP_REFERENCES = [
     r"\bthis app\b", r"\bthe app\b", r"\bapp's\b", r"\bin the app\b", r"Where this shows",

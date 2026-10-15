@@ -1,39 +1,54 @@
 # VCP — the volatility contraction pattern
 
-Learning material: Mark Minervini's volatility contraction pattern — what it
-is, why it works when it does, how to read one on a chart step by step, where
-to buy and where the stop goes, the usual mistakes, and how this app detects
-it. Read [learn-bases.md](learn-bases.md) first: a VCP is a particular way of
-looking at a base.
+**In short**
 
-**Where this shows up in the app.** The VCP is the entry pattern of the
-`minervini` strategy (Strategies → Minervini). It is detected by the code in
-`scripts/swing_screener/core/vcp_spec.py`. Every threshold below is a named
-setting there and is shown on the Strategies page. The exact rules are in
-[minervini-backtest-spec.md](minervini-backtest-spec.md) §5–6.
+- A volatility contraction pattern (VCP) is a base in which each pullback is smaller than the one before, volume dries up, and the price ends in a tight area near the high.
+- The idea: each smaller pullback means fewer sellers are left. When almost none remain, a little buying can push the price through the top.
+- The buy point is the pivot, the high of the last tight area. The stop goes just under that area's low, so the risk is usually small.
+- Measure every VCP you study as a "footprint": weeks, deepest and last pullback, and number of pullbacks.
+- Strict VCPs are rare, and in broad data the shape alone did not beat other breakouts. Use it to time a low-risk entry in a stock you already have reasons to own.
+
+This guide is about reading the pattern. A VCP is a particular way of looking at a base, so read [learn-bases](learn-bases.md) first. For the full trading method built on it, see [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
 
 ---
 
-## 1. The idea in one paragraph
+## 1. The idea
 
-A stock in a strong uptrend pauses. The first pullback is the biggest — say
-25%. That is when the most holders take profits and the most nervous holders
-sell. Buyers step in and the price rallies. Then sellers return, but **fewer
-of them**: the second pullback is only 12%. Then 6%. Then 3%. Each pullback
-(each "contraction") is smaller, because the shares for sale are being used
-up while someone keeps buying. At the end, the price barely moves and volume
-is unusually low: the sellers have run out. Then a modest amount of buying
-lifts the stock through the top of that last tight range. With few sellers
-left above, it can move fast.
+Lam Research, a maker of chip-making equipment, peaked at 53.31 (split-adjusted) at the end of March 2023. Over the next six weeks it pulled back four times:
+
+| Pullback | From | To | Depth |
+|---|---|---|---|
+| 1 | 53.31 (31 March) | 48.04 (6 April) | 9.9% |
+| 2 | 53.65 (20 April) | 49.34 (27 April) | 8.0% |
+| 3 | 53.15 (1 May) | 50.72 (4 May) | 4.6% |
+| 4 | 53.15 (8 May) | 51.21 (9 May) | 3.7% |
+
+In the five sessions before 15 May, volume was well below its 50-day average. On 15 May 2023 it closed at 55.23. That was above the high of 20 April 2023, 53.65.
+
+```series
+title: Lam Research — contractions of 10%, 8%, 5% and 4%, then a breakout
+from: 2023-02-15
+to: 2023-08-31
+tf: D
+line: us:LRCX | Lam Research (split-adjusted) | log
+line: us:LRCX@sma50 | 50-day average
+line: us:LRCX@vol | Volume | pane2 bars
+mark: 2023-04-06 | pullback 9.9%
+mark: 2023-04-27 | pullback 8.0%
+mark: 2023-05-09 | pullback 3.7%
+mark: 2023-05-15 | breakout
+caption: Each pullback was smaller than the one before, and volume faded into the last two. The pivot was the 20 April high, 53.65.
+```
+
+That is a VCP. A stock in a strong uptrend pauses. The first pullback is the biggest, because that is when the most holders take profits and the most nervous holders sell. Buyers step in and the price rallies. Then sellers return, but **fewer of them**, so the next pullback is smaller.
+
+Each pullback (each "contraction") is smaller because the shares for sale are being used up while someone keeps buying. At the end, the price barely moves and volume is unusually low: the sellers have run out. Then a modest amount of buying lifts the stock through the top of that last tight range. With few sellers left above, it can move fast.
 
 ```pattern
 vcp
 ```
 
-That is the whole pattern: **the swings get smaller from left to right,
-volume dries up, and the price ends in a tight area near the high.** It is
-less a new shape than the common core of every good base. A cup with handle
-is a VCP with two contractions. A high tight flag is a VCP with one.
+That is the whole pattern. **The swings get smaller, volume dries up, and the price ends in a tight area near the high.** It is less a new shape than the common core of every good base. A cup with handle is a VCP with two contractions. A high tight flag is a VCP with one.
 
 ## 2. Anatomy
 
@@ -48,107 +63,79 @@ is a VCP with two contractions. A high tight flag is a VCP with one.
 
 ### The footprint
 
-Minervini summarises a VCP in one line, e.g. **"20W 32/3 4T"**:
+Minervini summarises a VCP in one short line called a footprint. It has three parts:
 
-- **20W** — the base lasted 20 weeks
-- **32/3** — the deepest contraction was 32%, the final one 3%
-- **4T** — four contractions
+| Footprint | Example | Meaning |
+|---|---|---|
+| Weeks | 20W | the base lasted 20 weeks |
+| Deepest / final contraction | 32/3 | the deepest contraction was 32%, the final one 3% |
+| Number of contractions | 4T | four contractions |
+| Written together | 20W 32/3 4T | the whole footprint |
 
-Writing every base you study this way is good practice. It makes you measure
-instead of guessing by eye, and it lets you compare bases with each other.
+Lam Research's base lasted about eight weeks, with four contractions. Its deepest was 10% and its last 4%. Writing every base you study this way is good practice. It makes you measure instead of guessing by eye, and it lets you compare bases with each other.
 
 ## 3. The rules of thumb
 
-| Rule | Typical value | In this app (defaults) |
+| Rule | Typical value | Common exact version |
 |---|---|---|
-| Stage 2 uptrend | Trend Template passes | Conditions M1–M8, plus RS rating ≥ 70 in the backtest |
-| Prior advance into the base | 30%+ | ≥ 30% above the prior 126-session low |
+| Stage 2 uptrend | Trend Template passes | All its conditions, often with an RS rating of 70 or more |
+| Prior advance into the base | 30%+ | Base high ≥ 30% above the lowest low of the prior 126 sessions |
 | Base length | 3–65 weeks | 15–325 sessions |
 | Number of contractions | 2–6 (usually 2–4) | 2–6 |
 | First contraction | ≤ ~35% (up to ~50% in a bear market) | ≤ 35% |
 | Each contraction vs the previous | Roughly half | ≤ 0.8 × the previous |
-| Final contraction | ≤ ~10%, ideally under 5–6% | Tight area and last contraction ≤ 10% |
+| Final contraction | ≤ ~10%, ideally under 5–6% | Last contraction and tight area ≤ 10% |
 | Pivot location | Near the top of the base | Pivot ≥ 0.9 × base high |
 | Volume in the tight area | Well below average | ≤ 0.7 × the 50-day average |
 
-The two that matter most are **pullbacks that get shallower** and **volume
-that dries up**. A base can be any length and any of the named shapes. If its
-pullbacks are not shrinking and its volume is not drying up, it is not a VCP.
+The two that matter most are **pullbacks that get shallower** and **volume that dries up**. A base can be any length and any of the named shapes. If its pullbacks are not shrinking and its volume is not drying up, it is not a VCP.
 
 ## 4. Reading one on a chart, step by step
 
 Use the weekly chart to see the base and the daily chart to measure it.
 
-1. **Check the stock first.** Stage 2, strong RS (80+ is better), a real prior
-   advance, a healthy industry group, and a market that is not falling apart.
-   A perfect VCP in a weak stock or a weak market is still a low-odds trade.
-2. **Mark the base high** — the peak that the stock has not closed clearly
-   above since.
-3. **Measure each pullback.** Go from each swing high to the lowest low
-   before the next rally, as % of that high. Ignore wiggles of a percent or
-   two. Count only real reversals. (In this app, a reversal must be at least
-   ~1.5 ATRs to count.)
-4. **Check that the sequence shrinks.** 25 → 12 → 6 is a VCP. 10 → 15 → 8 is
-   not. A pullback *deeper* than the one before means the sellers came back.
-5. **Check volume.** It should fade as the pullbacks shrink, and be at its
-   lowest in the final tight area. Down days on heavy volume late in the base
-   are a warning.
-6. **Find the tight area.** Several sessions near the top of the base with
-   small ranges and closes bunched together. On the weekly chart this often
-   looks like two or three weeks closing at almost the same price.
-7. **Mark the pivot and the stop.** The pivot is the tight area's high. The
-   stop sits just under the tight area's low. Check the distance: if the stop
-   is more than about 8% below the pivot, the base is not tight enough to buy
-   at the pivot.
+1. **Check the stock first.** Stage 2, strong RS (80 or more is better), a real prior advance, a healthy industry group, and a market that is not falling apart. A perfect VCP in a weak stock or a weak market is still a low-odds trade.
+2. **Mark the base high**: the peak that the stock has not closed clearly above since.
+3. **Measure each pullback.** Go from each swing high to the lowest low before the next rally, as a percentage of that high. Ignore wiggles of a percent or two, and count only real reversals. A common filter is to ignore any reversal smaller than about 1.5 times the ATR.
+4. **Check that the sequence shrinks.** 25 → 12 → 6 is a VCP. 10 → 15 → 8 is not. A pullback *deeper* than the one before means the sellers came back.
+5. **Check volume.** It should fade as the pullbacks shrink, and be at its lowest in the final tight area. Down days on heavy volume late in the base are a warning.
+6. **Find the tight area.** Several sessions near the top of the base with small ranges and closes bunched together. On the weekly chart this often looks like two or three weeks closing at almost the same price.
+7. **Mark the pivot and the stop.** The pivot is the tight area's high; the stop sits just under the tight area's low. Check the distance. If the stop is more than about 8% below the pivot, the base is not tight enough to buy at the pivot.
 8. **Wait.** Nothing happens until the price crosses the pivot.
 
 ## 5. Where to buy
 
 ### The pivot buy (the default)
 
-Buy as the price moves through the pivot, **on volume** — ideally 40–50% or
-more above the 50-day average — and **not more than about 5% above the
-pivot**. Above that, the stop is too far away and you are chasing the price.
+Lam Research crossed its pivot of 53.65 on 15 May 2023. A buy-stop order at 53.70 would have filled that day. Volume was 1.36 times its 50-day average, just short of the usual guide. The stop went under the last low of 51.21, a risk of about 5%.
 
-This app tests two ways of doing it:
+The rule: buy as the price moves through the pivot, **on volume**. Ideally volume is 40–50% or more above the 50-day average. Do **not** buy more than about 5% above the pivot. Above that, the stop is too far away and you are chasing the price.
 
-| Setup | Entry | Trade-off |
+There are two common ways to do it:
+
+| Entry | How | Trade-off |
 |---|---|---|
-| **MV-01 — confirmed breakout** | The day closes above the pivot on 1.4× volume, in the upper half of its range; buy at the next morning's open | Fewer false starts; worse price; very few signals |
-| **MV-02 — buy-stop** | An order placed just above the pivot, which buys automatically once the price reaches it; it fills only on a session that closes at or above it | Better price; more failed breakouts |
+| **Confirmed breakout** | Wait for a day that closes above the pivot on at least 1.4 times average volume, in the upper half of its range; buy at the next open | Fewer false starts; a worse price; few signals |
+| **Buy-stop** | Place an order just above the pivot, which buys automatically once the price reaches it | A better price; more failed breakouts |
 
 ### The cheat entries (inside the base)
 
-Minervini also buys *before* the pivot when a smaller shelf forms inside the
-base. A shelf is a few quiet sessions with their own small high:
+Minervini also buys *before* the pivot when a smaller shelf forms inside the base. A shelf is a few quiet sessions with their own small high:
 
-- **Cheat ("3C"), MV-04** — a shelf in the middle third of the base, bought as
-  the price clears the shelf high.
-- **Low cheat, MV-03** — the same, in the lower third. It is riskier, and off
-  by default here.
+- **Cheat ("3C")** — a shelf in the middle third of the base, bought as the price clears the shelf high.
+- **Low cheat** — the same, in the lower third. It is riskier.
 
-The appeal is a much closer stop (the shelf low) and a lower price. The cost
-is that the base is not finished, so more of these fail.
+The appeal is a much closer stop (the shelf low) and a lower price. The cost is that the base is not finished, so more of these fail.
 
 ## 6. Where the stop goes, and what happens next
 
-- **Initial stop:** just below the tight low (0.5% under it here). Never more
-  than 8% below your buy price; 10% is the absolute limit. If the chart needs
-  a wider stop, don't take the trade. Don't widen the stop.
-- **Size the position from the stop:** risk about 1% of the account per
-  trade. A tight VCP stop is what lets you hold a meaningful position while
-  risking little.
-- **Failed breakout:** if the price closes back under the pivot within the
-  first few days, the breakout has failed. Get out. Good breakouts usually
-  keep going without falling back much.
-- **Protect gains:** once the trade is up 2–3× the initial risk, move the stop
-  to your buy price (breakeven). It is common to sell part of the position
-  while the price is still rising (e.g. a third at 3× the risk).
-- **Exit on a climax or a trend break:** a run of unusually large up days late
-  in a move, or a close under the 50-day on heavy volume.
+- **Initial stop:** just below the tight low. Never more than about 8% below your buy price; 10% is the absolute limit. If the chart needs a wider stop, don't take the trade, and never widen the stop.
+- **Size the position from the stop:** risk about 1% of the account per trade (see [learn-risk-sizing](learn-risk-sizing.md)). A tight VCP stop is what lets you hold a meaningful position while risking little.
+- **Failed breakout:** if the price closes back under the pivot within the first few days, the breakout may be failing. Good breakouts usually keep going without falling back much. See [learn-strat-failed-breakouts](learn-strat-failed-breakouts.md).
+- **Protect gains:** once the trade is up two to three times the initial risk, move the stop to your buy price (breakeven). It is common to sell part of the position while the price is still rising, for example a third at three times the risk.
+- **Exit on a climax or a trend break:** a run of unusually large up days late in a move, or a close under the 50-day average on heavy volume.
 
-The `minervini` strategy's exit rules (EX-01 to EX-07) implement exactly these;
-see its Strategies page.
+Lam Research reached twice its risk within three sessions, so the stop moved to breakeven. Its first close below the 50-day average came in mid-August 2023, about 20% above the entry.
 
 ## 7. Common mistakes
 
@@ -164,66 +151,42 @@ see its Strategies page.
 | Trading the pattern in a stock that is not a leader | A stock with weak RS lacks the buying demand needed to break out |
 | Holding through a failed breakout | The pattern was wrong; the loss only grows |
 
-## 8. How this app detects a VCP
+## 8. Detecting a VCP by rule
 
-The app's VCP check (`core/vcp_spec.py`) tests the rules in order. It records
-the first one that fails (in the `vcp_fail` column), so you can see *why* a
-stock is not a VCP:
+If you write a program to find VCPs, two details matter. They are where a computer and a human reading the same chart differ.
 
-| Rule | Checks |
-|---|---|
-| VCP-01 | Prior advance ≥ 30% into the base high |
-| VCP-02 | Base length 15–325 sessions |
-| VCP-03 | Trend Template on the base-high bar; moving-average structure every day since |
-| VCP-04 | 2–6 contractions |
-| VCP-05 | First contraction ≤ 35% |
-| VCP-06 | Each contraction ≤ 0.8 × the previous |
-| VCP-08 | Final contraction and tight area ≤ 10% |
-| VCP-09 | Pivot ≥ 0.9 × base high |
-| VCP-10 | Tight-area volume ≤ 0.7 × average |
+**Contractions need a zig-zag whose threshold shrinks.** A zig-zag joins swing highs and lows, ignoring any reversal smaller than a set threshold. One fixed threshold cannot catch both a 25% first contraction and a 3% last one.
 
-Two details are worth knowing, because they are where a computer and a human
-reading the same chart differ:
+So start the threshold wide, then narrow it to a fraction of the contraction just measured. Do not let it go below about 1.5 times the ATR, because a smaller "reversal" is just one bar's noise.
 
-- **Contractions are found with a zig-zag whose threshold shrinks.** A
-  zig-zag joins swing highs and lows, ignoring any reversal smaller than a
-  set threshold. One fixed threshold cannot catch both a 25% first
-  contraction and a 3% last one. So here the threshold starts wide, then
-  narrows to a fraction of the contraction just measured. It never goes
-  below ~1.5 ATRs, because a smaller "reversal" is just one bar's noise.
-- **No hindsight.** A swing high is only known 5 sessions later. The
-  breakout is judged against the pivot as it stood the day *before*, so the
-  breakout bar cannot move its own pivot.
+**No hindsight.** A swing high is only known some sessions later; with a five-bar rule, five sessions later. Judge the breakout against the pivot as it stood the day *before*, so the breakout bar cannot move its own pivot.
+
+A good detector also records the first rule a stock fails, such as "contractions not shrinking" or "volume not drying up". That shows you *why* a chart is not a VCP, which is how you learn to see one.
 
 ## 9. What the evidence says
 
-The VCP is one of the best-known setups in trading, and this project tested it
-hard. Here is the honest summary. It was measured on the spec's original
-rules, before the strategy had version numbers. Later versions changed some
-rules; their results are on its Strategies page under Backtests.
+**Minervini's record.** He won the US Investing Championship in 1997 and describes his methods and results in his books. That shows the method can be traded well by a skilled trader. It does not show how often the pattern works for others.
 
-- **Strictly defined, complete VCPs are rare** on daily data. Confirmed
-  breakouts (MV-01) gave only 9 trades in India and 26 in the US over 16 years.
-- **The buy-stop version produced no edge** from 2010. It was about
-  break-even per trade in India and slightly negative in the US, and far
-  behind both indexes. Most trades ended as failed breakouts — small losses
-  that added up.
-- **Changing the thresholds did not rescue it.** No setting at either end of
-  any parameter's range held up both before and after 2020
-  ([India](minervini-spec-sensitivity-india.md), [US](minervini-spec-sensitivity-us.md)).
-- **Adding Minervini's earnings and sales tests did not help** over 2022–2026
-  either (see the research log, [momentum-trend-research.md](momentum-trend-research.md)).
-- **Context helped more than shape.** In the earlier, looser Minervini
-  version (since retired), skipping stocks in weak industry groups improved
-  results in both markets.
+**Published research.** No academic study tests the VCP itself. Lo, Mamaysky and Wang (2000) found that computer-detected chart patterns carry a little information about future returns, far less than practitioners claim. The research behind momentum and the 52-week high supports the setting a VCP must sit in: a strong stock near its highs (see [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md)).
 
-What this does *not* show: that VCP trading by personal judgement cannot
-work. Minervini's own results include judgement that rules cannot capture —
-reading the market, knowing the stock's story, and knowing when not to
-trade. What it does show is that **the shape alone, applied by fixed rules,
-is not an edge**. Treat the VCP as a way to time a low-risk entry in a stock
-you already have reasons to own. Its tight stop tells you quickly when you
-are wrong.
+**An event study on stored data.** The SEPA guide measured mechanical base breakouts on daily prices for today's NSE and US stock lists, 2010 to 2026. It then picked out the ones that met a strict VCP test. Outcome: did the price reach +20% before falling 8%, within 60 sessions?
+
+| | India: +20% first | India: median 60-session return | US: +20% first | US: median 60-session return |
+|---|---|---|---|---|
+| All base breakouts | 29.5% | +2.6% | 18.0% | +1.6% |
+| VCP breakouts | 27.6% | +2.0% | 19.1% | +1.4% |
+
+What this shows:
+
+- **Strict VCPs are rare.** About 1.5% of Indian and 1.0% of US breakouts met the mechanical test.
+- **The shape alone added little.** VCP breakouts did not clearly beat other breakouts in either market.
+- **Volume dry-up made no visible difference** in that study.
+
+The method note, the stop-based results and the caveats are in [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md).
+
+**Limits.** A rule-based test cannot capture the judgement in Minervini's own trading: reading the market, knowing the stock's story, and knowing when not to trade. The study uses today's stock lists (survivorship bias), no costs, and no earnings or relative-strength filters.
+
+What it does show is that **the shape alone, applied by fixed rules, is not an edge**. Treat the VCP as a way to time a low-risk entry in a stock you already have reasons to own. Its tight stop tells you quickly when you are wrong.
 
 ## 10. Checklist
 
@@ -240,9 +203,7 @@ are wrong.
 
 ## Further reading
 
-- Mark Minervini, *Trade Like a Stock Market Wizard* and *Think & Trade Like a
-  Champion* — the VCP, the footprint, pivots, cheat entries and risk control.
-- [minervini-backtest-spec.md](minervini-backtest-spec.md) — every rule above
-  as testable conditions.
-- [learn-chart-patterns.md](learn-chart-patterns.md) — the named bases, with
-  drawings.
+- Mark Minervini, *Trade Like a Stock Market Wizard* and *Think & Trade Like a Champion* — the VCP, the footprint, pivots, cheat entries and risk control.
+- Andrew Lo, Harry Mamaysky and Jiang Wang, "Foundations of Technical Analysis", *Journal of Finance* (2000).
+- [learn-chart-patterns](learn-chart-patterns.md) — the named bases, with drawings.
+- [learn-strat-vcp-sepa](learn-strat-vcp-sepa.md) — the full SEPA method, with worked trades.
