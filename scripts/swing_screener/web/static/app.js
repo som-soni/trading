@@ -4807,7 +4807,9 @@ const guideLabel = (x) => { const t = guideTitle(x); return / — a field guide$
  *  for the topic, "Supply and demand") is just "Field guide" */
 const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerCase().replace(/&/g, "and");
   return /: field guide$/.test(l) || norm(l) === norm(Learn.FAMILY_LABEL[t] || "") ? "Field guide" : l; };
-const LEARN_TOPICS = ["start", "macro", "health", "sectors", "fundamentals", "risk", "process", "price", "system", "testing", "candles", "charts", "levels"];
+// the learning path: context (macro, the market) -> reading a stock (price, candles, patterns, levels, fundamentals)
+// -> trading it (risk, process) -> building and testing a system of your own
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles", "charts", "levels", "fundamentals", "risk", "process", "system", "testing"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;
