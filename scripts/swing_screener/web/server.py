@@ -979,6 +979,16 @@ def macro_strip(market: str = "india"):
     return {"market": market, "series": macro.latest(market)}
 
 
+@app.get("/api/macro/analysis")
+def macro_analysis(market: str = "india"):
+    """The Today page's macro section: the strip's series (as /api/macro) plus the rule-based read of them
+    (marketdata/macro.py `analysis`): supportive / headwind signals, a label, extreme levels and unusual moves."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..marketdata import macro
+    return {"market": market, "series": macro.latest(market), "analysis": macro.analysis(market)}
+
+
 # breadth_daily as single series for the guides' ```series charts (`us:breadth.pct50`); counts, or % of the day's n
 BREADTH_FIELDS = {
     "pct50": "above50 * 100.0 / n", "pct5": "above5 * 100.0 / n", "highs": "highs", "lows": "lows", "hl": "highs - lows",

@@ -1780,14 +1780,41 @@ async function macroStrip(el, mkt) {
   const d = await api(`/api/macro?market=${mkt}`).catch(() => null);
   if (!el.isConnected) return;
   if (!d?.series?.length) { el.remove(); return; }
+  el.innerHTML = macroTiles(d.series);
+}
+/** the strip's tiles, shared by the Breadth page and Today's macro section */
+function macroTiles(series) {
   const num = (v, dp = 2) => v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
   const chg = (v, u) => (v == null ? "—" : `<span class="${v >= 0 ? "pos" : "neg"}">${v > 0 ? "+" : ""}${u === "bp" ? `${num(v, Math.abs(v) < 10 ? 1 : 0)}bp` : `${num(v, Math.abs(v) < 10 ? 2 : 1)}%`}</span>`);
   const val = (x) => (x.unit === "%" ? `${num(x.close)}%` : x.unit === "₹" ? `₹${num(x.close)}` : `${num(x.close)}${x.unit === "index" ? "" : ` <span class="muted small">${esc(x.unit)}</span>`}`);
-  el.innerHTML = d.series.map((x) => `<div class="mtile" title="${esc(x.label)} — ${esc(x.why)} Last close ${esc(x.date)}.">
+  return series.map((x) => `<div class="mtile" title="${esc(x.label)} — ${esc(x.why)} Last close ${esc(x.date)}.">
       <div class="mt-l">${esc(x.short)}</div>
       <div class="mt-v">${val(x)}</div>
       <div class="mt-c"><span class="muted">1D</span> ${chg(x.d1, x.change_unit)} <span class="muted">1M</span> ${chg(x.m1, x.change_unit)}</div>
       ${sparkSvg(x.spark, 120, 24)}</div>`).join("");
+}
+
+/** Today's macro card (/api/macro/analysis): the rule-based read of rates, the dollar, oil, credit, growth and
+ *  fear for this market (marketdata/macro.py `analysis`), laid out like the market card beside it — verdict,
+ *  signals with the numbers behind them, where levels stand against history — and the strip's tiles below. */
+const MACRO_CLS = { Supportive: "t-strong", "Mostly supportive": "t-pos", Mixed: "t-mixed", Cautious: "t-weak", Hostile: "t-neg" };
+async function macroSection(card, tiles, mkt) {
+  const d = await api(`/api/macro/analysis?market=${mkt}`).catch(() => null);
+  if (!card.isConnected) return;
+  const a = d?.analysis;
+  tiles.innerHTML = macroTiles(d?.series || []);
+  if (!a) {
+    card.innerHTML = tdHead(`Macro · ${esc(mktInfo(mkt).name)}`) + `<div class="muted small">${d ? "No macro series stored yet — they load with the daily <code>indexes</code> job." : "Could not load the macro read."}</div>`;
+    return;
+  }
+  const sig = a.signals.map((x) => tdSignal(x.ok, x.ok ? x.text : x.text_not, x.detail, x.why)).join("");
+  const hist = [...a.unusual.map((x) => `<li title="${esc(x.why)}"><b>${esc(x.name)}</b> <span class="muted">— ${esc(x.text)}</span> <span class="tag watch">unusual</span></li>`),
+    ...a.extremes.map((x) => `<li><b>${esc(x.name)}</b> <span class="muted">— ${esc(x.text)}</span></li>`)].join("");
+  card.innerHTML = tdHead(`Macro · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${prettyDate(a.date)}</span>${info(`<p>${esc(a.doc)}</p><p>Macro moves slowly and sets the backdrop, not the trade: a headwind argues for smaller size and tighter selection, not for selling a working setup. Hover a signal or a tile for why it matters.</p>`)}`)
+    + tdVerdict(MACRO_CLS[a.label], a.label, `${a.score} of ${a.of} signals supportive`)
+    + `<ul class="td-sig">${sig}</ul>`
+    + (hist ? `<div class="td-sub">Levels, against history since 2015</div><ul class="td-rates">${hist}</ul>` : "")
+    + `<div class="td-foot"><a class="small" href="#/learn/macro-rates">Macro guides →</a></div>`;
 }
 
 /** a sparkline of a group's RS line (values relative to its first point) */
@@ -4570,7 +4597,7 @@ async function runsPage(alive, runId) {
 /** Top-level sections in the order of a review — market, ideas, the stock, what I track, does it work —
  *  each with its pages (shown inline in the header, next to the open section, when there is more than one). */
 const SECTIONS = [
-  { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, today's setups, new picks and data health"]] },
+  { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, the macro backdrop, today's setups, new picks and data health"]] },
   { key: "markets", label: "Markets", pages: [["postmarket", "Post-market", "The day's recap after the close"], ["breadth", "Breadth", "How healthy is the market — risk, not direction"],
     ["sectors", "Sectors", "Leading sectors, industry groups and their leaders"], ["movers", "Movers", "Top gainers and losers"]] },
   { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"]] },
@@ -4975,9 +5002,15 @@ async function learnGuide(alive, guide) {
 
 // ------------------------------------------------------------ Today: the daily starting point
 
+/** Today's cards share one shape: a header (title left; date, counts and links right), a verdict line, ✓/✗
+ *  signals with the number behind each, then "against history" notes and links at the foot. */
+const tdHead = (title, right = "") => `<div class="td-hh"><h3>${title}</h3><span class="spacer"></span>${right}</div>`;
+const tdVerdict = (cls, label, sub, note = "") => `<div class="td-tone"><span class="td-tl tl ${cls || ""}"></span><b>${esc(label)}</b><span class="muted small">${esc(sub)}</span></div>${note ? `<div class="muted small td-note">${esc(note)}</div>` : ""}`;
+const tdSignal = (ok, text, detail = "", why = "") => `<li class="${ok ? "pos" : "neg"}"${why ? ` title="${esc(why)}"` : ""}><span>${ok ? "✓" : "✗"} ${esc(text)}</span>${detail ? `<span class="muted">${esc(detail)}</span>` : ""}</li>`;
+
 /** Today: one page to start the day on, for the market chosen in the toggle — its verdict, whether its data
- *  can be trusted, today's tradeable setups and the new screener picks — each linking to its full page.
- *  Everything here is read from the pages' own endpoints, so it says exactly what they say. */
+ *  can be trusted, the macro read, today's tradeable setups and the new screener picks — each linking to its
+ *  full page. Everything here is read from the pages' own endpoints, so it says exactly what they say. */
 async function todayPage(alive, mkt) {
   mkt = pageMarket(mkt);
   document.title = "Today · Trading";
@@ -4992,21 +5025,20 @@ async function todayPage(alive, mkt) {
   // ---- 1. the market: post-market tone, its six signals, and breadth's base rates
   const marketCard = (m) => {
     const p = post[m.key]?.payload, h = post[m.key]?.history?.[0], b = breadth[m.key];
-    if (!p) return `<div class="sec-card td-mkt"><div class="td-mh"><b>${m.flag} ${esc(m.name)}</b></div><div class="muted small">No post-market analysis yet — it runs with the market close routine.</div></div>`;
+    if (!p) return `<div class="sec-card td-card">${tdHead(`Market · ${esc(m.name)}`)}<div class="muted small">No post-market analysis yet — it runs with the market close routine.</div></div>`;
     const t = p.tone || {};
-    const sig = (t.signals || []).map((x) => `<li class="${x.ok ? "pos" : "neg"}">${x.ok ? "✓" : "✗"} ${esc(x.ok ? x.text : x.text_not || x.text)}</li>`).join("");
-    const rates = (b?.cards || []).filter((c) => c.text).slice(0, 2).map((c) => `<li><b>${esc(c.title)}</b> ${esc(c.value ?? "")} — <span class="muted">${esc(c.text)}</span></li>`).join("");
-    return `<div class="sec-card td-mkt">
-      <div class="td-mh"><b>${m.flag} ${esc(m.name)}</b>${freshBadge(m.key)}</div>
-      <div class="td-tone"><span class="td-tl tl ${TONE_CLS[t.label] || ""}"></span><b>${esc(t.label || "—")}</b>
-        <span class="muted small">${t.score ?? "?"} of ${t.of ?? 6} signals · ${prettyDate(p.date)}${h ? ` · ${h.up?.toLocaleString()} up / ${h.down?.toLocaleString()} down` : ""}</span></div>
-      ${toneBaseRate(post[m.key]?.history, p.date, t.score) ? `<div class="muted small td-sub">${toneBaseRate(post[m.key].history, p.date, t.score)}.</div>` : ""}
+    const base = toneBaseRate(post[m.key]?.history, p.date, t.score);
+    const sig = (t.signals || []).map((x) => tdSignal(x.ok, x.ok ? x.text : x.text_not || x.text)).join("");
+    const rates = (b?.cards || []).filter((c) => c.text).slice(0, 2).map((c) => `<li><b>${esc(c.title)}</b> ${esc(c.value ?? "")} <span class="muted">— ${esc(c.text)}</span></li>`).join("");
+    return `<div class="sec-card td-card">
+      ${tdHead(`Market · ${esc(m.name)}`, `<span class="muted small">${prettyDate(p.date)}</span>`)}
+      ${tdVerdict(TONE_CLS[t.label], t.label || "—", `${t.score ?? "?"} of ${t.of ?? 6} signals${h ? ` · ${h.up?.toLocaleString()} up / ${h.down?.toLocaleString()} down` : ""}`, base ? `${base}.` : "")}
       <ul class="td-sig">${sig}</ul>
-      ${rates ? `<div class="muted small td-sub">Breadth, against history since 2015</div><ul class="td-rates small">${rates}</ul>` : ""}
-      <a class="small td-more" href="#/postmarket/${m.key}">Post-market recap →</a> <a class="small td-more" href="#/breadth/${m.key}">Breadth →</a></div>`;
+      ${rates ? `<div class="td-sub">Breadth, against history since 2015</div><ul class="td-rates">${rates}</ul>` : ""}
+      <div class="td-foot"><a class="small" href="#/postmarket/${m.key}">Post-market recap →</a><a class="small" href="#/breadth/${m.key}">Breadth →</a></div></div>`;
   };
 
-  // ---- 2. data health: can today's numbers be trusted?
+  // ---- 2. data health: can today's numbers be trusted? A one-line banner; a list only when something is wrong
   // jobs and runs for this market (or for every market) — another market's work is not this page's business
   const ours = (x) => !x.market || x.market === "all" || x.market === mkt;
   const issues = [];
@@ -5022,10 +5054,12 @@ async function todayPage(alive, mkt) {
   } else issues.push("Could not reach the status check.");
   const running = (status?.queue?.running_all || (status?.queue?.running ? [status.queue.running] : [])).filter(ours);
   const waiting = (status?.queue?.queued || []).filter(ours).length;
-  const health = `<div class="sec-card td-health ${issues.length ? "warn" : "ok"}">
-      <div class="td-hh"><b>${issues.length ? `Data health · ${esc(mktInfo(mkt).name)} — check before trading` : `Data health · ${esc(mktInfo(mkt).name)} — all current`}</b><span class="spacer"></span><a class="small" href="#/status">System status →</a></div>
-      ${issues.length ? `<ul class="td-issues">${issues.map((x) => `<li>${x}</li>`).join("")}</ul>` : `<div class="muted small">Prices, breadth and the screens are up to date.</div>`}
-      ${running.length || waiting ? `<div class="muted small">${running.length ? `Running: ${running.map((x) => esc(`${(x.targets || []).join(" + ")}${x.market && x.market !== "all" ? ` · ${mktInfo(x.market).name}` : ""}${x.lane && x.lane !== "main" ? ` (${x.lane} lane)` : ""}`)).join(", ")}` : ""}${waiting ? `${running.length ? " · " : ""}${waiting} waiting in the queue` : ""}</div>` : ""}</div>`;
+  const queueLine = running.length || waiting ? `${running.length ? `Running: ${running.map((x) => esc(`${(x.targets || []).join(" + ")}${x.market && x.market !== "all" ? ` · ${mktInfo(x.market).name}` : ""}${x.lane && x.lane !== "main" ? ` (${x.lane} lane)` : ""}`)).join(", ")}` : ""}${waiting ? `${running.length ? " · " : ""}${waiting} waiting in the queue` : ""}` : "";
+  const health = `<div class="td-health ${issues.length ? "warn" : "ok"}">
+      <div class="td-hl"><b>${issues.length ? "Data health — check before trading" : "Data current"}</b>
+        <span class="muted small">${issues.length ? "" : "prices, breadth and the screens are up to date"}${queueLine ? `${issues.length ? "" : " · "}${queueLine}` : ""}</span>
+        <span class="spacer"></span><a class="small" href="#/status">System status →</a></div>
+      ${issues.length ? `<ul class="td-issues">${issues.map((x) => `<li>${x}</li>`).join("")}</ul>` : ""}</div>`;
 
   // ---- 3. today's setups for the chosen market: what can be traded now
   const rows = setups?.rows || [];
@@ -5040,18 +5074,19 @@ async function todayPage(alive, mkt) {
   const pickChip = (x) => `<a class="chip-s" href="#/chart/${x.market}/${encodeURIComponent(x.symbol)}" title="${esc(x.name || "")} — ${esc((x.strategies || []).map((s) => `${s.strategy}: ${s.decision}`).join(" · "))}">${esc(bareSymbol(x.symbol))}</a>`;
 
   $view.innerHTML = pageHead("Today", { extra: marketSeg(mkt),
-      context: `<span class="muted small">${new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</span>${info("<p>Your starting point each day: how each market closed, whether the data behind everything is current, what can be traded today, and what is new on the screener list. Each part opens its full page.</p><p>The market toggle chooses the market for the whole page.</p>")}` })
-    + `<div class="td-grid">${marketCard(mktInfo(mkt))}${health}</div>
-    <div class="sec-card td-setups"><div class="td-hh"><h3>Today's setups · ${esc(mktInfo(mkt).name)}</h3>
-        <span class="muted small">${trade.length} tradeable · ${watchN} on watch</span><span class="spacer"></span><a class="small" href="#/strategies">All setups →</a></div>
+      context: `<span class="muted small">${new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</span>${info("<p>Your starting point each day: how each market closed, whether the data behind everything is current, the macro backdrop, what can be traded today, and what is new on the screener list. Each part opens its full page.</p><p>The market toggle chooses the market for the whole page.</p>")}` })
+    + `${health}<div class="td-grid">${marketCard(mktInfo(mkt))}
+      <div class="sec-card td-card" id="td-macro">${tdHead(`Macro · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div></div>
+    <div class="mstrip td-tiles" id="td-tiles"></div>
+    <div class="sec-card td-setups">${tdHead(`Today's setups · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${trade.length} tradeable · ${watchN} on watch</span><a class="small" href="#/strategies">All setups →</a>`)}
       ${setups?.behind ? `<div class="muted small td-warn">Newer prices have loaded since these runs — the decisions below were made on older bars.</div>` : ""}
       <div class="scr-top td-runs">${runChips || '<span class="muted small">No strategy runs yet for this market.</span>'}</div>
       <div id="td-tbl"></div></div>
-    <div class="sec-card td-picks"><div class="td-hh"><h3>Screener picks · ${esc(mktInfo(mkt).name)}</h3>
-        <span class="muted small">${mine.length} on the list${fresh.length ? ` · ${fresh.length} added in the latest run` : ""}</span><span class="spacer"></span><a class="small" href="#/watchlist/screener">Open the list →</a></div>
+    <div class="sec-card td-picks">${tdHead(`Screener picks · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${mine.length} on the list${fresh.length ? ` · ${fresh.length} added in the latest run` : ""}</span><a class="small" href="#/watchlist/screener">Open the list →</a>`)}
       ${fresh.length ? `<div class="muted small">New:</div><div class="scr-top">${fresh.slice(0, 40).map(pickChip).join("")}</div>`
         : `<div class="muted small">${mine.length ? "Nothing new in the latest run." : "Stocks a strategy marks tradeable or on watch collect here after each run."}</div>`}</div>`;
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/today/${b.dataset.v}`); });
+  macroSection($view.querySelector("#td-macro"), $view.querySelector("#td-tiles"), mkt);   // its own request: the page never waits on it
   const host = $view.querySelector("#td-tbl");
   if (!trade.length) { host.innerHTML = `<div class="muted small">${rows.length ? "No tradeable setups today — the names above are on watch." : ""}</div>`; return; }
   const cols = ["symbol", "name", "peer_group", "group_rs", "strategy", "decision", "setup", "price", "entry", "stop", "risk_pct", "target_r"];
