@@ -65,7 +65,8 @@ def _cagr(new, old, years):
 
 
 def _factors(dated_shares: list[tuple]) -> dict:
-    """{date: split factor} from (date, shares) oldest first — growth.split_factors on a share-count series."""
+    """{date: split factor} from (date, shares) oldest first — growth.split_factors on a share-count series
+    (the annual lines carry no EPS-implied count or comparative, so only the share count speaks)."""
     rows = [{"shares": s} for _, s in dated_shares]
     return {d: f for (d, _), f in zip(dated_shares, growth.split_factors(rows))}
 
@@ -131,8 +132,8 @@ def build(market: str, symbol: str, snap=None) -> dict:
     if not lines and not quarters:
         return out
 
-    # quarters (EPS on today's share basis, from the quarter rows' share counts)
-    qf = _factors([(r["period_end"], r.get("shares")) for r in quarters])
+    # quarters (EPS on today's share basis — the same factors as the metrics, growth.split_factors)
+    qf = dict(zip((r["period_end"] for r in quarters), growth.split_factors(quarters)))
     qdata = {}
     for e, vals in (lines.get("Q") or {}).items():
         p = _with_derived(vals)

@@ -135,14 +135,71 @@ def _quarters(eps: list, rev: list, ni: list | None = None, shares: list | None 
 
 
 def test_split_factors():
-    rows = _quarters([1] * 6, [1] * 6, shares=[100, 101, 202, 203, 204, 280])   # 1:1 bonus, then a 37% share issue
+    shares = [100, 101, 202, 203, 204, 280]                 # 1:1 bonus, then a 37% share issue
+    eps = [1.0, 1.0, 0.5, 0.5, 0.5, 0.4]
+    rows = _quarters(eps, [1] * 6, ni=[e * s for e, s in zip(eps, shares)], shares=shares)
     f = growth.split_factors(rows)
     assert f == [2.0, 2.0, 1.0, 1.0, 1.0, 1.0], f
+    # a misfiled share count in one quarter, while the count the EPS implies holds steady, is no split
+    shares = [100, 100, 700, 100, 100]
+    rows = _quarters([1.0] * 5, [1] * 5, ni=[100.0] * 5, shares=shares)
+    assert growth.split_factors(rows) == [1.0] * 5
+
+
+def _sec(eps, ni, shares, prior=None, start=D(2022, 3, 31)):
+    rows = _quarters(eps, [100] * len(eps), ni=ni, shares=shares, start=start)
+    for r, p in zip(rows, prior or [None] * len(rows)):
+        r.update(source="sec_edgar", eps_prior=p)
+    return rows
+
+
+def test_split_ratios_beyond_the_common_ones():
+    # Chipotle-style 50:1 and Apple-style 7:1 (the share count jumps 6.88x: diluted weighted shares drift)
+    f = growth.split_factors(_quarters([5, 5, 0.1, 0.1], [1] * 4, ni=[150, 150, 150, 150], shares=[30, 30, 1500, 1500]))
+    assert f == [50.0, 50.0, 1.0, 1.0], f
+    f = growth.split_factors(_quarters([7, 7, 1, 1], [1] * 4, ni=[6160, 6160, 6055, 6100], shares=[880, 880, 6055, 6100]))
+    assert f == [7.0, 7.0, 1.0, 1.0], f
+
+
+def test_split_from_implied_shares_when_the_count_is_missing():
+    # Alphabet-style 20:1 with no stored share count: net income / EPS jumps 20x and holds there
+    rows = _quarters([25, 26, 27, 1.3, 1.4, 1.5], [1] * 6, ni=[25 * 680, 26 * 680, 27 * 680, 1.3 * 13600, 1.4 * 13600, 1.5 * 13600],
+                     shares=[None] * 6)
+    f = growth.split_factors(rows)
+    assert f == [20.0, 20.0, 20.0, 1.0, 1.0, 1.0], f
+    # one quarter with a misfiled net income is not two splits
+    rows = _quarters([2, 2, 2, 2, 2], [1] * 5, ni=[200, 200, 2000, 200, 200], shares=[None] * 5)
+    assert growth.split_factors(rows) == [1.0] * 5
+
+
+def test_sec_comparative_confirms_and_vetoes():
+    # a 25:1 split: the filing after it restates the year-ago EPS (12.5 -> 0.5) — the share count agrees
+    eps = [10, 11, 12, 12.5, 0.48, 0.5]
+    rows = _sec(eps, [e * 40 for e in eps[:4]] + [e * 1000 for e in eps[4:]], [40, 40, 40, 40, 1000, 1000],
+                prior=[None, None, None, None, 10 / 25, 11 / 25])
+    assert growth.split_factors(rows) == [25.0] * 4 + [1.0] * 2
+    # a merger that doubles the count: the restated year-ago EPS is unchanged, so it is not a split
+    eps = [1.0, 1.0, 1.0, 1.0, 1.1, 1.1]
+    rows = _sec(eps, [e * 100 for e in eps[:4]] + [e * 200 for e in eps[4:]], [100, 100, 100, 100, 200, 200],
+                prior=[None, None, None, None, 1.0, 1.0])
+    assert growth.split_factors(rows) == [1.0] * 6
+    # a reverse merger: the count jumps 50x, the EPS is too small to imply a count and the filing has no
+    # comparative — for SEC a big jump in the stored count alone is not a split
+    rows = _sec([0.1, 0.1, -0.1, -0.1], [10, 10, -500, -500], [100, 100, 5000, 5000])
+    assert growth.split_factors(rows) == [1.0] * 4
+    # a 1:3 reverse split filed together with a share issue: the count moves 0.4x, the comparative 1/3
+    eps = [1.0, 1.0, 1.0, 1.0, 2.5, 2.5]
+    rows = _sec(eps, [100] * 4 + [100, 100], [100, 100, 100, 100, 40, 40], prior=[None] * 4 + [3.0, 3.0])
+    assert growth.split_factors(rows) == [1 / 3] * 4 + [1.0] * 2
+    # growth from the filing's own comparative is untouched by the factors
+    g = growth.growth_series(_sec([10, 11, 12, 12.5, 0.48, 0.5], [400, 440, 480, 500, 480, 500], [40, 40, 40, 40, 1000, 1000],
+                                  prior=[None, None, None, None, 0.4, 0.44]))
+    assert abs(g[4]["eps_g"] - 0.2) < 1e-9 and abs(g[4]["eps_adj"] - 0.48) < 1e-9 and abs(g[0]["eps_adj"] - 0.4) < 1e-9
 
 
 def test_growth_uses_split_adjusted_year_ago_eps():
     # EPS halves at a 1:1 bonus in the fifth quarter; real growth is 20%
-    rows = _quarters([1.0, 1.0, 1.0, 1.0, 0.6, 0.6], [100] * 4 + [120] * 2, shares=[10, 10, 10, 10, 20, 20])
+    rows = _quarters([1.0, 1.0, 1.0, 1.0, 0.6, 0.6], [100] * 4 + [120] * 2, ni=[10, 10, 10, 10, 12, 12], shares=[10, 10, 10, 10, 20, 20])
     g = growth.growth_series(rows)
     assert abs(g[4]["eps_g"] - 0.2) < 1e-9 and abs(g[4]["rev_g"] - 0.2) < 1e-9
 
