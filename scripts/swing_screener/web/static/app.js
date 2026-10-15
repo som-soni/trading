@@ -409,6 +409,114 @@ const ALL_BARS = 100000;  // i.e. everything in the database: the chart shows th
 api("/api/strategies").then((xs) => Studies.setStrategies(xs.filter((x) => x.kind === "screener").map((x) => x.key))).catch(() => {});  // visible range to restore when the chart is rebuilt for an indicator change
 const BENCH = { us: "SPY", india: "NIFTY50" };
 
+/** Key events on a price chart, the TradingView way: a row of lettered badges along the bottom of the
+ *  price pane — E earnings / results, D ex-dividend, S split or bonus — each under the bar it falls on
+ *  (upcoming ones in the empty space right of the last bar, hollow). Hover shows a card with the
+ *  details (a past report with that quarter's EPS and revenue from `quarters`, the stored quarterly
+ *  results; the next one with its EPS estimate); click calls onOpen. Returns { set(events), destroy() }. */
+function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
+  const KIND = { earnings: "E", results: "E", dividend: "D", split: "S", bonus: "S" };
+  const NAME = { E: "Earnings", D: "Dividend", S: "Split" };
+  const today = new Date().toISOString().slice(0, 10), last = times.at(-1);
+  const strip = document.createElement("div"); strip.className = "ev-strip";
+  const tip = document.createElement("div"); tip.className = "ev-tip"; tip.hidden = true;
+  chartEl.append(strip, tip);
+  let groups = [];
+  const days = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
+  // bars between the last bar and a future date (weekdays / weeks / months), for an upcoming event
+  const barsAhead = (d) => {
+    if (tf === "W") return Math.max(1, Math.ceil(days(last, d) / 7));
+    if (tf === "M") return Math.max(1, (+d.slice(0, 4) - +last.slice(0, 4)) * 12 + (+d.slice(5, 7) - +last.slice(5, 7)));
+    let n = 0; for (let t = Date.parse(last) + 864e5; t <= Date.parse(d); t += 864e5) { const w = new Date(t).getUTCDay(); if (w && w < 6) n++; }
+    return Math.max(1, n);
+  };
+  const pct = (v) => (v == null ? "" : `${v >= 0 ? "+" : "−"}${Math.abs(v * 100).toFixed(0)}% YoY`);
+  const num = (v) => (v == null ? "—" : (+v).toFixed(2));
+  // the quarter a report covers: the latest quarter that ended in the ~4 months before it
+  const quarterOf = (d) => [...quarters].reverse().find((q) => q.end < d && days(q.end, d) <= 120);
+  const card = (e) => {
+    const L = KIND[e.kind], up = e.date >= today, det = e.detail || {}, rows = [];
+    if (L === "E" && up) {
+      const lastQ = quarters.at(-1), yago = lastQ && days(lastQ.end, e.date) <= 160 ? quarters.at(-4) : null;
+      if (det.eps_estimate != null) rows.push(["EPS estimate", num(det.eps_estimate) + (det.eps_low != null ? ` <span class="muted">(${num(det.eps_low)} – ${num(det.eps_high)})</span>` : "")]);
+      if (yago && det.eps_estimate != null && yago.eps > 0) rows.push(["vs year-ago quarter", `${num(yago.eps)} → ${pct(det.eps_estimate / yago.eps - 1)}`]);
+    } else if (L === "E") {
+      const q = quarterOf(e.date);
+      if (q) {
+        rows.push(["Quarter", `${esc(q.fiscal || "")} <span class="muted">to ${prettyDate(q.end)}</span>`]);
+        rows.push(["EPS", `${num(q.eps)} <span class="${q.eps_g > 0 ? "up" : q.eps_g < 0 ? "dn" : "muted"}">${pct(q.eps_g)}</span>`]);
+        if (q.rev != null) rows.push(["Revenue", `${moneyShort(q.rev, market)} <span class="${q.rev_g > 0 ? "up" : q.rev_g < 0 ? "dn" : "muted"}">${pct(q.rev_g)}</span>`]);
+      }
+    } else if (L === "D") {
+      if (det.amount != null) rows.push(["Amount", `${(MKTS.find((m) => m.key === market) || {}).currency || ""}${(+det.amount).toFixed(det.amount < 1 ? 3 : 2)} per share`]);
+      if (det.pay_date) rows.push(["Pay date", prettyDate(det.pay_date)]);
+      if (det.record_date) rows.push(["Record date", esc(det.record_date)]);
+    } else if (det.ratio) rows.push(["Ratio", `${det.ratio}:1`]);
+    const when = up ? `${prettyDate(e.date)} · in ${days(today, e.date)} days` : prettyDate(e.date);
+    return `<div class="ev-card"><div class="ev-h"><i class="ev-ic ${L}${up ? " soon" : ""}">${L}</i><b>${up ? "Upcoming " + NAME[L].toLowerCase() : NAME[L]}</b><span class="muted">${when}</span></div>
+      ${rows.length ? `<table>${rows.map(([k, v]) => `<tr><td class="muted">${k}</td><td>${v}</td></tr>`).join("")}</table>` : ""}
+      <div class="ev-t muted">${esc(e.title)}${e.source ? ` · ${esc(e.source)}` : ""}</div></div>`;
+  };
+  // colour: a past report by EPS growth vs the year-ago quarter (no consensus history is stored, so
+  // not beat / miss as on TradingView); upcoming events hollow
+  const tone = (e) => {
+    if (e.date >= today) return "soon";
+    if (KIND[e.kind] !== "E") return "";
+    const q = quarterOf(e.date);
+    return q?.eps_g > 0 ? "pos" : q?.eps_g < 0 ? "neg" : "";
+  };
+  const set = (events) => {
+    const by = new Map();
+    for (const e of events) {
+      const L = KIND[e.kind]; if (!L) continue;
+      let t, ahead = 0;
+      if (e.date > last) { if (e.date < today) continue; ahead = barsAhead(e.date); t = e.date; }   // a past date after the last bar: data gap
+      else { t = times.find((x) => x >= e.date); if (!t) continue; }
+      const k = (ahead ? "f" + t : t) + L;
+      if (!by.has(k)) by.set(k, { L, t, ahead, idx: ahead ? times.length - 1 + ahead : times.indexOf(t), items: [] });
+      by.get(k).items.push(e);
+    }
+    groups = [...by.values()].sort((a, b) => a.idx - b.idx);
+    strip.innerHTML = groups.map((g, i) => `<button class="ev-ic ${g.L} ${tone(g.items[0])}" data-i="${i}" aria-label="${NAME[g.L]} ${g.items[0].date}">${g.L}</button>`).join("");
+    place();
+  };
+  let raf = 0;
+  const place = () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      const ts = chart.timeScale(), pane = chart.panes()[0];
+      if (!pane) return;
+      const left = chart.priceScale("left").width(), bottom = pane.getHeight() - 24, width = ts.width();
+      const stack = new Map();   // two kinds on one bar stack upward, as on TradingView
+      strip.querySelectorAll(".ev-ic").forEach((b) => {
+        const g = groups[+b.dataset.i], x = ts.logicalToCoordinate(g.idx);
+        if (x == null || x < 0 || x > width) { b.hidden = true; return; }
+        const n = stack.get(g.idx) || 0; stack.set(g.idx, n + 1);
+        b.hidden = false; b.style.left = `${left + x - 9}px`; b.style.top = `${bottom - n * 21}px`;
+      });
+    });
+  };
+  const show = (b) => {
+    const g = groups[+b.dataset.i];
+    tip.innerHTML = g.items.map(card).join("");
+    tip.hidden = false;
+    const r = b.getBoundingClientRect(), host = chartEl.getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = `${Math.max(6, Math.min(host.width - w - 6, r.left - host.left + 9 - w / 2))}px`;
+    tip.style.top = `${Math.max(6, r.top - host.top - h - 8)}px`;
+  };
+  strip.addEventListener("mouseover", (e) => { const b = e.target.closest(".ev-ic"); if (b) show(b); });
+  strip.addEventListener("mouseout", (e) => { if (e.target.closest(".ev-ic") && !e.relatedTarget?.closest?.(".ev-ic")) tip.hidden = true; });
+  strip.addEventListener("click", (e) => { if (e.target.closest(".ev-ic")) { tip.hidden = true; onOpen?.(); } });
+  strip.addEventListener("mousedown", (e) => e.stopPropagation());   // not a chart drag
+  chart.timeScale().subscribeVisibleLogicalRangeChange(place);
+  chart.timeScale().subscribeSizeChange(place);
+  const ro = new ResizeObserver(place); ro.observe(chartEl);
+  return {
+    set,
+    destroy() { cancelAnimationFrame(raf); ro.disconnect(); try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(place); chart.timeScale().unsubscribeSizeChange(place); } catch {} strip.remove(); tip.remove(); },
+  };
+}
+
 async function chartPage(alive, market, symbol, tf) {
   const prefs = { panel: true, tab: "wl", w: 320, ...store.get("chartPrefs", {}) };
   if (!prefs.panel) prefs.tab = null;  // older prefs: a hidden panel
@@ -486,7 +594,7 @@ async function chartPage(alive, market, symbol, tf) {
   let symNotes = null;    // promise of this stock's notes, for the details panel
   // this stock's news & key events (marketdata/news.py); the server asks the queue for a fetch when
   // none is stored or it is a day old, and `pending` names that queue item until it lands
-  let symNews = null, newsPoll = null, newsMarkers = null;
+  let symNews = null, newsPoll = null;
   const loadNews = (refresh = false) => (symNews = (!refresh && symNews) ||
     api(`/api/news/${market}/${encodeURIComponent(symbol)}${refresh ? "?refresh=1" : ""}`).catch((e) => ({ error: e.message })));
   { const prev = cleanup; cleanup = () => { clearInterval(newsPoll); prev(); }; }
@@ -988,22 +1096,13 @@ async function chartPage(alive, market, symbol, tf) {
   if (!alive()) return;
   dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}`, remote });
   applyAnnotations();   // read-only: never saved, never erasable
-  // key events on the price chart: E results / earnings, D ex-dividend, S split or bonus. An event
-  // after the last bar (an upcoming report) has no bar to sit on; it is in the News & events panel.
-  const EV_MARK = { results: ["E", "#7e57c2"], earnings: ["E", "#7e57c2"], dividend: ["D", "#26a69a"], split: ["S", "#ff9800"], bonus: ["S", "#ff9800"] };
-  const showEventMarkers = (d) => {
-    if (!d || !d.events || !alive()) return;
-    const seen = new Set(), ms = [];
-    d.events.forEach((e) => {
-      const m = EV_MARK[e.kind]; if (!m) return;
-      const t = times.find((x) => x >= e.date);
-      if (!t || seen.has(t + m[0])) return;
-      seen.add(t + m[0]);
-      ms.push({ time: t, position: "belowBar", shape: "circle", color: m[1], text: m[0], size: 0.7 });
-    });
-    ms.sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
-    if (newsMarkers) newsMarkers.setMarkers(ms); else newsMarkers = LC.createSeriesMarkers(main, ms);
-  };
+  // key events along the bottom of the price pane, TradingView style: E earnings / results, D ex-dividend,
+  // S split or bonus; hover for the details, click for the News & events panel. Upcoming events sit
+  // in the empty space right of the last bar.
+  const evStrip = eventStrip({ chart, chartEl, times, tf, market, quarters: srow?.series || [],
+    onOpen: () => { prefs.tab = "news"; prefs.panel = true; store.set("chartPrefs", prefs); syncPanel(); renderSide(); } });
+  { const prev = cleanup; cleanup = () => { evStrip.destroy(); prev(); }; }
+  const showEventMarkers = (d) => { if (d && d.events && alive()) evStrip.set(d.events); };
   // `function` (hoisted) because the panel's Refresh link calls it before this line has run
   function onNews(d) {
     showEventMarkers(d);
@@ -4876,23 +4975,21 @@ async function learnGuide(alive, guide) {
 
 // ------------------------------------------------------------ Today: the daily starting point
 
-/** Today: one page to start the day on — each market's verdict, whether the data can be trusted, today's
- *  tradeable setups and the new screener picks — each linking to its full page. Everything here is read
- *  from the pages' own endpoints, so it says exactly what they say. */
+/** Today: one page to start the day on, for the market chosen in the toggle — its verdict, whether its data
+ *  can be trusted, today's tradeable setups and the new screener picks — each linking to its full page.
+ *  Everything here is read from the pages' own endpoints, so it says exactly what they say. */
 async function todayPage(alive, mkt) {
   mkt = pageMarket(mkt);
   document.title = "Today · Trading";
   $view.innerHTML = LOADING;
   const get = (u) => api(u).catch(() => null);
-  const [status, setups, picks, ...pms] = await Promise.all([get("/api/status"), get(`/api/setups?market=${mkt}`),
-    get("/api/watchlists/screener/items"), ...MKTS.map((m) => get(`/api/postmarket?market=${m.key}`)),
-    ...MKTS.map((m) => get(`/api/breadth?market=${m.key}`))]);
+  const [status, setups, picks, pm, bd] = await Promise.all([get("/api/status"), get(`/api/setups?market=${mkt}`),
+    get("/api/watchlists/screener/items"), get(`/api/postmarket?market=${mkt}`), get(`/api/breadth?market=${mkt}`)]);
   if (!alive()) return;
-  const post = Object.fromEntries(MKTS.map((m, i) => [m.key, pms[i]]));
-  const breadth = Object.fromEntries(MKTS.map((m, i) => [m.key, pms[MKTS.length + i]]));
+  const post = { [mkt]: pm }, breadth = { [mkt]: bd };
   if (status) { FRESH = status.freshness; }
 
-  // ---- 1. the market, per market: post-market tone, its six signals, and breadth's base rates
+  // ---- 1. the market: post-market tone, its six signals, and breadth's base rates
   const marketCard = (m) => {
     const p = post[m.key]?.payload, h = post[m.key]?.history?.[0], b = breadth[m.key];
     if (!p) return `<div class="sec-card td-mkt"><div class="td-mh"><b>${m.flag} ${esc(m.name)}</b></div><div class="muted small">No post-market analysis yet — it runs with the market close routine.</div></div>`;
@@ -4910,25 +5007,24 @@ async function todayPage(alive, mkt) {
   };
 
   // ---- 2. data health: can today's numbers be trusted?
+  // jobs and runs for this market (or for every market) — another market's work is not this page's business
+  const ours = (x) => !x.market || x.market === "all" || x.market === mkt;
   const issues = [];
   if (status) {
-    for (const m of MKTS) {
-      const f = status.freshness?.[m.key];
-      for (const it of (f?.items || [])) if (it.status && it.status !== "ok" && ["prices", "breadth", "screening"].includes(it.key))
-        issues.push(`${m.flag} ${esc(m.name)} ${esc(it.label.toLowerCase())}: ${esc(it.text || it.status)}`);
-    }
+    for (const it of (status.freshness?.[mkt]?.items || [])) if (it.status && it.status !== "ok" && ["prices", "breadth", "screening"].includes(it.key))
+      issues.push(`${esc(it.label)}: ${esc(it.text || it.status)}`);
     const lanes = status.lanes || {};
     if (!status.worker?.alive) issues.push(`The job worker is stopped — nothing queued or scheduled will run. <a href="#/status">Start it</a>`);
     else if (lanes.fast && !lanes.fast.alive) issues.push("The fast lane is stopped — screen and setup refreshes will wait behind longer jobs.");
     const dayAgo = Date.now() - 864e5;
-    const failed = (status.runs || []).filter((x) => x.status === "failed" && new Date(x.started_at).getTime() > dayAgo);
+    const failed = (status.runs || []).filter((x) => x.status === "failed" && new Date(x.started_at).getTime() > dayAgo && ours(x));
     if (failed.length) issues.push(`${failed.length} run${failed.length > 1 ? "s" : ""} failed in the last 24 h: ${failed.slice(0, 3).map((x) => `<a href="#/runs/${x.id}">${esc(x.job)}</a>`).join(", ")}`);
   } else issues.push("Could not reach the status check.");
-  const running = status?.queue?.running_all || (status?.queue?.running ? [status.queue.running] : []);
-  const waiting = status?.queue?.queued?.length || 0;
+  const running = (status?.queue?.running_all || (status?.queue?.running ? [status.queue.running] : [])).filter(ours);
+  const waiting = (status?.queue?.queued || []).filter(ours).length;
   const health = `<div class="sec-card td-health ${issues.length ? "warn" : "ok"}">
-      <div class="td-hh"><b>${issues.length ? "Data health — check before trading" : "Data health — all current"}</b><span class="spacer"></span><a class="small" href="#/status">System status →</a></div>
-      ${issues.length ? `<ul class="td-issues">${issues.map((x) => `<li>${x}</li>`).join("")}</ul>` : `<div class="muted small">Prices, breadth and the screens are up to date for every market.</div>`}
+      <div class="td-hh"><b>${issues.length ? `Data health · ${esc(mktInfo(mkt).name)} — check before trading` : `Data health · ${esc(mktInfo(mkt).name)} — all current`}</b><span class="spacer"></span><a class="small" href="#/status">System status →</a></div>
+      ${issues.length ? `<ul class="td-issues">${issues.map((x) => `<li>${x}</li>`).join("")}</ul>` : `<div class="muted small">Prices, breadth and the screens are up to date.</div>`}
       ${running.length || waiting ? `<div class="muted small">${running.length ? `Running: ${running.map((x) => esc(`${(x.targets || []).join(" + ")}${x.market && x.market !== "all" ? ` · ${mktInfo(x.market).name}` : ""}${x.lane && x.lane !== "main" ? ` (${x.lane} lane)` : ""}`)).join(", ")}` : ""}${waiting ? `${running.length ? " · " : ""}${waiting} waiting in the queue` : ""}</div>` : ""}</div>`;
 
   // ---- 3. today's setups for the chosen market: what can be traded now
@@ -4944,8 +5040,8 @@ async function todayPage(alive, mkt) {
   const pickChip = (x) => `<a class="chip-s" href="#/chart/${x.market}/${encodeURIComponent(x.symbol)}" title="${esc(x.name || "")} — ${esc((x.strategies || []).map((s) => `${s.strategy}: ${s.decision}`).join(" · "))}">${esc(bareSymbol(x.symbol))}</a>`;
 
   $view.innerHTML = pageHead("Today", { extra: marketSeg(mkt),
-      context: `<span class="muted small">${new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</span>${info("<p>Your starting point each day: how each market closed, whether the data behind everything is current, what can be traded today, and what is new on the screener list. Each part opens its full page.</p><p>The market toggle chooses the market for setups and picks; both markets' verdicts are always shown.</p>")}` })
-    + `<div class="td-grid">${MKTS.map(marketCard).join("")}</div>${health}
+      context: `<span class="muted small">${new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</span>${info("<p>Your starting point each day: how each market closed, whether the data behind everything is current, what can be traded today, and what is new on the screener list. Each part opens its full page.</p><p>The market toggle chooses the market for the whole page.</p>")}` })
+    + `<div class="td-grid">${marketCard(mktInfo(mkt))}${health}</div>
     <div class="sec-card td-setups"><div class="td-hh"><h3>Today's setups · ${esc(mktInfo(mkt).name)}</h3>
         <span class="muted small">${trade.length} tradeable · ${watchN} on watch</span><span class="spacer"></span><a class="small" href="#/strategies">All setups →</a></div>
       ${setups?.behind ? `<div class="muted small td-warn">Newer prices have loaded since these runs — the decisions below were made on older bars.</div>` : ""}
