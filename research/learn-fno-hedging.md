@@ -356,7 +356,7 @@ A collar version of the same test (selling a call 5% above the market each month
 - Using a beta measured over the whole period, including the future.
 - Using the close of a signal day as the hedge's price.
 
-**Costs in India (approximate, October 2026; check current rates).** Brokerage per order, commonly about ₹20 at discount brokers. STT on the premium of options sold and on futures sold, and a higher STT on the intrinsic value of options exercised at expiry; rates were raised from 1 October 2024 and change with Budgets. Exchange charges, GST of 18% on brokerage and exchange charges, stamp duty on purchases, and the bid–ask spread.
+**Costs in India (approximate, October 2026; check current rates).** Brokerage per order, commonly about ₹20 at discount brokers. STT on the premium of options sold and on futures sold, and on the intrinsic value of index options exercised at expiry; stock contracts settled by delivery pay 0.1% of the full contract value. Rates were raised in October 2024 and again from 1 April 2026, and change with Budgets. Exchange charges, GST of 18% on brokerage and exchange charges, stamp duty on purchases, and the bid–ask spread.
 
 **Parameters to test, without over-fitting.** The put's distance below the market, its expiry, the hedge ratio, and the trigger for conditional hedges. Test them one at a time, keep a holdout period, and prefer settings that work across a broad range. With only a handful of real crashes in any history, a hedging rule tuned to them will look better than it is. See [backtesting](learn-test-backtesting.md).
 

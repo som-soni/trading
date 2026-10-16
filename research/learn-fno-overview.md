@@ -103,7 +103,7 @@ A few rules shape everything that follows. Each is explained properly in its own
 - **Settlement.** Index futures and options are settled in cash. Stock futures and options are settled by **physical delivery**: an open position at expiry becomes a real purchase or sale of shares.
 - **Contract size.** From late 2024 SEBI raised the minimum value of an index derivative contract to about ₹15 lakh. Lot sizes are reviewed from time to time, so the value drifts with the price.
 - **Upfront margin.** Brokers must collect margin before a trade, and option buyers pay the full premium upfront.
-- **Costs and tax.** Securities transaction tax (STT) applies on the sell side, and was raised from 1 October 2024. Profits are taxed as business income. The [India rules guide](learn-fno-india-rules.md) covers both.
+- **Costs and tax.** Securities transaction tax (STT) applies on the sell side, and was raised in October 2024 and again from 1 April 2026. Profits are taxed as business income. The [India rules guide](learn-fno-india-rules.md) covers both.
 
 **In the US.** Stock options are American style: they can be exercised on any day, not only at expiry. Index options such as those on the S&P 500 are mostly European and cash-settled. US options trade in penny or nickel increments, there is no STT, and options expiring the same day (0DTE) are a large share of S&P 500 option volume. Individual stock futures barely trade in the US; traders short shares directly by borrowing them.
 

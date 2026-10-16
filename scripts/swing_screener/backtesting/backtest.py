@@ -874,6 +874,8 @@ def run_portfolio_backtest(
     pyramid_add_pct: float = 2.0,
     use_market_filter: bool = False,
     mkt_confirm: int = 0,
+    market_guide: bool = False,
+    results_blackout_days: int | None = None,
     exposure: "portfolio_sim.Exposure | None" = None,
     spec_costs: bool = False,
     max_open_risk_pct: float | None = None,
@@ -980,12 +982,28 @@ def run_portfolio_backtest(
             f"by 50-day average value ON THE SIGNAL DATE ({tdv['kept']} kept, {tdv['outside']} outside). "
             "A rank, not a dollar floor, so it means the same thing in 2010 as in 2026; it stands in for "
             "index membership, which cannot be reconstructed point in time here.")
-    regime_ok = spec_mod.market_ok(market_key, mkt_confirm) if use_market_filter else None
+    regime_ok = spec_mod.market_ok(market_key, mkt_confirm, market_guide) if use_market_filter else None
     if use_market_filter and all_signals:
-        all_signals, m = spec_mod.market_filter(all_signals, market_key, mkt_confirm)
-        fn.dropped("accepted", "market filter: benchmark below its 200-day", m["blocked"])
-        spec_notes.append(f"Market filter (MKT-01): {m['blocked']} signals blocked on days the benchmark was below its "
-                          f"200-day average or its 50-day was below its 200-day (open on {m['days_open_pct']}% of days).")
+        all_signals, m = spec_mod.market_filter(all_signals, market_key, mkt_confirm, market_guide)
+        if market_guide:
+            from ..strategies import minervini_spec as _ms
+            fn.dropped("accepted", "market filter: index or breadth weak", m["blocked"])
+            spec_notes.append(
+                f"Market filter (the SEPA guide's): {m['blocked']} signals blocked on days the benchmark closed below "
+                f"its {_ms.MKT_INDEX_SMA}-day average, or breadth (stocks above their 50-day) was at or below "
+                f"{_ms.MKT_BREADTH_MIN_PCT:g}% and not higher than {_ms.MKT_BREADTH_RISING_DAYS} sessions earlier "
+                f"(open on {m['days_open_pct']}% of days).")
+        else:
+            fn.dropped("accepted", "market filter: benchmark below its 200-day", m["blocked"])
+            spec_notes.append(f"Market filter (MKT-01): {m['blocked']} signals blocked on days the benchmark was below its "
+                              f"200-day average or its 50-day was below its 200-day (open on {m['days_open_pct']}% of days).")
+    if results_blackout_days and all_signals:
+        all_signals, rb = spec_mod.results_blackout(all_signals, market_key, results_blackout_days)
+        fn.dropped("accepted", f"results due within {results_blackout_days} days", rb["blocked"])
+        spec_notes.append(
+            f"Results blackout: {rb['blocked']} signals skipped with results filed within {results_blackout_days} days "
+            f"after the signal; results dates known for {rb['covered_symbols']} of {rb['of_symbols']} signalled stocks "
+            "(the rest are never blocked).")
     if fundamentals and all_signals:
         from . import fundamental_filter
         all_signals, f = fundamental_filter.filter_signals(all_signals, market_key, fundamentals)
@@ -1171,23 +1189,42 @@ def main(argv: list[str] | None = None) -> dict | None:
                              "RS-then-tightness ranking, 6%% open-risk cap, 5%% traded-value cap and the spec's costs "
                              "(each can still be overridden by its own flag)")
     parser.add_argument("--min-rs", type=int, default=None, help="skip signals whose RS rating (1-99, cross-sectional) is below this")
-    parser.add_argument("--market-filter", action="store_true", help="MKT-01: no new buys while the benchmark is below its 200-day")
+    parser.add_argument("--market-filter", action="store_true",
+                        help="no new buys in a risk-off market. With --spec, the minervini strategy's own test "
+                             "(the SEPA guide's: index above its 50-day and breadth healthy); otherwise MKT-01, "
+                             "the benchmark below its 200-day")
+    parser.add_argument("--mkt01", action="store_true",
+                        help="with --spec --market-filter: use MKT-01 (the 200-day test, minervini 1.7) instead of the guide's")
+    parser.add_argument("--results-blackout", type=int, default=None, metavar="DAYS",
+                        help="skip signals with results filed within DAYS after the signal date "
+                             "(--spec default: the strategy's EARNINGS_BLACKOUT_DAYS; 0 = off)")
     parser.add_argument("--max-open-risk", type=float, default=None, help="PF-04: cap on open risk, %% of equity")
     parser.add_argument("--max-adv-pct", type=float, default=None, help="SL-06: largest order, %% of 50-day traded value")
-    parser.add_argument("--partial-r", type=float, default=None, help="minervini exits: sell a third at this R (0 = off; default 3)")
-    parser.add_argument("--fail-days", type=int, default=None, help="minervini exits: failed-breakout window (default 5; 0 = off)")
+    parser.add_argument("--partial-r", type=float, default=None,
+                        help="minervini exits: also sell a part at this R, as 1.7 did at 3 (default off)")
+    parser.add_argument("--strength-ext", type=float, default=None, metavar="PCT",
+                        help="minervini exits: sell a part once the close is PCT%% above the 50-day "
+                             "(default: the strategy's STRENGTH_EXT_PCT; 0 = off)")
+    parser.add_argument("--climax-full", action="store_true",
+                        help="minervini exits: a climax run sells the whole position (1.7) rather than a part")
+    parser.add_argument("--trend-volume", action="store_true",
+                        help="minervini exits: the 50-day trend exit needs above-average volume (1.7)")
+    parser.add_argument("--fail-days", type=int, default=None,
+                        help="minervini exits: failed-breakout window (default: the strategy's FAIL_DAYS, 0 = off; 1.7 used 5)")
     # Exposed so the exit ladder can be TESTED rather than argued about. The
     # breakeven stop is the sharpest suspect: trades exiting on it reached a
     # median 2.75R while held and realised -0.04R, i.e. it converts winners
     # into scratches, and it was the one rule with no flag.
     parser.add_argument("--breakeven-r", type=float, default=None,
                         help="minervini exits: raise the stop to breakeven once the high "
-                             "reaches entry + this x R (0 = off; default 2)")
+                             "reaches entry + this x R (0 = off; default: the strategy's BREAKEVEN_R)")
     parser.add_argument("--no-trend-volume", action="store_true",
-                        help="minervini exits: let a trend break fire without volume confirmation")
+                        help="minervini exits: let a trend break fire without volume confirmation (the default since 1.8)")
     parser.add_argument("--no-climax", action="store_true",
                         help="minervini exits: disable the climax (sell into strength) rule")
-    parser.add_argument("--time-stop", type=int, default=None, help="minervini exits: EX-07 after this many sessions (default off)")
+    parser.add_argument("--time-stop", type=int, default=None,
+                        help="minervini exits: EX-07, sold if +1R is not reached within this many sessions "
+                             "(default: the strategy's TIME_STOP_DAYS; 0 = off)")
     parser.add_argument(
         "--no-target", action="store_true",
         help="drop the fixed profit target so winners can run (use with a trailing exit mode)",
@@ -1241,9 +1278,10 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
     parser.add_argument("--risk-pct", type=float, default=None,
                         help="risk per trade as a fraction, e.g. 0.005 (default: market config)")
-    parser.add_argument("--fundamentals", default=None, choices=["covered", "acceptable", "leader"],
+    parser.add_argument("--fundamentals", default=None, choices=["covered", "acceptable", "leader", "guide"],
                         help="SEPA part 2, point in time: keep signals whose company's results public on the signal date "
-                             "score 'leader', 'acceptable'+ or can be scored at all ('covered' — the control, since "
+                             "score 'leader', 'acceptable'+, pass the SEPA guide's tests ('guide': the minervini "
+                             "strategy's FUND_* thresholds) or can be scored at all ('covered' — the control, since "
                              "fundamental history exists only from 2021 and for part of the universe)")
     parser.add_argument("--min-group-rs", type=int, default=None,
                         help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
@@ -1379,9 +1417,15 @@ def main(argv: list[str] | None = None) -> dict | None:
             args.max_open_risk = ms.MAX_OPEN_RISK_PCT
         if args.max_adv_pct is None:
             args.max_adv_pct = ms.MAX_ADV_PCT
+        if args.results_blackout is None:
+            args.results_blackout = ms.EARNINGS_BLACKOUT_DAYS
+    # the strategy's own market filter (the SEPA guide's) under --spec, MKT-01 otherwise or with --mkt01
+    market_guide = bool(args.spec and ms.MKT_GUIDE and not args.mkt01)
     extra = {k: v for k, v in (("partial_r", args.partial_r), ("fail_days", args.fail_days),
                                ("breakeven_r", args.breakeven_r),
-                               ("trend_volume", False if args.no_trend_volume else None),
+                               ("strength_ext", args.strength_ext / 100 if args.strength_ext is not None else None),
+                               ("climax_partial", False if args.climax_full else None),
+                               ("trend_volume", True if args.trend_volume else (False if args.no_trend_volume else None)),
                                ("climax", False if args.no_climax else None),
                                ("time_stop_days", args.time_stop)) if v is not None}
     policy = ExitPolicy(
@@ -1401,6 +1445,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             min_dollar_volume=args.min_dollar_volume,
             pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct,
             use_market_filter=args.market_filter, mkt_confirm=args.mkt_confirm,
+            market_guide=market_guide, results_blackout_days=args.results_blackout or None,
             top_dollar_volume=args.top_dollar_volume,
             exposure=_exposure_from(args),
             spec_costs=args.spec,
@@ -1443,7 +1488,9 @@ def main(argv: list[str] | None = None) -> dict | None:
     elif args.min_rs is not None:
         run += f"_rs{args.min_rs}"
     if args.market_filter:
-        run += "_mkt" + (f"c{args.mkt_confirm}" if args.mkt_confirm else "")
+        run += ("_mktg" if market_guide else "_mkt") + (f"c{args.mkt_confirm}" if args.mkt_confirm else "")
+    if args.results_blackout:
+        run += f"_rb{args.results_blackout}"
     if args.top_dollar_volume:
         run += f"_top{args.top_dollar_volume}"
     if args.pe:
@@ -1504,10 +1551,17 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (f" --fundamentals {args.fundamentals}" if args.fundamentals else "")
             + (" --spec" if args.spec else (f" --min-rs {args.min_rs}" if args.min_rs is not None else ""))
             + (" --market-filter" if args.market_filter else "")
+            + (" --mkt01" if args.mkt01 else "")
+            + (f" --results-blackout {args.results_blackout}" if args.results_blackout is not None and not args.spec else "")
+            + (" --pe" if args.pe else "")
             + (f" --accept-labels '{args.accept_labels}'" if args.accept_labels != "TRADE - HIGH CONFIDENCE" else "")
             + (f" --partial-r {args.partial_r:g}" if args.partial_r is not None else "")
             + (f" --fail-days {args.fail_days}" if args.fail_days is not None else "")
             + (f" --time-stop {args.time_stop}" if args.time_stop is not None else "")
+            + (f" --breakeven-r {args.breakeven_r:g}" if args.breakeven_r is not None else "")
+            + (f" --strength-ext {args.strength_ext:g}" if args.strength_ext is not None else "")
+            + (" --climax-full" if args.climax_full else "")
+            + (" --trend-volume" if args.trend_volume else "")
         )
         spec_md = None
         if args.exit_mode == "minervini" or args.spec:

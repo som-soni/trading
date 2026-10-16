@@ -21,11 +21,10 @@ line: india:BSE.NS | BSE Ltd | log
 line: india:BSE.NS@sma10 | 10-day average
 line: india:BSE.NS@sma20 | 20-day average
 line: india:BSE.NS@vol | Volume | pane2 bars
-mark: 2023-07-24 | low ₹242
-mark: 2023-10-12 | tight range begins
-mark: 2023-10-20 | breakout, entry ₹529
-mark: 2023-11-21 | first close below the 10-day
-caption: The stock rested above its rising 10-day and 20-day averages, then broke out. The exit came a month later, about 35% higher.
+mark: 2023-07-24 | low
+mark: 2023-10-20 | breakout
+mark: 2023-11-21 | exit
+caption: From the ₹242 low the stock more than doubled, rested for a week above its rising 10-day and 20-day averages, then broke out at ₹529. Exit: the first close below the 10-day, about 35% higher.
 ```
 
 On 20 October the stock closed at ₹529, above the top of its range. A Kullamägi-style trade bought there with the stop at that day's low, ₹513: a risk of about 3%. A month later it sold the rest at ₹716.
@@ -168,10 +167,10 @@ line: us:VRT | Vertiv | log
 line: us:VRT@sma10 | 10-day average
 line: us:VRT@sma20 | 20-day average
 line: us:VRT@vol | Volume | pane2 bars
-mark: 2023-04-26 | results gap, 4.8× volume
-mark: 2023-05-17 | breakout, entry 15.63
-mark: 2023-07-21 | first close below the 10-day
-caption: The results-day gap started the move. The breakout from the rest that followed was the trade.
+mark: 2023-04-26 | results
+mark: 2023-05-17 | breakout
+mark: 2023-07-21 | exit
+caption: The results-day gap, on 4.8× volume, started the move. The breakout at 15.63 from the rest that followed was the trade. Exit: the first close below the 10-day.
 ```
 
 - **The episodic pivot.** On 26 April 2023, Vertiv opened 17% higher after its results, on 4.8 times its usual volume. It closed at 13.59.
@@ -192,9 +191,8 @@ line: us:COIN | Coinbase | log
 line: us:COIN@sma10 | 10-day average
 line: us:COIN@sma20 | 20-day average
 line: us:COIN@vol | Volume | pane2 bars
-mark: 2021-11-08 | breakout, entry 353.92
-mark: 2021-11-09 | stop hit, results that evening
-caption: The stop at the breakout day's low was hit the next day by fifty cents. Three months later the stock was about half the entry price.
+mark: 2021-11-08 | breakout
+caption: The breakout at 353.92 failed the next day: the stop at the breakout day's low was hit by fifty cents, and results came out that evening. Three months later the stock was about half the entry price.
 ```
 
 - **Prior move.** From 224.51 on 4 October to 345.85 on 4 November: +54% in a month.

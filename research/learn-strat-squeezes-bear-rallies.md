@@ -303,7 +303,7 @@ Episodes are measured from a record close, so a bear market inside an earlier on
 **Survivorship.** Stocks that were squeezed and later collapsed may be delisted. Use a database that keeps them.
 
 **Costs (approximate).**
-- India, index futures: brokerage about ₹20 per order; STT about 0.02% on the sell side; stamp duty about 0.002% on the buy side. Index ETFs: delivery STT of about 0.1% on each side for stocks, but lower or nil for many ETFs; check your fund.
+- India, index futures: brokerage about ₹20 per order; STT 0.05% on the sell side (since April 2026); stamp duty about 0.002% on the buy side. Index ETFs: STT of 0.001% on the sale of equity ETF units, far below the 0.1% each side on shares; check your fund.
 - US: index ETFs cost little to trade. Shorts pay borrow fees and dividends.
 - In bear markets spreads widen and gaps are larger. Add slippage of 0.1–0.2% per side to a test.
 

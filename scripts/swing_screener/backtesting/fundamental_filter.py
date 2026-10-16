@@ -15,7 +15,11 @@ Levels (`--fundamentals`):
               CONTROL: fundamental history exists for only part of the universe, and only from 2021, so
               "has good fundamentals" must be compared with "is in the covered set", not with everything;
   acceptable  verdict ACCEPTABLE or LEADER;
-  leader      verdict LEADER.
+  leader      verdict LEADER;
+  guide       the SEPA Learn guide's tests, with the minervini strategy's FUND_* thresholds: quarterly
+              EPS growth on the year-ago quarter at least FUND_EPS_GROWTH_MIN_PCT% and faster than the
+              quarter before, sales growth at least FUND_SALES_GROWTH_MIN_PCT%, and net margin no more
+              than FUND_MARGIN_SLACK_PP points below the year-ago quarter's. Any of those unknown fails.
 
 Each kept signal carries its verdict in meta["sepa"], so trades can be broken down by it.
 """
@@ -28,8 +32,22 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-LEVELS = ("covered", "acceptable", "leader")
-PASSING = {"covered": {"WEAK", "ACCEPTABLE", "LEADER"}, "acceptable": {"ACCEPTABLE", "LEADER"}, "leader": {"LEADER"}}
+LEVELS = ("covered", "acceptable", "leader", "guide")
+PASSING = {"covered": {"WEAK", "ACCEPTABLE", "LEADER"}, "acceptable": {"ACCEPTABLE", "LEADER"}, "leader": {"LEADER"},
+           "guide": {"GUIDE PASS"}}
+
+
+def guide_verdict(m: dict) -> str:
+    """The SEPA guide's fundamentals on one company's metrics (fundamentals/growth.py): GUIDE PASS / GUIDE FAIL."""
+    from ..strategies import minervini_spec as ms
+    eg, sg = m.get("eps_g") or [], m.get("rev_g") or []
+    if len(eg) < 2 or eg[0] is None or eg[1] is None or not sg or sg[0] is None:
+        return "GUIDE FAIL"
+    mg, mp = m.get("margin"), m.get("margin_prior")
+    ok = (eg[0] >= ms.FUND_EPS_GROWTH_MIN_PCT / 100 and eg[0] > eg[1]
+          and sg[0] >= ms.FUND_SALES_GROWTH_MIN_PCT / 100
+          and mg is not None and mp is not None and mg >= mp - ms.FUND_MARGIN_SLACK_PP / 100)
+    return "GUIDE PASS" if ok else "GUIDE FAIL"
 FILING_LAG_DAYS = 60     # a quarter without a recorded filing date is treated as public this long after it ended
 
 
@@ -40,8 +58,9 @@ def _available(row: dict) -> dt.date:
     return row["period_end"] + dt.timedelta(days=FILING_LAG_DAYS)
 
 
-def verdicts(market: str, signals: list) -> dict:
-    """{(symbol, date): verdict} for every signal, from the quarters public on that date."""
+def verdicts(market: str, signals: list, level: str = "leader") -> dict:
+    """{(symbol, date): verdict} for every signal, from the quarters public on that date. The verdict
+    is the SEPA page's, or with level "guide", GUIDE PASS / GUIDE FAIL."""
     from fundamentals import growth, sepa
     from ..marketdata import financials
     syms = sorted({s.symbol for s in signals})
@@ -58,7 +77,10 @@ def verdicts(market: str, signals: list) -> dict:
         if key not in cache:
             latest_end = rows[-1]["period_end"]
             m = growth.metrics(rows, None, today=latest_end, roe_fallback=None)   # staleness is judged below
-            cache[key] = (sepa.evaluate(m)["verdict"], latest_end)
+            v = sepa.evaluate(m)["verdict"]
+            if level == "guide" and v != "NO DATA":
+                v = guide_verdict(m)
+            cache[key] = (v, latest_end)
         verdict, latest_end = cache[key]
         if (d - latest_end).days > growth.STALE_RESULTS_DAYS:
             verdict = "NO DATA"        # the company had stopped filing, as of that date
@@ -69,7 +91,7 @@ def verdicts(market: str, signals: list) -> dict:
 def filter_signals(signals: list, market: str, level: str) -> tuple[list, dict]:
     if level not in LEVELS:
         raise ValueError(f"--fundamentals must be one of {LEVELS}")
-    v = verdicts(market, signals)
+    v = verdicts(market, signals, level)
     kept, counts = [], {}
     for s in signals:
         x = v[(s.symbol, s.date)]

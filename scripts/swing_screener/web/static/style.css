@@ -1272,6 +1272,10 @@ table.fin.peers tbody th a { color: var(--link); }
 .lp-guide .md { max-width: none; }
 /* guide tables are prose in cells: let them wrap to the column instead of scrolling sideways */
 .lp-guide .md td { white-space: normal; min-width: 90px; vertical-align: top; }
+/* a ```series chart lays itself out as a table: keep the prose-table rules above off it, or a 90px floor
+   on its empty left-axis cell pushes the plot past the right edge and hides the latest data */
+.md .lps table { width: auto; font-size: inherit; }
+.md .lps td { min-width: 0; padding: 0; border: 0; white-space: nowrap; vertical-align: middle; }
 @media (min-width: 1500px) {
   .lp-guide .md { font-size: 15px; padding: 12px 44px 32px; }
   .lp-guide .md h1 { font-size: 26px; } .lp-guide .md h2 { font-size: 19px; } .lp-guide .md h3 { font-size: 15.5px; }
@@ -1419,9 +1423,9 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
   pointer-events: auto; cursor: pointer; background: #787b86; box-shadow: 0 0 0 2px var(--panel); transition: transform .1s; }
 .ev-ic[hidden] { display: none; } .ev-ic:hover { transform: scale(1.18); z-index: 1; }
 .ev-ic.E { background: #ff9800; } .ev-ic.E.pos { background: #26a69a; } .ev-ic.E.neg { background: #ef5350; }
-.ev-ic.D { background: #2962ff; } .ev-ic.S { background: #9c27b0; }
+.ev-ic.D { background: #2962ff; }
 .ev-ic.soon { background: var(--panel); border-style: dashed; }
-.ev-ic.E.soon { color: #ff9800; border-color: #ff9800; } .ev-ic.D.soon { color: #2962ff; border-color: #2962ff; } .ev-ic.S.soon { color: #9c27b0; border-color: #9c27b0; }
+.ev-ic.E.soon { color: #ff9800; border-color: #ff9800; } .ev-ic.D.soon { color: #2962ff; border-color: #2962ff; }
 .ev-tip { position: absolute; z-index: 20; pointer-events: none; max-width: 320px; background: var(--panel); border: 1px solid var(--line-2);
   border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.28); padding: 10px 12px; display: grid; gap: 10px; font-size: 12.5px; }
 .ev-card .ev-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }

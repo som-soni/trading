@@ -273,7 +273,7 @@ Work on short selling is more solid. Boehmer, Jones and Zhang (2008) found that 
 **Survivorship.** Stocks that collapsed and were delisted are the best shorts. A test on today's stocks leaves them out, so it understates the short side. Use data that includes delisted stocks if you can.
 
 **Costs and slippage (approximate).**
-- India, stock futures: brokerage about ₹20 per order; securities transaction tax (STT) about 0.02% on the sell side; stamp duty about 0.002% on the buy side; exchange fees and GST on top. Allow about 0.05% per side for slippage in liquid names.
+- India, stock futures: brokerage about ₹20 per order; securities transaction tax (STT) 0.05% on the sell side (since April 2026); stamp duty about 0.002% on the buy side; exchange fees and GST on top. Allow about 0.05% per side for slippage in liquid names.
 - India, intraday cash short: STT about 0.025% on the sell side; stamp duty about 0.003% on the buy side.
 - US: commissions are near zero at most brokers. The cost is the bid-ask spread, the borrow fee (often under 1% a year for large stocks, much higher for crowded ones) and dividends, which a short must pay.
 - Gaps: a short stop is often filled above the stop price when the stock gaps up. Fill at the open if the open is beyond the stop.

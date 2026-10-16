@@ -16,17 +16,17 @@ On 15 September 2023, Bajaj Auto broke into new high ground. It closed at ₹5,1
 ```series
 title: Bajaj Auto — a pause, a pivotal point, and a year of sitting tight
 from: 2023-05-01
-to: 2024-11-29
+to: 2024-12-31
 tf: D
 line: india:BAJAJ-AUTO.NS | Bajaj Auto | log
 line: india:BAJAJ-AUTO.NS@sma50 | 50-day average
 line: india:BAJAJ-AUTO.NS@vol | Volume | pane2 bars
-mark: 2023-07-06 | earlier new high
-mark: 2023-09-15 | pivotal point, 4.9× volume
-mark: 2023-10-19 | second lot
-mark: 2023-11-17 | third lot
-mark: 2024-10-15 | close below the last 20-session low
-caption: After the breakout, two more lots were added as the price rose. The stock more than doubled before it broke its last reaction low.
+mark: 2023-07-06 | high
+mark: 2023-09-15 | 1
+mark: 2023-10-19 | 2
+mark: 2023-11-17 | 3
+mark: 2024-10-15 | exit
+caption: 1, 2, 3: the three purchases — the breakout on 4.9× volume, then +5% and +10%. Exit: the first close below the prior 20-session low. The stock more than doubled in between.
 ```
 
 A Livermore-style trade bought a third of a full position there. It bought a second third at +5% and the last third at +10%. It then sat tight for thirteen months, until the stock closed below its lowest low of the prior 20 sessions.
@@ -157,10 +157,9 @@ tf: D
 line: us:CAT | Caterpillar | log
 line: us:CAT@sma50 | 50-day average
 line: us:CAT@vol | Volume | pane2 bars
-mark: 2025-09-17 | pivotal point
-mark: 2025-10-02 | third lot
-mark: 2026-07-16 | close below the last 20-session low
-caption: No other heavy-machinery stock had made a new high in the two weeks before. A sister-stock rule would have skipped this trade.
+mark: 2025-09-17 | breakout
+mark: 2026-07-16 | exit
+caption: No other heavy-machinery stock had made a new high in the two weeks before, so a sister-stock rule would have skipped this trade. The two adds came within two weeks of the breakout. Exit: the first close below the prior 20-session low.
 ```
 
 - **Pause.** An earlier new high on 31 July 2025, then a pullback of about 9%, to 405.46.
@@ -186,12 +185,9 @@ tf: D
 line: us:AMD | AMD | log
 line: us:AMD@sma50 | 50-day average
 line: us:AMD@vol | Volume | pane2 bars
-mark: 2024-02-29 | pivotal point, first lot
-mark: 2024-03-06 | third lot
-mark: 2024-03-08 | peak 227.30
-mark: 2024-03-14 | first lot's price retested
-mark: 2024-03-25 | 10% stop hit
-caption: The adds came within a week. The stock peaked two days after the last one and then fell back through every purchase price.
+mark: 2024-02-29 | breakout
+mark: 2024-03-25 | stop
+caption: Both adds came within a week of the breakout. The stock peaked at 227.30 two days after the last one, then fell back through every purchase price to the 10% stop.
 ```
 
 - **Probe.** Close of 29 February 2024, 192.53. Stop at 173.28.

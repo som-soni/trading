@@ -22,12 +22,11 @@ line: us:TSLA | Tesla | log
 line: us:TSLA@sma20 | 20-day average
 line: us:TSLA@sma50 | 50-day average
 line: us:TSLA@vol | Volume | pane2 bars
-mark: 2019-11-20 | first high 24.08
-mark: 2019-12-13 | second high 24.35
-mark: 2019-12-16 | breakout, 2.1× volume
-mark: 2020-02-04 | climax: gap up, 4.2× volume
-mark: 2020-02-26 | first close below the 20-day
-caption: The breakout came on twice the normal volume. The run ended with two huge days in early February; the stock fell 17% the day after.
+mark: 2019-11-20 | high
+mark: 2019-12-16 | breakout
+mark: 2020-02-04 | climax
+mark: 2020-02-26 | exit
+caption: Highs of 24.08 in November and 24.35 on 13 December formed the flat top. The breakout came on 2.1× normal volume. The climax: a gap up on 4.2× volume, after which the stock fell 17% in a day. Exit: the first close below the 20-day.
 ```
 
 That is Zanger's method. **Find the strongest, most traded stocks. Draw the line that has held them back. Buy when they cross it on heavy volume. Get out fast if the break fails, and sell into the frenzy if it succeeds.**
@@ -172,11 +171,9 @@ line: india:ZYDUSLIFE.NS | Zydus Lifesciences | log
 line: india:ZYDUSLIFE.NS@sma20 | 20-day average
 line: india:ZYDUSLIFE.NS@sma50 | 50-day average
 line: india:ZYDUSLIFE.NS@vol | Volume | pane2 bars
-mark: 2023-12-08 | ceiling ₹664.95
-mark: 2023-12-18 | breakout, 6.1× volume
-mark: 2023-12-20 | close back below the line
-mark: 2024-04-04 | first close below the 20-day
-caption: Two days after the breakout, the stock closed below the old ceiling. The tight rule sold; the hard stop and the 20-day average held.
+mark: 2023-12-18 | breakout
+mark: 2024-04-04 | exit
+caption: The breakout above ₹664.95 came on 6.1× normal volume. Two days later the stock closed back below that ceiling: the tight rule sold, but the hard stop and the 20-day average held. Exit: the first close below the 20-day.
 ```
 
 - **Pattern.** A ceiling at ₹664.95, set on 8 December 2023. The base was 16% deep.
@@ -196,11 +193,10 @@ line: us:AVGO | Broadcom | log
 line: us:AVGO@sma20 | 20-day average
 line: us:AVGO@sma50 | 50-day average
 line: us:AVGO@vol | Volume | pane2 bars
-mark: 2024-12-13 | results gap
-mark: 2024-12-16 | high 251.88
-mark: 2025-01-17 | trendline breakout
-mark: 2025-01-27 | gap through the stop
-caption: The breakout from a falling trendline held for a week. Then a shock to the whole chip group gapped the stock 13% lower at the open.
+mark: 2024-12-13 | results
+mark: 2025-01-17 | breakout
+mark: 2025-01-27 | gap
+caption: A results-day gap, a high of 251.88 the next day, then a month under a falling trendline. The breakout held for a week. Then a shock to the whole chip group gapped the stock 13% lower, through the stop.
 ```
 
 - **Setup.** Broadcom jumped 24% on its results on 13 December 2024 and peaked at 251.88 the next trading day. It then drifted down for a month under a falling trendline.

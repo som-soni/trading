@@ -111,7 +111,7 @@ Most short-dated out-of-the-money calls bought this way expire worthless. Gamma 
 
 **Stock options and futures settle by delivery.** An open stock future at expiry becomes a purchase or sale of the shares. An in-the-money stock option is exercised into a purchase or sale of the shares. Someone long one lot of an in-the-money Reliance call (500 shares) must pay for 500 shares at the strike. A short call seller must deliver them.
 
-**Exercise has a tax cost.** STT on an option that is exercised is charged at a higher rate than STT on selling the same option in the market. For an in-the-money long option, selling it before the close is usually cheaper than letting it be exercised. [Indian F&O rules](learn-fno-india-rules.md) has the rates.
+**Exercise and delivery have a tax cost.** An in-the-money index option held to expiry is exercised and pays STT on its intrinsic value. Since April 2026 that rate equals the rate on selling the option, so exercise costs about the same as a sale. An in-the-money stock option is settled by delivery instead, and both sides pay delivery STT of 0.1% on the full contract value. For stock options, selling before expiry is much cheaper. [Indian F&O rules](learn-fno-india-rules.md) has the rates.
 
 **Trading continues until the close.** Expiring options trade until 15:30 on expiry day. Their prices can move from a few rupees to hundreds in the last hour.
 
@@ -180,7 +180,7 @@ A roll is two trades, so it costs two spreads and two sets of charges. For futur
 - **Buying cheap out-of-the-money options on expiry day.** Most expire worthless. A rare large win does not pay for a long run of small total losses.
 - **Forgetting the holiday shift.** An expiry moved to Monday leaves one less session than you planned.
 - **Holding a stock position into expiry without the cash or shares.** In-the-money stock options and futures turn into delivery. Brokers may close them for you at a poor price.
-- **Letting an in-the-money long option be exercised.** The STT on exercise is higher than on a sale.
+- **Letting an in-the-money stock option run into expiry.** It settles by delivery, with delivery STT of 0.1% on the full contract value.
 - **Not budgeting for expiry-day margin.** The extra margin and the lost spread benefit can force a close at the worst moment.
 
 ## 10. What the evidence says
@@ -203,7 +203,7 @@ What is not known: whether intraday moves near the close of expiry day are large
 - If you are short, what does a move of 1% against you cost, at expiry and today?
 - Do you have the margin for expiry day, including the extra margin and the lost spread benefit?
 - For a stock position, do you have the cash or the shares for delivery? What is your broker's close-out rule?
-- Will you close an in-the-money long option before 15:30 to avoid exercise STT?
+- Will you close in-the-money stock options before expiry day, to avoid delivery and its STT?
 - If you will roll, when, and what does the roll cost?
 
 ## Further reading

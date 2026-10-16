@@ -16,18 +16,18 @@ On the morning of 15 October 2026 a trader buys one lot of the Nifty 23,000 call
 | Charge | How it is charged (approximate) | This trade |
 |---|---|---|
 | Brokerage | Flat fee per order at a discount broker, say ₹20 | ₹40.00 |
-| STT (securities transaction tax) | 0.1% of the premium, on the sale only | ₹14.95 |
+| STT (securities transaction tax) | 0.15% of the premium, on the sale only | ₹22.43 |
 | Exchange transaction charge | About 0.035% of premium, both sides | ₹9.53 |
 | SEBI fee | ₹10 per crore of turnover | ₹0.03 |
 | Stamp duty | 0.003% of premium, on the purchase only | ₹0.37 |
 | GST | 18% of brokerage, exchange charge and SEBI fee | ₹8.92 |
-| **Total charges** | | **₹73.79** |
+| **Total charges** | | **₹81.27** |
 
-*Option premium turnover: ₹12,242.75 bought, ₹14,950 sold. Rates as they stood after the October 2024 changes; check current rates.*
+*Option premium turnover: ₹12,242.75 bought, ₹14,950 sold. STT at the rate in force from 1 April 2026; check current rates.*
 
-The charges come to about 1.1 points per unit, or 2.7% of the profit. The trader also crossed the spread on the way in: the bid was 187.90, so buying at the ask cost about ₹29. The exit costs a similar amount. So the full cost of the round trip is around ₹130, or about 2 points.
+The charges come to about 1.25 points per unit, or 3% of the profit. The trader also crossed the spread on the way in: the bid was 187.90, so buying at the ask cost about ₹29. The exit costs a similar amount. So the full cost of the round trip is around ₹140, or about 2 points.
 
-That looks small for one trade. It is not small for an active trader. Five such round trips a day, for a year of about 250 sessions, cost roughly ₹1.3 lakh. The account has to earn that before it makes a rupee.
+That looks small for one trade. It is not small for an active trader. Five such round trips a day, for a year of about 250 sessions, cost roughly ₹1.75 lakh. The account has to earn that before it makes a rupee.
 
 Futures cost more per lot because STT and the exchange charge are on the full contract value, not a premium.
 
@@ -36,15 +36,15 @@ Futures cost more per lot because STT and the exchange charge are on the full co
 | Contract value bought | ₹14,91,100 |
 | Contract value sold | ₹14,97,600 |
 | Brokerage (two orders) | ₹40.00 |
-| STT (0.02% on the sale) | ₹299.52 |
+| STT (0.05% on the sale) | ₹748.80 |
 | Exchange charge (about 0.0017%, both sides) | ₹51.70 |
 | SEBI fee | ₹2.99 |
 | Stamp duty (0.002% on the purchase) | ₹29.82 |
 | GST | ₹17.04 |
-| **Total charges** | **₹441.08** |
+| **Total charges** | **₹890.36** |
 | Gross profit (100 points × 65) | ₹6,500 |
 
-*Futures last price 22,940 for the 27 October 2026 contract at about 10:15 on 15 October 2026. The sale price is illustrative. Rates as after October 2024; check current rates.*
+*Futures last price 22,940 for the 27 October 2026 contract at about 10:15 on 15 October 2026. The sale price is illustrative. STT at the rate in force from 1 April 2026; check current rates.*
 
 The futures round trip costs about 7 index points in charges. A trader who aims for 20 points a trade gives up about a third of it.
 
@@ -134,17 +134,20 @@ Since April 2025 the exchanges also check index position limits during the day, 
 
 | Charge | Options | Futures |
 |---|---|---|
-| STT | 0.1% of premium on sale | 0.02% of value on sale |
-| STT if an option is exercised | Charged on intrinsic value, at a higher rate than on a sale | — |
+| STT | 0.15% of premium on sale | 0.05% of value on sale |
+| STT if an index option is exercised | 0.15% of intrinsic value, paid by the buyer | — |
+| STT if a stock contract is settled by delivery | 0.1% of the full contract value, buyer and seller | Same |
 | Exchange charge (NSE) | About 0.035% of premium | About 0.0017% of value |
 | SEBI fee | ₹10 per crore | ₹10 per crore |
 | Stamp duty | 0.003% of premium on purchase | 0.002% of value on purchase |
 | GST | 18% of brokerage, exchange charge and SEBI fee | Same |
 | Brokerage | Set by broker; often a flat ₹20 per order | Same |
 
-*Approximate rates after the October 2024 changes. STT is set by the Union Budget and has been changed more than once; check the current rate.*
+*Approximate rates. STT on futures and options was raised in October 2024 and again from 1 April 2026 (the 2026–27 Budget); it is set by the Union Budget, so check the current rate.*
 
-The exercise row matters. An in-the-money option held to expiry is exercised automatically. The STT on exercise is higher than the STT on selling it. Selling an in-the-money option before the close is usually cheaper.
+The last two STT rows matter at expiry. An in-the-money index option held to expiry is exercised automatically. Since April 2026 its STT, 0.15% of the intrinsic value, is about the same as selling it, so the old rule "always sell before the close" matters less for index options.
+
+Stock contracts are different. An in-the-money stock option or a stock future held to expiry is settled by delivery of the shares. Both sides then pay delivery STT of 0.1% on the full contract value, which is far more than the STT on the option's premium.
 
 The bid–ask spread is not on any contract note, but it is often the largest cost. For an at-the-money Nifty option it was under 1 rupee in the snapshot. For a cheap far-away strike it can be 5% of the price.
 
@@ -190,9 +193,9 @@ US listed options differ in a few ways that matter if you trade both markets.
 
 - **Using old rates.** STT, exchange charges and margins change. A cost model from last year can be wrong this year.
 - **Forgetting the spread.** It is often larger than all the statutory charges together.
-- **Trading futures for small targets.** Charges of about 7 Nifty points per round trip eat a small target.
+- **Trading futures for small targets.** Charges of about 14 Nifty points per round trip eat a small target.
 - **Holding a stock position into expiry without the cash or the shares.** It turns into delivery, or the broker closes it for you.
-- **Letting an in-the-money long option expire.** Exercise STT is higher than selling it.
+- **Letting an in-the-money stock option expire.** It settles by delivery, and both sides pay STT of 0.1% on the full contract value.
 - **Running into a ban.** You cannot add to or roll a position in a stock under the F&O ban.
 - **Mixing F&O with investment income at tax time.** It is business income with its own rules.
 

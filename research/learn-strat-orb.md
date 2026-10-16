@@ -342,7 +342,7 @@ Approximate costs for an intraday round trip (buy and sell the same day) in the 
 | GST | 18% on brokerage and exchange charges |
 | Slippage and spread | 0.02–0.10% each side, more on fast breakouts |
 
-On a ₹1 lakh position the charges come to roughly ₹80, about 0.08% for the round trip, before slippage. Index futures have lower charges per rupee traded, but STT on futures sales was raised in October 2024. In the US, commissions are often zero, but the spread and slippage remain. Model slippage on stop entries as worse than the trigger, because breakouts fill in a hurry.
+On a ₹1 lakh position the charges come to roughly ₹80, about 0.08% for the round trip, before slippage. Index futures have lower charges per rupee traded, but STT on futures sales was raised in October 2024 and again in April 2026, to 0.05%. In the US, commissions are often zero, but the spread and slippage remain. Model slippage on stop entries as worse than the trigger, because breakouts fill in a hurry.
 
 ### What to test, and how not to fool yourself
 

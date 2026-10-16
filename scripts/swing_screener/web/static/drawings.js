@@ -12,7 +12,7 @@
  * The toolbar mirrors TradingView's left panel: tool *families* behind one
  * button each (the button shows the last tool used from that family, the
  * small arrow opens the rest), then the ruler, magnet, stay-in-drawing-mode,
- * lock, hide and remove.
+ * lock, hide and remove. The brushes (brush, highlighter) draw freehand: press, drag, release.
  */
 const Drawings = (() => {
   const DAY = 86400000;
@@ -29,6 +29,7 @@ const Drawings = (() => {
     crossline: { label: "Cross line", pts: 1, key: "Alt + C" },
     fib: { label: "Fib retracement", pts: 2, key: "Alt + F" },
     rect: { label: "Rectangle", pts: 2, key: "Alt + Shift + R" },
+    brush: { label: "Brush", free: true }, highlighter: { label: "Highlighter", free: true },
     text: { label: "Text", pts: 1 },
     callout: { label: "Callout", pts: 2 },
     long: { label: "Long position", pts: 1 }, short: { label: "Short position", pts: 1 },
@@ -39,11 +40,14 @@ const Drawings = (() => {
     ["lines", "Trend line tools", ["trend", "ray", "extline", "hline", "hray", "vline", "crossline"]],
     ["fibs", "Fibonacci tools", ["fib"]],
     ["shapes", "Geometric shapes", ["rect"]],
+    ["brushes", "Brushes", ["brush", "highlighter"]],
     ["notes", "Annotation tools", ["text", "callout"]],
     ["forecast", "Prediction and measurement tools", ["long", "short"]],
   ];
   const HOTKEYS = { KeyT: "trend", KeyH: "hline", KeyJ: "hray", KeyV: "vline", KeyC: "crossline", KeyF: "fib" };
-  const LINE_TYPES = new Set(["trend", "ray", "extline", "hline", "hray", "vline", "crossline", "rect", "callout"]);
+  const LINE_TYPES = new Set(["trend", "ray", "extline", "hline", "hray", "vline", "crossline", "rect", "callout", "brush"]);
+  const HIGHLIGHT_W = 14;  // px: the highlighter's stroke, drawn translucent
+  const FREE_STEP = 2;     // px: a freehand stroke keeps a point only once the pointer has moved this far
   const TEXT_WRAP = 320;  // px: longest line before a text / callout wraps
 
   const ICON = {
@@ -60,6 +64,8 @@ const Drawings = (() => {
     crossline: '<path d="M10 1v7M10 12v7M1 10h7M12 10h7"/><circle cx="10" cy="10" r="1.8"/>',
     fib: '<path d="M2 3.5h16M2 7.5h16M2 12.5h16M2 16.5h16" stroke-dasharray="2 1.5"/><circle cx="4" cy="16.5" r="1.6"/><circle cx="16" cy="3.5" r="1.6"/>',
     rect: '<rect x="3" y="5" width="14" height="10" rx="1"/><circle cx="3" cy="5" r="1.5"/><circle cx="17" cy="15" r="1.5"/>',
+    brush: '<path d="M12.5 3.5l4 4-7.8 7.8-4-4z"/><path d="M4.7 11.3L3 17l5.7-1.7"/><path d="M11 5l4 4"/>',
+    highlighter: '<path d="M11 3l6 6-6.5 6.5-6-6z"/><path d="M4.5 9.5L2.5 14l3.5 3.5 4.5-2"/><path d="M2 18.5h7" stroke-width="2.4" stroke-opacity=".5"/>',
     text: '<path d="M4 5.5V3h12v2.5M10 3v14M7.5 17h5"/>',
     callout: '<rect x="6" y="2.5" width="12" height="8.5" rx="1.5"/><path d="M9.5 11l-6 5.5"/><circle cx="3" cy="17" r="1.4" fill="currentColor"/>',
     long: '<path d="M3 3h14v7H3z" fill="rgba(8,153,129,.45)" stroke="none"/><path d="M3 10h14v6H3z" fill="rgba(242,54,69,.45)" stroke="none"/><path d="M3 10h14"/>',
@@ -93,7 +99,7 @@ const Drawings = (() => {
     let items = remote && remote.exists ? remote.items : store.get(storeKey, []);
     if (remote && !remote.exists && items.length) remote.save(items);
     if (remote) store.set(storeKey, items);
-    let draft = null, measure = null, selected = null, drag = null, downPx = null, hist = [];
+    let draft = null, measure = null, selected = null, drag = null, downPx = null, lastPx = null, hist = [];
     let tool = store.get("drawCursor", "cross"), cursorMode = tool;
     let color = store.get("drawColor", PALETTE[0]);
     const opts = store.get("drawOpts", { magnet: false, stay: false, lock: false, hide: false });
@@ -137,6 +143,11 @@ const Drawings = (() => {
       }
       return { t: logicalToMs(i), p };
     };
+    /** pixel -> point without snapping to a bar, for freehand strokes (time interpolated between bars) */
+    const fromPxFree = (x, y) => {
+      const l = ts.coordinateToLogical(x), p = series.coordinateToPrice(y);
+      return l == null || p == null ? null : { t: logicalToMs(l), p };
+    };
     const area = () => ({ w: ts.width(), h: chart.panes()[0].getHeight() });
 
     // ---- geometry shared by painting and hit testing
@@ -151,6 +162,7 @@ const Drawings = (() => {
     }
     function handles(it) {
       const P = it.pts;
+      if (TOOLS[it.type]?.free) return [];   // a stroke moves as a whole; it has no points to drag
       if (it.type === "long" || it.type === "short") {
         const b = position(it); if (!b) return [];
         return [
@@ -196,6 +208,22 @@ const Drawings = (() => {
       ctx.beginPath();
       switch (it.type) {
         case "trend": ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); break;
+        case "brush": case "highlighter": {
+          const hl = it.type === "highlighter";
+          ctx.lineWidth = hl ? HIGHLIGHT_W : it.width || 2; ctx.lineCap = ctx.lineJoin = "round";
+          if (hl) ctx.globalAlpha = 0.35;
+          let started = false;
+          for (const q of it.pts) { const c = toPx(q); if (!c) continue; started ? ctx.lineTo(c.x, c.y) : ctx.moveTo(c.x, c.y); started = true; }
+          if (it.pts.length === 1) ctx.lineTo(a.x + 0.01, a.y);   // a click without a drag still leaves a dot
+          ctx.stroke(); ctx.globalAlpha = 1; ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+          if (isSel) {   // no handles on a stroke: a dashed box shows what is selected
+            const ps = it.pts.map(toPx).filter(Boolean), xs = ps.map((c) => c.x), ys = ps.map((c) => c.y), pad = hl ? HIGHLIGHT_W / 2 + 3 : 5;
+            ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+            ctx.strokeRect(Math.min(...xs) - pad, Math.min(...ys) - pad, Math.max(...xs) - Math.min(...xs) + pad * 2, Math.max(...ys) - Math.min(...ys) + pad * 2);
+            ctx.setLineDash([]);
+          }
+          break;
+        }
         case "dot": ctx.fillStyle = it.color; ctx.arc(a.x, a.y, it.r || 3.5, 0, 7); ctx.fill(); break;
         case "ray": { const f = farPoint(a, b, w); ctx.moveTo(a.x, a.y); ctx.lineTo(f.x, f.y); ctx.stroke(); break; }
         case "extline": { const f = farPoint(a, b, w), g = farPoint(b, a, w); ctx.moveTo(g.x, g.y); ctx.lineTo(f.x, f.y); ctx.stroke(); break; }
@@ -338,6 +366,12 @@ const Drawings = (() => {
         case "vline": return Math.abs(p.x - a.x);
         case "crossline": return Math.min(Math.abs(p.x - a.x), Math.abs(p.y - a.y));
         case "trend": return segDist(p, a, b);
+        case "brush": case "highlighter": {
+          const ps = it.pts.map(toPx).filter(Boolean);
+          let d = ps.length ? Math.hypot(p.x - ps[0].x, p.y - ps[0].y) : Infinity;
+          for (let i = 1; i < ps.length; i++) d = Math.min(d, segDist(p, ps[i - 1], ps[i]));
+          return it.type === "highlighter" ? Math.max(0, d - HIGHLIGHT_W / 2) : d;
+        }
         case "ray": return segDist(p, a, farPoint(a, b, w));
         case "extline": return segDist(p, farPoint(b, a, w), farPoint(a, b, w));
         case "rect": return inBox(p, a.x, a.y, b.x, b.y) ? 0 : Infinity;
@@ -455,6 +489,7 @@ const Drawings = (() => {
       if (e.shiftKey && isCursor(tool) && !draft) { stop(); draft = { type: "measure", pts: [fromPx(p.x, p.y, false), pt] }; downPx = p; req(); return; }
       if (!isCursor(tool)) {
         stop();
+        if (TOOLS[tool].free) { const q = fromPxFree(p.x, p.y); if (q) { draft = { type: tool, pts: [q], free: true }; downPx = p; lastPx = p; req(); } return; }
         const need = TOOLS[tool].pts;
         if (draft) return commit(draft.type, [draft.pts[0], pt]);
         if (tool === "text") { const it = newItem("text", pt); setTool(cursorMode); editText(it, true); return; }
@@ -480,13 +515,18 @@ const Drawings = (() => {
     }
     function onMove(e) {
       const p = local(e);
+      if (draft?.free) {
+        if (inPlot(p) && Math.hypot(p.x - lastPx.x, p.y - lastPx.y) >= FREE_STEP) { const q = fromPxFree(p.x, p.y); if (q) { draft.pts.push(q); lastPx = p; req(); } }
+        return;
+      }
       if (draft && inPlot(p)) { const pt = fromPx(p.x, p.y, draft.type !== "measure" && opts.magnet); if (pt) { draft.pts[1] = pt; req(); } return; }
       if (drag) {
         const pt = fromPx(p.x, p.y); if (!pt) return;
         if (drag.handle) drag.handle.set(pt);
         else {  // move the whole drawing by whole bars and the raw price delta
           const dl = Math.round(ts.coordinateToLogical(p.x) - drag.fromL), dP = series.coordinateToPrice(p.y) - drag.fromP;
-          drag.item.pts = drag.orig.map((q) => ({ t: logicalToMs(Math.round(msToLogical(q.t)) + dl), p: q.p + dP }));
+          const bar = TOOLS[drag.item.type]?.free ? (l) => l : Math.round;   // a stroke keeps its sub-bar shape
+          drag.item.pts = drag.orig.map((q) => ({ t: logicalToMs(bar(msToLogical(q.t)) + dl), p: q.p + dP }));
         }
         req(); return;
       }
@@ -495,6 +535,7 @@ const Drawings = (() => {
       chartEl.style.cursor = !isCursor(tool) ? "crosshair" : tool === "eraser" ? (over ? "pointer" : "default") : over ? "pointer" : tool === "arrow" ? "default" : "crosshair";
     }
     function onUp(e) {
+      if (draft?.free) { const d = draft; downPx = null; commit(d.type, d.pts); return; }   // released anywhere: the stroke ends
       if (draft && downPx) { // press-drag-release draws too, not just click-click
         const p = local(e);
         if (Math.hypot(p.x - downPx.x, p.y - downPx.y) > 6 && inPlot(p)) {

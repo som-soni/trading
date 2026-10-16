@@ -280,7 +280,7 @@ Stage 4 means a close below a 150-day average that is lower than 20 sessions ear
 **Survivorship.** This matters more for shorts than for anything else. The stocks that went to zero are missing from today's lists. A test on survivors will make shorting look worse than it was, and a test that adds back only famous collapses will make it look better. Use a database with delisted stocks.
 
 **Costs (approximate).**
-- India, stock futures: brokerage about ₹20 per order; STT about 0.02% on the sell side; stamp duty about 0.002% on the buy side; exchange fees and GST. Add the cost of rolling each month: two more trades and the spread.
+- India, stock futures: brokerage about ₹20 per order; STT 0.05% on the sell side (since April 2026); stamp duty about 0.002% on the buy side; exchange fees and GST. Add the cost of rolling each month: two more trades and the spread.
 - US: the spread, plus a borrow fee (under 1% a year for most large stocks, far more for crowded ones), plus dividends paid while short.
 - Slippage: shorts are stopped out on gaps up. Fill at the open when the open is beyond the stop.
 

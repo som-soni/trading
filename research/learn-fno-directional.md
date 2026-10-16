@@ -164,7 +164,7 @@ An option's own price is a poor stop level, because it moves with time and volat
 
 - **Target:** exit when the underlying reaches the target, or when a spread is worth **80%** of its maximum value. The last 20% takes the longest to earn.
 - **Time:** exit when **one third** of the option's life remains and the move has not come. Time decay is fastest at the end.
-- **Before expiry:** close stock options at least **two sessions** before expiry, to avoid physical delivery and the higher STT charged on exercise.
+- **Before expiry:** close stock options at least **two sessions** before expiry, to avoid physical delivery and the delivery STT of 0.1% on the full contract value.
 - **Invalidation:** the stop above.
 
 ### Position size
@@ -203,7 +203,7 @@ lots = floor( account × risk per trade / (premium per unit × lot size) )
 | Premium backstop | 40–60% loss | Maximum loss before the price stop | Tighter cuts more good trades |
 | Spread profit target | 70–90% of maximum value | When to bank a spread | — |
 | Time exit | ⅓ to ½ of option life left | Exposure to fast decay | — |
-| Days before expiry to close stock options | 2–5 sessions | Delivery and exercise STT | Brokers may close positions themselves |
+| Days before expiry to close stock options | 2–5 sessions | Delivery, and delivery STT on the full contract value | Brokers may close positions themselves |
 | Risk per trade | 0.5–1% of account | Size | Count the full premium as at risk |
 
 ---
@@ -304,7 +304,7 @@ The stop on the underlying did its job. The loss was still about half the premiu
 - **Sizing by lots instead of by risk.** Ten lots of a cheap option is ten times the loss when it expires worthless.
 - **Ignoring implied volatility.** Buying calls after a crash, or before results, often means paying for a move that has already been priced in.
 - **Using the option's price as the stop.** It falls with time even when the idea is intact. Stop on the underlying.
-- **Holding stock options into expiry.** In India this can turn into a delivery obligation, and exercise is charged a higher STT.
+- **Holding stock options into expiry.** In India this can turn into a delivery obligation, and both sides then pay delivery STT of 0.1% on the full contract value.
 - **Legging into spreads.** Buying one leg and waiting to sell the other turns a defined-risk trade into an open bet.
 - **Trading the opening minutes.** Spreads are widest then, and the first prices are often not tradable.
 
@@ -359,7 +359,7 @@ The stop on the underlying did its job. The loss was still about half the premiu
 **Costs in India (approximate, October 2026; check current rates).**
 
 - Brokerage: a flat fee per order at discount brokers, commonly about ₹20.
-- STT on the sale of an option, as a percentage of the premium. A higher STT applies to the intrinsic value if an option is exercised at expiry. Rates were raised from 1 October 2024 and can change with each Budget.
+- STT on the sale of an option, as a percentage of the premium (0.15% from 1 April 2026). An exercised index option pays the same rate on its intrinsic value; a stock option settled by delivery pays 0.1% of the full contract value. Rates were raised in October 2024 and April 2026, and can change with each Budget.
 - Exchange transaction charges on the premium, GST of 18% on brokerage and exchange charges, stamp duty on purchases, and a small SEBI fee.
 - The bid–ask spread, which is often the largest cost. Model fills at the bid when selling and the ask when buying.
 

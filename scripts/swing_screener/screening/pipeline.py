@@ -179,6 +179,11 @@ def run(
     market_regime = regime_mod.compute_market_regime(
         index_daily, index_weekly, vix_value, cfg.vol_threshold, enriched_by_symbol, downgrade_syms
     )
+    # the shared downgrade, unless the strategy applies its own market filter (as its backtest does)
+    risk_off = strategy.market_risk_off(market_key, market_regime.downgrade_active)
+    if risk_off != market_regime.downgrade_active:
+        logger.info("Market filter (%s): risk-off=%s, overriding the shared regime downgrade (%s)",
+                    strategy.key, risk_off, market_regime.downgrade_active)
 
     logger.info("Looking up earnings dates for %d filtered tickers...", len(filtered))
     earnings_map = earnings.load_earnings_days_away(market_key, filtered)
@@ -285,7 +290,7 @@ def run(
 
         sz = sizing.size_position(cfg, plan.entry, plan.stop, market_regime.high_vol)
         dec = strategy.classify(
-            ctx, result, plan, sz, earnings_map.get(sym), market_regime.downgrade_active
+            ctx, result, plan, sz, earnings_map.get(sym), risk_off
         )
 
         row.update({

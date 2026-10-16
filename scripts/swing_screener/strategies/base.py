@@ -472,6 +472,12 @@ class Strategy(SpecMeta, ABC):
         cap — override to implement flag-driven caps."""
         return "TRADE_HIGH_CONFIDENCE"
 
+    def market_risk_off(self, market_key: str, default: bool) -> bool:
+        """Live screening: is the market risk-off for THIS strategy's new buys? `default` is the
+        shared market-regime downgrade; a strategy whose backtest runs its own market filter
+        overrides this so the live screen applies the same test."""
+        return default
+
     def setup_quality(self, result: StrategyResult) -> float:
         """Ranking score used by the sector filter and report ordering."""
         return 1.0 if result.has_setup else 0.0

@@ -1,7 +1,9 @@
-"""Minervini VCP, built to the written backtest specification (research/minervini-backtest-spec.md).
+"""Minervini SEPA: the VCP detector of the written backtest specification (research/minervini-backtest-spec.md),
+traded and managed as the SEPA Learn guide describes ("SEPA and the VCP", research/learn-strat-vcp-sepa.md).
 
-A second, rule-for-rule version of `minervini`, kept alongside it so the two can be compared: the
-original stays the baseline. What differs from `minervini`:
+Up to 1.7 every rule followed the written spec. Since 1.8 the base, the setups and the entries still do,
+while the stop limit, the exits, the market filter, the results blackout, the liquidity floor, progressive
+exposure and the low cheat follow the guide (see the changelog). What differs from the retired `minervini`:
 
 - **Base detection** (core/vcp_spec.py) anchors on the base high — the last confirmed swing high no
   later close has exceeded — and measures every contraction from there, with the spec's numbers:
@@ -16,8 +18,9 @@ original stays the baseline. What differs from `minervini`:
   open (EN-01). **MV-02** is the coil below the pivot, entered by a buy-stop through it (EN-02).
 - **Stops** sit `STOP_BUFFER_PCT`% under the tight low and may be no more than `MAX_STOP_PCT`% below the
   fill (checked at the fill, not at the signal). One entry per base.
-- **Exits** are the spec's EX-01 … EX-06: the stop, a failed breakout, breakeven at {BREAKEVEN_R}R, a third sold
-  at 3R, climax runs, and a 50-day break on volume — the portfolio simulator's `minervini` mode.
+- **Exits** (the portfolio simulator's `minervini` mode, defaults from the constants below): the stop,
+  breakeven at `BREAKEVEN_R`, a part sold into strength (a close `STRENGTH_EXT_PCT`% above the 50-day, or a
+  climax run), the rest on a close below the 50-day, and a time stop. The failed-breakout exit is off.
 
 The backtest adds the cross-sectional parts a one-symbol evaluation cannot do: the RS rating (TT-08),
 ranking by RS then tightness, the market filter, the base number, and the spec's costs
@@ -70,20 +73,19 @@ BUY_RANGE_PCT = 5.0     # MV-01b: close no more than this % above the pivot (and
 UPPER_HALF = 0.5        # MV-01c: close in at least this fraction of the day's range
 
 # ---- section 8: stop
-# MV-03, the low cheat, is OFF. Minervini calls it the riskiest of his three
-# in-base entries and says he uses it sparingly, in stocks he already knows; the
-# India backtest agrees emphatically -- 25 trades, a 4% win rate and -0.515R
-# average, Rs257k of losses that turned a book the 3C had made Rs213k on into a
-# Rs101k loss. An int rather than a bool so spec_params fingerprints it: flipping
-# it has to change the spec_id, or two runs with different rules would share a
-# cache and a report directory. `--const LOW_CHEAT_ENABLED=1` puts it back.
-LOW_CHEAT_ENABLED = 0
+# MV-03, the low cheat. ON since 1.8, because the Learn guide this strategy follows
+# lists it as one of the three entries. It was switched off in 1.5 on a measured
+# reason that still stands -- India 2010 onward, 25 trades, a 4% win rate and
+# -0.515R average, Rs257k of losses against the 3C's Rs213k gain -- so read its
+# trades separately. An int rather than a bool so spec_params fingerprints it:
+# flipping it has to change the spec_id. `--const LOW_CHEAT_ENABLED=0` turns it off.
+LOW_CHEAT_ENABLED = 1
 
 CHEAT_SHELF_DAYS = 7    # MV-03/MV-04: sessions in the shelf (mirrors VcpParams.cheat_shelf_days)
 CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpParams.cheat_shelf_pct)
 
 STOP_BUFFER_PCT = 0.5   # SL-01: stop this % under the tight low
-MAX_STOP_PCT = 8.0      # SL-03: skip a fill whose stop is further below it than this
+MAX_STOP_PCT = 10.0     # SL-03: skip a fill whose stop is further below it than this (the guide's limit)
 NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a third at 3R)
 # Minervini's stated minimum reward-to-risk (ChartMill's SEPA write-up and the
 # books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
@@ -97,34 +99,124 @@ MIN_STRUCTURAL_R = 2.0
 # same guard for the same reason.
 OVERHEAD_CLUSTER_ATR = 1.0
 
-# EX-03's trigger. Mirrors ExitPolicy.breakeven_r, which is what a --spec run
-# actually gets; tests/test_minervini_exits.py fails if the two drift apart.
-# Raised from 2.0: trades exiting on the breakeven stop had reached a median 2.75R
-# while held and realised -0.04R, so the stop was converting winners into scratches.
-BREAKEVEN_R = 2.5
+# ---- section 9: exits. ExitPolicy (backtesting/portfolio_sim.py) takes its defaults
+# from these, so a --spec run trades exactly these numbers.
+# EX-03's trigger: the guide's +2R. (1.6 raised it to 2.5R -- trades exiting on the
+# breakeven stop had reached a median 2.75R and realised -0.04R -- and 1.8 puts the
+# guide's figure back; `--breakeven-r 2.5` reproduces 1.7.)
+BREAKEVEN_R = 2.0
+# EX-02, the failed-breakout exit (a close back below the pivot within N sessions).
+# OFF: the guide leaves a dip below the pivot to the stop, and dips are normal --
+# on stored data about two in three breakouts close back below the pivot within ten
+# sessions. In 1.7 this exit closed ~80% of trades for about -0.3R each.
+FAIL_DAYS = 0
+# EX-04, selling into strength: a part of the position once the close is this far
+# above the 50-day average, at the next open. Replaces 1.7's "a third at 3R".
+STRENGTH_EXT_PCT = 25.0
+STRENGTH_FRAC = 1 / 3
+# EX-05, a climax run, sells that same part rather than the whole position: the
+# guide sells into strength in part and the rest into weakness (EX-06).
+CLIMAX_IS_PARTIAL = 1
+# EX-06, the close below the 50-day average, no longer needs above-average volume.
+TREND_EXIT_NEEDS_VOLUME = 0
+# EX-07, the time stop: sold if the high has not reached +1R within this many sessions.
+TIME_STOP_DAYS = 15
+# EN-02 fills on the close through the pivot; a fill on volume under VOL_MULT x the
+# 50-day average is not a valid breakout and is sold at the next open.
+LIGHT_VOLUME_EXIT = 1
 
 # ---- section 10 / backtest (backtesting/backtest.py --spec)
-# PE-01..PE-04 (progressive exposure), off unless --pe. Minervini does not risk a flat
-# fraction every time: he opens small and only pays full size once the account is making
-# money, so a losing run costs progressively less. The state is read once per session from
-# trades that closed EARLIER, never from the session being sized.
+# PE-01..PE-04 (progressive exposure), on by default since 1.8 (`--pe` in backtest_args).
+# Minervini does not risk a flat fraction every time: he opens small and only pays full
+# size once the account is making money, so a losing run costs progressively less. The
+# state is read once per session from trades that closed EARLIER, never from the session
+# being sized.
 PE_WINDOW = 10                  # PE-01: closed trades in the rolling window
 PE_WARMUP = 5                   # PE-02: pilot size until this many trades have closed
 PE_PILOT_FRAC = 0.5             # PE-02: fraction of the risk budget at pilot size
 PE_PRESS_NET_R = 4.0            # PE-04: net R that unlocks the press (only with --pe-press)
 MKT_CONFIRM_DAYS = 5            # MKT-01: sessions risk-on must hold before new buys resume
 
+# The market filter (backtesting/spec.py market_ok). 1 = the guide's test, 0 = 1.7's MKT-01.
+# The guide's: the benchmark closes above its MKT_INDEX_SMA-day average, AND the share of
+# the market's most-traded stocks above their own 50-day average is above
+# MKT_BREADTH_MIN_PCT or higher than MKT_BREADTH_RISING_DAYS sessions earlier.
+MKT_GUIDE = 1
+MKT_INDEX_SMA = 50
+MKT_BREADTH_MIN_PCT = 50.0
+MKT_BREADTH_RISING_DAYS = 5
+
 MAX_POSITIONS = 8               # PF-02
 MAX_OPEN_RISK_PCT = 6.0         # PF-04
 MAX_ADV_PCT = 5.0               # SL-06
-EARNINGS_WARN_DAYS = 10
+# No new buy with results due within this many calendar days: live from the earnings
+# calendar, in a backtest from the stored results' filing dates (spec.results_blackout).
+EARNINGS_BLACKOUT_DAYS = 14
+
+# The guide's liquidity floor. Turnover is the 50-day average volume x the close, which is
+# split-invariant, so it applies in backtests too. The price floor is LIVE ONLY: a backtest
+# reads split-adjusted history, where a winner's early price is divided by every later split
+# (the reason 1.2 dropped the market's own price floor from backtests).
+MIN_TURNOVER_INR_CR = 10           # ₹ crore a day
+MIN_TURNOVER_USD_M = 20            # $ million a day
+LIVE_MIN_PRICE_INR = 100
+LIVE_MIN_PRICE_USD = 15
+
+# The guide's fundamentals, as the backtest's `--fundamentals guide` level (off by default:
+# stored results cover India only from late 2020). Quarterly EPS growth on the year-ago
+# quarter, faster than the quarter before; sales growth; net margin no more than
+# FUND_MARGIN_SLACK_PP points below the year-ago quarter's.
+FUND_EPS_GROWTH_MIN_PCT = 20.0
+FUND_SALES_GROWTH_MIN_PCT = 15.0
+FUND_MARGIN_SLACK_PP = 1.0
+
+
+def _min_turnover(cfg: MarketConfig) -> float:
+    return MIN_TURNOVER_INR_CR * 1e7 if cfg.currency_code == "INR" else MIN_TURNOVER_USD_M * 1e6
+
+
+def _live_min_price(cfg: MarketConfig) -> float:
+    return LIVE_MIN_PRICE_INR if cfg.currency_code == "INR" else LIVE_MIN_PRICE_USD
+
+
+_NO_FLOOR: dict[int, MarketConfig] = {}
+
+
+def _without_liquidity_floor(cfg: MarketConfig) -> MarketConfig:
+    """The market config with its own turnover floor removed (the guide's replaces it), built once
+    per config: prefilter_mask calls this for every row of every symbol."""
+    if id(cfg) not in _NO_FLOOR:
+        import dataclasses
+        _NO_FLOOR[id(cfg)] = dataclasses.replace(cfg, screener=dataclasses.replace(cfg.screener, min_dollar_volume=0))
+    return _NO_FLOOR[id(cfg)]
 
 
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.7"
+    version = "1.8"
     changelog = (
+        ("1.8", "2026-10-16",
+         "Trade management, filters and defaults now follow the SEPA Learn guide (\"SEPA and the VCP\"); the base, "
+         "setups and entries are unchanged. Stop limit 8% -> 10%. Breakeven at +2R (was 2.5R). The failed-breakout "
+         "exit (a close below the pivot within 5 sessions) is OFF: it closed ~80% of 1.7's trades for about -0.3R "
+         "each, and on stored data about two in three breakouts close back below the pivot within ten sessions "
+         "anyway. Selling into strength replaces 'a third at 3R' and the full climax sale: a third is sold at the "
+         "next open once the close is 25% above the 50-day or a climax run appears, and the rest goes on the first "
+         "close below the 50-day, which no longer needs above-average volume. A time stop sells a trade whose high "
+         "has not reached +1R in 15 sessions. A buy-stop (MV-02) that fills on a close with volume under 1.4x "
+         "average is sold at the next open. The market filter is the guide's -- the benchmark above its 50-day, "
+         "and breadth (stocks above their 50-day) above half or rising over 5 sessions -- in the backtest AND the "
+         "live screen, which until now used the shared regime downgrade; breadth history was extended back to "
+         "2009 for it. No new buys with results due within 14 days (live: the earnings calendar; backtest: the "
+         "stored results' filing dates). Liquidity: 50-day turnover of Rs10 crore / $20m, and live only, a price "
+         "of Rs100 / $15. Progressive exposure is on by default (--pe). The low cheat (MV-03) is back on. A "
+         "'guide' fundamentals level (EPS +20% and accelerating, sales +15%, margins not falling) is available as "
+         "--fundamentals guide, off by default because India's stored results start in late 2020. Every 1.7 rule "
+         "is still reachable by flag (--mkt01, --fail-days 5, --breakeven-r 2.5, --partial-r 3, --climax-full, "
+         "--trend-volume, --time-stop 0, --results-blackout 0, --const LOW_CHEAT_ENABLED=0). The default backtest "
+         "now takes TRADE ON TRIGGER as well as HIGH CONFIDENCE, so the buy-stop and the cheats -- the guide's "
+         "main entries -- are traded, not only MV-01. Not yet backtested."),
         ("1.7", "2026-10-15",
          "The market filter is on by default (`--spec` now implies `--market-filter`), because it is the "
          "first change measured here to improve return AND drawdown together: US 2010 onward, 557 trades "
@@ -210,9 +302,10 @@ class MinerviniSpecStrategy(Strategy):
     key = "minervini"
     name = "Minervini SEPA"
     description = (
-        "The written Minervini backtest specification, rule for rule: Trend Template, a base-high "
-        "anchored VCP, confirmed breakouts at the next open or buy-stops through the pivot, and the "
-        "spec's exits (failed breakout, breakeven, partial profit, climax, 50-day break)."
+        "Minervini's SEPA as the Learn guide describes it: the Trend Template, a base-high anchored VCP, "
+        "breakouts and buy-stops through the pivot plus the two cheat entries, a 10% stop limit, breakeven "
+        "at 2R, a third sold into strength and the rest on a 50-day break, the guide's market filter, a "
+        "results blackout and progressive exposure."
     )
     style = "breakout"
 
@@ -241,9 +334,10 @@ class MinerviniSpecStrategy(Strategy):
     min_bars = 300
 
     thesis = (
-        "The same edge as Minervini's SEPA — buy Stage-2 leaders as a volatility contraction completes, "
-        "with small, capped losses against large winners — but tested exactly as the written "
-        "specification defines it, so that the result measures the method rather than one reading of it."
+        "Minervini's SEPA — buy Stage-2 leaders as a volatility contraction completes, with small, capped "
+        "losses against large winners — traded the way the Learn guide \"SEPA and the VCP\" describes it: "
+        "the base is found by the written specification's exact rules, and the trade is managed, sized and "
+        "filtered by the guide's."
     )
     how_it_works = (
         "Gates M1–M8 are the Trend Template (the Stage 2 screen's criteria): price above the 50/150/200-day "
@@ -265,6 +359,12 @@ class MinerviniSpecStrategy(Strategy):
         "MV-01 (breakout): the base was complete yesterday, yesterday's close was at or below yesterday's "
         "pivot and today's close is above it — on at least {VOL_MULT} × average volume, in the upper half of "
         "the day's range, and no more than {BUY_RANGE_PCT}% past the pivot. Bought at the next open.",
+        "MV-03 / MV-04 (the low cheat and the \"3C\"): a short, tight shelf in the lower or middle third of "
+        "a base that is still forming, bought on the close through the shelf's high and stopped under its low.",
+        "Liquidity: 50-day average turnover of at least ₹{MIN_TURNOVER_INR_CR} crore or ${MIN_TURNOVER_USD_M} "
+        "million a day; on the live screen also a price of at least ₹{LIVE_MIN_PRICE_INR} or "
+        "${LIVE_MIN_PRICE_USD}. No new buy with results due within {EARNINGS_BLACKOUT_DAYS} days, or while "
+        "the market filter is risk-off.",
     )
     caveats = (
         "**Survivorship bias.** The universe is today's listed stocks; companies delisted since are missing, "
@@ -274,21 +374,33 @@ class MinerviniSpecStrategy(Strategy):
         "**Relative strength** is applied twice: the per-stock gate M8 uses 12-1 month momentum of "
         "{RS_MIN_MOM}+ (a stand-in that a one-symbol evaluation can compute), and the backtest's `--min-rs` "
         "applies the true RS rating across the market. The stand-in rarely binds when the rating is 70+.",
-        "**The fundamental screen (SEPA part 2) is not part of the spec; it is optional in the backtest and covers 2022 onward only.** "
-        "`--fundamentals leader|acceptable|covered` applies the Fundamentals page's SEPA tests to each signal "
-        "from the quarterly results public on its date (backtesting/fundamental_filter.py). Stored filings start "
-        "in 2021 and cover part of the universe, so compare against `covered` (any scorable company), not the "
-        "full run; F7 (beat estimates) is never available point in time.",
+        "**Fundamentals (SEPA part 2) are optional in the backtest, off by default.** `--fundamentals guide` "
+        "applies the Learn guide's tests (quarterly EPS up {FUND_EPS_GROWTH_MIN_PCT}%+ and faster than the "
+        "quarter before, sales up {FUND_SALES_GROWTH_MIN_PCT}%+, net margin no more than "
+        "{FUND_MARGIN_SLACK_PP} points below a year earlier); `leader|acceptable|covered` apply the "
+        "Fundamentals page's stricter SEPA tests. Each uses the quarterly results public on the signal date "
+        "(backtesting/fundamental_filter.py). Stored results start in late 2020 for India and 2009 for the US "
+        "and cover part of the universe, so compare against `covered` (any scorable company), not the full run.",
+        "**The results blackout** in a backtest uses the stored results' filing dates (India from late 2020, "
+        "the US from 2009, part of the universe); a stock with no stored date near the signal is never blocked, "
+        "so early Indian years run without it.",
+        "**The price floor is live only.** A backtest reads split-adjusted history, where a winner's early price "
+        "is divided by every later split, so a price floor there would delete the stocks that rose most.",
+        "**The low cheat (MV-03) is on because the guide lists it**, but it lost heavily when measured in 1.5 "
+        "(India 2010 onward: 25 trades, a 4% win rate, -0.515R each). Read its trades separately.",
         "**Circuit limits** (C-03, India) are not modelled: a stop on a locked day fills at the next open, "
         "which daily bars cannot tell apart from a gap.",
         "**Base number** counts the bases that produced a breakout since the trend last broke; it is "
         "worked out by the backtest from the signal list, and only reported, not filtered on by default.",
         "EN-03 (buying inside the tight area before any breakout) is not implemented.",
+        "The market filter's breadth is the share of the market's 1,000 most-traded stocks above their 50-day "
+        "average, rebuilt daily from stored prices back to 2009; today's lists only, like everything else here.",
         "The detector turns a chart-reading judgement into numbers; every threshold is a parameter of the "
         "spec (section 11), most of them marked there as assumptions.",
     )
     status = (
-        "No demonstrated edge (India, 2010 onward, `--spec`). Confirmed breakouts (EN-01): 9 trades in 16 years, "
+        "Version 1.8 (the Learn guide's management and filters) has not been backtested yet; everything below "
+        "measures 1.7's rules. No demonstrated edge (India, 2010 onward, `--spec`). Confirmed breakouts (EN-01): 9 trades in 16 years, "
         "CAGR −0.1% — the spec's base rules almost never complete on Indian daily data. Buy-stops (EN-02): 114 trades, "
         "expectancy −0.03R, profit factor 0.86, CAGR 0.1% against the index's ~12%, max drawdown −8.6%; the "
         "failed-breakout exit closes ~80% of trades for −0.3R each. No parameter at either end of the spec's test "
@@ -325,13 +437,13 @@ class MinerviniSpecStrategy(Strategy):
               "so not a confirmed breakout.",
         "B2": "Closed more than {BUY_RANGE_PCT}% past the pivot (MV-01b): extended beyond the buy range.",
         "B3": "Closed through the pivot but in the lower half of the day's range (MV-01c).",
-        "B4": "Earnings are due within {EARNINGS_WARN_DAYS} days (live screen only).",
+        "B4": "Results are due within {EARNINGS_BLACKOUT_DAYS} days: no new buy (the plan is held at WATCH).",
     }
     setup_docs = {
         MV01: "Breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
               "on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of the pivot.",
         MV02: "Coiled: the base is complete and the close is within {COIL_PCT}% below the pivot.",
-        MV03: "Low cheat (OFF by default, {LOW_CHEAT_ENABLED}; `--const LOW_CHEAT_ENABLED=1` enables it): "
+        MV03: "Low cheat (on since 1.8, {LOW_CHEAT_ENABLED}; `--const LOW_CHEAT_ENABLED=0` turns it off): "
               "a shelf of {CHEAT_SHELF_DAYS} sessions spanning no more than "
               "{CHEAT_SHELF_PCT}% sits in the LOWER third of a base that has cleared VCP-01/02/03, and "
               "today's close went through its high. Taken while the base is still forming, so the stop "
@@ -347,9 +459,11 @@ class MinerviniSpecStrategy(Strategy):
         "session that CLOSES at or above the pivot, and fills at that close (or the stop price if the close is "
         "below it); a session that pokes through the pivot and closes back below leaves the order resting. It is "
         "skipped if the fill would be more than {BUY_RANGE_PCT}% above the pivot, and cancelled by a close below "
-        "the tight low.",
+        "the tight low. A fill on a close whose volume is under {VOL_MULT} × the 50-day average is not a valid "
+        "breakout: it is sold at the next open.",
         "Stop: {STOP_BUFFER_PCT}% under the tight low. A fill whose stop is more than {MAX_STOP_PCT}% below "
-        "it is skipped. Size: 1% of equity at risk, capped at the market's position limit.",
+        "it is skipped. Size: 1% of equity at risk, capped at the market's position limit, and halved by "
+        "progressive exposure while the recent record is not paying (see the exits).",
         "MV-03 / MV-04 (cheats): bought at the close of the session that clears the shelf high, stopped "
         "{STOP_BUFFER_PCT}% under the SHELF low rather than the base low — a nearby stop is the reason "
         "the entry exists. The objective is the base high plus the base's measured move from there.",
@@ -360,30 +474,36 @@ class MinerviniSpecStrategy(Strategy):
         "{NOMINAL_TARGET_R}R remains the nominal figure used for sizing and reporting.",
     )
     exit_rules = (
-        "In priority order, each session: EX-01 the stop (filled at the open if it gapped through); EX-02 a "
-        "close below the pivot within 5 sessions of entry — a failed breakout, sold at the next open; EX-03 "
-        "once the high reaches {BREAKEVEN_R}R, the stop rises to breakeven plus costs; EX-04 one third sold at 3R; EX-05 "
-        "a climax run once up 25% (the biggest up day on the biggest volume since entry, 8 of 10 up closes, "
-        "70% above the 200-day, or a 3% gap after a 50% gain), sold at the next open; EX-06 a close below "
-        "the 50-day average on at least average volume, sold at the next open.",
+        "In priority order, each session: EX-01 the stop (filled at the open if it gapped through); EX-03 "
+        "once the high reaches {BREAKEVEN_R}R, the stop rises to breakeven plus costs; EX-04 selling into "
+        "strength — once the close is {STRENGTH_EXT_PCT}% or more above the 50-day average, {STRENGTH_FRAC} of "
+        "the position is sold at the next open; EX-05 a climax run once up 25% (the biggest up day on the "
+        "biggest volume since entry, 8 of 10 up closes, 70% above the 200-day, or a 3% gap after a 50% gain) "
+        "sells that same part if it has not been sold; EX-06 the rest goes on the first close below the 50-day "
+        "average, at the next open; EX-07 a trade whose high has not reached +1R within {TIME_STOP_DAYS} "
+        "sessions is sold at the next open.",
+        "EX-02, the failed-breakout exit (a close back below the pivot within a few sessions), is off "
+        "({FAIL_DAYS} sessions): the guide leaves a dip below the pivot to the stop. `--fail-days 5` restores it.",
         "Backtest: `--exit-mode minervini` in the portfolio simulator; the spec's run adds `--spec`, which "
         "sets {MAX_POSITIONS} positions, a {MAX_OPEN_RISK_PCT}% open-risk cap, a {MAX_ADV_PCT}% liquidity cap, "
         "RS ranking and the spec's costs.",
-        "Sizing (PE-01 … PE-04, `--pe`, off by default): every entry risks the same fraction unless "
-        "progressive exposure is on, in which case an entry risks half that fraction while the last "
+        "Sizing (PE-01 … PE-04, `--pe`, on by default since 1.8): an entry risks half the normal fraction "
+        "while the last "
         "{PE_WINDOW} closed trades are not net positive, after two losing trades in a row, or during the "
         "first {PE_WARMUP} trades of the run, and the full fraction otherwise. `--pe-press` additionally "
         "allows 1.25x and two extra positions once the window is {PE_PRESS_NET_R}R up. The rule is read "
         "once per session from trades that closed on EARLIER sessions, so a stop-out this morning cannot "
         "resize an entry this afternoon. It aims at drawdown, not return.",
-        "Market filter (MKT-01, PF-06, `--market-filter`): in risk-off — benchmark below its 200-day, or "
-        "its 50-day below its 200-day — no new entry is taken and any resting buy-stop is cancelled, "
-        "because an order placed while the market was open would otherwise fill into one the rule "
-        "refuses. Open positions are never forced out. `--mkt-confirm` makes risk-on wait for MKT-01 to "
-        "hold that many sessions so the gate does not flap around the 200-day; risk-off still bites "
-        "immediately. Measured, the delay costs more than the flapping does — at {MKT_CONFIRM_DAYS} "
-        "sessions US CAGR falls 1.34% to 0.72% and drawdown worsens — because it sits out the first "
-        "days of a recovery, which is when the breakouts that work fire. It is off by default.",
+        "Market filter (`--market-filter`, the guide's since 1.8): new buys only while the benchmark closes "
+        "above its {MKT_INDEX_SMA}-day average AND breadth — the share of the most-traded stocks above their "
+        "own 50-day — is above {MKT_BREADTH_MIN_PCT}% or higher than {MKT_BREADTH_RISING_DAYS} sessions "
+        "earlier. In risk-off no new entry is taken and any resting buy-stop is cancelled; open positions are "
+        "never forced out. The live screen applies the same test. `--mkt01` restores 1.7's MKT-01 (the "
+        "benchmark above its 200-day and its 50-day above its 200-day), the one 1.7 rule measured to help. "
+        "`--mkt-confirm` makes risk-on wait that many sessions; it is off by default because, measured on "
+        "MKT-01 at {MKT_CONFIRM_DAYS} sessions, it sat out the first days of recoveries.",
+        "Results blackout (`--results-blackout`, {EARNINGS_BLACKOUT_DAYS} days by default with `--spec`): "
+        "no new buy with results due within that many days.",
     )
     decision_docs = {
         "TRADE_HIGH_CONFIDENCE": "A confirmed breakout (MV-01): every Trend Template gate passes and the stop is "
@@ -393,15 +513,17 @@ class MinerviniSpecStrategy(Strategy):
                             "the pivot (MV-02), entered only if price trades through it on a resting buy-stop, or a "
                             "cheat (MV-03 / MV-04) that cleared its shelf on the close, bought at the next open and "
                             "stopped under the shelf low. The market regime never caps a decision to this tier.",
-        "WATCH_WAIT": "A valid plan held back: its stop sits more than {MAX_STOP_PCT}% below entry, or the market "
-                      "filter allows no new buys (see the note below). Worth watching, not buying.",
+        "WATCH_WAIT": "A valid plan held back: its stop sits more than {MAX_STOP_PCT}% below entry, results are due "
+                      "within {EARNINGS_BLACKOUT_DAYS} days, or the market filter allows no new buys (see the note "
+                      "below). Worth watching, not buying.",
         "AVOID": "A Trend Template gate failed, or there is no valid entry plan — no breakout, coil or cheat setup, "
                  "or a plan that fails its checks (such as projecting under {MIN_STRUCTURAL_R}:1).",
     }
     regime_note = (
-        "When the market regime is risk-off, no new buys: HIGH CONFIDENCE and ON TRIGGER both become "
-        "WATCH, with the reason 'market filter: no new buys'. WATCH and AVOID are untouched, so the "
-        "watchlist of setting-up bases stays intact for the turn."
+        "When this strategy's own market filter is risk-off (the guide's test above — not the shared market "
+        "regime the other strategies use), no new buys: HIGH CONFIDENCE and ON TRIGGER both become WATCH, "
+        "with the reason 'market filter: no new buys'. WATCH and AVOID are untouched, so the watchlist of "
+        "setting-up bases stays intact for the turn."
     )
     param_docs = (
         ("Swing confirmation", "SWING_K", "Bars either side of a swing point; it is known only this many bars later."),
@@ -427,6 +549,26 @@ class MinerviniSpecStrategy(Strategy):
         ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Breakeven trigger", "BREAKEVEN_R", "EX-03: R gained before the stop moves to breakeven plus costs."),
+        ("Failed-breakout window", "FAIL_DAYS", "EX-02: sessions after entry in which a close below the pivot sells (0 = off)."),
+        ("Sell into strength", "STRENGTH_EXT_PCT", "EX-04: % above the 50-day at which a part is sold."),
+        ("Part sold into strength", "STRENGTH_FRAC", "EX-04 / EX-05: share of the position sold."),
+        ("Climax sells a part", "CLIMAX_IS_PARTIAL", "EX-05: 1 = the strength part only, 0 = everything (1.7)."),
+        ("Trend exit needs volume", "TREND_EXIT_NEEDS_VOLUME", "EX-06: 1 = only on above-average volume (1.7)."),
+        ("Time stop", "TIME_STOP_DAYS", "EX-07: sessions to reach +1R (0 = off)."),
+        ("Light-volume fill exit", "LIGHT_VOLUME_EXIT", "EN-02: sell a buy-stop fill on under-average breakout volume (1 = on)."),
+        ("Low cheat", "LOW_CHEAT_ENABLED", "MV-03 on (1) or off (0)."),
+        ("Results blackout", "EARNINGS_BLACKOUT_DAYS", "Days before results with no new buy."),
+        ("Turnover floor, India", "MIN_TURNOVER_INR_CR", "₹ crore a day, 50-day average volume × close."),
+        ("Turnover floor, US", "MIN_TURNOVER_USD_M", "$ million a day, 50-day average volume × close."),
+        ("Price floor, India (live)", "LIVE_MIN_PRICE_INR", "₹; the live screen only."),
+        ("Price floor, US (live)", "LIVE_MIN_PRICE_USD", "$; the live screen only."),
+        ("Market filter", "MKT_GUIDE", "1 = the guide's test, 0 = MKT-01 (1.7)."),
+        ("Index average", "MKT_INDEX_SMA", "Days in the benchmark's average the close must be above."),
+        ("Breadth floor", "MKT_BREADTH_MIN_PCT", "% of stocks above their 50-day that counts as healthy."),
+        ("Breadth rising over", "MKT_BREADTH_RISING_DAYS", "Sessions over which breadth may instead be rising."),
+        ("EPS growth (guide level)", "FUND_EPS_GROWTH_MIN_PCT", "--fundamentals guide: quarterly EPS growth, %."),
+        ("Sales growth (guide level)", "FUND_SALES_GROWTH_MIN_PCT", "--fundamentals guide: quarterly sales growth, %."),
+        ("Margin slack (guide level)", "FUND_MARGIN_SLACK_PP", "--fundamentals guide: points the margin may fall."),
         ("Exposure window", "PE_WINDOW", "PE-01: closed trades judged for sizing, with --pe."),
         ("Exposure warm-up", "PE_WARMUP", "PE-02: trades sized as pilots at the start of a run, with --pe."),
         ("Pilot fraction", "PE_PILOT_FRAC", "PE-02: share of the risk budget at pilot size, with --pe."),
@@ -438,13 +580,50 @@ class MinerviniSpecStrategy(Strategy):
     )
     # No --strategy here: jobs/registry.py already passes "--strategy <key>", and a second
     # one wins on argparse, so naming the key twice broke the moment the key was renamed.
-    backtest_args = "--spec --market-filter --accept-labels 'TRADE - HIGH CONFIDENCE'"
+    # Both trade tiers: the guide's default entry is the buy-stop through the pivot (MV-02) and it lists the
+    # cheats (MV-03 / MV-04), all graded TRADE ON TRIGGER; MV-01 alone fired 9 times in 16 years in India.
+    backtest_args = "--spec --market-filter --pe --accept-labels 'TRADE - HIGH CONFIDENCE,TRADE ON TRIGGER'"
 
     # ---------- screen ----------
 
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
-        """The Trend Template and the market's liquidity floor, as of one row (shared with `minervini`)."""
-        return MinerviniStrategy.prefilter_row(self, cfg, last)
+        """The guide's turnover floor, then the Trend Template (shared with `minervini`), as of one row.
+
+        The floor replaces the market's own: 50-day average volume x the close, against
+        MIN_TURNOVER_INR_CR / MIN_TURNOVER_USD_M. Both factors are split-adjusted the same way, so
+        the product is the turnover actually traded on that date."""
+        floor = _min_turnover(cfg)
+        v50, close = last.get("vol_sma50"), last.get("close")
+        if pd.isna(v50) or pd.isna(close) or float(v50) * float(close) < floor:
+            return False, f"turnover below {floor:,.0f} a day"
+        return MinerviniStrategy.prefilter_row(self, _without_liquidity_floor(cfg), last)
+
+    def passes_prefilter(self, cfg: MarketConfig, enriched_daily) -> tuple[bool, str]:
+        """Live screening only (a backtest uses prefilter_mask): the guide's price floor on
+        today's real price, then the row test."""
+        if enriched_daily is not None and len(enriched_daily):
+            floor = _live_min_price(cfg)
+            if float(enriched_daily["close"].iloc[-1]) < floor:
+                return False, f"price below {floor:g}"
+        return super().passes_prefilter(cfg, enriched_daily)
+
+    def market_risk_off(self, market_key: str, default: bool) -> bool:
+        """Live: the same market filter the backtest applies (backtesting/spec.py market_ok),
+        as of the latest stored session, instead of the shared market-regime downgrade."""
+        try:
+            from ..backtesting import spec as spec_mod
+            ok = spec_mod.market_ok(market_key, guide=bool(MKT_GUIDE))
+            br = spec_mod.breadth_pct50(market_key)
+        except Exception:      # no benchmark or breadth stored: fall back to the shared regime
+            return default
+        if not len(ok):
+            return default
+        if len(br) and (br.index[-1] - ok.index[-1]).days > 4:
+            import logging
+            logging.getLogger(__name__).warning(
+                "minervini market filter: the benchmark's last stored close (%s) is behind breadth (%s); "
+                "risk-off is judged as of %s", ok.index[-1].date(), br.index[-1].date(), ok.index[-1].date())
+        return not bool(ok.iloc[-1])
 
     # ---------- evaluation ----------
 
@@ -497,7 +676,7 @@ class MinerviniSpecStrategy(Strategy):
         if result.watch_flags["B3"]:
             result.watch_notes["B3"] = f"closed at {upper * 100:.0f}% of the day's range"
         ed = ctx.earnings_days_away
-        result.watch_flags["B4"] = bool(ed is not None and 0 <= ed <= EARNINGS_WARN_DAYS)
+        result.watch_flags["B4"] = bool(ed is not None and 0 <= ed <= EARNINGS_BLACKOUT_DAYS)
         if result.watch_flags["B4"]:
             result.watch_notes["B4"] = f"earnings in {ed} days"
 
@@ -643,6 +822,10 @@ class MinerviniSpecStrategy(Strategy):
             meta.update(order="open", min_open=tl)
         elif plan.setup == MV02:
             meta.update(order="stop", cancel_close_below=tl, confirm_close_above=pivot)
+            if LIGHT_VOLUME_EXIT:
+                # the guide's buy-stop is valid only if the breakout day's volume reaches
+                # VOL_MULT x the 50-day average by the close (portfolio_sim, entry day)
+                meta["min_breakout_vol"] = VOL_MULT
         else:
             # the shelf was cleared on today's close, so the fill is the next open,
             # as MV-01 does; cancel if it closes back under the shelf low
@@ -673,6 +856,9 @@ class MinerviniSpecStrategy(Strategy):
         if risk_pct > MAX_STOP_PCT:
             label = "WATCH_WAIT"
             reasons.append(f"stop {risk_pct:.1f}% below entry exceeds the {MAX_STOP_PCT:g}% maximum")
+        if earnings_days_away is not None and 0 <= earnings_days_away <= EARNINGS_BLACKOUT_DAYS:
+            label = "WATCH_WAIT"
+            reasons.append(f"results due in {earnings_days_away} days: no new buy within {EARNINGS_BLACKOUT_DAYS}")
         label_before = label
         if regime_downgrade_active and label in ("TRADE_HIGH_CONFIDENCE", "TRADE_ON_TRIGGER"):
             label = "WATCH_WAIT"

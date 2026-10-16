@@ -353,7 +353,7 @@ The second question: what would selling monthly Nifty options have earned? The m
 
 **Survivorship and regime.** A test starting after 2020 misses the March 2020 crash; one starting in 2010 has one such crash. Test the strategy's worst months explicitly: what would March 2020, October 2008 or a 13% one-day fall have cost?
 
-**Costs in India (approximate, October 2026; check current rates).** Brokerage is a flat fee per order, commonly about ₹20. STT is charged on the premium of options you sell, and a higher STT on the intrinsic value of options exercised at expiry. Add exchange transaction charges, GST of 18% on brokerage and exchange fees, stamp duty on purchases, and the bid–ask spread. A four-legged condor pays these on every leg, twice.
+**Costs in India (approximate, October 2026; check current rates).** Brokerage is a flat fee per order, commonly about ₹20. STT is charged on the premium of options you sell (0.15% from April 2026), and at the same rate on the intrinsic value of index options exercised at expiry. Stock options settled by delivery pay 0.1% of the full contract value. Add exchange transaction charges, GST of 18% on brokerage and exchange fees, stamp duty on purchases, and the bid–ask spread. A four-legged condor pays these on every leg, twice.
 
 **Tax.** F&O income in India is generally treated as non-speculative business income, taxed at your slab rate. Covered calls on shares you hold also create a capital-gains event when the shares are called away. Check with a tax adviser.
 

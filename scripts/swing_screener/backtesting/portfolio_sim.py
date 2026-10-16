@@ -45,13 +45,15 @@ without meta behaves exactly as before:
   base_id             one entry per base (EN-04): a base that was entered once is not entered again
   adv                 50-day average traded value, for the `max_adv_pct` cap (SL-06)
   slippage_bps        this order's slippage (and its exits'), overriding the market's
+  min_breakout_vol    sell at the next open if the fill day's volume is under this × its 50-day average
   pivot, rs, tightness  carried on the trade for exits and reports
 
-and the "minervini" exit mode runs the spec's EX-01 … EX-07 (see ExitPolicy).
-Exits that act on a close (EX-02, EX-05, EX-06, EX-07) are queued and fill at
-the next session's open; the stop (EX-01) fills during the day, at the open if
-the stock gapped through it. A partial sale (EX-04) is folded into the trade's
-single row: `exit_price` is the blended price of every share sold.
+and the "minervini" exit mode runs the strategy's EX-01 … EX-07 (see ExitPolicy).
+Exits that act on a close (EX-02, EX-05, EX-06, EX-07, a light-volume fill) are
+queued and fill at the next session's open; the stop (EX-01) fills during the
+day, at the open if the stock gapped through it. A partial sale (EX-04, and a
+climax when `climax_partial`) is folded into the trade's single row:
+`exit_price` is the blended price of every share sold.
 """
 
 import logging
@@ -61,6 +63,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from ..config.base import MarketConfig
+from ..strategies import minervini_spec as _ms
 
 logger = logging.getLogger(__name__)
 
@@ -97,30 +100,36 @@ class ExitPolicy:
     atr_mult: float = 3.0        # for trail_atr
     ma_col: str = "sma50"        # for ma, and minervini's EX-06
     donchian_bars: int = 50      # for donchian
-    # ---- minervini (research/minervini-backtest-spec.md, section 9)
-    fail_days: int = 5           # EX-02: a close below the pivot within this many sessions of entry (0 = off)
-    breakeven_r: float = 2.5     # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
-    partial_r: float = 3.0       # EX-04: sell `partial_frac` at entry + this × R (0 = off)
-    partial_frac: float = 1 / 3
+    # ---- minervini: the strategy's exit ladder. Defaults are minervini_spec's constants, so a
+    # --spec run trades the strategy's documented numbers (1.8: the SEPA Learn guide's).
+    fail_days: int = _ms.FAIL_DAYS              # EX-02: a close below the pivot within this many sessions of entry (0 = off)
+    breakeven_r: float = _ms.BREAKEVEN_R        # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
+    partial_r: float = 0.0                      # EX-04 (1.7): sell `partial_frac` at entry + this × R (0 = off)
+    partial_frac: float = _ms.STRENGTH_FRAC
+    strength_ext: float = _ms.STRENGTH_EXT_PCT / 100   # EX-04: sell `partial_frac` at the next open once the close is
+                                                #   this far above `ma_col` (0 = off)
     climax: bool = True          # EX-05
+    climax_partial: bool = bool(_ms.CLIMAX_IS_PARTIAL)  # a climax sells `partial_frac` (if not yet sold), not everything
     climax_gain: float = 0.25    #   only once the position is up this much
     climax_up_days: int = 8      #   … at least this many up closes in the last 10
     climax_ext_200: float = 0.70 #   … close this far above SMA200
     climax_gap: float = 0.03     #   … a gap up this large after a rise of `climax_gap_after`
     climax_gap_after: float = 0.50
-    trend_volume: bool = True    # EX-06 needs volume ≥ its 50-day average
-    time_stop_days: int = 0      # EX-07: after this many sessions with gain < 1R (0 = off)
+    trend_volume: bool = bool(_ms.TREND_EXIT_NEEDS_VOLUME)  # EX-06 needs volume ≥ its 50-day average
+    time_stop_days: int = _ms.TIME_STOP_DAYS    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
 
     def label(self) -> str:
         bits = [self.mode]
         if self.mode == "minervini":
             bits.append(self.ma_col)
-            if self.partial_r != 3.0:
-                bits.append(f"partial{self.partial_r:g}R" if self.partial_r else "noPartial")
-            if self.fail_days != 5:
+            if self.partial_r:
+                bits.append(f"partial{self.partial_r:g}R")
+            if self.strength_ext != _ms.STRENGTH_EXT_PCT / 100:
+                bits.append(f"strength{self.strength_ext * 100:g}" if self.strength_ext else "noStrength")
+            if self.fail_days != _ms.FAIL_DAYS:
                 bits.append(f"fail{self.fail_days}" if self.fail_days else "noFail")
-            if self.time_stop_days:
-                bits.append(f"time{self.time_stop_days}")
+            if self.time_stop_days != _ms.TIME_STOP_DAYS:
+                bits.append(f"time{self.time_stop_days}" if self.time_stop_days else "noTime")
             return "-".join(bits)
         if self.mode == "trail_atr":
             bits.append(f"{self.atr_mult:g}ATR")
@@ -667,27 +676,41 @@ def simulate(
 
 def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, policy: ExitPolicy,
                       close_out, sell, fee_rate: float, cfg: MarketConfig, entry_day: bool = False) -> None:
-    """One session of the spec's exit rules (section 9), in their priority order.
+    """One session of the strategy's exit rules, in their priority order.
 
-    EX-01 fills during the day; EX-04 sells part during the day; EX-02/05/06/07 act on the close and
-    are queued for the next session's open. On the entry bar only the close-based rules run: the
-    order of the day's high and low relative to the fill is unknown."""
+    EX-01 fills during the day; EX-04 at R sells part during the day; the strength sale, a climax
+    and EX-02/05/06/07 act on the close and are queued for the next session's open. On the entry
+    bar only the close-based rules run: the order of the day's high and low relative to the fill is
+    unknown."""
     o, h, l, c = float(bar["open"]), float(bar["high"]), float(bar["low"]), float(bar["close"])
+    m = pos.meta
     if pos.queued_exit and not entry_day:
         close_out(sym, pos, o, pos.queued_exit, today)
         return
+    if m.pop("_queued_partial", False) and not entry_day and not pos.partial_shares:
+        # a part queued on yesterday's close (selling into strength, or a climax), sold at this open
+        n = int(pos.shares * policy.partial_frac)
+        if 0 < n < pos.held:
+            sell(pos, o, n, today)
+            pos.partial_shares = n
     if not entry_day:
         pos.bars_held += 1
     entry, r = pos.entry_price, pos.entry_price - pos.initial_stop
     i = df.index.get_loc(today)
     prev = float(df["close"].iloc[i - 1]) if i > 0 else c
-    m = pos.meta
     vol = float(bar.get("volume", 0) or 0)
+    v50 = float(bar.get("vol_sma50", float("nan")))
     day_gain = c / prev - 1 if prev else 0.0
-    # running records since entry, for the climax test
+    # running records since entry, for the climax test and the time stop
     rec_gain, rec_vol = m.get("_max_gain", -math.inf), m.get("_max_vol", -math.inf)
     m["_max_gain"], m["_max_vol"] = max(rec_gain, day_gain), max(rec_vol, vol)
+    if not entry_day:
+        m["_max_high"] = max(m.get("_max_high", -math.inf), h)
 
+    if entry_day and m.get("min_breakout_vol") and v50 == v50 and v50 > 0 and vol < m["min_breakout_vol"] * v50:
+        # a buy-stop that filled on a light-volume close is not a valid breakout: sold at the next open
+        pos.queued_exit = "LIGHT_VOLUME_BREAKOUT"
+        return
     if not entry_day:
         # EX-01: the stop; the stop wins a tie with any profit level the same day
         if l <= pos.stop:
@@ -704,12 +727,16 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
         if policy.breakeven_r and h >= entry + policy.breakeven_r * r:
             be = entry * (1 + 2 * fee_rate) + 2 * cfg.commission_per_order / max(pos.shares, 1)
             pos.stop = max(pos.stop, be)
-        # EX-04: a third off, first time only
+        # EX-04 (1.7's version): a part off at a fixed R, first time only
         if policy.partial_r and not pos.partial_shares and h >= entry + policy.partial_r * r:
             n = int(pos.shares * policy.partial_frac)
             if 0 < n < pos.held:
                 sell(pos, max(o, entry + policy.partial_r * r), n, today)
                 pos.partial_shares = n
+    ma = float(bar.get(policy.ma_col, float("nan")))
+    # EX-04: sell into strength -- a part, once the close is far enough above the average
+    if policy.strength_ext and not pos.partial_shares and ma == ma and ma > 0 and c >= (1 + policy.strength_ext) * ma:
+        m["_queued_partial"] = True
     # EX-05: climax run
     if policy.climax and c / entry - 1 >= policy.climax_gain:
         closes = df["close"].iloc[max(0, i - 10): i + 1]
@@ -721,17 +748,19 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
             or (s200 == s200 and s200 > 0 and c >= (1 + policy.climax_ext_200) * s200)
             or (prev and o / prev - 1 >= policy.climax_gap and c / entry - 1 > policy.climax_gap_after)
         )
-        if climax:
+        if climax and policy.climax_partial:
+            if not pos.partial_shares:
+                m["_queued_partial"] = True     # the strength part; the rest waits for EX-06
+        elif climax:
             pos.queued_exit = "CLIMAX"
             return
-    # EX-06: trend break on volume
-    ma = float(bar.get(policy.ma_col, float("nan")))
-    v50 = float(bar.get("vol_sma50", float("nan")))
+    # EX-06: trend break (on volume, when trend_volume)
     if ma == ma and c < ma and (not policy.trend_volume or (v50 == v50 and vol >= v50)):
         pos.queued_exit = "TREND_EXIT"
         return
-    # EX-07: time stop (off by default)
-    if policy.time_stop_days and pos.bars_held >= policy.time_stop_days and c < entry + r:
+    # EX-07: time stop -- the high has not reached +1R within time_stop_days sessions
+    if (policy.time_stop_days and pos.bars_held == policy.time_stop_days and r > 0
+            and m.get("_max_high", -math.inf) < entry + r):
         pos.queued_exit = "TIME_STOP"
 
 

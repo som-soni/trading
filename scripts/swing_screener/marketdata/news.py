@@ -164,8 +164,15 @@ def title_key(title: str) -> str:
 
 # ------------------------------------------------------------------ filings and exchange disclosures
 
-def sec_events(symbol: str) -> list[dict]:
-    """US: 8-K filings of the last EVENT_DAYS days, one event per filing, labelled by item."""
+def sec_events(symbol: str, next_earnings: dt.date | None = None) -> list[dict]:
+    """US: 8-K filings of the last EVENT_DAYS days, one event per filing, labelled by item.
+
+    Item 2.02 ("results of operations") is not only the quarterly report: some companies also file
+    it for mid-quarter updates (AbbVie's charges pre-announced early each quarter), so a 2.02 is the
+    earnings release (`results`, an E marker on the chart) only when it is the last one filed between
+    a quarter's end and that quarter's 10-Q / 10-K. After the latest 10-Q / 10-K, the newest 2.02
+    counts unless `next_earnings` (Yahoo's expected date) is still ahead of it. Any other 2.02 is a
+    `filing` titled "Results update"."""
     from . import financials as fin
     cik = fin._sec_cik(symbol)
     if cik is None:
@@ -175,20 +182,36 @@ def sec_events(symbol: str) -> list[dict]:
     r.raise_for_status()
     f = r.json().get("filings", {}).get("recent", {})
     since = dt.date.today() - dt.timedelta(days=EVENT_DAYS)
-    out = []
+    out, periodic = [], []   # periodic: (period end, filing date) of each 10-Q / 10-K, newest first
     for i, form in enumerate(f.get("form", [])):
-        if form not in ("8-K", "8-K/A"):
-            continue
         day = dt.date.fromisoformat(f["filingDate"][i])
-        if day < since:
-            break   # newest first
+        if form in ("10-Q", "10-K") and f.get("reportDate", [""] * (i + 1))[i]:
+            periodic.append((dt.date.fromisoformat(f["reportDate"][i]), day))
+        if form not in ("8-K", "8-K/A") or day < since:
+            continue   # periodic filings older than the window still bound the window's first quarter
         items = [x.strip() for x in (f.get("items", [""] * (i + 1))[i] or "").split(",") if x.strip()]
         labels = [SEC_ITEMS[x] for x in items if x in SEC_ITEMS]
         acc = f["accessionNumber"][i].replace("-", "")
-        out.append({"date": day, "kind": "results" if "2.02" in items else "filing",
-                    "title": (" · ".join(labels) or "Current report") + (" (amended)" if form.endswith("/A") else ""),
+        out.append({"date": day, "kind": "filing", "items": items, "labels": labels, "amended": form.endswith("/A"),
                     "detail": {"form": form, "items": items}, "source": "SEC 8-K",
                     "url": f"https://www.sec.gov/Archives/edgar/data/{cik}/{acc}/{f['primaryDocument'][i]}"})
+    results = [e for e in out if "2.02" in e["items"] and not e["amended"]]   # newest first
+    releases = set()
+    for end, filed in periodic:
+        hit = next((e for e in results if end < e["date"] <= filed), None)
+        if hit:
+            releases.add(id(hit))
+    last_filed = periodic[0][1] if periodic else dt.date.min
+    trailing = next((e for e in results if e["date"] > last_filed), None)
+    if trailing and not (next_earnings and next_earnings > trailing["date"]):
+        releases.add(id(trailing))
+    for e in out:
+        if id(e) in releases:
+            e["kind"] = "results"
+        elif "2.02" in e["items"]:
+            e["labels"] = ["Results update" if x == SEC_ITEMS["2.02"] else x for x in e["labels"]]
+        e["title"] = (" · ".join(e.pop("labels")) or "Current report") + (" (amended)" if e.pop("amended") else "")
+        del e["items"]
     return out
 
 
@@ -311,7 +334,8 @@ def yf_events(symbol: str, with_actions: bool, with_ratings: bool) -> list[dict]
 
 # ------------------------------------------------------------------ store
 
-def _store(market: str, symbol: str, news: list[dict], events: list[dict], note: str) -> None:
+def _store(market: str, symbol: str, news: list[dict], events: list[dict], note: str,
+           refetched: list[str] = ()) -> None:
     with db.get_connection().cursor() as cur:
         for n in news:
             cur.execute("""INSERT INTO stock_news (market, symbol, uid, published_at, title, source, url, kind)
@@ -321,6 +345,11 @@ def _store(market: str, symbol: str, news: list[dict], events: list[dict], note:
         # events are re-read in full each fetch: an expected earnings date moves, so replace this
         # symbol's upcoming ones rather than keep both the old and the new date
         cur.execute("DELETE FROM stock_events WHERE market=%s AND symbol=%s AND date >= CURRENT_DATE", (market, symbol))
+        # a source in `refetched` returned its whole window: its stored rows there are replaced too, so
+        # a filing re-labelled (a 2.02 that turned out to be an update, not the release) loses its old row
+        if refetched:
+            cur.execute("DELETE FROM stock_events WHERE market=%s AND symbol=%s AND source = ANY(%s) AND date >= %s",
+                        (market, symbol, list(refetched), dt.date.today() - dt.timedelta(days=EVENT_DAYS)))
         for e in events:
             cur.execute("""INSERT INTO stock_events (market, symbol, date, kind, title, detail, url, source)
                            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
@@ -353,17 +382,24 @@ def fetch_symbol(market: str, symbol: str, name: str | None = None) -> dict:
     got = attempt("Google News", lambda: google_news(market, symbol, name))
     news += got or []
     time.sleep(GOOGLE_PAUSE)
+    # NSE already lists the dividends and splits with their ex-dates; Yahoo's are for the rest
+    yahoo = attempt("Yahoo", lambda: yf_events(symbol, with_actions=cfg.quarterly_source != "nse",
+                                                with_ratings=cfg.quarterly_source == "sec_edgar")) or []
+    refetched = []   # sources re-read in full, whose stored rows in the window are replaced
     if cfg.quarterly_source == "sec_edgar":
-        events += attempt("SEC", lambda: sec_events(symbol)) or []
+        # Yahoo's expected date tells a mid-quarter 2.02 update from the quarter's release (sec_events)
+        upcoming = next((e["date"] for e in yahoo if e["kind"] == "earnings"), None)
+        got = attempt("SEC", lambda: sec_events(symbol, upcoming))
+        if got is not None:
+            events += got
+            refetched.append("SEC 8-K")
     elif cfg.quarterly_source == "nse":
         got = attempt("NSE", lambda: nse_feed(symbol))
         if got:
             news += got[0]
             events += got[1]
-    # NSE already lists the dividends and splits with their ex-dates; Yahoo's are for the rest
-    events += attempt("Yahoo", lambda: yf_events(symbol, with_actions=cfg.quarterly_source != "nse",
-                                                  with_ratings=cfg.quarterly_source == "sec_edgar")) or []
-    _store(market, symbol, news, events, " · ".join(notes))
+    events += yahoo
+    _store(market, symbol, news, events, " · ".join(notes), refetched)
     return {"news": len(news), "events": len(events), "note": " · ".join(notes)}
 
 

@@ -410,13 +410,14 @@ api("/api/strategies").then((xs) => Studies.setStrategies(xs.filter((x) => x.kin
 const BENCH = { us: "SPY", india: "NIFTY50" };
 
 /** Key events on a price chart, the TradingView way: a row of lettered badges along the bottom of the
- *  price pane — E earnings / results, D ex-dividend, S split or bonus — each under the bar it falls on
+ *  price pane — E earnings / results, D ex-dividend (only those two, as on TradingView; splits and
+ *  bonuses stay in the News & events panel) — each under the bar it falls on
  *  (upcoming ones in the empty space right of the last bar, hollow). Hover shows a card with the
  *  details (a past report with that quarter's EPS and revenue from `quarters`, the stored quarterly
  *  results; the next one with its EPS estimate); click calls onOpen. Returns { set(events), destroy() }. */
 function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
-  const KIND = { earnings: "E", results: "E", dividend: "D", split: "S", bonus: "S" };
-  const NAME = { E: "Earnings", D: "Dividend", S: "Split" };
+  const KIND = { earnings: "E", results: "E", dividend: "D" };
+  const NAME = { E: "Earnings", D: "Dividend" };
   const today = new Date().toISOString().slice(0, 10), last = times.at(-1);
   const strip = document.createElement("div"); strip.className = "ev-strip";
   const tip = document.createElement("div"); tip.className = "ev-tip"; tip.hidden = true;
@@ -451,7 +452,7 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
       if (det.amount != null) rows.push(["Amount", `${(MKTS.find((m) => m.key === market) || {}).currency || ""}${(+det.amount).toFixed(det.amount < 1 ? 3 : 2)} per share`]);
       if (det.pay_date) rows.push(["Pay date", prettyDate(det.pay_date)]);
       if (det.record_date) rows.push(["Record date", esc(det.record_date)]);
-    } else if (det.ratio) rows.push(["Ratio", `${det.ratio}:1`]);
+    }
     const when = up ? `${prettyDate(e.date)} · in ${days(today, e.date)} days` : prettyDate(e.date);
     return `<div class="ev-card"><div class="ev-h"><i class="ev-ic ${L}${up ? " soon" : ""}">${L}</i><b>${up ? "Upcoming " + NAME[L].toLowerCase() : NAME[L]}</b><span class="muted">${when}</span></div>
       ${rows.length ? `<table>${rows.map(([k, v]) => `<tr><td class="muted">${k}</td><td>${v}</td></tr>`).join("")}</table>` : ""}
@@ -1096,8 +1097,8 @@ async function chartPage(alive, market, symbol, tf) {
   if (!alive()) return;
   dr = Drawings.create({ chart, series: main, chartEl, times, bars: ohlcBars, key: `${market}:${symbol}`, remote });
   applyAnnotations();   // read-only: never saved, never erasable
-  // key events along the bottom of the price pane, TradingView style: E earnings / results, D ex-dividend,
-  // S split or bonus; hover for the details, click for the News & events panel. Upcoming events sit
+  // key events along the bottom of the price pane, TradingView style: E earnings / results and D ex-dividend
+  // only; hover for the details, click for the News & events panel. Upcoming events sit
   // in the empty space right of the last bar.
   const evStrip = eventStrip({ chart, chartEl, times, tf, market, quarters: srow?.series || [],
     onOpen: () => { prefs.tab = "news"; prefs.panel = true; store.set("chartPrefs", prefs); syncPanel(); renderSide(); } });
@@ -3833,11 +3834,13 @@ async function drawSeriesFigure(fig, spec) {
       position: "aboveBar", shape: "arrowDown", color: cssVar("--accent"), text: m.label })).sort((a, b) => (a.time < b.time ? -1 : 1)));
   }
   chart.timeScale().fitContent();
-  // a chart drawn while its page is hidden starts at zero width; fit again whenever the box changes size
-  // (the user cannot zoom these charts, so re-fitting never undoes anything)
-  const ro = new ResizeObserver(() => chart.timeScale().fitContent());
-  ro.observe(el_);
-  { const prev = cleanup; cleanup = () => { ro.disconnect(); prev(); }; }
+  // fit again whenever the plot's width changes: a chart drawn while its page is hidden starts at zero width,
+  // and the price axes only take their width once their labels are drawn, after this first fit — the box
+  // itself does not resize then, so watch the time scale, not the box (the user cannot zoom these charts,
+  // so re-fitting never undoes anything)
+  const refit = () => chart.timeScale().fitContent();
+  chart.timeScale().subscribeSizeChange(refit);
+  { const prev = cleanup; cleanup = () => { chart.timeScale().unsubscribeSizeChange(refit); prev(); }; }
   const fmtD = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
   fig.querySelector(".lps-leg").innerHTML = spec.lines.map((l, i) => `<span><i style="background:${cssVar(SERIES_COLORS[i % SERIES_COLORS.length])}"></i>${esc(l.label)}${l.flags.has("right") && !l.flags.has("pane2") ? " (right axis)" : ""}${l.flags.has("log") ? " · log scale" : ""}</span>`).join("")
     + [...new Set(spec.bands.map((b) => b.label).filter(Boolean))].map((x) => `<span><i class="band"></i>${esc(x)}</span>`).join("");
@@ -5246,7 +5249,7 @@ async function todayPage(alive, mkt) {
       ${tdHead(`Market · ${esc(m.name)}`, `<span class="muted small">${prettyDate(p.date)}</span>`)}
       ${tdVerdict(TONE_CLS[t.label], t.label || "—", `${t.score ?? "?"} of ${t.of ?? 6} signals${h ? ` · ${h.up?.toLocaleString()} up / ${h.down?.toLocaleString()} down` : ""}`, base ? `${base}.` : "")}
       <ul class="td-sig">${sig}</ul>
-      ${rates ? `<div class="td-sub">Breadth, against history since 2015</div><ul class="td-rates">${rates}</ul>` : ""}
+      ${rates ? `<div class="td-sub">Breadth, against history since 2009</div><ul class="td-rates">${rates}</ul>` : ""}
       <div class="td-foot"><a class="small" href="#/postmarket/${m.key}">Post-market recap →</a><a class="small" href="#/breadth/${m.key}">Breadth →</a></div></div>`;
   };
 

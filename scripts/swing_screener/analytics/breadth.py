@@ -19,7 +19,7 @@ Index levels and volatility indices (India VIX / VIX) are fetched into the
 existing `index_series` table for the index cards and the options card.
 
     PYTHONPATH=. python3 -m jobs run breadth --market us                                # catch up on new days
-    PYTHONPATH=. python3 -m swing_screener.analytics.breadth --market india --full    # all history since 2015
+    PYTHONPATH=. python3 -m swing_screener.analytics.breadth --market india --full    # all history since 2009
     PYTHONPATH=. python3 -m jobs run classify --market india                          # (re)classify stocks vs funds
 
 The web app also tops up `breadth_daily` by itself whenever newer prices exist.
@@ -37,7 +37,7 @@ from ..marketdata import db, universe
 logger = logging.getLogger(__name__)
 
 BREADTH_N = 1000          # stocks per day: the most-traded by 20-day average turnover
-HISTORY_START = "2015-01-01"
+HISTORY_START = "2009-01-01"   # before the 2010-onward backtests start: the minervini market filter reads it
 MIN_HISTORY_BARS = 200    # a 52-week high/low needs roughly a year of bars behind it
 BIG_MOVE = 0.04           # "up/down 4%+" on the day
 MONTH_BARS = 21

@@ -370,7 +370,7 @@ Gatev, Goetzmann and Rouwenhorst (2006) found profits from pair trading in US st
 
 **Survivorship.** Today's F&O list leaves out stocks that collapsed or were removed. For shorts this hides some of the best trades; for longs and hedges it flatters results.
 
-**Costs (approximate, India).** Per round trip on a futures position, count brokerage, exchange transaction charges and STT on the sell side (raised from 1 October 2024). Also count GST on brokerage and fees, stamp duty on the buy side and SEBI fees. Add slippage of at least one tick each way, and the bid–ask spread on every roll. Pairs pay all of this on two legs.
+**Costs (approximate, India).** Per round trip on a futures position, count brokerage, exchange transaction charges and STT on the sell side (0.05% of the contract value since 1 April 2026). Also count GST on brokerage and fees, stamp duty on the buy side and SEBI fees. Add slippage of at least one tick each way, and the bid–ask spread on every roll. Pairs pay all of this on two legs.
 
 **Margin and cash.** Model the daily cash flow. A test that ignores margin calls can show a path no real account would survive.
 

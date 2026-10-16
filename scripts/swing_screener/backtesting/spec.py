@@ -6,8 +6,9 @@ simulator, each using only data up to the signal's own date:
 
   * `rs_ratings` / `filter_min_rs` — TT-08: the RS rating, 1–99 across the tradable universe on the
     signal date, RS_raw = 0.4 × 63-day + 0.2 × 126-, 189- and 252-day return (section 3);
-  * `market_filter` — MKT-01: no new buys unless the benchmark closes above its 200-day average and
-    its 50-day is above its 200-day;
+  * `market_filter` — no new buys in a risk-off market: MKT-01 (the benchmark above its 200-day and
+    its 50-day above its 200-day) or, for minervini 1.8+, the SEPA guide's 50-day-and-breadth test;
+  * `results_blackout` — no new buys with results due within a set number of days;
   * `rank_rs_then_tightness` — PF-03: slots go to the highest RS, then the tightest tight area;
   * `base_numbers` — the base count (section 5), reported by `breakdown`;
   * `annotate_costs` — C-02's liquidity-dependent slippage and SL-06's traded-value cap input;
@@ -201,25 +202,83 @@ def filter_max_base_no(signals: list, max_base: int) -> tuple[list, dict]:
 MKT_CONFIRM_DAYS = 5     # sessions MKT-01 must hold before risk-on resumes [assumption; test 1-10]
 
 
-def market_ok(market: str, confirm_days: int = 0) -> pd.Series:
-    """Per date: benchmark close > its SMA200 and SMA50 > SMA200 (MKT-01).
+def breadth_pct50(market: str) -> pd.Series:
+    """Per date: the share (%) of the market's most-traded stocks closing above their own 50-day
+    average (`breadth_daily`, built from stored prices by analytics/breadth.py)."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT date, n, above50 FROM breadth_daily WHERE market=%s AND n > 0 ORDER BY date", (market,))
+        rows = cur.fetchall()
+    if not rows:
+        return pd.Series(dtype=float)
+    return pd.Series([100.0 * a / n for _, n, a in rows], index=pd.DatetimeIndex([d for d, _, _ in rows]))
 
-    With `confirm_days`, risk-on resumes only after MKT-01 has held that many sessions
+
+def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Series:
+    """Per date: may new buys be taken?
+
+    MKT-01 (`guide=False`): benchmark close > its SMA200 and SMA50 > SMA200.
+    The SEPA guide's test (`guide=True`, minervini_spec.MKT_GUIDE): the benchmark closes above its
+    MKT_INDEX_SMA-day average, AND breadth — the share of stocks above their 50-day — is above
+    MKT_BREADTH_MIN_PCT or higher than MKT_BREADTH_RISING_DAYS sessions earlier. A date with no
+    breadth stored (before its history starts) is judged on the benchmark alone.
+
+    With `confirm_days`, risk-on resumes only after the test has held that many sessions
     in a row. Risk-OFF still bites immediately — the delay is there so a benchmark
-    oscillating around its 200-day does not turn the gate on and off every other day,
+    oscillating around its average does not turn the gate on and off every other day,
     not to keep buying into a market that has just rolled over.
     """
     b = cache.load_cached(market, MARKETS[market].benchmark_ticker)
     c = b["close"].astype(float)
-    s50, s200 = c.rolling(50).mean(), c.rolling(200).mean()
-    ok = (c > s200) & (s50 > s200)
+    if guide:
+        from ..strategies import minervini_spec as ms
+        ok = c > c.rolling(ms.MKT_INDEX_SMA).mean()
+        br = breadth_pct50(market)
+        if len(br):
+            breadth_ok = (br > ms.MKT_BREADTH_MIN_PCT) | (br > br.shift(ms.MKT_BREADTH_RISING_DAYS))
+            known = breadth_ok.reindex(c.index)          # NaN where breadth has no row that day
+            ok = ok & known.fillna(True).astype(bool)
+    else:
+        s50, s200 = c.rolling(50).mean(), c.rolling(200).mean()
+        ok = (c > s200) & (s50 > s200)
     if confirm_days and confirm_days > 1:
         ok = ok & (ok.rolling(int(confirm_days)).sum() >= int(confirm_days))
     return ok
 
 
-def market_filter(signals: list, market: str, confirm_days: int = 0) -> tuple[list, dict]:
-    ok = market_ok(market, confirm_days)
+def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]:
+    """Drop a signal whose company files results within `days` calendar days AFTER the signal date.
+
+    Results dates are the filing dates stored in `quarterly_results` (NSE results for India, from
+    late 2020; SEC filings for the US, from 2009, which land on or a day or two after the
+    announcement). A company with no stored filing near the signal is kept: no date, no blackout.
+    Earnings dates are published weeks ahead, so knowing the next one on the signal date is not
+    look-ahead."""
+    syms = sorted({s.symbol for s in signals})
+    if not syms or not days:
+        return signals, {"days": days, "blocked": 0, "kept": len(signals)}
+    with db.get_connection().cursor() as cur:
+        cur.execute("""SELECT DISTINCT symbol, filed FROM quarterly_results
+                       WHERE market=%s AND symbol = ANY(%s) AND filed IS NOT NULL ORDER BY symbol, filed""",
+                    (market, syms))
+        rows = cur.fetchall()
+    filed: dict[str, list] = {}
+    for sym, f in rows:
+        filed.setdefault(sym, []).append(pd.Timestamp(f))
+    kept, blocked = [], 0
+    for s in signals:
+        d = pd.Timestamp(s.date)
+        nxt = next((f for f in filed.get(s.symbol, []) if f > d), None)
+        if nxt is not None and (nxt - d).days <= days:
+            blocked += 1
+        else:
+            kept.append(s)
+    logger.info("Results blackout (%d days): kept %d of %d signals", days, len(kept), len(signals))
+    return kept, {"days": days, "blocked": blocked, "kept": len(kept),
+                  "covered_symbols": len(filed), "of_symbols": len(syms)}
+
+
+def market_filter(signals: list, market: str, confirm_days: int = 0, guide: bool = False) -> tuple[list, dict]:
+    ok = market_ok(market, confirm_days, guide)
     kept = [s for s in signals if bool(ok.asof(pd.Timestamp(s.date)))]
     logger.info("Market filter: kept %d of %d signals", len(kept), len(signals))
     return kept, {"kept": len(kept), "blocked": len(signals) - len(kept), "confirm_days": int(confirm_days or 0),

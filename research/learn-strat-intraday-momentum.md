@@ -347,7 +347,7 @@ Approximate charges for an intraday round trip in India:
 | Cost | Cash stocks (intraday) | Index futures |
 |---|---|---|
 | Brokerage (discount broker) | ₹20 per order or 0.03%, whichever is lower | ₹20 per order |
-| STT | 0.025% on the sell side | 0.02% on the sell side (since October 2024) |
+| STT | 0.025% on the sell side | 0.05% on the sell side (since April 2026) |
 | Exchange transaction charges | about 0.003% each side | about 0.002% each side |
 | Stamp duty | 0.003% on the buy side | 0.002% on the buy side |
 | GST | 18% on brokerage and exchange charges | 18% on brokerage and exchange charges |

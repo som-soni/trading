@@ -156,7 +156,7 @@ Volatility has a few habits that both sides should know:
 - **Which contracts.** On NSE, only Nifty has weekly options; Bank Nifty, Fin Nifty and Midcap Select have monthly ones. Stock options are monthly.
 - **Liquidity.** Nifty options near the money are among the most liquid in the world. In the snapshot, the bid–ask on the 22,900 call was 0.75 points on 240. Stock options thin out fast away from the money.
 - **Physical settlement.** Stock options that end in the money become delivery of shares. Close stock option positions before expiry unless you want the shares.
-- **Costs.** STT is charged on the premium when you sell an option. An option exercised in the money at expiry pays STT on its intrinsic value instead, at a higher rate. Close in-the-money options before the end of expiry day.
+- **Costs.** STT is charged on the premium when you sell an option. An index option exercised in the money at expiry pays STT on its intrinsic value instead, at the same rate. A stock option settles by delivery, with delivery STT of 0.1% on the full contract value, so close in-the-money stock options before expiry.
 - **Margin.** The buyer pays the full premium upfront. The seller of a naked option posts margin of more than ₹1 lakh per Nifty lot, and more on expiry day. Buying wings (far options) cuts the margin sharply.
 - **Swing shorts.** A trader who wants to be short a stock for days cannot do it in the cash market in India. Puts, put spreads and futures are the way.
 
@@ -331,7 +331,7 @@ caption: India VIX peaked at 27.89 on 30 March 2026. By 23 April it had fallen t
 - **Buying straddles in quiet markets "because something must happen".** Theta charges you every day that nothing does.
 - **Reading the exchange's IV column at face value.** NSE's published IVs for the call and the put at the same strike can differ a lot. At 22,900 on 27 October they were 12.2% and 15.0%. The gap mostly comes from how the figure is computed, so average the two, or use the out-of-the-money option at each strike.
 - **Ignoring the skew.** Out-of-the-money index puts carry higher implied volatility than calls. A "neutral" strangle collects more on the put side because the market fears falls more.
-- **Letting stock options expire in the money in India.** They settle by delivery of shares, and STT is charged on exercise.
+- **Letting stock options expire in the money in India.** They settle by delivery of shares, and both sides pay delivery STT of 0.1% on the full contract value.
 
 ## 8. What the evidence says
 
