@@ -480,7 +480,12 @@ DOC = {
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="Cross-sectional momentum baseline")
+    from ..strategies import portfolio_strategies
+    ap = argparse.ArgumentParser(description="Cross-sectional momentum portfolios")
+    # Which registered portfolio strategy's tunables to run. Its class attributes become the
+    # argparse DEFAULTS (see main), so a strategy is the configuration that was measured rather
+    # than a set of flags someone has to remember -- and an explicit flag still overrides it.
+    ap.add_argument("--strategy", default="momentum_baseline", choices=sorted(portfolio_strategies()))
     ap.add_argument("--market", required=True, choices=list(MARKETS.keys()))
     ap.add_argument("--start", required=True, help="YYYY-MM-DD")
     ap.add_argument("--top-n", type=int, default=10)
@@ -520,9 +525,34 @@ def build_parser() -> argparse.ArgumentParser:
     return ap
 
 
+#: class attribute on a PortfolioStrategy -> the run() keyword it sets
+TUNABLES = {"top_n": "top_n", "lookback": "lookback", "skip": "skip", "rebalance": "rebalance",
+            "cost_bps": "cost_bps", "rank": "rank", "weighting": "weighting",
+            "vol_target": "vol_target", "min_turnover": "min_turnover",
+            "liquidity_top": "liquidity_top"}
+
+
+def strategy_defaults(key: str) -> dict:
+    """The registered strategy's tunables, as argparse defaults.
+
+    A strategy IS its configuration: the measured result belongs to top-50 at a turnover floor
+    with honest costs, not to whatever the flags happened to be. Reading the defaults off the
+    class keeps the run and the documented spec the same thing, and keeps the fingerprint
+    meaningful -- a tunable that lives only in a shell command is not versioned at all.
+    """
+    from ..strategies import portfolio_strategies
+    cls = portfolio_strategies()[key]
+    return {arg: getattr(cls, attr) for attr, arg in TUNABLES.items() if hasattr(cls, attr)}
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    args = build_parser().parse_args()
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--strategy", default="momentum_baseline")
+    chosen, _ = pre.parse_known_args()
+    ap = build_parser()
+    ap.set_defaults(**strategy_defaults(chosen.strategy))
+    args = ap.parse_args()
 
     cfg = MARKETS[args.market]
     tdf, perf, eq, pos = run(
@@ -547,7 +577,7 @@ def main() -> None:
                 + ("_frac" if args.fractional else "")
                 + (f"_turnover{args.min_turnover:g}" if args.min_turnover else "")
                 + ("_noTrendFilter" if args.no_trend_filter else ""))
-    out = run_dir(args.market, "momentum_baseline", run_name)
+    out = run_dir(args.market, args.strategy, run_name)
     tdf.to_csv(out / "trades.csv", index=False)
     pd.DataFrame({
         "equity": eq, "positions_open": pos,
