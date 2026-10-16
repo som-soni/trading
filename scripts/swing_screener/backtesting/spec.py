@@ -114,6 +114,38 @@ def filter_min_rs(signals: list, market: str, min_rs: int) -> tuple[list, dict]:
     return kept, {"min_rs": min_rs, "kept": len(kept), "below": low, "unrated": unrated}
 
 
+_RANK_ASOF: dict = {}
+
+
+def rs_rank_asof(market: str, date) -> tuple[dict, bool]:
+    """{symbol: RS 1-99} on one date, and whether the market could be rated at all.
+
+    The LIVE counterpart of `filter_min_rs`, and deliberately the same `rs_ratings` it gates on:
+    a stock shown live has then cleared the rating a backtested trade had to clear. Screening a
+    whole market is the only place this is answerable -- a rank is cross-sectional, so a
+    one-symbol evaluation has to fall back to the per-stock stand-in (screens/criteria.stage2_rs).
+
+    `ranked` False means no rating exists for that date -- too little stored history, or fewer
+    than the 20 rated names `rs_ratings` insists on. Callers must fall back rather than fail
+    every stock, which is why this is a flag and not an empty dict.
+
+    Cached per (market, date): a screening run asks once per symbol, and the query behind it
+    reads the whole market's last 420 sessions.
+    """
+    d = pd.Timestamp(date).normalize()
+    key = (market, d.isoformat())
+    if key not in _RANK_ASOF:
+        try:
+            ser = rs_ratings(market, [d]).get(d)
+        except Exception:                      # noqa: BLE001 -- never fail a screen over the rank
+            logger.exception("RS ratings unavailable for %s on %s; falling back to the stand-in",
+                             market, d.date())
+            ser = None
+        ranked = ser is not None and len(ser) > 0
+        _RANK_ASOF[key] = ({str(k): float(v) for k, v in ser.items() if v == v} if ranked else {}, ranked)
+    return _RANK_ASOF[key]
+
+
 def top_dollar_volume(market: str, dates: list, n: int) -> dict:
     """{date: set of the `n` most-traded symbols by 50-day average traded value that day}.
 

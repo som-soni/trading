@@ -155,11 +155,26 @@ def stage2_near_high(ctx):
 
 
 def stage2_rs(ctx):
-    """Per-stock RS stand-in (12-1 month momentum). The Stage 2 screen replaces it with the true
-    cross-sectional rank when it screens a whole market: the market-wide screen compares
-    the snapshot's `rs_rank` against RS_MIN_RANK (screens/definitions.py)."""
+    """TT-08. The TRUE cross-sectional rank when the caller has rated the whole market, and the
+    per-stock 12-1 momentum stand-in only when it has not.
+
+    A rank is cross-sectional, so a one-symbol evaluation cannot compute one -- which is why the
+    stand-in exists at all. A caller that holds the whole market seeds `rs_ranked` and `rs_rank`
+    (backtesting/spec.rs_rank_asof, the same ratings `filter_min_rs` gates on), and then this
+    answers with the rating a backtested trade had to clear instead of a looser proxy for it.
+
+    A BACKTEST leaves it unseeded on purpose: it applies the real rating after collecting signals
+    (filter_min_rs), so ranking inside the per-bar scan would only cost time for the same answer.
+    The market-wide screen likewise replaces it via `Screen.rank_rs` (screens/definitions.py)."""
     v = _stage2_vals(ctx)
     ctx.extras["rs_mom"] = v["mom"]
+    if ctx.extras.get("rs_ranked"):
+        rank = ctx.extras.get("rs_rank")
+        if rank is None or pd.isna(rank):
+            # filter_min_rs drops these as "outside the rated universe"; say the same thing here
+            # rather than quietly falling back to a test the backtest would not have applied
+            return False, "outside the rated universe (too cheap, too thin or too new)"
+        return float(rank) >= RS_MIN_RANK, f"RS rank {int(rank)}"
     return pd.notna(v["mom"]) and v["mom"] >= RS_MIN_MOM, f"12-1 momentum {v['mom']:.3f}"
 
 

@@ -20,7 +20,8 @@ from ..providers import YFinanceProvider
 from ..strategies import DEFAULT_STRATEGY, get_strategy, list_strategies
 
 
-def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str = DEFAULT_STRATEGY) -> None:
+def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str = DEFAULT_STRATEGY,
+            rs_rank: bool = True) -> None:
     cfg = MARKETS[market_key]
     strategy = get_strategy(strategy_key)
     provider = YFinanceProvider()
@@ -54,6 +55,21 @@ def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str
     if ctx is None:
         print("\nInsufficient history to build a context")
         return
+
+    # Gate TT-08 on the same market-wide rating the screening run and the backtest use, or this
+    # reports a PASS on the stand-in for a stock the run itself would reject. It costs a query
+    # over the whole market's last 420 sessions, hence --no-rs-rank for a quick look.
+    if rs_rank:
+        from ..screens import get_screen
+        if getattr(get_screen(strategy.screen_key), "rank_rs", False):
+            from ..backtesting import spec as spec_mod
+            ranks, ranked = spec_mod.rs_rank_asof(market_key, raw.index[-1])
+            if ranked:
+                ctx.extras["rs_ranked"] = True
+                ctx.extras["rs_rank"] = ranks.get(symbol)
+                print(f"RS rank (TT-08) as of {raw.index[-1].date()}: "
+                      f"{ctx.extras['rs_rank'] or 'outside the rated universe'}"
+                      f"  ({len(ranks)} stocks rated)")
 
     print(f"\nclose={ctx.close:.2f}  H={ctx.h_value:.2f}  L={ctx.l_value:.2f}  P={ctx.p_value:.2f}")
     print(f"prior structural swing low: {ctx.prior_swing_low}")
@@ -114,8 +130,11 @@ def main() -> None:
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--strategy", default=DEFAULT_STRATEGY, choices=list_strategies())
     parser.add_argument("--fresh", action="store_true", help="bypass cache, pull fresh data")
+    parser.add_argument("--no-rs-rank", action="store_true",
+                        help="skip the market-wide RS rating (faster; TT-08 falls back to the "
+                             "per-stock stand-in, so the verdict may be looser than a screening run's)")
     args = parser.parse_args()
-    inspect(args.market, args.symbol, args.fresh, args.strategy)
+    inspect(args.market, args.symbol, args.fresh, args.strategy, rs_rank=not args.no_rs_rank)
 
 
 if __name__ == "__main__":

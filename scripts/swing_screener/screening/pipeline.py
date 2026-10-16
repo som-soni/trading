@@ -188,6 +188,21 @@ def run(
     logger.info("Looking up earnings dates for %d filtered tickers...", len(filtered))
     earnings_map = earnings.load_earnings_days_away(market_key, filtered)
 
+    # The true RS rank, rated once across the whole market, so the live screen gates TT-08 on the
+    # same rating the backtest does (backtesting/spec.filter_min_rs) instead of the per-stock
+    # stand-in. Only a market-wide run can do this; `inspect` and the chart endpoints see one
+    # symbol and keep the stand-in, so they stay looser by construction.
+    rs_ranks: dict = {}
+    rs_ranked = False
+    from ..screens import get_screen
+    if getattr(get_screen(strategy.screen_key), "rank_rs", False):
+        from ..backtesting import spec as spec_mod
+        asof = max(df.index[-1] for df in bars_by_symbol.values() if df is not None and len(df))
+        rs_ranks, rs_ranked = spec_mod.rs_rank_asof(market_key, asof)
+        logger.info("RS rank (TT-08) as of %s: %s", pd.Timestamp(asof).date(),
+                    f"{len(rs_ranks)} stocks rated" if rs_ranked
+                    else "unavailable — falling back to the 12-1 momentum stand-in")
+
     # STEP 3-6 per filtered stock — every stock that passed the loose
     # screener gets exactly one row, whatever the outcome (AVOID, NO
     # SETUP, WATCH, TRADE...), so the whole universe lands in one table.
@@ -214,6 +229,10 @@ def run(
         if ctx is None:
             all_rows.append(_empty_universe_row(strategy, sym, sector, "NOT REVIEWED", "insufficient history"))
             continue
+
+        if rs_ranked:
+            ctx.extras["rs_ranked"] = True
+            ctx.extras["rs_rank"] = rs_ranks.get(sym)
 
         result = strategy.evaluate(ctx)
         last = ctx.daily.iloc[-1]

@@ -401,7 +401,8 @@ class MinerviniSpecStrategy(Strategy):
         "Gates G1–G8 are the Trend Template (the Stage 2 screen's criteria): price above the 50/150/200-day "
         "averages, the averages stacked, the 200-day rising over {SMA200_RISING_BARS} sessions, at least "
         "{MIN_PCT_ABOVE_52W_LOW}% above the 52-week low and within {MAX_PCT_BELOW_52W_HIGH}% of the high, and "
-        "relative strength. The backtest applies the true cross-sectional RS rating of {RS_MIN_RANK}+ on top.",
+        "an RS rating of {RS_MIN_RANK}+ across the market. A backtest applies that rating to the signals it "
+        "collected rather than inside the per-bar scan, which cannot rank one symbol.",
         "The base starts at the base high: the most recent confirmed swing high ({SWING_K} bars either side, "
         "known only {SWING_K} bars later) that no close has exceeded since. It must follow a {PRIOR_ADVANCE_PCT}% "
         "advance, last {BASE_MIN_DAYS}–{BASE_MAX_DAYS} sessions, start with the full template in force, and keep "
@@ -429,9 +430,11 @@ class MinerviniSpecStrategy(Strategy):
         "which flatters every result.",
         "**Corporate actions.** Prices are adjusted when fetched; a split or bonus after a symbol's last full "
         "fetch shows as a crash until its history is re-fetched (`marketdata.splits`).",
-        "**Relative strength** is applied twice: the per-stock gate G8 uses 12-1 month momentum of "
-        "{RS_MIN_MOM}+ (a stand-in that a one-symbol evaluation can compute), and the backtest's `--min-rs` "
-        "applies the true RS rating across the market. The stand-in rarely binds when the rating is 70+.",
+        "**Relative strength** is cross-sectional, so where it is applied depends on what the caller can see. "
+        "The daily screening run rates the whole market and gates G8 on the true RS rating of {RS_MIN_RANK}+. "
+        "A backtest cannot do that inside a per-bar scan of one symbol, so G8 falls back to 12-1 month momentum "
+        "of {RS_MIN_MOM}+ there and `--min-rs` applies the real rating to the collected signals — the same "
+        "threshold, one step later. A single-symbol tool keeps the stand-in and is therefore looser than both.",
         "**Fundamentals (SEPA part 2) are optional in the backtest, off by default.** `--fundamentals guide` "
         "applies the Learn guide's tests (quarterly EPS up {FUND_EPS_GROWTH_MIN_PCT}%+ and faster than the "
         "quarter before, sales up {FUND_SALES_GROWTH_MIN_PCT}%+, net margin no more than "
@@ -496,8 +499,10 @@ class MinerviniSpecStrategy(Strategy):
         "G5": "TT-03: the 200-day higher than {SMA200_RISING_BARS} sessions ago.",
         "G6": "TT-06: close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low.",
         "G7": "TT-07: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
-        "G8": "TT-08 stand-in: 12-1 month momentum of at least {RS_MIN_MOM}. The backtest also requires the "
-              "true RS rating of {RS_MIN_RANK}+ across the market.",
+        "G8": "TT-08: an RS rating of {RS_MIN_RANK}+ (1-99 across the market) whenever the caller has rated "
+              "the whole market — the daily screening run does. A one-symbol evaluation cannot rank, so "
+              "`inspect --no-rs-rank` and the chart indicators fall back to 12-1 month momentum of "
+              "{RS_MIN_MOM}+; a backtest also falls back here and applies the rating to the signals instead.",
     }
     watch_docs = {
         "W1": "Closed through the pivot on light volume — under {VOL_MULT} × the 50-day average (MV-01a), "
