@@ -115,6 +115,22 @@ class attribute (e.g. `{entry_channel}`), not as literals, so the page shows the
 live value and a threshold change cannot leave stale text behind. After a new
 backtest, update `status` if the measured result changed.
 
+**Codes are named by role, the same way in every strategy.** `G1…Gn` are the hard
+gates (they can stop a trade), `W1…Wn` the watch flags (noted, never blocking) and
+`S1…Sn` the setups — so the prefix answers the only question that matters when reading
+a drop reason or a `first_failed_gate`. Numbering follows evaluation order. The one
+exception is a setup whose own name identifies it better than a number
+(`chart_pattern`'s `CUP`, `IHS`, `DBOT`). These are the strategy's *own* vocabulary and
+are only ever read beside it, so `G1` means a different rule in each.
+
+Do not confuse them with **spec citations** — `TT-05`, `VCP-06`, `MV-01a`, `EX-03`,
+`PF-06`, `MKT-01` — which are row ids in `research/minervini-backtest-spec.md`. A doc
+entry carries both: `"G1": "TT-05: close above the 50-day average."` reads as *this
+strategy's gate G1 implements spec rule TT-05*. The mapping is not one-to-one (`G4`
+cites two TT rules; `G2` and `G3` both cite `TT-01`), which is exactly why the code and
+the citation are separate things. Keep writing the citation into the doc text: the code
+no longer carries it.
+
 **A behaviour change also bumps `version` and adds a `changelog` entry**
 (`(version, ISO date, what changed and why)`, newest first). That is not
 bookkeeping: the backtester stamps the strategy's `spec_id` — `v<version>-<fingerprint>`

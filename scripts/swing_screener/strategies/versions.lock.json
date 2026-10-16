@@ -1,37 +1,37 @@
 {
   "breakout": {
     "family": "breakout",
-    "fingerprint": "a796b288",
+    "fingerprint": "b65230b6",
     "params": {
       "BREAKOUT_LOOKBACK": 55,
       "CONSOLIDATION_BARS": 20,
       "_key": "breakout",
       "gate_codes": [
-        "B1",
-        "B2",
-        "B3",
-        "B4",
-        "B5",
-        "B6",
-        "B7"
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7"
       ],
       "min_bars": 260,
       "min_structural_r": 2.0,
       "setup_codes": [
-        "BO-01",
-        "BO-02"
+        "S1",
+        "S2"
       ],
       "watch_codes": [
-        "XB1",
-        "XB2",
-        "XB3"
+        "W1",
+        "W2",
+        "W3"
       ]
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "27607b13",
+    "fingerprint": "c15c0170",
     "params": {
       "ATR_MULT": 1.5,
       "BO_BUFFER": 0.5,
@@ -112,11 +112,11 @@
       "W_UNDERCUT_MAX": 5.0,
       "_key": "chart_pattern",
       "gate_codes": [
-        "S1",
-        "S2",
-        "S3",
-        "S4",
-        "S5"
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5"
       ],
       "min_bars": 320,
       "setup_codes": [
@@ -134,42 +134,42 @@
         "HTF"
       ],
       "watch_codes": [
-        "XS1",
-        "XS2",
-        "XS3"
+        "W1",
+        "W2",
+        "W3"
       ]
     },
-    "version": "1.5"
+    "version": "1.6"
   },
   "donchian": {
     "family": "donchian",
-    "fingerprint": "69e24dab",
+    "fingerprint": "de67ca74",
     "params": {
       "_key": "donchian",
       "entry_channel": 55,
       "exit_channel": 20,
       "gate_codes": [
-        "N1",
-        "N2"
+        "G1",
+        "G2"
       ],
       "min_bars": 260,
       "min_stop_pct": 2.0,
       "nominal_target_atr": 10.0,
       "setup_codes": [
-        "DC-01",
-        "DC-02"
+        "S1",
+        "S2"
       ],
       "stop_atr_mult": 2.0,
       "watch_codes": [
-        "XN1",
-        "XN2"
+        "W1",
+        "W2"
       ]
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "0df5625d",
+    "fingerprint": "6afe6ad6",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -257,30 +257,30 @@
       "VOL_MULT": 1.4,
       "_key": "minervini",
       "gate_codes": [
-        "M1",
-        "M2",
-        "M3",
-        "M4",
-        "M5",
-        "M6",
-        "M7",
-        "M8"
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7",
+        "G8"
       ],
       "min_bars": 300,
       "setup_codes": [
-        "MV-01",
-        "MV-02",
-        "MV-03",
-        "MV-04"
+        "S1",
+        "S2",
+        "S3",
+        "S4"
       ],
       "watch_codes": [
-        "B1",
-        "B2",
-        "B3",
-        "B4"
+        "W1",
+        "W2",
+        "W3",
+        "W4"
       ]
     },
-    "version": "1.8"
+    "version": "1.9"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
@@ -298,24 +298,24 @@
   },
   "trend_pullback": {
     "family": "trend_pullback",
-    "fingerprint": "0acddbda",
+    "fingerprint": "10d54f8a",
     "params": {
       "_key": "trend_pullback",
       "gate_codes": [
-        "W1",
-        "W2",
-        "T1",
-        "T2",
-        "T3",
-        "T4",
-        "T5",
-        "T6",
-        "D2",
-        "D3",
-        "D4",
-        "D5",
-        "D6",
-        "D7"
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7",
+        "G8",
+        "G9",
+        "G10",
+        "G11",
+        "G12",
+        "G13",
+        "G14"
       ],
       "max_stop_atr_trade": 3.0,
       "max_stop_atr_wait": 3.5,
@@ -324,22 +324,22 @@
       "min_bars": 260,
       "own_level_tol_pct": 0.5,
       "setup_codes": [
-        "TC-01",
-        "TC-02",
-        "TC-04"
+        "S1",
+        "S2",
+        "S4"
       ],
       "watch_codes": [
-        "X1",
-        "X2",
-        "X3",
-        "X4",
-        "X5",
-        "X6",
-        "X7",
-        "X8",
-        "X9"
+        "W1",
+        "W2",
+        "W3",
+        "W4",
+        "W5",
+        "W6",
+        "W7",
+        "W8",
+        "W9"
       ]
     },
-    "version": "1.1"
+    "version": "1.2"
   }
 }

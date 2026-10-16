@@ -33,8 +33,8 @@ from .base import (
 )
 from .trend_pullback import round_tick
 
-BO01 = "BO-01"  # new-high breakout from consolidation
-BO02 = "BO-02"  # pre-breakout coil, sitting just under the pivot
+BO01 = "S1"   # BO-01  # new-high breakout from consolidation
+BO02 = "S2"   # BO-02  # pre-breakout coil, sitting just under the pivot
 
 CONSOLIDATION_BARS = 20
 BREAKOUT_LOOKBACK = 55
@@ -42,8 +42,17 @@ BREAKOUT_LOOKBACK = 55
 
 class BreakoutStrategy(Strategy):
     selection = "time_series"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-10-16",
+         "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
+         "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
+         "The old letters meant nothing and collided across strategies: B1-B4 were minervini's WATCH flags "
+         "and breakout's GATES, so one string blocked a trade in the first and merely noted something in "
+         "the second. The prefix now states the only thing that matters when reading a drop reason -- "
+         "whether the code can stop a trade. No rule changed, but the code tuples are part of the "
+         "fingerprint, so this moves the spec id and earlier runs stay under their own versions."
+         "BO-01/02 become S1/S2 and XB1-XB3 become W1-W3; the setup docs cite BO-0n."),
         ("1.1", "2026-10-10",
          "The point-in-time pre-filter no longer applies cfg.screener.min_price. The floor keeps "
          "live screening out of penny stocks, but a backtest reads it against SPLIT-ADJUSTED "
@@ -65,10 +74,10 @@ class BreakoutStrategy(Strategy):
         "confirmed by expanding volume."
     )
     style = "breakout"
-    gate_codes = ("B1", "B2", "B3", "B4", "B5", "B6", "B7")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
     screen_key = "near_highs"
-    screen_gates = {"B1": "H1", "B2": "H2"}
-    watch_codes = ("XB1", "XB2", "XB3")
+    screen_gates = {"G1": "H1", "G2": "H2"}
+    watch_codes = ("W1", "W2", "W3")
     setup_codes = (BO01, BO02)
     min_bars = 260
 
@@ -111,7 +120,7 @@ class BreakoutStrategy(Strategy):
         "projecting under 2R are rejected rather than padded. When an overhead "
         "level lowers the target, the R column is smaller than `structural_r`, "
         "and the 2R test uses the lowered R.",
-        "Watch flag XB2 (breakout on below-average volume) can never fire: it needs "
+        "Watch flag W2 (breakout on below-average volume) can never fire: it needs "
         "BO-01, which already requires volume above 1.5x average.",
     )
 
@@ -122,37 +131,37 @@ class BreakoutStrategy(Strategy):
         "against SPY's 12.8%, max drawdown -29.7%. India not yet run at full size."
     )
     gate_docs = {
-        "B1": "The latest close must be strictly above the 200-day SMA. A missing SMA200 fails.",
-        "B2": "The 200-day SMA must not be falling. It fails only if SMA200 is more than 0.5% "
+        "G1": "The latest close must be strictly above the 200-day SMA. A missing SMA200 fails.",
+        "G2": "The 200-day SMA must not be falling. It fails only if SMA200 is more than 0.5% "
               "below its value 20 bars ago, so a flat SMA200 passes as well as a rising one.",
-        "B3": "The close must be at least 95% of the 52-week high (high_252, which includes "
+        "G3": "The close must be at least 95% of the 52-week high (high_252, which includes "
               "today's bar), i.e. no more than 5% below it. Fails if the 52-week high is unavailable.",
-        "B4": "The {CONSOLIDATION_BARS} bars before today must form a tight base: their highest "
+        "G4": "The {CONSOLIDATION_BARS} bars before today must form a tight base: their highest "
               "high minus lowest low must be at most 6 x ATR14. Fails if there are fewer than "
               "{CONSOLIDATION_BARS} prior bars or ATR is missing or zero.",
-        "B5": "The close must not be more than 4 x ATR14 above the 20-day SMA (exactly 4 ATR "
+        "G5": "The close must not be more than 4 x ATR14 above the 20-day SMA (exactly 4 ATR "
               "passes). If SMA20 or ATR is missing the gate passes.",
-        "B6": "ATR14 as a percent of the close must be 8% or less. If ATR% is missing the gate passes.",
-        "B7": "Earnings must not be 10 or fewer days away. Passes when no earnings date is "
+        "G6": "ATR14 as a percent of the close must be 8% or less. If ATR% is missing the gate passes.",
+        "G7": "Earnings must not be 10 or fewer days away. Passes when no earnings date is "
               "known; the backtest has no historical earnings calendar, so it always passes there.",
     }
     watch_docs = {
-        "XB1": "Raised when the close is more than 2.5 x ATR14 above the 20-day SMA (extended; the "
+        "W1": "Raised when the close is more than 2.5 x ATR14 above the 20-day SMA (extended; the "
                "note suggests SMA20 as a pullback level). Caps the decision at TRADE ON TRIGGER and "
                "lowers setup quality by 0.5.",
-        "XB2": "Meant to flag a breakout on below-average volume: raised only when BO-01 is active "
+        "W2": "Meant to flag a breakout on below-average volume: raised only when BO-01 is active "
                "AND today's volume is below its 50-day average. Would cap the decision at WATCH - "
                "WAIT and cut setup quality by 1. In practice it can never fire, because BO-01 "
                "itself requires volume above 1.5x the 50-day average.",
-        "XB3": "Raised when RSI14 is above 80 (overbought). Caps the decision at TRADE ON TRIGGER; "
+        "W3": "Raised when RSI14 is above 80 (overbought). Caps the decision at TRADE ON TRIGGER; "
                "no effect on setup quality.",
     }
     setup_docs = {
-        "BO-01": "Breakout: today's close is strictly above the pivot (the highest high of the "
+        "S1": "BO-01 breakout: today's close is strictly above the pivot (the highest high of the "
                  "{BREAKOUT_LOOKBACK} bars before today) AND today's volume is more than 1.5x its "
                  "50-day average. Entry-eligible, and it is also the entry signal, so only BO-01 can "
                  "reach TRADE - HIGH CONFIDENCE (setup quality 2).",
-        "BO-02": "Coil: the close is within 3% below the pivot (between 97% and 100% of it), not "
+        "S2": "BO-02 coil: the close is within 3% below the pivot (between 97% and 100% of it), not "
                  "through it yet. Entry-eligible but the signal has not fired, so the best it gets is "
                  "TRADE ON TRIGGER (setup quality 1). If BO-01 is also true, BO-01 is used.",
     }
@@ -222,42 +231,42 @@ class BreakoutStrategy(Strategy):
 
         # B3: at or near the highs — breakouts are bought at highs, not mid-range
         if pd.isna(high_252):
-            result.fail("B3", "insufficient history for 52-week high")
+            result.fail("G3", "insufficient history for 52-week high")
         elif close >= high_252 * 0.95:
-            result.ok("B3")
+            result.ok("G3")
         else:
-            result.fail("B3", "more than 5% below the 52-week high")
+            result.fail("G3", "more than 5% below the 52-week high")
 
         # B4: a real consolidation preceded this — the prior N bars were tight
         prior = d.iloc[-(CONSOLIDATION_BARS + 1) : -1]
         if len(prior) < CONSOLIDATION_BARS or pd.isna(atr14) or not atr14:
-            result.fail("B4", "insufficient bars to measure the consolidation")
+            result.fail("G4", "insufficient bars to measure the consolidation")
         else:
             rng = float(prior["high"].max() - prior["low"].min())
             if rng <= 6 * atr14:
-                result.ok("B4", f"{CONSOLIDATION_BARS}-bar range {rng / atr14:.1f} ATR")
+                result.ok("G4", f"{CONSOLIDATION_BARS}-bar range {rng / atr14:.1f} ATR")
             else:
-                result.fail("B4", f"pre-breakout range {rng / atr14:.1f} ATR > 6 ATR (no tight base)")
+                result.fail("G4", f"pre-breakout range {rng / atr14:.1f} ATR > 6 ATR (no tight base)")
 
         # B5: not already extended beyond a sane entry
         sma20 = d["sma20"].iloc[-1]
         if pd.notna(sma20) and pd.notna(atr14) and atr14 and (close - sma20) > 4 * atr14:
-            result.fail("B5", "more than 4 ATR above SMA20")
+            result.fail("G5", "more than 4 ATR above SMA20")
         else:
-            result.ok("B5")
+            result.ok("G5")
 
         # B6: volatility sane
         atr_pct = d["atr_pct"].iloc[-1]
         if pd.notna(atr_pct) and atr_pct > 8:
-            result.fail("B6", f"ATR% {atr_pct:.1f} > 8%")
+            result.fail("G6", f"ATR% {atr_pct:.1f} > 8%")
         else:
-            result.ok("B6")
+            result.ok("G6")
 
         # B7: earnings not imminent
         if ctx.earnings_days_away is not None and ctx.earnings_days_away <= 10:
-            result.fail("B7", f"earnings in {ctx.earnings_days_away} trading days")
+            result.fail("G7", f"earnings in {ctx.earnings_days_away} trading days")
         else:
-            result.ok("B7")
+            result.ok("G7")
 
         self._compute_setups(ctx, result)
         result.recompute_first_fail()
@@ -286,37 +295,37 @@ class BreakoutStrategy(Strategy):
         vol_sma50 = d["vol_sma50"].iloc[-1]
 
         # XB1: extended from the mean — breakout already ran
-        result.watch_flags["XB1"] = bool(
+        result.watch_flags["W1"] = bool(
             pd.notna(sma20) and pd.notna(atr14) and atr14 and (close - sma20) > 2.5 * atr14
         )
-        if result.watch_flags["XB1"]:
-            result.watch_notes["XB1"] = f"extended; pullback target ~{sma20:.2f}"
+        if result.watch_flags["W1"]:
+            result.watch_notes["W1"] = f"extended; pullback target ~{sma20:.2f}"
 
         # XB2: breakout without volume confirmation — the classic failure mode
         vol = float(d["volume"].iloc[-1])
         thin = pd.notna(vol_sma50) and vol_sma50 and vol < vol_sma50
-        result.watch_flags["XB2"] = bool(thin and result.setups.get(BO01))
-        if result.watch_flags["XB2"]:
-            result.watch_notes["XB2"] = "breakout on below-average volume"
+        result.watch_flags["W2"] = bool(thin and result.setups.get(BO01))
+        if result.watch_flags["W2"]:
+            result.watch_notes["W2"] = "breakout on below-average volume"
 
         # XB3: overbought
-        result.watch_flags["XB3"] = bool(pd.notna(rsi14) and rsi14 > 80)
+        result.watch_flags["W3"] = bool(pd.notna(rsi14) and rsi14 > 80)
 
     def watch_cap(self, result: StrategyResult) -> str:
         caps = []
-        if result.watch_flags.get("XB1"):
+        if result.watch_flags.get("W1"):
             caps.append("TRADE_ON_TRIGGER")
-        if result.watch_flags.get("XB2"):
+        if result.watch_flags.get("W2"):
             caps.append("WATCH_WAIT")
-        if result.watch_flags.get("XB3"):
+        if result.watch_flags.get("W3"):
             caps.append("TRADE_ON_TRIGGER")
         return min(caps, key=CAP_ORDER.index) if caps else "TRADE_HIGH_CONFIDENCE"
 
     def setup_quality(self, result: StrategyResult) -> float:
         score = 2.0 if result.setups.get(BO01) else (1.0 if result.setups.get(BO02) else 0.0)
-        if result.watch_flags.get("XB2"):
+        if result.watch_flags.get("W2"):
             score -= 1.0
-        if result.watch_flags.get("XB1"):
+        if result.watch_flags.get("W1"):
             score -= 0.5
         return score
 
@@ -420,7 +429,7 @@ class BreakoutStrategy(Strategy):
                 )
         elif cap == "WATCH_WAIT":
             label = "WATCH_WAIT"
-            reasons.append(result.watch_notes.get("XB2", "capped by watch flag"))
+            reasons.append(result.watch_notes.get("W2", "capped by watch flag"))
         elif fired and cap == "TRADE_HIGH_CONFIDENCE" and risk_pct <= 7 and r_mult >= 2 and not earnings_block:
             label = "TRADE_HIGH_CONFIDENCE"
             reasons.append(f"{plan.setup} fired on volume, {r_mult:.2f}R")
@@ -429,7 +438,7 @@ class BreakoutStrategy(Strategy):
             if not fired:
                 reasons.append("coiled under the pivot, breakout not yet confirmed")
             if cap == "TRADE_ON_TRIGGER":
-                active = [c for c in ("XB1", "XB3") if result.watch_flags.get(c)]
+                active = [c for c in ("W1", "W3") if result.watch_flags.get(c)]
                 reasons.append(f"capped by watch flag ({'/'.join(active)})")
             if earnings_block:
                 reasons.append(f"earnings in {earnings_days_away}d (blocks HIGH CONFIDENCE)")

@@ -103,7 +103,7 @@ IHS, ATRI, SYMM, FWDG = "IHS", "ATRI", "SYMM", "FWDG"
 RECT, FBASE, FLAG, HTF = "RECT", "FBASE", "FLAG", "HTF"
 
 # code -> (spec section, how to detect it). Bearish types are NOT here: in a
-# long-only book a top is a veto (gate S2, flag XS1), never a setup.
+# long-only book a top is a veto (gate G2, flag W1), never a setup.
 BULLISH: dict[str, tuple[str, object]] = {
     CUP: ("§4", lambda d: ps.detect_cup(d, PARAMS)),
     CUPNH: ("§4", lambda d: ps.detect_cup(d, PARAMS, require_handle=False)),
@@ -168,8 +168,18 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.5"
+    version = "1.6"
     changelog = (
+        ("1.6", "2026-10-16",
+         "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
+         "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
+         "The old letters meant nothing and collided across strategies: B1-B4 were minervini's WATCH flags "
+         "and breakout's GATES, so one string blocked a trade in the first and merely noted something in "
+         "the second. The prefix now states the only thing that matters when reading a drop reason -- "
+         "whether the code can stop a trade. No rule changed, but the code tuples are part of the "
+         "fingerprint, so this moves the spec id and earlier runs stay under their own versions."
+         "The pattern names (CUP, IHS, DBOT...) stay as setup codes: a pattern's name identifies it "
+         "better than a number ever could."),
         ("1.5", "2026-10-13",
          "Entries only on the breakout bar, and one entry per pattern. The detector keeps a "
          "confirmed pattern live for {HORIZON} bars to record its outcome, and that window was "
@@ -243,8 +253,8 @@ class ChartPatternSpecStrategy(Strategy):
     # 52-week high above a rising 200-day mostly excludes them.
     screen_key = "near_highs"
 
-    gate_codes = ("S1", "S2", "S3", "S4", "S5")
-    watch_codes = ("XS1", "XS2", "XS3")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5")
+    watch_codes = ("W1", "W2", "W3")
     setup_codes = tuple(BULLISH)
     needs_ctx_extras = True
     extra_columns = (
@@ -299,7 +309,7 @@ class ChartPatternSpecStrategy(Strategy):
         "which fired and, when none did, the first rule that failed.",
         "**Patterns it detects as vetoes, never traded:** double top, head and "
         "shoulders top, rising wedge and descending triangle. A confirmed one "
-        "fails gate S2; one still forming raises flag XS1.",
+        "fails gate G2; one still forming raises flag W1.",
         "**Which pattern a trade was taken on** is the highest-priority live "
         "match on the signal bar; it is the trade's `setup`, named in the "
         "backtest trades panel, and the chart draws that pattern — its swing "
@@ -377,19 +387,19 @@ class ChartPatternSpecStrategy(Strategy):
         "columns show the rest.",
     )
     gate_docs = {
-        "S1": "A bullish pattern must be COMPLETE (its buy-stop can rest at the "
+        "G1": "A bullish pattern must be COMPLETE (its buy-stop can rest at the "
               "trigger) or break out ON THIS BAR — BO-01 and BO-02 met today, at "
               "most {BREAKOUT_MAX_AGE} bars after the breakout bar. A pattern that "
               "broke out earlier is history even while its {HORIZON}-bar outcome is "
               "still being recorded, and one that BO-03/BO-04 voided never qualifies.",
-        "S2": "No CONFIRMED topping pattern (double top, head and shoulders "
+        "G2": "No CONFIRMED topping pattern (double top, head and shoulders "
               "top, rising wedge, descending triangle) on the same chart. A "
               "long bought inside a confirmed top is the trade this screener "
               "would otherwise keep taking.",
-        "S3": "Earnings must not fall within {EARNINGS_DAYS} trading days: a "
+        "G3": "Earnings must not fall within {EARNINGS_DAYS} trading days: a "
               "base breaking out two days before a print is a bet on the print.",
-        "S4": "ATR14 must be at most {MAX_ATR_PCT}% of price.",
-        "S5": "The close must sit in the actionable band around the trigger: "
+        "G4": "ATR14 must be at most {MAX_ATR_PCT}% of price.",
+        "G5": "The close must sit in the actionable band around the trigger: "
               "no more than {MAX_CHASE_PCT}% above it (past that the breakout "
               "happened without you) and no more than "
               "{MAX_BELOW_TRIGGER_PCT}% below it. The spec has no such rule "
@@ -399,13 +409,13 @@ class ChartPatternSpecStrategy(Strategy):
               "trigger 108% overhead.",
     }
     watch_docs = {
-        "XS1": "A topping pattern is FORMING (rolled over but not yet through "
+        "W1": "A topping pattern is FORMING (rolled over but not yet through "
                "its neckline) on the same chart. Caps the decision at TRADE ON "
-               "TRIGGER; a confirmed one fails gate S2 outright.",
-        "XS2": "Price is through the trigger but volume is below {BO_VOL}x its "
+               "TRIGGER; a confirmed one fails gate G2 outright.",
+        "W2": "Price is through the trigger but volume is below {BO_VOL}x its "
                "50-day average, so BO-02 has not confirmed the breakout. Caps "
                "at WATCH.",
-        "XS3": "RSI14 above {OVERBOUGHT_RSI}. Caps at TRADE ON TRIGGER.",
+        "W3": "RSI14 above {OVERBOUGHT_RSI}. Caps at TRADE ON TRIGGER.",
     }
     setup_docs = {
         CUP: "§4 cup with handle: a rounded correction of "
@@ -599,28 +609,28 @@ class ChartPatternSpecStrategy(Strategy):
 
         # S1: a live bullish pattern
         if best is None:
-            result.fail("S1", f"no live pattern ({first_fail or 'nothing detected'})")
+            result.fail("G1", f"no live pattern ({first_fail or 'nothing detected'})")
         else:
-            result.ok("S1", f"{best[0]} {best[1]['state']}")
+            result.ok("G1", f"{best[0]} {best[1]['state']}")
 
         # S2: not inside a confirmed top
         if top_name is not None and top_res["state"] == ps.CONFIRMED:
-            result.fail("S2", f"confirmed {top_name} on the same chart")
+            result.fail("G2", f"confirmed {top_name} on the same chart")
         else:
-            result.ok("S2")
+            result.ok("G2")
 
         # S3: earnings
         if ctx.earnings_days_away is not None and ctx.earnings_days_away <= EARNINGS_DAYS:
-            result.fail("S3", f"earnings in {ctx.earnings_days_away} trading days")
+            result.fail("G3", f"earnings in {ctx.earnings_days_away} trading days")
         else:
-            result.ok("S3")
+            result.ok("G3")
 
         # S4: volatility
         atr_pct = d["atr_pct"].iloc[-1]
         if pd.notna(atr_pct) and atr_pct > MAX_ATR_PCT:
-            result.fail("S4", f"ATR% {atr_pct:.1f} > {MAX_ATR_PCT:g}%")
+            result.fail("G4", f"ATR% {atr_pct:.1f} > {MAX_ATR_PCT:g}%")
         else:
-            result.ok("S4")
+            result.ok("G4")
 
         # S5: price is in the actionable band around the trigger
         trigger = ctx.extras.get("trigger")
@@ -628,13 +638,13 @@ class ChartPatternSpecStrategy(Strategy):
             gap = (close / float(trigger) - 1) * 100
             ctx.extras["pct_from_trigger"] = gap
             if gap > MAX_CHASE_PCT:
-                result.fail("S5", f"{gap:.1f}% above the trigger")
+                result.fail("G5", f"{gap:.1f}% above the trigger")
             elif gap < -MAX_BELOW_TRIGGER_PCT:
-                result.fail("S5", f"{-gap:.1f}% below the trigger — not actionable")
+                result.fail("G5", f"{-gap:.1f}% below the trigger — not actionable")
             else:
-                result.ok("S5")
+                result.ok("G5")
         else:
-            result.ok("S5")
+            result.ok("G5")
 
         result.recompute_first_fail()
         self._watch_flags(ctx, result, top_name, top_res, atr14)
@@ -648,27 +658,27 @@ class ChartPatternSpecStrategy(Strategy):
         rsi14 = d["rsi14"].iloc[-1]
 
         forming = top_name is not None and top_res["state"] == ps.COMPLETE
-        result.watch_flags["XS1"] = bool(forming)
+        result.watch_flags["W1"] = bool(forming)
         if forming:
-            result.watch_notes["XS1"] = f"{top_name} forming on the same chart"
+            result.watch_notes["W1"] = f"{top_name} forming on the same chart"
 
         through = bool(trigger) and ctx.close > float(trigger)
         thin = pd.notna(vol_sma50) and vol_sma50 and vol < BO_VOL * vol_sma50
-        result.watch_flags["XS2"] = bool(through and thin)
-        if result.watch_flags["XS2"]:
-            result.watch_notes["XS2"] = (
+        result.watch_flags["W2"] = bool(through and thin)
+        if result.watch_flags["W2"]:
+            result.watch_notes["W2"] = (
                 f"through the trigger on {vol / vol_sma50:.2f}x volume "
                 f"(BO-02 wants {BO_VOL:g}x)")
 
-        result.watch_flags["XS3"] = bool(pd.notna(rsi14) and rsi14 > OVERBOUGHT_RSI)
-        if result.watch_flags["XS3"]:
-            result.watch_notes["XS3"] = f"RSI14 {rsi14:.0f} > {OVERBOUGHT_RSI:g}"
+        result.watch_flags["W3"] = bool(pd.notna(rsi14) and rsi14 > OVERBOUGHT_RSI)
+        if result.watch_flags["W3"]:
+            result.watch_notes["W3"] = f"RSI14 {rsi14:.0f} > {OVERBOUGHT_RSI:g}"
 
     def watch_cap(self, result: StrategyResult) -> str:
         caps = []
-        if result.watch_flags.get("XS2"):
+        if result.watch_flags.get("W2"):
             caps.append("WATCH_WAIT")
-        for code in ("XS1", "XS3"):
+        for code in ("W1", "W3"):
             if result.watch_flags.get(code):
                 caps.append("TRADE_ON_TRIGGER")
         return min(caps, key=CAP_ORDER.index) if caps else "TRADE_HIGH_CONFIDENCE"
@@ -678,9 +688,9 @@ class ChartPatternSpecStrategy(Strategy):
         if not active:
             return 0.0
         score = 2.0 - 0.1 * min(_priority(active[0]), 10)
-        if result.watch_flags.get("XS1"):
+        if result.watch_flags.get("W1"):
             score -= 0.5
-        if result.watch_flags.get("XS2"):
+        if result.watch_flags.get("W2"):
             score -= 1.0
         return max(score, 0.0)
 
@@ -766,7 +776,7 @@ class ChartPatternSpecStrategy(Strategy):
                     f"{plan.setup} projects {r_mult:.2f}R < {MIN_R:g}R")
         elif cap == "WATCH_WAIT":
             label = "WATCH_WAIT"
-            reasons.append(result.watch_notes.get("XS2", "capped by watch flag"))
+            reasons.append(result.watch_notes.get("W2", "capped by watch flag"))
         elif fired and cap == "TRADE_HIGH_CONFIDENCE":
             label = "TRADE_HIGH_CONFIDENCE"
             reasons.append(f"{plan.setup} confirmed (BO-01+BO-02), {r_mult:.2f}R")
@@ -777,7 +787,7 @@ class ChartPatternSpecStrategy(Strategy):
                     f"{plan.setup} complete, waiting for a close through "
                     f"{plan.entry:.2f} on {BO_VOL:g}x volume")
             if cap == "TRADE_ON_TRIGGER":
-                active = [c for c in ("XS1", "XS3") if result.watch_flags.get(c)]
+                active = [c for c in ("W1", "W3") if result.watch_flags.get(c)]
                 reasons.append(f"capped by watch flag ({'/'.join(active)})")
 
         before = label

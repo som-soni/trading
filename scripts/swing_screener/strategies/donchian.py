@@ -48,14 +48,23 @@ from .base import (
 )
 from .trend_pullback import round_tick
 
-DC01 = "DC-01"  # breakout of the entry channel
-DC02 = "DC-02"  # coiled just under the channel high
+DC01 = "S1"   # DC-01  # breakout of the entry channel
+DC02 = "S2"   # DC-02  # coiled just under the channel high
 
 
 class DonchianStrategy(Strategy):
     selection = "time_series"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-10-16",
+         "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
+         "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
+         "The old letters meant nothing and collided across strategies: B1-B4 were minervini's WATCH flags "
+         "and breakout's GATES, so one string blocked a trade in the first and merely noted something in "
+         "the second. The prefix now states the only thing that matters when reading a drop reason -- "
+         "whether the code can stop a trade. No rule changed, but the code tuples are part of the "
+         "fingerprint, so this moves the spec id and earlier runs stay under their own versions."
+         "DC-01/02 become S1/S2 and XN1/XN2 become W1/W2; the setup docs cite DC-0n."),
         ("1.1", "2026-10-10",
          "The point-in-time pre-filter no longer applies cfg.screener.min_price. The floor keeps "
          "live screening out of penny stocks, but a backtest reads it against SPLIT-ADJUSTED "
@@ -77,10 +86,10 @@ class DonchianStrategy(Strategy):
         "stop at a volatility multiple, and filter almost nothing."
     )
     style = "trend"
-    gate_codes = ("N1", "N2")
+    gate_codes = ("G1", "G2")
     screen_key = "above_200"
-    screen_gates = {"N1": "A1"}
-    watch_codes = ("XN1", "XN2")
+    screen_gates = {"G1": "A1"}
+    watch_codes = ("W1", "W2")
     setup_codes = (DC01, DC02)
     min_bars = 260
 
@@ -148,12 +157,12 @@ class DonchianStrategy(Strategy):
         "factor ~1.2 in earlier runs) but signal selection among tied breakouts is arbitrary."
     )
     gate_docs = {
-        "N1": (
+        "G1": (
             "Today's close must be above the 200-day simple moving average. "
             "Fails if the close is at or below it, or if there is not enough "
             "history to compute the SMA200."
         ),
-        "N2": (
+        "G2": (
             f"Today's close must be no more than 1 ATR(14) above the "
             f"{entry_channel}-day channel high (the highest high of the "
             f"{entry_channel} bars before today). A close further above it "
@@ -161,13 +170,13 @@ class DonchianStrategy(Strategy):
         ),
     }
     watch_docs = {
-        "XN1": (
+        "W1": (
             "Raised only on a DC-01 breakout day when today's volume is below "
             "its 50-day average volume. Caps the decision at TRADE ON TRIGGER "
             "and lowers setup quality by 0.5, which demotes it in the "
             "backtest's ranking of competing signals."
         ),
-        "XN2": (
+        "W2": (
             f"Raised when {stop_atr_mult:g} x ATR(14) is more than 12% of the "
             "close (a very wide raw volatility stop). Caps the decision at "
             "TRADE ON TRIGGER. Separately, any plan whose actual stop risk "
@@ -272,11 +281,11 @@ class DonchianStrategy(Strategy):
         # N2: the breakout has already run away
         if atr14 and close > ch_high + atr14:
             result.fail(
-                "N2",
+                "G2",
                 f"already {(close - ch_high) / atr14:.1f} ATR above the channel high",
             )
         else:
-            result.ok("N2")
+            result.ok("G2")
 
         result.setups[DC01] = bool(close > ch_high)
         result.setups[DC02] = bool(
@@ -292,26 +301,26 @@ class DonchianStrategy(Strategy):
         # XN1: thin volume on the breakout — not disqualifying, but noted
         vol, vol_sma50 = float(d["volume"].iloc[-1]), d["vol_sma50"].iloc[-1]
         thin = pd.notna(vol_sma50) and vol_sma50 and vol < vol_sma50
-        result.watch_flags["XN1"] = bool(thin and result.setups.get(DC01))
-        if result.watch_flags["XN1"]:
-            result.watch_notes["XN1"] = "breakout on below-average volume"
+        result.watch_flags["W1"] = bool(thin and result.setups.get(DC01))
+        if result.watch_flags["W1"]:
+            result.watch_notes["W1"] = "breakout on below-average volume"
         # XN2: very wide stop relative to price
         risk_pct = (self.stop_atr_mult * atr14 / ctx.close * 100) if ctx.close else float("nan")
-        result.watch_flags["XN2"] = bool(risk_pct == risk_pct and risk_pct > 12)
-        if result.watch_flags["XN2"]:
-            result.watch_notes["XN2"] = f"2 ATR stop is {risk_pct:.0f}% of price"
+        result.watch_flags["W2"] = bool(risk_pct == risk_pct and risk_pct > 12)
+        if result.watch_flags["W2"]:
+            result.watch_notes["W2"] = f"2 ATR stop is {risk_pct:.0f}% of price"
 
     def watch_cap(self, result: StrategyResult) -> str:
         caps = []
-        if result.watch_flags.get("XN1"):
+        if result.watch_flags.get("W1"):
             caps.append("TRADE_ON_TRIGGER")
-        if result.watch_flags.get("XN2"):
+        if result.watch_flags.get("W2"):
             caps.append("TRADE_ON_TRIGGER")
         return min(caps, key=CAP_ORDER.index) if caps else "TRADE_HIGH_CONFIDENCE"
 
     def setup_quality(self, result: StrategyResult) -> float:
         score = 2.0 if result.setups.get(DC01) else (1.0 if result.setups.get(DC02) else 0.0)
-        if result.watch_flags.get("XN1"):
+        if result.watch_flags.get("W1"):
             score -= 0.5
         return score
 
@@ -406,7 +415,7 @@ class DonchianStrategy(Strategy):
             reasons.append(f"{plan.setup} broke the {self.entry_channel}-day channel")
         else:
             label = cap
-            for code in ("XN1", "XN2"):
+            for code in ("W1", "W2"):
                 if result.watch_flags.get(code):
                     reasons.append(result.watch_notes.get(code, code))
 

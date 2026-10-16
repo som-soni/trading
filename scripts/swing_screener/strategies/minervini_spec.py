@@ -39,10 +39,10 @@ from ..screens.criteria import (  # noqa: F401 (doc placeholders)
 from .base import LABELS, Decision, PlanChoice, Strategy, StrategyResult, TradePlan, tradable_point_in_time
 from .trend_pullback import round_tick
 
-MV01 = "MV-01"   # confirmed breakout through the frozen pivot
-MV02 = "MV-02"   # coiled just below the pivot
-MV03 = "MV-03"   # low cheat: a shelf in the lower third of the base
-MV04 = "MV-04"   # cheat / 3C: a shelf in the middle third of the base
+MV01 = "S1"   # MV-01: confirmed breakout through the frozen pivot
+MV02 = "S2"   # MV-02: coiled just below the pivot
+MV03 = "S3"   # MV-03: low cheat, a shelf in the lower third of the base
+MV04 = "S4"   # MV-04: cheat / 3C, a shelf in the middle third of the base
 
 # ---- section 5: base and VCP (core/vcp_spec.py)
 SWING_K = 5
@@ -229,8 +229,17 @@ def _trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.8"
+    version = "1.9"
     changelog = (
+        ("1.9", "2026-10-16",
+         "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
+         "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
+         "The old letters meant nothing and collided across strategies: B1-B4 were minervini's WATCH flags "
+         "and breakout's GATES, so one string blocked a trade in the first and merely noted something in "
+         "the second. The prefix now states the only thing that matters when reading a drop reason -- "
+         "whether the code can stop a trade. No rule changed, but the code tuples are part of the "
+         "fingerprint, so this moves the spec id and earlier runs stay under their own versions."
+         "MV-01..04 become S1..S4, and each setup doc now opens with the MV-0n rule it implements."),
         ("1.8", "2026-10-16",
          "Trade management, filters and defaults now follow the SEPA Learn guide (\"SEPA and the VCP\"); the base, "
          "setups and entries are unchanged. Stop limit 8% -> 10%. Breakeven at +2R (was 2.5R). The failed-breakout "
@@ -344,8 +353,8 @@ class MinerviniSpecStrategy(Strategy):
     )
     style = "breakout"
 
-    gate_codes = ("M1", "M2", "M3", "M4", "M5", "M6", "M7", "M8")
-    watch_codes = ("B1", "B2", "B3", "B4")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
+    watch_codes = ("W1", "W2", "W3", "W4")
     setup_codes = (MV01, MV02, MV03, MV04)
     extra_columns = ("fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
@@ -365,7 +374,7 @@ class MinerviniSpecStrategy(Strategy):
     # on the legacy minervini and was lost when that strategy was unregistered.
     wants_live_fundamentals = True
     screen_key = "stage2"
-    screen_gates = {"M1": "C1", "M2": "C2", "M3": "C3", "M4": "C4", "M5": "C5", "M6": "C6", "M7": "C7", "M8": "C8"}
+    screen_gates = {"G1": "C1", "G2": "C2", "G3": "C3", "G4": "C4", "G5": "C5", "G6": "C6", "G7": "C7", "G8": "C8"}
     min_bars = 300
 
     thesis = (
@@ -375,7 +384,7 @@ class MinerviniSpecStrategy(Strategy):
         "filtered by the guide's."
     )
     how_it_works = (
-        "Gates M1–M8 are the Trend Template (the Stage 2 screen's criteria): price above the 50/150/200-day "
+        "Gates G1–G8 are the Trend Template (the Stage 2 screen's criteria): price above the 50/150/200-day "
         "averages, the averages stacked, the 200-day rising over {SMA200_RISING_BARS} sessions, at least "
         "{MIN_PCT_ABOVE_52W_LOW}% above the 52-week low and within {MAX_PCT_BELOW_52W_HIGH}% of the high, and "
         "relative strength. The backtest applies the true cross-sectional RS rating of {RS_MIN_RANK}+ on top.",
@@ -406,7 +415,7 @@ class MinerviniSpecStrategy(Strategy):
         "which flatters every result.",
         "**Corporate actions.** Prices are adjusted when fetched; a split or bonus after a symbol's last full "
         "fetch shows as a crash until its history is re-fetched (`marketdata.splits`).",
-        "**Relative strength** is applied twice: the per-stock gate M8 uses 12-1 month momentum of "
+        "**Relative strength** is applied twice: the per-stock gate G8 uses 12-1 month momentum of "
         "{RS_MIN_MOM}+ (a stand-in that a one-symbol evaluation can compute), and the backtest's `--min-rs` "
         "applies the true RS rating across the market. The stand-in rarely binds when the rating is 70+.",
         "**Fundamentals (SEPA part 2) are optional in the backtest, off by default.** `--fundamentals guide` "
@@ -434,8 +443,17 @@ class MinerviniSpecStrategy(Strategy):
         "spec (section 11), most of them marked there as assumptions.",
     )
     status = (
-        "Version 1.8 (the Learn guide's management and filters) has not been backtested yet; everything below "
-        "measures 1.7's rules. No demonstrated edge (India, 2010 onward, `--spec`). Confirmed breakouts (EN-01): 9 trades in 16 years, "
+        "1.8 (the Learn guide's management and filters, default backtest_args, 2010 onward): India 474 trades, "
+        "+0.13R, profit factor 1.17, CAGR 1.49% against the index's 10.2%, max drawdown -17.5% (in sample to 2019 "
+        "2.10% CAGR, after 0.59%). US 1,035 trades, -0.01R, profit factor 0.98, CAGR -0.29% against 12.1%, max "
+        "drawdown -45.3%. So better than 1.7 in India (+0.13R against -0.03R) and worse in the US (1.7 with MKT-01: "
+        "+0.06R, CAGR 1.34%, drawdown -28.6%). The 3C cheat (MV-04) is 80-88% of the trades; the low cheat (MV-03) "
+        "lost again in India (74 trades, -0.12R) and broke even in the US; the pivot buys are too few to judge (19 "
+        "and 35 MV-02, one MV-01). Stops cost most of the gross: India's 77 stop-outs lost Rs1.26m against Rs1.65m "
+        "made on trend exits. Not yet isolated: whether the US shortfall comes from the guide's market filter -- "
+        "open on fewer days than MKT-01 (67.5% against 77.0% since 2010) and agreeing with it on only 70% of "
+        "days -- or from the other changes; a `--mkt01` run would separate them. "
+        "Everything below measures 1.7's rules. No demonstrated edge (India, 2010 onward, `--spec`). Confirmed breakouts (EN-01): 9 trades in 16 years, "
         "CAGR −0.1% — the spec's base rules almost never complete on Indian daily data. Buy-stops (EN-02): 114 trades, "
         "expectancy −0.03R, profit factor 0.86, CAGR 0.1% against the index's ~12%, max drawdown −8.6%; the "
         "failed-breakout exit closes ~80% of trades for −0.3R each. No parameter at either end of the spec's test "
@@ -457,34 +475,34 @@ class MinerviniSpecStrategy(Strategy):
     )
 
     gate_docs = {
-        "M1": "TT-05: close above the 50-day average.",
-        "M2": "TT-01: close above the 150-day average.",
-        "M3": "TT-01: close above the 200-day average.",
-        "M4": "TT-02 and TT-04: the 50-day above the 150-day above the 200-day.",
-        "M5": "TT-03: the 200-day higher than {SMA200_RISING_BARS} sessions ago.",
-        "M6": "TT-06: close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low.",
-        "M7": "TT-07: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
-        "M8": "TT-08 stand-in: 12-1 month momentum of at least {RS_MIN_MOM}. The backtest also requires the "
+        "G1": "TT-05: close above the 50-day average.",
+        "G2": "TT-01: close above the 150-day average.",
+        "G3": "TT-01: close above the 200-day average.",
+        "G4": "TT-02 and TT-04: the 50-day above the 150-day above the 200-day.",
+        "G5": "TT-03: the 200-day higher than {SMA200_RISING_BARS} sessions ago.",
+        "G6": "TT-06: close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low.",
+        "G7": "TT-07: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
+        "G8": "TT-08 stand-in: 12-1 month momentum of at least {RS_MIN_MOM}. The backtest also requires the "
               "true RS rating of {RS_MIN_RANK}+ across the market.",
     }
     watch_docs = {
-        "B1": "Closed through the pivot on light volume — under {VOL_MULT} × the 50-day average (MV-01a), "
+        "W1": "Closed through the pivot on light volume — under {VOL_MULT} × the 50-day average (MV-01a), "
               "so not a confirmed breakout.",
-        "B2": "Closed more than {BUY_RANGE_PCT}% past the pivot (MV-01b): extended beyond the buy range.",
-        "B3": "Closed through the pivot but in the lower half of the day's range (MV-01c).",
-        "B4": "Results are due within {EARNINGS_BLACKOUT_DAYS} days: no new buy (the plan is held at WATCH).",
+        "W2": "Closed more than {BUY_RANGE_PCT}% past the pivot (MV-01b): extended beyond the buy range.",
+        "W3": "Closed through the pivot but in the lower half of the day's range (MV-01c).",
+        "W4": "Results are due within {EARNINGS_BLACKOUT_DAYS} days: no new buy (the plan is held at WATCH).",
     }
     setup_docs = {
-        MV01: "Breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
+        MV01: "MV-01 breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
               "on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of the pivot.",
-        MV02: "Coiled: the base is complete and the close is within {COIL_PCT}% below the pivot.",
-        MV03: "Low cheat (on since 1.8, {LOW_CHEAT_ENABLED}; `--const LOW_CHEAT_ENABLED=0` turns it off): "
+        MV02: "MV-02 coiled: the base is complete and the close is within {COIL_PCT}% below the pivot.",
+        MV03: "MV-03 low cheat (on since 1.8, {LOW_CHEAT_ENABLED}; `--const LOW_CHEAT_ENABLED=0` turns it off): "
               "a shelf of {CHEAT_SHELF_DAYS} sessions spanning no more than "
               "{CHEAT_SHELF_PCT}% sits in the LOWER third of a base that has cleared VCP-01/02/03, and "
               "today's close went through its high. Taken while the base is still forming, so the stop "
               "is the shelf low rather than the base low. Minervini calls this the riskiest of his "
               "three in-base entries and uses it mainly in stocks he already knows.",
-        MV04: "Cheat (\"3C\"): the same shelf in the MIDDLE third of the base — the cup-completion "
+        MV04: "MV-04 cheat (\"3C\"): the same shelf in the MIDDLE third of the base — the cup-completion "
               "cheat, entered as the base recovers but before it reaches its old high.",
     }
     entry_rules = (
@@ -679,9 +697,9 @@ class MinerviniSpecStrategy(Strategy):
         rng = high - low
         upper = (close - low) / rng if rng > 0 else 1.0
         confirmed = {
-            "B1": not (vol_ratio >= VOL_MULT),
-            "B2": breakout and close > base["pivot"] * (1 + BUY_RANGE_PCT / 100),
-            "B3": upper < UPPER_HALF,
+            "W1": not (vol_ratio >= VOL_MULT),
+            "W2": breakout and close > base["pivot"] * (1 + BUY_RANGE_PCT / 100),
+            "W3": upper < UPPER_HALF,
         }
         mv01 = breakout and not any(confirmed.values())
         mv02 = bool(not breakout and today["ok"] and today["pivot"] * (1 - COIL_PCT / 100) <= close <= today["pivot"])
@@ -701,19 +719,19 @@ class MinerviniSpecStrategy(Strategy):
         result.setups[MV01], result.setups[MV02] = mv01, mv02
         result.setups[MV03], result.setups[MV04] = mv03, mv04
 
-        for code in ("B1", "B2", "B3"):
+        for code in ("W1", "W2", "W3"):
             on = bool(breakout and confirmed[code])
             result.watch_flags[code] = on
-        if result.watch_flags["B1"]:
-            result.watch_notes["B1"] = f"volume {vol_ratio:.2f}× its 50-day average"
-        if result.watch_flags["B2"]:
-            result.watch_notes["B2"] = f"{(close / base['pivot'] - 1) * 100:.1f}% above the pivot"
-        if result.watch_flags["B3"]:
-            result.watch_notes["B3"] = f"closed at {upper * 100:.0f}% of the day's range"
+        if result.watch_flags["W1"]:
+            result.watch_notes["W1"] = f"volume {vol_ratio:.2f}× its 50-day average"
+        if result.watch_flags["W2"]:
+            result.watch_notes["W2"] = f"{(close / base['pivot'] - 1) * 100:.1f}% above the pivot"
+        if result.watch_flags["W3"]:
+            result.watch_notes["W3"] = f"closed at {upper * 100:.0f}% of the day's range"
         ed = ctx.earnings_days_away
-        result.watch_flags["B4"] = bool(ed is not None and 0 <= ed <= EARNINGS_BLACKOUT_DAYS)
-        if result.watch_flags["B4"]:
-            result.watch_notes["B4"] = f"earnings in {ed} days"
+        result.watch_flags["W4"] = bool(ed is not None and 0 <= ed <= EARNINGS_BLACKOUT_DAYS)
+        if result.watch_flags["W4"]:
+            result.watch_notes["W4"] = f"earnings in {ed} days"
 
         depths = base.get("depths") or []
         if ch is not None:

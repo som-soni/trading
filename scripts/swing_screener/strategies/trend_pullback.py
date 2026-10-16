@@ -35,9 +35,9 @@ from .base import (
     TradePlan,
 )
 
-TC01 = "TC-01"
-TC02 = "TC-02"
-TC04 = "TC-04"
+TC01 = "S1"   # TC-01
+TC02 = "S2"   # TC-02
+TC04 = "S4"   # TC-04, numbering kept so old runs still map
 
 
 def round_tick(value: float, tick: float, direction: str) -> float:
@@ -50,8 +50,19 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 class TrendPullbackStrategy(Strategy):
     selection = "time_series"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-10-16",
+         "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
+         "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
+         "The old letters meant nothing and collided across strategies: B1-B4 were minervini's WATCH flags "
+         "and breakout's GATES, so one string blocked a trade in the first and merely noted something in "
+         "the second. The prefix now states the only thing that matters when reading a drop reason -- "
+         "whether the code can stop a trade. No rule changed, but the code tuples are part of the "
+         "fingerprint, so this moves the spec id and earlier runs stay under their own versions."
+         "The W/T/D gate grouping (weekly, trend, daily) flattens to G1..G14 in evaluation order, so "
+         "that grouping now lives only in the docs. TC-01/02/04 become S1/S2/S4 -- the gap is kept "
+         "deliberately, so an old run's TC-04 still maps to one setup."),
         ("1.1", "2026-10-10",
          "The point-in-time pre-filter no longer applies cfg.screener.min_price. The floor keeps "
          "live screening out of penny stocks, but a backtest reads it against SPLIT-ADJUSTED "
@@ -73,10 +84,10 @@ class TrendPullbackStrategy(Strategy):
         "established uptrend, entered on a resumption signal above resistance."
     )
     style = "pullback"
-    gate_codes = ("W1", "W2", "T1", "T2", "T3", "T4", "T5", "T6", "D2", "D3", "D4", "D5", "D6", "D7")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G11", "G12", "G13", "G14")
     screen_key = "uptrend"
-    screen_gates = {"W1": "U1", "W2": "U2", "T1": "U3", "T2": "U4", "T3": "U5", "T4": "U6", "T5": "U7", "T6": "U8"}
-    watch_codes = ("X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8", "X9")
+    screen_gates = {"G1": "U1", "G2": "U2", "G3": "U3", "G4": "U4", "G5": "U5", "G6": "U6", "G7": "U7", "G8": "U8"}
+    watch_codes = ("W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "W9")
     setup_codes = (TC01, TC02, TC04)
     min_bars = 260
 
@@ -130,67 +141,67 @@ class TrendPullbackStrategy(Strategy):
         "alternative exit policies did not rescue it."
     )
     gate_docs = {
-        "W1": "Passes when the latest weekly close is above the 30-week EMA AND that "
+        "G1": "Passes when the latest weekly close is above the 30-week EMA AND that "
               "EMA is higher than it was one week earlier. Fails with fewer than 31 "
               "weekly bars.",
-        "W2": "Passes when the weekly SMA20 is strictly above the weekly SMA50. Fails "
+        "G2": "Passes when the weekly SMA20 is strictly above the weekly SMA50. Fails "
               "with fewer than 50 weekly bars.",
-        "T1": "Passes when daily SMA50 > SMA200 AND price has not broken down through "
+        "G3": "Passes when daily SMA50 > SMA200 AND price has not broken down through "
               "the SMA50 — i.e. the close is not more than 2 ATR14 below the SMA50 and "
               "the last 5 closes are not all below the SMA50.",
-        "T2": "Passes unless either average is falling: SMA50 more than 1% below its "
+        "G4": "Passes unless either average is falling: SMA50 more than 1% below its "
               "value 10 bars ago, or SMA200 more than 0.5% below its value 20 bars "
               "ago. A flat average passes (a flat SMA50 raises X4).",
-        "T3": "Passes when the last two confirmed daily swing lows (3 bars either side) "
+        "G5": "Passes when the last two confirmed daily swing lows (3 bars either side) "
               "in the last 50 bars are rising; with fewer than two, the lowest low of "
               "the last 25 bars must be above the lowest low of the 25 bars before.",
-        "T4": "Passes when 12-1 month momentum is positive: the close 21 bars ago is "
+        "G6": "Passes when 12-1 month momentum is positive: the close 21 bars ago is "
               "above the close 252 bars ago. Needs at least 253 daily bars.",
-        "T5": "Passes when the close is at least 75% of the 52-week (252-bar) high, "
+        "G7": "Passes when the close is at least 75% of the 52-week (252-bar) high, "
               "i.e. no more than 25% below it.",
-        "T6": "Fails only when BOTH the 63-bar (about 3-month) return is negative AND "
+        "G8": "Fails only when BOTH the 63-bar (about 3-month) return is negative AND "
               "the SMA50 is flat or falling (T2's definition); otherwise passes.",
-        "D2": "Passes unless the next earnings date is 10 or fewer business days "
+        "G9": "Passes unless the next earnings date is 10 or fewer business days "
               "away. Unknown earnings dates pass, and the backtest never enforces this "
               "gate (no point-in-time earnings calendar).",
-        "D3": "Fails when the pullback is on rising volume: the average volume of the "
+        "G10": "Fails when the pullback is on rising volume: the average volume of the "
               "bars since the swing high H is higher than the average volume of the "
               "impulse from L (lowest low in the 40 bars before H) up to H.",
-        "D4": "Fails when the close is below the prior structural swing low (the last "
+        "G11": "Fails when the close is below the prior structural swing low (the last "
               "confirmed daily swing low before H); passes if there is none.",
-        "D5": "Fails when any overhead resistance level (daily swing highs of the last "
+        "G12": "Fails when any overhead resistance level (daily swing highs of the last "
               "year, weekly of ~5 years, monthly of all history, plus H) sits within 3% "
               "above the close — unless the only such level is H itself and a "
               "{TC01} or {TC02} setup is present.",
-        "D6": "Fails when ATR14 is more than 8% of price (too volatile).",
-        "D7": "Fails when any of the last 10 bars opened with a gap of more than 8% "
+        "G13": "Fails when ATR14 is more than 8% of price (too volatile).",
+        "G14": "Fails when any of the last 10 bars opened with a gap of more than 8% "
               "(up or down) versus the prior close and the current close is still "
               "below that pre-gap close.",
     }
     watch_docs = {
-        "X1": "Extended: close more than 2.5 ATR14 above the SMA20, OR RSI14 above "
+        "W1": "Extended: close more than 2.5 ATR14 above the SMA20, OR RSI14 above "
               "75. Caps the decision at WATCH - WAIT (wait for a pullback toward the "
               "SMA20).",
-        "X2": "Close below the SMA50 while still passing T1. Caps the decision at "
+        "W2": "Close below the SMA50 while still passing T1. Caps the decision at "
               "TRADE ON TRIGGER and lifts Plan A's trigger to at least 0.1% above the "
               "SMA50.",
-        "X3": "Positive flag: close within 1 ATR14 of a rising SMA50. No cap; adds 1.0 "
+        "W3": "Positive flag: close within 1 ATR14 of a rising SMA50. No cap; adds 1.0 "
               "to setup quality (used for ranking).",
-        "X4": "SMA50 flat (neither higher than 10 bars ago nor more than 1% lower). "
+        "W4": "SMA50 flat (neither higher than 10 bars ago nor more than 1% lower). "
               "Labelled base (10-bar range at most 4.5 ATR and close within 10% of the "
               "52-week high) or drift; drift caps at TRADE ON TRIGGER and subtracts 1.0 "
               "from setup quality, base has no effect.",
-        "X5": "Low trend strength: ADX14 from 15 up to (not including) 20. Labelled "
+        "W5": "Low trend strength: ADX14 from 15 up to (not including) 20. Labelled "
               "base or drift as for X4; drift subtracts 1.0 from setup quality. Never "
               "caps the decision.",
-        "X6": "ADX14 lower than 5 bars ago. If price is more than 5% below H and is "
+        "W6": "ADX14 lower than 5 bars ago. If price is more than 5% below H and is "
               "closer to the SMA50 than 5 bars ago it is noted as momentum fading and "
               "subtracts 1.0 from setup quality. Never caps the decision.",
-        "X7": "Late move: ADX14 above 40 together with X1. Forces Plan A (no switch to "
+        "W7": "Late move: ADX14 above 40 together with X1. Forces Plan A (no switch to "
               "Plan B); X1 already caps the decision at WATCH - WAIT.",
-        "X8": "Weak momentum: RSI14 below 40 while the close is above the SMA50. Caps "
+        "W8": "Weak momentum: RSI14 below 40 while the close is above the SMA50. Caps "
               "the decision at TRADE ON TRIGGER.",
-        "X9": "Monthly structure not confirmed (the former hard gate M1): with at least "
+        "W9": "Monthly structure not confirmed (the former hard gate M1): with at least "
               "24 months of history, any of — monthly close not above its 10-month SMA, "
               "last-12-month high not above the prior 12 months', or last-12-month low "
               "not above the prior 12 months'. Caps the decision at TRADE ON TRIGGER.",
@@ -302,31 +313,31 @@ class TrendPullbackStrategy(Strategy):
 
         # M1 (monthly structure) was a hard gate until review showed it
         # penalises a genuine recent recovery as hard as an ongoing
-        # downtrend — it is now watch flag X9 below.
+        # downtrend — it is now watch flag W9 below.
 
         # W1-W2, T1-T6: the Established-uptrend screen's criteria U1-U8 (screens/criteria.py)
         self.apply_screen(ctx, result)
 
-        # D1 retired — extension is now watch flag X1
-        result.ok("D1", "retired, see X1")
+        # D1 retired — extension is now watch flag W1
+        result.ok("D1", "retired, see W1")
 
         # D2: earnings within 10 trading days
         if ctx.earnings_days_away is not None and ctx.earnings_days_away <= 10:
-            result.fail("D2", f"earnings in {ctx.earnings_days_away} trading days")
+            result.fail("G9", f"earnings in {ctx.earnings_days_away} trading days")
         else:
-            result.ok("D2")
+            result.ok("G9")
 
         # D3: pullback on rising volume
         if sw.pullback_on_rising_volume(d, ctx.h_index, ctx.l_value):
-            result.fail("D3", "pullback volume higher than impulse volume")
+            result.fail("G10", "pullback volume higher than impulse volume")
         else:
-            result.ok("D3")
+            result.ok("G10")
 
         # D4: close below the prior structural swing low
         if ctx.prior_swing_low is not None and close < ctx.prior_swing_low:
-            result.fail("D4", "close below prior structural swing low")
+            result.fail("G11", "close below prior structural swing low")
         else:
-            result.ok("D4")
+            result.ok("G11")
 
         # D5 needs the setup result, so compute the inputs now and decide below
         near_levels = sw.levels_within_pct_above(close, ctx.overhead, 3.0)
@@ -337,22 +348,22 @@ class TrendPullbackStrategy(Strategy):
         # D6: ATR14 above 8% of price
         atr_pct = d["atr_pct"].iloc[-1]
         if pd.notna(atr_pct) and atr_pct > 8:
-            result.fail("D6", f"ATR% {atr_pct:.1f} > 8%")
+            result.fail("G13", f"ATR% {atr_pct:.1f} > 8%")
         else:
-            result.ok("D6")
+            result.ok("G13")
 
         # D7: unheld gap >8% in the last 10 bars
         if sw.gap_not_held(d, 10, 8.0):
-            result.fail("D7", "unheld gap >8% in the last 10 bars")
+            result.fail("G14", "unheld gap >8% in the last 10 bars")
         else:
-            result.ok("D7")
+            result.ok("G14")
 
         self._compute_setups(ctx, result)
 
         if near_levels and not (only_h and (result.setups[TC01] or result.setups[TC02])):
-            result.fail("D5", f"overhead level(s) within 3%: {near_levels}")
+            result.fail("G12", f"overhead level(s) within 3%: {near_levels}")
         else:
-            result.ok("D5")
+            result.ok("G12")
 
         result.recompute_first_fail()
         self._compute_watch_flags(ctx, result)
@@ -412,16 +423,16 @@ class TrendPullbackStrategy(Strategy):
             extended = (close - sma20) > 2.5 * atr14
         if pd.notna(rsi14) and rsi14 > 75:
             extended = True
-        result.watch_flags["X1"] = bool(extended)
+        result.watch_flags["W1"] = bool(extended)
         if extended:
             target = sma20 if pd.notna(sma20) else None
-            result.watch_notes["X1"] = (
+            result.watch_notes["W1"] = (
                 f"extended; pullback target ~{target:.2f}" if target else "extended"
             )
 
         # X2: below SMA50 but within T1's tolerance
-        below_50 = pd.notna(sma50) and close < sma50 and result.hard_gates.get("T1", False)
-        result.watch_flags["X2"] = bool(below_50)
+        below_50 = pd.notna(sma50) and close < sma50 and result.hard_gates.get("G3", False)
+        result.watch_flags["W2"] = bool(below_50)
 
         # X3: at a rising SMA50 (positive flag)
         sma50_state = criteria.sma50_state(ctx)
@@ -432,26 +443,26 @@ class TrendPullbackStrategy(Strategy):
             and abs(close - sma50) <= atr14
             and sma50_state == "rising"
         )
-        result.watch_flags["X3"] = bool(at_rising_50)
+        result.watch_flags["W3"] = bool(at_rising_50)
 
         # X4: flat SMA50 -> base or drift
         flat_50 = sma50_state == "flat"
-        result.watch_flags["X4"] = bool(flat_50)
+        result.watch_flags["W4"] = bool(flat_50)
         if flat_50:
-            result.watch_notes["X4"] = sw.base_or_drift(d, atr14, d["high_252"].iloc[-1])
+            result.watch_notes["W4"] = sw.base_or_drift(d, atr14, d["high_252"].iloc[-1])
 
         # X5: low ADX (15-20) -> base or drift
         low_adx = pd.notna(adx14) and 15 <= adx14 < 20
-        result.watch_flags["X5"] = bool(low_adx)
+        result.watch_flags["W5"] = bool(low_adx)
         if low_adx:
-            result.watch_notes["X5"] = sw.base_or_drift(d, atr14, d["high_252"].iloc[-1])
+            result.watch_notes["W5"] = sw.base_or_drift(d, atr14, d["high_252"].iloc[-1])
 
         # X6: ADX falling
         adx_falling = ind.is_falling(d["adx14"], 5, 0.0)
-        result.watch_flags["X6"] = bool(adx_falling)
+        result.watch_flags["W6"] = bool(adx_falling)
         if adx_falling:
             if close >= ctx.h_value * 0.95:
-                result.watch_notes["X6"] = "healthy pause near H"
+                result.watch_notes["W6"] = "healthy pause near H"
             else:
                 dist_now = abs(close - sma50) if pd.notna(sma50) else float("nan")
                 sma50_5ago = d["sma50"].iloc[-6] if len(d) > 5 else float("nan")
@@ -462,24 +473,24 @@ class TrendPullbackStrategy(Strategy):
                     else float("nan")
                 )
                 fading = pd.notna(dist_now) and pd.notna(dist_5ago) and dist_now < dist_5ago
-                result.watch_notes["X6"] = (
+                result.watch_notes["W6"] = (
                     "momentum fading toward SMA50" if fading else "falling, no clear fade"
                 )
 
         # X7: late move — ADX>40 together with X1
-        result.watch_flags["X7"] = bool(
-            pd.notna(adx14) and adx14 > 40 and result.watch_flags["X1"]
+        result.watch_flags["W7"] = bool(
+            pd.notna(adx14) and adx14 > 40 and result.watch_flags["W1"]
         )
 
         # X8: weak momentum — RSI<40 while close above SMA50
-        result.watch_flags["X8"] = bool(
+        result.watch_flags["W8"] = bool(
             pd.notna(rsi14) and rsi14 < 40 and pd.notna(sma50) and close > sma50
         )
 
         # X9: monthly structure not yet confirmed (former hard gate M1)
         m = ctx.monthly
         if ctx.history_months < 24 or len(m) < 24 or pd.isna(m["sma10"].iloc[-1]):
-            result.watch_flags["X9"] = False
+            result.watch_flags["W9"] = False
         else:
             above_sma10 = m["close"].iloc[-1] > m["sma10"].iloc[-1]
             last12_high = m["high"].iloc[-12:].max()
@@ -493,23 +504,23 @@ class TrendPullbackStrategy(Strategy):
                 reasons.append(f"high not above prior year ({last12_high:.2f} vs {prior12_high:.2f})")
             if last12_low <= prior12_low:
                 reasons.append(f"low not above prior year ({last12_low:.2f} vs {prior12_low:.2f})")
-            result.watch_flags["X9"] = bool(reasons)
+            result.watch_flags["W9"] = bool(reasons)
             if reasons:
-                result.watch_notes["X9"] = (
+                result.watch_notes["W9"] = (
                     "monthly structure not yet confirmed: " + "; ".join(reasons)
                 )
 
     def watch_cap(self, result: StrategyResult) -> str:
         caps = []
-        if result.watch_flags.get("X1"):
+        if result.watch_flags.get("W1"):
             caps.append("WATCH_WAIT")
-        if result.watch_flags.get("X2"):
+        if result.watch_flags.get("W2"):
             caps.append("TRADE_ON_TRIGGER")
-        if result.watch_flags.get("X4") and result.watch_notes.get("X4") == "drift":
+        if result.watch_flags.get("W4") and result.watch_notes.get("W4") == "drift":
             caps.append("TRADE_ON_TRIGGER")
-        if result.watch_flags.get("X8"):
+        if result.watch_flags.get("W8"):
             caps.append("TRADE_ON_TRIGGER")
-        if result.watch_flags.get("X9"):
+        if result.watch_flags.get("W9"):
             caps.append("TRADE_ON_TRIGGER")
         if not caps:
             return "TRADE_HIGH_CONFIDENCE"
@@ -519,15 +530,15 @@ class TrendPullbackStrategy(Strategy):
         score = 2.0 if result.setups.get(TC01) else (1.0 if result.setups.get(TC02) else 0.0)
         if result.setups.get(TC04):
             score += 0.5
-        if result.watch_flags.get("X3"):
+        if result.watch_flags.get("W3"):
             score += 1.0
-        if result.watch_flags.get("X4") and result.watch_notes.get("X4") == "drift":
+        if result.watch_flags.get("W4") and result.watch_notes.get("W4") == "drift":
             score -= 1.0
-        if result.watch_flags.get("X5") and result.watch_notes.get("X5") == "drift":
+        if result.watch_flags.get("W5") and result.watch_notes.get("W5") == "drift":
             score -= 1.0
         if (
-            result.watch_flags.get("X6")
-            and result.watch_notes.get("X6") == "momentum fading toward SMA50"
+            result.watch_flags.get("W6")
+            and result.watch_notes.get("W6") == "momentum fading toward SMA50"
         ):
             score -= 1.0
         return score
@@ -620,7 +631,7 @@ class TrendPullbackStrategy(Strategy):
         ref = max(last_high, float(d["high"].iloc[-11:-1].max())) if setup == TC02 else last_high
 
         trigger = ref
-        if result.watch_flags.get("X2"):
+        if result.watch_flags.get("W2"):
             sma50 = d["sma50"].iloc[-1]
             if sma50 == sma50:
                 trigger = max(trigger, float(sma50) * 1.001)
@@ -682,7 +693,7 @@ class TrendPullbackStrategy(Strategy):
             return PlanChoice(None, None, "no active setup")
         plan_b = self._build_plan(ctx, result, cfg.tick_size, "B")
 
-        if result.watch_flags.get("X7"):
+        if result.watch_flags.get("W7"):
             return PlanChoice(plan_a, plan_b, "X7 late move: Plan A (pullback) preferred")
         if plan_a.r_multiple < 2 and plan_b is not None and plan_b.r_multiple >= 2:
             return PlanChoice(plan_b, plan_a, "Plan A capped below 2R, Plan B (breakout) used instead")
@@ -738,7 +749,7 @@ class TrendPullbackStrategy(Strategy):
             reasons.append(f"demand/supply: {ds.verdict} ({ds.supports_demand_text})")
         elif cap == "WATCH_WAIT":
             label = "WATCH_WAIT"
-            reasons.append(result.watch_notes.get("X1", "extended (X1)"))
+            reasons.append(result.watch_notes.get("W1", "extended (X1)"))
         elif (
             sig
             and cap == "TRADE_HIGH_CONFIDENCE"
@@ -755,9 +766,9 @@ class TrendPullbackStrategy(Strategy):
                 reasons.append("entry trigger not yet fired")
             if cap == "TRADE_ON_TRIGGER":
                 capping = [
-                    code for code in ("X2", "X4", "X8", "X9")
+                    code for code in ("W2", "W4", "W8", "W9")
                     if result.watch_flags.get(code)
-                    and (code != "X4" or result.watch_notes.get("X4") == "drift")
+                    and (code != "W4" or result.watch_notes.get("W4") == "drift")
                 ]
                 reasons.append(f"capped by watch flag ({'/'.join(capping)})")
             if earnings_block_15:
@@ -783,10 +794,10 @@ class TrendPullbackStrategy(Strategy):
         return {
             "demand_supply": f"{ds.verdict} ({ds.supports_demand_text})",
             "h_pct_above_close": round(ind.pct_distance(ctx.h_value, ctx.close), 1),
-            "monthly": "recovering" if result.watch_flags.get("X9") else "up",
+            "monthly": "recovering" if result.watch_flags.get("W9") else "up",
             "weekly": (
                 "up"
-                if result.hard_gates.get("W1") and result.hard_gates.get("W2")
+                if result.hard_gates.get("G1") and result.hard_gates.get("G2")
                 else "down"
             ),
         }

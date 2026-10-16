@@ -223,7 +223,10 @@ def check(market: str) -> None:
                        AND spec_id=%s AND hard_gates_passed AND date >= %s""",
                     (market, get_strategy("minervini").spec_id(), START))
         rows = cur.fetchall()
-    cached = {(s, pd.Timestamp(d)) for s, d, st in rows if st.get("MV-01") or st.get("MV-02")}
+    # the strategy's own codes, not the spec's rule names: a cached row stores what the
+    # strategy declared (S1/S2 since 1.9), and the query above already pins the spec_id
+    _pivot_setups = get_strategy("minervini").setup_codes[:2]   # breakout, then coiled
+    cached = {(s, pd.Timestamp(d)) for s, d, st in rows if any(st.get(c) for c in _pivot_setups)}
     mine = {(s.symbol, pd.Timestamp(s.date)) for s in sigs}
     print(f"shortcut: {len(mine)} orders; cached evaluations with a setup: {len(cached)}; "
           f"shortcut ⊆ cached: {mine <= cached}; cached-only {len(cached - mine)} (setups refused by the plan/classify step)")
