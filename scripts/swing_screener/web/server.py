@@ -423,6 +423,8 @@ def report_funnel_stage(rid: int, stage: str):
              for d in st.get("drops", [])]
     return {"stage": stage, "label": st["label"], "unit": st["unit"], "count": st["count"],
             "symbols": names, "symbol_count": len(names), "drops": drops,
+            # a sampled list must never read as the whole list
+            "symbols_truncated": bool(st.get("symbols_truncated")),
             # a run from before symbols were recorded: say so rather than showing an empty list
             "recorded": bool(names) or any(d["symbols"] for d in drops)}
 

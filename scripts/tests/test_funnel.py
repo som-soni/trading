@@ -117,6 +117,28 @@ def _symbol_problems() -> list[str]:
     if {r["stage"]: r for r in a.rows()}["setup"]["symbols"] != ["A", "B"]:
         bad.append("merge lost one side's names")
 
+    # a capped stage list must not be an alphabetical prefix. At 2,000 with sorted()[:n] the
+    # `candidates` list on a US run stopped at NMIH, so NVDA read as "never reached this stage"
+    # when it had -- the cap was deciding which stocks could be looked up.
+    wide = F.Funnel()
+    universe = [f"{c}{i:03d}" for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" for i in range(200)]
+    wide.set_symbols("candidates", universe)
+    wide.set_count("candidates", len(universe))
+    row = {r["stage"]: r for r in wide.rows()}["candidates"]
+    if len(universe) > F.Funnel.MAX_STAGE_NAMES:
+        bad.append("the fixture no longer exceeds the cap; raise it to keep testing truncation")
+    kept = row["symbols"]
+    if len(kept) != len(universe) or row["symbols_truncated"]:
+        bad.append(f"a {len(universe)}-name universe was truncated at {len(kept)}; the cap is too low "
+                   f"to hold a real run's candidates")
+    sampled = F._capped(universe, 60)
+    letters = {n[0] for n in sampled}
+    if len(letters) < 20:
+        bad.append(f"a truncated sample covered only {len(letters)} letters ({''.join(sorted(letters))}) "
+                   f"— it is taking a prefix, not a spread")
+    if sampled != sorted(sampled):
+        bad.append("the sample is not sorted, so it cannot be scanned by eye")
+
     # the caps hold, and say so
     big = F.Funnel()
     many = [f"S{i:05d}" for i in range(F.Funnel.MAX_STAGE_NAMES + 50)]

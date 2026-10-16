@@ -62,6 +62,21 @@ def normalise(reason: object) -> str:
     return _TOKEN.sub(lambda m: m.group(1) or "#", text) or "unspecified"
 
 
+def _capped(names, limit: int) -> list:
+    """Sorted names, and if there are more than `limit`, an EVEN sample of them.
+
+    Never a prefix: `sorted(...)[:limit]` keeps A..N and silently drops the rest of the
+    alphabet, which turns "did NVDA reach this stage?" into a question about spelling.
+    An even stride is still a sample -- `symbols_truncated` says so -- but it does not
+    systematically hide one part of the list.
+    """
+    out = sorted(names)
+    if len(out) <= limit:
+        return out
+    step = len(out) / limit
+    return [out[int(i * step)] for i in range(limit)]
+
+
 class Funnel:
     """Counts per stage, and the reasons for each drop."""
 
@@ -70,9 +85,15 @@ class Funnel:
     # them is always the true total. Capped so a rule that rejects 200,000 bars does
     # not carry 200,000 strings through the run and into the JSON.
     MAX_DROP_NAMES = 500
-    # A stage list is for looking a stock up, not for holding a universe. Capped so one
-    # run's funnel.json stays small enough to serve; `symbols_truncated` says when it bit.
-    MAX_STAGE_NAMES = 2000
+    # A stage list is for looking a stock up, so the cap must not decide WHICH stocks can be
+    # looked up. At 2,000 with an alphabetical cut it did exactly that: on a US run the
+    # `candidates` list stopped at NMIH, so NVDA -- and everything else late in the alphabet --
+    # read as "never reached this stage" when it had. The widest stage is bounded by the
+    # tradable universe (~3,300 US), and the full-universe stage is not recorded at all, so
+    # this now sits well above any real run and is a guard against pathology rather than a
+    # routine truncation. If it ever does bite, _capped() spreads the sample across the whole
+    # list instead of taking a prefix.
+    MAX_STAGE_NAMES = 10_000
 
     def __init__(self) -> None:
         self.counts: collections.Counter = collections.Counter()
@@ -141,7 +162,7 @@ class Funnel:
                 "drops": [{"reason": r, "count": int(n),
                             "symbols": sorted(self.drop_symbols.get(key, {}).get(r, ()))}
                           for r, n in self.drops.get(key, collections.Counter()).most_common()],
-                "symbols": sorted(self.stage_symbols.get(key, ()))[: self.MAX_STAGE_NAMES],
+                "symbols": _capped(self.stage_symbols.get(key, ()), self.MAX_STAGE_NAMES),
                 "symbols_truncated": len(self.stage_symbols.get(key, ())) > self.MAX_STAGE_NAMES,
             })
         # A funnel whose reasons do not add up to its own losses is worse than no
