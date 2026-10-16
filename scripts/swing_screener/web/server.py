@@ -996,9 +996,15 @@ def _tt_tag(why: str) -> str:
     return why
 
 
-@app.get("/api/trend-template/{market}/{symbol}")
-def trend_template_live(market: str, symbol: str, date: str | None = None):
-    """The chart's Trend Template indicator: which bars pass Minervini's Stage-2 test, run ON DEMAND
+@app.get("/api/setups/{strategy}/{market}/{symbol}")
+def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = None):
+    """One strategy's trade setups over the stored bars, run ON DEMAND — the Trade setups layer.
+
+    `strategy` is in the path because each strategy gets its own layer: the shape of the answer is
+    the strategy's, not this endpoint's. A strategy without one is a 404 rather than an empty list,
+    so a chart asking for a layer that does not exist is told so instead of drawing nothing.
+
+    The chart's Trade setups layer: which bars pass Minervini's Stage-2 test, run ON DEMAND
     over the stored daily bars — the minervini strategy's own `trend_template_row`, the same code the
     backtest pre-filters with, never a second copy in JavaScript.
 
@@ -1021,7 +1027,12 @@ def trend_template_live(market: str, symbol: str, date: str | None = None):
     from ..strategies import get_strategy
     from ..strategies.minervini_spec import trend_template_row
 
-    strat = get_strategy("minervini")
+    try:
+        strat = get_strategy(strategy)
+    except KeyError:
+        raise HTTPException(404, f"unknown strategy {strategy}")
+    if not hasattr(strat, "bases_live"):
+        raise HTTPException(404, f"{strategy} has no trade-setups layer")
     raw = cache.load_cached(market, symbol)
     if raw is None or raw.empty:
         raise HTTPException(404, f"no prices stored for {symbol}")
@@ -1031,7 +1042,7 @@ def trend_template_live(market: str, symbol: str, date: str | None = None):
     if daily.empty:
         raise HTTPException(404, f"no bars for {symbol} up to {date}")
     as_of = str(daily.index[-1].date())
-    key = (market, symbol, as_of, strat.spec_id())
+    key = (strategy, market, symbol, as_of, strat.spec_id())
     if key in _tt_runs:
         return _tt_runs[key]
 
@@ -1052,7 +1063,7 @@ def trend_template_live(market: str, symbol: str, date: str | None = None):
                          "from": str(ts.date()), "to": str(ts.date()), "bars": 1,
                          "high": float(row["high"]), "low": float(row["low"])})
     passing = sum(r["bars"] for r in runs if r["ok"])
-    out = {"as_of": as_of, "spec_id": strat.spec_id(), "symbol": symbol, "market": market,
+    out = {"as_of": as_of, "spec_id": strat.spec_id(), "strategy": strategy, "symbol": symbol, "market": market,
            "bars": int(len(daily)), "passing": passing,
            "pct": round(100.0 * passing / max(len(daily), 1), 1),
            "runs": runs, "bases": strat.bases_live(daily, cfg),

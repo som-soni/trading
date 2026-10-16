@@ -1501,6 +1501,11 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
   font-size: 10px; line-height: 12px; text-align: left; border-radius: 3px; border: 1px solid var(--c);
   background: color-mix(in srgb, var(--c) 14%, var(--panel)); color: var(--strong); opacity: .75; }
 .tt-pill.no { border-style: dashed; } .tt-pill:hover { opacity: 1; }
+/* a setup the selected backtest run actually bought: the one thing the drawing cannot otherwise
+   say when the setups layer and a run are both on */
+.tt-pill.traded { border-style: solid; box-shadow: 0 0 0 1px var(--c) inset; font-weight: 600; }
+.tt-traded { margin-left: 6px; padding: 1px 6px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  color: #fff; background: #26a69a; white-space: nowrap; }
 .tt-pill.sel { opacity: 1; background: var(--c); color: #fff; border-style: solid; box-shadow: 0 0 0 1px var(--panel); }
 .tt-card .tt-title { color: var(--c) !important; }
 .tt-card .tt-nav { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }

@@ -408,7 +408,13 @@ function chartTheme() {
 let keepView = null;
 const ALL_BARS = 100000;  // i.e. everything in the database: the chart shows the full stored history
 // strategy keys for the "Screener levels" indicator's setting (fetched once; the page still works without it)
-api("/api/strategies").then((xs) => Studies.setStrategies(xs.filter((x) => x.kind === "screener").map((x) => x.key))).catch(() => {});  // visible range to restore when the chart is rebuilt for an indicator change
+// Fetched once and kept as a promise: a setups layer is NAMED for its strategy, and the chart can
+// render before this lands — awaiting it is what stops the control flashing the raw key.
+const STRATEGIES = api("/api/strategies").then((xs) => {
+  Studies.setStrategies(xs.filter((x) => x.kind === "screener").map((x) => x.key));
+  Studies.setStrategyNames(Object.fromEntries(xs.map((x) => [x.key, x.name])));
+  return xs;
+}).catch(() => []);  // visible range to restore when the chart is rebuilt for an indicator change
 const BENCH = { us: "SPY", india: "NIFTY50" };
 
 /** Key events on a price chart, the TradingView way: a row of lettered badges along the bottom of the
@@ -540,6 +546,8 @@ async function chartPage(alive, market, symbol, tf) {
         <input id="sym" value="${esc(symbol)}" autocomplete="off" spellcheck="false" title="Search symbols — or just start typing"><ul hidden></ul></div>
       ${segmented([["D", "1D"], ["W", "1W"], ["M", "1M"]], tf, "tfs")}
       <button class="ghost" id="ind" title="Add indicators"><svg viewBox="0 0 20 20"><path d="M3 15l4-5 3 3 7-8"/><path d="M13 5h4v4"/></svg>Indicators</button>
+      <label class="field" id="setups-field" title="Draw one strategy's trade setups over the whole history — what its rules would set up on, run on demand. Not trades: pick a backtest run to see what was actually bought."><span>Trade setups</span>
+        <select id="setups"><option value="">None</option></select></label>
       <label class="field" id="trades-field" title="Mark the buys and exits a backtest run made in this symbol"><span>Backtest trades</span>
         <select id="trades"><option value="">None</option></select></label>
       <button class="ghost icon" id="fit" title="Show full history"><svg viewBox="0 0 20 20"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"/></svg></button>
@@ -632,6 +640,19 @@ async function chartPage(alive, market, symbol, tf) {
   // rebuild the chart (for an indicator change) without losing the user's zoom / scroll
   const rerender = () => { try { if (chart) keepView = { key: viewKey, range: chart.timeScale().getVisibleLogicalRange() }; } catch {} route(); };
   $("#ind").onclick = () => Studies.openPicker({ onChange: rerender });
+
+  // Trade setups: a sibling of Backtest trades, not an indicator. One strategy at a time — "what
+  // would this strategy set up on?" beside "what did this run actually buy?".
+  const setupSel = $("#setups");
+  const fillSetups = async () => {
+    await STRATEGIES;
+    const layers = Studies.setupLayers(), cur = Studies.activeSetup();
+    $("#setups-field").hidden = !layers.length;
+    setupSel.innerHTML = `<option value="">None</option>`
+      + layers.map((l) => `<option value="${l.type}"${l.type === cur ? " selected" : ""}>${esc(l.name)}</option>`).join("");
+  };
+  fillSetups();
+  setupSel.onchange = () => { Studies.setSetup(setupSel.value || null); rerender(); };
 
   const search = $("#sym");
   symbolSearch(search, $(".search ul"), null, (s, m) => go(hrefFor(m, s)));
@@ -789,7 +810,7 @@ async function chartPage(alive, market, symbol, tf) {
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn) } });
   // read at paint time, not captured: hiding the indicator from the legend restores the stored layer
-  supersededStrategy = () => studies.find((e) => e.def?.supersedes && !e.skipped && !e.s.hidden)?.def.supersedes ?? null;
+  supersededStrategy = () => studies.find((e) => e.def?.setupsFor && !e.skipped && !e.s.hidden)?.def.setupsFor ?? null;
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
 
   // Opened from a chart-pattern strategy's setups: draw the stock's pattern as of that run (the same

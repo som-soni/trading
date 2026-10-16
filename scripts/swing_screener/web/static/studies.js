@@ -109,6 +109,10 @@ const Studies = (() => {
   // ------------------------------------------------------------- catalogue
   // plot: {k: key, t: title, c: default colour, s: "line" | "hist" | "dots" | "area", w: width}
   const SRC = { type: "select", def: "close", options: ["close", "open", "high", "low", "hl2", "hlc3", "ohlc4"] };
+  // strategy key -> display name, filled from /api/strategies: a setups layer is named for its
+  // strategy, so adding one never means writing its name here
+  const STRATEGY_NAMES = {};
+  const stratName = (k) => STRATEGY_NAMES[k] || k;
   const MA_TYPES = ["SMA", "EMA", "WMA", "RMA"];
   const maOf = (type) => ({ SMA: sma, EMA: ema, WMA: wma, RMA: rma }[type] || sma);
   /** TradingView's Moving Average Ribbon: four MAs of one type, coloured yellow -> red */
@@ -364,12 +368,13 @@ const Studies = (() => {
     // never a second copy here). Each setup is one frame with three zones: the uptrend, the base, and
     // for a completed VCP the entry its rules would place (an illustration, replaced by the selected
     // backtest run's real trade when there is one).
-    // supersedes: while this is on, app.js stands down the run layers for THIS strategy (/api/vcp's
-    // boxes and the trade anatomy's boxes, notes and levels) and this draws the whole setup instead,
-    // traded or not — they describe the same bases from the same code, in the same words.
-    trend_template: { name: "Minervini trend template & VCP (live)", short: "Trend template", cat: "Screener", overlay: true, custom: true,
-      supersedes: "minervini",
-      label: (p) => `Trend template${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
+    // A TRADE SETUPS layer, not an indicator: `setupsFor` names the strategy whose setups it draws,
+    // and that one field does three things — it keys the Trade setups control, it keeps the layer out
+    // of the Indicators picker (an indicator is a function of these bars; this runs a strategy), and
+    // it tells app.js to stand down that strategy's run layers, since this draws the same setups from
+    // the same code in the same words. One per strategy: `setups_<key>`, named from the registry.
+    setups_minervini: { setupsFor: "minervini", short: "Setups", cat: "Screener", overlay: true, custom: true,
+      label: (p) => `${stratName("minervini")}${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
       params: { stage2: { type: "select", def: "Background", options: ["Background", "Hide"] },
         bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
         card: { type: "select", def: "Show", options: ["Show", "Hide"] },
@@ -381,7 +386,7 @@ const Studies = (() => {
         { k: "miss", t: "Failed setup", c: "#f43f5e" }, { k: "flag", t: "Flag", c: "#f59e0b" },
         { k: "tight", t: "Tight area", c: "#ff9800" },
         { k: "buy", t: "Buy", c: "#26a69a" }, { k: "stop", t: "Stop", c: "#ef5350" }, { k: "target", t: "Target", c: "#4caf50" }],
-      draw({ chart, times, p, col, tf, ctx, id }) {
+      draw({ chart, times, p, col, tf, ctx, id, def }) {
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
         let on = true, stage = [], setups = [], focus = null, hovered = null, pinned = null;
         const DIM = "#5d6170", YOUNG = "#9ca3af", NUM = ["①", "②", "③", "④"];
@@ -459,6 +464,7 @@ const Studies = (() => {
           ["frame", col("cheat"), "Blue frame", "not a VCP, but it triggered a cheat entry: a close through a tight shelf low in the base."],
           ["dashframe", YOUNG, "Grey dashed frame", "too new to judge (?): the stock lacks the history for a 200-day average."],
           ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],
+          ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup. Its levels are the run's own record; every other setup here is what the rules would have set up on, not a trade."],
           ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
           ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
           ["shade", col("base"), "② Base", "the pullbacks, numbered, with their depths; a VCP's get smaller. ✗ marks the one that broke the rule."],
@@ -493,7 +499,9 @@ const Studies = (() => {
           const keyHtml = `<div class="tt-kh">${keyOpen ? "▾" : "▸"} How to read the chart</div>${keyOpen ? `<div class="tt-key">${key()}</div>` : ""}`;
           if (!s) { card.innerHTML = `<div class="tt-h"><b>No setup in view</b><i>${open ? "▾" : "▸"}</i></div>${open ? keyHtml : ""}`; return; }
           const cls = s.kind === "fail" ? "no" : "ok", k = setups.indexOf(s);
+          const tr = tradeOf(s);
           card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}">${esc(s.title)}</span>
+              ${tr ? `<span class="tt-traded" title="The selected backtest run bought this setup — these are its own levels, not an illustration">● traded${tr.r_multiple != null ? ` ${(+tr.r_multiple).toFixed(1)}R` : ""}</span>` : ""}
               <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
               <i>${open ? "▾" : "▸"}</i></div>`
             + (open ? `<div class="tt-date">${esc(s.from)} → ${esc(s.to)}${s.live ? ` <span class="tt-live">forming · judged today</span>` : ""}</div><div class="tt-sum">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}
@@ -520,8 +528,11 @@ const Studies = (() => {
             const f = s.frame;
             if (s !== focus) continue;
             const role = s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : s.kind === "young" ? "young" : "miss";
-            shapes.push({ shape: "box", frame: true, dash: s.kind === "fail" || s.kind === "young", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom, label: s.title });
             const traded = tradeOf(s);
+            // a traded setup says so on the frame itself: with the layer and a run both on, the one
+            // thing you cannot read off the drawing is which of these the run actually bought
+            shapes.push({ shape: "box", frame: true, dash: s.kind === "fail" || s.kind === "young", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom,
+              label: traded ? `${s.title} · ● traded${traded.r_multiple != null ? ` ${(+traded.r_multiple).toFixed(1)}R` : ""}` : s.title });
             s.zones.forEach((z, n) => {
               if (n > 0)   // a faint divider where each zone starts
                 shapes.push({ shape: "line", from: z.from, to: z.from, p0: f.top, p1: f.bottom, role: "dim", dash: true });
@@ -612,8 +623,9 @@ const Studies = (() => {
               let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
               rows[r] = x1;
               const sel = s === focus, txt = x1 - x0 > 46 ? s.title : "";
-              pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}"
-                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${esc(txt)}</button>`);
+              const tr = tradeOf(s);
+              pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""} ${tr ? "traded" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}${tr ? ` · traded by the selected run${tr.r_multiple != null ? `, ${(+tr.r_multiple).toFixed(2)}R` : ""}` : ""}"
+                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${tr ? "● " : ""}${esc(txt)}</button>`);
             });
             el.innerHTML = pills.join("");
           };
@@ -627,7 +639,7 @@ const Studies = (() => {
         ctx.onTrades?.(() => { if (setups.length) paint(); });
         (async () => {
           setNote(id, "testing each bar…");
-          const r = await fetch(`/api/trend-template/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
+          const r = await fetch(`/api/setups/${def.setupsFor}/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
             .then((x) => (x.ok ? x.json() : null)).catch(() => null);
           if (!r) return setNote(id, "could not run the trend template");
           const runs = r.runs || [];
@@ -760,6 +772,11 @@ const Studies = (() => {
       if (old.rsi !== false) list.push(make("rsi"));
       store.set("chartStudies", list);
     }
+    // the layer moved out of Indicators and was rekeyed by strategy (2026-10-17); carry the saved
+    // instance across rather than silently dropping it, since load() discards unknown types
+    let moved = false;
+    for (const s of list) if (s.type === "trend_template") { s.type = "setups_minervini"; moved = true; }
+    if (moved) save(list);
     return list.filter((s) => CATALOG[s.type]);
   }
   const save = (list) => store.set("chartStudies", list);
@@ -771,6 +788,7 @@ const Studies = (() => {
     }
     list.push(s); save(list); return s;
   }
+  const catName = (type) => (CATALOG[type].setupsFor ? stratName(CATALOG[type].setupsFor) : CATALOG[type].name);
   const label = (s) => {
     if (CATALOG[s.type].label) return CATALOG[s.type].label(s.params);
     const d = CATALOG[s.type], vals = Object.entries(s.params).filter(([k]) => k !== "source" || s.params.source !== "close").map(([, v]) => v);
@@ -788,7 +806,7 @@ const Studies = (() => {
       if ((def.needsVolume && !hasVolume(bars)) || (def.needsBench && !ctx.bench)) { out.push({ s, def, skipped: true, pane: def.overlay ? 0 : null }); continue; }
       if (def.custom) {
         const col = (k) => s.colors[k] || def.plots.find((x) => x.k === k).c;
-        const r = def.draw({ chart, main: ctx.main, times, bars, p: s.params, col, tf: ctx.tf, plans: ctx.plans, ctx, id: s.id });
+        const r = def.draw({ chart, main: ctx.main, times, bars, p: s.params, col, tf: ctx.tf, plans: ctx.plans, ctx, id: s.id, def });
         if (s.hidden) r.setVisible(false);
         out.push({ s, def, pane: 0, series: r.series || [], vals: {}, fmt: () => "", note: r.note, setVisible: r.setVisible });
         continue;
@@ -871,12 +889,13 @@ const Studies = (() => {
       const active = load();
       cats.innerHTML = ["All", ...CATS, "Active"].map((c) => `<a data-c="${c}" class="${c === cat ? "on" : ""}">${c}${c === "Active" ? ` <span>${active.length}</span>` : ""}</a>`).join("");
       if (cat === "Active") {
-        list.innerHTML = active.length ? active.map((s) => `<div class="sm-item act"><span>${esc(CATALOG[s.type].name)} <span class="muted">${esc(label(s))}</span></span><button data-rm="${s.id}" title="Remove">${BTN.x}</button></div>`).join("")
+        list.innerHTML = active.length ? active.map((s) => `<div class="sm-item act"><span>${esc(catName(s.type))} <span class="muted">${esc(label(s))}</span></span><button data-rm="${s.id}" title="Remove">${BTN.x}</button></div>`).join("")
           : `<div class="muted sm-empty">No indicators on the chart.</div>`;
         return;
       }
       const f = q.value.trim().toLowerCase();
-      const items = Object.entries(CATALOG).filter(([, d]) => (cat === "All" || d.cat === cat) && (!f || (d.name + " " + d.short).toLowerCase().includes(f)));
+      const items = Object.entries(CATALOG).filter(([, d]) => !d.setupsFor
+        && (cat === "All" || d.cat === cat) && (!f || (d.name + " " + d.short).toLowerCase().includes(f)));
       list.innerHTML = items.map(([k, d]) => {
         const n = active.filter((s) => s.type === k).length;
         return `<div class="sm-item" data-add="${k}"><span>${esc(d.name)}</span><span class="muted">${esc(d.cat)}${n ? ` · <b>${n} on chart</b>` : ""}</span></div>`;
@@ -904,7 +923,7 @@ const Studies = (() => {
       return `<label><span>${name}</span><input type="number" step="${Number.isInteger(d) ? 1 : 0.01}" min="${Number.isInteger(d) ? 1 : 0}" data-p="${k}" value="${s.params[k]}"></label>`;
     }).join("");
     const colors = def.plots.map((pl) => `<label><span>${pl.t || def.short}</span><input type="color" data-c="${pl.k}" value="${(s.colors[pl.k] || pl.c).slice(0, 7)}"></label>`).join("");
-    const { el, close } = modal(`<div class="sm-head"><b>${esc(def.name)}</b><button class="sm-x" title="Close">${BTN.x}</button></div>
+    const { el, close } = modal(`<div class="sm-head"><b>${esc(catName(s.type))}</b><button class="sm-x" title="Close">${BTN.x}</button></div>
       <div class="sm-form">${inputs ? `<h4>Inputs</h4>${inputs}` : ""}<h4>Style</h4>${colors}</div>
       <div class="sm-foot"><button class="ghost" data-a="reset">Defaults</button><span class="spacer"></span><button class="ghost" data-a="cancel">Cancel</button><button class="primary" data-a="ok">OK</button></div>`, "settings");
     const before = JSON.stringify(s);
@@ -926,5 +945,21 @@ const Studies = (() => {
   function toggleHidden(id) { const list = load(), s = list.find((x) => x.id === id); if (s) { s.hidden = !s.hidden; save(list); } return s; }
   function remove(id) { save(load().filter((s) => s.id !== id)); }
 
-  return { setStrategies: (keys) => STRATEGY_CHOICES.splice(1, STRATEGY_CHOICES.length, ...keys), restore: save, CATALOG, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
+  // ---- Trade setups: one strategy's setups at a time, chosen from its own control rather than
+  // added like an indicator. Single-select because the layer is a singleton in practice — its card
+  // and lane are one element each, keyed on one set of saved preferences — and because two
+  // strategies' setups on one chart would be read as one picture of the stock.
+  const setupLayers = () => Object.entries(CATALOG).filter(([, d]) => d.setupsFor)
+    .map(([type, d]) => ({ type, strategy: d.setupsFor, name: stratName(d.setupsFor) }));
+  const activeSetup = () => load().find((s) => CATALOG[s.type].setupsFor)?.type ?? null;
+  const setSetup = (type) => {
+    const list = load().filter((s) => !CATALOG[s.type].setupsFor);
+    save(list);
+    if (type && CATALOG[type]?.setupsFor) add(type);
+  };
+
+  return { setStrategies: (keys) => STRATEGY_CHOICES.splice(1, STRATEGY_CHOICES.length, ...keys),
+    setStrategyNames: (m) => Object.assign(STRATEGY_NAMES, m),
+    setupLayers, activeSetup, setSetup,
+    restore: save, CATALOG, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
 })();
