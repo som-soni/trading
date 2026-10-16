@@ -607,7 +607,20 @@ async function chartPage(alive, market, symbol, tf) {
   // three read-only layers share the annotation overlay: VCP near misses, the chosen backtest run's
   // trades, and studies that draw shapes (Indicators -> Chart patterns); each sets its own part
   let tradeItems = () => [], studyItems = () => [];
-  const applyAnnotations = () => { if (dr) dr.annotate([...vcpAnnotations, ...tradeItems(), ...studyItems()]); };
+  // The Minervini indicator draws every base this layer draws — from the strategy's own code, with
+  // its own wording — so with it on the chart carries two boxes per base labelled by two different
+  // rules. Both can be true at once (AAPL's 2024-12-26 base breaks VCP-04 AND VCP-06; the stored
+  // row names the first, the indicator the one that explains the shape), which reads as the chart
+  // contradicting itself rather than as two sources. The stored layer therefore yields while the
+  // indicator is on, the same deference the indicator already shows a run's stored TRADE.
+  //
+  // It is not redundant in general and is never deleted: /api/vcp replays the RUN's own detections,
+  // pinned to its spec_id, which is the only honest answer once current code detects differently
+  // from the code that ran. Hiding the indicator brings it straight back.
+  let vcpSuperseded = () => false;
+  const applyAnnotations = () => {
+    if (dr) dr.annotate([...(vcpSuperseded() ? [] : vcpAnnotations), ...tradeItems(), ...studyItems()]);
+  };
   let zoomToTrade = () => {};
   const viewKey = `${market}:${symbol}:${tf}`;
   let chart = null;
@@ -770,6 +783,8 @@ async function chartPage(alive, market, symbol, tf) {
   const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn) } });
+  // read at paint time, not captured: hiding the indicator from the legend restores the stored layer
+  vcpSuperseded = () => studies.some((e) => e.def?.supersedesVcp && !e.skipped && !e.s.hidden);
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
 
   // Opened from a chart-pattern strategy's setups: draw the stock's pattern as of that run (the same

@@ -364,7 +364,10 @@ const Studies = (() => {
     // never a second copy here). Each setup is one frame with three zones: the uptrend, the base, and
     // for a completed VCP the entry its rules would place (an illustration, replaced by the selected
     // backtest run's real trade when there is one).
+    // supersedesVcp: while this is on, app.js drops its /api/vcp base boxes — this draws the same
+    // bases from the same strategy code, so showing both labels one base with two different rules.
     trend_template: { name: "Minervini trend template & VCP (live)", short: "Trend template", cat: "Screener", overlay: true, custom: true,
+      supersedesVcp: true,
       label: (p) => `Trend template${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
       params: { stage2: { type: "select", def: "Background", options: ["Background", "Hide"] },
         bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
