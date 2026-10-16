@@ -1218,12 +1218,14 @@ class MinerviniSpecStrategy(Strategy):
                         "label": ""}]
         if legs:
             pts = []
+            many = len(depths) > MAX_CONTRACTIONS   # every label would pile up: keep the telling ones
+            keep = {0, len(depths) - 1, max(range(len(depths)), key=lambda k: depths[k])} if many and depths else None
             for k, (hd, h, ld, low) in enumerate(legs):
                 mark = " ✗" if k == culprit else ""
                 pts += [{"at": iso(hd), "price": float(h), "label": ""},
                         {"at": iso(ld), "price": float(low),
                          # short, since lows sit close together: the number and depth, ✗ on the culprit
-                         "label": f"{k + 1}{mark} −{dep(depths[k])}" if k < len(depths) else ""}]
+                         "label": f"{k + 1}{mark} −{dep(depths[k])}" if k < len(depths) and (keep is None or k in keep) else ""}]
             base_shapes.append({"shape": "path", "from": bd, "to": at, "points": pts, "role": "contraction", "label": ""})
         tight = ""
         if r["tight_from"] is not None and r["pivot"]:
@@ -1365,13 +1367,19 @@ class MinerviniSpecStrategy(Strategy):
         elif cheat:
             ok = zones[-1]["state"] == "pass"
             title = f"Cheat entry {'✓' if ok else '· trade skipped'}{today}"
-            summary = (f"Not a VCP ({self._VCP_FAILED.get(fail, fail)}), but on {day(cheat[0])} it cleared a tight "
+            short = f"{len(depths)} pullbacks" if fail == "VCP-04" else self._VCP_FAILED.get(fail, fail)
+            summary = (f"Not a VCP ({short}), but on {day(cheat[0])} it cleared a tight "
                        f"shelf in the {'lower' if cheat[1] == MV03 else 'middle'} third of the base: a cheat entry.")
         elif young:
             title = f"Too new to judge{today}"
             summary = f"Too new to judge: {young_why}."
         else:
             title = f"✗ {self._VCP_FAILED.get(fail, fail)}{today}"
+            if fail == "VCP-04":   # the count says more than "wrong number"
+                n, grew = len(depths), sum(b > SHRINK * a for a, b in zip(depths, depths[1:]))
+                title = (f"✗ {n} pullback{'s' if n != 1 else ''}"
+                         + (", growing" if n > MAX_CONTRACTIONS and grew * 2 > n - 1 else f" ({MIN_CONTRACTIONS}–{MAX_CONTRACTIONS} in a VCP)")
+                         + today)
             summary = f"Not a VCP: {self._vcp_fail_why(r, daily, bh_i, rep)}."
         if live:
             summary = f"Still forming — judged on today's bar, {at}. " + summary
@@ -1399,7 +1407,13 @@ class MinerviniSpecStrategy(Strategy):
                         return f"{what} on {daily.index[i].date()}, inside the base"
             return "the trend structure broke inside the base"
         if f == "VCP-04":
-            return f"{len(d)} pullbacks, where a VCP has {MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}"
+            why = f"{len(d)} pullback{'s' if len(d) != 1 else ''}, where a VCP has {MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}"
+            grew = sum(b > SHRINK * a for a, b in zip(d, d[1:]))
+            if len(d) > MAX_CONTRACTIONS and grew * 2 > len(d) - 1:
+                why += (f", and they grew rather than shrank ({grew} of {len(d) - 1} deeper than {SHRINK:g}× the one "
+                        f"before" + (f"; the latest, {d[-1]:.1f}%, is the deepest" if d[-1] == max(d) else "")
+                        + "): a loose, volatile correction, not a contraction")
+            return why
         if f == "VCP-05":
             return f"the first pullback was {d[0]:.1f}% deep, more than {MAX_FIRST_DEPTH_PCT:g}%"
         if f == "VCP-06":
