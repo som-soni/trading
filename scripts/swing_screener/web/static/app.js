@@ -603,23 +603,28 @@ async function chartPage(alive, market, symbol, tf) {
   { const prev = cleanup; cleanup = () => { clearInterval(newsPoll); prev(); }; }
   // trade-debug overlay state — declared before the first renderSide(), which can hit the
   // restored Trades tab before the chart (and its data) exists
-  let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1;
+  let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1, runStrategy = null;
   // three read-only layers share the annotation overlay: VCP near misses, the chosen backtest run's
   // trades, and studies that draw shapes (Indicators -> Chart patterns); each sets its own part
   let tradeItems = () => [], studyItems = () => [];
-  // The Minervini indicator draws every base this layer draws — from the strategy's own code, with
-  // its own wording — so with it on the chart carries two boxes per base labelled by two different
-  // rules. Both can be true at once (AAPL's 2024-12-26 base breaks VCP-04 AND VCP-06; the stored
-  // row names the first, the indicator the one that explains the shape), which reads as the chart
-  // contradicting itself rather than as two sources. The stored layer therefore yields while the
-  // indicator is on, the same deference the indicator already shows a run's stored TRADE.
+  // ONE design for a setup, whether it is illustrated or was traded. A study may declare that it
+  // supersedes a strategy's run layers (`supersedes`), and then it draws the whole setup -- base,
+  // shelf, zones AND the run's own entry levels, read from the run's record -- while /api/vcp's
+  // boxes and the trade anatomy's boxes, notes and levels stand down. Both layers describe the same
+  // base in the same words (the anatomy's label for AAPL's 2024-12-26 base, "base 33d · 7c 7.03% →
+  // 8.69%", is the string the indicator prints too), so running both drew everything twice in two
+  // visual languages and let one base carry two different rejection rules.
   //
-  // It is not redundant in general and is never deleted: /api/vcp replays the RUN's own detections,
-  // pinned to its spec_id, which is the only honest answer once current code detects differently
-  // from the code that ran. Hiding the indicator brings it straight back.
-  let vcpSuperseded = () => false;
+  // Scoped to the run's own strategy: a donchian run's bases are not drawn by a Minervini indicator,
+  // so they must keep drawing themselves. Neither layer is deleted -- /api/vcp and trade-anatomy
+  // replay the RUN's detections pinned to its spec_id, the only honest answer once current code
+  // detects differently from the code that ran, and hiding the indicator restores them at once.
+  let supersededStrategy = () => null;
+  const runDrawnByStudy = () => runStrategy != null && supersededStrategy() === runStrategy;
   const applyAnnotations = () => {
-    if (dr) dr.annotate([...(vcpSuperseded() ? [] : vcpAnnotations), ...tradeItems(), ...studyItems()]);
+    if (!dr) return;
+    const run = runDrawnByStudy() ? [] : [...vcpAnnotations, ...tradeItems()];
+    dr.annotate([...run, ...studyItems()]);
   };
   let zoomToTrade = () => {};
   const viewKey = `${market}:${symbol}:${tf}`;
@@ -784,7 +789,7 @@ async function chartPage(alive, market, symbol, tf) {
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn) } });
   // read at paint time, not captured: hiding the indicator from the legend restores the stored layer
-  vcpSuperseded = () => studies.some((e) => e.def?.supersedesVcp && !e.skipped && !e.s.hidden);
+  supersededStrategy = () => studies.find((e) => e.def?.supersedes && !e.skipped && !e.s.hidden)?.def.supersedes ?? null;
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
 
   // Opened from a chart-pattern strategy's setups: draw the stock's pattern as of that run (the same
@@ -835,6 +840,7 @@ async function chartPage(alive, market, symbol, tf) {
     // fired, not just where. The old VCP layer stays for the near misses: bases the detector saw
     // that never became one of this run's trades (dashed, labelled with the rejecting rule).
     const { strategy: stratKey, spec_id: runSpec } = tradeRuns.find((r) => String(r.id) === String(sel.value)) || {};
+    runStrategy = stratKey || null;
     if (stratKey) {
       const [anat, boxes] = await Promise.all([
         api(`/api/reports/${sel.value}/trade-anatomy?symbol=${encodeURIComponent(symbol)}`).catch(() => []),

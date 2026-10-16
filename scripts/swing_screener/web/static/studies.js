@@ -364,10 +364,11 @@ const Studies = (() => {
     // never a second copy here). Each setup is one frame with three zones: the uptrend, the base, and
     // for a completed VCP the entry its rules would place (an illustration, replaced by the selected
     // backtest run's real trade when there is one).
-    // supersedesVcp: while this is on, app.js drops its /api/vcp base boxes — this draws the same
-    // bases from the same strategy code, so showing both labels one base with two different rules.
+    // supersedes: while this is on, app.js stands down the run layers for THIS strategy (/api/vcp's
+    // boxes and the trade anatomy's boxes, notes and levels) and this draws the whole setup instead,
+    // traded or not — they describe the same bases from the same code, in the same words.
     trend_template: { name: "Minervini trend template & VCP (live)", short: "Trend template", cat: "Screener", overlay: true, custom: true,
-      supersedesVcp: true,
+      supersedes: "minervini",
       label: (p) => `Trend template${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
       params: { stage2: { type: "select", def: "Background", options: ["Background", "Hide"] },
         bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
@@ -528,7 +529,17 @@ const Studies = (() => {
               // captions just inside the frame's top edge: below it, the setup lane would cover them
               shapes.push({ shape: "text", at: z.from, price: f.top, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
                 label: `${NUM[n]} ${z.title} ${ICON[st]}` });
-              if (isEntry(z) && traded) return;   // the run's own trade overlay draws the real levels
+              if (isEntry(z) && traded) {
+                // The run's own record, drawn HERE and in this indicator's vocabulary, so an
+                // illustrated setup and a traded one look the same and differ only in where the
+                // numbers came from. Its levels come straight from the record (never recomputed);
+                // its base and shelf boxes and its note are dropped, because this frame and the
+                // card already say both, and saying them twice is what made the chart look doubled.
+                shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to,
+                  price: +traded.entry_price, label: `bought ${(+traded.entry_price).toFixed(2)}` });
+                shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level"));
+                return;
+              }
               // a failed setup's contraction line takes its grey, so a real VCP stands out
               shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" } : x)));
             });
