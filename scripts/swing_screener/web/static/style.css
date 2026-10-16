@@ -423,6 +423,10 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .sm-item:hover { background: var(--panel-2); }
 .sm-item .muted { font-size: 12px; } .sm-item b { color: var(--accent-text); font-weight: 500; }
 .sm-item.act { cursor: default; }
+/* the Trade setups picker is single-select: the row already on chart stays clickable, because
+   clicking it is how you take it off — unlike the Indicators picker's "Active" list */
+.sm-item.act[data-set] { cursor: pointer; }
+.sm-item.act[data-set]:hover { background: var(--line); }
 .sm-item button { width: 26px; height: 26px; padding: 0; justify-content: center; background: transparent; border: 0; color: var(--muted); }
 .sm-item button:hover { color: var(--down); background: var(--line); }
 .sm-item.flash { animation: flash .6s; }

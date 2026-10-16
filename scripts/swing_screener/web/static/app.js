@@ -546,8 +546,7 @@ async function chartPage(alive, market, symbol, tf) {
         <input id="sym" value="${esc(symbol)}" autocomplete="off" spellcheck="false" title="Search symbols — or just start typing"><ul hidden></ul></div>
       ${segmented([["D", "1D"], ["W", "1W"], ["M", "1M"]], tf, "tfs")}
       <button class="ghost" id="ind" title="Add indicators"><svg viewBox="0 0 20 20"><path d="M3 15l4-5 3 3 7-8"/><path d="M13 5h4v4"/></svg>Indicators</button>
-      <label class="field" id="setups-field" title="Draw one strategy's trade setups over the whole history — what its rules would set up on, run on demand. Not trades: pick a backtest run to see what was actually bought."><span>Trade setups</span>
-        <select id="setups"><option value="">None</option></select></label>
+      <button class="ghost" id="setupbtn" title="Draw one strategy's trade setups over the whole history — what its rules would set up on, run on demand. Not trades: pick a backtest run to see what was actually bought."><svg viewBox="0 0 20 20"><path d="M3 13l4-4 3 2 4-6"/><rect x="11" y="11" width="6" height="5" rx="1"/></svg>Trade setups</button>
       <label class="field" id="trades-field" title="Mark the buys and exits a backtest run made in this symbol"><span>Backtest trades</span>
         <select id="trades"><option value="">None</option></select></label>
       <button class="ghost icon" id="fit" title="Show full history"><svg viewBox="0 0 20 20"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"/></svg></button>
@@ -641,18 +640,23 @@ async function chartPage(alive, market, symbol, tf) {
   const rerender = () => { try { if (chart) keepView = { key: viewKey, range: chart.timeScale().getVisibleLogicalRange() }; } catch {} route(); };
   $("#ind").onclick = () => Studies.openPicker({ onChange: rerender });
 
-  // Trade setups: a sibling of Backtest trades, not an indicator. One strategy at a time — "what
-  // would this strategy set up on?" beside "what did this run actually buy?".
-  const setupSel = $("#setups");
-  const fillSetups = async () => {
+  // Trade setups: picked the way indicators are, from its own picker — one strategy at a time.
+  // The button carries the chosen strategy, so the chart says what it is drawing without the card open.
+  const setupBtn = $("#setupbtn");
+  const markSetup = async () => {
     await STRATEGIES;
-    const layers = Studies.setupLayers(), cur = Studies.activeSetup();
-    $("#setups-field").hidden = !layers.length;
-    setupSel.innerHTML = `<option value="">None</option>`
-      + layers.map((l) => `<option value="${l.type}"${l.type === cur ? " selected" : ""}>${esc(l.name)}</option>`).join("");
+    const name = Studies.setupName();
+    setupBtn.lastChild.textContent = name ? ` ${name}` : " Trade setups";
+    setupBtn.classList.toggle("on", !!name);
+    setupBtn.hidden = !Studies.setupLayers().length;
   };
-  fillSetups();
-  setupSel.onchange = () => { Studies.setSetup(setupSel.value || null); rerender(); };
+  markSetup();
+  // await the registry first: a layer is NAMED for its strategy, and opening before /api/strategies
+  // lands would list the raw key
+  setupBtn.onclick = async () => {
+    await STRATEGIES;
+    Studies.openSetupPicker({ onChange: () => { markSetup(); rerender(); } });
+  };
 
   const search = $("#sym");
   symbolSearch(search, $(".search ul"), null, (s, m) => go(hrefFor(m, s)));

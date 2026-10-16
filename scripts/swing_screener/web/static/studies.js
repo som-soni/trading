@@ -373,7 +373,11 @@ const Studies = (() => {
     // of the Indicators picker (an indicator is a function of these bars; this runs a strategy), and
     // it tells app.js to stand down that strategy's run layers, since this draws the same setups from
     // the same code in the same words. One per strategy: `setups_<key>`, named from the registry.
-    setups_minervini: { setupsFor: "minervini", short: "Setups", cat: "Screener", overlay: true, custom: true,
+    // learnTopic: the Learn topic that teaches what this layer draws, so the Trade setups picker is
+    // categorised by the same vocabulary the course uses (Learn.FAMILY_LABEL). Minervini's setups are
+    // base structures — a VCP and the shelves inside it — so they sit under chart patterns, not under
+    // "strategies"; a layer whose setups are channel breaks or pullbacks would say "price".
+    setups_minervini: { setupsFor: "minervini", learnTopic: "charts", short: "Setups", cat: "Screener", overlay: true, custom: true,
       label: (p) => `${stratName("minervini")}${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
       params: { stage2: { type: "select", def: "Background", options: ["Background", "Hide"] },
         bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
@@ -952,6 +956,42 @@ const Studies = (() => {
   const setupLayers = () => Object.entries(CATALOG).filter(([, d]) => d.setupsFor)
     .map(([type, d]) => ({ type, strategy: d.setupsFor, name: stratName(d.setupsFor) }));
   const activeSetup = () => load().find((s) => CATALOG[s.type].setupsFor)?.type ?? null;
+
+  /** The Trade setups picker: the Indicators picker's shape, deliberately — the same modal, search and
+   *  category rail, so one thing is learned once — but SINGLE-select, because only one strategy's
+   *  setups can be on a chart. Clicking the layer already on toggles it off, so there is no "None" row
+   *  pretending to be a setup. Categories come from Learn (`learnTopic`), resolved here rather than at
+   *  module scope because learn.js loads after this file. */
+  function openSetupPicker({ onChange } = {}) {
+    const { el, close } = modal(`<div class="sm-head"><b>Trade setups</b><button class="sm-x" title="Close">${BTN.x}</button></div>
+      <div class="sm-search"><input placeholder="Search" spellcheck="false"></div>
+      <div class="sm-body"><nav class="sm-cats"></nav><div class="sm-list"></div></div>
+      <div class="sm-foot"><span class="muted small">What a strategy's rules would set up on, run over the whole history — not trades. Pick a backtest run to see what was actually bought.</span></div>`, "picker");
+    let cat = "All";
+    const q = el.querySelector(".sm-search input"), list = el.querySelector(".sm-list"), cats = el.querySelector(".sm-cats");
+    const topic = (t) => (typeof Learn !== "undefined" && Learn.FAMILY_LABEL?.[t]) || t;
+    const draw = () => {
+      const layers = setupLayers(), cur = activeSetup();
+      const used = [...new Set(layers.map((l) => CATALOG[l.type].learnTopic).filter(Boolean))];
+      cats.innerHTML = ["All", ...used].map((c) => `<a data-c="${c}" class="${c === cat ? "on" : ""}">${c === "All" ? "All" : esc(topic(c))}</a>`).join("");
+      const f = q.value.trim().toLowerCase();
+      const items = layers.filter((l) => (cat === "All" || CATALOG[l.type].learnTopic === cat)
+        && (!f || l.name.toLowerCase().includes(f) || topic(CATALOG[l.type].learnTopic).toLowerCase().includes(f)));
+      list.innerHTML = items.map((l) => `<div class="sm-item${l.type === cur ? " act" : ""}" data-set="${l.type}">
+          <span>${esc(l.name)}</span><span class="muted">${esc(topic(CATALOG[l.type].learnTopic))}${l.type === cur ? " · <b>on chart</b>" : ""}</span></div>`).join("")
+        || `<div class="muted sm-empty">${layers.length ? `No setups match “${esc(q.value)}”.` : "No strategy has a trade-setups layer yet."}</div>`;
+    };
+    q.oninput = draw;
+    cats.onclick = (e) => { const a = e.target.closest("a"); if (a) { cat = a.dataset.c; draw(); } };
+    list.onclick = (e) => {
+      const it = e.target.closest("[data-set]"); if (!it) return;
+      const type = it.dataset.set;
+      setSetup(type === activeSetup() ? null : type);   // clicking the one already on takes it off
+      draw(); onChange?.();
+    };
+    draw(); q.focus();
+    return { close };
+  }
   const setSetup = (type) => {
     const list = load().filter((s) => !CATALOG[s.type].setupsFor);
     save(list);
@@ -960,6 +1000,7 @@ const Studies = (() => {
 
   return { setStrategies: (keys) => STRATEGY_CHOICES.splice(1, STRATEGY_CHOICES.length, ...keys),
     setStrategyNames: (m) => Object.assign(STRATEGY_NAMES, m),
-    setupLayers, activeSetup, setSetup,
+    setupLayers, activeSetup, setSetup, openSetupPicker,
+    setupName: () => { const t = activeSetup(); return t ? stratName(CATALOG[t].setupsFor) : null; },
     restore: save, CATALOG, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
 })();
