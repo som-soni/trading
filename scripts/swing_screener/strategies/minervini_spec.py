@@ -989,3 +989,148 @@ class MinerviniSpecStrategy(Strategy):
             out.append({"shape": "level", "from": str(bd) if bd else None, "bars": None if bd else 40, "to": d,
                         "price": float(tl), "role": "support", "label": f"tight-area low {tl:g} — the stop's anchor"})
         return out or super().chart_anatomy(sig)
+
+    # how far a base got through VCP-03 … VCP-11 (a completed VCP outranks every failure)
+    _VCP_RANK = {"VCP-03": 3, "VCP-04": 4, "VCP-05": 5, "VCP-06": 6, "VCP-07": 7, "VCP-08": 8, "VCP-09": 9, "VCP-10": 10, "VCP-11": 11}
+
+    def bases_live(self, daily: pd.DataFrame) -> list[dict]:
+        """Every base the VCP detector saw over `daily`, for the chart's Trend template indicator:
+        `vcp_spec.detect` with this strategy's VCP params, run ON DEMAND bar by bar (each bar sees only
+        itself and earlier bars, as in the backtest). Exploration only: what a run traded comes from
+        its stored signals (trade-anatomy), since current code may detect differently.
+
+        A base is kept once some bar passed VCP-01 and VCP-02 (a real advance into it, a base of legal
+        age); one the trend rule (VCP-03) then rejects is still drawn, as a near miss saying why. Each is drawn from its most developed bar: the bar before the breakout when the
+        VCP completed and broke out, else the last bar it was complete, else the bar that got furthest
+        through VCP-04 … VCP-11. Returns [{"from", "to", "complete", "fail", "breakout", "shapes"}],
+        shapes in the chart_anatomy schema, with a note saying why each box is drawn."""
+        start = 2 * VCP.swing_k + VCP.prior_window
+        dets = [None] * len(daily)
+        for i in range(start, len(daily)):
+            dets[i] = vcp_spec.detect(daily.iloc[: i + 1], VCP)
+        close = daily["close"].to_numpy(float)
+        bases: dict = {}
+        for i in range(start, len(daily)):
+            r = dets[i]
+            if r["bh_date"] is None or not (r["ok"] or r["fail"] in self._VCP_RANK):
+                continue
+            b = bases.setdefault(r["bh_date"], {"first": i, "last": i, "best": i, "ok": [], "breakout": None})
+            b["last"] = i
+            if r["ok"]:
+                b["ok"].append(i)
+            rank = 99 if r["ok"] else self._VCP_RANK[r["fail"]]
+            best = dets[b["best"]]
+            if rank >= (99 if best["ok"] else self._VCP_RANK[best["fail"]]):
+                b["best"] = i
+            # MV-01's breakout: yesterday complete, and today's close through yesterday's frozen pivot
+            p = dets[i - 1]
+            if b["breakout"] is None and p and p["ok"] and p["bh_date"] == r["bh_date"] and close[i - 1] <= p["pivot"] < close[i]:
+                b["breakout"] = i
+        # a breakout bar may already sit in a new base (the decisive close resets BH): look one bar on
+        for i in range(start + 1, len(daily)):
+            p = dets[i - 1]
+            if p and p["ok"] and close[i - 1] <= p["pivot"] < close[i] and p["bh_date"] in bases and bases[p["bh_date"]]["breakout"] is None:
+                bases[p["bh_date"]]["breakout"] = i
+        out = []
+        for bh_date, b in bases.items():
+            bo = b["breakout"]
+            rep = bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
+            out.append(self._base_drawing(daily, dets[rep], rep, b["last"] if bo is None else bo, bo))
+        return out
+
+    def _base_drawing(self, daily: pd.DataFrame, r: dict, rep: int, end: int, bo: int | None) -> dict:
+        """One base as chart shapes — the uptrend into it, the base, its contractions, the tight area,
+        the pivot and breakout — and a note that says, rule by rule, why each one is drawn."""
+        day = lambda i: str(daily.index[i].date())
+        px = lambda v: f"{v:,.2f}" if v >= 1 else f"{v:.4g}"   # a price as the chart's scale shows it
+        iso = lambda ts: str(pd.Timestamp(ts).date())
+        bh, bd, at = float(r["bh"]), iso(r["bh_date"]), day(rep)
+        lo_i = daily.index.get_loc(r["bh_date"])
+        base_low = float(daily["low"].iloc[lo_i: end + 1].min())
+        depths, legs = r["depths"], r["legs"]
+        done = bool(r["ok"])
+        shapes, why = [], []
+        if r["prior_low"]:
+            pl, pd_ = float(r["prior_low"]), iso(r["prior_low_date"])
+            sessions = int(daily.index.get_loc(r["prior_low_date"]))
+            shapes.append({"shape": "box", "from": pd_, "to": bd, "top": bh, "bottom": pl, "role": "uptrend",
+                           "label": f"uptrend +{r['prior_advance_pct']:.0f}%"})
+            why.append(f"UPTREND: +{r['prior_advance_pct']:.0f}% from {px(pl)} on {pd_} to the base "
+                       f"high {px(bh)} on {bd}, {lo_i - sessions} sessions. A base only counts after an advance of "
+                       f"at least {PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} sessions (VCP-01).")
+        shapes.append({"shape": "box", "from": bd, "to": day(end), "top": bh, "bottom": base_low,
+                       "role": "base" if done else "nearmiss", "dash": not done,
+                       "label": f"base {r['base_days']}d · {len(depths)}c" + ("" if done else f" · {r['fail']}")})
+        why.append(f"BASE: {r['base_days']} sessions from the high to {at} (allowed {BASE_MIN_DAYS}–"
+                   f"{BASE_MAX_DAYS}, VCP-02), low {px(base_low)}, {(1 - base_low / bh) * 100:.1f}% under the high"
+                   + (f"; the base stayed in force to {day(end)}" if end != rep else "") + ". "
+                   + ("The trend template held on the high's bar and the 150/200-day structure held through the base (VCP-03)."
+                      if r["fail"] != "VCP-03" else "VCP-03 wants the trend template on the high's bar and the "
+                      "150/200-day structure intact through the base."))
+        if legs:
+            pts = []
+            for k, (hd, h, ld, low) in enumerate(legs):
+                pts += [{"at": iso(hd), "price": float(h), "label": "BH" if k == 0 else ""},
+                        {"at": iso(ld), "price": float(low), "label": f"−{depths[k]:.1f}%" if k < len(depths) else ""}]
+            shapes.append({"shape": "path", "from": bd, "to": at, "points": pts, "role": "contraction",
+                           "label": "contractions"})
+            why.append(f"CONTRACTIONS: {' → '.join(f'{x:.1f}%' for x in depths)}. A VCP has "
+                       f"{MIN_CONTRACTIONS}–{MAX_CONTRACTIONS} pullbacks (VCP-04), the first at most "
+                       f"{MAX_FIRST_DEPTH_PCT:g}% deep (VCP-05), each at most {SHRINK:g}× the one before (VCP-06).")
+        if r["tight_from"] is not None and r["pivot"]:
+            tf, pv, tl = iso(r["tight_from"]), float(r["pivot"]), float(r["tight_low"])
+            shapes.append({"shape": "box", "from": tf, "to": at, "top": pv, "bottom": tl, "role": "tight",
+                           "label": f"tight {r['tight_range_pct']:.1f}%"})
+            shapes.append({"shape": "level", "from": tf, "to": day(bo) if bo is not None else at, "price": pv,
+                           "role": "pivot", "label": f"pivot {px(pv)}"})
+            dry = f", volume {r['dryup']:.2f}× its 50-day average (at most {DRYUP_RATIO:g}×, VCP-10)" if r["dryup"] is not None else ""
+            why.append(f"TIGHT AREA: {r['tight_range_pct']:.1f}% from {px(tl)} to {px(pv)} since {tf} "
+                       f"(at most {TIGHT_PCT:g}% over up to {TIGHT_DAYS} sessions, VCP-08){dry}. Its high is the "
+                       f"pivot, which must be within {(1 - PIVOT_NEAR_HIGH) * 100:.0f}% of the base high (VCP-09).")
+        if bo is not None:
+            shapes.append({"shape": "dots", "points": [{"at": day(bo), "price": float(daily["close"].iloc[bo]),
+                                                       "label": "breakout"}], "role": "pivot"})
+        if done:
+            verdict = (f"VCP COMPLETE on {at}. Broke out on {day(bo)}, closing through the pivot." if bo is not None
+                       else f"VCP COMPLETE on {at}; no close through the pivot yet.")
+        else:
+            verdict = f"NOT A VCP — stopped at {r['fail']}: {self._vcp_fail_why(r, daily, lo_i, rep)}."
+        shapes.append({"shape": "note", "at": at, "price": bh, "text": "\n\n".join(why + [verdict])})
+        return {"from": iso(r["prior_low_date"]) if r["prior_low"] else bd, "base_from": bd, "to": day(end),
+                "complete": done, "fail": r["fail"], "breakout": day(bo) if bo is not None else None, "shapes": shapes}
+
+    @staticmethod
+    def _vcp_fail_why(r: dict, daily: pd.DataFrame, bh_i: int, rep: int) -> str:
+        """The failing VCP rule of a detection, in words with its measured value and its limit."""
+        d, f = r["depths"], r["fail"]
+        if f == "VCP-03":
+            if not r["base_tt"]:
+                return (f"the trend template was not met on the high's bar ({daily.index[bh_i].date()}): "
+                        f"{vcp_spec.template_miss(daily.iloc[bh_i])}")
+            # the same structure test as vcp_spec._trend_held, located on the first bar that broke it
+            for i in range(bh_i, rep + 1):
+                row = daily.iloc[i]
+                for bad, what in ((not row["sma150"] > row["sma200"], "the 150-day fell under the 200-day"),
+                                  (not row["sma200"] > row["sma200_21d_ago"], "the 200-day turned down"),
+                                  (not row["close"] > VCP.base_sma200_floor * row["sma200"],
+                                   f"the close fell more than {(1 - VCP.base_sma200_floor) * 100:.0f}% under the 200-day")):
+                    if bad:
+                        return f"{what} on {daily.index[i].date()}, inside the base"
+            return "the trend structure broke inside the base"
+        if f == "VCP-04":
+            return f"{len(d)} contractions, where a VCP has {MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}"
+        if f == "VCP-05":
+            return f"the first contraction was {d[0]:.1f}% deep, more than {MAX_FIRST_DEPTH_PCT:g}%"
+        if f == "VCP-06":
+            k = next(k for k in range(1, len(d)) if d[k] > SHRINK * d[k - 1])
+            return f"contraction {k + 1} ({d[k]:.1f}%) was not under {SHRINK:g}× contraction {k} ({d[k - 1]:.1f}%)"
+        if f == "VCP-07":
+            return "a contraction made a lower low than the one before"
+        if f == "VCP-08":
+            return (f"the last contraction ({d[-1]:.1f}%) or the tight area ({r['tight_range_pct']:.1f}%) "
+                    f"was wider than {TIGHT_PCT:g}%")
+        if f == "VCP-09":
+            return f"the pivot {r['pivot']:.2f} was more than {(1 - PIVOT_NEAR_HIGH) * 100:.0f}% under the base high"
+        if f == "VCP-10":
+            return f"tight-area volume was {r['dryup']:.2f}× its 50-day average, above {DRYUP_RATIO:g}× (no dry-up)"
+        return "the volatility did not contract"

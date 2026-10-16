@@ -760,7 +760,7 @@ async function chartPage(alive, market, symbol, tf) {
   studyItems = () => [...studyShapes.values()].flatMap(({ shapes, roles }) => shapeItems(shapes, { roles }));
   const annotate = (key, shapes, roles) => { studyShapes.set(key, { shapes, roles }); applyAnnotations(); };
   const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
-    market, symbol, annotate: px.ohlc ? annotate : null } });
+    market, symbol, chartEl, annotate: px.ohlc ? annotate : null } });
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
 
   // Opened from a chart-pattern strategy's setups: draw the stock's pattern as of that run (the same

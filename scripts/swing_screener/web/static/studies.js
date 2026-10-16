@@ -359,17 +359,69 @@ const Studies = (() => {
         }
         return { series: [], note: "detecting…", setVisible: (v) => { on = v; paint(); } };
       } },
-    // TEMPORARY (2026-10-16): added for a manual stage-by-stage review of the trend template.
-    // Remove it, with /api/trend-template, once that review is done.
-    trend_template: { name: "Minervini trend template (live)", short: "Trend template", cat: "Screener", overlay: true, custom: true,
-      label: (p) => `Trend template${p.minBars > 1 ? ` · ${p.minBars}+ bars` : ""}`,
+    // Stage 2 stretches from the trend template, and the bases inside them from the VCP detector
+    // (/api/trend-template: minervini_spec's trend_template_row and bases_live — the strategy's own
+    // code and its own wording, never a second copy here).
+    trend_template: { name: "Minervini trend template & VCP (live)", short: "Trend template", cat: "Screener", overlay: true, custom: true,
+      label: (p) => `Trend template${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · bases"}${p.minBars > 1 ? ` · ${p.minBars}+ bars` : ""}`,
       params: { minBars: 10, label: { type: "select", def: "Bars", options: ["Bars", "Dates", "None"] },
-        gaps: { type: "select", def: "After labelled stretches", options: ["After labelled stretches", "All", "None"] } },
-      plots: [{ k: "pass", t: "In Stage 2", c: "#26a69a" }, { k: "broke", t: "What ended it", c: "#ef5350" }],
-      draw({ p, col, tf, ctx, id }) {
+        gaps: { type: "select", def: "After labelled stretches", options: ["After labelled stretches", "All", "None"] },
+        stage2: { type: "select", def: "Show", options: ["Show", "Hide"] },
+        bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
+        notes: { type: "select", def: "Latest base in view", options: ["Latest base in view", "None"] } },
+      plots: [{ k: "pass", t: "In Stage 2", c: "#26a69a" }, { k: "broke", t: "What ended it", c: "#ef5350" },
+        { k: "uptrend", t: "Uptrend into a base", c: "#66bb6a" }, { k: "base", t: "Base · VCP", c: "#2962ff" },
+        { k: "miss", t: "Base · not a VCP", c: "#9e9e9e" }, { k: "tight", t: "Tight area & pivot", c: "#ff9800" }],
+      draw({ chart, times, p, col, tf, ctx, id }) {
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
-        let on = true, shapes = [];
-        const paint = () => ctx.annotate(id, on ? shapes : [], { stage2: col("pass"), broke: col("broke") });
+        let on = true, stage = [], bases = [], noted = null;
+        // the description card: why the latest base in view is drawn the way it is, rule by rule, in the
+        // strategy's own words (its chart note), each paragraph keyed to its box by a colour swatch
+        const card = document.createElement("div"); card.className = "tt-card"; card.hidden = true;
+        ctx.chartEl?.append(card);
+        let open = true; try { open = localStorage.getItem("ttCardOpen") !== "0"; } catch {}
+        card.onclick = (e) => {
+          if (!e.target.closest(".tt-h")) return;
+          open = !open; try { localStorage.setItem("ttCardOpen", open ? "1" : "0"); } catch {}
+          renderCard();
+        };
+        card.addEventListener("mousedown", (e) => e.stopPropagation());   // not a chart drag or a drawing click
+        const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+        const renderCard = () => {
+          const note = noted && noted.shapes.find((x) => x.shape === "note");
+          card.hidden = !on || !note;
+          if (card.hidden) return;
+          const b = noted, swatch = { UPTREND: col("uptrend"), BASE: col(b.complete ? "base" : "miss"),
+            CONTRACTIONS: col(b.complete ? "base" : "miss"), "TIGHT AREA": col("tight") };
+          const verdict = b.complete ? (b.breakout ? `VCP · broke out ${b.breakout}` : "VCP complete") : `not a VCP · ${b.fail}`;
+          card.style.right = `${chart.priceScale("right").width() + 8}px`;
+          card.innerHTML = `<div class="tt-h"><b>Base from ${esc(b.base_from)}</b><span class="${b.complete ? "ok" : "no"}">${esc(verdict)}</span><i>${open ? "▾" : "▸"}</i></div>`
+            + (open ? note.text.split("\n\n").map((para) => {
+              const m = para.match(/^([A-Z][A-Z ]+):\s*/), head = m && m[1];
+              return head ? `<p><i class="sw" style="background:${swatch[head] || "transparent"}"></i><b>${esc(head.charAt(0) + head.slice(1).toLowerCase())}</b> ${esc(para.slice(m[0].length))}</p>`
+                : `<p class="v"><b>${esc(para)}</b></p>`;
+            }).join("") : "");
+        };
+        // the description box follows the view: the latest base starting at or before its right edge
+        const edge = () => {
+          const r = chart.timeScale().getVisibleLogicalRange();
+          return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : times.at(-1);
+        };
+        const pick = () => (p.notes === "None" ? null : [...bases].reverse().find((b) => b.base_from <= edge()) || null);
+        const paint = () => {
+          noted = pick();
+          // a near miss's contraction line takes the grey, so a real VCP stands out
+          const shapes = bases.flatMap((b) => b.shapes.filter((x) => x.shape !== "note")
+            .map((x) => (!b.complete && x.role === "contraction" ? { ...x, role: "nearmiss" } : x)));
+          ctx.annotate(id, on ? stage.concat(shapes) : [], { stage2: col("pass"), broke: col("broke"), uptrend: col("uptrend"),
+            base: col("base"), contraction: col("base"), nearmiss: col("miss"), tight: col("tight"), pivot: col("tight") });
+          renderCard();
+        };
+        let timer = null;
+        chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+          clearTimeout(timer);
+          timer = setTimeout(() => { if (bases.length && pick() !== noted) { noted = pick(); renderCard(); } }, 150);
+        });
         (async () => {
           setNote(id, "testing each bar…");
           const r = await fetch(`/api/trend-template/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
@@ -378,7 +430,7 @@ const Studies = (() => {
           // Every passing stretch is drawn; `minBars` governs only the LABELS, because a run of
           // two passing bars is still a fact about the chart but its label is just clutter.
           const runs = r.runs || [];
-          shapes = runs.filter((x) => x.ok).map((x) => ({
+          stage = p.stage2 === "Hide" ? [] : runs.filter((x) => x.ok).map((x) => ({
             shape: "box", role: "stage2", from: x.from, to: x.to, top: x.high, bottom: x.low,
             label: p.label === "None" || x.bars < p.minBars ? ""
               : p.label === "Dates" ? `${x.from} → ${x.to}` : `${x.bars} bars`,
@@ -395,15 +447,17 @@ const Studies = (() => {
             gaps.push({ first, to: runs[i - 1].to, bars, after: prev && prev.ok ? prev.bars : 0 });
             i--;
           }
-          const shown = p.gaps === "None" ? [] : p.gaps === "All" ? gaps : gaps.filter((g) => g.after >= p.minBars);
-          shapes = shapes.concat(shown.map((g) => ({
+          const shown = p.stage2 === "Hide" || p.gaps === "None" ? [] : p.gaps === "All" ? gaps : gaps.filter((g) => g.after >= p.minBars);
+          stage = stage.concat(shown.map((g) => ({
             shape: "level", role: "broke", from: g.first.from, to: g.to, price: g.first.low, dash: true,
             label: `${g.first.tag} · ${g.bars} bars`,
           })));
+          const all = r.bases || [];
+          bases = p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete) : all;
           const long = runs.filter((x) => x.ok && x.bars >= p.minBars).length;
           setNote(id, `${r.passing.toLocaleString()} of ${r.bars.toLocaleString()} bars pass (${r.pct}%) · `
             + `${runs.filter((x) => x.ok).length} stretches, ${long} of ${p.minBars}+ bars · `
-            + `${shown.length} gap${shown.length === 1 ? "" : "s"} labelled · ${r.note}`);
+            + `${all.length} bases, ${all.filter((b) => b.complete).length} VCPs, ${all.filter((b) => b.breakout).length} breakouts · ${r.note}`);
           paint();
         })();
         return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); } };

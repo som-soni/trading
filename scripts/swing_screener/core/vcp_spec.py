@@ -165,17 +165,31 @@ def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
     return piv
 
 
-def _template_ok(row) -> bool:
-    """TT-01 … TT-07 on one enriched row (TT-08, RS, is applied cross-sectionally by the backtest)."""
+def template_miss(row) -> str | None:
+    """TT-01 … TT-07 on one enriched row (TT-08, RS, is applied cross-sectionally by the backtest): the
+    first check that fails, in words, or None when the template holds."""
     try:
         c, s50, s150, s200 = float(row["close"]), float(row["sma50"]), float(row["sma150"]), float(row["sma200"])
         s200p, lo, hi = float(row["sma200_21d_ago"]), float(row["low_252"]), float(row["high_252"])
     except (KeyError, TypeError, ValueError):
-        return False
+        return "not enough history for the averages"
     if any(v != v for v in (c, s50, s150, s200, s200p, lo, hi)):
-        return False
-    return (c > s150 and c > s200 and s150 > s200 and s200 > s200p and s50 > s150 and s50 > s200 and c > s50
-            and c >= 1.30 * lo and c >= 0.75 * hi)
+        return "not enough history for the averages"
+    for ok, what in ((c > s150 and c > s200, "close under the 150- or 200-day"),
+                     (s150 > s200, "150-day under the 200-day"),
+                     (s200 > s200p, "200-day not rising over a month"),
+                     (s50 > s150 and s50 > s200, "50-day under the 150- or 200-day"),
+                     (c > s50, "close under the 50-day"),
+                     (c >= 1.30 * lo, "close less than 30% above the 52-week low"),
+                     (c >= 0.75 * hi, "close more than 25% under the 52-week high")):
+        if not ok:
+            return what
+    return None
+
+
+def _template_ok(row) -> bool:
+    """TT-01 … TT-07 on one enriched row (see `template_miss`)."""
+    return template_miss(row) is None
 
 
 def _trend_held(d: pd.DataFrame, floor: float = 0.97) -> bool:
@@ -200,11 +214,14 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     """The base in force on the last bar of `daily`, and whether its VCP is complete.
 
     Returns {"ok", "fail" (first failing rule id, or None), "bh", "bh_date", "base_days", "prior_advance_pct",
-    "depths", "lows", "pivot", "tight_low", "tight_range_pct", "dryup", "base_tt"}."""
+    "depths", "lows", "pivot", "tight_low", "tight_range_pct", "dryup", "base_tt"}, plus where things are, for
+    drawing only: "prior_low"/"prior_low_date" (the low VCP-01 measures the advance from), "legs" (each
+    contraction as (high date, high, low date, low)) and "tight_from" (the tight area's first bar)."""
     out = {"ok": False, "fail": None, "bh": None, "bh_date": None, "base_days": None, "prior_advance_pct": None,
            "depths": [], "lows": [], "pivot": None, "tight_low": None, "tight_range_pct": None, "dryup": None, "base_tt": None, "zigzag_pct_used": None,
            "base_low": None, "cheat_ok": False, "cheat_pivot": None, "cheat_low": None,
-           "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None}
+           "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None,
+           "prior_low": None, "prior_low_date": None, "legs": [], "tight_from": None}
     d = daily.iloc[-p.lookback:]
     n = len(d)
     if n < 2 * p.swing_k + p.base_min_days + 5:
@@ -239,6 +256,9 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         return out
     adv = (high[bh_i] / prior.min() - 1) * 100 if len(prior) and prior.min() > 0 else float("nan")
     out["prior_advance_pct"] = adv
+    if len(prior):
+        k = int(prior.argmin())
+        out["prior_low"], out["prior_low_date"] = float(prior[k]), d.index[max(0, bh_i - p.prior_window) + k]
     if not (adv >= p.prior_advance_pct):
         out["fail"] = "VCP-01"
         return out
@@ -291,14 +311,14 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     for a, b in zip(piv, piv[1:]):
         if a[2] == "H" and b[2] == "L":
             h, l = a[1], b[1]
-            legs.append((h, l, (h - l) / h * 100 if h > 0 else float("nan")))
+            legs.append((h, l, (h - l) / h * 100 if h > 0 else float("nan"), a[0], b[0]))
             last_low_i = b[0]
     # the final, still-open leg: from the last confirmed high to the lowest low since
     if piv[-1][2] == "H":
         seg = low[piv[-1][0]:]
         if len(seg):
             h, l = piv[-1][1], float(seg.min())
-            legs.append((h, l, (h - l) / h * 100 if h > 0 else float("nan")))
+            legs.append((h, l, (h - l) / h * 100 if h > 0 else float("nan"), piv[-1][0], piv[-1][0] + int(seg.argmin())))
     if not legs:
         out["fail"] = "VCP-04"
         return out
@@ -312,6 +332,7 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         legs = [g for k, g in enumerate(legs) if g[2] >= p.min_swing_pct or k == len(legs) - 1]
     out["depths"] = [round(g[2], 2) for g in legs]
     out["lows"] = [g[1] for g in legs]
+    out["legs"] = [(d.index[g[3]], g[0], d.index[g[4]], g[1]) for g in legs]
     if not (p.min_contractions <= len(legs) <= p.max_contractions):
         out["fail"] = "VCP-04"
         return out
@@ -334,6 +355,7 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     if last_low_i is not None:
         ta_start = max(ta_start, min(last_low_i, n - 3))
     ta = d.iloc[ta_start:]
+    out["tight_from"] = d.index[ta_start]
     pivot, tl = float(ta["high"].max()), float(ta["low"].min())
     rng = (pivot - tl) / pivot * 100 if pivot > 0 else float("nan")
     out.update(pivot=pivot, tight_low=tl, tight_range_pct=rng)

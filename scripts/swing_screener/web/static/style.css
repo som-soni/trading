@@ -1448,3 +1448,14 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .lpo-spot { stroke: var(--line-3); stroke-width: 1; stroke-dasharray: 3 3; }
 .lpo-be { fill: var(--panel); stroke: var(--strong); stroke-width: 1.5; }
 .lpo-sum { margin-top: 6px; }
+
+/* Trend template & VCP indicator: the card explaining the latest base in view */
+.tt-card { position: absolute; top: 8px; z-index: 15; width: 340px; max-height: 62%; overflow: auto; background: var(--panel);
+  border: 1px solid var(--line-2); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.25); font-size: 12px; line-height: 1.45; color: var(--text); }
+.tt-card .tt-h { display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; position: sticky; top: 0; background: var(--panel); }
+.tt-card .tt-h b { color: var(--strong); white-space: nowrap; }
+.tt-card .tt-h span { margin-left: auto; font-size: 11px; white-space: nowrap; } .tt-card .tt-h i { font-style: normal; color: var(--muted); }
+.tt-card .tt-h .ok { color: var(--up-text); } .tt-card .tt-h .no { color: var(--muted); }
+.tt-card p { margin: 0; padding: 4px 10px 6px; } .tt-card p b { color: var(--strong); }
+.tt-card p .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+.tt-card p.v { padding-bottom: 9px; }
