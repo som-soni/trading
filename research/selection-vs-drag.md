@@ -121,6 +121,37 @@ And one thing does not: the edge over small caps is **+1.64 before 2019 and +6.2
 concentrated in a single regime — the post-2020 Indian small-cap bull — which is the same window
 that makes it look robust out of sample.
 
+## 4b. Walk-forward: was picking 1 of 18 a procedure, or luck?
+
+*2026-10-17.* The 2019 split is a single, chosen cut. Two stronger tests.
+
+**Is the excess stable?** Rolling 36-month excess over the Smallcap 250, quarterly:
+
+| windows | median | mean | worst | best | positive |
+|---:|---:|---:|---:|---:|---:|
+| 55 | +3.71 | +4.51 | **−11.72** | +18.87 | **42 (76%)** |
+
+Persistent but uneven. You can spend three years behind the segment.
+
+**Was the choice repeatable?** At each year-end, pick the variant with the best *trailing* excess
+using only data available then, hold it one year, chain forward:
+
+| | CAGR excess |
+|---|---:|
+| walk-forward (trailing data only) | **+3.75** |
+| the variant chosen with full hindsight | +4.36 |
+
+**It survives.** The procedure keeps 86% of the hindsight result, so the selection-effect discount
+is about 0.6 points, not the whole edge. Five of thirteen years underperform, the worst by 17.7.
+
+A detail worth more than the headline: the walk-forward **always picks top-20**, and alternates
+only between `vol_scaled`/`momentum` and `equal`/`inverse_vol`. Concentration is the robust
+parameter; the weighting is close to noise. A future version should not over-specify weighting.
+
+Note on arithmetic: the mean of annual excesses was +6.74, which looks better than the hindsight
+pick and is not comparable to it — mean annual arithmetic excess overstates compounded excess when
+returns are volatile. Compounding both gives the +3.75 above.
+
 ## 5. What this changes
 
 1. **Stop ranking strategies by headline excess.** It ranked the worst picker first.
