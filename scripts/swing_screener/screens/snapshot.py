@@ -268,6 +268,14 @@ PRESENT_INPUTS = (
 )
 
 
+# Sources that do not belong in PRESENT_INPUTS because they do not feed particular
+# present-only columns: newer PRICES make the whole snapshot stale, every field of it.
+# Declared here so `stale_inputs` has one list of the keys it may emit and a test can
+# check against it rather than guessing from PRESENT_INPUTS alone.
+WHOLE_SNAPSHOT_SOURCES = ("prices",)
+SOURCE_KEYS = frozenset(WHOLE_SNAPSHOT_SOURCES) | {k for k, *_ in PRESENT_INPUTS}
+
+
 def _source_changed_at(market: str, how: tuple) -> "dt.datetime | None":
     """When a present-only source last changed, as an aware datetime, or None if unknown."""
     kind, what = how
@@ -327,7 +335,8 @@ def stale_inputs(market: str, d=None) -> list[dict]:
             cur.execute("SELECT max(date) FROM prices WHERE market=%s", (market,))
             last_price = cur.fetchone()[0]
         if last_price is not None and last_price > d:
-            out.append({"key": "prices", "label": f"Prices (newer trading day, {last_price.isoformat()})",
+            out.append({"key": WHOLE_SNAPSHOT_SOURCES[0],
+                        "label": f"Prices (newer trading day, {last_price.isoformat()})",
                         "fields": ["every price-derived field"],
                         "changed_at": dt.datetime.combine(last_price, dt.time(23, 59)).astimezone().isoformat(),
                         "built_at": built.isoformat()})

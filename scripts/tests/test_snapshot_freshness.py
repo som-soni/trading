@@ -55,7 +55,15 @@ def main() -> int:
         if f in claimed:
             bad.append(f"{f!r} is exempt in this test but a source now claims it — drop the exemption")
 
-    # 3. a source we cannot read is skipped, never reported as stale
+    # 3. the two source lists stay distinct: a key in both would be reported twice, and a
+    #    whole-snapshot source listed in PRESENT_INPUTS would be asked for fields it has none of
+    overlap = set(S.WHOLE_SNAPSHOT_SOURCES) & {k for k, *_ in S.PRESENT_INPUTS}
+    if overlap:
+        bad.append(f"{sorted(overlap)} is in both WHOLE_SNAPSHOT_SOURCES and PRESENT_INPUTS")
+    if not S.WHOLE_SNAPSHOT_SOURCES:
+        bad.append("WHOLE_SNAPSHOT_SOURCES is empty — newer prices would no longer be reported")
+
+    # 4. a source we cannot read is skipped, never reported as stale
     if S._source_changed_at("us", ("sql", "SELECT max(x) FROM a_table_that_does_not_exist")) is not None:
         bad.append("an unreadable source must return None, not a timestamp")
 
@@ -72,10 +80,13 @@ def main() -> int:
         ms = (time.time() - t) * 1000
         if ms > BUDGET_MS:
             bad.append(f"{market}: stale_inputs took {ms:.0f}ms, over the {BUDGET_MS}ms budget for a per-request check")
-        keys = {k for k, _l, _f, _h in S.PRESENT_INPUTS}
+        # Not every source feeds particular present-only columns: newer PRICES make the whole
+        # snapshot stale. SOURCE_KEYS is the module's own list of what it may emit, so this
+        # still catches a key invented in stale_inputs and never declared.
         for x in stale:
-            if x["key"] not in keys:
-                bad.append(f"{market}: reported unknown source {x['key']!r}")
+            if x["key"] not in S.SOURCE_KEYS:
+                bad.append(f"{market}: reported source {x['key']!r}, which is in neither "
+                           f"PRESENT_INPUTS nor WHOLE_SNAPSHOT_SOURCES")
             if not (x["changed_at"] > x["built_at"]):
                 bad.append(f"{market}: reported {x['key']} stale but changed_at {x['changed_at']} <= built_at {x['built_at']}")
 
@@ -83,7 +94,7 @@ def main() -> int:
         if len(ds) > 1 and S.stale_inputs(market, ds[0]):
             bad.append(f"{market}: the oldest snapshot ({ds[0]}) was reported stale; past snapshots are records")
 
-        print(f"  {market}: {len(stale)} stale of {len(S.PRESENT_INPUTS)} sources, {ms:.0f}ms"
+        print(f"  {market}: {len(stale)} stale of {len(S.SOURCE_KEYS)} sources, {ms:.0f}ms"
               + (f" — {', '.join(x['key'] for x in stale)}" if stale else ""))
 
     if bad:
@@ -91,7 +102,8 @@ def main() -> int:
         for x in bad:
             print("  " + x)
         return 1
-    print(f"OK — {len(S.PRESENT_INPUTS)} sources cover {len(claimed)} present-only fields, "
+    print(f"OK — {len(S.SOURCE_KEYS)} sources ({len(S.PRESENT_INPUTS)} feeding named fields, "
+          f"{len(S.WHOLE_SNAPSHOT_SOURCES)} making the whole snapshot stale) cover {len(claimed)} fields, "
           f"unreadable sources are skipped, past snapshots are never stale")
     return 0
 
