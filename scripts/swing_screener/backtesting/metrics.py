@@ -47,6 +47,9 @@ class Performance:
     benchmark_cagr_pct: float | None = None
     benchmark_max_dd_pct: float | None = None
     benchmark_sharpe: float | None = None
+    #: which series the benchmark figures are. Named, because "excess" means nothing without it:
+    #: a small-cap book measured against a broad index counts segment beta as skill.
+    benchmark_name: str | None = None
     # Deployment-adjusted comparisons. A strategy that is 18% invested cannot be judged against an
     # index that is 100% invested every day: the headline gap mixes a bad SIGNAL with idle CASH, and
     # those need opposite fixes. `matched` holds the index at the strategy's own daily exposure, so
@@ -248,6 +251,7 @@ def format_report(p: Performance, currency: str, cap: int) -> str:
             "-" * 68,
             "VS BUY-AND-HOLD BENCHMARK (same dates, 100% exposure)",
             "-" * 68,
+            f"Benchmark         {p.benchmark_name or 'the market index'}",
             f"Benchmark return  {f(p.benchmark_return_pct)}%   CAGR {f(p.benchmark_cagr_pct)}%",
             f"Benchmark max DD  {f(p.benchmark_max_dd_pct)}%   Sharpe {f(p.benchmark_sharpe)}",
             *( [f"Invested          {f(p.avg_invested_pct)}% of capital on an average day",

@@ -30,6 +30,12 @@ INDIA_CONFIG = MarketConfig(
         "NIFTY50": "^NSEI",
         "NIFTY500": "^CRSLDX",  # verify — Yahoo's Nifty 500 coverage is spotty
         "NIFTYMIDCAP150": "NIFTY_MIDCAP_150.NS",  # verify
+        # The segment benchmark for small-cap strategies. A momentum book held inside a turnover
+        # floor is a small-cap book, and measuring it against the Nifty 500 counts segment beta as
+        # skill: the Smallcap 250 returned 11.99% against the 500's 10.17% from 2010, so ~1.8
+        # points of any "excess" is just being in the segment. It also DROPS AND REPLACES its
+        # constituents, so unlike a survivor-only universe it carries the failures.
+        "NIFTYSMALLCAP250": "NIFTYSMLCAP250.NS",   # verified 2026-10-17: 4,379 bars from 2009-01-02
     },
     benchmark_symbol="NIFTY500",
     # SECTOR INDEX MAP — NSE sectoral indices. Same caveat as above: test

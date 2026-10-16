@@ -594,10 +594,28 @@ def main() -> None:
         "drawdown_pct": metrics.drawdown_series(eq) * 100,
     }).to_csv(out / "equity.csv")
 
+    # Resolve the benchmark BEFORE reporting, and recompute its figures against the series that is
+    # actually named: run() computed them against the market's default, and relabelling those
+    # without recomputing would print a Nifty 500 number under a Smallcap 250 heading.
+    from ..strategies import portfolio_strategies
+    _cls = portfolio_strategies()[args.strategy]
+    _key = (getattr(_cls, "benchmark_key", None) or {}).get(args.market)
+    bench_ticker = cfg.broad_index_symbols.get(_key) if _key else None
+    bench_name = _key
+    if bench_ticker is None or cache.load_cached(args.market, bench_ticker) is None:
+        if _key:   # declared but not stored: say so rather than silently reporting a different index
+            logger.warning("%s declares benchmark %s for %s but it is not stored; falling back to %s",
+                           args.strategy, _key, args.market, cfg.benchmark_symbol)
+        bench_ticker, bench_name = cfg.benchmark_ticker, cfg.benchmark_symbol
+    bench_raw = cache.load_cached(args.market, bench_ticker)
+    bc = bench_raw["close"].reindex(eq.index).ffill() if bench_raw is not None else None
+    if bc is not None:
+        for _k, _v in metrics.benchmark_stats(bc).items():
+            setattr(perf, _k, _v)
+    perf.benchmark_name = f"{bench_name} ({bench_ticker})"
+
     print()
     print(metrics.format_report(perf, cfg.currency_symbol, args.top_n))
-    bench_raw = cache.load_cached(args.market, cfg.benchmark_ticker)
-    bc = bench_raw["close"].reindex(eq.index).ffill() if bench_raw is not None else None
     print()
     print(metrics.format_equity_curve(eq, bc))
     print(f"\nRun dir -> {out}")
@@ -721,6 +739,12 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     cost_bps = 50.0
     vol_target = None
     liquidity_top = 0            # the turnover floor is the control, not a rank cutoff
+    #: Judge it against the SEGMENT it trades, not the broad index. A turnover-floored momentum
+    #: book is a small-cap book: the Smallcap 250 returned 11.99% against the Nifty 500's 10.17%
+    #: from 2010, so ~1.8 points of any excess over the broad index is beta, not skill. The
+    #: segment index also drops and replaces constituents, so it carries the failures this
+    #: survivor-only universe cannot. US has no stored segment index, so it falls back.
+    benchmark_key = {"india": "NIFTYSMALLCAP250"}
     min_turnover_cr = 10         # Rs crore/day (India); see min_turnover_for()
     min_turnover_usd_m = 20      # $ million/day (US)
 
