@@ -1511,3 +1511,4 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .tt-card .mk.pill { height: 9px; margin-top: 4px; border-radius: 2px; background: var(--c); }
 .tt-card .tt-zh .st.warn, .tt-card .tt-checks .warn .ic, .tt-card .tt-checks .warn .val { color: #f59e0b; }
 .tt-card .tt-live { margin-left: 6px; padding: 0 5px; border-radius: 3px; font-size: 10.5px; background: color-mix(in srgb, #38bdf8 20%, transparent); color: var(--strong); }
+.tt-card .tt-zh .st.young, .tt-card .tt-checks .young .ic, .tt-card .tt-checks .young .val { color: #9ca3af; }

@@ -165,6 +165,11 @@ def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
     return piv
 
 
+# template_miss's answer when the averages are not computable yet (a young listing): callers can tell
+# "too new to judge" from a trend that failed
+NO_HISTORY = "not enough history for the averages"
+
+
 def template_miss(row) -> str | None:
     """TT-01 … TT-07 on one enriched row (TT-08, RS, is applied cross-sectionally by the backtest): the
     first check that fails, in words, or None when the template holds."""
@@ -172,9 +177,9 @@ def template_miss(row) -> str | None:
         c, s50, s150, s200 = float(row["close"]), float(row["sma50"]), float(row["sma150"]), float(row["sma200"])
         s200p, lo, hi = float(row["sma200_21d_ago"]), float(row["low_252"]), float(row["high_252"])
     except (KeyError, TypeError, ValueError):
-        return "not enough history for the averages"
+        return NO_HISTORY
     if any(v != v for v in (c, s50, s150, s200, s200p, lo, hi)):
-        return "not enough history for the averages"
+        return NO_HISTORY
     for ok, what in ((c > s150 and c > s200, "close under the 150- or 200-day"),
                      (s150 > s200, "150-day under the 200-day"),
                      (s200 > s200p, "200-day not rising over a month"),

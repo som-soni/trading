@@ -380,13 +380,14 @@ const Studies = (() => {
       draw({ chart, times, p, col, tf, ctx, id }) {
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
         let on = true, stage = [], setups = [], focus = null, hovered = null, pinned = null;
-        const DIM = "#5d6170", NUM = ["①", "②", "③", "④"];
+        const DIM = "#5d6170", YOUNG = "#9ca3af", NUM = ["①", "②", "③", "④"];
         // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
-        const kindCol = (s) => col(s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : "miss");
+        // (a listing too new for the template is neither: neutral grey, so it never reads as a failure)
+        const kindCol = (s) => (s.kind === "young" ? YOUNG : col(s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : "miss"));
         const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
         let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
         const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-        const ICON = { pass: "✓", fail: "✗", skip: "·", warn: "!" };
+        const ICON = { pass: "✓", fail: "✗", skip: "·", warn: "!", young: "?" };
         // the selected run's trade on a setup, if it traded one: its record replaces the illustrated entry
         const tradeOf = (s) => (ctx.trades?.() || []).find((t) => t.entry_date >= s.base_from && t.entry_date <= s.to) || null;
         const isEntry = (z) => z.key === "entry" || z.key === "cheat";
@@ -452,6 +453,7 @@ const Studies = (() => {
         const key = () => [
           ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],
           ["frame", col("cheat"), "Blue frame", "not a VCP, but it triggered a cheat entry: a close through a tight shelf low in the base."],
+          ["dashframe", YOUNG, "Grey dashed frame", "too new to judge (?): the stock lacks the history for a 200-day average."],
           ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],
           ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
           ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
@@ -513,8 +515,8 @@ const Studies = (() => {
           for (const s of setups) {
             const f = s.frame;
             if (s !== focus) continue;
-            const role = s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : "miss";
-            shapes.push({ shape: "box", frame: true, dash: s.kind === "fail", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom, label: s.title });
+            const role = s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : s.kind === "young" ? "young" : "miss";
+            shapes.push({ shape: "box", frame: true, dash: s.kind === "fail" || s.kind === "young", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom, label: s.title });
             const traded = tradeOf(s);
             s.zones.forEach((z, n) => {
               if (n > 0)   // a faint divider where each zone starts
@@ -530,7 +532,7 @@ const Studies = (() => {
           }
           ctx.annotate(id, on ? stage.concat(shapes) : [], { stage2: col("pass"), broke: col("broke"), uptrend: col("uptrend"),
             base: col("base"), contraction: col("base"), vcp: col("vcp"), cheat: col("cheat"), miss: col("miss"), flag: col("flag"),
-            failpath: DIM, tight: col("tight"), buy: col("buy"),
+            failpath: DIM, young: YOUNG, tight: col("tight"), buy: col("buy"),
             stop: col("stop"), breakeven: DIM, target: col("target"), dim: DIM });
           renderCard();
           lane.mark();
@@ -596,7 +598,7 @@ const Studies = (() => {
               let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
               rows[r] = x1;
               const sel = s === focus, txt = x1 - x0 > 46 ? s.title : "";
-              pills.push(`<button class="tt-pill ${s.kind === "fail" ? "no" : "ok"} ${sel ? "sel" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}"
+              pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}"
                 style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${esc(txt)}</button>`);
             });
             el.innerHTML = pills.join("");

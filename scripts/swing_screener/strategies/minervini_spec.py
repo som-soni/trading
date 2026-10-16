@@ -1112,7 +1112,7 @@ class MinerviniSpecStrategy(Strategy):
         are not backtest results, and the chart replaces them with a run's stored trade when one is
         selected. `live`: the base is still forming, judged on the last bar.
 
-        Returns {"from", "base_from", "to", "kind" (vcp | cheat | fail), "complete", "fail", "breakout",
+        Returns {"from", "base_from", "to", "kind" (vcp | cheat | young | fail), "complete", "fail", "breakout",
         "live", "as_of", "title", "summary", "frame": {from, to, top, bottom}, "zones": [{key, title,
         state, warn?, from, to, line, text, checks, shapes}]}; shapes in the chart_anatomy schema."""
         day = lambda i: str(daily.index[i].date())
@@ -1123,9 +1123,19 @@ class MinerviniSpecStrategy(Strategy):
         end = bo if bo is not None else rep
         base_low = float(daily["low"].iloc[bh_i: rep + 1].min())
         depths, legs, fail, done = r["depths"], r["legs"], r["fail"], bool(r["ok"])
+        # A young listing fails VCP-03 only because its averages cannot be computed yet — not a broken
+        # trend, and it must not read like one. `ready` is the first bar the template can be judged.
+        young = fail == "VCP-03" and not r["base_tt"] and vcp_spec.template_miss(daily.iloc[bh_i]) == vcp_spec.NO_HISTORY
+        if young:
+            avail = daily[["sma200_21d_ago", "low_252", "high_252"]].notna().all(axis=1)
+            ready = avail.idxmax() if avail.any() else None
+            ready_txt = (f"it can first be judged on {iso(ready)}, bar {daily.index.get_loc(ready) + 1} of its history"
+                         if ready is not None else "it cannot be judged yet")
+            young_why = (f"the trend template needs a rising 200-day average, and the base high "
+                         f"on {bd} was only bar {bh_i + 1} of the stock's history; {ready_txt}")
         stop_at = self._VCP_ORDER.index(fail) if fail in self._VCP_ORDER else len(self._VCP_ORDER)
         state = lambda code: "pass" if self._VCP_ORDER.index(code) < stop_at else \
-            "fail" if self._VCP_ORDER.index(code) == stop_at else "skip"
+            ("young" if young else "fail") if self._VCP_ORDER.index(code) == stop_at else "skip"
 
         # ---- the checklist rows (a rule after the failing one was never measured: the detector stops there)
         up_days = bh_i - int(daily.index.get_loc(r["prior_low_date"])) if r["prior_low"] else None
@@ -1139,7 +1149,7 @@ class MinerviniSpecStrategy(Strategy):
             "VCP-01": (f"+{pct(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) if near(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) else format(r['prior_advance_pct'], '.0f')}% in {up_days} days" if up_days is not None else "—",
                        f"at least {PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} days"),
             "VCP-02": (f"{r['base_days']} days", f"{BASE_MIN_DAYS}–{BASE_MAX_DAYS} days"),
-            "VCP-03": ("held" if fail != "VCP-03" else self._vcp_fail_why(r, daily, bh_i, rep),
+            "VCP-03": ("held" if fail != "VCP-03" else f"too new: bar {bh_i + 1}" if young else self._vcp_fail_why(r, daily, bh_i, rep),
                        "trend template on the high's bar, the 150/200-day structure after"),
             "VCP-04": (f"{len(depths)}" if depths else "—", f"{MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}"),
             "VCP-05": (f"{pct(depths[0], MAX_FIRST_DEPTH_PCT)}%" if depths else "—", f"at most {MAX_FIRST_DEPTH_PCT:g}%"),
@@ -1155,6 +1165,7 @@ class MinerviniSpecStrategy(Strategy):
                                  "state": state(code)})
         # a zone passes only when every rule in it passed; one with rules never reached is "skip"
         zstate = lambda z: "fail" if any(c["state"] == "fail" for c in checks[z]) else \
+            "young" if any(c["state"] == "young" for c in checks[z]) else \
             "pass" if all(c["state"] == "pass" for c in checks[z]) else "skip"
         zones = []
 
@@ -1163,7 +1174,8 @@ class MinerviniSpecStrategy(Strategy):
             pl, pd_ = float(r["prior_low"]), iso(r["prior_low_date"])
             up_from = pd_
             trend = ("The trend template held on the high's bar, and the 150/200-day structure held through the base."
-                     if fail != "VCP-03" else f"But the trend was not intact: {self._vcp_fail_why(r, daily, bh_i, rep)}.")
+                     if fail != "VCP-03" else f"But it is too new to judge the trend: {young_why}." if young
+                     else f"But the trend was not intact: {self._vcp_fail_why(r, daily, bh_i, rep)}.")
             up_shapes = [{"shape": "line", "from": pd_, "to": bd, "p0": pl, "p1": bh, "role": "uptrend",
                           "arrow": True, "label": f"+{r['prior_advance_pct']:.0f}%"}]
             up_checks, flag, warn, line = list(checks["uptrend"]), "", False, f"+{r['prior_advance_pct']:.0f}% in {up_days} days"
@@ -1344,7 +1356,7 @@ class MinerviniSpecStrategy(Strategy):
             frame_to = max(frame_to, c_to)
 
         # ---- the frame, its kind, title and verdict
-        kind = "vcp" if done else "cheat" if cheat else "fail"
+        kind = "vcp" if done else "cheat" if cheat else "young" if young else "fail"
         today = " · today" if live else ""
         if done:
             title = ("VCP setup ✓" if all(z["state"] == "pass" for z in zones) else "VCP ✓ · trade skipped") + today
@@ -1355,6 +1367,9 @@ class MinerviniSpecStrategy(Strategy):
             title = f"Cheat entry {'✓' if ok else '· trade skipped'}{today}"
             summary = (f"Not a VCP ({self._VCP_FAILED.get(fail, fail)}), but on {day(cheat[0])} it cleared a tight "
                        f"shelf in the {'lower' if cheat[1] == MV03 else 'middle'} third of the base: a cheat entry.")
+        elif young:
+            title = f"Too new to judge{today}"
+            summary = f"Too new to judge: {young_why}."
         else:
             title = f"✗ {self._VCP_FAILED.get(fail, fail)}{today}"
             summary = f"Not a VCP: {self._vcp_fail_why(r, daily, bh_i, rep)}."
