@@ -1085,7 +1085,7 @@ def run_portfolio_backtest(
     perf = metrics.compute(
         equity=result.equity, positions_open=result.positions_open, trades=tdf,
         max_open_positions=cap, costs_paid=result.costs_paid,
-        bench_close=bench_close, notes=notes,
+        bench_close=bench_close, cash=result.cash, notes=notes,
     )
     return tdf, perf, result
 

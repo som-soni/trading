@@ -47,6 +47,14 @@ class Performance:
     benchmark_cagr_pct: float | None = None
     benchmark_max_dd_pct: float | None = None
     benchmark_sharpe: float | None = None
+    # Deployment-adjusted comparisons. A strategy that is 18% invested cannot be judged against an
+    # index that is 100% invested every day: the headline gap mixes a bad SIGNAL with idle CASH, and
+    # those need opposite fixes. `matched` holds the index at the strategy's own daily exposure, so
+    # beating it is selection skill at an equal risk budget; `while_flat` parks the idle cash in the
+    # index, so the gap to it is what the drag costs.
+    benchmark_matched_cagr_pct: float | None = None
+    benchmark_while_flat_cagr_pct: float | None = None
+    avg_invested_pct: float | None = None
     notes: list[str] = field(default_factory=list)
 
 
@@ -117,6 +125,31 @@ def benchmark_stats(bench_close: pd.Series) -> dict:
     }
 
 
+def deployment_stats(equity: pd.Series, cash: pd.Series, bench_close: pd.Series) -> dict:
+    """The index held at the strategy's own exposure, and the strategy with its idle cash in the index.
+
+    The headline "CAGR vs index" answers two questions at once and so answers neither: a strategy can
+    pick well and still lose to the index by sitting in cash, and the fix for that (deploy more) is the
+    opposite of the fix for a bad signal (trade less). These split them.
+
+    `matched` scales each day's index return by that day's invested fraction, so it is the index run at
+    the strategy's risk budget -- beat it and the SELECTION has edge, whatever the headline says.
+    `while_flat` adds the index return on the uninvested fraction to the strategy's own, so the gap
+    between it and the strategy is exactly what the idle cash cost.
+    """
+    eq = equity.dropna()
+    w = (1 - (cash.reindex(eq.index).ffill() / eq)).clip(lower=0, upper=1)
+    rb = bench_close.reindex(eq.index).ffill().pct_change()
+    rs = eq.pct_change()
+    years = max((eq.index[-1] - eq.index[0]).days / 365.25, 1e-9)
+    grow = lambda r: float((1 + r.fillna(0)).prod() ** (1 / years) - 1) * 100
+    return {
+        "benchmark_matched_cagr_pct": grow(w.shift().fillna(0) * rb),
+        "benchmark_while_flat_cagr_pct": grow(rs + (1 - w.shift().fillna(0)) * rb),
+        "avg_invested_pct": float(w.mean()) * 100,
+    }
+
+
 def compute(
     equity: pd.Series,
     positions_open: pd.Series,
@@ -124,6 +157,7 @@ def compute(
     max_open_positions: int,
     costs_paid: float = 0.0,
     bench_close: pd.Series | None = None,
+    cash: pd.Series | None = None,
     notes: list[str] | None = None,
 ) -> Performance:
     """`equity` and `positions_open` are daily series on the same index.
@@ -172,6 +206,9 @@ def compute(
         win_rate_pct=win_rate, avg_r=avg_r, profit_factor=pf, expectancy_r=avg_r,
         costs_paid=float(costs_paid), notes=list(notes or []),
     )
+    if bench_close is not None and cash is not None:
+        for k, v in deployment_stats(equity, cash, bench_close).items():
+            setattr(perf, k, v)
     if bench_close is not None:
         for k, v in benchmark_stats(bench_close).items():
             setattr(perf, k, v)
@@ -213,6 +250,12 @@ def format_report(p: Performance, currency: str, cap: int) -> str:
             "-" * 68,
             f"Benchmark return  {f(p.benchmark_return_pct)}%   CAGR {f(p.benchmark_cagr_pct)}%",
             f"Benchmark max DD  {f(p.benchmark_max_dd_pct)}%   Sharpe {f(p.benchmark_sharpe)}",
+            *( [f"Invested          {f(p.avg_invested_pct)}% of capital on an average day",
+                f"Index at that exposure  CAGR {f(p.benchmark_matched_cagr_pct)}%   "
+                f"vs strategy {f(p.cagr_pct - p.benchmark_matched_cagr_pct)}%  <- SELECTION: is the signal any good?",
+                f"Idle cash in the index  CAGR {f(p.benchmark_while_flat_cagr_pct)}%   "
+                f"costs {f(p.benchmark_while_flat_cagr_pct - p.cagr_pct)}%  <- DRAG: what sitting in cash cost"]
+               if p.benchmark_matched_cagr_pct is not None else [] ),
             f"Excess CAGR       {f(p.cagr_pct - p.benchmark_cagr_pct)}%  <- the number that decides "
             "whether this beats doing nothing",
         ]
