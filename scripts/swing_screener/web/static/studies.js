@@ -373,19 +373,23 @@ const Studies = (() => {
       // uptrend is purple, not green: green is already Stage 2, and the two must never be mistaken
       plots: [{ k: "pass", t: "In Stage 2", c: "#26a69a" }, { k: "broke", t: "What ended it", c: "#ef5350" },
         { k: "uptrend", t: "Uptrend", c: "#ab47bc" }, { k: "base", t: "Base · VCP", c: "#2962ff" },
-        { k: "vcp", t: "VCP setup", c: "#22c55e" }, { k: "miss", t: "Failed setup", c: "#f43f5e" },
+        { k: "vcp", t: "VCP setup", c: "#22c55e" }, { k: "cheat", t: "Cheat entry setup", c: "#38bdf8" },
+        { k: "miss", t: "Failed setup", c: "#f43f5e" }, { k: "flag", t: "Flag", c: "#f59e0b" },
         { k: "tight", t: "Tight area", c: "#ff9800" },
         { k: "buy", t: "Buy", c: "#26a69a" }, { k: "stop", t: "Stop", c: "#ef5350" }, { k: "target", t: "Target", c: "#4caf50" }],
       draw({ chart, times, p, col, tf, ctx, id }) {
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
         let on = true, stage = [], setups = [], focus = null, hovered = null, pinned = null;
-        const DIM = "#5d6170", NUM = ["①", "②", "③"];
+        const DIM = "#5d6170", NUM = ["①", "②", "③", "④"];
+        // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
+        const kindCol = (s) => col(s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : "miss");
         const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
         let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
         const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-        const ICON = { pass: "✓", fail: "✗", skip: "·" };
+        const ICON = { pass: "✓", fail: "✗", skip: "·", warn: "!" };
         // the selected run's trade on a setup, if it traded one: its record replaces the illustrated entry
         const tradeOf = (s) => (ctx.trades?.() || []).find((t) => t.entry_date >= s.base_from && t.entry_date <= s.to) || null;
+        const isEntry = (z) => z.key === "entry" || z.key === "cheat";
 
         // ---- the card: the focused setup's verdict, one row per zone, the open zone's writeup and checks
         const card = document.createElement("div"); card.className = "tt-card"; card.hidden = true;
@@ -402,7 +406,9 @@ const Studies = (() => {
           const ts = chart.timeScale(), w = ts.width();
           const px = (d) => ts.timeToCoordinate(times.find((t) => t >= d) || times.at(-1));
           const x0 = s ? px(s.from) ?? 0 : 0, x1 = s ? px(s.to) ?? w : w;
-          const left = x0 > w - x1;   // more room before the setup than after it
+          // away from the entry zone when there is one (it is what matters most); else the roomier side
+          const ez = s && s.zones.find(isEntry), ex = ez ? px(ez.from) : null;
+          const left = ex != null ? ex > w / 2 : x0 > w - x1;
           card.style.right = left ? "" : `${chart.priceScale("right").width() + 8}px`;
           card.style.left = left ? `${(chart.priceScale("left").width() || 0) + 8}px` : "";
           card.style.top = left ? `${(el.querySelector(".legend")?.offsetHeight || 0) + 12}px` : "8px";
@@ -445,21 +451,23 @@ const Studies = (() => {
         };
         const key = () => [
           ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],
+          ["frame", col("cheat"), "Blue frame", "not a VCP, but it triggered a cheat entry: a close through a tight shelf low in the base."],
           ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],
           ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
           ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
           ["shade", col("base"), "② Base", "the pullbacks, numbered, with their depths; a VCP's get smaller. ✗ marks the one that broke the rule."],
           ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
-          ["line", col("buy"), "③ Entry", "buy above the pivot, stop (red) under the tight area, +2R and target (dotted). An illustration of the rules."],
+          ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted). An illustration of the rules."],
+          ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],
           ["tint", col("pass"), "Green background", "the stock is in Stage 2."],
         ].map(([kind, c, name, what]) => `<div class="tt-k"><i class="mk ${kind}" style="--c:${c}"></i><span><b>${name}</b> — ${what}</span></div>`).join("");
         const checksHtml = (cs) => `<table class="tt-checks">${cs.map((c) => `<tr class="${c.state}" title="${esc(c.code)}">
           <td class="ic">${ICON[c.state]}</td><td>${esc(c.name)}</td><td class="val">${c.state === "skip" ? "not reached" : esc(c.value)}</td></tr>
           ${c.state === "fail" ? `<tr class="lim"><td></td><td colspan="2">needs ${esc(c.limit)}</td></tr>` : ""}`).join("")}</table>`;
         const zoneHtml = (s, z, n) => {
-          const t = z.key === "entry" ? tradeOf(s) : null;
+          const t = isEntry(z) ? tradeOf(s) : null;
           const line = t ? `traded: ${t.r_multiple != null ? `${(+t.r_multiple).toFixed(1)}R` : "open"}` : z.line;
-          const state = t ? "pass" : z.state;
+          const state = t ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
           let body = "";
           if (zoneOpen === z.key) {
             body = t
@@ -478,11 +486,11 @@ const Studies = (() => {
           place(s);
           const keyHtml = `<div class="tt-kh">${keyOpen ? "▾" : "▸"} How to read the chart</div>${keyOpen ? `<div class="tt-key">${key()}</div>` : ""}`;
           if (!s) { card.innerHTML = `<div class="tt-h"><b>No setup in view</b><i>${open ? "▾" : "▸"}</i></div>${open ? keyHtml : ""}`; return; }
-          const cls = s.complete ? "ok" : "no", k = setups.indexOf(s);
-          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${col(s.complete ? "vcp" : "miss")}">${esc(s.title)}</span>
+          const cls = s.kind === "fail" ? "no" : "ok", k = setups.indexOf(s);
+          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}">${esc(s.title)}</span>
               <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
               <i>${open ? "▾" : "▸"}</i></div>`
-            + (open ? `<div class="tt-date">${esc(s.from)} → ${esc(s.to)}</div><div class="tt-sum">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}
+            + (open ? `<div class="tt-date">${esc(s.from)} → ${esc(s.to)}${s.live ? ` <span class="tt-live">forming · judged today</span>` : ""}</div><div class="tt-sum">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}
               <div class="tt-sub">Pick a setup from the lane at the bottom of the chart, or step with ‹ ›. Drag this header to move the card${moved ? ` · <a data-a="dock">put it back</a>` : ""}.</div>${keyHtml}` : "");
         };
 
@@ -505,21 +513,23 @@ const Studies = (() => {
           for (const s of setups) {
             const f = s.frame;
             if (s !== focus) continue;
-            const role = s.complete ? "vcp" : "miss";
-            shapes.push({ shape: "box", frame: true, dash: !s.complete, role, from: f.from, to: f.to, top: f.top, bottom: f.bottom, label: s.title });
+            const role = s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : "miss";
+            shapes.push({ shape: "box", frame: true, dash: s.kind === "fail", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom, label: s.title });
             const traded = tradeOf(s);
             s.zones.forEach((z, n) => {
               if (n > 0)   // a faint divider where each zone starts
                 shapes.push({ shape: "line", from: z.from, to: z.from, p0: f.top, p1: f.bottom, role: "dim", dash: true });
-              shapes.push({ shape: "text", at: z.from, price: f.bottom, role: z.state === "fail" ? "stop" : "dim",
-                label: `${NUM[n]} ${z.title} ${ICON[traded && z.key === "entry" ? "pass" : z.state]}` });
-              if (z.key === "entry" && traded) return;   // the run's own trade overlay draws the real levels
+              const st = traded && isEntry(z) ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
+              shapes.push({ shape: "text", at: z.from, price: f.bottom, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
+                label: `${NUM[n]} ${z.title} ${ICON[st]}` });
+              if (isEntry(z) && traded) return;   // the run's own trade overlay draws the real levels
               // a failed setup's contraction line takes its grey, so a real VCP stands out
               shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" } : x)));
             });
           }
           ctx.annotate(id, on ? stage.concat(shapes) : [], { stage2: col("pass"), broke: col("broke"), uptrend: col("uptrend"),
-            base: col("base"), contraction: col("base"), vcp: col("vcp"), miss: col("miss"), failpath: DIM, tight: col("tight"), buy: col("buy"),
+            base: col("base"), contraction: col("base"), vcp: col("vcp"), cheat: col("cheat"), miss: col("miss"), flag: col("flag"),
+            failpath: DIM, tight: col("tight"), buy: col("buy"),
             stop: col("stop"), breakeven: DIM, target: col("target"), dim: DIM });
           renderCard();
           lane.mark();
@@ -584,9 +594,9 @@ const Studies = (() => {
               x0 = Math.max(0, x0); x1 = Math.min(w, Math.max(x1, x0 + 8));
               let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
               rows[r] = x1;
-              const sel = s === focus, txt = x1 - x0 > 46 ? (s.complete ? "✓ VCP" : "✗ " + (s.title.replace(/^✗ /, ""))) : "";
-              pills.push(`<button class="tt-pill ${s.complete ? "ok" : "no"} ${sel ? "sel" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}"
-                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${col(s.complete ? "vcp" : "miss")}">${esc(txt)}</button>`);
+              const sel = s === focus, txt = x1 - x0 > 46 ? s.title : "";
+              pills.push(`<button class="tt-pill ${s.kind === "fail" ? "no" : "ok"} ${sel ? "sel" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}"
+                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${esc(txt)}</button>`);
             });
             el.innerHTML = pills.join("");
           };

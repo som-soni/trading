@@ -220,6 +220,25 @@ def vcp_measured_move(base_high, first_depth_pct) -> float:
     return float(base_high) * float(first_depth_pct) / 100 if base_high and first_depth_pct else float("nan")
 
 
+def cheat_cross(prev: dict, prev_close: float, close: float) -> str | None:
+    """MV-03 / MV-04: today's close cleared YESTERDAY's cheat shelf (the shelf high is a max over a window
+    that includes the current bar, so today's own shelf can never be crossed — MV-01 freezes the pivot
+    the same way). Returns MV03 (lower third of the base), MV04 (middle third) or None. Shared by
+    evaluate and the chart."""
+    if not prev or not prev.get("cheat_ok") or not (prev_close <= prev["cheat_pivot"] < close):
+        return None
+    if prev["cheat_zone"] == "low":
+        return MV03 if LOW_CHEAT_ENABLED else None
+    return MV04 if prev["cheat_zone"] == "mid" else None
+
+
+def cheat_measured_move(base_high, entry: float, first_depth_pct) -> float:
+    """A cheat's objective: it is bought below the old high, so the nearest objective is that high, and the
+    base's own measured move is projected from there (first_depth is absent when the base never reached
+    the contraction step, and then the old high alone is the objective). Shared by build_plans and the chart."""
+    return float(base_high) - entry + (float(base_high) * float(first_depth_pct) / 100 if first_depth_pct else 0.0)
+
+
 def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
     """The Trend Template IS the screen, so it belongs here rather than only in the gates:
     expressing it row-wise is what lets the backtest apply it as of each simulated bar instead
@@ -748,9 +767,8 @@ class MinerviniSpecStrategy(Strategy):
         # that INCLUDES the current bar, so today's close can never exceed it and the
         # cross would be unsatisfiable. MV-01 freezes the pivot the same way.
         ch = prev if prev.get("cheat_ok") else None
-        cheat_cross = bool(ch and prev_close <= ch["cheat_pivot"] < close)
-        mv03 = bool(LOW_CHEAT_ENABLED and cheat_cross and ch["cheat_zone"] == "low")
-        mv04 = bool(cheat_cross and ch["cheat_zone"] == "mid")
+        crossed = cheat_cross(prev, prev_close, close)
+        mv03, mv04 = crossed == MV03, crossed == MV04
         result.setups[MV01], result.setups[MV02] = mv01, mv02
         result.setups[MV03], result.setups[MV04] = mv03, mv04
 
@@ -842,8 +860,7 @@ class MinerviniSpecStrategy(Strategy):
             # high; the base's own measured move is projected from there. first_depth
             # is absent when the base never reached the contraction step, in which
             # case the old high alone is the objective.
-            measured_move = float(bh) - entry + (float(bh) * float(first_depth) / 100
-                                                 if first_depth else 0.0)
+            measured_move = cheat_measured_move(bh, entry, first_depth)
         else:
             measured_move = vcp_measured_move(bh, first_depth)
         target = entry + measured_move if measured_move == measured_move else entry + risk
@@ -1023,7 +1040,9 @@ class MinerviniSpecStrategy(Strategy):
         age); one the trend rule (VCP-03) then rejects is still drawn, as a failed setup saying why.
         Each is drawn from its most developed bar: the bar before the breakout when the VCP completed
         and broke out, else the last bar it was complete, else the bar that got furthest through
-        VCP-04 … VCP-11. Returns one dict per setup (see `_setup`)."""
+        VCP-04 … VCP-11 — except the base still in force on the last bar, which is judged on that bar
+        (as today's screen judges it). A base that triggered a cheat entry (MV-03 / MV-04, `cheat_cross`)
+        carries its latest one. Returns one dict per setup (see `_setup`)."""
         start = 2 * VCP.swing_k + VCP.prior_window
         dets = [None] * len(daily)
         for i in range(start, len(daily)):
@@ -1034,7 +1053,7 @@ class MinerviniSpecStrategy(Strategy):
             r = dets[i]
             if r["bh_date"] is None or not (r["ok"] or r["fail"] in self._VCP_RANK):
                 continue
-            b = bases.setdefault(r["bh_date"], {"best": i, "ok": [], "breakout": None})
+            b = bases.setdefault(r["bh_date"], {"best": i, "ok": [], "breakout": None, "cheat": None})
             if r["ok"]:
                 b["ok"].append(i)
             rank = 99 if r["ok"] else self._VCP_RANK[r["fail"]]
@@ -1049,11 +1068,21 @@ class MinerviniSpecStrategy(Strategy):
             if p and p["ok"] and close[i - 1] <= p["pivot"] < close[i] and p["bh_date"] in bases \
                     and bases[p["bh_date"]]["breakout"] is None:
                 bases[p["bh_date"]]["breakout"] = i
+        # MV-03 / MV-04: the latest cheat each base triggered, by the strategy's own test
+        for i in range(start + 1, len(daily)):
+            p = dets[i - 1]
+            if p and p["bh_date"] in bases:
+                z = cheat_cross(p, close[i - 1], close[i])
+                if z:
+                    bases[p["bh_date"]]["cheat"] = (i, z, p)
+        last = len(daily) - 1
+        live = dets[last]["bh_date"] if last >= start and dets[last]["bh_date"] in bases else None
         out = []
-        for b in bases.values():
+        for key, b in bases.items():
             bo = b["breakout"]
-            rep = bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
-            out.append(self._setup(daily, cfg, dets[rep], rep, bo))
+            now = key == live and bo is None   # still forming today: judge it as today's screen does
+            rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
+            out.append(self._setup(daily, cfg, dets[rep], rep, bo, b["cheat"], now))
         return out
 
     # the VCP rules in the order the detector applies them, the zone of the setup each belongs to,
@@ -1069,16 +1098,23 @@ class MinerviniSpecStrategy(Strategy):
                    "VCP-06": "pullbacks don't shrink", "VCP-07": "lower lows", "VCP-08": "not tight enough",
                    "VCP-09": "pivot too far below the high", "VCP-10": "no volume dry-up", "VCP-11": "volatility didn't contract"}
 
-    def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None) -> dict:
-        """One setup for the chart: a frame around it, and three zones — the uptrend into the base, the
-        base and its contractions, and (for a completed VCP) the entry — each with its own shapes, its
-        checklist rows and a writeup. The entry zone ILLUSTRATES where this strategy's own rules place
-        the trade (pivot_buy_stop, pivot_stop, vcp_measured_move, the exit constants); it is not a
-        backtest result, and the chart replaces it with a run's stored trade when one is selected.
+    # a correction inside the uptrend deeper than this is flagged on the chart (display only: it decides
+    # nothing, and the leading underscore keeps it out of the strategy's fingerprint)
+    _UPTREND_FLAG_PCT = 10.0
 
-        Returns {"from", "base_from", "to", "complete", "fail", "breakout", "title", "summary",
-        "frame": {from, to, top, bottom}, "zones": [{key, title, state, from, to, line, text, checks,
-        shapes}]}; shapes in the chart_anatomy schema."""
+    def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
+               cheat: tuple | None = None, live: bool = False) -> dict:
+        """One setup for the chart: a frame around it, and its zones — the uptrend into the base, the
+        base and its contractions, the pivot entry of a completed VCP, and the latest cheat entry
+        (`cheat`: (bar, MV03 | MV04, yesterday's detection)) — each with its own shapes, its checklist
+        rows and a writeup. The entry zones ILLUSTRATE where this strategy's own rules place the trade
+        (pivot_buy_stop, pivot_stop, vcp_measured_move, cheat_measured_move, the exit constants); they
+        are not backtest results, and the chart replaces them with a run's stored trade when one is
+        selected. `live`: the base is still forming, judged on the last bar.
+
+        Returns {"from", "base_from", "to", "kind" (vcp | cheat | fail), "complete", "fail", "breakout",
+        "live", "as_of", "title", "summary", "frame": {from, to, top, bottom}, "zones": [{key, title,
+        state, warn?, from, to, line, text, checks, shapes}]}; shapes in the chart_anatomy schema."""
         day = lambda i: str(daily.index[i].date())
         iso = lambda ts: str(pd.Timestamp(ts).date())
         px = lambda v: f"{v:,.2f}" if v >= 1 else f"{v:.4g}"   # a price as the chart's scale shows it
@@ -1093,16 +1129,22 @@ class MinerviniSpecStrategy(Strategy):
 
         # ---- the checklist rows (a rule after the failing one was never measured: the detector stops there)
         up_days = bh_i - int(daily.index.get_loc(r["prior_low_date"])) if r["prior_low"] else None
+        # one decimal, or two where one would hide which side of its limit a value falls (6.88% against
+        # a 6.888% limit reads "6.9", which looks like a failure)
+        near = lambda v, lim: abs(v - lim) < 0.1
+        pct = lambda v, lim: f"{v:.2f}" if near(v, lim) else f"{v:.1f}"
+        fine = bool(depths) and any(near(b, SHRINK * a) for a, b in zip(depths, depths[1:]))
+        dep = lambda x: f"{x:.2f}" if fine else f"{x:.1f}"
         values = {
-            "VCP-01": (f"+{r['prior_advance_pct']:.0f}% in {up_days} days" if up_days is not None else "—",
+            "VCP-01": (f"+{pct(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) if near(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) else format(r['prior_advance_pct'], '.0f')}% in {up_days} days" if up_days is not None else "—",
                        f"at least {PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} days"),
             "VCP-02": (f"{r['base_days']} days", f"{BASE_MIN_DAYS}–{BASE_MAX_DAYS} days"),
             "VCP-03": ("held" if fail != "VCP-03" else self._vcp_fail_why(r, daily, bh_i, rep),
                        "trend template on the high's bar, the 150/200-day structure after"),
             "VCP-04": (f"{len(depths)}" if depths else "—", f"{MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}"),
-            "VCP-05": (f"{depths[0]:.1f}%" if depths else "—", f"at most {MAX_FIRST_DEPTH_PCT:g}%"),
-            "VCP-06": (" → ".join(f"{x:.1f}" for x in depths) + "%" if depths else "—", f"each at most {SHRINK:g}× the last"),
-            "VCP-08": (f"{r['tight_range_pct']:.1f}%" if r["tight_range_pct"] is not None else "—", f"at most {TIGHT_PCT:g}%"),
+            "VCP-05": (f"{pct(depths[0], MAX_FIRST_DEPTH_PCT)}%" if depths else "—", f"at most {MAX_FIRST_DEPTH_PCT:g}%"),
+            "VCP-06": (" → ".join(dep(x) for x in depths) + "%" if depths else "—", f"each at most {SHRINK:g}× the last"),
+            "VCP-08": (f"{pct(r['tight_range_pct'], TIGHT_PCT)}%" if r["tight_range_pct"] is not None else "—", f"at most {TIGHT_PCT:g}%"),
             "VCP-09": (f"{(1 - r['pivot'] / bh) * 100:.1f}% under" if r["pivot"] else "—",
                        f"within {(1 - PIVOT_NEAR_HIGH) * 100:.0f}% of the high"),
             "VCP-10": (f"{r['dryup']:.2f}× normal" if r["dryup"] is not None else "—", f"at most {DRYUP_RATIO:g}×"),
@@ -1122,14 +1164,35 @@ class MinerviniSpecStrategy(Strategy):
             up_from = pd_
             trend = ("The trend template held on the high's bar, and the 150/200-day structure held through the base."
                      if fail != "VCP-03" else f"But the trend was not intact: {self._vcp_fail_why(r, daily, bh_i, rep)}.")
-            zones.append({"key": "uptrend", "title": "Uptrend", "state": zstate("uptrend"), "from": pd_, "to": bd,
-                          "line": f"+{r['prior_advance_pct']:.0f}% in {up_days} days",
+            up_shapes = [{"shape": "line", "from": pd_, "to": bd, "p0": pl, "p1": bh, "role": "uptrend",
+                          "arrow": True, "label": f"+{r['prior_advance_pct']:.0f}%"}]
+            up_checks, flag, warn, line = list(checks["uptrend"]), "", False, f"+{r['prior_advance_pct']:.0f}% in {up_days} days"
+            # VCP-01 measures from the window's lowest low, so a deep correction INSIDE the advance passes
+            # unseen: the arrow would draw straight through it. Flag it, and say what the run from it was.
+            seg = daily.iloc[daily.index.get_loc(r["prior_low_date"]): bh_i + 1]
+            peak = seg["high"].cummax()
+            dd = (peak - seg["low"]) / peak * 100
+            if len(dd) and float(dd.max()) > self._UPTREND_FLAG_PCT:
+                k = int(dd.to_numpy().argmax())
+                c_low, c_day = float(seg["low"].iloc[k]), seg.index[k]
+                c_peak = float(peak.iloc[k]); c_peak_day = seg["high"].iloc[: k + 1].idxmax()
+                since = (bh / c_low - 1) * 100
+                warn = True
+                line += f" · {dd.max():.0f}% dip inside"
+                flag = (f" Note: this advance includes a {dd.max():.1f}% correction, from {px(c_peak)} on "
+                        f"{iso(c_peak_day)} to {px(c_low)} on {iso(c_day)}. The rule measures from the lowest low "
+                        f"in the window, so it counts the whole move; the run from that correction low into the "
+                        f"base is +{since:.1f}%" + (f", under the {PRIOR_ADVANCE_PCT:g}% minimum." if since < PRIOR_ADVANCE_PCT else "."))
+                up_shapes.append({"shape": "dots", "role": "flag",
+                                  "points": [{"at": iso(c_day), "price": c_low, "label": f"−{dd.max():.0f}% dip"}]})
+                up_checks.append({"code": "note", "name": "Dip inside", "value": f"{dd.max():.1f}%, then +{since:.1f}%",
+                                  "limit": f"flagged above {self._UPTREND_FLAG_PCT:g}%", "state": "warn"})
+            zones.append({"key": "uptrend", "title": "Uptrend", "state": zstate("uptrend"), "warn": warn, "from": pd_, "to": bd,
+                          "line": line,
                           "text": (f"The stock rose {r['prior_advance_pct']:.0f}%, from {px(pl)} on {pd_} to {px(bh)} on {bd}, "
                                    f"in {up_days} sessions. A base only matters after a strong advance: at least "
-                                   f"{PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} sessions. {trend}"),
-                          "checks": checks["uptrend"],
-                          "shapes": [{"shape": "line", "from": pd_, "to": bd, "p0": pl, "p1": bh, "role": "uptrend",
-                                      "arrow": True, "label": f"+{r['prior_advance_pct']:.0f}%"}]})
+                                   f"{PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} sessions. {trend}{flag}"),
+                          "checks": up_checks, "shapes": up_shapes})
         else:
             up_from = bd
 
@@ -1147,7 +1210,7 @@ class MinerviniSpecStrategy(Strategy):
                 mark = " ✗" if k == culprit else ""
                 pts += [{"at": iso(hd), "price": float(h), "label": ""},
                         {"at": iso(ld), "price": float(low),
-                         "label": f"{k + 1}{mark} · −{depths[k]:.1f}%" if k < len(depths) else ""}]
+                         "label": f"{k + 1}{mark} · −{dep(depths[k])}%" if k < len(depths) else ""}]
             base_shapes.append({"shape": "path", "from": bd, "to": at, "points": pts, "role": "contraction", "label": ""})
         tight = ""
         if r["tight_from"] is not None and r["pivot"]:
@@ -1158,7 +1221,7 @@ class MinerviniSpecStrategy(Strategy):
                    if r["dryup"] is not None else "")
             tight = (f" The last stretch is tight: {r['tight_range_pct']:.1f}% from {px(tl)} to {px(pv)} (at most "
                      f"{TIGHT_PCT:g}%){dry}. Its high, {px(pv)}, is the pivot.")
-        pulls = (f" It pulled back {len(depths)} times: {' → '.join(f'{x:.1f}%' for x in depths)}. A VCP has "
+        pulls = (f" It pulled back {len(depths)} times: {' → '.join(dep(x) + '%' for x in depths)}. A VCP has "
                  f"{MIN_CONTRACTIONS}–{MAX_CONTRACTIONS} pullbacks, the first at most {MAX_FIRST_DEPTH_PCT:g}% deep, each "
                  f"at most {SHRINK:g}× the one before." if depths else "")
         verdict = "" if done or fail in (None, "VCP-03") else f" It failed here: {self._vcp_fail_why(r, daily, bh_i, rep)}."
@@ -1223,17 +1286,82 @@ class MinerviniSpecStrategy(Strategy):
             top = max(top, target or top, buy + BREAKEVEN_R * risk)
             bottom = min(bottom, stop)
 
-        # ---- the frame, its title and the verdict
+        # ---- the cheat entry (MV-03 / MV-04): bought on a close through a tight shelf while the base is
+        # still forming, stopped under the shelf — illustrated, like the pivot entry, from the strategy's rules
+        frame_to = entry_to if done else at
+        if cheat:
+            ci, cz, cp = cheat
+            third = "lower" if cz == MV03 else "middle"
+            entry = float(daily["close"].iloc[ci])          # confirmed by the close, as the strategy buys it
+            stop = pivot_stop(cp["cheat_low"], cfg.tick_size)
+            risk = entry - stop
+            cd = cp["depths"]
+            mm = cheat_measured_move(bh, entry, cd[0] if cd else None)
+            target, r_mult = entry + mm, (mm / risk if risk > 0 else None)
+            risk_pct = risk / entry * 100
+            c_from, c_to = day(ci), day(min(len(daily) - 1, ci + TIME_STOP_DAYS))
+            shapes = [{"shape": "box", "from": day(max(0, ci - CHEAT_SHELF_DAYS)), "to": day(ci - 1),
+                       "top": float(cp["cheat_pivot"]), "bottom": float(cp["cheat_low"]), "role": "tight",
+                       "label": f"shelf {cp['cheat_range_pct']:.1f}%"}]
+            levels = [("buy", entry, f"Cheat buy {px(entry)}"), ("stop", stop, f"Stop {px(stop)} (−{risk_pct:.1f}%)"),
+                      ("breakeven", entry + BREAKEVEN_R * risk, f"+{BREAKEVEN_R:g}R {px(entry + BREAKEVEN_R * risk)} · stop to breakeven"),
+                      ("target", target, f"Target {px(target)} · {r_mult:.1f}R" if r_mult else f"Target {px(target)}")]
+            shapes += [{"shape": "level", "from": c_from, "to": c_to, "price": v, "role": role, "label": lab,
+                        "dash": role != "buy"} for role, v, lab in levels]
+            ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
+            c_checks = [
+                {"code": cz, "name": "Shelf", "value": f"{cp['cheat_range_pct']:.1f}%, {third} third",
+                 "limit": f"at most {CHEAT_SHELF_PCT:g}% over {CHEAT_SHELF_DAYS} days, below the high", "state": "pass"},
+                {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
+                 "state": "pass" if ok_risk else "fail"},
+                {"code": "R:R", "name": "Reward / risk", "value": f"{r_mult:.1f}R" if r_mult else "—",
+                 "limit": f"at least {MIN_STRUCTURAL_R:g}R", "state": "pass" if ok_r else "fail"},
+            ]
+            skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
+                   ([] if ok_r else [f"it projects {r_mult:.1f}R, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"])
+            zones.append({"key": "cheat", "title": "Cheat entry", "state": "pass" if not skip else "fail",
+                          "from": c_from, "to": c_to, "illustration": True,
+                          "line": f"{third} third · buy {px(entry)} · stop {px(stop)}" + (f" · {r_mult:.1f}R" if r_mult else ""),
+                          "text": (f"Where this strategy's rules place a cheat entry: an illustration, not a recommendation "
+                                   f"and not a backtest result. A cheat is bought while the base is still forming, before "
+                                   f"the stock has recovered its old high, so its stop is close. On {c_from} the close "
+                                   f"cleared a tight shelf ({cp['cheat_range_pct']:.1f}% over {CHEAT_SHELF_DAYS} sessions, "
+                                   f"at most {CHEAT_SHELF_PCT:g}%) in the {third} third of the base: buy at that close, "
+                                   f"{px(entry)}. The stop goes {STOP_BUFFER_PCT:g}% under the shelf low, at {px(stop)}: "
+                                   f"a risk of {risk_pct:.1f}% (the strategy skips anything over {MAX_STOP_PCT:g}%). The "
+                                   f"objective is the old high, {px(bh)}, plus the base's measured move: {px(target)}"
+                                   + (f", {r_mult:.1f}R (it needs at least {MIN_STRUCTURAL_R:g}R, before any overhead "
+                                      f"supply caps it)." if r_mult else ".")
+                                   + f" Managing it is the same as any entry: the stop moves to breakeven at "
+                                     f"+{BREAKEVEN_R:g}R, a third is sold once the close is {STRENGTH_EXT_PCT:g}% above the "
+                                     f"50-day average, the rest on a close below the 50-day, and it is sold after "
+                                     f"{TIME_STOP_DAYS} sessions if it never reached +1R."
+                                   + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
+                          "checks": c_checks, "shapes": shapes})
+            top = max(top, target, entry + BREAKEVEN_R * risk, float(cp["cheat_pivot"]))
+            bottom = min(bottom, stop)
+            frame_to = max(frame_to, c_to)
+
+        # ---- the frame, its kind, title and verdict
+        kind = "vcp" if done else "cheat" if cheat else "fail"
+        today = " · today" if live else ""
         if done:
-            title = "VCP setup ✓" if all(z["state"] == "pass" for z in zones) else "VCP ✓ · trade skipped"
+            title = ("VCP setup ✓" if all(z["state"] == "pass" for z in zones) else "VCP ✓ · trade skipped") + today
             summary = (f"A complete VCP. Broke out on {day(bo)}." if bo is not None
                        else "A complete VCP, waiting for a close through the pivot.")
+        elif cheat:
+            ok = zones[-1]["state"] == "pass"
+            title = f"Cheat entry {'✓' if ok else '· trade skipped'}{today}"
+            summary = (f"Not a VCP ({self._VCP_FAILED.get(fail, fail)}), but on {day(cheat[0])} it cleared a tight "
+                       f"shelf in the {'lower' if cheat[1] == MV03 else 'middle'} third of the base: a cheat entry.")
         else:
-            title = f"✗ {self._VCP_FAILED.get(fail, fail)}"
+            title = f"✗ {self._VCP_FAILED.get(fail, fail)}{today}"
             summary = f"Not a VCP: {self._vcp_fail_why(r, daily, bh_i, rep)}."
-        frame_to = entry_to if done else at
-        return {"from": up_from, "base_from": bd, "to": frame_to, "complete": done, "fail": fail,
-                "breakout": day(bo) if bo is not None else None, "title": title, "summary": summary,
+        if live:
+            summary = f"Still forming — judged on today's bar, {at}. " + summary
+        return {"from": up_from, "base_from": bd, "to": frame_to, "kind": kind, "complete": done, "fail": fail,
+                "breakout": day(bo) if bo is not None else None, "live": live, "as_of": at,
+                "title": title, "summary": summary,
                 "frame": {"from": up_from, "to": frame_to, "top": top, "bottom": bottom}, "zones": zones}
 
     @staticmethod
@@ -1260,7 +1388,9 @@ class MinerviniSpecStrategy(Strategy):
             return f"the first pullback was {d[0]:.1f}% deep, more than {MAX_FIRST_DEPTH_PCT:g}%"
         if f == "VCP-06":
             k = next(k for k in range(1, len(d)) if d[k] > SHRINK * d[k - 1])
-            return f"pullback {k + 1} ({d[k]:.1f}%) was not smaller than {SHRINK:g}× pullback {k} ({d[k - 1]:.1f}%)"
+            f2 = ".2f" if abs(d[k] - SHRINK * d[k - 1]) < 0.1 else ".1f"
+            return (f"pullback {k + 1} ({d[k]:{f2}}%) was not smaller than {SHRINK:g}× pullback {k} "
+                    f"({d[k - 1]:{f2}}%, so at most {SHRINK * d[k - 1]:{f2}}%)")
         if f == "VCP-07":
             return "a pullback made a lower low than the one before"
         if f == "VCP-08":
