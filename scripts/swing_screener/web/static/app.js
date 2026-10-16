@@ -723,6 +723,10 @@ async function chartPage(alive, market, symbol, tf) {
   const shapeItems = (shapes, { dim: dimAll = false, withNotes = false, at = null, price = null, roles = {} } = {}) => shapes.map((s) => {
     const dim = dimAll || !!s.faint;
     const col = dimAll ? "#4b5063" : roles[s.role] || ROLE[s.role] || ROLE.level;
+    // point markers carry their own dates, so they come before the anchor lookup (which they lack)
+    if (s.shape === "dots") return dim ? [] : (s.points || []).map((q) => ({ t: tsOf(q.at), p: q.price, label: q.label }))
+      .filter((q) => q.t != null).flatMap((q) => [{ type: "dot", pts: [{ t: q.t, p: q.p }], color: col },
+        ...(q.label ? [{ type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }] : [])]);
     const t1 = tsOf(s.to || s.at || at); if (t1 == null) return null;
     const i1 = idxOf(s.to || s.at || at);
     const t0 = s.from ? tsOf(s.from) : s.bars && i1 >= 0 ? Date.parse(times[Math.max(0, i1 - s.bars)] + "T00:00:00Z") : t1;
@@ -746,9 +750,6 @@ async function chartPage(alive, market, symbol, tf) {
           { type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }])),
       ];
     }
-    if (s.shape === "dots") return dim ? [] : (s.points || []).map((q) => ({ t: tsOf(q.at), p: q.price, label: q.label }))
-      .filter((q) => q.t != null).flatMap((q) => [{ type: "dot", pts: [{ t: q.t, p: q.p }], color: col },
-        ...(q.label ? [{ type: "text", pts: [{ t: q.t, p: q.p }], color: col, size: 11, text: q.label }] : [])]);
     if (s.shape === "note" && withNotes && s.text) {
       // the text box is pinned to the pane's top strip (pts[1].f = fraction of pane height),
       // so the note never covers the bars it explains; the leader still drops to the anchor

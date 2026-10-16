@@ -520,7 +520,8 @@ const Studies = (() => {
               if (n > 0)   // a faint divider where each zone starts
                 shapes.push({ shape: "line", from: z.from, to: z.from, p0: f.top, p1: f.bottom, role: "dim", dash: true });
               const st = traded && isEntry(z) ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
-              shapes.push({ shape: "text", at: z.from, price: f.bottom, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
+              // captions just inside the frame's top edge: below it, the setup lane would cover them
+              shapes.push({ shape: "text", at: z.from, price: f.top, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
                 label: `${NUM[n]} ${z.title} ${ICON[st]}` });
               if (isEntry(z) && traded) return;   // the run's own trade overlay draws the real levels
               // a failed setup's contraction line takes its grey, so a real VCP stands out

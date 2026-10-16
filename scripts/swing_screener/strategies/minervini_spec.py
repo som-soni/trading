@@ -1210,7 +1210,8 @@ class MinerviniSpecStrategy(Strategy):
                 mark = " ✗" if k == culprit else ""
                 pts += [{"at": iso(hd), "price": float(h), "label": ""},
                         {"at": iso(ld), "price": float(low),
-                         "label": f"{k + 1}{mark} · −{dep(depths[k])}%" if k < len(depths) else ""}]
+                         # short, since lows sit close together: the number and depth, ✗ on the culprit
+                         "label": f"{k + 1}{mark} −{dep(depths[k])}" if k < len(depths) else ""}]
             base_shapes.append({"shape": "path", "from": bd, "to": at, "points": pts, "role": "contraction", "label": ""})
         tight = ""
         if r["tight_from"] is not None and r["pivot"]:
