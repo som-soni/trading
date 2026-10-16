@@ -48,16 +48,42 @@ Caveat on the one positive: +0.86 over 474 trades, in a book whose top 10 trades
 P&L, is not distinguishable from noise. The honest reading is **no strategy here has demonstrated
 selection skill**, rather than "minervini India has a small edge".
 
-## 3. The universe has no failures in it at all
+## 3. Survivorship: real, but far smaller than a terminated-series count suggests
+
+*Corrected 2026-10-17. The first version of this section said the universe contained no failures
+at all. That was wrong, and the error was reading one measurement as if it answered a different
+question.*
+
+No price series ends early:
 
 | market | symbols | history starts ≤2010-06-30 | history STOPS >180d before the end |
 |---|---:|---:|---:|
-| India | 3,465 | 946 | **0 (0.0%)** |
+| India | 3,465 | 946 | 0 (0.0%) |
 | US | 5,438 | 2,428 | 8 (0.1%) |
 
-Not partial survivorship — **total**. No company in the Indian universe failed, was suspended or
-was acquired during a 16-year window. Every backtest above, and every momentum result below, is
-run on a tape where nothing died.
+But "no series ends" is not "nothing failed". **Indian stocks that collapse mostly keep trading
+rather than delisting**, so the tape carries the whole collapse:
+
+| of the pre-2012 cohort (1,046 names) | down ≥50% | ≥75% | ≥90% | ≥95% | ≥99% |
+|---|---:|---:|---:|---:|---:|
+| share, peak to last close | 47.4% | 23.8% | **12.0%** | 6.8% | **2.0%** |
+
+RCOM (₹930 → ₹0.85), EDUCOMP (₹1,106 → ₹0.95), FEL (₹773 → ₹0.35) and SKIL (₹2,010 → ₹1.06) are
+all present, with every bar of the way down. A ranking strategy would have dropped them long
+before the bottom, which is exactly the point: **the drawdown that would have hurt a momentum book
+is in the data.**
+
+What is genuinely missing is narrower:
+
+- **Fully delisted companies.** Yahoo deletes the ticker, so the history is unrecoverable from
+  this source — DHFL, SINTEX, PUNJLLOYD and VIDEOIND all return nothing, while JETAIRWAYS, RCOM,
+  EDUCOMP and ABAN still return full history.
+- **Acquired companies**, which usually exit at a premium. Their absence biases measured returns
+  **downward**, not upward — the opposite direction to the delisting gap.
+
+So the two missing cohorts push in opposite directions, and the larger, more damaging one
+(collapse) is already represented. The honest statement is that survivorship inflates these
+results by an unknown but **probably modest** amount, not that the tape is a fantasy.
 
 ## 4. The momentum baseline, re-tested against something that does include failures
 
@@ -80,9 +106,11 @@ So the +5.48 "excess" at 50bps decomposes roughly as:
 - **~3.7 points is momentum on top of that**, and that 3.7 is the part measured on a tape with
   zero failures, against an index that has them
 
-Published delisting-bias estimates for small-cap portfolios are of the same order as that 3.7, so
-**the defensible alpha is somewhere between zero and +3.7 points**, and the lower end cannot be
-ruled out with the data here.
+Published delisting-bias estimates for small-cap portfolios are of the same order as that 3.7.
+But see §3 as corrected: the collapses are in the tape, and only outright delistings are missing,
+so the realistic discount is smaller than a full delisting-bias adjustment. **The defensible alpha
+is most of +3.7, not a coin flip between that and zero** — which is a materially different
+conclusion from the one this document first drew.
 
 Two things do survive the control, because survivorship affects the level more than the shape:
 
@@ -105,6 +133,13 @@ that makes it look robust out of sample.
 
 ## 6. What would settle it
 
-Point-in-time constituent lists, which would let a backtest hold names that later died. Nothing
-short of that converts the 0-to-3.7 range into a number. Until then, treat the momentum baseline
-as "plausibly a small edge with better drawdown than small-cap beta", not as +17 over the Nifty 500.
+Point-in-time constituent lists plus prices for delisted names. The second half is the hard part:
+Yahoo deletes delisted tickers outright, so the cheap path is closed and the history would have to
+come from NSE's own archives or a paid vendor.
+
+That project is worth less than this document first implied. The failures that would have hurt a
+momentum book — the 12% of the cohort down 90%+ — are already in the tape; what is missing is the
+final removal of names a ranking strategy had long since sold, plus acquisitions that bias the
+other way. Treat the momentum result as "a small edge with better drawdown than small-cap beta,
+inflated by an unknown but probably modest amount", and spend the effort on walk-forward
+robustness and cost realism before on reconstructing delisted history.

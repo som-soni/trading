@@ -666,11 +666,10 @@ VS_DOC = {
         "and was the ONLY one whose excess held across both halves of the window: +4.41 before 2019 and +4.49 "
         "after. Every other variant was a post-2019 story -- plain momentum at the same size scored +2.84 then "
         "+9.36. Sharpe 0.84 against 0.71; max drawdown -51.0% against the control's -60.8%. "
-        "Read it with three discounts. Picking the best of 18 is itself a selection effect, so the honest "
-        "expectation is below +4.41. The universe contains no failures at all (0 of 3,465 Indian symbols have "
-        "history ending early), and published delisting bias for small-cap portfolios is the same order as this "
-        "excess. And roughly 1.8 points of any excess over the Nifty 500 is small-cap segment beta, which is why "
-        "the comparison here is against small caps instead. Not yet run in the US."
+        "Read it with two discounts. Picking the best of 18 is itself a selection effect, so the honest "
+        "expectation is below +4.41. And roughly 1.8 points of any excess over the Nifty 500 is small-cap segment "
+        "beta, which is why the comparison here is against small caps instead. Survivorship is a third and smaller "
+        "discount than it first appeared -- see the caveat. Not yet run in the US."
     ),
     "thesis": "Momentum pays, but raw momentum ranks the most volatile names highest, so it buys the stocks most "
               "likely to give the gain back. Dividing by realised volatility asks which stocks rose most PER UNIT "
@@ -687,9 +686,13 @@ VS_DOC = {
         "name that stops being strong is replaced rather than stopped out.",
     ),
     "caveats": (
-        "**Survivorship is total, not partial.** No company in the Indian universe failed, was suspended or was "
-        "acquired in 16 years, because the universe is today's listed names. This flatters the result and cannot "
-        "be fixed without point-in-time constituent lists.",
+        "**Survivorship inflates this by an unknown but probably modest amount.** No price series in the universe "
+        "ends early, but that is not the same as nothing failing: Indian stocks that collapse mostly keep trading, "
+        "so the tape carries the whole fall -- 12% of the pre-2012 cohort is down 90%+ from its peak and 2% down "
+        "99%+, RCOM and EDUCOMP among them, every bar of the way. What is missing is outright DELISTINGS, whose "
+        "history Yahoo deletes, and acquisitions, which usually exit at a premium and so bias the measured return "
+        "the other way. A ranking strategy sells a collapsing name long before the bottom, so the part that would "
+        "have hurt it most is the part that is present.",
         "**Costs decide it.** At 25bps the excess over small caps is +6.05, at {cost_bps:g}bps +3.66, at 100bps it "
         "is gone. {cost_bps:g}bps is the defensible assumption for monthly rebalancing of small caps and is the "
         "default here; a flat per-trade figure is still a simplification of a real spread.",
