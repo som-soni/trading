@@ -1007,9 +1007,9 @@ def trend_template_live(market: str, symbol: str, date: str | None = None):
     passing run carries its price extremes so the chart can box it; each failing run carries the first
     criterion that refused, which is what makes a stage reviewable.
 
-    `bases` are the VCP detector's bases over the same bars (`MinerviniSpecStrategy.bases_live`: the
-    uptrend into each, the base, its contractions, tight area, pivot and breakout, with a note saying
-    why each is drawn), so the indicator shows the structure inside each Stage-2 stretch too.
+    `bases` are the VCP setups over the same bars (`MinerviniSpecStrategy.bases_live`): each a frame
+    with three zones — the uptrend, the base and its contractions, and for a completed VCP the entry the
+    strategy's own rules would place (an illustration) — each zone with its checklist and writeup.
 
     Exploration only. What a backtest actually screened comes from its stored signals, not from here:
     current code may judge differently from the code that ran.
@@ -1055,7 +1055,7 @@ def trend_template_live(market: str, symbol: str, date: str | None = None):
     out = {"as_of": as_of, "spec_id": strat.spec_id(), "symbol": symbol, "market": market,
            "bars": int(len(daily)), "passing": passing,
            "pct": round(100.0 * passing / max(len(daily), 1), 1),
-           "runs": runs, "bases": strat.bases_live(daily),
+           "runs": runs, "bases": strat.bases_live(daily, cfg),
            "note": ("in Stage 2 now" if runs and runs[-1]["ok"]
                     else f"not Stage 2: {runs[-1]['why']}" if runs else "no bars")}
     if len(_tt_runs) > 64:

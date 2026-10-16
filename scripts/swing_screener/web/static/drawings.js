@@ -210,6 +210,12 @@ const Drawings = (() => {
         // a labelled trend line is how an annotation names a level (shape "level" in app.js);
         // a user-drawn one carries no text, so the guard leaves it exactly as it was
         case "trend": ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          if (it.arrow) {   // an annotation's direction: a head at the second point
+            const ang = Math.atan2(b.y - a.y, b.x - a.x), L = 10;
+            ctx.setLineDash([]); ctx.fillStyle = it.color; ctx.beginPath(); ctx.moveTo(b.x, b.y);
+            ctx.lineTo(b.x - L * Math.cos(ang - 0.4), b.y - L * Math.sin(ang - 0.4));
+            ctx.lineTo(b.x - L * Math.cos(ang + 0.4), b.y - L * Math.sin(ang + 0.4)); ctx.closePath(); ctx.fill();
+          }
           if (it.text) label(ctx, it.text, a.x, a.y - 10, it.color, "left"); break;
         case "brush": case "highlighter": {
           const hl = it.type === "highlighter";
@@ -236,6 +242,18 @@ const Drawings = (() => {
         case "crossline": ctx.moveTo(a.x, 0); ctx.lineTo(a.x, h); ctx.moveTo(0, a.y); ctx.lineTo(w, a.y); ctx.stroke();
           label(ctx, fmtP(it.pts[0].p), w - 4, a.y, it.color, "right"); break;
         case "rect": {
+          if (it.bg) {   // a background band (an annotation's): the full pane height, a tint without an outline
+            ctx.fillStyle = it.color + "1c"; ctx.fillRect(Math.min(a.x, b.x), 0, Math.abs(a.x - b.x), h); break;
+          }
+          if (it.shade) {   // a zone (an annotation's): a tint without an outline
+            ctx.fillStyle = it.color + "16"; ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(a.x - b.x), Math.abs(a.y - b.y)); break;
+          }
+          if (it.frame) {   // a frame around a group of annotations: an outline, a header tab, no fill
+            const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+            ctx.strokeRect(x, y, Math.abs(a.x - b.x), Math.abs(a.y - b.y));
+            if (it.text) label(ctx, it.text, x, y - 9, it.color, "left");
+            break;
+          }
           const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), rw = Math.abs(a.x - b.x), rh = Math.abs(a.y - b.y);
           // a lighter wash for an annotation than for a user's own box, so the chart
           // reads as price-with-notes rather than price-under-paint

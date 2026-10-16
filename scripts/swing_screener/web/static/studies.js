@@ -359,85 +359,256 @@ const Studies = (() => {
         }
         return { series: [], note: "detecting…", setVisible: (v) => { on = v; paint(); } };
       } },
-    // Stage 2 stretches from the trend template, and the bases inside them from the VCP detector
-    // (/api/trend-template: minervini_spec's trend_template_row and bases_live — the strategy's own
-    // code and its own wording, never a second copy here).
+    // Stage 2 stretches from the trend template, and the VCP setups inside them (/api/trend-template:
+    // minervini_spec's trend_template_row and bases_live — the strategy's own code, levels and words,
+    // never a second copy here). Each setup is one frame with three zones: the uptrend, the base, and
+    // for a completed VCP the entry its rules would place (an illustration, replaced by the selected
+    // backtest run's real trade when there is one).
     trend_template: { name: "Minervini trend template & VCP (live)", short: "Trend template", cat: "Screener", overlay: true, custom: true,
-      label: (p) => `Trend template${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · bases"}${p.minBars > 1 ? ` · ${p.minBars}+ bars` : ""}`,
-      params: { minBars: 10, label: { type: "select", def: "Bars", options: ["Bars", "Dates", "None"] },
-        gaps: { type: "select", def: "After labelled stretches", options: ["After labelled stretches", "All", "None"] },
-        stage2: { type: "select", def: "Show", options: ["Show", "Hide"] },
+      label: (p) => `Trend template${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
+      params: { stage2: { type: "select", def: "Background", options: ["Background", "Hide"] },
         bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
-        notes: { type: "select", def: "Latest base in view", options: ["Latest base in view", "None"] } },
+        card: { type: "select", def: "Show", options: ["Show", "Hide"] },
+        gaps: { type: "select", def: "None", options: ["None", "After long stretches", "All"] }, minBars: 10 },
+      // uptrend is purple, not green: green is already Stage 2, and the two must never be mistaken
       plots: [{ k: "pass", t: "In Stage 2", c: "#26a69a" }, { k: "broke", t: "What ended it", c: "#ef5350" },
-        { k: "uptrend", t: "Uptrend into a base", c: "#66bb6a" }, { k: "base", t: "Base · VCP", c: "#2962ff" },
-        { k: "miss", t: "Base · not a VCP", c: "#9e9e9e" }, { k: "tight", t: "Tight area & pivot", c: "#ff9800" }],
+        { k: "uptrend", t: "Uptrend", c: "#ab47bc" }, { k: "base", t: "Base · VCP", c: "#2962ff" },
+        { k: "vcp", t: "VCP setup", c: "#22c55e" }, { k: "miss", t: "Failed setup", c: "#f43f5e" },
+        { k: "tight", t: "Tight area", c: "#ff9800" },
+        { k: "buy", t: "Buy", c: "#26a69a" }, { k: "stop", t: "Stop", c: "#ef5350" }, { k: "target", t: "Target", c: "#4caf50" }],
       draw({ chart, times, p, col, tf, ctx, id }) {
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
-        let on = true, stage = [], bases = [], noted = null;
-        // the description card: why the latest base in view is drawn the way it is, rule by rule, in the
-        // strategy's own words (its chart note), each paragraph keyed to its box by a colour swatch
+        let on = true, stage = [], setups = [], focus = null, hovered = null, pinned = null;
+        const DIM = "#5d6170", NUM = ["①", "②", "③"];
+        const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
+        let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
+        const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+        const ICON = { pass: "✓", fail: "✗", skip: "·" };
+        // the selected run's trade on a setup, if it traded one: its record replaces the illustrated entry
+        const tradeOf = (s) => (ctx.trades?.() || []).find((t) => t.entry_date >= s.base_from && t.entry_date <= s.to) || null;
+
+        // ---- the card: the focused setup's verdict, one row per zone, the open zone's writeup and checks
         const card = document.createElement("div"); card.className = "tt-card"; card.hidden = true;
         ctx.chartEl?.append(card);
-        let open = true; try { open = localStorage.getItem("ttCardOpen") !== "0"; } catch {}
+        // Where the card goes: wherever the viewer dragged it (remembered), else the side of the setup with
+        // more room, so it covers as little of the setup as it can.
+        let moved = null; try { moved = JSON.parse(store("ttCardPos") || "null"); } catch {}
+        const place = (s) => {
+          const el = ctx.chartEl, W = el.clientWidth, H = el.clientHeight;
+          if (moved) {
+            card.style.right = ""; card.style.left = `${Math.max(0, Math.min(W - card.offsetWidth, moved.x * W))}px`;
+            card.style.top = `${Math.max(0, Math.min(H - card.offsetHeight, moved.y * H))}px`; return;
+          }
+          const ts = chart.timeScale(), w = ts.width();
+          const px = (d) => ts.timeToCoordinate(times.find((t) => t >= d) || times.at(-1));
+          const x0 = s ? px(s.from) ?? 0 : 0, x1 = s ? px(s.to) ?? w : w;
+          const left = x0 > w - x1;   // more room before the setup than after it
+          card.style.right = left ? "" : `${chart.priceScale("right").width() + 8}px`;
+          card.style.left = left ? `${(chart.priceScale("left").width() || 0) + 8}px` : "";
+          card.style.top = left ? `${(el.querySelector(".legend")?.offsetHeight || 0) + 12}px` : "8px";
+        };
+        let drag = null;
+        card.addEventListener("mousedown", (e) => {
+          e.stopPropagation();   // not a chart drag or a drawing click
+          if (!e.target.closest(".tt-h") || e.target.closest("button")) return;
+          const r = card.getBoundingClientRect();
+          drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, x: e.clientX, y: e.clientY, moved: false };
+        });
+        const onMove = (e) => {
+          if (!drag) return;
+          if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;
+          drag.moved = true;
+          const host = ctx.chartEl.getBoundingClientRect();
+          moved = { x: (e.clientX - drag.dx - host.left) / host.width, y: (e.clientY - drag.dy - host.top) / host.height };
+          place(focus);
+        };
+        const onUp = () => {
+          if (!drag) return;
+          if (drag.moved) { store("ttCardPos", JSON.stringify(moved)); card.dataset.dragged = "1"; }
+          drag = null;
+        };
+        window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+        new MutationObserver(() => { if (!card.isConnected) { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); } })
+          .observe(ctx.chartEl, { childList: true });
         card.onclick = (e) => {
-          if (!e.target.closest(".tt-h")) return;
-          open = !open; try { localStorage.setItem("ttCardOpen", open ? "1" : "0"); } catch {}
-          renderCard();
+          const z = e.target.closest("[data-z]"), act = e.target.closest("[data-a]");
+          if (card.dataset.dragged) { delete card.dataset.dragged; return; }   // the end of a drag, not a click
+          if (act?.dataset.a === "prev" || act?.dataset.a === "next") {
+            const k = setups.indexOf(focus) + (act.dataset.a === "next" ? 1 : -1);
+            if (setups[k]) { pinned = setups[k]; reveal(pinned); paint(); }
+            return;
+          }
+          if (act?.dataset.a === "dock") { moved = null; store("ttCardPos", "null"); place(focus); return; }
+          if (z) { zoneOpen = zoneOpen === z.dataset.z ? "" : z.dataset.z; store("ttZone", zoneOpen); renderCard(); return; }
+          if (e.target.closest(".tt-kh")) { keyOpen = !keyOpen; store("ttKeyOpen", keyOpen ? "1" : "0"); renderCard(); return; }
+          if (e.target.closest(".tt-h")) { open = !open; store("ttCardOpen", open ? "1" : "0"); renderCard(); }
         };
-        card.addEventListener("mousedown", (e) => e.stopPropagation());   // not a chart drag or a drawing click
-        const esc = (x) => String(x).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+        const key = () => [
+          ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],
+          ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],
+          ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
+          ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
+          ["shade", col("base"), "② Base", "the pullbacks, numbered, with their depths; a VCP's get smaller. ✗ marks the one that broke the rule."],
+          ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
+          ["line", col("buy"), "③ Entry", "buy above the pivot, stop (red) under the tight area, +2R and target (dotted). An illustration of the rules."],
+          ["tint", col("pass"), "Green background", "the stock is in Stage 2."],
+        ].map(([kind, c, name, what]) => `<div class="tt-k"><i class="mk ${kind}" style="--c:${c}"></i><span><b>${name}</b> — ${what}</span></div>`).join("");
+        const checksHtml = (cs) => `<table class="tt-checks">${cs.map((c) => `<tr class="${c.state}" title="${esc(c.code)}">
+          <td class="ic">${ICON[c.state]}</td><td>${esc(c.name)}</td><td class="val">${c.state === "skip" ? "not reached" : esc(c.value)}</td></tr>
+          ${c.state === "fail" ? `<tr class="lim"><td></td><td colspan="2">needs ${esc(c.limit)}</td></tr>` : ""}`).join("")}</table>`;
+        const zoneHtml = (s, z, n) => {
+          const t = z.key === "entry" ? tradeOf(s) : null;
+          const line = t ? `traded: ${t.r_multiple != null ? `${(+t.r_multiple).toFixed(1)}R` : "open"}` : z.line;
+          const state = t ? "pass" : z.state;
+          let body = "";
+          if (zoneOpen === z.key) {
+            body = t
+              ? `<p class="tt-x">The selected backtest run traded this setup: bought at ${esc((+t.entry_price).toFixed(2))} on ${esc(t.entry_date)}`
+                + (t.exit_date ? `, sold at ${esc((+t.exit_price).toFixed(2))} on ${esc(t.exit_date)} (${esc(t.exit_reason || "exit")})` : ", still open")
+                + `${t.r_multiple != null ? `, ${(+t.r_multiple).toFixed(2)}R` : ""}. Its own levels are drawn from the run's record.</p>`
+              : `${z.illustration ? `<div class="tt-tag">Illustration of the rules — not a trade</div>` : ""}<p class="tt-x">${esc(z.text)}</p>${checksHtml(z.checks)}`;
+          }
+          return `<div class="tt-z ${zoneOpen === z.key ? "on" : ""}"><div class="tt-zh" data-z="${z.key}"><span class="n">${NUM[n]}</span>
+            <b>${esc(z.title)}</b><span class="st ${state}">${ICON[state]}</span><span class="ln">${esc(line)}</span></div>${body}</div>`;
+        };
         const renderCard = () => {
-          const note = noted && noted.shapes.find((x) => x.shape === "note");
-          card.hidden = !on || !note;
+          card.hidden = !on || p.card === "Hide" || !setups.length;
           if (card.hidden) return;
-          const b = noted, swatch = { UPTREND: col("uptrend"), BASE: col(b.complete ? "base" : "miss"),
-            CONTRACTIONS: col(b.complete ? "base" : "miss"), "TIGHT AREA": col("tight") };
-          const verdict = b.complete ? (b.breakout ? `VCP · broke out ${b.breakout}` : "VCP complete") : `not a VCP · ${b.fail}`;
-          card.style.right = `${chart.priceScale("right").width() + 8}px`;
-          card.innerHTML = `<div class="tt-h"><b>Base from ${esc(b.base_from)}</b><span class="${b.complete ? "ok" : "no"}">${esc(verdict)}</span><i>${open ? "▾" : "▸"}</i></div>`
-            + (open ? note.text.split("\n\n").map((para) => {
-              const m = para.match(/^([A-Z][A-Z ]+):\s*/), head = m && m[1];
-              return head ? `<p><i class="sw" style="background:${swatch[head] || "transparent"}"></i><b>${esc(head.charAt(0) + head.slice(1).toLowerCase())}</b> ${esc(para.slice(m[0].length))}</p>`
-                : `<p class="v"><b>${esc(para)}</b></p>`;
-            }).join("") : "");
+          const s = focus;
+          place(s);
+          const keyHtml = `<div class="tt-kh">${keyOpen ? "▾" : "▸"} How to read the chart</div>${keyOpen ? `<div class="tt-key">${key()}</div>` : ""}`;
+          if (!s) { card.innerHTML = `<div class="tt-h"><b>No setup in view</b><i>${open ? "▾" : "▸"}</i></div>${open ? keyHtml : ""}`; return; }
+          const cls = s.complete ? "ok" : "no", k = setups.indexOf(s);
+          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${col(s.complete ? "vcp" : "miss")}">${esc(s.title)}</span>
+              <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
+              <i>${open ? "▾" : "▸"}</i></div>`
+            + (open ? `<div class="tt-date">${esc(s.from)} → ${esc(s.to)}</div><div class="tt-sum">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}
+              <div class="tt-sub">Pick a setup from the lane at the bottom of the chart, or step with ‹ ›. Drag this header to move the card${moved ? ` · <a data-a="dock">put it back</a>` : ""}.</div>${keyHtml}` : "");
         };
-        // the description box follows the view: the latest base starting at or before its right edge
+
+        // ---- which setup: pinned, else under the mouse, else the latest one in view
         const edge = () => {
           const r = chart.timeScale().getVisibleLogicalRange();
           return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : times.at(-1);
         };
-        const pick = () => (p.notes === "None" ? null : [...bases].reverse().find((b) => b.base_from <= edge()) || null);
+        const latest = () => [...setups].reverse().find((s) => s.from <= edge()) || null;
+        const setupAt = (t) => setups.filter((s) => s.from <= t && t <= s.to)
+          .sort((a, b) => (Date.parse(a.to) - Date.parse(a.from)) - (Date.parse(b.to) - Date.parse(b.from)))[0] || null;
+        const timeOf = (q) => (typeof q.time === "string" ? q.time
+          : q.point && q.logical != null ? times[Math.min(times.length - 1, Math.max(0, Math.round(q.logical)))] : null);
+
         const paint = () => {
-          noted = pick();
-          // a near miss's contraction line takes the grey, so a real VCP stands out
-          const shapes = bases.flatMap((b) => b.shapes.filter((x) => x.shape !== "note")
-            .map((x) => (!b.complete && x.role === "contraction" ? { ...x, role: "nearmiss" } : x)));
+          focus = hovered || pinned || latest();
+          const shapes = [];
+          // Only the selected setup is drawn: overlapping frames cannot be told apart, so every other
+          // setup lives in the lane instead, where each has its own row and its own click target.
+          for (const s of setups) {
+            const f = s.frame;
+            if (s !== focus) continue;
+            const role = s.complete ? "vcp" : "miss";
+            shapes.push({ shape: "box", frame: true, dash: !s.complete, role, from: f.from, to: f.to, top: f.top, bottom: f.bottom, label: s.title });
+            const traded = tradeOf(s);
+            s.zones.forEach((z, n) => {
+              if (n > 0)   // a faint divider where each zone starts
+                shapes.push({ shape: "line", from: z.from, to: z.from, p0: f.top, p1: f.bottom, role: "dim", dash: true });
+              shapes.push({ shape: "text", at: z.from, price: f.bottom, role: z.state === "fail" ? "stop" : "dim",
+                label: `${NUM[n]} ${z.title} ${ICON[traded && z.key === "entry" ? "pass" : z.state]}` });
+              if (z.key === "entry" && traded) return;   // the run's own trade overlay draws the real levels
+              // a failed setup's contraction line takes its grey, so a real VCP stands out
+              shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" } : x)));
+            });
+          }
           ctx.annotate(id, on ? stage.concat(shapes) : [], { stage2: col("pass"), broke: col("broke"), uptrend: col("uptrend"),
-            base: col("base"), contraction: col("base"), nearmiss: col("miss"), tight: col("tight"), pivot: col("tight") });
+            base: col("base"), contraction: col("base"), vcp: col("vcp"), miss: col("miss"), failpath: DIM, tight: col("tight"), buy: col("buy"),
+            stop: col("stop"), breakeven: DIM, target: col("target"), dim: DIM });
           renderCard();
+          lane.mark();
         };
-        let timer = null;
+        let timer = null, raf = 0;
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
           clearTimeout(timer);
-          timer = setTimeout(() => { if (bases.length && pick() !== noted) { noted = pick(); renderCard(); } }, 150);
+          timer = setTimeout(() => { if (setups.length && !pinned && !hovered && latest() !== focus) paint(); }, 150);
         });
+        // A click on the chart selects a setup covering that bar; clicking again where several overlap steps
+        // to the next of them. Inside the selected setup it opens the zone clicked. Empty space changes nothing.
+        chart.subscribeClick((q) => {
+          if (!setups.length) return;
+          const t = timeOf(q); if (!t) return;
+          const here = setups.filter((s) => s.from <= t && t <= s.to);
+          if (!here.length) return;
+          const k = here.indexOf(focus);
+          const s = k >= 0 && pinned === focus ? (here.length > 1 ? here[(k + 1) % here.length] : focus) : here[0];
+          pinned = s;
+          const z = [...s.zones].reverse().find((x) => x.from <= t);
+          if (z) { zoneOpen = z.key; store("ttZone", zoneOpen); }
+          paint();
+        });
+        // frame a setup stepped to from the card in the left ~60% of the chart, so the card (which goes to
+        // the roomier side) sits clear of it on the right
+        const reveal = (s) => {
+          const ts = chart.timeScale();
+          const i0 = times.findIndex((t) => t >= s.from), i1 = times.findIndex((t) => t >= s.to);
+          const a = i0 < 0 ? times.length - 1 : i0, b = i1 < 0 ? times.length - 1 : i1;
+          const span = Math.max(40, (b - a + 1) / 0.58), from = a - span * 0.04;
+          ts.setVisibleLogicalRange({ from, to: from + span });
+        };
+
+        // ---- the setup lane: one pill per setup along the bottom of the price pane, stacked where they overlap
+        const lane = (() => {
+          const el = document.createElement("div"); el.className = "tt-lane";
+          ctx.chartEl?.append(el);
+          // select on press, not click: hovering re-renders the lane, and a click needs the same element
+          // under the mouse at press and release
+          el.addEventListener("mousedown", (e) => {
+            e.stopPropagation();
+            const b = e.target.closest(".tt-pill"); if (!b || e.button !== 0) return;
+            e.preventDefault();
+            pinned = setups[+b.dataset.i]; hovered = null; paint();
+          });
+          el.addEventListener("mouseover", (e) => {
+            const b = e.target.closest(".tt-pill"); const s = b ? setups[+b.dataset.i] : null;
+            if (s && s !== hovered) { hovered = s; paint(); }
+          });
+          el.addEventListener("mouseleave", () => { if (hovered) { hovered = null; paint(); } });
+          const render = () => {
+            el.hidden = !on || !setups.length;
+            if (el.hidden) return;
+            const ts = chart.timeScale(), w = ts.width(), left = chart.priceScale("left").width() || 0;
+            const pane = chart.panes()[0], H = pane ? pane.getHeight() : ctx.chartEl.clientHeight;
+            const xOf = (d) => { const i = times.findIndex((t) => t >= d); return ts.logicalToCoordinate(i < 0 ? times.length - 1 : i); };
+            const rows = [];   // each row's right edge, for stacking
+            const pills = [];
+            setups.forEach((s, i) => {
+              let x0 = xOf(s.from), x1 = xOf(s.to);
+              if (x0 == null || x1 == null || x1 < 0 || x0 > w) return;
+              x0 = Math.max(0, x0); x1 = Math.min(w, Math.max(x1, x0 + 8));
+              let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
+              rows[r] = x1;
+              const sel = s === focus, txt = x1 - x0 > 46 ? (s.complete ? "✓ VCP" : "✗ " + (s.title.replace(/^✗ /, ""))) : "";
+              pills.push(`<button class="tt-pill ${s.complete ? "ok" : "no"} ${sel ? "sel" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}"
+                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${col(s.complete ? "vcp" : "miss")}">${esc(txt)}</button>`);
+            });
+            el.innerHTML = pills.join("");
+          };
+          // the selection changed, not the view: restyle the pills in place, never rebuild them — a pill
+          // replaced under the mouse loses the press that was meant for it
+          const mark = () => el.querySelectorAll(".tt-pill").forEach((b) => b.classList.toggle("sel", setups[+b.dataset.i] === focus));
+          chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(() => { render(); if (!card.hidden) place(focus); }));
+          chart.timeScale().subscribeSizeChange(() => requestAnimationFrame(render));
+          return { render, mark, el };
+        })();
+        ctx.onTrades?.(() => { if (setups.length) paint(); });
         (async () => {
           setNote(id, "testing each bar…");
           const r = await fetch(`/api/trend-template/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
             .then((x) => (x.ok ? x.json() : null)).catch(() => null);
           if (!r) return setNote(id, "could not run the trend template");
-          // Every passing stretch is drawn; `minBars` governs only the LABELS, because a run of
-          // two passing bars is still a fact about the chart but its label is just clutter.
           const runs = r.runs || [];
+          // Stage 2 as a background tint: it is context for the setups, not a structure to read
           stage = p.stage2 === "Hide" ? [] : runs.filter((x) => x.ok).map((x) => ({
-            shape: "box", role: "stage2", from: x.from, to: x.to, top: x.high, bottom: x.low,
-            label: p.label === "None" || x.bars < p.minBars ? ""
-              : p.label === "Dates" ? `${x.from} → ${x.to}` : `${x.bars} bars`,
-          }));
-          // A gap is every failing run between two passing ones. Its FIRST run is the one that
-          // ended the stretch, so that is the criterion worth naming: the later runs in the same
-          // gap are what kept it out, which is a different question and a noisier answer.
+            shape: "box", role: "stage2", bg: true, from: x.from, to: x.to, top: x.high, bottom: x.low, label: "" }));
+          // What ended a stretch: a gap's FIRST failing run names the criterion that ended it (the later
+          // runs are what kept it out — a different, noisier question). Off unless asked for.
           const gaps = [];
           for (let i = 0; i < runs.length; i++) {
             if (runs[i].ok) continue;
@@ -447,20 +618,18 @@ const Studies = (() => {
             gaps.push({ first, to: runs[i - 1].to, bars, after: prev && prev.ok ? prev.bars : 0 });
             i--;
           }
-          const shown = p.stage2 === "Hide" || p.gaps === "None" ? [] : p.gaps === "All" ? gaps : gaps.filter((g) => g.after >= p.minBars);
+          // (any other saved value is the old default, "After labelled stretches": now off by default)
+          const shown = p.gaps === "All" ? gaps : p.gaps === "After long stretches" ? gaps.filter((g) => g.after >= p.minBars) : [];
           stage = stage.concat(shown.map((g) => ({
             shape: "level", role: "broke", from: g.first.from, to: g.to, price: g.first.low, dash: true,
             label: `${g.first.tag} · ${g.bars} bars`,
           })));
           const all = r.bases || [];
-          bases = p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete) : all;
-          const long = runs.filter((x) => x.ok && x.bars >= p.minBars).length;
-          setNote(id, `${r.passing.toLocaleString()} of ${r.bars.toLocaleString()} bars pass (${r.pct}%) · `
-            + `${runs.filter((x) => x.ok).length} stretches, ${long} of ${p.minBars}+ bars · `
-            + `${all.length} bases, ${all.filter((b) => b.complete).length} VCPs, ${all.filter((b) => b.breakout).length} breakouts · ${r.note}`);
-          paint();
+          setups = p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete) : all;
+          setNote(id, `${r.note} · ${all.length} setups, ${all.filter((b) => b.complete).length} VCPs · pick one from the lane at the bottom`);
+          paint(); lane.render();
         })();
-        return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); } };
+        return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); lane.render(); } };
       } },
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],

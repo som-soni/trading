@@ -719,17 +719,21 @@ async function chartPage(alive, market, symbol, tf) {
   const barOf = (d) => times.find((x) => x >= d);   // a date onto the nearest charted bar at or after it
   const tsOf = (d) => { const s = barOf(d); return s ? Date.parse(s + "T00:00:00Z") : null; };
   const idxOf = (d) => { const s = barOf(d); return s ? times.indexOf(s) : -1; };
-  const shapeItems = (shapes, { dim = false, withNotes = false, at = null, price = null, roles = {} } = {}) => shapes.map((s) => {
-    const col = dim ? "#4b5063" : roles[s.role] || ROLE[s.role] || ROLE.level;
+  // s.faint: this one shape drawn as background (thin, unlabelled) — a study dimming all but its focus
+  const shapeItems = (shapes, { dim: dimAll = false, withNotes = false, at = null, price = null, roles = {} } = {}) => shapes.map((s) => {
+    const dim = dimAll || !!s.faint;
+    const col = dimAll ? "#4b5063" : roles[s.role] || ROLE[s.role] || ROLE.level;
     const t1 = tsOf(s.to || s.at || at); if (t1 == null) return null;
     const i1 = idxOf(s.to || s.at || at);
     const t0 = s.from ? tsOf(s.from) : s.bars && i1 >= 0 ? Date.parse(times[Math.max(0, i1 - s.bars)] + "T00:00:00Z") : t1;
     if (s.shape === "box") return { type: "rect", pts: [{ t: t0, p: s.top }, { t: t1, p: s.bottom }],
-      color: col, width: dim ? 1 : 2, dash: !!s.dash, text: dim ? "" : s.label || "" };
+      color: col, width: dim ? 1 : s.frame ? 1.5 : 2, dash: !!s.dash, text: dim ? "" : s.label || "",
+      bg: !!s.bg, shade: !!s.shade, frame: !!s.frame };   // bg: a full-height tint; shade: fill only; frame: outline + header tab
     if (s.shape === "level") return { type: "trend", pts: [{ t: t0, p: s.price }, { t: t1, p: s.price }],
       color: col, width: 1, dash: s.dash !== false, text: dim ? "" : s.label || "" };
     if (s.shape === "line") return { type: "trend", pts: [{ t: t0, p: s.p0 }, { t: t1, p: s.p1 }],
-      color: col, width: dim ? 1 : 2, dash: !!s.dash, text: "" };
+      color: col, width: dim ? 1 : s.arrow ? 2.5 : 2, dash: !!s.dash, arrow: !dim && !!s.arrow, text: dim ? "" : s.label || "" };
+    if (s.shape === "text") return dim ? null : { type: "text", pts: [{ t: t1, p: s.price }], color: col, size: 11, text: s.label || "" };
     if (s.shape === "path") {
       // the pattern itself: its swing points joined in order, each point named (dimmed: line only)
       const P = (s.points || []).map((q) => ({ t: tsOf(q.at), p: q.price, label: q.label })).filter((q) => q.t != null);
@@ -759,8 +763,12 @@ async function chartPage(alive, market, symbol, tf) {
   const studyShapes = new Map();
   studyItems = () => [...studyShapes.values()].flatMap(({ shapes, roles }) => shapeItems(shapes, { roles }));
   const annotate = (key, shapes, roles) => { studyShapes.set(key, { shapes, roles }); applyAnnotations(); };
+  // trades: the selected backtest run's trades on this symbol (trade-anatomy), for a study that should
+  // defer to a run's record; onTrades: called when they (re)load
+  const tradeHooks = [];
   const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
-    market, symbol, chartEl, annotate: px.ohlc ? annotate : null } });
+    market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
+    trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn) } });
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
 
   // Opened from a chart-pattern strategy's setups: draw the stock's pattern as of that run (the same
@@ -818,6 +826,7 @@ async function chartPage(alive, market, symbol, tf) {
       ]);
       if (!alive()) return;
       anatomy = anat || [];
+      tradeHooks.forEach((f) => f());
       const ts = tsOf;
       // near misses only: a base that one of this run's trades was built on is drawn by its trade
       const traded = new Set(anatomy.flatMap((t) => t.shapes.filter((s) => s.shape === "box" && s.from).map((s) => `${s.from}`)));

@@ -13,6 +13,14 @@ trade decision (entry, stop, sizing), and it never stands in for a run's record:
 what a backtest traded is drawn from that run's stored signals (`trade-anatomy`),
 because current code may detect differently from the code that ran.
 
+An indicator may *illustrate* where a strategy's rules would place a trade — the
+Minervini trend template indicator draws a completed VCP's buy, stop, +2R and target
+(`MinerviniSpecStrategy.bases_live`). The levels come from the strategy's own
+functions and constants (`pivot_buy_stop`, `pivot_stop`, `vcp_measured_move`, the
+exit constants), shared with `build_plans`, never recomputed in JavaScript; they are
+labelled as an illustration, not a recommendation or a result; and when a backtest
+run is selected, a setup that run traded shows the run's stored trade instead.
+
 Scheduled offline work is a set of layered jobs (`scripts/jobs/registry.py`:
 reference → data → analytics → screening → publish). Keep the layers honest:
 only `marketdata/` downloads; `analytics/` and screening read stored data

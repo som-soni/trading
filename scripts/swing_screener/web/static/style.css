@@ -1450,7 +1450,7 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .lpo-sum { margin-top: 6px; }
 
 /* Trend template & VCP indicator: the card explaining the latest base in view */
-.tt-card { position: absolute; top: 8px; z-index: 15; width: 340px; max-height: 62%; overflow: auto; background: var(--panel);
+.tt-card { position: absolute; top: 8px; z-index: 15; width: 300px; max-height: 70%; overflow: auto; background: var(--panel);
   border: 1px solid var(--line-2); border-radius: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.25); font-size: 12px; line-height: 1.45; color: var(--text); }
 .tt-card .tt-h { display: flex; align-items: center; gap: 8px; padding: 7px 10px; cursor: pointer; position: sticky; top: 0; background: var(--panel); }
 .tt-card .tt-h b { color: var(--strong); white-space: nowrap; }
@@ -1459,3 +1459,53 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .tt-card p { margin: 0; padding: 4px 10px 6px; } .tt-card p b { color: var(--strong); }
 .tt-card p .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
 .tt-card p.v { padding-bottom: 9px; }
+.tt-card .tt-sub { padding: 0 10px 4px; font-size: 11px; color: var(--muted); }
+.tt-card .tt-kh { padding: 6px 10px; border-top: 1px solid var(--line-2); cursor: pointer; color: var(--muted); font-size: 11.5px; }
+.tt-card .tt-key { padding: 0 10px 8px; } .tt-card .tt-k { display: flex; gap: 8px; align-items: flex-start; padding: 3px 0; font-size: 11.5px; }
+.tt-card .tt-k b { color: var(--strong); }
+.tt-card .mk { flex: none; width: 18px; height: 11px; margin-top: 3px; box-sizing: border-box; }
+.tt-card .mk.box { border: 1.5px solid var(--c); background: color-mix(in srgb, var(--c) 22%, transparent); border-radius: 2px; }
+.tt-card .mk.dash { border: 1.5px dashed var(--c); border-radius: 2px; }
+.tt-card .mk.line { border-top: 1.5px dashed var(--c); height: 0; margin-top: 8px; }
+.tt-card .mk.zig { background: linear-gradient(135deg, transparent 42%, var(--c) 42% 58%, transparent 58%) left / 50% 100% no-repeat,
+  linear-gradient(45deg, transparent 42%, var(--c) 42% 58%, transparent 58%) right / 50% 100% no-repeat; }
+.tt-card .mk.dot { width: 9px; height: 9px; margin: 4px 4px 0 5px; border-radius: 50%; background: var(--c); }
+.tt-card .tt-sum { padding: 0 10px 6px; color: var(--strong); }
+.tt-card .tt-checks { width: 100%; border-collapse: collapse; margin: 0 0 4px; }
+.tt-card .tt-checks td { padding: 2px 6px; vertical-align: top; } .tt-card .tt-checks td:first-child { padding-left: 10px; }
+.tt-card .tt-checks .ic { width: 12px; text-align: center; font-weight: 600; }
+.tt-card .tt-checks .val { text-align: right; padding-right: 10px; font-variant-numeric: tabular-nums; color: var(--strong); }
+.tt-card .tt-checks .pass .ic { color: var(--up-text); }
+.tt-card .tt-checks .fail .ic, .tt-card .tt-checks .fail .val { color: var(--down-text); } .tt-card .tt-checks .fail td { font-weight: 600; }
+.tt-card .tt-checks .skip td { color: var(--muted); } .tt-card .tt-checks .skip .val { color: var(--muted); font-style: italic; }
+.tt-card .tt-checks .lim td { padding-top: 0; font-size: 11px; color: var(--muted); }
+.tt-card .mk.tint { background: color-mix(in srgb, var(--c) 30%, transparent); border-radius: 2px; }
+.tt-card .tt-checks td:nth-child(2) { white-space: nowrap; }
+.tt-card .tt-title { font-weight: 600; white-space: nowrap; } .tt-card .tt-title.ok { color: var(--up-text); } .tt-card .tt-title.no { color: var(--muted); }
+.tt-card .tt-h .muted { margin-left: auto; font-size: 11px; }
+.tt-card .tt-pin { font-size: 10.5px; padding: 1px 6px; border: 1px solid var(--line-2); border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
+.tt-card .tt-z { border-top: 1px solid var(--line-2); } .tt-card .tt-z.on { background: color-mix(in srgb, var(--text) 4%, transparent); }
+.tt-card .tt-zh { display: flex; align-items: baseline; gap: 6px; padding: 6px 10px; cursor: pointer; }
+.tt-card .tt-zh .n { color: var(--muted); } .tt-card .tt-zh b { color: var(--strong); }
+.tt-card .tt-zh .st { font-weight: 600; } .tt-card .tt-zh .st.pass { color: var(--up-text); } .tt-card .tt-zh .st.fail { color: var(--down-text); } .tt-card .tt-zh .st.skip { color: var(--muted); }
+.tt-card .tt-zh .ln { margin-left: auto; text-align: right; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tt-card .tt-x { margin: 0; padding: 0 10px 6px; font-size: 11.5px; line-height: 1.5; }
+.tt-card .tt-tag { margin: 0 10px 5px; display: inline-block; font-size: 10.5px; padding: 1px 6px; border-radius: 3px; background: color-mix(in srgb, #ff9800 18%, transparent); color: var(--strong); }
+.tt-card .mk.frame { border: 1.5px solid var(--c); border-radius: 1px; }
+.tt-card .mk.shade { background: color-mix(in srgb, var(--c) 25%, transparent); border-radius: 2px; }
+.tt-card .mk.arrow { height: 0; border-top: 2.5px solid var(--c); margin-top: 8px; position: relative; }
+.tt-card .tt-h { cursor: grab; } .tt-card .tt-sub a { color: var(--accent); cursor: pointer; text-decoration: underline; }
+/* the setup lane: one pill per VCP setup, along the bottom of the price pane */
+.tt-lane { position: absolute; inset: 0; pointer-events: none; z-index: 12; }
+.tt-pill { position: absolute; height: 14px; padding: 0 4px; pointer-events: auto; cursor: pointer; overflow: hidden; white-space: nowrap;
+  font-size: 10px; line-height: 12px; text-align: left; border-radius: 3px; border: 1px solid var(--c);
+  background: color-mix(in srgb, var(--c) 14%, var(--panel)); color: var(--strong); opacity: .75; }
+.tt-pill.no { border-style: dashed; } .tt-pill:hover { opacity: 1; }
+.tt-pill.sel { opacity: 1; background: var(--c); color: #fff; border-style: solid; box-shadow: 0 0 0 1px var(--panel); }
+.tt-card .tt-title { color: var(--c) !important; }
+.tt-card .tt-nav { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+.tt-card .tt-nav button { border: 1px solid var(--line-2); background: none; color: var(--text); border-radius: 4px; width: 20px; height: 18px; line-height: 14px; cursor: pointer; padding: 0; }
+.tt-card .tt-nav button:disabled { opacity: .35; cursor: default; }
+.tt-card .tt-date { padding: 0 10px 2px; font-size: 11px; color: var(--muted); }
+.tt-card .mk.dashframe { border: 1.5px dashed var(--c); border-radius: 1px; }
+.tt-card .mk.pill { height: 9px; margin-top: 4px; border-radius: 2px; background: var(--c); }
