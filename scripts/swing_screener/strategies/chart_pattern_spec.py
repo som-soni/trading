@@ -254,6 +254,11 @@ class ChartPatternSpecStrategy(Strategy):
     )
     extra_numeric_columns = ("trigger", "invalidation", "measured_target",
                              "pct_from_trigger", "structural_r")
+    # The strategy's eligibility floor, applied alike by screening, the backtest and the live
+    # pattern endpoint. NOT a detector requirement: the detectors examine up to
+    # `PatternParams.lookback` bars, guard their own shorter minimums (`ps.min_scan_bars`), and
+    # a truncated prior-trend window only makes PT-01/PT-02 harder to pass. The screen's own
+    # floor is `screens.base.MIN_BARS`. Lowering this to that is a behaviour change (version bump).
     min_bars = 320
 
     status = (

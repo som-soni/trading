@@ -203,6 +203,13 @@ def run(
                         _rate, (len(filtered) - _i) / max(_rate, 1e-9))
         raw = bars_by_symbol[sym]
         sector = sectors.get(sym, "Unknown")
+        # The strategy's own floor, as the backtest and the live pattern endpoint apply it:
+        # without it a stock the backtest could never have traded was listed as tradeable.
+        if len(raw) < strategy.min_bars:
+            all_rows.append(_empty_universe_row(
+                strategy, sym, sector, "NOT REVIEWED",
+                f"insufficient history ({len(raw)} bars < {strategy.min_bars})"))
+            continue
         ctx = ctx_mod.build_context(sym, raw, earnings_map.get(sym))
         if ctx is None:
             all_rows.append(_empty_universe_row(strategy, sym, sector, "NOT REVIEWED", "insufficient history"))

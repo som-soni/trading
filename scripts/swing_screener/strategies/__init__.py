@@ -50,7 +50,6 @@ from .breakout import BreakoutStrategy
 from .chart_pattern import ChartPatternCupStrategy, ChartPatternStrategy
 from .chart_pattern_spec import ChartPatternSpecStrategy
 from .donchian import DonchianStrategy
-from .minervini import MinerviniStrategy
 from .minervini_spec import MinerviniSpecStrategy
 from .trend_pullback import TrendPullbackStrategy
 
@@ -76,12 +75,17 @@ register(MinerviniSpecStrategy())
 #
 #   ChartPatternStrategy     -> ChartPatternSpecStrategy (7 patterns -> 12)
 #   ChartPatternCupStrategy  -> ChartPatternSpecStrategy (cup only -> 12)
-#   MinerviniStrategy        -> MinerviniSpecStrategy    (same screen, gates and
-#                               setups; the spec version is the one under active
-#                               development)
 #
-# The modules are still in the tree, so re-registering one is a single line. Their
-# measured results are in the git history of their `status` attributes.
+# These two stay imported because they are still CALLED: screening/find_pattern.py
+# builds a ChartPatternStrategy directly, since its detector vocabulary is the one
+# that tool reports in.
+#
+# MinerviniStrategy was deleted (2026-10-16). It looked unused, but minervini_spec
+# imported it for one method -- `prefilter_row`, the row-wise Trend Template that
+# decides which symbols a backtest evaluates at all -- so 624 lines were being kept
+# alive by 29. That method now lives in minervini_spec itself; the rest is in
+# `git log -- strategies/minervini.py`, and its measured results are in the git
+# history of its `status`.
 
 def portfolio_strategies() -> dict:
     """Registry of PORTFOLIO strategies, keyed like `_REGISTRY` but holding
@@ -142,7 +146,7 @@ __all__ = [
     "Decision", "PlanChoice", "Strategy", "StrategyResult", "TradePlan",
     "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",
-    "MinerviniStrategy", "MinerviniSpecStrategy",
+    "MinerviniSpecStrategy",
     "portfolio_strategies", "all_specs",
     "register", "get_strategy", "list_strategies", "describe_strategies",
     "DEFAULT_STRATEGY",

@@ -36,8 +36,7 @@ from ..core.context import StockContext
 from ..screens.criteria import (  # noqa: F401 (doc placeholders)
     MAX_PCT_BELOW_52W_HIGH, MIN_PCT_ABOVE_52W_LOW, RS_MIN_MOM, RS_MIN_RANK, SMA200_RISING_BARS,
 )
-from .base import LABELS, Decision, PlanChoice, Strategy, StrategyResult, TradePlan
-from .minervini import MinerviniStrategy
+from .base import LABELS, Decision, PlanChoice, Strategy, StrategyResult, TradePlan, tradable_point_in_time
 from .trend_pullback import round_tick
 
 MV01 = "MV-01"   # confirmed breakout through the frozen pivot
@@ -189,6 +188,42 @@ def _without_liquidity_floor(cfg: MarketConfig) -> MarketConfig:
         import dataclasses
         _NO_FLOOR[id(cfg)] = dataclasses.replace(cfg, screener=dataclasses.replace(cfg.screener, min_dollar_volume=0))
     return _NO_FLOOR[id(cfg)]
+
+
+def _trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
+    """The Trend Template IS the screen, so it belongs here rather than only in the gates:
+    expressing it row-wise is what lets the backtest apply it as of each simulated bar instead
+    of against today's row.
+
+    Moved verbatim from the retired `minervini` module (2026-10-16), which the spec strategy
+    had kept importing for this one method. Its three thresholds are screens/criteria.py
+    constants already imported here, so moving it changes no behaviour and no fingerprint.
+    """
+    ok, why = tradable_point_in_time(cfg, last)
+    if not ok:
+        return False, why
+
+    close = float(last["close"])
+    s50, s150, s200 = last.get("sma50"), last.get("sma150"), last.get("sma200")
+    s200_prev = last.get("sma200_21d_ago")
+    lo52, hi52 = last.get("low_252"), last.get("high_252")
+    mom = last.get("mom_12_1")
+    if any(pd.isna(v) for v in (s50, s150, s200, s200_prev, lo52, hi52, mom)):
+        return False, "insufficient history for the trend template"
+
+    if not (close > s50 and close > s150 and close > s200):
+        return False, "price below one of the 50/150/200-day averages"
+    if not (s50 > s150 > s200):
+        return False, "moving averages not stacked 50 > 150 > 200"
+    if not s200 > s200_prev:
+        return False, "200-day average not rising"
+    if lo52 <= 0 or close < lo52 * (1 + MIN_PCT_ABOVE_52W_LOW / 100):
+        return False, f"less than {MIN_PCT_ABOVE_52W_LOW:g}% above the 52-week low"
+    if hi52 <= 0 or close < hi52 * (1 - MAX_PCT_BELOW_52W_HIGH / 100):
+        return False, f"more than {MAX_PCT_BELOW_52W_HIGH:g}% below the 52-week high"
+    if mom < RS_MIN_MOM:
+        return False, f"12-1 momentum {mom:.2f} below {RS_MIN_MOM}"
+    return True, "passed"
 
 
 class MinerviniSpecStrategy(Strategy):
@@ -596,7 +631,7 @@ class MinerviniSpecStrategy(Strategy):
         v50, close = last.get("vol_sma50"), last.get("close")
         if pd.isna(v50) or pd.isna(close) or float(v50) * float(close) < floor:
             return False, f"turnover below {floor:,.0f} a day"
-        return MinerviniStrategy.prefilter_row(self, _without_liquidity_floor(cfg), last)
+        return _trend_template_row(_without_liquidity_floor(cfg), last)
 
     def passes_prefilter(self, cfg: MarketConfig, enriched_daily) -> tuple[bool, str]:
         """Live screening only (a backtest uses prefilter_mask): the guide's price floor on

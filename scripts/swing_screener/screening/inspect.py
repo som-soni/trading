@@ -44,6 +44,11 @@ def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str
     ok, why = strategy.passes_prefilter(cfg, enriched)
     print(f"\npre-filter: {'PASS' if ok else 'FAIL — ' + why}")
 
+    if len(raw) < strategy.min_bars:
+        print(f"\nInsufficient history: {len(raw)} bars < the strategy's {strategy.min_bars}"
+              " — screening and the backtest do not review it")
+        return
+
     earnings_map = earnings.load_earnings_days_away(market_key, [symbol])
     ctx = ctx_mod.build_context(symbol, raw, earnings_map.get(symbol))
     if ctx is None:

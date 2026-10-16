@@ -234,7 +234,7 @@ def backtest_symbol(
         strategy = get_strategy(DEFAULT_STRATEGY)
     trades: list[Trade] = []
     new_signal_rows: list[tuple] = []
-    if raw_daily is None or len(raw_daily) < 260:
+    if raw_daily is None or len(raw_daily) < strategy.min_bars:
         return trades
 
     sim_dates = raw_daily.index[raw_daily.index >= start_date]
@@ -329,7 +329,7 @@ def backtest_symbol(
             ctx, result = cached
         else:
             slice_df = raw_daily.loc[:current_date]
-            if len(slice_df) < 260:
+            if len(slice_df) < strategy.min_bars:
                 continue
             try:
                 ctx = ctx_mod.build_context(symbol, slice_df, earnings_days_away=None)

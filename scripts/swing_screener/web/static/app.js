@@ -273,14 +273,16 @@ function dataTable(host, columns, rows, opts = {}) {
 
 /** Remember the list a symbol was opened from, so the chart can step through it (↑ / ↓).
  *  `symbols` is a list of symbols in `market`, or of {market, symbol} for a list that mixes markets. */
-function openChartFromList(market, symbol, symbols, labelText, back) {
+function openChartFromList(market, symbol, symbols, labelText, back, setup = null) {
   const seen = new Set(), items = [];
   for (const x of symbols) {
     const it = typeof x === "string" ? { m: market, s: x } : { m: x.market, s: x.symbol };
     const k = it.m + ":" + it.s;
     if (!seen.has(k)) { seen.add(k); items.push(it); }
   }
-  store.set("chartList", { items, label: labelText, back, fresh: true });   // fresh: open the list panel on arrival
+  // setup: {strategy, date, patterns: {symbol: pattern name}} when the list is a strategy run's setups, so the
+  // chart can draw each stock's pattern as of that run without the user adding the indicator
+  store.set("chartList", { items, label: labelText, back, fresh: true, setup });   // fresh: open the list panel on arrival
   go(`#/chart/${market}/${encodeURIComponent(symbol)}`);
 }
 /** The markets, from config (GET /api/markets) — the selector, badges and currency all come from this list,
@@ -760,6 +762,22 @@ async function chartPage(alive, market, symbol, tf) {
   const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
     market, symbol, annotate: px.ohlc ? annotate : null } });
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
+
+  // Opened from a chart-pattern strategy's setups: draw the stock's pattern as of that run (the same
+  // detectors and drawing as the Chart patterns indicator, /api/patterns), so a listed setup is visible
+  // without adding the indicator. The run's own record — trigger, stop, decision — stays in the table.
+  const setup = pos >= 0 && list.setup;
+  const setupName = setup?.patterns?.[symbol];
+  if (setupName && setup.strategy === "chart_pattern" && tf === "D" && px.ohlc) {
+    api(`/api/patterns/${market}/${encodeURIComponent(symbol)}?show=all&topping=0&date=${setup.date}`).then((r) => {
+      if (!alive()) return;
+      const m = (r.matches || []).find((x) => x.name === setupName);
+      const chip = $(".srcchip");
+      chip?.insertAdjacentHTML("beforeend", `<span class="muted" title="${m ? `Drawn as detected on ${esc(r.as_of)}, the run's last bar`
+        : esc(r.note || `The detector no longer finds this pattern on ${r.as_of} — current code may differ from the code that ran`)}">· ${esc(setupName)}${m ? "" : " (not redrawn)"}</span>`);
+      if (m) annotate("setup", m.shapes);
+    }).catch(() => {});
+  }
 
   // (the screener's entry / stop / target lines are now an opt-in indicator: Indicators -> Screener)
 
@@ -3343,8 +3361,13 @@ async function strategySetups(host, alive, strat, mkt, runKey) {
     if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>Nothing ${activeDec === "tradeable" ? "tradeable" : "here"} in this run</b><div class="muted">Try “All” to see every stock the screen passed to this strategy.</div></div>`; return; }
     dataTable(tbl, keep.map((i) => t.columns[i]), rows.map((r) => keep.map((i) => r[i])), {
       name: `setups_${strat}`, hidden: keep.map((i) => t.columns[i]).filter((c) => !DEFAULT_SHOWN.has(c)),
-      rowClick: (row, visible) => openChartFromList(mkt, row[keep.indexOf(si)], visible.map((r) => r[keep.indexOf(si)]),
-        `${strat} · ${activeDec === "all" ? "all" : activeDec.toLowerCase()}`, location.hash),
+      rowClick: (row, visible) => {
+        const ki = keep.indexOf(si), pi = keep.indexOf(t.columns.indexOf("pattern_name"));
+        const setup = pi >= 0 ? { strategy: strat, date: String(run.run).slice(0, 10),
+          patterns: Object.fromEntries(visible.filter((r) => r[pi]).map((r) => [r[ki], r[pi]])) } : null;
+        openChartFromList(mkt, row[ki], visible.map((r) => r[ki]), `${strat} · ${activeDec === "all" ? "all" : activeDec.toLowerCase()}`,
+          location.hash, setup);
+      },
     });
   };
   dec.onclick = (e) => { const b = e.target.closest("button[data-d]"); if (b) { activeDec = b.dataset.d; store.set("scrDec", activeDec); draw(); } };
