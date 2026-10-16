@@ -363,12 +363,13 @@ const Studies = (() => {
     // Remove it, with /api/trend-template, once that review is done.
     trend_template: { name: "Minervini trend template (live)", short: "Trend template", cat: "Screener", overlay: true, custom: true,
       label: (p) => `Trend template${p.minBars > 1 ? ` · ${p.minBars}+ bars` : ""}`,
-      params: { minBars: 10, label: { type: "select", def: "Bars", options: ["Bars", "Dates", "None"] } },
-      plots: [{ k: "pass", t: "In Stage 2", c: "#26a69a" }],
+      params: { minBars: 10, label: { type: "select", def: "Bars", options: ["Bars", "Dates", "None"] },
+        gaps: { type: "select", def: "After labelled stretches", options: ["After labelled stretches", "All", "None"] } },
+      plots: [{ k: "pass", t: "In Stage 2", c: "#26a69a" }, { k: "broke", t: "What ended it", c: "#ef5350" }],
       draw({ p, col, tf, ctx, id }) {
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
         let on = true, shapes = [];
-        const paint = () => ctx.annotate(id, on ? shapes : [], { stage2: col("pass") });
+        const paint = () => ctx.annotate(id, on ? shapes : [], { stage2: col("pass"), broke: col("broke") });
         (async () => {
           setNote(id, "testing each bar…");
           const r = await fetch(`/api/trend-template/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
@@ -376,14 +377,33 @@ const Studies = (() => {
           if (!r) return setNote(id, "could not run the trend template");
           // Every passing stretch is drawn; `minBars` governs only the LABELS, because a run of
           // two passing bars is still a fact about the chart but its label is just clutter.
-          shapes = (r.runs || []).filter((x) => x.ok).map((x) => ({
+          const runs = r.runs || [];
+          shapes = runs.filter((x) => x.ok).map((x) => ({
             shape: "box", role: "stage2", from: x.from, to: x.to, top: x.high, bottom: x.low,
             label: p.label === "None" || x.bars < p.minBars ? ""
               : p.label === "Dates" ? `${x.from} → ${x.to}` : `${x.bars} bars`,
           }));
-          const long = (r.runs || []).filter((x) => x.ok && x.bars >= p.minBars).length;
+          // A gap is every failing run between two passing ones. Its FIRST run is the one that
+          // ended the stretch, so that is the criterion worth naming: the later runs in the same
+          // gap are what kept it out, which is a different question and a noisier answer.
+          const gaps = [];
+          for (let i = 0; i < runs.length; i++) {
+            if (runs[i].ok) continue;
+            const first = runs[i], prev = i > 0 ? runs[i - 1] : null;
+            let bars = 0;
+            while (i < runs.length && !runs[i].ok) { bars += runs[i].bars; i++; }
+            gaps.push({ first, to: runs[i - 1].to, bars, after: prev && prev.ok ? prev.bars : 0 });
+            i--;
+          }
+          const shown = p.gaps === "None" ? [] : p.gaps === "All" ? gaps : gaps.filter((g) => g.after >= p.minBars);
+          shapes = shapes.concat(shown.map((g) => ({
+            shape: "level", role: "broke", from: g.first.from, to: g.to, price: g.first.low, dash: true,
+            label: `${g.first.tag} · ${g.bars} bars`,
+          })));
+          const long = runs.filter((x) => x.ok && x.bars >= p.minBars).length;
           setNote(id, `${r.passing.toLocaleString()} of ${r.bars.toLocaleString()} bars pass (${r.pct}%) · `
-            + `${(r.runs || []).filter((x) => x.ok).length} stretches, ${long} of ${p.minBars}+ bars · ${r.note}`);
+            + `${runs.filter((x) => x.ok).length} stretches, ${long} of ${p.minBars}+ bars · `
+            + `${shown.length} gap${shown.length === 1 ? "" : "s"} labelled · ${r.note}`);
           paint();
         })();
         return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); } };
@@ -466,7 +486,7 @@ const Studies = (() => {
     back: "Number of periods back", lookback: "Lookback (bars)", tolerance: "Merge tolerance (× ATR)", minTouches: "Minimum touches",
     maxLevels: "Maximum levels", method: "Type", strategy: "Strategy", target: "Show target", type: "MA type", length1: "MA #1 length", length2: "MA #2 length", length3: "MA #3 length", length4: "MA #4 length",
     conversion: "Conversion line length", base: "Base line length", spanB: "Leading span B length",
-    minBars: "Label stretches of at least (bars)", label: "Label" };
+    minBars: "Label stretches of at least (bars)", label: "Label", gaps: "Label gaps" };
   const CATS = ["Screener", "Moving averages", "Bands & channels", "Support & resistance", "Trend", "Momentum", "Volatility", "Volume"];
   const MA_COLORS = ["#f5a623", "#2196f3", "#e040fb", "#ffeb3b", "#00bcd4", "#ff5252", "#8bc34a"];
 

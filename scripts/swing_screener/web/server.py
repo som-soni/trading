@@ -973,6 +973,28 @@ def chart_patterns_live(market: str, symbol: str, date: str | None = None, show:
 
 _tt_runs: dict = {}
 
+# A short label for a chart that has no room for the sentence. Presentation only: the sentence
+# itself is what `trend_template_row` returned and is carried through untouched, and an unmapped
+# reason falls back to it rather than disappearing — so a new criterion shows up as its own prose
+# instead of being silently mislabelled as an existing one.
+_TT_TAGS = (
+    ("liquidity below", "too illiquid"),
+    ("insufficient history", "not enough history"),
+    ("price below one of", "below an average"),
+    ("not stacked", "averages unstacked"),
+    ("not rising", "200-day falling"),
+    ("above the 52-week low", "too near the 52-week low"),
+    ("below the 52-week high", "too far below the high"),
+    ("momentum", "momentum too weak"),
+)
+
+
+def _tt_tag(why: str) -> str:
+    for needle, tag in _TT_TAGS:
+        if needle in why:
+            return tag
+    return why
+
 
 @app.get("/api/trend-template/{market}/{symbol}")
 def trend_template_live(market: str, symbol: str, date: str | None = None):
@@ -1020,10 +1042,10 @@ def trend_template_live(market: str, symbol: str, date: str | None = None):
         if runs and runs[-1]["ok"] == ok and runs[-1]["why"] == why:
             r = runs[-1]
             r["to"] = str(ts.date()); r["bars"] += 1
-            if ok:
-                r["high"] = max(r["high"], float(row["high"])); r["low"] = min(r["low"], float(row["low"]))
+            r["high"] = max(r["high"], float(row["high"])); r["low"] = min(r["low"], float(row["low"]))
         else:
-            runs.append({"ok": ok, "why": why, "from": str(ts.date()), "to": str(ts.date()), "bars": 1,
+            runs.append({"ok": ok, "why": why, "tag": "" if ok else _tt_tag(why),
+                         "from": str(ts.date()), "to": str(ts.date()), "bars": 1,
                          "high": float(row["high"]), "low": float(row["low"])})
     passing = sum(r["bars"] for r in runs if r["ok"])
     out = {"as_of": as_of, "spec_id": strat.spec_id(), "symbol": symbol, "market": market,

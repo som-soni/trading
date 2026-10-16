@@ -207,7 +207,10 @@ const Drawings = (() => {
       ctx.strokeStyle = it.color; ctx.lineWidth = it.width || 2; ctx.setLineDash(it.dash ? [5, 4] : []);
       ctx.beginPath();
       switch (it.type) {
-        case "trend": ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); break;
+        // a labelled trend line is how an annotation names a level (shape "level" in app.js);
+        // a user-drawn one carries no text, so the guard leaves it exactly as it was
+        case "trend": ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+          if (it.text) label(ctx, it.text, a.x, a.y - 10, it.color, "left"); break;
         case "brush": case "highlighter": {
           const hl = it.type === "highlighter";
           ctx.lineWidth = hl ? HIGHLIGHT_W : it.width || 2; ctx.lineCap = ctx.lineJoin = "round";
