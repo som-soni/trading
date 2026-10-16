@@ -27,6 +27,8 @@ ranking by RS then tightness, the market filter, the base number, and the spec's
 (backtesting/backtest.py `--spec`).
 """
 
+import dataclasses
+
 import pandas as pd
 
 from ..config.base import MarketConfig
@@ -178,16 +180,28 @@ def _live_min_price(cfg: MarketConfig) -> float:
     return LIVE_MIN_PRICE_INR if cfg.currency_code == "INR" else LIVE_MIN_PRICE_USD
 
 
-_NO_FLOOR: dict[int, MarketConfig] = {}
+# Keyed on identity, and the entry KEEPS the config it was built from. Nothing else holds a
+# MarketConfig for the life of this cache, and once one is collected CPython may hand its id()
+# to the next object -- which would return a floor-free copy of a DIFFERENT config. The
+# backtest's sweeps build configs that differ only in risk and the position cap
+# (backtesting/experiments.py), so a stale hit would carry the wrong risk_pct and be silently
+# wrong rather than obviously broken. Keying on cfg.name has the same fault for the same
+# reason: those sweep configs all share a name. A WeakKeyDictionary is not available either --
+# MarketConfig is a mutable dataclass, so it is unhashable.
+_NO_FLOOR: dict[int, tuple[MarketConfig, MarketConfig]] = {}
 
 
 def _without_liquidity_floor(cfg: MarketConfig) -> MarketConfig:
     """The market config with its own turnover floor removed (the guide's replaces it), built once
     per config: prefilter_mask calls this for every row of every symbol."""
-    if id(cfg) not in _NO_FLOOR:
-        import dataclasses
-        _NO_FLOOR[id(cfg)] = dataclasses.replace(cfg, screener=dataclasses.replace(cfg.screener, min_dollar_volume=0))
-    return _NO_FLOOR[id(cfg)]
+    hit = _NO_FLOOR.get(id(cfg))
+    if hit is not None and hit[0] is cfg:
+        return hit[1]
+    # The identity check above cannot fail while the entry pins its key; it is what makes a
+    # future entry that stops pinning degrade to uncached rather than to a wrong config.
+    out = dataclasses.replace(cfg, screener=dataclasses.replace(cfg.screener, min_dollar_volume=0))
+    _NO_FLOOR[id(cfg)] = (cfg, out)
+    return out
 
 
 def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
