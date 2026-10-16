@@ -31,7 +31,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "c15c0170",
+    "fingerprint": "d8d26d5a",
     "params": {
       "ATR_MULT": 1.5,
       "BO_BUFFER": 0.5,
@@ -118,7 +118,7 @@
         "G4",
         "G5"
       ],
-      "min_bars": 320,
+      "min_bars": 260,
       "setup_codes": [
         "CUP",
         "CUPNH",
@@ -139,7 +139,7 @@
         "W3"
       ]
     },
-    "version": "1.6"
+    "version": "1.7"
   },
   "donchian": {
     "family": "donchian",

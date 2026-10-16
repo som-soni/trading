@@ -168,8 +168,17 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.6"
+    version = "1.7"
     changelog = (
+        ("1.7", "2026-10-16",
+         "Eligibility floor lowered from 320 bars to the screen's own {min_bars} (screens.base.MIN_BARS). "
+         "320 was never something the detectors needed: they look back up to PatternParams.lookback, guard "
+         "their own shorter minimums, and a truncated prior-trend window only makes PT-01/PT-02 harder to "
+         "pass. The gap mattered once screening began enforcing min_bars alike with the backtest and the "
+         "pattern endpoint: a stock with 13-15 months of history (NIQ, 311 bars) passed near_highs but was "
+         "refused by the strategy. About 80 US and 61 India stocks sat in that gap on 2026-10-16, and in a "
+         "backtest every new listing now qualifies 60 bars (about three months) sooner. "
+         "Made the same day as 1.6, which had already moved the spec id, before any 1.6 run."),
         ("1.6", "2026-10-16",
          "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
          "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
@@ -268,13 +277,16 @@ class ChartPatternSpecStrategy(Strategy):
     # pattern endpoint. NOT a detector requirement: the detectors examine up to
     # `PatternParams.lookback` bars, guard their own shorter minimums (`ps.min_scan_bars`), and
     # a truncated prior-trend window only makes PT-01/PT-02 harder to pass. The screen's own
-    # floor is `screens.base.MIN_BARS`. Lowering this to that is a behaviour change (version bump).
-    min_bars = 320
+    # floor is `screens.base.MIN_BARS`, and since v1.7 this matches it: the strategy refuses no
+    # stock the screen admits on history alone. Changing it is a behaviour change (version bump).
+    min_bars = 260
 
     status = (
-        "No demonstrated edge at v1.5. India, full universe from 2013 (bracket exits, measured "
-        "2026-10-14): 3.61% CAGR against the index's 11.6%, max drawdown -27.8%. The US full run "
-        "at v1.5 is in progress. (v1.2 stopped stale cups-without-handle from trading, v1.3 moved "
+        "Not yet measured at v1.7. Last measured at v1.5, with no demonstrated edge: India, full "
+        "universe from 2013 (bracket exits, measured 2026-10-14): 3.61% CAGR against the index's "
+        "11.6%, max drawdown -27.8%; no US v1.5 run was recorded. v1.6 renamed codes only and "
+        "v1.7 admits stocks with {min_bars} bars of history instead of 320. (v1.2 stopped stale "
+        "cups-without-handle from trading, v1.3 moved "
         "two buy rules to O'Neil's, v1.4 requires a triple bottom's lows to be level and v1.5 buys "
         "only on the breakout bar, once per pattern.) The earlier v1.0 comparison, dominated by stale "
         "cups and late and repeat entries: backtested 2026-10-09 it lost by less than its sibling: -0.93% "
@@ -361,6 +373,11 @@ class ChartPatternSpecStrategy(Strategy):
         "**The flat base is the least selective pattern here**, firing on "
         "24% of random walks against the cup's 0%. It has no touch "
         "requirement and its volume rule is off by default.",
+        "**Recent listings are judged on a short history.** From v1.7 a stock is eligible after "
+        "{min_bars} bars (about a year), the screen's own floor. The detectors look back about "
+        "two years of bars, so a new listing's prior-trend rules (PT-01/PT-02) see a truncated "
+        "window: that can only make a pattern harder to accept, never easier, but a base that "
+        "began before the listing cannot be seen at all.",
         "**Detection costs ~40ms per symbol-day** against `chart_pattern`'s "
         "~1ms, because eleven detectors run where seven did and each refits "
         "swings. A backtest of it is slower in proportion.",
