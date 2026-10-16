@@ -99,9 +99,9 @@ def portfolio_strategies() -> dict:
     Imported lazily because `backtesting.baseline` imports from this package,
     so a module-level import would be circular.
     """
-    from ..backtesting.baseline import MomentumBaselineStrategy
+    from ..backtesting.baseline import MomentumBaselineStrategy, VolScaledMomentumStrategy
 
-    return {MomentumBaselineStrategy.key: MomentumBaselineStrategy}
+    return {c.key: c for c in (MomentumBaselineStrategy, VolScaledMomentumStrategy)}
 
 
 def all_specs() -> dict:

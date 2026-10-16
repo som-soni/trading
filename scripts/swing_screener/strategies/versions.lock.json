@@ -296,6 +296,23 @@
     },
     "version": "1.0"
   },
+  "momentum_vol_scaled": {
+    "family": "momentum_vol_scaled",
+    "fingerprint": "006f8206",
+    "params": {
+      "TRADING_DAYS": 252,
+      "_key": "momentum_vol_scaled",
+      "cost_bps": 50.0,
+      "liquidity_top": 0,
+      "lookback": 252,
+      "min_turnover_cr": 10,
+      "min_turnover_usd_m": 20,
+      "skip": 21,
+      "top_n": 20,
+      "vol_window": 63
+    },
+    "version": "1.0"
+  },
   "trend_pullback": {
     "family": "trend_pullback",
     "fingerprint": "10d54f8a",

@@ -501,6 +501,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="ranking signal: raw momentum, volatility-scaled "
                          "(Barroso-Santa-Clara), market-residual (Blitz), or path "
                          "quality (share of positive days)")
+    ap.add_argument("--vol-window", type=int, default=63,
+                    help="bars of realised volatility used by vol_scaled ranking and inverse_vol weighting")
     ap.add_argument("--weighting", default="equal", choices=["equal", "inverse_vol"],
                     help="equal capital, or inverse to each name's volatility")
     ap.add_argument("--vol-target", type=float, default=None,
@@ -528,11 +530,11 @@ def build_parser() -> argparse.ArgumentParser:
 #: class attribute on a PortfolioStrategy -> the run() keyword it sets
 TUNABLES = {"top_n": "top_n", "lookback": "lookback", "skip": "skip", "rebalance": "rebalance",
             "cost_bps": "cost_bps", "rank": "rank", "weighting": "weighting",
-            "vol_target": "vol_target", "min_turnover": "min_turnover",
+            "vol_target": "vol_target", "min_turnover": "min_turnover", "vol_window": "vol_window",
             "liquidity_top": "liquidity_top"}
 
 
-def strategy_defaults(key: str) -> dict:
+def strategy_defaults(key: str, market: str) -> dict:
     """The registered strategy's tunables, as argparse defaults.
 
     A strategy IS its configuration: the measured result belongs to top-50 at a turnover floor
@@ -542,16 +544,23 @@ def strategy_defaults(key: str) -> dict:
     """
     from ..strategies import portfolio_strategies
     cls = portfolio_strategies()[key]
-    return {arg: getattr(cls, attr) for attr, arg in TUNABLES.items() if hasattr(cls, attr)}
+    out = {arg: getattr(cls, attr) for attr, arg in TUNABLES.items() if hasattr(cls, attr)}
+    # The turnover floor is in the market's own currency, so one class attribute cannot serve both
+    # markets; a strategy that cares declares min_turnover_for() and resolves it per run.
+    if hasattr(cls, "min_turnover_for"):
+        out["min_turnover"] = cls.min_turnover_for(market)
+    return out
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--strategy", default="momentum_baseline")
+    pre.add_argument("--market")
     chosen, _ = pre.parse_known_args()
     ap = build_parser()
-    ap.set_defaults(**strategy_defaults(chosen.strategy))
+    if chosen.market:
+        ap.set_defaults(**strategy_defaults(chosen.strategy, chosen.market))
     args = ap.parse_args()
 
     cfg = MARKETS[args.market]
@@ -563,6 +572,7 @@ def main() -> None:
         min_dollar_volume=args.min_turnover,
         fractional=args.fractional,
         rank=args.rank, weighting=args.weighting, vol_target=args.vol_target,
+        vol_window=args.vol_window,
         index_overlay=args.index_overlay, overlay_months=args.overlay_months,
     )
     from ..paths import run_dir
@@ -625,6 +635,115 @@ if __name__ == "__main__":
 #: The baseline's real tunables. Declared as class attributes rather than read
 #: from the argparse defaults so the fingerprint describes the STRATEGY, not
 #: whatever flags a particular run happened to pass.
+VS_DOC = {
+    "key": "momentum_vol_scaled",
+    "name": "Volatility-scaled momentum",
+    "description": "Rank by 12-1 momentum divided by realised volatility, hold the top 20 inverse-vol weighted, "
+                   "rebalance monthly inside a liquid small/mid-cap universe.",
+    "status": (
+        "Chosen on CONSISTENCY, not on peak return. Swept 18 variants (rank x holdings x weighting x vol target) "
+        "on India from 2010 at a {min_turnover_cr} crore turnover floor and {cost_bps:g}bps, judged against the "
+        "Nifty Smallcap 250 -- the honest control, because it drops and replaces constituents and so carries the "
+        "failures a survivor-only universe cannot. This variant returned 16.40% CAGR against the control's 11.99%, "
+        "and was the ONLY one whose excess held across both halves of the window: +4.41 before 2019 and +4.49 "
+        "after. Every other variant was a post-2019 story -- plain momentum at the same size scored +2.84 then "
+        "+9.36. Sharpe 0.84 against 0.71; max drawdown -51.0% against the control's -60.8%. "
+        "Read it with three discounts. Picking the best of 18 is itself a selection effect, so the honest "
+        "expectation is below +4.41. The universe contains no failures at all (0 of 3,465 Indian symbols have "
+        "history ending early), and published delisting bias for small-cap portfolios is the same order as this "
+        "excess. And roughly 1.8 points of any excess over the Nifty 500 is small-cap segment beta, which is why "
+        "the comparison here is against small caps instead. Not yet run in the US."
+    ),
+    "thesis": "Momentum pays, but raw momentum ranks the most volatile names highest, so it buys the stocks most "
+              "likely to give the gain back. Dividing by realised volatility asks which stocks rose most PER UNIT "
+              "of risk taken to get there, which is a different and steadier question.",
+    "how_it_works": (
+        "On each rebalance date, score every eligible stock by its 12-1 month return divided by its "
+        "{vol_window}-day realised volatility, and hold the top {top_n}.",
+        "Eligibility is a turnover floor, not a rank: {min_turnover_cr} crore of 20-day average traded value a day. "
+        "The floor is the universe control -- the momentum premium concentrates in smaller names, and without a "
+        "floor the rank fills with stocks nobody can trade.",
+        "Positions are weighted inverse to volatility, so a quiet name carries more capital than a wild one and "
+        "no single holding dominates the book's risk.",
+        "Held to the next rebalance, fully invested. There is no stop and no target: the exit is the rank, and a "
+        "name that stops being strong is replaced rather than stopped out.",
+    ),
+    "caveats": (
+        "**Survivorship is total, not partial.** No company in the Indian universe failed, was suspended or was "
+        "acquired in 16 years, because the universe is today's listed names. This flatters the result and cannot "
+        "be fixed without point-in-time constituent lists.",
+        "**Costs decide it.** At 25bps the excess over small caps is +6.05, at {cost_bps:g}bps +3.66, at 100bps it "
+        "is gone. {cost_bps:g}bps is the defensible assumption for monthly rebalancing of small caps and is the "
+        "default here; a flat per-trade figure is still a simplification of a real spread.",
+        "**The drawdown is a small-cap drawdown.** -51% peak to trough. It is better than the segment's -60.8%, "
+        "which is a real improvement, but it is not a comfortable ride and the holding period is years.",
+        "**Benchmarked against the Nifty Smallcap 250, not the broad index.** Measuring this against the Nifty 500 "
+        "counts segment beta as skill.",
+    ),
+}
+
+
+class VolScaledMomentumStrategy(PortfolioStrategy):
+    """The measured configuration, as a versioned strategy rather than a shell command.
+
+    Separate from MomentumBaselineStrategy on purpose: a baseline has to stay naive to remain a
+    control. Tuning the thing you compare against leaves nothing to compare against.
+    """
+
+    key = VS_DOC["key"]
+    family = "momentum_vol_scaled"
+    version = "1.0"
+    changelog = (
+        ("1.0", "2026-10-17",
+         "First version. Chosen from an 18-variant sweep on the worst half-period excess over the Nifty "
+         "Smallcap 250, not on full-window CAGR: a variant that only clears the control after 2019 is a "
+         "regime bet. vol_scaled/top-20/inverse-vol was the only one that held in both halves."),
+    )
+    name = VS_DOC["name"]
+    description = VS_DOC["description"]
+    status = VS_DOC["status"]
+    thesis = VS_DOC["thesis"]
+    how_it_works = tuple(VS_DOC["how_it_works"])
+    caveats = tuple(VS_DOC["caveats"])
+
+    behaviour = "trend_momentum"
+    selection = "cross_sectional"
+    style = "trend"
+
+    # tunables -- these ARE the strategy
+    rank = "vol_scaled"
+    top_n = 20
+    weighting = "inverse_vol"
+    lookback = TRADING_DAYS
+    skip = 21
+    vol_window = 63
+    rebalance = "ME"
+    cost_bps = 50.0
+    vol_target = None
+    liquidity_top = 0            # the turnover floor is the control, not a rank cutoff
+    min_turnover_cr = 10         # Rs crore/day (India); see min_turnover_for()
+    min_turnover_usd_m = 20      # $ million/day (US)
+
+    @classmethod
+    def min_turnover_for(cls, market: str) -> float:
+        """The floor in the market's own currency: one number cannot serve both."""
+        return (cls.min_turnover_cr * 1e7 if MARKETS[market].currency_code == "INR"
+                else cls.min_turnover_usd_m * 1e6)
+
+    param_docs = (
+        ("Ranking", "rank", "vol_scaled: 12-1 return divided by realised volatility."),
+        ("Holdings", "top_n", "Names held at a time; 20 beat 50 on excess, 50 on drawdown."),
+        ("Weighting", "weighting", "inverse_vol: capital inverse to each name's volatility."),
+        ("Momentum lookback", "lookback", "Bars of return used to rank (12 months)."),
+        ("Skip", "skip", "Most recent bars excluded -- the 12-1 convention that avoids short-term reversal."),
+        ("Volatility window", "vol_window", "Bars of realised volatility used to scale and to weight."),
+        ("Rebalance", "rebalance", "Pandas offset alias; ME is month-end."),
+        ("Cost per side", "cost_bps", "Basis points per side. The result is sensitive to this -- see the caveats."),
+        ("Turnover floor, India", "min_turnover_cr", "Rs crore of 20-day average traded value a day."),
+        ("Turnover floor, US", "min_turnover_usd_m", "$ million of 20-day average traded value a day."),
+    )
+
+
 class MomentumBaselineStrategy(PortfolioStrategy):
     """Cross-sectional momentum, in the registry so it gets a version.
 
