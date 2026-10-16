@@ -359,6 +359,35 @@ const Studies = (() => {
         }
         return { series: [], note: "detecting…", setVisible: (v) => { on = v; paint(); } };
       } },
+    // TEMPORARY (2026-10-16): added for a manual stage-by-stage review of the trend template.
+    // Remove it, with /api/trend-template, once that review is done.
+    trend_template: { name: "Minervini trend template (live)", short: "Trend template", cat: "Screener", overlay: true, custom: true,
+      label: (p) => `Trend template${p.minBars > 1 ? ` · ${p.minBars}+ bars` : ""}`,
+      params: { minBars: 10, label: { type: "select", def: "Bars", options: ["Bars", "Dates", "None"] } },
+      plots: [{ k: "pass", t: "In Stage 2", c: "#26a69a" }],
+      draw({ p, col, tf, ctx, id }) {
+        if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
+        let on = true, shapes = [];
+        const paint = () => ctx.annotate(id, on ? shapes : [], { stage2: col("pass") });
+        (async () => {
+          setNote(id, "testing each bar…");
+          const r = await fetch(`/api/trend-template/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
+            .then((x) => (x.ok ? x.json() : null)).catch(() => null);
+          if (!r) return setNote(id, "could not run the trend template");
+          // Every passing stretch is drawn; `minBars` governs only the LABELS, because a run of
+          // two passing bars is still a fact about the chart but its label is just clutter.
+          shapes = (r.runs || []).filter((x) => x.ok).map((x) => ({
+            shape: "box", role: "stage2", from: x.from, to: x.to, top: x.high, bottom: x.low,
+            label: p.label === "None" || x.bars < p.minBars ? ""
+              : p.label === "Dates" ? `${x.from} → ${x.to}` : `${x.bars} bars`,
+          }));
+          const long = (r.runs || []).filter((x) => x.ok && x.bars >= p.minBars).length;
+          setNote(id, `${r.passing.toLocaleString()} of ${r.bars.toLocaleString()} bars pass (${r.pct}%) · `
+            + `${(r.runs || []).filter((x) => x.ok).length} stretches, ${long} of ${p.minBars}+ bars · ${r.note}`);
+          paint();
+        })();
+        return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); } };
+      } },
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },
@@ -436,7 +465,8 @@ const Studies = (() => {
     maximum: "Maximum", left: "Left bars", right: "Right bars", labels: "Labels", zigzag: "Zig-zag line", timeframe: "Pivots timeframe",
     back: "Number of periods back", lookback: "Lookback (bars)", tolerance: "Merge tolerance (× ATR)", minTouches: "Minimum touches",
     maxLevels: "Maximum levels", method: "Type", strategy: "Strategy", target: "Show target", type: "MA type", length1: "MA #1 length", length2: "MA #2 length", length3: "MA #3 length", length4: "MA #4 length",
-    conversion: "Conversion line length", base: "Base line length", spanB: "Leading span B length" };
+    conversion: "Conversion line length", base: "Base line length", spanB: "Leading span B length",
+    minBars: "Label stretches of at least (bars)", label: "Label" };
   const CATS = ["Screener", "Moving averages", "Bands & channels", "Support & resistance", "Trend", "Momentum", "Volatility", "Volume"];
   const MA_COLORS = ["#f5a623", "#2196f3", "#e040fb", "#ffeb3b", "#00bcd4", "#ff5252", "#8bc34a"];
 

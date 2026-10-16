@@ -190,7 +190,7 @@ def _without_liquidity_floor(cfg: MarketConfig) -> MarketConfig:
     return _NO_FLOOR[id(cfg)]
 
 
-def _trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
+def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
     """The Trend Template IS the screen, so it belongs here rather than only in the gates:
     expressing it row-wise is what lets the backtest apply it as of each simulated bar instead
     of against today's row.
@@ -649,7 +649,7 @@ class MinerviniSpecStrategy(Strategy):
         v50, close = last.get("vol_sma50"), last.get("close")
         if pd.isna(v50) or pd.isna(close) or float(v50) * float(close) < floor:
             return False, f"turnover below {floor:,.0f} a day"
-        return _trend_template_row(_without_liquidity_floor(cfg), last)
+        return trend_template_row(_without_liquidity_floor(cfg), last)
 
     def passes_prefilter(self, cfg: MarketConfig, enriched_daily) -> tuple[bool, str]:
         """Live screening only (a backtest uses prefilter_mask): the guide's price floor on

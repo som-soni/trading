@@ -971,6 +971,73 @@ def chart_patterns_live(market: str, symbol: str, date: str | None = None, show:
     return _pattern_hits[key]
 
 
+_tt_runs: dict = {}
+
+
+@app.get("/api/trend-template/{market}/{symbol}")
+def trend_template_live(market: str, symbol: str, date: str | None = None):
+    """The chart's Trend Template indicator: which bars pass Minervini's Stage-2 test, run ON DEMAND
+    over the stored daily bars — the minervini strategy's own `trend_template_row`, the same code the
+    backtest pre-filters with, never a second copy in JavaScript.
+
+    Returns contiguous runs rather than a flag per bar: the question a reader asks of this is "when was
+    it in Stage 2, and what knocked it out", and a run answers both in a fraction of the payload. Each
+    passing run carries its price extremes so the chart can box it; each failing run carries the first
+    criterion that refused, which is what makes a stage reviewable.
+
+    Exploration only. What a backtest actually screened comes from its stored signals, not from here:
+    current code may judge differently from the code that ran.
+    """
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..core import indicators as ind
+    from ..marketdata import cache
+    from ..strategies import get_strategy
+    from ..strategies.minervini_spec import trend_template_row
+
+    strat = get_strategy("minervini")
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    daily = ind.enrich_daily(raw)
+    if date:
+        daily = daily[daily.index <= pd.Timestamp(date)]
+    if daily.empty:
+        raise HTTPException(404, f"no bars for {symbol} up to {date}")
+    as_of = str(daily.index[-1].date())
+    key = (market, symbol, as_of, strat.spec_id())
+    if key in _tt_runs:
+        return _tt_runs[key]
+
+    cfg = MARKETS[market]
+    runs: list[dict] = []
+    for ts, row in daily.iterrows():
+        try:
+            ok, why = trend_template_row(cfg, row)
+        except Exception:  # noqa: BLE001 — a bar too early for the averages is simply not Stage 2
+            ok, why = False, "insufficient history"
+        why = "" if ok else why
+        if runs and runs[-1]["ok"] == ok and runs[-1]["why"] == why:
+            r = runs[-1]
+            r["to"] = str(ts.date()); r["bars"] += 1
+            if ok:
+                r["high"] = max(r["high"], float(row["high"])); r["low"] = min(r["low"], float(row["low"]))
+        else:
+            runs.append({"ok": ok, "why": why, "from": str(ts.date()), "to": str(ts.date()), "bars": 1,
+                         "high": float(row["high"]), "low": float(row["low"])})
+    passing = sum(r["bars"] for r in runs if r["ok"])
+    out = {"as_of": as_of, "spec_id": strat.spec_id(), "symbol": symbol, "market": market,
+           "bars": int(len(daily)), "passing": passing,
+           "pct": round(100.0 * passing / max(len(daily), 1), 1),
+           "runs": runs,
+           "note": ("in Stage 2 now" if runs and runs[-1]["ok"]
+                    else f"not Stage 2: {runs[-1]['why']}" if runs else "no bars")}
+    if len(_tt_runs) > 64:
+        _tt_runs.clear()
+    _tt_runs[key] = out
+    return out
+
+
 @app.get("/api/macro")
 def macro_strip(market: str = "india"):
     """The Breadth page's macro strip: rates, the dollar, oil, metals and credit that matter to this market
