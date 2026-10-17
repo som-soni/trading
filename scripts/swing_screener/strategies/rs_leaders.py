@@ -159,7 +159,11 @@ class RsLeadersStrategy(Strategy):
         "is the best selection figure of any per-symbol strategy here (minervini India is +0.86 and the rest are "
         "negative). The whole shortfall is idle capital: parking it in the index would have returned 14.16%. "
         "So the recovery gate appears to improve what gets picked and guarantees the result cannot compound -- "
-        "and +1.39 over 64 trades is still inside the noise. US not yet measured."
+        "and +1.39 over 64 trades is still inside the noise. "
+        "US 2020 says the same thing more faintly: CAGR 3.76% against SPY's 13.41% (-9.65), 69 trades, 42.0% "
+        "win rate, 18.9% invested, selection +0.28 -- positive but indistinguishable from zero, which matches "
+        "the guide's own finding that leaders LAGGED in 6 of 7 US recoveries. Both markets agree on the shape: "
+        "the gate picks a little better and trades far too rarely to compound."
     )
 
     gate_docs = {
