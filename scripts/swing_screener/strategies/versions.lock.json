@@ -210,6 +210,21 @@
     },
     "version": "1.0"
   },
+  "ma_trend": {
+    "family": "ma_trend",
+    "fingerprint": "8632fc73",
+    "params": {
+      "FABER_MONTHS": 10,
+      "FAST_SMA": 50,
+      "SLOPE_BARS": 20,
+      "SLOW_SMA": 200,
+      "_key": "ma_trend",
+      "cost_bps": 10.0,
+      "faber_months": 10,
+      "max_names": 50
+    },
+    "version": "1.0"
+  },
   "mean_reversion": {
     "family": "mean_reversion",
     "fingerprint": "a8ebdb42",
