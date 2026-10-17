@@ -51,6 +51,7 @@ from .chart_pattern import ChartPatternCupStrategy, ChartPatternStrategy
 from .chart_pattern_spec import ChartPatternSpecStrategy
 from .donchian import DonchianStrategy
 from .minervini_spec import MinerviniSpecStrategy
+from .rs_leaders import RsLeadersStrategy
 from .trend_pullback import TrendPullbackStrategy
 
 _REGISTRY: dict[str, Strategy] = {}
@@ -66,6 +67,7 @@ register(DonchianStrategy())
 register(BreakoutStrategy())
 register(ChartPatternSpecStrategy())
 register(MinerviniSpecStrategy())
+register(RsLeadersStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
 # idea as the `_spec` strategy above it, which is built to the written detection

@@ -329,6 +329,49 @@
     },
     "version": "1.1"
   },
+  "rs_leaders": {
+    "family": "rs_leaders",
+    "fingerprint": "a97259ef",
+    "params": {
+      "BASE_MAX_DAYS": 40,
+      "BASE_MAX_DEPTH_PCT": 25.0,
+      "BASE_MIN_DAYS": 15,
+      "BUY_RANGE_PCT": 5.0,
+      "CONFIRM_WINDOW": 40,
+      "CORRECTION_PCT": 10.0,
+      "GROUP_MIN_RANK": 80,
+      "INDEX_SMA": 50,
+      "MAX_PCT_BELOW_52W_HIGH": 15.0,
+      "MAX_STOP_PCT": 8.0,
+      "PARTIAL_FRAC": 0.3333333333333333,
+      "PARTIAL_GAIN_PCT": 22.0,
+      "PIVOT_DAYS": 15,
+      "REBOUND_PCT": 5.0,
+      "RS_LINE_TOL_PCT": 2.0,
+      "RS_MIN_RANK": 80,
+      "STOP_DAYS": 10,
+      "VOL_MULT": 1.4,
+      "_key": "rs_leaders",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6"
+      ],
+      "min_bars": 300,
+      "setup_codes": [
+        "S1"
+      ],
+      "watch_codes": [
+        "W1",
+        "W2",
+        "W3"
+      ]
+    },
+    "version": "1.0"
+  },
   "sector_rotation": {
     "family": "sector_rotation",
     "fingerprint": "e40872af",
