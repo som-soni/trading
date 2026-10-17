@@ -275,3 +275,84 @@ The honest summary of the shelf: **one idea works** (cross-sectional momentum, f
 with liquidity and volatility constraints), **it works in India and is unproven in the US over a
 full cycle**, and **the per-symbol swing family has shown positive selection in 11 of 59 runs, never above
 +2.24, and never once on the eight-run 2013 cohort.**
+
+## 9. §8's recommendation, tested — and it was wrong
+
+§8 said the cheap next test was to run `rs_leaders`' gate as a fully invested portfolio, because it
+had the only positive selection among the per-symbol strategies in both markets (+1.40 India, +0.27
+US) and threw away ~10 CAGR points sitting in cash. `backtesting/rs_rotation.py` does exactly that:
+hold the top-N leaders when the market is in a confirmed recovery, hold the INDEX otherwise, never
+cash. Fully invested by construction, so the headline excess *is* the selection number.
+
+**It does not survive.** India from 2010, against the Nifty 500:
+
+| rank | top N | gate ON | gate OFF (control) |
+|---|---|---|---|
+| rs_range | 20 | **-2.99** | +1.83 |
+| momentum | 10 | **-3.72** | +9.57 |
+| momentum | 20 | **-4.00** | +7.85 |
+| vol_scaled | 10 | **-3.67** | +10.71 |
+| vol_scaled | 20 | **-3.87** | +8.06 |
+
+The +1.40 was an artefact of measuring a strategy that is barely invested, not a signal worth
+deploying. Every converted variant loses by 3-4 points while fully invested.
+
+### The control inverts between markets, which kills the simpler story
+
+The obvious reading of the India column is "the recovery gate costs 5-14 CAGR points". The US says
+otherwise:
+
+| rank | top N | India gate ON | India gate OFF | US gate ON | US gate OFF |
+|---|---|---|---|---|---|
+| rs_range | 20 | -2.99 | +1.83 | -1.19 | -11.24 |
+| momentum | 10 | -3.72 | +9.57 | **+1.71** | -21.41 |
+| vol_scaled | 20 | -3.87 | +8.06 | **+0.66** | -6.23 |
+
+**The gate's sign flips with the market.** It is not a signal at all — it is a lever on *how much
+momentum you hold*, and its value follows whether that market pays a momentum premium. In India it
+defaults you out of a book that works, which is expensive; in the US it defaults you into the index
+and away from a book that does not, which helps. The US gate-ON runs all report a max drawdown of
+-34.1%, which is SPY's: they are a mostly-index portfolio with a small excursion, and the +1.71 is
+that excursion, not stock selection.
+
+So §8's point 2 — "run the good gate fully invested and keep the selection" — was wrong twice. The
+selection was not real, and the gate it was attributed to does not have a sign of its own.
+
+### What the control run is actually worth
+
+The gate-OFF column is a second, independent measurement of cross-sectional momentum, through a
+different accounting engine (`rotation.simulate`, equal-weighted) than the one `momentum_vol_scaled`
+uses (`portfolio_sim`, inverse-vol). India, vol_scaled, top 20: **18.22% CAGR here against 17.56%
+there.** Two independently written engines agreeing to within 0.7 points on the same strategy is
+worth more than either number alone — it is the only cross-validation in this document.
+
+### A defect this found
+
+The first version of the gate-OFF runs reported max drawdowns of **-100.5% with a negative Sharpe
+on a positive CAGR**, which is impossible and is how the bug got caught. `rotation.simulate` valued
+a holding at ZERO when its price was NaN on the day rather than marking it to its last trade. Both
+existing callers happened to hide it by forward-filling at load; a stock cross-section does not,
+because `baseline.load_prices` deliberately leaves gaps (ffilling before scoring would fabricate
+momentum across them). India's frame carries 56,738 interior NaNs, and on 2010-02-06 every symbol
+was NaN at once, so the whole book vanished for a session and equity printed bare cash.
+
+Fixed in the engine rather than in each caller's loader. `dual_momentum` and `sector_rotation` x
+{india, us} x {2010, 2020} — all eight reproduce their published CAGR and max drawdown to within
+rounding, so no shipped result moves.
+
+## 10. Where the shelf stands after that
+
+Adding index mean reversion (`mean_reversion`, the first non-momentum mechanism) and the rs_leaders
+conversion, the ledger now reads:
+
+| mechanism | strategies | verdict |
+|---|---|---|
+| Cross-sectional momentum, fully invested | 4 | **The only one that compounds.** India yes, US unproven over a full cycle |
+| Asset / sector rotation | 2 | India +3.0 to +3.7 from 2010; US negative in both |
+| Per-symbol swing (breakout, pullback, base) | 6 | Positive selection in 11 of 59 runs, never above +2.24, never on the 2013 cohort |
+| Short-horizon mean reversion on indices | 1 | Negative selection in all 12 runs, both markets, all three measures |
+
+Four mechanisms, one that works, and the one that works has a known size (~+3.4 walk-forward, not
+the +5.6 headline) and a known weak spot (the US). That is a more useful map than it looks: it says
+the remaining Learn strategies are worth building for *coverage of mechanisms not yet tested*, and
+not worth building as further variations on breakouts, of which there are already six.
