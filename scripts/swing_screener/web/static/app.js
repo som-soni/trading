@@ -3238,7 +3238,9 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   // equivalent of "Setups today" is what it HOLDS, taken from the latest run's still-open
   // positions, which are produced by the strategy's own rules rather than recomputed here.
   const holds = d.kind === "benchmark";
-  const tabs = [...(trades ? [["setups", "Setups today"]] : []), ...(holds ? [["holdings", "Holdings"]] : []),
+  // Same tab name as a screener's, because it answers the same question -- what does this strategy
+  // point at right now -- and a reader should not learn two vocabularies to compare two strategies.
+  const tabs = [...(trades ? [["setups", "Setups today"]] : []), ...(holds ? [["holdings", "Setups today"]] : []),
     ["rules", "Rules"], ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
   tab = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
   document.title = `${d.name} · Strategies · Trading`;
@@ -3294,46 +3296,41 @@ function strategyRules(host, d, key) {
   });
 }
 
-/** What a portfolio strategy holds, from the latest run's open positions.
+/** A portfolio strategy's "setups today": what its rules point at on the latest stored bar.
  *
- *  Deliberately NOT a fresh ranking computed here: that would be a second implementation of the
- *  selection, free to drift from the one that is backtested and versioned. These rows were
- *  produced by the strategy's own rules, so they are as of the run's last bar -- which the header
- *  says, because a holding list with no date invites being read as live.
+ *  Computed by the strategy's own selection (backtesting/baseline.eligible_scores, the same code
+ *  the backtest ranks with) rather than restated here, so the page and the measured strategy
+ *  cannot disagree. It is a RANKING as of the last complete session, not a rebalance -- the
+ *  strategy only acts on its rebalance date, which the note says so nobody reads it as a buy list.
  */
 async function strategyHoldings(host, alive, d, key) {
   host.innerHTML = LOADING;
   let m = store.get("btMkt:" + key, null) || pageMarket();
-  const runsFor = (mk) => d.backtests.filter((b) => b.market === mk)
-    .sort((a, b) => String(b.generated_at).localeCompare(String(a.generated_at)));
   const paint = async () => {
     const seg = segmented(MKTS.map((x) => [x.key, `${x.flag} ${esc(x.name)}`]), m, "mk");
-    const runs = runsFor(m);
-    if (!runs.length) {
+    host.innerHTML = `<div class="page-head sub">${seg}</div><div class="muted small">Ranking ${esc(mktInfo(m).name)} — this reads the whole universe, so it takes a few seconds.</div>`;
+    wire();
+    const r = await api(`/api/portfolio-selection/${encodeURIComponent(key)}/${m}`).catch(() => null);
+    if (!alive()) return;
+    if (!r || !r.rows?.length) {
       host.innerHTML = `<div class="page-head sub">${seg}</div>
-        <div class="empty"><b>No run for ${esc(mktInfo(m).name)}</b>
-          <div class="muted">Holdings come from a backtest's open positions. Queue one from the Backtests tab.</div></div>`;
+        <div class="empty"><b>Nothing ranks in ${esc(mktInfo(m).name)}</b>
+          <div class="muted">${r ? "No name clears the strategy's liquidity floor and trend filter on the latest bar." : "The ranking could not be computed."}</div></div>`;
       return wire();
     }
-    const run = runs[0];
-    const t = await api(`/api/reports/${run.id}/tables/trades`).catch(() => null);
-    if (!alive()) return;
-    const col = (n) => (t ? t.columns.indexOf(n) : -1);
-    const open = t ? t.rows.filter((r) => r[col("exit_reason")] === "OPEN") : [];
     const num = (x, nd = 2) => (x == null ? "" : (+x).toLocaleString(undefined, { minimumFractionDigits: nd, maximumFractionDigits: nd }));
     host.innerHTML = `<div class="page-head sub">${seg}<span class="spacer"></span>
-        <span class="muted small">from <a href="#/reports/${run.id}">${esc(run.run)}</a></span></div>
-      <p class="muted small">${open.length} position${open.length === 1 ? "" : "s"} open at the end of that run
-        — the book as its rules last rebalanced it, not a live quote.</p>
-      ${open.length ? `<table class="dtab"><thead><tr><th>Symbol</th><th class="num">Entry</th><th>Since</th>
-          <th class="num">Shares</th><th class="num">Value</th><th class="num">P&L</th><th class="num">Days</th></tr></thead><tbody>${
-        open.sort((a, b) => b[col("pnl")] - a[col("pnl")]).map((r) => `<tr>
-          <td><a href="#/chart/${esc(m)}/${encodeURIComponent(r[col("symbol")])}">${esc(String(r[col("symbol")]).replace(/\.NS$/, ""))}</a></td>
-          <td class="num">${num(r[col("entry_price")])}</td><td>${prettyDate(r[col("entry_date")])}</td>
-          <td class="num">${num(r[col("shares")], 0)}</td><td class="num">${num(r[col("notional")], 0)}</td>
-          <td class="num ${r[col("pnl")] < 0 ? "neg" : "pos"}">${num(r[col("pnl")], 0)}</td>
-          <td class="num">${num(r[col("holding_days")], 0)}</td></tr>`).join("")}</tbody></table>`
-        : `<div class="empty"><b>Nothing open</b><div class="muted">That run ended flat.</div></div>`}`;
+        <span class="muted small">as of ${prettyDate(r.as_of)} · ${r.eligible} eligible</span></div>
+      <p class="muted small">The top ${r.top_n} by this strategy's own ranking on the latest complete session —
+        what it would hold if it rebalanced now. It only acts on its rebalance date, so this is where the rule
+        points, not a buy list. Its actual book is in the latest run on the Backtests tab.</p>
+      <table class="dtab"><thead><tr><th>#</th><th>Symbol</th><th class="num">Score</th>
+        <th class="num">Close</th><th class="num">Turnover (20d avg)</th></tr></thead><tbody>${
+        r.rows.map((x) => `<tr>
+          <td class="muted">${x.rank}</td>
+          <td><a href="#/chart/${esc(m)}/${encodeURIComponent(x.symbol)}">${esc(String(x.symbol).replace(/\.NS$/, ""))}</a></td>
+          <td class="num">${num(x.score, 2)}</td><td class="num">${num(x.close)}</td>
+          <td class="num muted">${x.turnover == null ? "" : num(x.turnover, 0)}</td></tr>`).join("")}</tbody></table>`;
     wire();
   };
   const wire = () => host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {

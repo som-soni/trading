@@ -996,6 +996,24 @@ def _tt_tag(why: str) -> str:
     return why
 
 
+@app.get("/api/portfolio-selection/{strategy}/{market}")
+def portfolio_selection(strategy: str, market: str, limit: int | None = None):
+    """What a PORTFOLIO strategy's rules point at on the latest stored bar — its "setups today".
+
+    The same selection the backtest uses (`baseline.eligible_scores`), not a restatement of it, so
+    the page and the measured strategy cannot disagree. A ranking as of the last complete session,
+    not a rebalance: the strategy only acts on its rebalance date.
+    """
+    from ..backtesting import baseline
+    from ..strategies import portfolio_strategies
+
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    if strategy not in portfolio_strategies():
+        raise HTTPException(404, f"{strategy} is not a portfolio strategy")
+    return baseline.current_selection(market, strategy, limit=limit)
+
+
 @app.get("/api/setups/{strategy}/{market}/{symbol}")
 def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = None):
     """One strategy's trade setups over the stored bars, run ON DEMAND — the Trade setups layer.

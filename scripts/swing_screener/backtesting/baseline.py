@@ -142,6 +142,118 @@ def load_prices(market: str, min_bars: int) -> tuple:
     return px, dv, sma200
 
 
+def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
+                    floor_price: float, liq_floor: float | None, trend_filter: bool,
+                    liquidity_rank_top: int | None) -> dict:
+    """{symbol: score} for the names eligible on one date -- the strategy's whole selection rule.
+
+    Extracted from `run`'s rebalance branch so a LIVE view of what the strategy would hold can
+    call the same code instead of restating it. A second implementation of the selection is free
+    to drift from the one that is backtested and versioned, and would drift silently.
+    """
+    out = {}
+    for s in symbols:
+        price_now = float(price_row[s]) if s in price_row.index and pd.notna(price_row[s]) else float("nan")
+        if price_now != price_now or price_now < floor_price:
+            continue
+        if liq_floor:
+            liq = dv_row[s] if dv_row is not None and s in dv_row.index else float("nan")
+            if liq != liq or liq < liq_floor:
+                continue
+        if trend_filter:
+            ma = sma200_row[s] if sma200_row is not None and s in sma200_row.index else float("nan")
+            if ma != ma or price_now <= ma:
+                continue
+        m = float(score_row[s]) if score_row is not None and pd.notna(score_row.get(s)) else float("nan")
+        if m == m:
+            out[s] = m
+    # Restrict the ranking pool to the most liquid names FIRST. Ranking the whole 5,000-name tape
+    # by raw momentum selects the most extreme movers, which are overwhelmingly speculative
+    # microcaps -- that measures the universe's tail, not momentum. Standard practice ranks within
+    # a liquid investable set.
+    if liquidity_rank_top and len(out) > liquidity_rank_top and dv_row is not None:
+        liq_today = {s: float(dv_row[s]) for s in out if s in dv_row.index and pd.notna(dv_row[s])}
+        pool = set(sorted(liq_today, key=liq_today.get, reverse=True)[:liquidity_rank_top])
+        out = {s: m for s, m in out.items() if s in pool}
+    return out
+
+
+_SELECTION_CACHE: dict = {}
+
+
+def current_selection(market: str, strategy_key: str, limit: int | None = None) -> dict:
+    """What the strategy would hold if it rebalanced on the latest stored bar.
+
+    The portfolio equivalent of a screener's "setups today", and computed by the SAME selection the
+    backtest uses (`eligible_scores`) rather than a restatement of it -- which is the only way the
+    page and the measured strategy cannot disagree.
+
+    It is a ranking as of the last bar, not a rebalance: the strategy only acts on its rebalance
+    date, so this answers "what does the rule point at now", not "what should I buy today".
+    """
+    from ..strategies import portfolio_strategies
+
+    cls = portfolio_strategies()[strategy_key]
+    # ONE bounded query, not load_prices' per-symbol read of 16 years: a single date's ranking needs
+    # only enough history to score it (lookback + skip) and to set a 200-day average. load_prices
+    # takes ~70s on this universe, which is not a page load.
+    need = cls.lookback + cls.skip + 260
+    since = pd.Timestamp.today().normalize() - pd.Timedelta(days=int(need * 1.6))
+    bars = cache.load_many_cached(market, list(universe.load_universe(market)), since=since)
+    closes, dollar_vol = {}, {}
+    for sym, d in bars.items():
+        if d is None or len(d) < 300:   # the same min_bars load_prices applies, so the same cohort
+            continue
+        closes[sym] = d["close"]
+        dollar_vol[sym] = (d["close"] * d["volume"]).rolling(20, min_periods=20).mean()
+    if not closes:
+        return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
+    px = pd.DataFrame(closes).sort_index()
+    dv = pd.DataFrame(dollar_vol).reindex_like(px)
+    sma200 = px.rolling(200, min_periods=200).mean()
+    if px is None or px.empty:
+        return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
+    # The same partial-day rule run() applies: if the cache was refreshed for part of the universe
+    # the newest date prices a handful of symbols and NaNs the rest, and ranking against it returns
+    # nothing at all. Use the last session with normal coverage.
+    coverage = px.notna().sum(axis=1)
+    full = coverage >= 0.5 * coverage.rolling(20, min_periods=1).median()
+    if not full.any():
+        return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
+    today = px.index[full][-1]
+    key = (market, strategy_key, str(today.date()), cls.spec_id())
+    if key in _SELECTION_CACHE:
+        return _SELECTION_CACHE[key]
+
+    cfg = MARKETS[market]
+    bench = cache.load_cached(market, cfg.benchmark_ticker)
+    bench_close = bench["close"].astype(float) if bench is not None else None
+    scores = score_matrix(px, cls.rank, cls.lookback, cls.skip, benchmark=bench_close)
+    liq_floor = cls.min_turnover_for(market) if hasattr(cls, "min_turnover_for") else None
+    mom = eligible_scores(
+        px.columns, px.loc[today],
+        dv.loc[today] if today in dv.index else None,
+        sma200.loc[today] if today in sma200.index else None,
+        scores.loc[today] if today in scores.index else None,
+        floor_price=cfg.screener.min_price, liq_floor=liq_floor,
+        trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None),
+    )
+    ranked = sorted(mom, key=mom.get, reverse=True)[: (limit or cls.top_n)]
+    rows = [{
+        "rank": i + 1, "symbol": sym, "score": round(float(mom[sym]), 4),
+        "close": round(float(px.loc[today, sym]), 2),
+        "turnover": (float(dv.loc[today, sym]) if today in dv.index and sym in dv.columns
+                     and pd.notna(dv.loc[today, sym]) else None),
+        "held": bool(cls.top_n and i < cls.top_n),
+    } for i, sym in enumerate(ranked)]
+    out = {"as_of": str(today.date()), "strategy": strategy_key, "market": market,
+           "spec_id": cls.spec_id(), "eligible": len(mom), "top_n": cls.top_n, "rows": rows}
+    if len(_SELECTION_CACHE) > 8:
+        _SELECTION_CACHE.clear()
+    _SELECTION_CACHE[key] = out
+    return out
+
+
 def run(
     market: str, start: str, top_n: int = 10, lookback: int = TRADING_DAYS,
     skip: int = 21, rebalance: str = "ME", trend_filter: bool = True,
@@ -253,37 +365,14 @@ def run(
         equity = cash + held_value
 
         if today in rebal_dates:
-            score_row = scores.loc[today] if today in scores.index else None
-            mom = {}
-            for s in px.columns:
-                price_now = float(row[s]) if s in row.index and pd.notna(row[s]) else float("nan")
-                if price_now != price_now or price_now < floor_price:
-                    continue
-                if liq_floor:
-                    liq = dv.loc[today, s] if s in dv.columns else float("nan")
-                    if liq != liq or liq < liq_floor:
-                        continue
-                if trend_filter:
-                    ma = sma200.loc[today, s] if s in sma200.columns else float("nan")
-                    if ma != ma or price_now <= ma:
-                        continue
-                m = float(score_row[s]) if score_row is not None and pd.notna(score_row.get(s)) else float("nan")
-                if m == m:
-                    mom[s] = m
-            # Restrict the ranking pool to the most liquid names FIRST.
-            # Ranking the whole 5,000-name tape by raw momentum selects the
-            # most extreme movers, which are overwhelmingly speculative
-            # microcaps -- that measures the universe's tail, not momentum.
-            # Standard practice ranks within a liquid investable set.
-            if liquidity_rank_top and len(mom) > liquidity_rank_top:
-                liq_today = {
-                    s: float(dv.loc[today, s]) for s in mom
-                    if s in dv.columns and pd.notna(dv.loc[today, s])
-                }
-                pool = set(
-                    sorted(liq_today, key=liq_today.get, reverse=True)[:liquidity_rank_top]
-                )
-                mom = {s: m for s, m in mom.items() if s in pool}
+            mom = eligible_scores(
+                px.columns, row,
+                dv.loc[today] if today in dv.index else None,
+                sma200.loc[today] if today in sma200.index else None,
+                scores.loc[today] if today in scores.index else None,
+                floor_price=floor_price, liq_floor=liq_floor, trend_filter=trend_filter,
+                liquidity_rank_top=liquidity_rank_top,
+            )
             target = sorted(mom, key=mom.get, reverse=True)[:top_n]
             if overlay_ok is not None and not bool(overlay_ok.get(today, False)):
                 target = []   # benchmark below its trend: hold nothing
