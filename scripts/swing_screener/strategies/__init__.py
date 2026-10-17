@@ -100,8 +100,9 @@ def portfolio_strategies() -> dict:
     so a module-level import would be circular.
     """
     from ..backtesting.baseline import MomentumBaselineStrategy, VolScaledMomentumStrategy
+    from ..backtesting.dual_momentum import DualMomentumStrategy
 
-    return {c.key: c for c in (MomentumBaselineStrategy, VolScaledMomentumStrategy)}
+    return {c.key: c for c in (MomentumBaselineStrategy, VolScaledMomentumStrategy, DualMomentumStrategy)}
 
 
 def all_specs() -> dict:

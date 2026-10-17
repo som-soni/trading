@@ -173,6 +173,16 @@
     },
     "version": "1.2"
   },
+  "dual_momentum": {
+    "family": "dual_momentum",
+    "fingerprint": "cb93605d",
+    "params": {
+      "_key": "dual_momentum",
+      "cost_bps": 10.0,
+      "lookback_months": 12
+    },
+    "version": "1.0"
+  },
   "minervini": {
     "family": "minervini",
     "fingerprint": "6afe6ad6",

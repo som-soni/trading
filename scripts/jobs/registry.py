@@ -448,7 +448,11 @@ def _backtest_steps(ctx: Ctx) -> list:
             # baseline runner instead. Dispatching here rather than refusing is what lets the
             # Strategies page offer one Backtest button for every strategy it lists.
             if key in portfolio_strategies():
-                from swing_screener.backtesting import baseline as bl
+                # each portfolio strategy names the module that backtests it: a ranking strategy
+                # goes to the baseline runner, an allocation rule to its own
+                import importlib
+                mod = getattr(portfolio_strategies()[key], "runner", "baseline")
+                bl = importlib.import_module(f"swing_screener.backtesting.{mod}")
                 # the strategy's own window before the job's generic default, so the button and
                 # the command on its page produce the same run
                 start_ = str(c.opt("start") or getattr(portfolio_strategies()[key], "backtest_start", None)
