@@ -470,6 +470,16 @@ DOC = {
         "A holding is sold when it drops out of the top N at a rebalance or loses its trend; there are no stops, targets or entry triggers.",
         "Costs of `--cost-bps` per side are charged on every trade; whole shares only unless `--fractional`.",
     ),
+    "entry_rules": (
+        "On each rebalance date, score every eligible stock and hold the top N; a name entering the "
+        "top N is bought at that session's close.",
+        "Equal-weighted: each holding gets the same share of capital.",
+        "No stop, no target and no entry trigger — the rank is the whole rule.",
+    ),
+    "exit_rules": (
+        "Sold at the next rebalance once the name leaves the top N.",
+        "Nothing else sells it; there is no stop, so a holding is carried until the rank drops it.",
+    ),
     "caveats": (
         "Survivorship bias: the universe is today's listed names, which flatters every backtest here.",
         "Results depend on the rebalance cadence and N; compare runs with the same settings.",
@@ -675,7 +685,7 @@ VS_DOC = {
                    "rebalance monthly inside a liquid small/mid-cap universe.",
     "status": (
         "Chosen on CONSISTENCY, not on peak return. Swept 18 variants (rank x holdings x weighting x vol target) "
-        "on India from 2010 at a {min_turnover_cr} crore turnover floor and {cost_bps:g}bps, judged against the "
+        "on India from 2010 at a {min_turnover_cr} crore turnover floor and {cost_bps}bps, judged against the "
         "Nifty Smallcap 250 -- the honest control, because it drops and replaces constituents and so carries the "
         "failures a survivor-only universe cannot. This variant returned 16.40% CAGR against the control's 11.99%, "
         "and was the ONLY one whose excess held across both halves of the window: +4.41 before 2019 and +4.49 "
@@ -706,6 +716,23 @@ VS_DOC = {
         "Held to the next rebalance, fully invested. There is no stop and no target: the exit is the rank, and a "
         "name that stops being strong is replaced rather than stopped out.",
     ),
+    "entry_rules": (
+        "On each rebalance date (ME, month-end) every eligible name is scored and the "
+        "top {top_n} are held. A name entering the top {top_n} is bought at that session's close.",
+        "Eligible means: {min_turnover_cr} crore of 20-day average traded value a day, above its own "
+        "200-day average, and enough history to score ({lookback} bars plus {skip} skipped).",
+        "Size is inverse to realised volatility over {vol_window} bars, so a quiet name carries more "
+        "capital than a wild one and no single holding dominates the book's risk.",
+        "There is no stop, no target and no trigger to wait for. The rank IS the trade rule, which is "
+        "why this has a Holdings tab rather than setups.",
+    ),
+    "exit_rules": (
+        "Sold at the next rebalance, at the close, once the name is no longer in the top {top_n}.",
+        "Nothing else sells it. A position that falls is held until the rank drops it — that is what "
+        "makes the drawdown a small-cap drawdown (-51%) rather than a stop-managed one.",
+        "{cost_bps}bps a side is charged on every rebalance; turnover runs about 4x the book a year, "
+        "so the cost assumption is load-bearing. See the caveats.",
+    ),
     "caveats": (
         "**Survivorship inflates this by an unknown but probably modest amount.** No price series in the universe "
         "ends early, but that is not the same as nothing failing: Indian stocks that collapse mostly keep trading, "
@@ -714,8 +741,8 @@ VS_DOC = {
         "history Yahoo deletes, and acquisitions, which usually exit at a premium and so bias the measured return "
         "the other way. A ranking strategy sells a collapsing name long before the bottom, so the part that would "
         "have hurt it most is the part that is present.",
-        "**Costs decide it.** At 25bps the excess over small caps is +6.05, at {cost_bps:g}bps +3.66, at 100bps it "
-        "is gone. {cost_bps:g}bps is the defensible assumption for monthly rebalancing of small caps and is the "
+        "**Costs decide it.** At 25bps the excess over small caps is +6.05, at {cost_bps}bps +3.66, at 100bps it "
+        "is gone. {cost_bps}bps is the defensible assumption for monthly rebalancing of small caps and is the "
         "default here; a flat per-trade figure is still a simplification of a real spread.",
         "**The drawdown is a small-cap drawdown.** -51% peak to trough. It is better than the segment's -60.8%, "
         "which is a real improvement, but it is not a comfortable ride and the holding period is years.",

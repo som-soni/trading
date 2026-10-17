@@ -3282,7 +3282,7 @@ function strategyRules(host, d, key) {
       ${d.setups.length ? `<h3>${num()}Setups <span class="muted small">— the patterns that make a stock entry-eligible</span></h3>${codeTable(d.setups, "Setup")}` : ""}
       ${d.watch.length ? `<h3>Warning flags <span class="muted small">— don't disqualify, but cap or downgrade the decision</span></h3>${codeTable(d.watch, "Flag")}` : ""}
       </section>` : ""}
-    ${sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>Entry, stop and target</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
+    ${sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>${d.kind === "benchmark" ? "Entry" : "Entry, stop and target"}</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
     ${sec("decisions", "Decisions", d.decisions.length ? `<table class="dtab"><tbody>${d.decisions.map((x) => `<tr><td><span class="tag ${decisionClass(x.label)}">${esc(x.label)}</span></td><td>${esc(x.text)}</td></tr>`).join("")}</tbody></table>
       <p class="muted small">${esc(d.regime_note)}</p>` : "")}
     ${sec("params", "Parameters", params)}

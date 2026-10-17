@@ -216,9 +216,19 @@ class SpecMeta:
         mod = sys.modules[cls.__module__]
         ns = {k: v for k, v in vars(mod).items()
               if k.isupper() and isinstance(v, (int, float, str, tuple))}
+        # Numeric attributes, plus SHORT string ones -- a portfolio strategy's configuration is
+        # partly words ("ME", "vol_scaled", "inverse_vol") and those deserve the same live
+        # rendering as its numbers, or the page restates them by hand and they drift. The prose
+        # fields are excluded: they are the documentation, not values to interpolate into it, and
+        # {name} expanding to the whole status text would be nonsense.
+        _PROSE = {"name", "description", "status", "thesis", "key", "family", "version"}
         for k in dir(cls):
             v = getattr(cls, k, None)
-            if not k.startswith("_") and isinstance(v, (int, float)) and not isinstance(v, bool):
+            if k.startswith("_") or k in _PROSE:
+                continue
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                ns.setdefault(k, v)
+            elif isinstance(v, str) and len(v) <= 32:
                 ns.setdefault(k, v)
         return ns
 

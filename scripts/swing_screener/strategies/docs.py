@@ -164,6 +164,7 @@ def baseline_doc(key: str) -> dict:
 
     _MB = portfolio_strategies()[key]
     d = _MB.doc
+    r = _MB.render_doc
     params = []
     for a in baseline.build_parser()._actions:
         if not a.option_strings or a.dest in ("help", "market", "start"):
@@ -172,7 +173,7 @@ def baseline_doc(key: str) -> dict:
         params.append({"label": a.option_strings[-1], "source": "CLI", "meaning": (a.help or "").replace("%%", "%"),
                        "values": {m: _fmt(default) for m in MARKETS}})
     return {
-        "key": d["key"], "kind": "benchmark", "name": d["name"], "description": d["description"], "status": d["status"],
+        "key": d["key"], "kind": "benchmark", "name": d["name"], "description": r(d["description"]), "status": r(d["status"]),
         "selection": _MB.selection, "selection_label": SELECTION[_MB.selection],
         "selection_rank": list(SELECTION).index(_MB.selection),
         "behaviour": _MB.behaviour, "behaviour_label": BEHAVIOURS[_MB.behaviour],
@@ -182,8 +183,18 @@ def baseline_doc(key: str) -> dict:
         "family": _MB.family_name(), "version": _MB.version,
         "spec_id": _MB.spec_id(), "is_current": True,
         "changelog": [{"version": v, "date": d, "change": c} for v, d, c in _MB.changelog],
-        "thesis": d["thesis"], "how_it_works": list(d["how_it_works"]), "caveats": list(d["caveats"]),
-        "gates": [], "watch": [], "setups": [], "entry_rules": [], "exit_rules": [],
+        # rendered like every screener's: these carry {placeholders} naming the strategy's live
+        # tunables, and serving them raw printed "{cost_bps}bps" on the page
+        "thesis": r(d["thesis"]), "how_it_works": [r(x) for x in d["how_it_works"]],
+        "caveats": [r(x) for x in d["caveats"]],
+        # style was declared on the class and dropped here, so these pages showed no style label
+        # while every screener did. gates/watch/setups/decisions stay empty because a portfolio
+        # strategy genuinely has none -- it ranks and rebalances; entry and exit it does have.
+        "style": _MB.style, "style_label": STYLES.get(_MB.style, ""),
+        "style_rank": list(STYLES).index(_MB.style) if _MB.style in STYLES else 99,
+        "gates": [], "watch": [], "setups": [],
+        "entry_rules": [_MB.render_doc(x) for x in d.get("entry_rules", ())],
+        "exit_rules": [_MB.render_doc(x) for x in d.get("exit_rules", ())],
         "params": params, "decisions": [], "regime_note": "",
         # the strategy IS its tunables now, so the command names it instead of re-listing them
         "commands": {"Backtest": f"python3 -m swing_screener.backtesting.baseline --strategy {key} "
