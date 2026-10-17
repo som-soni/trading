@@ -1156,6 +1156,16 @@ def macro_analysis(market: str = "india"):
     return {"market": market, "series": macro.latest(market), "analysis": macro.analysis(market)}
 
 
+@app.get("/api/rates")
+def rates_summary(market: str = "india"):
+    """The Today page's rates card: the market's policy rate and bill / bond yields (marketdata/rates.py) —
+    last value, 1-month / 1-year / 5-year changes in bp, when a set rate last changed, and history for a chart."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..marketdata import rates
+    return {"market": market, "rates": rates.summary(market)}
+
+
 # breadth_daily as single series for the guides' ```series charts (`us:breadth.pct50`); counts, or % of the day's n
 BREADTH_FIELDS = {
     "pct50": "above50 * 100.0 / n", "pct5": "above5 * 100.0 / n", "highs": "highs", "lows": "lows", "hl": "highs - lows",

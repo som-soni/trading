@@ -1371,6 +1371,20 @@ table.fin.peers tbody th a { color: var(--link); }
 .td-runs .chip-s b { margin-left: 3px; color: var(--strong); }
 .td-warn { margin-bottom: 6px; color: var(--warn); }
 .td-setups, .td-picks { margin-bottom: 12px; }
+.td-rates-card { margin-bottom: 12px; }
+.rt-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .rt-wrap { grid-template-columns: minmax(0, 1fr); } }
+.rt-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.rt-legend { display: flex; flex-wrap: wrap; gap: 4px; }
+.rt-legend button { font-size: 12px; padding: 2px 8px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--muted); opacity: .55; }
+.rt-legend button.on { opacity: 1; color: var(--text); border-color: var(--line-2); }
+.rt-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+.rt-chart { height: 300px; }
+.rt-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.rt-tbl th { font-size: 11px; font-weight: 600; color: var(--muted); text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+.rt-tbl td { padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.rt-tbl tr:last-child td { border-bottom: 0; }
+.rt-tbl .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 /* tables whose rows open something: say so, and show it on hover */
 .rowhint { margin-left: 10px; }

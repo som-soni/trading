@@ -29,7 +29,8 @@ from ..marketdata.freshness import expected_session, lag as _lag
 MARKET_NAME = {k: c.name for k, c in MARKETS.items()}
 BENCH_SERIES = {"us": "SPX", "india": "NIFTY50"}
 # (ok within, warn within) days for datasets that are not refreshed every trading day
-AGE_LIMITS = {"universe": (8, 15), "industries": (35, 60), "names": (60, 120), "quality": (8, 32), "earnings": (8, 15)}
+AGE_LIMITS = {"universe": (8, 15), "industries": (35, 60), "names": (60, 120), "quality": (8, 32), "earnings": (8, 15),
+              "rates": (4, 8)}   # rates: FRED publishes a day late, so a session check would warn every day
 LOG_TAIL_LINES = 150
 
 
@@ -104,6 +105,11 @@ def freshness(q, price_day) -> dict:
                                    "" if not (b and d) or b >= d else f"prices reach {d.isoformat()}"))
         ix = q("SELECT max(date) FROM index_series WHERE market=%s AND series=%s", (m, BENCH_SERIES[m]))[0][0]
         items.append(_session_item("indexes", "Index & VIX series", ix, exp))
+        from ..marketdata import rates
+        rk = [r.key for r in rates.RATES.get(m, []) if r.kind == "bond"]
+        if rk:
+            rd = q("SELECT max(date) FROM index_series WHERE market=%s AND series = ANY(%s)", (m, rk))[0][0]
+            items.append(_age_item("rates", "Interest rates & yields", rd))
         runs = q("SELECT strategy, max(run_id) FROM universe_history WHERE market=%s GROUP BY strategy", (m,))
         last = max((r[1] for r in runs), default=None)
         last_d = dt.date.fromisoformat(last[:10]) if last else None
