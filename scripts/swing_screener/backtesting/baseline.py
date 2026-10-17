@@ -243,12 +243,28 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None) 
         trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None),
     )
     ranked = sorted(mom, key=mom.get, reverse=True)[: (limit or cls.top_n)]
+    held = ranked[: cls.top_n]
+    # The weight the strategy would actually put on each name, by its own rule. The RANK says what
+    # it points at; the weight says where the money goes, and the two differ enough to matter --
+    # the liquid-ETF defect v1.1 fixed was invisible in the ranking and obvious in the weights.
+    weights = {}
+    if cls.weighting == "inverse_vol":
+        vols = realised_vol(px, cls.vol_window)
+        inv = {}
+        for sym in held:
+            v = vols.loc[today, sym] if sym in vols.columns and today in vols.index else float("nan")
+            inv[sym] = 1.0 / float(v) if pd.notna(v) and v > 0 else 0.0
+        tot = sum(inv.values())
+        weights = {k: v / tot for k, v in inv.items()} if tot > 0 else {}
+    else:
+        weights = {sym: 1.0 / len(held) for sym in held} if held else {}
     rows = [{
         "rank": i + 1, "symbol": sym, "score": round(float(mom[sym]), 4),
         "close": round(float(px.loc[today, sym]), 2),
-        "turnover": (float(dv.loc[today, sym]) if today in dv.index and sym in dv.columns
+        "turnover": (round(float(dv.loc[today, sym])) if today in dv.index and sym in dv.columns
                      and pd.notna(dv.loc[today, sym]) else None),
-        "held": bool(cls.top_n and i < cls.top_n),
+        "weight_pct": (round(weights[sym] * 100, 2) if sym in weights else None),
+        "held": sym in set(held),
     } for i, sym in enumerate(ranked)]
     out = {"as_of": str(today.date()), "strategy": strategy_key, "market": market,
            "spec_id": cls.spec_id(), "eligible": len(mom), "top_n": cls.top_n, "rows": rows}

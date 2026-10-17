@@ -3438,38 +3438,58 @@ function strategyRules(host, d, key) {
  *  strategy only acts on its rebalance date, which the note says so nobody reads it as a buy list.
  */
 async function strategyHoldings(host, alive, d, key) {
-  host.innerHTML = LOADING;
-  let m = store.get("btMkt:" + key, null) || pageMarket();
+  let mkt = store.get("btMkt:" + key, null) || pageMarket();
+  let show = store.get("selShow:" + key, "held");
+  // A paint takes ~18s (it ranks the whole universe), so switching market starts a second one
+  // while the first is still in flight. alive() only guards against leaving the PAGE, so without
+  // a sequence token the slower reply writes its header into the newer market's head -- which it
+  // did: two "Ranked ..." labels, for two different markets, side by side.
+  let seq = 0;
   const paint = async () => {
-    const seg = segmented(MKTS.map((x) => [x.key, `${x.flag} ${esc(x.name)}`]), m, "mk");
-    host.innerHTML = `<div class="page-head sub">${seg}</div><div class="muted small">Ranking ${esc(mktInfo(m).name)} — this reads the whole universe, so it takes a few seconds.</div>`;
-    wire();
-    const r = await api(`/api/portfolio-selection/${encodeURIComponent(key)}/${m}`).catch(() => null);
-    if (!alive()) return;
+    const my = ++seq;
+    host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}<span class="spacer"></span>
+        <button id="run1" title="Re-rank this strategy on the latest stored prices">Re-rank…</button></div>
+      <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div>`;
+    wireHead();
+    const r = await api(`/api/portfolio-selection/${encodeURIComponent(key)}/${mkt}?limit=200`).catch(() => null);
+    if (!alive() || my !== seq) return;   // a newer paint owns the page
+    const tbl = host.querySelector("#tbl");
     if (!r || !r.rows?.length) {
-      host.innerHTML = `<div class="page-head sub">${seg}</div>
-        <div class="empty"><b>Nothing ranks in ${esc(mktInfo(m).name)}</b>
-          <div class="muted">${r ? "No name clears the strategy's liquidity floor and trend filter on the latest bar." : "The ranking could not be computed."}</div></div>`;
-      return wire();
+      tbl.innerHTML = `<div class="empty"><b>Nothing ranks in ${esc(mktInfo(mkt).name)}</b><div class="muted">${
+        r ? "No name clears this strategy's liquidity floor and trend filter on the latest bar." : "The ranking could not be computed."}</div></div>`;
+      return;
     }
-    const num = (x, nd = 2) => (x == null ? "" : (+x).toLocaleString(undefined, { minimumFractionDigits: nd, maximumFractionDigits: nd }));
-    host.innerHTML = `<div class="page-head sub">${seg}<span class="spacer"></span>
-        <span class="muted small">as of ${prettyDate(r.as_of)} · ${r.eligible} eligible</span></div>
-      <p class="muted small">The top ${r.top_n} by this strategy's own ranking on the latest complete session —
-        what it would hold if it rebalanced now. It only acts on its rebalance date, so this is where the rule
-        points, not a buy list. Its actual book is in the latest run on the Backtests tab.</p>
-      <table class="dtab"><thead><tr><th>#</th><th>Symbol</th><th class="num">Score</th>
-        <th class="num">Close</th><th class="num">Turnover (20d avg)</th></tr></thead><tbody>${
-        r.rows.map((x) => `<tr>
-          <td class="muted">${x.rank}</td>
-          <td><a href="#/chart/${esc(m)}/${encodeURIComponent(x.symbol)}">${esc(String(x.symbol).replace(/\.NS$/, ""))}</a></td>
-          <td class="num">${num(x.score, 2)}</td><td class="num">${num(x.close)}</td>
-          <td class="num muted">${x.turnover == null ? "" : num(x.turnover, 0)}</td></tr>`).join("")}</tbody></table>`;
-    wire();
+    host.querySelector(".page-head.sub").insertAdjacentHTML("afterbegin",
+      `<span class="run-label">Ranked ${esc(prettyDate(r.as_of))} — ${r.rows.filter((x) => x.held).length} held of ${r.eligible} eligible</span>`);
+    const nHeld = r.rows.filter((x) => x.held).length;
+    const dec = host.querySelector("#dec");
+    const drawChips = () => {
+      dec.innerHTML = [["held", "Held", nHeld, "trade"], ["all", "All ranked", r.rows.length, ""]]
+        .map(([v, t, n, cls]) => `<button class="chip ${cls} ${v === show ? "on" : ""}" data-d="${v}">${t}<span>${n}</span></button>`).join("");
+      dec.querySelectorAll(".chip").forEach((b) => b.onclick = () => {
+        show = b.dataset.d; store.set("selShow:" + key, show); draw();
+      });
+    };
+    const cols = ["rank", "symbol", "weight_pct", "score", "price", "turnover_20d"];
+    const draw = () => {
+      drawChips();
+      const rows = (show === "held" ? r.rows.filter((x) => x.held) : r.rows)
+        .map((x) => [x.rank, x.symbol, x.weight_pct, x.score, x.close, x.turnover]);
+      if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>Nothing held</b></div>`; return; }
+      dataTable(tbl, cols, rows, {
+        name: `selection_${key}`, sort: [0, 1], noStack: true,
+        rowHint: "Click a row to open its chart",
+        rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`),
+      });
+    };
+    draw();
   };
-  const wire = () => host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {
-    m = b.dataset.v; store.set("btMkt:" + key, m); paint();
-  });
+  const wireHead = () => {
+    host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {
+      mkt = b.dataset.v; store.set("btMkt:" + key, mkt); paint();
+    });
+    host.querySelector("#run1").onclick = () => paint();
+  };
   paint();
 }
 
