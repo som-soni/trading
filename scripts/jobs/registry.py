@@ -221,6 +221,21 @@ def _indexes(ctx: Ctx) -> None:
     ctx.step.stats = {"indexes": len(got) - len(missing), "macro": len(mac) - len(mac_missing)}
 
 
+def _rates(ctx: Ctx) -> None:
+    """Policy rates and bill / bond yields with long history (marketdata/rates.py): FRED for the US, RBI's
+    homepage for India. Writes only new or changed values and names any policy-rate change it sees."""
+    from swing_screener.marketdata import rates
+    out = rates.refresh(ctx.market)
+    ok = [k for k in out["written"] if k not in out["failed"]]
+    if not ok:
+        raise RuntimeError("no rate series could be fetched: " + "; ".join(f"{k}: {v}" for k, v in out["failed"].items()))
+    n = sum(out["written"].values())
+    ctx.step.detail = (f"{len(ok)} series · {n:,} new or changed values"
+                       + (f" · changed: {'; '.join(out['changes'])}" if out["changes"] else "")
+                       + (f" · failed: {', '.join(out['failed'])}" if out["failed"] else ""))
+    ctx.step.stats = {"series": len(ok), "written": n, "changes": len(out["changes"]), "failed": len(out["failed"])}
+
+
 def _screened_symbols(market: str, strategies: list[str] | None = None) -> list[str]:
     """Symbols in the latest screening run of each strategy (those that passed the loose pre-filter)."""
     from swing_screener.marketdata import db
@@ -434,8 +449,11 @@ def _backtest_steps(ctx: Ctx) -> list:
             # Strategies page offer one Backtest button for every strategy it lists.
             if key in portfolio_strategies():
                 from swing_screener.backtesting import baseline as bl
-                argv = ["--strategy", key, "--market", c.market,
-                        "--start", str(c.opt("start") or BACKTEST_START), "--no-ingest"]
+                # the strategy's own window before the job's generic default, so the button and
+                # the command on its page produce the same run
+                start_ = str(c.opt("start") or getattr(portfolio_strategies()[key], "backtest_start", None)
+                             or BACKTEST_START)
+                argv = ["--strategy", key, "--market", c.market, "--start", start_, "--no-ingest"]
                 for extra in (c.opt("bt") or []):
                     argv += shlex.split(str(extra))
                 with cache.offline():   # stored prices only, like the gated backtest
@@ -650,6 +668,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "weekly", True, _splits, after=("prices",)),
     Job("indexes", "data", "index, VIX & macro series: benchmarks, volatility, total-return series, and rates, the dollar, "
         "oil, gold, copper and credit (marketdata/macro.py)", "daily", True, _indexes),
+    Job("rates", "data", "interest rates: policy rate, bill and bond yields with long history — FRED (US), RBI (India) "
+        "(marketdata/rates.py)", "daily", True, _rates),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
     Job("fno_bhav", "data", "F&O bhavcopy: NSE index futures and options, settle and open interest (India)",
         "daily", True, _fno_bhav),
@@ -690,7 +710,7 @@ JOBS: dict[str, Job] = {j.name: j for j in [
 PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
-              "jobs": ["universe", "prices", "indexes", "breadth", "sectors", "screens", "postmarket",
+              "jobs": ["universe", "prices", "indexes", "rates", "breadth", "sectors", "screens", "postmarket",
                        "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
@@ -700,8 +720,8 @@ PIPELINES: dict[str, dict] = {
              "jobs": ["prices", "earnings", "news", ("strategies", {"only_stale": True}), ("report", {"only_new": True}),
                       ("ingest", {"only_new": True}), "readiness"],
              "defaults": {"strategies": ["all"]}},
-    "daily": {"summary": "after each market's close — data only: prices, indexes, breadth, sectors, the screens' snapshot, post-market analysis",
-              "jobs": ["universe", "prices", "indexes", "breadth", "sectors", "screens", "postmarket"]},
+    "daily": {"summary": "after each market's close — data only: prices, indexes, rates, breadth, sectors, the screens' snapshot, post-market analysis",
+              "jobs": ["universe", "prices", "indexes", "rates", "breadth", "sectors", "screens", "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",

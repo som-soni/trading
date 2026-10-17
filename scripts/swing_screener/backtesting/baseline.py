@@ -796,7 +796,15 @@ VS_DOC = {
         "multi-year stretches behind. "
         "Roughly 1.8 points of any excess over the Nifty 500 is small-cap segment beta, which is why the "
         "comparison here is against small caps. Survivorship is a smaller discount than it first appeared -- see "
-        "the caveat. Not yet run in the US."
+        "the caveat. "
+        "US: RUN, AND IT FAILS -- 5.93% CAGR against the Russell 2000's 8.97%, -3.04 excess, Sharpe 0.34. "
+        "Measured against IWM rather than SPY: against SPY it reads -6.66 and most of that gap is 2010-2026 "
+        "mega-cap concentration rather than anything this strategy did. The remaining -3.0 is a real loss and "
+        "the reason is in the data -- the US top momentum decile sits 0.47 above its median against India's "
+        "0.76, so there is ~40% less spread to rank on, while the eligible pool is 3.3x larger (620 against "
+        "186), which means selecting the top 3% of candidates instead of the top 11%, further into the noise. "
+        "US equity momentum has also been published and traded since 1993. A market difference, not a variant "
+        "one: the naive baseline fails there too."
     ),
     "thesis": "Momentum pays, but raw momentum ranks the most volatile names highest, so it buys the stocks most "
               "likely to give the gain back. Dividing by realised volatility asks which stocks rose most PER UNIT "
@@ -901,8 +909,14 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     #: book is a small-cap book: the Smallcap 250 returned 11.99% against the Nifty 500's 10.17%
     #: from 2010, so ~1.8 points of any excess over the broad index is beta, not skill. The
     #: segment index also drops and replaces constituents, so it carries the failures this
-    #: survivor-only universe cannot. US has no stored segment index, so it falls back.
-    benchmark_key = {"india": "NIFTYSMALLCAP250"}
+    #: survivor-only universe cannot. US: IWM (Russell 2000) for the same reason -- against SPY the
+    #: US run reads -8.58, against IWM -3.92, and the difference is 2010-2026 mega-cap concentration
+    #: rather than anything this strategy did. The remaining -3.9 is a real loss and stays visible.
+    benchmark_key = {"india": "NIFTYSMALLCAP250", "us": "IWM"}
+    #: The window every measured figure in `status` comes from. Declared because the backtest job
+    #: otherwise uses its own default (2013) while the documented command says 2010 -- the button
+    #: and the page would then produce different runs and disagree about the same strategy.
+    backtest_start = "2010-01-01"
     min_turnover_cr = 10         # Rs crore/day (India); see min_turnover_for()
     min_turnover_usd_m = 20      # $ million/day (US)
 

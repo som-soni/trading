@@ -198,7 +198,7 @@ def baseline_doc(key: str) -> dict:
         "params": params, "decisions": [], "regime_note": "",
         # the strategy IS its tunables now, so the command names it instead of re-listing them
         "commands": {"Backtest": f"python3 -m swing_screener.backtesting.baseline --strategy {key} "
-                                 f"--market india --start 2010-01-01"},
+                                 f"--market india --start {getattr(_MB, 'backtest_start', '2013-01-01')}"},
         "source": _source_info(baseline),
     }
 
