@@ -248,13 +248,18 @@ def _run_args(r) -> None:
 
 def _opts(ap, a):
     """the run options, targets and markets of a `run` / `enqueue` command"""
-    from swing_screener.strategies import list_strategies
+    # Portfolio strategies are backtestable too (the backtest job dispatches them to the baseline
+    # runner), so they belong in what --strategies accepts. They are NOT in list_strategies(),
+    # which the screening jobs iterate calling evaluate() -- a portfolio strategy has no such
+    # method, which is exactly why the two registries are separate.
+    from swing_screener.strategies import list_strategies, portfolio_strategies
+    known = list_strategies() + sorted(portfolio_strategies())
     strategies = None
     if a.strategies:
         strategies = ["all"] if a.strategies.strip() == "all" else [s.strip() for s in a.strategies.split(",") if s.strip()]
-        bad = [s for s in strategies if s != "all" and s not in list_strategies()]
+        bad = [s for s in strategies if s != "all" and s not in known]
         if bad:
-            ap.error(f"unknown strategies {bad}; choose from {list_strategies()}")
+            ap.error(f"unknown strategies {bad}; choose from {known}")
     opts = {"strategies": strategies, "force": a.force, "allow_stale": a.allow_stale,
             "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days,
             "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols, "max_base": a.max_base, "min_dollar_volume": a.min_dollar_volume, "pyramid": a.pyramid,

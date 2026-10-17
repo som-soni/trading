@@ -1932,6 +1932,64 @@ async function macroSection(card, tiles, mkt) {
     + `<div class="td-foot"><a class="small" href="#/learn/macro-rates">Macro guides →</a></div>`;
 }
 
+/** Today's rates card (/api/rates): the market's policy rate and bill / bond yields over the long run —
+ *  a chart with a range picker and a legend that toggles each line (set rates drawn as steps), beside a
+ *  table of each rate's latest value, its 1-month / 1-year / 5-year change and when a set rate last moved. */
+const RATE_COLORS = ["#f59e0b", "#a855f7", "#64748b", "#14b8a6", "#3b82f6", "#ec4899", "#ef4444"];
+const RATE_RANGES = [["1Y", 1], ["5Y", 5], ["10Y", 10], ["20Y", 20], ["Max", 0]];
+async function ratesSection(card, mkt) {
+  const d = await api(`/api/rates?market=${mkt}`).catch(() => null);
+  if (!card.isConnected) return;
+  const rs = d?.rates || [];
+  const title = `Rates & yields · ${esc(mktInfo(mkt).name)}`;
+  if (!rs.length) { card.innerHTML = tdHead(title) + `<div class="muted small">${d ? "No rates stored yet — they load with the daily <code>rates</code> job." : "Could not load the rates."}</div>`; return; }
+  const bp = (v) => (v == null ? '<span class="muted">—</span>' : `<span class="${v > 0 ? "pos" : v < 0 ? "neg" : "muted"}">${v > 0 ? "+" : ""}${Math.round(v)}bp</span>`);
+  const color = Object.fromEntries(rs.map((x, i) => [x.key, RATE_COLORS[i % RATE_COLORS.length]]));
+  const shown = new Set(store.get(`ratesShown_${mkt}`, null) || rs.filter((x) => x.show).map((x) => x.key));
+  const range = store.get("ratesRange", "10Y");
+  const sources = [...new Set(rs.map((x) => x.source))].join(" · ");
+  const rows = rs.map((x) => `<tr title="${esc(x.label)} — ${esc(x.source)}, stored from ${prettyDate(x.first)}">
+      <td><i class="rt-sw" style="background:${color[x.key]}"></i>${esc(x.short)}${x.since ? `<div class="muted small">since ${prettyDate(x.since.date)} (${bp((x.since.to - x.since.from) * 100)})</div>` : ""}</td>
+      <td class="num"><b>${x.value.toFixed(2)}%</b><div class="muted small">${prettyDate(x.date)}</div></td>
+      <td class="num">${bp(x.m1)}</td><td class="num">${bp(x.y1)}</td><td class="num">${bp(x.y5)}</td></tr>`).join("");
+  card.innerHTML = tdHead(title, `<span class="muted small">${esc(sources)}</span>${info(`<p>Each market's policy rate and its bill and bond yields, with as much history as is stored. Set rates (the Fed's target, RBI's repo rate) are drawn as steps; the table says when each last moved.</p><p>US: FRED, back to the 1950s–80s by series, refreshed daily (a day behind). India: RBI's daily published rates; the repo rate's history before that is a list of RBI's announced changes, and the 10-year yield's is monthly (OECD) from 2011. T-bill and other G-sec history builds up from the first daily read.</p><p>Click a legend entry to show or hide its line.</p>`)}`)
+    + `<div class="rt-wrap"><div class="rt-chart-col">
+        <div class="rt-bar"><div class="rt-legend">${rs.map((x) => `<button data-k="${x.key}" class="${shown.has(x.key) ? "on" : ""}"><i class="rt-sw" style="background:${color[x.key]}"></i>${esc(x.short)}</button>`).join("")}</div>
+          ${segmented(RATE_RANGES.map(([k]) => [k, k]), range, "rt-range")}</div>
+        <div class="rt-chart"></div></div>
+      <table class="rt-tbl"><thead><tr><th>Rate</th><th class="num">Latest</th><th class="num">1M</th><th class="num">1Y</th><th class="num">5Y</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+
+  const el_ = card.querySelector(".rt-chart");
+  const chart = LC.createChart(el_, { autoSize: true, ...chartTheme(), crosshair: { mode: LC.CrosshairMode.Normal },
+    localization: { priceFormatter: (v) => `${v.toFixed(2)}%` } });
+  const series = {};
+  for (const x of rs) {
+    series[x.key] = chart.addSeries(LC.LineSeries, { color: color[x.key], lineWidth: x.kind === "policy" ? 2 : 1.5, lineType: x.step ? LC.LineType.WithSteps : LC.LineType.Simple,
+      priceLineVisible: false, lastValueVisible: shown.has(x.key), visible: shown.has(x.key), title: "" });
+    series[x.key].setData(x.points.map(([t, v]) => ({ time: t, value: v })));
+  }
+  const last = rs.map((x) => x.date).sort().at(-1);
+  const applyRange = (r) => {
+    const yrs = Object.fromEntries(RATE_RANGES)[r];
+    if (!yrs) { chart.timeScale().fitContent(); return; }
+    const from = new Date(last); from.setFullYear(from.getFullYear() - yrs);
+    chart.timeScale().setVisibleRange({ from: from.toISOString().slice(0, 10), to: last });
+  };
+  applyRange(range);
+  card.querySelectorAll(".rt-range button").forEach((b) => b.onclick = () => {
+    card.querySelectorAll(".rt-range button").forEach((o) => o.classList.toggle("on", o === b));
+    store.set("ratesRange", b.dataset.v); applyRange(b.dataset.v);
+  });
+  card.querySelectorAll(".rt-legend button").forEach((b) => b.onclick = () => {
+    const k = b.dataset.k, on = !shown.has(k);
+    on ? shown.add(k) : shown.delete(k);
+    b.classList.toggle("on", on);
+    series[k].applyOptions({ visible: on, lastValueVisible: on });
+    store.set(`ratesShown_${mkt}`, [...shown]);
+  });
+  { const prev = cleanup; cleanup = () => { chart.remove(); prev(); }; }
+}
+
 /** a sparkline of a group's RS line (values relative to its first point) */
 function sparkSvg(vals, w = 90, h = 22) {
   if (!vals || vals.length < 2) return "";
@@ -4561,7 +4619,12 @@ async function runDialog({ title, targets, market, screens, resumeFrom, pick }) 
     const spec = () => {
       const resume = resumeFrom && m.querySelector('input[name="rmode"]:checked')?.value === "resume";
       const picked = [...m.querySelectorAll(".rd-s:checked")].map((c) => c.value);
-      return { targets, market, strategies: screens ? (all.checked ? "all" : picked) : null,
+      // `screens` shows the strategy PICKER; it must not also decide whether a pick is sent. A
+      // portfolio strategy has no picker (there is one choice, named in the title) and passing
+      // screens:false silently dropped its key, so the job ran the DEFAULT strategy and reported
+      // success -- a US backtest queued from its page produced a run for another strategy.
+      return { targets, market,
+               strategies: screens ? (all.checked ? "all" : picked) : (pick ? [pick] : null),
                from: resume ? resumeFrom : null, force: m.querySelector("#rd-force").checked };
     };
     const showCmd = () => { const x = spec(); const st = Array.isArray(x.strategies) ? x.strategies.join(",") : x.strategies;
@@ -5494,6 +5557,7 @@ async function todayPage(alive, mkt) {
     + `${health}<div class="td-grid">${marketCard(mktInfo(mkt))}
       <div class="sec-card td-card" id="td-macro">${tdHead(`Macro · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div></div>
     <div class="mstrip td-tiles" id="td-tiles"></div>
+    <div class="sec-card td-rates-card" id="td-rates">${tdHead(`Rates & yields · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div>
     <div class="sec-card td-setups">${tdHead(`Today's setups · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${trade.length} tradeable · ${watchN} on watch</span><a class="small" href="#/strategies">All setups →</a>`)}
       ${setups?.behind ? `<div class="muted small td-warn">Newer prices have loaded since these runs — the decisions below were made on older bars.</div>` : ""}
       <div class="scr-top td-runs">${runChips || '<span class="muted small">No strategy runs yet for this market.</span>'}</div>
@@ -5503,6 +5567,7 @@ async function todayPage(alive, mkt) {
         : `<div class="muted small">${mine.length ? "Nothing new in the latest run." : "Stocks a strategy marks tradeable or on watch collect here after each run."}</div>`}</div>`;
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/today/${b.dataset.v}`); });
   macroSection($view.querySelector("#td-macro"), $view.querySelector("#td-tiles"), mkt);   // its own request: the page never waits on it
+  ratesSection($view.querySelector("#td-rates"), mkt);
   const host = $view.querySelector("#td-tbl");
   if (!trade.length) { host.innerHTML = `<div class="muted small">${rows.length ? "No tradeable setups today — the names above are on watch." : ""}</div>`; return; }
   const cols = ["symbol", "name", "peer_group", "group_rs", "strategy", "decision", "setup", "price", "entry", "stop", "risk_pct", "target_r"];
