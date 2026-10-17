@@ -275,51 +275,103 @@ def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
     return True, "passed"
 
 
-def stage2_runs(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = None) -> list[dict]:
-    """The stock's Stage 2 advances over `daily`, as the Learn guide on stages defines and measures them
-    (research/learn-price-stages.md, section 8): a Stage 2 STARTS on a day the Trend Template passes
-    (trend_template_row) and LASTS until the first close below the 200-day, or the first day the
-    200-day is no higher than 21 sessions earlier (sma200_21d_ago). A pullback under the 50-day, which
-    fails the template for a day, does not end it: a stage is a phase of months, and the template is
-    the checklist that confirms one, not the phase itself.
+# The stage cycle's reading of the 30-week line (the 150-day), from the Learn guide on stages (2.2):
+# "stopped rising" is the Trend Template's own test applied to the 150-day (no higher than a month ago),
+# "falling" is the guide's example rule (more than 0.5% below a month ago). Lowercase on purpose: these
+# draw a chart and decide nothing, so they stay out of the strategy's fingerprint (SpecMeta reads
+# UPPER-case names).
+_stage_slope_bars = 21
+_stage_falling_pct = 0.5
+# a swing low that can end Stage 2 must be the lowest of this many bars on EACH side (about two weeks):
+# the guide's three-bar swing marks every wobble of a healthy advance as a lower low
+_stage_swing_bars = 10
 
-    The guide's measurement counted only FRESH passes (six months without one) so its cases were
-    independent; a chart has no such need, so any pass starts a stage when none is running.
-    `passes`: the per-bar (ok, why) from trend_template_row, if already computed.
-    Returns [{"from", "to", "bars", "high", "low", "ongoing", "ended" (the rule that ended it, or None),
-    "gain_pct" (close at the end vs at qualification)}], oldest first."""
+
+def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = None) -> list[dict]:
+    """Weinstein's four stages over `daily`, as the Learn guide on stages reads them (sections 1-2): one
+    line, the 30-week average (the 150-day), and where the price is against it. A state machine, so a
+    stage holds until something moves it on and a single bar cannot flip it:
+
+      -> 2 Advancing  on a Trend Template pass (the checklist that confirms Stage 2, trend_template_row)
+                      with the 150-day rising
+      2 -> 3 Topping  on the first of: a LOWER SWING LOW (guide 2.3: swings turn before averages; here
+                      a swing low is the lowest of the {_stage_swing_bars} bars on each side of it,
+                      core/swings.swing_low_mask, so it is known that many bars later), the 150-day
+                      stopping rising, or the end the guide measured Stage 2 by (section 8): a close
+                      below the 200-day, or the 200-day no higher than 21 sessions earlier
+      -> 4 Declining  when the 150-day is falling and the close is below it (from 1, 2's end, or 3)
+      4 -> 1 Basing   when the 150-day stops falling
+      1 -> 2          on a Trend Template pass again, with the 150-day rising
+      3 -> 2          the same, AND a close above the high of the Stage 2 that ended: a top resolves
+                      upward only by breaking out of it, so a bounce does not flip it back
+
+    Nothing is marked until the first decisive state (a pass, or a falling 150-day with price under it).
+    Returns [{"stage" (1-4), "from", "to", "bars", "high", "low", "ongoing", "began" (what started it),
+    "gain_pct"}], oldest first. `passes`: the per-bar (ok, why) from trend_template_row, if already
+    computed."""
     if passes is None:
         passes = []
         for _, row in daily.iterrows():
             try:
                 passes.append(trend_template_row(cfg, row))
-            except Exception:  # noqa: BLE001 — a bar too early for the averages is not Stage 2
+            except Exception:  # noqa: BLE001
                 passes.append((False, "insufficient history"))
     close = daily["close"].to_numpy(float)
+    s150 = daily["sma150"].to_numpy(float)
+    s150_prev = daily["sma150"].shift(_stage_slope_bars).to_numpy(float)
     s200 = daily["sma200"].to_numpy(float)
     s200_prev = daily["sma200_21d_ago"].to_numpy(float)
     day = lambda i: str(daily.index[i].date())
-    out, start = [], None
+    known = lambda *v: all(x == x for x in v)
+    low = daily["low"].to_numpy(float)
+    swing_low = sw.swing_low_mask(daily["low"], _stage_swing_bars, _stage_swing_bars).to_numpy()
+    peak = None            # the high of the last Stage 2, which a Stage 3 must clear to resume
+    last_swing = None      # the latest CONFIRMED swing low, for the lower-low test
+    runs, cur = [], None   # cur: [stage, start index, what began it]
+
+    def switch(i, stage, why):
+        nonlocal cur
+        if cur is not None and cur[0] == stage:
+            return
+        if cur is not None:
+            seg = daily.iloc[cur[1]:i]
+            runs.append({"stage": cur[0], "from": day(cur[1]), "to": day(i - 1), "bars": i - cur[1],
+                         "high": float(seg["high"].max()), "low": float(seg["low"].min()), "ongoing": False,
+                         "began": cur[2], "gain_pct": round((close[i - 1] / close[cur[1]] - 1) * 100, 1)})
+        cur = [stage, i, why]
+
     for i in range(len(daily)):
-        if start is None:
-            if passes[i][0]:
-                start = i
+        if not known(close[i], s150[i], s150_prev[i]):
             continue
-        broke = "a close below the 200-day" if close[i] < s200[i] else (
-            "the 200-day stopped rising" if not s200[i] > s200_prev[i] else None)
-        if broke:
-            seg = daily.iloc[start:i + 1]
-            out.append({"from": day(start), "to": day(i), "bars": i - start, "high": float(seg["high"].max()),
-                        "low": float(seg["low"].min()), "ongoing": False, "ended": broke,
-                        "gain_pct": round((close[i] / close[start] - 1) * 100, 1)})
-            start = None
-            # the bar that ended one stage can qualify the next only once the template passes again
-    if start is not None:
-        seg = daily.iloc[start:]
-        out.append({"from": day(start), "to": day(len(daily) - 1), "bars": len(daily) - 1 - start,
-                    "high": float(seg["high"].max()), "low": float(seg["low"].min()), "ongoing": True, "ended": None,
-                    "gain_pct": round((close[-1] / close[start] - 1) * 100, 1)})
-    return out
+        # a swing low at i-3 is confirmed on this bar: is it lower than the one before?
+        lower_low = False
+        j = i - _stage_swing_bars
+        if j >= 0 and swing_low[j]:
+            lower_low = last_swing is not None and low[j] < last_swing
+            last_swing = low[j]
+        falling = s150[i] < s150_prev[i] * (1 - _stage_falling_pct / 100) and close[i] < s150[i]
+        rising150 = s150[i] > s150_prev[i]
+        stage = cur[0] if cur else None
+        if passes[i][0] and rising150 and stage != 2 and (stage != 3 or peak is None or close[i] > peak):
+            switch(i, 2, "the Trend Template passed" if stage != 3 else "a breakout above the top, with the template passing")
+        elif stage == 2:
+            ended = "a lower swing low" if lower_low else None
+            ended = ended or ((close[i] < s200[i] and "a close below the 200-day") if known(s200[i]) else None)
+            ended = ended or (known(s200[i], s200_prev[i]) and not s200[i] > s200_prev[i] and "the 200-day stopped rising")
+            ended = ended or (not rising150 and "the 150-day stopped rising")
+            if ended:
+                peak = float(daily["high"].iloc[cur[1]:i + 1].max())
+                switch(i, 4 if falling else 3, f"Stage 2 ended: {ended}")
+        elif falling and stage != 4:
+            switch(i, 4, "the 150-day turned down with the price below it")
+        elif stage == 4 and s150[i] >= s150_prev[i]:
+            switch(i, 1, "the 150-day stopped falling")
+    if cur is not None:
+        seg = daily.iloc[cur[1]:]
+        runs.append({"stage": cur[0], "from": day(cur[1]), "to": day(len(daily) - 1), "bars": len(daily) - 1 - cur[1],
+                     "high": float(seg["high"].max()), "low": float(seg["low"].min()), "ongoing": True,
+                     "began": cur[2], "gain_pct": round((close[-1] / close[cur[1]] - 1) * 100, 1)})
+    return runs
 
 
 class MinerviniSpecStrategy(Strategy):

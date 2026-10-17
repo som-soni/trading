@@ -1117,18 +1117,17 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
                          "from": str(ts.date()), "to": str(ts.date()), "bars": 1,
                          "high": float(row["high"]), "low": float(row["low"])})
     passing = sum(r["bars"] for r in runs if r["ok"])
-    # `stages`: Stage 2 as a PHASE (stage2_runs: from a template pass until the 200-day breaks), which is
-    # what the chart tints; `runs` stay the day-by-day template answer
-    from ..strategies.minervini_spec import stage2_runs
-    stages = stage2_runs(daily, cfg, passes)
+    # `stages`: the four-stage cycle (minervini_spec.stage_cycle), which is what the chart tints; `runs`
+    # stay the day-by-day Trend Template answer
+    from ..strategies.minervini_spec import stage_cycle
+    stages = stage_cycle(daily, cfg, passes)
     last = stages[-1] if stages else None
+    names = {1: "Stage 1 (basing)", 2: "Stage 2 (advancing)", 3: "Stage 3 (topping)", 4: "Stage 4 (declining)"}
     out = {"as_of": as_of, "spec_id": strat.spec_id(), "strategy": strategy, "symbol": symbol, "market": market,
            "bars": int(len(daily)), "passing": passing,
            "pct": round(100.0 * passing / max(len(daily), 1), 1),
            "runs": runs, "stages": stages, "bases": strat.bases_live(daily, cfg),
-           "note": (f"in Stage 2 since {last['from']}" if last and last["ongoing"]
-                    else f"not in Stage 2 (the last ended {last['to']}: {last['ended']})" if last
-                    else "never in Stage 2")}
+           "note": (f"{names[last['stage']]} since {last['from']}" if last else "no stage yet")}
     if len(_tt_runs) > 64:
         _tt_runs.clear()
     _tt_runs[key] = out

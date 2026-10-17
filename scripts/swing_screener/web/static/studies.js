@@ -679,12 +679,14 @@ const Studies = (() => {
     // under that guide's Strategies category (GUIDE_GROUP in app.js) — the same grouping as Learn.
     setups_minervini: { setupsFor: "minervini", learnGuide: "learn-strat-vcp-sepa", short: "Setups", cat: "Screener", overlay: true, custom: true,
       label: (p) => `${stratName("minervini")}${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
-      params: { stage2: { type: "select", def: "Background", options: ["Background", "Hide"] },
+      params: { stages: { type: "select", def: "All four", options: ["All four", "Stage 2 only", "Hide"] },
         bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
         card: { type: "select", def: "Show", options: ["Show", "Hide"] },
         gaps: { type: "select", def: "None", options: ["None", "After long stretches", "All"] }, minBars: 10 },
       // uptrend is purple, not green: green is already Stage 2, and the two must never be mistaken
-      plots: [{ k: "pass", t: "Stage 2", c: "#26a69a" }, { k: "broke", t: "What ended it", c: "#ef5350" },
+      plots: [{ k: "stage1", t: "Stage 1 · basing", c: "#90a4ae" }, { k: "pass", t: "Stage 2 · advancing", c: "#26a69a" },
+        { k: "stage3", t: "Stage 3 · topping", c: "#f59e0b" }, { k: "stage4", t: "Stage 4 · declining", c: "#ef5350" },
+        { k: "broke", t: "What ended it", c: "#ef5350" },
         { k: "uptrend", t: "Uptrend", c: "#ab47bc" }, { k: "base", t: "Base · VCP", c: "#2962ff" },
         { k: "vcp", t: "VCP setup", c: "#22c55e" }, { k: "cheat", t: "Cheat entry setup", c: "#38bdf8" },
         { k: "miss", t: "Failed setup", c: "#f43f5e" }, { k: "flag", t: "Flag", c: "#f59e0b" },
@@ -697,19 +699,24 @@ const Studies = (() => {
           const r = await fetch(`/api/setups/${def.setupsFor}/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
             .then((x) => (x.ok ? x.json() : null));
           if (!r) return null;
-          // Stage 2 as a PHASE, not a day: each band runs from a Trend Template pass until the 200-day
-          // breaks (minervini_spec.stage2_runs — the Learn guide's definition), so a pullback under the
-          // 50-day no longer chops it into pieces. A background tint: context for the setups.
+          // Weinstein's four stages as background bands (minervini_spec.stage_cycle: the 150-day's slope,
+          // the price against it, the swings, and the Trend Template to confirm Stage 2). Each holds until
+          // something moves it on, so a dip under the 50-day no longer chops a Stage 2 into pieces.
           const stages = r.stages || [];
-          let stage = p.stage2 === "Hide" ? [] : stages.map((x) => ({
-            shape: "box", role: "stage2", bg: true, from: x.from, to: x.to, top: x.high, bottom: x.low, label: "" }));
+          const showOf = (x) => p.stages === "Hide" ? false : p.stages === "Stage 2 only" ? x.stage === 2 : true;
+          const NAMES = { 1: "Stage 1 · basing", 2: "Stage 2 · advancing", 3: "Stage 3 · topping", 4: "Stage 4 · declining" };
+          let stage = stages.filter(showOf).flatMap((x) => [
+            { shape: "box", role: `stage${x.stage}`, bg: true, from: x.from, to: x.to, top: x.high, bottom: x.low, label: "" },
+            // a name on any band long enough to read, at its top
+            ...(x.bars >= 20 ? [{ shape: "text", role: `stage${x.stage}`, at: x.from, price: x.high, label: NAMES[x.stage] }] : []),
+          ]);
           // What ended each Stage 2: the rule that broke it, marked where it broke. Off unless asked for;
-          // "After long stretches" keeps the stages that lasted minBars sessions or more.
-          const ended = stages.filter((x) => x.ended);
-          const shown = p.gaps === "All" ? ended : p.gaps === "After long stretches" ? ended.filter((x) => x.bars >= p.minBars) : [];
-          stage = stage.concat(shown.map((x) => ({
-            shape: "dots", role: "broke", points: [{ at: x.to, price: x.low,
-              label: `Stage 2 ended: ${x.ended} · ${x.bars} sessions, ${x.gain_pct >= 0 ? "+" : ""}${x.gain_pct}%` }] })));
+          // "After long stretches" keeps those that followed a Stage 2 of minBars sessions or more.
+          const ends = stages.map((x, k) => ({ x, prev: stages[k - 1] })).filter(({ x, prev }) => prev && prev.stage === 2 && x.began.startsWith("Stage 2 ended"));
+          const shown = p.gaps === "All" ? ends : p.gaps === "After long stretches" ? ends.filter(({ prev }) => prev.bars >= p.minBars) : [];
+          stage = stage.concat(shown.map(({ x, prev }) => ({
+            shape: "dots", role: "broke", points: [{ at: x.from, price: x.low,
+              label: `${x.began.replace("Stage 2 ended: ", "Stage 2 ended — ")} · after ${prev.bars} sessions, ${prev.gain_pct >= 0 ? "+" : ""}${prev.gain_pct}%` }] })));
           const all = r.bases || [];
           return { background: stage, setups: p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete) : all,
             note: `${r.note} · ${all.length} setups, ${all.filter((b) => b.complete).length} VCPs · pick one from the lane at the bottom` };
@@ -726,9 +733,13 @@ const Studies = (() => {
           ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
           ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted). An illustration of the rules."],
           ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],
-          ["tint", col("pass"), "Green background", "Stage 2: from the day the Trend Template passes until a close below the 200-day, or the 200-day stops rising. A dip under the 50-day does not end it."],
+          ["tint", col("stage1"), "Grey-blue band", "Stage 1, basing: after a decline, the 150-day (30-week) line has stopped falling."],
+          ["tint", col("pass"), "Green band", "Stage 2, advancing: the Trend Template passed with the 150-day rising. It lasts until a lower swing low, the 150-day stops rising, or the 200-day breaks — not a dip under the 50-day."],
+          ["tint", col("stage3"), "Amber band", "Stage 3, topping: Stage 2 has ended but the line is not yet falling. Only a breakout above the top returns it to Stage 2."],
+          ["tint", col("stage4"), "Red band", "Stage 4, declining: the 150-day is falling and the price is below it."],
         ];
-        return setupLayer({ ...args, keyRows, load, roles: { stage2: col("pass"), broke: col("broke") } });
+        return setupLayer({ ...args, keyRows, load,
+          roles: { stage1: col("stage1"), stage2: col("pass"), stage3: col("stage3"), stage4: col("stage4"), broke: col("broke") } });
       } },
     // Generic Trade setups layers: the strategy's own evaluate / build_plans / classify run bar by bar on
     // the server (strategies/live_setups.py) and drawn by the same machinery as Minervini's. One entry per
