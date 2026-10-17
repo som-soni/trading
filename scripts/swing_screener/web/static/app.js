@@ -3301,6 +3301,17 @@ function strategyBacktests(host, d, key) {
   let sel = store.get("btVer:" + key, null);
   if (sel && !vers.some((v) => v.spec_id === sel)) sel = null;   // a filter from before a reload
 
+  // Market, alongside Version. The page's market picker lives on "Setups today", which only a
+  // screener has — so a benchmark strategy had no way to express market at all, and a screener's
+  // runs from both markets sat interleaved in one table with only a column to tell them apart.
+  let msel = store.get("btMkt:" + key, null);
+  const mkts = [...new Set(d.backtests.map((b) => b.market))].sort();
+  if (msel && !mkts.includes(msel)) msel = null;
+  const mchips = () => mkts.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Market</span>
+    <button class="chip ${msel ? "" : "on"}" data-m="">All <span class="n">${d.backtests.length}</span></button>
+    ${mkts.map((m) => `<button class="chip ${msel === m ? "on" : ""}" data-m="${esc(m)}">${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}
+        <span class="n">${d.backtests.filter((b) => b.market === m).length}</span></button>`).join("")}</div>`;
+
   const chips = () => vers.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Version</span>
     <button class="chip ${sel ? "" : "on"}" data-v="">All <span class="n">${d.backtests.length}</span></button>
     ${vers.map((v) => `<button class="chip ${sel === v.spec_id ? "on" : ""}" data-v="${esc(v.spec_id)}" title="${esc(v.spec_id)}${v.is_current ? " — the rules as they stand now" : ""}">
@@ -3323,7 +3334,7 @@ function strategyBacktests(host, d, key) {
   };
 
   // computed per paint, not once: `sel` changes when a chip is clicked
-  const table = () => { const shown = sel ? d.backtests.filter((b) => b.spec_id === sel) : d.backtests;
+  const table = () => { const shown = d.backtests.filter((b) => (!sel || b.spec_id === sel) && (!msel || b.market === msel));
     const runCell = (b) => { const rp = runParts(b.run);
       return rp ? `<td title="${esc(b.run)}">${prettyDate(rp.start)} · ${esc(rp.exit)}${rp.options.length ? `<div class="muted small">${esc(rp.options.join(" · "))}</div>` : ""}</td>` : `<td>${esc(b.run)}</td>`; };
     return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
@@ -3345,14 +3356,21 @@ function strategyBacktests(host, d, key) {
           <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td></tr>`; }).join("")}</tbody></table>
       <p class="muted small">A backtest runs the whole strategy — screen, setups, entry, stop, exits, costs and position sizing — day by day. The command is under Rules › Commands.
       Each run is stamped with the spec id of the rules that produced it, so a result always maps to a version.</p>`
-    : `<div class="empty"><b>No backtests on this version</b><div class="muted">Nothing has been run against ${esc(sel || "")} yet.</div></div>`; };
+    : `<div class="empty"><b>No backtests match</b><div class="muted">Nothing has been run for
+        ${esc([sel, msel && (mktInfo(msel).name || msel)].filter(Boolean).join(" in ") || "this filter")} yet.</div></div>`; };
 
   const paint = () => {
-    host.innerHTML = runBtn + (d.backtests.length ? chips() + detail() + table()
+    host.innerHTML = runBtn + (d.backtests.length ? mchips() + chips() + detail() + table()
       : `<div class="empty"><b>No backtests loaded for this strategy</b><div class="muted">${canRun ? "Queue one with the button above, or run" : "Run"} the command under Rules › Commands; reports load into the app automatically.</div></div>`);
-    host.querySelectorAll(".bt-vers .chip").forEach((b) => b.onclick = () => {
+    host.querySelectorAll(".bt-vers .chip[data-v]").forEach((b) => b.onclick = () => {
       sel = b.dataset.v || null;
       store.set("btVer:" + key, sel);
+      paint();
+      wireBtRun();
+    });
+    host.querySelectorAll(".bt-vers .chip[data-m]").forEach((b) => b.onclick = () => {
+      msel = b.dataset.m || null;
+      store.set("btMkt:" + key, msel);
       paint();
       wireBtRun();
     });

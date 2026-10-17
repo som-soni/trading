@@ -560,6 +560,7 @@ def strategy_defaults(key: str, market: str) -> dict:
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    from ..strategies import portfolio_strategies
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--strategy", default="momentum_baseline")
     pre.add_argument("--market")
@@ -595,7 +596,13 @@ def main() -> None:
                 # run_dir slugs "+" to "-", so the run was filed as "turnover1e-08" -- a name that
                 # reads as ten nano-rupees. The run name is how a run is identified in the portal.
                 + (_turnover_tag(args.min_turnover, cfg) if args.min_turnover else "")
-                + ("_noTrendFilter" if args.no_trend_filter else ""))
+                + ("_noTrendFilter" if args.no_trend_filter else "")
+                # The spec id goes in the NAME because that is the only record of which rule set
+                # produced a report: ingest lifts it out with a regex (web/ingest.spec_id_of) and
+                # the Strategies page groups runs by it. Without it a portfolio run shows "—" for
+                # its version and cannot be mapped back to the rules that made it, which is the
+                # whole reason these strategies were registered and fingerprinted.
+                + f"_{portfolio_strategies()[args.strategy].spec_id()}")
     out = run_dir(args.market, args.strategy, run_name)
     tdf.to_csv(out / "trades.csv", index=False)
     pd.DataFrame({
@@ -606,7 +613,6 @@ def main() -> None:
     # Resolve the benchmark BEFORE reporting, and recompute its figures against the series that is
     # actually named: run() computed them against the market's default, and relabelling those
     # without recomputing would print a Nifty 500 number under a Smallcap 250 heading.
-    from ..strategies import portfolio_strategies
     _cls = portfolio_strategies()[args.strategy]
     _key = (getattr(_cls, "benchmark_key", None) or {}).get(args.market)
     bench_ticker = cfg.broad_index_symbols.get(_key) if _key else None
