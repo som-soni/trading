@@ -89,6 +89,13 @@ class TrendPullbackStrategy(Strategy):
     screen_gates = {"G1": "U1", "G2": "U2", "G3": "U3", "G4": "U4", "G5": "U5", "G6": "U6", "G7": "U7", "G8": "U8"}
     watch_codes = ("W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8", "W9")
     setup_codes = (TC01, TC02, TC04)
+    setup_names = {TC01: "Pullback", TC02: "Tight base", TC04: "Near the highs"}
+    # short names for the chart's checklist; the rules themselves are gate_docs
+    gate_titles = {"G1": "Weekly close above the 30-week EMA", "G2": "Weekly 20 above 50", "G3": "Daily 50 above 200",
+                   "G4": "Averages not falling", "G5": "Higher swing lows", "G6": "12-1 momentum positive",
+                   "G7": "Within 25% of the 52-week high", "G8": "3-month strength", "G9": "No earnings within 10 days",
+                   "G10": "Pullback not on rising volume", "G11": "Above the prior swing low",
+                   "G12": "No overhead resistance in the way", "G13": "Volatility sane", "G14": "No big gaps"}
     min_bars = 260
 
     thesis = (
@@ -801,6 +808,41 @@ class TrendPullbackStrategy(Strategy):
                 else "down"
             ),
         }
+
+    def setup_shapes(self, ctx: StockContext, result: StrategyResult, sig: dict) -> list[dict]:
+        """For the chart's Trade setups layer: the advance L -> H (zone 1), the pullback H -> P against
+        the 30-60% retracement band TC-01 tests, H as the resumption level, the prior swing low the stop
+        belongs under, and TC-02's tight 10-bar base when that is the setup. L and P are located by
+        their values from the shared swing code (impulse_low, pullback_low), never re-derived."""
+        d = ctx.daily
+        day = lambda ts: str(pd.Timestamp(ts).date())
+        h, l, pv, hi_day = ctx.h_value, ctx.l_value, ctx.p_value, ctx.h_index
+        if hi_day is None or not h or not l:
+            return self.chart_anatomy(sig)
+        before, after = d.loc[:hi_day], d.loc[hi_day:]
+        l_hits = before.index[before["low"] == l]
+        p_hits = after.index[after["low"] == pv]
+        out: list[dict] = []
+        impulse = h - l
+        if len(l_hits) and impulse > 0:
+            out.append({"shape": "line", "from": day(l_hits[-1]), "to": day(hi_day), "p0": float(l), "p1": float(h),
+                        "role": "uptrend", "arrow": True, "label": f"+{impulse / l * 100:.0f}% advance"})
+        if len(p_hits) and impulse > 0 and pv < h:
+            depth = (h - pv) / impulse
+            out.append({"shape": "line", "from": day(hi_day), "to": day(p_hits[0]), "p0": float(h), "p1": float(pv),
+                        "role": "contraction", "label": f"pullback {depth:.0%} of the advance"})
+            out.append({"shape": "box", "from": day(hi_day), "to": day(d.index[-1]), "top": float(h - 0.30 * impulse),
+                        "bottom": float(h - 0.60 * impulse), "role": "tight", "label": "30-60% retracement"})
+        out.append({"shape": "level", "from": day(hi_day), "to": day(d.index[-1]), "price": float(h), "role": "pivot",
+                    "label": f"H {h:,.2f} — the resumption level"})
+        if ctx.prior_swing_low:
+            out.append({"shape": "level", "bars": 60, "to": day(d.index[-1]), "price": float(ctx.prior_swing_low),
+                        "role": "support", "label": "prior swing low — the stop belongs under it"})
+        if result.setups.get(TC02):
+            last = d.iloc[-10:]
+            out.append({"shape": "box", "from": day(last.index[0]), "to": day(last.index[-1]), "top": float(last["high"].max()),
+                        "bottom": float(last["low"].min()), "role": "base", "label": "tight 10-bar base"})
+        return out
 
     def chart_anatomy(self, sig: dict) -> list[dict]:
         """The default anatomy (H resistance, prior swing low) is already this strategy's story;
