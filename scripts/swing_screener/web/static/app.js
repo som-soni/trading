@@ -613,6 +613,8 @@ async function chartPage(alive, market, symbol, tf) {
   let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1, runStrategy = null;
   // the active Trade setups layer's list, as it published it (studies.js setupLayer): { list, focus, select }
   let setupFeed = null, setupFilter = store.get("setupFilter", "all");
+  // the Chart patterns indicator's history, as it published it (studies.js patterns): { list, focus, select, clear }
+  let patternFeed = null, patternFilter = store.get("patternFilter", "all");
   // three read-only layers share the annotation overlay: VCP near misses, the chosen backtest run's
   // trades, and studies that draw shapes (Indicators -> Chart patterns); each sets its own part
   let tradeItems = () => [], studyItems = () => [];
@@ -726,6 +728,11 @@ async function chartPage(alive, market, symbol, tf) {
     $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="setups" title="Trade setups — every setup of ${esc(Studies.setupName() || "the layer")}; click one to go to it">
       <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M6 12l2.5-3 2 2L14 7"/></svg></button>`);
   } else if (prefs.tab === "setups") prefs.tab = "wl";
+  // the Chart patterns indicator is on: offer every pattern its detectors saw as a side panel
+  if (Studies.load().some((s) => s.type === "patterns")) {
+    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="patterns" title="Chart patterns — every pattern the chart-pattern strategy's detectors saw; click one to draw it">
+      <svg viewBox="0 0 20 20"><path d="M2 15l4-8 3 5 3-7 6 10"/><path d="M2 17h16"/></svg></button>`);
+  } else if (prefs.tab === "patterns") prefs.tab = "wl";
   syncPanel();
 
   // The time axis must be on screen without scrolling. The rows above the chart (nav, subnav,
@@ -820,7 +827,8 @@ async function chartPage(alive, market, symbol, tf) {
   const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn),
-    onSetups: (feed) => { setupFeed = feed; if (prefs.tab === "setups") renderSide(); } } });
+    onSetups: (feed) => { setupFeed = feed; if (prefs.tab === "setups") renderSide(); },
+    onPatterns: (feed) => { patternFeed = feed; if (prefs.tab === "patterns") renderSide(); } } });
   // read at paint time, not captured: hiding the indicator from the legend restores the stored layer
   supersededStrategy = () => studies.find((e) => e.def?.setupsFor && !e.skipped && !e.s.hidden)?.def.setupsFor ?? null;
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
@@ -1345,12 +1353,33 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="sp-chips">${chips}</div></section>
       <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;
   }
+  /** The Chart patterns panel: every pattern the strategy's detectors found over five years, newest
+   *  first, filterable; a click draws that pattern and goes to it. */
+  function patternsPanelHtml() {
+    if (!patternFeed) return `<section><h3>Chart patterns</h3><div class="muted small">Scanning five years of bars…</div></section>`;
+    const L = patternFeed.list;
+    const kindOf = (x) => (x.direction === "bearish" ? "top" : "bull");
+    const counts = { all: L.length, bull: L.filter((x) => kindOf(x) === "bull").length, top: L.filter((x) => kindOf(x) === "top").length,
+      crossed: L.filter((x) => x.crossed).length };
+    const chips = [["all", "All"], ["bull", "Bullish"], ["top", "Topping"], ["crossed", "Crossed its trigger"]]
+      .map(([k, t]) => `<a class="sp-chip ${patternFilter === k ? "on" : ""}" data-pf="${k}">${t} <span>${counts[k]}</span></a>`).join("");
+    const keep = (x) => patternFilter === "all" || (patternFilter === "crossed" ? !!x.crossed : kindOf(x) === patternFilter);
+    const rows = L.map((x, i) => ({ x, i })).filter(({ x }) => keep(x)).map(({ x, i }) => `<div class="btr sp-row ${kindOf(x) === "top" ? "sp-refused" : "sp-trade"} ${i === patternFeed.focus ? "cur" : ""}" data-pi="${i}">
+        <div class="btr-h"><b>${esc(x.name)}</b><span class="muted small">${prettyDate(x.start)} → ${prettyDate(x.last_seen)}</span></div>
+        <div class="small sp-title">${esc(x.direction === "bearish" ? "Topping" : "Bullish")} · ${esc(x.states.join(" → "))}${x.tradeable ? " · tradeable" : ""}</div>
+        <div class="muted small">trigger ${(+x.trigger).toFixed(2)} · invalidation ${(+x.invalidation).toFixed(2)}${x.crossed ? ` · crossed ${prettyDate(x.crossed)}` : ""}${x.invalidated ? ` · invalidated ${prettyDate(x.invalidated)}` : ""}</div></div>`).join("");
+    return `<section><h3>Chart patterns</h3>
+      <div class="muted small">Every pattern the chart-pattern strategy's own detectors saw in five years — exploration, not trades. Click one to draw it on the chart.${patternFeed.focus != null ? ` <a data-plive>Back to live detection</a>` : ""}</div>
+      <div class="sp-chips">${chips}</div></section>
+      <div class="btrs">${rows || `<div class="muted small">${L.length ? "None of this kind." : "No pattern in five years."}</div>`}</div>`;
+  }
   function renderSide() {
     if (!sideReady || !prefs.tab) return;
     const body = $("#side .side-body");
     body.innerHTML = prefs.tab === "wl" ? wlPanelHtml() : prefs.tab === "list" ? `<div class="wlpanel">${listPanelHtml()}</div>`
       : prefs.tab === "trades" ? `<div class="wlpanel">${tradesPanelHtml()}</div>`
       : prefs.tab === "setups" ? `<div class="wlpanel">${setupsPanelHtml()}</div>`
+      : prefs.tab === "patterns" ? `<div class="wlpanel">${patternsPanelHtml()}</div>`
       : prefs.tab === "news" ? `<div class="wlpanel nwpanel">${newsHtml(null)}</div>` : infoHtml();
     if (prefs.tab === "news") {
       loadNews().then((d) => {
@@ -1368,6 +1397,13 @@ async function chartPage(alive, market, symbol, tf) {
         $notes.innerHTML = `<div class="wld-nh"><span class="muted small">Notes</span><span class="spacer"></span>
             ${ns.length ? `<a class="small" href="#/notes/sym/${market}/${encodeURIComponent(symbol)}">all ${ns.length}</a>` : ""}<a class="small" href="#/notes/new/${market}/${encodeURIComponent(symbol)}">+ note</a></div>
           ${ns.slice(0, 3).map((n) => `<a class="wld-note" href="#/notes/${n.id}"><b>${esc(n.title || "Untitled")}</b><span class="muted small">${ago(n.updated_at)}</span></a>`).join("")}`; });
+    }
+    if (prefs.tab === "patterns") {
+      body.querySelectorAll("[data-pf]").forEach((el) => el.onclick = () => { patternFilter = el.dataset.pf; store.set("patternFilter", patternFilter); renderSide(); });
+      body.querySelectorAll("[data-pi]").forEach((el) => el.onclick = () => patternFeed?.select(+el.dataset.pi));
+      body.querySelector("[data-plive]")?.addEventListener("click", () => patternFeed?.clear());
+      body.querySelector("[data-pi].cur")?.scrollIntoView({ block: "nearest" });
+      return;
     }
     if (prefs.tab === "setups") {
       body.querySelectorAll(".sp-chip").forEach((el) => el.onclick = () => { setupFilter = el.dataset.f; store.set("setupFilter", setupFilter); renderSide(); });

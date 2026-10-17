@@ -951,11 +951,68 @@ class ChartPatternSpecStrategy(Strategy):
                       "measured_target": float(lv.target), "pattern_note": _note(res),
                       "pattern_geometry": _geometry(code, res)}
             shapes = self.chart_anatomy({"market": market, "symbol": symbol, "date": date, "extras": extras})
+            geo = extras["pattern_geometry"]
+            dates = [q["date"] for q in geo["points"]] + [ln["from"] for ln in geo["lines"]]
             out.append({"code": code, "name": name, "direction": direction, "state": res["state"],
                         "tradeable": direction == "bullish" and _tradeable(res),
                         "trigger": round(float(lv.trigger), 4), "invalidation": round(float(lv.invalidation), 4),
-                        "target": round(float(lv.target), 4), "shapes": shapes})
+                        "target": round(float(lv.target), 4), "start": min(dates) if dates else str(date),
+                        "shapes": shapes})
         return out
+
+    def patterns_history(self, daily: pd.DataFrame, market: str, symbol: str, years: int | None = 5) -> list[dict]:
+        """Every pattern the detectors saw over the last `years` of `daily`, for the chart's pattern list:
+        `detect_live` run as of every `_pattern_scan_step`-th bar (each run sees only the bars up to it,
+        as a live chart would), with the sightings of one pattern merged — the same code starting within
+        `_pattern_merge_bars` bars of a pattern already seen is that pattern, drawn as last seen. Nothing
+        here is a rule of its own, so a change to a detector shows in the list. Exploration only.
+
+        Each pattern: {code, name, direction, start, first_seen, last_seen, sightings, state (as last
+        seen), states, tradeable (on any sighting), trigger, invalidation, target, shapes, and what price
+        did against its own levels afterwards: crossed (the first close through the trigger after it was
+        first seen — above for a bullish pattern, below for a topping one) and invalidated (the first
+        close beyond its invalidation level)}, newest first."""
+        if daily.empty:
+            return []
+        since = daily.index[-1] - pd.DateOffset(years=years) if years else daily.index[0]
+        idx = [i for i in range(len(daily)) if daily.index[i] >= since and i + 1 >= self.min_bars]
+        if not idx:
+            return []
+        stops = sorted(set(idx[::_pattern_scan_step] + [idx[-1]]))
+        pos = {d: k for k, d in enumerate(daily.index)}
+        found: list[dict] = []
+        for i in stops:
+            as_of = str(daily.index[i].date())
+            for m in self.detect_live(daily.iloc[: i + 1], market, symbol):
+                start = pd.Timestamp(m["start"])
+                same = next((p for p in found if p["code"] == m["code"] and abs(pos.get(start, 0) - pos.get(pd.Timestamp(p["start"]), 0))
+                             <= _pattern_merge_bars), None)
+                if same is None:
+                    found.append({**m, "first_seen": as_of, "last_seen": as_of, "sightings": 1, "states": [m["state"]],
+                                  "tradeable": m["tradeable"]})
+                else:
+                    same.update({k: m[k] for k in ("state", "trigger", "invalidation", "target", "shapes", "start")})
+                    same["last_seen"] = as_of
+                    same["sightings"] += 1
+                    same["tradeable"] = same["tradeable"] or m["tradeable"]
+                    if m["state"] not in same["states"]:
+                        same["states"].append(m["state"])
+        close = daily["close"]
+        for p in found:
+            after = close[close.index > pd.Timestamp(p["first_seen"])]
+            bull = p["direction"] == "bullish"
+            hit = after[after > p["trigger"]] if bull else after[after < p["trigger"]]
+            bad = after[after < p["invalidation"]] if bull else after[after > p["invalidation"]]
+            p["crossed"] = str(hit.index[0].date()) if len(hit) else None
+            p["invalidated"] = str(bad.index[0].date()) if len(bad) else None
+        return sorted(found, key=lambda p: p["last_seen"], reverse=True)
+
+
+# The chart's pattern list (patterns_history): how often to ask the detectors, and how close two
+# sightings' starts must be to count as one pattern. Lowercase on purpose: they draw a list and decide
+# nothing, so they stay out of the strategy's fingerprint.
+_pattern_scan_step = 5
+_pattern_merge_bars = 10
 
 
 def _geometry(code: str, res: dict) -> dict:

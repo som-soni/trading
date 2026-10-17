@@ -1136,6 +1136,34 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
     return out
 
 
+_pattern_lists: dict = {}   # (market, symbol, last bar, years, spec) -> response
+
+
+@app.get("/api/patterns-history/{market}/{symbol}")
+def chart_patterns_history(market: str, symbol: str, years: int = 5):
+    """The chart's pattern list: every pattern the chart_pattern strategy's detectors saw over the last
+    `years` (ChartPatternSpecStrategy.patterns_history — its own detect_live, run as of every few bars),
+    newest first. Exploration only, like /api/patterns: not a record of what any run traded."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..core import indicators as ind
+    from ..marketdata import cache
+    from ..strategies import get_strategy
+    strat = get_strategy("chart_pattern")
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    as_of = str(raw.index[-1].date())
+    key = (market, symbol, as_of, years, strat.spec_id())
+    if key not in _pattern_lists:
+        if len(_pattern_lists) > 64:
+            _pattern_lists.clear()
+        found = strat.patterns_history(ind.enrich_daily(raw), market, symbol, years or None)
+        _pattern_lists[key] = {"as_of": as_of, "spec_id": strat.spec_id(), "years": years, "patterns": found,
+                               "note": f"{len(found)} patterns in {years} years" if years else f"{len(found)} patterns"}
+    return _pattern_lists[key]
+
+
 @app.get("/api/macro")
 def macro_strip(market: str = "india"):
     """The Breadth page's macro strip: rates, the dollar, oil, metals and credit that matter to this market

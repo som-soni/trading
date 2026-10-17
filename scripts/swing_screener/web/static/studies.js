@@ -638,9 +638,30 @@ const Studies = (() => {
       plots: [{ k: "bull", t: "Bullish pattern", c: "#ab47bc" }, { k: "bear", t: "Topping pattern", c: "#ef5350" }],  // purple: not the blue of a backtest trade's pattern
       draw({ chart, times, p, col, tf, ctx, id }) {
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
-        let on = true, seq = 0, asked, timer = null, shapes = [];
-        const paint = () => ctx.annotate(id, on ? shapes : [], { base: col("bull"), stop: col("bear") });
+        let on = true, seq = 0, asked, timer = null, shapes = [], history = [], pinned = null, liveNote = "";
+        // a pattern picked from the side panel's list replaces the live drawing until it is released
+        const paint = () => ctx.annotate(id, on ? (pinned != null ? history[pinned].shapes : shapes) : [], { base: col("bull"), stop: col("bear") });
+        // the side panel's Chart patterns tab lists every pattern the detectors saw (patterns_history)
+        const publish = () => ctx.onPatterns?.({ list: history, focus: pinned,
+          select: (k) => {
+            if (!history[k]) return;
+            pinned = k; reveal(history[k]); paint(); publish();
+            const h = history[k];
+            setNote(id, `${h.name} (${h.state}), ${h.start} → ${h.last_seen} · picked from the list`);
+          },
+          clear: () => { pinned = null; asked = undefined; paint(); publish(); setNote(id, liveNote || "live detection"); kick(); } });
+        // frame a picked pattern in the left ~60% of the chart, clear of the panel
+        const reveal = (h) => {
+          const i0 = times.findIndex((t) => t >= h.start), i1 = times.findIndex((t) => t >= h.last_seen);
+          const a = i0 < 0 ? times.length - 1 : i0, b = i1 < 0 ? times.length - 1 : i1;
+          const span = Math.max(40, (b - a + 1) / 0.6), from = a - span * 0.05;
+          chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
+        };
+        fetch(`/api/patterns-history/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=5`)
+          .then((x) => (x.ok ? x.json() : null)).then((r) => { history = r?.patterns || []; publish(); }).catch(() => {});
+        let kick = () => {};
         const load = async (date) => {
+          if (pinned != null) return;   // a picked pattern holds the drawing; moving the view does not replace it
           if (date === asked) return;
           asked = date;
           const my = ++seq;
@@ -651,15 +672,17 @@ const Studies = (() => {
           if (my !== seq) return;   // a newer request (the view moved) owns the drawing
           shapes = (r?.matches || []).flatMap((m) => m.shapes);
           const names = (r?.matches || []).map((m) => `${m.name} (${m.state}${m.tradeable ? ", tradeable" : ""})`);
-          setNote(id, !r ? "detection failed" : `${r.as_of}: ${names.length ? names.join(" · ") : r.note || "no live pattern"}`);
+          liveNote = !r ? "detection failed" : `${r.as_of}: ${names.length ? names.join(" · ") : r.note || "no live pattern"}`;
+          setNote(id, liveNote);
           paint();
         };
-        if (p.asOf === "Last bar") load(null);
+        if (p.asOf === "Last bar") { kick = () => load(null); load(null); }
         else {
           const edge = () => {
             const r = chart.timeScale().getVisibleLogicalRange();
             return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : null;
           };
+          kick = () => load(edge());
           chart.timeScale().subscribeVisibleLogicalRangeChange(() => { clearTimeout(timer); timer = setTimeout(() => load(edge()), 250); });
           timer = setTimeout(() => load(edge()), 0);
         }
