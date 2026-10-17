@@ -748,6 +748,9 @@ const Studies = (() => {
     setups_trend_pullback: genericSetups("trend_pullback", "learn-strat-pullback-ma", { contraction: ["Pullback", "#2962ff"],
       tight: ["30-60% retracement", "#ff9800"], pivot: ["H, the resumption level", "#26a69a"], support: ["Prior swing low", "#ef5350"],
       base: ["Tight base", "#7e57c2"] }),
+    // chart patterns: the strategy's own chart_anatomy draws each pattern (its points, touches and trigger)
+    setups_chart_pattern: genericSetups("chart_pattern", "learn-strat-flags", { base: ["Pattern", "#ab47bc"],
+      pivot: ["Trigger", "#26a69a"], support: ["Support", "#ef5350"] }),
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },

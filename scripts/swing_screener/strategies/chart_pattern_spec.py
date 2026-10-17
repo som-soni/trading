@@ -838,6 +838,9 @@ class ChartPatternSpecStrategy(Strategy):
 
 
     setup_names = PATTERN_NAMES
+    # short names for the chart's checklist; the rules themselves are gate_docs
+    gate_titles = {"G1": "Pattern complete or breaking out", "G2": "No confirmed top on the chart",
+                   "G3": "No earnings within 10 days", "G4": "Volatility sane", "G5": "Close near the trigger"}
 
     def cached_signal_ok(self, extras: dict) -> bool:
         """A pattern row saved before its geometry (and each line's touches) was recorded is
