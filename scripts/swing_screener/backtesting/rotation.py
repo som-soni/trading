@@ -35,20 +35,35 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
     ret = px / px.shift(lookback_days) - 1.0
     rebals = set(rebalance_dates(px.index, start_ts, rebalance))
 
+    # MARK TO THE LAST KNOWN PRICE, never to nothing. `value()` used to skip a holding whose price
+    # was NaN on the day, which values it at ZERO rather than at its last trade -- so an interior
+    # gap in the series made part of the book disappear and reappear. With a handful of index
+    # series that was invisible; across a stock cross-section it is not. India's frame carries
+    # 56,738 interior NaNs, and on 2010-02-06 every symbol was NaN at once, so the whole book
+    # vanished for one session and the equity curve printed bare cash -- a one-day -100% spike
+    # that set the reported max drawdown for every run through this engine.
+    #
+    # ffill only fills AFTER a series' first observation, so a pre-listing NaN still blocks a pick
+    # (it stays NaN in `ret`, and `pick` reads the raw frame). Execution prices come from here too:
+    # trading at the last known price is what a real book does, and it is strictly better than the
+    # alternative, which was multiplying by NaN and poisoning cash permanently.
+    pxv = px.ffill()
+
     cash = float(account_size)
     units: dict[str, float] = {}
     entry: dict[str, tuple] = {}
     trades, equity, costs_total = [], [], 0.0
 
     def value(d) -> float:
-        return cash + sum(u * float(px.loc[d, s]) for s, u in units.items() if pd.notna(px.loc[d, s]))
+        return cash + sum(u * float(pxv.loc[d, s]) for s, u in units.items()
+                          if pd.notna(pxv.loc[d, s]))
 
     for d in px.index[px.index >= start_ts]:
         if d in rebals:
             target = list(pick(d, ret.loc[d], px) or [])
             # sell what is no longer wanted, at this session's close
             for s in [s for s in units if s not in target]:
-                price = float(px.loc[d, s])
+                price = float(pxv.loc[d, s])
                 gross = units[s] * price
                 fee = gross * cost_bps / 10_000
                 cash += gross - fee
@@ -66,7 +81,7 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
                 total = value(d)
                 per = total / len(target)
                 for s in target:
-                    price = float(px.loc[d, s])
+                    price = float(pxv.loc[d, s])
                     want = per / price
                     have = units.get(s, 0.0)
                     delta = want - have
@@ -84,7 +99,7 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
     if units:
         d = eq.index[-1]
         for s, u in units.items():
-            price = float(px.loc[d, s])
+            price = float(pxv.loc[d, s])
             e_date, e_price, e_cost = entry[s]
             trades.append({"symbol": s, "entry_date": e_date, "entry_price": round(e_price, 4),
                            "exit_date": d, "exit_price": round(price, 4), "shares": round(u, 4),
