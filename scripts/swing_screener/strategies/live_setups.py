@@ -161,16 +161,18 @@ def _episode(strategy, cfg, daily: pd.DataFrame, ep: list) -> dict:
     if plan:
         to = day(min(last_bar, i + ENTRY_BARS))
         risk = plan.entry - plan.stop
+        nominal = bool(getattr(strategy, "nominal_target", False))   # the exit is a rule, not this price
         levels = [("buy", plan.entry, f"Buy {px(plan.entry)}"),
                   ("stop", plan.stop, f"Stop {px(plan.stop)} (−{risk / plan.entry * 100:.1f}%)"),
-                  ("target", plan.target, f"Target {px(plan.target)} · {plan.r_multiple:.1f}R")]
+                  ("target", plan.target, f"Nominal target {px(plan.target)} (sizing only)" if nominal
+                   else f"Target {px(plan.target)} · {plan.r_multiple:.1f}R")]
         e_shapes = [{"shape": "level", "from": day(i), "to": to, "price": float(v), "role": role, "label": lab,
                      "dash": role != "buy"} for role, v, lab in levels]
         if fired:
             e_shapes.append({"shape": "dots", "role": "buy",
                              "points": [{"at": day(i), "price": float(daily["close"].iloc[i]), "label": "signal"}]})
         min_r = getattr(strategy, "min_structural_r", None)
-        e_checks = [{"code": "R:R", "name": "Reward / risk", "value": f"{plan.r_multiple:.2f}R",
+        e_checks = [{"code": "R:R", "name": "Reward / risk" + (" (nominal)" if nominal else ""), "value": f"{plan.r_multiple:.2f}R",
                      "limit": f"at least {min_r:g}R" if min_r else "", "state": "pass" if not min_r or plan.r_multiple >= min_r else "fail"},
                     {"code": "decision", "name": "Decision", "value": label or "—",
                      "limit": "TRADE - HIGH CONFIDENCE, with the entry fired",
@@ -178,7 +180,7 @@ def _episode(strategy, cfg, daily: pd.DataFrame, ep: list) -> dict:
         rules = " ".join(strategy.render_doc(x) for x in (getattr(strategy, "entry_rules", ()) or ()))
         zones.append({"key": "entry", "title": "Entry", "state": "pass" if kind == "pass" else "warn" if kind == "watch" else "fail",
                       "from": day(i), "to": to, "illustration": True,
-                      "line": f"buy {px(plan.entry)} · stop {px(plan.stop)} · {plan.r_multiple:.1f}R",
+                      "line": f"buy {px(plan.entry)} · stop {px(plan.stop)}" + ("" if nominal else f" · {plan.r_multiple:.1f}R"),
                       "text": (f"Where this strategy's own build_plans puts the trade on {d.date()}: an illustration, not a "
                                f"recommendation and not a backtest result. Decision: {label}"
                                + (f" ({dec.reason})" if dec and dec.reason else "") + f". {rules}"),

@@ -334,6 +334,9 @@ class Strategy(SpecMeta, ABC):
     # gate code -> a short name for the chart's checklist (the full rule stays in gate_docs); may use
     # {NAME} placeholders like the docs. A code missing here is shown as the bare code.
     gate_titles: dict[str, str] = {}
+    # True when TradePlan.target is only a number for sizing and the real exit is a rule (a trailing
+    # channel, a moving average): the chart's Trade setups layer then labels it nominal, not "target"
+    nominal_target: bool = False
     # extra report columns this strategy's report_extras() returns, and which
     # of them are numeric. Declared here so output.py never needs to know any
     # strategy's specifics — previously breakout_pivot/pct_from_pivot were

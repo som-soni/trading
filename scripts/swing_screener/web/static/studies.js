@@ -743,6 +743,8 @@ const Studies = (() => {
     // the server (strategies/live_setups.py) and drawn by the same machinery as Minervini's. One entry per
     // strategy, as the registry names them; `learnGuide` files it under Learn's category for it.
     setups_breakout: genericSetups("breakout", "learn-strat-darvas", { base: ["Consolidation", "#2962ff"], pivot: ["Pivot", "#ff9800"] }),
+    setups_donchian: genericSetups("donchian", "learn-strat-channel-breakout", { base: ["Channel", "#2962ff"], tight: ["Coil zone", "#ff9800"],
+      pivot: ["Channel high", "#26a69a"], support: ["Exit channel", "#ef5350"] }),
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },

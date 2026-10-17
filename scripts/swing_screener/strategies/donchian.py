@@ -91,6 +91,11 @@ class DonchianStrategy(Strategy):
     screen_gates = {"G1": "A1"}
     watch_codes = ("W1", "W2")
     setup_codes = (DC01, DC02)
+    setup_names = {DC01: "Channel breakout", DC02: "Coil"}
+    # short names for the chart's checklist; the rules themselves are gate_docs
+    gate_titles = {"G1": "Above the 200-day", "G2": "Not already run away"}
+    # the target is only for sizing: the trade ends on a close below the exit channel
+    nominal_target = True
     min_bars = 260
 
     needs_ctx_extras = True
@@ -440,6 +445,38 @@ class DonchianStrategy(Strategy):
             "exit_channel": self.exit_channel,
             "pct_from_channel": round((ctx.close / ch - 1) * 100, 2) if ch else None,
         }
+
+    def setup_shapes(self, ctx: StockContext, result: StrategyResult, sig: dict) -> list[dict]:
+        """For the chart's Trade setups layer: the advance into the channel (zone 1), the
+        {entry_channel}-day channel as a band, the coil zone 1 ATR under its high that DC-02 marks, and
+        the {exit_channel}-day low the trade exits on — the windows evaluate() itself reads."""
+        d = ctx.daily
+        day = lambda ts: str(pd.Timestamp(ts).date())
+        out: list[dict] = []
+        win = d.iloc[-(self.entry_channel + 1): -1]
+        if len(win) < 2:
+            return self.chart_anatomy(sig)
+        hi, lo = float(win["high"].max()), float(win["low"].min())
+        lo_day = win["low"].idxmin()
+        run = win.loc[lo_day:]
+        if len(run) > 1 and lo > 0:
+            hi_day = run["high"].idxmax()
+            out.append({"shape": "line", "from": day(lo_day), "to": day(hi_day), "p0": lo, "p1": float(run["high"].max()),
+                        "role": "uptrend", "arrow": True,
+                        "label": f"+{(float(run['high'].max()) / lo - 1) * 100:.0f}% in {len(win.loc[lo_day:hi_day]) - 1} days"})
+        out.append({"shape": "box", "from": day(win.index[0]), "to": day(win.index[-1]), "top": hi, "bottom": lo,
+                    "role": "base", "label": f"{self.entry_channel}-day channel"})
+        atr = float(ctx.atr) if ctx.atr == ctx.atr and ctx.atr else None
+        if atr:
+            out.append({"shape": "box", "from": day(win.index[-min(10, len(win))]), "to": day(d.index[-1]),
+                        "top": hi, "bottom": hi - atr, "role": "tight", "label": "coil zone · 1 ATR"})
+        out.append({"shape": "level", "from": day(win.index[-1]), "to": day(d.index[-1]), "price": hi, "role": "pivot",
+                    "label": f"{self.entry_channel}-day high {hi:,.2f} — buy its break"})
+        if ctx.extras.get("channel_low"):
+            xl = float(ctx.extras["channel_low"])
+            out.append({"shape": "level", "from": day(d.index[-min(self.exit_channel + 1, len(d))]), "to": day(d.index[-1]),
+                        "price": xl, "role": "support", "label": f"exit: a close below the {self.exit_channel}-day low, {xl:,.2f}"})
+        return out
 
     def chart_anatomy(self, sig: dict) -> list[dict]:
         """The entry and exit channels — the whole strategy is these two lines."""
