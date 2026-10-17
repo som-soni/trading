@@ -59,7 +59,7 @@ def _momentum(close: pd.Series, lookback: int, skip: int) -> float:
 # matrices rather than per-symbol-per-date keeps a 2,300 x 3,500 universe fast
 # and makes each definition one readable expression.
 
-RANKERS = ("momentum", "vol_scaled", "residual", "path_quality")
+RANKERS = ("momentum", "vol_scaled", "residual", "path_quality", "rs_range")
 
 
 def score_matrix(
@@ -105,6 +105,24 @@ def score_matrix(
         mom = px.shift(skip) / px.shift(skip + lookback) - 1
         bench_mom = b.add(1).rolling(n, min_periods=mp).apply(lambda x: x.prod(), raw=True) - 1
         return mom.sub(beta.shift(skip).mul(bench_mom.shift(skip), axis=0))
+
+    if kind == "rs_range":
+        # Where the RELATIVE-STRENGTH line sits inside its own trailing range: the continuous
+        # form of the chartist's "RS line at a new high", which is what rs_leaders gates on.
+        #
+        # It has to be the line's POSITION IN ITS RANGE, not its return. Ranking by relative
+        # return is mathematically identical to ranking by plain momentum -- on any single date
+        # the benchmark term is the same scalar for every symbol, so dividing by it cannot
+        # reorder anything. The range position is path-dependent (it depends on the line's own
+        # low as well as its high), so it asks a question momentum does not: did this stock's
+        # relative line hold up, or did it round-trip to get here?
+        if benchmark is None:
+            raise ValueError("rs_range ranking needs a benchmark series")
+        rs = px.div(benchmark.reindex(px.index).ffill(), axis=0)
+        n, mp = lookback, lookback // 2
+        lo = rs.rolling(n, min_periods=mp).min()
+        hi = rs.rolling(n, min_periods=mp).max()
+        return ((rs - lo) / (hi - lo).replace(0, pd.NA)).shift(skip)
 
     raise ValueError(f"unknown ranking '{kind}', choose from {RANKERS}")
 

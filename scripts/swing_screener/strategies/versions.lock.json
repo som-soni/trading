@@ -183,6 +183,29 @@
     },
     "version": "1.0"
   },
+  "mean_reversion": {
+    "family": "mean_reversion",
+    "fingerprint": "a8ebdb42",
+    "params": {
+      "BB_LENGTH": 20,
+      "BB_SD": 2.0,
+      "EXIT_SMA": 5,
+      "LOW_DAYS": 7,
+      "MAX_HOLD": 10,
+      "MIN_BARS": 300,
+      "RSI_ENTRY": 5.0,
+      "RSI_EXIT": 70.0,
+      "RSI_LENGTH": 2,
+      "TREND_SMA": 200,
+      "_key": "mean_reversion",
+      "cost_bps": 10.0,
+      "max_hold": 10,
+      "max_positions": 2,
+      "position_pct": 25.0,
+      "rsi_entry": 5.0
+    },
+    "version": "1.0"
+  },
   "minervini": {
     "family": "minervini",
     "fingerprint": "6afe6ad6",
