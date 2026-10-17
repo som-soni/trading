@@ -174,3 +174,104 @@ final removal of names a ranking strategy had long since sold, plus acquisitions
 other way. Treat the momentum result as "a small edge with better drawdown than small-cap beta,
 inflated by an unknown but probably modest amount", and spend the effort on walk-forward
 robustness and cost realism before on reconstructing delisted history.
+
+## 7. The whole shelf, decomposed
+
+All ten registered strategies now carry a measured run — 73 runs in total, 59 per-symbol and 14 portfolio. Below, every one of them in the two windows where
+several share a start date, with the headline split into SELECTION (the strategy against the
+index held at the strategy's *own* exposure — the only column that says whether the signal picks)
+and DRAG (what idle cash cost). Each strategy is measured against the index it declares, so
+`momentum_vol_scaled` is scored against small caps and the rest against the broad index.
+
+### 2013-01-01 — the per-symbol swing strategies
+
+| strategy | market | CAGR | excess | invested | **SELECTION** | drag |
+|---|---|---|---|---|---|---|
+| donchian | india | 7.7% | -4.0 | 94% | **-2.26** | -1.7 |
+| donchian | us | 6.5% | -6.3 | 97% | **-4.48** | -2.0 |
+| chart_pattern | india | 5.7% | -5.9 | 79% | **-2.17** | -3.7 |
+| breakout | us | 2.1% | -10.7 | 65% | **-3.38** | -7.2 |
+| trend_pullback | india | 2.3% | -9.4 | 34% | **-0.38** | -8.9 |
+| trend_pullback | us | 1.8% | -11.1 | 77% | **-4.06** | -6.9 |
+
+**Eight measured runs, four strategies, two markets, not one positive selection number.**
+(The table shows one row per strategy-market; `chart_pattern` india and `trend_pullback` us each
+have a second variant, both also negative; `minervini`'s 2013 run stored no equity curve.)
+This is the central finding of the whole exercise: the per-symbol swing machinery — entry trigger, stop,
+target, exit — has never once picked better than holding the index at the same risk budget.
+The two closest to flat (`trend_pullback` india at -0.38, and `minervini`'s best 2010 variant
+at +0.87) get there by barely trading.
+
+### 2020-01-01 — the four portfolio strategies, plus rs_leaders
+
+| strategy | market | CAGR | bench | excess | invested | **SELECTION** | drag |
+|---|---|---|---|---|---|---|---|
+| dual_momentum | india | 23.9% | 12.6% | +11.3 | 100% | **+11.30** | 0.0 |
+| dual_momentum | us | 19.8% | 13.4% | +6.4 | 100% | **+6.36** | 0.0 |
+| momentum_baseline | india | 23.6% | 12.6% | +11.0 | 100% | **+10.98** | 0.0 |
+| momentum_baseline | us | **-13.5%** | 13.4% | -26.9 | 100% | **-26.88** | 0.0 |
+| momentum_vol_scaled | india | 25.7% | 20.8% | +4.9 | 100% | **+4.90** | 0.0 |
+| momentum_vol_scaled | us | 12.2% | 7.5% | +4.8 | 100% | **+4.75** | 0.0 |
+| sector_rotation | india | 15.9% | 12.6% | +3.3 | 100% | **+3.28** | 0.0 |
+| sector_rotation | us | 10.7% | 13.4% | -2.7 | 100% | **-2.68** | 0.0 |
+| rs_leaders | india | 3.8% | 12.6% | -8.8 | 17% | **+1.40** | -10.4 |
+| rs_leaders | us | 3.8% | 13.4% | -9.7 | 19% | **+0.27** | -10.0 |
+
+A fully-invested strategy has no drag, so for those nine rows selection *is* the headline — which
+is the point: the decomposition only does work where exposure is partial, and the partial-exposure
+row is the one that loses 10 CAGR points to cash while picking slightly above zero.
+
+### The same strategies over 2010-01-01, where one exists
+
+| strategy | india | us |
+|---|---|---|
+| dual_momentum | +3.72 | **-1.41** |
+| sector_rotation | +2.95 | **-2.81** |
+| momentum_vol_scaled | +5.57 | **-3.04** |
+| minervini (best of 14 variants) | +0.87 | +0.46 |
+
+**The 2020 window flatters everything by roughly a factor of three.** `dual_momentum` india goes
+from +3.72 over sixteen years to +11.30 over six; US goes from *negative* to +6.36. Any decision
+made on 2020-onward numbers is a decision made on one bull market. The 2010 column is the one to
+read, and in it **nothing has demonstrated US edge over a full cycle.**
+
+### The one measured validation of a fix
+
+`momentum_baseline` US 2020 is the outlier in the table: -13.5% CAGR, -82.3% max drawdown, 57%
+annualised volatility. Its best and worst trades say why — NVAX, RIOT, FCEL, MARA, ABTS, AMTX.
+An unfiltered top-10 by 252-day return, with no liquidity floor and equal weights, bought the
+2021 micro-cap/crypto/SPAC tail at the top.
+
+`momentum_vol_scaled` was built to fix exactly that (top-20 instead of top-10, a $20m turnover
+floor, inverse-volatility weights, 50bps costs). Same window, same market, same ranking idea:
+
+| | momentum_baseline | momentum_vol_scaled |
+|---|---|---|
+| CAGR | -13.5% | **+12.2%** |
+| max drawdown | -82.3% | -47.7% |
+| ann. volatility | 56.8% | — |
+
+That is a 26-point CAGR swing from three sizing and liquidity constraints, with the alpha source
+untouched. It is the largest measured effect in this entire document, and it is not a signal
+improvement.
+
+## 8. What to build next — and what not to
+
+The Learn module describes ~20 strategies; four portfolio strategies and six per-symbol ones are
+now implemented and measured. The table above argues against building the remaining fifteen next,
+because strategy *count* is not what is binding. Three things are, in order of measured size:
+
+1. **Sizing and liquidity constraints, not signals** (26 CAGR points, measured above). No new
+   strategy in the Learn list has a plausible claim to that magnitude.
+2. **Cash drag** (10 CAGR points on every partial-exposure strategy). The fix is structural: run
+   the good gate as a fully-invested cross-sectional portfolio rather than as a per-trade swing
+   strategy. `rs_leaders` has the only positive selection among per-symbol strategies in both
+   markets (+1.40 / +0.27); as a monthly top-N through `rotation.simulate` it would keep that
+   and lose the -10 by construction. The gate already exists, so this is a cheap test.
+3. **Window dependence** (3× on dual_momentum). Before trusting the one strategy that works,
+   walk it forward the way §4b did for the momentum baseline.
+
+The honest summary of the shelf: **one idea works** (cross-sectional momentum, fully invested,
+with liquidity and volatility constraints), **it works in India and is unproven in the US over a
+full cycle**, and **the per-symbol swing family has shown positive selection in 11 of 59 runs, never above
++2.24, and never once on the eight-run 2013 cohort.**
