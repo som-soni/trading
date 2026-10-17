@@ -136,6 +136,30 @@ def fetch_us_universe_from_nasdaqtrader(min_price_hint: bool = True) -> Path:
 _NON_STOCK_NAME_KEYWORDS = ("INVIT", "TRUST", " FUND", "ETF")
 
 
+def non_stock_symbols(market: str) -> set[str]:
+    """Listed instruments that are not operating companies — ETFs, liquid funds, InvITs.
+
+    The keyword list above is applied at FETCH time, on a universe refresh, so anything that
+    listed afterwards walks straight in. It did: a volatility-weighted momentum book ended up
+    98.8% in three money-market ETFs (DSP/Zerodha/Nifty 1D Rate), because an instrument with
+    almost no volatility scores near-infinite on both a vol-scaled rank and an inverse-vol weight.
+
+    Two conditions, not one. `symbol_industry` is only populated for quoteType EQUITY, so a
+    missing row is the authoritative signal — but coverage is 93% in India, so absence alone would
+    also cut real small caps. Requiring the NAME to say fund/ETF as well makes "TRUST" safe:
+    American Assets Trust and Northern Trust have industry rows, a gilt ETF does not.
+    """
+    from . import db
+
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT symbol FROM symbol_industry WHERE market=%s AND industry IS NOT NULL", (market,))
+        has_industry = {r[0] for r in cur.fetchall()}
+        cur.execute("SELECT symbol, name FROM symbol_names WHERE market=%s AND name IS NOT NULL", (market,))
+        named = cur.fetchall()
+    return {s for s, n in named
+            if s not in has_industry and any(k in n.upper() for k in _NON_STOCK_NAME_KEYWORDS)}
+
+
 def fetch_india_universe_from_yfinance_screener() -> Path:
     """One-time/occasional refresh of the NSE ticker universe via
     yfinance's screener wrapper (`yf.screen`), which proxies Yahoo

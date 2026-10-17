@@ -122,7 +122,10 @@ def load_prices(market: str, min_bars: int) -> tuple:
     start: momentum needs the history before the window opens, and
     truncating first silently delays every signal by lookback+skip bars.
     """
-    tickers = universe.load_universe(market)
+    # ETFs and liquid funds are not candidates for an equity momentum book, and a
+    # volatility-weighted one is actively broken by them: see universe.non_stock_symbols.
+    skip = universe.non_stock_symbols(market)
+    tickers = [t for t in universe.load_universe(market) if t not in skip]
     closes, dollar_vol = {}, {}
     for sym in tickers:
         d = cache.load_cached(market, sym)
@@ -199,7 +202,8 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None) 
     # takes ~70s on this universe, which is not a page load.
     need = cls.lookback + cls.skip + 260
     since = pd.Timestamp.today().normalize() - pd.Timedelta(days=int(need * 1.6))
-    bars = cache.load_many_cached(market, list(universe.load_universe(market)), since=since)
+    skip = universe.non_stock_symbols(market)   # the same exclusion load_prices applies
+    bars = cache.load_many_cached(market, [t for t in universe.load_universe(market) if t not in skip], since=since)
     closes, dollar_vol = {}, {}
     for sym, d in bars.items():
         if d is None or len(d) < 300:   # the same min_bars load_prices applies, so the same cohort
@@ -776,11 +780,11 @@ VS_DOC = {
         "Chosen on CONSISTENCY, not on peak return. Swept 18 variants (rank x holdings x weighting x vol target) "
         "on India from 2010 at a {min_turnover_cr} crore turnover floor and {cost_bps}bps, judged against the "
         "Nifty Smallcap 250 -- the honest control, because it drops and replaces constituents and so carries the "
-        "failures a survivor-only universe cannot. This variant returned 16.40% CAGR against the control's 11.99%, "
+        "failures a survivor-only universe cannot. This variant returned 17.56% CAGR against the control's 11.99% (16.40% before v1.1 took ETFs and liquid funds out of the universe), "
         "and was the ONLY one whose excess held across both halves of the window: +4.41 before 2019 and +4.49 "
         "after. Every other variant was a post-2019 story -- plain momentum at the same size scored +2.84 then "
-        "+9.36. Sharpe 0.84 against 0.71; max drawdown -51.0% against the control's -60.8%. "
-        "WALK-FORWARD TESTED, which is what makes the number usable rather than a backtest artefact. Choosing a "
+        "+9.36. Sharpe 0.87 against 0.71; max drawdown -51.0% against the control's -60.8%. "
+        "WALK-FORWARD TESTED, which is what makes the number usable rather than a backtest artefact. (Those figures were measured before v1.1 and are being re-run.) Choosing a "
         "variant each year from trailing data ONLY -- never the whole window -- and holding it the next year "
         "returned +3.75 CAGR excess against this hindsight pick's +4.36, so the selection kept 86% of its value "
         "when it could not see the future. The selection-effect discount is about 0.6 points, not the whole edge. "
@@ -851,8 +855,17 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-17",
+         "ETFs and liquid funds are out of the candidate universe (universe.non_stock_symbols). They "
+         "were never meant to be in it, and a volatility-weighted book is actively broken by them: a "
+         "money-market ETF has almost no volatility, so it scores near-infinite on both a vol-scaled "
+         "rank and an inverse-vol weight. The final book was 98.8% three liquid-rate ETFs. Removing "
+         "them IMPROVED the result -- CAGR 16.40% -> 17.56%, excess 4.41 -> 5.57, Sharpe 0.84 -> 0.87, "
+         "drawdown unchanged -- because they were absorbing capital that belonged in equities. "
+         "Historical P&L was barely touched (funds were 1% of it and absent before 2021); what changed "
+         "is the recent book, and whether this is deployable at all."),
         ("1.0", "2026-10-17",
          "First version. Chosen from an 18-variant sweep on the worst half-period excess over the Nifty "
          "Smallcap 250, not on full-window CAGR: a variant that only clears the control after 2019 is a "
