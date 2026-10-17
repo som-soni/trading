@@ -534,6 +534,12 @@ TUNABLES = {"top_n": "top_n", "lookback": "lookback", "skip": "skip", "rebalance
             "liquidity_top": "liquidity_top"}
 
 
+def _turnover_tag(value: float, cfg) -> str:
+    """`_turnover10cr` / `_turnover20m` — slug-safe and readable in the market's own unit."""
+    return (f"_turnover{value / 1e7:g}cr" if cfg.currency_code == "INR"
+            else f"_turnover{value / 1e6:g}m")
+
+
 def strategy_defaults(key: str, market: str) -> dict:
     """The registered strategy's tunables, as argparse defaults.
 
@@ -585,7 +591,10 @@ def main() -> None:
                 + (f"_vt{args.vol_target:g}" if args.vol_target else "")
                 + ("_overlay" if args.index_overlay else "")
                 + ("_frac" if args.fractional else "")
-                + (f"_turnover{args.min_turnover:g}" if args.min_turnover else "")
+                # In the market's own unit, never %g: a Rs10cr floor formats as "1e+08", and
+                # run_dir slugs "+" to "-", so the run was filed as "turnover1e-08" -- a name that
+                # reads as ten nano-rupees. The run name is how a run is identified in the portal.
+                + (_turnover_tag(args.min_turnover, cfg) if args.min_turnover else "")
                 + ("_noTrendFilter" if args.no_trend_filter else ""))
     out = run_dir(args.market, args.strategy, run_name)
     tdf.to_csv(out / "trades.csv", index=False)
