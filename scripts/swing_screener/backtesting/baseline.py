@@ -558,17 +558,18 @@ def strategy_defaults(key: str, market: str) -> dict:
     return out
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> dict | None:
+    """`argv` so the job runner can call this in-process, the way backtest.main is called."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     from ..strategies import portfolio_strategies
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--strategy", default="momentum_baseline")
     pre.add_argument("--market")
-    chosen, _ = pre.parse_known_args()
+    chosen, _ = pre.parse_known_args(argv)
     ap = build_parser()
     if chosen.market:
         ap.set_defaults(**strategy_defaults(chosen.strategy, chosen.market))
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     cfg = MARKETS[args.market]
     tdf, perf, eq, pos = run(
@@ -634,20 +635,18 @@ def main() -> None:
     print()
     print(metrics.format_equity_curve(eq, bc))
     print(f"\nRun dir -> {out}")
+    result = {"perf": perf, "run_dir": str(out), "trades": int(len(tdf))}
 
     try:
         from . import report as report_mod
 
-        cmd = (
-            f"python3 -m swing_screener.backtesting.baseline --market {args.market} "
-            f"--start {args.start} --top-n {args.top_n} --lookback {args.lookback} "
-            f"--rebalance {args.rebalance} --cost-bps {args.cost_bps}"
-            + (f" --min-turnover {args.min_turnover:g}" if args.min_turnover else "")
-            + (" --no-trend-filter" if args.no_trend_filter else "")
-        )
+        # The strategy IS its tunables, so the reproduce line names it rather than respelling
+        # every flag -- and unlike the old spelling it cannot drift from what the page documents.
+        cmd = (f"python3 -m swing_screener.backtesting.baseline --strategy {args.strategy} "
+               f"--market {args.market} --start {args.start}")
         md = report_mod.write_report(
             out,
-            f"{cfg.name} — momentum baseline (top {args.top_n}), {args.start} onward",
+            f"{cfg.name} — {portfolio_strategies()[args.strategy].name} (top {args.top_n}), {args.start} onward",
             perf, eq, pos, tdf, cfg.currency_symbol, args.top_n, bc, cmd,
         )
         print(f"Report -> {md}")
@@ -657,6 +656,7 @@ def main() -> None:
     if not getattr(args, "no_ingest", False):
         from ..web.ingest import ingest_after_run
         ingest_after_run()
+    return result
 
 
 if __name__ == "__main__":

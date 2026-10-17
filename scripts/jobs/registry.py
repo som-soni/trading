@@ -417,10 +417,10 @@ def _backtest_steps(ctx: Ctx) -> list:
     documented arguments (`Strategy.backtest_args` — its real exit policy, the same command the
     Strategies page shows), reports live progress to the run log, and leaves the report for the
     `ingest` job to load. Offline and slow: it reads stored prices only."""
-    from swing_screener.strategies import DEFAULT_STRATEGY, list_strategies
+    from swing_screener.strategies import DEFAULT_STRATEGY, list_strategies, portfolio_strategies
     keys = ctx.opt("strategies") or [DEFAULT_STRATEGY]
     if keys == ["all"]:
-        keys = list_strategies()
+        keys = list_strategies() + sorted(portfolio_strategies())
 
     def one(key):
         def fn(c: Ctx) -> None:
@@ -428,6 +428,25 @@ def _backtest_steps(ctx: Ctx) -> list:
             from swing_screener.backtesting import backtest as bt
             from swing_screener.marketdata import cache
             from swing_screener.strategies import get_strategy
+
+            # A PORTFOLIO strategy has no per-symbol screen to walk, so it is measured by the
+            # baseline runner instead. Dispatching here rather than refusing is what lets the
+            # Strategies page offer one Backtest button for every strategy it lists.
+            if key in portfolio_strategies():
+                from swing_screener.backtesting import baseline as bl
+                argv = ["--strategy", key, "--market", c.market,
+                        "--start", str(c.opt("start") or BACKTEST_START), "--no-ingest"]
+                for extra in (c.opt("bt") or []):
+                    argv += shlex.split(str(extra))
+                with cache.offline():   # stored prices only, like the gated backtest
+                    r = bl.main(argv)
+                if r:
+                    pf = r["perf"]
+                    c.step.detail = (f"{r['trades']} trades · CAGR {pf.cagr_pct:+.2f}% · "
+                                     f"excess {pf.cagr_pct - (pf.benchmark_cagr_pct or 0):+.2f}% · "
+                                     f"max DD {pf.max_drawdown_pct:.1f}% · {r['run_dir']}")
+                return
+
             cls = type(get_strategy(key))
             start = str(c.opt("start") or BACKTEST_START)
             argv = ["--market", c.market, "--start", start, "--strategy", key] + shlex.split(cls.backtest_args or "")

@@ -3234,7 +3234,12 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   if (!alive()) return;
   if (!d) { root.innerHTML = `<div class="empty"><b>Strategy not found</b><div class="muted"><a href="#/strategies">Today's setups</a></div></div>`; return; }
   const trades = d.kind === "screener";
-  const tabs = [...(trades ? [["setups", "Setups today"]] : []), ["rules", "Rules"], ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
+  // A portfolio strategy has no per-symbol setups to screen for -- it holds a ranked book. Its
+  // equivalent of "Setups today" is what it HOLDS, taken from the latest run's still-open
+  // positions, which are produced by the strategy's own rules rather than recomputed here.
+  const holds = d.kind === "benchmark";
+  const tabs = [...(trades ? [["setups", "Setups today"]] : []), ...(holds ? [["holdings", "Holdings"]] : []),
+    ["rules", "Rules"], ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
   tab = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
   document.title = `${d.name} · Strategies · Trading`;
   const kind = { benchmark: "Benchmark", "long-term": "Long-term investing", screener: "Trading strategy" }[d.kind] || "Strategy";
@@ -3246,6 +3251,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
   const host = root.querySelector("#stab");
   if (tab === "setups") return strategySetups(host, alive, key, mkt, runKey);
+  if (tab === "holdings") return strategyHoldings(host, alive, d, key);
   if (tab === "backtests") return strategyBacktests(host, d, key);
   strategyRules(host, d, key);
 }
@@ -3288,10 +3294,61 @@ function strategyRules(host, d, key) {
   });
 }
 
+/** What a portfolio strategy holds, from the latest run's open positions.
+ *
+ *  Deliberately NOT a fresh ranking computed here: that would be a second implementation of the
+ *  selection, free to drift from the one that is backtested and versioned. These rows were
+ *  produced by the strategy's own rules, so they are as of the run's last bar -- which the header
+ *  says, because a holding list with no date invites being read as live.
+ */
+async function strategyHoldings(host, alive, d, key) {
+  host.innerHTML = LOADING;
+  let m = store.get("btMkt:" + key, null) || pageMarket();
+  const runsFor = (mk) => d.backtests.filter((b) => b.market === mk)
+    .sort((a, b) => String(b.generated_at).localeCompare(String(a.generated_at)));
+  const paint = async () => {
+    const seg = segmented(MKTS.map((x) => [x.key, `${x.flag} ${esc(x.name)}`]), m, "mk");
+    const runs = runsFor(m);
+    if (!runs.length) {
+      host.innerHTML = `<div class="page-head sub">${seg}</div>
+        <div class="empty"><b>No run for ${esc(mktInfo(m).name)}</b>
+          <div class="muted">Holdings come from a backtest's open positions. Queue one from the Backtests tab.</div></div>`;
+      return wire();
+    }
+    const run = runs[0];
+    const t = await api(`/api/reports/${run.id}/tables/trades`).catch(() => null);
+    if (!alive()) return;
+    const col = (n) => (t ? t.columns.indexOf(n) : -1);
+    const open = t ? t.rows.filter((r) => r[col("exit_reason")] === "OPEN") : [];
+    const num = (x, nd = 2) => (x == null ? "" : (+x).toLocaleString(undefined, { minimumFractionDigits: nd, maximumFractionDigits: nd }));
+    host.innerHTML = `<div class="page-head sub">${seg}<span class="spacer"></span>
+        <span class="muted small">from <a href="#/reports/${run.id}">${esc(run.run)}</a></span></div>
+      <p class="muted small">${open.length} position${open.length === 1 ? "" : "s"} open at the end of that run
+        — the book as its rules last rebalanced it, not a live quote.</p>
+      ${open.length ? `<table class="dtab"><thead><tr><th>Symbol</th><th class="num">Entry</th><th>Since</th>
+          <th class="num">Shares</th><th class="num">Value</th><th class="num">P&L</th><th class="num">Days</th></tr></thead><tbody>${
+        open.sort((a, b) => b[col("pnl")] - a[col("pnl")]).map((r) => `<tr>
+          <td><a href="#/chart/${esc(m)}/${encodeURIComponent(r[col("symbol")])}">${esc(String(r[col("symbol")]).replace(/\.NS$/, ""))}</a></td>
+          <td class="num">${num(r[col("entry_price")])}</td><td>${prettyDate(r[col("entry_date")])}</td>
+          <td class="num">${num(r[col("shares")], 0)}</td><td class="num">${num(r[col("notional")], 0)}</td>
+          <td class="num ${r[col("pnl")] < 0 ? "neg" : "pos"}">${num(r[col("pnl")], 0)}</td>
+          <td class="num">${num(r[col("holding_days")], 0)}</td></tr>`).join("")}</tbody></table>`
+        : `<div class="empty"><b>Nothing open</b><div class="muted">That run ended flat.</div></div>`}`;
+    wire();
+  };
+  const wire = () => host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {
+    m = b.dataset.v; store.set("btMkt:" + key, m); paint();
+  });
+  paint();
+}
+
+
 function strategyBacktests(host, d, key) {
   const pv = (x) => (x == null ? "" : x);
-  const canRun = d.kind === "screener";  // the benchmark / quality pages are measured by their own commands
-  const runBtn = canRun ? `<div class="bt-run"><button class="primary sm" id="btrun" title="Queue a full-history backtest of this strategy (its documented exit policy) — slow; follow it on System → Runs">Backtest ${esc(mktInfo(pageMarket()).name)}…</button>
+  // Portfolio strategies run too -- the backtest job dispatches them to the baseline runner
+  // (jobs/registry._backtest_steps). Only the quality tracker has no backtest to queue.
+  const canRun = d.kind === "screener" || d.kind === "benchmark";
+  const runBtn = () => canRun ? `<div class="bt-run"><button class="primary sm" id="btrun" title="Queue a full-history backtest of this strategy (its documented exit policy) — slow; follow it on System → Runs">Backtest <span id="btrunmkt">${esc(mktInfo(runMarket()).name)}</span>…</button>
       <span class="muted small">runs in the job queue — follow it on <a href="#/runs">System → Runs</a></span></div>` : "";
   const vers = d.versions || [];
   // A run's spec_id is version + the fingerprint of the rules behind it. Show the bare
@@ -3305,7 +3362,11 @@ function strategyBacktests(host, d, key) {
   // screener has — so a benchmark strategy had no way to express market at all, and a screener's
   // runs from both markets sat interleaved in one table with only a column to tell them apart.
   let msel = store.get("btMkt:" + key, null);
-  const mkts = [...new Set(d.backtests.map((b) => b.market))].sort();
+  // the chip IS the country toggle for this tab: with one chosen, Backtest runs that market
+  const runMarket = () => msel || pageMarket();
+  // every market, not just the ones already run: with no runs there is nothing to choose from,
+  // and choosing is how you say which market the Backtest button should queue
+  const mkts = [...new Set([...d.backtests.map((b) => b.market), ...MKTS.map((m) => m.key)])].sort();
   if (msel && !mkts.includes(msel)) msel = null;
   const mchips = () => mkts.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Market</span>
     <button class="chip ${msel ? "" : "on"}" data-m="">All <span class="n">${d.backtests.length}</span></button>
@@ -3360,7 +3421,8 @@ function strategyBacktests(host, d, key) {
         ${esc([sel, msel && (mktInfo(msel).name || msel)].filter(Boolean).join(" in ") || "this filter")} yet.</div></div>`; };
 
   const paint = () => {
-    host.innerHTML = runBtn + (d.backtests.length ? mchips() + chips() + detail() + table()
+    // chips render even with no runs: picking the market is how you tell the button what to queue
+    host.innerHTML = mchips() + runBtn() + (d.backtests.length ? chips() + detail() + table()
       : `<div class="empty"><b>No backtests loaded for this strategy</b><div class="muted">${canRun ? "Queue one with the button above, or run" : "Run"} the command under Rules › Commands; reports load into the app automatically.</div></div>`);
     host.querySelectorAll(".bt-vers .chip[data-v]").forEach((b) => b.onclick = () => {
       sel = b.dataset.v || null;
@@ -3378,7 +3440,8 @@ function strategyBacktests(host, d, key) {
   };
   const wireBtRun = () =>
     host.querySelector("#btrun")?.addEventListener("click", () =>
-      startJob({ title: `Backtest · ${mktInfo(pageMarket()).name}`, targets: ["backtest"], market: pageMarket(), screens: true, pick: key }));
+      startJob({ title: `Backtest · ${mktInfo(runMarket()).name}`, targets: ["backtest"],
+                 market: runMarket(), screens: d.kind === "screener", pick: key }));
   paint();
   wireBtRun();
 }
