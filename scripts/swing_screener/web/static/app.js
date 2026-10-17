@@ -5157,7 +5157,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-strat-overview", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-vol-scaled-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
   "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing", "learn-system-filters",
   "learn-test-backtesting",
-  "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
+  "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand", "learn-order-flow-smc"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
 const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
   "learn-health-trend": "health", "learn-health-breadth": "health", "learn-health-volatility": "health", "learn-health-distribution": "health",
@@ -5170,7 +5170,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno", "learn-system-filters": "system",
   "learn-test-backtesting": "system",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
-  "learn-vcp": "charts", "learn-supply-demand": "levels" };
+  "learn-vcp": "charts", "learn-supply-demand": "levels", "learn-order-flow-smc": "levels" };
 /** a sub-heading for a guide inside its topic's menu — for a topic large enough to need categories
  *  (Strategies: "Trend following", "Breakouts from a base", ...). Guides without one sit under "Guides". */
 const GUIDE_GROUP = {
@@ -5314,6 +5314,7 @@ const GUIDE_BLURB = {
   "learn-bases": "What a base is, Stage 2 and base counts, the common base types, and how to spot one while it is still forming.",
   "learn-vcp": "Minervini's volatility contraction pattern: reading one step by step, entries, stops, mistakes and the evidence.",
   "learn-supply-demand": "Why price levels exist: demand and supply zones, role reversal, scoring a zone, and how the strategies use them.",
+  "learn-order-flow-smc": "Order flow, smart money concepts and liquidity: what the terms mean, the older ideas they rename, and what the evidence supports.",
 };
 /** a guide's name in links and titles: "Candlestick patterns: field guide", "Bases", "VCP" */
 const guideTitle = (x) => String(x.title || x.run);
