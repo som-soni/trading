@@ -126,6 +126,308 @@ const Studies = (() => {
   // strategy keys for the "Screener levels" indicator, set by the app once it knows them
   const STRATEGY_CHOICES = ["All"];
   const SHORT = { trend_pullback: "TP", chart_pattern: "CP", chart_pattern_cup: "CUP", breakout: "BO", donchian: "DC", minervini: "MV" };
+  /** The Trade setups machinery every strategy's layer shares: one frame per setup with numbered zones,
+   *  the lane of pills to pick one, the card with each zone's writeup and checklist, and a selected
+   *  backtest run's own trade standing in for the illustrated entry. It knows nothing of any strategy:
+   *  `load()` resolves to { setups (the bases_live / live_setups schema), background (shapes drawn
+   *  behind, e.g. Stage 2), note }, `keyRows` is the colour key, `roles` adds role colours. */
+  function setupLayer({ chart, times, p, col, ctx, id, keyRows, roles: extraRoles = {}, load }) {
+        let on = true, stage = [], setups = [], focus = null, hovered = null, pinned = null;
+        const DIM = "#5d6170", YOUNG = "#9ca3af", NUM = ["①", "②", "③", "④"];
+        // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
+        // (a listing too new for the template is neither: neutral grey, so it never reads as a failure)
+        // (the generic layer's kinds — pass / watch / fail — share the same three colours)
+        const kindKey = (s) => ({ vcp: "vcp", pass: "vcp", cheat: "cheat", watch: "cheat", young: "young" })[s.kind] || "miss";
+        const kindCol = (s) => (s.kind === "young" ? YOUNG : col(kindKey(s)));
+        const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
+        let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
+        const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+        const ICON = { pass: "✓", fail: "✗", skip: "·", warn: "!", young: "?" };
+        // the selected run's trade on a setup, if it traded one: its record replaces the illustrated entry
+        const tradeOf = (s) => (ctx.trades?.() || []).find((t) => t.entry_date >= s.base_from && t.entry_date <= s.to) || null;
+        const isEntry = (z) => z.key === "entry" || z.key === "cheat";
+
+        // ---- the card: the focused setup's verdict, one row per zone, the open zone's writeup and checks
+        const card = document.createElement("div"); card.className = "tt-card"; card.hidden = true;
+        ctx.chartEl?.append(card);
+        // Where the card goes: wherever the viewer dragged it (remembered), else the side of the setup with
+        // more room, so it covers as little of the setup as it can.
+        let moved = null; try { moved = JSON.parse(store("ttCardPos") || "null"); } catch {}
+        const place = (s) => {
+          const el = ctx.chartEl, W = el.clientWidth, H = el.clientHeight;
+          if (moved) {
+            card.style.right = ""; card.style.left = `${Math.max(0, Math.min(W - card.offsetWidth, moved.x * W))}px`;
+            card.style.top = `${Math.max(0, Math.min(H - card.offsetHeight, moved.y * H))}px`; return;
+          }
+          const ts = chart.timeScale(), w = ts.width();
+          const px = (d) => ts.timeToCoordinate(times.find((t) => t >= d) || times.at(-1));
+          const x0 = s ? px(s.from) ?? 0 : 0, x1 = s ? px(s.to) ?? w : w;
+          // away from the entry zone when there is one (it is what matters most); else the roomier side
+          const ez = s && s.zones.find(isEntry), ex = ez ? px(ez.from) : null;
+          const left = ex != null ? ex > w / 2 : x0 > w - x1;
+          card.style.right = left ? "" : `${chart.priceScale("right").width() + 8}px`;
+          card.style.left = left ? `${(chart.priceScale("left").width() || 0) + 8}px` : "";
+          card.style.top = left ? `${(el.querySelector(".legend")?.offsetHeight || 0) + 12}px` : "8px";
+        };
+        let drag = null;
+        card.addEventListener("mousedown", (e) => {
+          e.stopPropagation();   // not a chart drag or a drawing click
+          if (!e.target.closest(".tt-h") || e.target.closest("button")) return;
+          const r = card.getBoundingClientRect();
+          drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, x: e.clientX, y: e.clientY, moved: false };
+        });
+        const onMove = (e) => {
+          if (!drag) return;
+          if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;
+          drag.moved = true;
+          const host = ctx.chartEl.getBoundingClientRect();
+          moved = { x: (e.clientX - drag.dx - host.left) / host.width, y: (e.clientY - drag.dy - host.top) / host.height };
+          place(focus);
+        };
+        const onUp = () => {
+          if (!drag) return;
+          if (drag.moved) { store("ttCardPos", JSON.stringify(moved)); card.dataset.dragged = "1"; }
+          drag = null;
+        };
+        window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
+        new MutationObserver(() => { if (!card.isConnected) { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); } })
+          .observe(ctx.chartEl, { childList: true });
+        card.onclick = (e) => {
+          const z = e.target.closest("[data-z]"), act = e.target.closest("[data-a]");
+          if (card.dataset.dragged) { delete card.dataset.dragged; return; }   // the end of a drag, not a click
+          if (act?.dataset.a === "prev" || act?.dataset.a === "next") {
+            const k = setups.indexOf(focus) + (act.dataset.a === "next" ? 1 : -1);
+            if (setups[k]) { pinned = setups[k]; reveal(pinned); paint(); }
+            return;
+          }
+          if (act?.dataset.a === "dock") { moved = null; store("ttCardPos", "null"); place(focus); return; }
+          if (z) { zoneOpen = zoneOpen === z.dataset.z ? "" : z.dataset.z; store("ttZone", zoneOpen); renderCard(); return; }
+          if (e.target.closest(".tt-kh")) { keyOpen = !keyOpen; store("ttKeyOpen", keyOpen ? "1" : "0"); renderCard(); return; }
+          if (e.target.closest(".tt-h")) { open = !open; store("ttCardOpen", open ? "1" : "0"); renderCard(); }
+        };
+        const key = () => keyRows(YOUNG, DIM).map(([kind, c, name, what]) => `<div class="tt-k"><i class="mk ${kind}" style="--c:${c}"></i><span><b>${name}</b> — ${what}</span></div>`).join("");
+        const checksHtml = (cs) => `<table class="tt-checks">${cs.map((c) => `<tr class="${c.state}" title="${esc(c.code)}">
+          <td class="ic">${ICON[c.state]}</td><td>${esc(c.name)}</td><td class="val">${c.state === "skip" ? "not reached" : esc(c.value)}</td></tr>
+          ${c.state === "fail" ? `<tr class="lim"><td></td><td colspan="2">needs ${esc(c.limit)}</td></tr>` : ""}`).join("")}</table>`;
+        const zoneHtml = (s, z, n) => {
+          const t = isEntry(z) ? tradeOf(s) : null;
+          const line = t ? `traded: ${t.r_multiple != null ? `${(+t.r_multiple).toFixed(1)}R` : "open"}` : z.line;
+          const state = t ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
+          let body = "";
+          if (zoneOpen === z.key) {
+            body = t
+              ? `<p class="tt-x">The selected backtest run traded this setup: bought at ${esc((+t.entry_price).toFixed(2))} on ${esc(t.entry_date)}`
+                + (t.exit_date ? `, sold at ${esc((+t.exit_price).toFixed(2))} on ${esc(t.exit_date)} (${esc(t.exit_reason || "exit")})` : ", still open")
+                + `${t.r_multiple != null ? `, ${(+t.r_multiple).toFixed(2)}R` : ""}. Its own levels are drawn from the run's record.</p>`
+              : `${z.illustration ? `<div class="tt-tag">Illustration of the rules — not a trade</div>` : ""}<p class="tt-x">${esc(z.text)}</p>${checksHtml(z.checks)}`;
+          }
+          return `<div class="tt-z ${zoneOpen === z.key ? "on" : ""}"><div class="tt-zh" data-z="${z.key}"><span class="n">${NUM[n]}</span>
+            <b>${esc(z.title)}</b><span class="st ${state}">${ICON[state]}</span><span class="ln">${esc(line)}</span></div>${body}</div>`;
+        };
+        const renderCard = () => {
+          card.hidden = !on || p.card === "Hide" || !setups.length;
+          if (card.hidden) return;
+          const s = focus;
+          place(s);
+          const keyHtml = `<div class="tt-kh">${keyOpen ? "▾" : "▸"} How to read the chart</div>${keyOpen ? `<div class="tt-key">${key()}</div>` : ""}`;
+          if (!s) { card.innerHTML = `<div class="tt-h"><b>No setup in view</b><i>${open ? "▾" : "▸"}</i></div>${open ? keyHtml : ""}`; return; }
+          const cls = s.kind === "fail" ? "no" : "ok", k = setups.indexOf(s);
+          const tr = tradeOf(s);
+          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}">${esc(s.title)}</span>
+              ${tr ? `<span class="tt-traded" title="The selected backtest run bought this setup — these are its own levels, not an illustration">● traded${tr.r_multiple != null ? ` ${(+tr.r_multiple).toFixed(1)}R` : ""}</span>` : ""}
+              <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
+              <i>${open ? "▾" : "▸"}</i></div>`
+            + (open ? `<div class="tt-date">${esc(s.from)} → ${esc(s.to)}${s.live ? ` <span class="tt-live">forming · judged today</span>` : ""}</div><div class="tt-sum">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}
+              <div class="tt-sub">Pick a setup from the lane at the bottom of the chart, or step with ‹ ›. Drag this header to move the card${moved ? ` · <a data-a="dock">put it back</a>` : ""}.</div>${keyHtml}` : "");
+        };
+
+        // ---- which setup: pinned, else under the mouse, else the latest one in view
+        const edge = () => {
+          const r = chart.timeScale().getVisibleLogicalRange();
+          return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : times.at(-1);
+        };
+        const latest = () => [...setups].reverse().find((s) => s.from <= edge()) || null;
+        const setupAt = (t) => setups.filter((s) => s.from <= t && t <= s.to)
+          .sort((a, b) => (Date.parse(a.to) - Date.parse(a.from)) - (Date.parse(b.to) - Date.parse(b.from)))[0] || null;
+        const timeOf = (q) => (typeof q.time === "string" ? q.time
+          : q.point && q.logical != null ? times[Math.min(times.length - 1, Math.max(0, Math.round(q.logical)))] : null);
+
+        const paint = () => {
+          focus = hovered || pinned || latest();
+          const shapes = [];
+          // Only the selected setup is drawn: overlapping frames cannot be told apart, so every other
+          // setup lives in the lane instead, where each has its own row and its own click target.
+          for (const s of setups) {
+            const f = s.frame;
+            if (s !== focus) continue;
+            const role = kindKey(s);
+            const traded = tradeOf(s);
+            // a traded setup says so on the frame itself: with the layer and a run both on, the one
+            // thing you cannot read off the drawing is which of these the run actually bought
+            shapes.push({ shape: "box", frame: true, dash: s.kind === "fail" || s.kind === "young", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom,
+              label: traded ? `${s.title} · ● traded${traded.r_multiple != null ? ` ${(+traded.r_multiple).toFixed(1)}R` : ""}` : s.title });
+            s.zones.forEach((z, n) => {
+              if (n > 0)   // a faint divider where each zone starts
+                shapes.push({ shape: "line", from: z.from, to: z.from, p0: f.top, p1: f.bottom, role: "dim", dash: true });
+              const st = traded && isEntry(z) ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
+              // captions just inside the frame's top edge: below it, the setup lane would cover them
+              shapes.push({ shape: "text", at: z.from, price: f.top, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
+                label: `${NUM[n]} ${z.title} ${ICON[st]}` });
+              if (isEntry(z) && traded) {
+                // The run's own record, drawn HERE and in this indicator's vocabulary, so an
+                // illustrated setup and a traded one look the same and differ only in where the
+                // numbers came from. Its levels come straight from the record (never recomputed);
+                // its base and shelf boxes and its note are dropped, because this frame and the
+                // card already say both, and saying them twice is what made the chart look doubled.
+                shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to,
+                  price: +traded.entry_price, label: `bought ${(+traded.entry_price).toFixed(2)}` });
+                shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level"));
+                return;
+              }
+              // a failed setup's contraction line takes its grey, so a real VCP stands out
+              shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" } : x)));
+            });
+          }
+          const c = (k) => { try { return col(k); } catch { return undefined; } };   // a layer may not declare every colour
+          ctx.annotate(id, on ? stage.concat(shapes) : [], { uptrend: c("uptrend"), base: c("base"), contraction: c("base"),
+            vcp: c("vcp"), cheat: c("cheat"), miss: c("miss"), flag: c("flag"), failpath: DIM, young: YOUNG, tight: c("tight"),
+            pivot: c("pivot") || c("tight"), buy: c("buy"), stop: c("stop"), breakeven: DIM, target: c("target"), dim: DIM, ...extraRoles });
+          renderCard();
+          lane.mark();
+          publish();
+        };
+        // the side panel's Trade setups tab (app.js) lists these: hand it the list, the selection, and a way to pick one
+        const publish = () => ctx.onSetups?.({ list: setups, focus: setups.indexOf(focus),
+          select: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; reveal(pinned); paint(); } });
+        let timer = null, raf = 0;
+        chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+          clearTimeout(timer);
+          timer = setTimeout(() => { if (setups.length && !pinned && !hovered && latest() !== focus) paint(); }, 150);
+        });
+        // A click on the chart selects a setup covering that bar; clicking again where several overlap steps
+        // to the next of them. Inside the selected setup it opens the zone clicked. Empty space changes nothing.
+        chart.subscribeClick((q) => {
+          if (!setups.length) return;
+          const t = timeOf(q); if (!t) return;
+          const here = setups.filter((s) => s.from <= t && t <= s.to);
+          if (!here.length) return;
+          const k = here.indexOf(focus);
+          const s = k >= 0 && pinned === focus ? (here.length > 1 ? here[(k + 1) % here.length] : focus) : here[0];
+          pinned = s;
+          const z = [...s.zones].reverse().find((x) => x.from <= t);
+          if (z) { zoneOpen = z.key; store("ttZone", zoneOpen); }
+          paint();
+        });
+        // frame a setup stepped to from the card in the left ~60% of the chart, so the card (which goes to
+        // the roomier side) sits clear of it on the right
+        const reveal = (s) => {
+          const ts = chart.timeScale();
+          const i0 = times.findIndex((t) => t >= s.from), i1 = times.findIndex((t) => t >= s.to);
+          const a = i0 < 0 ? times.length - 1 : i0, b = i1 < 0 ? times.length - 1 : i1;
+          const span = Math.max(40, (b - a + 1) / 0.58), from = a - span * 0.04;
+          ts.setVisibleLogicalRange({ from, to: from + span });
+        };
+
+        // ---- the setup lane: one pill per setup along the bottom of the price pane, stacked where they overlap
+        const lane = (() => {
+          const el = document.createElement("div"); el.className = "tt-lane";
+          ctx.chartEl?.append(el);
+          // select on press, not click: hovering re-renders the lane, and a click needs the same element
+          // under the mouse at press and release
+          el.addEventListener("mousedown", (e) => {
+            e.stopPropagation();
+            const b = e.target.closest(".tt-pill"); if (!b || e.button !== 0) return;
+            e.preventDefault();
+            pinned = setups[+b.dataset.i]; hovered = null; paint();
+          });
+          el.addEventListener("mouseover", (e) => {
+            const b = e.target.closest(".tt-pill"); const s = b ? setups[+b.dataset.i] : null;
+            if (s && s !== hovered) { hovered = s; paint(); }
+          });
+          el.addEventListener("mouseleave", () => { if (hovered) { hovered = null; paint(); } });
+          const render = () => {
+            el.hidden = !on || !setups.length;
+            if (el.hidden) return;
+            const ts = chart.timeScale(), w = ts.width(), left = chart.priceScale("left").width() || 0;
+            const pane = chart.panes()[0], H = pane ? pane.getHeight() : ctx.chartEl.clientHeight;
+            const xOf = (d) => { const i = times.findIndex((t) => t >= d); return ts.logicalToCoordinate(i < 0 ? times.length - 1 : i); };
+            const rows = [];   // each row's right edge, for stacking
+            const pills = [];
+            setups.forEach((s, i) => {
+              let x0 = xOf(s.from), x1 = xOf(s.to);
+              if (x0 == null || x1 == null || x1 < 0 || x0 > w) return;
+              x0 = Math.max(0, x0); x1 = Math.min(w, Math.max(x1, x0 + 8));
+              let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
+              rows[r] = x1;
+              const sel = s === focus, txt = x1 - x0 > 46 ? s.title : "";
+              const tr = tradeOf(s);
+              pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""} ${tr ? "traded" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}${tr ? ` · traded by the selected run${tr.r_multiple != null ? `, ${(+tr.r_multiple).toFixed(2)}R` : ""}` : ""}"
+                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${tr ? "● " : ""}${esc(txt)}</button>`);
+            });
+            el.innerHTML = pills.join("");
+          };
+          // the selection changed, not the view: restyle the pills in place, never rebuild them — a pill
+          // replaced under the mouse loses the press that was meant for it
+          const mark = () => el.querySelectorAll(".tt-pill").forEach((b) => b.classList.toggle("sel", setups[+b.dataset.i] === focus));
+          chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(() => { render(); if (!card.hidden) place(focus); }));
+          chart.timeScale().subscribeSizeChange(() => requestAnimationFrame(render));
+          return { render, mark, el };
+        })();
+        ctx.onTrades?.(() => { if (setups.length) paint(); });
+        (async () => {
+          setNote(id, "testing each bar…");
+          const r = await load().catch(() => null);
+          if (!r || r.error) { setups = []; publish(); return setNote(id, r?.error || "could not load the setups"); }
+          stage = r.background || [];
+          setups = r.setups || [];
+          setNote(id, r.note);
+          paint(); lane.render();
+        })();
+        return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); lane.render(); } };
+  }
+
+  /** A generic Trade setups layer for `strategy` (any strategy without its own bases_live): the server's
+   *  live_setups scan, the shared machinery, and a colour key in the generic vocabulary. `structure`
+   *  names the roles the strategy's own drawing uses ({ role: [title, colour] }). */
+  function genericSetups(strategy, learnGuide, structure = {}) {
+    return { setupsFor: strategy, learnGuide, short: "Setups", cat: "Screener", overlay: true, custom: true,
+      label: (p) => `${stratName(strategy)} · setups${p.years === "All" ? " · all history" : ` · ${p.years}y`}`,
+      params: { show: { type: "select", def: "All setups", options: ["All setups", "Traded or on trigger", "None"] },
+        years: { type: "select", def: "5", options: ["5", "10", "All"] },
+        card: { type: "select", def: "Show", options: ["Show", "Hide"] } },
+      plots: [{ k: "vcp", t: "Would trade", c: "#22c55e" }, { k: "cheat", t: "On trigger", c: "#38bdf8" },
+        { k: "miss", t: "Refused", c: "#f43f5e" }, { k: "uptrend", t: "Trend", c: "#ab47bc" },
+        ...Object.entries(structure).map(([k, [t, c]]) => ({ k, t, c })),
+        { k: "flag", t: "Flag", c: "#f59e0b" },
+        { k: "buy", t: "Buy", c: "#26a69a" }, { k: "stop", t: "Stop", c: "#ef5350" }, { k: "target", t: "Target", c: "#4caf50" }],
+      draw(args) {
+        const { p, col, tf, ctx } = args;
+        if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
+        const years = p.years === "All" ? 0 : +p.years || 5;
+        const load = async () => {
+          const x = await fetch(`/api/setups/${strategy}/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${years}`);
+          // a 404 here is a server started before this layer existed: say so rather than draw nothing
+          if (x.status === 404) return { error: `the server has no ${stratName(strategy)} setups yet — restart it to load this layer` };
+          if (!x.ok) return { error: `the setups could not be computed (HTTP ${x.status})` };
+          const r = await x.json();
+          const all = r.bases || [];
+          return { background: [], setups: p.show === "None" ? [] : p.show === "Traded or on trigger" ? all.filter((b) => b.kind !== "fail") : all,
+            note: `${r.note} · pick one from the lane at the bottom` };
+        };
+        const keyRows = () => [
+          ["frame", col("vcp"), "Green frame", "the strategy would trade this setup: every gate passed, a valid plan, decided TRADE - HIGH CONFIDENCE, and the entry fired."],
+          ["frame", col("cheat"), "Blue frame", "a valid plan the strategy stops short of buying today (TRADE ON TRIGGER), such as a coil not yet through its pivot."],
+          ["dashframe", col("miss"), "Rose dashed frame", "refused: a gate failed, the plan was refused, or the decision said WATCH. The header names it."],
+          ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup: its levels are the run's own record."],
+          ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
+          ["arrow", col("uptrend"), "① Gates", "the trend into the setup, and every hard gate in the strategy's own words."],
+          ...Object.entries(structure).map(([k, [t]]) => ["box", col(k), `② ${t}`, "the structure the setup was judged on, drawn by the strategy itself."]),
+          ["line", col("buy"), "③ Entry", "the strategy's own buy, stop and target for the judged bar. An illustration of the rules."],
+        ];
+        return setupLayer({ ...args, keyRows, load });
+      } };
+  }
+
   const CATALOG = {
     sma: { name: "Moving Average", short: "MA", cat: "Moving averages", overlay: true, params: { length: 20, source: SRC }, plots: [{ k: "ma", c: "#f5a623" }],
       calc: (b, p) => ({ ma: sma(source(b, p.source), p.length) }) },
@@ -373,11 +675,9 @@ const Studies = (() => {
     // of the Indicators picker (an indicator is a function of these bars; this runs a strategy), and
     // it tells app.js to stand down that strategy's run layers, since this draws the same setups from
     // the same code in the same words. One per strategy: `setups_<key>`, named from the registry.
-    // learnTopic: the Learn topic that teaches what this layer draws, so the Trade setups picker is
-    // categorised by the same vocabulary the course uses (Learn.FAMILY_LABEL). Minervini's setups are
-    // base structures — a VCP and the shelves inside it — so they sit under chart patterns, not under
-    // "strategies"; a layer whose setups are channel breaks or pullbacks would say "price".
-    setups_minervini: { setupsFor: "minervini", learnTopic: "charts", short: "Setups", cat: "Screener", overlay: true, custom: true,
+    // learnGuide: the Learn guide that teaches this strategy, so the Trade setups picker files the layer
+    // under that guide's Strategies category (GUIDE_GROUP in app.js) — the same grouping as Learn.
+    setups_minervini: { setupsFor: "minervini", learnGuide: "learn-strat-vcp-sepa", short: "Setups", cat: "Screener", overlay: true, custom: true,
       label: (p) => `${stratName("minervini")}${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
       params: { stage2: { type: "select", def: "Background", options: ["Background", "Hide"] },
         bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
@@ -390,262 +690,14 @@ const Studies = (() => {
         { k: "miss", t: "Failed setup", c: "#f43f5e" }, { k: "flag", t: "Flag", c: "#f59e0b" },
         { k: "tight", t: "Tight area", c: "#ff9800" },
         { k: "buy", t: "Buy", c: "#26a69a" }, { k: "stop", t: "Stop", c: "#ef5350" }, { k: "target", t: "Target", c: "#4caf50" }],
-      draw({ chart, times, p, col, tf, ctx, id, def }) {
+      draw(args) {
+        const { p, col, tf, ctx, def } = args;
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
-        let on = true, stage = [], setups = [], focus = null, hovered = null, pinned = null;
-        const DIM = "#5d6170", YOUNG = "#9ca3af", NUM = ["①", "②", "③", "④"];
-        // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
-        // (a listing too new for the template is neither: neutral grey, so it never reads as a failure)
-        const kindCol = (s) => (s.kind === "young" ? YOUNG : col(s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : "miss"));
-        const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
-        let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
-        const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-        const ICON = { pass: "✓", fail: "✗", skip: "·", warn: "!", young: "?" };
-        // the selected run's trade on a setup, if it traded one: its record replaces the illustrated entry
-        const tradeOf = (s) => (ctx.trades?.() || []).find((t) => t.entry_date >= s.base_from && t.entry_date <= s.to) || null;
-        const isEntry = (z) => z.key === "entry" || z.key === "cheat";
-
-        // ---- the card: the focused setup's verdict, one row per zone, the open zone's writeup and checks
-        const card = document.createElement("div"); card.className = "tt-card"; card.hidden = true;
-        ctx.chartEl?.append(card);
-        // Where the card goes: wherever the viewer dragged it (remembered), else the side of the setup with
-        // more room, so it covers as little of the setup as it can.
-        let moved = null; try { moved = JSON.parse(store("ttCardPos") || "null"); } catch {}
-        const place = (s) => {
-          const el = ctx.chartEl, W = el.clientWidth, H = el.clientHeight;
-          if (moved) {
-            card.style.right = ""; card.style.left = `${Math.max(0, Math.min(W - card.offsetWidth, moved.x * W))}px`;
-            card.style.top = `${Math.max(0, Math.min(H - card.offsetHeight, moved.y * H))}px`; return;
-          }
-          const ts = chart.timeScale(), w = ts.width();
-          const px = (d) => ts.timeToCoordinate(times.find((t) => t >= d) || times.at(-1));
-          const x0 = s ? px(s.from) ?? 0 : 0, x1 = s ? px(s.to) ?? w : w;
-          // away from the entry zone when there is one (it is what matters most); else the roomier side
-          const ez = s && s.zones.find(isEntry), ex = ez ? px(ez.from) : null;
-          const left = ex != null ? ex > w / 2 : x0 > w - x1;
-          card.style.right = left ? "" : `${chart.priceScale("right").width() + 8}px`;
-          card.style.left = left ? `${(chart.priceScale("left").width() || 0) + 8}px` : "";
-          card.style.top = left ? `${(el.querySelector(".legend")?.offsetHeight || 0) + 12}px` : "8px";
-        };
-        let drag = null;
-        card.addEventListener("mousedown", (e) => {
-          e.stopPropagation();   // not a chart drag or a drawing click
-          if (!e.target.closest(".tt-h") || e.target.closest("button")) return;
-          const r = card.getBoundingClientRect();
-          drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, x: e.clientX, y: e.clientY, moved: false };
-        });
-        const onMove = (e) => {
-          if (!drag) return;
-          if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;
-          drag.moved = true;
-          const host = ctx.chartEl.getBoundingClientRect();
-          moved = { x: (e.clientX - drag.dx - host.left) / host.width, y: (e.clientY - drag.dy - host.top) / host.height };
-          place(focus);
-        };
-        const onUp = () => {
-          if (!drag) return;
-          if (drag.moved) { store("ttCardPos", JSON.stringify(moved)); card.dataset.dragged = "1"; }
-          drag = null;
-        };
-        window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
-        new MutationObserver(() => { if (!card.isConnected) { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); } })
-          .observe(ctx.chartEl, { childList: true });
-        card.onclick = (e) => {
-          const z = e.target.closest("[data-z]"), act = e.target.closest("[data-a]");
-          if (card.dataset.dragged) { delete card.dataset.dragged; return; }   // the end of a drag, not a click
-          if (act?.dataset.a === "prev" || act?.dataset.a === "next") {
-            const k = setups.indexOf(focus) + (act.dataset.a === "next" ? 1 : -1);
-            if (setups[k]) { pinned = setups[k]; reveal(pinned); paint(); }
-            return;
-          }
-          if (act?.dataset.a === "dock") { moved = null; store("ttCardPos", "null"); place(focus); return; }
-          if (z) { zoneOpen = zoneOpen === z.dataset.z ? "" : z.dataset.z; store("ttZone", zoneOpen); renderCard(); return; }
-          if (e.target.closest(".tt-kh")) { keyOpen = !keyOpen; store("ttKeyOpen", keyOpen ? "1" : "0"); renderCard(); return; }
-          if (e.target.closest(".tt-h")) { open = !open; store("ttCardOpen", open ? "1" : "0"); renderCard(); }
-        };
-        const key = () => [
-          ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],
-          ["frame", col("cheat"), "Blue frame", "not a VCP, but it triggered a cheat entry: a close through a tight shelf low in the base."],
-          ["dashframe", YOUNG, "Grey dashed frame", "too new to judge (?): the stock lacks the history for a 200-day average."],
-          ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],
-          ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup. Its levels are the run's own record; every other setup here is what the rules would have set up on, not a trade."],
-          ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
-          ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
-          ["shade", col("base"), "② Base", "the pullbacks, numbered, with their depths; a VCP's get smaller. ✗ marks the one that broke the rule."],
-          ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
-          ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted). An illustration of the rules."],
-          ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],
-          ["tint", col("pass"), "Green background", "the stock is in Stage 2."],
-        ].map(([kind, c, name, what]) => `<div class="tt-k"><i class="mk ${kind}" style="--c:${c}"></i><span><b>${name}</b> — ${what}</span></div>`).join("");
-        const checksHtml = (cs) => `<table class="tt-checks">${cs.map((c) => `<tr class="${c.state}" title="${esc(c.code)}">
-          <td class="ic">${ICON[c.state]}</td><td>${esc(c.name)}</td><td class="val">${c.state === "skip" ? "not reached" : esc(c.value)}</td></tr>
-          ${c.state === "fail" ? `<tr class="lim"><td></td><td colspan="2">needs ${esc(c.limit)}</td></tr>` : ""}`).join("")}</table>`;
-        const zoneHtml = (s, z, n) => {
-          const t = isEntry(z) ? tradeOf(s) : null;
-          const line = t ? `traded: ${t.r_multiple != null ? `${(+t.r_multiple).toFixed(1)}R` : "open"}` : z.line;
-          const state = t ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
-          let body = "";
-          if (zoneOpen === z.key) {
-            body = t
-              ? `<p class="tt-x">The selected backtest run traded this setup: bought at ${esc((+t.entry_price).toFixed(2))} on ${esc(t.entry_date)}`
-                + (t.exit_date ? `, sold at ${esc((+t.exit_price).toFixed(2))} on ${esc(t.exit_date)} (${esc(t.exit_reason || "exit")})` : ", still open")
-                + `${t.r_multiple != null ? `, ${(+t.r_multiple).toFixed(2)}R` : ""}. Its own levels are drawn from the run's record.</p>`
-              : `${z.illustration ? `<div class="tt-tag">Illustration of the rules — not a trade</div>` : ""}<p class="tt-x">${esc(z.text)}</p>${checksHtml(z.checks)}`;
-          }
-          return `<div class="tt-z ${zoneOpen === z.key ? "on" : ""}"><div class="tt-zh" data-z="${z.key}"><span class="n">${NUM[n]}</span>
-            <b>${esc(z.title)}</b><span class="st ${state}">${ICON[state]}</span><span class="ln">${esc(line)}</span></div>${body}</div>`;
-        };
-        const renderCard = () => {
-          card.hidden = !on || p.card === "Hide" || !setups.length;
-          if (card.hidden) return;
-          const s = focus;
-          place(s);
-          const keyHtml = `<div class="tt-kh">${keyOpen ? "▾" : "▸"} How to read the chart</div>${keyOpen ? `<div class="tt-key">${key()}</div>` : ""}`;
-          if (!s) { card.innerHTML = `<div class="tt-h"><b>No setup in view</b><i>${open ? "▾" : "▸"}</i></div>${open ? keyHtml : ""}`; return; }
-          const cls = s.kind === "fail" ? "no" : "ok", k = setups.indexOf(s);
-          const tr = tradeOf(s);
-          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}">${esc(s.title)}</span>
-              ${tr ? `<span class="tt-traded" title="The selected backtest run bought this setup — these are its own levels, not an illustration">● traded${tr.r_multiple != null ? ` ${(+tr.r_multiple).toFixed(1)}R` : ""}</span>` : ""}
-              <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
-              <i>${open ? "▾" : "▸"}</i></div>`
-            + (open ? `<div class="tt-date">${esc(s.from)} → ${esc(s.to)}${s.live ? ` <span class="tt-live">forming · judged today</span>` : ""}</div><div class="tt-sum">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}
-              <div class="tt-sub">Pick a setup from the lane at the bottom of the chart, or step with ‹ ›. Drag this header to move the card${moved ? ` · <a data-a="dock">put it back</a>` : ""}.</div>${keyHtml}` : "");
-        };
-
-        // ---- which setup: pinned, else under the mouse, else the latest one in view
-        const edge = () => {
-          const r = chart.timeScale().getVisibleLogicalRange();
-          return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : times.at(-1);
-        };
-        const latest = () => [...setups].reverse().find((s) => s.from <= edge()) || null;
-        const setupAt = (t) => setups.filter((s) => s.from <= t && t <= s.to)
-          .sort((a, b) => (Date.parse(a.to) - Date.parse(a.from)) - (Date.parse(b.to) - Date.parse(b.from)))[0] || null;
-        const timeOf = (q) => (typeof q.time === "string" ? q.time
-          : q.point && q.logical != null ? times[Math.min(times.length - 1, Math.max(0, Math.round(q.logical)))] : null);
-
-        const paint = () => {
-          focus = hovered || pinned || latest();
-          const shapes = [];
-          // Only the selected setup is drawn: overlapping frames cannot be told apart, so every other
-          // setup lives in the lane instead, where each has its own row and its own click target.
-          for (const s of setups) {
-            const f = s.frame;
-            if (s !== focus) continue;
-            const role = s.kind === "vcp" ? "vcp" : s.kind === "cheat" ? "cheat" : s.kind === "young" ? "young" : "miss";
-            const traded = tradeOf(s);
-            // a traded setup says so on the frame itself: with the layer and a run both on, the one
-            // thing you cannot read off the drawing is which of these the run actually bought
-            shapes.push({ shape: "box", frame: true, dash: s.kind === "fail" || s.kind === "young", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom,
-              label: traded ? `${s.title} · ● traded${traded.r_multiple != null ? ` ${(+traded.r_multiple).toFixed(1)}R` : ""}` : s.title });
-            s.zones.forEach((z, n) => {
-              if (n > 0)   // a faint divider where each zone starts
-                shapes.push({ shape: "line", from: z.from, to: z.from, p0: f.top, p1: f.bottom, role: "dim", dash: true });
-              const st = traded && isEntry(z) ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
-              // captions just inside the frame's top edge: below it, the setup lane would cover them
-              shapes.push({ shape: "text", at: z.from, price: f.top, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
-                label: `${NUM[n]} ${z.title} ${ICON[st]}` });
-              if (isEntry(z) && traded) {
-                // The run's own record, drawn HERE and in this indicator's vocabulary, so an
-                // illustrated setup and a traded one look the same and differ only in where the
-                // numbers came from. Its levels come straight from the record (never recomputed);
-                // its base and shelf boxes and its note are dropped, because this frame and the
-                // card already say both, and saying them twice is what made the chart look doubled.
-                shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to,
-                  price: +traded.entry_price, label: `bought ${(+traded.entry_price).toFixed(2)}` });
-                shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level"));
-                return;
-              }
-              // a failed setup's contraction line takes its grey, so a real VCP stands out
-              shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" } : x)));
-            });
-          }
-          ctx.annotate(id, on ? stage.concat(shapes) : [], { stage2: col("pass"), broke: col("broke"), uptrend: col("uptrend"),
-            base: col("base"), contraction: col("base"), vcp: col("vcp"), cheat: col("cheat"), miss: col("miss"), flag: col("flag"),
-            failpath: DIM, young: YOUNG, tight: col("tight"), buy: col("buy"),
-            stop: col("stop"), breakeven: DIM, target: col("target"), dim: DIM });
-          renderCard();
-          lane.mark();
-        };
-        let timer = null, raf = 0;
-        chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
-          clearTimeout(timer);
-          timer = setTimeout(() => { if (setups.length && !pinned && !hovered && latest() !== focus) paint(); }, 150);
-        });
-        // A click on the chart selects a setup covering that bar; clicking again where several overlap steps
-        // to the next of them. Inside the selected setup it opens the zone clicked. Empty space changes nothing.
-        chart.subscribeClick((q) => {
-          if (!setups.length) return;
-          const t = timeOf(q); if (!t) return;
-          const here = setups.filter((s) => s.from <= t && t <= s.to);
-          if (!here.length) return;
-          const k = here.indexOf(focus);
-          const s = k >= 0 && pinned === focus ? (here.length > 1 ? here[(k + 1) % here.length] : focus) : here[0];
-          pinned = s;
-          const z = [...s.zones].reverse().find((x) => x.from <= t);
-          if (z) { zoneOpen = z.key; store("ttZone", zoneOpen); }
-          paint();
-        });
-        // frame a setup stepped to from the card in the left ~60% of the chart, so the card (which goes to
-        // the roomier side) sits clear of it on the right
-        const reveal = (s) => {
-          const ts = chart.timeScale();
-          const i0 = times.findIndex((t) => t >= s.from), i1 = times.findIndex((t) => t >= s.to);
-          const a = i0 < 0 ? times.length - 1 : i0, b = i1 < 0 ? times.length - 1 : i1;
-          const span = Math.max(40, (b - a + 1) / 0.58), from = a - span * 0.04;
-          ts.setVisibleLogicalRange({ from, to: from + span });
-        };
-
-        // ---- the setup lane: one pill per setup along the bottom of the price pane, stacked where they overlap
-        const lane = (() => {
-          const el = document.createElement("div"); el.className = "tt-lane";
-          ctx.chartEl?.append(el);
-          // select on press, not click: hovering re-renders the lane, and a click needs the same element
-          // under the mouse at press and release
-          el.addEventListener("mousedown", (e) => {
-            e.stopPropagation();
-            const b = e.target.closest(".tt-pill"); if (!b || e.button !== 0) return;
-            e.preventDefault();
-            pinned = setups[+b.dataset.i]; hovered = null; paint();
-          });
-          el.addEventListener("mouseover", (e) => {
-            const b = e.target.closest(".tt-pill"); const s = b ? setups[+b.dataset.i] : null;
-            if (s && s !== hovered) { hovered = s; paint(); }
-          });
-          el.addEventListener("mouseleave", () => { if (hovered) { hovered = null; paint(); } });
-          const render = () => {
-            el.hidden = !on || !setups.length;
-            if (el.hidden) return;
-            const ts = chart.timeScale(), w = ts.width(), left = chart.priceScale("left").width() || 0;
-            const pane = chart.panes()[0], H = pane ? pane.getHeight() : ctx.chartEl.clientHeight;
-            const xOf = (d) => { const i = times.findIndex((t) => t >= d); return ts.logicalToCoordinate(i < 0 ? times.length - 1 : i); };
-            const rows = [];   // each row's right edge, for stacking
-            const pills = [];
-            setups.forEach((s, i) => {
-              let x0 = xOf(s.from), x1 = xOf(s.to);
-              if (x0 == null || x1 == null || x1 < 0 || x0 > w) return;
-              x0 = Math.max(0, x0); x1 = Math.min(w, Math.max(x1, x0 + 8));
-              let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
-              rows[r] = x1;
-              const sel = s === focus, txt = x1 - x0 > 46 ? s.title : "";
-              const tr = tradeOf(s);
-              pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""} ${tr ? "traded" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}${tr ? ` · traded by the selected run${tr.r_multiple != null ? `, ${(+tr.r_multiple).toFixed(2)}R` : ""}` : ""}"
-                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${tr ? "● " : ""}${esc(txt)}</button>`);
-            });
-            el.innerHTML = pills.join("");
-          };
-          // the selection changed, not the view: restyle the pills in place, never rebuild them — a pill
-          // replaced under the mouse loses the press that was meant for it
-          const mark = () => el.querySelectorAll(".tt-pill").forEach((b) => b.classList.toggle("sel", setups[+b.dataset.i] === focus));
-          chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(() => { render(); if (!card.hidden) place(focus); }));
-          chart.timeScale().subscribeSizeChange(() => requestAnimationFrame(render));
-          return { render, mark, el };
-        })();
-        ctx.onTrades?.(() => { if (setups.length) paint(); });
-        (async () => {
-          setNote(id, "testing each bar…");
+        const load = async () => {
           const r = await fetch(`/api/setups/${def.setupsFor}/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
-            .then((x) => (x.ok ? x.json() : null)).catch(() => null);
-          if (!r) return setNote(id, "could not run the trend template");
+            .then((x) => (x.ok ? x.json() : null));
+          if (!r) return null;
+          let stage;
           const runs = r.runs || [];
           // Stage 2 as a background tint: it is context for the setups, not a structure to read
           stage = p.stage2 === "Hide" ? [] : runs.filter((x) => x.ok).map((x) => ({
@@ -668,12 +720,29 @@ const Studies = (() => {
             label: `${g.first.tag} · ${g.bars} bars`,
           })));
           const all = r.bases || [];
-          setups = p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete) : all;
-          setNote(id, `${r.note} · ${all.length} setups, ${all.filter((b) => b.complete).length} VCPs · pick one from the lane at the bottom`);
-          paint(); lane.render();
-        })();
-        return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); lane.render(); } };
+          return { background: stage, setups: p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete) : all,
+            note: `${r.note} · ${all.length} setups, ${all.filter((b) => b.complete).length} VCPs · pick one from the lane at the bottom` };
+        };
+        const keyRows = (YOUNG) => [
+          ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],
+          ["frame", col("cheat"), "Blue frame", "not a VCP, but it triggered a cheat entry: a close through a tight shelf low in the base."],
+          ["dashframe", YOUNG, "Grey dashed frame", "too new to judge (?): the stock lacks the history for a 200-day average."],
+          ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],
+          ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup. Its levels are the run's own record; every other setup here is what the rules would have set up on, not a trade."],
+          ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
+          ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
+          ["shade", col("base"), "② Base", "the pullbacks, numbered, with their depths; a VCP's get smaller. ✗ marks the one that broke the rule."],
+          ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
+          ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted). An illustration of the rules."],
+          ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],
+          ["tint", col("pass"), "Green background", "the stock is in Stage 2."],
+        ];
+        return setupLayer({ ...args, keyRows, load, roles: { stage2: col("pass"), broke: col("broke") } });
       } },
+    // Generic Trade setups layers: the strategy's own evaluate / build_plans / classify run bar by bar on
+    // the server (strategies/live_setups.py) and drawn by the same machinery as Minervini's. One entry per
+    // strategy, as the registry names them; `learnGuide` files it under Learn's category for it.
+    setups_breakout: genericSetups("breakout", "learn-strat-darvas", { base: ["Consolidation", "#2962ff"], pivot: ["Pivot", "#ff9800"] }),
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },
@@ -960,8 +1029,10 @@ const Studies = (() => {
   /** The Trade setups picker: the Indicators picker's shape, deliberately — the same modal, search and
    *  category rail, so one thing is learned once — but SINGLE-select, because only one strategy's
    *  setups can be on a chart. Clicking the layer already on toggles it off, so there is no "None" row
-   *  pretending to be a setup. Categories come from Learn (`learnTopic`), resolved here rather than at
-   *  module scope because learn.js loads after this file. */
+   *  pretending to be a setup. Categories are the Strategies section of Learn: each layer names its
+   *  guide (`learnGuide`) and the category is that guide's group in app.js's GUIDE_GROUP ("Breakouts
+   *  from a base", "Trend following"...), so the two can never disagree. Resolved here, not at module
+   *  scope, because app.js loads after this file. */
   function openSetupPicker({ onChange } = {}) {
     const { el, close } = modal(`<div class="sm-head"><b>Trade setups</b><button class="sm-x" title="Close">${BTN.x}</button></div>
       <div class="sm-search"><input placeholder="Search" spellcheck="false"></div>
@@ -969,16 +1040,16 @@ const Studies = (() => {
       <div class="sm-foot"><span class="muted small">What a strategy's rules would set up on, run over the whole history — not trades. Pick a backtest run to see what was actually bought.</span></div>`, "picker");
     let cat = "All";
     const q = el.querySelector(".sm-search input"), list = el.querySelector(".sm-list"), cats = el.querySelector(".sm-cats");
-    const topic = (t) => (typeof Learn !== "undefined" && Learn.FAMILY_LABEL?.[t]) || t;
+    const group = (t) => (typeof GUIDE_GROUP !== "undefined" && GUIDE_GROUP[CATALOG[t].learnGuide]) || "Strategies";
     const draw = () => {
       const layers = setupLayers(), cur = activeSetup();
-      const used = [...new Set(layers.map((l) => CATALOG[l.type].learnTopic).filter(Boolean))];
-      cats.innerHTML = ["All", ...used].map((c) => `<a data-c="${c}" class="${c === cat ? "on" : ""}">${c === "All" ? "All" : esc(topic(c))}</a>`).join("");
+      const used = [...new Set(layers.map((l) => group(l.type)))];
+      cats.innerHTML = ["All", ...used].map((c) => `<a data-c="${esc(c)}" class="${c === cat ? "on" : ""}">${esc(c)}</a>`).join("");
       const f = q.value.trim().toLowerCase();
-      const items = layers.filter((l) => (cat === "All" || CATALOG[l.type].learnTopic === cat)
-        && (!f || l.name.toLowerCase().includes(f) || topic(CATALOG[l.type].learnTopic).toLowerCase().includes(f)));
+      const items = layers.filter((l) => (cat === "All" || group(l.type) === cat)
+        && (!f || l.name.toLowerCase().includes(f) || group(l.type).toLowerCase().includes(f)));
       list.innerHTML = items.map((l) => `<div class="sm-item${l.type === cur ? " act" : ""}" data-set="${l.type}">
-          <span>${esc(l.name)}</span><span class="muted">${esc(topic(CATALOG[l.type].learnTopic))}${l.type === cur ? " · <b>on chart</b>" : ""}</span></div>`).join("")
+          <span>${esc(l.name)}</span><span class="muted">${esc(group(l.type))}${l.type === cur ? " · <b>on chart</b>" : ""}</span></div>`).join("")
         || `<div class="muted sm-empty">${layers.length ? `No setups match “${esc(q.value)}”.` : "No strategy has a trade-setups layer yet."}</div>`;
     };
     q.oninput = draw;
@@ -989,6 +1060,7 @@ const Studies = (() => {
       setSetup(type === activeSetup() ? null : type);   // clicking the one already on takes it off
       draw(); onChange?.();
     };
+    el.querySelector(".sm-x").onclick = close;
     draw(); q.focus();
     return { close };
   }

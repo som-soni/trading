@@ -1014,8 +1014,38 @@ def portfolio_selection(strategy: str, market: str, limit: int | None = None):
     return baseline.current_selection(market, strategy, limit=limit)
 
 
+_generic_cache: dict = {}   # (strategy, spec, market, symbol, last bar, years) -> response
+
+
+def _generic_setups(strat, market: str, symbol: str, date: str | None, years: int) -> dict:
+    """A strategy's setups from the generic layer, cached per last bar (a full evaluate per bar is
+    seconds, not milliseconds)."""
+    from ..marketdata import cache
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    if date:
+        raw = raw[raw.index <= pd.Timestamp(date)]
+    if raw.empty:
+        raise HTTPException(404, f"no bars for {symbol} up to {date}")
+    as_of = str(raw.index[-1].date())
+    key = (strat.key, strat.spec_id(), market, symbol, as_of, years)
+    if key not in _generic_cache:
+        if len(_generic_cache) > 64:
+            _generic_cache.clear()
+        setups = strat.setups_live(raw, MARKETS[market], symbol, years or None)
+        n = {k: sum(x["kind"] == k for x in setups) for k in ("pass", "watch", "fail")}
+        _generic_cache[key] = {
+            "as_of": as_of, "spec_id": strat.spec_id(), "strategy": strat.key, "symbol": symbol, "market": market,
+            "years": years, "runs": [], "bases": setups,
+            "note": (f"{len(setups)} setups in {years} years: {n['pass']} traded, {n['watch']} on trigger, "
+                     f"{n['fail']} refused" if years else f"{len(setups)} setups"),
+        }
+    return _generic_cache[key]
+
+
 @app.get("/api/setups/{strategy}/{market}/{symbol}")
-def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = None):
+def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = None, years: int = 5):
     """One strategy's trade setups over the stored bars, run ON DEMAND — the Trade setups layer.
 
     `strategy` is in the path because each strategy gets its own layer: the shape of the answer is
@@ -1050,7 +1080,11 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
     except KeyError:
         raise HTTPException(404, f"unknown strategy {strategy}")
     if not hasattr(strat, "bases_live"):
-        raise HTTPException(404, f"{strategy} has no trade-setups layer")
+        # every other strategy: the generic layer (strategies/live_setups.py), which runs the strategy's
+        # own evaluate / build_plans / classify bar by bar over the last `years`, adding no rules of its own
+        if not hasattr(strat, "setups_live"):
+            raise HTTPException(404, f"{strategy} has no trade-setups layer")
+        return _generic_setups(strat, market, symbol, date, years)
     raw = cache.load_cached(market, symbol)
     if raw is None or raw.empty:
         raise HTTPException(404, f"no prices stored for {symbol}")

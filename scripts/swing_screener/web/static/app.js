@@ -611,6 +611,8 @@ async function chartPage(alive, market, symbol, tf) {
   // trade-debug overlay state — declared before the first renderSide(), which can hit the
   // restored Trades tab before the chart (and its data) exists
   let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1, runStrategy = null;
+  // the active Trade setups layer's list, as it published it (studies.js setupLayer): { list, focus, select }
+  let setupFeed = null, setupFilter = store.get("setupFilter", "all");
   // three read-only layers share the annotation overlay: VCP near misses, the chosen backtest run's
   // trades, and studies that draw shapes (Indicators -> Chart patterns); each sets its own part
   let tradeItems = () => [], studyItems = () => [];
@@ -719,6 +721,11 @@ async function chartPage(alive, market, symbol, tf) {
     $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="trades" title="Backtest trades — click one to zoom to it and see the structure the strategy traded on">
       <svg viewBox="0 0 20 20"><path d="M3 17V3M3 17h14"/><path d="M5 13l3.5-5 3 3L16 5"/></svg></button>`);
   } else if (prefs.tab === "trades") prefs.tab = "wl";
+  // a Trade setups layer is on: offer its setups as a side panel (click one -> the chart goes to it)
+  if (Studies.activeSetup()) {
+    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="setups" title="Trade setups — every setup of ${esc(Studies.setupName() || "the layer")}; click one to go to it">
+      <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M6 12l2.5-3 2 2L14 7"/></svg></button>`);
+  } else if (prefs.tab === "setups") prefs.tab = "wl";
   syncPanel();
 
   // The time axis must be on screen without scrolling. The rows above the chart (nav, subnav,
@@ -812,7 +819,8 @@ async function chartPage(alive, market, symbol, tf) {
   const tradeHooks = [];
   const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
-    trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn) } });
+    trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn),
+    onSetups: (feed) => { setupFeed = feed; if (prefs.tab === "setups") renderSide(); } } });
   // read at paint time, not captured: hiding the indicator from the legend restores the stored layer
   supersededStrategy = () => studies.find((e) => e.def?.setupsFor && !e.skipped && !e.s.hidden)?.def.setupsFor ?? null;
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
@@ -1312,11 +1320,37 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div></section>
       <div class="btrs">${rows || '<div class="muted small">This run has no trades in this symbol.</div>'}</div>`;
   }
+  /** The Trade setups panel: every setup the active layer found, newest first, filterable by verdict —
+   *  the backtest-trades panel's shape, so finding a setup is a click rather than a scroll. */
+  function setupsPanelHtml() {
+    const name = Studies.setupName() || "Trade setups";
+    if (!setupFeed) return `<section><h3>${esc(name)}</h3><div class="muted small">Finding the setups…</div></section>`;
+    // by what the rules would DO, judged on the ENTRY zone, not the frame's colour: a complete VCP whose
+    // entry fails (a skipped trade) is refused, while a cheat entry on a base that is no VCP would trade
+    const entryOf = (s) => s.zones.find((z) => z.key === "entry" || z.key === "cheat");
+    const kindOf = (s) => s.kind === "young" ? "young" : s.kind === "watch" ? "trigger" : s.kind === "pass" ? "trade"
+      : ["vcp", "cheat"].includes(s.kind) && entryOf(s)?.state === "pass" ? "trade" : "refused";
+    const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, refused: 0 };
+    setupFeed.list.forEach((s) => { const k = kindOf(s); if (k in counts) counts[k]++; });
+    const chips = [["all", "All"], ["trade", "Would trade"], ["trigger", "On trigger"], ["refused", "Refused"]]
+      .map(([k, t]) => `<a class="sp-chip ${setupFilter === k ? "on" : ""}" data-f="${k}">${t} <span>${counts[k]}</span></a>`).join("");
+    const rows = setupFeed.list.map((s, i) => ({ s, i })).reverse()
+      .filter(({ s }) => setupFilter === "all" || kindOf(s) === setupFilter)
+      .map(({ s, i }) => `<div class="btr sp-row sp-${kindOf(s)} ${i === setupFeed.focus ? "cur" : ""}" data-si="${i}">
+        <div class="btr-h"><b>${prettyDate(s.base_from)}</b><span class="muted small">${s.live ? "today" : prettyDate(s.to)}</span></div>
+        <div class="small sp-title">${esc(s.title)}</div>
+        <div class="muted small">${esc(s.summary)}</div></div>`).join("");
+    return `<section><h3>${esc(name)} · setups</h3>
+      <div class="muted small">What the strategy's rules would set up on — not trades. Click one to go to it on the chart.</div>
+      <div class="sp-chips">${chips}</div></section>
+      <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;
+  }
   function renderSide() {
     if (!sideReady || !prefs.tab) return;
     const body = $("#side .side-body");
     body.innerHTML = prefs.tab === "wl" ? wlPanelHtml() : prefs.tab === "list" ? `<div class="wlpanel">${listPanelHtml()}</div>`
       : prefs.tab === "trades" ? `<div class="wlpanel">${tradesPanelHtml()}</div>`
+      : prefs.tab === "setups" ? `<div class="wlpanel">${setupsPanelHtml()}</div>`
       : prefs.tab === "news" ? `<div class="wlpanel nwpanel">${newsHtml(null)}</div>` : infoHtml();
     if (prefs.tab === "news") {
       loadNews().then((d) => {
@@ -1334,6 +1368,12 @@ async function chartPage(alive, market, symbol, tf) {
         $notes.innerHTML = `<div class="wld-nh"><span class="muted small">Notes</span><span class="spacer"></span>
             ${ns.length ? `<a class="small" href="#/notes/sym/${market}/${encodeURIComponent(symbol)}">all ${ns.length}</a>` : ""}<a class="small" href="#/notes/new/${market}/${encodeURIComponent(symbol)}">+ note</a></div>
           ${ns.slice(0, 3).map((n) => `<a class="wld-note" href="#/notes/${n.id}"><b>${esc(n.title || "Untitled")}</b><span class="muted small">${ago(n.updated_at)}</span></a>`).join("")}`; });
+    }
+    if (prefs.tab === "setups") {
+      body.querySelectorAll(".sp-chip").forEach((el) => el.onclick = () => { setupFilter = el.dataset.f; store.set("setupFilter", setupFilter); renderSide(); });
+      body.querySelectorAll(".sp-row").forEach((el) => el.onclick = () => setupFeed?.select(+el.dataset.si));
+      body.querySelector(".sp-row.cur")?.scrollIntoView({ block: "nearest" });
+      return;
     }
     if (prefs.tab === "trades") {
       body.querySelectorAll(".btr").forEach((el) => el.onclick = () => {
@@ -4995,7 +5035,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
-  "learn-strat-overview", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
+  "learn-strat-overview", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-vol-scaled-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
   "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing", "learn-system-filters",
   "learn-test-backtesting",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand"];
@@ -5007,7 +5047,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
-  "learn-strat-overview": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-livermore": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-kullamagi": "strategies", "learn-strat-zanger": "strategies", "learn-strat-morales-kacher": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
+  "learn-strat-overview": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-livermore": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-kullamagi": "strategies", "learn-strat-zanger": "strategies", "learn-strat-morales-kacher": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-vol-scaled-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
   "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno", "learn-system-filters": "system",
   "learn-test-backtesting": "system",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
@@ -5031,6 +5071,7 @@ const GUIDE_GROUP = {
   "learn-strat-pullback-support": "Pullbacks in a trend",
   "learn-strat-retracements": "Pullbacks in a trend",
   "learn-strat-xs-momentum": "Momentum and relative strength",
+  "learn-strat-vol-scaled-momentum": "Momentum and relative strength",
   "learn-strat-dual-momentum": "Momentum and relative strength",
   "learn-strat-sector-rotation": "Momentum and relative strength",
   "learn-strat-rs-leaders": "Momentum and relative strength",
@@ -5083,6 +5124,7 @@ const GUIDE_BLURB = {
   "learn-strat-pullback-support": "Buying the retest of a breakout level or demand zone, with the stop just beyond it.",
   "learn-strat-retracements": "Fibonacci retracements and measured moves, tested honestly: common reference levels, not magic ones.",
   "learn-strat-xs-momentum": "Rank the market by its past year's return, hold the strongest, rotate monthly — and survive momentum crashes.",
+  "learn-strat-vol-scaled-momentum": "Rank by the past year's return per unit of volatility, hold the steadiest 20, size each inversely to its risk.",
   "learn-strat-dual-momentum": "Antonacci's dual momentum: own the strongest asset, and step aside to bonds or cash when nothing beats cash.",
   "learn-strat-sector-rotation": "Holding the strongest sectors and moving as leadership changes — by relative strength or the business cycle.",
   "learn-strat-rs-leaders": "Buying the strongest stocks in the strongest groups as a correction ends, and when that works.",

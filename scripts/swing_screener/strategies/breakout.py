@@ -79,6 +79,11 @@ class BreakoutStrategy(Strategy):
     screen_gates = {"G1": "H1", "G2": "H2"}
     watch_codes = ("W1", "W2", "W3")
     setup_codes = (BO01, BO02)
+    setup_names = {BO01: "Breakout", BO02: "Coil"}
+    # short names for the chart's checklist; the rules themselves are gate_docs
+    gate_titles = {"G1": "Above the 200-day", "G2": "200-day not falling", "G3": "Near the 52-week high",
+                   "G4": "Tight {CONSOLIDATION_BARS}-bar base", "G5": "Not extended above the 20-day",
+                   "G6": "Volatility sane", "G7": "No earnings within 10 days"}
     min_bars = 260
 
     needs_ctx_extras = True
@@ -468,6 +473,38 @@ class BreakoutStrategy(Strategy):
             # it names the thing explicitly
             "structural_r": round(sr, 2) if isinstance(sr, float) and sr == sr else None,
         }
+
+    def setup_shapes(self, ctx: StockContext, result: StrategyResult, sig: dict) -> list[dict]:
+        """For the chart's Trade setups layer, the breakout's whole structure from the live context: the
+        advance within the pivot's {BREAKOUT_LOOKBACK}-day window (zone 1), the {CONSOLIDATION_BARS}-bar
+        base G4 measures, and the {BREAKOUT_LOOKBACK}-day pivot the close has to clear — the same
+        windows evaluate() and build_plans() read, so the boxes are exactly what was judged."""
+        d = ctx.daily
+        day = lambda ts: str(pd.Timestamp(ts).date())
+        out: list[dict] = []
+        # the advance into the setup: over the pivot's own window, from its lowest low to the high after it
+        span = d.iloc[-(BREAKOUT_LOOKBACK + 1):]
+        if len(span) > CONSOLIDATION_BARS:
+            lo_day = span["low"].idxmin()
+            run = span.loc[lo_day:]
+            hi_day = run["high"].idxmax()
+            lo, hi = float(span["low"].min()), float(run["high"].max())
+            if hi_day > lo_day and lo > 0:
+                days = len(span.loc[lo_day:hi_day]) - 1
+                out.append({"shape": "line", "from": day(lo_day), "to": day(hi_day), "p0": lo, "p1": hi,
+                            "role": "uptrend", "arrow": True, "label": f"+{(hi / lo - 1) * 100:.0f}% in {days} days"})
+        prior = d.iloc[-(CONSOLIDATION_BARS + 1): -1]
+        if len(prior) == CONSOLIDATION_BARS:
+            top, bot = float(prior["high"].max()), float(prior["low"].min())
+            atr = float(ctx.atr) if ctx.atr == ctx.atr and ctx.atr else None
+            out.append({"shape": "box", "from": day(prior.index[0]), "to": day(prior.index[-1]), "top": top, "bottom": bot,
+                        "role": "base", "label": f"base {CONSOLIDATION_BARS} bars" + (f" · {(top - bot) / atr:.1f} ATR" if atr else "")})
+        win = d.iloc[-(BREAKOUT_LOOKBACK + 1): -1]
+        pivot = ctx.extras.get("breakout_pivot")
+        if pivot and len(win):
+            out.append({"shape": "level", "from": day(win["high"].idxmax()), "to": day(d.index[-1]), "price": float(pivot),
+                        "role": "pivot", "label": f"pivot {pivot:,.2f} · {BREAKOUT_LOOKBACK}-day high"})
+        return out
 
     def chart_anatomy(self, sig: dict) -> list[dict]:
         """The 55-day-high pivot the breakout had to clear, plus the shared default (resistance,

@@ -331,6 +331,9 @@ class Strategy(SpecMeta, ABC):
     # setup code -> what it is in words, for the backtest trades panel (a trade's `setup` is
     # the code); a code missing here is shown as the bare code
     setup_names: dict[str, str] = {}
+    # gate code -> a short name for the chart's checklist (the full rule stays in gate_docs); may use
+    # {NAME} placeholders like the docs. A code missing here is shown as the bare code.
+    gate_titles: dict[str, str] = {}
     # extra report columns this strategy's report_extras() returns, and which
     # of them are numeric. Declared here so output.py never needs to know any
     # strategy's specifics — previously breakout_pivot/pct_from_pivot were
@@ -546,6 +549,21 @@ class Strategy(SpecMeta, ABC):
             out.append({"shape": "note", "at": d, "price": sig.get("h_value"),
                         "text": f"Setup {', '.join(active)} on {d}" + (" · " + " · ".join(notes) if notes else "")})
         return out
+
+    def setup_shapes(self, ctx: StockContext, result: StrategyResult, sig: dict) -> list[dict]:
+        """The structure of one setup bar for the chart's Trade setups layer (strategies/live_setups.py):
+        shapes in the chart_anatomy schema, built from the live context. A shape with role "uptrend" is
+        drawn in the setup's first zone, the rest in its second. Default: this strategy's own
+        chart_anatomy of the same bar. Override to draw from the context what a stored signal row
+        cannot carry (a consolidation's extent, the advance into it)."""
+        return self.chart_anatomy(sig)
+
+    def setups_live(self, raw_daily, cfg: MarketConfig, symbol: str, years: int | None = 5) -> list[dict]:
+        """Every setup episode over the last `years` of `raw_daily`, run on demand through this
+        strategy's own evaluate / build_plans / classify (see strategies/live_setups.py). Exploration
+        only: what a run traded comes from its stored signals."""
+        from . import live_setups
+        return live_setups.scan(self, raw_daily, cfg, symbol, years)
 
     def __repr__(self) -> str:  # pragma: no cover - debug convenience
         return f"<Strategy {self.key}>"

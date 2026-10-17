@@ -1521,3 +1521,11 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .tt-card .tt-zh .st.warn, .tt-card .tt-checks .warn .ic, .tt-card .tt-checks .warn .val { color: #f59e0b; }
 .tt-card .tt-live { margin-left: 6px; padding: 0 5px; border-radius: 3px; font-size: 10.5px; background: color-mix(in srgb, #38bdf8 20%, transparent); color: var(--strong); }
 .tt-card .tt-zh .st.young, .tt-card .tt-checks .young .ic, .tt-card .tt-checks .young .val { color: #9ca3af; }
+/* the Trade setups side panel */
+.sp-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.sp-chip { font-size: 11px; padding: 2px 7px; border: 1px solid var(--line-2); border-radius: 10px; cursor: pointer; color: var(--text); }
+.sp-chip span { color: var(--muted); } .sp-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; } .sp-chip.on span { color: #fff; }
+.sp-row { border-left: 3px solid var(--line-2); }
+.sp-row.sp-trade { border-left-color: #22c55e; } .sp-row.sp-trigger { border-left-color: #38bdf8; }
+.sp-row.sp-refused { border-left-color: #f43f5e; } .sp-row.sp-young { border-left-color: #9ca3af; }
+.sp-row .sp-title { margin: 2px 0; color: var(--strong); }
