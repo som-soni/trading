@@ -718,6 +718,7 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     """
 
     key = VS_DOC["key"]
+    doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
     version = "1.0"
     changelog = (
@@ -790,6 +791,7 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     """
 
     key = "momentum_baseline"
+    doc = DOC
     family = "momentum_baseline"
     version = "1.0"
     name = DOC["name"]

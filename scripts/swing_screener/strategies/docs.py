@@ -83,8 +83,9 @@ def _is_current(cls) -> bool:
 
 
 def strategy_doc(key: str) -> dict:
-    if key == "momentum_baseline":
-        return baseline_doc()
+    from . import portfolio_strategies
+    if key in portfolio_strategies():
+        return baseline_doc(key)
     if key == "quality":
         return quality_doc()
     strat = _REGISTRY[key]
@@ -152,11 +153,17 @@ def screen_doc(key: str) -> dict:
             "source": _source_info(type(sc)) | {"file": "scripts/swing_screener/screens/__init__.py"}}
 
 
-def baseline_doc() -> dict:
-    from ..backtesting import baseline
-    from ..backtesting.baseline import MomentumBaselineStrategy as _MB
+def baseline_doc(key: str) -> dict:
+    """Any registered PortfolioStrategy's page.
 
-    d = baseline.DOC
+    Takes the key rather than closing over one class: these differ only in which tunables they
+    declare, so one renderer serves all of them and adding a strategy stays a registry entry.
+    """
+    from . import portfolio_strategies
+    from ..backtesting import baseline
+
+    _MB = portfolio_strategies()[key]
+    d = _MB.doc
     params = []
     for a in baseline.build_parser()._actions:
         if not a.option_strings or a.dest in ("help", "market", "start"):
@@ -178,7 +185,9 @@ def baseline_doc() -> dict:
         "thesis": d["thesis"], "how_it_works": list(d["how_it_works"]), "caveats": list(d["caveats"]),
         "gates": [], "watch": [], "setups": [], "entry_rules": [], "exit_rules": [],
         "params": params, "decisions": [], "regime_note": "",
-        "commands": {"Backtest": "python3 -m swing_screener.backtesting.baseline --market india --start 2013-01-01 --top-n 20 --cost-bps 25"},
+        # the strategy IS its tunables now, so the command names it instead of re-listing them
+        "commands": {"Backtest": f"python3 -m swing_screener.backtesting.baseline --strategy {key} "
+                                 f"--market india --start 2010-01-01"},
         "source": _source_info(baseline),
     }
 
@@ -214,7 +223,10 @@ def quality_doc() -> dict:
 
 
 def keys() -> list[str]:
-    return sorted(_REGISTRY) + ["momentum_baseline", "quality"]
+    # Enumerated, not listed: a hardcoded name here meant a newly registered portfolio strategy
+    # was invisible on the Strategies page with nothing to object -- it simply never appeared.
+    from . import portfolio_strategies
+    return sorted(_REGISTRY) + sorted(portfolio_strategies()) + ["quality"]
 
 
 def check() -> list[str]:
@@ -296,13 +308,22 @@ def check() -> list[str]:
             problems.append("quality: test points must add up to 100")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"quality: cannot render its documentation ({exc!r})")
+    # every portfolio strategy, not one named one: the check has to grow with the registry or a
+    # new strategy ships undocumented and silently, which is how this file's keys() went stale
     try:
-        from ..backtesting import baseline
-        for k in ("key", "name", "description", "status", "thesis", "how_it_works", "caveats"):
-            if not baseline.DOC.get(k):
-                problems.append(f"momentum_baseline: DOC['{k}'] is empty")
+        from . import portfolio_strategies
+        for sk, cls in sorted(portfolio_strategies().items()):
+            doc = getattr(cls, "doc", None)
+            if not doc:
+                problems.append(f"{sk}: no `doc` attribute, so its page cannot be rendered")
+                continue
+            for k in ("key", "name", "description", "status", "thesis", "how_it_works", "caveats"):
+                if not doc.get(k):
+                    problems.append(f"{sk}: doc['{k}'] is empty")
+            if doc.get("key") != sk:
+                problems.append(f"{sk}: doc['key'] is {doc.get('key')!r}, which will not resolve")
     except Exception as exc:  # noqa: BLE001
-        problems.append(f"momentum_baseline: cannot load DOC ({exc})")
+        problems.append(f"portfolio strategies: cannot load docs ({exc})")
     return problems
 
 
