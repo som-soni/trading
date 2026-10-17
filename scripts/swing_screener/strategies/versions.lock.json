@@ -352,6 +352,31 @@
     },
     "version": "1.1"
   },
+  "pead": {
+    "family": "pead",
+    "fingerprint": "1ea48216",
+    "params": {
+      "HOLD_SESSIONS": 60,
+      "MAX_POSITIONS": 15,
+      "MAX_REACTION": 20.0,
+      "MIN_ACCELERATION": 0.0,
+      "MIN_QUARTERS": 8,
+      "MIN_REACTION": 0.0,
+      "MIN_REVENUE_GROWTH": 10.0,
+      "MIN_YOY_GROWTH": 25.0,
+      "POSITION_PCT": 8.0,
+      "REACTION_DAYS": 2,
+      "SEASON_RANK_TOP": 20.0,
+      "_key": "pead",
+      "cost_bps": 10.0,
+      "hold_sessions": 60,
+      "max_positions": 15,
+      "min_yoy": 25.0,
+      "position_pct": 8.0,
+      "season_top": 20.0
+    },
+    "version": "1.0"
+  },
   "rs_leaders": {
     "family": "rs_leaders",
     "fingerprint": "a97259ef",
