@@ -1127,7 +1127,9 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
            "bars": int(len(daily)), "passing": passing,
            "pct": round(100.0 * passing / max(len(daily), 1), 1),
            "runs": runs, "stages": stages, "bases": strat.bases_live(daily, cfg),
-           "note": (f"{names[last['stage']]} since {last['from']}" if last else "no stage yet")}
+           "note": ((f"{names[last['stage']]} since {last['from']}"
+                     + (f", Trend Template confirmed {last['confirmed']}" if last.get("confirmed") else
+                        ", not yet confirmed by the Trend Template" if last["stage"] == 2 else "")) if last else "no stage yet")}
     if len(_tt_runs) > 64:
         _tt_runs.clear()
     _tt_runs[key] = out

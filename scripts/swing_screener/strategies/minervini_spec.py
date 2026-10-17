@@ -292,22 +292,26 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
     line, the 30-week average (the 150-day), and where the price is against it. A state machine, so a
     stage holds until something moves it on and a single bar cannot flip it:
 
-      -> 2 Advancing  on a Trend Template pass (the checklist that confirms Stage 2, trend_template_row)
-                      with the 150-day rising
+      -> 2 Advancing  the close above a RISING 150-day — Weinstein's own test. The Trend Template is
+                      Minervini's later confirmation (its 200-day test lags a V-shaped recovery by
+                      months), so it is recorded as `confirmed`, not required
       2 -> 3 Topping  on the first of: a LOWER SWING LOW (guide 2.3: swings turn before averages; here
                       a swing low is the lowest of the {_stage_swing_bars} bars on each side of it,
-                      core/swings.swing_low_mask, so it is known that many bars later), the 150-day
-                      stopping rising, or the end the guide measured Stage 2 by (section 8): a close
-                      below the 200-day, or the 200-day no higher than 21 sessions earlier
-      -> 4 Declining  when the 150-day is falling and the close is below it (from 1, 2's end, or 3)
-      4 -> 1 Basing   when the 150-day stops falling
-      1 -> 2          on a Trend Template pass again, with the 150-day rising
-      3 -> 2          the same, AND a close above the high of the Stage 2 that ended: a top resolves
-                      upward only by breaking out of it, so a bounce does not flip it back
+                      core/swings.swing_low_mask, so it is known that many bars later), or the 150-day
+                      stopping rising. (Not the 200-day: early in a real Stage 2 it is often still falling.)
+      2 or 3 -> 4     when the 150-day is falling and the close is below it
+      4 -> 1 Basing   when the price closes back above the 150-day, or the 150-day stops falling
+      1 -> 2          a BREAKOUT: the close above the base's high so far, with the price above a rising
+                      150-day. Crossing the line back and forth is what a base does, so it takes the
+                      breakout to leave it
+      1 -> 4          a BREAKDOWN: the close below the base's low so far, with the 150-day falling
+      3 -> 2          the close above a rising 150-day AND above the high of the Stage 2 that ended: a
+                      top resolves upward only by breaking out of it
 
-    Nothing is marked until the first decisive state (a pass, or a falling 150-day with price under it).
+    Nothing is marked until the first decisive state (an advance or a decline as above).
     Returns [{"stage" (1-4), "from", "to", "bars", "high", "low", "ongoing", "began" (what started it),
-    "gain_pct"}], oldest first. `passes`: the per-bar (ok, why) from trend_template_row, if already
+    "gain_pct", "confirmed" (Stage 2 only: the first day in it the Trend Template passed, or None)}],
+    oldest first. `passes`: the per-bar (ok, why) from trend_template_row, if already
     computed."""
     if passes is None:
         passes = []
@@ -319,8 +323,6 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
     close = daily["close"].to_numpy(float)
     s150 = daily["sma150"].to_numpy(float)
     s150_prev = daily["sma150"].shift(_stage_slope_bars).to_numpy(float)
-    s200 = daily["sma200"].to_numpy(float)
-    s200_prev = daily["sma200_21d_ago"].to_numpy(float)
     day = lambda i: str(daily.index[i].date())
     known = lambda *v: all(x == x for x in v)
     low = daily["low"].to_numpy(float)
@@ -328,6 +330,9 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
     peak = None            # the high of the last Stage 2, which a Stage 3 must clear to resume
     last_swing = None      # the latest CONFIRMED swing low, for the lower-low test
     runs, cur = [], None   # cur: [stage, start index, what began it]
+
+    def confirmed(a, b):   # the first bar in [a, b) on which the Trend Template passed
+        return next((day(k) for k in range(a, b) if passes[k][0]), None)
 
     def switch(i, stage, why):
         nonlocal cur
@@ -337,7 +342,8 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
             seg = daily.iloc[cur[1]:i]
             runs.append({"stage": cur[0], "from": day(cur[1]), "to": day(i - 1), "bars": i - cur[1],
                          "high": float(seg["high"].max()), "low": float(seg["low"].min()), "ongoing": False,
-                         "began": cur[2], "gain_pct": round((close[i - 1] / close[cur[1]] - 1) * 100, 1)})
+                         "began": cur[2], "gain_pct": round((close[i - 1] / close[cur[1]] - 1) * 100, 1),
+                         "confirmed": confirmed(cur[1], i) if cur[0] == 2 else None})
         cur = [stage, i, why]
 
     for i in range(len(daily)):
@@ -352,25 +358,32 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
         falling = s150[i] < s150_prev[i] * (1 - _stage_falling_pct / 100) and close[i] < s150[i]
         rising150 = s150[i] > s150_prev[i]
         stage = cur[0] if cur else None
-        if passes[i][0] and rising150 and stage != 2 and (stage != 3 or peak is None or close[i] > peak):
-            switch(i, 2, "the Trend Template passed" if stage != 3 else "a breakout above the top, with the template passing")
+        if close[i] > s150[i] and rising150 and stage in (None, 3, 4) and (stage != 3 or peak is None or close[i] > peak) \
+                and stage != 4:
+            switch(i, 2, "the price above a rising 150-day" if stage != 3 else "a breakout above the top")
         elif stage == 2:
-            ended = "a lower swing low" if lower_low else None
-            ended = ended or ((close[i] < s200[i] and "a close below the 200-day") if known(s200[i]) else None)
-            ended = ended or (known(s200[i], s200_prev[i]) and not s200[i] > s200_prev[i] and "the 200-day stopped rising")
-            ended = ended or (not rising150 and "the 150-day stopped rising")
+            ended = "a lower swing low" if lower_low else ("the 150-day stopped rising" if not rising150 else None)
             if ended:
                 peak = float(daily["high"].iloc[cur[1]:i + 1].max())
                 switch(i, 4 if falling else 3, f"Stage 2 ended: {ended}")
+        elif stage == 1:
+            base = daily.iloc[cur[1]:i]   # the base so far, before today
+            if len(base) and close[i] > float(base["high"].max()) and close[i] > s150[i] and rising150:
+                switch(i, 2, "a breakout above the base")
+            elif len(base) and falling and close[i] < float(base["low"].min()):
+                switch(i, 4, "a breakdown below the base")
         elif falling and stage != 4:
             switch(i, 4, "the 150-day turned down with the price below it")
+        elif stage == 4 and close[i] > s150[i]:
+            switch(i, 1, "the price back above the 150-day")
         elif stage == 4 and s150[i] >= s150_prev[i]:
             switch(i, 1, "the 150-day stopped falling")
     if cur is not None:
         seg = daily.iloc[cur[1]:]
         runs.append({"stage": cur[0], "from": day(cur[1]), "to": day(len(daily) - 1), "bars": len(daily) - 1 - cur[1],
                      "high": float(seg["high"].max()), "low": float(seg["low"].min()), "ongoing": True,
-                     "began": cur[2], "gain_pct": round((close[-1] / close[cur[1]] - 1) * 100, 1)})
+                     "began": cur[2], "gain_pct": round((close[-1] / close[cur[1]] - 1) * 100, 1),
+                     "confirmed": confirmed(cur[1], len(daily)) if cur[0] == 2 else None})
     return runs
 
 

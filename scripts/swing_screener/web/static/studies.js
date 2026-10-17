@@ -733,8 +733,8 @@ const Studies = (() => {
           ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
           ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted). An illustration of the rules."],
           ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],
-          ["tint", col("stage1"), "Grey-blue band", "Stage 1, basing: after a decline, the 150-day (30-week) line has stopped falling."],
-          ["tint", col("pass"), "Green band", "Stage 2, advancing: the Trend Template passed with the 150-day rising. It lasts until a lower swing low, the 150-day stops rising, or the 200-day breaks — not a dip under the 50-day."],
+          ["tint", col("stage1"), "Grey-blue band", "Stage 1, basing: after a decline, the price is back above the 150-day (30-week) line or the line has stopped falling. It ends on a breakout above the base, or a breakdown below it."],
+          ["tint", col("pass"), "Green band", "Stage 2, advancing: a breakout with the price above a rising 150-day. It lasts until a lower swing low or the 150-day stops rising — not a dip under the 50-day. The Trend Template confirms it, often weeks later."],
           ["tint", col("stage3"), "Amber band", "Stage 3, topping: Stage 2 has ended but the line is not yet falling. Only a breakout above the top returns it to Stage 2."],
           ["tint", col("stage4"), "Red band", "Stage 4, declining: the 150-day is falling and the price is below it."],
         ];
