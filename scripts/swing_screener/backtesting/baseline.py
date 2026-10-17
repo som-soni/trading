@@ -305,7 +305,7 @@ def run(
 
     # scores and vols as whole matrices, once — not per symbol per rebalance
     scores = score_matrix(px, rank, lookback, skip, benchmark=bench_px)
-    vols = realised_vol(px) if weighting == "inverse_vol" else None
+    vols = realised_vol(px, vol_window) if weighting == "inverse_vol" else None
 
     # Index-level trend overlay: hold nothing while the benchmark is below its
     # own long moving average. On 33 years of SPY this cut max drawdown from
@@ -605,7 +605,7 @@ def build_parser() -> argparse.ArgumentParser:
                          "(Barroso-Santa-Clara), market-residual (Blitz), or path "
                          "quality (share of positive days)")
     ap.add_argument("--vol-window", type=int, default=63,
-                    help="bars of realised volatility used by vol_scaled ranking and inverse_vol weighting")
+                    help="bars of realised volatility for inverse_vol weights and the vol target (vol_scaled ranking uses the lookback)")
     ap.add_argument("--weighting", default="equal", choices=["equal", "inverse_vol"],
                     help="equal capital, or inverse to each name's volatility")
     ap.add_argument("--vol-target", type=float, default=None,
@@ -802,8 +802,9 @@ VS_DOC = {
               "likely to give the gain back. Dividing by realised volatility asks which stocks rose most PER UNIT "
               "of risk taken to get there, which is a different and steadier question.",
     "how_it_works": (
-        "On each rebalance date, score every eligible stock by its 12-1 month return divided by its "
-        "{vol_window}-day realised volatility, and hold the top {top_n}.",
+        "On each rebalance date, score every eligible stock by its 12-1 month return divided by the "
+        "volatility of its daily returns over the same {lookback} bars (also ending {skip} bars ago), and "
+        "hold the top {top_n}.",
         "Eligibility is a turnover floor, not a rank: {min_turnover_cr} crore of 20-day average traded value a day. "
         "The floor is the universe control -- the momentum premium concentrates in smaller names, and without a "
         "floor the rank fills with stocks nobody can trade.",
@@ -917,7 +918,8 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
         ("Weighting", "weighting", "inverse_vol: capital inverse to each name's volatility."),
         ("Momentum lookback", "lookback", "Bars of return used to rank (12 months)."),
         ("Skip", "skip", "Most recent bars excluded -- the 12-1 convention that avoids short-term reversal."),
-        ("Volatility window", "vol_window", "Bars of realised volatility used to scale and to weight."),
+        ("Volatility window", "vol_window", "Bars of realised volatility used to weight positions. The ranking "
+         "scales by volatility over the lookback instead."),
         ("Rebalance", "rebalance", "Pandas offset alias; ME is month-end."),
         ("Cost per side", "cost_bps", "Basis points per side. The result is sensitive to this -- see the caveats."),
         ("Turnover floor, India", "min_turnover_cr", "Rs crore of 20-day average traded value a day."),
