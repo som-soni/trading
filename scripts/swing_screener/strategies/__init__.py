@@ -101,8 +101,10 @@ def portfolio_strategies() -> dict:
     """
     from ..backtesting.baseline import MomentumBaselineStrategy, VolScaledMomentumStrategy
     from ..backtesting.dual_momentum import DualMomentumStrategy
+    from ..backtesting.sector_rotation import SectorRotationStrategy
 
-    return {c.key: c for c in (MomentumBaselineStrategy, VolScaledMomentumStrategy, DualMomentumStrategy)}
+    return {c.key: c for c in (MomentumBaselineStrategy, VolScaledMomentumStrategy,
+                                DualMomentumStrategy, SectorRotationStrategy)}
 
 
 def all_specs() -> dict:

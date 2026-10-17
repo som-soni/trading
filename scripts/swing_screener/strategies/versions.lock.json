@@ -329,6 +329,18 @@
     },
     "version": "1.1"
   },
+  "sector_rotation": {
+    "family": "sector_rotation",
+    "fingerprint": "e40872af",
+    "params": {
+      "MIN_BARS": 300,
+      "_key": "sector_rotation",
+      "cost_bps": 10.0,
+      "lookback_days": 126,
+      "top_n": 3
+    },
+    "version": "1.0"
+  },
   "trend_pullback": {
     "family": "trend_pullback",
     "fingerprint": "10d54f8a",
