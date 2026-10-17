@@ -356,3 +356,46 @@ Four mechanisms, one that works, and the one that works has a known size (~+3.4 
 the +5.6 headline) and a known weak spot (the US). That is a more useful map than it looks: it says
 the remaining Learn strategies are worth building for *coverage of mechanisms not yet tested*, and
 not worth building as further variations on breakouts, of which there are already six.
+
+## 11. The fundamentals universe is selected on outcome
+
+Found while measuring post-earnings drift, and it constrains anything built on fundamentals from
+here on.
+
+Company filings exist only for symbols the `financials` job has fetched, and that job's list
+(`jobs/registry.py`) is:
+
+- the `FINANCIALS_TOP` most liquid tradable stocks **by today's 20-day turnover** — 1,500 US, 500
+  India; plus
+- **every stock passing the Trend Template in the latest snapshot** — that is, every stock *currently*
+  in an uptrend.
+
+Both criteria read today's data. For the live Fundamentals and Quality pages that is exactly right:
+they describe the present, and fetching statements for the names that matter now is the point. For a
+**backtest** restricted to that set it is lookahead of the worst kind — the universe knows which
+stocks went on to trend.
+
+The size of it is measurable. Equal-weight, no selection, same dates as the strategy:
+
+| | eligible universe (buy & hold) | broad index | premium |
+|---|---|---|---|
+| India, 2022-2026, 387 symbols | **31.49%** | 8.22% | **+23.27** |
+| US, 2010-2026, 1,394 symbols | 13.75% | 12.04% | +1.71 |
+
+India's +23 points is larger than any strategy effect in this document, and it is *not stock
+selection* — it is the universe. The US slice is a wider share of its tape over a window three and a
+half times longer, so its premium is small and its results remain readable.
+
+**What follows from this:**
+
+1. **Judge a fundamentals strategy against a buy-and-hold of its own eligible set**, never against
+   the broad index. `backtesting/pead.py`'s `main()` computes and prints that control beside the
+   headline, so the comparison cannot be skipped by a future reader.
+2. **Treat any Indian fundamentals backtest as a diagnostic, not a result**, until the universe is
+   reconstructed point in time.
+3. **The fix is a point-in-time fetch list** — the most liquid names *as of each date* — which means
+   backfilling filings for names that are no longer liquid or no longer trending. That is the same
+   project as point-in-time constituents in §6, and the same reason it has not been done.
+4. **Nothing already published moves.** PEAD is the only backtest drawing on this universe; the
+   quality tracker and the Fundamentals page are live views of the present, where selecting on the
+   present is correct.
