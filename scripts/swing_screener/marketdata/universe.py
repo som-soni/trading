@@ -121,14 +121,7 @@ def fetch_us_universe_from_nasdaqtrader(min_price_hint: bool = True) -> Path:
                 continue  # skip units/warrants/preferreds, simple heuristic
             rows.append(sym)
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    path = universe_csv_path("us")
-    with open(path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["ticker"])
-        for sym in sorted(set(rows)):
-            writer.writerow([sym])
-    logger.info("Wrote %d US tickers to %s", len(rows), path)
+    path = _write_universe("us", rows)
     _refresh_names("us")
     return path
 
@@ -203,15 +196,38 @@ def fetch_india_universe_from_yfinance_screener() -> Path:
             break
         time.sleep(0.3)  # be polite to the endpoint
 
+    path = _write_universe("india", rows)
+    _refresh_names("india")
+    return path
+
+
+#: A refresh returning fewer than this share of the current list is a failed download, not a market:
+#: no exchange delists a fifth of its companies in a week. On 2026-10-17 Yahoo's screener answered
+#: the India query with nothing, and the writer replaced 3,420 tickers with an empty file -- every job
+#: after it (fundamentals, screens, backtests) then ran on an empty or tiny universe.
+UNIVERSE_MIN_KEEP = 0.8
+
+
+class UniverseShrank(RuntimeError):
+    """A universe refresh came back too small to trust; the existing list was kept."""
+
+
+def _write_universe(market: str, rows: list[str]) -> Path:
+    """Write the ticker list -- unless it is empty or has shrunk below UNIVERSE_MIN_KEEP of the list
+    it would replace, in which case the old file stays and the refresh fails loudly."""
+    tickers = sorted(set(rows))
+    path = universe_csv_path(market)
+    old = len(load_universe(market)) if path.exists() else 0
+    if not tickers or (old and len(tickers) < UNIVERSE_MIN_KEEP * old):
+        raise UniverseShrank(f"{market} universe refresh returned {len(tickers):,} tickers against "
+                             f"{old:,} stored; kept the stored list (a source outage, not a market)")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    path = universe_csv_path("india")
     with open(path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["ticker"])
-        for sym in sorted(set(rows)):
+        for sym in tickers:
             writer.writerow([sym])
-    logger.info("Wrote %d India (NSE) tickers to %s", len(rows), path)
-    _refresh_names("india")
+    logger.info("Wrote %d %s tickers to %s (was %d)", len(tickers), market, path, old)
     return path
 
 
