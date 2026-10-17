@@ -351,6 +351,22 @@ conversion, the ledger now reads:
 | Asset / sector rotation | 2 | India +3.0 to +3.7 from 2010; US negative in both |
 | Per-symbol swing (breakout, pullback, base) | 6 | Positive selection in 11 of 59 runs, never above +2.24, never on the 2013 cohort |
 | Short-horizon mean reversion on indices | 1 | Negative selection in all 12 runs, both markets, all three measures |
+| Event-driven (post-earnings drift) | 1 | US -1.44, as the literature predicts 58 years on. India unreadable (§11) |
+| Carry (selling index option spreads) | 1 | Undecidable from stored data: all 24 configurations change sign between 2 and 4 points of assumed slippage per leg, and the bhavcopy has no bid/ask |
+
+Six mechanisms now, and the two newest are informative in different ways. **Post-earnings drift
+reproduced a published prediction**: the Learn guide says the drift has mostly gone from large US
+stocks since the 2000s, and the US run returns -1.44 selection over 1,548 trades. **Option selling
+produced no verdict at all**, which is itself the finding — a short-premium result is a cost
+assumption, and the one cost that decides it was never recorded. Both share a shape worth
+remembering: drift wins under 30% of the time with large winners, option selling wins 71-77% of the
+time with large losers, and neither shape is readable from a win rate.
+
+The carry result has a second lesson that has nothing to do with options. At the guide's own sizing
+— 1.5% of capital at maximum loss, one structure at a time — under 1% of the book is at risk on an
+average day. Even granting the most favourable cost assumption, +0.97 CAGR points of selection on a
+0.6% risk budget cannot compound. **A strategy has to be deployable at size before its edge is worth
+measuring**, which is the same point §8 got wrong from the other direction.
 
 Four mechanisms, one that works, and the one that works has a known size (~+3.4 walk-forward, not
 the +5.6 headline) and a known weak spot (the US). That is a more useful map than it looks: it says
