@@ -121,6 +121,17 @@ class PatternParams:
     handle_depth: tuple[float, float] = (3.0, 12.0)  # CH-08 (O'Neil)
     handle_days: tuple[int, int] = (5, 25)           # CH-09 (O'Neil)
     handle_vol: float = 0.8               # CH-11
+    # The rims are a resistance ZONE, not a line: CH-03 keeps its band as the outer limit, and inside it
+    # the gap between the rims is graded rather than judged — within rim_ideal_pct "ideal", within
+    # rim_ok_pct "acceptable", beyond that (still inside CH-03) "loose", the shape that starts to read
+    # as a rounded bottom or a sloping top rather than a cup. A grade, not a rule: the strategy decides
+    # what it is worth.  [assumption: no published percentage exists]
+    rim_ideal_pct: float = 3.0
+    rim_ok_pct: float = 8.0
+    # The breakout must clear the whole zone: a handle under a right rim that sits below the left one
+    # has its high below the left rim, and buying there buys under that rim's supply. True: T is the
+    # higher of the handle's high and the left rim A. False reproduces the spec (T = the handle's high).
+    trigger_clears_rims: bool = True
     # §5 double and triple bottoms / tops
     db_prior_move: float = 20.0           # DB-01, DT-01
     db_min_peak: float = 10.0             # DB-03, DT-03
@@ -593,7 +604,7 @@ def _cup_from(a: Swing, d: pd.DataFrame, majors: list[Swing], high, low, close,
         out["fail"] = "CH-02"
         return out
 
-    # CH-03: right lips near the left lip
+    # CH-03: right lips near the left lip (the outer limit; inside it the gap is graded, see rim_grade)
     lo_lip, hi_lip = p.right_lip[0] * A, p.right_lip[1] * A
     lips = [s for s in majors if s.kind == "H" and b_pos < s.pos <= t_hi
             and lo_lip <= s.price <= hi_lip]
@@ -623,6 +634,10 @@ def _cup_with_lip(base: dict, c_swing: Swing, d: pd.DataFrame, high, low, close,
     A = a.price
     c_pos, C = c_swing.pos, c_swing.price
     out["points"]["C"] = {"pos": c_pos, "price": C, "date": idx[c_pos]}
+    # the rims as a resistance zone: how far the right rim sits from the left, and what that is worth
+    gap = (C - A) / A * 100
+    out["metrics"]["rim_gap_pct"] = round(gap, 2)
+    out["metrics"]["rim_grade"] = rim_grade(gap, p)
 
     # CH-04: cup duration
     cup_len = c_pos - a.pos
@@ -710,8 +725,11 @@ def _cup_with_lip(base: dict, c_swing: Swing, d: pd.DataFrame, high, low, close,
         out["fail"] = "CH-11"
         return out
 
-    # T is the handle's highest high, frozen at t-1 (§13 pitfall 2)
+    # T is the handle's highest high, frozen at t-1 (§13 pitfall 2) — raised to the left rim when the
+    # handle sits under it, so the breakout clears the whole resistance zone (trigger_clears_rims)
     T = float(high[c_pos + 1: t_hi + 1].max()) if t_hi > c_pos else C
+    if p.trigger_clears_rims:
+        T = max(T, A)
     out["metrics"]["tol"] = tol(float(close[t_pos]), atr_t, p)
     return _cup_state(out, Levels(trigger=T, invalidation=D, height=H),
                       close, volume, a.pos, t_pos, p)
@@ -733,6 +751,13 @@ def _cup_state(out: dict, lv: Levels, close, volume, start_pos: int,
     out["metrics"]["is_live"] = True
     out["ok"] = True
     return out
+
+
+def rim_grade(gap_pct: float, p: PatternParams = PatternParams()) -> str:
+    """A cup's rim alignment from the right rim's gap to the left, in %: "ideal", "acceptable" or
+    "loose" (still inside CH-03's band, but a less clearly defined resistance level)."""
+    g = abs(gap_pct)
+    return "ideal" if g <= p.rim_ideal_pct else "acceptable" if g <= p.rim_ok_pct else "loose"
 
 
 def detect_cup(daily: pd.DataFrame, p: PatternParams = PatternParams(),

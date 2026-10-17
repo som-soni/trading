@@ -31,7 +31,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "d8d26d5a",
+    "fingerprint": "de31c6c0",
     "params": {
       "ATR_MULT": 1.5,
       "BO_BUFFER": 0.5,
@@ -92,6 +92,8 @@
       "PARAMS.rc_min_touches": 4,
       "PARAMS.rc_min_touches_side": 2,
       "PARAMS.right_left_min": 0.5,
+      "PARAMS.rim_ideal_pct": 3.0,
+      "PARAMS.rim_ok_pct": 8.0,
       "PARAMS.round_frac": 0.15,
       "PARAMS.round_min_days": 5,
       "PARAMS.side_frac": 0.25,
@@ -103,6 +105,10 @@
       "PARAMS.tr_min_touches_side": 2,
       "PARAMS.tr_scale_days": 40,
       "PARAMS.triple_max_drift": 1.5,
+      "RIM_IDEAL_BONUS": 0.2,
+      "RIM_IDEAL_PCT": 3.0,
+      "RIM_LOOSE_PENALTY": 0.3,
+      "RIM_OK_PCT": 8.0,
       "TOL_ATR_MULT": 0.75,
       "TOL_PCT": 3.0,
       "TRIPLE_MAX_DRIFT": 1.5,
@@ -139,7 +145,7 @@
         "W3"
       ]
     },
-    "version": "1.7"
+    "version": "1.8"
   },
   "donchian": {
     "family": "donchian",

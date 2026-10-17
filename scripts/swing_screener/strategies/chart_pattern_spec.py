@@ -73,12 +73,18 @@ W_MIN_DEPTH, W_MAX_DEPTH = 20.0, 35.0   # OW-01: the high before B to the lower 
 W_MIN_DAYS = 35          # OW-02: that high to the second low, about 7 weeks
 TRIPLE_MAX_DRIFT = 1.5   # TL-LV: a triple's lows may not step one way by more than this %
 CUP_RIGHT_LEFT_MIN = 0.5  # CH-06: a cup's recovery (B to C) takes at least this × its decline (A to B)
+# A cup's rims are a resistance zone, graded rather than judged (CH-03 stays the outer limit):
+RIM_IDEAL_PCT = 3.0       # the right rim within this % of the left: "ideal"
+RIM_OK_PCT = 8.0          # ...within this: "acceptable"; beyond it (inside CH-03): "loose"
+RIM_IDEAL_BONUS = 0.2     # setup quality added for ideal rims (it ranks signals for the position slots)
+RIM_LOOSE_PENALTY = 0.3   # ...and taken off for loose ones
 PARAMS = ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
     tol_pct=TOL_PCT, tol_atr_mult=TOL_ATR_MULT, bo_buffer=BO_BUFFER / 100, bo_vol=BO_VOL,
     max_wait=MAX_WAIT, fail_days=FAIL_DAYS, horizon=HORIZON,
     oneil_undercut=(0.0, W_UNDERCUT_MAX), oneil_depth=(W_MIN_DEPTH, W_MAX_DEPTH),
     oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT, right_left_min=CUP_RIGHT_LEFT_MIN,
+    rim_ideal_pct=RIM_IDEAL_PCT, rim_ok_pct=RIM_OK_PCT, trigger_clears_rims=True,
 )
 # bars after the breakout bar on which a pattern is still an entry. The detector keeps a confirmed
 # pattern "live" for HORIZON bars to record its outcome; that is NOT an entry window — buying on
@@ -168,8 +174,17 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.7"
+    version = "1.8"
     changelog = (
+        ("1.8", "2026-10-17",
+         "A cup's rims are a resistance zone. The right rim was either inside CH-03's band (85-103% of the "
+         "left) or rejected, and every cup inside it counted the same. Now the gap is graded — within "
+         "{RIM_IDEAL_PCT}% ideal, within {RIM_OK_PCT}% acceptable, beyond that loose — and the grade moves "
+         "setup quality (+{RIM_IDEAL_BONUS} / -{RIM_LOOSE_PENALTY}), which ranks signals when slots are "
+         "short: a clean resistance level makes the pattern and its breakout easier to trade, but a few "
+         "percent of misalignment is no reason to reject one. And a cup with a handle's trigger is raised "
+         "to the left rim when the handle's high sits under it (PatternParams.trigger_clears_rims): with "
+         "the right rim up to 15% below the left, the old trigger could buy under the left rim's supply."),
         ("1.7", "2026-10-16",
          "Eligibility floor lowered from 320 bars to the screen's own {min_bars} (screens.base.MIN_BARS). "
          "320 was never something the detectors needed: they look back up to PatternParams.lookback, guard "
@@ -282,7 +297,7 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 260
 
     status = (
-        "Not yet measured at v1.7. Last measured at v1.5, with no demonstrated edge: India, full "
+        "Not yet measured at v1.8 (which grades cup rims and lifts a cup's trigger to its left rim). Last measured at v1.5, with no demonstrated edge: India, full "
         "universe from 2013 (bracket exits, measured 2026-10-14): 3.61% CAGR against the index's "
         "11.6%, max drawdown -27.8%; no US v1.5 run was recorded. v1.6 renamed codes only and "
         "v1.7 admits stocks with {min_bars} bars of history instead of 320. (v1.2 stopped stale "
@@ -439,12 +454,20 @@ class ChartPatternSpecStrategy(Strategy):
              "12-33% recovering to its left lip — the recovery taking at least "
              "{CUP_RIGHT_LEFT_MIN}x as long as the decline, so a fast V does not "
              "count — then a 5-25 day handle drifting down in the upper half of "
-             "the cup on volume below 0.8x its 50-day average. T is the handle's high.",
+             "the cup on volume below 0.8x its 50-day average. The two rims are a "
+             "resistance ZONE, not a line: the right rim may sit 15% under to 3% over "
+             "the left, and inside that the gap is graded — within {RIM_IDEAL_PCT}% "
+             "ideal, within {RIM_OK_PCT}% acceptable, beyond that loose — and the "
+             "grade moves setup quality (+{RIM_IDEAL_BONUS} ideal, -{RIM_LOOSE_PENALTY} "
+             "loose), which ranks signals for the position slots. T is the handle's "
+             "high, raised to the left rim when the handle sits under it, so the "
+             "breakout clears the whole zone.",
         CUPNH: "§4 the same cup read before a handle exists, with price still "
                "at the rim. T is the OLD HIGH, the higher of the two lips -- "
                "O'Neil's buy point -- since the right lip may sit up to 15% "
                "under the left. O'Neil treats it as the "
-               "weaker variant, which is why it is a separate code. It is "
+               "weaker variant, which is why it is a separate code. Its rims are "
+               "graded like CUP's ({RIM_IDEAL_PCT}% ideal, {RIM_OK_PCT}% acceptable). It is "
                "complete {K_MAJOR} bars after C and void {MAX_WAIT} bars later "
                "without a breakout.",
         DBOT: "§5.1 O'Neil's W, a continuation base: a prior uptrend into the "
@@ -533,6 +556,10 @@ class ChartPatternSpecStrategy(Strategy):
         ("Breakout age", "BREAKOUT_MAX_AGE",
          "Bars after its breakout bar on which a confirmed pattern is still an "
          "entry ({BREAKOUT_MAX_AGE}: the breakout bar only)."),
+        ("Rim alignment", "RIM_IDEAL_PCT",
+         "A cup's rims are graded, not judged: the right rim within {RIM_IDEAL_PCT}% of the left is "
+         "ideal (+{RIM_IDEAL_BONUS} setup quality), within {RIM_OK_PCT}% acceptable (no change), beyond "
+         "that loose (-{RIM_LOOSE_PENALTY}). No published percentage exists; these are starting points."),
         ("Cup symmetry", "CUP_RIGHT_LEFT_MIN",
          "CH-06, beyond the spec: a cup's recovery (B to C) must take at least "
          "{CUP_RIGHT_LEFT_MIN}x as many bars as its decline (A to B)."),
@@ -617,6 +644,9 @@ class ChartPatternSpecStrategy(Strategy):
                 "pattern_note": _note(res),
                 "pattern_geometry": _geometry(code, res),
                 "bars_since_breakout": res["metrics"].get("bars_since_breakout"),
+                # a cup's rim alignment (graded, not judged); it adjusts setup quality in classify
+                "rim_gap_pct": res["metrics"].get("rim_gap_pct"),
+                "rim_grade": res["metrics"].get("rim_grade"),
                 # §11's identity, so the simulator enters each pattern once (EN-04)
                 "pattern_anchor": str(ps.anchor_of(res).date()) if ps.anchor_of(res) is not None else None,
             })
@@ -812,7 +842,15 @@ class ChartPatternSpecStrategy(Strategy):
             label = DOWNGRADE_MAP[label]
             reasons.append("market-regime downgrade applied")
         return Decision(LABELS[before], LABELS[label], "; ".join(reasons),
-                        risk_pct, r_mult, self.setup_quality(result))
+                        risk_pct, r_mult, self.setup_quality(result) + self._rim_quality(ctx))
+
+    @staticmethod
+    def _rim_quality(ctx: StockContext) -> float:
+        """A cup's rim alignment as a quality adjustment, read from the extras (which survive the
+        backtest's signal cache, where the result alone would not): ideal rims rank higher for the
+        position slots, loose ones lower; acceptable ones and every other pattern are unchanged."""
+        grade = ctx.extras.get("rim_grade") if ctx.extras.get("pattern") in (CUP, CUPNH) else None
+        return RIM_IDEAL_BONUS if grade == "ideal" else -RIM_LOOSE_PENALTY if grade == "loose" else 0.0
 
     def report_extras(
         self, ctx: StockContext, result: StrategyResult, plan: TradePlan | None
@@ -878,6 +916,12 @@ class ChartPatternSpecStrategy(Strategy):
             low = pts[1]
             out.append({"shape": "dots", "role": shape_role, "label": "cup low",
                         "points": [{"at": low["date"], "price": low["price"], "label": low["label"]}]})
+            # the rims as a resistance zone, graded by how well they line up
+            a_pt, c_pt = pts[0], pts[2]
+            gap, grade = e.get("rim_gap_pct"), e.get("rim_grade")
+            out.append({"shape": "box", "from": a_pt["date"], "to": d,
+                        "top": max(a_pt["price"], c_pt["price"]), "bottom": min(a_pt["price"], c_pt["price"]),
+                        "role": "level", "label": "resistance zone" + (f" · rims {gap:+.1f}%, {grade}" if gap is not None else "")})
         else:
             path = [{"at": q["date"], "price": q["price"], "label": q["label"]} for q in pts]
         if len(path) >= 2:
@@ -949,7 +993,8 @@ class ChartPatternSpecStrategy(Strategy):
             extras = {"pattern": code, "pattern_name": name, "pattern_state": res["state"], "direction": direction,
                       "trigger": float(lv.trigger), "invalidation": float(lv.invalidation), "height": float(lv.height),
                       "measured_target": float(lv.target), "pattern_note": _note(res),
-                      "pattern_geometry": _geometry(code, res)}
+                      "pattern_geometry": _geometry(code, res),
+                      "rim_gap_pct": res["metrics"].get("rim_gap_pct"), "rim_grade": res["metrics"].get("rim_grade")}
             shapes = self.chart_anatomy({"market": market, "symbol": symbol, "date": date, "extras": extras})
             geo = extras["pattern_geometry"]
             dates = [q["date"] for q in geo["points"]] + [ln["from"] for ln in geo["lines"]]
@@ -1119,7 +1164,7 @@ def _note(res: dict) -> str:
     m = res.get("metrics", {})
     bits = [f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
             for k, v in m.items()
-            if k in ("depth_pct", "cup_days", "handle_depth_pct", "handle_days",
+            if k in ("depth_pct", "cup_days", "handle_depth_pct", "handle_days", "rim_gap_pct", "rim_grade",
                      "separation_days", "middle_pct", "duration_days",
                      "apex_progress", "window_days", "pole_gain_pct",
                      "retrace_pct", "head_clearance_pct")]
