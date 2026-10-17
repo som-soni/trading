@@ -183,6 +183,33 @@
     },
     "version": "1.0"
   },
+  "fno_income": {
+    "family": "fno_income",
+    "fingerprint": "8ecb963e",
+    "params": {
+      "CLOSE_DAYS_BEFORE": 6,
+      "DELTA_TOL": 0.1,
+      "DTE_MAX": 45,
+      "DTE_MIN": 20,
+      "MIN_CREDIT_VS_DELTA": 0.65,
+      "MIN_OPEN_INTEREST": 500,
+      "PROFIT_TARGET_FRAC": 0.5,
+      "RISK_PCT": 1.5,
+      "SHORT_DELTA": 0.25,
+      "STOP_CREDIT_MULT": 2.0,
+      "TREND_SMA": 50,
+      "VIX_PERCENTILE": 40.0,
+      "VIX_WINDOW": 252,
+      "WIDTH_PCT": 1.5,
+      "_key": "fno_income",
+      "cost_points": 2.0,
+      "risk_pct": 1.5,
+      "short_delta": 0.25,
+      "vix_percentile": 40.0,
+      "width_pct": 1.5
+    },
+    "version": "1.0"
+  },
   "mean_reversion": {
     "family": "mean_reversion",
     "fingerprint": "a8ebdb42",
