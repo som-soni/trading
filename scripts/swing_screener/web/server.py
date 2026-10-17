@@ -1100,11 +1100,13 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
 
     cfg = MARKETS[market]
     runs: list[dict] = []
+    passes = []   # per bar, for stage2_runs
     for ts, row in daily.iterrows():
         try:
             ok, why = trend_template_row(cfg, row)
         except Exception:  # noqa: BLE001 — a bar too early for the averages is simply not Stage 2
             ok, why = False, "insufficient history"
+        passes.append((ok, why))
         why = "" if ok else why
         if runs and runs[-1]["ok"] == ok and runs[-1]["why"] == why:
             r = runs[-1]
@@ -1115,12 +1117,18 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
                          "from": str(ts.date()), "to": str(ts.date()), "bars": 1,
                          "high": float(row["high"]), "low": float(row["low"])})
     passing = sum(r["bars"] for r in runs if r["ok"])
+    # `stages`: Stage 2 as a PHASE (stage2_runs: from a template pass until the 200-day breaks), which is
+    # what the chart tints; `runs` stay the day-by-day template answer
+    from ..strategies.minervini_spec import stage2_runs
+    stages = stage2_runs(daily, cfg, passes)
+    last = stages[-1] if stages else None
     out = {"as_of": as_of, "spec_id": strat.spec_id(), "strategy": strategy, "symbol": symbol, "market": market,
            "bars": int(len(daily)), "passing": passing,
            "pct": round(100.0 * passing / max(len(daily), 1), 1),
-           "runs": runs, "bases": strat.bases_live(daily, cfg),
-           "note": ("in Stage 2 now" if runs and runs[-1]["ok"]
-                    else f"not Stage 2: {runs[-1]['why']}" if runs else "no bars")}
+           "runs": runs, "stages": stages, "bases": strat.bases_live(daily, cfg),
+           "note": (f"in Stage 2 since {last['from']}" if last and last["ongoing"]
+                    else f"not in Stage 2 (the last ended {last['to']}: {last['ended']})" if last
+                    else "never in Stage 2")}
     if len(_tt_runs) > 64:
         _tt_runs.clear()
     _tt_runs[key] = out

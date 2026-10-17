@@ -684,7 +684,7 @@ const Studies = (() => {
         card: { type: "select", def: "Show", options: ["Show", "Hide"] },
         gaps: { type: "select", def: "None", options: ["None", "After long stretches", "All"] }, minBars: 10 },
       // uptrend is purple, not green: green is already Stage 2, and the two must never be mistaken
-      plots: [{ k: "pass", t: "In Stage 2", c: "#26a69a" }, { k: "broke", t: "What ended it", c: "#ef5350" },
+      plots: [{ k: "pass", t: "Stage 2", c: "#26a69a" }, { k: "broke", t: "What ended it", c: "#ef5350" },
         { k: "uptrend", t: "Uptrend", c: "#ab47bc" }, { k: "base", t: "Base · VCP", c: "#2962ff" },
         { k: "vcp", t: "VCP setup", c: "#22c55e" }, { k: "cheat", t: "Cheat entry setup", c: "#38bdf8" },
         { k: "miss", t: "Failed setup", c: "#f43f5e" }, { k: "flag", t: "Flag", c: "#f59e0b" },
@@ -697,28 +697,19 @@ const Studies = (() => {
           const r = await fetch(`/api/setups/${def.setupsFor}/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
             .then((x) => (x.ok ? x.json() : null));
           if (!r) return null;
-          let stage;
-          const runs = r.runs || [];
-          // Stage 2 as a background tint: it is context for the setups, not a structure to read
-          stage = p.stage2 === "Hide" ? [] : runs.filter((x) => x.ok).map((x) => ({
+          // Stage 2 as a PHASE, not a day: each band runs from a Trend Template pass until the 200-day
+          // breaks (minervini_spec.stage2_runs — the Learn guide's definition), so a pullback under the
+          // 50-day no longer chops it into pieces. A background tint: context for the setups.
+          const stages = r.stages || [];
+          let stage = p.stage2 === "Hide" ? [] : stages.map((x) => ({
             shape: "box", role: "stage2", bg: true, from: x.from, to: x.to, top: x.high, bottom: x.low, label: "" }));
-          // What ended a stretch: a gap's FIRST failing run names the criterion that ended it (the later
-          // runs are what kept it out — a different, noisier question). Off unless asked for.
-          const gaps = [];
-          for (let i = 0; i < runs.length; i++) {
-            if (runs[i].ok) continue;
-            const first = runs[i], prev = i > 0 ? runs[i - 1] : null;
-            let bars = 0;
-            while (i < runs.length && !runs[i].ok) { bars += runs[i].bars; i++; }
-            gaps.push({ first, to: runs[i - 1].to, bars, after: prev && prev.ok ? prev.bars : 0 });
-            i--;
-          }
-          // (any other saved value is the old default, "After labelled stretches": now off by default)
-          const shown = p.gaps === "All" ? gaps : p.gaps === "After long stretches" ? gaps.filter((g) => g.after >= p.minBars) : [];
-          stage = stage.concat(shown.map((g) => ({
-            shape: "level", role: "broke", from: g.first.from, to: g.to, price: g.first.low, dash: true,
-            label: `${g.first.tag} · ${g.bars} bars`,
-          })));
+          // What ended each Stage 2: the rule that broke it, marked where it broke. Off unless asked for;
+          // "After long stretches" keeps the stages that lasted minBars sessions or more.
+          const ended = stages.filter((x) => x.ended);
+          const shown = p.gaps === "All" ? ended : p.gaps === "After long stretches" ? ended.filter((x) => x.bars >= p.minBars) : [];
+          stage = stage.concat(shown.map((x) => ({
+            shape: "dots", role: "broke", points: [{ at: x.to, price: x.low,
+              label: `Stage 2 ended: ${x.ended} · ${x.bars} sessions, ${x.gain_pct >= 0 ? "+" : ""}${x.gain_pct}%` }] })));
           const all = r.bases || [];
           return { background: stage, setups: p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete) : all,
             note: `${r.note} · ${all.length} setups, ${all.filter((b) => b.complete).length} VCPs · pick one from the lane at the bottom` };
@@ -735,7 +726,7 @@ const Studies = (() => {
           ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
           ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted). An illustration of the rules."],
           ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],
-          ["tint", col("pass"), "Green background", "the stock is in Stage 2."],
+          ["tint", col("pass"), "Green background", "Stage 2: from the day the Trend Template passes until a close below the 200-day, or the 200-day stops rising. A dip under the 50-day does not end it."],
         ];
         return setupLayer({ ...args, keyRows, load, roles: { stage2: col("pass"), broke: col("broke") } });
       } },

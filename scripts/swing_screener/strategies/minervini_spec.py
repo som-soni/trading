@@ -275,6 +275,53 @@ def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
     return True, "passed"
 
 
+def stage2_runs(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = None) -> list[dict]:
+    """The stock's Stage 2 advances over `daily`, as the Learn guide on stages defines and measures them
+    (research/learn-price-stages.md, section 8): a Stage 2 STARTS on a day the Trend Template passes
+    (trend_template_row) and LASTS until the first close below the 200-day, or the first day the
+    200-day is no higher than 21 sessions earlier (sma200_21d_ago). A pullback under the 50-day, which
+    fails the template for a day, does not end it: a stage is a phase of months, and the template is
+    the checklist that confirms one, not the phase itself.
+
+    The guide's measurement counted only FRESH passes (six months without one) so its cases were
+    independent; a chart has no such need, so any pass starts a stage when none is running.
+    `passes`: the per-bar (ok, why) from trend_template_row, if already computed.
+    Returns [{"from", "to", "bars", "high", "low", "ongoing", "ended" (the rule that ended it, or None),
+    "gain_pct" (close at the end vs at qualification)}], oldest first."""
+    if passes is None:
+        passes = []
+        for _, row in daily.iterrows():
+            try:
+                passes.append(trend_template_row(cfg, row))
+            except Exception:  # noqa: BLE001 — a bar too early for the averages is not Stage 2
+                passes.append((False, "insufficient history"))
+    close = daily["close"].to_numpy(float)
+    s200 = daily["sma200"].to_numpy(float)
+    s200_prev = daily["sma200_21d_ago"].to_numpy(float)
+    day = lambda i: str(daily.index[i].date())
+    out, start = [], None
+    for i in range(len(daily)):
+        if start is None:
+            if passes[i][0]:
+                start = i
+            continue
+        broke = "a close below the 200-day" if close[i] < s200[i] else (
+            "the 200-day stopped rising" if not s200[i] > s200_prev[i] else None)
+        if broke:
+            seg = daily.iloc[start:i + 1]
+            out.append({"from": day(start), "to": day(i), "bars": i - start, "high": float(seg["high"].max()),
+                        "low": float(seg["low"].min()), "ongoing": False, "ended": broke,
+                        "gain_pct": round((close[i] / close[start] - 1) * 100, 1)})
+            start = None
+            # the bar that ended one stage can qualify the next only once the template passes again
+    if start is not None:
+        seg = daily.iloc[start:]
+        out.append({"from": day(start), "to": day(len(daily) - 1), "bars": len(daily) - 1 - start,
+                    "high": float(seg["high"].max()), "low": float(seg["low"].min()), "ongoing": True, "ended": None,
+                    "gain_pct": round((close[-1] / close[start] - 1) * 100, 1)})
+    return out
+
+
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
