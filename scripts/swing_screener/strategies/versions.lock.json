@@ -250,7 +250,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "e56f1a69",
+    "fingerprint": "77e63e3f",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -263,6 +263,7 @@
       "DRYUP_RATIO": 0.7,
       "EARNINGS_BLACKOUT_DAYS": 14,
       "FAIL_DAYS": 0,
+      "FINAL_REF_RATIO": 0.6,
       "FUND_EPS_GROWTH_MIN_PCT": 20.0,
       "FUND_MARGIN_SLACK_PP": 1.0,
       "FUND_SALES_GROWTH_MIN_PCT": 15.0,
@@ -278,6 +279,7 @@
       "MAX_POSITIONS": 8,
       "MAX_STOP_PCT": 10.0,
       "MIN_CONTRACTIONS": 2,
+      "MIN_FROM_REFERENCE": 2,
       "MIN_PCT_ABOVE_52W_LOW": 30.0,
       "MIN_STRUCTURAL_R": 2.0,
       "MIN_SWING_PCT": 2.0,
@@ -298,7 +300,6 @@
       "PRIOR_ADVANCE_PCT": 30.0,
       "RS_MIN_MOM": 0.1,
       "RS_MIN_RANK": 70,
-      "SHRINK": 0.8,
       "SMA200_RISING_BARS": 21,
       "SMA200_RISING_PREF_BARS": 100,
       "STOP_BUFFER_PCT": 0.5,
@@ -319,24 +320,27 @@
       "VCP.cheat_shelf_days": 7,
       "VCP.cheat_shelf_pct": 8.0,
       "VCP.dryup_ratio": 0.7,
+      "VCP.final_ref_ratio": 0.6,
       "VCP.lookback": 460,
       "VCP.max_contractions": 6,
       "VCP.max_first_depth_pct": 35.0,
       "VCP.min_contractions": 2,
+      "VCP.min_from_reference": 2,
       "VCP.min_swing_pct": 2.0,
       "VCP.pivot_near_high": 0.9,
       "VCP.prior_advance_pct": 30.0,
       "VCP.prior_window": 126,
-      "VCP.shrink": 0.8,
       "VCP.swing_k": 5,
       "VCP.tight_days": 10,
       "VCP.tight_pct": 10.0,
+      "VCP.widen_tol": 1.1,
       "VCP.zigzag_atr_mult": 1.5,
       "VCP.zigzag_floor_atr_mult": 1.5,
       "VCP.zigzag_floor_pct": 1.5,
       "VCP.zigzag_pct": 3.0,
       "VCP.zigzag_shrink_ratio": 0.35,
       "VOL_MULT": 1.4,
+      "WIDEN_TOL": 1.1,
       "_key": "minervini",
       "gate_codes": [
         "G1",
@@ -363,7 +367,7 @@
         "W5"
       ]
     },
-    "version": "1.10"
+    "version": "1.11"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

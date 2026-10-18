@@ -103,10 +103,21 @@ class VcpParams:
     prior_window: int = 126
     base_min_days: int = 15          # VCP-02: about 3 weeks …
     base_max_days: int = 325         # … to 65 weeks
+    # ---- the reset rule (v2 §3.3). Volatility must have contracted since the last time it
+    # EXPANDED; the base does not need every pullback to be smaller than the one before it.
+    #
+    # The previous test was `every contraction <= shrink x its predecessor`, which rejects a base
+    # for one deeper pullback early on -- the case Minervini describes as the count RESETTING, not
+    # the base failing. 15%, 25%, 12%, 6% failed outright; now the 25% is the reference and the
+    # 12%, 6% that follow are what the base is judged on.
+    widen_tol: float = 1.1           # a contraction > this x the previous one is a WIDENING
+    min_from_reference: int = 2      # VCP-06: contractions from the reference onward, inclusive
+    final_ref_ratio: float = 0.6     # VCP-06: final contraction / reference contraction, at most
     min_contractions: int = 2        # VCP-04
-    max_contractions: int = 6
+    #: No longer a rejection: v2 §3.4 logs the count and flags more than this. A base with seven
+    #: contractions is unusual, not invalid, and rejecting on it threw away the information.
+    max_contractions: int = 6        # flag above this; see out["many_contractions"]
     max_first_depth_pct: float = 35.0   # VCP-05
-    shrink: float = 0.80             # VCP-06: each contraction ≤ shrink × the previous
     higher_lows: bool = False        # VCP-07 (optional)
     tight_days: int = 10             # VCP-08: the final tight area
     tight_pct: float = 10.0          # VCP-08: its range, and the final contraction, at most this deep
@@ -236,21 +247,43 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     is_hi = _swings(d["high"], p.swing_k, "max")
 
     # ---- step 1: the base high in force on day t
+    #
+    # VCP-02 (v2 §2.2): the base high is the HIGHEST confirmed swing high that no close has
+    # decisively exceeded since it formed -- the left-side high -- not the first such high.
+    #
+    # The previous version assigned `bh_i` only while it was None, so it held the FIRST
+    # unexceeded swing high and could never upgrade to a higher one that formed later without a
+    # decisive close in between. Measured over 20 in-window bases it agreed with the highest on
+    # 14 and missed on 6, every miss being a later, HIGHER swing high that the `bh_break_atr`
+    # margin had kept from resolving the base. Those 6 started the base at a lower high, which
+    # moves the pivot, the depth and the prior advance with it.
+    #
+    # (It was never the "most recent" high, which is the failure mode the v2 note describes:
+    # chosen == latest on 1 of 20, and that base had a single candidate.)
+    #
+    # Unexceeded is judged on a CLOSE, with the same decisiveness margin as before: an intraday
+    # poke above the base high does not end the base, only a close clearing it by more than
+    # `bh_break_atr` ATRs (or `bh_break_pct`, when ATR is unavailable).
     atr = d["atr14"].to_numpy(float) if "atr14" in d.columns else np.full(n, np.nan)
+    t = n - 1
     bh_i = None
     for j in range(n):
-        if bh_i is not None:
-            # a DECISIVE close above BH resolves the base; a poke does not
-            margin = (p.bh_break_atr * atr[j] if atr[j] == atr[j]
-                      else high[bh_i] * p.bh_break_pct / 100)
-            if close[j] > high[bh_i] + margin:
-                bh_i = None
-        if bh_i is None and is_hi[j]:
-            bh_i = j
+        # A swing high is only usable once confirmed, `swing_k` bars after it forms.
+        if not is_hi[j] or j + p.swing_k > t:
+            continue
+        if bh_i is not None and high[j] <= high[bh_i]:
+            continue                      # cannot raise the base high; nothing to check
+        hj = high[j]
+        later = close[j + 1:]
+        if len(later):
+            marg = np.where(np.isnan(atr[j + 1:]), hj * p.bh_break_pct / 100,
+                            p.bh_break_atr * atr[j + 1:])
+            if bool(np.any(later > hj + marg)):
+                continue                  # a close resolved it: this high no longer caps a base
+        bh_i = j
     if bh_i is None:
         out["fail"] = "VCP-02"
         return out
-    t = n - 1
     out.update(bh=float(high[bh_i]), bh_date=d.index[bh_i], base_days=t - bh_i)
     if not (p.base_min_days <= t - bh_i <= p.base_max_days):
         out["fail"] = "VCP-02"
@@ -338,14 +371,41 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     out["depths"] = [round(g[2], 2) for g in legs]
     out["lows"] = [g[1] for g in legs]
     out["legs"] = [(d.index[g[3]], g[0], d.index[g[4]], g[1]) for g in legs]
-    if not (p.min_contractions <= len(legs) <= p.max_contractions):
+    if len(legs) < p.min_contractions:
         out["fail"] = "VCP-04"
         return out
+    out["many_contractions"] = len(legs) > p.max_contractions
     if legs[0][2] > p.max_first_depth_pct:
         out["fail"] = "VCP-05"
         return out
-    if any(b[2] > p.shrink * a[2] for a, b in zip(legs, legs[1:])):
+
+    # ---- VCP-06, the reset rule (v2 §3.3-3.4)
+    #
+    # The REFERENCE is the most recent widening -- a contraction more than `widen_tol` times the
+    # one before it. With none, it is the first contraction from the base high. Everything before
+    # the reference is ignored for this test (it still counts toward base depth), because a
+    # deeper pullback resets the count rather than invalidating the base.
+    sizes = [g[2] for g in legs]
+    ref = 0
+    for k in range(1, len(sizes)):
+        if sizes[k - 1] > 0 and sizes[k] > p.widen_tol * sizes[k - 1]:
+            ref = k
+    out["reference_i"], out["reference_pct"] = ref, sizes[ref]
+    out["from_reference"] = len(sizes) - ref
+    out["final_ref_ratio"] = (sizes[-1] / sizes[ref]) if sizes[ref] > 0 else float("nan")
+    # A widening with nothing after it is not a failure, it is a base that is NOT READY: the
+    # stock has just widened out and has not tightened again yet. It fails the same gate, and
+    # the reason says which of the two it is.
+    if out["from_reference"] < p.min_from_reference:
         out["fail"] = "VCP-06"
+        out["fail_why"] = ("widened out and has not contracted again yet"
+                           if ref == len(sizes) - 1 else "too few contractions since the last widening")
+        return out
+    if not (out["final_ref_ratio"] <= p.final_ref_ratio):
+        out["fail"] = "VCP-06"
+        out["fail_why"] = (f"final contraction {sizes[-1]:.1f}% is "
+                           f"{out['final_ref_ratio']:.2f}x the reference {sizes[ref]:.1f}% "
+                           f"(needs <= {p.final_ref_ratio})")
         return out
     if p.higher_lows and any(b[1] < a[1] for a, b in zip(legs, legs[1:])):
         out["fail"] = "VCP-07"

@@ -8,8 +8,9 @@ exposure and the low cheat follow the guide (see the changelog). What differs fr
 - **Base detection** (core/vcp_spec.py) anchors on the base high — the last confirmed swing high no
   later close has exceeded — and measures every contraction from there, with the spec's numbers:
   swing points of `SWING_K` bars each side, a prior advance of `PRIOR_ADVANCE_PCT`%, a base of
-  `BASE_MIN_DAYS`–`BASE_MAX_DAYS` sessions, `MIN_CONTRACTIONS`–`MAX_CONTRACTIONS` contractions each at
-  most `SHRINK` × the one before, the first no deeper than `MAX_FIRST_DEPTH_PCT`%, a final tight area of
+  `BASE_MIN_DAYS`–`BASE_MAX_DAYS` sessions, at least `MIN_CONTRACTIONS` contractions whose RESET RULE
+  holds (`MIN_FROM_REFERENCE` of them since the last widening, the final one at most
+  `FINAL_REF_RATIO` × that widening), the first no deeper than `MAX_FIRST_DEPTH_PCT`%, a final tight area of
   `TIGHT_DAYS` sessions within `TIGHT_PCT`%, a pivot within `PIVOT_NEAR_HIGH` of the base high, and
   volume drying up to `DRYUP_RATIO` × its average.
 - **MV-01 is the breakout day itself**, judged against the pivot frozen on the day before (the
@@ -69,9 +70,14 @@ PRIOR_ADVANCE_PCT = 30.0
 BASE_MIN_DAYS = 15
 BASE_MAX_DAYS = 325
 MIN_CONTRACTIONS = 2
-MAX_CONTRACTIONS = 6
+MAX_CONTRACTIONS = 6         # now a QUALITY FLAG, not a rejection (v2 §3.4): log and flag above this
 MAX_FIRST_DEPTH_PCT = 35.0
-SHRINK = 0.80
+# ---- VCP-06, the reset rule. Replaces SHRINK (= 0.80), which required EVERY contraction to be
+# smaller than the one before it and so rejected a base for a single deeper pullback early on --
+# the case Minervini describes as resetting the count, not failing the base.
+WIDEN_TOL = 1.1              # a contraction more than this x the previous one is a widening
+MIN_FROM_REFERENCE = 2       # contractions from the most recent widening onward, inclusive
+FINAL_REF_RATIO = 0.6        # final contraction / reference contraction, at most
 TIGHT_DAYS = 10
 TIGHT_PCT = 10.0
 PIVOT_NEAR_HIGH = 0.90
@@ -79,7 +85,8 @@ DRYUP_RATIO = 0.70
 VCP = vcp_spec.VcpParams(
     swing_k=SWING_K, min_swing_pct=MIN_SWING_PCT, prior_advance_pct=PRIOR_ADVANCE_PCT,
     base_min_days=BASE_MIN_DAYS, base_max_days=BASE_MAX_DAYS, min_contractions=MIN_CONTRACTIONS,
-    max_contractions=MAX_CONTRACTIONS, max_first_depth_pct=MAX_FIRST_DEPTH_PCT, shrink=SHRINK,
+    max_contractions=MAX_CONTRACTIONS, max_first_depth_pct=MAX_FIRST_DEPTH_PCT,
+    widen_tol=WIDEN_TOL, min_from_reference=MIN_FROM_REFERENCE, final_ref_ratio=FINAL_REF_RATIO,
     tight_days=TIGHT_DAYS, tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
 )
 
@@ -406,8 +413,27 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.10"
+    version = "1.11"
     changelog = (
+        ("1.11", "2026-10-18",
+         "Two detector changes from the v2 spec, both of which alter which bases exist. "
+         "(1) VCP-02, the BASE HIGH, is now the HIGHEST confirmed swing high no close has decisively "
+         "exceeded, not the first. The old loop assigned the base high only while it held none, so a "
+         "higher swing high forming later -- without a close clearing the old one by more than "
+         "bh_break_atr -- could never be adopted. Measured over 20 in-window bases it agreed with the "
+         "highest on 14; it now agrees on 20. (Contrary to the v2 note, it was never the 'most recent': "
+         "that matched on 1 of 20.) "
+         "(2) VCP-06 is now the RESET RULE. It required every contraction to be at most SHRINK=0.80 x "
+         "its predecessor, which failed a base for one deeper pullback early on -- the case Minervini "
+         "describes as resetting the count. The reference is now the most recent widening (more than "
+         "WIDEN_TOL x the previous), the base needs MIN_FROM_REFERENCE contractions from there, and the "
+         "final one must be at most FINAL_REF_RATIO x the reference. All four worked examples in the "
+         "spec reproduce: 15/25/12/6 passes, 20/10/5/12 is not ready, 20/10/5/12/5 passes, 25/28/24 "
+         "fails. VCP-04's upper limit is gone with it -- more than MAX_CONTRACTIONS is now flagged, not "
+         "rejected. "
+         "MEASURED EFFECT on 562 Indian symbols: VCP-02 rejections 337 -> 297, VCP-04 34 -> 1, and where "
+         "NOTHING previously reached the tight-area, pivot or volume gates, 15 now do and 2 bases "
+         "complete. The pipeline produced no complete base at all in this sample before."),
         ("1.10", "2026-10-18",
          "TT-03 now records BOTH halves of what Minervini asks for. The rule is a 200-day rising "
          "\"for at least one month, preferably for 4-5 months or longer\": the month was already the "
@@ -583,9 +609,15 @@ class MinerviniSpecStrategy(Strategy):
         "known only {SWING_K} bars later) that no close has exceeded since. It must follow a {PRIOR_ADVANCE_PCT}% "
         "advance, last {BASE_MIN_DAYS}–{BASE_MAX_DAYS} sessions, start with the full template in force, and keep "
         "the long averages in order every day of it.",
-        "Contractions run from each swing high to the lowest low before the next. There must be "
-        "{MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}, the first no deeper than {MAX_FIRST_DEPTH_PCT}% and each at most "
-        "{SHRINK} × the one before. Wiggles under {MIN_SWING_PCT}% are ignored.",
+        "Contractions run from each swing high to the lowest low before the next. There must be at least "
+        "{MIN_CONTRACTIONS} and the first no deeper than {MAX_FIRST_DEPTH_PCT}%. Wiggles under "
+        "{MIN_SWING_PCT}% are ignored; more than {MAX_CONTRACTIONS} is flagged, not rejected.",
+        "Volatility must have contracted since it last EXPANDED, which is the reset rule: the reference is "
+        "the most recent widening — a contraction more than {WIDEN_TOL} × the one before it — and the base "
+        "needs {MIN_FROM_REFERENCE} contractions from there, with the final one at most {FINAL_REF_RATIO} × "
+        "the reference. A deeper pullback early on resets the count rather than failing the base, so "
+        "15% → 25% → 12% → 6% passes on its 25% reference. A widening with nothing after it is not a "
+        "failure but a base that is not ready yet.",
         "The final tight area is the last {TIGHT_DAYS} sessions: its high is the pivot, its low the tight low. "
         "It must span at most {TIGHT_PCT}%, the pivot must be within {PIVOT_NEAR_HIGH} of the base high, and its "
         "volume must have dried up to {DRYUP_RATIO} × the 50-day average.",
@@ -788,7 +820,10 @@ class MinerviniSpecStrategy(Strategy):
         ("Contractions, minimum", "MIN_CONTRACTIONS", "VCP-04."),
         ("Contractions, maximum", "MAX_CONTRACTIONS", "VCP-04."),
         ("First contraction, deepest", "MAX_FIRST_DEPTH_PCT", "VCP-05."),
-        ("Shrink factor", "SHRINK", "Each contraction at most this × the previous (VCP-06)."),
+        ("Widening tolerance", "WIDEN_TOL", "A contraction more than this × the previous one is a widening, "
+                                            "and becomes the reset rule's reference (VCP-06)."),
+        ("Contractions since the widening", "MIN_FROM_REFERENCE", "Counted from the reference, inclusive (VCP-06)."),
+        ("Final ÷ reference", "FINAL_REF_RATIO", "The final contraction against the reference (VCP-06)."),
         ("Tight area", "TIGHT_DAYS", "Sessions in the final tight area (VCP-08)."),
         ("Tight-area span", "TIGHT_PCT", "Deepest final contraction and widest tight area (VCP-08)."),
         ("Pivot near the base high", "PIVOT_NEAR_HIGH", "VCP-09."),
@@ -1181,7 +1216,8 @@ class MinerviniSpecStrategy(Strategy):
                         "bottom": float(tl) if tl else float(bh) * (1 - (e.get("first_depth_pct") or 10) / 100),
                         "role": "base", "label": f"base {e.get('base_days', '?')}d · {e.get('contractions', '?')}c {depths}"})
             note = (f"Base: highest high {bh:g} on {bd}, {e.get('base_days', '?')} sessions. "
-                    f"{e.get('contractions', '?')} contractions shrinking {depths} (each must be ≤ {SHRINK:g}× the one before). ")
+                    f"{e.get('contractions', '?')} contractions {depths} (the reset rule needs "
+                    f"{MIN_FROM_REFERENCE} since the last widening, the final ≤ {FINAL_REF_RATIO:g}× it). ")
             if e.get("tightness_pct") is not None:
                 note += f"Final tight area {e['tightness_pct']:g}% deep"
                 note += f", volume {e['dryup_ratio']:g}× the 50-day average (dry-up). " if e.get("dryup_ratio") is not None else ". "
@@ -1320,7 +1356,7 @@ class MinerviniSpecStrategy(Strategy):
         # a 6.888% limit reads "6.9", which looks like a failure)
         near = lambda v, lim: abs(v - lim) < 0.1
         pct = lambda v, lim: f"{v:.2f}" if near(v, lim) else f"{v:.1f}"
-        fine = bool(depths) and any(near(b, SHRINK * a) for a, b in zip(depths, depths[1:]))
+        fine = bool(depths) and any(near(b, FINAL_REF_RATIO * a) for a, b in zip(depths, depths[1:]))
         dep = lambda x: f"{x:.2f}" if fine else f"{x:.1f}"
         values = {
             "VCP-01": (f"+{pct(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) if near(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) else format(r['prior_advance_pct'], '.0f')}% in {up_days} days" if up_days is not None else "—",
@@ -1328,9 +1364,10 @@ class MinerviniSpecStrategy(Strategy):
             "VCP-02": (f"{r['base_days']} days", f"{BASE_MIN_DAYS}–{BASE_MAX_DAYS} days"),
             "VCP-03": ("held" if fail != "VCP-03" else f"too new: bar {bh_i + 1}" if young else self._vcp_fail_why(r, daily, bh_i, rep),
                        "trend template on the high's bar, the 150/200-day structure after"),
-            "VCP-04": (f"{len(depths)}" if depths else "—", f"{MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}"),
+            "VCP-04": (f"{len(depths)}" if depths else "—", f"at least {MIN_CONTRACTIONS}"),
             "VCP-05": (f"{pct(depths[0], MAX_FIRST_DEPTH_PCT)}%" if depths else "—", f"at most {MAX_FIRST_DEPTH_PCT:g}%"),
-            "VCP-06": (" → ".join(dep(x) for x in depths) + "%" if depths else "—", f"each at most {SHRINK:g}× the last"),
+            "VCP-06": (" → ".join(dep(x) for x in depths) + "%" if depths else "—",
+                       f"{MIN_FROM_REFERENCE} since the last widening, final ≤ {FINAL_REF_RATIO:g}× it"),
             "VCP-08": (f"{pct(r['tight_range_pct'], TIGHT_PCT)}%" if r["tight_range_pct"] is not None else "—", f"at most {TIGHT_PCT:g}%"),
             "VCP-09": (f"{(1 - r['pivot'] / bh) * 100:.1f}% under" if r["pivot"] else "—",
                        f"within {(1 - PIVOT_NEAR_HIGH) * 100:.0f}% of the high"),
@@ -1390,7 +1427,11 @@ class MinerviniSpecStrategy(Strategy):
         if fail == "VCP-05":
             culprit = 0
         elif fail == "VCP-06":
-            culprit = next(k for k in range(1, len(depths)) if depths[k] > SHRINK * depths[k - 1])
+            # the reference the reset rule judged against -- the most recent widening
+            culprit = 0
+            for k in range(1, len(depths)):
+                if depths[k - 1] > 0 and depths[k] > WIDEN_TOL * depths[k - 1]:
+                    culprit = k
         base_shapes = [{"shape": "box", "from": bd, "to": at, "top": bh, "bottom": base_low, "role": "base", "shade": True,
                         "label": ""}]
         if legs:
@@ -1413,9 +1454,10 @@ class MinerviniSpecStrategy(Strategy):
                    if r["dryup"] is not None else "")
             tight = (f" The last stretch is tight: {r['tight_range_pct']:.1f}% from {px(tl)} to {px(pv)} (at most "
                      f"{TIGHT_PCT:g}%){dry}. Its high, {px(pv)}, is the pivot.")
-        pulls = (f" It pulled back {len(depths)} times: {' → '.join(dep(x) + '%' for x in depths)}. A VCP has "
-                 f"{MIN_CONTRACTIONS}–{MAX_CONTRACTIONS} pullbacks, the first at most {MAX_FIRST_DEPTH_PCT:g}% deep, each "
-                 f"at most {SHRINK:g}× the one before." if depths else "")
+        pulls = (f" It pulled back {len(depths)} times: {' → '.join(dep(x) + '%' for x in depths)}. A VCP needs at "
+                 f"least {MIN_CONTRACTIONS} pullbacks, the first at most {MAX_FIRST_DEPTH_PCT:g}% deep, and — since "
+                 f"the last one that WIDENED — {MIN_FROM_REFERENCE} more, the last of them at most "
+                 f"{FINAL_REF_RATIO:g}× that widening." if depths else "")
         verdict = "" if done or fail in (None, "VCP-03") else f" It failed here: {self._vcp_fail_why(r, daily, bh_i, rep)}."
         zones.append({"key": "base", "title": "Base", "state": zstate("base"), "from": bd, "to": at,
                       "line": f"{r['base_days']} days, {(1 - base_low / bh) * 100:.1f}% deep"
@@ -1553,7 +1595,7 @@ class MinerviniSpecStrategy(Strategy):
         else:
             title = f"✗ {self._VCP_FAILED.get(fail, fail)}{today}"
             if fail == "VCP-04":   # the count says more than "wrong number"
-                n, grew = len(depths), sum(b > SHRINK * a for a, b in zip(depths, depths[1:]))
+                n, grew = len(depths), sum(b > WIDEN_TOL * a for a, b in zip(depths, depths[1:]))
                 title = (f"✗ {n} pullback{'s' if n != 1 else ''}"
                          + (", growing" if n > MAX_CONTRACTIONS and grew * 2 > n - 1 else f" ({MIN_CONTRACTIONS}–{MAX_CONTRACTIONS} in a VCP)")
                          + today)
@@ -1584,20 +1626,28 @@ class MinerviniSpecStrategy(Strategy):
                         return f"{what} on {daily.index[i].date()}, inside the base"
             return "the trend structure broke inside the base"
         if f == "VCP-04":
-            why = f"{len(d)} pullback{'s' if len(d) != 1 else ''}, where a VCP has {MIN_CONTRACTIONS}–{MAX_CONTRACTIONS}"
-            grew = sum(b > SHRINK * a for a, b in zip(d, d[1:]))
-            if len(d) > MAX_CONTRACTIONS and grew * 2 > len(d) - 1:
-                why += (f", and they grew rather than shrank ({grew} of {len(d) - 1} deeper than {SHRINK:g}× the one "
-                        f"before" + (f"; the latest, {d[-1]:.1f}%, is the deepest" if d[-1] == max(d) else "")
-                        + "): a loose, volatile correction, not a contraction")
-            return why
+            return (f"{len(d)} pullback{'s' if len(d) != 1 else ''}, where a VCP needs at least "
+                    f"{MIN_CONTRACTIONS}")
         if f == "VCP-05":
             return f"the first pullback was {d[0]:.1f}% deep, more than {MAX_FIRST_DEPTH_PCT:g}%"
         if f == "VCP-06":
-            k = next(k for k in range(1, len(d)) if d[k] > SHRINK * d[k - 1])
-            f2 = ".2f" if abs(d[k] - SHRINK * d[k - 1]) < 0.1 else ".1f"
-            return (f"pullback {k + 1} ({d[k]:{f2}}%) was not smaller than {SHRINK:g}× pullback {k} "
-                    f"({d[k - 1]:{f2}}%, so at most {SHRINK * d[k - 1]:{f2}}%)")
+            # The reset rule, so the explanation names the REFERENCE -- the last widening -- and
+            # says which of its two halves failed. The detector already recorded both; prefer its
+            # text when present so the page and the gate can never tell different stories.
+            if r.get("fail_why"):
+                return str(r["fail_why"])
+            ref = 0
+            for k in range(1, len(d)):
+                if d[k - 1] > 0 and d[k] > WIDEN_TOL * d[k - 1]:
+                    ref = k
+            since = len(d) - ref
+            if since < MIN_FROM_REFERENCE:
+                return (f"pullback {ref + 1} ({d[ref]:.1f}%) widened out and only {since} contraction"
+                        f"{'s' if since != 1 else ''} followed it, where the reset rule needs "
+                        f"{MIN_FROM_REFERENCE}")
+            return (f"the final pullback ({d[-1]:.1f}%) is {d[-1] / d[ref]:.2f}× the reference "
+                    f"({d[ref]:.1f}%, pullback {ref + 1}, the last one that widened), where the reset "
+                    f"rule allows at most {FINAL_REF_RATIO:g}×")
         if f == "VCP-07":
             return "a pullback made a lower low than the one before"
         if f == "VCP-08":

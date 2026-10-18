@@ -11647,6 +11647,11 @@
    }
   },
   "BALRAMCHIN.NS": {
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "coiled below the pivot: buy-stop through it"
+   },
    "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
@@ -11658,17 +11663,26 @@
     "G7": true,
     "G8": true
    },
+   "plan": {
+    "entry": 706.1,
+    "r": 2.17,
+    "reason": "S2: pivot 705.35, stop 8.2% below entry, projects 2.17R",
+    "setup": "S2",
+    "stop": 648.0,
+    "target": 831.989142,
+    "which": "MV"
+   },
    "prefilter": [
     true,
     "passed"
    ],
    "setups": {
     "S1": false,
-    "S2": false,
+    "S2": true,
     "S3": false,
     "S4": false
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
@@ -13047,7 +13061,7 @@
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false,
     "W4": false,
