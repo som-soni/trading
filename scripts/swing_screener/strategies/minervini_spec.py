@@ -145,6 +145,14 @@ UPPER_HALF = 0.5        # MV-01c: close in at least this fraction of the day's r
 # flipping it has to change the spec_id. `--const LOW_CHEAT_ENABLED=0` turns it off.
 LOW_CHEAT_ENABLED = 1
 
+# Block a cheat when the base failed VCP-09 -- its own pivot sits below the upper zone, so the
+# stock has not repaired much and the shelf is being bought into a base that is not yet working.
+# OFF by default: it was found by slicing the India run that is now being used to judge it, which
+# is selection on the thing being measured, so it ships as a sweepable experiment rather than a
+# rule. `--const CHEAT_BLOCK_VCP09=1` turns it on. An int, not a bool, so spec_params fingerprints
+# it and a variant run cannot overwrite the shipped one.
+CHEAT_BLOCK_VCP09 = 0
+
 CHEAT_SHELF_DAYS = 7    # MV-03/MV-04: sessions in the shelf (mirrors VcpParams.cheat_shelf_days)
 CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpParams.cheat_shelf_pct)
 
@@ -462,253 +470,18 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.16"
+    version = "1.17"
     changelog = (
-        ("1.16", "2026-10-19",
-         "A cheat entry now requires the base's own DEPTH, not just its advance, age and trend. "
-         "VCP-05 ran inside the contraction section, after the cheat shelf was already recorded, so "
-         "MV-03/MV-04 could fire on a base deeper than MAX_BASE_DEPTH_PCT. v2 §MV-03/04 asks a cheat "
-         "to clear 'base high, advance, depth, age, trend during base' -- Gate 2 -- and waives only "
-         "the CONTRACTION gates, because a cheat is taken while the base is still forming and the "
-         "sequence is not finished yet. Depth belongs to the base, so it is checked with the rest "
-         "of Gate 2. "
-         "Measured on 562 Indian symbols: 32 bases offer a cheat and none now sits on a base over "
-         "{MAX_BASE_DEPTH_PCT}% (the funnel is otherwise unchanged, and the golden harness is "
-         "identical across 1,680 snapshots) -- so this closes a hole rather than changing today's "
-         "behaviour. "
-         "BUMPED BY HAND. No numeric constant moved, so the fingerprint cannot see this and the "
-         "version gate would not have asked for it."),
-        ("1.15", "2026-10-18",
-         "Documentation, and one number rounded so it can be read. UPPER_ZONE is 0.67 rather than "
-         "2/3: the doc renderer prints a float as it is, so the page said 'the pivot sits 0.666667 "
-         "or more of the way up the base range'. It is inside v2's own 0.60-0.75 test range and "
-         "0.0033 of a base's range is far below the precision of a pivot's position in it, but it "
-         "moves the fingerprint, hence the bump. "
-         "A STALE DOC LINE IS FIXED: how_it_works still said the base starts at 'the most recent "
-         "confirmed swing high'. v1.11 made it the HIGHEST unexceeded one, and the docstring and "
-         "the gate docs were updated then while this line was missed -- exactly the failure "
-         "CLAUDE.md warns about, since no test can check prose against behaviour. "
-         "The description is a lead again rather than an inventory, 55 words down to 38. It sits "
-         "ABOVE the tabs, so it is the only description on Candidates and Backtests, which have no "
-         "Overview, and it has to say what the strategy is in a breath. Everything it used to list "
-         "is in how_it_works and exit_rules in more detail."),
-        ("1.14", "2026-10-18",
-         "VCP-06 now also requires every contraction AFTER the reference to be smaller than the one "
-         "before it, which the final-over-reference ratio alone does not say: 25, 10, 9, 9.5 has a "
-         "final at 0.38x its reference and a right side quietly getting looser. It closes the hole "
-         "the widening tolerance leaves, where the deepest pullback is only fractionally deeper than "
-         "its predecessor (20 then 21) and so never counts as a widening. VCP-06 rejections 71 -> 74 "
-         "on 562 Indian symbols. "
-         "'Wide and loose' is now its own drop reason: a sequence that never contracts has nothing to "
-         "reset TO, which is a different thing from a base that widened once and has not tightened "
-         "again. Both reject; the explanation is what a reader acts on. "
-         "UNDERCUTS are recorded (`undercuts`, `undercuts_failed`) and still never rejected. An "
-         "undercut that does not close back above the old low within UNDERCUT_RECOVERY_DAYS is the "
-         "one that reads as a breakdown rather than a shakeout. Measured: of 381 symbols, 65 bases "
-         "carry an undercut and 40 carry one that failed to recover. "
-         "MV-05 now carries a `base_id` of its own, the flag high's date. EN-04 (one entry per base) "
-         "keys on that field, and a power play has no base -- so it was the one setup that could be "
-         "re-entered on the same structure after a stop-out, which is exactly what EN-04 prevents "
-         "everywhere else."),
-        ("1.13", "2026-10-18",
-         "The rest of the v2 list. "
-         "VCP-05 is now the depth of the BASE (at most MAX_BASE_DEPTH_PCT, flagged over "
-         "DEEP_BASE_FLAG_PCT) instead of the depth of the FIRST CONTRACTION -- v2 §3.4 says the "
-         "deepest contraction is covered by base depth, and capping the first one separately "
-         "rejected bases whose opening pullback was deep but whose base was not. "
-         "VCP-10 gains a second way to pass (v2 §4.4): the tight area's average volume at or under "
-         "DRYUP_RATIO (raised 0.70 -> 0.80) x the 50-day, OR DRYUP_QUIET_DAYS sessions at or under "
-         "DRYUP_QUIET_RATIO x it. One average can be lifted past a threshold by a single news day "
-         "inside an otherwise silent contraction. "
-         "The market filter adds v2's slope term: the index above its MKT_INDEX_SMA-day average AND "
-         "that average higher than MKT_SMA_RISING_DAYS sessions ago. MEASURED COST: risk-on days "
-         "fall from 61.3% to 51.5% (India) and 68.6% to 61.4% (US) over 2013 onward, so it is a "
-         "sweepable parameter -- `--const MKT_SMA_RISING_DAYS=0` restores the old test exactly. "
-         "MV-05, THE POWER PLAY, is new and is the one shape the base rules could never see: the "
-         "flag is shorter than BASE_MIN_DAYS and the averages have not caught up, so VCP-02/VCP-03 "
-         "reject it before a contraction is measured. Detected on its own path "
-         "(vcp_spec.detect_power_play), bought through the flag's pivot and stopped under its tight "
-         "low, with the flag's own range as the measured move -- there is no base depth to project "
-         "from. Walking 150 symbols over ~26,000 bars it fires on 18, every one matching the "
-         "profile (ADANIGREEN 2020-10-26: run 125%, flag 15 days, depth 14.3%, tight 7.9%). "
-         "NOT IMPLEMENTED from v2, and recorded so it is not mistaken for done: v2 relaxes G2-G4 "
-         "for MV-05 and G1/G8 for the cheats, which needs PER-SETUP gate sets that StrategyResult "
-         "does not have -- `hard_gates_passed` is global. All eight gates therefore apply to every "
-         "setup. Measured cost: 13 of the 18 power plays pass G1-G4 anyway, so the relaxation is "
-         "worth about 28% of candidates, not all of them. "
-         "ALSO DELIBERATELY UNCHANGED: FAIL_DAYS stays 0. v2 lists the failed-breakout exit as a "
-         "Guideline to test on and off, and it is off here on a measured result -- about two in "
-         "three breakouts close back below the pivot within ten sessions, and in 1.7 this exit "
-         "closed ~80% of trades for about -0.3R each. TIME_STOP_DAYS stays 15, inside v2's 15-30 "
-         "range. Neither default is reverted without new evidence."),
-        ("1.12", "2026-10-18",
-         "Three more v2 changes, all at the points where the funnel was narrowest. "
-         "(1) VCP-03 no longer requires the full Trend Template at the BASE START, and no longer "
-         "demands the moving-average structure on every bar. It now asks whether the long trend "
-         "survived the base: the 200-day no lower than at the base start, the 150-day above the "
-         "200-day today, and at most MAX_CLOSES_BELOW_200 closes below the 200-day. The base-start "
-         "template is recorded as `base_tt` -- Minervini applies the template when he BUYS, which "
-         "is the signal day, where all eight gates stay hard. "
-         "(2) VCP-08's tight area IS the final contraction -- its own swing high, which is the "
-         "pivot, to today -- at least TIGHT_MIN_DAYS old with no maximum. The fixed 10-session "
-         "window could only be right by coincidence: a 6-session contraction had four sessions of "
-         "the previous decline dragged into its range, and a 20-session one had two thirds cut off. "
-         "(3) VCP-09 is now the pivot's POSITION in the base, not its distance from the base high. "
-         "At or above UPPER_ZONE of the base range, or within PIVOT_NEAR_HIGH of the high, is the "
-         "standard pivot buy; below that is a cheat entry. The old rule rejected an entire named "
-         "base shape -- a double bottom's pivot is the middle peak, about 15% below the high in a "
-         "30%-deep base, so it never cleared 0.9 x BH. "
-         "MEASURED, 562 Indian symbols: VCP-03 rejections 179 -> 158, and bases reaching the "
-         "tight-area/pivot/volume gates 15 -> 22. Of the 12 VCP-09 rejections 10 are mid-zone and "
-         "2 low-zone -- the cheat cases -- and 5 already carry a qualifying shelf, so they route to "
-         "MV-03/MV-04 instead of being lost."),
-        ("1.11", "2026-10-18",
-         "Two detector changes from the v2 spec, both of which alter which bases exist. "
-         "(1) VCP-02, the BASE HIGH, is now the HIGHEST confirmed swing high no close has decisively "
-         "exceeded, not the first. The old loop assigned the base high only while it held none, so a "
-         "higher swing high forming later -- without a close clearing the old one by more than "
-         "bh_break_atr -- could never be adopted. Measured over 20 in-window bases it agreed with the "
-         "highest on 14; it now agrees on 20. (Contrary to the v2 note, it was never the 'most recent': "
-         "that matched on 1 of 20.) "
-         "(2) VCP-06 is now the RESET RULE. It required every contraction to be at most SHRINK=0.80 x "
-         "its predecessor, which failed a base for one deeper pullback early on -- the case Minervini "
-         "describes as resetting the count. The reference is now the most recent widening (more than "
-         "WIDEN_TOL x the previous), the base needs MIN_FROM_REFERENCE contractions from there, and the "
-         "final one must be at most FINAL_REF_RATIO x the reference. All four worked examples in the "
-         "spec reproduce: 15/25/12/6 passes, 20/10/5/12 is not ready, 20/10/5/12/5 passes, 25/28/24 "
-         "fails. VCP-04's upper limit is gone with it -- more than MAX_CONTRACTIONS is now flagged, not "
-         "rejected. "
-         "MEASURED EFFECT on 562 Indian symbols: VCP-02 rejections 337 -> 297, VCP-04 34 -> 1, and where "
-         "NOTHING previously reached the tight-area, pivot or volume gates, 15 now do and 2 bases "
-         "complete. The pipeline produced no complete base at all in this sample before."),
-        ("1.10", "2026-10-18",
-         "TT-03 now records BOTH halves of what Minervini asks for. The rule is a 200-day rising "
-         "\"for at least one month, preferably for 4-5 months or longer\": the month was already the "
-         "gate (G5, screen criterion C5, SMA200_RISING_BARS=21) and the preference was nowhere. "
-         "W5 now flags a signal whose 200-day is rising over 21 sessions but NOT over "
-         "SMA200_RISING_PREF_BARS=100, so the maturity of the trend is visible on every signal. "
-         "DECISIONS ARE UNCHANGED: W5 is noted and does not downgrade, because the stated "
-         "requirement is the month and promoting the preference to a gate would reject stocks the "
-         "Trend Template admits. The fingerprint moves because a new numeric constant enters "
-         "spec_params, which is why this is a version bump rather than a silent edit; no trade "
-         "this strategy would have taken before is affected."),
-        ("1.9", "2026-10-16",
-         "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
-         "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
-         "The old letters meant nothing and collided across strategies: B1-B4 were minervini's WATCH flags "
-         "and breakout's GATES, so one string blocked a trade in the first and merely noted something in "
-         "the second. The prefix now states the only thing that matters when reading a drop reason -- "
-         "whether the code can stop a trade. No rule changed, but the code tuples are part of the "
-         "fingerprint, so this moves the spec id and earlier runs stay under their own versions."
-         "MV-01..04 become S1..S4, and each setup doc now opens with the MV-0n rule it implements."),
-        ("1.8", "2026-10-16",
-         "Trade management, filters and defaults now follow the SEPA Learn guide (\"SEPA and the VCP\"); the base, "
-         "setups and entries are unchanged. Stop limit 8% -> 10%. Breakeven at +2R (was 2.5R). The failed-breakout "
-         "exit (a close below the pivot within 5 sessions) is OFF: it closed ~80% of 1.7's trades for about -0.3R "
-         "each, and on stored data about two in three breakouts close back below the pivot within ten sessions "
-         "anyway. Selling into strength replaces 'a third at 3R' and the full climax sale: a third is sold at the "
-         "next open once the close is 25% above the 50-day or a climax run appears, and the rest goes on the first "
-         "close below the 50-day, which no longer needs above-average volume. A time stop sells a trade whose high "
-         "has not reached +1R in 15 sessions. A buy-stop (MV-02) that fills on a close with volume under 1.4x "
-         "average is sold at the next open. The market filter is the guide's -- the benchmark above its 50-day, "
-         "and breadth (stocks above their 50-day) above half or rising over 5 sessions -- in the backtest AND the "
-         "live screen, which until now used the shared regime downgrade; breadth history was extended back to "
-         "2009 for it. No new buys with results due within 14 days (live: the earnings calendar; backtest: the "
-         "stored results' filing dates). Liquidity: 50-day turnover of Rs10 crore / $20m, and live only, a price "
-         "of Rs100 / $15. Progressive exposure is on by default (--pe). The low cheat (MV-03) is back on. A "
-         "'guide' fundamentals level (EPS +20% and accelerating, sales +15%, margins not falling) is available as "
-         "--fundamentals guide, off by default because India's stored results start in late 2020. Every 1.7 rule "
-         "is still reachable by flag (--mkt01, --fail-days 5, --breakeven-r 2.5, --partial-r 3, --climax-full, "
-         "--trend-volume, --time-stop 0, --results-blackout 0, --const LOW_CHEAT_ENABLED=0). The default backtest "
-         "now takes TRADE ON TRIGGER as well as HIGH CONFIDENCE, so the buy-stop and the cheats -- the guide's "
-         "main entries -- are traded, not only MV-01. Not yet backtested."),
-        ("1.7", "2026-10-15",
-         "The market filter is on by default (`--spec` now implies `--market-filter`), because it is the "
-         "first change measured here to improve return AND drawdown together: US 2010 onward, 557 trades "
-         "to 490, expectancy +0.04R to +0.06R, profit factor 1.04 to 1.10, CAGR 0.65% to 1.34%, max "
-         "drawdown -43.5% to -28.6%, for 163 of 1,325 signals blocked. No rule changed, so the fingerprint "
-         "is unmoved; this bump marks the baseline every later run should be read against. The 5-session "
-         "re-entry delay added in 1.6 stays OFF: it returns most of the gain (CAGR 0.72%, drawdown -31.2%) "
-         "by sitting out the start of recoveries. Progressive exposure also stays off by default -- it cut "
-         "drawdown to -34.6% on its own, but the market filter does better on both axes and the two "
-         "overlap rather than stack (together: drawdown -27.6% but CAGR 0.53%)."),
-        ("1.6", "2026-10-12",
-         "Progressive exposure, and the market filter made to bite. PE-01..PE-04 size an entry from "
-         "the recent record instead of risking a flat 1% every time: a pilot at half risk "
-         "while the last 10 closed trades are not net positive, after two losing trades in "
-         "a row, or during the first 5; full risk otherwise; an optional press above +4R. "
-         "The state is read once per session BEFORE that day's exits, so every input is a trade that "
-         "closed earlier -- this is sizing, not prediction. The aim is drawdown, not return. "
-         "MKT-01 already blocked new signals, but an order placed while the market was open could "
-         "still be resting when it closed and would fill into a market the rule refuses; those are now "
-         "cancelled, and --mkt-confirm requires MKT-01 to hold N sessions before risk-on resumes so the "
-         "gate does not flap around the 200-day (risk-off still bites at once). EX-03's breakeven trigger "
-         "rises to 2.5R: trades exiting on it had reached a median 2.75R while held and "
-         "realised -0.04R, so it was turning winners into scratches. Open positions are never forced out "
-         "by the filter."),
-        ("1.5", "2026-10-10",
-         "MV-03, the low cheat, is off by default (LOW_CHEAT_ENABLED). On India 2010 onward with "
-         "both entry modes, the three cheats and the pivot buy produced 210 trades: MV-04 made "
-         "Rs213,395 over 177 trades at +0.070R, while MV-03 lost Rs257,039 over 25 at -0.515R on a "
-         "4% win rate, turning a profitable book into a Rs101,290 loss on its own. Minervini "
-         "describes the low cheat as the riskiest of his three in-base entries, used sparingly and "
-         "only in stocks he knows well, so this is his own caveat showing up in the data rather "
-         "than a surprise. Kept as a switch rather than deleted: 25 trades is a thin basis for "
-         "removing an entry outright, and it should be confirmed on US data."),
-        ("1.4", "2026-10-10",
-         "The cheat entries (MV-03 low cheat, MV-04 \"3C\"). Minervini buys three points inside a "
-         "base -- the lower third, the middle third and the pivot at the top -- and this spec only "
-         "ever implemented the last, which is why it found nothing in stocks that never complete a "
-         "textbook VCP. A cheat is a short shelf with a pivot of its own, and it runs off any base "
-         "clearing VCP-01/02/03 rather than a completed VCP, because a cheat is taken while the base "
-         "is still FORMING; waiting for completion IS the pivot buy. Its stop is the SHELF low, not "
-         "the base low, which is the reason he takes it. Measured over ten leaders in both markets, "
-         "2013 onward: valid trade plans 10 -> 74, with cheats appearing in 9 of 10 names including "
-         "NVDA, BAJFINANCE, TRENT and SMCI, which produce no full VCP base at all. Median R 2.92 "
-         "(MV-04) and 3.34 (MV-03) against 2.45 for the pivot buy, and every cheat plan clears the "
-         "2:1 minimum. Whether they MAKE money is a separate question the backtest has to answer."),
-        ("1.3", "2026-10-10",
-         "The base high is a zone, not a line (VcpParams.bh_break_atr). The spec ends a base "
-         "on ANY close above BH, so a leader making new highs can never hold one: VCP-02 then "
-         "wants 15 more sessions from a fresh swing high. Across ten leaders in both markets "
-         "the detector found 13 bases in 13 years and ZERO volume-confirmed breakouts, with "
-         "NVDA (+1554%), CELH, SMCI, BAJFINANCE (+2063%) and TRENT yielding no base at all. "
-         "A close must now clear BH by bh_break_atr x ATR to resolve the base, the same "
-         "zone-not-line reasoning as chart_pattern.overhead_cluster_atr and this strategy's "
-         "own OVERHEAD_CLUSTER_ATR. Measured: 'no base high at all' rejections fall 966 -> 738 "
-         "(-24%) and detected breakouts rise 8 -> 11. It is a CORRECTNESS fix and nothing more "
-         "-- bases stay at 13 and MV-01 stays at 0, because the freed bars fail VCP-04 (451) "
-         "and VCP-06 (521) instead. bh_break_atr=0 reproduces the spec exactly."),
-        ("1.2", "2026-10-10",
-         "The point-in-time pre-filter no longer applies cfg.screener.min_price. The floor keeps "
-         "live screening out of penny stocks, but a backtest reads it against SPLIT-ADJUSTED "
-         "history, so it deleted the early years of exactly the stocks that went up most -- "
-         "splitting is what winners do. NVDA traded about $15 in 2013 on $126m a day, 12x the "
-         "liquidity floor; stored back-adjusted through a 4:1 and a 10:1 split that is $0.39, "
-         "under the $10 US floor, so NVDA did not qualify until 2020-07-08 and SMCI not until "
-         "2023. Liquidity is now carried by min_dollar_volume alone, which is split-invariant "
-         "(close falls by the split factor, volume rises by it). Live screening keeps the price "
-         "floor in screens/base.py, where today's price really is today's price. On NVDA this "
-         "takes evaluable bars from 815 to 1,841 of 3,464; India is unaffected (min_price=0)."),
-        ("1.1", "2026-10-10",
-         "EN-02 now needs a confirming close. The resting buy-stop filled on any intraday "
-         "poke through the pivot, with no volume or close test, so it systematically bought "
-         "exactly what MV-01 is built to reject -- and EX-02 then sold it at the next open "
-         "as a failed breakout. Over India 2010 onward, 9 of 14 trades filled on a bar that "
-         "closed BELOW the entry (CDSL filled 956.78, closed 936.90) and 11 of 14 exited "
-         "FAILED_BREAKOUT with a median hold of one day, for -0.40R each. The order now fills "
-         "only on a bar that closes at or above the pivot, and fills AT that close: the close "
-         "is what confirmed it, so paying the intraday stop price would be buying on "
-         "information that did not exist at the touch. A poke that closes back below leaves "
-         "the order resting -- the base is intact until it closes below the tight low."),
-        ("1.0", "2026-10-10",
-         "v1 baseline of the Minervini SEPA implementation: Trend Template gates (TT-01-08) with point-in-time RS, the VCP detector (VCP-01-11) segmented by an ATR-scaled zig-zag whose threshold shrinks with the contractions, the MV-01/MV-02 setups, the exit ladder (EX-01-07), a 2:1 minimum reward-to-risk measured from the base's own measured move, and overhead supply binding only at least OVERHEAD_CLUSTER_ATR above the base high. Earlier iteration history is in the git log."),
-    )
-    key = "minervini"
-    name = "Minervini SEPA"
-    family = "minervini"
-    version = "1.16"
-    changelog = (
+        ("1.17", "2026-10-19",
+         "An experiment switch, OFF by default: CHEAT_BLOCK_VCP09. With it set, a cheat entry is "
+         "refused on a base whose last failure was VCP-09 -- the pivot sitting in the lower part "
+         "of the base rather than near its high. Slicing the Indian run suggested that bucket is "
+         "where the cheats lose (38 trades, 7.9% win rate, -17.8R), but that is the same data the "
+         "idea came out of, so the default stays 0 and the switch exists to measure it on a market "
+         "it was not found in. At 0 the strategy is byte-identical to 1.16 -- the golden harness "
+         "is unchanged across 1,680 snapshots -- and because the constant is fingerprinted, a run "
+         "with the switch ON carries its own spec id and cannot be mistaken for the shipped rules. "
+         "No rule changed; this version number exists so the fingerprint move is recorded."),
         ("1.16", "2026-10-19",
          "A cheat entry now requires the base's own DEPTH, not just its advance, age and trend. "
          "VCP-05 ran inside the contraction section, after the cheat shelf was already recorded, so "
@@ -1256,6 +1029,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Cheat shelf length", "CHEAT_SHELF_DAYS", "Sessions in the shelf a cheat is bought from (MV-03/MV-04)."),
         ("Cheat shelf tightness", "CHEAT_SHELF_PCT", "Widest shelf, high to low, that counts as a cheat."),
         ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused."),
+        ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
+                                                              "when the base's own pivot is below the upper zone."),
         ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Breakeven trigger", "BREAKEVEN_R", "EX-03: R gained before the stop moves to breakeven plus costs."),
@@ -1371,6 +1146,10 @@ class MinerviniSpecStrategy(Strategy):
         # cross would be unsatisfiable. MV-01 freezes the pivot the same way.
         ch = prev if prev.get("cheat_ok") else None
         crossed = cheat_cross(prev, prev_close, close)
+        # The experiment above, applied where the setup is decided rather than in the detector:
+        # the base and its shelf are still measured and still drawn, only the entry is withheld.
+        if CHEAT_BLOCK_VCP09 and prev.get("fail") == "VCP-09":
+            crossed = None
         mv03, mv04 = crossed == MV03, crossed == MV04
         # MV-05, the power play. Its pivot is frozen on yesterday's bar for the same reason MV-01's
         # is: a pivot taken from a window that includes today can never be crossed by today.
