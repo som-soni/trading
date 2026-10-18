@@ -474,6 +474,44 @@
     },
     "version": "1.0"
   },
+  "stage_analysis": {
+    "family": "stage_analysis",
+    "fingerprint": "b4ae8def",
+    "params": {
+      "BASE_MAX_DEPTH_PCT": 30.0,
+      "BASE_MAX_WEEKS": 104,
+      "BASE_MIN_WEEKS": 12,
+      "BASE_TARGET_MULT": 1.0,
+      "FLAT_TOL_PCT": 1.0,
+      "MAX_STOP_PCT": 15.0,
+      "MA_WEEKS": 30,
+      "RESISTANCE_WEEKS": 26,
+      "RS_WEEKS": 13,
+      "SLOPE_WEEKS": 4,
+      "VOL_MULT": 2.0,
+      "VOL_WEEKS": 10,
+      "_key": "stage_analysis",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7"
+      ],
+      "min_bars": 330,
+      "setup_codes": [
+        "S1"
+      ],
+      "watch_codes": [
+        "W1",
+        "W2",
+        "W3"
+      ]
+    },
+    "version": "1.0"
+  },
   "trend_pullback": {
     "family": "trend_pullback",
     "fingerprint": "10d54f8a",
