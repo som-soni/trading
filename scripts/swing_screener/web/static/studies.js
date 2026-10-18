@@ -1138,7 +1138,27 @@ const Studies = (() => {
       if (def.volume) chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
       out.push({ s, def, pane: p, series, vals, fmt: (v) => fmtV(s, v) });
     }
+    fitPriceScale(out);
     return out;
+  }
+
+  /** How much of the price pane the candles may use.
+   *
+   *  Lightweight Charts defaults to `{top: 0.2, bottom: 0.1}` -- 30% of the pane spent on empty
+   *  margin -- and nothing here ever overrode it for the main scale, so a chart gave away almost
+   *  a third of its height. 6% above and below is enough to keep a wick off the frame.
+   *
+   *  A volume overlay draws in the bottom 20% on its own scale, independent of this one, so when
+   *  one is on the bottom margin opens up to clear it. That is not a loss: today the default 10%
+   *  already let candles run INTO the volume band.
+   */
+  function fitPriceScale(rendered) {
+    const hasVolume = rendered.some((r) => r.def.volume && !r.s.hidden);
+    try {
+      chart.priceScale("right").applyOptions({
+        scaleMargins: { top: 0.06, bottom: hasVolume ? 0.22 : 0.06 },
+      });
+    } catch {}
   }
   const compact = (v) => { const a = Math.abs(v); return (a >= 1e9 ? (v / 1e9).toFixed(2) + "B" : a >= 1e6 ? (v / 1e6).toFixed(2) + "M" : a >= 1e3 ? (v / 1e3).toFixed(1) + "K" : v.toFixed(0)); };
 
