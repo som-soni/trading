@@ -796,6 +796,26 @@ def _run_versions(d: dict) -> list[dict]:
     return out
 
 
+@app.post("/api/reports/{run_id}/archive")
+def report_archive(run_id: int, request: Request, archived: bool = Body(..., embed=True)):
+    """Hide a run from the Backtests tab's default view, or bring it back.
+
+    Archiving never deletes: the report, its figures and its trades stay, the run keeps its id and
+    its spec_id, and every link to it still resolves. It is a view filter, because a strategy under
+    active development accumulates runs that are superseded but still worth being able to read.
+    """
+    import datetime as dt
+    _require_local(request)
+    row = q("SELECT id FROM report_runs WHERE id=%s", (run_id,))
+    if not row:
+        raise HTTPException(404, f"unknown run {run_id}")
+    # q() always fetches, so a write goes through a cursor directly, as the other POSTs do.
+    with get_connection().cursor() as cur:
+        cur.execute("UPDATE report_runs SET archived_at = %s WHERE id=%s",
+                    (dt.datetime.now(dt.timezone.utc) if archived else None, run_id))
+    return {"id": run_id, "archived": bool(archived)}
+
+
 @app.get("/api/strategies/{key}")
 def strategy(key: str):
     strat_docs = _strategy_docs()
@@ -803,9 +823,11 @@ def strategy(key: str):
         raise HTTPException(404, f"unknown strategy {key}")
     d = strat_docs.strategy_doc(key)
     d["backtests"] = [{"id": i, "market": m, "run": r, "summary": s, "generated_at": g.isoformat() if g else None,
-                       "spec_id": sp, "version": sp.split("-")[0].lstrip("v") if sp else None}
-                      for i, m, r, s, g, sp in q("SELECT id, market, run_name, summary, generated_at, spec_id FROM report_runs "
-                                                 "WHERE strategy=%s AND kind='backtest' ORDER BY generated_at DESC NULLS LAST", (key,))]
+                       "spec_id": sp, "version": sp.split("-")[0].lstrip("v") if sp else None,
+                       "archived": a is not None}
+                      for i, m, r, s, g, sp, a in q("SELECT id, market, run_name, summary, generated_at, spec_id, archived_at "
+                                                    "FROM report_runs WHERE strategy=%s AND kind='backtest' "
+                                                    "ORDER BY generated_at DESC NULLS LAST", (key,))]
     d["versions"] = _run_versions(d)
     d["screens"] = _latest_screens(key)
     return d

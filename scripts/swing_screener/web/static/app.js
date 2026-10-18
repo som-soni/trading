@@ -3732,6 +3732,10 @@ function strategyBacktests(host, d, key) {
   // table to the same country -- two different questions ("what does it hold today" and "every
   // run ever") answered through one setting, with nothing on screen to say why half the runs had
   // vanished. The Setups picker still persists, now under `setupMkt:<key>`.
+  // Archived runs are hidden by default and counted on their own chip. A strategy under active
+  // development accumulates superseded runs worth keeping but not worth scrolling past --
+  // minervini has 47 against every other strategy's 4 or fewer.
+  let showArchived = false;
   let msel = null;
   // the chip IS the country toggle for this tab: with one chosen, Backtest runs that market
   const runMarket = () => msel || pageMarket();
@@ -3739,10 +3743,16 @@ function strategyBacktests(host, d, key) {
   // and choosing is how you say which market the Backtest button should queue
   const mkts = [...new Set([...d.backtests.map((b) => b.market), ...MKTS.map((m) => m.key)])].sort();
   if (msel && !mkts.includes(msel)) msel = null;
+  const achip = () => { const n = d.backtests.filter((b) => b.archived).length;
+    if (!n && !showArchived) return "";
+    return `<button class="chip ${showArchived ? "on" : ""}" data-arch="1"
+      title="Archived runs are kept in full — report, figures and trades — and only hidden from this list">
+      Archived <span class="n">${n}</span></button>`; };
+
   const mchips = () => mkts.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Market</span>
     <button class="chip ${msel ? "" : "on"}" data-m="">All <span class="n">${d.backtests.length}</span></button>
     ${mkts.map((m) => `<button class="chip ${msel === m ? "on" : ""}" data-m="${esc(m)}">${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}
-        <span class="n">${d.backtests.filter((b) => b.market === m).length}</span></button>`).join("")}</div>`;
+        <span class="n">${d.backtests.filter((b) => b.market === m && !b.archived).length}</span></button>`).join("")}${achip()}</div>`;
 
   const chips = () => vers.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Version</span>
     <button class="chip ${sel ? "" : "on"}" data-v="">All <span class="n">${d.backtests.length}</span></button>
@@ -3766,10 +3776,11 @@ function strategyBacktests(host, d, key) {
   };
 
   // computed per paint, not once: `sel` changes when a chip is clicked
-  const table = () => { const shown = d.backtests.filter((b) => (!sel || b.spec_id === sel) && (!msel || b.market === msel));
+  const table = () => { const shown = d.backtests.filter((b) => (!sel || b.spec_id === sel) && (!msel || b.market === msel)
+                                                                 && (showArchived ? b.archived : !b.archived));
     const runCell = (b) => { const rp = runParts(b.run);
       return rp ? `<td title="${esc(b.run)}">${prettyDate(rp.start)} · ${esc(rp.exit)}${rp.options.length ? `<div class="muted small">${esc(rp.options.join(" · "))}</div>` : ""}</td>` : `<td>${esc(b.run)}</td>`; };
-    return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th></tr></thead><tbody>${
+    return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th><th></th></tr></thead><tbody>${
       shown.map((b) => { const s = b.summary || {};
         const v = vers.find((x) => x.spec_id === b.spec_id);
         const vcell = b.spec_id
@@ -3781,11 +3792,11 @@ function strategyBacktests(host, d, key) {
         if (!s.cagr) {
           return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td>${runCell(b)}${vcell}
             <td class="num muted" colspan="4">no trades — open for the funnel</td>
-            <td class="muted">${prettyDate(b.generated_at)}</td></tr>`;
+            <td class="muted">${prettyDate(b.generated_at)}</td><td class="bt-arch"><button class="ghost sm" data-arch-id="${b.id}" data-arch-to="${b.archived ? "0" : "1"}" title="${b.archived ? "Restore this run to the list" : "Archive: keep the run, hide it from this list"}">${b.archived ? "Restore" : "Archive"}</button></td></tr>`;
         }
         return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td>${runCell(b)}${vcell}<td class="num">${esc(pv(s.cagr))}</td>
           <td class="num ${/^-/.test(s.excess_cagr || "") ? "neg" : s.excess_cagr ? "pos" : ""}">${esc(pv(s.excess_cagr))}</td><td class="num">${esc(pv(s.max_drawdown))}</td>
-          <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td></tr>`; }).join("")}</tbody></table>
+          <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td><td class="bt-arch"><button class="ghost sm" data-arch-id="${b.id}" data-arch-to="${b.archived ? "0" : "1"}" title="${b.archived ? "Restore this run to the list" : "Archive: keep the run, hide it from this list"}">${b.archived ? "Restore" : "Archive"}</button></td></tr>`; }).join("")}</tbody></table>
       <p class="muted small">A backtest runs the whole strategy — screen, setups, entry, stop, exits, costs and position sizing — day by day. The command is under Rules › Commands.
       Each run is stamped with the spec id of the rules that produced it, so a result always maps to a version.</p>`
     : `<div class="empty"><b>No backtests match</b><div class="muted">Nothing has been run for
@@ -3811,7 +3822,29 @@ function strategyBacktests(host, d, key) {
       paint();
       wireBtRun();
     });
-    host.querySelectorAll("tr[data-href]").forEach((tr) => tr.onclick = () => go(tr.dataset.href));
+    host.querySelectorAll("tr[data-href]").forEach((tr) => tr.onclick = (e) => {
+      if (e.target.closest("button")) return;      // the row's Archive control is not a link
+      go(tr.dataset.href);
+    });
+    host.querySelector("[data-arch]")?.addEventListener("click", () => { showArchived = !showArchived; paint(); wireBtRun(); });
+    host.querySelectorAll("[data-arch-id]").forEach((b) => b.onclick = async (e) => {
+      e.stopPropagation();
+      const id = Number(b.dataset.archId), to = b.dataset.archTo === "1";
+      b.disabled = true;
+      try {
+        await api(`/api/reports/${id}/archive`, jsonReq("POST", {archived: to}));
+        // Patch the loaded payload rather than refetching: the strategy document is expensive to
+        // rebuild and nothing else about it changed.
+        const row = d.backtests.find((x) => x.id === id);
+        if (row) row.archived = to;
+        toast(to ? "Run archived" : "Run restored", "ok");
+        paint();
+        wireBtRun();
+      } catch (err) {
+        b.disabled = false;
+        toast("Could not change the run: " + err, "err");
+      }
+    });
   };
   const wireBtRun = () =>
     host.querySelector("#btrun")?.addEventListener("click", () =>

@@ -1585,3 +1585,9 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .sd-status[open] > summary::after { content: "▾"; }
 .sd-status > summary:hover { color: var(--strong); }
 .sd-status-full { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+
+/* Backtests: the per-row archive control stays out of the way until the row is hovered, since it
+   is housekeeping rather than something to read. */
+.dtab td.bt-arch { text-align: right; white-space: nowrap; width: 1%; }
+.dtab td.bt-arch button { opacity: 0; transition: opacity .12s; }
+.dtab tbody tr:hover td.bt-arch button, .dtab td.bt-arch button:focus { opacity: 1; }

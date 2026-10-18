@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS report_runs (
 );
 ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS generated_at TIMESTAMPTZ;
 ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS spec_id TEXT;   -- "v1.5-75bd22a2": which rule set produced it
+-- Archiving hides a run from the Backtests tab's default view without deleting anything: a
+-- strategy under active development accumulates runs that are superseded but still worth keeping
+-- (minervini has 47 against every other strategy's 4 or fewer). Deliberately NOT in the upsert's
+-- DO UPDATE list below, so re-ingesting a report never resurrects an archived run.
+ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS report_runs_spec ON report_runs (strategy, spec_id);
 CREATE TABLE IF NOT EXISTS report_figures (
     run_id INT NOT NULL REFERENCES report_runs(id) ON DELETE CASCADE,
