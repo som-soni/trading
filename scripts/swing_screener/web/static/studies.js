@@ -886,7 +886,10 @@ const Studies = (() => {
     // under that guide's Strategies category (GUIDE_GROUP in app.js) — the same grouping as Learn.
     setups_minervini: { setupsFor: "minervini", learnGuide: "learn-strat-vcp-sepa", short: "Setups", cat: "Screener", overlay: true, custom: true,
       label: (p) => `${stratName("minervini")}${p.bases === "None" ? "" : p.bases === "Completed VCPs" ? " · VCPs" : " · setups"}`,
-      params: { stages: { type: "select", def: "All four", options: ["All four", "Stage 2 only", "Hide"] },
+      // Stage bands OFF by default. They tint the whole price range of every stage, so on a chart
+      // whose subject is the SETUPS they are the loudest thing on it and compete with the frames,
+      // levels and labels the study exists to show. Still one click away in the study's settings.
+      params: { stages: { type: "select", def: "Hide", options: ["All four", "Stage 2 only", "Hide"] },
         bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
         card: { type: "select", def: "Show", options: ["Show", "Hide"] },
         gaps: { type: "select", def: "None", options: ["None", "After long stretches", "All"] }, minBars: 10 },
@@ -1066,6 +1069,16 @@ const Studies = (() => {
     // instance across rather than silently dropping it, since load() discards unknown types
     let moved = false;
     for (const s of list) if (s.type === "trend_template") { s.type = "setups_minervini"; moved = true; }
+    // Stage bands became off-by-default (2026-10-19), but a study already on someone's chart keeps
+    // the value `make()` snapshotted when it was added, so the new default would never reach it.
+    // Flipped ONCE, behind a marker: without the marker this would re-hide the bands every reload
+    // and there would be no way to turn them back on.
+    if (!store.get("stageBandsHidden2026", false)) {
+      for (const s of list) if (s.type === "setups_minervini" && s.params?.stages === "All four") {
+        s.params.stages = "Hide"; moved = true;
+      }
+      store.set("stageBandsHidden2026", true);
+    }
     if (moved) save(list);
     return list.filter((s) => CATALOG[s.type]);
   }
