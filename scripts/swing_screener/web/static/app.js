@@ -1382,7 +1382,7 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="btrs">${rows || `<div class="muted small">${L.length ? "None of this kind." : "No pattern in five years."}</div>`}</div>`;
   }
   /** The Supply & demand zones panel: every zone core/sd_zones.py found, newest first, filterable; a
-   *  click goes to it and draws it alone, with its quality checklist — a record of what was examined,
+   *  click goes to it and brings it forward (the rest faint), with its quality checklist — a record of what was examined,
    *  not a score that predicts anything. */
   function zonesPanelHtml() {
     if (!zoneFeed) return `<section><h3>Supply & demand zones</h3><div class="muted small">Finding zones…</div></section>`;
@@ -3713,7 +3713,12 @@ function strategyBacktests(host, d, key) {
 
   const paint = () => {
     // chips render even with no runs: picking the market is how you tell the button what to queue
-    host.innerHTML = mchips() + runBtn() + (d.backtests.length ? chips() + detail() + table()
+    // Filters together, action to the side. The Backtest button used to render BETWEEN the Market
+    // row and the Version row, splitting one group of filters in half with an unrelated action --
+    // and because the button and an active chip share the accent fill, the three rows read as one
+    // undifferentiated stack of orange controls rather than "two filters, one button".
+    host.innerHTML = `<div class="bt-bar"><div class="bt-filters">${mchips()}${d.backtests.length ? chips() : ""}</div>${runBtn()}</div>`
+      + (d.backtests.length ? detail() + table()
       : `<div class="empty"><b>No backtests loaded for this strategy</b><div class="muted">${canRun ? "Queue one with the button above, or run" : "Run"} the command under Rules › Commands; reports load into the app automatically.</div></div>`);
     host.querySelectorAll(".bt-vers .chip[data-v]").forEach((b) => b.onclick = () => {
       sel = b.dataset.v || null;

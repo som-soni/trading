@@ -467,7 +467,22 @@ td.acts svg { width: 15px; height: 15px; }
 .strat-nav .st-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--line-3); margin-right: 6px; }
 .strat-nav .st-dot.trade { background: var(--up); } .strat-nav .st-dot.watch { background: var(--warn); }
 .sdoc { min-width: 0; max-width: 1040px; }
-.bt-run { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+/* Backtests toolbar: the two filter rows are one group on the left, the action sits apart on
+   the right. Previously the Backtest button rendered between the Market and Version rows, which
+   split one group of filters in half with an unrelated control. */
+.bt-bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
+          flex-wrap: wrap; margin-bottom: 10px; }
+.bt-filters { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bt-filters .bt-vers:last-child { margin-bottom: 0; }
+/* The note wraps under the button rather than stretching the row. */
+.bt-run { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 0;
+          max-width: 340px; justify-content: flex-end; }
+.bt-run .muted { flex: 1 1 100%; text-align: right; }
+@media (max-width: 720px) {
+  .bt-bar { flex-direction: column; }
+  .bt-run { max-width: none; justify-content: flex-start; }
+  .bt-run .muted { text-align: left; }
+}
 /* backtest trades panel on the chart */
 .btrs { display: grid; gap: 6px; padding: 8px 10px; overflow: auto; }
 .btr { border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; cursor: pointer; }
