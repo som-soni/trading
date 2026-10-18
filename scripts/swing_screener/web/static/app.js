@@ -2895,6 +2895,17 @@ async function companyPage(alive, market, symbol) {
 const mdInline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/(^|[^*])\*([^*\s][^*]*?)\*/g, "$1<i>$2</i>");
 /** a strategy's status in a few words — the sentence up to its first colon or full stop ("No demonstrated edge") */
 const shortStatus = (t) => { const x = String(t || "").split(/[:.;]/)[0].replace(/\s*—.*$/, "").trim(); return x.length > 42 ? x.slice(0, 40) + "…" : x; };
+/** The verdict sentence at the head of a `status`: what the strategy's own record concludes,
+ *  before the evidence for it. These open with the finding by convention ("MEASURED AND IT
+ *  FAILS…", "THE CONTROL, AND IT EARNS ITS KEEP BY HAVING NO EDGE…"), which is the one line
+ *  worth showing uncollapsed. Longer than shortStatus' 42-char badge trim, because this has a
+ *  line to itself rather than sitting inside a tag. */
+const statusVerdict = (t) => {
+  const x = String(t || "").trim();
+  const m = x.match(/^.{0,200}?[.:](\s|$)/);
+  const head = (m ? m[0] : x.slice(0, 200)).replace(/[.:]\s*$/, "").trim();
+  return head.length < x.length ? head : x;
+};
 const statusClass = (t) => (/no demonstrated edge|not validated|no edge|untested|does not beat|did not beat|losing|negative/i.test(t) ? "watch" : /beats|edge confirmed/i.test(t) ? "trade" : "");
 
 // --------------------------------------------------------- screens
@@ -3485,7 +3496,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   root.innerHTML = `<div class="crumbs">${kind}</div>
     <div class="page-head"><h1>${esc(d.name)}</h1><code>${esc(d.key)}</code>
       ${d.kind === "long-term" ? `<span class="spacer"></span><a class="btn" href="#/quality">Open the Quality page →</a>` : ""}</div>
-    ${d.status ? `<div class="sd-badge"><span class="tag ${statusClass(d.status) === "watch" ? "warn" : statusClass(d.status) === "trade" ? "pos" : "neutral"}" title="${esc(d.status)}">${esc(shortStatus(d.status))}</span>${info(`<p>${mdInline(d.status)}</p>`)}</div>` : ""}
+    ${d.status ? `<div class="sd-badge"><span class="tag ${statusClass(d.status) === "watch" ? "warn" : statusClass(d.status) === "trade" ? "pos" : "neutral"}" title="${esc(statusVerdict(d.status))}">${esc(shortStatus(d.status))}</span></div>` : ""}
     <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of <a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}</p>
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
   const host = root.querySelector("#stab");
@@ -3565,6 +3576,24 @@ function perfGlance(d, key) {
       \u2014 the report's SELECTION line does that.</p></section>`;
 }
 
+/** Status as a verdict line that stays visible and evidence that folds away.
+ *
+ *  These run past 450 words on a strategy that has been measured properly, and the same text was
+ *  already reachable from the header badge, so printing all of it at the top of the tab bought
+ *  nothing and pushed the actual rules below the fold.
+ *
+ *  The body drops the verdict only when it is an exact prefix of the full text, so the remainder
+ *  is never cut mid-sentence and a status that does not open with its verdict simply shows whole.
+ */
+function statusDetails(status) {
+  const verdict = statusVerdict(status);
+  const full = String(status).trim();
+  const rest = full.startsWith(verdict) ? full.slice(verdict.length).replace(/^[.:\s]+/, "") : full;
+  return `<details class="sd-status ${statusClass(status)}">
+    <summary><b>Status</b> ${mdInline(verdict)}</summary>
+    ${rest ? `<div class="sd-status-full">${mdInline(rest)}</div>` : ""}</details>`;
+}
+
 function strategyRules(host, d, key) {
   const codeTable = (rows, head, extra) => rows.length ? `<table class="dtab"><thead><tr><th>${head}</th>${extra ? `<th>${extra[0]}</th>` : ""}<th>Rule</th></tr></thead><tbody>${rows.map((r) =>
     `<tr><td><code>${esc(r.code)}</code></td>${extra ? `<td>${extra[1](r)}</td>` : ""}<td>${mdInline(r.text) || '<span class="neg">Not documented</span>'}</td></tr>`).join("")}</tbody></table>` : "";
@@ -3585,7 +3614,7 @@ function strategyRules(host, d, key) {
   // the outcome without scrolling is the whole reason this is the landing tab.
   host.innerHTML = `<section class="sdoc sdoc-tab">
     ${perfGlance(d, key)}
-    ${d.status ? `<div class="sd-status ${statusClass(d.status)}"><b>Status</b> ${mdInline(d.status)}</div>` : ""}
+    ${d.status ? statusDetails(d.status) : ""}
     ${sec("overview", "Overview", `${d.thesis ? `<p><b>Thesis.</b> ${mdInline(d.thesis)}</p>` : ""}<h3>How it works</h3>${ol(d.how_it_works)}`)}
     ${d.kind === "long-term" && d.gates.length ? sec("rules", "Quality tests", `<p class="muted small">Points out of 100.</p>${codeTable(d.gates, "Worth")}`) : ""}
     ${d.kind !== "long-term" && (d.gates.length || d.watch.length || d.setups.length) ? `<section class="sd-sec" id="sd-rules"><h2>Rules</h2>
