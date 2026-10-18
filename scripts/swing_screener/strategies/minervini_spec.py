@@ -1356,7 +1356,10 @@ class MinerviniSpecStrategy(Strategy):
         result.setups[MV05] = mv05
         if pp_ok:
             ctx.extras.update(pp_pivot=pp_prev["pivot"], pp_tight_low=pp_prev["tight_low"],
-                              pp_flag_high_date=pp_prev.get("flag_high_date"),
+                              # a STRING, like base_date above: ctx.extras is serialised to JSON
+                              # for the signal's meta, and a pandas Timestamp is not serialisable
+                              pp_flag_high_date=(str(pp_prev["flag_high_date"].date())
+                                                 if pp_prev.get("flag_high_date") is not None else None),
                               pp_run_pct=round(pp_prev["run_pct"], 1) if pp_prev.get("run_pct") else None,
                               pp_flag_days=pp_prev.get("flag_days"))
 
