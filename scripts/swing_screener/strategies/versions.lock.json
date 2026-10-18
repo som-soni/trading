@@ -250,7 +250,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "8c9834a0",
+    "fingerprint": "65450e09",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -330,7 +330,7 @@
       "TREND_EXIT_NEEDS_VOLUME": 0,
       "UNDERCUT_RECOVERY_DAYS": 5,
       "UPPER_HALF": 0.5,
-      "UPPER_ZONE": 0.6666666666666666,
+      "UPPER_ZONE": 0.67,
       "VCP.atr_shrink": 0.0,
       "VCP.base_max_days": 325,
       "VCP.base_min_days": 15,
@@ -357,7 +357,7 @@
       "VCP.tight_min_days": 5,
       "VCP.tight_pct": 10.0,
       "VCP.undercut_recovery_days": 5,
-      "VCP.upper_zone": 0.6666666666666666,
+      "VCP.upper_zone": 0.67,
       "VCP.widen_tol": 1.1,
       "VCP.zigzag_atr_mult": 1.5,
       "VCP.zigzag_floor_atr_mult": 1.5,
@@ -393,7 +393,7 @@
         "W5"
       ]
     },
-    "version": "1.14"
+    "version": "1.15"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

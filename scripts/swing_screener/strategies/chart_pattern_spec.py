@@ -256,16 +256,13 @@ class ChartPatternSpecStrategy(Strategy):
     )
     key = "chart_pattern"
     name = "Chart patterns"
+    #: The LEAD, not a catalogue. It sits above the tabs, so it is the only description on
+    #: Candidates and Backtests, which have no Overview. The twelve tradable patterns and the four
+    #: vetoes are listed in how_it_works, where there is room to say what each one is.
     description = (
-        "The written chart-pattern specification, rule for rule. It trades "
-        "breakouts from twelve bullish patterns — cup with handle, cup without "
-        "handle, double bottom, triple bottom, inverse head and shoulders, "
-        "ascending triangle, symmetrical triangle, falling wedge, rectangle, "
-        "flat base, bull flag or pennant, and high tight flag — and vetoes a "
-        "chart showing a double top, head and shoulders top, rising wedge or "
-        "descending triangle. Detected with ATR-scaled tolerances, fitted "
-        "trendlines and prior-trend context; traded at the spec's own trigger, "
-        "invalidation and measured move."
+        "The written chart-pattern specification, rule for rule: breakouts from twelve bullish "
+        "patterns, vetoed by four topping ones, traded at the spec's own trigger, invalidation "
+        "and measured move."
     )
     style = "breakout"
     # The same screen as `chart_pattern`, deliberately: the question this
