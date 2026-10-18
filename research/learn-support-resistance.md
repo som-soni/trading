@@ -202,27 +202,28 @@ The record on trading the levels is weaker. Brock, Lakonishok and LeBaron (1992)
 
 **An event study on stored data.** We drew zones by the rules in sections 3 to 5, with every number fixed in advance. Then we asked what happened the next time price reached each zone.
 
-> **Method note.** Daily prices for today's NSE and US stock lists, 2012 to October 2026. Every 126th session of every liquid stock: close at least ₹20 or $5, and 50-day average turnover at least ₹5 crore or $5 million. On that day, zones were drawn from the price history up to it: weekly first, then daily, graded, at most three each side. For each zone, we waited up to 63 sessions for price to reach its near edge. A **hold** is a close 2 ATR beyond the near edge before any close beyond the far edge, within 60 sessions of the touch. The **placebo** puts the same distances, in ATRs, under the close of a random day in the same stock and applies the same test. Caveats: today's lists only (survivorship bias), no costs, overlapping windows.
+> **Method note.** Daily prices for today's NSE and US stock lists, 2012 to October 2026. Every 126th session of every liquid stock: close at least ₹20 or $5, and 50-day average turnover at least ₹5 crore or $5 million. On that day, zones were drawn from the price history up to it by the rules above: weekly first, then daily, graded, and only the few nearest qualifying levels kept. For each zone, we waited up to 63 sessions for price to reach its near edge. A **hold** is a close 2 ATR beyond the near edge before any close beyond the far edge, within 60 sessions of the touch. The **placebo** puts the same distances, in ATRs, under the close of a random day in the same stock and applies the same test. Caveats: today's lists only (survivorship bias), no costs, overlapping windows.
 
 | Zone touches | Touches | Held | Placebo held |
 |---|---|---|---|
-| India, support | 6,607 | 39.8% | 41.8% |
-| India, resistance | 8,951 | 38.7% | 38.8% |
-| US, support | 25,759 | 40.1% | 40.2% |
-| US, resistance | 32,293 | 33.8% | 34.8% |
+| India, support | 8,543 | 34.9% | 36.2% |
+| India, resistance | 9,113 | 33.3% | 34.1% |
+| US, support | 33,268 | 33.5% | 34.4% |
+| US, resistance | 35,639 | 28.4% | 29.3% |
 
-| Held minus placebo | Role reversed | Not reversed | Tested five or more times | Tested fewer times |
+| Held minus placebo | Graded 3–4 | Graded 5–7 | Visited fewer than five times | Visited five or more times |
 |---|---|---|---|---|
-| India, support | −0.9 pts | −2.1 pts | −2.4 pts | −1.3 pts |
-| India, resistance | +2.2 pts | −0.3 pts | −0.8 pts | +0.5 pts |
-| US, support | +0.2 pts | −0.2 pts | −0.2 pts | 0.0 pts |
-| US, resistance | +1.3 pts | −1.2 pts | −1.1 pts | −1.0 pts |
+| India, support | +0.7 pts | −2.1 pts | −1.0 pts | −2.3 pts |
+| India, resistance | −1.5 pts | −0.4 pts | −0.7 pts | −0.7 pts |
+| US, support | −1.0 pts | −0.9 pts | −1.0 pts | −0.7 pts |
+| US, resistance | −0.3 pts | −1.2 pts | −0.3 pts | −2.3 pts |
 
 What this shows:
 
-- **The zones held no more often than chance.** Every group came in between two points below its placebo and level with it. A random price with the same distances did as well.
-- **Grading did not help.** Zones scoring on five or more factors fared no better against their placebo than those scoring on three or four.
-- **Neither did role reversal, or the number of tests.** Flipped levels beat the placebo in two groups and lagged it in two, by a point or two either way. Heavily tested levels did slightly worse than the rest in India and the same in the US.
+- **The zones held no more often than chance.** Every group came in about one point below its placebo. A random price with the same distances did as well.
+- **Grading did not help.** The best-graded zones fared no better against their placebo than the weakest that qualified.
+- **Heavily visited levels did no better either,** and slightly worse in two of the four groups.
+- **A gentler test changed nothing.** Counting a bounce of three-quarters of an ATR as a hold, and a close the same distance through the far edge as a failure, left every group within two points of its placebo.
 - **So use levels for planning, not prediction.** They tell you where a stop is beyond the obvious, where a target asks too much, and where to watch for a reaction. The reaction itself is the signal, not the level.
 
 ## 10. A checklist

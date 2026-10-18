@@ -673,7 +673,7 @@ const Studies = (() => {
             NAME[z.tf], `scores ${z.score}/${z.of}`, `${z.touches.length} visit${z.touches.length > 1 ? "s" : ""}`,
             ...(z.height_atr != null ? [`${z.height_atr.toFixed(1)} × ${NAME[z.atr_tf || z.tf]} ATR tall${z.wide ? " (wide)" : ""}`] : []),
             ...(z.congestion ? [`congestion: price closed inside on ${Math.round(z.time_inside * 100)}% of bars`] : []),
-            ...(z.worn ? ["worn"] : [])];
+            ...(z.worn ? ["worn"] : []), ...(z.promoted ? ["promoted to fill a gap near price"] : []), ...(z.capped ? ["cut back to its body side"] : [])];
           // earnings close: levels within 3% of price fade (opacity carries reliability)
           const fades = (z) => r.earnings_sessions != null && Math.abs(z.line - r.close) / r.close < 0.03;
           // in-chart labels (optional) sit toward the left of the zone, where there are fewer recent
@@ -702,22 +702,32 @@ const Studies = (() => {
             ];
           });
           // reference markers: grey, thin, a short segment near the right edge only; hidden inside a key zone
-          // or within 0.3% of a key line (the next round number above an all-time high always shows)
+          // or within 0.3% of a key line. Always shown: the provisional extremes (52-week / all-time high and
+          // low — a fresh one has no confirmed swing yet) and a round number standing in for a missing level
           const near = (x) => r.zones.some((z) => (x >= z.bottom && x <= z.top) || Math.abs(x - z.line) / r.close < 0.003);
-          const refs = r.lines.filter((l) => (p.periods === "Show" && !near(l.price)) || l.kind === "round_above")
+          const always = new Set(["round_above", "round", "extreme"]);
+          const refs = r.lines.filter((l) => (p.periods === "Show" && !near(l.price)) || always.has(l.kind))
             .map((l) => ({ shape: "level", from: times[Math.max(0, n - 15)], to: last, price: l.price, role: "period", width: 1, dash: true, label: l.label }));
-          shapes = [...bands, ...extra, ...keys, ...refs];
+          // long-term levels: a ceiling or floor price has reacted at over years, beyond the key levels' reach —
+          // a muted band and a muted axis tag, seen when the view widens out to them
+          const longs = (r.longterm || []).map((z) => ({ shape: "box", shade: true, edge: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role }));
+          shapes = [...bands, ...extra, ...longs, ...keys, ...refs];
           // the price-axis tags carry the words; their lines span the chart in the timeframe's style
           specs = r.zones.map((z) => {
             const st = STYLE[z.tf] || STYLE.D, c = C(roleKey(z));
             return { price: z.line, color: fades(z) ? rgba(c, 0.45) : c, lineWidth: st.w, lineStyle: st.ls, axisLabelVisible: true,
-              title: `${z.role === "pivot" ? (z.at_price ? "At price" : "Pivot") : z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? " (was " + (z.role === "resistance" ? "S)" : "R)") : ""} · ${NAME[z.tf]}` };
+              // the tag carries the zone's far edge too ("… · to 1,377"): the line marks where price meets the
+              // zone first, but for a tall zone the far edge is the next ceiling or floor, and only the shading showed it
+              title: `${z.role === "pivot" ? (z.at_price ? "At price" : "Pivot") : z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? " (was " + (z.role === "resistance" ? "S)" : "R)") : ""} · ${NAME[z.tf]}`
+                + (z.role === "pivot" ? ` · ${fmtPx(z.bottom)}–${fmtPx(z.top)}` : ` · to ${fmtPx(z.role === "resistance" ? z.top : z.bottom)}`) };
           });
+          specs.push(...(r.longterm || []).map((z) => ({ price: z.line, color: rgba(C(roleKey(z)), 0.5), lineWidth: 1, lineStyle: 3, axisLabelVisible: true,
+            title: `Long-term ${z.role} · ${NAME[z.tf]} · ${fmtPx(z.bottom)}–${fmtPx(z.top)} · ${z.touches[0].date.slice(0, 4)}–${z.touches.at(-1).date.slice(0, 4)}` })));
           const nS = r.zones.filter((z) => z.role === "support").length;
           const nR = r.zones.filter((z) => z.role === "resistance").length, nP = r.zones.length - nS - nR;
           const cong = (r.congestion || []).map((c) => `congestion band ${c.bottom.toFixed(2)}–${c.top.toFixed(2)} (price closed inside on ${Math.round(c.time_inside * 100)}% of bars)`);
           setNote(id, `${r.stack.filter(Boolean).map((t) => NAME[t]).join(" + ")} · ${nS} support, ${nR} resistance${nP ? `, ${nP} at price / pivot` : ""} (key)`
-            + `${extra.length ? ` + ${extra.length} more graded, outlined` : ""}${cong.length ? " · " + cong.join(" · ") : ""}${r.note ? " · " + r.note : ""}`
+            + `${(r.longterm || []).length ? ` + ${r.longterm.length} long-term` : ""}${extra.length ? ` + ${extra.length} more graded, outlined` : ""}${cong.length ? " · " + cong.join(" · ") : ""}${r.note ? " · " + r.note : ""}`
             + `${r.earnings_sessions != null ? ` · ⚠ earnings in ${r.earnings_sessions} session${r.earnings_sessions === 1 ? "" : "s"}: levels within 3% of price are faded — less reliable through the report` : ""}`);
           paint();
         }).catch(() => setNote(id, "could not load the levels"));

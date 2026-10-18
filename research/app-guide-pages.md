@@ -241,9 +241,17 @@ edges, touches and start from the daily turns inside it, and two same-role zones
 become one zone with both reference levels. Touches are distinct visits (price must close half an ATR outside the
 zone before another counts). Each zone carries its height ÷ the ATR of its own timeframe ("wide" above 1.5), its
 grade on seven factors (kept at 3+), its role ("Support (was resistance)") and "worn" at five or more visits; zones
-crossed repeatedly are dropped. The three best each side are the key levels (filled, near edge on the price axis,
-dashed reference lines where the reactions concentrate); "All graded levels" (the default) also draws the other
-graded zones as dashed outlines. Labels are Short by default ("Support · weekly"); Full adds grade, visits and
+crossed repeatedly are dropped. Key levels are chosen proximity-first, not by quota: within 8 / 6 / 5 ATR of price
+(daily / weekly / monthly chart), scoring 4+ (a daily zone also needs two visits) — the nearest each side, then the
+best of the rest, up to 7 in all and 4 a side; a side may show none. If price is more than 3 ATR from its nearest
+key zone, the nearest graded zone in that gap is promoted (on a weekly or monthly chart it may come from the
+timeframe below), or the next round number is marked. Overlapping key zones merge; a zone still taller than one
+ATR of its own timeframe is cut back to its body side. The 52-week high and low (and the all-time high / low near
+price) are always marked as provisional levels, since a fresh extreme has no confirmed swing yet. Long-term levels —
+weekly or monthly zones beyond that window whose three or more reactions span 1.5+ years, within half to double
+the price — are drawn as muted bands with a "Long-term …" axis tag (up to three a side). "All graded
+levels" (the default) also draws the other graded zones as thin dashed outlines. The measurement behind all of
+this is `python -m swing_screener.analytics.level_study` (zones vs a same-geometry placebo). Labels are Short by default ("Support · weekly"); Full adds grade, visits and
 height; None hides them. Price inside a zone, or within a quarter of a daily ATR of it, makes it a pivot ("Pivot — price inside" /
 "At price"); a zone price has closed inside on 30%+ of bars is labelled a congestion zone. A higher-timeframe
 box price keeps crossing is redrawn as the daily clusters inside it that still hold, and — if price has lived in

@@ -35,8 +35,15 @@ live here only, never in JavaScript. The procedure, top to bottom:
 7. **Grade it** — one point per factor (`FACTORS`); a zone needs {MIN_SCORE} points, and two reactions
    or one strong one. {STRONG_SCORE}+ is strong. {WORN_TOUCHES}+ visits is flagged worn. A zone price has
    crossed {STALE_CROSSES}+ times since its last reaction is dropped.
-8. **Few and near.** Key levels: any pivot, plus the nearest {MAX_PER_SIDE} graded zones each side (the
-   better grade breaking a tie). The others that passed the grade are returned too.
+8. **Few, near and earned.** Key levels lie within {RELEVANCE_ATR} ATR of price (chart timeframe) and
+   score {KEY_MIN_SCORE}+ (a daily one with two visits): any pivot, the nearest qualifying zone each side,
+   then the best of the rest by score — up to {MAX_KEY} in all, {MAX_PER_SIDE} a side, none if none
+   qualifies. Price more than {GAP_ATR} ATR from its nearest key zone promotes the best graded zone in the
+   gap, or marks the next round number. Overlapping key zones merge. A zone still taller than {CAP_ATR}
+   ATR of its own timeframe is cut back to its body side. Weekly / monthly zones beyond the window whose 3+
+   reactions span {LONG_TERM_SPAN_YEARS}+ years, within a factor of {LONG_TERM_RANGE} of price, are returned as
+   long-term levels, the best {LONG_TERM_PER_SIDE} a side. The 52-week (and, near price, all-time) high
+   and low are marked as provisional levels: a fresh extreme has no confirmed swing yet.
 9. **Context lines**: the previous period's high and low; at an all-time high, where no resistance
    exists, the next round number above (never an invented level). With earnings within
    {EARNINGS_WARN_SESSIONS} sessions the chart says so: a report often carries price straight through
@@ -78,7 +85,15 @@ MIN_SCORE = 3               # points to keep a zone ...
 STRONG_SCORE = 5            # ... and to call it strong
 WORN_TOUCHES = 5            # visits at which a level is more likely to break than hold
 STALE_CROSSES = 3           # closes through a zone since its last reaction that retire it
-MAX_PER_SIDE = 3            # zones kept each side of price
+MAX_PER_SIDE = 4            # key zones each side of price, at most ...
+MAX_KEY = 7                 # ... and in all (pivots included) — not a quota: a side may have none
+KEY_MIN_SCORE = 4           # a key zone scores at least this; a daily one also needs two visits
+RELEVANCE_ATR = {"D": 8, "W": 6, "M": 5}   # key zones lie within this many ATR of price (chart timeframe)
+GAP_ATR = 3                 # price this far from its nearest key zone: promote a hidden level in the gap
+CAP_ATR = 1.0               # a zone still taller than this (its own timeframe's ATR) is cut back to its body side
+LONG_TERM_PER_SIDE = 3      # long-term levels beyond the relevance window, shown muted, each side ...
+LONG_TERM_SPAN_YEARS = 1.5  # ... a weekly / monthly zone whose reactions span at least this long ...
+LONG_TERM_RANGE = 2.0       # ... within this factor of price (half to double it): a 2006 low at a hundredth of it says nothing
 ATH_NEAR_PCT = 3.0          # within this of the all-time high: no historical resistance above
 AT_PRICE_ATR = 0.25         # a zone within this of the close (chart timeframe's ATR) is "at price": a pivot
 CONGESTION_SHARE = 0.3      # price closed inside the zone on at least this share of bars since it formed: congestion
@@ -88,7 +103,7 @@ FACTORS = {
     "timeframe": "Found on the weekly or monthly chart",
     "rejection": f"Strong rejection — price closed {STRONG_REJECTION_ATR} ATR away within a few bars",
     "reversal": "Role reversal — acted as both support and resistance",
-    "touches": f"Two to {WORN_TOUCHES - 1} distinct visits",
+    "touches": "Two or more distinct visits",
     "volume": f"High volume on a reaction — at least {VOLUME_HIGH}× the prior bars' average",
     "confluence": "Confluence — a round number or the 50- or 200-bar average inside the zone",
     "recency": "Recent — a reaction within the last year or so of bars",
@@ -220,7 +235,9 @@ def _zone(pts: list[dict], fr: _Frame, tf: str, accept: bool = True) -> dict | N
         "timeframe": tf in ("W", "M"),
         "rejection": strong,
         "reversal": len({p["kind"] for p in kept}) == 2,
-        "touches": 2 <= nv < WORN_TOUCHES,
+        # two or more distinct visits; WORN_TOUCHES+ is flagged worn on its own (not also stripped of this point:
+        # a ceiling tested five times over three years is a major level, not a weak one)
+        "touches": nv >= 2,
         "volume": any((p["volume"] or 0) >= VOLUME_HIGH for p in kept),
         "confluence": rnd >= lo or any(lo <= x <= hi for x in fr.conf),
         "recency": last_i >= len(fr.df) - TF[fr.tf]["recent"],
@@ -419,15 +436,123 @@ def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
         z["height_atr"] = round((z["top"] - z["bottom"]) / fr.unit(z["reference"]), 2)
         z["atr_tf"] = z["tf"]
         z.setdefault("wide", False)
-    # key levels: any pivot (price is in it), plus the nearest graded zones each side
-    pick = [z for z in allz if z["role"] == "pivot"]
-    for role in ("support", "resistance"):
-        side = sorted((z for z in allz if z["role"] == role), key=lambda z: (abs(z["line"] - close), -z["score"]))
-        pick += side[:MAX_PER_SIDE]
-    pick.sort(key=lambda z: -z["top"])
-    others = sorted((z for z in allz if z not in pick), key=lambda z: -z["top"])
+    # Cap: a zone still taller than CAP_ATR of its own timeframe after splitting (a lone spike bar, say)
+    # is cut back to its body side — the wick side is trimmed (for a mixed zone, the side away from price)
+    for z in allz:
+        u = frame(z["tf"]).unit(z["reference"])
+        if z["top"] - z["bottom"] > CAP_ATR * u:
+            kinds = [t["kind"] for t in z["touches"]]
+            trim_top = kinds.count("H") > kinds.count("L") if kinds.count("H") != kinds.count("L") else z["role"] == "support"
+            if trim_top:
+                z["top"] = z["bottom"] + CAP_ATR * u
+            else:
+                z["bottom"] = z["top"] - CAP_ATR * u
+            z["refs"] = [min(z["top"], max(z["bottom"], x)) for x in z["refs"]]
+            z["reference"] = min(z["top"], max(z["bottom"], z["reference"]))
+            z["height_atr"] = round((z["top"] - z["bottom"]) / u, 2)
+            z["touches"] = [t for t in z["touches"] if z["bottom"] - 0.1 * u <= t["price"] <= z["top"] + 0.1 * u] or z["touches"][:1]
+            z["capped"] = True
+            _place(z, close, AT_PRICE_ATR * day_fr.unit(close))
     lines = list(_period_lines(daily, tf))
     note = None
+    unit = own_fr.unit(close)
+    dist = lambda z: abs(z["line"] - close)  # noqa: E731
+    # Key levels — proximity first, not a fixed quota. Only zones within the relevance window qualify,
+    # with a score of at least KEY_MIN_SCORE (a daily zone also needs two visits). Any pivot first, then
+    # the nearest qualifying zone each side, then the best of the rest by score, up to MAX_KEY in all and
+    # MAX_PER_SIDE a side. A side may show none.
+    window = RELEVANCE_ATR.get(own, 8) * unit
+    near = [z for z in allz if dist(z) <= window]
+    good = [z for z in near if z["score"] >= KEY_MIN_SCORE and (z["tf"] != "D" or len(z["touches"]) >= 2)]
+    pick = [z for z in near if z["role"] == "pivot"]
+    for role in ("support", "resistance"):
+        side = sorted((z for z in good if z["role"] == role), key=dist)
+        if side:
+            pick.append(side[0])
+    for z in sorted(good, key=lambda z: (-z["score"], dist(z))):
+        if len(pick) >= MAX_KEY:
+            break
+        if z not in pick and sum(1 for y in pick if y["role"] == z["role"]) < MAX_PER_SIDE:
+            pick.append(z)
+    # Gap rule: price more than GAP_ATR from its nearest key zone on a side — promote a graded zone inside
+    # that gap: one of this chart's hidden zones or a cluster from the timeframe below (a weekly chart's
+    # newest structure is still forming on the daily bars); the nearest that scores KEY_MIN_SCORE, else the
+    # nearest graded one. With none, mark the next round number there instead (clearly as such).
+    below = {"W": "D", "M": "W"}.get(own)
+    lower = []
+    if below:
+        for z in ref(_zones_for(frame(below))):   # refined like any zone of that timeframe: one weekly level, one answer
+            _place(z, close, AT_PRICE_ATR * day_fr.unit(close))
+            z["reference"] = z["refs"][0]
+            z["height_atr"] = round((z["top"] - z["bottom"]) / frame(below).unit(z["reference"]), 2)
+            z.update(atr_tf=z["tf"], wide=False, time_inside=0.0, congestion=False)
+            lower.append(z)
+    for role, sgn in (("support", -1), ("resistance", 1)):
+        side = [z for z in pick if z["role"] == role]
+        gap_to = min((dist(z) for z in side), default=window)
+        if gap_to <= GAP_ATR * unit:
+            continue
+        inside = [z for z in near + lower if z["role"] == role and z not in pick and dist(z) < gap_to]
+        if inside:
+            strong = [z for z in inside if z["score"] >= KEY_MIN_SCORE]
+            best = min(strong or inside, key=dist)
+            best["promoted"] = True
+            pick.append(best)
+        else:
+            step = round_step(close)
+            rn = (math.floor(close / step) + (1 if sgn > 0 else 0)) * step
+            if rn == close:
+                rn += sgn * step
+            if abs(rn - close) < gap_to:
+                lines.append({"kind": "round", "price": float(rn), "from": str(odf.index[-1].date()),
+                              "label": f"round number — no {role} within {GAP_ATR} ATR"})
+    # Overlapping or touching key zones are merged; one is never drawn inside another
+    pick.sort(key=lambda z: z["bottom"])
+    merged: list[dict] = []
+    for z in pick:
+        prev = merged[-1] if merged else None
+        if prev and z["bottom"] - prev["top"] < 0.25 * unit:
+            if prev["role"] == z["role"]:
+                prev.update(top=max(prev["top"], z["top"]), refs=sorted(prev["refs"] + z["refs"]),
+                            score=max(prev["score"], z["score"]), touches=sorted(prev["touches"] + z["touches"], key=lambda t: t["date"]),
+                            **{"from": min(prev["from"], z["from"])}, merged=True)
+                _place(prev, close, AT_PRICE_ATR * day_fr.unit(close))
+                continue
+            if z["score"] > prev["score"]:
+                merged[-1] = z
+            continue
+        merged.append(z)
+    pick = sorted(merged, key=lambda z: -z["top"])
+    others = sorted((z for z in allz if z not in pick and not any(z["bottom"] < y["top"] and z["top"] > y["bottom"] for y in pick)),
+                    key=lambda z: -z["top"])
+    # Long-term levels: a weekly or monthly zone price has reacted at over years (first to last reaction at
+    # least LONG_TERM_SPAN_YEARS apart, 3+ visits) beyond the relevance window. Not a key level — price is far
+    # from it — but the ceiling or floor a long move runs into. The best graded LONG_TERM_PER_SIDE a side are
+    # returned on their own, to be drawn muted.
+    def span_years(z: dict) -> float:
+        ds = [pd.Timestamp(t["date"]) for t in z["touches"]]
+        return (max(ds) - min(ds)).days / 365.25 if ds else 0.0
+    longterm = []
+    for role in ("support", "resistance"):
+        far = [z for z in others if z["role"] == role and z["tf"] in ("W", "M") and dist(z) > window
+               and len(z["touches"]) >= 3 and span_years(z) >= LONG_TERM_SPAN_YEARS
+               and close / LONG_TERM_RANGE <= z["line"] <= close * LONG_TERM_RANGE]
+        longterm += sorted(far, key=lambda z: (-z["score"], -len(z["touches"])))[:LONG_TERM_PER_SIDE]
+    others = [z for z in others if z not in longterm]
+    # Provisional extremes: a fresh high or low has no confirmed swing yet (that needs bars after it), so
+    # the 52-week high and low are always marked, and the all-time high and low when within the window —
+    # unless a key zone already covers them
+    covered = lambda x: any(z["bottom"] - 0.003 * close <= x <= z["top"] + 0.003 * close for z in pick)  # noqa: E731
+    yr = daily[daily.index > daily.index[-1] - pd.DateOffset(years=1)]
+    for kind, price, label, always in (("hi52", float(yr["high"].max()), "52-week high (provisional)", True),
+                                       ("lo52", float(yr["low"].min()), "52-week low (provisional)", True),
+                                       ("ath", float(daily["high"].max()), "all-time high (provisional)", False),
+                                       ("atl", float(daily["low"].min()), "all-time low (provisional)", False)):
+        if covered(price) or (not always and abs(price - close) > window):
+            continue
+        if kind in ("ath", "atl") and any(l["price"] == price for l in lines):
+            continue
+        lines.append({"kind": "extreme", "price": price, "label": label, "from": str(odf.index[-1].date())})
     if not any(z["role"] == "resistance" for z in pick) and close >= float(daily["high"].max()) * (1 - ATH_NEAR_PCT / 100):
         step = round_step(close)
         lines.append({"kind": "round_above", "price": float((math.floor(close / step) + 1) * step),
@@ -435,5 +560,6 @@ def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
         note = "at an all-time high: no historical resistance above"
     clean = lambda z: {k: v for k, v in z.items() if not k.startswith("_")}  # noqa: E731
     return {"tf": tf, "stack": [higher, own], "close": close, "zones": [clean(z) for z in pick], "congestion": congestion,
+            "longterm": [clean(z) for z in sorted(longterm, key=lambda z: -z["top"])],
             "others": [clean(z) for z in others], "lines": lines, "factors": FACTORS, "note": note,
             "considered": len(allz)}
