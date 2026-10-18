@@ -3489,7 +3489,10 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   // list". "Candidates" is true of both and promises neither freshness nor a decision.
   const tabs = [["rules", "How it works"],
     ...(trades ? [["setups", "Candidates"]] : []), ...(holds ? [["holdings", "Candidates"]] : []),
-    ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
+    // The tab's count is what the tab SHOWS. Counting archived runs here put "Backtests 47" above
+    // a table of 4, which is the same mismatch the chips had.
+    ["backtests", (() => { const n = d.backtests.filter((b) => !b.archived).length;
+      return `Backtests${n ? ` <span class="n">${n}</span>` : ""}`; })()]];
   tab = tabs.some(([k]) => k === tab) ? tab : "rules";
   document.title = `${d.name} · Strategies · Trading`;
   const kind = { benchmark: "Benchmark", "long-term": "Long-term investing", screener: "Trading strategy" }[d.kind] || "Strategy";
@@ -3731,12 +3734,12 @@ function strategyBacktests(host, d, key) {
       Archived <span class="n">${n}</span></button>`; };
 
   const mchips = () => mkts.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Market</span>
-    <button class="chip ${msel ? "" : "on"}" data-m="">All <span class="n">${d.backtests.length}</span></button>
+    <button class="chip ${msel ? "" : "on"}" data-m="">All <span class="n">${d.backtests.filter((b) => !b.archived).length}</span></button>
     ${mkts.map((m) => `<button class="chip ${msel === m ? "on" : ""}" data-m="${esc(m)}">${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}
         <span class="n">${d.backtests.filter((b) => b.market === m && !b.archived).length}</span></button>`).join("")}${achip()}</div>`;
 
   const chips = () => vers.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Version</span>
-    <button class="chip ${sel ? "" : "on"}" data-v="">All <span class="n">${d.backtests.length}</span></button>
+    <button class="chip ${sel ? "" : "on"}" data-v="">All <span class="n">${d.backtests.filter((b) => !b.archived).length}</span></button>
     ${vers.map((v) => `<button class="chip ${sel === v.spec_id ? "on" : ""}" data-v="${esc(v.spec_id)}" title="${esc(v.spec_id)}${v.is_current ? " — the rules as they stand now" : ""}">
         ${esc(vlabel(v))}${v.is_current ? '<i class="cur" title="current">●</i>' : ""} <span class="n">${v.runs}</span></button>`).join("")}</div>`;
 
@@ -3759,8 +3762,19 @@ function strategyBacktests(host, d, key) {
   // computed per paint, not once: `sel` changes when a chip is clicked
   const table = () => { const shown = d.backtests.filter((b) => (!sel || b.spec_id === sel) && (!msel || b.market === msel)
                                                                  && (showArchived ? b.archived : !b.archived));
+    // The options list runs to six items on a minervini run ("ranked by RS · spec rules · mktg ·
+    // rb14 · progressive exposure (10 trades, pilot 0.5) · entries: high-confidence + on-trigger"),
+    // which is a paragraph per row in a table meant to be scanned down. Two, then a count; the
+    // whole list is in the cell's tooltip beside the run's full name.
+    const OPTS_SHOWN = 2;
     const runCell = (b) => { const rp = runParts(b.run);
-      return rp ? `<td title="${esc(b.run)}">${prettyDate(rp.start)} · ${esc(rp.exit)}${rp.options.length ? `<div class="muted small">${esc(rp.options.join(" · "))}</div>` : ""}</td>` : `<td>${esc(b.run)}</td>`; };
+      if (!rp) return `<td>${esc(b.run)}</td>`;
+      const o = rp.options, more = o.length - OPTS_SHOWN;
+      const opts = o.length
+        ? `<div class="muted small">${esc(o.slice(0, OPTS_SHOWN).join(" · "))}${more > 0 ? ` <span class="bt-more">+${more}</span>` : ""}</div>`
+        : "";
+      const tip = [b.run, o.length > OPTS_SHOWN ? o.join(" · ") : ""].filter(Boolean).join("\n");
+      return `<td title="${esc(tip)}">${prettyDate(rp.start)} · ${esc(rp.exit)}${opts}</td>`; };
     return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th><th></th></tr></thead><tbody>${
       shown.map((b) => { const s = b.summary || {};
         const v = vers.find((x) => x.spec_id === b.spec_id);

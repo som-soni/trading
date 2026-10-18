@@ -713,7 +713,10 @@ def _latest_screens(strategy: str | None = None) -> list[dict]:
 
 @app.get("/api/strategies")
 def strategies():
-    bt = dict(q("SELECT strategy, count(*) FROM report_runs WHERE kind='backtest' GROUP BY 1"))
+    # Unarchived only, so the sidebar's number is the one the Backtests tab shows. Counting
+    # archived runs here left "Minervini SEPA 47" in the list beside a tab reading "Backtests 4".
+    bt = dict(q("SELECT strategy, count(*) FROM report_runs "
+                "WHERE kind='backtest' AND archived_at IS NULL GROUP BY 1"))
     screens = _latest_screens()
     out = []
     strat_docs = _strategy_docs()
@@ -769,9 +772,12 @@ def _run_versions(d: dict) -> list[dict]:
     """
     log = d.get("changelog") or []
     by_version = {e["version"]: e for e in log}
+    # ARCHIVED RUNS DO NOT MAKE A CHIP. Archiving hides a run from the table, so a version whose
+    # every run is archived has nothing left to filter to -- its chip selects an empty table. On
+    # minervini that was 12 of 16 chips, which is what made the row unwieldy in the first place.
     counts: dict[str, int] = {}
     for b in d["backtests"]:
-        if b.get("spec_id"):
+        if b.get("spec_id") and not b.get("archived"):
             counts[b["spec_id"]] = counts.get(b["spec_id"], 0) + 1
     current = d.get("spec_id")
     if current and current not in counts:

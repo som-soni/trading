@@ -1580,3 +1580,7 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .dtab td.bt-arch { text-align: right; white-space: nowrap; width: 1%; }
 .dtab td.bt-arch button { opacity: 0; transition: opacity .12s; }
 .dtab tbody tr:hover td.bt-arch button, .dtab td.bt-arch button:focus { opacity: 1; }
+
+/* Backtests: the run cell's option list is truncated, with the count standing in for the rest. */
+.dtab .bt-more { color: var(--muted); border: 1px solid var(--line-2); border-radius: 8px;
+                 padding: 0 5px; font-size: 10px; white-space: nowrap; }
