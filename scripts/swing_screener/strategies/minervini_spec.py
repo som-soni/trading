@@ -83,6 +83,12 @@ DEEP_BASE_FLAG_PCT = 35.0
 WIDEN_TOL = 1.1              # a contraction more than this x the previous one is a widening
 MIN_FROM_REFERENCE = 2       # contractions from the most recent widening onward, inclusive
 FINAL_REF_RATIO = 0.6        # final contraction / reference contraction, at most
+# Every contraction after the reference must also be smaller than the one before it. The final
+# ÷ reference ratio alone does not say that: 25, 10, 9, 9.5 has a final at 0.38x its reference
+# and a right side quietly getting looser. It also closes the hole the widening tolerance leaves,
+# where the DEEPEST pullback is only fractionally deeper than its predecessor (20 then 21) and so
+# never counts as a widening.
+UNDERCUT_RECOVERY_DAYS = 5   # sessions an undercut has to reclaim the old low; logged, not a gate
 # The tight area is the final contraction itself, so this is a MINIMUM age, not a fixed window
 # (v2 §4.1). The old TIGHT_DAYS = 10 was a window that could only be right by coincidence.
 TIGHT_MIN_DAYS = 5
@@ -116,6 +122,7 @@ VCP = vcp_spec.VcpParams(
     deep_base_flag_pct=DEEP_BASE_FLAG_PCT,
     dryup_quiet_days=DRYUP_QUIET_DAYS, dryup_quiet_ratio=DRYUP_QUIET_RATIO,
     widen_tol=WIDEN_TOL, min_from_reference=MIN_FROM_REFERENCE, final_ref_ratio=FINAL_REF_RATIO,
+    undercut_recovery_days=UNDERCUT_RECOVERY_DAYS,
     tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
 )
@@ -452,8 +459,26 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.13"
+    version = "1.14"
     changelog = (
+        ("1.14", "2026-10-18",
+         "VCP-06 now also requires every contraction AFTER the reference to be smaller than the one "
+         "before it, which the final-over-reference ratio alone does not say: 25, 10, 9, 9.5 has a "
+         "final at 0.38x its reference and a right side quietly getting looser. It closes the hole "
+         "the widening tolerance leaves, where the deepest pullback is only fractionally deeper than "
+         "its predecessor (20 then 21) and so never counts as a widening. VCP-06 rejections 71 -> 74 "
+         "on 562 Indian symbols. "
+         "'Wide and loose' is now its own drop reason: a sequence that never contracts has nothing to "
+         "reset TO, which is a different thing from a base that widened once and has not tightened "
+         "again. Both reject; the explanation is what a reader acts on. "
+         "UNDERCUTS are recorded (`undercuts`, `undercuts_failed`) and still never rejected. An "
+         "undercut that does not close back above the old low within UNDERCUT_RECOVERY_DAYS is the "
+         "one that reads as a breakdown rather than a shakeout. Measured: of 381 symbols, 65 bases "
+         "carry an undercut and 40 carry one that failed to recover. "
+         "MV-05 now carries a `base_id` of its own, the flag high's date. EN-04 (one entry per base) "
+         "keys on that field, and a power play has no base -- so it was the one setup that could be "
+         "re-entered on the same structure after a stop-out, which is exactly what EN-04 prevents "
+         "everywhere else."),
         ("1.13", "2026-10-18",
          "The rest of the v2 list. "
          "VCP-05 is now the depth of the BASE (at most MAX_BASE_DEPTH_PCT, flagged over "
@@ -705,6 +730,9 @@ class MinerviniSpecStrategy(Strategy):
         "{MIN_CONTRACTIONS}, inside a base no deeper than {MAX_BASE_DEPTH_PCT}% (over "
         "{DEEP_BASE_FLAG_PCT}% is flagged, not rejected). Wiggles under "
         "{MIN_SWING_PCT}% are ignored; more than {MAX_CONTRACTIONS} is flagged, not rejected.",
+        "Undercuts are allowed and recorded, never rejected: a contraction low below an earlier one is "
+        "the double-bottom shakeout, and what is worth separating is the undercut that does NOT close "
+        "back above the old low within {UNDERCUT_RECOVERY_DAYS} sessions.",
         "Volatility must have contracted since it last EXPANDED, which is the reset rule: the reference is "
         "the most recent widening — a contraction more than {WIDEN_TOL} × the one before it — and the base "
         "needs {MIN_FROM_REFERENCE} contractions from there, with the final one at most {FINAL_REF_RATIO} × "
@@ -941,6 +969,8 @@ class MinerviniSpecStrategy(Strategy):
                                             "and becomes the reset rule's reference (VCP-06)."),
         ("Contractions since the widening", "MIN_FROM_REFERENCE", "Counted from the reference, inclusive (VCP-06)."),
         ("Final ÷ reference", "FINAL_REF_RATIO", "The final contraction against the reference (VCP-06)."),
+        ("Undercut recovery", "UNDERCUT_RECOVERY_DAYS", "Sessions an undercut has to reclaim the old low "
+                                                        "before it is logged as failed. Never a rejection."),
         ("Tight area, minimum age", "TIGHT_MIN_DAYS", "The final contraction must be at least this old (VCP-08). "
                                                        "There is no maximum; its length is recorded."),
         ("Pivot upper zone", "UPPER_ZONE", "Pivot position in the base range that counts as a pivot buy (VCP-09)."),
@@ -1089,6 +1119,7 @@ class MinerviniSpecStrategy(Strategy):
         result.setups[MV05] = mv05
         if pp_ok:
             ctx.extras.update(pp_pivot=pp_prev["pivot"], pp_tight_low=pp_prev["tight_low"],
+                              pp_flag_high_date=pp_prev.get("flag_high_date"),
                               pp_run_pct=round(pp_prev["run_pct"], 1) if pp_prev.get("run_pct") else None,
                               pp_flag_days=pp_prev.get("flag_days"))
 
@@ -1280,10 +1311,17 @@ class MinerviniSpecStrategy(Strategy):
         # degrading, because the cheat path never set those keys.
         if plan.setup in (MV03, MV04):
             pivot, tl = float(e["cheat_pivot"]), float(e["cheat_low"])
+        elif plan.setup == MV05:
+            pivot, tl = float(e["pp_pivot"]), float(e["pp_tight_low"])
         else:
             pivot, tl = float(e["pivot"]), float(e["tight_low"])
+        # EN-04 ("one entry per base") keys on `base_id`, and a power play has no base -- so
+        # without an id of its own it would be the one setup that could be re-entered on the same
+        # structure after a stop-out, which is exactly what EN-04 exists to stop. The flag high's
+        # date identifies the flag the way the base start identifies a base.
+        base_id = e.get("pp_flag_high_date") if plan.setup == MV05 else e.get("base_date")
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
-                "max_risk_pct": MAX_STOP_PCT / 100, "base_id": e.get("base_date"),
+                "max_risk_pct": MAX_STOP_PCT / 100, "base_id": base_id,
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:
             meta.update(order="open", min_open=tl)

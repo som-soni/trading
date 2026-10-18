@@ -121,6 +121,7 @@ class VcpParams:
     # for one deeper pullback early on -- the case Minervini describes as the count RESETTING, not
     # the base failing. 15%, 25%, 12%, 6% failed outright; now the 25% is the reference and the
     # 12%, 6% that follow are what the base is judged on.
+    undercut_recovery_days: int = 5  # sessions an undercut has to close back above the old low
     widen_tol: float = 1.1           # a contraction > this x the previous one is a WIDENING
     min_from_reference: int = 2      # VCP-06: contractions from the reference onward, inclusive
     final_ref_ratio: float = 0.6     # VCP-06: final contraction / reference contraction, at most
@@ -240,7 +241,8 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
            "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None,
            "pivot_pos": None, "pivot_zone": None, "tight_days_actual": None,
            "base_closes_below_200": None, "fail_why": None, "base_depth_pct": None,
-           "deep_base": None, "dryup_quiet_days": None,
+           "deep_base": None, "dryup_quiet_days": None, "wide_and_loose": None,
+           "undercuts": None, "undercuts_failed": None,
            "prior_low": None, "prior_low_date": None, "legs": [], "tight_from": None}
     d = daily.iloc[-p.lookback:]
     n = len(d)
@@ -397,6 +399,22 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         legs = [g for k, g in enumerate(legs) if g[2] >= p.min_swing_pct or k == len(legs) - 1]
     out["depths"] = [round(g[2], 2) for g in legs]
     out["lows"] = [g[1] for g in legs]
+    # Undercuts, recorded and never a rejection. A contraction low BELOW an earlier one is the
+    # double-bottom shakeout: Minervini reads it as supply being flushed, provided the stock
+    # reclaims the earlier low quickly. What is worth separating is the undercut that does NOT
+    # recover -- `undercut_failed` -- which is the one that reads as a breakdown. The recovery
+    # window is counted in sessions from the undercut's own low.
+    undercuts, failed = 0, 0
+    for k in range(1, len(legs)):
+        prev_low = min(g[1] for g in legs[:k])
+        if legs[k][1] >= prev_low:
+            continue
+        undercuts += 1
+        lo_i = legs[k][4]
+        back = close[lo_i + 1: lo_i + 1 + p.undercut_recovery_days]
+        if not len(back) or not bool((back > prev_low).any()):
+            failed += 1
+    out["undercuts"], out["undercuts_failed"] = undercuts, failed
     out["legs"] = [(d.index[g[3]], g[0], d.index[g[4]], g[1]) for g in legs]
     if len(legs) < p.min_contractions:
         out["fail"] = "VCP-04"
@@ -429,10 +447,33 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # A widening with nothing after it is not a failure, it is a base that is NOT READY: the
     # stock has just widened out and has not tightened again yet. It fails the same gate, and
     # the reason says which of the two it is.
+    # "Wide and loose" is its own case and deserves its own words: a sequence that never contracts
+    # has nothing to reset TO, which is different from a base that widened once and has not
+    # tightened again yet. Both reject; only the explanation differs, and the explanation is what
+    # a reader acts on.
+    out["wide_and_loose"] = bool(len(sizes) > 1
+                                 and all(b >= a for a, b in zip(sizes, sizes[1:])))
     if out["from_reference"] < p.min_from_reference:
         out["fail"] = "VCP-06"
-        out["fail_why"] = ("widened out and has not contracted again yet"
-                           if ref == len(sizes) - 1 else "too few contractions since the last widening")
+        out["fail_why"] = (
+            f"the pullbacks never contracted ({' → '.join(f'{x:.0f}%' for x in sizes)}) — "
+            "wide and loose, with no contraction to reset to" if out["wide_and_loose"]
+            else "widened out and has not contracted again yet" if ref == len(sizes) - 1
+            else "too few contractions since the last widening")
+        return out
+    # Every pullback AFTER the reference must be smaller than the one before it: "require every
+    # pullback after the deepest one to be smaller than the one before it". The final/reference
+    # ratio alone does not say this -- 25, 10, 9, 9.5 has a final at 0.38x its reference and a
+    # right side that is quietly getting looser. It also closes a hole the widening tolerance
+    # leaves: a pullback that is the DEEPEST but only fractionally deeper than its predecessor
+    # (20 then 21) is not a "widening", so the reference stays behind it; this test catches it.
+    after = sizes[ref:]
+    bad = next((k for k in range(1, len(after)) if after[k] > after[k - 1]), None)
+    if bad is not None:
+        out["fail"] = "VCP-06"
+        out["fail_why"] = (f"pullback {ref + bad + 1} ({after[bad]:.1f}%) is deeper than the one "
+                           f"before it ({after[bad - 1]:.1f}%) — the right side is widening, not "
+                           f"contracting")
         return out
     if not (out["final_ref_ratio"] <= p.final_ref_ratio):
         out["fail"] = "VCP-06"
