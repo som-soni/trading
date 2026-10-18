@@ -1710,10 +1710,20 @@ class MinerviniSpecStrategy(Strategy):
             if p and p["ok"] and close[i - 1] <= p["pivot"] < close[i] and p["bh_date"] in bases \
                     and bases[p["bh_date"]]["breakout"] is None:
                 bases[p["bh_date"]]["breakout"] = i
-        # MV-03 / MV-04: the latest cheat each base triggered, by the strategy's own test
+        # MV-03 / MV-04: the FIRST cheat each base triggered, by the strategy's own test.
+        #
+        # First, not latest. A base often crosses a shelf more than once -- the shelf is re-measured
+        # every bar, so each new high gives a new level for a later close to clear -- but EN-04
+        # allows one entry per base, so the strategy acts on the first and ignores the rest.
+        # Drawing the last one illustrated a trade that never happened and, because its shelf is
+        # higher, a worse reward-to-risk: on NAM-INDIA.NS the base crossed on 2024-05-17 (shelf
+        # high 588.90, close 593.35, 2.26R -- the trade the run actually took) and again on
+        # 2024-05-21 (shelf high 595.50, close 599.80, 1.82R), and the drawing showed the second,
+        # which fails the 2R test and so was labelled "trade skipped" beside a trade that was
+        # taken.
         for i in range(start + 1, len(daily)):
             p = dets[i - 1]
-            if p and p["bh_date"] in bases:
+            if p and p["bh_date"] in bases and bases[p["bh_date"]].get("cheat") is None:
                 z = cheat_cross(p, close[i - 1], close[i])
                 if z:
                     bases[p["bh_date"]]["cheat"] = (i, z, p)
