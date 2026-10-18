@@ -3374,12 +3374,14 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   const holds = d.kind === "benchmark";
   // Same tab name as a screener's, because it answers the same question -- what does this strategy
   // point at right now -- and a reader should not learn two vocabularies to compare two strategies.
-  const tabs = [...(trades ? [["setups", "Setups today"]] : []), ...(holds ? [["holdings", "Setups today"]] : []),
-    ["rules", "Rules"], ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
-  // Rules is the landing tab, NOT the first one. Someone opening a strategy wants to know what it
-  // does and whether it worked; "Setups today" answers neither and is only useful once you have
-  // decided to trade it. Rules now carries the measured outcome at its head (see perfGlance), so
-  // the landing page answers both questions without a tab change.
+  // Rules FIRST, and the landing tab. Someone opening a strategy wants to know what it does and
+  // whether it worked; "Setups today" answers neither and is only useful once you have decided to
+  // trade it. Rules carries the measured outcome at its head (see perfGlance), so the landing page
+  // answers both questions without a tab change -- and the tab order now matches that, instead of
+  // leading with a tab nobody lands on.
+  const tabs = [["rules", "Rules"],
+    ...(trades ? [["setups", "Setups today"]] : []), ...(holds ? [["holdings", "Setups today"]] : []),
+    ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
   tab = tabs.some(([k]) => k === tab) ? tab : "rules";
   document.title = `${d.name} · Strategies · Trading`;
   const kind = { benchmark: "Benchmark", "long-term": "Long-term investing", screener: "Trading strategy" }[d.kind] || "Strategy";
@@ -3523,7 +3525,7 @@ function strategyRules(host, d, key) {
  *  strategy only acts on its rebalance date, which the note says so nobody reads it as a buy list.
  */
 async function strategyHoldings(host, alive, d, key) {
-  let mkt = store.get("btMkt:" + key, null) || pageMarket();
+  let mkt = store.get("setupMkt:" + key, null) || pageMarket();
   let show = store.get("selShow:" + key, "held");
   // A paint takes ~18s (it ranks the whole universe), so switching market starts a second one
   // while the first is still in flight. alive() only guards against leaving the PAGE, so without
@@ -3571,7 +3573,7 @@ async function strategyHoldings(host, alive, d, key) {
   };
   const wireHead = () => {
     host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {
-      mkt = b.dataset.v; store.set("btMkt:" + key, mkt); paint();
+      mkt = b.dataset.v; store.set("setupMkt:" + key, mkt); paint();
     });
     host.querySelector("#run1").onclick = () => paint();
   };
@@ -3597,7 +3599,14 @@ function strategyBacktests(host, d, key) {
   // Market, alongside Version. The page's market picker lives on "Setups today", which only a
   // screener has — so a benchmark strategy had no way to express market at all, and a screener's
   // runs from both markets sat interleaved in one table with only a column to tell them apart.
-  let msel = store.get("btMkt:" + key, null);
+  // Starts at All, every visit, and deliberately does NOT restore a previous choice.
+  //
+  // It also no longer shares one stored key with the Setups tab's market picker. Both used to
+  // read and write `btMkt:<key>`, so choosing a country on Setups silently pre-filtered this
+  // table to the same country -- two different questions ("what does it hold today" and "every
+  // run ever") answered through one setting, with nothing on screen to say why half the runs had
+  // vanished. The Setups picker still persists, now under `setupMkt:<key>`.
+  let msel = null;
   // the chip IS the country toggle for this tab: with one chosen, Backtest runs that market
   const runMarket = () => msel || pageMarket();
   // every market, not just the ones already run: with no runs there is nothing to choose from,
@@ -3668,7 +3677,6 @@ function strategyBacktests(host, d, key) {
     });
     host.querySelectorAll(".bt-vers .chip[data-m]").forEach((b) => b.onclick = () => {
       msel = b.dataset.m || null;
-      store.set("btMkt:" + key, msel);
       paint();
       wireBtRun();
     });
