@@ -215,6 +215,15 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None) 
     from ..strategies import portfolio_strategies
 
     cls = portfolio_strategies()[strategy_key]
+    # A ranking only exists for the stock-ranking strategies this module runs. The others (dual momentum,
+    # sector rotation, mean reversion, ...) have their own `runner` and no lookback/skip/rank to score
+    # with: say so rather than fail on a missing attribute.
+    if not hasattr(cls, "lookback") or not hasattr(cls, "skip"):
+        return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market, "available": False,
+                "note": f"{cls.name} does not rank stocks, so it has no ranked holdings to show here."}
+    # each knob as the backtest reads it: a strategy that does not set one gets run()'s default
+    rank, weighting = getattr(cls, "rank", "momentum"), getattr(cls, "weighting", "equal")
+    vol_window = getattr(cls, "vol_window", 63)
     # ONE bounded query, not load_prices' per-symbol read of 16 years: a single date's ranking needs
     # only enough history to score it (lookback + skip) and to set a 200-day average. load_prices
     # takes ~70s on this universe, which is not a page load.
@@ -250,7 +259,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None) 
     cfg = MARKETS[market]
     bench = cache.load_cached(market, cfg.benchmark_ticker)
     bench_close = bench["close"].astype(float) if bench is not None else None
-    scores = score_matrix(px, cls.rank, cls.lookback, cls.skip, benchmark=bench_close)
+    scores = score_matrix(px, rank, cls.lookback, cls.skip, benchmark=bench_close)
     liq_floor = cls.min_turnover_for(market) if hasattr(cls, "min_turnover_for") else None
     mom = eligible_scores(
         px.columns, px.loc[today],
@@ -266,8 +275,8 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None) 
     # it points at; the weight says where the money goes, and the two differ enough to matter --
     # the liquid-ETF defect v1.1 fixed was invisible in the ranking and obvious in the weights.
     weights = {}
-    if cls.weighting == "inverse_vol":
-        vols = realised_vol(px, cls.vol_window)
+    if weighting == "inverse_vol":
+        vols = realised_vol(px, vol_window)
         inv = {}
         for sym in held:
             v = vols.loc[today, sym] if sym in vols.columns and today in vols.index else float("nan")
