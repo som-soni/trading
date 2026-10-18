@@ -11,7 +11,8 @@ exposure and the low cheat follow the guide (see the changelog). What differs fr
   `BASE_MIN_DAYS`–`BASE_MAX_DAYS` sessions, at least `MIN_CONTRACTIONS` contractions whose RESET RULE
   holds (`MIN_FROM_REFERENCE` of them since the last widening, the final one at most
   `FINAL_REF_RATIO` × that widening), the first no deeper than `MAX_FIRST_DEPTH_PCT`%, a final tight area of
-  `TIGHT_DAYS` sessions within `TIGHT_PCT`%, a pivot within `PIVOT_NEAR_HIGH` of the base high, and
+  at least `TIGHT_MIN_DAYS` sessions within `TIGHT_PCT`%, a pivot in the base's upper zone
+  (`UPPER_ZONE`, or within `PIVOT_NEAR_HIGH` of the base high), and
   volume drying up to `DRYUP_RATIO` × its average.
 - **MV-01 is the breakout day itself**, judged against the pivot frozen on the day before (the
   breakout bar must not move its own pivot), and confirmed by volume, a close in the upper half of
@@ -78,7 +79,11 @@ MAX_FIRST_DEPTH_PCT = 35.0
 WIDEN_TOL = 1.1              # a contraction more than this x the previous one is a widening
 MIN_FROM_REFERENCE = 2       # contractions from the most recent widening onward, inclusive
 FINAL_REF_RATIO = 0.6        # final contraction / reference contraction, at most
-TIGHT_DAYS = 10
+# The tight area is the final contraction itself, so this is a MINIMUM age, not a fixed window
+# (v2 §4.1). The old TIGHT_DAYS = 10 was a window that could only be right by coincidence.
+TIGHT_MIN_DAYS = 5
+UPPER_ZONE = 2 / 3           # VCP-09: pivot this far up the base range is a standard pivot buy
+MAX_CLOSES_BELOW_200 = 10    # VCP-03: sessions below the 200-day allowed inside the base
 TIGHT_PCT = 10.0
 PIVOT_NEAR_HIGH = 0.90
 DRYUP_RATIO = 0.70
@@ -87,7 +92,8 @@ VCP = vcp_spec.VcpParams(
     base_min_days=BASE_MIN_DAYS, base_max_days=BASE_MAX_DAYS, min_contractions=MIN_CONTRACTIONS,
     max_contractions=MAX_CONTRACTIONS, max_first_depth_pct=MAX_FIRST_DEPTH_PCT,
     widen_tol=WIDEN_TOL, min_from_reference=MIN_FROM_REFERENCE, final_ref_ratio=FINAL_REF_RATIO,
-    tight_days=TIGHT_DAYS, tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
+    tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
+    tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
 )
 
 # ---- section 6: setups
@@ -413,8 +419,29 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.11"
+    version = "1.12"
     changelog = (
+        ("1.12", "2026-10-18",
+         "Three more v2 changes, all at the points where the funnel was narrowest. "
+         "(1) VCP-03 no longer requires the full Trend Template at the BASE START, and no longer "
+         "demands the moving-average structure on every bar. It now asks whether the long trend "
+         "survived the base: the 200-day no lower than at the base start, the 150-day above the "
+         "200-day today, and at most MAX_CLOSES_BELOW_200 closes below the 200-day. The base-start "
+         "template is recorded as `base_tt` -- Minervini applies the template when he BUYS, which "
+         "is the signal day, where all eight gates stay hard. "
+         "(2) VCP-08's tight area IS the final contraction -- its own swing high, which is the "
+         "pivot, to today -- at least TIGHT_MIN_DAYS old with no maximum. The fixed 10-session "
+         "window could only be right by coincidence: a 6-session contraction had four sessions of "
+         "the previous decline dragged into its range, and a 20-session one had two thirds cut off. "
+         "(3) VCP-09 is now the pivot's POSITION in the base, not its distance from the base high. "
+         "At or above UPPER_ZONE of the base range, or within PIVOT_NEAR_HIGH of the high, is the "
+         "standard pivot buy; below that is a cheat entry. The old rule rejected an entire named "
+         "base shape -- a double bottom's pivot is the middle peak, about 15% below the high in a "
+         "30%-deep base, so it never cleared 0.9 x BH. "
+         "MEASURED, 562 Indian symbols: VCP-03 rejections 179 -> 158, and bases reaching the "
+         "tight-area/pivot/volume gates 15 -> 22. Of the 12 VCP-09 rejections 10 are mid-zone and "
+         "2 low-zone -- the cheat cases -- and 5 already carry a qualifying shelf, so they route to "
+         "MV-03/MV-04 instead of being lost."),
         ("1.11", "2026-10-18",
          "Two detector changes from the v2 spec, both of which alter which bases exist. "
          "(1) VCP-02, the BASE HIGH, is now the HIGHEST confirmed swing high no close has decisively "
@@ -618,9 +645,17 @@ class MinerviniSpecStrategy(Strategy):
         "the reference. A deeper pullback early on resets the count rather than failing the base, so "
         "15% → 25% → 12% → 6% passes on its 25% reference. A widening with nothing after it is not a "
         "failure but a base that is not ready yet.",
-        "The final tight area is the last {TIGHT_DAYS} sessions: its high is the pivot, its low the tight low. "
-        "It must span at most {TIGHT_PCT}%, the pivot must be within {PIVOT_NEAR_HIGH} of the base high, and its "
+        "The final tight area IS the final contraction — from its own swing high, which is the pivot, to "
+        "today — and must be at least {TIGHT_MIN_DAYS} sessions old. It must span at most {TIGHT_PCT}% and its "
         "volume must have dried up to {DRYUP_RATIO} × the 50-day average.",
+        "Where the pivot sits in the base decides the setup: {UPPER_ZONE} or more of the way up the base range "
+        "(or within {PIVOT_NEAR_HIGH} of the base high) is the standard pivot buy, MV-01 and MV-02. Lower than "
+        "that is a cheat entry — the middle third is MV-04, the lower third MV-03 — which has its own shelf and "
+        "its own stop. A double bottom's pivot is the middle peak, so it is traded as a cheat, not a pivot buy.",
+        "Through the base the long trend must hold, which is not the same as the averages staying stacked: the "
+        "200-day no lower than at the base start, the 150-day above the 200-day today, and at most "
+        "{MAX_CLOSES_BELOW_200} closes below the 200-day. The full Trend Template is recorded at the base start "
+        "but NOT required there — Minervini applies it when he buys, and it is a hard gate on the signal day.",
         "MV-02 (coiled): the base is complete and the close is within {COIL_PCT}% below the pivot. A buy-stop "
         "rests just above the pivot.",
         "MV-01 (breakout): the base was complete yesterday, yesterday's close was at or below yesterday's "
@@ -824,9 +859,12 @@ class MinerviniSpecStrategy(Strategy):
                                             "and becomes the reset rule's reference (VCP-06)."),
         ("Contractions since the widening", "MIN_FROM_REFERENCE", "Counted from the reference, inclusive (VCP-06)."),
         ("Final ÷ reference", "FINAL_REF_RATIO", "The final contraction against the reference (VCP-06)."),
-        ("Tight area", "TIGHT_DAYS", "Sessions in the final tight area (VCP-08)."),
+        ("Tight area, minimum age", "TIGHT_MIN_DAYS", "The final contraction must be at least this old (VCP-08). "
+                                                       "There is no maximum; its length is recorded."),
+        ("Pivot upper zone", "UPPER_ZONE", "Pivot position in the base range that counts as a pivot buy (VCP-09)."),
+        ("Closes below the 200-day", "MAX_CLOSES_BELOW_200", "Allowed inside the base (VCP-03)."),
         ("Tight-area span", "TIGHT_PCT", "Deepest final contraction and widest tight area (VCP-08)."),
-        ("Pivot near the base high", "PIVOT_NEAR_HIGH", "VCP-09."),
+        ("Pivot near the base high", "PIVOT_NEAR_HIGH", "The alternative route into the upper zone (VCP-09)."),
         ("Volume dry-up", "DRYUP_RATIO", "Tight-area volume against its 50-day average (VCP-10)."),
         ("Coil distance", "COIL_PCT", "MV-02: how far below the pivot still counts."),
         ("Breakout volume", "VOL_MULT", "MV-01a."),
@@ -1370,7 +1408,7 @@ class MinerviniSpecStrategy(Strategy):
                        f"{MIN_FROM_REFERENCE} since the last widening, final ≤ {FINAL_REF_RATIO:g}× it"),
             "VCP-08": (f"{pct(r['tight_range_pct'], TIGHT_PCT)}%" if r["tight_range_pct"] is not None else "—", f"at most {TIGHT_PCT:g}%"),
             "VCP-09": (f"{(1 - r['pivot'] / bh) * 100:.1f}% under" if r["pivot"] else "—",
-                       f"within {(1 - PIVOT_NEAR_HIGH) * 100:.0f}% of the high"),
+                       f"upper zone ({UPPER_ZONE:.2f}) or within {(1 - PIVOT_NEAR_HIGH) * 100:.0f}% of the high"),
             "VCP-10": (f"{r['dryup']:.2f}× normal" if r["dryup"] is not None else "—", f"at most {DRYUP_RATIO:g}×"),
         }
         checks = {z: [] for z in ("uptrend", "base", "entry")}
@@ -1616,15 +1654,11 @@ class MinerviniSpecStrategy(Strategy):
                 return (f"the trend template was not met on the high's bar ({daily.index[bh_i].date()}): "
                         f"{vcp_spec.template_miss(daily.iloc[bh_i])}")
             # the same structure test as vcp_spec._trend_held, located on the first bar that broke it
-            for i in range(bh_i, rep + 1):
-                row = daily.iloc[i]
-                for bad, what in ((not row["sma150"] > row["sma200"], "the 150-day fell under the 200-day"),
-                                  (not row["sma200"] > row["sma200_21d_ago"], "the 200-day turned down"),
-                                  (not row["close"] > VCP.base_sma200_floor * row["sma200"],
-                                   f"the close fell more than {(1 - VCP.base_sma200_floor) * 100:.0f}% under the 200-day")):
-                    if bad:
-                        return f"{what} on {daily.index[i].date()}, inside the base"
-            return "the trend structure broke inside the base"
+            # VCP-03 now judges the base as a WHOLE (v2 §2.6), so the detector's own reason is
+            # the accurate one; naming a single bar would misdescribe a count across the base.
+            if r.get("fail_why"):
+                return str(r["fail_why"])
+            return "the long trend did not hold through the base"
         if f == "VCP-04":
             return (f"{len(d)} pullback{'s' if len(d) != 1 else ''}, where a VCP needs at least "
                     f"{MIN_CONTRACTIONS}")

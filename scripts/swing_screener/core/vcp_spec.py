@@ -18,12 +18,19 @@ its first, and one fixed threshold cannot see both — never falling below a flo
 `max(zigzag_floor_pct, zigzag_floor_atr_mult x ATR%)`, since a reversal smaller than an ATR is
 indistinguishable from a single bar.
 
-The base-period trend rule checks the moving-average STRUCTURE every day plus a close above
-`base_sma200_floor` x SMA200; requiring close > SMA150 daily contradicted VCP-05, which permits a
-first contraction of up to 35%. The full template still applies on BH's bar and on the signal day.
+The base-period trend rule (VCP-03) asks whether the long trend survived the base, not whether the
+averages stayed perfectly stacked: the 200-day no lower than at the base start, the 150-day above
+the 200-day today, and at most `max_closes_below_200` closes below the 200-day across the base.
+The full Trend Template is NOT required at the base start -- it is recorded as `base_tt` -- because
+Minervini applies it when he buys, and it is still a hard gate on the signal day.
 
-The tight area runs from the last confirmed zig-zag low to day t, capped at `tight_days`, and its
-volume baseline is taken from the bar BEFORE it so the quiet days do not lower their own benchmark.
+The tight area IS the final contraction -- its own swing high (the pivot) to day t, at least
+`tight_min_days` long with no maximum -- and its volume baseline is taken from the bar BEFORE it so
+the quiet days do not lower their own benchmark.
+
+Where the pivot sits in the base decides the setup (VCP-09): at or above `upper_zone` of the base
+range, or within `pivot_near_high` of the base high, is the standard pivot buy; lower than that is
+a cheat entry, which has its own shelf and its own stop.
 
 Base high (BH): walking forward, a confirmed swing high starts a base; a later CLOSE above it discards
 that base, and the next confirmed swing high starts a new one. BH is the high of the base in force on
@@ -94,11 +101,15 @@ class VcpParams:
                                      # swing high: 100 -> 92 -> 94 -> 80 read as 8% then 15%,
                                      # so the "second" leg was deeper and VCP-06 rejected a
                                      # genuine 20% contraction.  [assumption]
-    base_sma200_floor: float = 0.97  # VCP-03 during the base: the close may dip this far below
-                                     # the 200-day. Requiring close > SMA150 every day
-                                     # contradicted VCP-05, which permits a first contraction of
-                                     # up to 35% -- a 25-35% pullback routinely breaks the
-                                     # 150-day in a healthy Stage 2 name.  [assumption]
+    # VCP-03, the trend through the base (v2 §2.6). Minervini is strict that the stock stays in
+    # Stage 2; he is NOT strict that the averages stay perfectly stacked every day. The previous
+    # version required the full Trend Template on the base-start bar AND, on every bar of the
+    # base, 150 > 200, a rising 200-day and a close within `base_sma200_floor` of it. That is
+    # stricter than the method and made VCP-03 the second-largest rejector (32% of a 562-symbol
+    # sample). v2 replaces it with three checks on the base as a whole:
+    max_closes_below_200: int = 10   # sessions below the 200-day during the base, at most
+    #: The template at the base start is now LOGGED (out["base_tt"]), not required -- Minervini
+    #: applies it when he buys, which is the signal day, where it is still a hard gate.
     prior_advance_pct: float = 30.0  # VCP-01: BH this far above the lowest low of the prior 126 bars
     prior_window: int = 126
     base_min_days: int = 15          # VCP-02: about 3 weeks …
@@ -119,7 +130,8 @@ class VcpParams:
     max_contractions: int = 6        # flag above this; see out["many_contractions"]
     max_first_depth_pct: float = 35.0   # VCP-05
     higher_lows: bool = False        # VCP-07 (optional)
-    tight_days: int = 10             # VCP-08: the final tight area
+    tight_min_days: int = 5          # VCP-08: the final contraction must be at least this old
+    upper_zone: float = 2 / 3        # VCP-09: pivot position in the base that counts as "upper"
     tight_pct: float = 10.0          # VCP-08: its range, and the final contraction, at most this deep
     pivot_near_high: float = 0.90    # VCP-09: pivot ≥ this × BH
     dryup_ratio: float = 0.70        # VCP-10: tight-area volume ≤ this × its 50-day average
@@ -208,24 +220,6 @@ def _template_ok(row) -> bool:
     return template_miss(row) is None
 
 
-def _trend_held(d: pd.DataFrame, floor: float = 0.97) -> bool:
-    """The long-term structure must hold through the base — not the full template.
-
-    Requiring the close above the 150-day on EVERY bar contradicted VCP-05, which allows a
-    first contraction of up to 35%: a pullback that deep routinely takes price under the
-    150-day for weeks in a perfectly healthy Stage 2 stock, so the two rules together
-    rejected most of the deeper bases Minervini accepts. What has to hold daily is the
-    moving-average structure; the full template is still checked on BH's bar and on the
-    signal day.
-    """
-    try:
-        c, s150, s200, s200p = (d[k] for k in ("close", "sma150", "sma200", "sma200_21d_ago"))
-    except KeyError:
-        return False
-    ok = (s150 > s200) & (s200 > s200p) & (c > floor * s200)
-    return bool(ok.all())
-
-
 def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     """The base in force on the last bar of `daily`, and whether its VCP is complete.
 
@@ -237,6 +231,8 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
            "depths": [], "lows": [], "pivot": None, "tight_low": None, "tight_range_pct": None, "dryup": None, "base_tt": None, "zigzag_pct_used": None,
            "base_low": None, "cheat_ok": False, "cheat_pivot": None, "cheat_low": None,
            "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None,
+           "pivot_pos": None, "pivot_zone": None, "tight_days_actual": None,
+           "base_closes_below_200": None, "fail_why": None,
            "prior_low": None, "prior_low_date": None, "legs": [], "tight_from": None}
     d = daily.iloc[-p.lookback:]
     n = len(d)
@@ -300,9 +296,31 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     if not (adv >= p.prior_advance_pct):
         out["fail"] = "VCP-01"
         return out
+    # VCP-03 (v2 §2.6): the base-start template is recorded, never required; what must hold is
+    # that the long trend did not break while the base formed.
     out["base_tt"] = _template_ok(d.iloc[bh_i])
-    if not out["base_tt"] or not _trend_held(d.iloc[bh_i:], p.base_sma200_floor):
+    base = d.iloc[bh_i:]
+    try:
+        s200_now, s200_then = float(base["sma200"].iloc[-1]), float(base["sma200"].iloc[0])
+        s150_now = float(base["sma150"].iloc[-1])
+        below = int((base["close"] < base["sma200"]).sum())
+    except (KeyError, IndexError, ValueError):
         out["fail"] = "VCP-03"
+        out["fail_why"] = "not enough moving-average history across the base"
+        return out
+    out["base_closes_below_200"] = below
+    if not (s200_now >= s200_then):
+        out["fail"] = "VCP-03"
+        out["fail_why"] = "the 200-day is lower now than when the base started"
+        return out
+    if not (s150_now > s200_now):
+        out["fail"] = "VCP-03"
+        out["fail_why"] = "the 150-day is not above the 200-day"
+        return out
+    if below > p.max_closes_below_200:
+        out["fail"] = "VCP-03"
+        out["fail_why"] = (f"{below} closes below the 200-day inside the base, "
+                           f"more than {p.max_closes_below_200}")
         return out
 
     # ---- the cheat shelf, recorded for ANY legitimate base (VCP-01/02/03), whether
@@ -412,23 +430,41 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         return out
 
     # ---- step 3: the final tight area and volume
-    # The tight area is the bars since the last confirmed zig-zag low, capped at
-    # `tight_days`. A fixed 10-bar window pulled part of the previous decline in whenever
-    # the final contraction was shorter than that, failing the range check on a stock that
-    # had in fact tightened.
-    ta_start = n - p.tight_days
-    if last_low_i is not None:
-        ta_start = max(ta_start, min(last_low_i, n - 3))
+    # The tight area is the FINAL CONTRACTION itself (v2 §4.1): from its own swing high -- which
+    # is the pivot -- to the current bar. It replaces a window fixed at `tight_days`, which could
+    # only ever be right by coincidence: a final contraction of 6 sessions had four sessions of
+    # the previous decline dragged into its range, and one of 20 had two thirds of itself cut off.
+    # There is no maximum any more; the length is recorded instead.
+    ta_start = legs[-1][3]
     ta = d.iloc[ta_start:]
-    out["tight_from"] = d.index[ta_start]
-    pivot, tl = float(ta["high"].max()), float(ta["low"].min())
+    out["tight_from"], out["tight_days_actual"] = d.index[ta_start], n - ta_start
+    pivot, tl = float(legs[-1][0]), float(legs[-1][1])
     rng = (pivot - tl) / pivot * 100 if pivot > 0 else float("nan")
     out.update(pivot=pivot, tight_low=tl, tight_range_pct=rng)
+    if n - ta_start < p.tight_min_days:
+        out["fail"] = "VCP-08"
+        out["fail_why"] = (f"the final contraction is only {n - ta_start} session(s) old, "
+                           f"under the {p.tight_min_days} a tight area needs")
+        return out
     if not (legs[-1][2] <= p.tight_pct and rng <= p.tight_pct):
         out["fail"] = "VCP-08"
         return out
-    if pivot < p.pivot_near_high * high[bh_i]:
+
+    # VCP-09 (v2 §4.3): where the pivot sits INSIDE the base decides which setup applies, so the
+    # gate for the standard pivot buy is "upper zone", not "within 10% of the base high". The old
+    # test rejected an entire named base shape: a double bottom's pivot is the middle peak, which
+    # in a 30%-deep base sits about 15% below the base high and so never cleared 0.9 x BH. The
+    # "or" keeps every base the old rule accepted.
+    span = high[bh_i] - base_low
+    pos = (pivot - base_low) / span if span > 0 else float("nan")
+    out["pivot_pos"] = pos
+    out["pivot_zone"] = (None if pos != pos else
+                         "low" if pos < 1 / 3 else "mid" if pos < p.upper_zone else "high")
+    if not (pos >= p.upper_zone or pivot >= p.pivot_near_high * high[bh_i]):
         out["fail"] = "VCP-09"
+        out["fail_why"] = (f"the pivot sits {pos:.2f} of the way up the base "
+                           f"({pos * 100:.0f}%), below the upper zone at {p.upper_zone:g} — "
+                           f"a {out['pivot_zone']}-zone pivot is a cheat entry, not a pivot buy")
         return out
     # Baseline from the bar BEFORE the tight area: the last bar's 50-day average already
     # includes the quiet tight-area days, which drags it down and makes the dry-up test

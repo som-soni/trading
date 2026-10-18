@@ -250,7 +250,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "77e63e3f",
+    "fingerprint": "f2fc5a5f",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -272,6 +272,7 @@
       "LIVE_MIN_PRICE_USD": 15,
       "LOW_CHEAT_ENABLED": 1,
       "MAX_ADV_PCT": 5.0,
+      "MAX_CLOSES_BELOW_200": 10,
       "MAX_CONTRACTIONS": 6,
       "MAX_FIRST_DEPTH_PCT": 35.0,
       "MAX_OPEN_RISK_PCT": 6.0,
@@ -306,15 +307,15 @@
       "STRENGTH_EXT_PCT": 25.0,
       "STRENGTH_FRAC": 0.3333333333333333,
       "SWING_K": 5,
-      "TIGHT_DAYS": 10,
+      "TIGHT_MIN_DAYS": 5,
       "TIGHT_PCT": 10.0,
       "TIME_STOP_DAYS": 15,
       "TREND_EXIT_NEEDS_VOLUME": 0,
       "UPPER_HALF": 0.5,
+      "UPPER_ZONE": 0.6666666666666666,
       "VCP.atr_shrink": 0.0,
       "VCP.base_max_days": 325,
       "VCP.base_min_days": 15,
-      "VCP.base_sma200_floor": 0.97,
       "VCP.bh_break_atr": 1.0,
       "VCP.bh_break_pct": 2.0,
       "VCP.cheat_shelf_days": 7,
@@ -322,6 +323,7 @@
       "VCP.dryup_ratio": 0.7,
       "VCP.final_ref_ratio": 0.6,
       "VCP.lookback": 460,
+      "VCP.max_closes_below_200": 10,
       "VCP.max_contractions": 6,
       "VCP.max_first_depth_pct": 35.0,
       "VCP.min_contractions": 2,
@@ -331,8 +333,9 @@
       "VCP.prior_advance_pct": 30.0,
       "VCP.prior_window": 126,
       "VCP.swing_k": 5,
-      "VCP.tight_days": 10,
+      "VCP.tight_min_days": 5,
       "VCP.tight_pct": 10.0,
+      "VCP.upper_zone": 0.6666666666666666,
       "VCP.widen_tol": 1.1,
       "VCP.zigzag_atr_mult": 1.5,
       "VCP.zigzag_floor_atr_mult": 1.5,
@@ -367,7 +370,7 @@
         "W5"
       ]
     },
-    "version": "1.11"
+    "version": "1.12"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
