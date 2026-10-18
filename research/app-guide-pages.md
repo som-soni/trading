@@ -232,9 +232,19 @@ them: [reading backtests](app-guide-backtests.md) and [backtesting honestly](lea
 studies, computed in the browser from the bars on screen; your list is saved and applies to every symbol.
 On first use the chart shows the 20-, 50- and 200-day SMA, Volume and RSI. Two studies are not
 indicators: **Screener levels** draws a strategy's entry, stop and target, and **Chart patterns (live
-detection)** runs the chart-pattern detectors on stored prices. See
-[indicators](learn-price-indicators.md), [momentum indicators](learn-price-oscillators.md) and
-[chart patterns](learn-chart-patterns.md).
+detection)** runs the chart-pattern detectors on stored prices. **Support & Resistance (zones)** is computed
+on the server (`core/sr_levels.py`, `/api/sr-levels`): weekly zones first, then daily (monthly then weekly on a
+weekly chart); turning points that drew a clear reaction, clustered into zones ¼–1 ATR wide spanning the wick
+and body clusters, graded on seven factors (kept at 3+), at most three each side of price; broken zones keep
+their new role ("S (was R)"), zones crossed repeatedly are dropped, and a zone tested five or more times is
+marked worn. Higher-timeframe zones are drawn heavier; each zone's near edge is on the price axis; the previous
+week's and month's high and low are dashed grey lines. **Supply & Demand Zones** is computed on the
+server too (`core/sd_zones.py`, `/api/sd-zones`), on daily or weekly bars: the base each decisive move left
+from, its proximal (body) and distal (wick) edges, extended right until a close through the distal edge,
+with its retests numbered. By default it shows the active zones nearest the last close; the **Zones** panel
+lists every zone with its quality checklist. See
+[indicators](learn-price-indicators.md), [momentum indicators](learn-price-oscillators.md),
+[chart patterns](learn-chart-patterns.md) and [supply and demand](learn-supply-demand.md).
 
 Drawings (trend lines, horizontal lines, rectangles, Fibonacci and more) are saved on the server per
 symbol. Shortcuts: Alt+T trend line, Alt+H horizontal line, Alt+Shift+R rectangle; ⌘Z undoes.
@@ -248,6 +258,7 @@ right of the last bar. The right-hand rail opens panels:
 | **Symbol details** | Sector › industry group › sub-industry (each a link); *Quarterly fundamentals* (latest EPS and sales growth, ROE, SEPA verdict, Code 33); *Fundamentals* from the Quality tracker; *Screener — latest* (each strategy's plan); *Decision history*; your linked notes with **+ note** |
 | **News & events** | Headlines, filings and exchange announcements; earnings dates, dividends, splits, analyst ratings |
 | **Backtest trades** | A stored run's buys and exits in this symbol; click one to zoom to it |
+| **Chart patterns** / **Zones** | Shown while that indicator is on: every pattern / supply-demand zone found; click one to go to it |
 
 **Fundamentals** (Chart → Fundamentals) is one company's financials in tabs: Overview, Quarters, Profit &
 Loss, Balance Sheet, Cash Flows, Ratios, Shareholding (India: promoters, FIIs, DIIs, public) and Peers. It

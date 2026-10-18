@@ -273,7 +273,7 @@ function dataTable(host, columns, rows, opts = {}) {
 
 /** Remember the list a symbol was opened from, so the chart can step through it (↑ / ↓).
  *  `symbols` is a list of symbols in `market`, or of {market, symbol} for a list that mixes markets. */
-function openChartFromList(market, symbol, symbols, labelText, back, setup = null) {
+function openChartFromList(market, symbol, symbols, labelText, back, setup = null, backtest = null) {
   const seen = new Set(), items = [];
   for (const x of symbols) {
     const it = typeof x === "string" ? { m: market, s: x } : { m: x.market, s: x.symbol };
@@ -282,7 +282,8 @@ function openChartFromList(market, symbol, symbols, labelText, back, setup = nul
   }
   // setup: {strategy, date, patterns: {symbol: pattern name}} when the list is a strategy run's setups, so the
   // chart can draw each stock's pattern as of that run without the user adding the indicator
-  store.set("chartList", { items, label: labelText, back, fresh: true, setup });   // fresh: open the list panel on arrival
+  // backtest: {run, strategy} when the list is a backtest's trades — the chart opens in its backtest view
+  store.set("chartList", { items, label: labelText, back, fresh: true, setup, backtest: backtest && { ...backtest, arrive: true } });   // fresh: open the list panel on arrival
   go(`#/chart/${market}/${encodeURIComponent(symbol)}`);
 }
 /** The markets, from config (GET /api/markets) — the selector, badges and currency all come from this list,
@@ -610,7 +611,7 @@ async function chartPage(alive, market, symbol, tf) {
   { const prev = cleanup; cleanup = () => { clearInterval(newsPoll); prev(); }; }
   // trade-debug overlay state — declared before the first renderSide(), which can hit the
   // restored Trades tab before the chart (and its data) exists
-  let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1, runStrategy = null;
+  let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1, runStrategy = null, viewClaimed = false;
   // the active Trade setups layer's list, as it published it (studies.js setupLayer): { list, focus, select }
   let setupFeed = null, setupFilter = store.get("setupFilter", "all");
   // the Chart patterns indicator's history, as it published it (studies.js patterns): { list, focus, select, clear }
@@ -619,7 +620,7 @@ async function chartPage(alive, market, symbol, tf) {
   let zoneFeed = null, zoneFilter = store.get("zoneFilter", "active");
   // three read-only layers share the annotation overlay: VCP near misses, the chosen backtest run's
   // trades, and studies that draw shapes (Indicators -> Chart patterns); each sets its own part
-  let tradeItems = () => [], studyItems = () => [];
+  let tradeItems = (keep) => [], studyItems = () => [];
   // ONE design for a setup, whether it is illustrated or was traded. A study may declare that it
   // supersedes a strategy's run layers (`supersedes`), and then it draws the whole setup -- base,
   // shelf, zones AND the run's own entry levels, read from the run's record -- while /api/vcp's
@@ -634,9 +635,11 @@ async function chartPage(alive, market, symbol, tf) {
   // detects differently from the code that ran, and hiding the indicator restores them at once.
   let supersededStrategy = () => null;
   const runDrawnByStudy = () => runStrategy != null && supersededStrategy() === runStrategy;
+  // the run's trades the study drew as setups (by entry date); the rest keep the run's own drawing
+  let claimedTrades = new Set();
   const applyAnnotations = () => {
     if (!dr) return;
-    const run = runDrawnByStudy() ? [] : [...vcpAnnotations, ...tradeItems()];
+    const run = runDrawnByStudy() ? tradeItems((t) => !claimedTrades.has(t.entry_date)) : [...vcpAnnotations, ...tradeItems()];
     dr.annotate([...run, ...studyItems()]);
   };
   let zoomToTrade = () => {};
@@ -644,7 +647,7 @@ async function chartPage(alive, market, symbol, tf) {
   let chart = null;
   // rebuild the chart (for an indicator change) without losing the user's zoom / scroll
   const rerender = () => { try { if (chart) keepView = { key: viewKey, range: chart.timeScale().getVisibleLogicalRange() }; } catch {} route(); };
-  $("#ind").onclick = () => Studies.openPicker({ onChange: rerender });
+  $("#ind").onclick = () => Studies.openPicker({ onChange: () => { leaveBtView(); rerender(); } });
 
   // Trade setups: picked the way indicators are, from its own picker — one strategy at a time.
   // The button carries the chosen strategy, so the chart says what it is drawing without the card open.
@@ -661,8 +664,10 @@ async function chartPage(alive, market, symbol, tf) {
   // lands would list the raw key
   setupBtn.onclick = async () => {
     await STRATEGIES;
-    Studies.openSetupPicker({ onChange: () => { markSetup(); rerender(); } });
+    Studies.openSetupPicker({ onChange: () => { leaveBtView(); markSetup(); rerender(); } });
   };
+  // leaving the backtest view (below): a pick of your own means you want your layers back
+  function leaveBtView() { const l = store.get("chartList", null); if (l?.backtest) store.set("chartList", { ...l, backtest: { ...l.backtest, layers: true } }); }
 
   const search = $("#sym");
   symbolSearch(search, $(".search ul"), null, (s, m) => go(hrefFor(m, s)));
@@ -705,6 +710,7 @@ async function chartPage(alive, market, symbol, tf) {
   const chartEl = $("#chart");
   sideReady = true;
   renderSide();
+  const tabAtFirstRender = prefs.tab;
   if (px.error) {
     chartEl.innerHTML = `<div class="empty"><b>No price data for ${esc(symbol)}</b><div class="muted">${esc(px.error)}</div>
       <div class="muted">Check the symbol and market — India symbols end in <code>.NS</code>.</div></div>`;
@@ -720,27 +726,41 @@ async function chartPage(alive, market, symbol, tf) {
   const want = store.get("tradeRun:" + market, "") + "";
   sel.value = [...sel.options].some((o) => o.value === want) ? want : "";
   sel.onchange = () => { store.set("tradeRun:" + market, sel.value); route(); };
+  // The BACKTEST VIEW: arrived from a backtest's Trades table and still on that run. The chart shows
+  // that run's trades and nothing else of the viewer's — overlay layers (zones, patterns, other
+  // strategies' setups) stand down for this list, unsaved, until "show my layers" or a new pick.
+  const btView = pos >= 0 && list.backtest && !list.backtest.layers && String(list.backtest.run) === String(sel.value) ? list.backtest : null;
+  const isOverlayLayer = (s, def) => !!def.setupsFor || ["sdz", "patterns", "plan"].includes(s.type);
+  if (btView) {
+    $(".srcchip")?.insertAdjacentHTML("beforeend", `<span class="muted" title="Opened from a backtest's trades: the chart shows that run's trades only. Your own overlay layers are hidden while you step through this list.">· backtest view</span><a class="small" id="btlayers" title="Show your saved overlay layers too">show my layers</a>`);
+    $("#btlayers").onclick = () => { leaveBtView(); route(); };
+    if (["setups", "patterns", "zones"].includes(prefs.tab)) prefs.tab = "trades";   // their buttons stand down here
+    if (list.backtest.arrive) { prefs.tab = "trades"; store.set("chartList", { ...store.get("chartList", {}), backtest: { ...list.backtest, arrive: false } }); }
+  }
   // a backtest run is on: offer its trades as a side panel (click a trade -> its anatomy)
   if (sel.value) {
     $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="trades" title="Backtest trades — click one to zoom to it and see the structure the strategy traded on">
       <svg viewBox="0 0 20 20"><path d="M3 17V3M3 17h14"/><path d="M5 13l3.5-5 3 3L16 5"/></svg></button>`);
   } else if (prefs.tab === "trades") prefs.tab = "wl";
   // a Trade setups layer is on: offer its setups as a side panel (click one -> the chart goes to it)
-  if (Studies.activeSetup()) {
+  if (Studies.activeSetup() && !btView) {
     $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="setups" title="Trade setups — every setup of ${esc(Studies.setupName() || "the layer")}; click one to go to it">
       <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M6 12l2.5-3 2 2L14 7"/></svg></button>`);
   } else if (prefs.tab === "setups") prefs.tab = "wl";
   // the Chart patterns indicator is on: offer every pattern its detectors saw as a side panel
-  if (Studies.load().some((s) => s.type === "patterns")) {
+  if (Studies.load().some((s) => s.type === "patterns") && !btView) {
     $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="patterns" title="Chart patterns — every pattern the chart-pattern strategy's detectors saw; click one to draw it">
       <svg viewBox="0 0 20 20"><path d="M2 15l4-8 3 5 3-7 6 10"/><path d="M2 17h16"/></svg></button>`);
   } else if (prefs.tab === "patterns") prefs.tab = "wl";
   // the Supply & demand zones indicator is on: offer its zones, with each one's checklist, as a side panel
-  if (Studies.load().some((s) => s.type === "sdz")) {
+  if (Studies.load().some((s) => s.type === "sdz") && !btView) {
     $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="zones" title="Supply & demand zones — every base a decisive move left from, its checklist and retests; click one to go to it">
       <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="4" rx="1"/><rect x="3" y="12" width="14" height="4" rx="1"/></svg></button>`);
   } else if (prefs.tab === "zones") prefs.tab = "wl";
   syncPanel();
+  // the panel first rendered with the remembered tab; if that tab's indicator is not on this chart
+  // (zones, patterns, setups…), it was just replaced: render the panel again, or it shows the stale one
+  if (prefs.tab !== tabAtFirstRender) renderSide();
 
   // The time axis must be on screen without scrolling. The rows above the chart (nav, subnav,
   // toolbar, quote) wrap differently per width, so no CSS constant fits every window: measure the
@@ -830,10 +850,20 @@ async function chartPage(alive, market, symbol, tf) {
   const annotate = (key, shapes, roles) => { studyShapes.set(key, { shapes, roles }); applyAnnotations(); };
   // trades: the selected backtest run's trades on this symbol (trade-anatomy), for a study that should
   // defer to a run's record; onTrades: called when they (re)load
-  const tradeHooks = [];
-  const studies = Studies.render({ chart, times, bars: B, ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
+  const tradeHooks = [], focusHooks = [];
+  // in the backtest view: the run strategy's setups layer, traded setups only, drawn for this visit
+  const btLayer = btView && Studies.setupLayers().find((l) => l.strategy === btView.strategy);
+  const studies = Studies.render({ chart, times, bars: B,
+    skip: (s, def) => !!btView && isOverlayLayer(s, def),
+    extra: btLayer ? [Studies.transient(btLayer.type, { tradedOnly: true })] : [],
+    ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
-    trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn),
+    trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn), claimTrades: (set) => { claimedTrades = set; },
+    claimView: () => { viewClaimed = true; }, onFocusTrade: (fn) => focusHooks.push(fn),
+    // a list pick frames its item: the price axis back on auto-scale (as the "auto" button does)
+    fitPrice: () => { try { chart.panes().forEach((_, i) => chart.priceScale("right", i).applyOptions({ autoScale: true })); syncAuto(); } catch {} },   // a study framed something itself: skip the opening view
+    // the selected run's start date (its directory name begins with it), so a setups layer scans back that far
+    runStart: (/^\d{4}-\d{2}-\d{2}/.exec(tradeRuns.find((r) => String(r.id) === String($("#trades").value))?.run || "") || [null])[0],
     onSetups: (feed) => { setupFeed = feed; if (prefs.tab === "setups") renderSide(); },
     onPatterns: (feed) => { patternFeed = feed; if (prefs.tab === "patterns") renderSide(); },
     onZones: (feed) => { zoneFeed = feed; if (prefs.tab === "zones") renderSide(); } } });
@@ -916,7 +946,7 @@ async function chartPage(alive, market, symbol, tf) {
       // anatomy shapes -> overlay items; the selected trade stays vivid, the rest dim to context
       const items = (t, i) => shapeItems(t.shapes, { dim: selTrade >= 0 && selTrade !== i,
         withNotes: selTrade === i || (selTrade < 0 && anatomy.length <= 3), at: t.entry_date, price: t.entry_price });
-      tradeItems = () => anatomy.flatMap(items);
+      tradeItems = (keep = () => true) => anatomy.flatMap((t, i) => (keep(t) ? items(t, i) : []));
       zoomToTrade = (t) => {
         const ids = t.shapes.map((s) => (s.from ? idxOf(s.from) : s.bars ? idxOf(s.to || t.entry_date) - s.bars : -1)).filter((x) => x >= 0);
         const i0 = Math.min(...(ids.length ? ids : [idxOf(t.signal_date || t.entry_date)]).filter((x) => x >= 0), idxOf(t.entry_date));
@@ -927,13 +957,14 @@ async function chartPage(alive, market, symbol, tf) {
     }
   }
 
-  const bars = tf === "D" ? 130 : tf === "W" ? 104 : 60;  // open zoomed in on recent history
+  const bars = tf === "D" ? 130 : tf === "W" ? 104 : 60;  // open zoomed in on recent history (unless a study framed something)
   requestAnimationFrame(() => {  // after autoSize has laid out the panes
     if (!alive()) return;   // left (or re-rendered) before this frame: the chart is already removed
     // each indicator pane ~20% of the height, but the price pane always keeps at least half
     const per = Math.round(chartEl.clientHeight * Math.min(0.2, 0.5 / Math.max(nPanes, 1)));
     for (let i = 1; i <= nPanes; i++) try { chart.panes()[i].setHeight(per); } catch {}
-    if (keepView && keepView.key === viewKey && keepView.range) chart.timeScale().setVisibleLogicalRange(keepView.range);
+    if (viewClaimed) {}
+    else if (keepView && keepView.key === viewKey && keepView.range) chart.timeScale().setVisibleLogicalRange(keepView.range);
     else if (times.length > bars) chart.timeScale().setVisibleLogicalRange({ from: times.length - bars, to: times.length + 4 });
     else chart.timeScale().fitContent();
     keepView = null;
@@ -1463,6 +1494,7 @@ async function chartPage(alive, market, symbol, tf) {
         selTrade = selTrade === i ? -1 : i;
         applyAnnotations();
         if (selTrade >= 0) zoomToTrade(anatomy[selTrade]);
+        focusHooks.forEach((f) => f(selTrade >= 0 ? anatomy[selTrade] : null));   // a setups layer selects that trade's setup
         renderSide();
       });
       return;
@@ -4331,7 +4363,8 @@ async function reportPage(alive, id, tab) {
       ...(si >= 0 && r.market !== "all" ? {
         rowClick: (row, visible) => {
           if (name === "trades") store.set("tradeRun:" + r.market, String(id));
-          openChartFromList(r.market, row[si], visible.map((x) => x[si]), `${r.strategy} trades`, location.hash);
+          openChartFromList(r.market, row[si], visible.map((x) => x[si]), `${r.strategy} trades`, location.hash, null,
+            name === "trades" ? { run: id, strategy: r.strategy } : null);
         },
       } : {}),
     };
@@ -5287,7 +5320,7 @@ document.addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); e.stopImmediatePropagation(); openPalette(); }
 }, true);
 
-/** Learn is organised by TOPIC — Macro, Market health, Sectors & groups, Fundamentals, Risk & trade management, Process & psychology, Price & volume, Testing ideas, Candlesticks, Chart patterns, Supply & demand — and each topic holds both its guides
+/** Learn is organised by TOPIC — Macro, Market health, Sectors & groups, Fundamentals, Risk & trade management, Process & psychology, Price & volume, Testing ideas, Candlesticks, Chart patterns, Levels & zones — and each topic holds both its guides
  *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
  *  appears in the menu once. #/learn is the hub; #/learn/candles, /charts, /levels a topic's pattern grid;
  *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
@@ -5301,7 +5334,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-strat-overview", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-vol-scaled-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
   "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing", "learn-system-filters",
   "learn-test-backtesting",
-  "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-supply-demand", "learn-order-flow-smc"];
+  "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-support-resistance", "learn-supply-demand", "learn-order-flow-smc"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
 const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
   "learn-health-trend": "health", "learn-health-breadth": "health", "learn-health-volatility": "health", "learn-health-distribution": "health",
@@ -5314,7 +5347,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno", "learn-system-filters": "system",
   "learn-test-backtesting": "system",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
-  "learn-vcp": "charts", "learn-supply-demand": "levels", "learn-order-flow-smc": "levels" };
+  "learn-vcp": "charts", "learn-support-resistance": "levels", "learn-supply-demand": "levels", "learn-order-flow-smc": "levels" };
 /** a sub-heading for a guide inside its topic's menu — for a topic large enough to need categories
  *  (Strategies: "Trend following", "Breakouts from a base", ...). Guides without one sit under "Guides". */
 const GUIDE_GROUP = {
@@ -5457,6 +5490,7 @@ const GUIDE_BLURB = {
   "learn-chart-patterns": "The bases this app detects, topping structures, how to judge a breakout — and what the backtests found.",
   "learn-bases": "What a base is, Stage 2 and base counts, the common base types, and how to spot one while it is still forming.",
   "learn-vcp": "Minervini's volatility contraction pattern: reading one step by step, entries, stops, mistakes and the evidence.",
+  "learn-support-resistance": "Drawing support and resistance: zones not lines, higher timeframes first, grading a level, and what to do at breakouts, retests and new highs.",
   "learn-supply-demand": "Why price levels exist: demand and supply zones, role reversal, scoring a zone, and how the strategies use them.",
   "learn-order-flow-smc": "Order flow, smart money concepts and liquidity: what the terms mean, the older ideas they rename, and what the evidence supports.",
 };
@@ -5477,7 +5511,7 @@ const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles",
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;
 const TOPIC_BLURB = { candles: "single candles to three-bar reversals", charts: "bases and topping structures",
-  levels: "demand and supply zones, and role reversal" };
+  levels: "support and resistance, demand and supply zones, and role reversal" };
 
 async function learnPage(alive, topic, sub) {
   $view.innerHTML = LOADING;

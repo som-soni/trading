@@ -785,7 +785,7 @@ const Learn = (() => {
   const FAMILIES = { start: [], macro: [], health: [], sectors: [], fundamentals: [], risk: [], process: [], price: [], strategies: [], fno: [], system: [], candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"], levels: ["levels"] };
   const familyOf = (p) => Object.keys(FAMILIES).find((f) => FAMILIES[f].includes(p.group)) || "candles";
   const groupsOf = (fam) => GROUPS.filter(([g]) => !fam || FAMILIES[fam].includes(g));
-  const FAMILY_LABEL = { start: "Start here", macro: "Macro", health: "Market health", sectors: "Sectors & groups", fundamentals: "Fundamentals", risk: "Risk & trade management", process: "Process & psychology", price: "Price & volume", strategies: "Strategies", fno: "Futures & options", system: "Building and testing a system", candles: "Candlesticks", charts: "Chart patterns", levels: "Supply & demand" };
+  const FAMILY_LABEL = { start: "Start here", macro: "Macro", health: "Market health", sectors: "Sectors & groups", fundamentals: "Fundamentals", risk: "Risk & trade management", process: "Process & psychology", price: "Price & volume", strategies: "Strategies", fno: "Futures & options", system: "Building and testing a system", candles: "Candlesticks", charts: "Chart patterns", levels: "Levels & zones" };
   const countOf = (fam) => P.filter((p) => familyOf(p) === fam).length;
   const keyOf = (p) => (p.name + " " + (p.code || "") + " " + p.key).toLowerCase();
 

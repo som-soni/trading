@@ -8,7 +8,8 @@ rules live here only, never in JavaScript. A zone is found from price alone and 
    (limited overlap), each bar's close-to-close gain averaging at least {DEPART_MIN_BODY:.0%} of
    its true range (substantial bodies; a gap counts as progress).
 2. **Trace it back to the base** — the compact pause right before it: walking back from the
-   departure, bars no wider than {BASE_BAR_MAX_ATR} ATR each, the whole pause no wider than
+   departure, bars no wider than {BASE_BAR_MAX_ATR} ATR each unless their body is at most
+   {BASE_BAR_MAX_BODY:.0%} of their range (an indecision bar), the whole pause no wider than
    {BASE_MAX_ATR} ATR, at most {BASE_MAX_BARS} bars. No such pause, no zone: a messy origin is
    skipped, never stretched to fit.
 3. **One boundary convention.** Demand: proximal (upper) edge = the highest candle body in the base,
@@ -36,7 +37,8 @@ DEPART_MIN_ATR = 2.0         # how far past the base's near edge the departure m
 DEPART_MIN_BODY = 0.5        # the departure bars' average close-to-close gain as a share of their true range
 STRONG_DEPART_ATR = 3.0      # checklist: a strong departure
 BASE_MAX_BARS = 6            # the base: at most this many bars
-BASE_BAR_MAX_ATR = 1.0       # each base bar no wider than this (wider is itself a move, not a pause)
+BASE_BAR_MAX_ATR = 1.0       # each base bar no wider than this ...
+BASE_BAR_MAX_BODY = 0.5      # ... unless its body is at most this share of its range (an indecision bar)
 BASE_MAX_ATR = 1.5           # the whole base no wider than this
 COMPACT_BASE_BARS = 3        # checklist: a compact base is this many bars or fewer ...
 COMPACT_BASE_ATR = 1.0       # ... and no wider than this
@@ -68,7 +70,10 @@ def _base(o, h, l, c, end: int, atr: float) -> int | None:
     """The first bar of the compact pause ending at `end`, walking back; None when even `end` alone is too wide."""
     start, hi, lo = None, -np.inf, np.inf
     for k in range(end, max(-1, end - BASE_MAX_BARS), -1):
-        if h[k] - l[k] > BASE_BAR_MAX_ATR * atr:
+        rng = h[k] - l[k]
+        # a pause bar is narrow, or an indecision bar (a small body, whatever its wicks): a wide bar
+        # with a full body is a move of its own, not part of the pause
+        if rng > BASE_BAR_MAX_ATR * atr and abs(c[k] - o[k]) > BASE_BAR_MAX_BODY * rng:
             break
         hi2, lo2 = max(hi, h[k]), min(lo, l[k])
         if hi2 - lo2 > BASE_MAX_ATR * atr:

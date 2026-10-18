@@ -1164,6 +1164,31 @@ def chart_patterns_history(market: str, symbol: str, years: int = 5):
     return _pattern_lists[key]
 
 
+_sr_cache: dict = {}   # (market, symbol, tf, last bar) -> response
+
+
+@app.get("/api/sr-levels/{market}/{symbol}")
+def sr_levels(market: str, symbol: str, tf: str = "D"):
+    """The chart's Support & Resistance indicator: zones from core/sr_levels.py on the stored bars — the
+    higher timeframe first, then the chart's own, graded, few and near price, plus the previous period's
+    high and low. The rules live there; the chart only draws."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    if tf not in ("D", "W"):
+        raise HTTPException(400, "tf must be D or W")
+    from ..core import sr_levels as srl
+    from ..marketdata import cache
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    key = (market, symbol, tf, str(raw.index[-1].date()))
+    if key not in _sr_cache:
+        if len(_sr_cache) > 256:
+            _sr_cache.clear()
+        _sr_cache[key] = {"as_of": key[3], **srl.levels(raw, tf)}
+    return _sr_cache[key]
+
+
 _sd_cache: dict = {}   # (market, symbol, tf, years, last bar) -> response
 
 

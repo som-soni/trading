@@ -8,7 +8,7 @@
 - Old highs above the price are overhead supply: holders waiting to sell at breakeven. Stocks near their 52-week high have little of it.
 - Decide in advance what kills a zone, usually a close beyond its far edge. Zones are a reading aid, not a proven edge; their real use is placing stops and capping targets.
 
-This guide explains what supply and demand mean on a chart, how to find and score zones, and when a level changes sides. A base is a demand zone being built; see [Bases](learn-bases.md). For the drawn chart shapes, see [Chart patterns](learn-chart-patterns.md).
+This guide explains what supply and demand mean on a chart, how to find and score zones, and when a level changes sides. A base is a demand zone being built; see [Bases](learn-bases.md). For the drawn chart shapes, see [Chart patterns](learn-chart-patterns.md). How to draw and grade support and resistance levels step by step is in [Support and resistance](learn-support-resistance.md).
 
 ---
 
@@ -85,12 +85,12 @@ You identify a zone by the way the price *left* it, not by the pause itself:
 4. **Judge freshness.** Each return to the zone may use up some of the orders waiting there. Write down every retest and how the price responded. A zone the price has closed through is gone, so do not keep buying as it falls.
 5. **Judge location.** The zone should sit inside a chart you would want to own anyway: a higher low in an uptrend, or a base inside a Stage 2 advance. The same shape at the bottom of a collapsing downtrend is an attempt to catch a falling knife.
 
-**Why the edge rule matters.** In ICICI Bank's case, the full range of the four mid-May sessions runs from ₹375.20 to ₹386.80. The tightest part of the pause, the last two sessions before the rally, gives a body-to-wick box of ₹375.80 to ₹382.50.
+**Why the edge rule matters.** In ICICI Bank's case, the full range of the four mid-May sessions runs from ₹375.20 to ₹386.80. The tightest part of the pause, the last three sessions before the rally, gives a body-to-wick box of ₹375.80 to ₹382.50.
 
 | Rule | Zone | 23 Aug low ₹385.80 | 19 Sep low ₹384.35 |
 |---|---|---|---|
 | Full range, four sessions | ₹375.20–386.80 | A retest | A retest |
-| Highest body to lowest wick, two sessions | ₹375.80–382.50 | Never entered | Never entered |
+| Highest body to lowest wick, three sessions | ₹375.80–382.50 | Never entered | Never entered |
 
 Same chart, same pause, and two different stories about whether the zone was tested. Neither rule is the correct one. What matters is choosing before the price returns, so the box is not redrawn to fit what happened.
 
@@ -222,7 +222,32 @@ What this shows:
 - **In the US the effect was small** except at the extreme. Stocks 60% or more below their high did much worse than the rest.
 - **It is a tilt, not a rule.** Even near the high, more than four stocks in ten were lower 60 sessions later.
 
-**Limits of zone trading.** Retail "supply and demand zone" trading is a way of looking at charts by judgement, not a measured edge. No public study shows that boxes drawn by the usual rules beat the market after costs. The evidence supports the weaker claims: prices react around old highs, lows and round numbers more often than chance, and stocks near their highs tend to do a little better.
+**A second event study: do zone retests hold?** Zones drawn by eye cannot be tested, so we fixed every rule in advance and drew them by machine. Then we asked what happened at each retest, and compared it with the same distances placed on a random day.
+
+> **Method note.** Daily prices for today's NSE and US stock lists, January 2010 to October 2026. Zones exactly as in section 2: a move of one to three bars that carries the close at least 2 ATR past a pause of up to six small or indecisive bars, no wider than 1.5 ATR in all. Edges run from the highest body to the lowest wick, and a daily close beyond the distal edge ends the zone. Only zones that formed while the stock was liquid: close at least ₹20 or $5, and 50-day average turnover at least ₹5 crore or $5 million. For each retest, a **bounce** is a close 2 ATR beyond the proximal edge before any close beyond the distal edge, within 60 sessions. The **placebo** puts the same edge and target distances, in ATRs, under the close of a random day in the same stock. Caveats: today's lists only (survivorship bias), no costs, many retests overlap.
+
+| Zone retests | Retests | Bounced | Placebo bounced |
+|---|---|---|---|
+| India, demand | 48,287 | 40.4% | 40.8% |
+| India, supply | 34,321 | 38.8% | 36.7% |
+| US, demand | 159,795 | 42.2% | 42.4% |
+| US, supply | 162,169 | 35.2% | 33.4% |
+
+| Bounced minus placebo, by retest | First | Second | Third or later |
+|---|---|---|---|
+| India, demand | +2.0 pts | −1.5 pts | −3.0 pts |
+| India, supply | +3.6 pts | +1.2 pts | +0.7 pts |
+| US, demand | +0.1 pts | −0.2 pts | −0.6 pts |
+| US, supply | +2.2 pts | +1.2 pts | +1.7 pts |
+
+What this shows:
+
+- **Demand zones held no more often than chance.** A retest of a mechanically drawn demand zone bounced as often as a random price with the same stop and target distances.
+- **Supply zones did slightly better than chance**, by about two points. A rally into a supply zone was a little more likely to turn back than a random rally.
+- **Freshness mattered a little, in India.** First retests of demand zones did better than later ones there. In raw numbers the gap looked large: 43.6% for first retests against 37.1% for the third or later. But most of it came from the distances, because the placebo fell almost as much.
+- **The checklist helped little.** In India, demand zones ticking four or five of its boxes roughly matched the placebo, while those ticking two or fewer lagged it by about three points. In the US the score made no difference.
+
+**Limits of zone trading.** Retail "supply and demand zone" trading is a way of looking at charts by judgement, not a measured edge. No public study shows that boxes drawn by the usual rules beat the market after costs, and our own test found almost nothing for demand zones. The evidence supports the weaker claims: prices react around old highs, lows and round numbers more often than chance, and stocks near their highs tend to do a little better.
 
 - **Their real value is deciding where risk goes.** Zones tell you where a stop is just slightly off and where the whole idea is wrong. They also tell you when a target is asking too much.
 - **Zones wear out.** The better known a level, the more traders place orders just ahead of it to get in first, which spreads the zone wider. Expect the price to react *around* zones, not at an exact price.

@@ -131,8 +131,28 @@ const Studies = (() => {
    *  backtest run's own trade standing in for the illustrated entry. It knows nothing of any strategy:
    *  `load()` resolves to { setups (the bases_live / live_setups schema), background (shapes drawn
    *  behind, e.g. Stage 2), note }, `keyRows` is the colour key, `roles` adds role colours. */
+  /** Bring the bars from `d0` to `d1` into view for something picked from a side-panel list: the stretch
+   *  fills `fill` of the plot width, starting `lead` of the way in, and the price axis returns to
+   *  auto-scale — after a manual vertical drag the picked thing could otherwise sit off-screen. */
+  const frameDates = (chart, times, ctx, d0, d1, { fill = 0.6, lead = 0.06, min = 40 } = {}) => {
+    const idx = (d) => { const i = times.findIndex((t) => t >= d); return i < 0 ? times.length - 1 : i; };
+    const a = idx(d0), b = Math.max(a, idx(d1));
+    const span = Math.max(min, (b - a + 1) / fill), from = a - span * lead;
+    chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
+    ctx.fitPrice?.();
+  };
+
+  /** How many years a Trade setups layer scans: its own setting, stretched back to the start of the
+   *  selected backtest run (ctx.runStart) so every trade that run made here has its setup to sit on.
+   *  0 = all history. */
+  const scanYears = (years, ctx) => {
+    if (!years || !ctx.runStart) return years;
+    const back = Math.ceil((Date.now() - Date.parse(ctx.runStart)) / (365.25 * 864e5));
+    return Math.max(years, back || 0);
+  };
+
   function setupLayer({ chart, times, p, col, ctx, id, keyRows, roles: extraRoles = {}, load }) {
-        let on = true, stage = [], setups = [], focus = null, hovered = null, pinned = null;
+        let on = true, stage = [], setups = [], all = [], focus = null, hovered = null, pinned = null;
         const DIM = "#5d6170", YOUNG = "#9ca3af", NUM = ["①", "②", "③", "④"];
         // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
         // (a listing too new for the template is neither: neutral grey, so it never reads as a failure)
@@ -144,7 +164,21 @@ const Studies = (() => {
         const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
         const ICON = { pass: "✓", fail: "✗", skip: "·", warn: "!", young: "?" };
         // the selected run's trade on a setup, if it traded one: its record replaces the illustrated entry
-        const tradeOf = (s) => (ctx.trades?.() || []).find((t) => t.entry_date >= s.base_from && t.entry_date <= s.to) || null;
+        // Each trade belongs to ONE setup: of the setups whose window holds its entry, the one the rules
+        // passed, else the latest to start — so an overlapping refused setup never claims it too.
+        let owners = new Map(), ownersOf = null;
+        const ownerMap = () => {
+          const ts = ctx.trades?.() || [];
+          if (ownersOf === ts && owners.size) return owners;
+          owners = new Map(); ownersOf = ts;
+          for (const t of ts) {
+            const cover = all.filter((s) => t.entry_date >= s.base_from && t.entry_date <= s.to);
+            const best = cover.filter((s) => s.kind !== "fail").at(-1) || cover.at(-1);
+            if (best && !owners.has(best)) owners.set(best, t);
+          }
+          return owners;
+        };
+        const tradeOf = (s) => ownerMap().get(s) || null;
         const isEntry = (z) => z.key === "entry" || z.key === "cheat";
 
         // ---- the card: the focused setup's verdict, one row per zone, the open zone's writeup and checks
@@ -163,8 +197,11 @@ const Studies = (() => {
           const px = (d) => ts.timeToCoordinate(times.find((t) => t >= d) || times.at(-1));
           const x0 = s ? px(s.from) ?? 0 : 0, x1 = s ? px(s.to) ?? w : w;
           // away from the entry zone when there is one (it is what matters most); else the roomier side
+          // beside the setup when there is room for the card on either side (the roomier one), so it
+          // covers none of it; otherwise away from the entry zone, which is what matters most
           const ez = s && s.zones.find(isEntry), ex = ez ? px(ez.from) : null;
-          const left = ex != null ? ex > w / 2 : x0 > w - x1;
+          const cw = (card.offsetWidth || 300) + 16, roomL = Math.max(0, x0), roomR = w - Math.min(w, x1);
+          const left = roomL >= cw || roomR >= cw ? roomL > roomR : ex != null ? ex > w / 2 : x0 > w - x1;
           card.style.right = left ? "" : `${chart.priceScale("right").width() + 8}px`;
           card.style.left = left ? `${(chart.priceScale("left").width() || 0) + 8}px` : "";
           card.style.top = left ? `${(el.querySelector(".legend")?.offsetHeight || 0) + 12}px` : "8px";
@@ -246,7 +283,12 @@ const Studies = (() => {
           const r = chart.timeScale().getVisibleLogicalRange();
           return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : times.at(-1);
         };
-        const latest = () => [...setups].reverse().find((s) => s.from <= edge()) || null;
+        // with a backtest run selected, the setup it traded is the one the card opens on
+        const latest = () => {
+          const shown = [...setups].reverse().filter((s) => s.from <= edge());
+          const r = chart.timeScale().getVisibleLogicalRange(), lo = r ? times[Math.max(0, Math.floor(r.from))] : times[0];
+          return shown.find((s) => s.to >= lo && tradeOf(s)) || shown[0] || null;
+        };
         const setupAt = (t) => setups.filter((s) => s.from <= t && t <= s.to)
           .sort((a, b) => (Date.parse(a.to) - Date.parse(a.from)) - (Date.parse(b.to) - Date.parse(b.from)))[0] || null;
         const timeOf = (q) => (typeof q.time === "string" ? q.time
@@ -288,6 +330,9 @@ const Studies = (() => {
               shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" } : x)));
             });
           }
+          // tell the chart which of the run's trades this layer draws: any trade no current setup covers
+          // (today's rules may no longer see it) keeps the run's own drawing, so no trade goes missing
+          ctx.claimTrades?.(new Set(setups.map(tradeOf).filter(Boolean).map((t) => t.entry_date)));
           const c = (k) => { try { return col(k); } catch { return undefined; } };   // a layer may not declare every colour
           ctx.annotate(id, on ? stage.concat(shapes) : [], { uptrend: c("uptrend"), base: c("base"), contraction: c("base"),
             vcp: c("vcp"), cheat: c("cheat"), miss: c("miss"), flag: c("flag"), failpath: DIM, young: YOUNG, tight: c("tight"),
@@ -320,13 +365,7 @@ const Studies = (() => {
         });
         // frame a setup stepped to from the card in the left ~60% of the chart, so the card (which goes to
         // the roomier side) sits clear of it on the right
-        const reveal = (s) => {
-          const ts = chart.timeScale();
-          const i0 = times.findIndex((t) => t >= s.from), i1 = times.findIndex((t) => t >= s.to);
-          const a = i0 < 0 ? times.length - 1 : i0, b = i1 < 0 ? times.length - 1 : i1;
-          const span = Math.max(40, (b - a + 1) / 0.58), from = a - span * 0.04;
-          ts.setVisibleLogicalRange({ from, to: from + span });
-        };
+        const reveal = (s) => frameDates(chart, times, ctx, s.from, s.to, { fill: 0.58, lead: 0.04 });
 
         // ---- the setup lane: one pill per setup along the bottom of the price pane, stacked where they overlap
         const lane = (() => {
@@ -373,14 +412,35 @@ const Studies = (() => {
           chart.timeScale().subscribeSizeChange(() => requestAnimationFrame(render));
           return { render, mark, el };
         })();
-        ctx.onTrades?.(() => { if (setups.length) paint(); });
+        // p.tradedOnly (the chart's backtest view): only the setups the selected run traded, so the chart
+        // shows that run's trades and nothing it did not buy; re-filtered when the run's trades arrive
+        let arrived = false;
+        const refresh = () => {
+          ownersOf = null;
+          setups = p.tradedOnly ? all.filter(tradeOf) : all;
+          if (!setups.includes(pinned)) pinned = null;
+          // the backtest view opens on the run's latest trade here, not on today's bars
+          // (a frame later: after the chart's own opening view, which would otherwise win the race)
+          if (p.tradedOnly && !arrived && setups.length) {
+            arrived = true; pinned = setups.at(-1);
+            ctx.claimView?.();   // the chart must not then apply its usual "recent bars" opening view
+            const s0 = pinned; reveal(s0); requestAnimationFrame(() => { if (pinned === s0) { reveal(s0); paint(); } });
+          }
+        };
+        ctx.onTrades?.(() => { refresh(); if (all.length) { paint(); lane.render(); } });
+        // a trade picked in the Backtest trades panel selects the setup it was bought from
+        ctx.onFocusTrade?.((t) => {
+          const s = t ? [...ownerMap()].find(([, x]) => x.entry_date === t.entry_date)?.[0] : null;
+          if (s || !t) { pinned = s || null; hovered = null; paint(); }
+        });
         (async () => {
           setNote(id, "testing each bar…");
           const r = await load().catch(() => null);
           if (!r || r.error) { setups = []; publish(); return setNote(id, r?.error || "could not load the setups"); }
           stage = r.background || [];
-          setups = r.setups || [];
-          setNote(id, r.note);
+          all = r.setups || [];
+          refresh();
+          setNote(id, p.tradedOnly ? `the selected run's trades, drawn as ${r.note.split(":")[0].toLowerCase()} — backtest view` : r.note);
           paint(); lane.render();
         })();
         return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); lane.render(); } };
@@ -403,7 +463,7 @@ const Studies = (() => {
       draw(args) {
         const { p, col, tf, ctx } = args;
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
-        const years = p.years === "All" ? 0 : +p.years || 5;
+        const years = scanYears(p.years === "All" ? 0 : +p.years || 5, ctx);
         const load = async () => {
           const x = await fetch(`/api/setups/${strategy}/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${years}`);
           // a 404 here is a server started before this layer existed: say so rather than draw nothing
@@ -569,41 +629,57 @@ const Studies = (() => {
         return { series, note: last ? `${p.method} · ${{ W: "weekly", M: "monthly", Q: "quarterly", Y: "yearly" }[unit]} · P ${fmtPx(last.lv.P)}` : "",
           setVisible: (on) => series.forEach((x) => x.applyOptions({ visible: on })) };
       } },
-    sr: { name: "Support & Resistance (swing levels)", short: "S/R", cat: "Support & resistance", overlay: true, custom: true,
-      label: (p) => `S/R ${p.lookback} bars`,
-      params: { left: 5, right: 5, lookback: 250, tolerance: 0.5, minTouches: 2, maxLevels: 6 },
-      plots: [{ k: "res", t: "Resistance", c: "#f23645" }, { k: "sup", t: "Support", c: "#089981" }],
-      draw({ main, bars, p, col }) {
-        // Key levels = prices the market has turned at repeatedly: swing pivots in the lookback whose
-        // prices lie within `tolerance` x ATR(14) of each other are merged; a level needs `minTouches`.
-        const n = bars.C.length, atr = rma(trueRange(bars.H, bars.L, bars.C), 14).at(-1) || 0, tol = Math.max(p.tolerance * atr, bars.C.at(-1) * 0.001);
-        const piv = swingPivots(bars.H, bars.L, p.left, p.right, Math.max(0, n - p.lookback)).sort((a, b) => a.price - b.price);
-        const clusters = [];
-        for (const v of piv) {
-          const c = clusters.at(-1);
-          if (c && v.price - c.mean <= tol) { c.items.push(v); c.mean = c.items.reduce((x, y) => x + y.price, 0) / c.items.length; }
-          else clusters.push({ items: [v], mean: v.price });
-        }
-        const close = bars.C.at(-1);
-        const cands = clusters.filter((c) => c.items.length >= p.minTouches)
-          .map((c) => ({ price: c.mean, touches: c.items.length, dist: Math.abs(c.mean - close) / close }));
-        // half the slots above price (resistance) and half below (support): within each side the most-touched
-        // levels win, nearer ones breaking ties; a side with too few levels gives its slots to the other
-        const rank = (xs) => xs.sort((a, b) => b.touches - a.touches || a.dist - b.dist);
-        const above = rank(cands.filter((c) => c.price > close)), below = rank(cands.filter((c) => c.price <= close));
-        const half = Math.ceil(p.maxLevels / 2);
-        let nA = Math.min(above.length, half), nB = Math.min(below.length, p.maxLevels - nA);
-        nA = Math.min(above.length, p.maxLevels - nB);
-        const levels = [...above.slice(0, nA), ...below.slice(0, nB)].sort((a, b) => b.price - a.price);
-        const specs = levels.map((l) => {
-          const res = l.price > close;
-          return { price: l.price, color: col(res ? "res" : "sup"), lineWidth: l.touches >= 4 ? 2 : 1, lineStyle: 0, axisLabelVisible: true,
-            title: `${res ? "R" : "S"} ×${l.touches}` };
-        });
-        let lines = specs.map((o) => main.createPriceLine(o));
-        const nr = specs.filter((o) => o.title.startsWith("R")).length;
-        return { series: [], note: levels.length ? `${nr} resistance · ${levels.length - nr} support` : "no level with enough touches",
-          setVisible: (on) => { lines.forEach((l) => main.removePriceLine(l)); lines = on ? specs.map((o) => main.createPriceLine(o)) : []; } };
+    // ---- support & resistance ZONES from core/sr_levels.py (/api/sr-levels): the higher timeframe first,
+    // then the chart's own; turning points that earned a clear reaction, clustered into zones between a
+    // quarter and one ATR wide, graded, kept only when strong enough and near price; broken levels kept
+    // with their new role. Every rule is there; this only draws.
+    sr: { name: "Support & Resistance (zones)", short: "S/R", cat: "Support & resistance", overlay: true, custom: true,
+      label: (p) => `S/R zones${p.levels === "All graded levels" ? " · all graded" : ""}`,
+      params: { levels: { type: "select", def: "Key levels (3 each side)", options: ["Key levels (3 each side)", "All graded levels"] },
+        periods: { type: "select", def: "Show", options: ["Show", "Hide"] },
+        axis: { type: "select", def: "Show", options: ["Show", "Hide"] } },
+      plots: [{ k: "res", t: "Resistance", c: "#f23645" }, { k: "sup", t: "Support", c: "#089981" }, { k: "per", t: "Previous period high / low", c: "#8a8a8a" }],
+      draw({ main, times, p, col, tf, ctx, id }) {
+        if (!["D", "W"].includes(tf) || !ctx.annotate) return { series: [], note: "daily or weekly charts only", setVisible() {} };
+        let on = true, shapes = [], specs = [], lines = [];
+        const NAME = { M: "monthly", W: "weekly", D: "daily" };
+        const paint = () => {
+          ctx.annotate(id, on ? shapes : [], { support: col("sup"), resistance: col("res"), period: col("per") });
+          lines.forEach((l) => main.removePriceLine(l));
+          lines = on && p.axis !== "Hide" ? specs.map((o) => main.createPriceLine(o)) : [];
+        };
+        fetch(`/api/sr-levels/${ctx.market}/${encodeURIComponent(ctx.symbol)}?tf=${tf}`).then((x) => (x.ok ? x.json() : null)).then((r) => {
+          if (!r) return setNote(id, "could not load the levels");
+          const last = times.at(-1), higher = r.stack[0], labelAt = times[Math.max(0, times.length - 40)];
+          // labels in words: "Support · weekly · 6/7 · 3 touches", "Support (was resistance)", "worn"
+          const tagsOf = (z) => [`${z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? ` (was ${z.role === "resistance" ? "support" : "resistance"})` : ""}`,
+            NAME[z.tf], `scores ${z.score}/${z.of}`, `${z.touches.length} touch${z.touches.length > 1 ? "es" : ""}`,
+            ...(z.worn ? ["worn"] : []), ...(z.inside ? ["price inside"] : [])];
+          // with "All graded levels", the zones that passed the grade but were not among the nearest
+          // three each side, drawn faint: context, the market's older turning points
+          const extra = p.levels === "All graded levels" ? (r.others || []).map((z) => ({ shape: "box", from: z.from, to: last, top: z.top, bottom: z.bottom,
+            role: z.role, faint: true, label: "" })) : [];
+          shapes = extra.concat(r.zones.flatMap((z) => {
+            const tags = tagsOf(z);
+            const big = z.tf === higher;   // the higher timeframe's zones carry more weight: drawn heavier
+            return [
+              big ? { shape: "box", from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role, label: "" }
+                  : { shape: "box", shade: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role },
+              ...(big ? [] : [{ shape: "level", from: z.from, to: last, price: z.line, role: z.role, dash: true, label: "" }]),
+              // the label beside the latest bars, where the eye is — a zone's left edge is often years back
+              { shape: "text", at: labelAt, price: z.top, role: z.role, label: tags.join(" · ") },
+            ];
+          }));
+          if (p.periods !== "Hide")   // (a study saved before these settings existed has neither: both default on)
+            shapes.push(...r.lines.map((l) => ({ shape: "level", from: l.from, to: last, price: l.price, role: "period", dash: true, label: l.label })));
+          // the near edge of each zone on the price axis — the single line to set an alert on
+          specs = r.zones.map((z) => ({ price: z.line, color: col(z.role === "resistance" ? "res" : "sup"), lineWidth: z.tf === higher ? 2 : 1,
+            lineStyle: 2, axisLabelVisible: true, title: `${z.role === "resistance" ? "Resistance" : "Support"} · ${NAME[z.tf]}` }));
+          const nS = r.zones.filter((z) => z.role === "support").length;
+          setNote(id, `${NAME[higher]} + ${NAME[r.stack[1]]} · ${nS} support, ${r.zones.length - nS} resistance (of ${r.considered} graded${extra.length ? ", the rest faint" : ""})${r.note ? " · " + r.note : ""}`);
+          paint();
+        }).catch(() => setNote(id, "could not load the levels"));
+        return { series: [], note: "finding levels…", setVisible: (v) => { on = v; paint(); } };
       } },
     // ---- supply & demand zones: the base each decisive move left from, found by core/sd_zones.py
     // (/api/sd-zones) — departure first, then the compact base, body-to-wick edges, a close beyond the
@@ -642,12 +718,15 @@ const Studies = (() => {
           return out;
         };
         const paint = () => ctx.annotate(id, on ? (focus != null && !shown.includes(focus) ? [...shown, focus] : shown).flatMap((i) => shapesOf(zones[i], i)) : [], roles);
+        // the base, the departure and what happened next: through the first retest (or the failure)
+        // when that came within ~a year, else the 80 bars after the departure — an untested zone
+        // stretched to today would shrink the base to a sliver
         const reveal = (z) => {
-          const a = Math.max(0, times.findIndex((t) => t >= z.base_from));
-          const endD = z.tests[0]?.date || z.until;
-          let b = times.findIndex((t) => t >= endD); if (b < 0) b = times.length - 1;
-          const span = Math.max(60, (b - a + 1) / 0.6), from = a - span * 0.1;
-          chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
+          const idx = (d) => { const i = times.findIndex((t) => t >= d); return i < 0 ? times.length - 1 : i; };
+          const a = idx(z.base_from), dep = idx(z.depart_to);
+          const ev = z.tests[0]?.date || z.failed, e = ev ? idx(ev) : null;
+          const b = e != null && e - a <= 250 ? Math.max(e + 10, dep + 20) : dep + 80;
+          frameDates(chart, times, ctx, z.base_from, times[Math.min(times.length - 1, b)] || z.until, { fill: 0.6, lead: 0.32 });   // a third in: clear of a setup card at the left
         };
         const publish = () => ctx.onZones?.({ list: zones, focus, checks, tf,
           select: (k) => { if (!zones[k]) return; focus = focus === k ? null : k; if (focus != null) reveal(zones[k]); paint(); publish(); },
@@ -709,12 +788,7 @@ const Studies = (() => {
           },
           clear: () => { pinned = null; asked = undefined; paint(); publish(); setNote(id, liveNote || "live detection"); kick(); } });
         // frame a picked pattern in the left ~60% of the chart, clear of the panel
-        const reveal = (h) => {
-          const i0 = times.findIndex((t) => t >= h.start), i1 = times.findIndex((t) => t >= h.last_seen);
-          const a = i0 < 0 ? times.length - 1 : i0, b = i1 < 0 ? times.length - 1 : i1;
-          const span = Math.max(40, (b - a + 1) / 0.6), from = a - span * 0.05;
-          chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
-        };
+        const reveal = (h) => frameDates(chart, times, ctx, h.start, h.last_seen, { fill: 0.6, lead: 0.05 });
         fetch(`/api/patterns-history/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=5`)
           .then((x) => (x.ok ? x.json() : null)).then((r) => { history = r?.patterns || []; publish(); }).catch(() => {});
         let kick = () => {};
@@ -777,7 +851,7 @@ const Studies = (() => {
         const { p, col, tf, ctx, def } = args;
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
         const load = async () => {
-          const r = await fetch(`/api/setups/${def.setupsFor}/${ctx.market}/${encodeURIComponent(ctx.symbol)}`)
+          const r = await fetch(`/api/setups/${def.setupsFor}/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${scanYears(5, ctx)}`)
             .then((x) => (x.ok ? x.json() : null));
           if (!r) return null;
           // Weinstein's four stages as background bands (minervini_spec.stage_cycle: the 150-day's slope,
@@ -961,11 +1035,11 @@ const Studies = (() => {
 
   // ------------------------------------------------------------- rendering
   /** Add every active study to `chart`. Returns entries for the legend. */
-  function render({ chart, times, bars, ctx }) {
+  function render({ chart, times, bars, ctx, skip = () => false, extra = [] }) {
     const out = [];
     let pane = 1;
     const fmtV = (s, v) => (v == null ? "" : CATALOG[s.type].volumeFormat || CATALOG[s.type].volume ? compact(v) : Math.abs(v) >= 1000 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(3));
-    for (const s of load()) {
+    for (const s of [...load().filter((x) => !skip(x, CATALOG[x.type])), ...extra]) {
       const def = CATALOG[s.type];
       if ((def.needsVolume && !hasVolume(bars)) || (def.needsBench && !ctx.bench)) { out.push({ s, def, skipped: true, pane: def.overlay ? 0 : null }); continue; }
       if (def.custom) {
@@ -1016,7 +1090,7 @@ const Studies = (() => {
     const { s, def } = e;
     const note = e.skipped ? `<span class="muted">${def.needsBench ? "no index data" : "no volume data"}</span>`
       : e.note ? `<span class="muted snote">${esc(e.note)}</span>` : "";
-    return `<div class="srow ${s.hidden || e.skipped ? "off" : ""}" data-id="${s.id}"><span class="sname" title="Click to select, double-click for settings">${esc(label(s))}</span>${note}<span class="svals"></span>${btns(s)}</div>`;
+    return `<div class="srow ${s.hidden || e.skipped ? "off" : ""}" data-id="${s.id}"><span class="sname" title="Click to select, double-click for settings">${esc(label(s))}</span>${note}<span class="svals"></span>${s.transient ? "" : btns(s)}</div>`;
   }
   function legendValues(e, i) {
     const { s, def } = e;
@@ -1164,6 +1238,7 @@ const Studies = (() => {
   return { setStrategies: (keys) => STRATEGY_CHOICES.splice(1, STRATEGY_CHOICES.length, ...keys),
     setStrategyNames: (m) => Object.assign(STRATEGY_NAMES, m),
     setupLayers, activeSetup, setSetup, openSetupPicker,
+    transient: (type, params = {}) => ({ ...make(type, params), transient: true }),   // drawn this visit, never saved
     setupName: () => { const t = activeSetup(); return t ? stratName(CATALOG[t].setupsFor) : null; },
     restore: save, CATALOG, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
 })();

@@ -19,6 +19,7 @@ Written findings. Code lives in `scripts/`, generated output in `reports/`.
 | [learn-bases.md](learn-bases.md) | Learning material: what a base is, Stage 2 and base counts, the common base types, and a step-by-step guide to recognising a base while it is still forming |
 | [learn-vcp.md](learn-vcp.md) | Learning material: the volatility contraction pattern — anatomy and footprint, reading one step by step, pivot and cheat entries, stops, common mistakes, how the app detects it and what the backtests found |
 | [learn-candlestick-patterns.md](learn-candlestick-patterns.md) | Learning material: reading candles — anatomy, the single/two/three-bar patterns, context rules, and how the screener's candle commentary uses them |
+| [learn-support-resistance.md](learn-support-resistance.md) | Learning material: drawing support and resistance — zones not lines, the timeframe stack, wicks versus bodies and zone width, grading a level, the kinds of levels, breakouts, false breakouts, retests and new highs, common mistakes, the evidence, and a checklist |
 | [learn-supply-demand.md](learn-supply-demand.md) | Learning material: supply and demand — why levels exist, identifying demand/supply zones and role reversal, a zone-scoring checklist, and how the strategies here already use the same mechanics (overhead supply, capped targets, stops under demand) |
 
 Files named `learn-*.md` are teaching material, not findings; the web app
