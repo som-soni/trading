@@ -336,9 +336,26 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
                            f"more than {p.max_closes_below_200}")
         return out
 
-    # ---- the cheat shelf, recorded for ANY legitimate base (VCP-01/02/03), whether
-    # or not the contraction gates below ever pass. Where the shelf sits in the base
-    # is what separates a low cheat from a cheat from the pivot buy.
+    # ---- VCP-05: the depth of the BASE, high to its lowest low since.
+    #
+    # Checked HERE, before the cheat shelf, because depth belongs to the base rather than to the
+    # contraction sequence: v2 §MV-03/04 requires a cheat to clear "base high, advance, depth, age,
+    # trend during base" -- Gate 2 -- and only the CONTRACTION gates (Gate 3) are waived, because a
+    # cheat is taken while the base is still forming and the sequence is not finished yet. Measured
+    # from the contraction section, where this used to sit, it let a cheat fire on a base deeper
+    # than the limit.
+    base_depth = (high[bh_i] - base_low) / high[bh_i] * 100 if high[bh_i] > 0 else float("nan")
+    out["base_depth_pct"] = base_depth
+    out["deep_base"] = bool(base_depth == base_depth and base_depth > p.deep_base_flag_pct)
+    if base_depth == base_depth and base_depth > p.max_base_depth_pct:
+        out["fail"] = "VCP-05"
+        out["fail_why"] = (f"the base is {base_depth:.1f}% deep, more than "
+                           f"{p.max_base_depth_pct:g}%")
+        return out
+
+    # ---- the cheat shelf, recorded for any base that clears VCP-01/02/03/05 -- the base's own
+    # qualifications -- whether or not the CONTRACTION gates below ever pass. Where the shelf sits
+    # in the base is what separates a low cheat from a cheat from the pivot buy.
     span = high[bh_i] - base_low
     sh = d.iloc[-p.cheat_shelf_days:]
     sh_hi, sh_lo = float(sh["high"].max()), float(sh["low"].min())
@@ -420,16 +437,6 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         out["fail"] = "VCP-04"
         return out
     out["many_contractions"] = len(legs) > p.max_contractions
-    # VCP-05: the depth of the BASE, measured from its high to its lowest low since.
-    base_depth = (high[bh_i] - base_low) / high[bh_i] * 100 if high[bh_i] > 0 else float("nan")
-    out["base_depth_pct"] = base_depth
-    out["deep_base"] = bool(base_depth == base_depth and base_depth > p.deep_base_flag_pct)
-    if base_depth == base_depth and base_depth > p.max_base_depth_pct:
-        out["fail"] = "VCP-05"
-        out["fail_why"] = (f"the base is {base_depth:.1f}% deep, more than "
-                           f"{p.max_base_depth_pct:g}%")
-        return out
-
     # ---- VCP-06, the reset rule (v2 §3.3-3.4)
     #
     # The REFERENCE is the most recent widening -- a contraction more than `widen_tol` times the

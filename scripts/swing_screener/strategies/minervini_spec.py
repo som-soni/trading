@@ -462,8 +462,22 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.15"
+    version = "1.16"
     changelog = (
+        ("1.16", "2026-10-19",
+         "A cheat entry now requires the base's own DEPTH, not just its advance, age and trend. "
+         "VCP-05 ran inside the contraction section, after the cheat shelf was already recorded, so "
+         "MV-03/MV-04 could fire on a base deeper than MAX_BASE_DEPTH_PCT. v2 §MV-03/04 asks a cheat "
+         "to clear 'base high, advance, depth, age, trend during base' -- Gate 2 -- and waives only "
+         "the CONTRACTION gates, because a cheat is taken while the base is still forming and the "
+         "sequence is not finished yet. Depth belongs to the base, so it is checked with the rest "
+         "of Gate 2. "
+         "Measured on 562 Indian symbols: 32 bases offer a cheat and none now sits on a base over "
+         "{MAX_BASE_DEPTH_PCT}% (the funnel is otherwise unchanged, and the golden harness is "
+         "identical across 1,680 snapshots) -- so this closes a hole rather than changing today's "
+         "behaviour. "
+         "BUMPED BY HAND. No numeric constant moved, so the fingerprint cannot see this and the "
+         "version gate would not have asked for it."),
         ("1.15", "2026-10-18",
          "Documentation, and one number rounded so it can be read. UPPER_ZONE is 0.67 rather than "
          "2/3: the doc renderer prints a float as it is, so the page said 'the pivot sits 0.666667 "
@@ -693,8 +707,22 @@ class MinerviniSpecStrategy(Strategy):
     key = "minervini"
     name = "Minervini SEPA"
     family = "minervini"
-    version = "1.15"
+    version = "1.16"
     changelog = (
+        ("1.16", "2026-10-19",
+         "A cheat entry now requires the base's own DEPTH, not just its advance, age and trend. "
+         "VCP-05 ran inside the contraction section, after the cheat shelf was already recorded, so "
+         "MV-03/MV-04 could fire on a base deeper than MAX_BASE_DEPTH_PCT. v2 §MV-03/04 asks a cheat "
+         "to clear 'base high, advance, depth, age, trend during base' -- Gate 2 -- and waives only "
+         "the CONTRACTION gates, because a cheat is taken while the base is still forming and the "
+         "sequence is not finished yet. Depth belongs to the base, so it is checked with the rest "
+         "of Gate 2. "
+         "Measured on 562 Indian symbols: 32 bases offer a cheat and none now sits on a base over "
+         "{MAX_BASE_DEPTH_PCT}% (the funnel is otherwise unchanged, and the golden harness is "
+         "identical across 1,680 snapshots) -- so this closes a hole rather than changing today's "
+         "behaviour. "
+         "BUMPED BY HAND. No numeric constant moved, so the fingerprint cannot see this and the "
+         "version gate would not have asked for it."),
         ("1.15", "2026-10-18",
          "Documentation, and one number rounded so it can be read. UPPER_ZONE is 0.67 rather than "
          "2/3: the doc renderer prints a float as it is, so the page said 'the pivot sits 0.666667 "
