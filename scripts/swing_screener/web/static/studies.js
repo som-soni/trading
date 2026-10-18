@@ -636,49 +636,62 @@ const Studies = (() => {
     sr: { name: "Support & Resistance (zones)", short: "S/R", cat: "Support & resistance", overlay: true, custom: true,
       label: (p) => `S/R zones${p.levels === "Key levels (3 each side)" ? " · key levels" : ""}`,
       params: { levels: { type: "select", def: "All graded levels", options: ["All graded levels", "Key levels (3 each side)"] },
-        periods: { type: "select", def: "Show", options: ["Show", "Hide"] },
+        labels: { type: "select", def: "Short", options: ["Short", "Full", "None"] },
+        periods: { type: "select", def: "Hide", options: ["Hide", "Show"] },
         axis: { type: "select", def: "Show", options: ["Show", "Hide"] } },
-      plots: [{ k: "res", t: "Resistance", c: "#f23645" }, { k: "sup", t: "Support", c: "#089981" }, { k: "per", t: "Previous period high / low", c: "#8a8a8a" }],
+      plots: [{ k: "res", t: "Resistance", c: "#f23645" }, { k: "sup", t: "Support", c: "#089981" }, { k: "piv", t: "Pivot (price inside the zone)", c: "#ff9800" },
+        { k: "per", t: "Previous period high / low", c: "#8a8a8a" }],
       draw({ main, times, p, col, tf, ctx, id }) {
         if (!["D", "W"].includes(tf) || !ctx.annotate) return { series: [], note: "daily or weekly charts only", setVisible() {} };
         let on = true, shapes = [], specs = [], lines = [];
         const NAME = { M: "monthly", W: "weekly", D: "daily" };
         const paint = () => {
-          ctx.annotate(id, on ? shapes : [], { support: col("sup"), resistance: col("res"), period: col("per") });
+          ctx.annotate(id, on ? shapes : [], { support: col("sup"), resistance: col("res"), pivot: col("piv"), period: col("per") });
           lines.forEach((l) => main.removePriceLine(l));
           lines = on && p.axis !== "Hide" ? specs.map((o) => main.createPriceLine(o)) : [];
         };
         fetch(`/api/sr-levels/${ctx.market}/${encodeURIComponent(ctx.symbol)}?tf=${tf}`).then((x) => (x.ok ? x.json() : null)).then((r) => {
           if (!r) return setNote(id, "could not load the levels");
           const last = times.at(-1), higher = r.stack[0], labelAt = times[Math.max(0, times.length - 40)];
-          // labels in words: "Support · weekly · 6/7 · 3 touches", "Support (was resistance)", "worn"
-          const tagsOf = (z) => [`${z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? ` (was ${z.role === "resistance" ? "support" : "resistance"})` : ""}`,
-            NAME[z.tf], `scores ${z.score}/${z.of}`, `${z.touches.length} touch${z.touches.length > 1 ? "es" : ""}`,
+          // labels in words. Short: "Support · weekly". Full adds the evidence: grade, distinct visits,
+          // height ÷ the zone's own timeframe's ATR, worn. None: the zones speak for themselves.
+          const roleWord = (z) => z.role === "pivot" ? "Pivot — price inside" : `${z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? ` (was ${z.role === "resistance" ? "support" : "resistance"})` : ""}`;
+          const tagsOf = (z) => p.labels === "None" ? [] : p.labels !== "Full" ? [roleWord(z), NAME[z.tf], ...(z.wide ? ["wide"] : [])] : [roleWord(z),
+            NAME[z.tf], `scores ${z.score}/${z.of}`, `${z.touches.length} visit${z.touches.length > 1 ? "s" : ""}`,
+            // the height check: zone height ÷ the ATR of the zone's own timeframe — "wide" may mean two levels
+            ...(z.height_atr != null ? [`${z.height_atr.toFixed(1)} × ${NAME[z.atr_tf || z.tf]} ATR tall${z.wide ? " (wide)" : ""}`] : []),
             ...(z.worn ? ["worn"] : []), ...(z.inside ? ["price inside"] : [])];
           // with "All graded levels", the zones that passed the grade but are not among the nearest
           // three each side: dashed outlines, no fill, still labelled — the market's older turning
           // points, there when the view scrolls back, without competing with the key levels
           const extra = p.levels === "Key levels (3 each side)" ? [] : (r.others || []).flatMap((z) => [
             { shape: "box", frame: true, dash: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role, label: "" },
-            { shape: "text", at: labelAt, price: z.top, role: z.role, label: tagsOf(z).join(" · ") }]);
+            ...(p.labels === "None" ? [] : [{ shape: "text", at: labelAt, price: z.top, role: z.role, label: tagsOf(z).join(" · ") }])]);
           shapes = extra.concat(r.zones.flatMap((z) => {
             const tags = tagsOf(z);
             const big = z.tf === higher;   // the higher timeframe's zones carry more weight: drawn heavier
             return [
               big ? { shape: "box", from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role, label: "" }
                   : { shape: "box", shade: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role },
-              ...(big ? [] : [{ shape: "level", from: z.from, to: last, price: z.line, role: z.role, dash: true, label: "" }]),
+              // the reference levels, dashed: where the reactions concentrate (two for a merged zone);
+              // the near edge is on the price axis, for alerts
+              ...(z.refs || [z.reference ?? z.line]).map((x) => ({ shape: "level", from: z.from, to: last, price: x, role: z.role, dash: true, label: "" })),
               // the label beside the latest bars, where the eye is — a zone's left edge is often years back
-              { shape: "text", at: labelAt, price: z.top, role: z.role, label: tags.join(" · ") },
+              ...(tags.length ? [{ shape: "text", at: labelAt, price: z.top, role: z.role, label: tags.join(" · ") }] : []),
             ];
           }));
-          if (p.periods !== "Hide")   // (a study saved before these settings existed has neither: both default on)
-            shapes.push(...r.lines.map((l) => ({ shape: "level", from: l.from, to: last, price: l.price, role: "period", dash: true, label: l.label })));
+          // previous period highs and lows: off unless asked for, they crowd the zones (the next round
+          // number above an all-time high is not one of them: it is the only level there, so it always shows)
+          shapes.push(...r.lines.filter((l) => p.periods === "Show" || l.kind === "round_above")
+            .map((l) => ({ shape: "level", from: l.from, to: last, price: l.price, role: "period", dash: true, label: l.label })));
           // the near edge of each zone on the price axis — the single line to set an alert on
-          specs = r.zones.map((z) => ({ price: z.line, color: col(z.role === "resistance" ? "res" : "sup"), lineWidth: z.tf === higher ? 2 : 1,
-            lineStyle: 2, axisLabelVisible: true, title: `${z.role === "resistance" ? "Resistance" : "Support"} · ${NAME[z.tf]}` }));
+          specs = r.zones.map((z) => ({ price: z.line, color: col(z.role === "resistance" ? "res" : z.role === "pivot" ? "piv" : "sup"), lineWidth: z.tf === higher ? 2 : 1,
+            lineStyle: 2, axisLabelVisible: true, title: `${z.role === "resistance" ? "Resistance" : z.role === "pivot" ? "Pivot" : "Support"} · ${NAME[z.tf]}` }));
           const nS = r.zones.filter((z) => z.role === "support").length;
-          setNote(id, `${NAME[higher]} + ${NAME[r.stack[1]]} · ${nS} support, ${r.zones.length - nS} resistance (key)${extra.length ? ` + ${extra.length / 2} more graded, dashed` : ""}${r.note ? " · " + r.note : ""}`);
+          const nR = r.zones.filter((z) => z.role === "resistance").length, nP = r.zones.length - nS - nR;
+          setNote(id, `${NAME[higher]} + ${NAME[r.stack[1]]} · ${nS} support, ${nR} resistance${nP ? `, ${nP} pivot (price inside)` : ""} (key)`
+            + `${extra.length ? ` + ${extra.length / 2} more graded, dashed` : ""}${r.note ? " · " + r.note : ""}`
+            + `${r.earnings_sessions != null ? ` · ⚠ earnings in ${r.earnings_sessions} session${r.earnings_sessions === 1 ? "" : "s"}: levels near price are less reliable through the report` : ""}`);
           paint();
         }).catch(() => setNote(id, "could not load the levels"));
         return { series: [], note: "finding levels…", setVisible: (v) => { on = v; paint(); } };

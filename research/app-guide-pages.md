@@ -234,11 +234,18 @@ On first use the chart shows the 20-, 50- and 200-day SMA, Volume and RSI. Two s
 indicators: **Screener levels** draws a strategy's entry, stop and target, and **Chart patterns (live
 detection)** runs the chart-pattern detectors on stored prices. **Support & Resistance (zones)** is computed
 on the server (`core/sr_levels.py`, `/api/sr-levels`): weekly zones first, then daily (monthly then weekly on a
-weekly chart); turning points that drew a clear reaction, clustered into zones ¼–1 ATR wide spanning the wick
-and body clusters, graded on seven factors (kept at 3+), at most three each side of price; broken zones keep
-their new role ("S (was R)"), zones crossed repeatedly are dropped, and a zone tested five or more times is
-marked worn. Higher-timeframe zones are drawn heavier; each zone's near edge is on the price axis; the previous
-week's and month's high and low are dashed grey lines. **Supply & Demand Zones** is computed on the
+weekly chart); turning points that drew a clear reaction, clustered (reactions spread over more than 1 ATR are
+separate levels) into zones drawn from the structure — wick extremes to the body cluster, never stretched or
+trimmed to an ATR band; a lone spike wick neither sets an edge nor counts as a touch. A weekly zone takes its
+edges, touches and start from the daily turns inside it, and two same-role zones less than half an ATR apart
+become one zone with both reference levels. Touches are distinct visits (price must close half an ATR outside the
+zone before another counts). Each zone carries its height ÷ the ATR of its own timeframe ("wide" above 1.5), its
+grade on seven factors (kept at 3+), its role ("Support (was resistance)") and "worn" at five or more visits; zones
+crossed repeatedly are dropped. The three best each side are the key levels (filled, near edge on the price axis,
+dashed reference lines where the reactions concentrate); "All graded levels" (the default) also draws the other
+graded zones as dashed outlines. Labels are Short by default ("Support · weekly"); Full adds grade, visits and
+height; None hides them. The previous week's and month's high and low are off by default (setting "Previous
+periods"). **Supply & Demand Zones** is computed on the
 server too (`core/sd_zones.py`, `/api/sd-zones`), on daily or weekly bars: the base each decisive move left
 from, its proximal (body) and distal (wick) edges, extended right until a close through the distal edge,
 with its retests numbered. By default it shows the active zones nearest the last close; the **Zones** panel

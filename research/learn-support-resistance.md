@@ -4,9 +4,9 @@
 
 - Support is a price area below the market where buyers have stepped in before. Resistance is an area above it where sellers have. Draw them as zones, not exact lines.
 - Start on the weekly chart and work down. A level must be earned: price turned there clearly, ideally more than once and from both sides.
-- Draw each zone from where the candle bodies cluster to where the wicks reach. Ignore a lone spike, and keep the zone no wider than a typical bar's range.
+- Draw each zone from where the candle bodies cluster to where the wicks reach, ignoring a lone spike. Its height comes from those reactions; the average bar range is only a check.
 - Grade every level and keep only a handful near price. A broken level is kept and relabelled, because old resistance often becomes support.
-- Levels mark where to pay attention, not what will happen. Measured on stored prices, zones drawn by fixed rules held no more often than chance; only levels that had flipped roles did a little better.
+- Levels mark where to pay attention, not what will happen. Measured on stored prices, zones drawn by fixed rules held no more often than chance, however well they were graded.
 
 This guide is about drawing horizontal levels: which turning points count, how wide a zone is, how to grade it, and what to do in common situations. Why levels exist, and the demand and supply zones a strong move starts from, are in [Supply and demand](learn-supply-demand.md).
 
@@ -82,9 +82,27 @@ The usual compromise uses both:
 - **The other edge goes where the wicks reach.** For support, the lower wicks; for resistance, the upper ones.
 - **Ignore a single wick that sticks out alone.** It was probably a spike, and including it makes the zone too wide to use.
 
-As a guide to width, keep a zone no wider than about one typical bar's range on its timeframe. The average true range (ATR) measures that range. If a zone must be wider to cover every turn, it may really be two levels, or a weak area that deserves no zone at all.
+**How tall should a zone be?** There is no fixed height, and certainly not a fixed share of the price. A zone is as tall as the reactions that made it, and no taller. Suppose a stock near ₹1,000 turned three times with wicks reaching ₹980 and bodies settling near ₹1,000. The zone runs from ₹980 to ₹1,000 because that is where price reacted. That it happens to be 2% of the price is beside the point.
 
-When you need a single line, for an alert, use the edge price will reach first. For support that is the top edge; for resistance, the bottom.
+Then check the height against the typical bar range, the average true range (ATR), of the timeframe the zone comes from. Measure a daily zone against the daily ATR and a weekly zone against the weekly ATR. Divide the zone's height by it:
+
+| Height ÷ ATR | What it suggests |
+|---|---|
+| Far below a quarter | Very precise. Fine if the turns really were that tight, but check you did not draw from one bar |
+| A quarter to one | The usual range for a well-defined level |
+| Well over one | Look again: it may be two levels in one, or a broad, weak area |
+
+These are prompts to look again, not rules. A zone narrower or wider than usual is not wrong if the chart drew it that way. Do not stretch a precise zone to a standard width, or trim a broad one to fit. Split a too-wide zone where its reactions fall into two groups.
+
+Judge usability on the chart you trade from. A weekly zone can be a fine weekly level and still be too tall to place a stop on a daily chart. Then mark the separate reaction bands inside it as their own zones.
+
+The reverse also happens: two zones drawn close together may be one area. Keep them apart only if a clear gap or a separate swing divides them. Otherwise draw one zone and mark both reaction levels inside it.
+
+**The reference line.** Inside a zone, mark the price where the reactions bunch, not automatically the midpoint. Turns often crowd toward one edge, and that edge is what traders remember.
+
+A weekly level is wider than a daily one, because a weekly bar is. On a daily chart, the daily turns inside a weekly zone show more precisely where price reacted.
+
+**Three cautions.** First, decide the zone before you trade it, and never widen it afterwards to make a level look as if it held. Second, zone height and stop distance are different things: the stop goes where the trade is proven wrong, with room for volatility, and need not sit on the zone's edge (see [Stops and exits](learn-risk-stops-exits.md)). Third, when you need a single line, for an alert, use the edge price will reach first: the top of support, the bottom of resistance. The midpoint is a useful reference inside the zone.
 
 ## 5. Grading a level
 
@@ -101,6 +119,8 @@ Not every level deserves the same trust. Score one point for each factor a level
 | Recency | A reaction within the recent history | Today's traders still remember it, and may hold positions there |
 
 Treat a level that scores well on several factors as strong, and one that scores on only one or two as weak.
+
+**Counting touches.** Count distinct visits, not every bar that overlaps the zone. Price that lingers inside a zone for weeks makes one visit, however many small swings it prints there. A new touch counts only after price has left the zone and come back. A pass straight through with no reaction is not a touch at all.
 
 **The touches debate.** More touches make a level better known, but each test also uses up orders waiting there. After several tests a level often weakens rather than strengthens. Repeated tests in quick succession, each bounce smaller, are a classic sign of a coming breakout. ICICI Bank's zone above was tested five times from below before price closed through it.
 
@@ -140,6 +160,8 @@ See [Indicators](learn-price-indicators.md) for moving averages and pivot points
 
 **A false breakout.** Price pushes through, triggers stops and breakout buyers, then reverses back inside. Warning signs are a long wick through the level with a close back inside, and thin volume on the break. A false breakout does not cancel the level; it often confirms that the level matters. Many traders widen the zone to include the new wick. See [Failed breakouts and bull traps](learn-strat-failed-breakouts.md).
 
+**Price inside a zone.** A zone is support only while price is above it, and resistance only while price is below it. When price sits inside, call it a pivot. It acts as support while price holds above it and as resistance once price closes below it. Labelling it by its past role invites a mistake: a "resistance" level below today's price, for instance.
+
 **A retest after a breakout.** Price often returns to the broken level before going on. A successful retest touches the zone, prints a rejection bar such as a long lower wick, and moves away. A close back through the zone means the breakout failed. The trade built on this is [Pullback to support](learn-strat-pullback-support.md).
 
 **At an all-time high.** There is no history above, so there is no resistance to draw. Use the old all-time high as support, and round numbers above as likely pauses. Do not invent resistance where none exists: strong trends at new highs can run much further than seems reasonable.
@@ -178,24 +200,23 @@ The record on trading the levels is weaker. Brock, Lakonishok and LeBaron (1992)
 
 | Zone touches | Touches | Held | Placebo held |
 |---|---|---|---|
-| India, support | 6,634 | 39.4% | 41.3% |
-| India, resistance | 8,915 | 38.9% | 37.9% |
-| US, support | 25,838 | 39.9% | 40.5% |
-| US, resistance | 32,516 | 33.8% | 35.1% |
+| India, support | 6,607 | 39.8% | 41.8% |
+| India, resistance | 8,951 | 38.7% | 38.8% |
+| US, support | 25,759 | 40.1% | 40.2% |
+| US, resistance | 32,293 | 33.8% | 34.8% |
 
-| Held minus placebo | Role reversed | Not reversed | Tested five or more times |
-|---|---|---|---|
-| India, support | +1.6 pts | −2.4 pts | −2.7 pts |
-| India, resistance | +2.5 pts | +0.8 pts | −1.7 pts |
-| US, support | +1.4 pts | −0.8 pts | +0.5 pts |
-| US, resistance | −0.4 pts | −1.3 pts | −3.1 pts |
+| Held minus placebo | Role reversed | Not reversed | Tested five or more times | Tested fewer times |
+|---|---|---|---|---|
+| India, support | −0.9 pts | −2.1 pts | −2.4 pts | −1.3 pts |
+| India, resistance | +2.2 pts | −0.3 pts | −0.8 pts | +0.5 pts |
+| US, support | +0.2 pts | −0.2 pts | −0.2 pts | 0.0 pts |
+| US, resistance | +1.3 pts | −1.2 pts | −1.1 pts | −1.0 pts |
 
 What this shows:
 
-- **The zones held no more often than chance.** The groups ranged from about two points below their placebo to one point above. A random price with the same distances did about as well.
+- **The zones held no more often than chance.** Every group came in between two points below its placebo and level with it. A random price with the same distances did as well.
 - **Grading did not help.** Zones scoring on five or more factors fared no better against their placebo than those scoring on three or four.
-- **Heavily tested levels did a little worse.** Zones already tested five or more times trailed their placebo by two to three points in three of the four groups. That fits the touches debate in section 5.
-- **Role reversal was the one small plus.** Levels that had flipped from resistance to support, or the reverse, beat the placebo by one and a half to two and a half points in three of the four groups. They were a small share of all touches.
+- **Neither did role reversal, or the number of tests.** Flipped levels beat the placebo in two groups and lagged it in two, by a point or two either way. Heavily tested levels did slightly worse than the rest in India and the same in the US.
 - **So use levels for planning, not prediction.** They tell you where a stop is beyond the obvious, where a target asks too much, and where to watch for a reaction. The reaction itself is the signal, not the level.
 
 ## 10. A checklist
@@ -205,7 +226,8 @@ Before you accept a level:
 - I found it on the highest timeframe first, or it fits between my higher-timeframe levels.
 - Price clearly turned there at least twice, or once with a very strong rejection.
 - I drew it as a zone, from the body cluster to the wick cluster, and ignored a lone spike.
-- It is no wider than about one typical bar's range on its timeframe.
+- Its height comes from the reactions, and I checked it against the ATR of its own timeframe; a very wide zone may be two levels, and two very close zones may be one.
+- I counted distinct visits, not every bar inside the zone, and marked the reference where the reactions bunch.
 - I checked it against round numbers, the main moving averages and the previous period's high and low.
 - I graded it, and it scores on several factors.
 - Another trader would probably draw something similar.

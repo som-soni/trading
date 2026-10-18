@@ -9,23 +9,34 @@ live here only, never in JavaScript. The procedure, top to bottom:
    (`swing` bars each side). It counts only if price then moved away clearly: a close at least
    {MIN_REACTION_ATR} ATR from the extreme within `reaction` bars. A lone giant spike bar (range over
    {SPIKE_ATR} ATR) with no second reaction draws no level.
-3. **Cluster, then draw a zone.** Turning points whose extremes lie within {MAX_ZONE_ATR} ATR of each
-   other are one area (the sorted turning prices are split at their widest gaps until each group fits). The zone spans the wick cluster and the body cluster (the median body edge of
-   the turning bars); a single wick sticking out more than {OUTLIER_ATR} ATR past the rest is ignored.
-   Width is held between {MIN_ZONE_ATR} and {MAX_ZONE_ATR} ATR — wider is trimmed on the far side. ATR is
-   taken as a share of price and applied at the zone's own price level.
-4. **Grade it** — one point per factor (`FACTORS`); a zone needs {MIN_SCORE} points, and two reactions
-   or one strong one. {STRONG_SCORE}+ is strong. A zone tested {WORN_TOUCHES}+ times is flagged worn:
-   each test uses up orders, so it is more likely to break.
-5. **Keep it after a break**, relabelled: a zone price has closed through takes the opposite role
-   (role reversal). A zone price has crossed {STALE_CROSSES}+ times since its last reaction is
-   dropped: the market no longer respects it.
-6. **Few and near.** The higher timeframe wins where zones overlap; a lower-timeframe zone is kept only
-   in the gaps, and a higher-timeframe zone takes its touches and start date from the chart timeframe's
-   reactions inside it (refining it). At most {MAX_PER_SIDE} zones each side of price, best graded
-   first, then nearest, are the key levels; the others that passed the grade are returned too.
-7. **Context lines**: the previous period's high and low; at an all-time high, where no resistance
-   exists, the next round number above (never an invented level).
+3. **Cluster, then draw each zone from the structure.** Reactions spread over more than {SPLIT_ATR} ATR are
+   separate levels (the sorted turning prices are split at their widest gaps until each group fits). A
+   zone spans what price did there — from the wick extremes to the body cluster (the median body edge of
+   the turning bars); a lone wick more than {OUTLIER_ATR} ATR past the rest is ignored and is not a touch.
+   Height is never stretched or trimmed to an ATR band. Touches are distinct visits: a new one counts
+   only after price closed {DEPART_ATR} ATR outside the zone. The reference line is where the reactions
+   concentrate (their median turning price), not the midpoint.
+4. **Refine the higher timeframe with the chart's own.** A weekly zone is redrawn from the daily turning
+   points inside it (finer structure; a weekly bar's body sits far from its wick), keeping its weekly
+   standing; a daily zone is kept only in the gaps between higher-timeframe zones.
+5. **Usable on the chart you are reading.** A zone taller than {WIDE_ATR} ATR of the chart's timeframe
+   is split at its widest internal gap, when each part stands on its own (two visits, or one strong
+   rejection); a part that no longer earns a level is retired; a zone that cannot be split is flagged
+   wide. Same-role zones less than {MERGE_GAP_ATR} ATR
+   apart become one zone with both reference lines — only if the result is not too tall to use.
+   Height ÷ the ATR of the zone's own timeframe is reported as the check.
+6. **Role from where price is now.** Below price: support. Above: resistance. Price inside: a **pivot**
+   — support while price holds above it, resistance once it closes below. A zone whose first reaction
+   was the opposite role is marked as reversed ("Support (was resistance)").
+7. **Grade it** — one point per factor (`FACTORS`); a zone needs {MIN_SCORE} points, and two reactions
+   or one strong one. {STRONG_SCORE}+ is strong. {WORN_TOUCHES}+ visits is flagged worn. A zone price has
+   crossed {STALE_CROSSES}+ times since its last reaction is dropped.
+8. **Few and near.** Key levels: any pivot, plus the nearest {MAX_PER_SIDE} graded zones each side (the
+   better grade breaking a tie). The others that passed the grade are returned too.
+9. **Context lines**: the previous period's high and low; at an all-time high, where no resistance
+   exists, the next round number above (never an invented level). With earnings within
+   {EARNINGS_WARN_SESSIONS} sessions the chart says so: a report often carries price straight through
+   nearby levels.
 
 Levels describe where price reacted; they make no trade decision.
 """
@@ -33,6 +44,8 @@ Levels describe where price reacted; they make no trade decision.
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass, field
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -46,26 +59,30 @@ TF = {   # per timeframe: look-back, swing strength, bars to judge the reaction,
     "D": {"years": 1.5, "swing": 5, "reaction": 5, "recent": 126, "vol": 20},
 }
 STACK = {"D": ("W", "D"), "W": ("M", "W")}   # chart timeframe -> (higher, own)
+NAMES = {"M": "monthly", "W": "weekly", "D": "daily"}
 ATR_BARS = 14
 MIN_REACTION_ATR = 1.0      # a turning point counts when price closed this far away within `reaction` bars
 STRONG_REJECTION_ATR = 2.0  # ... and is a strong rejection at this distance
 SPIKE_ATR = 3.0             # a bar wider than this is a spike: alone, it draws no level
-MIN_ZONE_ATR = 0.25         # zone width, in ATR of its timeframe
-MAX_ZONE_ATR = 1.0
+SPLIT_ATR = 1.0             # reaction extremes spread wider than this are separate levels
+WIDE_ATR = 1.0              # taller than this (the chart timeframe's ATR) is too tall to use: split, else flagged
+DEPART_ATR = 0.5            # a new visit: price closed at least this far outside the zone since the last reaction
+MERGE_GAP_ATR = 0.5         # two same-role zones closer than this are one area, with two reference levels
 OUTLIER_ATR = 0.5           # a lone wick this far beyond the rest is ignored
 VOLUME_HIGH = 1.5           # reaction volume vs the prior bars' average, for the volume point
 MIN_SCORE = 3               # points to keep a zone ...
 STRONG_SCORE = 5            # ... and to call it strong
-WORN_TOUCHES = 5            # tests at which a level is more likely to break than hold
+WORN_TOUCHES = 5            # visits at which a level is more likely to break than hold
 STALE_CROSSES = 3           # closes through a zone since its last reaction that retire it
 MAX_PER_SIDE = 3            # zones kept each side of price
 ATH_NEAR_PCT = 3.0          # within this of the all-time high: no historical resistance above
+EARNINGS_WARN_SESSIONS = 10 # earnings this close: levels near price are less reliable through the report
 
 FACTORS = {
-    "timeframe": "Found on the higher timeframe",
+    "timeframe": "Found on the weekly or monthly chart",
     "rejection": f"Strong rejection — price closed {STRONG_REJECTION_ATR} ATR away within a few bars",
     "reversal": "Role reversal — acted as both support and resistance",
-    "touches": f"Two to {WORN_TOUCHES - 1} clean reactions",
+    "touches": f"Two to {WORN_TOUCHES - 1} distinct visits",
     "volume": f"High volume on a reaction — at least {VOLUME_HIGH}× the prior bars' average",
     "confluence": "Confluence — a round number or the 50- or 200-bar average inside the zone",
     "recency": "Recent — a reaction within the last year or so of bars",
@@ -121,90 +138,166 @@ def _turning_points(df: pd.DataFrame, tf: str) -> list[dict]:
     return [p for p in out if p["reaction_atr"] >= MIN_REACTION_ATR]
 
 
-def _zones_for(df: pd.DataFrame, tf: str, higher: bool, confluence: list[float]) -> list[dict]:
-    c = TF[tf]
-    if len(df) < ATR_BARS + 2 * c["swing"] + 2:
-        return []
-    atr_now = float(ind.atr(df, ATR_BARS).iloc[-1])
-    close = float(df["close"].iloc[-1])
-    # ATR as a share of price, applied at each zone's own price: a stock that went from 30 to 2,000
-    # must not get 200-point zones down at 30
-    ap = atr_now / close
-    unit = lambda price: ap * price  # noqa: E731
-    cut = df.index[-1] - pd.DateOffset(months=int(c["years"] * 12))
-    first = int(np.searchsorted(df.index.values, np.datetime64(cut)))
-    pts = sorted((p for p in _turning_points(df, tf) if p["i"] >= first), key=lambda p: p["wick"])
-    cl = df["close"].to_numpy(float)
-    n = len(df)
-    # Cluster on the turning price by splitting at the widest gap until every group spans at most
-    # MAX_ZONE_ATR. (Growing groups upward from the lowest price instead lets a group swallow the
-    # next point merely because it fits, and breaks a natural cluster in two.)
+def _edges(g: list[dict], u: float) -> tuple[float, float, list[dict]]:
+    """A zone from the structure of its turning points: the wick extremes (a lone wick more than
+    OUTLIER_ATR beyond the rest dropped) and the median body edge. Nothing is stretched or trimmed.
+    Returns the edges and the turning points kept — a dropped spike is not a touch either."""
+    pts = sorted(g, key=lambda p: p["wick"])
+    if len(pts) >= 3:
+        if pts[1]["wick"] - pts[0]["wick"] > OUTLIER_ATR * u:
+            pts = pts[1:]
+        if pts[-1]["wick"] - pts[-2]["wick"] > OUTLIER_ATR * u:
+            pts = pts[:-1]
+    body = float(np.median([p["body"] for p in pts]))
+    return min(pts[0]["wick"], body), max(pts[-1]["wick"], body), pts
+
+
+def _visits(touches: list[dict], cl: np.ndarray, lo: float, hi: float, u: float) -> list[dict]:
+    """Distinct approaches, not every turning point of one long stay: consecutive reactions are one visit
+    unless price closed at least DEPART_ATR outside the zone between them. Each visit is represented by
+    its strongest reaction."""
+    out: list[list[dict]] = []
+    for p in sorted(touches, key=lambda p: p["i"]):
+        if out:
+            between = cl[out[-1][-1]["i"] + 1:p["i"]]
+            left = len(between) and ((between > hi + DEPART_ATR * u).any() or (between < lo - DEPART_ATR * u).any())
+            if not left:
+                out[-1].append(p)
+                continue
+        out.append([p])
+    return [max(v, key=lambda p: p["reaction_atr"]) for v in out]
+
+
+@dataclass
+class _Frame:
+    """One timeframe's bars and the measures every zone drawn on them needs."""
+    tf: str
+    df: pd.DataFrame
+    close: float                      # the chart's last close (role and distance are judged against it)
+    conf: list[float]                 # moving averages, for the confluence point
+    cl: np.ndarray = field(init=False)
+    ap: float = field(init=False)     # ATR as a share of price
+    pts: list[dict] = field(init=False)
+    first: int = field(init=False)    # first bar of the look-back
+
+    def __post_init__(self):
+        self.cl = self.df["close"].to_numpy(float)
+        self.ap = float(ind.atr(self.df, ATR_BARS).iloc[-1]) / float(self.df["close"].iloc[-1])
+        cut = self.df.index[-1] - pd.DateOffset(months=int(TF[self.tf]["years"] * 12))
+        self.first = int(np.searchsorted(self.df.index.values, np.datetime64(cut)))
+        self.pts = [p for p in _turning_points(self.df, self.tf) if p["i"] >= self.first]
+
+    def unit(self, price: float) -> float:
+        """One ATR at `price` (ATR as a share of price, applied at the zone's own level: a stock that went
+        from 30 to 2,000 must not get 200-point zones down at 30)."""
+        return self.ap * price
+
+
+def _zone(pts: list[dict], fr: _Frame, tf: str, accept: bool = True) -> dict | None:
+    """One zone from turning points `pts` on frame `fr`, standing as a `tf` level: its edges, visits, role,
+    grade. None when it does not earn a level (or, with `accept`, does not pass the grade)."""
+    if not pts:
+        return None
+    u = fr.unit(float(np.median([p["wick"] for p in pts])))
+    lo, hi, kept = _edges(pts, u)
+    visits = _visits(kept, fr.cl, lo, hi, u)
+    last_i = max(p["i"] for p in kept)
+    side = [1 if x > hi else -1 if x < lo else 0 for x in fr.cl[last_i + 1:]]
+    nz = [x for x in side if x]
+    if sum(1 for a, b in zip(nz, nz[1:]) if a != b) >= STALE_CROSSES:
+        return None   # crossed again and again since it last mattered
+    strong = any(p["reaction_atr"] >= STRONG_REJECTION_ATR for p in kept)
+    nv = len(visits)
+    step = round_step(fr.close)
+    rnd = math.floor(hi / step) * step
+    factors = {
+        "timeframe": tf in ("W", "M"),
+        "rejection": strong,
+        "reversal": len({p["kind"] for p in kept}) == 2,
+        "touches": 2 <= nv < WORN_TOUCHES,
+        "volume": any((p["volume"] or 0) >= VOLUME_HIGH for p in kept),
+        "confluence": rnd >= lo or any(lo <= x <= hi for x in fr.conf),
+        "recency": last_i >= len(fr.df) - TF[fr.tf]["recent"],
+    }
+    score = sum(factors.values())
+    if accept and (not (nv >= 2 or strong) or (nv == 1 and kept[0]["spike"]) or score < MIN_SCORE):
+        return None
+    ref = float(min(hi, max(lo, np.median([p["wick"] for p in visits]))))
+    z = {"tf": tf, "top": float(hi), "bottom": float(lo), "refs": [ref],
+         "score": int(score), "of": len(FACTORS), "strong": score >= STRONG_SCORE, "worn": nv >= WORN_TOUCHES,
+         "factors": factors, "round": float(rnd) if rnd >= lo else None,
+         "touches": [{"date": p["date"], "price": p["wick"], "kind": p["kind"], "reaction_atr": round(p["reaction_atr"], 2)}
+                     for p in visits],
+         "from": visits[0]["date"], "first_kind": visits[0]["kind"], "_pts": kept, "_fr": fr}
+    _place(z, fr.close)
+    return z
+
+
+def _place(z: dict, close: float) -> None:
+    """Role from where price is now; the alert line at the near edge; reversed when it began the other way."""
+    if close > z["top"]:
+        z["role"], z["line"] = "support", z["top"]
+    elif close < z["bottom"]:
+        z["role"], z["line"] = "resistance", z["bottom"]
+    else:
+        z["role"], z["line"] = "pivot", min(z["refs"], key=lambda x: abs(x - close))
+    z["inside"] = z["role"] == "pivot"
+    formed = "resistance" if z["first_kind"] == "H" else "support"
+    z["flipped"] = z["role"] != "pivot" and formed != z["role"]
+
+
+def _split_wide(z: dict, chart: _Frame) -> list[dict]:
+    """A zone too tall to use on the chart being read is split at its widest internal gap, when each part
+    stands on its own (two turning points, or one strong rejection) and passes the grade; recursively."""
+    if z["top"] - z["bottom"] <= WIDE_ATR * chart.unit(z["refs"][0]):
+        return [z]
+    pts = sorted(z["_pts"], key=lambda p: p["wick"])
+    if len(pts) >= 2:
+        k = max(range(1, len(pts)), key=lambda j: pts[j]["wick"] - pts[j - 1]["wick"])
+        parts = [pts[:k], pts[k:]]
+        if all(len(g) >= 2 or any(p["reaction_atr"] >= STRONG_REJECTION_ATR for p in g) for g in parts):
+            # a part that no longer earns a level (crossed again and again since, or too weak) is retired;
+            # the parts that stand are kept
+            made = [m for g in parts if (m := _zone(g, z["_fr"], z["tf"]))]
+            if made:
+                return [y for m in made for y in _split_wide(m, chart)]
+    z["wide"] = True
+    return [z]
+
+
+def _merge(zones: list[dict], chart: _Frame) -> list[dict]:
+    """Same-role zones closer than MERGE_GAP_ATR are one area — one zone keeping both reference lines —
+    unless the result would be too tall to use on the chart being read."""
+    out: list[dict] = []
+    for z in sorted(zones, key=lambda z: z["bottom"]):
+        prev = out[-1] if out else None
+        if (prev and prev["role"] == z["role"] and prev["_fr"] is z["_fr"] and prev["tf"] == z["tf"]
+                and z["bottom"] - prev["top"] < MERGE_GAP_ATR * z["_fr"].unit(z["bottom"])
+                and max(prev["top"], z["top"]) - prev["bottom"] <= WIDE_ATR * chart.unit(z["bottom"])):
+            m = _zone(prev["_pts"] + z["_pts"], z["_fr"], z["tf"], accept=False)
+            if m:
+                m["refs"] = sorted(prev["refs"] + z["refs"])
+                m["from"] = min(prev["from"], z["from"])
+                m["merged"] = True
+                _place(m, chart.close)
+                out[-1] = m
+                continue
+        out.append(z)
+    return out
+
+
+def _zones_for(fr: _Frame) -> list[dict]:
+    """Every graded zone on one timeframe's own turning points."""
+    pts = sorted(fr.pts, key=lambda p: p["wick"])
+
     def split(g: list[dict]) -> list[list[dict]]:
-        if len(g) < 2 or g[-1]["wick"] - g[0]["wick"] <= MAX_ZONE_ATR * unit(g[0]["wick"]):
+        # split at the widest gap until each group spans at most SPLIT_ATR (growing groups upward from
+        # the lowest price instead lets a group swallow the next point merely because it fits)
+        if len(g) < 2 or g[-1]["wick"] - g[0]["wick"] <= SPLIT_ATR * fr.unit(g[0]["wick"]):
             return [g]
         k = max(range(1, len(g)), key=lambda j: g[j]["wick"] - g[j - 1]["wick"])
         return split(g[:k]) + split(g[k:])
-    groups = split(pts) if pts else []
-    step = round_step(close)
-    out = []
-    for g in groups:
-        wicks = sorted(p["wick"] for p in g)
-        u = unit(float(np.median(wicks)))
-        if len(wicks) >= 3:   # a lone spike wick sticking out beyond the rest is not the level
-            if wicks[1] - wicks[0] > OUTLIER_ATR * u:
-                wicks = wicks[1:]
-            if wicks[-1] - wicks[-2] > OUTLIER_ATR * u:
-                wicks = wicks[:-1]
-        body = float(np.median([p["body"] for p in g]))
-        lo_, hi_ = min(wicks[0], body), max(wicks[-1], body)
-        mid = (lo_ + hi_) / 2
-        role = "support" if close > mid else "resistance"
-        if hi_ - lo_ > MAX_ZONE_ATR * u:   # trim the far side: the near edge is the one price meets
-            if role == "support":
-                lo_ = hi_ - MAX_ZONE_ATR * u
-            else:
-                hi_ = lo_ + MAX_ZONE_ATR * u
-        if hi_ - lo_ < MIN_ZONE_ATR * u:
-            pad = (MIN_ZONE_ATR * u - (hi_ - lo_)) / 2
-            lo_, hi_ = lo_ - pad, hi_ + pad
-        touches = sorted(g, key=lambda p: p["i"])
-        last_i = touches[-1]["i"]
-        # closes through the zone since its last reaction: a side change of the close, ignoring bars inside
-        side = [1 if x > hi_ else -1 if x < lo_ else 0 for x in cl[last_i + 1:]]
-        nz = [s for s in side if s]
-        crosses = sum(1 for a, b in zip(nz, nz[1:]) if a != b)
-        if crosses >= STALE_CROSSES:
-            continue
-        kinds = {p["kind"] for p in g}
-        strong = any(p["reaction_atr"] >= STRONG_REJECTION_ATR for p in g)
-        nt = len(g)
-        has_round = math.floor(hi_ / step) * step >= lo_
-        factors = {
-            "timeframe": higher,
-            "rejection": strong,
-            "reversal": len(kinds) == 2,
-            "touches": 2 <= nt < WORN_TOUCHES,
-            "volume": any((p["volume"] or 0) >= VOLUME_HIGH for p in g),
-            "confluence": has_round or any(lo_ <= x <= hi_ for x in confluence),
-            "recency": last_i >= n - c["recent"],
-        }
-        score = sum(factors.values())
-        if not (nt >= 2 or strong) or (nt == 1 and g[0]["spike"]) or score < MIN_SCORE:
-            continue
-        # its role now, and whether that is the reverse of how it formed
-        formed = "resistance" if kinds == {"H"} else "support" if kinds == {"L"} else None
-        inside = lo_ <= close <= hi_
-        out.append({
-            "tf": tf, "role": role, "top": float(hi_), "bottom": float(lo_),
-            "line": float(hi_ if role == "support" else lo_),   # the edge price reaches first
-            "inside": bool(inside), "flipped": bool(formed and formed != role),
-            "score": int(score), "of": len(FACTORS), "strong": score >= STRONG_SCORE,
-            "worn": nt >= WORN_TOUCHES, "factors": factors, "round": float(math.floor(hi_ / step) * step) if has_round else None,
-            "touches": [{"date": p["date"], "price": p["wick"], "kind": p["kind"],
-                         "reaction_atr": round(p["reaction_atr"], 2)} for p in touches],
-            "from": touches[0]["date"], "atr": u,
-        })
-    return out
+    return [z for g in (split(pts) if pts else []) if (z := _zone(g, fr, fr.tf))]
 
 
 def _period_lines(daily: pd.DataFrame, tf: str) -> list[dict]:
@@ -226,48 +319,47 @@ def _period_lines(daily: pd.DataFrame, tf: str) -> list[dict]:
 def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
     """Support and resistance for a chart of timeframe `tf` ("D" or "W"), from stored daily bars."""
     higher, own = STACK[tf]
-    frames = {t: bars(daily, t) for t in (higher, own)}
-    df = frames[own]
-    close = float(df["close"].iloc[-1])
-    period = _period_lines(daily, tf)
-    sma = [float(x) for x in (ind.sma(df["close"], 50).iloc[-1], ind.sma(df["close"], 200).iloc[-1]) if x == x]
-    conf = sma   # the scoring table's confluence: round numbers (per zone) and the moving averages
-    top = _zones_for(frames[higher], higher, True, conf)
-    # Refine each higher-timeframe zone with the chart timeframe's turning points inside it: its band
-    # stays (a weekly level is as wide as a weekly bar), but its touches and start come from the
-    # daily reactions — a weekly zone otherwise "starts" at its first weekly swing, months after the
-    # daily chart first turned there.
-    own_pts = _turning_points(df, own)
-    first_w = frames[higher].index[-1] - pd.DateOffset(months=int(TF[higher]["years"] * 12))
-    for z in top:
-        inside = sorted((p for p in own_pts if z["bottom"] <= p["wick"] <= z["top"] and df.index[p["i"]] >= first_w),
-                        key=lambda p: p["i"])
-        if len(inside) >= 2:
-            z["touches"] = [{"date": p["date"], "price": p["wick"], "kind": p["kind"],
-                             "reaction_atr": round(p["reaction_atr"], 2)} for p in inside]
-            z["from"] = min(z["from"], inside[0]["date"])
-            z["worn"] = len(inside) >= WORN_TOUCHES
-            z["refined"] = True
-    low = [z for z in _zones_for(df, own, False, conf)
-           if not any(z["bottom"] <= h["top"] and z["top"] >= h["bottom"] for h in top)]   # higher timeframe wins
-    allz = top + low
-    pick = []
+    hdf, odf = bars(daily, higher), bars(daily, own)
+    close = float(odf["close"].iloc[-1])
+    conf = [float(x) for x in (ind.sma(odf["close"], 50).iloc[-1], ind.sma(odf["close"], 200).iloc[-1]) if x == x]
+    hi_fr, own_fr = _Frame(higher, hdf, close, conf), _Frame(own, odf, close, conf)
+    top = []
+    for z in _zones_for(hi_fr):
+        # refine with the chart timeframe's turning points inside it: finer edges, the daily visits, the
+        # first daily reaction as its start — it stays a higher-timeframe level
+        inside = [p for p in own_fr.pts if z["bottom"] <= p["wick"] <= z["top"]]
+        r = _zone(inside, own_fr, higher, accept=False) if len(inside) >= 2 else None
+        if r:
+            r["from"] = min(r["from"], z["from"])
+            r["factors"]["timeframe"] = True
+            r["refined"] = True
+            z = r
+        top.append(z)
+    top = [y for z in _merge(top, own_fr) for y in _split_wide(z, own_fr)]
+    low = [z for z in _zones_for(own_fr)   # in the gaps the (split) higher-timeframe zones leave
+           if not any(z["bottom"] <= h["top"] and z["top"] >= h["bottom"] for h in top)]
+    allz = top + [y for z in _merge(low, own_fr) for y in _split_wide(z, own_fr)]
+    for z in allz:   # the check: height ÷ the ATR of the zone's own timeframe
+        fr = hi_fr if z["tf"] == higher else own_fr
+        z["reference"] = z["refs"][0] if len(z["refs"]) == 1 else (z["top"] + z["bottom"]) / 2
+        z["height_atr"] = round((z["top"] - z["bottom"]) / fr.unit(z["reference"]), 2)
+        z["atr_tf"] = z["tf"]
+        z.setdefault("wide", False)
+    # key levels: any pivot (price is in it), plus the nearest graded zones each side
+    pick = [z for z in allz if z["role"] == "pivot"]
     for role in ("support", "resistance"):
-        side = [z for z in allz if z["role"] == role]
-        side.sort(key=lambda z: (-z["score"], abs(z["line"] - close)))
+        side = sorted((z for z in allz if z["role"] == role), key=lambda z: (abs(z["line"] - close), -z["score"]))
         pick += side[:MAX_PER_SIDE]
     pick.sort(key=lambda z: -z["top"])
-    # the rest that passed the grade, for a chart that asks to see every graded level (drawn faint)
     others = sorted((z for z in allz if z not in pick), key=lambda z: -z["top"])
-    lines = list(period)
-    ath = float(daily["high"].max())
+    lines = list(_period_lines(daily, tf))
     note = None
-    if not any(z["role"] == "resistance" for z in pick) and close >= ath * (1 - ATH_NEAR_PCT / 100):
+    if not any(z["role"] == "resistance" for z in pick) and close >= float(daily["high"].max()) * (1 - ATH_NEAR_PCT / 100):
         step = round_step(close)
-        nxt = (math.floor(close / step) + 1) * step
-        lines.append({"kind": "round_above", "price": float(nxt), "label": "next round number — no historical resistance above",
-                      "from": str(df.index[-1].date())})
+        lines.append({"kind": "round_above", "price": float((math.floor(close / step) + 1) * step),
+                      "label": "next round number — no historical resistance above", "from": str(odf.index[-1].date())})
         note = "at an all-time high: no historical resistance above"
-    return {"tf": tf, "stack": [higher, own], "close": close, "zones": pick, "others": others, "lines": lines,
-            "factors": FACTORS, "note": note,
+    clean = lambda z: {k: v for k, v in z.items() if not k.startswith("_")}  # noqa: E731
+    return {"tf": tf, "stack": [higher, own], "close": close, "zones": [clean(z) for z in pick],
+            "others": [clean(z) for z in others], "lines": lines, "factors": FACTORS, "note": note,
             "considered": len(allz)}

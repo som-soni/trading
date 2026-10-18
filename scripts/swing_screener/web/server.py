@@ -1185,7 +1185,15 @@ def sr_levels(market: str, symbol: str, tf: str = "D"):
     if key not in _sr_cache:
         if len(_sr_cache) > 256:
             _sr_cache.clear()
-        _sr_cache[key] = {"as_of": key[3], **srl.levels(raw, tf)}
+        out = {"as_of": key[3], **srl.levels(raw, tf)}
+        try:   # stored dates only (the earnings job refreshes them): never a network call from here
+            from ..marketdata import earnings
+            with cache.offline():
+                days = earnings.load_earnings_days_away(market, [symbol]).get(symbol)
+            out["earnings_sessions"] = days if days is not None and 0 <= days <= srl.EARNINGS_WARN_SESSIONS else None
+        except Exception:  # noqa: BLE001 — a missing earnings file must not blank the levels
+            out["earnings_sessions"] = None
+        _sr_cache[key] = out
     return _sr_cache[key]
 
 
