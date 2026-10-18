@@ -128,13 +128,20 @@ class VcpParams:
     #: No longer a rejection: v2 §3.4 logs the count and flags more than this. A base with seven
     #: contractions is unusual, not invalid, and rejecting on it threw away the information.
     max_contractions: int = 6        # flag above this; see out["many_contractions"]
-    max_first_depth_pct: float = 35.0   # VCP-05
+    # VCP-05 is now BASE DEPTH, not the first contraction's depth (v2 §2.5). Most of Minervini's
+    # bases correct 10-35%, but deeper ones appear in bear markets and still produce leaders, so
+    # 35% is a quality flag and 50% is the limit. The first contraction is no longer capped on its
+    # own: §3.4 says the deepest contraction is "covered by base depth".
+    max_base_depth_pct: float = 50.0    # VCP-05: (base high - base low) / base high
+    deep_base_flag_pct: float = 35.0    # recorded as out["deep_base"], never a rejection
     higher_lows: bool = False        # VCP-07 (optional)
     tight_min_days: int = 5          # VCP-08: the final contraction must be at least this old
     upper_zone: float = 2 / 3        # VCP-09: pivot position in the base that counts as "upper"
     tight_pct: float = 10.0          # VCP-08: its range, and the final contraction, at most this deep
     pivot_near_high: float = 0.90    # VCP-09: pivot ≥ this × BH
-    dryup_ratio: float = 0.70        # VCP-10: tight-area volume ≤ this × its 50-day average
+    dryup_quiet_days: int = 2        # VCP-10, the alternative: this many very quiet sessions …
+    dryup_quiet_ratio: float = 0.5   # … each at or under this x the 50-day average
+    dryup_ratio: float = 0.80        # VCP-10: tight-area volume ≤ this × its 50-day average
     atr_shrink: float = 0.0          # VCP-11 (optional, 0 = off): ATR/close now ≤ this × ATR/close on BH's bar
     lookback: int = 460              # bars examined (base max + prior window + swing confirmation)
 
@@ -232,7 +239,8 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
            "base_low": None, "cheat_ok": False, "cheat_pivot": None, "cheat_low": None,
            "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None,
            "pivot_pos": None, "pivot_zone": None, "tight_days_actual": None,
-           "base_closes_below_200": None, "fail_why": None,
+           "base_closes_below_200": None, "fail_why": None, "base_depth_pct": None,
+           "deep_base": None, "dryup_quiet_days": None,
            "prior_low": None, "prior_low_date": None, "legs": [], "tight_from": None}
     d = daily.iloc[-p.lookback:]
     n = len(d)
@@ -298,6 +306,9 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         return out
     # VCP-03 (v2 §2.6): the base-start template is recorded, never required; what must hold is
     # that the long trend did not break while the base formed.
+    # Needed by VCP-05 (base depth) and VCP-09 (pivot position), so it is computed once here.
+    base_low = float(low[bh_i:].min())
+    out["base_low"] = base_low
     out["base_tt"] = _template_ok(d.iloc[bh_i])
     base = d.iloc[bh_i:]
     try:
@@ -326,12 +337,10 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # ---- the cheat shelf, recorded for ANY legitimate base (VCP-01/02/03), whether
     # or not the contraction gates below ever pass. Where the shelf sits in the base
     # is what separates a low cheat from a cheat from the pivot buy.
-    base_low = float(low[bh_i:].min())
     span = high[bh_i] - base_low
     sh = d.iloc[-p.cheat_shelf_days:]
     sh_hi, sh_lo = float(sh["high"].max()), float(sh["low"].min())
     sh_rng = (sh_hi - sh_lo) / sh_hi * 100 if sh_hi > 0 else float("nan")
-    out["base_low"] = base_low
     out["cheat_pivot"], out["cheat_low"], out["cheat_range_pct"] = sh_hi, sh_lo, sh_rng
     pos = (sh_hi - base_low) / span if span > 0 else float("nan")
     out["cheat_pos"] = pos
@@ -393,8 +402,14 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         out["fail"] = "VCP-04"
         return out
     out["many_contractions"] = len(legs) > p.max_contractions
-    if legs[0][2] > p.max_first_depth_pct:
+    # VCP-05: the depth of the BASE, measured from its high to its lowest low since.
+    base_depth = (high[bh_i] - base_low) / high[bh_i] * 100 if high[bh_i] > 0 else float("nan")
+    out["base_depth_pct"] = base_depth
+    out["deep_base"] = bool(base_depth == base_depth and base_depth > p.deep_base_flag_pct)
+    if base_depth == base_depth and base_depth > p.max_base_depth_pct:
         out["fail"] = "VCP-05"
+        out["fail_why"] = (f"the base is {base_depth:.1f}% deep, more than "
+                           f"{p.max_base_depth_pct:g}%")
         return out
 
     # ---- VCP-06, the reset rule (v2 §3.3-3.4)
@@ -472,9 +487,17 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     v_i = max(0, ta_start - 1)
     v50 = float(d["vol_sma50"].iloc[v_i]) if "vol_sma50" in d else float("nan")
     dry = float(ta["volume"].mean()) / v50 if v50 and v50 == v50 else float("nan")
-    out["dryup"] = dry
-    if not (dry <= p.dryup_ratio):
+    quiet = int((ta["volume"] <= p.dryup_quiet_ratio * v50).sum()) if v50 and v50 == v50 else 0
+    out["dryup"], out["dryup_quiet_days"] = dry, quiet
+    # Two ways to pass (v2 §4.4): the tight area's AVERAGE volume is down, or it contains enough
+    # of the very quiet days Minervini points to. One average can be lifted past the threshold by
+    # a single news day inside an otherwise silent contraction, which is the case the second test
+    # is there to keep.
+    if not (dry <= p.dryup_ratio or quiet >= p.dryup_quiet_days):
         out["fail"] = "VCP-10"
+        out["fail_why"] = (f"volume averaged {dry:.2f}x its 50-day (needs <= {p.dryup_ratio:g}) "
+                           f"with {quiet} session(s) at or under {p.dryup_quiet_ratio:g}x "
+                           f"(needs {p.dryup_quiet_days})")
         return out
     if p.atr_shrink and "atr14" in d:
         a_now, a_bh = float(d["atr14"].iloc[-1]) / close[-1], float(d["atr14"].iloc[bh_i]) / close[bh_i]
@@ -482,4 +505,103 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
             out["fail"] = "VCP-11"
             return out
     out["ok"] = True
+    return out
+
+
+# --------------------------------------------------------------------- power play (MV-05)
+#
+# The standard base rules cannot see a power play, and that is not a tuning problem: the flag is
+# shorter than `base_min_days`, the run before it is far steeper than a normal prior advance, and
+# the moving averages have not caught up, so VCP-02 and VCP-03 reject it before any contraction is
+# measured. Minervini treats it as a special case (v2 "MV-05"), so it is detected separately and
+# never competes with the base path.
+#
+# What makes it a power play rather than a stock that merely went up: the RUN is measured to the
+# flag high, not to today, so a stock that doubled and then kept running does not qualify on a
+# flag that never formed; and the flag must be a real pause -- short, shallow, and ending in a
+# tight area like any other pivot.
+
+@dataclass(frozen=True)
+class PowerPlayParams:
+    run_window: int = 40          # sessions the run is measured over …
+    run_mult: float = 2.0         # … during which price at least doubled, at the flag high
+    flag_min_days: int = 10       # the pause, about 2 …
+    flag_max_days: int = 30       # … to 6 weeks
+    flag_max_depth_pct: float = 25.0   # how far the flag may fall from the flag high
+    tight_pct: float = 10.0       # the final tight area, as elsewhere
+    tight_min_days: int = 5
+    swing_k: int = 5
+
+
+def detect_power_play(d: pd.DataFrame, p: "PowerPlayParams | None" = None) -> dict:
+    """The explosive run and the tight flag that follows it, judged on day t.
+
+    Returns the same shape as `detect`: `fail` is None when the setup is complete, and every
+    measured value is recorded whether it passed or not.
+    """
+    p = p or PowerPlayParams()
+    out = {"fail": None, "fail_why": None, "run_pct": None, "flag_high": None, "flag_high_date": None,
+           "flag_days": None, "flag_depth_pct": None, "pivot": None, "tight_low": None,
+           "tight_range_pct": None}
+    need = p.run_window + p.flag_max_days + p.swing_k + 2
+    if len(d) < need:
+        out["fail"] = "PP-00"
+        out["fail_why"] = f"needs {need} sessions of history"
+        return out
+    high, low, close = (d[k].to_numpy(float) for k in ("high", "low", "close"))
+    n = len(d)
+    t = n - 1
+    is_hi = _swings(d["high"], p.swing_k, "max")
+
+    # The flag high is the most recent CONFIRMED swing high that leaves a flag of a usable length.
+    cand = [j for j in range(n - p.flag_min_days - 1, max(0, n - p.flag_max_days - 1) - 1, -1)
+            if 0 <= j < n and is_hi[j] and j + p.swing_k <= t]
+    if not cand:
+        out["fail"] = "PP-01"
+        out["fail_why"] = "no confirmed swing high leaving a flag of 10-30 sessions"
+        return out
+    fh_i = max(cand, key=lambda j: high[j])
+    out["flag_high"], out["flag_high_date"] = float(high[fh_i]), d.index[fh_i]
+    out["flag_days"] = t - fh_i
+
+    # The RUN, measured AT the flag high: price there against the lowest low of the window before.
+    lo_window = low[max(0, fh_i - p.run_window):fh_i]
+    if not len(lo_window) or lo_window.min() <= 0:
+        out["fail"] = "PP-02"
+        out["fail_why"] = "no usable low before the flag high"
+        return out
+    run = float(high[fh_i] / lo_window.min())
+    out["run_pct"] = (run - 1) * 100
+    if run < p.run_mult:
+        out["fail"] = "PP-02"
+        out["fail_why"] = (f"the run into the flag was {(run - 1) * 100:.0f}%, under the "
+                           f"{(p.run_mult - 1) * 100:.0f}% a power play needs")
+        return out
+
+    flag_low = float(low[fh_i:].min())
+    depth = (high[fh_i] - flag_low) / high[fh_i] * 100
+    out["flag_depth_pct"] = depth
+    if depth > p.flag_max_depth_pct:
+        out["fail"] = "PP-03"
+        out["fail_why"] = f"the flag fell {depth:.1f}%, more than {p.flag_max_depth_pct:g}%"
+        return out
+
+    # A close above the flag high means the pause is over and this is no longer a setup.
+    if float(close[fh_i + 1:].max() if fh_i + 1 <= t else -1) > high[fh_i]:
+        out["fail"] = "PP-04"
+        out["fail_why"] = "price already closed above the flag high"
+        return out
+
+    # The tight area: the last confirmed swing high inside the flag, or the flag high itself.
+    inner = [j for j in range(fh_i + 1, t + 1) if is_hi[j] and j + p.swing_k <= t]
+    ta_i = max(inner, key=lambda j: high[j]) if inner else fh_i
+    ta_i = min(ta_i, t - p.tight_min_days) if t - ta_i < p.tight_min_days else ta_i
+    pivot = float(high[ta_i:].max())
+    tl = float(low[ta_i:].min())
+    rng = (pivot - tl) / pivot * 100 if pivot > 0 else float("nan")
+    out.update(pivot=pivot, tight_low=tl, tight_range_pct=rng)
+    if not (rng <= p.tight_pct):
+        out["fail"] = "PP-05"
+        out["fail_why"] = f"the flag's tight area spans {rng:.1f}%, more than {p.tight_pct:g}%"
+        return out
     return out

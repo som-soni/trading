@@ -10,7 +10,7 @@ exposure and the low cheat follow the guide (see the changelog). What differs fr
   swing points of `SWING_K` bars each side, a prior advance of `PRIOR_ADVANCE_PCT`%, a base of
   `BASE_MIN_DAYS`–`BASE_MAX_DAYS` sessions, at least `MIN_CONTRACTIONS` contractions whose RESET RULE
   holds (`MIN_FROM_REFERENCE` of them since the last widening, the final one at most
-  `FINAL_REF_RATIO` × that widening), the first no deeper than `MAX_FIRST_DEPTH_PCT`%, a final tight area of
+  `FINAL_REF_RATIO` × that widening), a base no deeper than `MAX_BASE_DEPTH_PCT`%, a final tight area of
   at least `TIGHT_MIN_DAYS` sessions within `TIGHT_PCT`%, a pivot in the base's upper zone
   (`UPPER_ZONE`, or within `PIVOT_NEAR_HIGH` of the base high), and
   volume drying up to `DRYUP_RATIO` × its average.
@@ -63,6 +63,7 @@ MV01 = "S1"   # MV-01: confirmed breakout through the frozen pivot
 MV02 = "S2"   # MV-02: coiled just below the pivot
 MV03 = "S3"   # MV-03: low cheat, a shelf in the lower third of the base
 MV04 = "S4"   # MV-04: cheat / 3C, a shelf in the middle third of the base
+MV05 = "S5"   # MV-05: power play -- an explosive run, then a short tight flag
 
 # ---- section 5: base and VCP (core/vcp_spec.py)
 SWING_K = 5
@@ -72,7 +73,10 @@ BASE_MIN_DAYS = 15
 BASE_MAX_DAYS = 325
 MIN_CONTRACTIONS = 2
 MAX_CONTRACTIONS = 6         # now a QUALITY FLAG, not a rejection (v2 §3.4): log and flag above this
-MAX_FIRST_DEPTH_PCT = 35.0
+# VCP-05 is the depth of the BASE now, not of the first contraction (v2 §2.5): 50% is the limit,
+# 35% a quality flag. Deeper bases appear in bear markets and still produce leaders.
+MAX_BASE_DEPTH_PCT = 50.0
+DEEP_BASE_FLAG_PCT = 35.0
 # ---- VCP-06, the reset rule. Replaces SHRINK (= 0.80), which required EVERY contraction to be
 # smaller than the one before it and so rejected a base for a single deeper pullback early on --
 # the case Minervini describes as resetting the count, not failing the base.
@@ -86,11 +90,31 @@ UPPER_ZONE = 2 / 3           # VCP-09: pivot this far up the base range is a sta
 MAX_CLOSES_BELOW_200 = 10    # VCP-03: sessions below the 200-day allowed inside the base
 TIGHT_PCT = 10.0
 PIVOT_NEAR_HIGH = 0.90
-DRYUP_RATIO = 0.70
+DRYUP_RATIO = 0.80           # VCP-10: tight-area average volume against its 50-day average …
+DRYUP_QUIET_DAYS = 2         # … or this many sessions at or under DRYUP_QUIET_RATIO x it
+DRYUP_QUIET_RATIO = 0.5
+# ---- MV-05, the power play (v2). The base rules cannot see one and that is not a tuning problem:
+# the flag is shorter than BASE_MIN_DAYS, the run is far steeper than any normal prior advance, and
+# the averages have not caught up, so the base path rejects it before a contraction is measured.
+# Detected separately (core/vcp_spec.detect_power_play) so the two never compete.
+PP_RUN_WINDOW = 40           # sessions the run is measured over …
+PP_RUN_MULT = 2.0            # … during which price at least doubled, measured AT the flag high
+PP_FLAG_MIN_DAYS = 10        # the pause: about 2 …
+PP_FLAG_MAX_DAYS = 30        # … to 6 weeks
+PP_FLAG_MAX_DEPTH_PCT = 25.0
+
+POWER_PLAY = vcp_spec.PowerPlayParams(
+    run_window=PP_RUN_WINDOW, run_mult=PP_RUN_MULT, flag_min_days=PP_FLAG_MIN_DAYS,
+    flag_max_days=PP_FLAG_MAX_DAYS, flag_max_depth_pct=PP_FLAG_MAX_DEPTH_PCT,
+    tight_pct=TIGHT_PCT, tight_min_days=TIGHT_MIN_DAYS, swing_k=SWING_K,
+)
+
 VCP = vcp_spec.VcpParams(
     swing_k=SWING_K, min_swing_pct=MIN_SWING_PCT, prior_advance_pct=PRIOR_ADVANCE_PCT,
     base_min_days=BASE_MIN_DAYS, base_max_days=BASE_MAX_DAYS, min_contractions=MIN_CONTRACTIONS,
-    max_contractions=MAX_CONTRACTIONS, max_first_depth_pct=MAX_FIRST_DEPTH_PCT,
+    max_contractions=MAX_CONTRACTIONS, max_base_depth_pct=MAX_BASE_DEPTH_PCT,
+    deep_base_flag_pct=DEEP_BASE_FLAG_PCT,
+    dryup_quiet_days=DRYUP_QUIET_DAYS, dryup_quiet_ratio=DRYUP_QUIET_RATIO,
     widen_tol=WIDEN_TOL, min_from_reference=MIN_FROM_REFERENCE, final_ref_ratio=FINAL_REF_RATIO,
     tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
@@ -175,6 +199,15 @@ MKT_GUIDE = 1
 MKT_INDEX_SMA = 50
 MKT_BREADTH_MIN_PCT = 50.0
 MKT_BREADTH_RISING_DAYS = 5
+# v2's own definition of risk-on adds a slope term: the index above its 50-day average AND that
+# average higher than it was MKT_SMA_RISING_DAYS sessions ago. Breadth stays -- it answers a
+# different question (how MANY stocks participate, not where one index sits) -- so the gate is
+# "above a RISING average, with breadth behind it".
+# MEASURED COST: the slope term takes risk-on days from 61.3% to 51.5% (India) and 68.6% to 61.4%
+# (US) over 2013 onward -- about ten points of the calendar. That is a real tightening, so it is a
+# sweepable parameter: `--const MKT_SMA_RISING_DAYS=0` turns the term off and restores the
+# above-the-average-only test.
+MKT_SMA_RISING_DAYS = 10
 
 MAX_POSITIONS = 8               # PF-02
 MAX_OPEN_RISK_PCT = 6.0         # PF-04
@@ -419,8 +452,39 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.12"
+    version = "1.13"
     changelog = (
+        ("1.13", "2026-10-18",
+         "The rest of the v2 list. "
+         "VCP-05 is now the depth of the BASE (at most MAX_BASE_DEPTH_PCT, flagged over "
+         "DEEP_BASE_FLAG_PCT) instead of the depth of the FIRST CONTRACTION -- v2 §3.4 says the "
+         "deepest contraction is covered by base depth, and capping the first one separately "
+         "rejected bases whose opening pullback was deep but whose base was not. "
+         "VCP-10 gains a second way to pass (v2 §4.4): the tight area's average volume at or under "
+         "DRYUP_RATIO (raised 0.70 -> 0.80) x the 50-day, OR DRYUP_QUIET_DAYS sessions at or under "
+         "DRYUP_QUIET_RATIO x it. One average can be lifted past a threshold by a single news day "
+         "inside an otherwise silent contraction. "
+         "The market filter adds v2's slope term: the index above its MKT_INDEX_SMA-day average AND "
+         "that average higher than MKT_SMA_RISING_DAYS sessions ago. MEASURED COST: risk-on days "
+         "fall from 61.3% to 51.5% (India) and 68.6% to 61.4% (US) over 2013 onward, so it is a "
+         "sweepable parameter -- `--const MKT_SMA_RISING_DAYS=0` restores the old test exactly. "
+         "MV-05, THE POWER PLAY, is new and is the one shape the base rules could never see: the "
+         "flag is shorter than BASE_MIN_DAYS and the averages have not caught up, so VCP-02/VCP-03 "
+         "reject it before a contraction is measured. Detected on its own path "
+         "(vcp_spec.detect_power_play), bought through the flag's pivot and stopped under its tight "
+         "low, with the flag's own range as the measured move -- there is no base depth to project "
+         "from. Walking 150 symbols over ~26,000 bars it fires on 18, every one matching the "
+         "profile (ADANIGREEN 2020-10-26: run 125%, flag 15 days, depth 14.3%, tight 7.9%). "
+         "NOT IMPLEMENTED from v2, and recorded so it is not mistaken for done: v2 relaxes G2-G4 "
+         "for MV-05 and G1/G8 for the cheats, which needs PER-SETUP gate sets that StrategyResult "
+         "does not have -- `hard_gates_passed` is global. All eight gates therefore apply to every "
+         "setup. Measured cost: 13 of the 18 power plays pass G1-G4 anyway, so the relaxation is "
+         "worth about 28% of candidates, not all of them. "
+         "ALSO DELIBERATELY UNCHANGED: FAIL_DAYS stays 0. v2 lists the failed-breakout exit as a "
+         "Guideline to test on and off, and it is off here on a measured result -- about two in "
+         "three breakouts close back below the pivot within ten sessions, and in 1.7 this exit "
+         "closed ~80% of trades for about -0.3R each. TIME_STOP_DAYS stays 15, inside v2's 15-30 "
+         "range. Neither default is reverted without new evidence."),
         ("1.12", "2026-10-18",
          "Three more v2 changes, all at the points where the funnel was narrowest. "
          "(1) VCP-03 no longer requires the full Trend Template at the BASE START, and no longer "
@@ -596,8 +660,9 @@ class MinerviniSpecStrategy(Strategy):
 
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     watch_codes = ("W1", "W2", "W3", "W4", "W5")
-    setup_codes = (MV01, MV02, MV03, MV04)
-    extra_columns = ("fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
+    setup_codes = (MV01, MV02, MV03, MV04, MV05)
+    extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days",
+                     "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                      "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio", "breakout_volume_ratio",
                      "vcp_fail", "rs_mom")
@@ -637,7 +702,8 @@ class MinerviniSpecStrategy(Strategy):
         "advance, last {BASE_MIN_DAYS}–{BASE_MAX_DAYS} sessions, start with the full template in force, and keep "
         "the long averages in order every day of it.",
         "Contractions run from each swing high to the lowest low before the next. There must be at least "
-        "{MIN_CONTRACTIONS} and the first no deeper than {MAX_FIRST_DEPTH_PCT}%. Wiggles under "
+        "{MIN_CONTRACTIONS}, inside a base no deeper than {MAX_BASE_DEPTH_PCT}% (over "
+        "{DEEP_BASE_FLAG_PCT}% is flagged, not rejected). Wiggles under "
         "{MIN_SWING_PCT}% are ignored; more than {MAX_CONTRACTIONS} is flagged, not rejected.",
         "Volatility must have contracted since it last EXPANDED, which is the reset rule: the reference is "
         "the most recent widening — a contraction more than {WIDEN_TOL} × the one before it — and the base "
@@ -647,7 +713,8 @@ class MinerviniSpecStrategy(Strategy):
         "failure but a base that is not ready yet.",
         "The final tight area IS the final contraction — from its own swing high, which is the pivot, to "
         "today — and must be at least {TIGHT_MIN_DAYS} sessions old. It must span at most {TIGHT_PCT}% and its "
-        "volume must have dried up to {DRYUP_RATIO} × the 50-day average.",
+        "volume must have dried up — either the area's average at or under {DRYUP_RATIO} × the 50-day "
+        "average, or {DRYUP_QUIET_DAYS} sessions at or under {DRYUP_QUIET_RATIO} × it.",
         "Where the pivot sits in the base decides the setup: {UPPER_ZONE} or more of the way up the base range "
         "(or within {PIVOT_NEAR_HIGH} of the base high) is the standard pivot buy, MV-01 and MV-02. Lower than "
         "that is a cheat entry — the middle third is MV-04, the lower third MV-03 — which has its own shelf and "
@@ -656,6 +723,11 @@ class MinerviniSpecStrategy(Strategy):
         "200-day no lower than at the base start, the 150-day above the 200-day today, and at most "
         "{MAX_CLOSES_BELOW_200} closes below the 200-day. The full Trend Template is recorded at the base start "
         "but NOT required there — Minervini applies it when he buys, and it is a hard gate on the signal day.",
+        "MV-05 (power play): no base at all — an explosive run of {PP_RUN_MULT}x inside {PP_RUN_WINDOW} "
+        "sessions, then a tight flag of {PP_FLAG_MIN_DAYS}–{PP_FLAG_MAX_DAYS} sessions no more than "
+        "{PP_FLAG_MAX_DEPTH_PCT}% deep, bought through the flag's pivot and stopped under its tight low. "
+        "Minervini treats it as a special case and so does this: it is detected on its own path, so the "
+        "two never compete for the same stock.",
         "MV-02 (coiled): the base is complete and the close is within {COIL_PCT}% below the pivot. A buy-stop "
         "rests just above the pivot.",
         "MV-01 (breakout): the base was complete yesterday, yesterday's close was at or below yesterday's "
@@ -773,6 +845,13 @@ class MinerviniSpecStrategy(Strategy):
               "three in-base entries and uses it mainly in stocks he already knows.",
         MV04: "MV-04 cheat (\"3C\"): the same shelf in the MIDDLE third of the base — the cup-completion "
               "cheat, entered as the base recovers but before it reaches its old high.",
+        MV05: "MV-05 power play: price at least doubled ({PP_RUN_MULT}x) within {PP_RUN_WINDOW} sessions "
+              "measured AT the flag high, then paused for {PP_FLAG_MIN_DAYS}–{PP_FLAG_MAX_DAYS} sessions "
+              "falling no more than {PP_FLAG_MAX_DEPTH_PCT}%, and today's close went through the flag's "
+              "pivot on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of it. Detected "
+              "separately from the base path: the flag is shorter than {BASE_MIN_DAYS} sessions and the "
+              "averages have not caught up, so the base rules reject a power play before any contraction "
+              "is measured.",
     }
     entry_rules = (
         "MV-01 (EN-01): buy at the next session's open; skip it if that open is more than {BUY_RANGE_PCT}% "
@@ -854,7 +933,10 @@ class MinerviniSpecStrategy(Strategy):
         ("Base length, maximum", "BASE_MAX_DAYS", "About 65 weeks (VCP-02)."),
         ("Contractions, minimum", "MIN_CONTRACTIONS", "VCP-04."),
         ("Contractions, maximum", "MAX_CONTRACTIONS", "VCP-04."),
-        ("First contraction, deepest", "MAX_FIRST_DEPTH_PCT", "VCP-05."),
+        ("Base depth, deepest", "MAX_BASE_DEPTH_PCT", "Base high to base low, VCP-05."),
+        ("Deep-base flag", "DEEP_BASE_FLAG_PCT", "Recorded, never a rejection (VCP-05)."),
+        ("Volume dry-up, quiet days", "DRYUP_QUIET_DAYS", "The alternative route past VCP-10."),
+        ("Volume dry-up, quiet level", "DRYUP_QUIET_RATIO", "A quiet session is at or under this × the 50-day."),
         ("Widening tolerance", "WIDEN_TOL", "A contraction more than this × the previous one is a widening, "
                                             "and becomes the reset rule's reference (VCP-06)."),
         ("Contractions since the widening", "MIN_FROM_REFERENCE", "Counted from the reference, inclusive (VCP-06)."),
@@ -867,7 +949,12 @@ class MinerviniSpecStrategy(Strategy):
         ("Pivot near the base high", "PIVOT_NEAR_HIGH", "The alternative route into the upper zone (VCP-09)."),
         ("Volume dry-up", "DRYUP_RATIO", "Tight-area volume against its 50-day average (VCP-10)."),
         ("Coil distance", "COIL_PCT", "MV-02: how far below the pivot still counts."),
-        ("Breakout volume", "VOL_MULT", "MV-01a."),
+        ("Breakout volume", "VOL_MULT", "MV-01a, and MV-05's breakout."),
+        ("Power play, run", "PP_RUN_MULT", "MV-05: price multiple at the flag high, over PP_RUN_WINDOW."),
+        ("Power play, run window", "PP_RUN_WINDOW", "MV-05: sessions the run is measured over."),
+        ("Power play, flag length", "PP_FLAG_MIN_DAYS", "MV-05: shortest pause that counts."),
+        ("Power play, flag length max", "PP_FLAG_MAX_DAYS", "MV-05: longest pause that counts."),
+        ("Power play, flag depth", "PP_FLAG_MAX_DEPTH_PCT", "MV-05: deepest the flag may fall."),
         ("Buy range", "BUY_RANGE_PCT", "MV-01b, and the most a fill may sit above the pivot."),
         ("Stop buffer", "STOP_BUFFER_PCT", "SL-01."),
         ("Maximum stop", "MAX_STOP_PCT", "SL-03, checked at the fill."),
@@ -990,8 +1077,20 @@ class MinerviniSpecStrategy(Strategy):
         ch = prev if prev.get("cheat_ok") else None
         crossed = cheat_cross(prev, prev_close, close)
         mv03, mv04 = crossed == MV03, crossed == MV04
+        # MV-05, the power play. Its pivot is frozen on yesterday's bar for the same reason MV-01's
+        # is: a pivot taken from a window that includes today can never be crossed by today.
+        pp_prev = vcp_spec.detect_power_play(d.iloc[:-1], POWER_PLAY)
+        pp_ok = not pp_prev.get("fail") and pp_prev.get("pivot")
+        mv05 = bool(pp_ok and prev_close <= pp_prev["pivot"] < close
+                    and vol_ratio >= VOL_MULT and upper >= UPPER_HALF
+                    and close <= pp_prev["pivot"] * (1 + BUY_RANGE_PCT / 100))
         result.setups[MV01], result.setups[MV02] = mv01, mv02
         result.setups[MV03], result.setups[MV04] = mv03, mv04
+        result.setups[MV05] = mv05
+        if pp_ok:
+            ctx.extras.update(pp_pivot=pp_prev["pivot"], pp_tight_low=pp_prev["tight_low"],
+                              pp_run_pct=round(pp_prev["run_pct"], 1) if pp_prev.get("run_pct") else None,
+                              pp_flag_days=pp_prev.get("flag_days"))
 
         for code in ("W1", "W2", "W3"):
             on = bool(breakout and confirmed[code])
@@ -1073,13 +1172,17 @@ class MinerviniSpecStrategy(Strategy):
             return PlanChoice(None, None, "no active setup")
         e = ctx.extras
         cheat = result.setups.get(MV03) or result.setups.get(MV04)
-        pivot, tl = e.get("pivot"), e.get("tight_low")
+        power = result.setups.get(MV05)
+        # A power play has no base, so its pivot and stop come from the FLAG, not from
+        # e["pivot"]/e["tight_low"] -- which are None for it, since the base path rejected it.
+        pivot, tl = ((e.get("pp_pivot"), e.get("pp_tight_low")) if power
+                     else (e.get("pivot"), e.get("tight_low")))
         # Only the pivot buy needs the FINAL tight area. A cheat is taken while the
         # base is still forming, so that area does not exist yet -- requiring it here
         # rejected 122 of 133 cheats before they reached their own branch.
         if not cheat and (not pivot or tl is None or pd.isna(tl)):
             return PlanChoice(None, None, "missing pivot / tight low")
-        if cheat:
+        if cheat and not power:
             # A cheat is bought at its shelf, not the base's pivot, and stopped under
             # the SHELF low. That nearby stop is the entire point of the entry: the
             # base low is far away mid-base, and risking down to it would make the
@@ -1091,6 +1194,11 @@ class MinerviniSpecStrategy(Strategy):
             pivot = float(cp)
             entry = float(ctx.close)          # confirmed by the close, as EN-02 is since v1.1
             stop = pivot_stop(cl, cfg.tick_size)
+        elif power:
+            # MV-05 is confirmed on the close like MV-01, and stopped under the flag's tight low.
+            setup = MV05
+            entry = float(ctx.close)
+            stop = pivot_stop(tl, cfg.tick_size)
         else:
             setup = MV01 if result.setups.get(MV01) else MV02
             # MV-01 fills at tomorrow's open, whose best estimate today is the close; MV-02 at the buy-stop
@@ -1105,7 +1213,12 @@ class MinerviniSpecStrategy(Strategy):
         # the base high less its deepest low, which (because VCP-06 forces each
         # contraction to shrink) is the first contraction's low.
         bh, first_depth = e.get("base_high"), e.get("first_depth_pct")
-        if cheat and bh:
+        if power:
+            # No base, so no base-depth measured move. The flag's own range is the only structure
+            # the setup offers; beyond that any number would be the risk formula wearing a chart's
+            # clothes, which is the trap the comment below describes.
+            measured_move = (pivot - tl) if (pivot and tl is not None) else float("nan")
+        elif cheat and bh:
             # A cheat is bought below the old high, so the nearest objective is that
             # high; the base's own measured move is projected from there. first_depth
             # is absent when the base never reached the contraction step, in which
@@ -1403,7 +1516,8 @@ class MinerviniSpecStrategy(Strategy):
             "VCP-03": ("held" if fail != "VCP-03" else f"too new: bar {bh_i + 1}" if young else self._vcp_fail_why(r, daily, bh_i, rep),
                        "trend template on the high's bar, the 150/200-day structure after"),
             "VCP-04": (f"{len(depths)}" if depths else "—", f"at least {MIN_CONTRACTIONS}"),
-            "VCP-05": (f"{pct(depths[0], MAX_FIRST_DEPTH_PCT)}%" if depths else "—", f"at most {MAX_FIRST_DEPTH_PCT:g}%"),
+            "VCP-05": (f"{r['base_depth_pct']:.1f}% deep" if r.get("base_depth_pct") is not None else "—",
+                       f"at most {MAX_BASE_DEPTH_PCT:g}% (over {DEEP_BASE_FLAG_PCT:g}% is flagged)"),
             "VCP-06": (" → ".join(dep(x) for x in depths) + "%" if depths else "—",
                        f"{MIN_FROM_REFERENCE} since the last widening, final ≤ {FINAL_REF_RATIO:g}× it"),
             "VCP-08": (f"{pct(r['tight_range_pct'], TIGHT_PCT)}%" if r["tight_range_pct"] is not None else "—", f"at most {TIGHT_PCT:g}%"),
@@ -1493,7 +1607,7 @@ class MinerviniSpecStrategy(Strategy):
             tight = (f" The last stretch is tight: {r['tight_range_pct']:.1f}% from {px(tl)} to {px(pv)} (at most "
                      f"{TIGHT_PCT:g}%){dry}. Its high, {px(pv)}, is the pivot.")
         pulls = (f" It pulled back {len(depths)} times: {' → '.join(dep(x) + '%' for x in depths)}. A VCP needs at "
-                 f"least {MIN_CONTRACTIONS} pullbacks, the first at most {MAX_FIRST_DEPTH_PCT:g}% deep, and — since "
+                 f"least {MIN_CONTRACTIONS} pullbacks inside a base at most {MAX_BASE_DEPTH_PCT:g}% deep, and — since "
                  f"the last one that WIDENED — {MIN_FROM_REFERENCE} more, the last of them at most "
                  f"{FINAL_REF_RATIO:g}× that widening." if depths else "")
         verdict = "" if done or fail in (None, "VCP-03") else f" It failed here: {self._vcp_fail_why(r, daily, bh_i, rep)}."
@@ -1663,7 +1777,9 @@ class MinerviniSpecStrategy(Strategy):
             return (f"{len(d)} pullback{'s' if len(d) != 1 else ''}, where a VCP needs at least "
                     f"{MIN_CONTRACTIONS}")
         if f == "VCP-05":
-            return f"the first pullback was {d[0]:.1f}% deep, more than {MAX_FIRST_DEPTH_PCT:g}%"
+            if r.get("fail_why"):
+                return str(r["fail_why"])
+            return f"the base is deeper than {MAX_BASE_DEPTH_PCT:g}%"
         if f == "VCP-06":
             # The reset rule, so the explanation names the REFERENCE -- the last widening -- and
             # says which of its two halves failed. The detector already recorded both; prefer its

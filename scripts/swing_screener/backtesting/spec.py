@@ -250,7 +250,8 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
 
     MKT-01 (`guide=False`): benchmark close > its SMA200 and SMA50 > SMA200.
     The SEPA guide's test (`guide=True`, minervini_spec.MKT_GUIDE): the benchmark closes above its
-    MKT_INDEX_SMA-day average, AND breadth — the share of stocks above their 50-day — is above
+    MKT_INDEX_SMA-day average AND that average is higher than MKT_SMA_RISING_DAYS sessions ago,
+    AND breadth — the share of stocks above their 50-day — is above
     MKT_BREADTH_MIN_PCT or higher than MKT_BREADTH_RISING_DAYS sessions earlier. A date with no
     breadth stored (before its history starts) is judged on the benchmark alone.
 
@@ -263,7 +264,13 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
     c = b["close"].astype(float)
     if guide:
         from ..strategies import minervini_spec as ms
-        ok = c > c.rolling(ms.MKT_INDEX_SMA).mean()
+        sma = c.rolling(ms.MKT_INDEX_SMA).mean()
+        # v2: above the average AND the average itself rising over MKT_SMA_RISING_DAYS. The slope
+        # term is what separates "above a falling average on a bounce" from a market that is
+        # actually turning up, and a bounce is where breakout entries fail worst.
+        ok = c > sma
+        if ms.MKT_SMA_RISING_DAYS:          # 0 turns the slope term off, as a sweepable parameter
+            ok = ok & (sma > sma.shift(ms.MKT_SMA_RISING_DAYS))
         br = breadth_pct50(market)
         if len(br):
             breadth_ok = (br > ms.MKT_BREADTH_MIN_PCT) | (br > br.shift(ms.MKT_BREADTH_RISING_DAYS))
