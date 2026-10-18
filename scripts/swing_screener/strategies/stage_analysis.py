@@ -136,7 +136,22 @@ class StageAnalysisStrategy(Strategy):
                   "First version. The stage model was validated against the guide's own Trent "
                   "narrative before any trade logic existed: Stage 2 from August 2023 through "
                   "October 2024 (close 2,049 -> 7,128) and Stage 4 by March 2025, matching the "
-                  "guide's '1,500 to more than 7,000, held until October 2024'."),)
+                  "guide's '1,500 to more than 7,000, held until October 2024'. "
+                  "TWO DEFECTS WERE FOUND AND FIXED BEFORE THIS SHIPPED, recorded because both are "
+                  "the kind that produce plausible-looking output rather than an error. (1) "
+                  "'Sideways for {BASE_MIN_WEEKS} weeks' was first implemented as 'the weekly close "
+                  "is below the highest high of the last {RESISTANCE_WEEKS} weeks', which is almost "
+                  "always true -- so every stock reported a base at the full {BASE_MAX_WEEKS}-week "
+                  "cap, BASE_MIN_WEEKS never bound, and the base low used for the stop was the "
+                  "lowest low of two years, pinning every stop to the {MAX_STOP_PCT}% floor. A base "
+                  "needs a DEPTH limit, so it is now the longest window within "
+                  "{BASE_MAX_DEPTH_PCT}%. (2) classify() had the wrong signature and decision_docs "
+                  "used label codes that do not exist. "
+                  "W3 was then checked for discrimination, since an always-on watch flag would make "
+                  "TRADE_HIGH_CONFIDENCE unreachable: over 834 symbol-dates the structural stop "
+                  "sits a median 11.1% below entry and is within {MAX_STOP_PCT}% on 75% of the 170 "
+                  "setups found, so it filters rather than blocks. 149 of those 170 were armed "
+                  "bases rather than completed breakouts."),)
 
     style = "breakout"
     behaviour = "trend_momentum"
