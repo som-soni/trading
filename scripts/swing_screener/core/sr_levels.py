@@ -16,17 +16,21 @@ live here only, never in JavaScript. The procedure, top to bottom:
    Height is never stretched or trimmed to an ATR band. Touches are distinct visits: a new one counts
    only after price closed {DEPART_ATR} ATR outside the zone. The reference line is where the reactions
    concentrate (their median turning price), not the midpoint.
-4. **Refine the higher timeframe with the chart's own.** A weekly zone is redrawn from the daily turning
+4. **Refine the higher timeframe with the finer one.** A weekly zone is redrawn from the daily turning
    points inside it (finer structure; a weekly bar's body sits far from its wick), keeping its weekly
-   standing; a daily zone is kept only in the gaps between higher-timeframe zones.
+   standing — or, when price has crossed the whole box again and again, as the separate daily reaction
+   clusters inside it that price still respects. If price has also lived inside the box ({CONGESTION_SHARE:.0%}+
+   of bars), the box is returned as a **congestion band**: context, not a level; a daily zone is kept only in the gaps between higher-timeframe zones.
 5. **Usable on the chart you are reading.** A zone taller than {WIDE_ATR} ATR of the chart's timeframe
    is split at its widest internal gap, when each part stands on its own (two visits, or one strong
    rejection); a part that no longer earns a level is retired; a zone that cannot be split is flagged
    wide. Same-role zones less than {MERGE_GAP_ATR} ATR
    apart become one zone with both reference lines — only if the result is not too tall to use.
    Height ÷ the ATR of the zone's own timeframe is reported as the check.
-6. **Role from where price is now.** Below price: support. Above: resistance. Price inside: a **pivot**
-   — support while price holds above it, resistance once it closes below. A zone whose first reaction
+6. **Role from where price is now.** Below price: support. Above: resistance. Price inside, or within
+   {AT_PRICE_ATR} daily ATR of it ("at price", the same distance on every chart): a **pivot** — support while price holds above it, resistance
+   once it closes below. A zone price has closed inside on {CONGESTION_SHARE:.0%}+ of the bars since it
+   formed is a **congestion zone**: an area price lives in, not a clean ceiling or floor. A zone whose first reaction
    was the opposite role is marked as reversed ("Support (was resistance)").
 7. **Grade it** — one point per factor (`FACTORS`); a zone needs {MIN_SCORE} points, and two reactions
    or one strong one. {STRONG_SCORE}+ is strong. {WORN_TOUCHES}+ visits is flagged worn. A zone price has
@@ -54,11 +58,11 @@ from . import indicators as ind
 from . import swings as sw
 
 TF = {   # per timeframe: look-back, swing strength, bars to judge the reaction, "recent", bar average for volume
-    "M": {"years": 10, "swing": 2, "reaction": 2, "recent": 24, "vol": 12},
+    "M": {"years": 20, "swing": 2, "reaction": 2, "recent": 24, "vol": 12},
     "W": {"years": 5, "swing": 3, "reaction": 3, "recent": 52, "vol": 20},
     "D": {"years": 1.5, "swing": 5, "reaction": 5, "recent": 126, "vol": 20},
 }
-STACK = {"D": ("W", "D"), "W": ("M", "W")}   # chart timeframe -> (higher, own)
+STACK = {"D": ("W", "D"), "W": ("M", "W"), "M": (None, "M")}   # chart timeframe -> (higher, own); monthly is the top
 NAMES = {"M": "monthly", "W": "weekly", "D": "daily"}
 ATR_BARS = 14
 MIN_REACTION_ATR = 1.0      # a turning point counts when price closed this far away within `reaction` bars
@@ -76,6 +80,8 @@ WORN_TOUCHES = 5            # visits at which a level is more likely to break th
 STALE_CROSSES = 3           # closes through a zone since its last reaction that retire it
 MAX_PER_SIDE = 3            # zones kept each side of price
 ATH_NEAR_PCT = 3.0          # within this of the all-time high: no historical resistance above
+AT_PRICE_ATR = 0.25         # a zone within this of the close (chart timeframe's ATR) is "at price": a pivot
+CONGESTION_SHARE = 0.3      # price closed inside the zone on at least this share of bars since it formed: congestion
 EARNINGS_WARN_SESSIONS = 10 # earnings this close: levels near price are less reliable through the report
 
 FACTORS = {
@@ -233,15 +239,22 @@ def _zone(pts: list[dict], fr: _Frame, tf: str, accept: bool = True) -> dict | N
     return z
 
 
-def _place(z: dict, close: float) -> None:
-    """Role from where price is now; the alert line at the near edge; reversed when it began the other way."""
-    if close > z["top"]:
+def _place(z: dict, close: float, near: float = 0.0) -> None:
+    """Role from where price is now; the alert line at the near edge; reversed when it began the other way.
+    Within `near` of the zone counts as at it: a support a few cents under the close says nothing."""
+    if close > z["top"] + near:
         z["role"], z["line"] = "support", z["top"]
-    elif close < z["bottom"]:
+    elif close < z["bottom"] - near:
         z["role"], z["line"] = "resistance", z["bottom"]
     else:
-        z["role"], z["line"] = "pivot", min(z["refs"], key=lambda x: abs(x - close))
-    z["inside"] = z["role"] == "pivot"
+        z["role"] = "pivot"
+        # its key line near the price: the nearer edge when price sits just outside ("at price"); inside,
+        # the nearest of its reference lines and edges — never a line far from where price is
+        inside = z["bottom"] <= close <= z["top"]
+        cands = z["refs"] + [z["top"], z["bottom"]] if inside else [z["top"], z["bottom"]]
+        z["line"] = min(cands, key=lambda x: abs(x - close))
+    z["inside"] = z["bottom"] <= close <= z["top"]
+    z["at_price"] = z["role"] == "pivot" and not z["inside"]
     formed = "resistance" if z["first_kind"] == "H" else "support"
     z["flipped"] = z["role"] != "pivot" and formed != z["role"]
 
@@ -286,6 +299,43 @@ def _merge(zones: list[dict], chart: _Frame) -> list[dict]:
     return out
 
 
+def _refine(z: dict, fine: _Frame) -> list[dict]:
+    """A higher-timeframe zone redrawn from the finer timeframe's turning points inside it — finer edges,
+    distinct visits on the finer bars, the first fine reaction as its start. It keeps its own timeframe's
+    standing. A weekly zone is always refined with daily bars, whichever chart is open, so the same
+    weekly level reads the same on both."""
+    inside = sorted((p for p in fine.pts if z["bottom"] <= p["wick"] <= z["top"]), key=lambda p: p["wick"])
+    r = _zone(inside, fine, z["tf"], accept=False) if len(inside) >= 2 else None
+    if r:
+        parts = [r]
+    elif len(inside) >= 2:
+        # The whole box is not respected on the finer bars — price has crossed it again and again, which
+        # is what congestion looks like. Redraw it as the separate reaction clusters inside it instead;
+        # each is kept only if price still respects it (a lone point needs a strong rejection).
+        groups, cur = [], [inside[0]]
+        for p in inside[1:]:
+            if p["wick"] - cur[0]["wick"] > SPLIT_ATR * fine.unit(cur[0]["wick"]):
+                groups.append(cur)
+                cur = []
+            cur.append(p)
+        groups.append(cur)
+        parts = [m for g in groups
+                 if (len(g) >= 2 or any(p["reaction_atr"] >= STRONG_REJECTION_ATR for p in g))
+                 and (m := _zone(g, fine, z["tf"], accept=False))]
+    else:
+        parts = []
+    if not r and len(inside) >= 2:
+        z["_crossed"] = True   # the box itself is not respected: a candidate congestion band (levels() decides)
+    if not parts:
+        return [z]   # nothing finer stands: the higher-timeframe box stays, as drawn
+    for m in parts:
+        m["from"] = min(m["from"], z["from"])
+        m["factors"]["timeframe"] = True
+        m["score"] = sum(m["factors"].values())
+        m["refined"] = True
+    return parts
+
+
 def _zones_for(fr: _Frame) -> list[dict]:
     """Every graded zone on one timeframe's own turning points."""
     pts = sorted(fr.pts, key=lambda p: p["wick"])
@@ -317,30 +367,54 @@ def _period_lines(daily: pd.DataFrame, tf: str) -> list[dict]:
 
 
 def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
-    """Support and resistance for a chart of timeframe `tf` ("D" or "W"), from stored daily bars."""
+    """Support and resistance for a chart of timeframe `tf` ("D", "W" or "M"), from stored daily bars."""
     higher, own = STACK[tf]
-    hdf, odf = bars(daily, higher), bars(daily, own)
+    odf = bars(daily, own)
     close = float(odf["close"].iloc[-1])
     conf = [float(x) for x in (ind.sma(odf["close"], 50).iloc[-1], ind.sma(odf["close"], 200).iloc[-1]) if x == x]
-    hi_fr, own_fr = _Frame(higher, hdf, close, conf), _Frame(own, odf, close, conf)
-    top = []
-    for z in _zones_for(hi_fr):
-        # refine with the chart timeframe's turning points inside it: finer edges, the daily visits, the
-        # first daily reaction as its start — it stays a higher-timeframe level
-        inside = [p for p in own_fr.pts if z["bottom"] <= p["wick"] <= z["top"]]
-        r = _zone(inside, own_fr, higher, accept=False) if len(inside) >= 2 else None
-        if r:
-            r["from"] = min(r["from"], z["from"])
-            r["factors"]["timeframe"] = True
-            r["refined"] = True
-            z = r
-        top.append(z)
-    top = [y for z in _merge(top, own_fr) for y in _split_wide(z, own_fr)]
-    low = [z for z in _zones_for(own_fr)   # in the gaps the (split) higher-timeframe zones leave
+    frames: dict[str, _Frame] = {}
+
+    def frame(t: str) -> _Frame:
+        if t not in frames:
+            frames[t] = _Frame(t, odf if t == own else bars(daily, t), close, conf)
+        return frames[t]
+    own_fr, day_fr = frame(own), frame("D")
+    hi_fr = frame(higher) if higher else None
+    finer = {"M": frame("W"), "W": day_fr}   # what refines a zone of each timeframe: the next one down
+    boxes: list[dict] = []   # higher-timeframe boxes price keeps crossing: congestion candidates
+
+    def ref(zs: list[dict]) -> list[dict]:
+        out = []
+        for z in zs:
+            parts = _refine(z, finer[z["tf"]]) if finer.get(z["tf"]) else [z]
+            if z.get("_crossed"):
+                boxes.append(z)
+            out += parts
+        return out
+    top = [y for z in _merge(ref(_zones_for(hi_fr)), own_fr) for y in _split_wide(z, own_fr)] if hi_fr else []
+    low = [z for z in ref(_zones_for(own_fr))   # in the gaps the (split) higher zones leave
            if not any(z["bottom"] <= h["top"] and z["top"] >= h["bottom"] for h in top)]
     allz = top + [y for z in _merge(low, own_fr) for y in _split_wide(z, own_fr)]
+    # final roles against the chart's own volatility; congestion where price has lived inside the zone
+    cl, dates = own_fr.cl, [d.date().isoformat() for d in odf.index]
+
+    def lived(z: dict) -> float:
+        since = cl[next((i for i, d in enumerate(dates) if d >= z["from"]), len(cl)):]
+        return round(float(((since >= z["bottom"]) & (since <= z["top"])).mean()), 2) if len(since) >= 10 else 0.0
+    for z in allz:
+        _place(z, close, AT_PRICE_ATR * day_fr.unit(close))   # daily ATR on every chart: one answer to "at price"
+        z["time_inside"] = lived(z)
+        z["congestion"] = z["time_inside"] >= CONGESTION_SHARE
+    # Congestion bands: a higher-timeframe box price keeps crossing and has lived inside — drawn as context,
+    # not as a level (no role, no grade). Its edges are what matter: a break out of it is the event.
+    congestion = []
+    for b in boxes:
+        share = lived(b)
+        if share >= CONGESTION_SHARE:
+            congestion.append({"tf": b["tf"], "top": b["top"], "bottom": b["bottom"], "from": b["from"],
+                               "time_inside": share, "inside": b["bottom"] <= close <= b["top"]})
     for z in allz:   # the check: height ÷ the ATR of the zone's own timeframe
-        fr = hi_fr if z["tf"] == higher else own_fr
+        fr = frame(z["tf"])
         z["reference"] = z["refs"][0] if len(z["refs"]) == 1 else (z["top"] + z["bottom"]) / 2
         z["height_atr"] = round((z["top"] - z["bottom"]) / fr.unit(z["reference"]), 2)
         z["atr_tf"] = z["tf"]
@@ -360,6 +434,6 @@ def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
                       "label": "next round number — no historical resistance above", "from": str(odf.index[-1].date())})
         note = "at an all-time high: no historical resistance above"
     clean = lambda z: {k: v for k, v in z.items() if not k.startswith("_")}  # noqa: E731
-    return {"tf": tf, "stack": [higher, own], "close": close, "zones": [clean(z) for z in pick],
+    return {"tf": tf, "stack": [higher, own], "close": close, "zones": [clean(z) for z in pick], "congestion": congestion,
             "others": [clean(z) for z in others], "lines": lines, "factors": FACTORS, "note": note,
             "considered": len(allz)}

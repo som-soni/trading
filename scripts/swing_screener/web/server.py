@@ -182,6 +182,11 @@ def prices(market: str, symbol: str, tf: str = "D", bars: int = 600):
         df = pd.DataFrame(rows, columns=["date", "close"])
     df["date"] = pd.to_datetime(df["date"])
     df = df.set_index("date").astype(float)
+    # the 52-week range from DAILY bars, whatever timeframe is drawn: a weekly or monthly bar straddling
+    # the year boundary would otherwise pull in a high or low from before it
+    yr = df[df.index > df.index[-1] - pd.DateOffset(years=1)]
+    range52 = ({"hi": float(yr["high"].max()), "lo": float(yr["low"].min())} if ohlc
+               else {"hi": float(yr["close"].max()), "lo": float(yr["close"].min())})
     if tf != "D":
         rule = "W-FRI" if tf == "W" else "ME"
         agg = {"close": "last"}
@@ -196,7 +201,7 @@ def prices(market: str, symbol: str, tf: str = "D", bars: int = 600):
     df = df.tail(bars)
     dates = [d.strftime("%Y-%m-%d") for d in df.index]
     out = {
-        "symbol": symbol, "market": market, "tf": tf, "ohlc": ohlc,
+        "symbol": symbol, "market": market, "tf": tf, "ohlc": ohlc, "range52": range52,
     }
     if ohlc:
         out["candles"] = [
@@ -1174,8 +1179,8 @@ def sr_levels(market: str, symbol: str, tf: str = "D"):
     high and low. The rules live there; the chart only draws."""
     if market not in MARKETS:
         raise HTTPException(400, f"unknown market {market}")
-    if tf not in ("D", "W"):
-        raise HTTPException(400, "tf must be D or W")
+    if tf not in ("D", "W", "M"):
+        raise HTTPException(400, "tf must be D, W or M")
     from ..core import sr_levels as srl
     from ..marketdata import cache
     raw = cache.load_cached(market, symbol)

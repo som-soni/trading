@@ -244,8 +244,11 @@ grade on seven factors (kept at 3+), its role ("Support (was resistance)") and "
 crossed repeatedly are dropped. The three best each side are the key levels (filled, near edge on the price axis,
 dashed reference lines where the reactions concentrate); "All graded levels" (the default) also draws the other
 graded zones as dashed outlines. Labels are Short by default ("Support · weekly"); Full adds grade, visits and
-height; None hides them. The previous week's and month's high and low are off by default (setting "Previous
-periods"). **Supply & Demand Zones** is computed on the
+height; None hides them. Price inside a zone, or within a quarter of a daily ATR of it, makes it a pivot ("Pivot — price inside" /
+"At price"); a zone price has closed inside on 30%+ of bars is labelled a congestion zone. A higher-timeframe
+box price keeps crossing is redrawn as the daily clusters inside it that still hold, and — if price has lived in
+it — drawn as a grey **congestion band** (context, not a level). Earnings within 10 sessions add a warning to the
+legend. The previous week's and month's high and low are off by default (setting "Previous periods"). **Supply & Demand Zones** is computed on the
 server too (`core/sd_zones.py`, `/api/sd-zones`), on daily or weekly bars: the base each decisive move left
 from, its proximal (body) and distal (wick) edges, extended right until a close through the distal edge,
 with its retests numbered. By default it shows the active zones nearest the last close; the **Zones** panel

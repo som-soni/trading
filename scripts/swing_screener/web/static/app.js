@@ -782,7 +782,10 @@ async function chartPage(alive, market, symbol, tf) {
   let main, times;
   const rows = px.ohlc ? px.candles : px.line;
   if (px.ohlc) {
-    main = chart.addSeries(LC.CandlestickSeries, { upColor: "#26a69a", downColor: "#ef5350", borderVisible: false, wickUpColor: "#26a69a", wickDownColor: "#ef5350" }, 0);
+    // the current-price tag in a neutral blue, not the day's red / green: it must not look like a
+    // resistance or support tag beside it (the day's change is in the header)
+    main = chart.addSeries(LC.CandlestickSeries, { upColor: "#26a69a", downColor: "#ef5350", borderVisible: false, wickUpColor: "#26a69a", wickDownColor: "#ef5350",
+      priceLineColor: "#2962ff" }, 0);
     main.setData(px.candles);
   } else {
     main = chart.addSeries(LC.AreaSeries, { lineColor: cssVar("--series"), topColor: alpha(cssVar("--series"), .2), bottomColor: alpha(cssVar("--series"), 0), lineWidth: 2 }, 0);
@@ -816,9 +819,11 @@ async function chartPage(alive, market, symbol, tf) {
     const t0 = s.from ? tsOf(s.from) : s.bars && i1 >= 0 ? Date.parse(times[Math.max(0, i1 - s.bars)] + "T00:00:00Z") : t1;
     if (s.shape === "box") return { type: "rect", pts: [{ t: t0, p: s.top }, { t: t1, p: s.bottom }],
       color: col, width: dim ? 1 : s.frame ? 1.5 : 2, dash: !!s.dash, text: dim ? "" : s.label || "",
-      bg: !!s.bg, shade: !!s.shade, frame: !!s.frame };   // bg: a full-height tint; shade: fill only; frame: outline + header tab
+      bg: !!s.bg, shade: !!s.shade, frame: !!s.frame, edge: !!s.edge };   // bg: a full-height tint; shade: fill only (edge: + a faint outline); frame: outline + header tab
+    // a level may set its own weight and dash ("dot" | true | false) — an annotation's timeframe — and
+    // `alpha` (two hex digits) to fade it
     if (s.shape === "level") return { type: "trend", pts: [{ t: t0, p: s.price }, { t: t1, p: s.price }],
-      color: col, width: 1, dash: s.dash !== false, text: dim ? "" : s.label || "" };
+      color: s.alpha ? col + s.alpha : col, width: s.width || 1, dash: s.dash === undefined ? true : s.dash, text: dim ? "" : s.label || "" };
     if (s.shape === "line") return { type: "trend", pts: [{ t: t0, p: s.p0 }, { t: t1, p: s.p1 }],
       color: col, width: dim ? 1 : s.arrow ? 2.5 : 2, dash: !!s.dash, arrow: !dim && !!s.arrow, text: dim ? "" : s.label || "" };
     if (s.shape === "text") return dim ? null : { type: "text", pts: [{ t: t1, p: s.price }], color: col, size: 11, text: s.label || "" };
@@ -1046,7 +1051,10 @@ async function chartPage(alive, market, symbol, tf) {
   const prevClose = rows.length > 1 ? (px.ohlc ? rows.at(-2).close : rows.at(-2).value) : lastClose;
   const yearAgo = new Date(Date.parse(last.time) - 365 * 864e5).toISOString().slice(0, 10);
   const yr = rows.filter((r) => r.time >= yearAgo);
-  const hi52 = Math.max(...yr.map((r) => (px.ohlc ? r.high : r.value))), lo52 = Math.min(...yr.map((r) => (px.ohlc ? r.low : r.value)));
+  // from the server's daily bars when it sent them (px.range52): a weekly or monthly bar straddling the
+  // year boundary would otherwise pull in a high or low from before it
+  const hi52 = px.range52?.hi ?? Math.max(...yr.map((r) => (px.ohlc ? r.high : r.value))),
+    lo52 = px.range52?.lo ?? Math.min(...yr.map((r) => (px.ohlc ? r.low : r.value)));
   const chg = (lastClose / prevClose - 1) * 100, fromHi = (lastClose / hi52 - 1) * 100;
   const rangePos = hi52 > lo52 ? ((lastClose - lo52) / (hi52 - lo52)) * 100 : 50;
   $("#quote").innerHTML = `<b class="q-sym">${esc(symbol)}</b>${ctx.name ? `<span class="q-name" title="${esc(ctx.name)}">${esc(ctx.name)}</span>` : ""}<span class="mkt">${MKT_BADGE[market] || market}</span><button class="star" id="star"></button>${sector ? `<span class="muted">${esc(sector)}</span>` : ""}
@@ -1261,8 +1269,10 @@ async function chartPage(alive, market, symbol, tf) {
     const c = (r) => (px.ohlc ? r.close : r.value), lastB = bars[n - 1], prevB = bars[n - 2] || lastB;
     const yearAgo = new Date(Date.parse(lastB.time) - 365 * 864e5).toISOString().slice(0, 10);
     const yr = bars.filter((r) => r.time >= yearAgo);
+    // the server's 52-week range comes from daily bars, so it reads the same on every timeframe
     return { last: c(lastB), chg: c(lastB) - c(prevB), pct: (c(lastB) / c(prevB) - 1) * 100, date: lastB.time,
-      hi: Math.max(...yr.map((r) => (px.ohlc ? r.high : r.value))), lo: Math.min(...yr.map((r) => (px.ohlc ? r.low : r.value))) };
+      hi: px.range52?.hi ?? Math.max(...yr.map((r) => (px.ohlc ? r.high : r.value))),
+      lo: px.range52?.lo ?? Math.min(...yr.map((r) => (px.ohlc ? r.low : r.value))) };
   }
   function sortedWl() {
     const srt = store.get("wlSort", null);

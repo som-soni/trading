@@ -204,7 +204,8 @@ const Drawings = (() => {
       // while its anchor (pts[0]) stays glued to the bar and price it explains
       const fracPx = (pt) => { const x = ts.logicalToCoordinate(msToLogical(pt.t)); return x == null ? null : { x, y: h * pt.f }; };
       const b = it.pts[1] ? (it.pts[1].f != null ? fracPx(it.pts[1]) : toPx(it.pts[1])) : a; if (!b) return;
-      ctx.strokeStyle = it.color; ctx.lineWidth = it.width || 2; ctx.setLineDash(it.dash ? [5, 4] : []);
+      // dash: true = dashed, "dot" = dotted (an annotation's timeframe), false = solid
+      ctx.strokeStyle = it.color; ctx.lineWidth = it.width || 2; ctx.setLineDash(it.dash === "dot" ? [1.5, 3] : it.dash ? [5, 4] : []);
       ctx.beginPath();
       switch (it.type) {
         // a labelled trend line is how an annotation names a level (shape "level" in app.js);
@@ -245,8 +246,13 @@ const Drawings = (() => {
           if (it.bg) {   // a background band (an annotation's): the full pane height, a tint without an outline
             ctx.fillStyle = it.color + "1c"; ctx.fillRect(Math.min(a.x, b.x), 0, Math.abs(a.x - b.x), h); break;
           }
-          if (it.shade) {   // a zone (an annotation's): a tint without an outline
-            ctx.fillStyle = it.color + "16"; ctx.fillRect(Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(a.x - b.x), Math.abs(a.y - b.y)); break;
+          if (it.shade) {   // a zone (an annotation's): a tint — stronger on a dark background, where 10% vanishes —
+            // with, if asked (`edge`), a thin outline at 40% so the zone's extent reads without shouting
+            const dark = document.documentElement.dataset.theme !== "light";
+            const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), rw = Math.abs(a.x - b.x), rh = Math.abs(a.y - b.y);
+            ctx.fillStyle = it.color + (dark ? "29" : "1a"); ctx.fillRect(x, y, rw, rh);
+            if (it.edge) { ctx.strokeStyle = it.color + "66"; ctx.lineWidth = 1; ctx.setLineDash([]); ctx.strokeRect(x, y, rw, rh); }
+            break;
           }
           if (it.frame) {   // a frame around a group of annotations: an outline, a header tab, no fill
             const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);

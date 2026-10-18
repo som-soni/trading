@@ -162,11 +162,17 @@ See [Indicators](learn-price-indicators.md) for moving averages and pivot points
 
 **Price inside a zone.** A zone is support only while price is above it, and resistance only while price is below it. When price sits inside, call it a pivot. It acts as support while price holds above it and as resistance once price closes below it. Labelling it by its past role invites a mistake: a "resistance" level below today's price, for instance.
 
+The same goes for a zone a few cents away. A support a fraction of a day's range under the price says nothing useful; price is effectively sitting on it.
+
+**A congestion zone.** Some zones are areas price has lived in for months, trading back and forth inside them. That is congestion, not a clean ceiling or floor. Its edges matter more than any line inside it, and a break out of it in either direction is the event to watch. When several levels crowd around the price like this, read them as one band.
+
 **A retest after a breakout.** Price often returns to the broken level before going on. A successful retest touches the zone, prints a rejection bar such as a long lower wick, and moves away. A close back through the zone means the breakout failed. The trade built on this is [Pullback to support](learn-strat-pullback-support.md).
 
 **At an all-time high.** There is no history above, so there is no resistance to draw. Use the old all-time high as support, and round numbers above as likely pauses. Do not invent resistance where none exists: strong trends at new highs can run much further than seems reasonable.
 
 **A gap.** After a gap up, the top of the bar before the gap becomes potential support; after a gap down, its bottom becomes potential resistance. Small gaps in liquid stocks often fill within days. Large gaps on earnings may stay open for months.
+
+**Earnings ahead.** A report often carries price straight through the levels nearest to it. If price sits in a tight band with results a few days away, the levels outside the band are the more useful reference.
 
 **A news spike.** Results or a policy announcement can produce one or two huge bars that pierce many levels. Do not draw a level from the tip of a single spike unless price reacts there again. Where price settles after the event matters more.
 

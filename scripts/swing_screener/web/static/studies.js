@@ -629,69 +629,96 @@ const Studies = (() => {
         return { series, note: last ? `${p.method} · ${{ W: "weekly", M: "monthly", Q: "quarterly", Y: "yearly" }[unit]} · P ${fmtPx(last.lv.P)}` : "",
           setVisible: (on) => series.forEach((x) => x.applyOptions({ visible: on })) };
       } },
-    // ---- support & resistance ZONES from core/sr_levels.py (/api/sr-levels): the higher timeframe first,
-    // then the chart's own; turning points that earned a clear reaction, clustered into zones between a
-    // quarter and one ATR wide, graded, kept only when strong enough and near price; broken levels kept
-    // with their new role. Every rule is there; this only draws.
+    // ---- support & resistance ZONES from core/sr_levels.py (/api/sr-levels). Every rule is there; this
+    // only draws, with one visual channel per kind of information:
+    //   hue = role (support teal, resistance red, pivot amber, congestion grey, references mid grey);
+    //   line weight + dash = timeframe (monthly heavy solid, weekly dashed, daily dotted);
+    //   fill = the zone's extent (a soft tint, a faint outline — the key line is the strongest element);
+    //   opacity = reliability (levels near price fade when earnings are close);
+    //   text = the price-axis tag; in-chart labels are optional.
     sr: { name: "Support & Resistance (zones)", short: "S/R", cat: "Support & resistance", overlay: true, custom: true,
       label: (p) => `S/R zones${p.levels === "Key levels (3 each side)" ? " · key levels" : ""}`,
       params: { levels: { type: "select", def: "All graded levels", options: ["All graded levels", "Key levels (3 each side)"] },
-        labels: { type: "select", def: "Short", options: ["Short", "Full", "None"] },
+        labels: { type: "select", def: "Axis only", options: ["Axis only", "Short", "Full"] },
         periods: { type: "select", def: "Hide", options: ["Hide", "Show"] },
+        palette: { type: "select", def: "Standard", options: ["Standard", "Colour-blind (blue / orange)"] },
         axis: { type: "select", def: "Show", options: ["Show", "Hide"] } },
-      plots: [{ k: "res", t: "Resistance", c: "#f23645" }, { k: "sup", t: "Support", c: "#089981" }, { k: "piv", t: "Pivot (price inside the zone)", c: "#ff9800" },
-        { k: "per", t: "Previous period high / low", c: "#8a8a8a" }],
+      plots: [{ k: "res", t: "Resistance", c: "#d64545" }, { k: "sup", t: "Support", c: "#1f9d7a" }, { k: "piv", t: "Pivot / at price", c: "#e0a030" },
+        { k: "cong", t: "Congestion band (context, not a level)", c: "#8a8f98" },
+        { k: "per", t: "Previous period high / low", c: "#6b7280" }],
       draw({ main, times, p, col, tf, ctx, id }) {
-        if (!["D", "W"].includes(tf) || !ctx.annotate) return { series: [], note: "daily or weekly charts only", setVisible() {} };
+        if (!["D", "W", "M"].includes(tf) || !ctx.annotate) return { series: [], note: "daily, weekly or monthly charts only", setVisible() {} };
         let on = true, shapes = [], specs = [], lines = [];
         const NAME = { M: "monthly", W: "weekly", D: "daily" };
+        // the colour-blind palette swaps red / green for orange / blue; position and the axis tag still say the role
+        const CB = { sup: "#2b7bd6", res: "#e8833a", piv: "#8e5bc4" };
+        const C = (k) => (p.palette?.startsWith("Colour-blind") && CB[k]) || col(k);
+        const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+        const roleKey = (z) => (z.role === "resistance" ? "res" : z.role === "pivot" ? "piv" : "sup");
+        // timeframe -> weight and dash, on the zone's key line and its axis line alike
+        const STYLE = { M: { w: 3, dash: false, ls: 0 }, W: { w: 2, dash: true, ls: 2 }, D: { w: 1, dash: "dot", ls: 1 } };
         const paint = () => {
-          ctx.annotate(id, on ? shapes : [], { support: col("sup"), resistance: col("res"), pivot: col("piv"), period: col("per") });
+          ctx.annotate(id, on ? shapes : [], { support: C("sup"), resistance: C("res"), pivot: C("piv"), congestion: col("cong"), period: col("per") });
           lines.forEach((l) => main.removePriceLine(l));
           lines = on && p.axis !== "Hide" ? specs.map((o) => main.createPriceLine(o)) : [];
         };
         fetch(`/api/sr-levels/${ctx.market}/${encodeURIComponent(ctx.symbol)}?tf=${tf}`).then((x) => (x.ok ? x.json() : null)).then((r) => {
           if (!r) return setNote(id, "could not load the levels");
-          const last = times.at(-1), higher = r.stack[0], labelAt = times[Math.max(0, times.length - 40)];
-          // labels in words. Short: "Support · weekly". Full adds the evidence: grade, distinct visits,
-          // height ÷ the zone's own timeframe's ATR, worn. None: the zones speak for themselves.
-          const roleWord = (z) => z.role === "pivot" ? "Pivot — price inside" : `${z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? ` (was ${z.role === "resistance" ? "support" : "resistance"})` : ""}`;
-          const tagsOf = (z) => p.labels === "None" ? [] : p.labels !== "Full" ? [roleWord(z), NAME[z.tf], ...(z.wide ? ["wide"] : [])] : [roleWord(z),
+          const n = times.length, last = times.at(-1);
+          const idx = (d) => { const i = times.findIndex((t) => t >= d); return i < 0 ? n - 1 : i; };
+          const roleWord = (z) => (z.role === "pivot" ? (z.at_price ? "At price" : "Pivot — price inside")
+            : `${z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? ` (was ${z.role === "resistance" ? "support" : "resistance"})` : ""}`);
+          const inline = p.labels === "Short" || p.labels === "Full";
+          const tagsOf = (z) => p.labels !== "Full" ? [roleWord(z), NAME[z.tf], ...(z.congestion ? ["congestion"] : []), ...(z.wide ? ["wide"] : [])] : [roleWord(z),
             NAME[z.tf], `scores ${z.score}/${z.of}`, `${z.touches.length} visit${z.touches.length > 1 ? "s" : ""}`,
-            // the height check: zone height ÷ the ATR of the zone's own timeframe — "wide" may mean two levels
             ...(z.height_atr != null ? [`${z.height_atr.toFixed(1)} × ${NAME[z.atr_tf || z.tf]} ATR tall${z.wide ? " (wide)" : ""}`] : []),
-            ...(z.worn ? ["worn"] : []), ...(z.inside ? ["price inside"] : [])];
-          // with "All graded levels", the zones that passed the grade but are not among the nearest
-          // three each side: dashed outlines, no fill, still labelled — the market's older turning
-          // points, there when the view scrolls back, without competing with the key levels
-          const extra = p.levels === "Key levels (3 each side)" ? [] : (r.others || []).flatMap((z) => [
-            { shape: "box", frame: true, dash: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role, label: "" },
-            ...(p.labels === "None" ? [] : [{ shape: "text", at: labelAt, price: z.top, role: z.role, label: tagsOf(z).join(" · ") }])]);
-          shapes = extra.concat(r.zones.flatMap((z) => {
-            const tags = tagsOf(z);
-            const big = z.tf === higher;   // the higher timeframe's zones carry more weight: drawn heavier
+            ...(z.congestion ? [`congestion: price closed inside on ${Math.round(z.time_inside * 100)}% of bars`] : []),
+            ...(z.worn ? ["worn"] : [])];
+          // earnings close: levels within 3% of price fade (opacity carries reliability)
+          const fades = (z) => r.earnings_sessions != null && Math.abs(z.line - r.close) / r.close < 0.03;
+          // in-chart labels (optional) sit toward the left of the zone, where there are fewer recent
+          // candles, and step right when another label is within ~1.5% of price
+          const labelX = new Map();
+          { let prev = null, step = 0;
+            for (const z of [...r.zones].sort((a, b) => b.top - a.top)) {
+              step = prev != null && prev - z.top < r.close * 0.015 ? step + 1 : 0;
+              labelX.set(z, times[Math.min(n - 1, Math.max(idx(z.from), n - 170) + step * 35)]);
+              prev = z.top;
+            } }
+          // the other graded zones: a thin dashed outline only — context when the view scrolls back
+          const extra = p.levels === "Key levels (3 each side)" ? [] : (r.others || []).map((z) => (
+            { shape: "box", frame: true, dash: true, faint: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role, label: "" }));
+          // congestion bands under everything: a grey tint, no border, no lines (a break out is the event)
+          const bands = (r.congestion || []).flatMap((c) => [
+            { shape: "box", shade: true, from: c.from, to: last, top: c.top, bottom: c.bottom, role: "congestion" },
+            ...(inline ? [{ shape: "text", at: times[Math.max(idx(c.from), n - 170)], price: c.top, role: "congestion", label: "Congestion" }] : [])]);
+          // key zones: a soft fill with a faint outline, and the key line at full strength in the timeframe's style
+          const keys = r.zones.flatMap((z) => {
+            const st = STYLE[z.tf] || STYLE.D;
             return [
-              big ? { shape: "box", from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role, label: "" }
-                  : { shape: "box", shade: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role },
-              // the reference levels, dashed: where the reactions concentrate (two for a merged zone);
-              // the near edge is on the price axis, for alerts
-              ...(z.refs || [z.reference ?? z.line]).map((x) => ({ shape: "level", from: z.from, to: last, price: x, role: z.role, dash: true, label: "" })),
-              // the label beside the latest bars, where the eye is — a zone's left edge is often years back
-              ...(tags.length ? [{ shape: "text", at: labelAt, price: z.top, role: z.role, label: tags.join(" · ") }] : []),
+              { shape: "box", shade: true, edge: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role },
+              { shape: "level", from: z.from, to: last, price: z.line, role: z.role, width: st.w, dash: st.dash, label: "", ...(fades(z) ? { alpha: "70" } : {}) },
+              ...(inline ? [{ shape: "text", at: labelX.get(z), price: z.top, role: z.role, label: tagsOf(z).join(" · ") }] : []),
             ];
-          }));
-          // previous period highs and lows: off unless asked for, they crowd the zones (the next round
-          // number above an all-time high is not one of them: it is the only level there, so it always shows)
-          shapes.push(...r.lines.filter((l) => p.periods === "Show" || l.kind === "round_above")
-            .map((l) => ({ shape: "level", from: l.from, to: last, price: l.price, role: "period", dash: true, label: l.label })));
-          // the near edge of each zone on the price axis — the single line to set an alert on
-          specs = r.zones.map((z) => ({ price: z.line, color: col(z.role === "resistance" ? "res" : z.role === "pivot" ? "piv" : "sup"), lineWidth: z.tf === higher ? 2 : 1,
-            lineStyle: 2, axisLabelVisible: true, title: `${z.role === "resistance" ? "Resistance" : z.role === "pivot" ? "Pivot" : "Support"} · ${NAME[z.tf]}` }));
+          });
+          // reference markers: grey, thin, a short segment near the right edge only; hidden inside a key zone
+          // or within 0.3% of a key line (the next round number above an all-time high always shows)
+          const near = (x) => r.zones.some((z) => (x >= z.bottom && x <= z.top) || Math.abs(x - z.line) / r.close < 0.003);
+          const refs = r.lines.filter((l) => (p.periods === "Show" && !near(l.price)) || l.kind === "round_above")
+            .map((l) => ({ shape: "level", from: times[Math.max(0, n - 15)], to: last, price: l.price, role: "period", width: 1, dash: true, label: l.label }));
+          shapes = [...bands, ...extra, ...keys, ...refs];
+          // the price-axis tags carry the words; their lines span the chart in the timeframe's style
+          specs = r.zones.map((z) => {
+            const st = STYLE[z.tf] || STYLE.D, c = C(roleKey(z));
+            return { price: z.line, color: fades(z) ? rgba(c, 0.45) : c, lineWidth: st.w, lineStyle: st.ls, axisLabelVisible: true,
+              title: `${z.role === "pivot" ? (z.at_price ? "At price" : "Pivot") : z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? " (was " + (z.role === "resistance" ? "S)" : "R)") : ""} · ${NAME[z.tf]}` };
+          });
           const nS = r.zones.filter((z) => z.role === "support").length;
           const nR = r.zones.filter((z) => z.role === "resistance").length, nP = r.zones.length - nS - nR;
-          setNote(id, `${NAME[higher]} + ${NAME[r.stack[1]]} · ${nS} support, ${nR} resistance${nP ? `, ${nP} pivot (price inside)` : ""} (key)`
-            + `${extra.length ? ` + ${extra.length / 2} more graded, dashed` : ""}${r.note ? " · " + r.note : ""}`
-            + `${r.earnings_sessions != null ? ` · ⚠ earnings in ${r.earnings_sessions} session${r.earnings_sessions === 1 ? "" : "s"}: levels near price are less reliable through the report` : ""}`);
+          const cong = (r.congestion || []).map((c) => `congestion band ${c.bottom.toFixed(2)}–${c.top.toFixed(2)} (price closed inside on ${Math.round(c.time_inside * 100)}% of bars)`);
+          setNote(id, `${r.stack.filter(Boolean).map((t) => NAME[t]).join(" + ")} · ${nS} support, ${nR} resistance${nP ? `, ${nP} at price / pivot` : ""} (key)`
+            + `${extra.length ? ` + ${extra.length} more graded, outlined` : ""}${cong.length ? " · " + cong.join(" · ") : ""}${r.note ? " · " + r.note : ""}`
+            + `${r.earnings_sessions != null ? ` · ⚠ earnings in ${r.earnings_sessions} session${r.earnings_sessions === 1 ? "" : "s"}: levels within 3% of price are faded — less reliable through the report` : ""}`);
           paint();
         }).catch(() => setNote(id, "could not load the levels"));
         return { series: [], note: "finding levels…", setVisible: (v) => { on = v; paint(); } };
