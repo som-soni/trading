@@ -178,23 +178,24 @@ The record on trading the levels is weaker. Brock, Lakonishok and LeBaron (1992)
 
 | Zone touches | Touches | Held | Placebo held |
 |---|---|---|---|
-| India, support | 6,496 | 41.3% | 42.4% |
-| India, resistance | 8,899 | 39.6% | 39.8% |
-| US, support | 25,794 | 41.6% | 42.3% |
-| US, resistance | 32,880 | 35.1% | 36.1% |
+| India, support | 6,634 | 39.4% | 41.3% |
+| India, resistance | 8,915 | 38.9% | 37.9% |
+| US, support | 25,838 | 39.9% | 40.5% |
+| US, resistance | 32,516 | 33.8% | 35.1% |
 
-| Held minus placebo | Role reversed | Not reversed |
-|---|---|---|
-| India, support | +2.4 pts | −1.6 pts |
-| India, resistance | +3.4 pts | −0.4 pts |
-| US, support | +3.2 pts | −1.1 pts |
-| US, resistance | 0.0 pts | −1.1 pts |
+| Held minus placebo | Role reversed | Not reversed | Tested five or more times |
+|---|---|---|---|
+| India, support | +1.6 pts | −2.4 pts | −2.7 pts |
+| India, resistance | +2.5 pts | +0.8 pts | −1.7 pts |
+| US, support | +1.4 pts | −0.8 pts | +0.5 pts |
+| US, resistance | −0.4 pts | −1.3 pts | −3.1 pts |
 
 What this shows:
 
-- **The zones held no more often than chance.** Every group came in up to about one point below its placebo. A random price with the same distances did as well.
-- **Grading did not help.** Zones scoring on five or more factors fared no better against their placebo than those scoring on three or four. Zones tested five or more times were not clearly worse either.
-- **Role reversal was the one small exception.** Levels that had flipped from resistance to support, or the reverse, beat the placebo by two to three points in three of the four groups. These were a small share of all touches.
+- **The zones held no more often than chance.** The groups ranged from about two points below their placebo to one point above. A random price with the same distances did about as well.
+- **Grading did not help.** Zones scoring on five or more factors fared no better against their placebo than those scoring on three or four.
+- **Heavily tested levels did a little worse.** Zones already tested five or more times trailed their placebo by two to three points in three of the four groups. That fits the touches debate in section 5.
+- **Role reversal was the one small plus.** Levels that had flipped from resistance to support, or the reverse, beat the placebo by one and a half to two and a half points in three of the four groups. They were a small share of all touches.
 - **So use levels for planning, not prediction.** They tell you where a stop is beyond the obvious, where a target asks too much, and where to watch for a reaction. The reaction itself is the signal, not the level.
 
 ## 10. A checklist

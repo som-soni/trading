@@ -634,8 +634,8 @@ const Studies = (() => {
     // quarter and one ATR wide, graded, kept only when strong enough and near price; broken levels kept
     // with their new role. Every rule is there; this only draws.
     sr: { name: "Support & Resistance (zones)", short: "S/R", cat: "Support & resistance", overlay: true, custom: true,
-      label: (p) => `S/R zones${p.levels === "All graded levels" ? " · all graded" : ""}`,
-      params: { levels: { type: "select", def: "Key levels (3 each side)", options: ["Key levels (3 each side)", "All graded levels"] },
+      label: (p) => `S/R zones${p.levels === "Key levels (3 each side)" ? " · key levels" : ""}`,
+      params: { levels: { type: "select", def: "All graded levels", options: ["All graded levels", "Key levels (3 each side)"] },
         periods: { type: "select", def: "Show", options: ["Show", "Hide"] },
         axis: { type: "select", def: "Show", options: ["Show", "Hide"] } },
       plots: [{ k: "res", t: "Resistance", c: "#f23645" }, { k: "sup", t: "Support", c: "#089981" }, { k: "per", t: "Previous period high / low", c: "#8a8a8a" }],
@@ -655,10 +655,12 @@ const Studies = (() => {
           const tagsOf = (z) => [`${z.role === "resistance" ? "Resistance" : "Support"}${z.flipped ? ` (was ${z.role === "resistance" ? "support" : "resistance"})` : ""}`,
             NAME[z.tf], `scores ${z.score}/${z.of}`, `${z.touches.length} touch${z.touches.length > 1 ? "es" : ""}`,
             ...(z.worn ? ["worn"] : []), ...(z.inside ? ["price inside"] : [])];
-          // with "All graded levels", the zones that passed the grade but were not among the nearest
-          // three each side, drawn faint: context, the market's older turning points
-          const extra = p.levels === "All graded levels" ? (r.others || []).map((z) => ({ shape: "box", from: z.from, to: last, top: z.top, bottom: z.bottom,
-            role: z.role, faint: true, label: "" })) : [];
+          // with "All graded levels", the zones that passed the grade but are not among the nearest
+          // three each side: dashed outlines, no fill, still labelled — the market's older turning
+          // points, there when the view scrolls back, without competing with the key levels
+          const extra = p.levels === "Key levels (3 each side)" ? [] : (r.others || []).flatMap((z) => [
+            { shape: "box", frame: true, dash: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role, label: "" },
+            { shape: "text", at: labelAt, price: z.top, role: z.role, label: tagsOf(z).join(" · ") }]);
           shapes = extra.concat(r.zones.flatMap((z) => {
             const tags = tagsOf(z);
             const big = z.tf === higher;   // the higher timeframe's zones carry more weight: drawn heavier
@@ -676,7 +678,7 @@ const Studies = (() => {
           specs = r.zones.map((z) => ({ price: z.line, color: col(z.role === "resistance" ? "res" : "sup"), lineWidth: z.tf === higher ? 2 : 1,
             lineStyle: 2, axisLabelVisible: true, title: `${z.role === "resistance" ? "Resistance" : "Support"} · ${NAME[z.tf]}` }));
           const nS = r.zones.filter((z) => z.role === "support").length;
-          setNote(id, `${NAME[higher]} + ${NAME[r.stack[1]]} · ${nS} support, ${r.zones.length - nS} resistance (of ${r.considered} graded${extra.length ? ", the rest faint" : ""})${r.note ? " · " + r.note : ""}`);
+          setNote(id, `${NAME[higher]} + ${NAME[r.stack[1]]} · ${nS} support, ${r.zones.length - nS} resistance (key)${extra.length ? ` + ${extra.length / 2} more graded, dashed` : ""}${r.note ? " · " + r.note : ""}`);
           paint();
         }).catch(() => setNote(id, "could not load the levels"));
         return { series: [], note: "finding levels…", setVisible: (v) => { on = v; paint(); } };

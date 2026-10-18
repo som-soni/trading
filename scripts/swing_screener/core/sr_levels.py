@@ -21,7 +21,9 @@ live here only, never in JavaScript. The procedure, top to bottom:
    (role reversal). A zone price has crossed {STALE_CROSSES}+ times since its last reaction is
    dropped: the market no longer respects it.
 6. **Few and near.** The higher timeframe wins where zones overlap; a lower-timeframe zone is kept only
-   in the gaps. At most {MAX_PER_SIDE} zones each side of price, best graded first, then nearest.
+   in the gaps, and a higher-timeframe zone takes its touches and start date from the chart timeframe's
+   reactions inside it (refining it). At most {MAX_PER_SIDE} zones each side of price, best graded
+   first, then nearest, are the key levels; the others that passed the grade are returned too.
 7. **Context lines**: the previous period's high and low; at an all-time high, where no resistance
    exists, the next round number above (never an invented level).
 
@@ -231,6 +233,21 @@ def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
     sma = [float(x) for x in (ind.sma(df["close"], 50).iloc[-1], ind.sma(df["close"], 200).iloc[-1]) if x == x]
     conf = sma   # the scoring table's confluence: round numbers (per zone) and the moving averages
     top = _zones_for(frames[higher], higher, True, conf)
+    # Refine each higher-timeframe zone with the chart timeframe's turning points inside it: its band
+    # stays (a weekly level is as wide as a weekly bar), but its touches and start come from the
+    # daily reactions — a weekly zone otherwise "starts" at its first weekly swing, months after the
+    # daily chart first turned there.
+    own_pts = _turning_points(df, own)
+    first_w = frames[higher].index[-1] - pd.DateOffset(months=int(TF[higher]["years"] * 12))
+    for z in top:
+        inside = sorted((p for p in own_pts if z["bottom"] <= p["wick"] <= z["top"] and df.index[p["i"]] >= first_w),
+                        key=lambda p: p["i"])
+        if len(inside) >= 2:
+            z["touches"] = [{"date": p["date"], "price": p["wick"], "kind": p["kind"],
+                             "reaction_atr": round(p["reaction_atr"], 2)} for p in inside]
+            z["from"] = min(z["from"], inside[0]["date"])
+            z["worn"] = len(inside) >= WORN_TOUCHES
+            z["refined"] = True
     low = [z for z in _zones_for(df, own, False, conf)
            if not any(z["bottom"] <= h["top"] and z["top"] >= h["bottom"] for h in top)]   # higher timeframe wins
     allz = top + low
