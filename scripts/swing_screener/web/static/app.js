@@ -4495,10 +4495,21 @@ function go(hash) { if (location.hash === hash) route(); else location.hash = ha
 let lastRoute = null;
 // ------------------------------------------------------------- notes page
 
+/** Today in the READER'S timezone, as YYYY-MM-DD.
+ *
+ *  `new Date().toISOString()` is UTC, so for anyone east of Greenwich it returns YESTERDAY
+ *  between midnight and the offset -- a journal opened at 00:19 IST was titled for the previous
+ *  day, and the Insert-date button agreed with it. A note's date is a local-calendar fact.
+ */
+const todayLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 const NOTE_TEMPLATES = {
   blank: { label: "Blank note", make: (sym) => ({ title: sym ? `${sym.symbol.replace(/\.NS$/, "")} — notes` : "", body: "", tags: [] }) },
-  journal: { label: "Daily journal", make: () => { const d = new Date().toISOString().slice(0, 10); return { title: `Journal — ${longDate(d)}`, tags: ["journal"],
-    body: "## Market\n- Tone:\n- Breadth / leading groups:\n\n## Positions\n| Stock | Plan | Action |\n|---|---|---|\n|  |  |  |\n\n## Watching\n- \n\n## Lessons\n- \n" }; } },
+  journal: { label: "Daily journal", make: () => { const d = todayLocal(); return { title: `Journal — ${longDate(d)}`, tags: ["journal"],
+    body: "## Market — India\n- **Regime:** advance / distribution / correction / basing / recovery — and why\n- **Breadth vs price:** confirming or diverging, which way\n- **Character:** broad or concentrated · washout or grind\n- **Leadership:** offensive or defensive · rotating toward what\n- **Volatility:** expanding or draining · what that permits\n- **Call:**\n- **Changes my mind:**\n\n## Market — US\n- **Regime:**\n- **Breadth vs price:**\n- **Character:**\n- **Leadership:**\n- **Volatility:**\n- **Call:**\n- **Changes my mind:**\n\n## Cross-market\n- **Stronger, and why:**\n\n## Positions\n| Stock | Plan | Action |\n|---|---|---|\n|  |  |  |\n\n## Watching\n- \n\n## Lessons\n- \n" }; } },
   plan: { label: "Trade plan", make: (sym) => ({ title: `Plan — ${sym ? sym.symbol.replace(/\.NS$/, "") : ""}`, tags: ["plan"],
     body: "## Setup\n\n## Entry / stop / target\n- Entry:\n- Stop:\n- Target:\n- Size / risk:\n\n## Why now\n\n## What would prove me wrong\n" }) },
   review: { label: "Trade review", make: (sym) => ({ title: `Review — ${sym ? sym.symbol.replace(/\.NS$/, "") : ""}`, tags: ["review"],
@@ -4679,7 +4690,7 @@ async function notesPage(alive, args) {
     const k = e.target.closest("[data-t]")?.dataset.t; if (!k) return;
     ({ b: () => wrap("**"), i: () => wrap("_"), h: () => prefix("## "), ul: () => prefix("- "), task: () => prefix("- [ ] "), q: () => prefix("> "),
        code: () => wrap("`"), link: () => wrap("[", "](https://)", "link text"),
-       table: () => insert("\n| Column | Column |\n|---|---|\n|  |  |\n"), date: () => insert(longDate(new Date().toISOString().slice(0, 10))) })[k]();
+       table: () => insert("\n| Column | Column |\n|---|---|\n|  |  |\n"), date: () => insert(longDate(todayLocal())) })[k]();
   };
   $b.onkeydown = (e) => {
     const mod = e.metaKey || e.ctrlKey;
@@ -4756,7 +4767,7 @@ async function notesPage(alive, args) {
       if (range && !range.collapsed) cmd("createLink", url); else cmd("insertHTML", `<a href="${esc(url)}">${esch(url)}</a>&nbsp;`); },
     table: () => cmd("insertHTML", `<table><thead><tr><th>Column</th><th>Column</th></tr></thead><tbody><tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table><p><br></p>`),
     hr: () => cmd("insertHorizontalRule"),
-    date: () => cmd("insertText", longDate(new Date().toISOString().slice(0, 10))),
+    date: () => cmd("insertText", longDate(todayLocal())),
     clear: () => { cmd("removeFormat"); cmd("formatBlock", "p"); },
   };
   const syncTools = () => {
