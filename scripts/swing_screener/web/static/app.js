@@ -4699,6 +4699,49 @@ async function notesPage(alive, args) {
   const richChanged = () => { $b.value = htmlToMd($r); renderPrev(); changed(); };
   document.execCommand("defaultParagraphSeparator", false, "p");
   const cmd = (c, v = null) => { $r.focus(); document.execCommand(c, false, v); richChanged(); syncTools(); };
+  /** execCommand("indent") emits a nested list as a SIBLING of the item it belongs to --
+   *  `<ul><li>a</li><ul><li>b</li></ul></ul>` -- which is malformed: a list may only contain
+   *  `<li>`. htmlToMd walks `li` children only, so the nested items are skipped and the text is
+   *  LOST on save. Moving the list inside the preceding `<li>` gives the standard shape
+   *  `<li>a<ul><li>b</li></ul></li>`, which htmlToMd already serialises with its indent level.
+   */
+  const fixNesting = () => {
+    let changed = false;
+    for (const sub of $r.querySelectorAll("ul > ul, ul > ol, ol > ul, ol > ol")) {
+      const host = sub.previousElementSibling;
+      if (host && host.tagName === "LI") { host.appendChild(sub); changed = true; }
+    }
+    // OUTDENT is malformed the other way: lifting an item out of a nested list leaves
+    // `<li>A<ul>..</ul><li>C</li></li>` -- an <li> inside an <li>, which is invalid and which
+    // htmlToMd reads as one item, merging the text into "- AC". The lifted item belongs after
+    // its host, in the host's own list.
+    for (const inner of $r.querySelectorAll("li > li")) {
+      const host = inner.parentElement;
+      host.after(inner);
+      changed = true;
+    }
+    // Indenting a second item in a row leaves TWO adjacent lists inside one <li> rather than one
+    // list of two items. Both serialise to the same Markdown, but they are separate blocks to a
+    // renderer -- and to the next indent -- so they are merged.
+    for (const l of $r.querySelectorAll("li > ul, li > ol")) {
+      const prev = l.previousElementSibling;
+      if (prev && prev.tagName === l.tagName) {
+        while (l.firstChild) prev.appendChild(l.firstChild);
+        l.remove();
+        changed = true;
+      }
+    }
+    if (changed) richChanged();
+  };
+
+  /** Is the caret inside a list item of THIS editor? Tab only indents there. */
+  const inListItem = () => {
+    const n = getSelection()?.anchorNode;
+    if (!n) return false;
+    const el = n.nodeType === 3 ? n.parentElement : n;
+    const li = el?.closest?.("li");
+    return !!(li && $r.contains(li));
+  };
   const selText = () => String(getSelection() || "");
   const esch = (x) => x.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]));
   const RICH = {
@@ -4737,6 +4780,17 @@ async function notesPage(alive, args) {
     const mod = e.metaKey || e.ctrlKey;
     if (mod && e.key === "s") { e.preventDefault(); dirty = true; save(); }
     else if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); RICH.link(); }
+    // Tab nests a list item, Shift+Tab lifts it back out. htmlToMd already serialises nested
+    // lists -- its `list(n, ind)` carries an indent level -- so the only thing missing was a way
+    // to PRODUCE the nesting in rich mode; the markdown pane has had Tab since it was written.
+    //
+    // Only inside a list: elsewhere Tab belongs to the browser, moving focus out of the editor,
+    // and swallowing it would trap keyboard users in the note body with no way forward.
+    else if (e.key === "Tab" && inListItem()) {
+      e.preventDefault();
+      cmd(e.shiftKey ? "outdent" : "indent");
+      fixNesting();   // BOTH directions emit malformed HTML; see fixNesting
+    }
     else if (e.key === " ") {
       const sel = getSelection(), node = sel.anchorNode;
       const blockEl = node && (node.nodeType === 3 ? node.parentElement : node).closest("p, div, h1, h2, h3, li");
