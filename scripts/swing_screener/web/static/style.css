@@ -1550,4 +1550,12 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .sd-glance { margin-top: 0; padding-top: 2px; }
 .sd-glance h2 { margin-top: 10px; }
 .sd-glance table.dtab { margin-bottom: 6px; }
-.sd-glance td.num b { font-size: 14px; }
+/* The sign colour lives on the cell (.pos / .neg, exactly as the Backtests table sets it), so
+   anything nested inside has to inherit it. The global `b { color: var(--strong) }` on line 47
+   and the default link colour both win over an inherited value, which left the headline figure
+   rendering near-white in a cell that was correctly marked .neg -- the number looked uncoloured
+   while the DOM said otherwise. */
+.sd-glance td.num b { font-size: 14px; color: inherit; }
+.sd-glance td.num a { color: inherit; text-decoration: underline; text-underline-offset: 2px;
+                      text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
+.sd-glance td.num a:hover { text-decoration-color: currentColor; }
