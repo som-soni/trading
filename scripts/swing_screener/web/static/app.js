@@ -615,6 +615,8 @@ async function chartPage(alive, market, symbol, tf) {
   let setupFeed = null, setupFilter = store.get("setupFilter", "all");
   // the Chart patterns indicator's history, as it published it (studies.js patterns): { list, focus, select, clear }
   let patternFeed = null, patternFilter = store.get("patternFilter", "all");
+  // the Supply & demand zones indicator's zones, as it published them (studies.js sdz): { list, focus, checks, select, clear }
+  let zoneFeed = null, zoneFilter = store.get("zoneFilter", "active");
   // three read-only layers share the annotation overlay: VCP near misses, the chosen backtest run's
   // trades, and studies that draw shapes (Indicators -> Chart patterns); each sets its own part
   let tradeItems = () => [], studyItems = () => [];
@@ -733,6 +735,11 @@ async function chartPage(alive, market, symbol, tf) {
     $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="patterns" title="Chart patterns — every pattern the chart-pattern strategy's detectors saw; click one to draw it">
       <svg viewBox="0 0 20 20"><path d="M2 15l4-8 3 5 3-7 6 10"/><path d="M2 17h16"/></svg></button>`);
   } else if (prefs.tab === "patterns") prefs.tab = "wl";
+  // the Supply & demand zones indicator is on: offer its zones, with each one's checklist, as a side panel
+  if (Studies.load().some((s) => s.type === "sdz")) {
+    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="zones" title="Supply & demand zones — every base a decisive move left from, its checklist and retests; click one to go to it">
+      <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="4" rx="1"/><rect x="3" y="12" width="14" height="4" rx="1"/></svg></button>`);
+  } else if (prefs.tab === "zones") prefs.tab = "wl";
   syncPanel();
 
   // The time axis must be on screen without scrolling. The rows above the chart (nav, subnav,
@@ -828,7 +835,8 @@ async function chartPage(alive, market, symbol, tf) {
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn),
     onSetups: (feed) => { setupFeed = feed; if (prefs.tab === "setups") renderSide(); },
-    onPatterns: (feed) => { patternFeed = feed; if (prefs.tab === "patterns") renderSide(); } } });
+    onPatterns: (feed) => { patternFeed = feed; if (prefs.tab === "patterns") renderSide(); },
+    onZones: (feed) => { zoneFeed = feed; if (prefs.tab === "zones") renderSide(); } } });
   // read at paint time, not captured: hiding the indicator from the legend restores the stored layer
   supersededStrategy = () => studies.find((e) => e.def?.setupsFor && !e.skipped && !e.s.hidden)?.def.setupsFor ?? null;
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
@@ -1373,6 +1381,36 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="sp-chips">${chips}</div></section>
       <div class="btrs">${rows || `<div class="muted small">${L.length ? "None of this kind." : "No pattern in five years."}</div>`}</div>`;
   }
+  /** The Supply & demand zones panel: every zone core/sd_zones.py found, newest first, filterable; a
+   *  click goes to it and draws it alone, with its quality checklist — a record of what was examined,
+   *  not a score that predicts anything. */
+  function zonesPanelHtml() {
+    if (!zoneFeed) return `<section><h3>Supply & demand zones</h3><div class="muted small">Finding zones…</div></section>`;
+    const L = zoneFeed.list, f2 = (v) => (+v).toFixed(2);
+    const counts = { active: L.filter((z) => z.status !== "failed").length, fresh: L.filter((z) => z.status === "fresh").length,
+      demand: L.filter((z) => z.kind === "demand").length, supply: L.filter((z) => z.kind === "supply").length, all: L.length };
+    const keep = (z) => zoneFilter === "all" || (zoneFilter === "active" ? z.status !== "failed" : zoneFilter === "fresh" ? z.status === "fresh" : z.kind === zoneFilter);
+    const chips = [["active", "Active"], ["fresh", "Fresh"], ["demand", "Demand"], ["supply", "Supply"], ["all", "All"]]
+      .map(([k, t]) => `<a class="sp-chip ${zoneFilter === k ? "on" : ""}" data-zf="${k}">${t} <span>${counts[k]}</span></a>`).join("");
+    const check = (v) => (v == null ? "–" : v ? "✓" : "✗");
+    const rows = L.map((z, i) => ({ z, i })).reverse().filter(({ z }) => keep(z)).map(({ z, i }) => {
+      const cur = i === zoneFeed.focus;
+      const life = z.status === "failed" ? `failed ${prettyDate(z.failed)} (closed through the distal edge)`
+        : z.tests.length ? `tested ${z.tests.length}× — last ${prettyDate(z.tests.at(-1).date)}` : "fresh — not revisited";
+      const detail = cur ? `<div class="small" style="margin-top:4px">${Object.entries(zoneFeed.checks).map(([k, t]) =>
+          `<div>${check(z.checks[k])} ${esc(t)}</div>`).join("")}
+        ${z.tests.length ? `<div class="muted" style="margin-top:4px">${z.tests.map((t, k) => `${k + 1}. ${prettyDate(t.date)} — reached ${f2(t.price)}, closed ${f2(t.close)}${t.wick_through ? " · wick through the distal edge, closed back" : ""}${t.rvol != null ? ` · ${t.rvol.toFixed(1)}× vol` : ""}`).join("<br>")}</div>` : ""}
+        ${z.gap ? `<div class="muted" style="margin-top:4px">The departure gapped away from the base — check what news or earnings moved it.</div>` : ""}</div>` : "";
+      return `<div class="btr sp-row ${z.kind === "supply" ? "sp-refused" : "sp-trade"} ${cur ? "cur" : ""}" data-zi="${i}">
+        <div class="btr-h"><b>${z.kind === "demand" ? "Demand" : "Supply"} · ${esc(z.name)}</b><span class="muted small">${prettyDate(z.base_from)}</span></div>
+        <div class="small sp-title">${f2(z.proximal)} proximal · ${f2(z.distal)} distal · ${z.width_atr.toFixed(1)} ATR wide · ${z.passed}/${z.of} checks</div>
+        <div class="muted small">${z.base_bars}-bar base, left ${z.departure_atr.toFixed(1)} ATR${z.rvol != null ? ` on ${z.rvol.toFixed(1)}× volume` : ""} · ${life}</div>${detail}</div>`;
+    }).join("");
+    return `<section><h3>Supply & demand zones · ${zoneFeed.tf === "W" ? "weekly" : "daily"}</h3>
+      <div class="muted small">The compact base each decisive move left from. Proximal edge = the base's furthest body, distal = its furthest wick; a close beyond the distal edge ends it. A zone is a place to watch, not a signal. Click one to go to it.${zoneFeed.focus != null ? ` <a data-zall>Show all again</a>` : ""}</div>
+      <div class="sp-chips">${chips}</div></section>
+      <div class="btrs">${rows || `<div class="muted small">${L.length ? "None of this kind." : "No zone found."}</div>`}</div>`;
+  }
   function renderSide() {
     if (!sideReady || !prefs.tab) return;
     const body = $("#side .side-body");
@@ -1380,6 +1418,7 @@ async function chartPage(alive, market, symbol, tf) {
       : prefs.tab === "trades" ? `<div class="wlpanel">${tradesPanelHtml()}</div>`
       : prefs.tab === "setups" ? `<div class="wlpanel">${setupsPanelHtml()}</div>`
       : prefs.tab === "patterns" ? `<div class="wlpanel">${patternsPanelHtml()}</div>`
+      : prefs.tab === "zones" ? `<div class="wlpanel">${zonesPanelHtml()}</div>`
       : prefs.tab === "news" ? `<div class="wlpanel nwpanel">${newsHtml(null)}</div>` : infoHtml();
     if (prefs.tab === "news") {
       loadNews().then((d) => {
@@ -1403,6 +1442,13 @@ async function chartPage(alive, market, symbol, tf) {
       body.querySelectorAll("[data-pi]").forEach((el) => el.onclick = () => patternFeed?.select(+el.dataset.pi));
       body.querySelector("[data-plive]")?.addEventListener("click", () => patternFeed?.clear());
       body.querySelector("[data-pi].cur")?.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    if (prefs.tab === "zones") {
+      body.querySelectorAll("[data-zf]").forEach((el) => el.onclick = () => { zoneFilter = el.dataset.zf; store.set("zoneFilter", zoneFilter); renderSide(); });
+      body.querySelectorAll("[data-zi]").forEach((el) => el.onclick = () => zoneFeed?.select(+el.dataset.zi));
+      body.querySelector("[data-zall]")?.addEventListener("click", () => zoneFeed?.clear());
+      body.querySelector("[data-zi].cur")?.scrollIntoView({ block: "nearest" });
       return;
     }
     if (prefs.tab === "setups") {

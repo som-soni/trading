@@ -6,6 +6,8 @@ with `[x]` when done; move it under **Done** when you like.
 
 ## Inbox
 
+- [ ] Add the indicator for Supply and Demand zones _(added 2026-10-18)_
+
 ## Data
 
 - [ ] **Data source register** — for every dataset we store, record where it

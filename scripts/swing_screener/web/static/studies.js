@@ -605,6 +605,64 @@ const Studies = (() => {
         return { series: [], note: levels.length ? `${nr} resistance · ${levels.length - nr} support` : "no level with enough touches",
           setVisible: (on) => { lines.forEach((l) => main.removePriceLine(l)); lines = on ? specs.map((o) => main.createPriceLine(o)) : []; } };
       } },
+    // ---- supply & demand zones: the base each decisive move left from, found by core/sd_zones.py
+    // (/api/sd-zones) — departure first, then the compact base, body-to-wick edges, a close beyond the
+    // distal edge as failure. Every rule is there; this only picks which zones to show and draws them.
+    sdz: { name: "Supply & Demand Zones (base → departure)", short: "S/D zones", cat: "Support & resistance", overlay: true, custom: true,
+      label: (p) => `S/D zones · ${p.show === "Nearest to price" ? `${p.perSide} each side` : p.show.toLowerCase()}`,
+      params: { show: { type: "select", def: "Nearest to price", options: ["Nearest to price", "All active", "All, with failed"] },
+        perSide: 3, years: 10 },
+      plots: [{ k: "demand", t: "Demand zone", c: "#089981" }, { k: "supply", t: "Supply zone", c: "#f23645" }],
+      draw({ chart, times, p, col, tf, ctx, id }) {
+        if (!["D", "W"].includes(tf) || !ctx.annotate) return { series: [], note: "daily or weekly charts only", setVisible() {} };
+        let on = true, zones = [], shown = [], focus = null, checks = {};
+        const roles = { demand: col("demand"), supply: col("supply") };
+        const px = (v) => (+v).toFixed(2);
+        // which zones to show is presentation: the active ones nearest the last close on each side,
+        // or every active one, or the whole record including the failed (faint)
+        const pick = (close) => {
+          const live = zones.map((z, i) => ({ z, i })).filter(({ z }) => z.status !== "failed");
+          if (p.show === "All, with failed") return zones.map((_, i) => i);
+          if (p.show === "All active") return live.map(({ i }) => i);
+          const dem = live.filter(({ z }) => z.kind === "demand").sort((a, b) => Math.abs(close - a.z.proximal) - Math.abs(close - b.z.proximal));
+          const sup = live.filter(({ z }) => z.kind === "supply").sort((a, b) => Math.abs(close - a.z.proximal) - Math.abs(close - b.z.proximal));
+          return [...dem.slice(0, p.perSide), ...sup.slice(0, p.perSide)].map(({ i }) => i);
+        };
+        const shapesOf = (z, i) => {
+          const top = Math.max(z.proximal, z.distal), bottom = Math.min(z.proximal, z.distal);
+          const faint = (focus != null && focus !== i) || (focus == null && z.status === "failed");
+          const tag = `${z.kind === "demand" ? "Demand" : "Supply"} · ${z.code} · ${z.passed}/${z.of} · ${z.status === "fresh" ? "fresh" : z.status === "tested" ? `tested ${z.tests.length}×` : "failed"}`;
+          const out = [
+            { shape: "box", from: z.base_from, to: z.base_to, top, bottom, role: z.kind, label: tag, faint },   // the base itself
+            { shape: "box", shade: true, from: z.base_to, to: z.until, top, bottom, role: z.kind, faint },        // extended right while valid
+            { shape: "level", from: z.base_to, to: z.until, price: z.proximal, role: z.kind, dash: true, label: "", faint },
+          ];
+          if (!faint) out.push({ shape: "dots", role: z.kind, points: z.tests.map((t, k) => ({ at: t.date, price: t.price, label: `${k + 1}` })) });
+          if (!faint && z.failed) out.push({ shape: "text", at: z.failed, price: z.distal, role: z.kind, label: "✕ closed through" });
+          return out;
+        };
+        const paint = () => ctx.annotate(id, on ? (focus != null && !shown.includes(focus) ? [...shown, focus] : shown).flatMap((i) => shapesOf(zones[i], i)) : [], roles);
+        const reveal = (z) => {
+          const a = Math.max(0, times.findIndex((t) => t >= z.base_from));
+          const endD = z.tests[0]?.date || z.until;
+          let b = times.findIndex((t) => t >= endD); if (b < 0) b = times.length - 1;
+          const span = Math.max(60, (b - a + 1) / 0.6), from = a - span * 0.1;
+          chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
+        };
+        const publish = () => ctx.onZones?.({ list: zones, focus, checks, tf,
+          select: (k) => { if (!zones[k]) return; focus = focus === k ? null : k; if (focus != null) reveal(zones[k]); paint(); publish(); },
+          clear: () => { focus = null; paint(); publish(); } });
+        fetch(`/api/sd-zones/${ctx.market}/${encodeURIComponent(ctx.symbol)}?tf=${tf}&years=${p.years}`)
+          .then((x) => (x.ok ? x.json() : null)).then((r) => {
+            if (!r) return setNote(id, "could not load zones");
+            zones = r.zones || []; checks = r.checks || {};
+            shown = pick(r.close);
+            const nd = shown.filter((i) => zones[i].kind === "demand").length;
+            setNote(id, `${r.note} · showing ${nd} demand, ${shown.length - nd} supply · close ${px(r.close)}`);
+            paint(); publish();
+          }).catch(() => setNote(id, "could not load zones"));
+        return { series: [], note: "finding zones…", setVisible: (v) => { on = v; paint(); } };
+      } },
     // ---- the screener's own trade plan for this symbol (opt-in; nothing is drawn unless added)
     plan: { name: "Screener levels (entry / stop / target)", short: "Plan", cat: "Screener", overlay: true, custom: true,
       label: (p) => `Plan ${p.strategy === "All" ? "all strategies" : p.strategy}`,

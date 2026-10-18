@@ -2,11 +2,11 @@
 
 **In short**
 
-- Price moves when one side runs out of people to trade with. A level on a chart marks where, last time, one side took everything the other offered.
-- A demand zone is the short pause a strong rally started from. A supply zone is the pause a strong fall started from. Judge a zone by how fast the price left it, and use it at most once or twice.
+- Price moves when one side runs out of people to trade with. Support and resistance mark where the price *reacted*; a zone marks where a decisive move *started*.
+- A demand zone is the short pause a strong rally started from. A supply zone is the pause a strong fall started from. Find the move first, draw only the pause, and draw its edges by one fixed rule.
 - Broken resistance often becomes support, and broken support often becomes resistance. This is called role reversal.
 - Old highs above the price are overhead supply: holders waiting to sell at breakeven. Stocks near their 52-week high have little of it.
-- Zones are a reading aid, not a proven edge. Their real use is deciding where a stop goes and where a target is asking too much.
+- Decide in advance what kills a zone, usually a close beyond its far edge. Zones are a reading aid, not a proven edge; their real use is placing stops and capping targets.
 
 This guide explains what supply and demand mean on a chart, how to find and score zones, and when a level changes sides. A base is a demand zone being built; see [Bases](learn-bases.md). For the drawn chart shapes, see [Chart patterns](learn-chart-patterns.md).
 
@@ -39,6 +39,18 @@ Two kinds of trader behaviour keep old levels relevant:
 - **Trapped positions.** Someone who bought near the top before a fall is sitting on a loss. They are waiting to "get out at breakeven", so their selling waits at the old level. Someone who sold near the bottom before a rise regrets it and waits to buy back.
 - **Anchoring.** Even traders with no position see the same prior high, prior low and round number, and place orders around them. The level works partly because everyone expects it to.
 
+**Levels and zones answer different questions.** Support and resistance ask where the price has turned before. A zone asks where a strong move began. They use different evidence, so they are not rivals.
+
+| | Support / resistance | Demand / supply zone |
+|---|---|---|
+| The evidence | Earlier turns, swing highs and lows, range edges | A short, tight pause followed by a fast move away |
+| Needs repeated touches? | No, but each turn adds weight | No: the move away makes it notable before any retest |
+| Drawn as | A line or a narrow band | A box around the pause |
+
+The two often overlap. A price where a stock bounced twice may also be the pause a sharp rally started from. Then both readings point to the same place.
+
+One caution about the words. "Demand zone" does not prove that large buyers are hiding there. A chart records trades that happened, not who made them or why. The names describe price behaviour; treat them as shorthand, not as a report on big funds.
+
 ## 2. Demand zones — where buyers are waiting
 
 In early May 2019, ICICI Bank fell about 8% in two weeks, to ₹376. For four sessions in mid-May it traded in a narrow band, between about ₹376 and ₹387. On 20 May it jumped to ₹407.70, on almost twice its average volume. A week later it touched ₹439.20.
@@ -59,7 +71,7 @@ mark: 2019-09-19 | second retest holds
 caption: A short, tight pause, then a fast move away on heavy volume. When the price returned months later, buyers were still there.
 ```
 
-That band is a **demand zone**: the starting point of a strong move up. It is the pause where a decline stopped and big buyers bought everything that was for sale. The rally that followed shows that they still wanted more shares than they got.
+That band is a **demand zone**: the starting point of a strong move up. It is the pause where a decline stopped and buyers took everything that was for sale. The rally that followed shows that buying outran selling once the pause ended.
 
 ```pattern
 demand-zone
@@ -67,10 +79,20 @@ demand-zone
 
 You identify a zone by the way the price *left* it, not by the pause itself:
 
-1. **Find the move away first.** Look for a fast, large rally: wide green bars and rising volume. If the price only drifted away, the big buyers probably got all the shares they wanted. Then there is no reason to expect more buyers waiting there.
-2. **Mark the base the move started from.** Draw it from the pause's low to its high: the last small consolidation before the move. Zone traders call it a *drop-base-rally* when a decline came before it, and a *rally-base-rally* inside an uptrend. Short and tight is better than long and loose. When the selling is soaked up quickly, the buyer is bigger than the seller.
-3. **Judge freshness.** Each time the price comes back to the zone, some of the waiting buy orders get filled and used up. The first retest (the first return to the zone) is the trade; the third is a coin flip. A zone the price has already broken through is gone, so do not keep buying as it falls.
-4. **Judge location.** The zone should sit inside a chart you would want to own anyway: a higher low in an uptrend, or a base inside a Stage 2 advance. The same shape at the bottom of a collapsing downtrend is an attempt to catch a falling knife.
+1. **Find the move away first.** Look for a fast, large rally: wide green bars, little overlap between them, each close above the last. Measure it against the stock's normal daily range, its ATR (average true range). Two or three bars that carry the price two ATRs or more beyond the pause are decisive. A close above a nearby swing high adds weight. If the price only drifted away, there is little reason to expect buyers still waiting there.
+2. **Trace it back to the pause.** Mark only the short, tight stretch right before the price took off. Leave out the decline before it and the rally after it. Zone traders call it a *drop-base-rally* when a decline came first, and a *rally-base-rally* inside an uptrend. Short and tight is better than long and loose. If no compact stretch stands out, skip the chart rather than stretch a box to fit.
+3. **Draw the edges by one rule.** The **proximal** edge is the one the price meets first on its way back; for a demand zone that is the top. The **distal** edge is the far side; for a demand zone, the bottom. One common rule takes the pause's whole high-to-low range. Another takes the highest candle body for the proximal edge and the lowest wick for the distal edge, which gives a tighter box. Pick one and keep it.
+4. **Judge freshness.** Each return to the zone may use up some of the orders waiting there. Write down every retest and how the price responded. A zone the price has closed through is gone, so do not keep buying as it falls.
+5. **Judge location.** The zone should sit inside a chart you would want to own anyway: a higher low in an uptrend, or a base inside a Stage 2 advance. The same shape at the bottom of a collapsing downtrend is an attempt to catch a falling knife.
+
+**Why the edge rule matters.** In ICICI Bank's case, the full range of the four mid-May sessions runs from ₹375.20 to ₹386.80. The tightest part of the pause, the last two sessions before the rally, gives a body-to-wick box of ₹375.80 to ₹382.50.
+
+| Rule | Zone | 23 Aug low ₹385.80 | 19 Sep low ₹384.35 |
+|---|---|---|---|
+| Full range, four sessions | ₹375.20–386.80 | A retest | A retest |
+| Highest body to lowest wick, two sessions | ₹375.80–382.50 | Never entered | Never entered |
+
+Same chart, same pause, and two different stories about whether the zone was tested. Neither rule is the correct one. What matters is choosing before the price returns, so the box is not redrawn to fit what happened.
 
 **Trading the retest.** Wait for evidence *inside* the zone: a hammer, a bullish engulfing bar or a tight shelf (see [Candlestick patterns](learn-candlestick-patterns.md)). Enter on that. Put the stop just under the zone: if the demand is real, the price should not trade through it.
 
@@ -84,13 +106,45 @@ supply-zone
 
 This is the mirror image: the **starting point of a strong move down**. It is a pause near a high where sellers met all the buying in the rally. The fall that followed proves it. Everyone who bought during that pause is now trapped at a loss, and their selling at breakeven waits above the price.
 
-The same four tests apply: a strong move away, little time spent in the zone, a fresh zone, and a location in a downtrend or under a failed high.
+The steps mirror the demand zone. Zone traders call it a *rally-base-drop* when an advance came before it, and a *drop-base-drop* inside a decline. For a supply zone the proximal edge is the bottom of the box and the distal edge the top. The same tests apply: a strong move away, little time spent in the zone, a fresh zone, and a location in a downtrend or under a failed high.
 
 This is what William O'Neil calls **overhead supply**. It is the reason his rules prefer stocks near 52-week highs: a stock at new highs has *no one trapped above it*. No sellers are waiting there to get back what they paid. Each base left behind and each old swing high on the way up is a level where sellers may be waiting.
 
 A rally that approaches one of these levels on fading volume is likely to meet selling. What uses up a supply zone is a push **through** it on rising volume. The trapped sellers have sold, and short sellers are forced to buy back their shares. The level has done its job, and it often changes sides.
 
-## 4. Role reversal — levels change sides
+## 4. Volume — supporting evidence, not a requirement
+
+Find the zone from price first. Then look at volume as a separate check. A sharp move on ordinary volume can still mark a good zone; judge it against what is normal for that stock.
+
+Compare a bar's volume with its recent past rather than with a fixed number. **Relative volume** is the bar's volume divided by the average of the previous 20 bars. A reading of 1.5 means half again as much as usual. ICICI Bank's 20 May 2019 rally day traded about 1.8 times its recent average.
+
+| What you see | What it suggests |
+|---|---|
+| Volume expands on the move away | The move had real participation |
+| Heavy volume inside the pause | A lot of trading or disagreement; volume alone does not show which side won |
+| The price returns to the zone on shrinking volume | The pullback may lack force; it does not confirm a bounce |
+| The price breaks through the zone on expanding volume | More evidence the zone is failing, especially on a close beyond it |
+| Heavy volume, a long wick, little net progress | Absorption, exhaustion or a two-sided fight; read the context |
+
+Every trade has a buyer and a seller, so volume cannot reveal who was the aggressor. Earnings, index changes and news produce outsized volume for reasons unrelated to any zone. A departure that gaps away from the pause usually has news behind it, so check what moved it.
+
+## 5. When has a zone failed?
+
+Decide what kills a zone before the price comes back. Otherwise it is too easy to widen the box after each move against you.
+
+| What the price does at a demand zone | How to read it |
+|---|---|
+| Enters the zone but stays above the distal edge | Not failed; watch the response |
+| Wicks below the distal edge, then closes back above | A possible rejection, not proof of strength |
+| Closes decisively below the distal edge | Failed, under a close-based rule |
+
+A supply zone is the mirror image: a close above its distal edge is the failure. There are three common conventions. A trade beyond the edge during the day kills the zone; or only a close beyond it does; or a close beyond it by a buffer, such as a fraction of the ATR. Swing traders usually use a daily close. None is universally right; using the same one every time is what counts.
+
+A failed zone is not the same as a trade stop. A stop also has to allow for volatility, slippage and position size. It may sit at the zone's edge or some way beyond it, depending on the method (see [Stops and exits](learn-risk-stops-exits.md)).
+
+The timeframe matters too. A zone on a weekly chart and a zone on a daily chart are different things. Label each zone with its timeframe and the date it formed.
+
+## 6. Role reversal — levels change sides
 
 Salesforce in section 1 showed one direction: an old floor became a ceiling. The other direction is just as common. State Bank of India broke above about ₹614 in December 2023. In January 2024 it dipped under that level during the day, closed back above it, and then ran to about ₹725 (see [Pullback to support](learn-strat-pullback-support.md)).
 
@@ -109,20 +163,25 @@ In practice:
 - A shallow, quiet pullback to a broken pivot that holds is the **retest entry**: a second chance at a breakout, usually with a tighter stop.
 - A close back *below* the level the price just climbed above is the failure signal. A breakout that cannot hold its pivot ran into supply after all. See [Failed breakouts and bull traps](learn-strat-failed-breakouts.md).
 
-## 5. Scoring a zone — a checklist
+## 7. Scoring a zone — a checklist
 
 | Test | Strong zone | Weak zone |
 |---|---|---|
-| Departure (how the price left) | Fast, large, volume rises | Drifted away quietly |
+| Departure (how the price left) | Several ATRs in a few bars, little overlap | Drifted away quietly |
+| Structure | The move broke a nearby swing high or low | Stayed inside the old range |
 | Time at the level | A few bars (the selling was bought quickly) | A long, slow grind (a range, not a zone) |
+| Width | Narrow compared with the ATR | Wide enough to make the stop distance awkward |
+| Volume | Relative volume checked and recorded | Not looked at |
 | Freshness | Not revisited since it formed | Hit two or three times already |
 | Trend context | With the larger trend | Against it |
 | Overlap with other levels | Overlaps a prior swing, a rising 50-day, a base top | Stands alone |
-| Cleanliness | One clear pause | Messy, overlapping bars — no single starting point |
+| Events | No earnings or news behind the move, or noted if there was | Unknown |
 
-ICICI Bank's May 2019 zone scores well. It left fast on heavy volume after four tight sessions, and it was fresh at the first retest.
+ICICI Bank's May 2019 zone scores well. It left fast on heavy volume after a few tight sessions, and it was fresh at the first retest. Its first burst stopped short of the April high of ₹411, though, so it misses on structure.
 
-## 6. Using zones in a trade
+The checklist keeps your reviews consistent. It is not a proven predictor: ticking more boxes does not guarantee a winning trade (see section 9).
+
+## 8. Using zones in a trade
 
 Most swing methods do not draw boxes. But they use the same ideas under different names, and the zone vocabulary makes their rules easier to follow.
 
@@ -132,7 +191,7 @@ Most swing methods do not draw boxes. But they use the same ideas under differen
 - **Put stops under demand.** Handle lows, tight-area lows and prior swing lows are all demand. Just below them is where the trade's premise, that buyers are here, is proven wrong.
 - **Strength means little supply above.** Rules such as "within 25% of the 52-week high" are really filters for overhead supply. The fewer trapped holders above the price, the less selling a rally has to get through.
 
-## 7. What the evidence says
+## 9. What the evidence says
 
 **Levels are where orders wait.** Carol Osler (2000) found that support and resistance levels published by currency firms interrupted intraday trends more often than arbitrary levels did. She later traced this to clusters of stop and take-profit orders near round numbers (Osler, 2003). Kavajecz and Odders-White (2004) found that support and resistance levels in US stocks line up with deep parts of the limit-order book.
 
@@ -167,13 +226,22 @@ What this shows:
 
 - **Their real value is deciding where risk goes.** Zones tell you where a stop is just slightly off and where the whole idea is wrong. They also tell you when a target is asking too much.
 - **Zones wear out.** The better known a level, the more traders place orders just ahead of it to get in first, which spreads the zone wider. Expect the price to react *around* zones, not at an exact price.
-- **Beware hindsight.** On any chart, *some* box lines up with every turn. Score zones in advance with section 5 and write the level down before the retest. Then see whether the chart proves you right.
+- **Beware hindsight.** On any chart, *some* box lines up with every turn. Score zones in advance with section 7 and write the level down before the retest. If you ever move an edge, write down why. Then see whether the chart proves you right.
 
-## 8. Practising
+## 10. Practising
 
-1. On a few charts, find strong moves and mark the base each one started from. Score each zone with the table in section 5.
-2. Write down the zone and your planned stop before the price returns. Then record whether the first retest held.
-3. On a stock you own or follow, list every old high above the current price. Ask how much selling a rally would have to get through.
+A review routine, in order:
+
+1. Start on the weekly chart. Mark the trend, the range edges and the major swing highs and lows.
+2. Mark support and resistance separately, as places where the price reacted.
+3. Find the decisive moves and trace each back to its pause. Skip any pause you cannot pin down.
+4. Draw each box with your fixed edge rule, and label its timeframe and date.
+5. Score it with the table in section 7: departure against the ATR, structure, relative volume, events.
+6. Record whether it is fresh, and every retest since.
+7. Write down what kills the zone before thinking about a trade.
+8. Wait for the return and an entry signal. Set the stop, target and position size as separate decisions.
+
+Then, on a stock you own or follow, list every old high above the current price. Ask how much selling a rally would have to get through.
 
 ## Further reading
 

@@ -1164,6 +1164,43 @@ def chart_patterns_history(market: str, symbol: str, years: int = 5):
     return _pattern_lists[key]
 
 
+_sd_cache: dict = {}   # (market, symbol, tf, years, last bar) -> response
+
+
+@app.get("/api/sd-zones/{market}/{symbol}")
+def sd_zones(market: str, symbol: str, tf: str = "D", years: int = 10):
+    """The chart's Supply & demand zones indicator: every zone core/sd_zones.py finds on the stored
+    bars (daily, or weekly bars dated by their last session as /api/prices dates them), each with its
+    tests and failure. The rules live there; the chart only draws. A zone is a hypothesis to watch,
+    never a trade decision."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    if tf not in ("D", "W"):
+        raise HTTPException(400, "tf must be D or W")
+    from ..core import sd_zones as sdz
+    from ..marketdata import cache
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    as_of = str(raw.index[-1].date())
+    key = (market, symbol, tf, years, as_of)
+    if key not in _sd_cache:
+        df = raw
+        if tf == "W":
+            agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+            last_day = raw.index.to_series().resample("W-FRI").last()
+            df = raw.resample("W-FRI").agg(agg).dropna(subset=["close"])
+            df.index = pd.DatetimeIndex(last_day.reindex(df.index).values)
+        if len(_sd_cache) > 128:
+            _sd_cache.clear()
+        found = sdz.zones(df, tf, years or None)
+        live = [z for z in found if z["status"] != "failed"]
+        _sd_cache[key] = {"as_of": as_of, "tf": tf, "years": years, "zones": found, "checks": sdz.CHECKS,
+                          "close": float(df["close"].iloc[-1]),
+                          "note": f"{len(live)} active of {len(found)} zones in {years} years"}
+    return _sd_cache[key]
+
+
 @app.get("/api/macro")
 def macro_strip(market: str = "india"):
     """The Breadth page's macro strip: rates, the dollar, oil, metals and credit that matter to this market
