@@ -1544,3 +1544,10 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .sp-row.sp-refused { border-left-color: #f43f5e; } .sp-row.sp-young { border-left-color: #9ca3af; }
 .sp-row .sp-title { margin: 2px 0; color: var(--strong); }
 .sp-row + .sp-row { margin-top: 0; } .btrs a[data-plive], section a[data-plive] { cursor: pointer; color: var(--accent); text-decoration: underline; }
+
+/* The measured outcome at the head of a strategy's Rules tab: the first thing on the landing
+   tab, so it is tightened up and its headline column is given weight. */
+.sd-glance { margin-top: 0; padding-top: 2px; }
+.sd-glance h2 { margin-top: 10px; }
+.sd-glance table.dtab { margin-bottom: 6px; }
+.sd-glance td.num b { font-size: 14px; }

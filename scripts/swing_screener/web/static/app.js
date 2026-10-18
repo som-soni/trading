@@ -3376,7 +3376,11 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   // point at right now -- and a reader should not learn two vocabularies to compare two strategies.
   const tabs = [...(trades ? [["setups", "Setups today"]] : []), ...(holds ? [["holdings", "Setups today"]] : []),
     ["rules", "Rules"], ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
-  tab = tabs.some(([k]) => k === tab) ? tab : tabs[0][0];
+  // Rules is the landing tab, NOT the first one. Someone opening a strategy wants to know what it
+  // does and whether it worked; "Setups today" answers neither and is only useful once you have
+  // decided to trade it. Rules now carries the measured outcome at its head (see perfGlance), so
+  // the landing page answers both questions without a tab change.
+  tab = tabs.some(([k]) => k === tab) ? tab : "rules";
   document.title = `${d.name} · Strategies · Trading`;
   const kind = { benchmark: "Benchmark", "long-term": "Long-term investing", screener: "Trading strategy" }[d.kind] || "Strategy";
   root.innerHTML = `<div class="crumbs">${kind}</div>
@@ -3390,6 +3394,76 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   if (tab === "holdings") return strategyHoldings(host, alive, d, key);
   if (tab === "backtests") return strategyBacktests(host, d, key);
   strategyRules(host, d, key);
+}
+
+/** The measured outcome, per market, at the head of the Rules tab.
+ *
+ *  A strategy's page used to require opening Backtests and reading a table to learn whether the
+ *  thing worked. This answers it in one row per market: the LATEST run (what it does as the rules
+ *  now stand) and the BEST excess CAGR ever recorded (what it has managed at its best). Both are
+ *  shown because they differ for a reason worth seeing -- a strategy whose best run is three
+ *  versions old has been tuned downwards, and one whose latest IS its best has not been cherry
+ *  picked.
+ *
+ *  Excess CAGR orders "best" because that is the number the rest of the app decides on. It is
+ *  deliberately NOT selection: the decomposition needs the equity curve's cash column, which the
+ *  run summary does not carry, and inventing a different ranking here from the one the Backtests
+ *  table shows would make the two disagree.
+ *
+ *  A run from a superseded spec id is marked, the same way the Backtests tab marks it. Without
+ *  that, the headline figure on the landing page could describe rules that no longer exist.
+ */
+function perfGlance(d, key) {
+  const runs = (d.backtests || []).filter((b) => b.summary && b.summary.cagr);
+  const vers = d.versions || [];
+  const isOld = (sid) => { const v = vers.find((x) => x.spec_id === sid); return v ? !v.is_current : false; };
+  const num = (x) => { const v = parseFloat(String(x ?? "").replace(/[^-\d.]/g, "")); return Number.isFinite(v) ? v : null; };
+  const sign = (x) => (/^-/.test(String(x || "")) ? "neg" : x ? "pos" : "");
+  const stale = (sid) => (isOld(sid) ? '<i class="old" title="produced by rules that have since changed">\u25b2</i>' : "");
+
+  if (!runs.length) {
+    const none = (d.backtests || []).length
+      ? `${d.backtests.length} run${d.backtests.length === 1 ? "" : "s"} recorded, none with trades to report`
+      : "No backtest has been run yet";
+    return `<section class="sd-sec sd-glance" id="sd-glance"><h2>Measured outcome</h2>
+      <p class="muted">${none}. ${d.kind === "long-term" ? "This tracker is not backtested." :
+        `Queue one from <a href="#/strategies/${esc(key)}/backtests">Backtests</a>.`}</p></section>`;
+  }
+
+  // `d.backtests` arrives newest-first, so the first match per market IS the latest.
+  const mkts = [...new Set(runs.map((b) => b.market))].sort();
+  const rows = mkts.map((m) => {
+    const mine = runs.filter((b) => b.market === m);
+    const latest = mine[0];
+    const best = mine.reduce((a, b) => (num(b.summary.excess_cagr) > num(a.summary.excess_cagr) ? b : a), mine[0]);
+    const s = latest.summary;
+    const same = best.id === latest.id;
+    const mi = mktInfo(m);
+    return `<tr data-href="#/reports/${latest.id}" title="Open the latest ${esc(mi.name || m)} run">
+      <td>${mi.flag || ""} ${esc(mi.name || m.toUpperCase())}</td>
+      <td class="num">${esc(s.cagr || "")}</td>
+      <td class="num ${sign(s.excess_cagr)}"><b>${esc(s.excess_cagr || "")}</b>${stale(latest.spec_id)}</td>
+      <td class="num">${esc(s.max_drawdown || "")}</td>
+      <td class="num">${esc(s.sharpe || "")}</td>
+      <td class="muted small">${prettyDate(latest.generated_at)}${mine.length > 1 ? ` · ${mine.length} runs` : ""}</td>
+      <td class="num ${same ? "muted" : sign(best.summary.excess_cagr)}">${same ? "this one"
+        : `<a href="#/reports/${best.id}" title="${esc(best.run)}">${esc(best.summary.excess_cagr || "")}</a>${stale(best.spec_id)}`}</td></tr>`;
+  }).join("");
+
+  const anyStale = runs.some((b) => isOld(b.spec_id));
+  return `<section class="sd-sec sd-glance" id="sd-glance">
+    <h2>Measured outcome</h2>
+    <table class="dtab click"><thead><tr><th>Market</th>
+      <th class="num">CAGR</th>
+      <th class="num" title="The strategy's CAGR minus its benchmark's. Positive means it beat buying and holding the index.">Excess CAGR</th>
+      <th class="num">Max DD</th><th class="num">Sharpe</th><th>Latest run</th>
+      <th class="num" title="The best excess CAGR this strategy has recorded in this market, across every run.">Best ever</th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <p class="muted small">The latest run per market, with the best excess CAGR ever recorded beside it.
+      ${anyStale ? "\u25b2 marks a run produced by rules that have since changed. " : ""}Click a row for the full report, or see
+      <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.
+      Excess CAGR answers "did it beat doing nothing"; it does not separate a good signal from idle cash
+      \u2014 the report's SELECTION line does that.</p></section>`;
 }
 
 function strategyRules(host, d, key) {
@@ -3407,7 +3481,11 @@ function strategyRules(host, d, key) {
   let step = 0;
   const num = () => (fromScreen.length ? `${++step} · ` : "");
   const cmds = Object.entries(d.commands).map(([k, c]) => `<div class="cmd"><div class="muted small">${esc(k)}</div><pre><code>${esc(c)}</code></pre><button class="ghost copy" data-c="${esc(c)}">Copy</button></div>`).join("");
+  // Numbers BEFORE the status prose. A `status` runs to several hundred words on a strategy that
+  // has been measured properly, which pushed the figures below the fold -- and being able to see
+  // the outcome without scrolling is the whole reason this is the landing tab.
   host.innerHTML = `<section class="sdoc sdoc-tab">
+    ${perfGlance(d, key)}
     ${d.status ? `<div class="sd-status ${statusClass(d.status)}"><b>Status</b> ${mdInline(d.status)}</div>` : ""}
     ${sec("overview", "Overview", `${d.thesis ? `<p><b>Thesis.</b> ${mdInline(d.thesis)}</p>` : ""}<h3>How it works</h3>${ol(d.how_it_works)}`)}
     ${d.kind === "long-term" && d.gates.length ? sec("rules", "Quality tests", `<p class="muted small">Points out of 100.</p>${codeTable(d.gates, "Worth")}`) : ""}
@@ -3427,6 +3505,13 @@ function strategyRules(host, d, key) {
     <p class="muted small sd-src">Generated from <code>${esc(d.source.file)}</code> · code last changed ${prettyDate(d.source.modified)} — built from the strategy's own code, so it describes what actually runs.</p></section>`;
   host.querySelectorAll(".copy").forEach((b) => b.onclick = async () => {
     try { await navigator.clipboard.writeText(b.dataset.c); toast("Command copied", "ok"); } catch { toast("Copy failed — select the text instead", "err"); }
+  });
+  // The glance rows are clickable like the Backtests table's, which wires this inside its own
+  // tab. The guard matters: the "Best ever" cell holds its own link to a DIFFERENT run, and
+  // without it a click there would fire both and land on the latest run instead.
+  host.querySelectorAll(".sd-glance tr[data-href]").forEach((tr) => tr.onclick = (e) => {
+    if (e.target.closest("a")) return;
+    go(tr.dataset.href);
   });
 }
 
