@@ -38,6 +38,22 @@ from ..core.context import StockContext
 from ..screens.criteria import (  # noqa: F401 (doc placeholders)
     MAX_PCT_BELOW_52W_HIGH, MIN_PCT_ABOVE_52W_LOW, RS_MIN_MOM, RS_MIN_RANK, SMA200_RISING_BARS,
 )
+
+#: TT-03 has two levels, and only the first can stop a trade.
+#:
+#:   minimum   SMA200(t) > SMA200(t - SMA200_RISING_BARS)        -- 21 sessions, about a month
+#:   preferred SMA200(t) > SMA200(t - SMA200_RISING_PREF_BARS)   -- 100 sessions, about 4-5 months
+#:
+#: Minervini asks for a 200-day that has been rising "for at least one month, preferably for 4-5
+#: months or longer". The month is the requirement and lives in the SCREEN (criteria C5, the
+#: strategy's gate G5); the 4-5 months is a preference about the QUALITY of the trend, which is a
+#: trade judgement rather than a qualification, so it belongs here and is a watch flag (W5).
+#:
+#: Deliberately not a gate. Promoting it would silently replace the stated minimum with 100
+#: sessions and reject stocks the Trend Template admits -- the opposite of what "preferably"
+#: means. It is recorded so the maturity of the trend is visible on every signal, and so the
+#: choice to tighten it later is a one-line change with a measurement behind it.
+SMA200_RISING_PREF_BARS = 100
 from .base import LABELS, Decision, PlanChoice, Strategy, StrategyResult, TradePlan, tradable_point_in_time
 from .trend_pullback import round_tick
 
@@ -390,8 +406,19 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.9"
+    version = "1.10"
     changelog = (
+        ("1.10", "2026-10-18",
+         "TT-03 now records BOTH halves of what Minervini asks for. The rule is a 200-day rising "
+         "\"for at least one month, preferably for 4-5 months or longer\": the month was already the "
+         "gate (G5, screen criterion C5, SMA200_RISING_BARS=21) and the preference was nowhere. "
+         "W5 now flags a signal whose 200-day is rising over 21 sessions but NOT over "
+         "SMA200_RISING_PREF_BARS=100, so the maturity of the trend is visible on every signal. "
+         "DECISIONS ARE UNCHANGED: W5 is noted and does not downgrade, because the stated "
+         "requirement is the month and promoting the preference to a gate would reject stocks the "
+         "Trend Template admits. The fingerprint moves because a new numeric constant enters "
+         "spec_params, which is why this is a version bump rather than a silent edit; no trade "
+         "this strategy would have taken before is affected."),
         ("1.9", "2026-10-16",
          "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
          "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
@@ -515,7 +542,7 @@ class MinerviniSpecStrategy(Strategy):
     style = "breakout"
 
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
-    watch_codes = ("W1", "W2", "W3", "W4")
+    watch_codes = ("W1", "W2", "W3", "W4", "W5")
     setup_codes = (MV01, MV02, MV03, MV04)
     extra_columns = ("fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
@@ -546,7 +573,9 @@ class MinerviniSpecStrategy(Strategy):
     )
     how_it_works = (
         "Gates G1–G8 are the Trend Template (the Stage 2 screen's criteria): price above the 50/150/200-day "
-        "averages, the averages stacked, the 200-day rising over {SMA200_RISING_BARS} sessions, at least "
+        "averages, the averages stacked, the 200-day rising over {SMA200_RISING_BARS} sessions "
+        "(the minimum; W5 notes when it has not also been rising over {SMA200_RISING_PREF_BARS}, "
+        "the 4-5 months Minervini prefers), at least "
         "{MIN_PCT_ABOVE_52W_LOW}% above the 52-week low and within {MAX_PCT_BELOW_52W_HIGH}% of the high, and "
         "an RS rating of {RS_MIN_RANK}+ across the market. A backtest applies that rating to the signals it "
         "collected rather than inside the per-bar scan, which cannot rank one symbol.",
@@ -643,7 +672,9 @@ class MinerviniSpecStrategy(Strategy):
         "G2": "TT-01: close above the 150-day average.",
         "G3": "TT-01: close above the 200-day average.",
         "G4": "TT-02 and TT-04: the 50-day above the 150-day above the 200-day.",
-        "G5": "TT-03: the 200-day higher than {SMA200_RISING_BARS} sessions ago.",
+        "G5": "TT-03: the 200-day higher than {SMA200_RISING_BARS} sessions ago — about a month, "
+              "which is the Trend Template's stated MINIMUM. The preferred 4-5 months is W5, a note "
+              "rather than a gate.",
         "G6": "TT-06: close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low.",
         "G7": "TT-07: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
         "G8": "TT-08: an RS rating of {RS_MIN_RANK}+ (1-99 across the market) whenever the caller has rated "
@@ -657,6 +688,11 @@ class MinerviniSpecStrategy(Strategy):
         "W2": "Closed more than {BUY_RANGE_PCT}% past the pivot (MV-01b): extended beyond the buy range.",
         "W3": "Closed through the pivot but in the lower half of the day's range (MV-01c).",
         "W4": "Results are due within {EARNINGS_BLACKOUT_DAYS} days: no new buy (the plan is held at WATCH).",
+        "W5": "TT-03, the preferred half: the 200-day is rising — G5 required it to be higher than "
+              "{SMA200_RISING_BARS} sessions ago — but it is NOT higher than {SMA200_RISING_PREF_BARS} "
+              "sessions ago, so the trend is younger than the 4-5 months Minervini prefers. Noted only; "
+              "unlike W1-W3 it does not downgrade the decision, because the stated requirement is the "
+              "month and treating the preference as a gate would reject stocks the Trend Template admits.",
     }
     setup_docs = {
         MV01: "MV-01 breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
@@ -893,6 +929,35 @@ class MinerviniSpecStrategy(Strategy):
             result.watch_notes["W2"] = f"{(close / base['pivot'] - 1) * 100:.1f}% above the pivot"
         if result.watch_flags["W3"]:
             result.watch_notes["W3"] = f"closed at {upper * 100:.0f}% of the day's range"
+        # W5: the 200-day is rising (G5 already required that) but for less than the preferred
+        # 4-5 months. Read from ctx.daily rather than a precomputed column -- `sma200_21d_ago`
+        # exists because the SCREEN needs it on every snapshot row, while this is wanted only on
+        # the bars a signal reaches, and adding a second shifted column to the shared indicator
+        # pipeline for one watch flag would cost every screen run.
+        s200_now = last.get("sma200")
+        d200 = ctx.daily["sma200"] if "sma200" in ctx.daily else None
+        s200_pref = (float(d200.iloc[-1 - SMA200_RISING_PREF_BARS])
+                     if d200 is not None and len(d200) > SMA200_RISING_PREF_BARS
+                     and pd.notna(d200.iloc[-1 - SMA200_RISING_PREF_BARS]) else float("nan"))
+        pref_ok = bool(pd.notna(s200_now) and s200_pref == s200_pref and float(s200_now) > s200_pref)
+        # W5 is a refinement of G5, so it only speaks when G5's condition holds: "rising, but not
+        # for long enough". On a stock whose 200-day is not rising at all the gate has already
+        # rejected it, and raising a flag that reads "rising but under the preferred" would be
+        # false on its own terms.
+        #
+        # Unknown history is also not a warning: a stock without SMA200_RISING_PREF_BARS bars
+        # behind its 200-day cannot answer the question, and flagging it would read as "the trend
+        # is young" when the truth is "not measurable".
+        s200_min = last.get("sma200_21d_ago")
+        min_ok = bool(pd.notna(s200_now) and pd.notna(s200_min) and float(s200_now) > float(s200_min))
+        result.watch_flags["W5"] = bool(min_ok and s200_pref == s200_pref and not pref_ok)
+        if result.watch_flags["W5"]:
+            result.watch_notes["W5"] = (f"200-day {float(s200_now):.2f} vs {s200_pref:.2f} "
+                                        f"{SMA200_RISING_PREF_BARS} sessions ago — rising for "
+                                        f"at least {SMA200_RISING_BARS} but under the preferred "
+                                        f"{SMA200_RISING_PREF_BARS}")
+        ctx.extras["sma200_rising_pref"] = pref_ok if s200_pref == s200_pref else None
+
         ed = ctx.earnings_days_away
         result.watch_flags["W4"] = bool(ed is not None and 0 <= ed <= EARNINGS_BLACKOUT_DAYS)
         if result.watch_flags["W4"]:
