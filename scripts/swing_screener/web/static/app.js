@@ -3449,7 +3449,8 @@ async function setupsPage(alive, root) {
 const SCREEN_COLS = ["symbol", "name", "peer_group", "group_rs", "decision", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r", "sector", "setup_quality",
   "pattern", "rs_vs_benchmark", "rsi", "earnings_in", "wait_for", "reason"];
 
-/** One strategy: Setups today (its latest run) · Rules (its screen + its own rules, entry, exit) · Backtests. */
+/** One strategy: How it works (thesis, rules, entry/exit, parameters, measured outcome) ·
+ *  Candidates (what it points at, from its latest run) · Backtests. */
 async function strategyPage(alive, root, key, tab, mkt, runKey) {
   root.innerHTML = LOADING;
   const d = await api(`/api/strategies/${encodeURIComponent(key)}`).catch(() => null);
@@ -3457,7 +3458,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   if (!d) { root.innerHTML = `<div class="empty"><b>Strategy not found</b><div class="muted"><a href="#/strategies">Today's setups</a></div></div>`; return; }
   const trades = d.kind === "screener";
   // A portfolio strategy has no per-symbol setups to screen for -- it holds a ranked book. Its
-  // equivalent of "Setups today" is what it HOLDS, taken from the latest run's still-open
+  // equivalent of "Candidates" is what it HOLDS, taken from the latest run's still-open
   // positions, which are produced by the strategy's own rules rather than recomputed here.
   const holds = d.kind === "benchmark";
   // Same tab name as a screener's, because it answers the same question -- what does this strategy
@@ -3467,8 +3468,16 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   // trade it. Rules carries the measured outcome at its head (see perfGlance), so the landing page
   // answers both questions without a tab change -- and the tab order now matches that, instead of
   // leading with a tab nobody lands on.
-  const tabs = [["rules", "Rules"],
-    ...(trades ? [["setups", "Setups today"]] : []), ...(holds ? [["holdings", "Setups today"]] : []),
+  // Tab LABELS only -- the keys stay "rules"/"setups"/"holdings" so existing links keep working.
+  //
+  // "Rules" named one of the tab's nine sections (it also carries the measured outcome, the
+  // thesis, how it works, entry and exit, decisions, parameters, commands and caveats), and
+  // "Setups today" promised something the page cannot give: a screener shows its LATEST RUN,
+  // which may be days old or may never have run, and a portfolio strategy shows a ranking as of
+  // the last complete session, which the page itself says is "not a rebalance" and "not a buy
+  // list". "Candidates" is true of both and promises neither freshness nor a decision.
+  const tabs = [["rules", "How it works"],
+    ...(trades ? [["setups", "Candidates"]] : []), ...(holds ? [["holdings", "Candidates"]] : []),
     ["backtests", `Backtests${d.backtests.length ? ` <span class="n">${d.backtests.length}</span>` : ""}`]];
   tab = tabs.some(([k]) => k === tab) ? tab : "rules";
   document.title = `${d.name} · Strategies · Trading`;
