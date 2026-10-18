@@ -1575,17 +1575,6 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
                       text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
 .sd-glance td.num a:hover { text-decoration-color: currentColor; }
 
-/* Status: the verdict stays visible, the evidence folds away. These run to 450+ words on a
-   strategy that has been measured properly, which is a wall at the top of the page — and the
-   same text was already reachable from the header badge, so showing all of it a second time
-   bought nothing. */
-.sd-status > summary { cursor: pointer; list-style: none; display: flex; gap: 8px; align-items: baseline; }
-.sd-status > summary::-webkit-details-marker { display: none; }
-.sd-status > summary::after { content: "▸"; margin-left: auto; color: var(--muted); font-size: 11px; }
-.sd-status[open] > summary::after { content: "▾"; }
-.sd-status > summary:hover { color: var(--strong); }
-.sd-status-full { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
-
 /* Backtests: the per-row archive control stays out of the way until the row is hovered, since it
    is housekeeping rather than something to read. */
 .dtab td.bt-arch { text-align: right; white-space: nowrap; width: 1%; }
