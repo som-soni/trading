@@ -555,6 +555,17 @@ def simulate(
                 skip("stop too far below the fill")
                 del pending[sym]
                 continue
+            # The reward-to-risk minimum was tested on the signal bar's CLOSE, but the order
+            # fills at the next open. An overnight gap up moves the entry without moving the
+            # stop or the target, so it shortens the reward and lengthens the risk at once: a
+            # plan that cleared the minimum on the close can be bought at less than it. The
+            # strategy's own number, re-tested on the price actually paid -- the same shape as
+            # the two checks above, which also re-test a signal-time rule against the fill.
+            min_r = meta.get("min_structural_r")
+            if min_r and (order["target"] - entry) / risk_per_share < min_r:
+                skip(f"projects under {min_r:g}:1 at the fill")
+                del pending[sym]
+                continue
 
             equity_now = cash + sum(
                 _mark(p, prices, today) for p in positions.values()

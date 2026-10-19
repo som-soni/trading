@@ -470,8 +470,22 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.17"
+    version = "1.18"
     changelog = (
+        ("1.18", "2026-10-19",
+         "The {MIN_STRUCTURAL_R}:1 minimum is now tested on the price actually paid, not only on the "
+         "signal close. An order fills at the NEXT open, and a gap up moves the entry without moving "
+         "the stop or the target -- it shortens the reward and lengthens the risk at once -- so a plan "
+         "that cleared the minimum on the close could be bought below it. AKAM on 2013-01-28 is the "
+         "case: 2.09R on the 41.15 close, filled at 41.29, 1.92R as bought. Measured across the stored "
+         "runs, about a sixth of both books executed under the minimum they had to clear (India 60 of "
+         "377, US 158 of 951), with a cluster just beneath it. The re-test sits beside the two checks "
+         "the simulator already runs against the fill rather than the signal -- 'fill at or below the "
+         "stop' and 'stop too far below the fill' -- and the strategy supplies its own number, so a "
+         "strategy that sets none is unaffected. "
+         "BUMPED BY HAND: no numeric constant moved, so the fingerprint cannot see it. Detection is "
+         "untouched and the golden harness is identical across 1,680 snapshots; what changes is which "
+         "filled orders survive, so trade counts fall."),
         ("1.17", "2026-10-19",
          "An experiment switch, OFF by default: CHEAT_BLOCK_VCP09. With it set, a cheat entry is "
          "refused on a base whose last failure was VCP-09 -- the pivot sitting in the lower part "
@@ -938,6 +952,9 @@ class MinerviniSpecStrategy(Strategy):
         "Target: the base's measured move — its first (deepest) contraction projected from entry — "
         "capped by overhead supply at least {OVERHEAD_CLUSTER_ATR} ATR above the base high. A setup "
         "projecting under {MIN_STRUCTURAL_R}R on that basis is refused rather than padded up to it. "
+        "The test is run twice: on the signal close, and again on the price actually paid — the order "
+        "fills at the next open, and a gap up shortens the reward and lengthens the risk at once, so a "
+        "plan that cleared {MIN_STRUCTURAL_R}:1 on the close can be bought at less and is dropped. "
         "{NOMINAL_TARGET_R}R remains the nominal figure used for sizing and reporting.",
     )
     exit_rules = (
@@ -1028,7 +1045,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Maximum stop", "MAX_STOP_PCT", "SL-03, checked at the fill."),
         ("Cheat shelf length", "CHEAT_SHELF_DAYS", "Sessions in the shelf a cheat is bought from (MV-03/MV-04)."),
         ("Cheat shelf tightness", "CHEAT_SHELF_PCT", "Widest shelf, high to low, that counts as a cheat."),
-        ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused."),
+        ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused — "
+                                                 "tested on the signal close and again on the fill."),
         ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
                                                               "when the base's own pivot is below the upper zone."),
         ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
@@ -1369,6 +1387,7 @@ class MinerviniSpecStrategy(Strategy):
         base_id = e.get("pp_flag_high_date") if plan.setup == MV05 else e.get("base_date")
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": MAX_STOP_PCT / 100, "base_id": base_id,
+                "min_structural_r": MIN_STRUCTURAL_R,
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:
             meta.update(order="open", min_open=tl)
