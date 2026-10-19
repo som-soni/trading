@@ -1827,7 +1827,21 @@ class MinerviniSpecStrategy(Strategy):
         kind = "vcp" if done else "cheat" if cheat else "young" if young else "fail"
         today = " · today" if live else ""
         if done:
-            title = ("VCP setup ✓" if all(z["state"] == "pass" for z in zones) else "VCP ✓ · trade skipped") + today
+            # "trade skipped" means the strategy takes NOTHING on this base -- so it is read off the
+            # entry illustrations, and only when every one of them fails.
+            #
+            # It used to be `all(zones)`, which let a single failing illustration speak for the whole
+            # base. A completed VCP usually projects under 2R at its own pivot (the entry sits at the
+            # base high, so the measured move is all that is left above it, while a cheat buys lower
+            # and keeps the climb back to the high), so the pivot illustration fails on most bases
+            # that the strategy nonetheless trades through the cheat. AKAM's 2013-01 base is the
+            # case: structure passes, the pivot entry projects 1.7R and fails, the cheat projects
+            # 2.1R and the run bought it -- and the frame still said "trade skipped" over a trade
+            # that happened. An illustration's own verdict belongs in its zone text, not on the frame.
+            entries = [z for z in zones if z.get("illustration")]
+            structure_ok = all(z["state"] == "pass" for z in zones if not z.get("illustration"))
+            none_taken = bool(entries) and all(z["state"] == "fail" for z in entries)
+            title = ("VCP ✓ · trade skipped" if (none_taken or not structure_ok) else "VCP setup ✓") + today
             summary = (f"A complete VCP. Broke out on {day(bo)}." if bo is not None
                        else "A complete VCP, waiting for a close through the pivot.")
         elif cheat:
