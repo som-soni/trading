@@ -531,11 +531,15 @@ def trade_anatomy(rid: int, symbol: str):
                       watch_flags, watch_notes, extras
                FROM backtest_signals
                WHERE market=%s AND strategy=%s AND symbol=%s AND has_setup
-                 AND date <= %s AND date >= %s::date - interval '45 days'
+                 AND date < %s AND date >= %s::date - interval '45 days'
                  AND (%s::text IS NULL OR spec_id = %s)
-               ORDER BY date DESC LIMIT 1""",
-            (market, strat_key, symbol, entry_d, entry_d, run_spec, run_spec),
+               ORDER BY (extras->>'pattern' = %s) DESC NULLS LAST, date DESC LIMIT 1""",
+            (market, strat_key, symbol, entry_d, entry_d, run_spec, run_spec, v(row, "setup")),
         )
+        # The order rests from its signal bar and fills on a LATER one, so the signal is strictly before
+        # the entry — the entry day's own reading may be another pattern entirely. And a strategy that
+        # names its pattern (extras.pattern) is matched to the trade's own setup: the detector's pick can
+        # change from day to day, and the trade must be drawn with the pattern it was bought on.
         shapes, note, sig_date = [], "", None
         if not sig_row and run_spec:
             newer = q("""SELECT spec_id FROM backtest_signals WHERE market=%s AND strategy=%s AND symbol=%s
