@@ -231,7 +231,9 @@ MAX_POSITIONS = 8               # PF-02
 MAX_OPEN_RISK_PCT = 6.0         # PF-04
 MAX_ADV_PCT = 5.0               # SL-06
 # No new buy with results due within this many calendar days: live from the earnings
-# calendar, in a backtest from the stored results' filing dates (spec.results_blackout).
+# calendar, in a backtest from an ESTIMATED announcement date unioned with the stored
+# filing date (spec.results_blackout -- the gap happens on the announcement, and the
+# filing runs weeks behind it).
 EARNINGS_BLACKOUT_DAYS = 14
 
 # The guide's liquidity floor. Turnover is the 50-day average volume x the close, which is
@@ -470,8 +472,30 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.18"
+    version = "1.19"
     changelog = (
+        ("1.19", "2026-10-19",
+         "The results blackout now blocks on an estimated ANNOUNCEMENT date as well as the filing "
+         "date. A report breaks a stop by gapping through it, and the gap is on the announcement; "
+         "the filing lands a mean 35 days after a Q1-Q3 quarter end but 53 after Q4, while the "
+         "announcement lands ~30-37 days out every quarter. Keyed on filings alone, the "
+         "{EARNINGS_BLACKOUT_DAYS}-day rule let 56 US trades be bought into a report -- AKAM on "
+         "2013-01-28 among them, filed 2013-03-01 but announced 2013-02-06, which gapped it 18.7% "
+         "through its stop and turned a 1R risk into -3.0R. "
+         "No announcement calendar is stored before 2025-10, so the date is estimated: the quarter "
+         "end plus the company's own median reporting lag, read off the volume signature of past "
+         "quarters and applied to every quarter alike. It is deliberately NOT the heaviest bar of "
+         "the quarter being judged -- that would let a quarter's own reaction decide whether it is "
+         "blocked, blocking the ones that gapped and waving through the quiet ones. "
+         "Scored against the announcements recorded from 2025-10, the estimate is within a week of "
+         "the real date 55% of the time and within a day 47% (keying on the single heaviest bar "
+         "manages 43%). That is not accurate enough to REPLACE the filing date, so it is a union: "
+         "it can only add blocks, never leak more than before. On the stored US book it blocks 85 "
+         "of the 1,081 taken trades where the filing date alone catches 5. "
+         "BUMPED BY HAND: the change is in backtest mechanics the strategy relies on, so no "
+         "numeric constant of the strategy moved and the fingerprint cannot see it. Detection is "
+         "untouched -- the golden harness is identical -- but fewer signals survive, so both "
+         "markets need re-running."),
         ("1.18", "2026-10-19",
          "The {MIN_STRUCTURAL_R}:1 minimum is now tested on the price actually paid, not only on the "
          "signal close. An order fills at the NEXT open, and a gap up moves the entry without moving "
@@ -852,9 +876,15 @@ class MinerviniSpecStrategy(Strategy):
         "Fundamentals page's stricter SEPA tests. Each uses the quarterly results public on the signal date "
         "(backtesting/fundamental_filter.py). Stored results start in late 2020 for India and 2009 for the US "
         "and cover part of the universe, so compare against `covered` (any scorable company), not the full run.",
-        "**The results blackout** in a backtest uses the stored results' filing dates (India from late 2020, "
-        "the US from 2009, part of the universe); a stock with no stored date near the signal is never blocked, "
-        "so early Indian years run without it.",
+        "**The results blackout** in a backtest blocks on an ESTIMATED announcement date -- the quarter end "
+        "plus the company's own median reporting lag, taken from quarters already announced by the signal -- "
+        "unioned with the stored filing date it used to key on alone. The gap that breaks a stop happens on the "
+        "announcement, and the filing runs weeks behind it: keyed on filings alone, {EARNINGS_BLACKOUT_DAYS}-day "
+        "cover let 56 US trades be bought into a report. The estimate is NOT precise -- scored against the "
+        "announcements recorded from 2025-10 it is within a week of the real date 55% of the time -- so it is a "
+        "union rather than a replacement, which can only add blocks and never leak more than before; the price is "
+        "some blocks on the wrong day. Stored quarters start in late 2020 for India and 2009 for the US and cover "
+        "part of the universe; a stock with no stored quarter is never blocked, so early Indian years run without it.",
         "**The price floor is live only.** A backtest reads split-adjusted history, where a winner's early price "
         "is divided by every later split, so a price floor there would delete the stocks that rose most.",
         "**The low cheat (MV-03) is on because the guide lists it**, but it lost heavily when measured in 1.5 "
