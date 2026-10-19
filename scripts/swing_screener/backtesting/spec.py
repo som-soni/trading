@@ -288,10 +288,29 @@ def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]
     """Drop a signal whose company files results within `days` calendar days AFTER the signal date.
 
     Results dates are the filing dates stored in `quarterly_results` (NSE results for India, from
-    late 2020; SEC filings for the US, from 2009, which land on or a day or two after the
-    announcement). A company with no stored filing near the signal is kept: no date, no blackout.
-    Earnings dates are published weeks ahead, so knowing the next one on the signal date is not
-    look-ahead."""
+    late 2020; SEC filings for the US, from 2009). A company with no stored filing near the signal
+    is kept: no date, no blackout. Earnings dates are published weeks ahead, so knowing the next
+    one on the signal date is not look-ahead.
+
+    The filing is NOT the announcement, and the announcement is what gaps the stock. US filings
+    land a mean 35 days after a Q1-Q3 period end but 53 after Q4, while announcements land ~30-37
+    days out every quarter. So the rule leaks: on the stored US run it blocked 422 signals and
+    still let 56 trades be bought into a report, AKAM on 2013-01-28 among them -- filed
+    2013-03-01, announced 2013-02-06, gapped 18.7% through its stop the next morning.
+
+    Keying on an INFERRED announcement date instead was tried and rejected, so it is not worth
+    trying again without new data. No announcement calendar is stored before 2025-10
+    (`stock_events`), so the date has to be reconstructed from the heaviest-volume bar of each
+    quarter, and that detector is too blunt: over 220 US symbols its implied reporting lag has an
+    IQR of 27-65 days, and predicting the next announcement from a company's own prior quarters
+    carries a median absolute error of 13 days -- against a 14-day window. Scored over the US
+    book, it blocked 75 trades to catch 16 of 44 leaks, i.e. ~4 innocent trades per leak caught
+    while still missing two thirds. Shifting the filing date earlier by its mean lateness fares
+    no better (60 blocked for 11 of 43; 112 for 15 of 43).
+
+    The fix is data, not arithmetic: real announcement dates are being stored from 2025-10, so
+    runs over later periods can use them. Until then the leak stands, and D2-sensitive trades
+    should be read with it in mind."""
     syms = sorted({s.symbol for s in signals})
     if not syms or not days:
         return signals, {"days": days, "blocked": 0, "kept": len(signals)}
