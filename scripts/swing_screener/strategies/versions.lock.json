@@ -250,12 +250,13 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "65450e09",
+    "fingerprint": "b8b4d30c",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
       "BREAKEVEN_R": 2.0,
       "BUY_RANGE_PCT": 5.0,
+      "CHEAT_BLOCK_VCP09": 0,
       "CHEAT_SHELF_DAYS": 7,
       "CHEAT_SHELF_PCT": 8.0,
       "CLIMAX_IS_PARTIAL": 1,
@@ -393,7 +394,7 @@
         "W5"
       ]
     },
-    "version": "1.16"
+    "version": "1.17"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
