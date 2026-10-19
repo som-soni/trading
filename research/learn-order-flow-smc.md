@@ -2,11 +2,11 @@
 
 **In short**
 
-- Order flow is the stream of buy and sell orders behind every price bar. You see it in the order book, the list of trades, footprint charts and volume profiles. A daily chart shows none of it.
-- To a trader, "liquidity" often means resting orders: stop-losses and breakout orders bunched just beyond obvious highs, lows and round numbers. A large trader needs those orders to fill a big position.
-- Smart money concepts (SMC) is a newer vocabulary for older ideas. A liquidity sweep is Wyckoff's spring. An order block is a demand or supply zone. A fair value gap is a gap. A change of character is Dow theory's first lower low.
-- Research on order flow is real: over seconds to days, order imbalance moves prices, and stop orders bunched at round numbers can speed up a move. SMC as a trading system has no published evidence behind it.
-- On liquid Indian and US stocks since 2012, daily "sweeps" and "fair value gaps" did not predict the following weeks better than an ordinary day did. Learn the words, then test any rule before you trust it.
+- Order flow is the stream of buy and sell orders behind every price bar: the order book, the tape, footprint charts and volume profiles. A daily chart shows none of it; seeing it takes intraday or tick data.
+- To a trader, "liquidity" often means resting orders, bunched beyond obvious highs and lows. SMC and ICT rename older ideas: a sweep is Wyckoff's spring, an order block a demand zone, SMT divergence Dow theory's non-confirmation.
+- Research on order flow is real: over seconds to days, order imbalance moves prices, and trading bunches at the open and close. SMC and ICT as trading systems have no published evidence behind them.
+- On liquid Indian and US stocks since 2012, daily "sweeps" and "fair value gaps" did not predict the following weeks better than an ordinary day. Nor did a split between Nifty and Bank Nifty.
+- Match the tool to your horizon. Investors and swing traders can use the logic of levels; footprints and depth belong to day traders and scalpers, for whom costs decide almost everything.
 
 This guide follows [Supply and demand](learn-supply-demand.md), which explains why price levels matter. Here we look underneath those levels, at the orders themselves. Then we translate the vocabulary from trading videos into plain words.
 
@@ -115,13 +115,7 @@ Profile traders read the value area as the price the market accepted. A move awa
 
 ### What a daily chart cannot show
 
-A daily bar has five numbers: open, high, low, close and volume. It cannot show who crossed the spread, how much was waiting at each price, or where the volume traded inside the bar. Everything in this section needs intraday data, and most of it needs tick data (every single trade).
-
-**India notes.**
-
-- NSE shows five levels of the order book free on most trading screens. Some broker platforms offer twenty levels.
-- Historical tick data is sold by the exchange and data vendors. It is costly for an individual.
-- Order-flow tools for index and stock futures exist on several Indian platforms. Futures trade on one exchange, so one order book shows all the trading. A stock trades on both NSE and BSE.
+A daily bar has five numbers: open, high, low, close and volume. It cannot show who crossed the spread, how much was waiting at each price, or where the volume traded inside the bar. Everything in this section needs intraday data, and most of it needs tick data (every single trade). Section 5 shows where to see it.
 
 ## 2. "Liquidity" in the trader's sense
 
@@ -151,7 +145,7 @@ equal-highs
 
 ## 3. Smart money concepts — the vocabulary, and the older names
 
-Smart money concepts (SMC) is a set of chart terms popular in online trading videos. Much of the vocabulary was spread by a trader who teaches as "ICT", the Inner Circle Trader. Each term below is shown with a drawing, the idea in plain words, and the older idea it renames. The drawings are idealised, not market data.
+Smart money concepts (SMC) is a set of chart terms popular in online trading videos. Much of the vocabulary was spread by a trader who teaches as "ICT", the Inner Circle Trader; section 4 covers his own additions. Each term below is shown with a drawing, the idea in plain words, and the older idea it renames. The drawings are idealised, not market data.
 
 ### 3.1 Market structure — break of structure and change of character
 
@@ -206,7 +200,7 @@ mark: 2024-02-29 | ₹1,578
 caption: Both stocks took out the stops above a recent high. One closed above the level and kept going; the other closed back below it and fell.
 ```
 
-The difference between the two was the close. Only the close tells a sweep from a breakout, and only afterwards. Section 4 measures whether the close-back-inside day predicts anything across thousands of cases.
+The difference between the two was the close. Only the close tells a sweep from a breakout, and only afterwards. Section 7 measures whether the close-back-inside day predicts anything across thousands of cases.
 
 **The older names.** Wyckoff called a push below support that recovers a **spring**, and a push above resistance that fails an **upthrust**. Chart readers call them bear traps and bull traps. The full trade on the short side is in [Failed breakouts and bull traps](learn-strat-failed-breakouts.md).
 
@@ -259,7 +253,278 @@ But on a chart, the story is an interpretation, not an observation. A daily bar 
 | Premium and discount | Above or below the 50% of a swing | 50% retracement |
 | Inducement | A minor level that traps early traders | A small failed breakout or breakdown |
 
-## 4. What the evidence says
+## 4. ICT's own ideas — time of day, the shape of a day, and entries
+
+Much of the vocabulary in section 3 was spread by Michael J. Huddleston, who teaches online as ICT, the Inner Circle Trader. He adds ideas of his own. Some are about *when* to trade, some about the shape of a day, and some about where exactly to enter. As before, each has an older name, and the question is which ones can be tested.
+
+### 4.1 Kill zones — the hours when the market moves
+
+Here is an invented trading day in a large Indian stock, split into five parts.
+
+*Synthetic example — invented numbers to show how the tool reads. Not market data.*
+
+| Time (IST) | Share of the day's volume | Average range, % of price |
+|---|---|---|
+| 09:15–10:15 | 24% | 0.9% |
+| 10:15–11:30 | 15% | 0.5% |
+| 11:30–13:00 | 16% | 0.4% |
+| 13:00–14:30 | 17% | 0.45% |
+| 14:30–15:30 | 28% | 0.7% |
+
+The first and last hours carry about half the volume and the widest swings. The middle of the day is quiet. ICT calls the busy windows **kill zones**. In his teaching they are mainly the hours around the London open and the New York open. For an Indian trader the same idea points at the first hour after the NSE opens at 09:15, and the last hour.
+
+**The older idea.** This is the U-shaped intraday pattern, one of the best documented facts in market research. Wood, McInish and Ord (1985) found that returns and their variability on the New York Stock Exchange were highest at the open and close. Harris (1986) found regular patterns in returns within the day. Admati and Pfleiderer (1988) explained the bunching: traders who can choose when to trade crowd together, because trading is cheapest when many others trade too.
+
+The pattern is real, but it does not say which way the price will go. Spreads are also widest near the open (McInish and Wood, 1992). A kill zone tells you when moves are large, which helps both a good trade and a bad one. [Intraday momentum and trend days](learn-strat-intraday-momentum.md) covers what the first half-hour does predict.
+
+### 4.2 The Asian range and the Judas swing
+
+Markets that trade almost round the clock, such as currencies and index futures, are quiet during Asian hours. That quiet session leaves a narrow range. When London or New York opens, the price often pushes beyond one side of it, fills the stops there, and then turns and runs the other way. ICT calls the false first push a **Judas swing**.
+
+**The older names.** This is the opening range and its failure. Toby Crabel wrote about opening-range breakouts in 1990. A first break that reverses through the other side is a failed breakout on an intraday scale. See [Opening-range breakout](learn-strat-orb.md) and [Failed breakouts and bull traps](learn-strat-failed-breakouts.md).
+
+Indian cash stocks have no overnight session. The closest equivalents are the previous day's range and the first 15 minutes after the open. GIFT Nifty, which trades for most of the day and night, does form an overnight range. A rule like "the first break of the range reverses" can be tested, but only on intraday data.
+
+### 4.3 The power of three — accumulation, manipulation, distribution
+
+Picture an up day. The index opens at 24,000 and drifts sideways for half an hour. It then dips to 23,920, below the open, and later rallies to close at 24,180, near the high. ICT calls this the **power of three**, or AMD. The quiet start is *accumulation*, the dip is *manipulation*, and the rally is *distribution*.
+
+Note the twist in the last word. In ICT's use, distribution is the day's main move. In Wyckoff's older use, distribution is the top of a long rise, when large holders sell.
+
+**The older name.** It is Wyckoff's cycle of accumulation, markup and distribution, compressed into one bar. On a candlestick chart it is an up day with a lower wick that opened near its low.
+
+The weakness is that it fits almost any day after the fact. Most up days dip below the open at some point, and most down days rise above it first. As a description it explains everything. As a rule, such as "buy when the price dips below the open in the first hour and then reclaims it", it can be tested on intraday data.
+
+### 4.4 Optimal trade entry
+
+Take a rise from ₹400 to ₹500. ICT's **optimal trade entry (OTE)** is a pullback into the zone that retraces 62% to 79% of that rise. Here that is ₹421 to ₹438. Many teachers name 70.5%, about ₹429.50, as the best price inside it.
+
+**The older name.** These are Fibonacci retracements: 61.8% and 78.6% are the classic deep levels. [Retracements and measured moves](learn-strat-retracements.md) counts thousands of completed pullbacks. Their depth forms a smooth hump, with no clear extra cluster at the Fibonacci ratios. A zone this deep is also where many pullbacks stop being pullbacks and become failed rises.
+
+### 4.5 The silver bullet
+
+The **silver bullet** is a fixed one-hour window. The trader waits inside it for a sweep of a nearby high or low, then for a fair value gap in the other direction, and enters when the price comes back into the gap. The window most quoted for US index futures is 10 to 11 a.m. New York time.
+
+It is a practitioner rule with no published test that we know of. It is also one of the more mechanical ICT ideas, which makes it one of the few that could be tested properly. That needs minute data, a fixed definition of a swing, and costs.
+
+### 4.6 Breaker blocks and mitigation blocks
+
+```pattern
+role-reversal
+```
+
+Suppose a bullish order block, a demand zone, fails: the price falls straight through it. ICT says that block now becomes resistance. When the price rallies back up to it, sellers are expected there. A **breaker block** is such a failed block after the price first swept a prior high. A **mitigation block** is the same failure without that sweep.
+
+**The older name.** This is role reversal, or the polarity principle: broken support becomes resistance, and broken resistance becomes support. [Supply and demand](learn-supply-demand.md) explains why it happens and how to trade the retest.
+
+### 4.7 SMT divergence
+
+Imagine Nifty 50 closes at a 20-day high, but Bank Nifty, which usually moves with it, does not. ICT calls this **SMT divergence**, from "smart money technique". The reading is that one market is being pushed to take out stops while the other refuses to follow. Pairs often quoted are S&P 500 and Nasdaq 100 futures, or two currency pairs.
+
+**The older name.** This is non-confirmation, from Dow theory. Charles Dow held that a new high in the industrial average was suspect until the railroad average confirmed it. Traders have watched for the same split between related markets ever since.
+
+We checked the simplest daily version on the two Indian indices.
+
+> **Method note.** Daily closes of Nifty 50 and Bank Nifty, January 2012 to September 2026. A day counts as a 20-day high if the close is the highest of the last 20 closes; lows are the mirror. Returns are Nifty's, from that day's close. Caveats: consecutive days repeat the same episode, the windows overlap, and there are no costs.
+
+| Nifty 50, 2012–2026 | Days | 5-day median return | 20-day median return | Higher after 20 days |
+|---|---|---|---|---|
+| All days | 3,611 | +0.33% | +1.05% | 61.5% |
+| Both indices at a 20-day high | 436 | +0.18% | +1.25% | 63.8% |
+| Nifty at a 20-day high, Bank Nifty not | 282 | +0.18% | +0.92% | 62.1% |
+| Both indices at a 20-day low | 209 | +0.46% | +1.53% | 62.7% |
+| Nifty at a 20-day low, Bank Nifty not | 140 | +0.47% | +1.17% | 63.6% |
+
+A bearish split, Nifty high but Bank Nifty not, was followed by a slightly smaller 20-day gain than an ordinary day. The gap was about a tenth of a point, and Nifty still rose in six cases out of ten. The bullish split on the lows was close to an ordinary day too. Counted once per episode, there were only 118 bearish and 71 bullish cases, too few to separate a small edge from luck.
+
+### 4.8 Daily bias and the "draw on liquidity"
+
+ICT works top-down. First decide the direction, the **bias**, on the weekly and daily chart. Then look for the **draw on liquidity**: the level the price is expected to reach next, usually an obvious pool of stops such as last week's high, or an unfilled gap. Only then drop to a short timeframe to time the entry.
+
+**The older name.** This is multiple-timeframe analysis. Alexander Elder's Triple Screen, from the 1980s, uses a longer chart for direction and a shorter one for entry. The top-down part is sound and testable. The draw on liquidity is testable only if the target is written down before the move; chosen afterwards, the price always "drew" to wherever it went.
+
+### 4.9 The ICT ideas at a glance
+
+| ICT term | What it says | The older idea | Testable on daily data? |
+|---|---|---|---|
+| Kill zones | Trade the busy hours after the main opens | U-shaped intraday volume and volatility | No; needs intraday data |
+| Asian range, Judas swing | The first push beyond the overnight range reverses | Opening range; failed breakout | No; needs intraday data |
+| Power of three (AMD) | A day opens quietly, fakes one way, then runs the other | Wyckoff's phases in one bar | Only as a loose daily version; mostly a description |
+| Optimal trade entry | Enter on a 62–79% pullback | Fibonacci retracement | Yes |
+| Silver bullet | A sweep, then a gap, inside one fixed hour | Opening range and gap ideas | No; needs minute data |
+| Breaker, mitigation block | A failed order block flips role | Role reversal (polarity) | Yes, with fixed zone rules |
+| SMT divergence | Two related markets disagree at a high or low | Dow theory non-confirmation | Yes |
+| Bias, draw on liquidity | Decide direction high, execute low; aim at stop pools | Multiple-timeframe analysis | Partly; the target must be fixed in advance |
+
+**What is known about ICT as a system.** We know of no peer-reviewed study of ICT's rules as a method. Most of the material is free videos, built up over many years, and definitions shift between them. Many rules leave the trader to choose which swing, which block or which gap counts. A rule with that much choice fits any chart in hindsight and is hard to test honestly. The pieces with evidence behind them are the older ideas underneath, such as the intraday U-shape.
+
+## 5. Seeing it in your tools
+
+Each idea needs its own data. Chart terms such as order blocks need only price bars, a footprint needs every trade with its side, and depth needs the live order book. Here is where a trader actually sees each, India first. Product details change often; the ones below were checked in October 2026.
+
+### Charting platforms
+
+**TradingView** is the most widely used charting site. As of October 2026 its volume profile tools include *Fixed range* (a stretch you select), *Visible range* (whatever is on screen) and *Session* (one profile per session). It also has *Periodic* and *Auto anchored* versions.
+
+Its footprint chart, called *Volume footprint*, arrived in May 2024 for the Premium and higher plans. Users have also published a large number of free community scripts that mark fair value gaps, order blocks and breaks of structure.
+
+Treat those scripts with care. Each one defines a swing its own way, so two "order block" scripts can mark different candles on the same chart. Some also **repaint**: a mark appears on an earlier bar only once later bars confirm it. TradingView's own documentation describes this, including plotting an event on a past bar after it was detected. A script that repaints looks perfect on history and is late in real time.
+
+**GoCharting**, an Indian charting site, offers footprint and order-flow charts for NSE stocks, index futures and options, as well as other markets. As of October 2026 its own page says a basic footprint is in the free plan, with advanced order-flow features in paid plans.
+
+### Broker terminals in India
+
+The standard NSE quote shows **five levels** of depth on each side, the best five bids and offers. Several brokers now show more:
+
+| Broker (as of October 2026) | Deeper depth offered |
+|---|---|
+| Zerodha (Kite) | 20 levels, NSE |
+| Upstox | 20 levels on its Upstox Plus plan; a 30-level view in its terminal |
+| Fyers | 50 levels |
+| Dhan | 20 and 200 levels, NSE stocks and derivatives; the 200-level view covers one instrument at a time |
+
+Here is what the extra levels add, using an invented stock.
+
+*Synthetic example — invented numbers to show how the tool reads. Not market data.*
+
+| Levels shown | Bids visible | Asks visible | Price span seen | What you learn |
+|---|---|---|---|---|
+| 5 | 9,500 shares | 11,400 shares | ₹499.70 to ₹500.20 | The nearest queue only |
+| 20 | 41,000 shares | 63,000 shares | ₹498.95 to ₹500.95 | A 20,000-share offer at ₹500.60 |
+
+Five levels show the queue at the front. Twenty show the walls behind it. Neither shows hidden size, such as icebergs, and both change as orders are pulled.
+
+**Tape and data feeds.** Most broker terminals show a list of recent trades, but not always with the bid-or-ask marking of section 1. NSE sells a tick-by-tick feed of the full order book to brokers and licensed data vendors. The real-time feeds that vendors pass on to individual traders are often one-second snapshots instead. A footprint built from snapshots is an approximation of one built from every trade.
+
+**Options and open interest.** Option chains with open interest are shown by most brokers. Specialist tools add more. **Sensibull** has a free plan and a paid Pro plan with open-interest analysis; Pro is free for some brokers' clients, including Zerodha's. **Opstra**, a product of the broker Definedge, has free and paid tiers. What open interest can and cannot tell you is in [Reading an option chain](learn-fno-option-chain.md).
+
+### Specialist order-flow platforms
+
+These are built for depth, tape and footprint reading. Most serve futures, crypto and US markets.
+
+| Platform | Known for |
+|---|---|
+| Bookmap | A heatmap of resting orders over time |
+| ATAS | Footprint ("cluster") charts and a detailed depth ladder |
+| Sierra Chart | A fast, low-cost platform with its own futures data feed |
+| NinjaTrader | A futures platform and broker, with order-flow add-ons |
+| Quantower | A multi-broker platform with depth and footprint views |
+| Jigsaw Trading | Depth-and-sales ladders and a reconstructed tape |
+
+For India the route is narrower. NSE-authorised vendors such as TrueData and Global Datafeeds connect to some platforms, NinjaTrader among them. As of October 2026 we found no current NSE connection for Bookmap or ATAS. Check with the vendor before you pay for either side.
+
+A **heatmap** is easiest to understand as a table. Each cell is the size resting at a price at one moment.
+
+*Synthetic example — invented numbers to show how the tool reads. Not market data.*
+
+| Price | 10:00 | 10:01 | 10:02 | 10:03 |
+|---|---|---|---|---|
+| ₹500.30 | 1,200 | 1,100 | 1,300 | 1,200 |
+| ₹500.20 | 8,000 | 8,200 | 7,900 | 600 |
+| ₹500.10 | 900 | 1,000 | 600 | traded |
+| ₹500.00 | 2,000 | traded | traded | traded |
+| Last price | ₹499.95 | ₹500.00 | ₹500.05 | ₹500.10 |
+
+The 8,000-share offer at ₹500.20 sits for three minutes. At 10:03 it almost vanishes before the price reaches it. A heatmap draws this as a bright band that suddenly goes dark. It does not say whether the seller was spoofing, or simply changed their mind.
+
+### What you need for each concept
+
+| Concept | Data needed | Typical tool | Free or paid |
+|---|---|---|---|
+| BOS, CHoCH, order blocks, fair value gaps, sweeps | Daily or intraday price bars | Any charting site | Free |
+| Kill zones, opening range, VWAP | Intraday bars | Charting site, broker terminal | Mostly free |
+| Volume profile | Intraday bars; ideally every trade | Charting site | Basic free; detail often paid |
+| Footprint, delta, cumulative delta | Every trade, with its side | Footprint chart, specialist platform | Mostly paid |
+| Depth of market | Live order book | Broker terminal | Five levels free; deeper depth varies |
+| Heatmap of resting orders | Live order book, recorded over time | Specialist platform | Paid |
+| Open interest | Exchange end-of-day or live derivatives data | Broker option chain, options tools | Basic free; analysis often paid |
+
+### Pitfalls in the tools
+
+- **Repainting.** A mark drawn on a past bar after the fact flatters every backtest. Watch a script live for some weeks before trusting its history.
+- **Different swing definitions.** Two tools will disagree on where structure broke. Pick one definition and stick to it.
+- **Delays.** Free data is sometimes delayed, and snapshot feeds miss trades between snapshots. Fast order flow on a slow feed is a picture of the past.
+- **Inferred aggressor side.** Most feeds do not say who crossed the spread. Tools infer it, usually with the tick rule or the Lee and Ready (1991) method: a trade above the midpoint counts as a buy. Later tests on data where the true side was known found it right for most trades, but not all. Delta is therefore an estimate.
+
+## 6. How it fits your timeframe
+
+The same ideas mean different things at different horizons. A footprint chart that matters to a scalper is noise to someone holding for six months. A weekly demand zone that matters to the investor is invisible on a one-minute chart. Here is what carries over to each horizon, and what does not.
+
+### Long-term and position trading — weeks to months
+
+Order flow itself is noise at this horizon. A day of heavy selling at the ask means little for where a stock will be in six months. What carries over is the **logic of levels**.
+
+- **Zones and failed breakouts on weekly and daily charts.** Use them to time an entry you already want, and to place the stop. [Supply and demand](learn-supply-demand.md) shows how to judge a zone.
+- **The volume profile of a base.** The price where most volume traded inside a base is roughly where today's holders bought. A stock that falls back below it puts most of them at a loss, and some will sell on the way back up. [Bases](learn-bases.md) covers the shape of a base.
+- **Not buying into an obvious pool.** A buy order just above equal highs is filled exactly when everyone else's buy stops fire. That is often the worst price of the week. Waiting for a close above the level, or for a retest, costs a little upside and avoids many traps.
+- **Stops beyond obvious lows, not at them.** A stop one tick under a round number or a double bottom sits in the pool. Put it where the idea is wrong, with room beyond the obvious level. [Stops and exits](learn-risk-stops-exits.md) shows how.
+
+### Swing trading — days to weeks
+
+A swing trader can pick the setup on the daily chart and time the entry on an intraday one. Two examples:
+
+- A stock breaks out on the daily chart. Instead of buying the close, the trader buys the next morning on a pullback to the session VWAP, the day's average traded price, or to the top of the opening range. The stop is tighter, and the trader pays less of the breakout's excitement. See [VWAP strategies](learn-strat-vwap.md) and [Opening-range breakout](learn-strat-orb.md).
+- A stock in a daily uptrend dips below the prior day's low in the first hour, then recovers above it. That is a small sweep of an obvious level. It can be an entry with the stop under the morning's low.
+
+The daily chart decides *whether*; the intraday chart decides *where*. The intraday rule should still be written down and tested like any other.
+
+### Day trading — minutes to hours
+
+Here the ICT and order-flow ideas are at home.
+
+- **When to trade.** The first hour and the last hour, the kill zones of section 4.1, carry most of the range. Many day traders trade only the first ninety minutes.
+- **The map.** The prior day's high and low, the overnight or pre-open range, the opening range and VWAP are the levels everyone watches. They are where stops and breakout orders gather.
+- **Confirmation.** At a level, the tape and the order book show whether a breakout is being bought or absorbed. Heavy buying at the ask that fails to lift the price is absorption by a seller; the breakout is in trouble.
+
+[Intraday momentum and trend days](learn-strat-intraday-momentum.md) explains how to tell a trend day from a range day, which decides whether breakouts or fades work that day.
+
+### Scalping — seconds to minutes
+
+A scalper lives on the order book and the tape, and tries to take a few ticks many times a day. At this horizon costs decide everything. Here is a round trip of ₹1 lakh in a liquid NSE stock, bought and sold the same day with a discount broker.
+
+*Costs as published by a large discount broker, October 2026; the spread is an assumption. Check current rates.*
+
+| Cost, ₹1 lakh bought and sold intraday | Rate | Amount |
+|---|---|---|
+| Brokerage | ₹20 per order (or 0.03%, if lower) | ₹40 |
+| Securities transaction tax (STT) | 0.025% of the sale | ₹25 |
+| Exchange transaction charges | 0.00307% of each side | ₹6.14 |
+| SEBI fee | ₹10 per crore | ₹0.20 |
+| Stamp duty | 0.003% of the purchase | ₹3 |
+| GST | 18% of brokerage, exchange and SEBI charges | ₹8.34 |
+| Bid–ask spread | Assumed one ₹0.05 tick on a ₹500 stock | ₹10 |
+| **Total** | | **about ₹93, or 0.093%** |
+
+A scalp that makes 0.1% gross, ₹100, keeps about ₹7 after costs. To earn a decent living the scalper needs the gross move to be several times the cost, many times a day, without errors.
+
+Index options look cheaper because the stake is smaller, but the costs are a larger share of it. Take ₹10,000 of option premium, bought and sold.
+
+| Cost, ₹10,000 of index option premium bought and sold | Rate | Amount |
+|---|---|---|
+| Brokerage | ₹20 per order | ₹40 |
+| STT | 0.15% of the premium sold (since 1 April 2026) | ₹15 |
+| Exchange transaction charges | 0.03553% of premium, each side | ₹7.11 |
+| Stamp duty, SEBI fee | Small | under ₹1 |
+| GST | 18% of brokerage and charges | ₹8.48 |
+| Bid–ask spread | Assumed one ₹0.05 tick on a ₹100 premium | ₹5 |
+| **Total** | | **about ₹76, or 0.76% of the premium** |
+
+A scalp of one point on a ₹100 option is a 1% move in the premium. It keeps about a quarter of that after costs. One losing scalp of the same size costs about seven winners' profit.
+
+Scalpers also compete with firms whose computers sit inside the exchange's data centre (co-location) and react in microseconds. When you see a level being absorbed, their algorithms have seen it first.
+
+SEBI studied individual intraday traders in the cash market, in a report published in July 2024. About 7 in 10 lost money in the year to March 2023. Among those who made more than 500 trades a year, about 8 in 10 lost. The figures for F&O traders are worse; see [Futures & options — the map](learn-fno-overview.md).
+
+### Summary by horizon
+
+| Horizon | What to use | What to ignore | Data needed |
+|---|---|---|---|
+| Long-term, position | Weekly and daily zones, failed breakouts, base volume profile, stops beyond obvious lows | Footprint, delta, the order book, kill zones | Daily or weekly bars |
+| Swing | Daily setup; intraday VWAP, opening range or a sweep of the prior day's low for entry | Tick-level order flow; most of ICT's timing | Daily bars, plus intraday bars for entries |
+| Day trading | Kill zones, prior-day levels, opening range, VWAP, tape and depth at a level | Weekly zones far from price; long-term news | Intraday bars; live depth and tape help |
+| Scalping | Order book, tape, footprint, costs to the paisa | Daily chart patterns | Tick data with side; live depth; low costs |
+
+## 7. What the evidence says
 
 ### Published research on order flow
 
@@ -333,7 +598,7 @@ The comparison rows ask a simple question. Pick any day and a price as far below
 
 **What is unknown.** Whether these patterns work better on intraday charts, with volume or order-flow filters, or in certain market conditions. Practitioners say they do. Those claims have not been published in a form anyone can check. [Backtesting honestly](learn-test-backtesting.md) explains how to test one yourself.
 
-## 5. What daily charts can and cannot do
+## 8. What daily charts can and cannot do
 
 You can approximate some of this from daily open, high, low, close and volume:
 
@@ -345,9 +610,9 @@ You can approximate some of this from daily open, high, low, close and volume:
 | Was there a fast move? | Gaps and three-bar gaps | Where the volume traded inside the bar |
 | Where did trading concentrate? | A volume profile built from daily closes | The real distribution inside each day |
 
-Real order flow needs intraday data: footprint and delta need every trade with its side. Depth of market needs the live order book. Neither exists in daily data, however it is drawn.
+Real order flow needs intraday data: footprint and delta need every trade with its side, and depth needs the live order book. Neither exists in daily data, however it is drawn. Section 5 lists where to get each.
 
-## 6. What can go wrong
+## 9. What can go wrong
 
 - **Hindsight labels.** Every swing has a last opposite candle, a gap and a sweep somewhere nearby. After the fact, each turn looks like a textbook order block. Write the level down before the price returns, and count the misses.
 - **Too many zones.** Mark every block, gap and pool on several timeframes, and some zone will sit under every price. Then the chart explains everything and predicts nothing. Limit yourself to one or two levels that matter.
@@ -356,7 +621,7 @@ Real order flow needs intraday data: footprint and delta need every trade with i
 - **Treating every move as manipulation.** Ordinary order flow, a fund buying over days or stops being triggered, is not market abuse. Spoofing and other manipulation are crimes, and they are rarely visible on your chart. Believing in a hidden hand makes losses feel personal and stops you checking your own rules.
 - **Using the story instead of the stop.** "They swept the lows, so now it goes up" is not a reason to widen a stop. A sweep that keeps going is a breakdown. See [Stops and exits](learn-risk-stops-exits.md).
 
-## 7. Checklist
+## 10. Checklist
 
 - [ ] I can say what each term means in plain words, and which older idea it renames.
 - [ ] I know which meaning of "liquidity" I am using: resting orders, ease of trading, or central-bank money.
@@ -364,7 +629,11 @@ Real order flow needs intraday data: footprint and delta need every trade with i
 - [ ] For a sweep, I wait for the **close** back inside the level; for a breakout, for the close beyond it.
 - [ ] My stop sits beyond the sweep's extreme, and I accept it if the price goes there.
 - [ ] I have one or two levels on the chart, not ten.
-- [ ] I know which parts of my method need intraday data, and I am not pretending a daily chart shows them.
+- [ ] I know which data my method needs, bars, every trade or the live book, and my tools really supply it.
+- [ ] Any script I use marks levels the same way live as on history: it does not repaint.
+- [ ] A time-of-day rule, such as a kill zone, has its window and its entry written down before I test it.
+- [ ] I know my round-trip cost as a share of my typical gain, and it is small.
+- [ ] I use the ideas that fit my horizon, and ignore the rest.
 - [ ] Before I use a rule with money, I have tested it, with costs, on data it was not designed on.
 
 ## Further reading
@@ -376,4 +645,12 @@ Real order flow needs intraday data: footprint and delta need every trade with i
 - Carol L. Osler, "Currency Orders and Exchange Rate Dynamics: An Explanation for the Predictive Success of Technical Analysis", *Journal of Finance* 58 (2003).
 - Carol L. Osler, "Stop-Loss Orders and Price Cascades in Currency Markets", *Journal of International Money and Finance* 24 (2005).
 - James F. Dalton, Eric T. Jones and Robert B. Dalton, *Mind Over Markets* (1990; updated 2013) — Market Profile, value areas and the point of control.
+- Anat R. Admati and Paul Pfleiderer, "A Theory of Intraday Patterns: Volume and Price Variability", *Review of Financial Studies* 1 (1988).
+- Robert A. Wood, Thomas H. McInish and J. Keith Ord, "An Investigation of Transactions Data for NYSE Stocks", *Journal of Finance* 40 (1985).
+- Lawrence Harris, "A Transaction Data Study of Weekly and Intradaily Patterns in Stock Returns", *Journal of Financial Economics* 16 (1986).
+- Thomas H. McInish and Robert A. Wood, "An Analysis of Intraday Patterns in Bid/Ask Spreads for NYSE Stocks", *Journal of Finance* 47 (1992).
+- Charles M. C. Lee and Mark J. Ready, "Inferring Trade Direction from Intraday Data", *Journal of Finance* 46 (1991) — how trades are classified as buys or sells.
+- Toby Crabel, *Day Trading with Short Term Price Patterns and Opening Range Breakout* (1990).
+- Alexander Elder, *Trading for a Living* (1993) — the Triple Screen, an early multiple-timeframe method.
+- SEBI, *Analysis of Intraday Trading by Individuals in Equity Cash Segment* (July 2024).
 - Richard D. Wyckoff, *The Richard D. Wyckoff Method of Trading and Investing in Stocks* (course, 1931; later reprints) — springs, upthrusts and absorption, in their original form.
