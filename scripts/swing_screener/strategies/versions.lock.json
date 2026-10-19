@@ -31,13 +31,14 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "de31c6c0",
+    "fingerprint": "933f8f3f",
     "params": {
       "ATR_MULT": 1.5,
       "BO_BUFFER": 0.5,
       "BO_VOL": 1.4,
       "BREAKOUT_MAX_AGE": 0,
       "CUP_RIGHT_LEFT_MIN": 0.5,
+      "CUP_UNDER_RIM": 1,
       "EARNINGS_DAYS": 10,
       "FAIL_DAYS": 10,
       "HORIZON": 60,
@@ -111,6 +112,7 @@
       "RIM_OK_PCT": 8.0,
       "TOL_ATR_MULT": 0.75,
       "TOL_PCT": 3.0,
+      "TRADE_CUPNH": 1,
       "TRIPLE_MAX_DRIFT": 1.5,
       "W_MAX_DEPTH": 35.0,
       "W_MIN_DAYS": 35,
@@ -145,7 +147,7 @@
         "W3"
       ]
     },
-    "version": "1.8"
+    "version": "1.10"
   },
   "donchian": {
     "family": "donchian",

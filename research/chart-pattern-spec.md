@@ -134,6 +134,7 @@ The cup with handle is a rounded, U-shaped base followed by a small, shallow pul
 | CH-09 | Handle duration: days from C to day t | 5 to 25 days (at least one week, per O'Neil) |
 | CH-10 | Handle drifts down or sideways: the slope of a line fitted to the handle's closes is at most 0 | O'Neil warns against handles that wedge upward |
 | CH-11 | Volume dries up in the handle: average handle volume ≤ 0.8 × VOL50 | **[assumption]** |
+| CH-12 | The cup stays under its rim: no high between A and C above max(A, C) by more than the §2.2 price tolerance (added after the spec; a new high between the lips is a failed breakout and a second decline, not one cup) | **[assumption]** |
 
 ### Trigger, invalidation and height
 

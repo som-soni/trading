@@ -78,14 +78,35 @@ RIM_IDEAL_PCT = 3.0       # the right rim within this % of the left: "ideal"
 RIM_OK_PCT = 8.0          # ...within this: "acceptable"; beyond it (inside CH-03): "loose"
 RIM_IDEAL_BONUS = 0.2     # setup quality added for ideal rims (it ranks signals for the position slots)
 RIM_LOOSE_PENALTY = 0.3   # ...and taken off for loose ones
-PARAMS = ps.PatternParams(
+TRADE_CUPNH = 1           # 1 trades a cup WITHOUT a handle (CUPNH); 0 detects and draws it but never buys it
+CUP_UNDER_RIM = 1         # CH-12, beyond the spec: no high between a cup's lips above its rim (1 = on)
+def _build_params() -> ps.PatternParams:
+    return ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
     tol_pct=TOL_PCT, tol_atr_mult=TOL_ATR_MULT, bo_buffer=BO_BUFFER / 100, bo_vol=BO_VOL,
     max_wait=MAX_WAIT, fail_days=FAIL_DAYS, horizon=HORIZON,
     oneil_undercut=(0.0, W_UNDERCUT_MAX), oneil_depth=(W_MIN_DEPTH, W_MAX_DEPTH),
     oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT, right_left_min=CUP_RIGHT_LEFT_MIN,
     rim_ideal_pct=RIM_IDEAL_PCT, rim_ok_pct=RIM_OK_PCT, trigger_clears_rims=True,
+    cup_under_rim=bool(CUP_UNDER_RIM),
 )
+
+
+_PARAM_CONSTANTS = ("K_MINOR", "K_MAJOR", "MIN_SWING_PCT", "ATR_MULT", "TOL_PCT", "TOL_ATR_MULT", "BO_BUFFER",
+                    "BO_VOL", "MAX_WAIT", "FAIL_DAYS", "HORIZON", "W_UNDERCUT_MAX", "W_MIN_DEPTH", "W_MAX_DEPTH",
+                    "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM")
+PARAMS = _build_params()
+_PARAMS_KEY: tuple = tuple(globals()[k] for k in _PARAM_CONSTANTS)
+
+
+def _params() -> ps.PatternParams:
+    """PARAMS, rebuilt if a module constant was overridden since (backtest --const sets the constant,
+    not the dataclass built from it at import — without this, an override never reached the detectors)."""
+    global PARAMS, _PARAMS_KEY
+    key = tuple(globals()[k] for k in _PARAM_CONSTANTS)
+    if key != _PARAMS_KEY:
+        PARAMS, _PARAMS_KEY = _build_params(), key
+    return PARAMS
 # bars after the breakout bar on which a pattern is still an entry. The detector keeps a confirmed
 # pattern "live" for HORIZON bars to record its outcome; that is NOT an entry window — buying on
 # any of those bars buys pullbacks into an old pivot and re-buys after a stop.
@@ -111,18 +132,18 @@ RECT, FBASE, FLAG, HTF = "RECT", "FBASE", "FLAG", "HTF"
 # code -> (spec section, how to detect it). Bearish types are NOT here: in a
 # long-only book a top is a veto (gate G2, flag W1), never a setup.
 BULLISH: dict[str, tuple[str, object]] = {
-    CUP: ("§4", lambda d: ps.detect_cup(d, PARAMS)),
-    CUPNH: ("§4", lambda d: ps.detect_cup(d, PARAMS, require_handle=False)),
-    DBOT: ("§5.1", lambda d: ps.detect_double_bottom(d, PARAMS, oneil_w=True)),
-    TBOT: ("§5", lambda d: ps.detect_triple_bottom(d, PARAMS)),
-    IHS: ("§6.2", lambda d: ps.detect_head_shoulders(d, PARAMS, inverse=True)),
+    CUP: ("§4", lambda d: ps.detect_cup(d, _params())),
+    CUPNH: ("§4", lambda d: ps.detect_cup(d, _params(), require_handle=False)),
+    DBOT: ("§5.1", lambda d: ps.detect_double_bottom(d, _params(), oneil_w=True)),
+    TBOT: ("§5", lambda d: ps.detect_triple_bottom(d, _params())),
+    IHS: ("§6.2", lambda d: ps.detect_head_shoulders(d, _params(), inverse=True)),
     ATRI: ("§7", lambda d: _of_kind(d, (ps.ASCENDING,))),
     SYMM: ("§7", lambda d: _of_kind(d, (ps.SYMMETRICAL,))),
     FWDG: ("§10", lambda d: _of_kind(d, (ps.FALLING_WEDGE,))),
     RECT: ("§8.1", lambda d: _of_kind(d, (ps.RECTANGLE,))),
-    FBASE: ("§8.2", lambda d: ps.detect_flat_base(d, PARAMS)),
-    FLAG: ("§9.2", lambda d: ps.detect_flag(d, PARAMS)),
-    HTF: ("§9.3", lambda d: ps.detect_flag(d, PARAMS, high_tight=True)),
+    FBASE: ("§8.2", lambda d: ps.detect_flat_base(d, _params())),
+    FLAG: ("§9.2", lambda d: ps.detect_flag(d, _params())),
+    HTF: ("§9.3", lambda d: ps.detect_flag(d, _params(), high_tight=True)),
 }
 # what each code is, in words: the Strategies page lists these, and the
 # backtest's trades panel names the pattern a trade was taken on with them
@@ -144,15 +165,15 @@ POINT_NAMES = {
 POINT_NAMES_BY_CODE = {DBOT: {"B": "low 1", "C": "peak", "D": "low 2"},
                        "double top": {"B": "top 1", "C": "trough", "D": "top 2"}}
 BEARISH = {
-    "double top": lambda d: ps.detect_double_top(d, PARAMS),
-    "head and shoulders top": lambda d: ps.detect_head_shoulders(d, PARAMS),
+    "double top": lambda d: ps.detect_double_top(d, _params()),
+    "head and shoulders top": lambda d: ps.detect_head_shoulders(d, _params()),
     "rising wedge": lambda d: _of_kind(d, (ps.RISING_WEDGE,)),
     "descending triangle": lambda d: _of_kind(d, (ps.DESCENDING,)),
 }
 
 
 def _of_kind(daily, kinds: tuple[str, ...]) -> dict:
-    return ps._pick_kinds(ps.detect_boundaries(daily, PARAMS), kinds, ps.TR_RULES)
+    return ps._pick_kinds(ps.detect_boundaries(daily, _params()), kinds, ps.TR_RULES)
 
 
 def _live(res: dict) -> bool:
@@ -174,8 +195,25 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.8"
+    version = "1.10"
     changelog = (
+        ("1.10", "2026-10-19",
+         "The signal-bar checks now hold at the fill. An order that triggers while every position slot is "
+         "full keeps resting, and filled at whatever the open was once a slot freed up — however far price "
+         "had run: AUBANK.NS (ascending triangle, trigger 715.30) was bought eight sessions late at 770.70, "
+         "7.7% past the trigger, with 0.14R left to its target. A fill above the trigger plus "
+         "{MAX_CHASE_PCT}% is now skipped, as is one whose measured move no longer projects {MIN_R}:1 or "
+         "whose risk exceeds {MAX_RISK_PCT}%. Also a switch, TRADE_CUPNH (on), to test the cup without a "
+         "handle: it was 207 of v1.8's 519 India trades and the cup WITH a handle none, because the "
+         "handle-less signal fires first at the rim and its resting order blocks the later, better one."),
+        ("1.9", "2026-10-19",
+         "A cup must stay under its rim (CH-12, beyond the spec, CUP_UNDER_RIM): no high between the left "
+         "and right lips may sit above the higher lip by more than the price tolerance (max({TOL_PCT}%, "
+         "{TOL_ATR_MULT} x ATR/close)). The spec checks the lips, the low, the depth, the rounding and the "
+         "balance of the sides, but never the inside, so a 'cup' whose middle made a new high passed: "
+         "TECHM.NS was read as a cup without handle from a 1,732.80 left lip (2025-06-18) to a 1,633.20 right "
+         "lip (2026-09-15), although it traded 1,854 in February 2026, 7% above the rim -- a breakout that "
+         "failed and a second decline, not one rounded correction. Applies to cups with and without a handle."),
         ("1.8", "2026-10-17",
          "A cup's rims are a resistance zone. The right rim was either inside CH-03's band (85-103% of the "
          "left) or rejected, and every cup inside it counted the same. Now the gap is graded — within "
@@ -294,7 +332,7 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 260
 
     status = (
-        "Not yet measured at v1.8 (which grades cup rims and lifts a cup's trigger to its left rim). Last measured at v1.5, with no demonstrated edge: India, full "
+        "Not yet measured at v1.8 or v1.9 (which grade cup rims, lift a cup's trigger to its left rim, and reject a cup that made a new high between its lips). Last measured at v1.5, with no demonstrated edge: India, full "
         "universe from 2013 (bracket exits, measured 2026-10-14): 3.61% CAGR against the index's "
         "11.6%, max drawdown -27.8%; no US v1.5 run was recorded. v1.6 renamed codes only and "
         "v1.7 admits stocks with {min_bars} bars of history instead of 320. (v1.2 stopped stale "
@@ -458,15 +496,20 @@ class ChartPatternSpecStrategy(Strategy):
              "grade moves setup quality (+{RIM_IDEAL_BONUS} ideal, -{RIM_LOOSE_PENALTY} "
              "loose), which ranks signals for the position slots. T is the handle's "
              "high, raised to the left rim when the handle sits under it, so the "
-             "breakout clears the whole zone.",
+             "breakout clears the whole zone. Between the lips no high may top the "
+             "rim by more than the price tolerance (CH-12): a new high in the "
+             "middle is a failed breakout and a second decline, not a cup.",
         CUPNH: "§4 the same cup read before a handle exists, with price still "
                "at the rim. T is the OLD HIGH, the higher of the two lips -- "
                "O'Neil's buy point -- since the right lip may sit up to 15% "
                "under the left. O'Neil treats it as the "
                "weaker variant, which is why it is a separate code. Its rims are "
-               "graded like CUP's ({RIM_IDEAL_PCT}% ideal, {RIM_OK_PCT}% acceptable). It is "
+               "graded like CUP's ({RIM_IDEAL_PCT}% ideal, {RIM_OK_PCT}% acceptable), and it "
+               "must stay under its rim between the lips (CH-12). It is "
                "complete {K_MAJOR} bars after C and void {MAX_WAIT} bars later "
-               "without a breakout.",
+               "without a breakout. Traded only while TRADE_CUPNH is on ({TRADE_CUPNH}): "
+               "it fires at the rim, before any handle, so its resting order can "
+               "block the cup with a handle that forms later.",
         DBOT: "§5.1 O'Neil's W, a continuation base: a prior uptrend into the "
               "high it corrects, a second low 0-{W_UNDERCUT_MAX}% UNDER the "
               "first (the shakeout), {W_MIN_DEPTH}-{W_MAX_DEPTH}% deep from that "
@@ -515,6 +558,9 @@ class ChartPatternSpecStrategy(Strategy):
         "spread is not a stop, and dividing a measured move by it fabricates R.",
         "**Target** is BO-06's measured move, T + H, with no floor. A setup "
         "projecting under {MIN_R}R is rejected rather than padded.",
+        "**At the fill** the same limits hold against the price paid: an order that would fill more "
+        "than {MAX_CHASE_PCT}% above T, project under {MIN_R}:1, or risk more than {MAX_RISK_PCT}% is "
+        "skipped. (An order can wait for a free position slot; it must not then buy whatever the open is.)",
         "**Rejected as a trade** when the stop is more than {MAX_RISK_PCT}% "
         "below the entry or the measured move projects under {MIN_R}R; the "
         "row is kept as WATCH with the reason.",
@@ -557,6 +603,9 @@ class ChartPatternSpecStrategy(Strategy):
          "A cup's rims are graded, not judged: the right rim within {RIM_IDEAL_PCT}% of the left is "
          "ideal (+{RIM_IDEAL_BONUS} setup quality), within {RIM_OK_PCT}% acceptable (no change), beyond "
          "that loose (-{RIM_LOOSE_PENALTY}). No published percentage exists; these are starting points."),
+        ("Cup under its rim", "CUP_UNDER_RIM",
+         "CH-12, beyond the spec ({CUP_UNDER_RIM} = on): no high between a cup's lips may top the higher "
+         "lip by more than the price tolerance, max({TOL_PCT}%, {TOL_ATR_MULT} x ATR/close)."),
         ("Cup symmetry", "CUP_RIGHT_LEFT_MIN",
          "CH-06, beyond the spec: a cup's recovery (B to C) must take at least "
          "{CUP_RIGHT_LEFT_MIN}x as many bars as its decline (A to B)."),
@@ -605,6 +654,9 @@ class ChartPatternSpecStrategy(Strategy):
         best: tuple[str, dict] | None = None
         first_fail: str | None = None
         for code, (_section, detect) in BULLISH.items():
+            if code == CUPNH and not TRADE_CUPNH:
+                result.setups[code] = False   # switched off: its resting order would block the handle's
+                continue
             try:
                 res = detect(d)
             except (IndexError, ValueError, ZeroDivisionError, KeyError):
@@ -749,7 +801,16 @@ class ChartPatternSpecStrategy(Strategy):
         """One entry per pattern (EN-04): a pattern already traded — stopped out or not — is not
         bought again, even if it re-fires (a resting buy-stop on a COMPLETE pattern can)."""
         anchor = ctx.extras.get("pattern_anchor")
-        return {"base_id": f"{ctx.extras.get('pattern')}:{anchor}"} if anchor else {}
+        meta = {"base_id": f"{ctx.extras.get('pattern')}:{anchor}"} if anchor else {}
+        # The checks made on the signal bar, held against the price actually paid. An order that
+        # triggers while every slot is full keeps resting, and used to fill at whatever the open was
+        # once a slot freed up: AUBANK.NS (ascending triangle, trigger 715.30) was bought 8 sessions
+        # later at 770.70, 7.7% past the trigger, with 0.14R left to the target.
+        trigger = ctx.extras.get("trigger")
+        if trigger:
+            meta.update(max_fill=float(trigger) * (1 + MAX_CHASE_PCT / 100), min_structural_r=MIN_R,
+                        max_risk_pct=MAX_RISK_PCT / 100)
+        return meta
 
     def build_plans(
         self, ctx: StockContext, result: StrategyResult, cfg: MarketConfig

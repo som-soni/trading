@@ -117,6 +117,11 @@ class PatternParams:
     round_min_days: int = 5               # CH-05
     side_frac: float = 0.25               # CH-06
     right_left_min: float = 0.0           # CH-06: right side ≥ this × left side (0 = spec only)
+    # CH-12, beyond the spec: no high between the lips may sit above the rim (the higher lip) by more than
+    # §2.2's price tolerance. The spec never says the cup stays under its rim, so a "cup" whose middle made
+    # a new high passed: TECHM.NS, left lip 1,732.80 (2025-06-18), traded 1,854 in Feb 2026 inside it.
+    # False reproduces the spec.
+    cup_under_rim: bool = False
     handle_half: float = 0.5              # CH-07 (O'Neil)
     handle_depth: tuple[float, float] = (3.0, 12.0)  # CH-08 (O'Neil)
     handle_days: tuple[int, int] = (5, 25)           # CH-09 (O'Neil)
@@ -521,7 +526,7 @@ def outcomes(daily: pd.DataFrame, bo_pos: int, lv: Levels,
 # ----------------------------------------------- §4 cup with handle
 
 # evaluated in this order, so "first failing rule" means the earliest one
-CUP_RULES = ("CH-01", "CH-02", "CH-03", "CH-04", "CH-05", "CH-06",
+CUP_RULES = ("CH-01", "CH-02", "CH-03", "CH-12", "CH-04", "CH-05", "CH-06",
              "CH-07", "CH-08", "CH-09", "CH-10", "CH-11")
 
 
@@ -638,6 +643,16 @@ def _cup_with_lip(base: dict, c_swing: Swing, d: pd.DataFrame, high, low, close,
     gap = (C - A) / A * 100
     out["metrics"]["rim_gap_pct"] = round(gap, 2)
     out["metrics"]["rim_grade"] = rim_grade(gap, p)
+
+    # CH-12 (beyond the spec): the cup stays under its rim. A high between the lips above the higher lip
+    # is a new high in the middle of the "cup": the stock broke out and fell back, which is two moves,
+    # not one rounded correction.
+    if p.cup_under_rim and c_pos > a.pos + 1:
+        inner = float(high[a.pos + 1: c_pos].max())
+        out["metrics"]["inner_high_vs_rim_pct"] = round((inner / max(A, C) - 1) * 100, 2)
+        if inner > max(A, C) * (1 + tol(float(close[t_pos]), atr_t, p)):
+            out["fail"] = "CH-12"
+            return out
 
     # CH-04: cup duration
     cup_len = c_pos - a.pos
