@@ -2777,12 +2777,25 @@ async function companyPage(alive, market, symbol) {
   const money = (v) => (v == null ? "" : (v / d.divisor).toLocaleString(loc, { maximumFractionDigits: Math.abs(v / d.divisor) < 10 ? 1 : 0 }));
   const fmtv = (kind, v) => (v == null ? "" : kind === "money" ? money(v) : kind === "pct" ? `${(v * 100).toFixed(0)}%`
     : kind === "per_share" ? v.toLocaleString(loc, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : Math.round(v).toLocaleString(loc));
+  // a growth row (year-on-year, from the server): a signed percentage, green up / red down; where the
+  // year-ago quarter was a loss the server sends words instead ("turned profit", "loss narrowed / widened")
+  const cell = (r, v, i) => {
+    if (!String(r.kind).startsWith("growth")) return `<td class="${v < 0 ? "neg" : ""}">${fmtv(r.kind, v)}</td>`;
+    const words = r.text?.[i];
+    if (words) return `<td class="${words === "turned profit" ? "pos" : words === "loss widened" ? "neg" : "muted"} small">${esc(words)}</td>`;
+    if (v == null) return "<td></td>";
+    const pct = v * 100, txt = `${pct > 0 ? "+" : pct < 0 ? "−" : ""}${Math.abs(pct) >= 100 ? Math.round(Math.abs(pct)) : Math.abs(pct).toFixed(1)}%`;
+    return `<td class="${pct > 0 ? "pos" : pct < 0 ? "neg" : ""}">${txt}</td>`;
+  };
   const colLabel = (c) => { const m = String(c).match(/^(\d{4})-(\d{2})/); return m ? `${MONTHS[+m[2] - 1]} ${m[1]}` : c; };
   const BOLD = new Set(["sales", "operating_profit", "net_profit", "total_liabilities", "total_assets", "cfo", "fcf", "eps"]);
   const table = (t, note = "") => !t || !t.rows?.length ? `<div class="muted small">Not in the filings stored for this company.</div>`
     : `<div class="fin-wrap"><table class="fin"><thead><tr><th></th>${t.columns.map((c) => `<th>${esc(colLabel(c))}</th>`).join("")}</tr></thead>
-       <tbody>${t.rows.map((r) => `<tr class="${BOLD.has(r.key) ? "strong" : ""} ${r.kind === "pct" ? "pctrow" : ""}"><th>${esc(r.label)}</th>${r.values.map((v) => `<td class="${v < 0 ? "neg" : ""}">${fmtv(r.kind, v)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>
+       <tbody>${t.rows.map((r) => `<tr class="${BOLD.has(r.key) ? "strong" : ""} ${r.kind === "pct" ? "pctrow" : ""} ${r.kind === "growth" ? "growthrow yoy" : r.kind === "growth_qoq" ? "growthrow qoq" : ""}"><th>${esc(r.label)}</th>${r.values.map((v, i) => cell(r, v, i)).join("")}</tr>`).join("")}</tbody></table></div>
        ${note ? `<div class="muted small fin-note">${note}</div>` : ""}`;
+  // which growth rows show: both YoY and QoQ (default), one of them (QoQ only in the quarterly table; the
+  // annual one is always YoY) or none
+  let growthMode = store.get("finGrowth", "both");
   const st = d.status || {};
   const unitNote = `Figures in ${esc(unitWords(d.unit))} · ${esc(FUND_SOURCE[st.source] || st.source || "")}${st.basis && st.basis !== "as reported" ? ` · ${esc(st.basis)}` : ""}`;
   const fetchBtn = d.fetch_pending ? `<button class="btn" disabled>Fetch queued (#${d.fetch_pending})…</button>`
@@ -2849,7 +2862,9 @@ async function companyPage(alive, market, symbol) {
     <section class="co-sec" id="co-overview"><div class="co-ratios">${ratio.map(([k, v]) => `<div><span class="muted">${k}</span><b>${v}</b></div>`).join("")}</div>
       ${sc ? `<div class="muted small fin-note">Statements are in ${esc(sc)}; the share price is in ${esc(d.currency_code || d.currency)}. P/E, book value and dividend yield are not shown, because they would need exchange rates — the same rule as the Quality screen.</div>` : ""}
       ${d.profile?.about ? `<details class="co-about"><summary>About</summary><p>${esc(d.profile.about)}</p></details>` : ""}</section>
-    <section class="co-sec" id="co-quarters"><h2>Quarterly results <span class="muted small">${unitNote}</span></h2>${table(d.quarters,
+    <section class="co-sec" id="co-quarters"><h2>Quarterly results <span class="seg growth-seg" title="Growth rows under sales, operating profit, net profit and EPS. YoY: against the same quarter a year earlier (what earnings tests use; no seasonal effect). QoQ: against the quarter before (sooner, but partly the season).">
+      <span class="muted small">Growth</span>${[["both", "YoY + QoQ"], ["yoy", "YoY"], ["qoq", "QoQ"], ["off", "Off"]].map(([k, t]) => `<button data-growth="${k}" class="${growthMode === k ? "on" : ""}">${t}</button>`).join("")}</span>
+      <span class="muted small">${unitNote}</span></h2>${table(d.quarters,
       `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`)}</section>
     <section class="co-sec" id="co-pl"><h2>Profit &amp; Loss <span class="muted small">${unitNote}</span></h2>${table(d.profit_loss,
       d.layout === "bank" ? "Banks: revenue is interest earned; financing profit = revenue − interest − expenses (incl. provisions), before other income." : "")}
@@ -2860,6 +2875,12 @@ async function companyPage(alive, market, symbol) {
     <section class="co-sec" id="co-shp"><h2>Shareholding pattern</h2>${shpHtml}</section>
     <section class="co-sec" id="co-peers"><h2>Peer comparison</h2>${peerHtml}</section>
     ${viewsHtml}`;
+  const applyGrowth = () => {
+    $view.dataset.growth = growthMode;
+    $view.querySelectorAll(".growth-seg button").forEach((b) => b.classList.toggle("on", b.dataset.growth === growthMode));
+  };
+  $view.querySelectorAll(".growth-seg button").forEach((b) => b.onclick = () => { growthMode = b.dataset.growth; store.set("finGrowth", growthMode); applyGrowth(); });
+  applyGrowth();
   $view.querySelector(".co-nav").onclick = (e) => {
     const a = e.target.closest("[data-sec]"); if (!a) return;
     e.preventDefault(); document.getElementById(a.dataset.sec)?.scrollIntoView({ behavior: "smooth", block: "start" });

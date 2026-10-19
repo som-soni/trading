@@ -4,8 +4,10 @@ Reads what `marketdata/financials.py` stores (statement lines, shareholding, pro
 metrics of `fundamentals/growth.py`, and builds:
 
   key ratios      market cap, price, 52-week high / low, P/E, book value, dividend yield, ROCE, ROE, face value, debt / equity
-  quarters        the last QUARTERS quarters' P&L (sales ... EPS) with OPM % and tax %
-  profit & loss   the last ANNUAL_YEARS fiscal years and the trailing twelve months, with dividend payout
+  quarters        the last QUARTERS quarters' P&L (sales ... EPS) with OPM % and tax %, and the growth of sales,
+                  operating profit, net profit and EPS — year on year and quarter on quarter (in words from a loss)
+  profit & loss   the last ANNUAL_YEARS fiscal years and the trailing twelve months, with dividend payout and
+                  the same lines' year-on-year growth (TTM against the twelve months before)
   growth          compounded sales growth, profit growth, stock price CAGR and average ROE over 10 / 5 / 3 years
   balance sheet   each fiscal year end (and the latest half / quarter end)
   cash flows      each fiscal year: operating, investing, financing, net, capex, free cash flow
@@ -36,6 +38,28 @@ PL = (("sales", "Sales", "money"), ("expenses", "Expenses", "money"), ("operatin
       ("opm", "OPM %", "pct"), ("other_income", "Other income", "money"), ("interest", "Interest", "money"),
       ("depreciation", "Depreciation", "money"), ("exceptional", "Exceptional items", "money"), ("pbt", "Profit before tax", "money"),
       ("tax_pct", "Tax %", "pct"), ("net_profit", "Net profit", "money"), ("eps", "EPS", "per_share"))
+# Growth rows under the lines that measure the business growing: sales, operating profit, net profit,
+# EPS (not costs, interest or tax — rising costs are not bad news when sales rise faster). Year on year:
+# each period against the same period a year earlier — what earnings tests use, and immune to seasons.
+# Quarter on quarter (quarterly table only): against the quarter before — sooner, but partly the season.
+GROWTH_LINES = ("sales", "operating_profit", "net_profit", "eps")
+YOY_DAYS = (330, 400)        # "a year earlier": a period ending this many days before
+QOQ_DAYS = (75, 110)         # "the quarter before"
+
+
+def _with_growth(spec: tuple, qoq: bool) -> tuple:
+    """`spec` with a YoY (and, if asked, a QoQ) growth row under each GROWTH_LINES line."""
+    out = []
+    for row in spec:
+        out.append(row)
+        if row[0] in GROWTH_LINES:
+            out.append((row[0] + "_yoy", "YoY growth %", "growth"))
+            if qoq:
+                out.append((row[0] + "_qoq", "QoQ growth %", "growth_qoq"))
+    return tuple(out)
+
+
+QPL = _with_growth(PL, qoq=True)
 PL_LABELS = {   # the same lines, named the way each layout's filings name them
     "bank": {"sales": "Revenue (interest earned)", "expenses": "Expenses (incl. provisions)", "operating_profit": "Financing profit",
              "opm": "Financing margin %"},
@@ -83,15 +107,49 @@ def _with_derived(p: dict) -> dict:
     return p
 
 
+def _growth(cur, base):
+    """(fraction, words) for a change from `base` to `cur`. A percentage means nothing from a loss or zero,
+    so a change from a loss is told in words instead."""
+    if cur is None or base is None or base == 0:
+        return None, None
+    if base > 0:
+        return cur / base - 1, None
+    return None, "turned profit" if cur > 0 else "loss narrowed" if cur > base else "loss widened"
+
+
+def _add_growth(data: dict, suffix: str, window: tuple, lines: tuple = GROWTH_LINES) -> None:
+    """For each period, each line's growth on the period `window` days earlier, stored as `<line><suffix>`
+    (and `<line><suffix>_text` where it is told in words)."""
+    ends = sorted(data)
+    days = {e: dt.date.fromisoformat(str(e)[:10]) for e in ends}
+    mid = sum(window) / 2
+    for e in ends:
+        prior = [b for b in ends if window[0] <= (days[e] - days[b]).days <= window[1]]
+        if not prior:
+            continue
+        b = min(prior, key=lambda b: abs((days[e] - days[b]).days - mid))
+        for line in lines:
+            gkey = line + suffix
+            val, words = _growth(data[e].get(line), data[b].get(line))
+            data[e][gkey] = val
+            if words:
+                data[e][gkey + "_text"] = words
+
+
 def _table(periods: list, data: dict, spec: tuple, labels: dict, extra_cols: list | None = None, extra: dict | None = None) -> dict:
-    """{columns, rows: [{key, label, kind, values}]}; a row or a period that is empty throughout is dropped."""
-    periods = [p for p in periods if any(data.get(p, {}).get(k) is not None for k, _, _ in spec)]
+    """{columns, rows: [{key, label, kind, values}]}; a row or a period that is empty throughout is dropped.
+    A growth row also carries `text`: words for cells where a percentage would mislead (growth from a loss)."""
+    periods = [p for p in periods if any(data.get(p, {}).get(k) is not None for k, _, kind in spec if not kind.startswith("growth"))]
     cols = [*periods, *(extra_cols or [])]
     rows = []
     for key, label, kind in spec:
         vals = [data.get(p, {}).get(key) for p in periods] + [(extra or {}).get(c, {}).get(key) for c in (extra_cols or [])]
-        if any(v is not None for v in vals):
-            rows.append({"key": key, "label": labels.get(key, label), "kind": kind, "values": vals})
+        text = [data.get(p, {}).get(key + "_text") for p in periods] + [(extra or {}).get(c, {}).get(key + "_text") for c in (extra_cols or [])]
+        if any(v is not None for v in vals) or any(text):
+            row = {"key": key, "label": labels.get(key, label), "kind": kind, "values": vals}
+            if any(text):
+                row["text"] = text
+            rows.append(row)
     return {"columns": [str(c) for c in cols], "rows": rows}
 
 
@@ -142,9 +200,12 @@ def build(market: str, symbol: str, snap=None) -> dict:
         if p.get("eps") is not None and qf.get(e):
             p["eps"] = p["eps"] / qf[e]
         qdata[e] = p
+    # over every stored quarter, so the oldest shown has its year-ago (and quarter-ago) too
+    _add_growth(qdata, "_yoy", YOY_DAYS)
+    _add_growth(qdata, "_qoq", QOQ_DAYS)
     qends = sorted(qdata)[-QUARTERS:]
     labels = PL_LABELS.get(layout, {})
-    out["quarters"] = _table(qends, qdata, PL, labels)
+    out["quarters"] = _table(qends, qdata, QPL, labels)
 
     # fiscal years (per-share figures adjusted from the year-end share counts)
     bsl = lines.get("BS") or {}
@@ -169,7 +230,19 @@ def build(market: str, symbol: str, snap=None) -> dict:
             ttm[k] = sum(vs) if all(v is not None for v in vs) else None
         ttm = _with_derived(ttm)
         ttm["eps"] = m.get("eps_ttm")
-    pl_spec = PL + (("dividend_payout", "Dividend payout %", "pct"),)
+    # year-on-year growth for each fiscal year, and for the TTM column against the twelve months a year
+    # before it (the four quarters before the last four)
+    _add_growth(fdata, "_yoy", YOY_DAYS)
+    prev4 = sorted(qdata)[-8:-4]
+    if ttm and len(prev4) == 4 and (prev4[-1] - prev4[0]).days <= 290:
+        for k in GROWTH_LINES:
+            vs = [qdata[e].get(k) for e in prev4]
+            if all(v is not None for v in vs):
+                val, words = _growth(ttm.get(k), sum(vs))
+                ttm[k + "_yoy"] = val
+                if words:
+                    ttm[k + "_yoy_text"] = words
+    pl_spec = _with_growth(PL, qoq=False) + (("dividend_payout", "Dividend payout %", "pct"),)
     out["profit_loss"] = _table(fends, fdata, pl_spec, labels, ["TTM"] if ttm else None, {"TTM": ttm})
 
     # balance sheet: fiscal year ends, and the latest date if newer

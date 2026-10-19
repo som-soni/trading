@@ -1265,6 +1265,19 @@ table.fin tbody th { text-align: left; font-weight: 400; position: sticky; left:
 table.fin tr.strong th, table.fin tr.strong td { font-weight: 600; color: var(--strong); }
 table.fin tr.pctrow td { color: var(--muted); }
 table.fin td.neg { color: var(--down-text); }
+/* year-on-year growth rows under net profit and EPS: smaller, italic label, green up / red down */
+table.fin tr.growthrow th { font-size: 12px; font-style: italic; color: var(--muted); padding-left: 18px; }
+table.fin tr.growthrow td { font-size: 12px; }
+table.fin tr.growthrow td.pos { color: var(--up-text); }
+table.fin tr.growthrow td.neg { color: var(--down-text); }
+/* the Growth switch: YoY / QoQ / Off (QoQ applies to the quarterly table; the annual one only has YoY) */
+[data-growth="yoy"] table.fin tr.growthrow.qoq, [data-growth="off"] table.fin tr.growthrow { display: none; }
+[data-growth="qoq"] #co-quarters table.fin tr.growthrow.yoy { display: none; }
+#co-quarters h2 { display: flex; align-items: center; gap: 8px; }
+.growth-seg { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 400; margin: 0 6px; }
+.growth-seg .muted { margin-right: 6px; }
+.growth-seg button { padding: 2px 9px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 5px; cursor: pointer; font-size: 12px; }
+.growth-seg button.on { background: var(--accent-soft); color: var(--strong); border-color: var(--accent); }
 table.fin tr.self th, table.fin tr.self td { background: var(--accent-soft); }
 table.fin.peers tbody th a { color: var(--link); }
 .fin-note { margin-top: 6px; }
