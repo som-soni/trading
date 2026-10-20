@@ -82,6 +82,9 @@ TRADE_CUPNH = 1           # 1 trades a cup WITHOUT a handle (CUPNH); 0 detects a
 CUP_UNDER_RIM = 1         # CH-12, beyond the spec: no high between a cup's lips above its rim (1 = on)
 HS_ORIGIN = 1             # HS-09, beyond the spec: the left shoulder belongs to the trend being reversed (1 = on)
 HS_MAX_NECK_CHANGE = 5.0  # HS-10, beyond the spec: the neckline may run against the pattern by at most this %, N1 to N2
+EARLY_BREAKOUT = 1        # beyond the spec: a breakout is searched from the last key point, not from its confirmation
+WEDGE_MIN_CONVERGE = 1.5  # WG-04, beyond the spec: a wedge's steep line falls/rises at least this x the shallow one
+CONTAIN_BREAKOUT_SIDE = 1  # TL-04, beyond the spec: no earlier close through the breakout-side line (1 = on)
 def _build_params() -> ps.PatternParams:
     return ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
@@ -91,13 +94,16 @@ def _build_params() -> ps.PatternParams:
     oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT, right_left_min=CUP_RIGHT_LEFT_MIN,
     rim_ideal_pct=RIM_IDEAL_PCT, rim_ok_pct=RIM_OK_PCT, trigger_clears_rims=True,
     cup_under_rim=bool(CUP_UNDER_RIM), hs_origin=bool(HS_ORIGIN), hs_max_neck_change=HS_MAX_NECK_CHANGE,
+    early_breakout=bool(EARLY_BREAKOUT), wg_min_converge=WEDGE_MIN_CONVERGE,
+    contain_breakout_side=bool(CONTAIN_BREAKOUT_SIDE),
 )
 
 
 _PARAM_CONSTANTS = ("K_MINOR", "K_MAJOR", "MIN_SWING_PCT", "ATR_MULT", "TOL_PCT", "TOL_ATR_MULT", "BO_BUFFER",
                     "BO_VOL", "MAX_WAIT", "FAIL_DAYS", "HORIZON", "W_UNDERCUT_MAX", "W_MIN_DEPTH", "W_MAX_DEPTH",
                     "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM",
-                    "HS_ORIGIN", "HS_MAX_NECK_CHANGE")
+                    "HS_ORIGIN", "HS_MAX_NECK_CHANGE", "EARLY_BREAKOUT", "WEDGE_MIN_CONVERGE",
+                    "CONTAIN_BREAKOUT_SIDE")
 PARAMS = _build_params()
 _PARAMS_KEY: tuple = tuple(globals()[k] for k in _PARAM_CONSTANTS)
 
@@ -198,8 +204,22 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.11"
+    version = "1.12"
     changelog = (
+        ("1.12", "2026-10-20",
+         "Four detector fixes from a review of ICICIBANK.NS's trades. (1) TR-05's near end: the spec's "
+         "triangle and wedge break out between 50% and 80% of the way to the apex, but only the 80% end was "
+         "enforced -- a falling wedge was bought 27% of the way (2015-08-04). (2) WG-04 (WEDGE_MIN_CONVERGE): "
+         "a wedge's steeper line must slope at least {WEDGE_MIN_CONVERGE}x the shallower one; that wedge's "
+         "were 1.08x apart, a channel. (3) TL-04 (CONTAIN_BREAKOUT_SIDE): TL-03 lets a close sit up to the "
+         "price tolerance (3%+) beyond a line, but beyond the breakout line by {BO_BUFFER}% it IS a breakout; "
+         "an ascending triangle (2025-03-24) was bought although it closed above its upper line in September "
+         "2024 and touched it twice after. (4) EARLY_BREAKOUT: a double, triple or head-and-shoulders completes {K_MAJOR} bars after its "
+         "last point, and the spec searches for the breakout only from there -- an inverse H&S that broke "
+         "out on 2016-04-21 at 230 was bought on 2016-04-27, a down day closing back near the 220 neckline. "
+         "The breakout is now searched from the last point, so a breakout inside those bars is an old one, "
+         "not an entry. The chart draws the invalidation of a sloping line as a tick at the signal bar, like "
+         "the trigger."),
         ("1.11", "2026-10-20",
          "Head and shoulders, two rules beyond the spec. HS-09 (HS_ORIGIN): the left shoulder must belong to "
          "the trend being reversed -- the reaction after it may not run past where that trend began (for the "
@@ -545,12 +565,17 @@ class ChartPatternSpecStrategy(Strategy):
              "bar, so it moves.",
         ATRI: "§7 ascending triangle: a flat upper line and a rising lower "
               "one, at least five touches between them, converging with the "
-              "apex still ahead and volume declining. T is the upper line.",
+              "apex still ahead and volume declining, breaking out between 50% and "
+              "80% of the way to the apex (TR-05), and no close above the upper "
+              "line by more than {BO_BUFFER}% that it was touched again after "
+              "(TL-04). T is the upper line.",
         SYMM: "§7 symmetrical triangle: both lines converging at rates within "
               "a factor of two. Neutral by reputation; recorded here as a "
               "bullish break of the upper line.",
         FWDG: "§10 falling wedge: both lines falling with the upper falling "
-              "faster. The textbook reading is a bullish break.",
+              "faster, by at least {WEDGE_MIN_CONVERGE}x (WG-04) -- nearer parallel "
+              "is a channel. The triangle rules apply (TR-05, TL-04). The "
+              "textbook reading is a bullish break.",
         RECT: "§8.1 rectangle: two flat lines, a 5-25% range held for 20-250 "
               "days with at least four touches. T is the upper line.",
         FBASE: "§8.2 flat base: a range no deeper than 15% over the longest "
@@ -630,6 +655,18 @@ class ChartPatternSpecStrategy(Strategy):
         ("H&S neckline drift", "HS_MAX_NECK_CHANGE",
          "HS-10, beyond the spec: the neckline may run against the pattern (an inverse's falling, a top's "
          "rising) by at most {HS_MAX_NECK_CHANGE}% from its left anchor to its right."),
+        ("Early breakout", "EARLY_BREAKOUT",
+         "Beyond the spec ({EARLY_BREAKOUT} = on): a pattern that completes once is confirmed {K_MAJOR} bars "
+         "after its last point, but its breakout is searched from that point -- a close through T in "
+         "between is the breakout, already old when the pattern can be seen."),
+        ("Wedge convergence", "WEDGE_MIN_CONVERGE",
+         "WG-04, beyond the spec: a wedge's steeper line slopes at least {WEDGE_MIN_CONVERGE}x the "
+         "shallower one; nearer parallel is a channel."),
+        ("Breakout-side containment", "CONTAIN_BREAKOUT_SIDE",
+         "TL-04, beyond the spec ({CONTAIN_BREAKOUT_SIDE} = on): no close before today beyond the "
+         "breakout line by more than the breakout buffer ({BO_BUFFER}%) that the line was touched again "
+         "after -- price broke out and came back, so the line was not the boundary. Closes at the line's "
+         "own touches, and after its last touch, are exempt; TL-03's wider tolerance still applies."),
         ("Cup symmetry", "CUP_RIGHT_LEFT_MIN",
          "CH-06, beyond the spec: a cup's recovery (B to C) must take at least "
          "{CUP_RIGHT_LEFT_MIN}x as many bars as its decline (A to B)."),
@@ -1023,7 +1060,7 @@ class ChartPatternSpecStrategy(Strategy):
                     "role": "stop" if bear else "pivot",
                     "label": f"{'breakdown' if bear else 'trigger'} {e['trigger']:.2f} — confirms the {name.lower()}"})
         if e.get("invalidation"):
-            out.append({"shape": "level", **span, "to": d, "price": float(e["invalidation"]),
+            out.append({"shape": "level", **({"bars": 5} if sloped else span), "to": d, "price": float(e["invalidation"]),
                         "role": "support", "label": f"invalidation {e['invalidation']:.2f} — the pattern is wrong "
                                                     f"{'above' if bear else 'below'} this"})
         if e.get("measured_target"):

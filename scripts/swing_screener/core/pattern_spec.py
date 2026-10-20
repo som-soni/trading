@@ -173,12 +173,28 @@ class PatternParams:
     # (an inverse's neckline falling, a top's rising). HS-05 caps the slope per day, which over a long
     # pattern still allows a large drop: JINDALSTEL's ran 577.80 -> 468.00, -19%. 0 keeps the spec.
     hs_max_neck_change: float = 0.0
+    # Beyond the spec, for the patterns that complete once (doubles, triples, H&S, the cup without a
+    # handle): the spec walks BO-01 from completion, k bars after the last key point, so a breakout in
+    # those k bars is never seen and a later bar back above T is read as the breakout. ICICIBANK.NS's
+    # inverse H&S (right shoulder 2016-04-11, confirmed 8 bars later) broke out on 2016-04-21 at 230;
+    # the "breakout" bought was 2016-04-27, a down day that still closed above the 220 neckline. True
+    # starts the breakout search at the bar after the last key point. False reproduces the spec.
+    early_breakout: bool = False
     # §7 triangles (shared with §10 wedges)
     tr_scale_days: int = 40               # TR-01: minor swings under this, major over
     tr_min_touches_side: int = 2          # TR-02
     tr_min_touches: int = 5               # TR-02
     tr_days: tuple[int, int] = (15, 200)  # TR-04
     tr_apex_zone: tuple[float, float] = (0.50, 0.80)  # TR-05
+    # Beyond the spec: a wedge's lines converge at least this many times faster on the steep side
+    # (WG-02 asks only that they converge, so nearly parallel lines -- a channel -- passed). 0 = off.
+    wg_min_converge: float = 0.0
+    # Beyond the spec (TL-04): TL-03's containment allows a close up to `tol` (3%+) beyond a line, but
+    # on the BREAKOUT side a close beyond the line by more than bo_buffer is a breakout (BO-01). If the
+    # line was touched again after such a close, price broke out and came back: the line was never the
+    # boundary. ICICIBANK.NS's ascending triangle (bought 2025-03-24) closed above its upper line on
+    # four days of September 2024 and touched it twice after. False = spec.
+    contain_breakout_side: bool = False
     tr_volume: bool = True                # TR-06, required by the spec
     tr_min_height: float = 6.0            # TR-07, % of price
     sym_slope_ratio: float = 2.0          # §7.2 symmetrical: slopes within 2x
@@ -806,7 +822,7 @@ def detect_cup(daily: pd.DataFrame, p: PatternParams = PatternParams(),
 # --------------------------------------------- §3 state, without §11
 
 def state_at(daily: pd.DataFrame, lv: Levels, completed_pos: int,
-             p: PatternParams, t: float) -> tuple[str, int | None, str | None]:
+             p: PatternParams, t: float, first_pos: int | None = None) -> tuple[str, int | None, str | None]:
     """Walk §3.2 forward from completion to day t: (state, breakout bar, the rule that voided it).
 
     §11's tracker would do this incrementally; run over a frame it gives the
@@ -822,7 +838,9 @@ def state_at(daily: pd.DataFrame, lv: Levels, completed_pos: int,
     volume = daily["volume"].to_numpy(float)
     v50 = vol50(volume, completed_pos)
     t_pos = len(daily) - 1
-    for i in range(completed_pos, t_pos + 1):
+    # `first_pos` (early_breakout) starts the BO-01 search before completion; BO-04's clock still
+    # runs from completion
+    for i in range(min(first_pos, completed_pos) if first_pos is not None else completed_pos, t_pos + 1):
         c = float(close[i])
         if voided(c, lv):                                          # BO-03
             return VOID, None, "BO-03"
@@ -831,7 +849,7 @@ def state_at(daily: pd.DataFrame, lv: Levels, completed_pos: int,
                 if broke_back(close, i, j, lv, t, p):
                     return FAILED, i, None
             return CONFIRMED, i, None
-        if expired(i - completed_pos, p):                          # BO-04
+        if i >= completed_pos and expired(i - completed_pos, p):   # BO-04
             return VOID, None, "BO-04"
     return COMPLETE, None, None
 
@@ -865,7 +883,8 @@ def _finish(out: dict, daily: pd.DataFrame, lv: Levels, last_pos: int,
     out["levels"] = lv
     completed = min(last_pos + k, len(daily) - 1)
     out["metrics"]["completed_pos"] = completed
-    out["state"], out["breakout_pos"], void_rule = state_at(daily, lv, completed, p, t_frac)
+    out["state"], out["breakout_pos"], void_rule = state_at(
+        daily, lv, completed, p, t_frac, first_pos=last_pos + 1 if p.early_breakout else None)
     # §11 records outcomes "until the horizon ends", so a confirmed pattern
     # older than that has finished its life: it is history, not a signal. The
     # spec names no terminal state for it, so the age is exposed rather than
@@ -1279,7 +1298,7 @@ RECTANGLE, RISING_WEDGE, FALLING_WEDGE = "rectangle", "rising_wedge", "falling_w
 TRIANGLE_KINDS = (ASCENDING, DESCENDING, SYMMETRICAL)
 WEDGE_KINDS = (RISING_WEDGE, FALLING_WEDGE)
 
-TR_RULES = ("TR-01", "TR-02", "TR-03", "TR-04", "TR-05", "TR-06", "TR-07")
+TR_RULES = ("TL-03", "TL-04", "TR-02", "TR-03", "TR-04", "TR-05", "WG-04", "TR-06", "TR-07")
 RC_RULES = ("RC-01", "RC-02", "RC-03", "RC-04")
 FB_RULES = ("FB-01", "FB-02", "FB-03", "FB-04", "FB-05")
 FL_RULES = ("FP-01", "FP-02", "FP-03", "FL-01", "FL-02", "FL-03", "FL-04")
@@ -1381,8 +1400,12 @@ def detect_boundaries(daily: pd.DataFrame, p: PatternParams = PatternParams()) -
             out = _result({"S": {"pos": anchor.pos, "price": anchor.price,
                                  "date": idx[anchor.pos]}})
             out["kind"] = kind
+            # the breakout-side line's own touches, for TL-04
+            down = kind in (RISING_WEDGE, DESCENDING)
+            side = [q for q in pts if q.kind == ("L" if down else "H") and anchor.pos <= q.pos <= t_hi]
+            touch_pos = [q.pos for q in touching(lower if down else upper, side, t_frac)]
             res = _boundary_rules(out, d, kind, upper, lower, anchor.pos, tu, tl,
-                                  close, volume, t_pos, t_hi, mid, t_frac, p)
+                                  close, volume, t_pos, t_hi, mid, t_frac, p, touch_pos=touch_pos, k=k)
             _mark_touches(res, upper, lower, pts, anchor.pos, t_hi, t_frac, idx)
             found.append(res)
     return found
@@ -1390,7 +1413,8 @@ def detect_boundaries(daily: pd.DataFrame, p: PatternParams = PatternParams()) -
 
 def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: Line,
                     s_pos: int, tu: int, tl: int, close, volume, t_pos: int,
-                    t_hi: int, mid: float, t_frac: float, p: PatternParams) -> dict:
+                    t_hi: int, mid: float, t_frac: float, p: PatternParams,
+                    touch_pos: list[int] | None = None, k: int = 0) -> dict:
     """TR-01..TR-07 for triangles and wedges, RC-01..RC-04 for rectangles."""
     rect = kind == RECTANGLE
     rules = RC_RULES if rect else TR_RULES
@@ -1406,12 +1430,29 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
     if not contained(upper, lower, close, s_pos, t_hi, t_frac):
         out["fail"] = "TL-03"
         return out
+    # TL-04 (beyond the spec): no close through the breakout-side line (the lower for the bearish
+    # kinds, the upper for the rest) that the line was touched again after -- price broke out and came
+    # back, so the line was never the boundary. The bars at the line's own touches are exempt (a
+    # least-squares line runs through its swings, some above it), and so is a close after the last
+    # touch: that is an attempt at today's breakout, which BO-01/BO-02 judge.
+    if p.contain_breakout_side and touch_pos:
+        down = kind in (RISING_WEDGE, DESCENDING)
+        line = lower if down else upper
+        last = max(touch_pos)
+        for i in range(s_pos, last):
+            if any(abs(i - q) <= k for q in touch_pos):
+                continue
+            v = line.at(i)
+            if v and (close[i] < v * (1 - p.bo_buffer) if down else close[i] > v * (1 + p.bo_buffer)):
+                out["fail"] = "TL-04"
+                out["metrics"]["early_close"] = str(d.index[i].date())
+                return out
 
     # TR-02 / RC-02: enough touches
     need_side = p.rc_min_touches_side if rect else p.tr_min_touches_side
     need_all = p.rc_min_touches if rect else p.tr_min_touches
     if tu < need_side or tl < need_side or tu + tl < need_all:
-        out["fail"] = rules[1]
+        out["fail"] = "RC-02" if rect else "TR-02"
         return out
 
     height0 = upper.at(s_pos) - lower.at(s_pos)
@@ -1449,6 +1490,20 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
     if not (progress == progress) or progress > p.tr_apex_zone[1]:
         out["fail"] = "TR-05"          # X: 80% of the way with no breakout
         return out
+    # ...and the zone's near end: the spec's breakout happens from 50% of the way. Before that the
+    # lines have barely begun to converge, so it is not yet a triangle or a wedge.
+    if progress < p.tr_apex_zone[0]:
+        out["fail"] = "TR-05"
+        return out
+
+    # WG-04 (beyond the spec): a wedge's steep line is at least wg_min_converge times the shallow one
+    if p.wg_min_converge and kind in WEDGE_KINDS:
+        su, sl = abs(upper.pct_slope(mid)), abs(lower.pct_slope(mid))
+        ratio = max(su, sl) / min(su, sl) if min(su, sl) else float("inf")
+        out["metrics"]["converge_ratio"] = round(ratio, 2)
+        if ratio < p.wg_min_converge:
+            out["fail"] = "WG-04"
+            return out
 
     # TR-06: volume declines through the pattern
     slope = log_volume_slope(volume, s_pos, t_pos)
