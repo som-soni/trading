@@ -4477,6 +4477,17 @@ async function reportPage(alive, id, tab) {
     const si = t.columns.indexOf("symbol");
     return {
       name: `${r.strategy}_${r.run}_${name}`.replace(/\W+/g, "_"),
+      // A trade row carries 24 columns, and the two that say whether the stock deserved buying --
+      // its RS rating and its fundamentals verdict, both as of the signal date -- sat at the far
+      // right behind the bookkeeping, so they read as missing rather than merely off-screen.
+      // `decision` goes with them for a different reason: a TRADES table only ever holds decisions
+      // that were accepted, so it is near-constant by construction (1,027 of 1,028 rows share one
+      // value on the US run) while being one of the widest columns.
+      // Hidden here is only a DEFAULT: `saved || opts.hidden` means anyone who has touched the
+      // Columns menu keeps their own set, and every column below is one click away in it.
+      ...(name === "trades"
+        ? { hidden: ["decision", "notional", "costs", "initial_stop", "pivot", "base_id", "base_no", "partial_shares"] }
+        : {}),
       ...(si >= 0 && r.market !== "all" ? {
         rowClick: (row, visible) => {
           if (name === "trades") store.set("tradeRun:" + r.market, String(id));
