@@ -88,6 +88,23 @@ def verdicts(market: str, signals: list, level: str = "leader") -> dict:
     return out
 
 
+def annotate_signals(signals: list, market: str) -> tuple[list, dict]:
+    """Attach each signal's SEPA verdict as meta["sepa"] and drop nothing.
+
+    The same point-in-time judgement `filter_signals` uses, recorded rather than acted on, so every
+    trade in a run carries the fundamentals its company showed ON ITS SIGNAL DATE and the report can
+    be read by verdict without the fundamentals gate changing which trades were taken. Today's score
+    would be the wrong number against a trade from 2013: this is the one a trader could have read.
+    """
+    v = verdicts(market, signals)
+    counts: dict = {}
+    for s in signals:
+        x = v[(s.symbol, s.date)]
+        counts[x] = counts.get(x, 0) + 1
+    return ([replace(s, meta={**s.meta, "sepa": v[(s.symbol, s.date)]}) for s in signals],
+            {"verdicts": counts, "of": len(signals)})
+
+
 def filter_signals(signals: list, market: str, level: str) -> tuple[list, dict]:
     if level not in LEVELS:
         raise ValueError(f"--fundamentals must be one of {LEVELS}")

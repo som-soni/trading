@@ -1017,6 +1017,19 @@ def run_portfolio_backtest(
             f"date; {f['kept']} of {f['of']} kept. Verdicts: " + ", ".join(f"{n} {k}" for k, n in sorted(v.items(), key=lambda x: -x[1]))
             + ". NO DATA means no scorable results then (fundamental history starts in 2021, for part of the universe); "
               "F7 (estimates) is never available point in time.")
+    elif all_signals:
+        # No fundamentals GATE, but every trade still records what the company's results looked like
+        # on its signal date, so the report can be cut by verdict. Annotation only: nothing is dropped
+        # and no trade changes, which is why it runs whether or not --fundamentals was asked for.
+        from . import fundamental_filter
+        all_signals, f = fundamental_filter.annotate_signals(all_signals, market_key)
+        v = f["verdicts"]
+        spec_notes.append(
+            "Fundamentals (SEPA part 2): recorded, not enforced — each signal keeps the verdict its company's "
+            f"results supported on its own date, and none was dropped for it. Verdicts: "
+            + ", ".join(f"{n} {k}" for k, n in sorted(v.items(), key=lambda x: -x[1]))
+            + ". NO DATA means no scorable results then (Indian history starts late 2020, US in 2009, and only "
+              "for part of the universe); F7 (estimates) is never available point in time.")
     if spec_costs:
         all_signals = spec_mod.annotate_costs(all_signals, prices, market_key)
     if rank_by == "rs":
