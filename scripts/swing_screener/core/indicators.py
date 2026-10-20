@@ -60,6 +60,32 @@ def adx(df: pd.DataFrame, n: int = 14) -> pd.Series:
     return wilder_smooth(dx.fillna(0), n)
 
 
+RS_SCORE_WINDOWS = (63, 126, 189, 252)   # trailing 3 / 6 / 9 / 12 months, in sessions
+RS_SCORE_RECENT_WEIGHT = 2               # the most recent quarter counts twice
+
+
+def rs_score(close):
+    """The IBD-style weighted relative-strength score: trailing 3/6/9/12-month returns with the
+    most recent quarter counted twice.
+
+    THE one definition of this quantity. `backtesting/spec.rs_ratings` ranks it across a market
+    to produce the 1-99 RS rating, `screens/snapshot` stores it per stock, and `enrich_daily`
+    exposes it as `rs_score` so a single symbol can be screened on the same number without a
+    market to rank against.
+
+    Note the four windows OVERLAP -- each contains the most recent quarter -- so in terms of
+    non-overlapping quarterly returns the weights are 5/3/2/1, i.e. 45% on the most recent
+    quarter and 9% on the oldest, not the 40/20/20/20 the arithmetic looks like.
+
+    `close` may be a Series (one symbol) or a DataFrame of closes by symbol; the result has the
+    same shape.
+    """
+    r = lambda k: close / close.shift(k) - 1.0
+    w = RS_SCORE_RECENT_WEIGHT
+    q1, q2, q3, q4 = (r(k) for k in RS_SCORE_WINDOWS)
+    return w * q1 + q2 + q3 + q4
+
+
 def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
     """Add every indicator column the gate/flag/entry logic needs to a raw
     daily OHLCV DataFrame. Non-mutating."""
@@ -86,9 +112,12 @@ def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
     # itself 21 sessions ago rather than fitting a slope, which is what the
     # rule actually says and is cheaper
     out["sma200_21d_ago"] = out["sma200"].shift(21)
-    # 12-1 momentum: the RS proxy. Skips the most recent ~21 sessions (the
-    # short-term reversal month), matching the momentum baseline's ranking.
+    # 12-1 momentum: skips the most recent ~21 sessions (the short-term
+    # reversal month), matching the momentum baseline's ranking. It is the
+    # ranking factor for the momentum strategies -- NOT the Trend Template's
+    # RS stand-in, which wants the opposite emphasis; see `rs_score`.
     out["mom_12_1"] = out["close"].shift(21) / out["close"].shift(252) - 1.0
+    out["rs_score"] = rs_score(out["close"])
     return out
 
 

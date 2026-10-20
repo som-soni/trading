@@ -34,7 +34,7 @@ _SCREENS = [
             Criterion("C7", c.stage2_near_high, "Close within {MAX_PCT_BELOW_52W_HIGH:g}% of the 52-week high."),
             Criterion("C8", c.stage2_rs, "Relative strength: an RS rank of {RS_MIN_RANK}+ (1–99 across the market, recent quarter "
                                      "weighted double) when the whole market is screened; a single stock or a backtest uses "
-                                     "12-1 month momentum of {RS_MIN_MOM}+ as the stand-in."),
+                                     "a floor of {RS_MIN_SCORE} on that same weighted score as the stand-in."),
         ),
         rank_rs=True,
     ),

@@ -22,6 +22,7 @@ import numpy as np
 import pandas as pd
 
 from ..config import MARKETS
+from ..core import indicators as ind
 from ..marketdata import cache, db
 
 logger = logging.getLogger(__name__)
@@ -81,9 +82,8 @@ def rs_ratings(market: str, dates: list) -> dict:
             continue
         c = close.iloc[i]
 
-        def ret(k):
-            return c / close.iloc[i - k] - 1
-        raw_rs = 2 * ret(63) + ret(126) + ret(189) + ret(252)
+        # one definition of the score, in core.indicators; this ranks it across the market
+        raw_rs = ind.rs_score(close).iloc[i]
         age_ok = (first_s <= d_use - pd.Timedelta(days=int(MIN_HISTORY * 1.4))) | (have.iloc[i] >= MIN_HISTORY)
         ok = (c >= MIN_PRICE[market]) & (v50.iloc[i] >= MIN_VALUE_50D[market]) & age_ok & raw_rs.notna()
         v = raw_rs[ok]

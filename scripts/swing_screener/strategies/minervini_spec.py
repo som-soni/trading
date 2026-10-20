@@ -38,7 +38,7 @@ from ..core import vcp_spec
 from ..core import swings as sw
 from ..core.context import StockContext
 from ..screens.criteria import (  # noqa: F401 (doc placeholders)
-    MAX_PCT_BELOW_52W_HIGH, MIN_PCT_ABOVE_52W_LOW, RS_MIN_MOM, RS_MIN_RANK, SMA200_RISING_BARS,
+    MAX_PCT_BELOW_52W_HIGH, MIN_PCT_ABOVE_52W_LOW, RS_MIN_SCORE, RS_MIN_RANK, SMA200_RISING_BARS,
 )
 
 #: TT-03 has two levels, and only the first can stop a trade.
@@ -338,8 +338,8 @@ def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
     s50, s150, s200 = last.get("sma50"), last.get("sma150"), last.get("sma200")
     s200_prev = last.get("sma200_21d_ago")
     lo52, hi52 = last.get("low_252"), last.get("high_252")
-    mom = last.get("mom_12_1")
-    if any(pd.isna(v) for v in (s50, s150, s200, s200_prev, lo52, hi52, mom)):
+    rs = last.get("rs_score")
+    if any(pd.isna(v) for v in (s50, s150, s200, s200_prev, lo52, hi52, rs)):
         return False, "insufficient history for the trend template"
 
     if not (close > s50 and close > s150 and close > s200):
@@ -352,8 +352,11 @@ def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
         return False, f"less than {MIN_PCT_ABOVE_52W_LOW:g}% above the 52-week low"
     if hi52 <= 0 or close < hi52 * (1 - MAX_PCT_BELOW_52W_HIGH / 100):
         return False, f"more than {MAX_PCT_BELOW_52W_HIGH:g}% below the 52-week high"
-    if mom < RS_MIN_MOM:
-        return False, f"12-1 momentum {mom:.2f} below {RS_MIN_MOM}"
+    # The cheap stand-in for TT-08. It floors the SAME weighted score the real 1-99 rating ranks
+    # (core.indicators.rs_score), so the scan and the rating cannot disagree about what "strong"
+    # means; the rating itself is applied to the collected signals afterwards (filter_min_rs).
+    if rs < RS_MIN_SCORE:
+        return False, f"RS score {rs:.2f} below {RS_MIN_SCORE}"
     return True, "passed"
 
 
@@ -472,8 +475,29 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.19"
+    version = "1.20"
     changelog = (
+        ("1.20", "2026-10-20",
+         "The per-stock stand-in for TT-08 is now a floor on the RS SCORE, not on 12-1 momentum: "
+         "RS_MIN_MOM is retired and RS_MIN_SCORE ({RS_MIN_SCORE}) replaces it. "
+         "The real gate is an RS rating of {RS_MIN_RANK}+, a percentile of the IBD-style weighted "
+         "score -- trailing 3/6/9/12-month returns with the most recent quarter counted twice. The "
+         "cheap screen that ran in front of it used 12-1 momentum, which SKIPS the most recent "
+         "month, so the two disagreed by construction: the scan discounted exactly the quarter the "
+         "rating counts double. Measured over 2012-2026 on names that passed the whole Trend "
+         "Template AND rated {RS_MIN_RANK}+, it threw away 8.1% of US and 6.6% of Indian ones -- "
+         "RELINFRA.NS at RS 88 with 12-1 momentum of -0.14, AGO at RS 90 with +0.02, both of them "
+         "stocks that fell over the year and turned in the last quarter, which is what a Stage 2 "
+         "entry is. The new floor cuts 0.8% and 0.5% of them. "
+         "It is a floor, not a substitute for the rating: it keeps 96.9% of US and 98.3% of Indian "
+         "Trend-Template bars where the old gate kept 84.9% and 88.4%, so the scan reads ~1.1x more "
+         "bars and the rating still decides afterwards (filter_min_rs). "
+         "The score itself moved to one definition, `core.indicators.rs_score`, which "
+         "`backtesting/spec.rs_ratings` and `screens/snapshot` now both call -- the formula had "
+         "been written out three times. Verified: the 1-99 ratings are bit-identical across 3,527 "
+         "symbol-dates after the consolidation. "
+         "In the golden harness the only thing that moves is G8 and the two fields that report it "
+         "(first_hard_fail, the prefilter reason), in both directions."),
         ("1.19", "2026-10-19",
          "The results blackout now blocks on an estimated ANNOUNCEMENT date as well as the filing "
          "date. A report breaks a stop by gapping through it, and the gap is on the announcement; "
@@ -781,10 +805,10 @@ class MinerviniSpecStrategy(Strategy):
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                      "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio", "breakout_volume_ratio",
-                     "vcp_fail", "rs_mom")
+                     "vcp_fail", "rs_score")
     extra_numeric_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                              "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio",
-                             "breakout_volume_ratio", "rs_mom")
+                             "breakout_volume_ratio", "rs_score")
     needs_ctx_extras = True
     # SEPA part 2. The screener fetches current fundamentals for rows that already
     # cleared the screen and annotates them (revenue/earnings YoY, gross-margin
@@ -867,7 +891,7 @@ class MinerviniSpecStrategy(Strategy):
         "**Relative strength** is cross-sectional, so where it is applied depends on what the caller can see. "
         "The daily screening run rates the whole market and gates G8 on the true RS rating of {RS_MIN_RANK}+. "
         "A backtest cannot do that inside a per-bar scan of one symbol, so G8 falls back to 12-1 month momentum "
-        "of {RS_MIN_MOM}+ there and `--min-rs` applies the real rating to the collected signals — the same "
+        "of {RS_MIN_SCORE}+ there and `--min-rs` applies the real rating to the collected signals — the same "
         "threshold, one step later. A single-symbol tool keeps the stand-in and is therefore looser than both.",
         "**Fundamentals (SEPA part 2) are optional in the backtest, off by default.** `--fundamentals guide` "
         "applies the Learn guide's tests (quarterly EPS up {FUND_EPS_GROWTH_MIN_PCT}%+ and faster than the "
@@ -929,7 +953,8 @@ class MinerviniSpecStrategy(Strategy):
         "G8": "TT-08: an RS rating of {RS_MIN_RANK}+ (1-99 across the market) whenever the caller has rated "
               "the whole market — the daily screening run does. A one-symbol evaluation cannot rank, so "
               "`inspect --no-rs-rank` and the chart indicators fall back to 12-1 month momentum of "
-              "{RS_MIN_MOM}+; a backtest also falls back here and applies the rating to the signals instead.",
+              "{RS_MIN_SCORE}+ on the same weighted score the rating ranks; a backtest also falls back here "
+              "and applies the rating to the signals instead.",
     }
     watch_docs = {
         "W1": "Closed through the pivot on light volume — under {VOL_MULT} × the 50-day average (MV-01a), "
@@ -1483,7 +1508,7 @@ class MinerviniSpecStrategy(Strategy):
             "first_depth_pct": r("first_depth_pct", 1), "last_depth_pct": r("last_depth_pct", 1),
             "tightness_pct": r("tightness_pct", 1), "dryup_ratio": r("dryup_ratio"),
             "breakout_volume_ratio": r("breakout_volume_ratio"), "vcp_fail": e.get("vcp_fail"),
-            "rs_mom": r("rs_mom", 3),
+            "rs_score": r("rs_score", 3),
         }
 
 

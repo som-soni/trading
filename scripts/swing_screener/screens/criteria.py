@@ -15,7 +15,7 @@ is this?" and never decorates a rule that only one screen has.
 Thresholds follow the same idea: one name per quantity (`MAX_PCT_BELOW_52W_HIGH`), prefixed with
 the screen key where a screen sets its own (`UPTREND_MAX_PCT_BELOW_52W_HIGH`). The Trend
 Template's are the unprefixed ones and have to stay that way: MAX_PCT_BELOW_52W_HIGH,
-MIN_PCT_ABOVE_52W_LOW, RS_MIN_MOM, RS_MIN_RANK and SMA200_RISING_BARS are keys in the minervini
+MIN_PCT_ABOVE_52W_LOW, RS_MIN_SCORE, RS_MIN_RANK and SMA200_RISING_BARS are keys in the minervini
 strategy's fingerprint (`strategies/base.py` spec_params), so renaming one fails the version gate
 and invalidates the stored signals for a change that alters no behaviour.
 """
@@ -29,7 +29,9 @@ from ..core import swings as sw
 SMA200_RISING_BARS = 21          # the 200-day must be higher than this many sessions ago
 MIN_PCT_ABOVE_52W_LOW = 30.0
 MAX_PCT_BELOW_52W_HIGH = 25.0
-RS_MIN_MOM = 0.10                # per-stock stand-in for an RS rank of 70+: 12-1 month momentum
+RS_MIN_SCORE = 0.50              # per-stock floor when no market is there to rank against:
+                                 # the weighted RS score (core.indicators.rs_score), the same
+                                 # quantity the 1-99 rating ranks -- see `rs_strong`
 RS_MIN_RANK = 70                 # when a whole market is screened at once: the true 1-99 RS rank
 
 # ---- near highs. Its own, tighter ceiling; the _FRAC form is the same number as a
@@ -112,7 +114,7 @@ def _stage2_vals(ctx) -> dict:
     last = ctx.last
     return {"close": ctx.close, "s50": float(last["sma50"]), "s150": float(last["sma150"]), "s200": float(last["sma200"]),
             "s200_prev": float(last["sma200_21d_ago"]), "lo52": float(last["low_252"]), "hi52": float(last["high_252"]),
-            "mom": float(last["mom_12_1"]) if pd.notna(last.get("mom_12_1")) else float("nan")}
+            "rs": float(last["rs_score"]) if pd.notna(last.get("rs_score")) else float("nan")}
 
 
 def stage2_above_sma50(ctx):
@@ -167,7 +169,7 @@ def stage2_rs(ctx):
     (filter_min_rs), so ranking inside the per-bar scan would only cost time for the same answer.
     The market-wide screen likewise replaces it via `Screen.rank_rs` (screens/definitions.py)."""
     v = _stage2_vals(ctx)
-    ctx.extras["rs_mom"] = v["mom"]
+    ctx.extras["rs_score"] = v["rs"]
     if ctx.extras.get("rs_ranked"):
         rank = ctx.extras.get("rs_rank")
         if rank is None or pd.isna(rank):
@@ -175,7 +177,12 @@ def stage2_rs(ctx):
             # rather than quietly falling back to a test the backtest would not have applied
             return False, "outside the rated universe (too cheap, too thin or too new)"
         return float(rank) >= RS_MIN_RANK, f"RS rank {int(rank)}"
-    return pd.notna(v["mom"]) and v["mom"] >= RS_MIN_MOM, f"12-1 momentum {v['mom']:.3f}"
+    # The floor is on the SAME quantity the rating ranks, so the two stages agree. It used to be
+    # 12-1 momentum, which skips the most recent month and so discounts exactly the quarter the
+    # rating counts twice: measured over 2012-2026 that cut 8.1% of US and 6.6% of Indian names
+    # that passed the whole Trend Template AND rated RS {RS_MIN_RANK}+ -- RELINFRA at RS 88 with
+    # 12-1 momentum of -0.14, AGO at RS 90 with +0.02. The floor below cuts 0.8% and 0.5% of them.
+    return pd.notna(v["rs"]) and v["rs"] >= RS_MIN_SCORE, f"RS score {v['rs']:.2f}"
 
 
 # ------------------------------------------------------------------ established uptrend (weekly + daily)
