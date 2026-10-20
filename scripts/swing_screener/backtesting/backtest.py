@@ -580,6 +580,63 @@ def rerank_signals(
     return out
 
 
+def filter_stage3(signals: "list", market_key: str, prices: dict) -> tuple[list, dict]:
+    """Drop signals whose stock had already left Stage 2 for Stage 3 (topping) on the signal date.
+
+    A portfolio-level filter, like `--min-group-rs`: the strategy's rules and its cached signals are
+    unchanged, so a run with it and one without compare the same signal set.
+
+    The Trend Template and the stage machine disagree about this more often than it looks, because
+    they read different things: the template's 200-day test lags, while the stage machine leaves
+    Stage 2 on a lower swing low or the 150-day ceasing to rise -- "swings turn before averages".
+    A stock can therefore be structurally topping while still passing all eight gates. Measured on
+    the v1.20 runs, that is 24.8% of Indian trades and 31.9% of US ones, losing in both at a profit
+    factor of 0.80 and 0.83; Minervini's instruction is to buy Stage 2, not Stage 3.
+
+    Not lookahead: `stage_cycle` records the 2->3 switch on the bar the swing low is CONFIRMED
+    (i - _stage_swing_bars), not on the swing low itself, so the stage on a bar is decided only by
+    bars up to it.
+
+    A symbol without enough history to stage is KEPT -- unknown is not topping.
+    """
+    import numpy as np
+
+    from ..config import MARKETS
+    from ..strategies.minervini_spec import stage_cycle
+
+    cfg = MARKETS[market_key]
+    by: dict = {}
+    for s in signals:
+        by.setdefault(s.symbol, []).append(s)
+    logger.info("Stage filter: staging %d symbols...", len(by))
+    kept, dropped, unknown = [], 0, 0
+    for sym, sigs in by.items():
+        df = prices.get(sym)
+        if df is None or len(df) < 200:
+            kept.extend(sigs)
+            unknown += len(sigs)
+            continue
+        # `passes` only feeds each Stage 2 run's `confirmed` date, which this does not read, so a
+        # stub skips a per-bar Trend Template evaluation over the whole history.
+        runs = stage_cycle(df, cfg, [(False, "")] * len(df))
+        stage = np.zeros(len(df), dtype=np.int8)
+        idx = df.index
+        for r in runs:
+            a = int(idx.searchsorted(pd.Timestamp(r["from"])))
+            b = int(idx.searchsorted(pd.Timestamp(r["to"]), side="right")) if r.get("to") else len(df)
+            stage[a:b] = int(r["stage"])
+        for s in sigs:
+            i = int(idx.searchsorted(pd.Timestamp(s.date)))
+            if i >= len(df) or idx[i] != pd.Timestamp(s.date):
+                kept.append(s); unknown += 1; continue
+            if stage[i] == 3:
+                dropped += 1
+            else:
+                kept.append(s)
+    logger.info("Stage filter (no Stage 3): kept %d, dropped %d, unstaged %d (kept)", len(kept), dropped, unknown)
+    return kept, {"kept": len(kept), "dropped": dropped, "unknown": unknown}
+
+
 def filter_weak_groups(signals: "list", market_key: str, min_rs: int) -> tuple[list, dict]:
     """Drop signals whose industry group was rated below `min_rs` on the signal's own date.
 
@@ -868,6 +925,7 @@ def run_portfolio_backtest(
     max_position_pct: float | None = None,
     rank_by: str = "setup",
     min_group_rs: int | None = None,
+    block_stage3: bool = False,
     min_rs: int | None = None,
     max_base_no: int | None = None,
     top_dollar_volume: int | None = None,
@@ -1045,6 +1103,14 @@ def run_portfolio_backtest(
     fn.set_symbols("ranked", [s.symbol for s in all_signals])
     _progress(f"{len(all_signals):,} signals after filters · simulating the portfolio day by day")
     group_note = None
+    if block_stage3 and all_signals:
+        all_signals, s3 = filter_stage3(all_signals, market_key, prices)
+        fn.dropped("ranked", "stock already in Stage 3 (topping)", s3["dropped"])
+        spec_notes.append(
+            f"Stage filter: {s3['dropped']} signals skipped because the stage machine had the stock in "
+            f"Stage 3 (topping) on the signal date -- it leaves Stage 2 on a lower swing low or the "
+            f"150-day ceasing to rise, which the Trend Template's 200-day test lags. "
+            f"{s3['unknown']} signals could not be staged and were kept.")
     if min_group_rs is not None:
         all_signals, g = filter_weak_groups(all_signals, market_key, min_group_rs)
         fn.dropped("ranked", f"industry group rated below RS {g['min_rs']}", g["dropped"])
@@ -1311,6 +1377,9 @@ def main(argv: list[str] | None = None) -> dict | None:
                              "score 'leader', 'acceptable'+, pass the SEPA guide's tests ('guide': the minervini "
                              "strategy's FUND_* thresholds) or can be scored at all ('covered' — the control, since "
                              "fundamental history exists only from 2021 and for part of the universe)")
+    parser.add_argument("--block-stage3", action="store_true",
+                        help="drop signals whose stock the stage machine had in Stage 3 (topping) on the "
+                             "signal date -- the Trend Template's 200-day test lags a top by months")
     parser.add_argument("--min-group-rs", type=int, default=None,
                         help="skip signals whose industry group's RS rating (1-99, rebuilt point in time) was below this "
                              "on the signal date — e.g. 50 to avoid weak groups")
@@ -1477,7 +1546,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             sample=args.sample, refresh_history=args.refresh_history,
             include=[x.strip() for x in args.include.split(",") if x.strip()],
             risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
-            rank_by=args.rank_by, min_group_rs=args.min_group_rs,
+            rank_by=args.rank_by, min_group_rs=args.min_group_rs, block_stage3=args.block_stage3,
                 min_rs=args.min_rs, max_base_no=args.max_base,
             min_dollar_volume=args.min_dollar_volume,
             pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct,
@@ -1520,6 +1589,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         run += f"_rank{args.rank_by}"
     if args.min_group_rs is not None:
         run += f"_grp{args.min_group_rs}"
+    if args.block_stage3:
+        run += "_nos3"
     if args.spec:
         run += "_spec"
     elif args.min_rs is not None:
@@ -1585,6 +1656,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (f" --ma-col {args.ma_col}" if args.exit_mode == "ma" else "")
             + (f" --rank-by {args.rank_by}" if args.rank_by != "setup" else "")
             + (f" --min-group-rs {args.min_group_rs}" if args.min_group_rs is not None else "")
+            + (" --block-stage3" if args.block_stage3 else "")
             + (f" --fundamentals {args.fundamentals}" if args.fundamentals else "")
             + (" --spec" if args.spec else (f" --min-rs {args.min_rs}" if args.min_rs is not None else ""))
             + (" --market-filter" if args.market_filter else "")
