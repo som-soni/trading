@@ -60,6 +60,8 @@ CREATE TABLE IF NOT EXISTS job_steps (
     error TEXT,
     stats JSONB
 );
+ALTER TABLE job_steps ADD COLUMN IF NOT EXISTS progress_done INT;
+ALTER TABLE job_steps ADD COLUMN IF NOT EXISTS progress_total INT;
 CREATE INDEX IF NOT EXISTS job_steps_run ON job_steps (run_id, seq);
 """
 
@@ -87,22 +89,30 @@ class Step:
         self.stats: dict | None = None
         self.status: str | None = None   # set "skipped" to record a deliberate skip
         self.ok = True
+        self.progress_done: int | None = None
+        self.progress_total: int | None = None
         self._progress_at = 0.0
 
     def skip(self, why: str) -> None:
         self.status, self.detail = "skipped", why
 
-    def progress(self, text: str, every: float = 2.0) -> None:
+    def progress(self, text: str, *, done: int | None = None, total: int | None = None, every: float = 2.0) -> None:
         """Live progress for a long step: written to the step's `detail` while it still runs, so the
         Runs page shows movement instead of a silent step. Call it as often as you like — writes are
         throttled to one per `every` seconds. The final `detail` set at the end overwrites it; if the
-        step crashes instead, the last progress line stays, showing how far it got."""
+        step crashes instead, the last progress line stays, showing how far it got.
+
+        `done`/`total`, when the caller has them, are stored alongside the text so the Runs page can
+        estimate time remaining from the fraction complete rather than only from past runs' durations."""
         self.detail = text
+        if done is not None:
+            self.progress_done, self.progress_total = done, total
         now = time.monotonic()
         if self.id is None or now - self._progress_at < every:
             return
         self._progress_at = now
-        _exec("UPDATE job_steps SET detail=%s WHERE id=%s", (text, self.id))
+        _exec("UPDATE job_steps SET detail=%s, progress_done=%s, progress_total=%s WHERE id=%s",
+              (text, self.progress_done, self.progress_total, self.id))
 
 
 class Run:

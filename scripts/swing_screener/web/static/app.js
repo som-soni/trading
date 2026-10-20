@@ -4944,6 +4944,11 @@ function dur(sec) {
   if (sec < 3600) return `${Math.floor(sec / 60)}m ${Math.round(sec % 60)}s`;
   return `${Math.floor(sec / 3600)}h ${Math.round((sec % 3600) / 60)}m`;
 }
+function eta(sec) {
+  // a rough, self-refining estimate: see status.py's _estimate_remaining
+  if (sec == null) return "";
+  return ` · ~${dur(sec)} left`;
+}
 const clock = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 const ago = (iso) => {
   if (!iso) return "";
@@ -5203,7 +5208,7 @@ function queuePanel(s) {
     : `<span class="wk off"><i></i>Worker stopped</span><span class="muted small">queued runs and schedules wait until it runs.</span>
        <button class="primary sm" id="wkstart">Start worker</button><span class="muted small">To keep it running across restarts: <code>${esc(s.worker_command)}</code></span>`;
   return `<section class="sec-card qpanel"><div class="sec-card-h"><h3>Job queue</h3>${worker}</div>
-    ${(Q.running_all || (Q.running ? [Q.running] : [])).length ? (Q.running_all || [Q.running]).map((x) => `<div class="qrow run"><i class="spin"></i><b>Running</b>${x.lane && x.lane !== "main" ? `<span class="tag">${esc(x.lane)} lane</span>` : ""}${what(x)}${by(x)}<span class="muted small">started ${clock(x.started_at)}</span>
+    ${(Q.running_all || (Q.running ? [Q.running] : [])).length ? (Q.running_all || [Q.running]).map((x) => `<div class="qrow run"><i class="spin"></i><b>Running</b>${x.lane && x.lane !== "main" ? `<span class="tag">${esc(x.lane)} lane</span>` : ""}${what(x)}${by(x)}<span class="muted small">started ${clock(x.started_at)} · running for ${dur((Date.now() - new Date(x.started_at)) / 1000)}${eta(x.eta_s)}</span>
         ${x.run_id ? `<a class="small" href="#/runs/${x.run_id}">steps →</a>` : ""}<span class="spacer"></span>
         ${x.cancel_requested ? '<span class="muted small">stopping…</span>' : `<button class="danger sm" data-qstop="${x.id}">Stop</button>`}</div>`).join("")
       : s.job_running && !s.job_running.from_queue
@@ -5331,13 +5336,13 @@ async function runsPage(alive, runId) {
   const stepRows = steps.map((x) => `<tr class="srow-${x.status}">
       <td>${stBadge(x.status)}</td><td><b>${esc(x.label || x.step)}</b>${x.market ? ` <span class="mkt">${MKT_BADGE[x.market] || x.market}</span>` : ""}</td>
       <td class="num muted">${x.started_at ? new Date(x.started_at).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : ""}</td>
-      <td class="num">${x.status === "running" ? dur((Date.now() - new Date(x.started_at)) / 1000) : dur(x.duration_s)}</td>
+      <td class="num">${x.status === "running" ? dur((Date.now() - new Date(x.started_at)) / 1000) + eta(x.eta_s) : dur(x.duration_s)}</td>
       <td class="sdetail">${esc(x.detail || "")}${x.error ? `<details><summary class="neg">${esc(x.error.split("\n")[0])}</summary><pre>${esc(x.error)}</pre></details>` : ""}</td></tr>`).join("");
   $view.innerHTML = pageHead("Runs") + `
     <section class="sec-card">
       ${run ? `<div class="sec-card-h"><h3>${runId ? `Run #${run.id}` : run.status === "running" ? "Running now" : "Latest run"}</h3>${stBadge(run.status)}
           <span class="muted small">${esc(run.job)}${run.args?.markets ? " · " + esc(run.args.markets.map((m) => MKT_BADGE[m] || m).join(" + ")) : ""} · started ${clock(run.started_at)} (${ago(run.started_at)})
-          ${run.finished_at ? ` · took ${dur(run.duration_s)}` : run.status === "running" ? ` · running for ${dur((Date.now() - new Date(run.started_at)) / 1000)}` : ""}</span>
+          ${run.finished_at ? ` · took ${dur(run.duration_s)}` : run.status === "running" ? ` · running for ${dur((Date.now() - new Date(run.started_at)) / 1000)}${eta(run.eta_s)}` : ""}</span>
           <span class="spacer"></span>${resumable ? `<button class="primary sm" id="resume">↻ Resume</button>` : ""}${runId ? `<a class="small" href="#/runs">latest run</a>` : ""}</div>
         <div class="stprog"><i style="width:${steps.length ? (done / steps.length) * 100 : 0}%"></i></div>
         <div class="muted small" style="margin:4px 0 8px">${done} of ${steps.length} steps done${run.summary ? ` · ${esc(run.summary)}` : ""}${run.args?.strategies ? ` · strategies: ${esc(run.args.strategies.join(", "))}` : ""}</div>

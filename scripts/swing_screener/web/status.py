@@ -193,20 +193,70 @@ def jobs_overview(q) -> dict:
     return {"jobs": jobs, "pipelines": pipes}
 
 
+def _step_prior_s(q, job: str, step: str, market: str | None, exclude_run_id: int, limit: int = 10) -> float | None:
+    """Median duration of the last `limit` successful runs of this job's step (same step+market),
+    as a rough prior for a step that has not — or has not yet — reported a progress fraction."""
+    rows = q("""SELECT EXTRACT(EPOCH FROM (s.finished_at - s.started_at)) FROM job_steps s JOIN job_runs r ON r.id = s.run_id
+                WHERE r.job=%s AND s.step=%s AND s.market IS NOT DISTINCT FROM %s AND s.status='ok' AND s.run_id != %s
+                ORDER BY s.finished_at DESC LIMIT %s""", (job, step, market, exclude_run_id, limit))
+    durations = [row[0] for row in rows if row[0] is not None]
+    return float(np.median(durations)) if durations else None
+
+
+def _estimate_remaining(elapsed_s: float, done: int | None, total: int | None, prior_s: float | None) -> float | None:
+    """Seconds remaining for a step that has been running for `elapsed_s`. Blends the step's own
+    progress fraction (once it has one) with `prior_s` — how long past runs of the same step took —
+    so the estimate starts as a historical guess and tightens toward the live figure as `done/total`
+    moves. Returns None when there is nothing to estimate from yet (first-ever run, no fraction)."""
+    if done and total and done > 0:
+        frac = min(done / total, 1.0)
+        frac_remaining = max(elapsed_s / frac - elapsed_s, 0.0)
+        if prior_s is None:
+            return frac_remaining
+        return (1 - frac) * max(prior_s - elapsed_s, 0.0) + frac * frac_remaining
+    return max(prior_s - elapsed_s, 0.0) if prior_s is not None else None
+
+
 def run_detail(q, rid: int) -> dict | None:
     rows = q(f"SELECT {_RUN_COLS} FROM job_runs WHERE id=%s", (rid,))
     if not rows:
         return None
     r = _run_row(rows[0])
-    steps = q("""SELECT seq, step, market, label, started_at, finished_at, status, detail, error, stats
+    steps = q("""SELECT seq, step, market, label, started_at, finished_at, status, detail, error, stats,
+                        progress_done, progress_total
                  FROM job_steps WHERE run_id=%s ORDER BY seq""", (rid,))
-    r["steps"] = [{"seq": s[0], "step": s[1], "market": s[2], "label": s[3],
-                   "started_at": s[4].isoformat() if s[4] else None, "finished_at": s[5].isoformat() if s[5] else None,
-                   "duration_s": (s[5] - s[4]).total_seconds() if s[4] and s[5] else None,
-                   "status": "interrupted" if s[6] == "running" and r["status"] == "interrupted" else s[6],
-                   "detail": s[7], "error": s[8], "stats": s[9]} for s in steps]
+    now = dt.datetime.now(dt.timezone.utc)
+    out_steps, run_eta, run_eta_known = [], 0.0, False
+    for s in steps:
+        status = "interrupted" if s[6] == "running" and r["status"] == "interrupted" else s[6]
+        step_row = {"seq": s[0], "step": s[1], "market": s[2], "label": s[3],
+                    "started_at": s[4].isoformat() if s[4] else None, "finished_at": s[5].isoformat() if s[5] else None,
+                    "duration_s": (s[5] - s[4]).total_seconds() if s[4] and s[5] else None,
+                    "status": status, "detail": s[7], "error": s[8], "stats": s[9]}
+        if status == "running" and s[4]:
+            prior = _step_prior_s(q, r["job"], s[1], s[2], rid)
+            step_row["eta_s"] = eta = _estimate_remaining((now - s[4]).total_seconds(), s[10], s[11], prior)
+            if eta is not None:
+                run_eta += eta
+                run_eta_known = True
+        elif status == "pending":
+            prior = _step_prior_s(q, r["job"], s[1], s[2], rid)
+            if prior is not None:
+                run_eta += prior
+                run_eta_known = True
+        out_steps.append(step_row)
+    r["steps"] = out_steps
+    if r["status"] == "running":
+        r["eta_s"] = run_eta if run_eta_known else None
     r["log_tail"] = log_tail(r["log_path"])
     return r
+
+
+def run_eta(q, rid: int) -> float | None:
+    """Just the run-level ETA from run_detail() — for callers (the queue panel) that only need the
+    number, not the full step/log detail, so the estimate stays computed in exactly one place."""
+    r = run_detail(q, rid)
+    return r.get("eta_s") if r else None
 
 
 def log_tail(path: str | None, lines: int = LOG_TAIL_LINES) -> list[str] | None:

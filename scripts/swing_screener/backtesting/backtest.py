@@ -63,9 +63,9 @@ from . import funnel as funnel_mod
 on_progress = None
 
 
-def _progress(text: str) -> None:
+def _progress(text: str, *, done: int | None = None, total: int | None = None) -> None:
     if on_progress:
-        on_progress(text)
+        on_progress(text, done=done, total=total)
 
 
 @dataclass
@@ -754,7 +754,8 @@ def collect_portfolio_signals(
             all_signals.extend(sigs)
             # enriched, not raw: the exit policies read atr14/sma50 off the bar
             prices[sym] = ind.enrich_daily(raw)
-        _progress(f"scanning history: {i + 1:,}/{len(candidates):,} symbols · {len(all_signals):,} signals so far")
+        _progress(f"scanning history: {i + 1:,}/{len(candidates):,} symbols · {len(all_signals):,} signals so far",
+                  done=i + 1, total=len(candidates))
         if (i + 1) % 100 == 0:
             logger.info(
                 "Scanned %d/%d symbols, %d signals so far",
@@ -821,7 +822,8 @@ def _point_in_time_candidates(
     candidates: list[str] = []
     excluded_today = 0
     for i, sym in enumerate(tickers):
-        _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify")
+        _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
+                  done=i + 1, total=len(tickers))
         raw = cache.load_cached(market_key, sym)
         if raw is None or len(raw) < 260:
             continue

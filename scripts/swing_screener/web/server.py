@@ -2697,11 +2697,15 @@ def status_api():
     daily = running[0] if running else max(pipes, key=lambda r: r["started_at"]) if pipes else (runs[0] if runs else None)
     worst = max((i["status"] for m in tuple(MARKETS) for i in fresh[m]["items"] if i["key"] in ("prices", "breadth", "screening")),
                 key=["ok", "warn", "missing", "stale"].index, default="ok")
+    queue = _jq().items(8)
+    for x in queue["running_all"]:
+        if x.get("run_id"):
+            x["eta_s"] = status_mod.run_eta(q, x["run_id"])
     return {"now": __import__("datetime").datetime.now().astimezone().isoformat(), "freshness": fresh, "runs": runs,
             "latest_daily": status_mod.run_detail(q, daily["id"]) if daily else None,
             "jobs": overview["jobs"], "pipelines": overview["pipelines"],
             "running": [r["id"] for r in running], "overall": worst,
-            "job_running": _job_running(), "queue": _jq().items(8), "worker": _jq().worker_status(), "lanes": _jq().lanes(),
+            "job_running": _job_running(), "queue": queue, "worker": _jq().worker_status(), "lanes": _jq().lanes(),
             "command": f"cd {paths.SCRIPTS_DIR} && PYTHONPATH=. .venv/bin/python -m jobs run daily",
             "worker_command": f"cd {paths.SCRIPTS_DIR} && PYTHONPATH=. .venv/bin/python -m jobs worker --install"}
 
