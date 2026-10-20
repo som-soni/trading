@@ -117,6 +117,21 @@ class ExitPolicy:
     climax_gap_after: float = 0.50
     trend_volume: bool = bool(_ms.TREND_EXIT_NEEDS_VOLUME)  # EX-06 needs volume ≥ its 50-day average
     time_stop_days: int = _ms.TIME_STOP_DAYS    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
+    # ---- trade management for the other modes (bracket, trail_atr, ma, donchian). All off by default,
+    # so a run without them trades exactly as before. `minervini` has its own ladder above and ignores these.
+    be_r: float = 0.0            # stop to entry + round-trip costs once the HIGH reaches entry + this × R;
+                                 #   effective from the next session (0 = off)
+    time_stop_bars: int = 0      # sold at the close of the Nth session after the entry session (0 = off)
+    time_stop_mult: float = 0.0  # … N = this × the setup's duration in bars, when the signal carries
+                                 #   meta["setup_start"]; otherwise time_stop_bars (0 = off)
+    partial_at_target: float = 0.0   # sell this fraction at the target; the rest drops the target and
+                                     #   trails atr_mult × ATR14 under its highest close (0 = off)
+
+    @property
+    def managed(self) -> bool:
+        """Whether any of the opt-in trade-management rules is on (non-minervini modes)."""
+        return self.mode != "minervini" and bool(
+            self.be_r or self.time_stop_bars or self.time_stop_mult or self.partial_at_target)
 
     def label(self) -> str:
         bits = [self.mode]
@@ -138,6 +153,14 @@ class ExitPolicy:
         elif self.mode == "donchian":
             bits.append(f"{self.donchian_bars}d")
         bits.append("withTarget" if self.use_target else "noTarget")
+        if self.be_r:
+            bits.append(f"be{self.be_r:g}R")
+        if self.time_stop_mult:
+            bits.append(f"time{self.time_stop_mult:g}x" + (f"or{self.time_stop_bars}" if self.time_stop_bars else ""))
+        elif self.time_stop_bars:
+            bits.append(f"time{self.time_stop_bars}")
+        if self.partial_at_target:
+            bits.append(f"partial{self.partial_at_target:g}atT")
         return "-".join(bits)
 
 
@@ -419,6 +442,10 @@ def simulate(
 
             if policy.mode == "minervini":
                 _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg)
+                continue
+
+            if policy.managed:
+                _manage_bracket(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg)
                 continue
 
             hit_stop = bar["low"] <= pos.stop
@@ -736,8 +763,7 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
     if not entry_day and r > 0:
         # EX-03: breakeven, effective from the next session
         if policy.breakeven_r and h >= entry + policy.breakeven_r * r:
-            be = entry * (1 + 2 * fee_rate) + 2 * cfg.commission_per_order / max(pos.shares, 1)
-            pos.stop = max(pos.stop, be)
+            pos.stop = max(pos.stop, _breakeven(pos, fee_rate, cfg))
         # EX-04 (1.7's version): a part off at a fixed R, first time only
         if policy.partial_r and not pos.partial_shares and h >= entry + policy.partial_r * r:
             n = int(pos.shares * policy.partial_frac)
@@ -773,6 +799,93 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
     if (policy.time_stop_days and pos.bars_held == policy.time_stop_days and r > 0
             and m.get("_max_high", -math.inf) < entry + r):
         pos.queued_exit = "TIME_STOP"
+
+
+def _breakeven(pos: PortfolioTrade, fee_rate: float, cfg: MarketConfig) -> float:
+    """Entry plus the round trip's charges and commissions: a stop here loses only the exit's slippage."""
+    return pos.entry_price * (1 + 2 * fee_rate) + 2 * cfg.commission_per_order / max(pos.shares, 1)
+
+
+def _time_stop_bars(pos: PortfolioTrade, df: pd.DataFrame, policy: ExitPolicy) -> int:
+    """Sessions a trade may be held: `time_stop_mult` × the setup's duration in bars (from
+    meta["setup_start"] up to the entry session) when the signal carries a start, else
+    `time_stop_bars`. 0 = no time stop."""
+    start = pos.meta.get("setup_start")
+    if policy.time_stop_mult and start:
+        dur = int(((df.index >= pd.Timestamp(start)) & (df.index < pos.entry_date)).sum())
+        if dur > 0:
+            return max(1, math.ceil(policy.time_stop_mult * dur))
+    return policy.time_stop_bars
+
+
+def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, policy: ExitPolicy,
+                    close_out, sell, fee_rate: float, cfg: MarketConfig) -> None:
+    """One session of the shared exit modes plus the opt-in trade management (`ExitPolicy.managed`).
+
+    Order within the bar, conservative wherever the bar's path is unknown:
+      1. the stop (at the open if the stock gapped through it) -- it wins a tie with the target;
+      2. the target: everything, or `partial_at_target` of the shares, after which the rest has no
+         target and trails `atr_mult` × ATR14 under its highest close (a trailing mode keeps its own);
+      3. the mode's close-based exit (ma, donchian), at the close;
+      4. the time stop, at the close of its last session;
+    then, for tomorrow: break-even once the high reached entry + `be_r` × R, and the trail.
+    Exit reasons: STOP, BREAKEVEN (the raised stop), TRAIL_STOP (the remainder after a partial),
+    TARGET, TREND_EXIT, TIME."""
+    o, h, l, c = float(bar["open"]), float(bar["high"]), float(bar["low"]), float(bar["close"])
+    m = pos.meta
+    pos.bars_held += 1
+    entry, r = pos.entry_price, pos.entry_price - pos.initial_stop
+
+    if l <= pos.stop:
+        be = m.get("_be")
+        if pos.stop <= pos.initial_stop:
+            reason = "STOP"
+        elif be is not None and pos.stop <= be + 1e-9:
+            reason = "BREAKEVEN"
+        elif pos.partial_shares:
+            reason = "TRAIL_STOP"
+        else:
+            reason = "STOP"          # a trailing mode's own raised stop, labelled as it always was
+        close_out(sym, pos, min(pos.stop, o), reason, today)
+        return
+
+    target_live = not pos.partial_shares and (policy.use_target or policy.partial_at_target)
+    if target_live and h >= pos.target:
+        fill = max(pos.target, o)
+        n = int(pos.shares * policy.partial_at_target) if policy.partial_at_target else 0
+        if not 0 < n < pos.held:
+            close_out(sym, pos, fill, "TARGET", today)
+            return
+        sell(pos, fill, n, today)
+        pos.partial_shares = n
+
+    if policy.mode in ("ma", "donchian"):
+        if policy.mode == "ma":
+            ma = bar.get(policy.ma_col, float("nan"))
+            broke = ma == ma and c < float(ma)
+        else:
+            hist = df.loc[:today, "low"]
+            broke = (len(hist) > policy.donchian_bars
+                     and c < float(hist.iloc[-(policy.donchian_bars + 1): -1].min()))
+        if broke:
+            close_out(sym, pos, c, "TREND_EXIT", today)
+            return
+
+    if "_time_n" not in m:
+        m["_time_n"] = _time_stop_bars(pos, df, policy)
+    if m["_time_n"] and pos.bars_held >= m["_time_n"]:
+        close_out(sym, pos, c, "TIME", today)
+        return
+
+    # ---- for tomorrow
+    if policy.be_r and r > 0 and "_be" not in m and h >= entry + policy.be_r * r:
+        m["_be"] = _breakeven(pos, fee_rate, cfg)
+        pos.stop = max(pos.stop, m["_be"])
+    pos.peak_close = c if pos.peak_close != pos.peak_close else max(pos.peak_close, c)
+    if policy.mode == "trail_atr" or (pos.partial_shares and policy.mode == "bracket"):
+        atr = bar.get("atr14", float("nan"))
+        if atr == atr and atr:
+            pos.stop = max(pos.stop, pos.peak_close - policy.atr_mult * float(atr))
 
 
 def _last_close(pos: PortfolioTrade, prices: dict[str, pd.DataFrame], today: pd.Timestamp) -> float:

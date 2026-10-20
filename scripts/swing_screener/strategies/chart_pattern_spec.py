@@ -621,6 +621,10 @@ class ChartPatternSpecStrategy(Strategy):
         "implement it; a backtest of this strategy uses the shared exit "
         "policies like any other.",
         "Backtest: whatever `--exit-mode` selects (default the fixed bracket).",
+        "Trade management is opt-in and off in this strategy's own runs, so its value is measured, "
+        "not assumed: `--breakeven-r` (stop to break-even once the high reaches that many R), "
+        "`--time-stop-mult` (sold at the close after that multiple of the pattern's duration -- its "
+        "first key point to the entry, in bars), `--time-stop-bars` and `--partial-at-target`.",
     )
     param_docs = (
         ("Swing scales", "K_MAJOR",
@@ -863,6 +867,10 @@ class ChartPatternSpecStrategy(Strategy):
         bought again, even if it re-fires (a resting buy-stop on a COMPLETE pattern can)."""
         anchor = ctx.extras.get("pattern_anchor")
         meta = {"base_id": f"{ctx.extras.get('pattern')}:{anchor}"} if anchor else {}
+        if anchor:
+            # the pattern's first key point: a time stop given as a multiple of the pattern's duration
+            # (--time-stop-mult) counts the bars from here to the entry. Read only when that flag is on.
+            meta["setup_start"] = anchor
         # The checks made on the signal bar, held against the price actually paid. An order that
         # triggers while every slot is full keeps resting, and used to fill at whatever the open was
         # once a slot freed up: AUBANK.NS (ascending triangle, trigger 715.30) was bought 8 sessions

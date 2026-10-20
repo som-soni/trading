@@ -1216,8 +1216,21 @@ def main(argv: list[str] | None = None) -> dict | None:
     # median 2.75R while held and realised -0.04R, i.e. it converts winners
     # into scratches, and it was the one rule with no flag.
     parser.add_argument("--breakeven-r", type=float, default=None,
-                        help="minervini exits: raise the stop to breakeven once the high "
-                             "reaches entry + this x R (0 = off; default: the strategy's BREAKEVEN_R)")
+                        help="raise the stop to breakeven (entry + round-trip costs) once the high reaches "
+                             "entry + this x R, from the next session. minervini exits: EX-03 (0 = off; default: "
+                             "the strategy's BREAKEVEN_R); any other exit mode: off unless given (exit reason BREAKEVEN)")
+    # Trade management for the shared exit modes, all opt-in so they can be MEASURED against the
+    # fixed bracket rather than assumed: a chart_pattern trade (ICICIBANK, 2017) came within 2.5% of
+    # its measured target and then gave it all back over 167 days to a full -1R stop.
+    parser.add_argument("--time-stop-bars", type=int, default=None, metavar="N",
+                        help="non-minervini exits: sell at the close of the Nth session after the entry "
+                             "(exit reason TIME); with --time-stop-mult, the fallback for a signal with no duration")
+    parser.add_argument("--time-stop-mult", type=float, default=None, metavar="X",
+                        help="non-minervini exits: time stop at X times the setup's duration in bars, for a "
+                             "signal that carries its start (chart_pattern: the pattern's first key point)")
+    parser.add_argument("--partial-at-target", type=float, default=None, metavar="FRAC",
+                        help="non-minervini exits: sell FRAC of the position at the target and trail the rest "
+                             "(bracket: --atr-mult x ATR14 under its highest close; a trailing mode keeps its own)")
     parser.add_argument("--no-trend-volume", action="store_true",
                         help="minervini exits: let a trend break fire without volume confirmation (the default since 1.8)")
     parser.add_argument("--no-climax", action="store_true",
@@ -1421,8 +1434,17 @@ def main(argv: list[str] | None = None) -> dict | None:
             args.results_blackout = ms.EARNINGS_BLACKOUT_DAYS
     # the strategy's own market filter (the SEPA guide's) under --spec, MKT-01 otherwise or with --mkt01
     market_guide = bool(args.spec and ms.MKT_GUIDE and not args.mkt01)
+    if args.exit_mode == "minervini" and any(
+            x is not None for x in (args.time_stop_bars, args.time_stop_mult, args.partial_at_target)):
+        parser.error("--time-stop-bars / --time-stop-mult / --partial-at-target manage the shared exit modes; "
+                     "the minervini ladder has its own (--time-stop, --partial-r)")
+    if args.partial_at_target is not None and not 0 < args.partial_at_target < 1:
+        parser.error("--partial-at-target is a fraction between 0 and 1, e.g. 0.5")
+    managed = args.exit_mode != "minervini"
     extra = {k: v for k, v in (("partial_r", args.partial_r), ("fail_days", args.fail_days),
-                               ("breakeven_r", args.breakeven_r),
+                               ("breakeven_r" if not managed else "be_r", args.breakeven_r),
+                               ("time_stop_bars", args.time_stop_bars), ("time_stop_mult", args.time_stop_mult),
+                               ("partial_at_target", args.partial_at_target),
                                ("strength_ext", args.strength_ext / 100 if args.strength_ext is not None else None),
                                ("climax_partial", False if args.climax_full else None),
                                ("trend_volume", True if args.trend_volume else (False if args.no_trend_volume else None)),
@@ -1559,6 +1581,10 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (f" --fail-days {args.fail_days}" if args.fail_days is not None else "")
             + (f" --time-stop {args.time_stop}" if args.time_stop is not None else "")
             + (f" --breakeven-r {args.breakeven_r:g}" if args.breakeven_r is not None else "")
+            + (f" --time-stop-bars {args.time_stop_bars}" if args.time_stop_bars is not None else "")
+            + (f" --time-stop-mult {args.time_stop_mult:g}" if args.time_stop_mult is not None else "")
+            + (f" --partial-at-target {args.partial_at_target:g}" if args.partial_at_target is not None else "")
+            + (f" --atr-mult {args.atr_mult:g}" if args.partial_at_target is not None and args.atr_mult != 3.0 else "")
             + (f" --strength-ext {args.strength_ext:g}" if args.strength_ext is not None else "")
             + (" --climax-full" if args.climax_full else "")
             + (" --trend-volume" if args.trend_volume else "")

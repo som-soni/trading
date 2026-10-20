@@ -374,6 +374,25 @@ class Strategy(SpecMeta, ABC):
     # shared description; `{NAME}` placeholders render like the other docs.
     decision_docs: dict[str, str] = {}
 
+    # --- how a trade is entered and left, for the Strategy page ---
+    # `entry_rules` / `exit_rules`: one rule per item, `{NAME}` placeholders like the other docs.
+    # `backtest_args`: the flags its real exit policy needs, appended to the page's backtest command.
+    # The exit is the backtest's: `--exit-mode` (bracket | trail_atr | ma | donchian | minervini) in
+    # backtesting/portfolio_sim.py, plus opt-in trade management for every mode but minervini
+    # (ExitPolicy.be_r / time_stop_bars / time_stop_mult / partial_at_target):
+    #   --breakeven-r X        stop to entry + round-trip costs once the HIGH reaches entry + X·R,
+    #                          from the next session (exit reason BREAKEVEN)
+    #   --time-stop-bars N     sold at the close of the Nth session after entry (TIME)
+    #   --time-stop-mult X     … X × the setup's duration in bars, when signal_meta() supplies
+    #                          meta["setup_start"] (else the --time-stop-bars count)
+    #   --partial-at-target F  F of the shares sold at the target; the rest trails --atr-mult × ATR14
+    #                          under its highest close (TRAIL_STOP)
+    # A strategy that adopts any of them puts the flags in `backtest_args` and the rule in
+    # `exit_rules`, and bumps its version (its backtested behaviour changed).
+    entry_rules: tuple = ()
+    exit_rules: tuple = ()
+    backtest_args: str = ""
+
     # --- identity and versioning ---
     # `family` is the high-level strategy a reader thinks in terms of
     # ("minervini"); `version` distinguishes rule sets within it. Keeping them
