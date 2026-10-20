@@ -568,6 +568,9 @@ def trade_anatomy(rid: int, symbol: str):
                            "role": "stop", "label": f"stop {stop:g}", "dash": True})
         target = v(row, "target")
         if target and exit_d:
+            # one target: the trade's own replaces the signal's measured projection (they differ when
+            # the strategy projects from its entry rather than the trigger)
+            shapes = [s for s in shapes if s.get("role") != "target"]
             shapes.append({"shape": "level", "from": str(entry_d), "to": str(exit_d), "price": float(target),
                            "role": "target", "label": f"target {target:g}", "dash": True})
         out.append({"entry_date": str(entry_d), "exit_date": str(exit_d) if exit_d else None,

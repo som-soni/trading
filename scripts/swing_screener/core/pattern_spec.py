@@ -163,6 +163,16 @@ class PatternParams:
     hs_min_shoulder: float = 3.0          # HS-06
     hs_days: tuple[int, int] = (20, 250)  # HS-07
     hs_volume: bool = False               # HS-08, off by default
+    # HS-09, beyond the spec: the reaction after the left shoulder may not run past the point the prior
+    # trend began from (for the inverse, the highest high of the prior_window before LS; for a top, the
+    # lowest low). A low followed by a NEW high is part of the uptrend before the bottom, not its left
+    # shoulder: JINDALSTEL.NS was read as an inverse H&S from a 367.80 low (2022-02-24) that rallied to
+    # 577.80, a new high, before the decline to the head. False reproduces the spec.
+    hs_origin: bool = False
+    # HS-10, beyond the spec: the neckline may run AGAINST the pattern by at most this % from N1 to N2
+    # (an inverse's neckline falling, a top's rising). HS-05 caps the slope per day, which over a long
+    # pattern still allows a large drop: JINDALSTEL's ran 577.80 -> 468.00, -19%. 0 keeps the spec.
+    hs_max_neck_change: float = 0.0
     # §7 triangles (shared with §10 wedges)
     tr_scale_days: int = 40               # TR-01: minor swings under this, major over
     tr_min_touches_side: int = 2          # TR-02
@@ -1106,7 +1116,7 @@ def detect_triple_top(daily: pd.DataFrame, p: PatternParams = PatternParams()) -
 
 # --------------------------------------------- §6 head and shoulders
 
-HS_RULES = ("HS-01", "HS-02", "HS-03", "HS-04", "HS-05", "HS-06", "HS-07", "HS-08")
+HS_RULES = ("HS-01", "HS-09", "HS-02", "HS-03", "HS-04", "HS-05", "HS-10", "HS-06", "HS-07", "HS-08")
 
 
 def detect_hs(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
@@ -1147,6 +1157,16 @@ def detect_hs(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
             found.append(out)
             continue
 
+        # HS-09 (beyond the spec): the left shoulder belongs to the trend being reversed — the
+        # reaction after it may not run past where that trend began
+        if p.hs_origin:
+            w0 = max(0, ls.pos - p.prior_window)
+            origin = float(low[w0:ls.pos].min()) if top else float(high[w0:ls.pos].max())
+            if ls.pos > w0 and (n1.price < origin if top else n1.price > origin):
+                out["fail"] = "HS-09"
+                found.append(out)
+                continue
+
         # HS-02: the head stands clear of both shoulders
         shoulder = max(ls.price, rs.price) if top else min(ls.price, rs.price)
         clear = ((hd.price / shoulder - 1) * 100 if top
@@ -1182,6 +1202,15 @@ def detect_hs(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
         out["metrics"]["neck_slope"] = slope
         if not (slope == slope and abs(slope) <= p.hs_max_neck_slope):
             out["fail"] = "HS-05"
+            found.append(out)
+            continue
+
+        # HS-10 (beyond the spec): the neckline's total move against the pattern, N1 to N2
+        change = (n2.price / n1.price - 1) * 100
+        out["metrics"]["neck_change_pct"] = round(change, 2)
+        against = change if top else -change
+        if p.hs_max_neck_change and against > p.hs_max_neck_change:
+            out["fail"] = "HS-10"
             found.append(out)
             continue
 

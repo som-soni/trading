@@ -80,6 +80,8 @@ RIM_IDEAL_BONUS = 0.2     # setup quality added for ideal rims (it ranks signals
 RIM_LOOSE_PENALTY = 0.3   # ...and taken off for loose ones
 TRADE_CUPNH = 1           # 1 trades a cup WITHOUT a handle (CUPNH); 0 detects and draws it but never buys it
 CUP_UNDER_RIM = 1         # CH-12, beyond the spec: no high between a cup's lips above its rim (1 = on)
+HS_ORIGIN = 1             # HS-09, beyond the spec: the left shoulder belongs to the trend being reversed (1 = on)
+HS_MAX_NECK_CHANGE = 5.0  # HS-10, beyond the spec: the neckline may run against the pattern by at most this %, N1 to N2
 def _build_params() -> ps.PatternParams:
     return ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
@@ -88,13 +90,14 @@ def _build_params() -> ps.PatternParams:
     oneil_undercut=(0.0, W_UNDERCUT_MAX), oneil_depth=(W_MIN_DEPTH, W_MAX_DEPTH),
     oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT, right_left_min=CUP_RIGHT_LEFT_MIN,
     rim_ideal_pct=RIM_IDEAL_PCT, rim_ok_pct=RIM_OK_PCT, trigger_clears_rims=True,
-    cup_under_rim=bool(CUP_UNDER_RIM),
+    cup_under_rim=bool(CUP_UNDER_RIM), hs_origin=bool(HS_ORIGIN), hs_max_neck_change=HS_MAX_NECK_CHANGE,
 )
 
 
 _PARAM_CONSTANTS = ("K_MINOR", "K_MAJOR", "MIN_SWING_PCT", "ATR_MULT", "TOL_PCT", "TOL_ATR_MULT", "BO_BUFFER",
                     "BO_VOL", "MAX_WAIT", "FAIL_DAYS", "HORIZON", "W_UNDERCUT_MAX", "W_MIN_DEPTH", "W_MAX_DEPTH",
-                    "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM")
+                    "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM",
+                    "HS_ORIGIN", "HS_MAX_NECK_CHANGE")
 PARAMS = _build_params()
 _PARAMS_KEY: tuple = tuple(globals()[k] for k in _PARAM_CONSTANTS)
 
@@ -158,7 +161,7 @@ PATTERN_NAMES = {
 POINT_NAMES = {
     "A": "left lip", "B": "low", "C": "right lip", "D": "handle low",
     "B1": "low 1", "P1": "peak", "B2": "low 2", "P2": "peak", "B3": "low 3",
-    "LS": "left shoulder", "N1": "neck", "HD": "head", "N2": "neck",
+    "LS": "left shoulder", "N1": "neckline L", "HD": "head", "N2": "neckline R",
     "RS": "right shoulder", "P0": "pole start", "X": "flag low", "S": "start",
 }
 # a double bottom reuses the cup's letters for different points, and a double top mirrors it
@@ -195,8 +198,20 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.10"
+    version = "1.11"
     changelog = (
+        ("1.11", "2026-10-20",
+         "Head and shoulders, two rules beyond the spec. HS-09 (HS_ORIGIN): the left shoulder must belong to "
+         "the trend being reversed -- the reaction after it may not run past where that trend began (for the "
+         "inverse, the highest high in the window before the left shoulder that HS-01 measures the decline over). HS-10 "
+         "(HS_MAX_NECK_CHANGE): the neckline may fall (inverse) or rise (top) by at most {HS_MAX_NECK_CHANGE}% "
+         "from its left anchor to its right; HS-05's per-day slope cap still lets a long pattern's neckline "
+         "drop a lot. JINDALSTEL.NS (2022-10-27, +7.2R) was bought as an inverse H&S whose 'left shoulder' "
+         "was the 367.80 low of 2022-02-24 -- a low followed by a NEW high at 577.80, so part of the uptrend, "
+         "not a bottom -- under a neckline that fell 19% (577.80 to 468.00). Both rules also apply to the "
+         "topping H&S that vetoes a trade (G2, W1). The chart now marks the trigger at the breakout bar "
+         "rather than as a flat line across a sloping neckline, labels the neckline anchors 'neckline L/R', "
+         "and a traded pattern shows only the trade's own target."),
         ("1.10", "2026-10-19",
          "The signal-bar checks now hold at the fill. An order that triggers while every position slot is "
          "full keeps resting, and filled at whatever the open was once a slot freed up — however far price "
@@ -523,8 +538,11 @@ class ChartPatternSpecStrategy(Strategy):
               "tests of one support. T is the higher of the two middle peaks.",
         IHS: "§6.2 inverse head and shoulders: three lows with the middle one "
              "lowest and the shoulders level, under a neckline sloping no "
-             "more than 0.3% per day. T is the neckline at today's bar, so it "
-             "moves.",
+             "more than 0.3% per day, and falling no more than "
+             "{HS_MAX_NECK_CHANGE}% left anchor to right (HS-10). The left shoulder "
+             "must belong to the decline: the rally after it may not top the "
+             "high that decline began from (HS-09). T is the neckline at today's "
+             "bar, so it moves.",
         ATRI: "§7 ascending triangle: a flat upper line and a rising lower "
               "one, at least five touches between them, converging with the "
               "apex still ahead and volume declining. T is the upper line.",
@@ -606,6 +624,12 @@ class ChartPatternSpecStrategy(Strategy):
         ("Cup under its rim", "CUP_UNDER_RIM",
          "CH-12, beyond the spec ({CUP_UNDER_RIM} = on): no high between a cup's lips may top the higher "
          "lip by more than the price tolerance, max({TOL_PCT}%, {TOL_ATR_MULT} x ATR/close)."),
+        ("H&S left shoulder", "HS_ORIGIN",
+         "HS-09, beyond the spec ({HS_ORIGIN} = on): the reaction after the left shoulder may not run past "
+         "the point the reversed trend began from -- a low followed by a new high is part of the uptrend."),
+        ("H&S neckline drift", "HS_MAX_NECK_CHANGE",
+         "HS-10, beyond the spec: the neckline may run against the pattern (an inverse's falling, a top's "
+         "rising) by at most {HS_MAX_NECK_CHANGE}% from its left anchor to its right."),
         ("Cup symmetry", "CUP_RIGHT_LEFT_MIN",
          "CH-06, beyond the spec: a cup's recovery (B to C) must take at least "
          "{CUP_RIGHT_LEFT_MIN}x as many bars as its decline (A to B)."),
@@ -992,7 +1016,10 @@ class ChartPatternSpecStrategy(Strategy):
                 out.append({"shape": "dots", "role": shape_role, "label": f"{ln['name']} line touches",
                             "points": [{"at": q["date"], "price": q["price"]} for q in ln["touches"]]})
         span = {"from": start} if start else {"bars": 60}
-        out.append({"shape": "level", **span, "to": d, "price": float(e["trigger"]),
+        # a trigger read off a sloping line (a neckline, a triangle's side) is that line at the signal bar:
+        # drawn across the whole pattern it would cross the line, so it is a short tick at the bar instead
+        sloped = any(abs(ln["p1"] - ln["p0"]) > 1e-9 for ln in geo.get("lines") or [])
+        out.append({"shape": "level", **({"bars": 5} if sloped else span), "to": d, "price": float(e["trigger"]),
                     "role": "stop" if bear else "pivot",
                     "label": f"{'breakdown' if bear else 'trigger'} {e['trigger']:.2f} — confirms the {name.lower()}"})
         if e.get("invalidation"):

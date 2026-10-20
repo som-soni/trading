@@ -479,6 +479,35 @@ if ihs["ok"]:
           ihs["points"]["HD"]["price"] < min(ihs["points"]["LS"]["price"],
                                              ihs["points"]["RS"]["price"]))
 
+# HS-09 and HS-10 go beyond the spec, so they are off in PatternParams() and
+# on in the strategy (HS_ORIGIN, HS_MAX_NECK_CHANGE). The fixture is the
+# JINDALSTEL.NS read that v1.10 traded (2022-10-27): a 22% decline into a
+# 367.80 "left shoulder", a rally to a NEW high at 577.80, the head at 304.20,
+# the neckline down to 468.00 (-19%) and the right shoulder at 386.10.
+STRICT = ps.PatternParams(hs_origin=True, hs_max_neck_change=5.0)
+jindal = frame(np.concatenate([
+    seg(472.0, 367.8, 130), seg(367.8, 577.8, 32), seg(577.8, 304.2, 50),
+    seg(304.2, 468.0, 58), seg(468.0, 386.1, 9), seg(386.1, 440.0, 12),
+]))
+r = ps.detect_head_shoulders(jindal, inverse=True)
+check("§6.2 the spec alone reads the JINDALSTEL shape as an inverse H&S", r["ok"],
+      f"got fail={r['fail']}")
+r = ps.detect_head_shoulders(jindal, STRICT, inverse=True)
+check("§6.2 HS-09 rejects a left shoulder followed by a new high (JINDALSTEL)",
+      (not r["ok"]) and r["fail"] == "HS-09", f"got ok={r['ok']} fail={r['fail']}")
+r = ps.detect_head_shoulders(jindal, ps.PatternParams(hs_max_neck_change=5.0), inverse=True)
+check("§6.2 HS-10 rejects its neckline falling 19%",
+      (not r["ok"]) and r["fail"] == "HS-10", f"got ok={r['ok']} fail={r['fail']}")
+r = ps.detect_head_shoulders(build_hs(inverse=True, neck_drift=0.08, left=60, right=60), STRICT, inverse=True)
+check("§6.2 HS-10 catches a neckline falling 8% (slope inside HS-05)",
+      (not r["ok"]) and r["fail"] == "HS-10", f"got ok={r['ok']} fail={r['fail']}")
+r = ps.detect_head_shoulders(build_hs(inverse=True), STRICT, inverse=True)
+check("§6.2 the textbook inverse H&S still passes with HS-09 and HS-10 on", r["ok"],
+      f"got fail={r['fail']}")
+r = ps.detect_head_shoulders(build_hs(), STRICT)
+check("§6.1 the textbook H&S top still passes with HS-09 and HS-10 on", r["ok"],
+      f"got fail={r['fail']}")
+
 # ------------------------------------------------- §3 state transitions
 
 stale = build_double(tail=70)        # completes, then sits for 50 more bars
