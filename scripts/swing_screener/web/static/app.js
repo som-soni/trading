@@ -106,7 +106,7 @@ function prettyDate(s) {
 const LABELS = {
   symbol: "Symbol", sector: "Sector", decision: "Decision", price: "Price", entry: "Entry", stop: "Stop",
   risk_pct: "Risk %", target_r: "Target R", setup_quality: "Quality", strategy_setup: "Setup", pattern: "Pattern",
-  rs_vs_benchmark: "RS vs index", rank: "#", rs: "RS", rs_vs_sector: "RS vs sector", rsi: "RSI", adx: "ADX", earnings_in: "Earnings in (d)",
+  rs_vs_benchmark: "RS vs index", rank: "#", rs: "RS", sepa: "SEPA", rs_vs_sector: "RS vs sector", rsi: "RSI", adx: "ADX", earnings_in: "Earnings in (d)",
   wait_for: "Wait for", reason: "Reason", entry_date: "Entry date", entry_price: "Entry price", exit_date: "Exit date",
   exit_price: "Exit price", exit_reason: "Exit", r_multiple: "R", holding_days: "Days held", pnl: "P&L",
   initial_stop: "Initial stop", drawdown_pct: "Drawdown %", positions_open: "Open positions",
