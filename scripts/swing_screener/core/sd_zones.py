@@ -17,6 +17,14 @@ rules live here only, never in JavaScript. A zone is found from price alone and 
 4. **Extend it right** until a daily close beyond the distal edge (plus {INVALIDATE_BUFFER_ATR} ATR)
    — the failure rule, fixed before any retest. Each return into the zone after price has left it is
    recorded as a test, with whether a wick went through the distal edge and the close came back.
+   Tested {WORN_TESTS}+ times, a zone is flagged **worn**: its orders are spent, and it behaves as a
+   plain support or resistance level rather than a fresh zone.
+5. **One area, one zone.** A new zone overlapping a same-kind zone that is still active is the same
+   area seen again (a base built during a retest): the two are merged into one zone, its edges the
+   union, its tests counted once.
+
+The name says what came before the base: a drop or a rally over the last {LEGIN_BARS} bars, or over
+the last {LEGIN_LONG_BARS} when the shorter leg is too small to tell — always DBR / RBR / RBD / DBD.
 
 The quality checklist (`checks`) is the record of what was examined — compact base, strong departure
 (≥ {STRONG_DEPART_ATR} ATR), a break of nearby structure, relative volume on the departure
@@ -46,7 +54,10 @@ RVOL_BARS = 20               # relative volume = departure volume / the average 
 RVOL_HIGH = 1.5              # checklist: volume expanded on the departure (descriptive, not a validity bar)
 STRUCTURE_BARS = 20          # checklist: the departure closed beyond the highest high / lowest low of these bars
 LEGIN_BARS = 10              # the move into the base, for the DBR / RBR / RBD / DBD name ...
-LEGIN_MIN_ATR = 1.0          # ... a leg-in smaller than this is "after a sideways stretch"
+LEGIN_MIN_ATR = 1.0          # ... a leg-in smaller than this looks further back (LEGIN_LONG_BARS) for its direction
+LEGIN_LONG_BARS = 30
+WORN_TESTS = 4               # tested this often, a zone's orders are spent: flagged worn — a plain level now
+RELEVANCE_ATR = {"D": 8, "W": 6}   # the default view shows zones within this many ATR of price
 INVALIDATE_BUFFER_ATR = 0.0  # failure: a close beyond the distal edge by more than this
 TREND_BARS = {"D": 200, "W": 40}      # the larger trend: this moving average, on that timeframe ...
 TREND_SLOPE_BARS = {"D": 21, "W": 5}  # ... rising (demand) or falling (supply) over this many bars
@@ -60,10 +71,8 @@ CHECKS = {
 }
 
 _NAMES = {("demand", "down"): "Drop–base–rally", ("demand", "up"): "Rally–base–rally",
-          ("demand", "flat"): "Sideways–base–rally", ("supply", "up"): "Rally–base–drop",
-          ("supply", "down"): "Drop–base–drop", ("supply", "flat"): "Sideways–base–drop"}
-_CODES = {("demand", "down"): "DBR", ("demand", "up"): "RBR", ("demand", "flat"): "BR",
-          ("supply", "up"): "RBD", ("supply", "down"): "DBD", ("supply", "flat"): "BD"}
+          ("supply", "up"): "Rally–base–drop", ("supply", "down"): "Drop–base–drop"}
+_CODES = {("demand", "down"): "DBR", ("demand", "up"): "RBR", ("supply", "up"): "RBD", ("supply", "down"): "DBD"}
 
 
 def _base(o, h, l, c, end: int, atr: float) -> int | None:
@@ -119,6 +128,7 @@ def zones(daily: pd.DataFrame, tf: str = "D", years: float | None = None) -> lis
         cut = daily.index[-1] - pd.DateOffset(years=years)
         first = int(np.searchsorted(daily.index.values, np.datetime64(cut)))
     out, j, blocked = [], max(ATR_BARS + 1, first), -1
+    raw: list[tuple] = []   # per zone in `out`: (base start, departure start, departure end, ATR) — to re-run a merge
     while j < n:
         atr = atr_s[j - 1]
         found = None
@@ -138,7 +148,23 @@ def zones(daily: pd.DataFrame, tf: str = "D", years: float | None = None) -> lis
             j += 1
             continue
         kind, sign, b0, e, prox, dist = found
-        out.append(_zone(kind, sign, b0, j, e, prox, dist, atr, o, h, l, c, v, vavg, trend, sb, dates, tf))
+        z = _zone(kind, sign, b0, j, e, prox, dist, atr, o, h, l, c, v, vavg, trend, sb, dates, tf)
+        # One area, one zone: a base built inside a same-kind zone that is still active is that zone seen
+        # again. Merge into the earlier one — edges the union, its life (tests, failure) re-run once.
+        lo, hi = min(prox, dist), max(prox, dist)
+        host = next((k for k in range(len(out) - 1, -1, -1)
+                     if out[k]["kind"] == kind and (out[k]["failed"] is None or out[k]["failed"] > z["base_from"])
+                     and min(out[k]["proximal"], out[k]["distal"]) <= hi and max(out[k]["proximal"], out[k]["distal"]) >= lo), None)
+        if host is not None:
+            hz, args = out[host], raw[host]
+            mprox = max(hz["proximal"], prox) if sign > 0 else min(hz["proximal"], prox)
+            mdist = min(hz["distal"], dist) if sign > 0 else max(hz["distal"], dist)
+            m = _zone(kind, sign, args[0], args[1], args[2], mprox, mdist, args[3], o, h, l, c, v, vavg, trend, sb, dates, tf)
+            m["merged"] = hz.get("merged", []) + [z["base_from"]]
+            out[host] = m
+        else:
+            out.append(z)
+            raw.append((b0, j, e, atr))
         blocked, j = e, e + 1   # the next base cannot reach back into this departure
     return out
 
@@ -147,8 +173,11 @@ def _zone(kind, sign, b0, j, e, prox, dist, atr, o, h, l, c, v, vavg, trend, sb,
     n = len(c)
     width = abs(prox - dist)
     travel = sign * (max(c[j:e + 1]) if sign > 0 else min(c[j:e + 1])) - sign * prox
+    # the leg into the base: over LEGIN_BARS, or LEGIN_LONG_BARS when that is too small to tell
     lead = c[b0 - 1] - c[max(0, b0 - 1 - LEGIN_BARS)] if b0 > 0 else 0.0
-    leg = "flat" if abs(lead) < LEGIN_MIN_ATR * atr else ("up" if lead > 0 else "down")
+    if abs(lead) < LEGIN_MIN_ATR * atr and b0 > 0:
+        lead = c[b0 - 1] - c[max(0, b0 - 1 - LEGIN_LONG_BARS)]
+    leg = "up" if lead > 0 else "down"
     s0 = max(0, j - STRUCTURE_BARS)
     ref = h[s0:j].max() if sign > 0 else l[s0:j].min()
     far = c[j:e + 1].max() if sign > 0 else c[j:e + 1].min()
@@ -189,6 +218,6 @@ def _zone(kind, sign, b0, j, e, prox, dist, atr, o, h, l, c, v, vavg, trend, sb,
         "proximal": float(prox), "distal": float(dist), "width_atr": float(width / atr), "atr": float(atr),
         "departure_atr": float(travel / atr), "rvol": rvol, "gap": gap,
         "checks": checks, "passed": passed, "of": len(checks),
-        "tests": tests, "status": status, "failed": failed,
+        "tests": tests, "status": status, "failed": failed, "worn": len(tests) >= WORN_TESTS,
         "until": failed or dates[n - 1],
     }

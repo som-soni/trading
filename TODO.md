@@ -7,6 +7,7 @@ with `[x]` when done; move it under **Done** when you like.
 ## Inbox
 
 - [ ] Add the indicator for Supply and Demand zones _(added 2026-10-18)_
+- [ ] Screener to find business demonstrating growth (EPS, Sales) QoQ or Recovery. (Check Minervini's book) _(added 2026-10-19)_
 
 ## Data
 

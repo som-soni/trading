@@ -856,11 +856,17 @@ async function chartPage(alive, market, symbol, tf) {
   // trades: the selected backtest run's trades on this symbol (trade-anatomy), for a study that should
   // defer to a run's record; onTrades: called when they (re)load
   const tradeHooks = [], focusHooks = [];
-  // in the backtest view: the run strategy's setups layer, traded setups only, drawn for this visit
-  const btLayer = btView && Studies.setupLayers().find((l) => l.strategy === btView.strategy);
+  // A backtest run is selected (from its Trades table or the Backtest trades menu): its trades are drawn
+  // the way a setup is drawn — the run strategy's setups layer, traded setups only, for this visit —
+  // never the older run-anatomy boxes. A saved setups layer of the same strategy already draws them
+  // (in full); one of another strategy stands down while the run is shown (the card and lane are single).
+  // In the backtest view, the viewer's other overlay layers stand down too.
+  const runKey = tradeRuns.find((r) => String(r.id) === String(sel.value))?.strategy || null;
+  const runLayerType = runKey && Studies.setupLayers().find((l) => l.strategy === runKey)?.type;
+  const btLayer = runLayerType && Studies.activeSetup() !== runLayerType ? runLayerType : null;
   const studies = Studies.render({ chart, times, bars: B,
-    skip: (s, def) => !!btView && isOverlayLayer(s, def),
-    extra: btLayer ? [Studies.transient(btLayer.type, { tradedOnly: true })] : [],
+    skip: (s, def) => (!!btView && isOverlayLayer(s, def)) || (!!btLayer && !!def.setupsFor),
+    extra: btLayer ? [Studies.transient(btLayer, { tradedOnly: true })] : [],
     ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn), claimTrades: (set) => { claimedTrades = set; },
@@ -895,7 +901,9 @@ async function chartPage(alive, market, symbol, tf) {
   // (the screener's entry / stop / target lines are now an opt-in indicator: Indicators -> Screener)
 
   // backtest trades from the chosen run
-  if (sel.value && px.ohlc) {
+  // (any symbol, candles or a close-only line: a portfolio run's holdings are often index series — GOLD,
+  // MIDCAP — and their trades belong on the chart as much as a stock's)
+  if (sel.value) {
     const t = await api(`/api/reports/${sel.value}/tables/trades?symbol=${encodeURIComponent(symbol)}`).catch(() => null);
     if (!alive()) return;
     // `snap` maps a date onto the nearest charted bar; the VCP annotation below needs it
@@ -903,6 +911,10 @@ async function chartPage(alive, market, symbol, tf) {
     const snap = (d) => times.find((x) => x >= d);
     if (t) {
       const c = (n) => t.columns.indexOf(n);
+      // a run without stops (a rotation or allocation strategy) has no risk unit: its "r_multiple" is the
+      // trade's return, so it is shown as a percentage, never as R
+      const noStop = !t.columns.includes("stop") && !t.columns.includes("initial_stop");
+      const res = (rm) => (rm == null ? "" : noStop ? `${rm > 0 ? "+" : ""}${(rm * 100).toFixed(1)}%` : `${rm > 0 ? "+" : ""}${rm}R`);
       const marks = [];
       t.rows.forEach((r) => {
         const a = snap(r[c("entry_date")]), b = snap(r[c("exit_date")]), pnl = r[c("pnl")], rm = r[c("r_multiple")];
@@ -911,7 +923,7 @@ async function chartPage(alive, market, symbol, tf) {
         // fill below the trigger line when the trade actually bought through it
         if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", text: `Buy ${fmt(ep)}`,
           ...(ep > 0 ? { position: "atPriceBottom", price: ep } : { position: "belowBar" }) });
-        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", text: `${r[c("exit_reason")]} ${rm > 0 ? "+" : ""}${rm}R`,
+        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", text: `${r[c("exit_reason")]} ${res(rm)}`,
           ...(xp > 0 ? { position: "atPriceTop", price: xp } : { position: "aboveBar" }) });
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
@@ -1363,13 +1375,20 @@ async function chartPage(alive, market, symbol, tf) {
   }
   /** the chosen backtest run's trades in this symbol — click one to zoom the chart to it and
    *  light up its anatomy (the rest of the overlay dims to context) */
+  // a trade with no stop (rotation / allocation runs) has no R: its result is its return, as a percentage
+  function tradeResult(t) {
+    const rm = t.r_multiple;
+    if (rm == null) return "?";
+    const noStop = !(t.shapes || []).some((s) => s.role === "stop");
+    return noStop ? `${rm > 0 ? "+" : ""}${(rm * 100).toFixed(1)}%` : `${rm > 0 ? "+" : ""}${rm}R`;
+  }
   function tradesPanelHtml() {
     // looked up from the DOM, not the `sel` binding: the panel can render (restored tab) before
     // the select's const is initialized further down the page build
     const run = tradeRuns.find((r) => String(r.id) === String(($("#trades") || {}).value || ""));
     const rows = anatomy.map((t, i) => `<div class="btr ${i === selTrade ? "cur" : ""}" data-i="${i}">
         <div class="btr-h"><b>${prettyDate(t.entry_date)} → ${t.exit_date ? prettyDate(t.exit_date) : "open"}</b>
-          <span class="${(t.r_multiple ?? 0) >= 0 ? "pos" : "neg"}">${t.r_multiple > 0 ? "+" : ""}${t.r_multiple ?? "?"}R</span></div>
+          <span class="${(t.r_multiple ?? 0) >= 0 ? "pos" : "neg"}">${tradeResult(t)}</span></div>
         ${t.setup_name ? `<div class="small">Pattern: <b>${esc(t.setup_name)}</b></div>` : ""}
         <div class="muted small">${esc([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · "))}</div>
         ${t.note ? `<div class="btr-note small">${esc(t.note)}</div>` : ""}</div>`).join("");
@@ -1437,11 +1456,12 @@ async function chartPage(alive, market, symbol, tf) {
     const rows = L.map((z, i) => ({ z, i })).reverse().filter(({ z }) => keep(z)).map(({ z, i }) => {
       const cur = i === zoneFeed.focus;
       const life = z.status === "failed" ? `failed ${prettyDate(z.failed)} (closed through the distal edge)`
-        : z.tests.length ? `tested ${z.tests.length}× — last ${prettyDate(z.tests.at(-1).date)}` : "fresh — not revisited";
+        : z.tests.length ? `tested ${z.tests.length}× — last ${prettyDate(z.tests.at(-1).date)}${z.worn ? ` · worn: its orders are spent, it acts as plain ${z.kind === "demand" ? "support" : "resistance"} now` : ""}` : "fresh — not revisited";
       const detail = cur ? `<div class="small" style="margin-top:4px">${Object.entries(zoneFeed.checks).map(([k, t]) =>
           `<div>${check(z.checks[k])} ${esc(t)}</div>`).join("")}
         ${z.tests.length ? `<div class="muted" style="margin-top:4px">${z.tests.map((t, k) => `${k + 1}. ${prettyDate(t.date)} — reached ${f2(t.price)}, closed ${f2(t.close)}${t.wick_through ? " · wick through the distal edge, closed back" : ""}${t.rvol != null ? ` · ${t.rvol.toFixed(1)}× vol` : ""}`).join("<br>")}</div>` : ""}
-        ${z.gap ? `<div class="muted" style="margin-top:4px">The departure gapped away from the base — check what news or earnings moved it.</div>` : ""}</div>` : "";
+        ${z.gap ? `<div class="muted" style="margin-top:4px">The departure gapped away from the base — check what news or earnings moved it.</div>` : ""}
+        ${z.merged?.length ? `<div class="muted" style="margin-top:4px">One area: also the base${z.merged.length > 1 ? "s" : ""} of ${z.merged.map(prettyDate).join(", ")}, built inside this zone during a retest — merged, its tests counted once.</div>` : ""}</div>` : "";
       return `<div class="btr sp-row ${z.kind === "supply" ? "sp-refused" : "sp-trade"} ${cur ? "cur" : ""}" data-zi="${i}">
         <div class="btr-h"><b>${z.kind === "demand" ? "Demand" : "Supply"} · ${esc(z.name)}</b><span class="muted small">${prettyDate(z.base_from)}</span></div>
         <div class="small sp-title">${f2(z.proximal)} proximal · ${f2(z.distal)} distal · ${z.width_atr.toFixed(1)} ATR wide · ${z.passed}/${z.of} checks</div>
@@ -2751,12 +2771,11 @@ async function stockNewsPage(alive, market, symbol) {
   symbol = symbol || store.get("lastSymbol:" + market, market === "us" ? "AAPL" : "RELIANCE.NS");
   store.set("lastMarket", market); store.set("lastSymbol:" + market, symbol);
   document.title = `${bareSymbol(symbol)} news · Trading`;
-  const enc = encodeURIComponent(symbol);
-  $view.innerHTML = backLink(`#/chart/${market}/${enc}`, "Chart") + `
+  $view.innerHTML = `
     <div class="page-head co-head"><h1 id="nwname">${esc(bareSymbol(symbol))}</h1><span class="mkt">${MKT_BADGE[market] || market}</span><span class="muted">${esc(bareSymbol(symbol))}</span>
       <span class="spacer"></span>
       <form class="wl-add" autocomplete="off" id="nwsearch"><div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input placeholder="Search a company" spellcheck="false"><ul hidden></ul></div></form>
-      <a class="btn" href="#/chart/${market}/${enc}">Chart</a><a class="btn" href="#/company/${market}/${enc}">Fundamentals</a></div>
+      </div>
     <section class="co-sec"><div class="nwpage">${newsHtml(null, { page: true })}</div></section>`;
   const f = $view.querySelector("#nwsearch");
   symbolSearch(f.querySelector("input"), f.querySelector("ul"), market, (s) => go(`#/news/${market}/${encodeURIComponent(s)}`));
@@ -2800,11 +2819,12 @@ async function companyPage(alive, market, symbol) {
   const unitNote = `Figures in ${esc(unitWords(d.unit))} · ${esc(FUND_SOURCE[st.source] || st.source || "")}${st.basis && st.basis !== "as reported" ? ` · ${esc(st.basis)}` : ""}`;
   const fetchBtn = d.fetch_pending ? `<button class="btn" disabled>Fetch queued (#${d.fetch_pending})…</button>`
     : `<button class="btn" id="cfetch" title="Fetch this company's filings now (a queue item, ahead of long jobs)">${st.status ? "Refresh from filings" : "Fetch now"}</button>`;
-  const head = backLink(`#/chart/${market}/${encodeURIComponent(symbol)}`, "Chart") + `
+  // no Chart / News buttons or back link: the Chart · Fundamentals · News tabs above open this stock
+  const head = `
     <div class="page-head co-head"><h1>${esc(d.name || bareSymbol(symbol))}</h1><span class="mkt">${MKT_BADGE[market] || market}</span><span class="muted">${esc(bareSymbol(symbol))}</span>
       <span class="spacer"></span>
       <form class="wl-add" autocomplete="off" id="cosearch"><div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input placeholder="Search a company" spellcheck="false"><ul hidden></ul></div></form>
-      <a class="btn" href="#/chart/${market}/${encodeURIComponent(symbol)}">Chart</a><a class="btn" href="#/news/${market}/${encodeURIComponent(symbol)}">News</a>${fetchBtn}</div>
+      ${fetchBtn}</div>
     <div class="muted small co-sub">${[d.sector, d.industry].filter(Boolean).map(esc).join(" › ")}${d.profile?.website ? ` · <a href="${esc(d.profile.website)}" target="_blank" rel="noopener">${esc(d.profile.website.replace(/^https?:\/\/(www\.)?/, ""))}</a>` : ""}
       ${st.fetched_at ? ` · fetched ${esc(prettyDate(st.fetched_at))}` : ""}${d.latest?.end ? ` · latest results ${esc(colLabel(d.latest.end))}${d.latest.filed ? ` (filed ${esc(prettyDate(d.latest.filed))})` : ""}` : ""}${d.latest?.stale ? ` · <b>stale</b>` : ""}</div>`;
   if (!d.quarters) {

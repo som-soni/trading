@@ -80,9 +80,11 @@ demand-zone
 You identify a zone by the way the price *left* it, not by the pause itself:
 
 1. **Find the move away first.** Look for a fast, large rally: wide green bars, little overlap between them, each close above the last. Measure it against the stock's normal daily range, its ATR (average true range). Two or three bars that carry the price two ATRs or more beyond the pause are decisive. A close above a nearby swing high adds weight. If the price only drifted away, there is little reason to expect buyers still waiting there.
-2. **Trace it back to the pause.** Mark only the short, tight stretch right before the price took off. Leave out the decline before it and the rally after it. Zone traders call it a *drop-base-rally* when a decline came first, and a *rally-base-rally* inside an uptrend. Short and tight is better than long and loose. If no compact stretch stands out, skip the chart rather than stretch a box to fit.
+2. **Trace it back to the pause.** Mark only the short, tight stretch right before the price took off. Leave out the decline before it and the rally after it. Zone traders call it a *drop-base-rally* when a decline came first, and a *rally-base-rally* when a rally did. The name describes the move straight into the pause: a pullback inside an uptrend is still a drop. Short and tight is better than long and loose. If no compact stretch stands out, skip the chart rather than stretch a box to fit.
 3. **Draw the edges by one rule.** The **proximal** edge is the one the price meets first on its way back; for a demand zone that is the top. The **distal** edge is the far side; for a demand zone, the bottom. One common rule takes the pause's whole high-to-low range. Another takes the highest candle body for the proximal edge and the lowest wick for the distal edge, which gives a tighter box. Pick one and keep it.
-4. **Judge freshness.** Each return to the zone may use up some of the orders waiting there. Write down every retest and how the price responded. A zone the price has closed through is gone, so do not keep buying as it falls.
+4. **Judge freshness.** Each return to the zone may use up some of the orders waiting there. Write down every retest and how the price responded. After four or more retests, treat it as an ordinary support or resistance level, not a fresh zone. A zone the price has closed through is gone, so do not keep buying as it falls.
+
+One area makes one zone. Price sometimes builds a second small pause inside a zone while retesting it. That is the same area seen again, so widen the first box to cover it and count its retests once.
 5. **Judge location.** The zone should sit inside a chart you would want to own anyway: a higher low in an uptrend, or a base inside a Stage 2 advance. The same shape at the bottom of a collapsing downtrend is an attempt to catch a falling knife.
 
 **Why the edge rule matters.** In ICICI Bank's case, the full range of the four mid-May sessions runs from ₹375.20 to ₹386.80. The tightest part of the pause, the last three sessions before the rally, gives a body-to-wick box of ₹375.80 to ₹382.50.
@@ -224,28 +226,28 @@ What this shows:
 
 **A second event study: do zone retests hold?** Zones drawn by eye cannot be tested, so we fixed every rule in advance and drew them by machine. Then we asked what happened at each retest, and compared it with the same distances placed on a random day.
 
-> **Method note.** Daily prices for today's NSE and US stock lists, January 2010 to October 2026. Zones exactly as in section 2: a move of one to three bars that carries the close at least 2 ATR past a pause of up to six small or indecisive bars, no wider than 1.5 ATR in all. Edges run from the highest body to the lowest wick, and a daily close beyond the distal edge ends the zone. Only zones that formed while the stock was liquid: close at least ₹20 or $5, and 50-day average turnover at least ₹5 crore or $5 million. For each retest, a **bounce** is a close 2 ATR beyond the proximal edge before any close beyond the distal edge, within 60 sessions. The **placebo** puts the same edge and target distances, in ATRs, under the close of a random day in the same stock. Caveats: today's lists only (survivorship bias), no costs, many retests overlap.
+> **Method note.** Daily prices for today's NSE and US stock lists, January 2010 to October 2026. Zones exactly as in section 2: a move of one to three bars that carries the close at least 2 ATR past a pause of up to six small or indecisive bars, no wider than 1.5 ATR in all. Edges run from the highest body to the lowest wick, and a daily close beyond the distal edge ends the zone. A pause built inside a zone that is still active is merged into it. Only zones that formed while the stock was liquid: close at least ₹20 or $5, and 50-day average turnover at least ₹5 crore or $5 million. For each retest, a **bounce** is a close 2 ATR beyond the proximal edge before any close beyond the distal edge, within 60 sessions. The **placebo** puts the same edge and target distances, in ATRs, under the close of a random day in the same stock. Caveats: today's lists only (survivorship bias), no costs, many retests overlap.
 
 | Zone retests | Retests | Bounced | Placebo bounced |
 |---|---|---|---|
-| India, demand | 48,287 | 40.4% | 40.8% |
-| India, supply | 34,321 | 38.8% | 36.7% |
-| US, demand | 159,795 | 42.2% | 42.4% |
-| US, supply | 162,169 | 35.2% | 33.4% |
+| India, demand | 46,274 | 41.4% | 42.0% |
+| India, supply | 33,089 | 39.4% | 37.8% |
+| US, demand | 153,914 | 43.5% | 43.2% |
+| US, supply | 154,283 | 36.4% | 34.2% |
 
 | Bounced minus placebo, by retest | First | Second | Third or later |
 |---|---|---|---|
-| India, demand | +2.0 pts | −1.5 pts | −3.0 pts |
-| India, supply | +3.6 pts | +1.2 pts | +0.7 pts |
-| US, demand | +0.1 pts | −0.2 pts | −0.6 pts |
-| US, supply | +2.2 pts | +1.2 pts | +1.7 pts |
+| India, demand | +1.2 pts | −1.0 pts | −2.7 pts |
+| India, supply | +2.6 pts | +0.6 pts | +0.8 pts |
+| US, demand | +0.1 pts | +0.3 pts | +0.5 pts |
+| US, supply | +1.9 pts | +1.8 pts | +2.8 pts |
 
 What this shows:
 
 - **Demand zones held no more often than chance.** A retest of a mechanically drawn demand zone bounced as often as a random price with the same stop and target distances.
 - **Supply zones did slightly better than chance**, by about two points. A rally into a supply zone was a little more likely to turn back than a random rally.
-- **Freshness mattered a little, in India.** First retests of demand zones did better than later ones there. In raw numbers the gap looked large: 43.6% for first retests against 37.1% for the third or later. But most of it came from the distances, because the placebo fell almost as much.
-- **The checklist helped little.** In India, demand zones ticking four or five of its boxes roughly matched the placebo, while those ticking two or fewer lagged it by about three points. In the US the score made no difference.
+- **Freshness mattered a little, in India.** First retests of demand zones did better than later ones there. In raw numbers the gap looked large: 44.0% for first retests against 39.8% for the third or later. But most of it came from the distances, because the placebo fell almost as much.
+- **The checklist did not help.** Zones ticking four or five of its boxes did no better against the placebo than those ticking fewer, and in the US slightly worse.
 
 **Limits of zone trading.** Retail "supply and demand zone" trading is a way of looking at charts by judgement, not a measured edge. No public study shows that boxes drawn by the usual rules beat the market after costs, and our own test found almost nothing for demand zones. The evidence supports the weaker claims: prices react around old highs, lows and round numbers more often than chance, and stocks near their highs tend to do a little better.
 

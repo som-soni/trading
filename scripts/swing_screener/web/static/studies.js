@@ -748,18 +748,23 @@ const Studies = (() => {
         const px = (v) => (+v).toFixed(2);
         // which zones to show is presentation: the active ones nearest the last close on each side,
         // or every active one, or the whole record including the failed (faint)
-        const pick = (close) => {
+        const pick = (close, reach) => {
           const live = zones.map((z, i) => ({ z, i })).filter(({ z }) => z.status !== "failed");
           if (p.show === "All, with failed") return zones.map((_, i) => i);
           if (p.show === "All active") return live.map(({ i }) => i);
-          const dem = live.filter(({ z }) => z.kind === "demand").sort((a, b) => Math.abs(close - a.z.proximal) - Math.abs(close - b.z.proximal));
-          const sup = live.filter(({ z }) => z.kind === "supply").sort((a, b) => Math.abs(close - a.z.proximal) - Math.abs(close - b.z.proximal));
+          // nearest to price, and only within reach (RELEVANCE_ATR of price, from the server): a zone
+          // 40% away cannot matter to a trade now, so a side may show fewer than perSide, or none
+          const near = live.filter(({ z }) => reach == null || Math.abs(close - z.proximal) <= reach);
+          const dem = near.filter(({ z }) => z.kind === "demand").sort((a, b) => Math.abs(close - a.z.proximal) - Math.abs(close - b.z.proximal));
+          const sup = near.filter(({ z }) => z.kind === "supply").sort((a, b) => Math.abs(close - a.z.proximal) - Math.abs(close - b.z.proximal));
           return [...dem.slice(0, p.perSide), ...sup.slice(0, p.perSide)].map(({ i }) => i);
         };
         const shapesOf = (z, i) => {
           const top = Math.max(z.proximal, z.distal), bottom = Math.min(z.proximal, z.distal);
           const faint = (focus != null && focus !== i) || (focus == null && z.status === "failed");
-          const tag = `${z.kind === "demand" ? "Demand" : "Supply"} · ${z.code} · ${z.passed}/${z.of} · ${z.status === "fresh" ? "fresh" : z.status === "tested" ? `tested ${z.tests.length}×` : "failed"}`;
+          // a worn zone (tested WORN_TESTS+ times) has spent its orders: it reads as a plain level now
+          const tag = `${z.kind === "demand" ? "Demand" : "Supply"} · ${z.code} · ${z.passed}/${z.of} · ${z.status === "fresh" ? "fresh" : z.status === "tested" ? `tested ${z.tests.length}×` : "failed"}`
+            + (z.worn && z.status !== "failed" ? ` · worn — now ${z.kind === "demand" ? "support" : "resistance"}` : "");
           const out = [
             { shape: "box", from: z.base_from, to: z.base_to, top, bottom, role: z.kind, label: tag, faint },   // the base itself
             { shape: "box", shade: true, from: z.base_to, to: z.until, top, bottom, role: z.kind, faint },        // extended right while valid
@@ -787,9 +792,9 @@ const Studies = (() => {
           .then((x) => (x.ok ? x.json() : null)).then((r) => {
             if (!r) return setNote(id, "could not load zones");
             zones = r.zones || []; checks = r.checks || {};
-            shown = pick(r.close);
+            shown = pick(r.close, r.reach);
             const nd = shown.filter((i) => zones[i].kind === "demand").length;
-            setNote(id, `${r.note} · showing ${nd} demand, ${shown.length - nd} supply · close ${px(r.close)}`);
+            setNote(id, `${r.note} · showing ${nd} demand, ${shown.length - nd} supply${p.show === "Nearest to price" && r.reach_atr ? ` within ${r.reach_atr} ATR of price` : ""} · close ${px(r.close)}`);
             paint(); publish();
           }).catch(() => setNote(id, "could not load zones"));
         return { series: [], note: "finding zones…", setVisible: (v) => { on = v; paint(); } };

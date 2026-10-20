@@ -1268,8 +1268,12 @@ def sd_zones(market: str, symbol: str, tf: str = "D", years: int = 10):
             _sd_cache.clear()
         found = sdz.zones(df, tf, years or None)
         live = [z for z in found if z["status"] != "failed"]
+        from ..core import indicators as ind
+        atr = float(ind.atr(df, sdz.ATR_BARS).iloc[-1])
         _sd_cache[key] = {"as_of": as_of, "tf": tf, "years": years, "zones": found, "checks": sdz.CHECKS,
                           "close": float(df["close"].iloc[-1]),
+                          # the default view's reach: zones within RELEVANCE_ATR of price (a level far away cannot matter to a trade now)
+                          "reach": sdz.RELEVANCE_ATR.get(tf, 8) * atr, "reach_atr": sdz.RELEVANCE_ATR.get(tf, 8),
                           "note": f"{len(live)} active of {len(found)} zones in {years} years"}
     return _sd_cache[key]
 

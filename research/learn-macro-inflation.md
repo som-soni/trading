@@ -12,15 +12,70 @@ This guide covers what inflation is and how the US and India measure it. It expl
 
 ---
 
-## 1. What inflation is, in one paragraph
+## 1. What inflation is, and why markets care
 
 Inflation is the rate at which prices in general rise — the same basket of
 goods costing more each year. A little is normal; the Fed and the RBI both aim
 for a positive rate. The trouble starts when inflation is **high, rising, or
 unpredictable**.
 
-Then savers demand higher yields, and the central bank raises its policy rate.
-Investors pay less today for profits that arrive in the *future*.
+When it is, three things follow, one after another: savers demand higher
+yields, the central bank raises its policy rate, and investors pay less today
+for profits that arrive in the future. Each link is worth seeing on its own.
+
+**Link 1 — savers demand higher yields.** Take a bank fixed deposit paying 7%
+a year. With inflation at 4%, the saver ends the year 3% better off in what
+the money can buy. That gain after inflation is the *real* return. Now let
+inflation climb to 7%. The same deposit leaves the saver exactly where they
+started.
+
+Savers and bond buyers respond by refusing to lend at the old rate. They move
+money to whatever pays more, and they sell existing bonds whose fixed coupons
+now look poor. Selling pushes bond prices down, which pushes their yields up.
+The new yield settles where lenders again expect a positive real return. When
+inflation is *unpredictable*, they also ask for a little extra, as insurance
+against being wrong.
+
+**Link 2 — the central bank raises its policy rate.** The RBI and the Fed are
+each charged with keeping inflation near target. Their main tool is the
+short-term rate at which banks borrow. Raising it makes loans, EMIs and
+credit cards dearer. Households and companies borrow and spend less, demand
+cools, and sellers find it harder to raise prices.
+
+The central bank also acts to stop a spiral. If workers expect prices to keep
+rising, they ask for bigger raises, and firms pass those costs on in higher
+prices. Raising rates early and visibly tells everyone that inflation will be
+brought down. The effect on prices takes time, often a year or more, which is
+why central banks move on where inflation is *heading*, not only where it is.
+
+**Link 3 — investors pay less today for future profits.** A share is a claim
+on profits that arrive over many years. To value it, an investor asks what each
+future rupee of profit is worth today, given what the money could earn safely
+in the meantime. That required return rises with yields. So the same future
+profits are worth less today, even if nothing about the company has changed.
+
+How much less depends on *when* the profits arrive. Here is ₹100 of profit,
+valued at a required return of 8% and then 10%:
+
+| Profit arrives in | Worth today at 8% | Worth today at 10% | Change |
+|---|---|---|---|
+| 1 year | ₹92.6 | ₹90.9 | −1.8% |
+| 5 years | ₹68.1 | ₹62.1 | −8.8% |
+| 10 years | ₹46.3 | ₹38.6 | −16.8% |
+| 20 years | ₹21.5 | ₹14.9 | −30.7% |
+
+*Present value = 100 ÷ (1 + rate) raised to the number of years. Arithmetic, not
+market data.*
+
+A two-point rise in the required return barely touches profit due next year.
+It cuts profit due in twenty years by almost a third. That is why inflation
+scares hit **growth stocks** hardest: most of their value sits in profits far
+in the future. A utility or a bank earning steadily today loses much less.
+
+Higher yields also give investors a real alternative. When a government bond
+or a fixed deposit pays well above inflation, a stock has to offer more to
+win the money. Section 3 follows the same chain into bond markets, and
+section 4 into margins and sector leadership.
 
 **For a trader, inflation's direction and surprises matter more than its
 level.** Markets already reflect the inflation path they expect. They move on
