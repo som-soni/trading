@@ -259,7 +259,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "f6622ff3",
+    "fingerprint": "1d3bbe54",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -332,7 +332,7 @@
       "SMA200_RISING_PREF_BARS": 100,
       "STOP_BUFFER_PCT": 0.5,
       "STRENGTH_EXT_PCT": 25.0,
-      "STRENGTH_FRAC": 0.3333333333333333,
+      "STRENGTH_FRAC": 0.33,
       "SWING_K": 5,
       "TIGHT_MIN_DAYS": 5,
       "TIGHT_PCT": 10.0,
@@ -403,7 +403,7 @@
         "W5"
       ]
     },
-    "version": "1.21"
+    "version": "1.22"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

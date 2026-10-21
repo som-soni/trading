@@ -202,7 +202,7 @@ FAIL_DAYS = 0
 # EX-04, selling into strength: a part of the position once the close is this far
 # above the 50-day average, at the next open. Replaces 1.7's "a third at 3R".
 STRENGTH_EXT_PCT = 25.0
-STRENGTH_FRAC = 1 / 3
+STRENGTH_FRAC = 0.33   # 1.22: was 1 / 3, which the page rendered as "0.333333 of the position"
 # EX-05, a climax run, sells that same part rather than the whole position: the
 # guide sells into strength in part and the rest into weakness (EX-06).
 CLIMAX_IS_PARTIAL = 1
@@ -499,8 +499,14 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.21"
+    version = "1.22"
     changelog = (
+        ("1.22", "2026-10-21",
+         "STRENGTH_FRAC is 0.33 instead of 1/3, so EX-04 reads \"sell 0.33 of the position\" on the "
+         "page instead of \"0.333333\" -- the same rounding UPPER_ZONE got in 1.15, for the same "
+         "reason. It is a real change, if a negligible one: a part sold into strength (EX-04) or on a "
+         "climax (EX-05) is now 33% of the position rather than 33.33%, so the fingerprint moves and "
+         "the 1.20/1.21 runs read as made under earlier rules."),
         ("1.21", "2026-10-21",
          "The stage cycle (stage_cycle: the chart's stage bands and the --block-stage3 backtest filter) "
          "no longer leaves Stage 2 on a lower swing low alone: the close must still be under the "
