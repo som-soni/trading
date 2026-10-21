@@ -22,6 +22,7 @@ import pandas as pd
 
 from ..marketdata import db
 from . import criteria as c
+from .snapshot import BASE_MAX_DAYS, STAGE2_DAYS_WINDOW
 
 OPS = (">", ">=", "<", "<=", "=", "!=", "is", "in")
 
@@ -73,6 +74,14 @@ LEADER_MIN_RS = 70       # the stock's own RS rank
 # stock's rank inside its group added nothing in either market — the group's strength is what matters.
 
 
+EARLY_STAGE2_MAX_DAYS = 40   # Trend Template held on at most this many of the last ~6 months' sessions (snapshot.STAGE2_DAYS_WINDOW)
+
+LONG_BASE_MIN_DAYS = 120          # sessions in the base (about six months)
+LONG_BASE_MAX_DEPTH_PCT = 30.0    # the base's high-to-low depth; no looser than snapshot.BASE_MAX_DEPTH_PCT, where base_days stops
+LONG_BASE_MAX_PCT_BELOW_HIGH = 10.0  # the close this close to the top of the base
+LONG_BASE_MIN_QUALITY = 60        # Quality score (fundamentals/quality.py), present-only
+
+
 def presets() -> dict[str, dict]:
     stage2 = builtin()["stage2"]["conditions"]
     return {
@@ -84,6 +93,44 @@ def presets() -> dict[str, dict]:
                        "(fundamentals/sepa.py): EPS growth, EPS acceleration, sales growth, margins and no slowdown must pass, and "
                        "annual EPS growth and ROE must not fail. Present-only: it is not available for past snapshots, so it cannot be studied."),
             "conditions": [*stage2, {"field": "sepa_verdict", "op": "in", "value": ["LEADER"]}]},
+        "early_stage2": {
+            "name": "Early Stage 2",
+            "description": f"Stocks that pass the full Trend Template today but held it on no more than {EARLY_STAGE2_MAX_DAYS} of "
+                           f"the last {STAGE2_DAYS_WINDOW} sessions — new to Stage 2, or back in it after a correction. "
+                           "A list for finding them, not a stronger screen: in the study they did no better than the Trend Template.",
+            "thesis": ("Weinstein and Minervini both prefer a stock as it leaves its Stage 1 base and turns into Stage 2, with the "
+                       "advance ahead of it rather than months behind. This screen is the Trend Template plus how long it has "
+                       "been in force: few sessions out of the last six months means the stock entered Stage 2 recently, or "
+                       "re-entered after a correction — the field cannot tell the two apart. The month-end study (2021–2026) "
+                       "does not support the preference. In the US the fresher the stock the weaker its forward returns: at "
+                       "this cutoff it lagged the full Trend Template at 1, 3 and 6 months, and stocks in it longer did best. "
+                       "In India it beat the Trend Template at 3 and 6 months but lagged at 1 month, on about 15 stocks a "
+                       "month, which is too few to call; neither market showed a higher hit rate. Use it to see who just "
+                       "turned up, and judge the setup on its own."),
+            "conditions": [*stage2, {"field": "stage2_days", "op": "<=", "value": EARLY_STAGE2_MAX_DAYS}]},
+        "long_base_quality": {
+            "name": "Long base, quality business",
+            "description": f"Quality businesses (quality score {LONG_BASE_MIN_QUALITY}+) that have moved sideways for "
+                           f"{LONG_BASE_MIN_DAYS}+ sessions inside a range no deeper than {LONG_BASE_MAX_DEPTH_PCT:g}%, with the "
+                           f"close within {LONG_BASE_MAX_PCT_BELOW_HIGH:g}% of the range's top and its pullbacks contracting.",
+            "thesis": ("A sound business whose stock has gone nowhere for months is often a base being built, not a broken stock: "
+                       "Weinstein's Stage 1 and O'Neil's long flat bases end when supply is used up and the price clears the top "
+                       "of the range, and the longer the base the bigger the move it can launch. Three things say the base is "
+                       "mature: the price is back near its ceiling, each pullback inside it is shallower than the last (sellers "
+                       "drying up, Minervini's volatility contraction), and the 200-day has stopped falling — flat is allowed, so "
+                       "a Stage 1 base qualifies before the average turns up. The quality score keeps it to businesses worth "
+                       f"owning. The base is the longest run of up to {BASE_MAX_DAYS} sessions inside the depth limit, so its "
+                       "depth sits near that limit. The price half is point in time and can be studied; the quality score is "
+                       "present-only, so the study tests only the base."),
+            "conditions": [
+                {"field": "tradable", "op": "is", "value": True},
+                {"field": "base_days", "op": ">=", "value": LONG_BASE_MIN_DAYS},
+                {"field": "base_depth_pct", "op": "<=", "value": LONG_BASE_MAX_DEPTH_PCT},
+                {"field": "pct_below_base_high", "op": "<=", "value": LONG_BASE_MAX_PCT_BELOW_HIGH},
+                {"field": "range_contracting", "op": "is", "value": True},
+                {"field": "sma200_not_falling", "op": "is", "value": True},
+                {"field": "quality", "op": ">=", "value": LONG_BASE_MIN_QUALITY},
+            ]},
         "leaders": {
             "name": "Strong stocks in leading groups",
             "description": f"Strong stocks (RS {LEADER_MIN_RS}+) in the strongest peer groups (group RS {LEADER_GROUP_RS}+), in an uptrend.",

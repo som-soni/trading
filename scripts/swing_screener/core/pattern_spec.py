@@ -1577,6 +1577,24 @@ def detect_rectangle(daily: pd.DataFrame, p: PatternParams = PatternParams()) ->
 
 # ------------------------------------------------------- §8.2 flat base
 
+def longest_window_within_depth(high: np.ndarray, low: np.ndarray, max_n: int, min_n: int,
+                                max_depth_pct: float) -> int | None:
+    """FB-02's window search: the LONGEST N in [min_n, max_n] for which the last N bars' high-to-low
+    depth, (max high - min low) / max high, is within `max_depth_pct`; None when no such N exists.
+    Shared by detect_flat_base and the snapshot's `base_days`, so both measure a base the same way."""
+    n = len(high)
+    if max_n < min_n or n == 0:
+        return None
+    # the high and low of every window ending on the last bar, one running max/min from the right
+    hi_from = np.maximum.accumulate(high[::-1])
+    lo_from = np.minimum.accumulate(low[::-1])
+    for N in range(min(max_n, n), max(min_n, 1) - 1, -1):
+        w_hi, w_lo = float(hi_from[N - 1]), float(lo_from[N - 1])
+        if w_hi > 0 and (w_hi - w_lo) / w_hi * 100 <= max_depth_pct:
+            return N
+    return None
+
+
 def detect_flat_base(daily: pd.DataFrame, p: PatternParams = PatternParams()) -> dict:
     """§8.2. The window is the LONGEST N in fb_days for which FB-02 still
     holds, so the whole base is measured rather than its last few weeks."""
@@ -1590,13 +1608,7 @@ def detect_flat_base(daily: pd.DataFrame, p: PatternParams = PatternParams()) ->
         out["fail"] = "FB-03"
         return out
 
-    best_n = None
-    for N in range(min(p.fb_days[1], n - 2), p.fb_days[0] - 1, -1):
-        w_hi = float(high[n - N:].max())
-        w_lo = float(low[n - N:].min())
-        if w_hi > 0 and (w_hi - w_lo) / w_hi * 100 <= p.fb_max_depth:
-            best_n = N
-            break
+    best_n = longest_window_within_depth(high, low, min(p.fb_days[1], n - 2), p.fb_days[0], p.fb_max_depth)
     if best_n is None:
         out["fail"] = "FB-02"
         return out

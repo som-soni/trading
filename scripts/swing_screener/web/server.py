@@ -15,7 +15,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
-from fastapi import Body, FastAPI, HTTPException, Query, Request
+from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -99,13 +99,33 @@ def _indices() -> dict[str, list[str]]:
     return out
 
 
+@lru_cache(maxsize=1)
+def _benchmark_indices() -> dict[str, list[dict]]:
+    """Each market's broad and sector index/ETF symbols (config/MARKETS `broad_index_symbols`,
+    `sector_index_map`) that actually have stored price history — a "compare against an index" picker
+    reads this, so a configured symbol with no data yet does not show up as a dead option. Checked once
+    per process; restart to pick up newly-backfilled symbols."""
+    from ..config import MARKETS
+    out: dict[str, list[dict]] = {}
+    for mk, c in MARKETS.items():
+        cands = ([(k, k, "Broad") for k in c.broad_index_symbols]
+                 + [(v, f"{k} sector", "Sector") for k, v in c.sector_index_map.items()])
+        out[mk] = [{"symbol": sym, "label": label, "kind": kind} for sym, label, kind in cands
+                   if q("SELECT 1 FROM prices WHERE market=%s AND symbol=%s LIMIT 1", (mk, sym))
+                   or q("SELECT 1 FROM index_series WHERE market=%s AND series=%s LIMIT 1", (mk, sym))]
+    return out
+
+
 @app.get("/api/markets")
 def markets_api():
     """The markets the app knows (config/MARKETS): the web app builds its market selector, badges and
-    currency formatting from this, so adding a country needs no UI change."""
+    currency formatting from this, so adding a country needs no UI change. `indices` is for a chart's
+    "compare against an index" picker (_benchmark_indices)."""
     from ..config import MARKETS
+    idx = _benchmark_indices()
     return [{"key": k, "name": c.name, "exchange": c.exchange, "badge": c.badge or c.name, "flag": c.flag,
-             "currency": c.currency_symbol, "suffix": c.symbol_suffix, "tz": c.tz} for k, c in MARKETS.items()]
+             "currency": c.currency_symbol, "suffix": c.symbol_suffix, "tz": c.tz,
+             "benchmark": c.benchmark_symbol, "indices": idx.get(k, [])} for k, c in MARKETS.items()]
 
 
 _liq_cache: dict = {}
@@ -1011,6 +1031,86 @@ def chart_patterns_live(market: str, symbol: str, date: str | None = None, show:
     return _pattern_hits[key]
 
 
+_stage_weekly: dict = {}   # (market, symbol) -> (last stored date, weekly bars, trading-day labels)
+_stage_hits: dict = {}     # (market, symbol, as_of, spec_id) -> response
+
+
+@app.get("/api/stage-analysis/{market}/{symbol}")
+def stage_analysis_live(market: str, symbol: str, date: str | None = None, years: int = 5):
+    """The chart's Stage analysis indicator: Weinstein's weekly stages computed ON DEMAND from the
+    stored daily bars up to `date` (default: the last bar) — stage_analysis.stage_series, the
+    strategy's own state machine, plus its 30-week line; nothing precomputed and never a second
+    copy of the rules. Exploration only: what a backtest traded comes from its signal record."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..marketdata import cache
+    from ..strategies import get_strategy
+    from ..strategies import stage_analysis as stage_mod
+    strat = get_strategy("stage_analysis")
+    last = q("SELECT max(date) FROM prices WHERE market=%s AND symbol=%s", (market, symbol))
+    last = last[0][0] if last else None
+    if last is None:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    hit = _stage_weekly.get((market, symbol))
+    if hit is None or hit[0] != last:
+        raw = cache.load_cached(market, symbol)
+        if raw is None or raw.empty:
+            raise HTTPException(404, f"no prices stored for {symbol}")
+        agg = {"open": "first", "high": "max", "low": "min", "close": "last", "volume": "sum"}
+        wk = raw.resample("W-FRI").agg(agg).dropna(subset=["close"])
+        # label each week by its last real trading day (same rule as /api/prices?tf=W), so the
+        # line's points and the bands' edges land on dates the daily chart actually has
+        days = raw.index.to_series().resample("W-FRI").last().loc[wk.index]
+        if len(_stage_weekly) > 64:
+            _stage_weekly.clear()
+        hit = _stage_weekly[(market, symbol)] = (last, wk, days)
+    wk, days = hit[1], hit[2]
+    as_of_ts = min(pd.Timestamp(date), days.iloc[-1]) if date else days.iloc[-1]
+    mask = days <= as_of_ts
+    wk, days = wk.loc[mask], days.loc[mask]
+    if len(wk) <= stage_mod.MA_WEEKS + stage_mod.SLOPE_WEEKS:
+        return {"as_of": str(as_of_ts.date()), "stages": [], "line": [],
+                "note": f"needs {stage_mod.MA_WEEKS + stage_mod.SLOPE_WEEKS} weeks of history; {len(wk)} stored"}
+    key = (market, symbol, str(as_of_ts.date()), years, strat.spec_id())
+    if key in _stage_hits:
+        return _stage_hits[key]
+    st = stage_mod.stage_series(wk)
+    line = stage_mod.ma30(wk)
+    # the week in progress: its Friday label lies beyond the last stored session
+    provisional = bool(wk.index[-1] > as_of_ts)
+    labels = [d.strftime("%Y-%m-%d") for d in days]
+    lo_i = max(0, len(wk) - years * 52)
+    segs: list[dict] = []
+    for i in range(lo_i, len(wk)):
+        v = int(st.iloc[i])
+        if not v:
+            continue
+        if segs and segs[-1]["stage"] == v:
+            segs[-1].update(to=labels[i], high=max(segs[-1]["high"], float(wk["high"].iloc[i])),
+                            low=min(segs[-1]["low"], float(wk["low"].iloc[i])), weeks=segs[-1]["weeks"] + 1)
+        else:
+            segs.append({"stage": v, "from": labels[i], "to": labels[i], "weeks": 1,
+                         "high": float(wk["high"].iloc[i]), "low": float(wk["low"].iloc[i])})
+    if segs:
+        segs[-1]["ongoing"] = True
+    state, slope = stage_mod.line_state(wk)
+    done = st.iloc[:-1] if provisional else st
+    out = {
+        "as_of": str(as_of_ts.date()), "spec_id": strat.spec_id(),
+        "line": [{"time": t, "value": round(float(v), 4)}
+                 for t, v in zip(labels[lo_i:], line.iloc[lo_i:]) if v == v],
+        "stages": segs,
+        "current": {"stage": int(done.iloc[-1]) or None if len(done) else None,
+                    "line_state": state,
+                    "line_slope_pct": round(slope, 2) if slope == slope else None,
+                    "provisional": provisional},
+    }
+    if len(_stage_hits) > 512:
+        _stage_hits.clear()
+    _stage_hits[key] = out
+    return out
+
+
 _tt_runs: dict = {}
 
 # A short label for a chart that has no room for the sentence. Presentation only: the sentence
@@ -1306,6 +1406,16 @@ def rates_summary(market: str = "india"):
         raise HTTPException(400, f"unknown market {market}")
     from ..marketdata import rates
     return {"market": market, "rates": rates.summary(market)}
+
+
+@app.get("/api/indicators")
+def indicators_summary(market: str = "india"):
+    """The Macro tab's growth/inflation/consumption cards (marketdata/indicators.py): each indicator's
+    last value (YoY% where it applies), 1-month/1-year change, and history for a chart."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..marketdata import indicators
+    return {"market": market, "indicators": indicators.summary(market)}
 
 
 # breadth_daily as single series for the guides' ```series charts (`us:breadth.pct50`); counts, or % of the day's n
@@ -2558,8 +2668,10 @@ from .. import notes as notes_mod
 
 
 @app.get("/api/notes")
-def notes_list(q: str = "", tag: str | None = None, market: str | None = None, symbol: str | None = None):
-    return {"notes": notes_mod.search(q.strip(), tag, market, symbol), "tags": notes_mod.tags()}
+def notes_list(q: str = "", tag: str | None = None, market: str | None = None, symbol: str | None = None,
+                kind: str | None = None, book: str | None = None):
+    return {"notes": notes_mod.search(q.strip(), tag, market, symbol, kind, book),
+            "tags": notes_mod.tags(), "books": notes_mod.books()}
 
 
 @app.get("/api/notes/{nid}")
@@ -2572,12 +2684,13 @@ def notes_get(nid: int):
 
 @app.post("/api/notes")
 def notes_create(note: dict = Body(...)):
-    return notes_mod.create(note.get("title", ""), note.get("body", ""), note.get("tags"), note.get("symbols"), bool(note.get("pinned")))
+    return notes_mod.create(note.get("title", ""), note.get("body", ""), note.get("tags"), note.get("symbols"),
+                             bool(note.get("pinned")), note.get("kind", "note"), note.get("book", ""))
 
 
 @app.put("/api/notes/{nid}")
 def notes_update(nid: int, note: dict = Body(...)):
-    n = notes_mod.update(nid, **{k: note.get(k) for k in ("title", "body", "tags", "symbols", "pinned")})
+    n = notes_mod.update(nid, **{k: note.get(k) for k in ("title", "body", "tags", "symbols", "pinned", "kind", "book")})
     if not n:
         raise HTTPException(404, "note not found")
     return n
@@ -2589,6 +2702,24 @@ def notes_delete(nid: int):
     if not n:
         raise HTTPException(404, "note not found")
     return n
+
+
+@app.post("/api/notes/{nid}/attachments")
+async def notes_attachment_upload(nid: int, file: UploadFile = File(...)):
+    if not notes_mod.get(nid):
+        raise HTTPException(404, "note not found")
+    try:
+        return notes_mod.save_attachment(nid, file.content_type, await file.read())
+    except ValueError as e:
+        raise HTTPException(415, str(e))
+
+
+@app.get("/api/notes/{nid}/attachments/{filename}")
+def notes_attachment_get(nid: int, filename: str):
+    a = notes_mod.get_attachment(nid, filename)
+    if not a:
+        raise HTTPException(404, "attachment not found")
+    return Response(a["data"], media_type=a["content_type"], headers={"Cache-Control": "max-age=31536000, immutable"})
 
 
 # ------------------------------------------------------------- TODO list

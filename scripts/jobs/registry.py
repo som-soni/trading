@@ -236,6 +236,20 @@ def _rates(ctx: Ctx) -> None:
     ctx.step.stats = {"series": len(ok), "written": n, "changes": len(out["changes"]), "failed": len(out["failed"])}
 
 
+def _indicators(ctx: Ctx) -> None:
+    """Growth, inflation and consumption indicators (marketdata/indicators.py): CPI, GDP, industrial
+    production, retail and vehicle sales, from FRED's free CSV endpoint."""
+    from swing_screener.marketdata import indicators
+    out = indicators.refresh(ctx.market)
+    ok = [k for k in out["written"] if k not in out["failed"]]
+    if not ok:
+        raise RuntimeError("no indicator series could be fetched: " + "; ".join(f"{k}: {v}" for k, v in out["failed"].items()))
+    n = sum(out["written"].values())
+    ctx.step.detail = (f"{len(ok)} series · {n:,} new or changed values"
+                       + (f" · failed: {', '.join(out['failed'])}" if out["failed"] else ""))
+    ctx.step.stats = {"series": len(ok), "written": n, "failed": len(out["failed"])}
+
+
 def _screened_symbols(market: str, strategies: list[str] | None = None) -> list[str]:
     """Symbols in the latest screening run of each strategy (those that passed the loose pre-filter)."""
     from swing_screener.marketdata import db
@@ -417,9 +431,10 @@ def _screens(ctx: Ctx) -> None:
 def _screen_history(ctx: Ctx) -> None:
     """Month-end snapshots for the screen study (screens/snapshot.py --backfill): builds any of the last
     `years` (default 5) years' month-ends that are missing. The daily job keeps each month's last session
-    itself, so after the first run this is a cheap gap check; studies are then computed on demand."""
+    itself, so after the first run this is a cheap gap check; studies are then computed on demand. `--refill`
+    recomputes the stored month-ends to add a field they were built without, keeping every stored value."""
     from swing_screener.screens import snapshot, study
-    n = snapshot.backfill(ctx.market, float(ctx.opt("years") or 5), bool(ctx.opt("force")))
+    n = snapshot.backfill(ctx.market, float(ctx.opt("years") or 5), bool(ctx.opt("force")), bool(ctx.opt("refill")))
     ctx.step.detail = f"{n} month-end snapshots built · {len(study.month_end_dates(ctx.market))} month-ends available to the study"
     ctx.step.stats = {"built": n}
 
@@ -674,6 +689,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "oil, gold, copper and credit (marketdata/macro.py)", "daily", True, _indexes),
     Job("rates", "data", "interest rates: policy rate, bill and bond yields with long history — FRED (US), RBI (India) "
         "(marketdata/rates.py)", "daily", True, _rates),
+    Job("indicators", "data", "growth, inflation and consumption indicators: CPI, GDP, industrial production, retail "
+        "and vehicle sales — FRED (marketdata/indicators.py)", "daily", True, _indicators),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
     Job("fno_bhav", "data", "F&O bhavcopy: NSE index futures and options, settle and open interest (India)",
         "daily", True, _fno_bhav),
@@ -695,7 +712,7 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "on demand", False, after=("prices",), expand=_backtest_steps),
     Job("group_research", "screening", "research: does group strength improve forward returns? (writes research/group-strength-study.md)",
         "monthly", False, _group_research, per_market=False, after=("screen_history",)),
-    Job("quality", "screening", "quality scores: fetch statements and score companies", "on demand", True, _quality),
+    Job("quality", "screening", "quality scores: fetch statements and score companies", "weekly", True, _quality),
     Job("fundamental_scores", "screening", "fundamentals: growth, margins and returns from the stored quarterly results, "
         "and each strategy's view of them (Minervini SEPA)", "weekly", False, _fundamental_scores, after=("financials",)),
     Job("postmarket", "publish", "post-market analysis: the day's tone, indices, breadth, sectors, movers, watchlists, screener changes",
@@ -710,11 +727,11 @@ JOBS: dict[str, Job] = {j.name: j for j in [
 # A pipeline is an ordered list of jobs, optionally with per-job options, and `defaults` for options the
 # request does not set. Scheduled (jobs/queue.py DEFAULT_SCHEDULES): close and open per market on that market's
 # clock, weekly and monthly. `daily` (data only) is kept for running the data part alone.
-# On demand (Run in the portal, or schedule them yourself): strategies, quality.
+# On demand (Run in the portal, or schedule them yourself): strategies; `quality` also runs alone this way.
 PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
-              "jobs": ["universe", "prices", "indexes", "rates", "breadth", "sectors", "screens", "postmarket",
+              "jobs": ["universe", "prices", "indexes", "rates", "indicators", "breadth", "sectors", "screens", "postmarket",
                        "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
@@ -725,14 +742,14 @@ PIPELINES: dict[str, dict] = {
                       ("ingest", {"only_new": True}), "readiness"],
              "defaults": {"strategies": ["all"]}},
     "daily": {"summary": "after each market's close — data only: prices, indexes, rates, breadth, sectors, the screens' snapshot, post-market analysis",
-              "jobs": ["universe", "prices", "indexes", "rates", "breadth", "sectors", "screens", "postmarket"]},
+              "jobs": ["universe", "prices", "indexes", "rates", "indicators", "breadth", "sectors", "screens", "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
                  "jobs": ["backtest", "ingest"]},
     "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, fundamentals, company financials "
-                          "and their scores; split & bonus repair",
-               "jobs": [("universe", {"force": True}), "names", "classify", "splits", "earnings", "fundamentals", "financials", "fundamental_scores"]},
+                          "and their scores, quality scores; split & bonus repair",
+               "jobs": [("universe", {"force": True}), "names", "classify", "splits", "earnings", "fundamentals", "financials", "fundamental_scores", "quality"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},
     "quality": {"summary": "on demand: fetch financial statements and score companies (the Quality screen) — slow, network-heavy",

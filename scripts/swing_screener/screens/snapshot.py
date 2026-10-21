@@ -28,6 +28,8 @@ import pandas as pd
 from .. import paths
 from ..config import MARKETS
 from ..core import indicators as ind
+from ..core.pattern_spec import longest_window_within_depth
+from ..core.swings import is_contracting, volatility_contractions
 from ..marketdata import cache, db, freshness
 from . import criteria as crit
 from .base import MIN_BARS, Screen
@@ -36,7 +38,11 @@ logger = logging.getLogger(__name__)
 SNAP_DIR = paths.DATA_DIR / "snapshots"
 KEEP_DAILY = 40                 # daily snapshots kept; month-end ones are kept for good
 MIN_SNAPSHOT_BARS = 60          # a stock needs this much history to appear at all (longer-window fields are empty until it has it)
-LOOKBACK_DAYS = 480
+LOOKBACK_DAYS = 760             # calendar days loaded: enough sessions for BASE_MAX_DAYS
+STAGE2_DAYS_WINDOW = 126       # stage2_days counts the Trend Template's sessions over this many (about six months)
+BASE_MAX_DAYS = 500            # base_days looks back at most this many sessions (about two years)
+BASE_MAX_DEPTH_PCT = 30.0      # a window is a base while its high-to-low depth is within this
+BASE_CONTRACTION_LOOKBACK = 120  # range_contracting reads the pullbacks of this many sessions
 PEER_MIN = 3                    # a sub-industry is a stock's peer group only with this many tradable stocks (else its industry group)
 
 # The field catalog: key, label, group, kind (price | pct | num | money | bool | text), description.
@@ -82,6 +88,19 @@ FIELDS = [
     ("higher_swing_lows", "Higher swing lows", "Trend & structure", "bool", "The last two confirmed swing lows (last ~50 sessions) are rising."),
     ("momentum_positive", "12-1M momentum positive", "Trend & structure", "bool", "The close a month ago is above the close a year ago."),
     ("trend_not_fading", "Trend not fading", "Trend & structure", "bool", "Not both a negative 3-month return and a flat or falling 50-day."),
+    ("stage2_days", "Trend Template days (6M)", "Trend & structure", "num",
+     f"On how many of the last {STAGE2_DAYS_WINDOW} sessions the price part of Minervini's Trend Template held (close above the "
+     "50-, 150- and 200-day, averages stacked, 200-day rising, off the low, near the high). Filled only when it holds today: "
+     "a low count means the stock entered Stage 2 recently."),
+    ("base_days", "Days in base", "Base", "num",
+     f"The longest run of sessions ending today (up to {BASE_MAX_DAYS}) whose high-to-low range is within "
+     f"{BASE_MAX_DEPTH_PCT:g}% of its high — the same window search as the flat-base pattern, with no prior advance "
+     "required, so a Stage 1 base counts. Capped by the history stored."),
+    ("base_depth_pct", "Base depth %", "Base", "pct", "That window's depth: its highest high to its lowest low, as a % of the high."),
+    ("pct_below_base_high", "% below base high", "Base", "pct", "How far the close is below that window's highest high (0 = at the top of the base)."),
+    ("range_contracting", "Range contracting", "Base", "bool",
+     f"The last pullbacks of the last {BASE_CONTRACTION_LOOKBACK} sessions each shallower than the one before "
+     "(the volatility contraction of a tightening base; two or more legs)."),
     ("sector", "Sector", "Classification", "text", "Yahoo sector."),
     ("industry", "Industry group", "Classification", "text", "Yahoo industry group."),
     ("sub_industry", "Sub-industry", "Classification", "text", "The sub-industry, where the industry group mixes businesses (Library → Sub-industries)."),
@@ -189,7 +208,42 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int) -> di
                   ("momentum_positive", crit.momentum_12_1_positive), ("trend_not_fading", crit.trend_not_fading)):
         out[k] = bool(fn(ctx)[0])
     out["tradable"] = bool(i + 1 >= MIN_BARS and Screen.tradable(cfg, row)[0])
+    out["stage2_days"] = _stage2_days(enriched, i)
+    out.update(_base(enriched, i))
     return out
+
+
+def _base(enriched: pd.DataFrame, i: int) -> dict:
+    """base_days, base_depth_pct, pct_below_base_high and range_contracting as of bar i: the flat-base window
+    search (core/pattern_spec.py) over up to BASE_MAX_DAYS sessions, and the VCP contraction test (core/swings.py)."""
+    d = enriched.iloc[max(0, i + 1 - BASE_MAX_DAYS): i + 1]
+    high, low = d["high"].to_numpy(float), d["low"].to_numpy(float)
+    n = longest_window_within_depth(high, low, BASE_MAX_DAYS, 2, BASE_MAX_DEPTH_PCT)
+    out = {"base_days": n, "base_depth_pct": None, "pct_below_base_high": None,
+           "range_contracting": bool(is_contracting(volatility_contractions(enriched.iloc[: i + 1], lookback=BASE_CONTRACTION_LOOKBACK)))}
+    if n:
+        w_hi, w_lo = float(high[-n:].max()), float(low[-n:].min())
+        out["base_depth_pct"] = (w_hi - w_lo) / w_hi * 100
+        out["pct_below_base_high"] = (1 - float(d["close"].iloc[-1]) / w_hi) * 100
+    return out
+
+
+# The price part of the Trend Template (C1–C7 of the stage2 screen). C8, relative strength, is a rank across
+# the whole market on the day, so it cannot be replayed bar by bar for one stock.
+STAGE2_PRICE_CRITERIA = (crit.stage2_above_sma50, crit.stage2_above_sma150, crit.stage2_above_sma200, crit.stage2_stacked,
+                         crit.stage2_sma200_rising, crit.stage2_off_low, crit.stage2_near_high)
+
+
+def _stage2_days(enriched: pd.DataFrame, i: int) -> int | None:
+    """Sessions among the last STAGE2_DAYS_WINDOW (up to bar i) on which STAGE2_PRICE_CRITERIA all held — the
+    stage2 screen's own predicates, replayed on each bar's history. None when they do not hold on bar i."""
+    def holds(j: int) -> bool:
+        row = enriched.iloc[j]
+        ctx = SimpleNamespace(daily=enriched.iloc[: j + 1], last=row, close=float(row["close"]), extras={})
+        return all(fn(ctx)[0] for fn in STAGE2_PRICE_CRITERIA)
+    if not holds(i):
+        return None
+    return 1 + sum(holds(j) for j in range(max(0, i - STAGE2_DAYS_WINDOW + 1), i))
 
 
 def _finish(market: str, rows: list[dict], d, present: bool) -> pd.DataFrame:
@@ -435,12 +489,15 @@ def month_ends(market: str, years: float) -> list:
     return sorted(by.values())[:-1]          # the current month is not over yet
 
 
-def backfill(market: str, years: float = 5, force: bool = False) -> int:
-    """Month-end snapshots for the last `years` years (point in time; present-only fields left empty)."""
+def backfill(market: str, years: float = 5, force: bool = False, refill: bool = False) -> int:
+    """Month-end snapshots for the last `years` years (point in time; present-only fields left empty).
+
+    `refill` recomputes the month-ends already stored but writes only the fields they lack (a field added
+    since the file was built, empty in every row), keeping every stored column as it is."""
     t0 = time.time()
     cfg = MARKETS[market]
     have = set(dates(market))
-    todo = [d for d in month_ends(market, years) if force or d not in have]
+    todo = [d for d in month_ends(market, years) if (d in have if refill else force or d not in have)]
     if not todo:
         return 0
     bars = _universe_bars(market, pd.Timestamp(todo[0]) - pd.Timedelta(days=LOOKBACK_DAYS))
@@ -459,9 +516,22 @@ def backfill(market: str, years: float = 5, force: bool = False) -> int:
         if n % 500 == 0:
             logger.info("  backfill %s: %d/%d symbols (%.0fs)", market, n, len(bars), time.time() - t0)
     for d, rows in per_date.items():
-        _save(market, _finish(market, rows, d, present=False), d)
+        df = _finish(market, rows, d, present=False)
+        if refill:
+            df = _refill(pd.read_parquet(_path(market, d)), df)
+        _save(market, df, d)
     logger.info("backfill %s: %d month-end snapshots in %.0fs", market, len(todo), time.time() - t0)
     return len(todo)
+
+
+def _refill(old: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
+    """The stored snapshot with the fields it lacks taken from a rebuild; every stored value is kept."""
+    lacking = [k for k in FIELD_KEYS if k not in PRESENT_ONLY and (k not in old.columns or old[k].isna().all())]
+    fresh = new.set_index("symbol")
+    out = old.copy()
+    for k in lacking:
+        out[k] = out["symbol"].map(fresh[k]) if k in fresh.columns else None
+    return out
 
 
 def main() -> None:
@@ -469,10 +539,11 @@ def main() -> None:
     ap.add_argument("--market", required=True, choices=list(MARKETS))
     ap.add_argument("--backfill", type=float, default=None, help="build month-end snapshots for this many years")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--refill", action="store_true", help="with --backfill: add the fields stored month-ends lack, keep the rest")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     if a.backfill:
-        print(backfill(a.market, a.backfill, a.force))
+        print(backfill(a.market, a.backfill, a.force, a.refill))
     else:
         df = build(a.market)
         print(df.shape, int(df["tradable"].sum()))

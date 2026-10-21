@@ -209,6 +209,9 @@ def _run_args(r) -> None:
     r.add_argument("--quality-top", type=int, default=None, help="how many of the most liquid companies `quality` scores")
     r.add_argument("--no-ingest", action="store_true", help="leave out the `ingest` job")
     r.add_argument("--days", type=int, default=None, help="`postmarket`: also analyse this many latest sessions (backfill)")
+    r.add_argument("--years", type=float, default=None, help="`screen_history`: how many years of month-ends (default 5)")
+    r.add_argument("--refill", action="store_true",
+                   help="`screen_history`: recompute stored month-ends to add the fields they lack, keeping every stored value")
     r.add_argument("--start", default=None, help="`backtest`: simulate from this date (YYYY-MM-DD, default 2013-01-01)")
     r.add_argument("--sample", type=int, default=None, help="`backtest`: a seeded random subset of N candidates (faster, unbiased)")
     r.add_argument("--accept-labels", default=None, metavar="LABELS",
@@ -261,7 +264,7 @@ def _opts(ap, a):
         if bad:
             ap.error(f"unknown strategies {bad}; choose from {known}")
     opts = {"strategies": strategies, "force": a.force, "allow_stale": a.allow_stale,
-            "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days,
+            "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days, "years": a.years, "refill": a.refill,
             "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols, "max_base": a.max_base, "min_dollar_volume": a.min_dollar_volume, "pyramid": a.pyramid,
             "market_filter": a.market_filter, "pe": a.pe, "pe_window": a.pe_window, "pe_warmup": a.pe_warmup, "pe_pilot": a.pe_pilot,
             "pe_press": a.pe_press, "mkt_confirm": a.mkt_confirm, "top_dollar_volume": a.top_dollar_volume,

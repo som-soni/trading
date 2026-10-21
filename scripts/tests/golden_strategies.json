@@ -3791,25 +3791,25 @@
   },
   "AFFLE.NS": {
    "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "FWDG complete, waiting for a close through 1568.55 on 1.4x volume"
    },
-   "first_hard_fail": "G2",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
-    "G2": false,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
    },
    "plan": {
-    "entry": 1609.8,
-    "r": 1.859683,
-    "reason": "FWDG trigger 1601.79",
+    "entry": 1568.55,
+    "r": 2.549241,
+    "reason": "FWDG trigger 1560.74",
     "setup": "FWDG",
-    "stop": 1517.45,
-    "target": 1781.541755,
+    "stop": 1476.2,
+    "target": 1803.972433,
     "which": "SPEC"
    },
    "prefilter": [
@@ -4006,7 +4006,7 @@
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": true,
+    "ATRI": false,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
@@ -4061,7 +4061,7 @@
     "DBOT": true,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -4077,27 +4077,13 @@
    }
   },
   "ASHOKA.NS": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 14.6% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 126.85,
-    "r": 4.010871,
-    "reason": "FWDG trigger 126.18",
-    "setup": "FWDG",
-    "stop": 120.55,
-    "target": 152.11849,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     false,
@@ -4110,7 +4096,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -4329,27 +4315,13 @@
    }
   },
   "BAJEL.NS": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed descending triangle on the same chart"
-   },
-   "first_hard_fail": "G2",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": false,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 199.25,
-    "r": 3.307441,
-    "reason": "RECT trigger 198.25",
-    "setup": "RECT",
-    "stop": 187.2,
-    "target": 239.104666,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     false,
@@ -4362,10 +4334,10 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": true,
+    "RECT": false,
     "SYMM": false,
     "TBOT": false
    },
@@ -4419,9 +4391,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_ON_TRIGGER",
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": true,
+    "W1": false,
     "W2": false,
     "W3": false
    }
@@ -4679,40 +4651,26 @@
    }
   },
   "DGCONTENT.NS": {
-   "decision": {
-    "label": "WATCH - WAIT",
-    "quality": 1.5,
-    "reason": "stop 11.1% > 8%"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 28.35,
-    "r": 2.373861,
-    "reason": "ATRI trigger 28.16",
-    "setup": "ATRI",
-    "stop": 25.2,
-    "target": 35.827662,
-    "which": "SPEC"
    },
    "prefilter": [
     false,
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": true,
+    "ATRI": false,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -4952,27 +4910,13 @@
    }
   },
   "GLOBUSSPR.NS": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed descending triangle on the same chart"
-   },
-   "first_hard_fail": "G2",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": false,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 879.0,
-    "r": 2.795039,
-    "reason": "FWDG trigger 874.62",
-    "setup": "FWDG",
-    "stop": 834.25,
-    "target": 1004.077993,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     false,
@@ -4985,7 +4929,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -5225,27 +5169,13 @@
    }
   },
   "INDUSTOWER.NS": {
-   "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 0.5,
-    "reason": "FWDG complete, waiting for a close through 382.15 on 1.4x volume; capped by watch flag (W1)"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 382.15,
-    "r": 4.266746,
-    "reason": "FWDG trigger 380.20",
-    "setup": "FWDG",
-    "stop": 363.2,
-    "target": 463.004838,
-    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -5258,7 +5188,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -5407,40 +5337,26 @@
    }
   },
   "ITC.NS": {
-   "decision": {
-    "label": "WATCH - WAIT",
-    "quality": 1.5,
-    "reason": "ATRI projects 1.91R < 2R"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 271.35,
-    "r": 1.914816,
-    "reason": "ATRI trigger 270.00",
-    "setup": "ATRI",
-    "stop": 262.35,
-    "target": 288.583347,
-    "which": "SPEC"
    },
    "prefilter": [
     true,
     "passed"
    ],
    "setups": {
-    "ATRI": true,
+    "ATRI": false,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -5456,27 +5372,13 @@
    }
   },
   "JAIPURKURT.NS": {
-   "decision": {
-    "label": "WATCH - WAIT",
-    "quality": 1.0,
-    "reason": "stop 10.1% > 8%"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 26.7,
-    "r": 2.390874,
-    "reason": "FWDG trigger 25.97",
-    "setup": "FWDG",
-    "stop": 24.0,
-    "target": 33.15536,
-    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -5489,7 +5391,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -5770,9 +5672,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_ON_TRIGGER",
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": true,
+    "W1": false,
     "W2": false,
     "W3": false
    }
@@ -6005,12 +5907,12 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G5: 23.2% below the trigger \u2014 not actionable"
+    "reason": "fails hard gate G2: confirmed head and shoulders top on the same chart"
    },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G2",
    "hard_gates": {
     "G1": true,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": false
@@ -6206,9 +6108,9 @@
   },
   "MOM30IETF.NS": {
    "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.5,
-    "reason": "ATRI complete, waiting for a close through 32.70 on 1.4x volume"
+    "label": "WATCH - WAIT",
+    "quality": 1.1,
+    "reason": "RECT projects 1.62R < 2R"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -6220,11 +6122,11 @@
    },
    "plan": {
     "entry": 32.7,
-    "r": 2.857237,
-    "reason": "ATRI trigger 32.52",
-    "setup": "ATRI",
+    "r": 1.618603,
+    "reason": "RECT trigger 32.52",
+    "setup": "RECT",
     "stop": 31.6,
-    "target": 35.842961,
+    "target": 34.480463,
     "which": "SPEC"
    },
    "prefilter": [
@@ -6232,7 +6134,7 @@
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": true,
+    "ATRI": false,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
@@ -7066,27 +6968,13 @@
    }
   },
   "RVNL.NS": {
-   "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.0,
-    "reason": "FWDG complete, waiting for a close through 212.95 on 1.4x volume"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 212.95,
-    "r": 2.598634,
-    "reason": "FWDG trigger 211.87",
-    "setup": "FWDG",
-    "stop": 201.25,
-    "target": 243.354019,
-    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -7099,7 +6987,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -7345,9 +7233,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_ON_TRIGGER",
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": true,
+    "W1": false,
     "W2": false,
     "W3": false
    }
@@ -7613,14 +7501,14 @@
   },
   "SUNPHARMA.NS": {
    "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "FWDG complete, waiting for a close through 1857.20 on 1.4x volume"
    },
-   "first_hard_fail": "G2",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
-    "G2": false,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
@@ -7772,9 +7660,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_ON_TRIGGER",
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": true,
+    "W1": false,
     "W2": false,
     "W3": false
    }
@@ -8240,7 +8128,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -17932,8 +17820,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": true,
-    "G7": true
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -17958,7 +17847,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -17983,7 +17873,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18007,8 +17898,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -18025,28 +17917,43 @@
    }
   },
   "ADL.NS": {
+   "decision": {
+    "label": "AVOID",
+    "quality": 1.0,
+    "reason": "fails G2: SMA200 falling"
+   },
    "first_hard_fail": "G2",
    "hard_gates": {
     "G1": true,
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": false,
-    "G6": true,
-    "G7": true
+    "G5": true,
+    "G6": false,
+    "G7": true,
+    "G8": true
+   },
+   "plan": {
+    "entry": 84.0,
+    "r": 1.86,
+    "reason": "resistance 83.95, stop 15.0% below entry (line)",
+    "setup": "S1",
+    "stop": 71.4,
+    "target": 107.440002,
+    "which": "STG"
    },
    "prefilter": [
     false,
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "AFFLE.NS": {
@@ -18063,7 +17970,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 1748.25,
@@ -18097,7 +18005,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18114,28 +18023,43 @@
    }
   },
   "AIRAN.NS": {
+   "decision": {
+    "label": "AVOID",
+    "quality": 1.0,
+    "reason": "fails G1: close at/below SMA200"
+   },
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
+   },
+   "plan": {
+    "entry": 18.55,
+    "r": 1.76,
+    "reason": "resistance 18.50, stop 13.2% below entry (line)",
+    "setup": "S1",
+    "stop": 16.1,
+    "target": 22.87,
+    "which": "STG"
    },
    "prefilter": [
     false,
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "ALKYLAMINE.NS": {
@@ -18152,7 +18076,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 2115.05,
@@ -18186,7 +18111,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18211,7 +18137,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -18224,7 +18151,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "ANTGRAPHIC.NS": {
@@ -18235,8 +18162,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18260,8 +18188,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18286,7 +18215,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18309,9 +18239,10 @@
     "G2": false,
     "G3": false,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18336,7 +18267,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18361,7 +18293,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18381,7 +18314,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance"
+    "reason": "valid base, buy stop above its high"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -18391,7 +18324,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 1740.05,
@@ -18425,7 +18359,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18455,7 +18390,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "plan": {
     "entry": 781.0,
@@ -18484,7 +18420,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -18494,7 +18430,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 446.55,
@@ -18520,28 +18457,43 @@
    }
   },
   "BLACKBUCK.NS": {
+   "decision": {
+    "label": "AVOID",
+    "quality": 1.0,
+    "reason": "fails G2: SMA200 falling"
+   },
    "first_hard_fail": "G2",
    "hard_gates": {
     "G1": true,
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
+   },
+   "plan": {
+    "entry": 708.05,
+    "r": 2.0,
+    "reason": "resistance 708.00, stop 15.0% below entry (line)",
+    "setup": "S1",
+    "stop": 601.8,
+    "target": 920.05,
+    "which": "STG"
    },
    "prefilter": [
     true,
     "passed"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "BLBLIMITED.NS": {
@@ -18553,7 +18505,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -18566,7 +18519,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "CHEMPLASTS.NS": {
@@ -18577,8 +18530,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18602,8 +18556,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18627,8 +18582,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -18653,7 +18609,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18678,7 +18635,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18703,7 +18661,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -18728,7 +18687,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -18752,8 +18712,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18777,8 +18738,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18803,7 +18765,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18828,7 +18791,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -18853,7 +18817,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -18878,7 +18843,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18902,8 +18868,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18927,8 +18894,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18953,7 +18921,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -18978,7 +18947,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19003,7 +18973,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19028,7 +18999,8 @@
     "G4": false,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19052,8 +19024,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -19077,8 +19050,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19102,8 +19076,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -19128,7 +19103,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19152,8 +19128,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19178,7 +19155,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19201,9 +19179,10 @@
     "G2": false,
     "G3": false,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19228,7 +19207,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -19251,9 +19231,10 @@
     "G2": false,
     "G3": false,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19278,7 +19259,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19303,7 +19285,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19328,7 +19311,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19351,9 +19335,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -19383,7 +19368,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 203.85,
@@ -19417,7 +19403,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -19442,7 +19429,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19467,7 +19455,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19490,9 +19479,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19515,9 +19505,10 @@
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19530,7 +19521,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "MASFIN.NS": {
@@ -19541,8 +19532,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -19567,7 +19559,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19590,9 +19583,10 @@
     "G2": false,
     "G3": false,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -19605,7 +19599,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "MOM30IETF.NS": {
@@ -19615,9 +19609,10 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19641,8 +19636,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19667,7 +19663,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -19687,7 +19684,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -19697,7 +19694,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 48.05,
@@ -19731,7 +19729,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19751,17 +19750,18 @@
    "decision": {
     "label": "AVOID",
     "quality": 1.0,
-    "reason": "fails G6: lagging the index over 13 weeks (-6.5% vs -6.2%)"
+    "reason": "fails G8: sector index ^NSEBANK is in Stage 4"
    },
-   "first_hard_fail": "G6",
+   "first_hard_fail": "G8",
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "plan": {
     "entry": 334.05,
@@ -19795,7 +19795,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19815,7 +19816,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -19825,7 +19826,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 278.7,
@@ -19864,7 +19866,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 49.5,
@@ -19897,8 +19900,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19922,8 +19926,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -19943,7 +19948,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -19953,7 +19958,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 2169.85,
@@ -19985,9 +19991,10 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20012,7 +20019,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20036,8 +20044,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20050,7 +20059,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "PREMIERENE.NS": {
@@ -20062,7 +20071,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -20075,7 +20085,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "RADHIKAJWE.NS": {
@@ -20087,7 +20097,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20112,7 +20123,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20142,7 +20154,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 564.0,
@@ -20175,8 +20188,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -20201,7 +20215,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -20226,7 +20241,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20250,8 +20266,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20275,8 +20292,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20300,8 +20318,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -20326,7 +20345,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20350,8 +20370,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20371,7 +20392,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -20381,7 +20402,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 672.55,
@@ -20415,7 +20437,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20435,7 +20458,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance"
+    "reason": "valid base, buy stop above its high"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -20445,7 +20468,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 4149.45,
@@ -20479,7 +20503,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20504,7 +20529,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20528,8 +20554,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -20554,7 +20581,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20579,7 +20607,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20603,8 +20632,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20629,7 +20659,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20652,9 +20683,10 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -20679,7 +20711,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20692,7 +20725,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "TAKE.NS": {
@@ -20704,7 +20737,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20727,9 +20761,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20749,7 +20784,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -20759,7 +20794,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 126.65,
@@ -20793,7 +20829,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20810,7 +20847,7 @@
    }
   },
   "TFCILTD.NS": {
-   "first_hard_fail": null,
+   "first_hard_fail": "G8",
    "hard_gates": {
     "G1": true,
     "G2": true,
@@ -20818,7 +20855,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     true,
@@ -20842,8 +20880,9 @@
     "G3": false,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20868,7 +20907,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20892,8 +20932,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20913,7 +20954,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance"
+    "reason": "valid base, buy stop above its high"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -20923,7 +20964,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 5250.05,
@@ -20957,7 +20999,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -20982,7 +21025,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -21007,7 +21051,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -21031,8 +21076,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -21052,7 +21098,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -21062,7 +21108,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 2044.35,
@@ -21094,9 +21141,10 @@
     "G2": false,
     "G3": false,
     "G4": false,
-    "G5": false,
-    "G6": true,
-    "G7": true
+    "G5": true,
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -21113,7 +21161,7 @@
    }
   },
   "VIJIFIN.NS": {
-   "first_hard_fail": null,
+   "first_hard_fail": "G8",
    "hard_gates": {
     "G1": true,
     "G2": true,
@@ -21121,7 +21169,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -21146,7 +21195,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -30373,34 +30423,20 @@
    }
   },
   "ALT": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
-   },
-   "first_hard_fail": "G2",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
-    "G2": false,
+    "G1": false,
+    "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 3.45,
-    "r": 2.746717,
-    "reason": "ATRI trigger 3.43",
-    "setup": "ATRI",
-    "stop": 3.16,
-    "target": 4.246548,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     true,
     "passed"
    ],
    "setups": {
-    "ATRI": true,
+    "ATRI": false,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
@@ -30459,8 +30495,8 @@
   "ATLO": {
    "decision": {
     "label": "TRADE ON TRIGGER",
-    "quality": 1.0,
-    "reason": "ATRI complete, waiting for a close through 32.99 on 1.4x volume; capped by watch flag (W1)"
+    "quality": 1.5,
+    "reason": "ATRI complete, waiting for a close through 32.99 on 1.4x volume"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -30498,9 +30534,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_ON_TRIGGER",
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": true,
+    "W1": false,
     "W2": false,
     "W3": false
    }
@@ -30520,12 +30556,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 1.24,
-    "r": 1.335327,
-    "reason": "FWDG trigger 1.23",
+    "entry": 1.2,
+    "r": 2.194148,
+    "reason": "FWDG trigger 1.19",
     "setup": "FWDG",
     "stop": 1.1,
-    "target": 1.426946,
+    "target": 1.419415,
     "which": "SPEC"
    },
    "prefilter": [
@@ -30658,7 +30694,7 @@
     "DBOT": true,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -31382,14 +31418,14 @@
   },
   "EWBC": {
    "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed descending triangle on the same chart"
+    "label": "WATCH - WAIT",
+    "quality": 1.1,
+    "reason": "RECT projects 1.72R < 2R"
    },
-   "first_hard_fail": "G2",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
-    "G2": false,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
@@ -31822,12 +31858,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 349.02,
-    "r": 3.704262,
-    "reason": "RECT trigger 347.27",
-    "setup": "RECT",
-    "stop": 335.73,
-    "target": 398.249636,
+    "entry": 352.13,
+    "r": 3.790067,
+    "reason": "FBASE trigger 350.37",
+    "setup": "FBASE",
+    "stop": 338.84,
+    "target": 402.499995,
     "which": "SPEC"
    },
    "prefilter": [
@@ -31844,7 +31880,7 @@
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": true,
+    "RECT": false,
     "SYMM": false,
     "TBOT": false
    },
@@ -31892,27 +31928,13 @@
    }
   },
   "HOLO": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 18.1% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 1.97,
-    "r": 5.201488,
-    "reason": "IHS trigger 1.95",
-    "setup": "IHS",
-    "stop": 1.81,
-    "target": 2.802238,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     false,
@@ -31927,15 +31949,15 @@
     "FLAG": false,
     "FWDG": false,
     "HTF": false,
-    "IHS": true,
+    "IHS": false,
     "RECT": false,
     "SYMM": false,
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_ON_TRIGGER",
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": true,
+    "W1": false,
     "W2": false,
     "W3": false
    }
@@ -32354,27 +32376,13 @@
    }
   },
   "LSPD": {
-   "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.2,
-    "reason": "SYMM complete, waiting for a close through 10.72 on 1.4x volume"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 10.72,
-    "r": 4.062534,
-    "reason": "SYMM trigger 10.66",
-    "setup": "SYMM",
-    "stop": 10.15,
-    "target": 13.035644,
-    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -32391,7 +32399,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": true,
+    "SYMM": false,
     "TBOT": false
    },
    "signal": false,
@@ -32509,25 +32517,25 @@
   },
   "MUSA": {
    "decision": {
-    "label": "WATCH - WAIT",
-    "quality": 0.8,
-    "reason": "ATRI projects 1.33R < 2R"
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 15.3% below the trigger \u2014 not actionable"
    },
-   "first_hard_fail": null,
+   "first_hard_fail": "G5",
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
    },
    "plan": {
-    "entry": 538.82,
-    "r": 1.3303,
-    "reason": "ATRI trigger 536.14",
-    "setup": "ATRI",
-    "stop": 507.88,
-    "target": 579.979468,
+    "entry": 598.27,
+    "r": 3.393664,
+    "reason": "DBOT trigger 595.29",
+    "setup": "DBOT",
+    "stop": 567.33,
+    "target": 703.269969,
     "which": "SPEC"
    },
    "prefilter": [
@@ -32535,7 +32543,7 @@
     "passed"
    ],
    "setups": {
-    "ATRI": true,
+    "ATRI": false,
     "CUP": false,
     "CUPNH": false,
     "DBOT": true,
@@ -32549,9 +32557,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_ON_TRIGGER",
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": true,
+    "W1": false,
     "W2": false,
     "W3": false
    }
@@ -32714,23 +32722,23 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed double top on the same chart"
+    "reason": "fails hard gate G5: 10.2% below the trigger \u2014 not actionable"
    },
-   "first_hard_fail": "G2",
+   "first_hard_fail": "G5",
    "hard_gates": {
     "G1": true,
-    "G2": false,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": false
    },
    "plan": {
     "entry": 36.24,
-    "r": 3.183003,
+    "r": 3.309338,
     "reason": "FWDG trigger 36.05",
     "setup": "FWDG",
     "stop": 33.86,
-    "target": 43.815548,
+    "target": 44.116224,
     "which": "SPEC"
    },
    "prefilter": [
@@ -32795,27 +32803,13 @@
    }
   },
   "NRIM": {
-   "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.0,
-    "reason": "FWDG complete, waiting for a close through 26.30 on 1.4x volume"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 26.3,
-    "r": 2.461228,
-    "reason": "FWDG trigger 26.16",
-    "setup": "FWDG",
-    "stop": 25.13,
-    "target": 29.179637,
-    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -32828,7 +32822,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -33138,27 +33132,13 @@
    }
   },
   "POWI": {
-   "decision": {
-    "label": "WATCH - WAIT",
-    "quality": 1.0,
-    "reason": "stop 9.4% > 8%"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 51.8,
-    "r": 4.235103,
-    "reason": "FWDG trigger 50.57",
-    "setup": "FWDG",
-    "stop": 46.92,
-    "target": 72.467303,
-    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -33171,7 +33151,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -33649,27 +33629,13 @@
    }
   },
   "SEB": {
-   "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.0,
-    "reason": "FWDG complete, waiting for a close through 4184.85 on 1.4x volume"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 4184.85,
-    "r": 2.260799,
-    "reason": "FWDG trigger 4164.02",
-    "setup": "FWDG",
-    "stop": 3905.96,
-    "target": 4815.364171,
-    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -33682,7 +33648,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -33817,27 +33783,13 @@
    }
   },
   "SLVM": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 11.7% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 37.21,
-    "r": 3.645483,
-    "reason": "FWDG trigger 37.02",
-    "setup": "FWDG",
-    "stop": 34.86,
-    "target": 45.776886,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     true,
@@ -33850,7 +33802,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -44227,34 +44179,10 @@
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
-   },
-   "prefilter": [
-    false,
-    "liquidity below 10,000,000"
-   ],
-   "setups": {
-    "S1": false
-   },
-   "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
-   "watch_flags": {
-    "W1": false,
-    "W2": true
-   }
-  },
-  "ADAG": {
-   "first_hard_fail": "G1",
-   "hard_gates": {
-    "G1": false,
-    "G2": true,
-    "G3": false,
-    "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44270,6 +44198,32 @@
     "W2": false
    }
   },
+  "ADAG": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": true,
+    "G3": false,
+    "G4": false,
+    "G5": true,
+    "G6": false,
+    "G7": true,
+    "G8": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {
+    "S1": false
+   },
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {
+    "W1": false,
+    "W2": true
+   }
+  },
   "ADIL": {
    "first_hard_fail": "G2",
    "hard_gates": {
@@ -44278,8 +44232,9 @@
     "G3": false,
     "G4": true,
     "G5": true,
-    "G6": true,
-    "G7": true
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44304,7 +44259,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44329,7 +44285,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44354,7 +44311,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44377,9 +44335,10 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44404,7 +44363,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44428,8 +44388,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44453,8 +44414,9 @@
     "G3": false,
     "G4": true,
     "G5": true,
-    "G6": true,
-    "G7": true
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44474,7 +44436,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance"
+    "reason": "valid base, buy stop above its high"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -44484,7 +44446,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 32.87,
@@ -44517,8 +44480,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44543,7 +44507,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44568,7 +44533,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44592,8 +44558,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44610,28 +44577,43 @@
    }
   },
   "BMY": {
-   "first_hard_fail": "G5",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "valid base, buy stop above its high"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
+   },
+   "plan": {
+    "entry": 68.65,
+    "r": 2.46,
+    "reason": "resistance 68.64, stop 12.1% below entry (line)",
+    "setup": "S1",
+    "stop": 60.36,
+    "target": 89.069999,
+    "which": "STG"
    },
    "prefilter": [
     true,
     "passed"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "BOLD": {
@@ -44647,8 +44629,9 @@
     "G3": false,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 3.17,
@@ -44682,7 +44665,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44705,9 +44689,10 @@
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": false,
-    "G6": true,
-    "G7": true
+    "G5": true,
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44720,7 +44705,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "CDRE": {
@@ -44732,7 +44717,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44756,8 +44742,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": true,
-    "G7": true
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44774,45 +44761,61 @@
    }
   },
   "CET": {
-   "first_hard_fail": "G5",
-   "hard_gates": {
-    "G1": true,
-    "G2": true,
-    "G3": true,
-    "G4": true,
-    "G5": false,
-    "G6": true,
-    "G7": true
-   },
-   "prefilter": [
-    false,
-    "liquidity below 10,000,000"
-   ],
-   "setups": {
-    "S1": false
-   },
-   "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
-   "watch_flags": {
-    "W1": false,
-    "W2": true
-   }
-  },
-  "CHE": {
    "decision": {
-    "label": "AVOID",
+    "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "fails G6: lagging the index over 13 weeks (+3.1% vs +3.3%)"
+    "reason": "valid base, buy stop above its high"
    },
-   "first_hard_fail": "G6",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
+   },
+   "plan": {
+    "entry": 57.4,
+    "r": 4.02,
+    "reason": "resistance 57.39, stop 7.4% below entry (line)",
+    "setup": "S1",
+    "stop": 53.13,
+    "target": 74.549998,
+    "which": "STG"
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {
+    "S1": true
+   },
+   "signal": true,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {
+    "W1": false,
+    "W2": false
+   }
+  },
+  "CHE": {
+   "decision": {
+    "label": "WATCH - WAIT",
+    "quality": 1.0,
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
+   },
+   "first_hard_fail": null,
+   "hard_gates": {
+    "G1": true,
+    "G2": true,
+    "G3": true,
+    "G4": true,
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 557.01,
@@ -44846,7 +44849,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44871,7 +44875,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44896,7 +44901,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -44920,8 +44926,9 @@
     "G3": false,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -44946,7 +44953,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -44971,7 +44979,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45001,7 +45010,8 @@
     "G4": true,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 16.16,
@@ -45035,7 +45045,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45059,8 +45070,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45085,7 +45097,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45110,7 +45123,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45135,7 +45149,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -45155,7 +45170,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -45165,7 +45180,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 462.01,
@@ -45199,7 +45215,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45222,9 +45239,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45248,8 +45266,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45267,19 +45286,20 @@
   },
   "GCBC": {
    "decision": {
-    "label": "AVOID",
+    "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "fails G6: lagging the index over 13 weeks (-3.3% vs +3.3%)"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
-   "first_hard_fail": "G6",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 36.34,
@@ -45311,9 +45331,10 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45336,9 +45357,10 @@
     "G2": false,
     "G3": false,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45361,9 +45383,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -45376,7 +45399,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "GRF": {
@@ -45388,7 +45411,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45412,8 +45436,9 @@
     "G3": false,
     "G4": true,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45436,9 +45461,10 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     true,
@@ -45451,7 +45477,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "HMN": {
@@ -45463,7 +45489,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45488,7 +45515,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45508,7 +45536,7 @@
    "decision": {
     "label": "AVOID",
     "quality": 1.0,
-    "reason": "fails G6: lagging the index over 13 weeks (-1.6% vs +3.3%)"
+    "reason": "fails G6: Mansfield RS -0.1% below its zero line and not improving (+3.1% 4 weeks ago)"
    },
    "first_hard_fail": "G6",
    "hard_gates": {
@@ -45518,7 +45546,8 @@
     "G4": true,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 40.61,
@@ -45551,8 +45580,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45576,8 +45606,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45600,9 +45631,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45615,7 +45647,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "JGH": {
@@ -45627,7 +45659,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45652,7 +45685,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45677,7 +45711,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45690,7 +45725,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "LAB": {
@@ -45701,8 +45736,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45727,7 +45763,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45756,8 +45793,9 @@
     "G3": false,
     "G4": true,
     "G5": true,
-    "G6": true,
-    "G7": true
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 47.68,
@@ -45791,7 +45829,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45808,28 +45847,43 @@
    }
   },
   "LSPD": {
+   "decision": {
+    "label": "AVOID",
+    "quality": 1.0,
+    "reason": "fails G1: close at/below SMA200"
+   },
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
+   },
+   "plan": {
+    "entry": 11.1,
+    "r": 2.31,
+    "reason": "resistance 11.09, stop 12.7% below entry (line)",
+    "setup": "S1",
+    "stop": 9.69,
+    "target": 14.36,
+    "which": "STG"
    },
    "prefilter": [
     false,
     "liquidity below 10,000,000"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "LTRN": {
@@ -45841,7 +45895,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45866,7 +45921,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45891,7 +45947,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -45915,8 +45972,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -45929,24 +45987,25 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "MVBF": {
    "decision": {
-    "label": "AVOID",
+    "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "fails G6: lagging the index over 13 weeks (-1.2% vs +3.3%)"
+    "reason": "valid base, buy stop above its high"
    },
-   "first_hard_fail": "G6",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 32.0,
@@ -45980,7 +46039,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46004,8 +46064,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46030,7 +46091,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46055,7 +46117,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46080,7 +46143,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -46103,9 +46167,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46118,7 +46183,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "NVO": {
@@ -46130,7 +46195,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46148,19 +46214,20 @@
   },
   "OFG": {
    "decision": {
-    "label": "AVOID",
+    "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "fails G6: lagging the index over 13 weeks (+1.2% vs +3.3%)"
+    "reason": "valid base, buy stop above its high"
    },
-   "first_hard_fail": "G6",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 54.48,
@@ -46194,7 +46261,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46218,8 +46286,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     true,
@@ -46244,7 +46313,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46268,8 +46338,9 @@
     "G3": false,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -46294,7 +46365,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46318,8 +46390,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46343,8 +46416,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46361,28 +46435,43 @@
    }
   },
   "PPLI": {
-   "first_hard_fail": "G5",
+   "decision": {
+    "label": "AVOID",
+    "quality": 1.0,
+    "reason": "fails G8: sector index XLC is in Stage 4"
+   },
+   "first_hard_fail": "G8",
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": false
+   },
+   "plan": {
+    "entry": 48.33,
+    "r": 1.97,
+    "reason": "resistance 48.32, stop 14.0% below entry (line)",
+    "setup": "S1",
+    "stop": 41.54,
+    "target": 61.74,
+    "which": "STG"
    },
    "prefilter": [
     true,
     "passed"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "PRIM": {
@@ -46393,8 +46482,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46419,7 +46509,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46444,7 +46535,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46468,8 +46560,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46499,7 +46592,8 @@
     "G4": true,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 79.78,
@@ -46533,7 +46627,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -46557,8 +46652,9 @@
     "G3": false,
     "G4": false,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -46571,7 +46667,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "RMMZ": {
@@ -46583,7 +46679,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46606,9 +46703,10 @@
     "G2": false,
     "G3": true,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46633,7 +46731,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46650,28 +46749,43 @@
    }
   },
   "SBH": {
-   "first_hard_fail": "G5",
+   "decision": {
+    "label": "AVOID",
+    "quality": 1.0,
+    "reason": "fails G8: sector index XLY is in Stage 4"
+   },
+   "first_hard_fail": "G8",
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
+   },
+   "plan": {
+    "entry": 17.3,
+    "r": 1.7,
+    "reason": "resistance 17.29, stop 15.0% below entry (line)",
+    "setup": "S1",
+    "stop": 14.7,
+    "target": 21.71,
+    "which": "STG"
    },
    "prefilter": [
     true,
     "passed"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "SEB": {
@@ -46682,8 +46796,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46708,7 +46823,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46725,24 +46841,39 @@
    }
   },
   "SGU": {
-   "first_hard_fail": "G5",
+   "decision": {
+    "label": "WATCH - WAIT",
+    "quality": 1.0,
+    "reason": "valid base, buy stop above its high; Stage 3: the line flattened after the advance"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": true
+   },
+   "plan": {
+    "entry": 13.76,
+    "r": 2.72,
+    "reason": "resistance 13.75, stop 7.8% below entry (line)",
+    "setup": "S1",
+    "stop": 12.69,
+    "target": 16.67,
+    "which": "STG"
    },
    "prefilter": [
     false,
     "liquidity below 10,000,000"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
@@ -46757,8 +46888,9 @@
     "G3": false,
     "G4": true,
     "G5": true,
-    "G6": true,
-    "G7": true
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -46782,8 +46914,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46806,9 +46939,10 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46833,7 +46967,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46858,7 +46993,8 @@
     "G4": false,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46881,9 +47017,10 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46907,8 +47044,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46928,7 +47066,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "valid base, buy stop above resistance; structural stop more than 15% away"
+    "reason": "valid base, buy stop above its high; structural stop more than 15% away"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -46938,7 +47076,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 138.83,
@@ -46972,7 +47111,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -46997,7 +47137,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -47022,7 +47163,8 @@
     "G4": false,
     "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     true,
@@ -47047,7 +47189,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -47065,19 +47208,20 @@
   },
   "UBS": {
    "decision": {
-    "label": "AVOID",
+    "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "fails G6: lagging the index over 13 weeks (-5.7% vs +3.3%)"
+    "reason": "valid base, buy stop above its high"
    },
-   "first_hard_fail": "G6",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": true
    },
    "plan": {
     "entry": 56.0,
@@ -47110,8 +47254,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": true,
-    "G7": true
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -47134,9 +47279,10 @@
     "G2": true,
     "G3": false,
     "G4": true,
-    "G5": false,
-    "G6": true,
-    "G7": true
+    "G5": true,
+    "G6": false,
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -47149,7 +47295,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": true
+    "W2": false
    }
   },
   "ULTA": {
@@ -47161,7 +47307,8 @@
     "G4": true,
     "G5": false,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -47178,28 +47325,43 @@
    }
   },
   "USPH": {
-   "first_hard_fail": "G5",
+   "decision": {
+    "label": "WATCH - WAIT",
+    "quality": 1.0,
+    "reason": "Stage 2 breakout above the base's high; breakout volume below the threshold"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false,
+    "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
+   },
+   "plan": {
+    "entry": 85.730003,
+    "r": 2.06,
+    "reason": "resistance 85.31, stop 14.1% below entry (line)",
+    "setup": "S1",
+    "stop": 73.61,
+    "target": 110.690005,
+    "which": "STG"
    },
    "prefilter": [
     true,
     "passed"
    ],
    "setups": {
-    "S1": false
+    "S1": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": false,
-    "W2": true
+    "W1": true,
+    "W2": false
    }
   },
   "VGM": {
@@ -47211,7 +47373,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -47224,7 +47387,7 @@
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
-    "W2": false
+    "W2": true
    }
   },
   "VYGR": {
@@ -47236,7 +47399,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -47260,8 +47424,9 @@
     "G3": false,
     "G4": false,
     "G5": false,
-    "G6": false,
-    "G7": true
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -47286,7 +47451,8 @@
     "G4": true,
     "G5": true,
     "G6": true,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -47311,7 +47477,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -47336,7 +47503,8 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,
@@ -47359,9 +47527,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
-    "G6": false,
-    "G7": true
+    "G5": true,
+    "G6": true,
+    "G7": true,
+    "G8": false
    },
    "prefilter": [
     false,
@@ -47384,9 +47553,10 @@
     "G2": true,
     "G3": false,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
-    "G7": true
+    "G7": true,
+    "G8": true
    },
    "prefilter": [
     false,

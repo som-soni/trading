@@ -80,6 +80,63 @@ falling from 58 to 52 still shows growth, but stocks react to the direction.
 Note the first row: **the stock market is itself one of the best leading
 indicators** — which is why waiting for the economy to confirm is too slow.
 
+### 2.5 Consumption — the fastest real-time read on demand
+
+GDP and jobs arrive late; consumption data arrives almost as it happens, and
+it is roughly two-thirds of what GDP measures in both the US and India. Two
+series carry most of the signal.
+
+**Retail sales** (US: the Census Bureau's Advance Retail Sales, out around
+the middle of the following month) is the straightforward one — total
+dollars rung up at shops and restaurants, nominal, not adjusted for prices.
+A slowdown here shows up in retailers' and consumer-goods earnings within a
+quarter or two.
+
+**Vehicle sales** are a sharper read. A car or a two-wheeler is a large,
+discretionary, credit-sensitive purchase — a household nervous about its
+job, or unable to get a loan, delays it first. The US reports light-vehicle
+sales monthly as a **SAAR** (seasonally adjusted annual rate): this month's
+seasonally-adjusted pace, projected over a full year. SAAR is what lets you
+compare March with August without a holiday or weather distorting it.
+
+| Period | US light-vehicle sales (SAAR) | What was happening |
+|---|---|---|
+| Early 2020 | About 17 million | Normal demand, pre-COVID |
+| April 2020 | Under 9 million | Lockdowns shut demand down |
+| 2021–22 | About 13 million | Demand recovered, but a chip shortage left dealers unable to build cars |
+
+The 2021–22 figure looked like weak demand but wasn't: buyers queued and
+paid above sticker price the whole time. The constraint was supply, not
+demand — read the number alongside dealer inventory and waiting lists, not
+alone.
+
+**India's auto sales**, reported monthly by SIAM within the first few days
+of the month, split into two different demand signals. **Passenger
+vehicles** track urban, middle-class demand and loan availability.
+**Two-wheelers** are the better rural and lower-income read. The ratio
+between the two says which part of the economy is carrying demand.
+
+Both carry a strong **festive-season** bump: Indian retailers sell much of
+the year's two-wheelers and cars around Dussehra and Diwali, typically in
+October. Compare a month with the same month a year earlier, not with the
+month before, to avoid the festive effect.
+
+The monsoon's pull on *rural* demand — tractor and two-wheeler sales, FMCG
+— is already covered in §6. Auto sales are the monthly number that shows
+whether that pull is actually showing up.
+
+A faster, broader cross-check in India is **GST collections**: central and
+state goods-and-services tax receipts, announced on the 1st of each month.
+GST is charged on most transactions economy-wide, so its total nowcasts
+nominal consumption weeks before retail-sales-style data arrives.
+
+| Series | Country | Frequency | Typical lag | What it's best at |
+|---|---|---|---|---|
+| Retail sales | US | Monthly | ~2 weeks | Broad nominal consumer spending |
+| Light-vehicle sales (SAAR) | US | Monthly | Days | Discretionary demand; rate- and credit-sensitive |
+| Auto sales (SIAM) | India | Monthly | Days | Urban (PV) vs rural (2W) demand split; watch for supply constraints, not just demand |
+| GST collections | India | Monthly | ~1 day | Fastest broad nowcast of nominal consumption |
+
 ## 3. The four phases, and who tends to lead
 
 | Phase | Economy | Rates and inflation | Sectors that have tended to lead |
@@ -320,6 +377,8 @@ are moving to the large caps, which they see as safer.
 
 - [ ] Latest ISM / India PMI: above or below 50, and which way is it moving?
 - [ ] Jobless claims trend (US); any Sahm-rule talk?
+- [ ] Retail and vehicle sales trend (US); auto sales and GST collections,
+      year-on-year, not month-on-month (India)
 - [ ] XLY/XLP and XLI/XLU: rising or falling over the past three months?
 - [ ] Copper/gold and the 10-year: moving together, or diverging?
 - [ ] Russell 2000 / S&P 500: are small caps leading or lagging?
@@ -335,8 +394,11 @@ are moving to the large caps, which they see as safer.
 - NBER, *US Business Cycle Expansions and Contractions* — the official
   recession dates (nber.org).
 - FRED, Federal Reserve Bank of St. Louis — payrolls (PAYEMS), the
-  unemployment rate (UNRATE), the Sahm rule indicator, GDP (fred.stlouisfed.org).
+  unemployment rate (UNRATE), the Sahm rule indicator, GDP (fred.stlouisfed.org),
+  retail sales (RSAFS) and light-vehicle sales (TOTALSA).
 - Institute for Supply Management — the ISM Report On Business (ismworld.org).
+- Society of Indian Automobile Manufacturers — monthly sales by vehicle
+  category (siam.in).
 - Claudia Sahm, "Direct Stimulus Payments to Individuals" (Hamilton Project,
   2019) — the paper that introduced the Sahm rule.
 - Reserve Bank of India — sectoral deployment of bank credit, OBICUS survey,

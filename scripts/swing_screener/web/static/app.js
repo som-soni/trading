@@ -288,8 +288,8 @@ function openChartFromList(market, symbol, symbols, labelText, back, setup = nul
 }
 /** The markets, from config (GET /api/markets) — the selector, badges and currency all come from this list,
  *  so a new country needs no UI change. The two defaults only cover the moment before it loads. */
-let MKTS = [{ key: "us", name: "US", exchange: "NYSE · Nasdaq", badge: "US", flag: "🇺🇸", currency: "$", suffix: "" },
-  { key: "india", name: "India", exchange: "NSE", badge: "NSE", flag: "🇮🇳", currency: "₹", suffix: ".NS" }];
+let MKTS = [{ key: "us", name: "US", exchange: "NYSE · Nasdaq", badge: "US", flag: "🇺🇸", currency: "$", suffix: "", indices: [] },
+  { key: "india", name: "India", exchange: "NSE", badge: "NSE", flag: "🇮🇳", currency: "₹", suffix: ".NS", indices: [] }];
 const MKT_BADGE = Object.fromEntries(MKTS.map((m) => [m.key, m.badge]));
 const isMarket = (m) => MKTS.some((x) => x.key === m);
 const mktInfo = (m) => MKTS.find((x) => x.key === m) || MKTS[0];
@@ -401,7 +401,7 @@ const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyV
 const alpha = (hex, a) => { const n = parseInt(hex.replace("#", ""), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
 function chartTheme() {
   return {
-    layout: { background: { color: cssVar("--panel") }, textColor: cssVar("--chart-text"), fontSize: 11, panes: { separatorColor: cssVar("--line-2"), separatorHoverColor: cssVar("--line-3") } },
+    layout: { background: { color: cssVar("--panel") }, textColor: cssVar("--chart-text"), fontSize: 11, panes: { separatorColor: cssVar("--line-2"), separatorHoverColor: cssVar("--line-3") }, attributionLogo: false },
     grid: { vertLines: { color: cssVar("--chart-grid") }, horzLines: { color: cssVar("--chart-grid") } },
     rightPriceScale: { borderColor: cssVar("--line-2") }, timeScale: { borderColor: cssVar("--line-2"), rightOffset: 6, minBarSpacing: 0.05 },
   };
@@ -1683,11 +1683,13 @@ const DEC_RANK = (d) => (/^TRADE - HIGH/i.test(d) ? 0 : /^TRADE/i.test(d) ? 1 : 
 /** the most actionable plan across the strategies that flagged a name */
 const bestPlan = (e) => [...e.strategies].sort((a, b) => DEC_RANK(a.decision) - DEC_RANK(b.decision))[0] || {};
 
-/** small text prompt in the app's own style (resolves to null on cancel) */
-function askText(title, value = "", placeholder = "") {
+/** small text prompt in the app's own style (resolves to null on cancel); `suggestions` adds a datalist */
+function askText(title, value = "", placeholder = "", suggestions = []) {
   return new Promise((resolve) => {
+    const dlid = suggestions.length ? `askdl${Math.random().toString(36).slice(2)}` : "";
     const m = el(`<div class="smodal"><div class="smodal-card settings"><div class="sm-head"><b>${esc(title)}</b></div>
-      <div class="sm-form"><input value="${esc(value)}" placeholder="${esc(placeholder)}"></div>
+      <div class="sm-form"><input value="${esc(value)}" placeholder="${esc(placeholder)}" ${dlid ? `list="${dlid}"` : ""}>
+      ${dlid ? `<datalist id="${dlid}">${suggestions.map((s) => `<option value="${esc(s)}">`).join("")}</datalist>` : ""}</div>
       <div class="sm-foot"><span class="spacer"></span><button class="ghost" data-a="cancel">Cancel</button><button class="primary" data-a="ok">Save</button></div></div></div>`);
     document.body.append(m);
     const inp = m.querySelector("input"); inp.focus(); inp.select();
@@ -2076,62 +2078,176 @@ async function macroSection(card, tiles, mkt) {
     + `<div class="td-foot"><a class="small" href="#/learn/macro-rates">Macro guides →</a></div>`;
 }
 
+/** An overlay index/ETF plotted beside a rate or indicator (very different units and scale) only makes
+ *  the two comparable by eye when it is rebased to 100 at the left edge of whatever range is on screen —
+ *  raw levels on a separate axis make the overlay's slope meaningless at a glance, and look broken at
+ *  that (a NIFTY-sized number reading in the tens of thousands next to a 5% yield). `points`: [{time,
+ *  value}] sorted by time; `fromTime`: the visible range's start ("YYYY-MM-DD"), or null for its full
+ *  history, in which case its own first point is the base. */
+function rebase100(points, fromTime) {
+  if (!points?.length) return points;
+  const base = (fromTime ? points.find((p) => p.time >= fromTime) : null) || points[0];
+  if (!base?.value) return points;
+  return points.map((p) => ({ time: p.time, value: (p.value / base.value) * 100 }));
+}
+
+/** lightweight-charts' own `fitContent()`/`setVisibleRange()` do not reliably widen the view beyond
+ *  whatever `barSpacing` the chart already has (confirmed: both only PAN within the current zoom level —
+ *  ask for "10 years" on a chart still at its ~6px/bar construction default and you silently get only
+ *  the last ~(width/6) bars, which is what long/sparse series like decades of a monthly indicator, or a
+ *  10Y+ rate history next to a daily index overlay, were doing: showing a recent sliver, or — worse — a
+ *  near-arbitrary old slice once an overlay's extra bars shifted that default window. `barSpacing` can only
+ *  be set reliably at chart CONSTRUCTION (`applyOptions` afterwards does not take effect), so the fix a
+ *  range change needs is: filter each series down to the exact window first, size `barSpacing` to fit
+ *  exactly that many bars in the container, and rebuild the chart with it — never ask an existing chart
+ *  to "show more history," build a new one sized for exactly the history being shown. */
+function fitBarSpacing(width, maxCount) {
+  return Math.max(0.001, (width || 900) / Math.max(1, maxCount));
+}
+
+/** a lightweight-charts crosshair/time param's `time` as a plain "YYYY-MM-DD" string — it comes back as
+ *  the same string we set for a daily series, but as a {year,month,day} object for some chart types. */
+function rawTime(t) {
+  if (!t) return null;
+  if (typeof t === "string") return t;
+  if (typeof t === "object" && t.year) return `${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}`;
+  return null;
+}
+const crosshairDate = (t) => { const r = rawTime(t); return r ? prettyDate(r) : ""; };
+
+/** the most recent point at or before `time` in a sorted [{time,value}] series — a monthly/quarterly
+ *  series sharing a chart with a daily overlay only has a real data point on a few of the x-axis's (now
+ *  daily-granularity) positions, so `seriesData.get(series)` comes back empty on most hovers; the last
+ *  released figure as of the hovered date is what the reader actually wants there. */
+function valueAsOf(points, time) {
+  if (!points?.length || !time) return null;
+  let v = null;
+  for (const p of points) { if (p.time <= time) v = p.value; else break; }
+  return v;
+}
+
 /** Today's rates card (/api/rates): the market's policy rate and bill / bond yields over the long run —
  *  a chart with a range picker and a legend that toggles each line (set rates drawn as steps), beside a
  *  table of each rate's latest value, its 1-month / 1-year / 5-year change and when a set rate last moved. */
 const RATE_COLORS = ["#f59e0b", "#a855f7", "#64748b", "#14b8a6", "#3b82f6", "#ec4899", "#ef4444"];
 const RATE_RANGES = [["1Y", 1], ["5Y", 5], ["10Y", 10], ["20Y", 20], ["Max", 0]];
-async function ratesSection(card, mkt) {
+async function ratesSection(card, mkt, overlay = null) {
   const d = await api(`/api/rates?market=${mkt}`).catch(() => null);
   if (!card.isConnected) return;
   const rs = d?.rates || [];
   const title = `Rates & yields · ${esc(mktInfo(mkt).name)}`;
   if (!rs.length) { card.innerHTML = tdHead(title) + `<div class="muted small">${d ? "No rates stored yet — they load with the daily <code>rates</code> job." : "Could not load the rates."}</div>`; return; }
-  const bp = (v) => (v == null ? '<span class="muted">—</span>' : `<span class="${v > 0 ? "pos" : v < 0 ? "neg" : "muted"}">${v > 0 ? "+" : ""}${Math.round(v)}bp</span>`);
+  const bp = (v, note) => (v == null ? `<span class="muted"${note ? ` title="${esc(note)}"` : ""}>—</span>` : `<span class="${v > 0 ? "pos" : v < 0 ? "neg" : "muted"}">${v > 0 ? "+" : ""}${Math.round(v)}bp</span>`);
   const color = Object.fromEntries(rs.map((x, i) => [x.key, RATE_COLORS[i % RATE_COLORS.length]]));
   const shown = new Set(store.get(`ratesShown_${mkt}`, null) || rs.filter((x) => x.show).map((x) => x.key));
   const range = store.get("ratesRange", "10Y");
   const sources = [...new Set(rs.map((x) => x.source))].join(" · ");
-  const rows = rs.map((x) => `<tr title="${esc(x.label)} — ${esc(x.source)}, stored from ${prettyDate(x.first)}">
+  const rows = rs.map((x) => {
+    const noHist = (span) => `History starts ${prettyDate(x.first)} — not old enough yet for a ${span} change.`;
+    return `<tr data-k="${esc(x.key)}" class="${shown.has(x.key) ? "" : "off"}" title="${esc(x.label)} — ${esc(x.source)}, stored from ${prettyDate(x.first)}. Click to show/hide its line; hover to highlight it.">
       <td><i class="rt-sw" style="background:${color[x.key]}"></i>${esc(x.short)}${x.since ? `<div class="muted small">since ${prettyDate(x.since.date)} (${bp((x.since.to - x.since.from) * 100)})</div>` : ""}</td>
       <td class="num"><b>${x.value.toFixed(2)}%</b><div class="muted small">${prettyDate(x.date)}</div></td>
-      <td class="num">${bp(x.m1)}</td><td class="num">${bp(x.y1)}</td><td class="num">${bp(x.y5)}</td></tr>`).join("");
-  card.innerHTML = tdHead(title, `<span class="muted small">${esc(sources)}</span>${info(`<p>Each market's policy rate and its bill and bond yields, with as much history as is stored. Set rates (the Fed's target, RBI's repo rate) are drawn as steps; the table says when each last moved.</p><p>US: FRED, back to the 1950s–80s by series, refreshed daily (a day behind). India: RBI's daily published rates; the repo rate's history before that is a list of RBI's announced changes, and the 10-year yield's is monthly (OECD) from 2011. T-bill and other G-sec history builds up from the first daily read.</p><p>Click a legend entry to show or hide its line.</p>`)}`)
+      <td class="num">${bp(x.m1, noHist("1-month"))}</td><td class="num">${bp(x.y1, noHist("1-year"))}</td><td class="num">${bp(x.y5, noHist("5-year"))}</td></tr>`;
+  }).join("");
+  card.innerHTML = tdHead(title, `<span class="muted small">${esc(sources)}</span>${info(`<p>Each market's policy rate and its bill and bond yields, with as much history as is stored. Set rates (the Fed's target, RBI's repo rate) are drawn as steps; the table says when each last moved.</p><p>US: FRED, back to the 1950s–80s by series, refreshed daily (a day behind). India: RBI's daily published rates; the repo rate's history before that is a list of RBI's announced changes, and the 10-year yield's is monthly (OECD) from 2011. T-bill and other G-sec history builds up from the first daily read.</p><p>Click a legend entry or a table row to show or hide its line; hover either to highlight it.</p>`)}`)
     + `<div class="rt-wrap"><div class="rt-chart-col">
         <div class="rt-bar"><div class="rt-legend">${rs.map((x) => `<button data-k="${x.key}" class="${shown.has(x.key) ? "on" : ""}"><i class="rt-sw" style="background:${color[x.key]}"></i>${esc(x.short)}</button>`).join("")}</div>
           ${segmented(RATE_RANGES.map(([k]) => [k, k]), range, "rt-range")}</div>
+        <div class="rt-readout muted small">Hover the chart for each line's value on a date.</div>
         <div class="rt-chart"></div></div>
       <table class="rt-tbl"><thead><tr><th>Rate</th><th class="num">Latest</th><th class="num">1M</th><th class="num">1Y</th><th class="num">5Y</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 
   const el_ = card.querySelector(".rt-chart");
-  const chart = LC.createChart(el_, { autoSize: true, ...chartTheme(), crosshair: { mode: LC.CrosshairMode.Normal },
-    localization: { priceFormatter: (v) => `${v.toFixed(2)}%` } });
-  const series = {};
-  for (const x of rs) {
-    series[x.key] = chart.addSeries(LC.LineSeries, { color: color[x.key], lineWidth: x.kind === "policy" ? 2 : 1.5, lineType: x.step ? LC.LineType.WithSteps : LC.LineType.Simple,
-      priceLineVisible: false, lastValueVisible: shown.has(x.key), visible: shown.has(x.key), title: "" });
-    series[x.key].setData(x.points.map(([t, v]) => ({ time: t, value: v })));
-  }
   const last = rs.map((x) => x.date).sort().at(-1);
-  const applyRange = (r) => {
+  const readout = card.querySelector(".rt-readout"), readoutDefault = readout.textContent;
+  let chart = null, series = {}, os = null;
+
+  // (re)builds the chart from scratch, sized for exactly the window being shown — see fitBarSpacing
+  const build = (r) => {
     const yrs = Object.fromEntries(RATE_RANGES)[r];
-    if (!yrs) { chart.timeScale().fitContent(); return; }
-    const from = new Date(last); from.setFullYear(from.getFullYear() - yrs);
-    chart.timeScale().setVisibleRange({ from: from.toISOString().slice(0, 10), to: last });
+    const from = yrs ? (() => { const f = new Date(last); f.setFullYear(f.getFullYear() - yrs); return f.toISOString().slice(0, 10); })() : null;
+    const filtered = rs.map((x) => x.points.filter(([t]) => !from || t >= from));
+    const overlayFiltered = overlay ? overlay.points.filter((p) => !from || p.time >= from) : null;
+    const barSpacing = fitBarSpacing(el_.clientWidth, Math.max(1, ...filtered.map((f) => f.length), overlayFiltered?.length || 0));
+
+    if (chart) chart.remove();
+    const theme = chartTheme();
+    chart = LC.createChart(el_, { autoSize: true, ...theme, crosshair: { mode: LC.CrosshairMode.Normal },
+      leftPriceScale: { visible: !!overlay, borderColor: cssVar("--line-2") },
+      // the chart spans most of the page width, so a plain mouse wheel over it must scroll the PAGE, not
+      // zoom the chart — drag-to-pan and pinch (touch) still work, only wheel-zoom is off
+      handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
+      timeScale: { ...theme.timeScale, barSpacing, minBarSpacing: 0.001 } });
+    series = {};
+    rs.forEach((x, i) => {
+      // lastValueVisible off on every line: with up to seven close-together yields these floating badges
+      // collide and cover each other (and the axis); the table's "Latest" column already shows the same
+      // numbers without that problem, and the crosshair readout below covers any point in the history
+      series[x.key] = chart.addSeries(LC.LineSeries, { color: color[x.key], lineWidth: x.kind === "policy" ? 2 : 1.5, lineType: x.step ? LC.LineType.WithSteps : LC.LineType.Simple,
+        priceLineVisible: false, lastValueVisible: false, visible: shown.has(x.key), title: "",
+        priceFormat: { type: "percent", precision: 2, minMove: 0.01 } });
+      series[x.key].setData(filtered[i].map(([t, v]) => ({ time: t, value: v })));
+    });
+    // its own scale (left), rebased to 100 at the start of the now-filtered window rather than its raw
+    // level, so its *shape* is comparable to the rate lines' % at every zoom — a raw index level on a
+    // separate axis would move the overlay's line without ever telling you whether that was a 1% or 50% change
+    os = overlay ? chart.addSeries(LC.LineSeries, { color: "#9ca3af", lineWidth: 1.5, priceScaleId: "left",
+      priceLineVisible: false, lastValueVisible: true, title: `${overlay.label} (=100)`,
+      priceFormat: { type: "price", precision: 1, minMove: 0.1 } }) : null;
+    if (os) os.setData(rebase100(overlayFiltered, null));
+
+    // crosshair readout: every VISIBLE line's value (and the overlay's) at the hovered date — the one
+    // thing the native last-value badges and the table (today's value only) can't give you
+    chart.subscribeCrosshairMove((param) => {
+      if (!param.time) { readout.textContent = readoutDefault; return; }
+      const parts = [`<b>${esc(crosshairDate(param.time))}</b>`];
+      for (const x of rs) {
+        if (!shown.has(x.key)) continue;
+        const v = param.seriesData.get(series[x.key])?.value;
+        if (v == null) continue;
+        parts.push(`<span class="rt-rv"><i class="rt-sw" style="background:${color[x.key]}"></i>${esc(x.short)} <b>${v.toFixed(2)}%</b></span>`);
+      }
+      if (os) {
+        const ov = param.seriesData.get(os)?.value;
+        if (ov != null) parts.push(`<span class="rt-rv"><i class="rt-sw" style="background:#9ca3af"></i>${esc(overlay.label)} <b>${ov.toFixed(1)}</b></span>`);
+      }
+      readout.innerHTML = parts.length > 1 ? parts.join(" ") : `${parts[0]} <span class="muted">no visible lines have data here</span>`;
+    });
   };
-  applyRange(range);
+  build(range);
   card.querySelectorAll(".rt-range button").forEach((b) => b.onclick = () => {
     card.querySelectorAll(".rt-range button").forEach((o) => o.classList.toggle("on", o === b));
-    store.set("ratesRange", b.dataset.v); applyRange(b.dataset.v);
+    store.set("ratesRange", b.dataset.v); build(b.dataset.v);
   });
-  card.querySelectorAll(".rt-legend button").forEach((b) => b.onclick = () => {
-    const k = b.dataset.k, on = !shown.has(k);
+
+  // legend chip and table row both toggle / highlight the same line — two entry points to one series
+  const toggle = (k) => {
+    const on = !shown.has(k);
     on ? shown.add(k) : shown.delete(k);
-    b.classList.toggle("on", on);
-    series[k].applyOptions({ visible: on, lastValueVisible: on });
+    card.querySelector(`.rt-legend button[data-k="${CSS.escape(k)}"]`)?.classList.toggle("on", on);
+    card.querySelector(`.rt-tbl tr[data-k="${CSS.escape(k)}"]`)?.classList.toggle("off", !on);
+    series[k]?.applyOptions({ visible: on });
     store.set(`ratesShown_${mkt}`, [...shown]);
+  };
+  const highlight = (k) => {
+    for (const [key, s] of Object.entries(series)) {
+      if (!shown.has(key)) continue;
+      s.applyOptions({ color: !k || key === k ? color[key] : alpha(color[key], 0.15) });
+    }
+  };
+  card.querySelectorAll(".rt-legend button").forEach((b) => {
+    b.onclick = () => toggle(b.dataset.k);
+    b.onmouseenter = () => highlight(b.dataset.k);
+    b.onmouseleave = () => highlight(null);
   });
-  { const prev = cleanup; cleanup = () => { chart.remove(); prev(); }; }
+  card.querySelectorAll(".rt-tbl tbody tr").forEach((tr) => {
+    tr.onclick = () => toggle(tr.dataset.k);
+    tr.onmouseenter = () => highlight(tr.dataset.k);
+    tr.onmouseleave = () => highlight(null);
+  });
+
+  { const prev = cleanup; cleanup = () => { chart?.remove(); prev(); }; }
 }
 
 /** a sparkline of a group's RS line (values relative to its first point) */
@@ -2141,6 +2257,189 @@ function sparkSvg(vals, w = 90, h = 22) {
   const pts = vals.map((v, i) => `${(i / (vals.length - 1)) * w},${h - 2 - ((v - lo) / span) * (h - 4)}`).join(" ");
   const up = vals.at(-1) >= vals[0];
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}"><polyline points="${pts}" fill="none" stroke="${up ? "#26a69a" : "#ef5350"}" stroke-width="1.5"/></svg>`;
+}
+
+// ------------------------------------------------------------- macro page
+
+/** the one line explaining a category with no free, machine-readable source for this market yet, instead
+ *  of leaving it blank or erroring. */
+const IND_GAPS = {
+  india: { consumption: "India vehicle sales (SIAM) and retail sales have no free, machine-readable release — monthly PDF only — so they aren't tracked here yet." },
+};
+const IND_RANGES = [["1Y", 1], ["5Y", 5], ["10Y", 10], ["Max", 0]];
+const IND_CAT_COLOR = { inflation: "#f59e0b", growth: "#3b82f6", consumption: "#14b8a6" };
+const IND_CAT_LABEL = { inflation: "Inflation", growth: "Growth", consumption: "Consumption" };
+/** one indicator's card: label, current value, 1M/1Y change and its own small chart (filled in by
+ *  indicatorsSection once every card is in the DOM, so every indicator gets a real chart — not just a
+ *  sparkline — the same as the rates card above it. */
+// a series lands weeks after its period ends even on time (FRED's own lag, or an OECD mirror of a
+// national release); flag it stale only well past that normal lag, so a merely-recent print never shows
+// an alarming chip — monthly: ~6 weeks; quarterly: ~4 months
+const IND_STALE_DAYS = { monthly: 45, quarterly: 120 };
+const IND_PERIOD = { monthly: "MoM", quarterly: "QoQ" };
+function indicatorCard(x) {
+  const num = (v, dp) => v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  const chg = (v) => (v == null ? "—" : `<span class="${v >= 0 ? "pos" : "neg"}">${v > 0 ? "+" : ""}${num(v, Math.abs(v) < 10 ? 1 : 0)}${x.unit === "%" ? "pp" : "%"}</span>`);
+  const val = x.unit === "%" ? `${num(x.value, 1)}%` : `${num(x.value, Math.abs(x.value) >= 100 ? 0 : 1)} <span class="muted small">${esc(x.unit)}</span>`;
+  const ageDays = (Date.now() - new Date(x.date)) / 86400000;
+  const staleAfter = IND_STALE_DAYS[x.freq] ?? 45;
+  const stale = ageDays > staleAfter;
+  const staleMonths = Math.max(1, Math.round(ageDays / 30));
+  const period = IND_PERIOD[x.freq] ?? "1M";
+  return `<div class="ind-card" data-k="${esc(x.key)}">
+      <div class="ind-card-h" title="${esc(x.label)} — ${esc(x.why)} Click to expand.">
+        <b>${esc(x.short)}</b><span class="tag neutral" style="color:${IND_CAT_COLOR[x.category] || ""}">${esc(IND_CAT_LABEL[x.category] || "")}</span><span class="spacer"></span>
+        <span class="ind-val${stale ? " muted" : ""}">${val}${x.unit === "%" ? ' <span class="muted small">YoY</span>' : ""}</span><span class="ind-chev">⌄</span></div>
+      <div class="muted small">${period} ${chg(x.m1)} · YoY ${chg(x.y1)} · as of ${esc(prettyDate(x.date))}${stale ? ` <span class="tag warn" title="No fresher release found yet — this series updates ${x.freq}, and FRED's own release/mirror lag can run weeks behind the statistics office's original.">stale · ${staleMonths}mo</span>` : ""}</div>
+      <div class="ind-readout muted small"></div>
+      <div class="ind-chart"></div></div>`;
+}
+/** Growth, inflation and consumption indicators card (/api/indicators): every indicator gets its own
+ *  always-visible chart (lightweight-charts, same as the rates card), grouped by category, with one range
+ *  picker shared across all of them. `overlay` ({symbol, label, points}), when given, is drawn on every
+ *  mini chart's own left-hand axis — the index the macro page's picker chose to compare against. */
+async function indicatorsSection(card, mkt, overlay = null) {
+  const d = await api(`/api/indicators?market=${mkt}`).catch(() => null);
+  if (!card.isConnected) return;
+  const rows = d?.indicators || [];
+  const title = `Growth, inflation & consumption · ${esc(mktInfo(mkt).name)}`;
+  if (!rows.length) { card.innerHTML = tdHead(title) + `<div class="muted small">${d ? "No indicators stored yet — they load with the daily <code>indicators</code> job." : "Could not load the indicators."}</div>`; return; }
+  // one flowing grid, not a sub-grid per category (a category with one indicator left most of its row
+  // empty) — each card carries its own category tag instead
+  const ordered = ["inflation", "growth", "consumption"].flatMap((c) => rows.filter((x) => x.category === c));
+  const gaps = Object.entries(IND_GAPS[mkt] || {}).map(([cat, text]) => `<div class="muted small ind-gap">${esc(IND_CAT_LABEL[cat] || cat)} — ${esc(text)}</div>`).join("");
+  const range = store.get("indRange", "10Y");
+  card.innerHTML = tdHead(title, `${segmented(IND_RANGES.map(([k]) => [k, k]), range, "ind-range")}${info("<p>Growth, inflation and consumption indicators, as a year-on-year percent change where that reads better than the raw level (vehicle sales is the one shown as its raw monthly rate — SAAR, seasonally adjusted annual rate). Source: FRED's free series, mostly monthly or quarterly, so these move far less often than a price.</p><p>Click a card's header to expand it.</p>")}`)
+    + `<div class="ind-cards">${ordered.map(indicatorCard).join("")}</div>${gaps}`;
+
+  // expanded cards (bigger chart, double width) persist per market, same spirit as the rates legend
+  const expandedKey = `indExpanded_${mkt}`;
+  const expanded = new Set(store.get(expandedKey, []));
+  card.querySelectorAll(".ind-card").forEach((el) => el.classList.toggle("expanded", expanded.has(el.dataset.k)));
+
+  // one entry per indicator: { build(range), remove() } — `build` tears down and recreates that card's
+  // chart sized for exactly the window being shown (see fitBarSpacing; same reasoning as ratesSection)
+  const charts = {};
+  for (const x of rows) {
+    const cardEl = card.querySelector(`.ind-card[data-k="${CSS.escape(x.key)}"]`);
+    const el_ = cardEl?.querySelector(".ind-chart");
+    if (!el_) continue;
+    const readout = cardEl.querySelector(".ind-readout");
+    let c = null;
+    const build = (r) => {
+      const yrs = Object.fromEntries(IND_RANGES)[r];
+      const from = yrs ? (() => { const f = new Date(x.date); f.setFullYear(f.getFullYear() - yrs); return f.toISOString().slice(0, 10); })() : null;
+      const filteredPts = x.points.filter(([t]) => !from || t >= from);
+      const overlayFiltered = overlay ? overlay.points.filter((p) => !from || p.time >= from) : null;
+      const barSpacing = fitBarSpacing(el_.clientWidth, Math.max(1, filteredPts.length, overlayFiltered?.length || 0));
+
+      if (c) c.remove();
+      const theme = chartTheme();
+      c = LC.createChart(el_, { autoSize: true, ...theme, handleScroll: false, handleScale: false,
+        leftPriceScale: { visible: !!overlay, borderColor: cssVar("--line-2") },
+        timeScale: { ...theme.timeScale, barSpacing, minBarSpacing: 0.001 } });
+      const s = c.addSeries(LC.LineSeries, { color: IND_CAT_COLOR[x.category] || "#3b82f6", lineWidth: 1.5, priceLineVisible: false, lastValueVisible: true, title: "",
+        priceFormat: x.unit === "%" ? { type: "percent", precision: 1, minMove: 0.1 } : { type: "price", precision: 1, minMove: 0.1 } });
+      const pts = filteredPts.map(([t, v]) => ({ time: t, value: v }));
+      s.setData(pts);
+      // its own scale (left), rebased to 100 at the start of the now-filtered window, not its raw level —
+      // see the matching note in ratesSection
+      const os = overlay ? c.addSeries(LC.LineSeries, { color: "#9ca3af", lineWidth: 1, priceScaleId: "left", priceLineVisible: false, lastValueVisible: true, title: "",
+        priceFormat: { type: "price", precision: 1, minMove: 0.1 } }) : null;
+      if (os) os.setData(rebase100(overlayFiltered, null));
+
+      // crosshair readout: the native last-value badge only shows today's figure (already in the header);
+      // hovering any earlier point on these mostly-monthly series is otherwise a dead end. The overlay is
+      // daily, so once it's on the chart the x-axis has daily granularity too — this series only has a
+      // point on a few of those positions, so read the last-released figure as of the hovered date
+      // (valueAsOf) rather than requiring an exact match (seriesData.get, which would come back empty
+      // almost everywhere).
+      c.subscribeCrosshairMove((param) => {
+        const t = rawTime(param.time);
+        if (!t) { readout.innerHTML = ""; return; }
+        const parts = [`<b>${esc(prettyDate(t))}</b>`];
+        const v = valueAsOf(pts, t);
+        if (v != null) parts.push(`<b>${v.toFixed(x.unit === "%" ? 1 : (Math.abs(v) >= 100 ? 0 : 1))}${x.unit === "%" ? "%" : ""}</b>`);
+        if (os) { const ov = param.seriesData.get(os)?.value; if (ov != null) parts.push(`${esc(overlay.label)} ${ov.toFixed(1)}`); }
+        readout.innerHTML = parts.join(" · ");
+      });
+    };
+    build(range);
+    charts[x.key] = { build, remove: () => c?.remove() };
+  }
+  card.querySelectorAll(".ind-range button").forEach((b) => b.onclick = () => {
+    card.querySelectorAll(".ind-range button").forEach((o) => o.classList.toggle("on", o === b));
+    store.set("indRange", b.dataset.v);
+    Object.values(charts).forEach(({ build }) => build(b.dataset.v));
+  });
+  card.querySelectorAll(".ind-card-h").forEach((h) => h.onclick = () => {
+    const el = h.closest(".ind-card"), k = el.dataset.k;
+    const on = !expanded.has(k);
+    on ? expanded.add(k) : expanded.delete(k);
+    el.classList.toggle("expanded", on);
+    store.set(expandedKey, [...expanded]);
+    // the card is now a different width (collapsed/expanded) — rebuild so bar spacing fits it again
+    const curRange = card.querySelector(".ind-range button.on")?.dataset.v || range;
+    charts[k]?.build(curRange);
+  });
+  { const prev = cleanup; cleanup = () => { Object.values(charts).forEach(({ remove }) => remove()); prev(); }; }
+}
+
+/** this market's broad-index and sector ETF/index options (from /api/markets, config-driven — never
+ *  hardcoded here), for the "compare against an index" picker. `opts` is that market's `indices` list. */
+function compareSelect(opts, selected) {
+  const group = (kind, label) => {
+    const xs = opts.filter((o) => o.kind === kind);
+    return xs.length ? `<optgroup label="${esc(label)}">${xs.map((o) => `<option value="${esc(o.symbol)}" ${o.symbol === selected ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</optgroup>` : "";
+  };
+  return `<select class="ind-compare" aria-label="Compare the charts above with an index">
+      <option value="">Compare with an index…</option>${group("Broad", "Broad index")}${group("Sector", "Sector")}</select>`;
+}
+/** The Macro tab: this market's full macro backdrop — market-derived stress first (it moves daily, so it
+ *  is the freshest read), then policy rate & yields, then inflation, growth and consumption — each with
+ *  its current value and full history. An optional index picker overlays that index's price on every
+ *  chart below it (left axis), so a rate or inflation move can be read against what it did to the index —
+ *  per the macro guides' own point that prices often move before the data does. Reuses the Today page's
+ *  rates card (ratesSection) and macro strip (macroTiles) as-is; indicatorsSection is the only new
+ *  renderer, for the indicators this tab adds (CPI, GDP, industrial production, retail & vehicle sales). */
+async function macroPage(alive, mkt) {
+  mkt = pageMarket(mkt);
+  document.title = "Macro · Trading";
+  const compare = store.get(`macroCompare_${mkt}`, "");
+  // the real card skeleton renders synchronously, right away — no generic blank page first (switching
+  // market used to collapse everything to three bare "Loading…" lines, then jump back once the index
+  // picker's own fetch returned; MKTS almost always already has `indices` by the time this page opens,
+  // so there is nothing worth blocking first paint on)
+  $view.innerHTML = pageHead("Macro", { extra: marketSeg(mkt),
+      context: `${compareSelect(mktInfo(mkt).indices || [], compare)}${info("<p>This market's macro backdrop: market-derived stress (the dollar, oil, gold, credit, volatility — priced every day), the policy rate and bond yields, inflation, growth and consumption — each with its current value and as much history as is stored.</p><p>Macro moves slowly and sets the backdrop, not the trade: a headwind argues for smaller size and tighter selection, not for selling a working setup.</p><p>Pick an index to overlay its price on every chart below (its own axis, on the left) and compare timing by eye.</p>")}` })
+    + `<div class="sec-card td-card" id="mc-derived">${tdHead(`Market-derived · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:160px">Loading…</div></div>
+    <div class="sec-card td-rates-card" id="mc-rates">${tdHead(`Rates & yields · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:380px">Loading…</div></div>
+    <div class="sec-card td-card" id="mc-ind">${tdHead(`Growth, inflation & consumption · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:480px">Loading…</div></div>`;
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/macro/${b.dataset.v}`); });
+  const wireCompare = () => { const sel = $view.querySelector(".ind-compare"); if (sel) sel.onchange = (e) => { store.set(`macroCompare_${mkt}`, e.target.value); route(); }; };
+  wireCompare();
+  // covers the rare case MKTS hadn't finished loading its `indices` yet (a first, direct load of this
+  // page before the app-boot /api/markets call returns) — replaces only the <select>, nothing else,
+  // and only if it still looks like the empty fallback
+  api("/api/markets").then((xs) => {
+    if (!alive()) return;
+    const fresh = xs?.find((m) => m.key === mkt)?.indices;
+    const sel = $view.querySelector(".ind-compare");
+    if (fresh?.length && sel && sel.options.length <= 1) { sel.outerHTML = compareSelect(fresh, compare); wireCompare(); }
+  }).catch(() => {});
+
+  const raw = compare ? await api(`/api/prices?market=${mkt}&symbol=${encodeURIComponent(compare)}&tf=D&bars=100000`).catch(() => null) : null;
+  if (!alive()) return;
+  const overlay = raw ? { symbol: compare, label: compare, points: (raw.ohlc ? raw.candles.map((c) => ({ time: c.time, value: c.close })) : raw.line) } : null;
+
+  ratesSection($view.querySelector("#mc-rates"), mkt, overlay);
+  indicatorsSection($view.querySelector("#mc-ind"), mkt, overlay);
+  const derived = $view.querySelector("#mc-derived");
+  const dd = await api(`/api/macro?market=${mkt}`).catch(() => null);
+  if (!alive() || !derived.isConnected) return;
+  derived.innerHTML = tdHead(`Market-derived · ${esc(mktInfo(mkt).name)}`, info("<p>The dollar, oil, gold, copper, high-yield credit and implied volatility — priced every day, so they lead the slower growth and inflation numbers below.</p>"))
+    + (mkt === "india" ? `<div class="muted small ind-gap">Includes global inputs (US 10-year yield, the dollar) that drive foreign flows into India, beside India's own oil and currency.</div>` : "")
+    + (dd?.series?.length ? `<div class="mstrip td-tiles">${macroTiles(dd.series)}</div>` : `<div class="muted small">No market-derived series stored yet — they load with the daily <code>indexes</code> job.</div>`);
 }
 
 /** Relative Rotation Graph: RS-Ratio (x) vs RS-Momentum (y), each group's last weeks as a tail */
@@ -4596,9 +4895,11 @@ const todayLocal = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
+// One-shot prefill snippets offered under the "Note" kind from the New menu. Not persisted as a type —
+// see KIND_FILTERS below for the real, filterable kind (note / journal / book).
 const NOTE_TEMPLATES = {
   blank: { label: "Blank note", make: (sym) => ({ title: sym ? `${sym.symbol.replace(/\.NS$/, "")} — notes` : "", body: "", tags: [] }) },
-  journal: { label: "Daily journal", make: () => { const d = todayLocal(); return { title: `Journal — ${longDate(d)}`, tags: ["journal"],
+  dailyReview: { label: "Daily review", make: () => { const d = todayLocal(); return { title: `Daily review — ${longDate(d)}`, tags: [],
     body: "## Market — India\n- **Regime:** advance / distribution / correction / basing / recovery — and why\n- **Breadth vs price:** confirming or diverging, which way\n- **Character:** broad or concentrated · washout or grind\n- **Leadership:** offensive or defensive · rotating toward what\n- **Volatility:** expanding or draining · what that permits\n- **Call:**\n- **Changes my mind:**\n\n## Market — US\n- **Regime:**\n- **Breadth vs price:**\n- **Character:**\n- **Leadership:**\n- **Volatility:**\n- **Call:**\n- **Changes my mind:**\n\n## Cross-market\n- **Stronger, and why:**\n\n## Positions\n| Stock | Plan | Action |\n|---|---|---|\n|  |  |  |\n\n## Watching\n- \n\n## Lessons\n- \n" }; } },
   plan: { label: "Trade plan", make: (sym) => ({ title: `Plan — ${sym ? sym.symbol.replace(/\.NS$/, "") : ""}`, tags: ["plan"],
     body: "## Setup\n\n## Entry / stop / target\n- Entry:\n- Stop:\n- Target:\n- Size / risk:\n\n## Why now\n\n## What would prove me wrong\n" }) },
@@ -4606,11 +4907,14 @@ const NOTE_TEMPLATES = {
     body: "## What happened\n\n## What I did well\n\n## What I'd do differently\n\n## Lesson\n" }) },
 };
 
+const KIND_FILTERS = [["", "All"], ["note", "Notes"], ["journal", "Journal"], ["book", "Books"]];
+
 /** Notes: list + search on the left, a Markdown editor with live preview on the right; saves as you type. */
 /** The rich editor's HTML back to Markdown (notes are stored as Markdown: search, the chart's notes panel
  *  and "Copy as Markdown" read it). Covers what the editor produces: paragraphs, headings, bold / italic /
  *  strikethrough / code, links, bullet / numbered / check lists (nested), quotes, code blocks, rules, tables. */
 function htmlToMd(root) {
+  const attrEsc = (s) => s.replace(/[&"<>]/g, (ch) => ({ "&": "&amp;", '"': "&quot;", "<": "&lt;", ">": "&gt;" }[ch]));
   const inline = (n) => [...n.childNodes].map((c) => {
     if (c.nodeType === 3) return c.textContent.replace(/\u00a0/g, " ");
     if (c.nodeType !== 1) return "";
@@ -4621,7 +4925,14 @@ function htmlToMd(root) {
     if ((t === "s" || t === "strike" || t === "del") && x.trim()) return `~~${x}~~`;
     if (t === "code") return "`" + c.textContent + "`";
     if (t === "a") return `[${x || c.getAttribute("href")}](${c.getAttribute("href") || ""})`;
-    if (t === "img") return `![${c.getAttribute("alt") || ""}](${c.getAttribute("src") || ""})`;
+    if (t === "img") {
+      const alt = c.getAttribute("alt") || "", src = c.getAttribute("src") || "";
+      // a resized image (dragged by its corner handle) gets an explicit width, which plain
+      // Markdown image syntax can't carry \u2014 fall back to a raw <img> tag only then, since
+      // marked.js renders inline HTML through unchanged
+      const w = Math.round(parseFloat(c.style.width)) || parseInt(c.getAttribute("width")) || null;
+      return w ? `<img src="${attrEsc(src)}" alt="${attrEsc(alt)}" width="${w}">` : `![${alt}](${src})`;
+    }
     if (t === "input") return "";
     if (BLOCK.has(t)) return "\n\n" + blockOf(c).trim() + "\n\n";
     return x;
@@ -4665,7 +4976,7 @@ function htmlToMd(root) {
 
 async function notesPage(alive, args) {
   document.title = "Notes · Trading";
-  let filter = { q: store.get("notesQ", ""), tag: store.get("notesTag", null), market: null, symbol: null };
+  let filter = { q: store.get("notesQ", ""), tag: store.get("notesTag", null), kind: store.get("notesKind", ""), market: null, symbol: null };
   let openId = null, pendingNew = null;
   if (args[0] === "sym") { filter.market = args[1]; filter.symbol = args[2]; }
   else if (args[0] === "new") pendingNew = args[1] && args[2] ? { market: args[1], symbol: args[2] } : {};
@@ -4681,6 +4992,7 @@ async function notesPage(alive, args) {
       <aside class="notes-list">
         <div class="nl-head"><label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="nq" placeholder="Search notes" spellcheck="false"></label>
           <button class="primary" id="nnew" title="New note">New</button></div>
+        <div class="nl-kinds" id="nkinds">${segmented(KIND_FILTERS, filter.kind, "")}</div>
         <div class="nl-filter" id="nfilter"></div>
         <div class="nl-items" id="nitems">${LOADING}</div>
       </aside>
@@ -4688,34 +5000,73 @@ async function notesPage(alive, args) {
     </div>`;
   const $q = $view.querySelector("#nq");
   $q.value = filter.q;
-  let list = [];
+  let list = [], books = [];
   const sym = (x) => `<span class="mkt">${MKT_BADGE[x.market]}</span>${esc(x.symbol.replace(/\.NS$/, ""))}`;
+  const today = todayLocal();
+  const itemHtml = (n) => `<a class="nl-item ${n.id === openId ? "cur" : ""}" href="#/notes/${n.id}">
+        <div class="nl-t">${n.pinned ? '<span class="pin" title="Pinned">●</span>' : ""}<b>${esc(n.title || "Untitled")}</b><span class="muted small">${ago(n.updated_at)}</span></div>
+        ${n.snippet ? `<div class="muted small nl-s">${esc(n.snippet)}</div>` : ""}
+        ${n.tags.length || n.symbols.length ? `<div class="nl-m">${n.symbols.map((x) => `<span class="nl-sym">${sym(x)}</span>`).join("")}${n.tags.map((t) => `<span class="nl-tag">#${esc(t)}</span>`).join("")}</div>` : ""}</a>`;
+  async function openTodayJournal() {
+    const r = await api(`/api/notes?kind=journal`).catch(() => ({ notes: [] }));
+    const mine = r.notes.find((x) => (x.created_at || "").slice(0, 10) === today);
+    if (mine) return go(`#/notes/${mine.id}`);
+    // not marked notesFresh: the date title is itself meaningful, unlike a truly blank note —
+    // leaving before writing anything shouldn't silently discard today's entry
+    const n = await api("/api/notes", jsonReq("POST", { kind: "journal", title: longDate(today) }));
+    go(`#/notes/${n.id}`);
+  }
+  async function newBookNote() {
+    const name = (await askText("Book note", "", "Book title — Author", books.map((b) => b.book)) || "").trim();
+    if (!name) return;
+    // not marked notesFresh: naming the book is itself meaningful — see openTodayJournal
+    const n = await api("/api/notes", jsonReq("POST", { kind: "book", book: name, title: name }));
+    go(`#/notes/${n.id}`);
+  }
   async function loadList() {
     const p = new URLSearchParams();
     if (filter.q) p.set("q", filter.q);
     if (filter.tag) p.set("tag", filter.tag);
+    if (filter.kind) p.set("kind", filter.kind);
     if (filter.symbol) { p.set("market", filter.market); p.set("symbol", filter.symbol); }
-    const r = await api(`/api/notes?${p}`).catch(() => ({ notes: [], tags: [] }));
+    const r = await api(`/api/notes?${p}`).catch(() => ({ notes: [], tags: [], books: [] }));
     if (!alive()) return;
-    list = r.notes;
+    list = r.notes; books = r.books || [];
+    $view.querySelectorAll("#nkinds button").forEach((b) => {
+      b.classList.toggle("on", b.dataset.v === filter.kind);
+      b.onclick = () => { filter.kind = b.dataset.v; store.set("notesKind", filter.kind); loadList(); };
+    });
     $view.querySelector("#nfilter").innerHTML = `${filter.symbol ? `<span class="chip on">${sym(filter)} <a href="#/notes" title="Clear">×</a></span>` : ""}
       ${r.tags.map((t) => `<button class="chip ${t.tag === filter.tag ? "on" : ""}" data-t="${esc(t.tag)}">#${esc(t.tag)}<span>${t.count}</span></button>`).join("")}`;
     $view.querySelectorAll("#nfilter [data-t]").forEach((b) => b.onclick = () => { filter.tag = filter.tag === b.dataset.t ? null : b.dataset.t; store.set("notesTag", filter.tag); loadList(); });
-    $view.querySelector("#nitems").innerHTML = list.length ? list.map((n) => `<a class="nl-item ${n.id === openId ? "cur" : ""}" href="#/notes/${n.id}">
-        <div class="nl-t">${n.pinned ? '<span class="pin" title="Pinned">●</span>' : ""}<b>${esc(n.title || "Untitled")}</b><span class="muted small">${ago(n.updated_at)}</span></div>
-        ${n.snippet ? `<div class="muted small nl-s">${esc(n.snippet)}</div>` : ""}
-        ${n.tags.length || n.symbols.length ? `<div class="nl-m">${n.symbols.map((x) => `<span class="nl-sym">${sym(x)}</span>`).join("")}${n.tags.map((t) => `<span class="nl-tag">#${esc(t)}</span>`).join("")}</div>` : ""}</a>`).join("")
-      : `<div class="muted small nl-none">${filter.q || filter.tag || filter.symbol ? "No notes match." : "No notes yet — click New."}</div>`;
+    const todayRow = filter.kind === "journal" && !list.some((n) => (n.created_at || "").slice(0, 10) === today)
+      ? `<a class="nl-item nl-today" href="#" id="ntoday">+ Today's entry — ${esc(longDate(today))}</a>` : "";
+    let itemsHtml;
+    if (filter.kind === "book") {
+      const groups = new Map();
+      for (const n of list) { const k = n.book || "(no book)"; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(n); }
+      itemsHtml = [...groups.keys()].sort((a, b) => a.localeCompare(b))
+        .map((bk) => `<div class="nl-group"><div class="nl-group-h">${esc(bk)}</div>${groups.get(bk).map(itemHtml).join("")}</div>`).join("");
+    } else {
+      itemsHtml = list.map(itemHtml).join("");
+    }
+    $view.querySelector("#nitems").innerHTML = todayRow + itemsHtml || `<div class="muted small nl-none">${filter.q || filter.tag || filter.symbol ? "No notes match." : "No notes yet — click New."}</div>`;
+    $view.querySelector("#ntoday")?.addEventListener("click", (e) => { e.preventDefault(); openTodayJournal(); });
   }
   let qt;
   $q.oninput = () => { clearTimeout(qt); qt = setTimeout(() => { filter.q = $q.value.trim(); store.set("notesQ", filter.q); loadList(); }, 250); };
   $view.querySelector("#nnew").onclick = (e) => {
     const r = e.currentTarget.getBoundingClientRect(), s0 = filter.symbol ? { market: filter.market, symbol: filter.symbol } : null;
-    contextMenu(r.left, r.bottom + 4, s0 ? `New note for ${s0.symbol.replace(/\.NS$/, "")}` : "New note", Object.entries(NOTE_TEMPLATES).map(([k, t]) => ({ label: t.label, fn: async () => {
-      const n = await api("/api/notes", jsonReq("POST", { ...t.make(s0), symbols: s0 ? [s0] : [] }));
-      if (k === "blank") store.set("notesFresh", n.id);
-      go(`#/notes/${n.id}`);
-    } })));
+    contextMenu(r.left, r.bottom + 4, s0 ? `New note for ${s0.symbol.replace(/\.NS$/, "")}` : "New note", [
+      ...Object.entries(NOTE_TEMPLATES).map(([k, t]) => ({ label: t.label, fn: async () => {
+        const n = await api("/api/notes", jsonReq("POST", { ...t.make(s0), symbols: s0 ? [s0] : [] }));
+        if (k === "blank") store.set("notesFresh", n.id);
+        go(`#/notes/${n.id}`);
+      } })),
+      { sep: true },
+      { label: "Journal entry", fn: openTodayJournal },
+      { label: "Book note", fn: newBookNote },
+    ]);
   };
   await loadList();
   if (!openId) return;
@@ -4727,11 +5078,14 @@ async function notesPage(alive, args) {
   if (!n) { ed.innerHTML = '<div class="empty"><b>Note not found</b><div class="muted">It may have been deleted.</div></div>'; return; }
   let note = { ...n }, dirty = false, saving = false, timer;
   ed.innerHTML = `<div class="ne-head">
+      ${note.kind !== "note" ? `<span class="ne-kind">${note.kind === "journal" ? "Journal" : "Book"}</span>` : ""}
       <input class="ne-title" id="nt" placeholder="Title" value="${esc(note.title)}">
       <span class="muted small ne-status" id="nst">Saved</span>
       <button class="ibtn ${note.pinned ? "on" : ""}" id="npin" title="Pin to the top">${note.pinned ? "●" : "○"}</button>
       <button class="ibtn" id="nmore" title="More">⋯</button></div>
     <div class="ne-meta">
+      ${note.kind === "book" ? `<input class="ne-book" id="nbook" placeholder="Book title — Author" value="${esc(note.book)}" list="nbooklist">
+        <datalist id="nbooklist">${books.map((b) => `<option value="${esc(b.book)}">`).join("")}</datalist>` : ""}
       <div class="ne-syms" id="nsyms"></div>
       <div class="search ne-symadd"><input id="nsymin" placeholder="+ link a stock" spellcheck="false"><ul hidden></ul></div>
       <input class="ne-tags" id="ntags" placeholder="tags, comma separated" value="${esc(note.tags.join(", "))}">
@@ -4758,8 +5112,9 @@ async function notesPage(alive, args) {
     if (!dirty || saving) return;
     saving = true; dirty = false; $st.textContent = "Saving…";
     const tags = ed.querySelector("#ntags").value.split(",").map((x) => x.trim()).filter(Boolean);
+    const $book = ed.querySelector("#nbook");
     try {
-      const r = await api(`/api/notes/${note.id}`, jsonReq("PUT", { title: $t.value, body: $b.value, tags, symbols: note.symbols, pinned: note.pinned }));
+      const r = await api(`/api/notes/${note.id}`, jsonReq("PUT", { title: $t.value, body: $b.value, tags, symbols: note.symbols, pinned: note.pinned, book: $book ? $book.value : undefined }));
       note = { ...note, ...r }; $st.textContent = "Saved"; store.set("notesFresh", null);
       ed.querySelector("#nupd").textContent = `updated ${clock(r.updated_at)}`;
       loadList();
@@ -4769,6 +5124,7 @@ async function notesPage(alive, args) {
   function changed() { dirty = true; $st.textContent = "Editing…"; clearTimeout(timer); timer = setTimeout(save, 800); }
   renderPrev(); renderSyms();
   $t.oninput = changed; ed.querySelector("#ntags").oninput = changed;
+  ed.querySelector("#nbook")?.addEventListener("input", changed);
   $b.oninput = () => { renderPrev(); changed(); };
   // formatting helpers: wrap the selection, or prefix the current line(s)
   const wrap = (a, b = a, ph = "text") => { const s0 = $b.selectionStart, s1 = $b.selectionEnd, sel = $b.value.slice(s0, s1) || ph;
@@ -4796,8 +5152,47 @@ async function notesPage(alive, args) {
   const loadRich = () => {
     $r.innerHTML = $b.value.trim() ? marked.parse($b.value) : "<p><br></p>";
     $r.querySelectorAll("input[type=checkbox]").forEach((c) => { c.removeAttribute("disabled"); c.closest("li")?.classList.add("task"); });
+    selectImg(null);
   };
   const richChanged = () => { $b.value = htmlToMd($r); renderPrev(); changed(); };
+  // click an image to select it (a corner handle appears); drag the handle to resize, keeping
+  // aspect ratio -- the width is read back out of style.width by htmlToMd on the next edit.
+  // A floating handle (not a DOM child of $r) keeps the resize UI out of the saved content.
+  let selectedImg = null;
+  const $handle = document.createElement("div");
+  $handle.className = "img-resize-handle";
+  $handle.hidden = true;
+  document.body.append($handle);
+  const positionHandle = () => {
+    if (!selectedImg) return;
+    const r = selectedImg.getBoundingClientRect();
+    $handle.style.left = `${r.right - 6}px`;
+    $handle.style.top = `${r.bottom - 6}px`;
+  };
+  function selectImg(img) {
+    selectedImg?.classList.remove("img-selected");
+    selectedImg = img;
+    if (img) { img.classList.add("img-selected"); $handle.hidden = false; positionHandle(); }
+    else $handle.hidden = true;
+  }
+  const onDocClick = (e) => {
+    if (e.target.tagName === "IMG" && $r.contains(e.target)) selectImg(e.target);
+    else if (e.target !== $handle) selectImg(null);
+  };
+  document.addEventListener("click", onDocClick);
+  $handle.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const img = selectedImg;
+    if (!img) return;
+    const startX = e.clientX, startW = img.offsetWidth;
+    const onMove = (ev) => {
+      img.style.width = `${Math.max(40, Math.round(startW + (ev.clientX - startX)))}px`;
+      positionHandle();
+    };
+    const onUp = () => { document.removeEventListener("mousemove", onMove); document.removeEventListener("mouseup", onUp); richChanged(); };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
   document.execCommand("defaultParagraphSeparator", false, "p");
   const cmd = (c, v = null) => { $r.focus(); document.execCommand(c, false, v); richChanged(); syncTools(); };
   /** execCommand("indent") emits a nested list as a SIBLING of the item it belongs to --
@@ -4874,8 +5269,28 @@ async function notesPage(alive, args) {
   document.addEventListener("selectionchange", () => { if ($r.contains(getSelection().anchorNode)) syncTools(); });
   // checkboxes tick in place
   $r.addEventListener("click", (e) => { if (e.target.matches("input[type=checkbox]")) { e.target.toggleAttribute("checked", e.target.checked); richChanged(); } });
-  // paste as plain text (formatting from web pages would come along otherwise)
-  $r.addEventListener("paste", (e) => { e.preventDefault(); document.execCommand("insertText", false, e.clipboardData.getData("text/plain")); });
+  // a pasted/dropped screenshot uploads as an attachment and is inserted as an image; anything
+  // else pastes as plain text (formatting from web pages would come along otherwise)
+  async function insertImage(file) {
+    const fd = new FormData(); fd.append("file", file);
+    try {
+      const { url } = await api(`/api/notes/${note.id}/attachments`, { method: "POST", body: fd });
+      if (mode() === "rich") { cmd("insertHTML", `<img src="${esc(url)}" alt="">`); selectImg([...$r.querySelectorAll("img")].at(-1)); } else insert(`![](${url})`);
+    } catch (err) { toast(`Image upload failed: ${err.message}`, "err"); }
+  }
+  const pastedImage = (dt) => [...dt.items].find((it) => it.kind === "file" && it.type.startsWith("image/"))?.getAsFile();
+  $r.addEventListener("paste", (e) => {
+    const img = pastedImage(e.clipboardData);
+    e.preventDefault();
+    if (img) insertImage(img); else document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+  });
+  $b.addEventListener("paste", (e) => { const img = pastedImage(e.clipboardData); if (img) { e.preventDefault(); insertImage(img); } });
+  const $body = ed.querySelector(".ne-body");
+  $body.addEventListener("dragover", (e) => { if ([...e.dataTransfer.items].some((it) => it.type.startsWith("image/"))) e.preventDefault(); });
+  $body.addEventListener("drop", (e) => {
+    const file = [...e.dataTransfer.files].find((f) => f.type.startsWith("image/"));
+    if (file) { e.preventDefault(); insertImage(file); }
+  });
   // Markdown-style shortcuts at the start of a line: "# " heading, "- " list, "1. " numbered, "[] " checklist, "> " quote
   $r.onkeydown = (e) => {
     const mod = e.metaKey || e.ctrlKey;
@@ -4921,11 +5336,41 @@ async function notesPage(alive, args) {
     if (!note.symbols.some((x) => x.market === m1 && x.symbol === s1)) note.symbols.push({ market: m1, symbol: s1 });
     ed.querySelector("#nsymin").value = ""; ed.querySelector(".ne-symadd ul").hidden = true; renderSyms(); changed();
   });
+  // changing kind after creation: lets a note made before this existed (or just typed as "blank")
+  // become a Journal / Book note, so it starts showing up under that filter
+  async function setKind(newKind, newBook) {
+    const r = await api(`/api/notes/${note.id}`, jsonReq("PUT", { kind: newKind, book: newBook ?? "" }));
+    note = { ...note, ...r };
+    let badge = ed.querySelector(".ne-kind");
+    if (note.kind === "note") { badge?.remove(); }
+    else {
+      const label = note.kind === "journal" ? "Journal" : "Book";
+      if (!badge) { ed.querySelector(".ne-head").insertAdjacentHTML("afterbegin", `<span class="ne-kind">${label}</span>`); }
+      else badge.textContent = label;
+    }
+    let $book = ed.querySelector("#nbook");
+    if (note.kind === "book") {
+      if (!$book) {
+        ed.querySelector(".ne-meta").insertAdjacentHTML("afterbegin",
+          `<input class="ne-book" id="nbook" placeholder="Book title — Author" value="${esc(note.book)}" list="nbooklist"><datalist id="nbooklist">${books.map((b) => `<option value="${esc(b.book)}">`).join("")}</datalist>`);
+        ed.querySelector("#nbook").addEventListener("input", changed);
+      } else $book.value = note.book;
+    } else { $book?.remove(); ed.querySelector("#nbooklist")?.remove(); }
+    toast(`Set as ${note.kind === "note" ? "a note" : note.kind === "journal" ? "a journal entry" : "a book note"}`, "ok");
+    loadList();
+  }
   ed.querySelector("#nmore").onclick = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     contextMenu(r.right - 210, r.bottom + 4, null, [
       { label: "Duplicate", fn: async () => { const c = await api("/api/notes", jsonReq("POST", { title: `${$t.value} (copy)`, body: $b.value, tags: note.tags, symbols: note.symbols })); go(`#/notes/${c.id}`); } },
       { label: "Copy as Markdown", fn: () => navigator.clipboard?.writeText(`# ${$t.value}\n\n${$b.value}`).then(() => toast("Copied", "ok")) },
+      { sep: true },
+      { label: "Set as plain note", disabled: note.kind === "note", fn: () => setKind("note") },
+      { label: "Set as journal entry", disabled: note.kind === "journal", fn: () => setKind("journal") },
+      { label: "Set as book note", disabled: note.kind === "book", fn: async () => {
+        const name = (await askText("Book note", note.book || $t.value, "Book title — Author", books.map((b) => b.book)) || "").trim();
+        if (name) setKind("book", name);
+      } },
       { sep: true },
       { label: "Delete note", danger: true, fn: async () => {
         clearTimeout(timer); dirty = false;
@@ -4945,6 +5390,8 @@ async function notesPage(alive, args) {
     clearTimeout(timer);
     if (dirty) save();
     else if (store.get("notesFresh", null) === note.id && !$b.value.trim()) { store.set("notesFresh", null); api(`/api/notes/${note.id}`, { method: "DELETE" }).catch(() => {}); }
+    document.removeEventListener("click", onDocClick);
+    $handle.remove();
     prev();
   };
 }
@@ -5430,7 +5877,8 @@ async function runsPage(alive, runId) {
 const SECTIONS = [
   { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, the macro backdrop, today's setups, new picks and data health"]] },
   { key: "markets", label: "Markets", pages: [["postmarket", "Post-market", "The day's recap after the close"], ["breadth", "Breadth", "How healthy is the market — risk, not direction"],
-    ["sectors", "Sectors", "Leading sectors, industry groups and their leaders"], ["movers", "Movers", "Top gainers and losers"]] },
+    ["sectors", "Sectors", "Leading sectors, industry groups and their leaders"], ["movers", "Movers", "Top gainers and losers"],
+    ["macro", "Macro", "Key macro indicators: rates, inflation, growth, consumption and market stress — current value and history"]] },
   { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"]] },
   { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"]] },
   { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"],
@@ -6070,6 +6518,7 @@ async function route() {
     else if (page === "fundamentals" || page === "sepa") go(`#/company/${parts[1] || ""}`);   // the page's earlier names
     else if (page === "breadth") await breadthPage(alive, parts[1]);
     else if (page === "movers") await moversPage(alive, parts[1]);
+    else if (page === "macro") await macroPage(alive, parts[1]);
     else if (page === "postmarket") await postmarketPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "sectors") await sectorsPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "reports") await (parts[1] ? reportPage(alive, parts[1], parts[2]) : reportsPage(alive));
