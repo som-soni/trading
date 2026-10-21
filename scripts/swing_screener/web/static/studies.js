@@ -877,6 +877,61 @@ const Studies = (() => {
         }
         return { series: [], note: "detecting…", setVisible: (v) => { on = v; paint(); } };
       } },
+    // ---- Weinstein's stages on the TRUE weekly 30-week line, classified ON DEMAND by the
+    // stage_analysis strategy's own state machine (server side, /api/stage-analysis): one
+    // implementation of the rule, shared with the strategy's gates. Distinct from the Minervini
+    // layer's stage bands, which read the daily 150-day as a stand-in — different clocks, and
+    // they may disagree. As of the bar at the right edge of the view, like Chart patterns.
+    stageweekly: { name: "Stage analysis (Weinstein, 30-week line)", short: "Stages", cat: "Screener", overlay: true, custom: true,
+      label: (p) => `Stages · 30-wk${p.asOf === "Last bar" ? " · last bar" : ""}`,
+      params: { asOf: { type: "select", def: "Right edge of the view", options: ["Right edge of the view", "Last bar"] },
+        line: { type: "select", def: "Show", options: ["Show", "Hide"] } },
+      plots: [{ k: "stage1", t: "Stage 1 · basing", c: "#90a4ae" }, { k: "stage2", t: "Stage 2 · advancing", c: "#26a69a" },
+        { k: "stage3", t: "Stage 3 · topping", c: "#f59e0b" }, { k: "stage4", t: "Stage 4 · declining", c: "#ef5350" },
+        { k: "line", t: "30-week line", c: "#7e57c2" }],
+      draw({ chart, times, p, col, tf, ctx, id }) {
+        if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
+        let on = true, seq = 0, asked, timer = null, shapes = [], pts = [];
+        const NAMES = { 1: "Stage 1 · basing", 2: "Stage 2 · advancing", 3: "Stage 3 · topping", 4: "Stage 4 · declining" };
+        const line = chart.addSeries(LC.LineSeries, { color: col("line"), lineWidth: 1, priceLineVisible: false,
+          lastValueVisible: false, crosshairMarkerVisible: false }, 0);
+        const paint = () => {
+          ctx.annotate(id, on ? shapes : [], { stage1: col("stage1"), stage2: col("stage2"), stage3: col("stage3"), stage4: col("stage4") });
+          line.setData(on && p.line === "Show" ? pts : []);
+        };
+        const load = async (date) => {
+          if (date === asked) return;
+          asked = date;
+          const my = ++seq;
+          setNote(id, "classifying…");
+          const r = await fetch(`/api/stage-analysis/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${scanYears(5, ctx)}${date ? `&date=${date}` : ""}`)
+            .then((x) => (x.ok ? x.json() : null)).catch(() => null);
+          if (my !== seq) return;   // a newer request (the view moved) owns the drawing
+          shapes = (r?.stages || []).flatMap((x) => [
+            { shape: "box", role: `stage${x.stage}`, bg: true, from: x.from, to: x.to, top: x.high, bottom: x.low, label: "" },
+            ...(x.weeks >= 6 ? [{ shape: "text", role: `stage${x.stage}`, at: x.from, price: x.high,
+              label: NAMES[x.stage] + (x.ongoing && r?.current?.provisional ? " (forming)" : "") }] : []),
+          ]);
+          pts = r?.line || [];
+          const cur = r?.current;
+          setNote(id, !r ? "classification failed"
+            : cur?.stage ? `${r.as_of}: Stage ${cur.stage}${cur.provisional ? " · week in progress" : ""} · 30-week line ${cur.line_state} (${cur.line_slope_pct > 0 ? "+" : ""}${cur.line_slope_pct}% / 4 wk)`
+            : r.note || "not enough history");
+          paint();
+        };
+        let kick = () => {};
+        if (p.asOf === "Last bar") { kick = () => load(null); load(null); }
+        else {
+          const edge = () => {
+            const r = chart.timeScale().getVisibleLogicalRange();
+            return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : null;
+          };
+          kick = () => load(edge());
+          chart.timeScale().subscribeVisibleLogicalRangeChange(() => { clearTimeout(timer); timer = setTimeout(() => load(edge()), 250); });
+          timer = setTimeout(() => load(edge()), 0);
+        }
+        return { series: [line], note: "classifying…", setVisible: (v) => { on = v; paint(); } };
+      } },
     // Stage 2 stretches from the trend template, and the VCP setups inside them (/api/trend-template:
     // minervini_spec's trend_template_row and bases_live — the strategy's own code, levels and words,
     // never a second copy here). Each setup is one frame with three zones: the uptrend, the base, and
