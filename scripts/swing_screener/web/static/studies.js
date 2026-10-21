@@ -637,8 +637,11 @@ const Studies = (() => {
     //   opacity = reliability (levels near price fade when earnings are close);
     //   text = the price-axis tag; in-chart labels are optional.
     sr: { name: "Support & Resistance (zones)", short: "S/R", cat: "Support & resistance", overlay: true, custom: true,
-      label: (p) => `S/R zones${p.levels === "Key levels (3 each side)" ? " · key levels" : ""}`,
-      params: { levels: { type: "select", def: "All graded levels", options: ["All graded levels", "Key levels (3 each side)"] },
+      // key levels only by default: the few nearest graded zones each side (up to 4, 7 in all); "All
+      // graded levels" adds every other zone that passed the grade as a thin dashed outline. A copy saved
+      // under the old option name ("Key levels (3 each side)") still reads as key levels.
+      label: (p) => `S/R zones${p.levels === "All graded levels" ? " · all graded" : ""}`,
+      params: { levels: { type: "select", def: "Key levels", options: ["Key levels", "All graded levels"] },
         labels: { type: "select", def: "Axis only", options: ["Axis only", "Short", "Full"] },
         periods: { type: "select", def: "Hide", options: ["Hide", "Show"] },
         palette: { type: "select", def: "Standard", options: ["Standard", "Colour-blind (blue / orange)"] },
@@ -686,7 +689,7 @@ const Studies = (() => {
               prev = z.top;
             } }
           // the other graded zones: a thin dashed outline only — context when the view scrolls back
-          const extra = p.levels === "Key levels (3 each side)" ? [] : (r.others || []).map((z) => (
+          const extra = p.levels !== "All graded levels" ? [] : (r.others || []).map((z) => (
             { shape: "box", frame: true, dash: true, faint: true, from: z.from, to: last, top: z.top, bottom: z.bottom, role: z.role, label: "" }));
           // congestion bands under everything: a grey tint, no border, no lines (a break out is the event)
           const bands = (r.congestion || []).flatMap((c) => [
@@ -1125,6 +1128,13 @@ const Studies = (() => {
       if (old.rsi !== false) list.push(make("rsi"));
       store.set("chartStudies", list);
     }
+    // the S/R indicator's default moved to key levels only (2026-10-21): a copy saved while "All graded
+    // levels" was the default follows the new default once; a choice made after that is kept
+    let srMoved = false;
+    for (const s of list) {
+      if (s.type === "sr" && !s.srKeyDefault) { s.params.levels = "Key levels"; s.srKeyDefault = 1; srMoved = true; }
+    }
+    if (srMoved) store.set("chartStudies", list);
     // the layer moved out of Indicators and was rekeyed by strategy (2026-10-17); carry the saved
     // instance across rather than silently dropping it, since load() discards unknown types
     let moved = false;

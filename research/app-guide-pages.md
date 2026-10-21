@@ -249,8 +249,8 @@ timeframe below), or the next round number is marked. Overlapping key zones merg
 ATR of its own timeframe is cut back to its body side. The 52-week high and low (and the all-time high / low near
 price) are always marked as provisional levels, since a fresh extreme has no confirmed swing yet. Long-term levels —
 weekly or monthly zones beyond that window whose three or more reactions span 1.5+ years, within half to double
-the price — are drawn as muted bands with a "Long-term …" axis tag (up to three a side). "All graded
-levels" (the default) also draws the other graded zones as thin dashed outlines. The measurement behind all of
+the price — are drawn as muted bands with a "Long-term …" axis tag (up to three a side). The setting "All
+graded levels" also draws the other graded zones as thin dashed outlines (off by default). The measurement behind all of
 this is `python -m swing_screener.analytics.level_study` (zones vs a same-geometry placebo). Labels are Short by default ("Support · weekly"); Full adds grade, visits and
 height; None hides them. Price inside a zone, or within a quarter of a daily ATR of it, makes it a pivot ("Pivot — price inside" /
 "At price"); a zone price has closed inside on 30%+ of bars is labelled a congestion zone. A higher-timeframe
