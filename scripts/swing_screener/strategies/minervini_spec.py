@@ -1714,6 +1714,13 @@ class MinerviniSpecStrategy(Strategy):
     # nothing, and the leading underscore keeps it out of the strategy's fingerprint)
     _UPTREND_FLAG_PCT = 10.0
 
+    def _live_withholds(self, p: dict | None) -> bool:
+        """Would the screen's rules withhold a cheat whose base (as detected the bar before it) is `p`?
+        The same test as `evaluate` -- read from the module constant, or from the live variant when the
+        screen applies one that this process (the chart's) has not."""
+        lv = (type(self).live_variant or {}).get("const", {})
+        return bool((CHEAT_BLOCK_VCP09 or lv.get("CHEAT_BLOCK_VCP09")) and p and p.get("fail") == "VCP-09")
+
     def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
                cheat: tuple | None = None, live: bool = False) -> dict:
         """One setup for the chart: a frame around it, and its zones — the uptrend into the base, the
@@ -1832,8 +1839,12 @@ class MinerviniSpecStrategy(Strategy):
             for k in range(1, len(depths)):
                 if depths[k - 1] > 0 and depths[k] > WIDEN_TOL * depths[k - 1]:
                     culprit = k
+        # The base high is labelled because it is the level every other one is read against -- and
+        # without it the band's top was the one line on the chart with no price, while the tight
+        # area's top beside it was labelled "pivot": EW's 2019 base read as topping at the pivot
+        # (59.95), not at its real high (65.95), and a cheat bought 11% below that looked wrong.
         base_shapes = [{"shape": "box", "from": bd, "to": at, "top": bh, "bottom": base_low, "role": "base", "shade": True,
-                        "label": ""}]
+                        "label": f"base high {px(bh)}"}]
         if legs:
             pts = []
             many = len(depths) > MAX_CONTRACTIONS   # every label would pile up: keep the telling ones
@@ -1999,10 +2010,17 @@ class MinerviniSpecStrategy(Strategy):
                        else "A complete VCP, waiting for a close through the pivot.")
         elif cheat:
             ok = zones[-1]["state"] == "pass"
-            title = f"Cheat entry {'✓' if ok else '· trade skipped'}{today}"
+            # The daily screen runs under the live variant, which may withhold this cheat. Said BESIDE the
+            # shipped rules' verdict, not instead of it: a backtest of the shipped rules may have traded
+            # this very cheat, and this endpoint cannot tell which run the chart is showing -- turning the
+            # cheat into "skipped" here would contradict that run's own trade beside it.
+            withheld = ok and self._live_withholds(cheat[2])
+            title = f"Cheat entry {'✓' if ok else '· trade skipped'}{' · the live screen withholds it' if withheld else ''}{today}"
             short = f"{len(depths)} pullbacks" if fail == "VCP-04" else self._VCP_FAILED.get(fail, fail)
             summary = (f"Not a VCP ({short}), but on {day(cheat[0])} it cleared a tight "
-                       f"shelf in the {'lower' if cheat[1] == MV03 else 'middle'} third of the base: a cheat entry.")
+                       f"shelf in the {'lower' if cheat[1] == MV03 else 'middle'} third of the base: a cheat entry."
+                       + (f" The daily screen's live variant ({type(self).live_variant['name']}) withholds a cheat on "
+                          f"a base that fails VCP-09, so it is not listed as a candidate." if withheld else ""))
         elif young:
             title = f"Too new to judge{today}"
             summary = f"Too new to judge: {young_why}."
