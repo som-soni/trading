@@ -1218,13 +1218,17 @@ class MinerviniSpecStrategy(Strategy):
     #: PROVISIONAL -- the screen lists candidates under this until a variant beats the baseline,
     #: then this declaration is replaced. Not part of the shipped rules: backtests never apply it.
     live_variant = {
-        "name": "Block cheats on VCP-09 bases",
-        "const": {"CHEAT_BLOCK_VCP09": 1},
-        "why": ("The one tested variant that changes WHICH stocks are listed and has improved both markets: "
-                "against the v1.20 baseline, +13.1R in India (PF 1.30 -> 1.41) and +14.2R in the US "
-                "(0.79 -> 0.82), repeating v1.19's +12.9R and +20.1R. Provisional: swap it for whichever "
-                "variant beats the baseline. Exit-rule variants -- the larger win, EX-06 needing volume -- "
-                "change how a trade is managed, not which stocks appear, so they are not part of it."),
+        "name": "Block cheats on VCP-09 bases + EX-06 needs volume",
+        "const": {"CHEAT_BLOCK_VCP09": 1, "TREND_EXIT_NEEDS_VOLUME": 1},
+        "why": ("Together they beat each one alone in BOTH markets, on profit factor and average R rather "
+                "than just total R -- the bar set before the runs. Against the 1.22 baseline: India +85.9R, "
+                "PF 1.30 -> 1.85, avgR +0.133 -> +0.414 (volume alone was +78.4R, PF 1.74; the VCP-09 block "
+                "alone +13.1R, PF 1.41); US +43.1R, PF 0.79 -> 0.89, avgR -0.081 -> -0.048 (alone: +20.0R / "
+                "PF 0.84 and +14.2R / PF 0.82). The cost is drawdown: India's deepest is -25.2% against the "
+                "baseline's -19.8%, because waiting for volume holds trades through more dips. The VCP-09 "
+                "block decides which stocks are listed; the volume rule only decides when to sell, so it "
+                "changes nothing on this list -- it is here so the live rules are named in full. The US is "
+                "still a losing book under them. Provisional: replace this when a variant beats it."),
     }
 
     # ---------- screen ----------
