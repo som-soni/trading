@@ -387,6 +387,9 @@ _stage_falling_pct = 0.5
 # a swing low that can end Stage 2 must be the lowest of this many bars on EACH side (about two weeks):
 # the guide's three-bar swing marks every wobble of a healthy advance as a lower low
 _stage_swing_bars = 10
+# Stage 4 ends for Stage 1 only when the close has held above the 150-day this many bars (or the line
+# stops falling): one close above the line in a decline is a bounce, and it used to flip the stage
+_stage_hold_bars = 10
 
 
 def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = None) -> list[dict]:
@@ -397,12 +400,15 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
       -> 2 Advancing  the close above a RISING 150-day — Weinstein's own test. The Trend Template is
                       Minervini's later confirmation (its 200-day test lags a V-shaped recovery by
                       months), so it is recorded as `confirmed`, not required
-      2 -> 3 Topping  on the first of: a LOWER SWING LOW (guide 2.3: swings turn before averages; here
-                      a swing low is the lowest of the {_stage_swing_bars} bars on each side of it,
-                      core/swings.swing_low_mask, so it is known that many bars later), or the 150-day
-                      stopping rising. (Not the 200-day: early in a real Stage 2 it is often still falling.)
+      2 -> 3 Topping  on the first of: a LOWER SWING LOW with the close still UNDER the 150-day when the
+                      swing is confirmed (guide 2.3: swings turn before averages; a swing low is the
+                      lowest of the {_stage_swing_bars} bars on each side of it, core/swings.swing_low_mask,
+                      so it is known that many bars later — and a pullback that has already recovered
+                      above a rising line is a Stage 2 pullback, not a top), or the 150-day stopping
+                      rising. (Not the 200-day: early in a real Stage 2 it is often still falling.)
       2 or 3 -> 4     when the 150-day is falling and the close is below it
-      4 -> 1 Basing   when the price closes back above the 150-day, or the 150-day stops falling
+      4 -> 1 Basing   when the close has held above the 150-day for {_stage_hold_bars} bars, or the
+                      150-day stops falling
       1 -> 2          a BREAKOUT: the close above the base's high so far, with the price above a rising
                       150-day. Crossing the line back and forth is what a base does, so it takes the
                       breakout to leave it
@@ -464,7 +470,8 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
                 and stage != 4:
             switch(i, 2, "the price above a rising 150-day" if stage != 3 else "a breakout above the top")
         elif stage == 2:
-            ended = "a lower swing low" if lower_low else ("the 150-day stopped rising" if not rising150 else None)
+            ended = ("a lower swing low under the 150-day" if (lower_low and close[i] < s150[i])
+                     else "the 150-day stopped rising" if not rising150 else None)
             if ended:
                 peak = float(daily["high"].iloc[cur[1]:i + 1].max())
                 switch(i, 4 if falling else 3, f"Stage 2 ended: {ended}")
@@ -476,8 +483,8 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
                 switch(i, 4, "a breakdown below the base")
         elif falling and stage != 4:
             switch(i, 4, "the 150-day turned down with the price below it")
-        elif stage == 4 and close[i] > s150[i]:
-            switch(i, 1, "the price back above the 150-day")
+        elif stage == 4 and i - cur[1] >= _stage_hold_bars and all(close[k] > s150[k] for k in range(i - _stage_hold_bars + 1, i + 1)):
+            switch(i, 1, f"the price back above the 150-day for {_stage_hold_bars} bars")
         elif stage == 4 and s150[i] >= s150_prev[i]:
             switch(i, 1, "the 150-day stopped falling")
     if cur is not None:
@@ -492,8 +499,20 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.20"
+    version = "1.21"
     changelog = (
+        ("1.21", "2026-10-21",
+         "The stage cycle (stage_cycle: the chart's stage bands and the --block-stage3 backtest filter) "
+         "no longer leaves Stage 2 on a lower swing low alone: the close must still be under the "
+         "150-day when the swing is confirmed, so a pullback that has already recovered above a rising "
+         "line stays Stage 2. And Stage 4 ends for Stage 1 only after {_stage_hold_bars} closes above "
+         "the line (or the line ceasing to fall), not on one close. Measured on 120 random stocks, "
+         "stage runs shorter than 10 bars fell from 649 to 274 (India) and 1,259 to 447 (US); "
+         "ANANDRATHI.NS's 31% decline of early 2025, which read as 'Stage 1 basing', reads as Stage 4, "
+         "and NVDA's Dec 2025 - Apr 2026 pullback under a line rising 4.7% a month, which read as "
+         "Stage 3, reads as Stage 2. No gate, setup or plan changes and the fingerprint does not move "
+         "(the stage constants are lower-case by design); the bump is because --block-stage3 runs "
+         "under the two versions drop different trades."),
         ("1.20", "2026-10-20",
          "The per-stock stand-in for TT-08 is now a floor on the RS SCORE, not on 12-1 momentum: "
          "RS_MIN_MOM is retired and RS_MIN_SCORE ({RS_MIN_SCORE}) replaces it. "
