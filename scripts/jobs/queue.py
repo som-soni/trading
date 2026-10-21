@@ -173,7 +173,11 @@ def command_for(targets: list, market: str, opts: dict) -> list[str]:
     for kv in (opts.get("const") or []):
         cmd += ["--const", str(kv)]
     for extra in (opts.get("bt") or []):
-        cmd += ["--bt", str(extra)]
+        # `--bt=VALUE`, not `--bt VALUE`: a passthrough usually STARTS with a dash
+        # ("--block-stage3"), and argparse reads a separate argument beginning with one as the
+        # next flag rather than as this one's value -- so the worker rebuilt a command it could
+        # not parse and the job died at startup having looked correctly queued.
+        cmd.append("--bt=" + str(extra))
     if opts.get("symbols"):
         cmd += ["--symbols", str(opts["symbols"])]
     if opts.get("max_base"):
