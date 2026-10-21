@@ -81,6 +81,12 @@ def run(
     strategy = get_strategy(strategy_key)
     provider = YFinanceProvider()
     logger.info("Strategy: %s (%s)", strategy.key, strategy.name)
+    # The strategy's declared live variant, applied to THIS process only: the daily screen lists
+    # candidates under it, backtests never see it (they do not call this function).
+    from ..strategies.variants import apply_live_variant
+    live = apply_live_variant(strategy.key)
+    if live:
+        logger.info("Live variant %r %s -> spec %s", live["name"], live["const"], live["spec_id"])
 
     if refresh_universe and market_key == "us":
         universe.fetch_us_universe_from_nasdaqtrader()
@@ -385,6 +391,9 @@ def run(
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     from ..paths import run_dir
     report = out_mod.universe_report(all_rows, sector_rs, strategy)
+    # which rules produced these rows, so the Candidates tab can say so
+    report["variant"] = live["name"] if live else ""
+    report["spec_id"] = strategy.spec_id()
     # Screener output goes into the same per-run tree the backtests use, so a
     # day's candidates, its CSV and its charts sit together instead of in a
     # flat pile. The stable top-level CSV is kept as a convenience symlink

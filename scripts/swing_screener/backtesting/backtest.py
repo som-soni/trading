@@ -1449,18 +1449,14 @@ def main(argv: list[str] | None = None) -> dict | None:
         # than VcpParams fields (MIN_STRUCTURAL_R, MAX_STOP_PCT, VOL_MULT ...).
         # spec_params() reads every uppercase numeric module constant, so the
         # fingerprint moves here too and the variant cannot overwrite the shipped run.
-        import importlib
+        # One implementation, shared with a strategy's live_variant -- and it REFUSES an override
+        # that would move the fingerprint without moving the behaviour (strategies/variants.py).
+        from ..strategies.variants import apply_consts
 
-        mod = importlib.import_module(type(get_strategy(args.strategy)).__module__)
-        applied = {}
-        for item in args.const:
-            k, _, v = item.partition("=")
-            k = k.strip()
-            cur = getattr(mod, k, None)
-            if not k.isupper() or not isinstance(cur, (int, float)) or isinstance(cur, bool):
-                parser.error(f"--const: {args.strategy} has no numeric constant {k!r}")
-            setattr(mod, k, type(cur)(float(v)))
-            applied[k] = getattr(mod, k)
+        try:
+            applied = apply_consts(args.strategy, dict(item.partition("=")[::2] for item in args.const))
+        except ValueError as e:
+            parser.error(f"--const: {e}")
         logger.info("const override %s -> spec %s", applied, get_strategy(args.strategy).spec_id())
     # A backtest must be attributable to a recorded version. If the rules have
     # moved without a version bump + `versions --update`, the report directory

@@ -112,6 +112,23 @@ PP_FLAG_MIN_DAYS = 10        # the pause: about 2 …
 PP_FLAG_MAX_DAYS = 30        # … to 6 weeks
 PP_FLAG_MAX_DEPTH_PCT = 25.0
 
+# What each VCP failure code means TODAY, read from core/vcp_spec.detect. One table, used by the
+# chart's failed-base titles and by the Candidates tab's stage view. The chart's own copy had gone
+# stale -- VCP-05 still said "first pullback too deep" two versions after it became the depth of the
+# BASE, and VCP-06 "pullbacks don't shrink" after it became the reset rule.
+VCP_RULES = {
+    "VCP-01": "no qualifying advance before the base",
+    "VCP-02": "no base yet",
+    "VCP-03": "trend broke during the base",
+    "VCP-04": "too few pullbacks",
+    "VCP-05": "base too deep",
+    "VCP-06": "volatility hasn't contracted since it last widened",
+    "VCP-07": "lower lows",
+    "VCP-08": "final tight area not ready",
+    "VCP-09": "pivot low in the base (cheat territory)",
+    "VCP-10": "no volume dry-up",
+}
+
 POWER_PLAY = vcp_spec.PowerPlayParams(
     run_window=PP_RUN_WINDOW, run_mult=PP_RUN_MULT, flag_min_days=PP_FLAG_MIN_DAYS,
     flag_max_days=PP_FLAG_MAX_DAYS, flag_max_depth_pct=PP_FLAG_MAX_DEPTH_PCT,
@@ -1172,6 +1189,18 @@ class MinerviniSpecStrategy(Strategy):
     # Both trade tiers: the guide's default entry is the buy-stop through the pivot (MV-02) and it lists the
     # cheats (MV-03 / MV-04), all graded TRADE ON TRIGGER; MV-01 alone fired 9 times in 16 years in India.
     backtest_args = "--spec --market-filter --pe --accept-labels 'TRADE - HIGH CONFIDENCE,TRADE ON TRIGGER'"
+    base_rules = VCP_RULES
+    #: PROVISIONAL -- the screen lists candidates under this until a variant beats the baseline,
+    #: then this declaration is replaced. Not part of the shipped rules: backtests never apply it.
+    live_variant = {
+        "name": "Block cheats on VCP-09 bases",
+        "const": {"CHEAT_BLOCK_VCP09": 1},
+        "why": ("The one tested variant that changes WHICH stocks are listed and has improved both markets: "
+                "against the v1.20 baseline, +13.1R in India (PF 1.30 -> 1.41) and +14.2R in the US "
+                "(0.79 -> 0.82), repeating v1.19's +12.9R and +20.1R. Provisional: swap it for whichever "
+                "variant beats the baseline. Exit-rule variants -- the larger win, EX-06 needing volume -- "
+                "change how a trade is managed, not which stocks appear, so they are not part of it."),
+    }
 
     # ---------- screen ----------
 
@@ -1253,6 +1282,8 @@ class MinerviniSpecStrategy(Strategy):
         # The experiment above, applied where the setup is decided rather than in the detector:
         # the base and its shelf are still measured and still drawn, only the entry is withheld.
         if CHEAT_BLOCK_VCP09 and prev.get("fail") == "VCP-09":
+            if crossed:
+                e["cheat_withheld"] = "VCP-09"   # the cheat fired and the variant withheld it
             crossed = None
         mv03, mv04 = crossed == MV03, crossed == MV04
         # MV-05, the power play. Its pivot is frozen on yesterday's bar for the same reason MV-01's
@@ -1539,7 +1570,7 @@ class MinerviniSpecStrategy(Strategy):
             "first_depth_pct": r("first_depth_pct", 1), "last_depth_pct": r("last_depth_pct", 1),
             "tightness_pct": r("tightness_pct", 1), "dryup_ratio": r("dryup_ratio"),
             "breakout_volume_ratio": r("breakout_volume_ratio"), "vcp_fail": e.get("vcp_fail"),
-            "rs_score": r("rs_score", 3),
+            "rs_score": r("rs_score", 3), "cheat_withheld": e.get("cheat_withheld"),
         }
 
 
@@ -1658,9 +1689,7 @@ class MinerviniSpecStrategy(Strategy):
                    ("VCP-10", "base", "Volume dry-up"))
     _VCP_ORDER = ("VCP-01", "VCP-02", "VCP-03", "VCP-04", "VCP-05", "VCP-06", "VCP-08", "VCP-09", "VCP-10")
     # what a failed rule means, short enough for the setup's header
-    _VCP_FAILED = {"VCP-03": "trend not intact", "VCP-04": "wrong number of pullbacks", "VCP-05": "first pullback too deep",
-                   "VCP-06": "pullbacks don't shrink", "VCP-07": "lower lows", "VCP-08": "not tight enough",
-                   "VCP-09": "pivot too far below the high", "VCP-10": "no volume dry-up", "VCP-11": "volatility didn't contract"}
+    _VCP_FAILED = VCP_RULES
 
     # a correction inside the uptrend deeper than this is flagged on the chart (display only: it decides
     # nothing, and the leading underscore keeps it out of the strategy's fingerprint)

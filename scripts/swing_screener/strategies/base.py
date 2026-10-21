@@ -392,6 +392,16 @@ class Strategy(SpecMeta, ABC):
     entry_rules: tuple = ()
     exit_rules: tuple = ()
     backtest_args: str = ""
+    # The variant the DAILY SCREEN runs under: {"name", "const": {NAME: value}, "why"}, applied by
+    # strategies/variants.apply_live_variant in the screening process only -- backtests measure the
+    # shipped rules plus their own explicit flags, never this. It exists so a variant that is
+    # winning its A/B can list today's candidates before it has earned a place in the shipped rules,
+    # and be swapped for a better one by editing this one declaration. Every screening row records
+    # the variant and spec id it was produced under, so the Candidates tab says which rules it shows.
+    live_variant: dict | None = None
+    # Human labels for the codes of the strategy's structure check (e.g. VCP-02 -> "no base yet"),
+    # so the Candidates tab can say where a qualifying stock is stuck without a second copy in JS.
+    base_rules: dict | None = None
 
     # --- identity and versioning ---
     # `family` is the high-level strategy a reader thinks in terms of

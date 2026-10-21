@@ -3541,10 +3541,10 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
     <div class="page-head"><h1>${esc(d.name)}</h1><code>${esc(d.key)}</code>
       ${d.kind === "long-term" ? `<span class="spacer"></span><a class="btn" href="#/quality">Open the Quality page →</a>` : ""}</div>
     ${d.status ? `<div class="sd-badge"><span class="tag ${statusClass(d.status) === "watch" ? "warn" : statusClass(d.status) === "trade" ? "pos" : "neutral"}" title="${esc(statusVerdict(d.status))}">${esc(shortStatus(d.status))}</span></div>` : ""}
-    <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of <a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}</p>
+    <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of <a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}${d.live_variant ? ` The daily screen currently lists them under the variant <b>${esc(d.live_variant.name)}</b> (provisional — see <a href="#/strategies/${encodeURIComponent(key)}/setups">Candidates</a>).` : ""}</p>
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
   const host = root.querySelector("#stab");
-  if (tab === "setups") return strategySetups(host, alive, key, mkt, runKey);
+  if (tab === "setups") return strategySetups(host, alive, key, mkt, runKey, d);
   if (tab === "holdings") return strategyHoldings(host, alive, d, key);
   if (tab === "backtests") return strategyBacktests(host, d, key);
   strategyRules(host, d, key);
@@ -3891,7 +3891,7 @@ function strategyBacktests(host, d, key) {
 }
 
 /** a strategy's latest (or chosen) run: every screened stock with its decision, plan and gates */
-async function strategySetups(host, alive, strat, mkt, runKey) {
+async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
   mkt = pageMarket(mkt);
   host.innerHTML = LOADING;
   const all = await api(`/api/screening/runs?market=${mkt}`);
@@ -3914,45 +3914,83 @@ async function strategySetups(host, alive, strat, mkt, runKey) {
   if (run.id) q.set("id", run.id);
   const t = await api(`/api/screening/table?${q}`);
   if (!alive()) return;
-  const di = t.columns.indexOf("decision"), ti = t.columns.indexOf("tradeable"), si = t.columns.indexOf("symbol");
+  const ci = (c) => t.columns.indexOf(c);
+  const di = ci("decision"), ti = ci("tradeable"), si = ci("symbol");
+  const ffg = ci("first_failed_gate"), vf = ci("vcp_fail"), hs = ci("has_setup"), cw = ci("cheat_withheld");
+  const vi = ci("variant"), sp = ci("spec_id");
+  const rules = (doc && doc.base_rules) || {};
+  const yes = (v) => v === true || v === "True" || v === "true" || v === 1;
+  // Stages read what the run RECORDED for each stock -- the gates it passed, the structure check it
+  // failed, the setup it fired -- never re-derive a rule here (the strategy is the one implementation).
+  const qualified = (r) => ffg < 0 || !r[ffg];
+  const complete = (r) => qualified(r) && vf >= 0 && !r[vf];
+  const isWatch = (r) => /^WATCH/i.test(r[di] || "");
+  // a readable stage column: where each stock is, in words, from the recorded codes
+  if (vf >= 0 && !t.columns.includes("base_stage")) {
+    t.columns.push("base_stage");
+    t.rows.forEach((r) => r.push(!qualified(r) ? `fails ${r[ffg]}`
+      : !r[vf] ? "complete VCP" : (rules[r[vf]] ? `${r[vf]} · ${rules[r[vf]]}` : r[vf])));
+  }
+  const STAGES = [
+    ["qualified", "Qualified", qualified, "", "Passed every hard gate (for Minervini, the Trend Template G1–G8) on the run's date"],
+    ...(vf >= 0 ? [["complete", "Complete VCP", complete, "", "Qualified, and the base passed every structure check: a VCP ready for a pivot buy"]] : []),
+    ["setup", "Setup today", (r) => hs >= 0 && yes(r[hs]), "", "A setup fired on the run's date — a pivot breakout, a coil, a cheat or a power play"],
+    ["watch", "Watch", isWatch, "watch", "Decision held at WATCH"],
+    ["tradeable", "Tradeable", (r) => r[ti] === true, "trade", "The decision rules accept it"],
+    ...(cw >= 0 && t.rows.some((r) => r[cw]) ? [["withheld", "Withheld by variant", (r) => !!r[cw], "", "A cheat fired, and the live variant withheld it"]] : []),
+    ["all", "All", () => true, "", "Every stock the screen passed to this strategy"]];
+  const stageOf = Object.fromEntries(STAGES.map((x) => [x[0], x]));
   const counts = {};
   t.rows.forEach((r) => { counts[r[di]] = (counts[r[di]] || 0) + 1; });
   const decisions = Object.keys(counts).filter((d) => d && d !== "null").sort();
-  const nTrade = t.rows.filter((r) => r[ti] === true).length;
-  let activeDec = store.get("scrDec", "tradeable");
-  if (!["all", "tradeable", "watch"].includes(activeDec) && !counts[activeDec]) activeDec = "tradeable";
+  // where the qualified-but-not-ready are stuck, by the structure check they fail
+  const stuck = {};
+  if (vf >= 0) t.rows.filter((r) => qualified(r) && r[vf]).forEach((r) => { stuck[r[vf]] = (stuck[r[vf]] || 0) + 1; });
+  const stuckCodes = Object.keys(stuck).sort();
+  let activeDec = store.get("scrDec", "qualified");
+  const valid = (v) => stageOf[v] || (v.startsWith("stuck:") && stuck[v.slice(6)]) || counts[v];
+  if (!valid(activeDec)) activeDec = "qualified";
   const dec = host.querySelector("#dec");
-  const isWatch = (r) => /^WATCH/i.test(r[di] || "");
-  const nWatch = t.rows.filter(isWatch).length;
-  // three chips (Tradeable · Watch · All); the exact decision is a select beside them
+  const rowsFor = (v) => stageOf[v] ? t.rows.filter(stageOf[v][2])
+    : v.startsWith("stuck:") ? t.rows.filter((r) => qualified(r) && r[vf] === v.slice(6)) : t.rows.filter((r) => r[di] === v);
+  // which rules produced this list -- recorded on every row by the screen
+  const variant = vi >= 0 ? (t.rows.find((r) => r[vi] != null)?.[vi] ?? "") : null;
+  const spec = sp >= 0 ? t.rows.find((r) => r[sp])?.[sp] : null;
+  const lv = doc && doc.live_variant;
+  const banner = variant ? `Listed under the live variant <b>${esc(variant)}</b>${spec ? ` · <code>${esc(spec)}</code>` : ""} — provisional, to be replaced by whichever variant beats the baseline.${lv && lv.why ? ` <span class="muted">${mdInline(lv.why)}</span>` : ""}`
+    : variant === "" ? `Listed under the shipped rules${spec ? ` · <code>${esc(spec)}</code>` : ""}.`
+    : lv ? `This run predates live variants, so it shows the shipped rules. The next run lists candidates under <b>${esc(lv.name)}</b>.` : "";
   const drawChips = () => {
-    const main = ["tradeable", "watch", "all"].includes(activeDec);
-    dec.innerHTML = [["tradeable", "Tradeable", nTrade, "trade"], ["watch", "Watch", nWatch, "watch"], ["all", "All", t.rows.length]]
-      .map(([v, txt, n, cls]) => `<button class="chip ${cls || ""} ${v === activeDec ? "on" : ""}" data-d="${esc(v)}">${esc(txt)}<span>${n}</span></button>`).join("") +
-      `<select id="decsel" title="Filter by the exact decision" class="${main ? "" : "on"}"><option value="">Any decision</option>${decisions.map((d) => `<option value="${esc(d)}" ${d === activeDec ? "selected" : ""}>${esc(d)} (${counts[d]})</option>`).join("")}</select>`;
+    dec.innerHTML = (banner ? `<div class="muted small" style="flex-basis:100%;margin-bottom:6px">${banner}</div>` : "") +
+      STAGES.map(([v, txt, fn, cls, tip]) => `<button class="chip ${cls} ${v === activeDec ? "on" : ""}" data-d="${esc(v)}" title="${esc(tip)}">${esc(txt)}<span>${t.rows.filter(fn).length}</span></button>`).join("") +
+      (stuckCodes.length ? `<select id="stucksel" title="Qualified, but the base fails this structure check" class="${activeDec.startsWith("stuck:") ? "on" : ""}"><option value="">Stuck at…</option>${stuckCodes.map((c) => `<option value="stuck:${esc(c)}" ${"stuck:" + c === activeDec ? "selected" : ""}>${esc(c)}${rules[c] ? " · " + esc(rules[c]) : ""} (${stuck[c]})</option>`).join("")}</select>` : "") +
+      `<select id="decsel" title="Filter by the exact decision" class="${stageOf[activeDec] || activeDec.startsWith("stuck:") ? "" : "on"}"><option value="">Any decision</option>${decisions.map((d) => `<option value="${esc(d)}" ${d === activeDec ? "selected" : ""}>${esc(d)} (${counts[d]})</option>`).join("")}</select>` +
+      (vf >= 0 ? `<div class="muted small" style="flex-basis:100%;margin-top:4px">Stages, not a funnel: a cheat entry is taken on a base still forming, so a setup need not be a complete VCP.</div>` : "");
   };
   // the essentials first; the other ~40 columns are one click away under Columns
   const order = [...SCREEN_COLS.map((c) => t.columns.indexOf(c)).filter((i) => i >= 0)];
   const keep = [...order, ...t.columns.map((_, i) => i).filter((i) => !order.includes(i))];
-  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "decision", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
+  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "decision", "base_stage", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
   const draw = () => {
     drawChips();
-    const rows = t.rows.filter((r) => activeDec === "all" || (activeDec === "tradeable" ? r[ti] === true : activeDec === "watch" ? isWatch(r) : r[di] === activeDec));
+    const rows = rowsFor(activeDec);
     const tbl = host.querySelector("#tbl");
-    if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>Nothing ${activeDec === "tradeable" ? "tradeable" : "here"} in this run</b><div class="muted">Try “All” to see every stock the screen passed to this strategy.</div></div>`; return; }
+    const what = stageOf[activeDec] ? stageOf[activeDec][1].toLowerCase() : activeDec.startsWith("stuck:") ? `stuck at ${activeDec.slice(6)}` : activeDec;
+    if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>Nothing at “${esc(what)}” in this run</b><div class="muted">Try “All” to see every stock the screen passed to this strategy.</div></div>`; return; }
     dataTable(tbl, keep.map((i) => t.columns[i]), rows.map((r) => keep.map((i) => r[i])), {
       name: `setups_${strat}`, hidden: keep.map((i) => t.columns[i]).filter((c) => !DEFAULT_SHOWN.has(c)),
       rowClick: (row, visible) => {
         const ki = keep.indexOf(si), pi = keep.indexOf(t.columns.indexOf("pattern_name"));
         const setup = pi >= 0 ? { strategy: strat, date: String(run.run).slice(0, 10),
           patterns: Object.fromEntries(visible.filter((r) => r[pi]).map((r) => [r[ki], r[pi]])) } : null;
-        openChartFromList(mkt, row[ki], visible.map((r) => r[ki]), `${strat} · ${activeDec === "all" ? "all" : activeDec.toLowerCase()}`,
-          location.hash, setup);
+        openChartFromList(mkt, row[ki], visible.map((r) => r[ki]), `${strat} · ${what}`, location.hash, setup);
       },
     });
   };
   dec.onclick = (e) => { const b = e.target.closest("button[data-d]"); if (b) { activeDec = b.dataset.d; store.set("scrDec", activeDec); draw(); } };
-  dec.onchange = (e) => { if (e.target.id === "decsel") { activeDec = e.target.value || "all"; store.set("scrDec", activeDec); draw(); } };
+  dec.onchange = (e) => {
+    if (e.target.id === "decsel" || e.target.id === "stucksel") { activeDec = e.target.value || "qualified"; store.set("scrDec", activeDec); draw(); }
+  };
   draw();
 }
 
