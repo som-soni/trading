@@ -105,21 +105,28 @@ class ExitPolicy:
     donchian_bars: int = 50      # for donchian
     # ---- minervini: the strategy's exit ladder. Defaults are minervini_spec's constants, so a
     # --spec run trades the strategy's documented numbers (1.8: the SEPA Learn guide's).
-    fail_days: int = _ms.FAIL_DAYS              # EX-02: a close below the pivot within this many sessions of entry (0 = off)
-    breakeven_r: float = _ms.BREAKEVEN_R        # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
-    partial_r: float = 0.0                      # EX-04 (1.7): sell `partial_frac` at entry + this × R (0 = off)
-    partial_frac: float = _ms.STRENGTH_FRAC
-    strength_ext: float = _ms.STRENGTH_EXT_PCT / 100   # EX-04: sell `partial_frac` at the next open once the close is
+    #
+    # Read through a default_factory, NOT as a plain default. A plain default is evaluated once,
+    # when this class is created at import -- which is before `--const` patches the strategy
+    # module. So `--const BREAKEVEN_R=0` set the constant, changed the fingerprint and the run
+    # directory, and left the policy on 2.0: an experiment that silently measured the control
+    # while being filed as a distinct arm. `--const TREND_EXIT_NEEDS_VOLUME=1` was no-op the same
+    # way. A factory runs at construction, after the patch, so an override means what it says.
+    fail_days: int = field(default_factory=lambda: _ms.FAIL_DAYS)              # EX-02: a close below the pivot within this many sessions of entry (0 = off)
+    breakeven_r: float = field(default_factory=lambda: _ms.BREAKEVEN_R)        # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
+    partial_r: float = field(default_factory=lambda: _ms.PARTIAL_R)            # EX-04: sell `partial_frac` at entry + this × R (0 = off)
+    partial_frac: float = field(default_factory=lambda: _ms.STRENGTH_FRAC)
+    strength_ext: float = field(default_factory=lambda: _ms.STRENGTH_EXT_PCT / 100)   # EX-04: sell `partial_frac` at the next open once the close is
                                                 #   this far above `ma_col` (0 = off)
     climax: bool = True          # EX-05
-    climax_partial: bool = bool(_ms.CLIMAX_IS_PARTIAL)  # a climax sells `partial_frac` (if not yet sold), not everything
+    climax_partial: bool = field(default_factory=lambda: bool(_ms.CLIMAX_IS_PARTIAL))  # a climax sells `partial_frac` (if not yet sold), not everything
     climax_gain: float = 0.25    #   only once the position is up this much
     climax_up_days: int = 8      #   … at least this many up closes in the last 10
     climax_ext_200: float = 0.70 #   … close this far above SMA200
     climax_gap: float = 0.03     #   … a gap up this large after a rise of `climax_gap_after`
     climax_gap_after: float = 0.50
-    trend_volume: bool = bool(_ms.TREND_EXIT_NEEDS_VOLUME)  # EX-06 needs volume ≥ its 50-day average
-    time_stop_days: int = _ms.TIME_STOP_DAYS    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
+    trend_volume: bool = field(default_factory=lambda: bool(_ms.TREND_EXIT_NEEDS_VOLUME))  # EX-06 needs volume ≥ its 50-day average
+    time_stop_days: int = field(default_factory=lambda: _ms.TIME_STOP_DAYS)    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
     # ---- trade management for the other modes (bracket, trail_atr, ma, donchian). All off by default,
     # so a run without them trades exactly as before. `minervini` has its own ladder above and ignores these.
     be_r: float = 0.0            # stop to entry + round-trip costs once the HIGH reaches entry + this × R;

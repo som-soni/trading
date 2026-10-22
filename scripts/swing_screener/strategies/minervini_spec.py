@@ -194,6 +194,15 @@ OVERHEAD_CLUSTER_ATR = 1.0
 # breakeven stop had reached a median 2.75R and realised -0.04R -- and 1.8 puts the
 # guide's figure back; `--breakeven-r 2.5` reproduces 1.7.)
 BREAKEVEN_R = 2.0
+# EX-04's trigger, and the other half of EX-03. Minervini sells into strength and THEN
+# raises the stop; this implementation did the raise without the sale, which converts an
+# unrealised gain into nothing instead of into cash. 1.6 saw the symptom -- breakeven-stop
+# exits had reached a median 2.75R and realised -0.04R -- and moved the threshold, which
+# treats a paired rule as a single one. Measured on the 1.22 runs, every breakeven-stop exit
+# in both books came from a trade that had reached +2R: 28 of India's 95 such trades and 26
+# of the US's 114 ended at a median -0.03R and -0.01R. Banking {STRENGTH_FRAC} at the same
+# +2R the stop moves on is the guide's own sequence, so the two fire on one bar.
+PARTIAL_R = 2.0
 # EX-02, the failed-breakout exit (a close back below the pivot within N sessions).
 # OFF: the guide leaves a dip below the pivot to the stop, and dips are normal --
 # on stored data about two in three breakouts close back below the pivot within ten
@@ -557,8 +566,20 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.22"
+    version = "1.23"
     changelog = (
+        ("1.23", "2026-10-22",
+         "EX-04 now also sells {STRENGTH_FRAC} at +{PARTIAL_R}R, the point EX-03 moves the stop to "
+         "breakeven. The ladder raised the stop without ever banking anything, which converts an "
+         "unrealised gain into nothing instead of into cash -- half of the guide's rule, which is "
+         "to sell into strength and THEN raise the stop. 1.6 saw the symptom (breakeven-stop exits "
+         "had reached a median 2.75R and realised -0.04R) and moved the threshold, treating a "
+         "paired rule as a single one. Measured on the 1.22 runs: every breakeven-stop exit in "
+         "both books came from a trade that had reached +2R -- 28 of India's 95 such trades and 26 "
+         "of the US's 114 -- and they ended at a median -0.03R and -0.01R. The old EX-04 trigger, "
+         "a close {STRENGTH_EXT_PCT}% above the 50-day, is unchanged and still fires first when it "
+         "comes first; it is simply rare, taking a part off in 14% of Indian and 3.7% of US "
+         "trades. Detection is untouched, so the golden harness is identical."),
         ("1.22", "2026-10-21",
          "STRENGTH_FRAC is 0.33 instead of 1/3, so EX-04 reads \"sell 0.33 of the position\" on the "
          "page instead of \"0.333333\" -- the same rounding UPPER_ZONE got in 1.15, for the same "
@@ -1289,9 +1310,15 @@ class MinerviniSpecStrategy(Strategy):
         "position is sold.\n\n"
         "This is decided on the close of the session that filled, after the fill — the fill itself "
         "never depends on that session's volume.",
-        "EX-04 — sell part into strength. When a close is {STRENGTH_EXT_PCT}% or more above the "
-        "50-day average, {STRENGTH_FRAC} of the position (about a third) is sold. Once only; the "
-        "rest is held for the trend.",
+        "EX-04 — sell part into strength. {STRENGTH_FRAC} of the position (about a third) is sold "
+        "the first time EITHER trigger fires, once only, and the rest is held for the trend:\n\n"
+        "- the trade's high reaches +{PARTIAL_R}R — the same point EX-03 moves the stop to "
+        "breakeven, so the gain is banked on the bar the protection goes on;\n"
+        "- a close {STRENGTH_EXT_PCT}% or more above the 50-day average.\n\n"
+        "The +{PARTIAL_R}R trigger is the half this implementation was missing. Raising the stop "
+        "without selling anything turns an unrealised gain into nothing rather than into cash, and "
+        "measured on the 1.22 runs every breakeven-stop exit in both books came from a trade that "
+        "had already reached +{PARTIAL_R}R.",
         "EX-05 — climax run. Once a close is 25% or more above the price paid, any sign of a buying "
         "climax sells that same part, if EX-04 has not already:\n\n"
         "- the biggest one-day gain since the buy, on the biggest volume since the buy;\n"
@@ -1431,6 +1458,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Largest position", "cfg.max_position_pct", "SL-05: share of equity one position may hold."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Breakeven trigger", "BREAKEVEN_R", "EX-03: R gained before the stop moves to breakeven plus costs."),
+        ("Part-sale trigger", "PARTIAL_R", "EX-04: R gained before about a third is sold. Pairs with the "
+                                           "breakeven trigger, so the gain is banked as the stop moves up."),
         ("Failed-breakout window", "FAIL_DAYS", "EX-02: sessions after entry in which a close below the pivot sells (0 = off)."),
         ("Sell into strength", "STRENGTH_EXT_PCT", "EX-04: % above the 50-day at which a part is sold."),
         ("Part sold into strength", "STRENGTH_FRAC", "EX-04 / EX-05: share of the position sold."),
