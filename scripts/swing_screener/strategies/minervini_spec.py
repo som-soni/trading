@@ -1125,7 +1125,13 @@ class MinerviniSpecStrategy(Strategy):
                   "rejected.",
         "VCP-08": "**Tight area ready.** The last pullback — from the pivot to today — is at least "
                   "{TIGHT_MIN_DAYS} sessions old, and the tight low is at most {TIGHT_PCT}% below "
-                  "the pivot.",
+                  "the pivot.\n\n"
+                  "A very volatile stock can never pass this. A pullback only counts once it is at least "
+                  "{VCP.zigzag_floor_atr_mult} ATR deep (VCP-04), using the ATR on the base-high day. When "
+                  "{VCP.zigzag_floor_atr_mult} ATR is more than {TIGHT_PCT}% of the price — an ATR above "
+                  "about 6.7% with these settings — no last pullback can be both deep enough to count and "
+                  "shallow enough to pass. Measured from 2013, no such base completed: 1% of bases in India "
+                  "and 3% in the US.",
         "VCP-09": "**Pivot near the top.** The pivot is at least {UPPER_ZONE} of the way from the "
                   "base low to the base high, or at least {PIVOT_NEAR_HIGH} times the base high. A "
                   "lower pivot is not a pivot buy; the base can still give a cheat (S3, S4).\n\n"
