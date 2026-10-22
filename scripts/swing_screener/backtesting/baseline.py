@@ -593,33 +593,101 @@ from ..strategies.base import PortfolioStrategy
 DOC = {
     "key": "momentum_baseline",
     "name": "Momentum baseline",
-    "description": "Rank by 12-1 month momentum, hold the top N, rebalance on a calendar; the benchmark every strategy must beat.",
+    "description": "Rank liquid stocks by their 12-month return ending one month ago, hold the top {top_n} "
+                   "equal-weighted, rebalance at every month-end; the benchmark every strategy must beat.",
     "status": "Reference portfolio, not a screener strategy. Beats the index in India; not in the US (see research/momentum-trend-research.md).",
-    "thesis": "Stocks that have outperformed over the past year keep outperforming for months (cross-sectional momentum), "
-              "so simply holding the strongest names should beat the index after costs.",
+    "thesis": "Stocks that have outperformed over the past year tend to keep outperforming for the next few months "
+              "-- cross-sectional momentum, documented by Jegadeesh and Titman (1993) and in many markets since. "
+              "If that holds, simply owning the strongest names should beat the index after costs. This is the "
+              "plainest form of the idea, kept naive on purpose: a strategy that cannot beat it is not adding "
+              "anything with its extra rules.",
     "how_it_works": (
-        "On each rebalance date, score every eligible stock by its return over the last `--lookback` bars, skipping the most "
-        "recent `--skip` bars (the 12-1 convention, which avoids the short-term reversal of the latest month).",
-        "Only the `--liquidity-top` most liquid names are ranked, so the list is not filled with speculative microcaps.",
-        "With the trend filter on (the default), a stock must also be above its 200-day moving average to be held.",
-        "Hold the top `--top-n` names, equal-weighted by default (`--weighting inverse_vol` sizes by inverse volatility).",
-        "A holding is sold when it drops out of the top N at a rebalance or loses its trend; there are no stops, targets or entry triggers.",
-        "Costs of `--cost-bps` per side are charged on every trade; whole shares only unless `--fractional`.",
+        "Once a month, on the last stored session of the month, the whole universe is filtered, ranked by its "
+        "past-year return and the top {top_n} are held at equal weight until the next month-end. Nothing "
+        "happens between month-ends.",
+        "The steps, in order, on each month-end: drop stocks below the price and turnover floors or not above "
+        "their 200-day average; keep the {liquidity_top} most liquid of the rest; score each by its 12-1 "
+        "momentum; sell every holding that is not in the new top {top_n}; resize the holdings that stay and "
+        "buy the new names. Every trade is at that session's close. Entry and Exit give each test exactly.",
+        "There is no stop, no target and no entry trigger. The rank is the whole rule, so a holding is "
+        "replaced, never stopped out.",
+        "The flags under Parameters can change the window, the number held, the weighting and the costs for an "
+        "experiment. The strategy itself is the values on this page: {lookback}-session momentum skipping "
+        "{skip}, top {top_n}, {cost_bps}bps a side, month-end rebalance, trend filter on.",
     ),
     "entry_rules": (
-        "On each rebalance date, score every eligible stock and hold the top N; a name entering the "
-        "top N is bought at that session's close.",
-        "Equal-weighted: each holding gets the same share of capital.",
-        "No stop, no target and no entry trigger — the rank is the whole rule.",
+        "Universe. Every stock stored for the market, minus ETFs, liquid funds and other listings that are not "
+        "operating companies, with at least {lookback} + {skip} + 2 stored sessions of history.",
+        "Eligible on the month-end session. A stock must pass all four tests on that session's close.\n\n"
+        "- **Price floor:** close at or above $10 in the US (on split-adjusted history, see the caveats); no "
+        "floor in India.\n"
+        "- **Turnover floor:** 20-session average of close × volume at or above $10 million a day in the US, "
+        "₹50 crore in India (the market's screener floor).\n"
+        "- **Trend:** close strictly above its 200-session simple moving average, which needs a price on each "
+        "of the last 200 sessions.\n"
+        "- **Score exists:** the stock has a close on both ends of the momentum window.",
+        "Liquid pool. If more than {liquidity_top} stocks pass, only the {liquidity_top} with the highest "
+        "20-session average turnover are ranked; the rest are dropped before ranking. With the turnover floor "
+        "in place this rarely binds.",
+        "Momentum score (12-1). Close {skip} sessions ago ÷ close {lookback} + {skip} sessions ago − 1: a full "
+        "{lookback}-session (12-month) return that ends one month ago, so it starts about 13 months back. "
+        "Example: at the end of January 2025 it is roughly the return from late December 2023 to late "
+        "December 2024. Leaving out the latest month avoids its short-term reversal. The usual academic "
+        "12-1 (Fama-French's momentum factor, months t−12 to t−2) covers eleven months; this one covers twelve.",
+        "Selection. Highest score first; the top {top_n} are held. Any score qualifies, including a negative "
+        "one. With fewer than {top_n} eligible stocks it holds only those, each at the larger equal weight.",
+        "Weighting. Equal: each name held is sized to 1 ÷ (names held) of the account's value -- cash plus "
+        "holdings at their last price. Holdings that stay in the top {top_n} are resized to that weight every "
+        "month, so a winner is trimmed and a laggard topped up. Whole shares only, rounded down, so a stock "
+        "priced above its slot is not bought unless `--fractional`. `--weighting inverse_vol` sizes by "
+        "1 ÷ 63-session volatility instead (the `--vol-window` default).",
+        "Fill and cost. Every trade is at the month-end session's close: a buy pays the close plus {cost_bps}bps, "
+        "a sale receives the close minus {cost_bps}bps. Sales are done first, then buys in rank order; if cash "
+        "runs short, a buy is cut to the whole shares the cash covers.",
+        "When it holds cash. When no stock is eligible, and for whatever rounding to whole shares leaves over. "
+        "Optional `--index-overlay` (off): hold nothing while the benchmark's month-end close is not above the "
+        "average of its last 10 month-end closes (`--overlay-months`), read from an earlier month-end so the "
+        "decision uses only known prices. Optional `--vol-target` (off): scale every position down so the "
+        "basket's trailing volatility is at most the target, never above 100% invested.",
     ),
     "exit_rules": (
-        "Sold at the next rebalance once the name leaves the top N.",
-        "Nothing else sells it; there is no stop, so a holding is carried until the rank drops it.",
+        "Sold at a month-end. A holding is sold in full at that session's close, less {cost_bps}bps, when it is "
+        "not in the new top {top_n}: outranked, or failing a test that day -- the close at or below its 200-day "
+        "average, turnover under the floor, price under the floor, or outside the {liquidity_top}-name liquid "
+        "pool.",
+        "Resized at a month-end. A holding that stays in the top {top_n} is sold down or bought up to the equal "
+        "weight, at the same close and cost.",
+        "Nothing sells between month-ends. There is no stop and no target: a stock that closes below its "
+        "200-day average on the 3rd is held until the month-end test, and a fall of any size in between is "
+        "held.",
+        "No price that day. A holding with no close on the month-end session cannot be sold; it is carried at "
+        "its last price until a month-end on which it trades.",
+        "End of the test. Whatever is still held is valued at the final close, with no exit cost.",
     ),
     "caveats": (
-        "Survivorship bias: the universe is today's listed names, which flatters every backtest here.",
-        "Results depend on the rebalance cadence and N; compare runs with the same settings.",
-        "Optional overlays (`--index-overlay`, `--vol-target`, alternative `--rank` signals) are experiments, not the baseline itself.",
+        "**Survivorship bias.** The universe is today's listed names; companies delisted during the window are "
+        "absent, which flatters every backtest here.",
+        "**India: the trend filter empties the book for long stretches.** A few stray weekend sessions in India's "
+        "stored prices (2010-02-06, 2012-01-07, 2012-03-03, 2012-09-08) leave a gap in almost every stock's "
+        "last 200 sessions. The 200-day average needs all 200, so it is missing, and the stock ineligible, "
+        "for the next 200 sessions. On stored data almost no stock passes from February to October 2010 and "
+        "from January 2012 to June 2013, so India runs sit in cash then. This is a code defect, not a rule: "
+        "the average is taken before those sessions are dropped. It affects both momentum strategies.",
+        "**US: a $10 floor on split-adjusted prices.** Stored history is divided by every later split, so a "
+        "stock that split heavily reads under $10 in its early years and is excluded exactly while it was "
+        "rising (NVDA does not clear it until mid-2020). The gated backtests drop the price floor for this "
+        "reason; this one keeps it.",
+        "**Dividends are left out** of both the strategy and the benchmark (SPY, Nifty 500): stored prices are "
+        "split-adjusted closes only, so absolute returns understate both.",
+        "**The live ranking is not quite the backtest.** The current-holdings ranking skips the turnover floor "
+        "for this strategy (it declares no per-market floor) and needs 300 stored sessions, so it can list names "
+        "the backtest would not hold.",
+        "**A run that ends mid-month rebalances on its last session**, because the last stored day counts as "
+        "that month's month-end.",
+        "**Settings change the answer.** Results depend on the rebalance cadence and N; compare runs with the "
+        "same settings. `--index-overlay`, `--vol-target` and the other `--rank` signals are experiments, not "
+        "the baseline. The overlay reads the previous month-end's comparison, or the one before it when the "
+        "month's last session falls before the calendar month-end.",
     ),
     "screen": False,
 }
@@ -631,33 +699,42 @@ def build_parser() -> argparse.ArgumentParser:
     # Which registered portfolio strategy's tunables to run. Its class attributes become the
     # argparse DEFAULTS (see main), so a strategy is the configuration that was measured rather
     # than a set of flags someone has to remember -- and an explicit flag still overrides it.
-    ap.add_argument("--strategy", default="momentum_baseline", choices=sorted(portfolio_strategies()))
+    ap.add_argument("--strategy", default="momentum_baseline", choices=sorted(portfolio_strategies()),
+                    help="registered portfolio strategy to run; its own settings replace the defaults below")
     ap.add_argument("--market", required=True, choices=list(MARKETS.keys()))
     ap.add_argument("--start", required=True, help="YYYY-MM-DD")
-    ap.add_argument("--top-n", type=int, default=10)
-    ap.add_argument("--lookback", type=int, default=TRADING_DAYS, help="momentum lookback in bars")
-    ap.add_argument("--skip", type=int, default=21, help="bars to skip (12-1 convention)")
-    ap.add_argument("--rebalance", default="ME", help="pandas offset alias: ME, QE, W-FRI")
-    ap.add_argument("--no-trend-filter", action="store_true", help="drop the >200DMA requirement")
-    ap.add_argument("--cost-bps", type=float, default=5.0)
+    ap.add_argument("--top-n", type=int, default=10, help="number of stocks held after each rebalance")
+    ap.add_argument("--lookback", type=int, default=TRADING_DAYS, help="momentum window in sessions: the score is the return over this many sessions, "
+                         "ending --skip sessions ago")
+    ap.add_argument("--skip", type=int, default=21, help="most recent sessions left out of the score; 21 (one month) with a 252 lookback "
+                         "is the 12-1 convention")
+    ap.add_argument("--rebalance", default="ME", help="pandas period alias; trades on the last stored session of each period "
+                         "(ME month-end, QE quarter-end, W-FRI weekly)")
+    ap.add_argument("--no-trend-filter", action="store_true", help="drop the requirement that the close be above its 200-day average on the "
+                         "rebalance session")
+    ap.add_argument("--cost-bps", type=float, default=5.0,
+                    help="cost per side in basis points: added to every buy's close, taken off every sale's")
     ap.add_argument("--fractional", action="store_true",
                     help="allow fractional shares — without it any stock priced "
                          "above its per-name allocation is silently skipped")
     ap.add_argument("--rank", default="momentum", choices=list(RANKERS),
                     help="ranking signal: raw momentum, volatility-scaled "
-                         "(Barroso-Santa-Clara), market-residual (Blitz), or path "
-                         "quality (share of positive days)")
+                         "(Barroso-Santa-Clara), market-residual (Blitz), path "
+                         "quality (share of positive days), or rs_range (position of "
+                         "the relative-strength line in its own range)")
     ap.add_argument("--vol-window", type=int, default=63,
                     help="bars of realised volatility for inverse_vol weights and the vol target (vol_scaled ranking uses the lookback)")
     ap.add_argument("--weighting", default="equal", choices=["equal", "inverse_vol"],
-                    help="equal capital, or inverse to each name's volatility")
+                    help="equal capital, or 1 / each name's --vol-window volatility, scaled to sum to 100%%")
     ap.add_argument("--vol-target", type=float, default=None,
                     help="annualised portfolio vol to scale gross exposure to, "
                          "e.g. 0.15. Never leverages — exposure caps at 100%%")
     ap.add_argument("--index-overlay", action="store_true",
-                    help="hold nothing while the benchmark is below its long "
-                         "moving average (cut SPY's max drawdown -50.8%% -> -23.0%%)")
-    ap.add_argument("--overlay-months", type=int, default=10)
+                    help="hold nothing while the benchmark's month-end close is not above the average "
+                         "of its last --overlay-months month-end closes, read a month late "
+                         "(cut SPY's max drawdown -50.8%% -> -23.0%%)")
+    ap.add_argument("--overlay-months", type=int, default=10,
+                    help="months in the --index-overlay average of the benchmark's month-end closes")
     ap.add_argument(
         "--min-turnover", type=float, default=None,
         help="20-day average turnover floor in account currency (overrides the market "
@@ -665,7 +742,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     ap.add_argument(
         "--liquidity-top", type=int, default=1000,
-        help="rank momentum only within the N most liquid names (0 = whole universe). "
+        help="rank only the N names with the highest 20-day average turnover among those that pass "
+        "the floors (0 = no cutoff). "
         "Guards against the rank filling with speculative microcaps.",
     )
     ap.add_argument("--no-ingest", action="store_true",
@@ -817,8 +895,8 @@ if __name__ == "__main__":
 VS_DOC = {
     "key": "momentum_vol_scaled",
     "name": "Volatility-scaled momentum",
-    "description": "Rank by 12-1 momentum divided by realised volatility, hold the top 20 inverse-vol weighted, "
-                   "rebalance monthly inside a liquid small/mid-cap universe.",
+    "description": "Rank liquid stocks by 12-1 momentum divided by realised volatility, hold the top {top_n} "
+                   "weighted inverse to volatility, rebalance at every month-end.",
     "status": (
         "Chosen on CONSISTENCY, not on peak return. Swept 18 variants (rank x holdings x weighting x vol target) "
         "on India from 2010 at a {min_turnover_cr} crore turnover floor and {cost_bps}bps, judged against the "
@@ -851,35 +929,67 @@ VS_DOC = {
     ),
     "thesis": "Momentum pays, but raw momentum ranks the most volatile names highest, so it buys the stocks most "
               "likely to give the gain back. Dividing by realised volatility asks which stocks rose most PER UNIT "
-              "of risk taken to get there, which is a different and steadier question.",
+              "of risk taken to get there, which is a different and steadier question. The volatility scaling "
+              "follows Barroso and Santa-Clara (2015), who scale the momentum portfolio by its own volatility; "
+              "here each stock's score is scaled instead.",
     "how_it_works": (
-        "On each rebalance date, score every eligible stock by its 12-1 month return divided by the "
-        "volatility of its daily returns over the same {lookback} bars (also ending {skip} bars ago), and "
-        "hold the top {top_n}.",
-        "Eligibility is a turnover floor, not a rank: {min_turnover_cr} crore of 20-day average traded value a day. "
-        "The floor is the universe control -- the momentum premium concentrates in smaller names, and without a "
-        "floor the rank fills with stocks nobody can trade.",
-        "Positions are weighted inverse to volatility, so a quiet name carries more capital than a wild one and "
-        "no single holding dominates the book's risk.",
-        "Held to the next rebalance, fully invested. There is no stop and no target: the exit is the rank, and a "
-        "name that stops being strong is replaced rather than stopped out.",
+        "Once a month, on the last stored session of the month, every liquid stock is scored by its past-year "
+        "return per unit of volatility, and the top {top_n} are held, weighted inverse to their volatility, until "
+        "the next month-end. Nothing happens between month-ends.",
+        "The steps, in order, on each month-end: drop stocks below the turnover and price floors or not above "
+        "their 200-day average; score the rest; sell every holding not in the new top {top_n}; resize the "
+        "holdings that stay and buy the new names. Every trade is at that session's close. Entry and Exit give "
+        "each test exactly.",
+        "Eligibility is a turnover floor, not a liquidity rank: the floor is the universe control. The momentum "
+        "premium concentrates in smaller names, and without a floor the rank fills with stocks nobody can "
+        "trade.",
+        "There is no stop, no target and no trigger to wait for. The rank IS the trade rule, which is why this "
+        "has a Holdings tab rather than setups.",
     ),
     "entry_rules": (
-        "On each rebalance date (ME, month-end) every eligible name is scored and the "
-        "top {top_n} are held. A name entering the top {top_n} is bought at that session's close.",
-        "Eligible means: {min_turnover_cr} crore of 20-day average traded value a day, above its own "
-        "200-day average, and enough history to score ({lookback} bars plus {skip} skipped).",
-        "Size is inverse to realised volatility over {vol_window} bars, so a quiet name carries more "
-        "capital than a wild one and no single holding dominates the book's risk.",
-        "There is no stop, no target and no trigger to wait for. The rank IS the trade rule, which is "
-        "why this has a Holdings tab rather than setups.",
+        "Universe. Every stock stored for the market, minus ETFs, liquid funds and other listings that are not "
+        "operating companies (v1.1), with at least {lookback} + {skip} + 2 stored sessions of history.",
+        "Eligible on the month-end session. A stock must pass all four tests on that session's close.\n\n"
+        "- **Turnover floor:** 20-session average of close × volume at or above ₹{min_turnover_cr} crore a day "
+        "in India, ${min_turnover_usd_m} million in the US.\n"
+        "- **Price floor:** close at or above $10 in the US (on split-adjusted history, see the caveats); no "
+        "floor in India.\n"
+        "- **Trend:** close strictly above its 200-session simple moving average, which needs a price on each "
+        "of the last 200 sessions.\n"
+        "- **Score exists:** the stock has a close on both ends of the window and a volatility reading.",
+        "No liquidity rank. Every stock that passes is ranked; there is no most-liquid-N cutoff (liquidity_top "
+        "is {liquidity_top}).",
+        "Score. 12-1 momentum ÷ volatility.\n\n"
+        "- **Momentum:** close {skip} sessions ago ÷ close {lookback} + {skip} sessions ago − 1 -- a full "
+        "{lookback}-session (12-month) return ending one month ago.\n"
+        "- **Volatility:** the standard deviation of daily returns over the same {lookback} sessions, also "
+        "ending {skip} sessions ago, from at least half of them.\n\n"
+        "Example: two stocks both up 60%; one with 2% daily swings scores 30, one with 4% swings scores 15, so "
+        "the steadier one ranks first.",
+        "Selection. Highest score first; the top {top_n} are held. Any score qualifies, including a negative "
+        "one -- there is no absolute-momentum test beyond the 200-day filter. With fewer than {top_n} eligible "
+        "stocks it holds only those.",
+        "Weighting. Inverse volatility: each name's weight is 1 ÷ its annualised volatility of daily returns "
+        "over the last {vol_window} sessions up to the month-end (no skip), divided by the sum over the names "
+        "held, so the weights add to 100%. A name with no volatility reading gets zero weight and is not bought. "
+        "Holdings that stay are resized to their new weight every month. Whole shares only, rounded down.",
+        "Fill and cost. Every trade is at the month-end session's close: a buy pays the close plus {cost_bps}bps, "
+        "a sale receives the close minus {cost_bps}bps. Sales are done first, then buys in rank order; if cash "
+        "runs short, a buy is cut to the whole shares the cash covers.",
+        "When it holds cash. Only when no stock is eligible, and for whatever rounding to whole shares leaves "
+        "over. Otherwise it is fully invested: there is no market filter and no volatility target.",
     ),
     "exit_rules": (
-        "Sold at the next rebalance, at the close, once the name is no longer in the top {top_n}.",
-        "Nothing else sells it. A position that falls is held until the rank drops it — that is what "
-        "makes the drawdown a small-cap drawdown (-51%) rather than a stop-managed one.",
-        "{cost_bps}bps a side is charged on every rebalance; turnover runs about 4x the book a year, "
-        "so the cost assumption is load-bearing. See the caveats.",
+        "Sold at a month-end. A holding is sold in full at that session's close, less {cost_bps}bps, when it is "
+        "not in the new top {top_n}: outranked, or failing a test that day -- the close at or below its 200-day "
+        "average, turnover under the floor, or (US) price under $10.",
+        "Resized at a month-end. A holding that stays in the top {top_n} is sold down or bought up to its new "
+        "inverse-volatility weight, at the same close and cost.",
+        "Nothing sells between month-ends. A position that falls is held until the month-end test drops it -- "
+        "that is what makes the drawdown a small-cap drawdown (-51%) rather than a stop-managed one.",
+        "No price that day. A holding with no close on the month-end session cannot be sold; it is carried at "
+        "its last price until a month-end on which it trades. Whatever is still held at the end of a test is "
+        "valued at the final close, with no exit cost.",
     ),
     "caveats": (
         "**Survivorship inflates this by an unknown but probably modest amount.** No price series in the universe "
@@ -891,11 +1001,23 @@ VS_DOC = {
         "have hurt it most is the part that is present.",
         "**Costs decide it.** At 25bps the excess over small caps is +6.05, at {cost_bps}bps +3.66, at 100bps it "
         "is gone. {cost_bps}bps is the defensible assumption for monthly rebalancing of small caps and is the "
-        "default here; a flat per-trade figure is still a simplification of a real spread.",
+        "default here; turnover runs about 4x the book a year, and a flat per-trade figure is still a "
+        "simplification of a real spread.",
+        "**India: the trend filter empties the book for long stretches.** A few stray weekend sessions in India's "
+        "stored prices (2010-02-06, 2012-01-07, 2012-03-03, 2012-09-08) leave a gap in almost every stock's "
+        "last 200 sessions. The 200-day average needs all 200, so it is missing, and the stock ineligible, for "
+        "the next 200 sessions. On stored data almost no stock passes from February to October 2010 and from "
+        "January 2012 to June 2013, so the India runs from 2010 sit in cash then, and the before-2019 figures in "
+        "the status include those months. This is a code defect, not a rule: the average is taken before those "
+        "sessions are dropped.",
+        "**US: a $10 floor on split-adjusted prices.** Stored history is divided by every later split, so a "
+        "stock that split heavily reads under $10 in its early years and is excluded exactly while it was "
+        "rising (NVDA does not clear it until mid-2020).",
         "**The drawdown is a small-cap drawdown.** -51% peak to trough. It is better than the segment's -60.8%, "
         "which is a real improvement, but it is not a comfortable ride and the holding period is years.",
-        "**Benchmarked against the Nifty Smallcap 250, not the broad index.** Measuring this against the Nifty 500 "
-        "counts segment beta as skill.",
+        "**Benchmarked against the Nifty Smallcap 250 (US: IWM), not the broad index.** Measuring this against "
+        "the Nifty 500 counts segment beta as skill. Dividends are left out of both the strategy and the "
+        "benchmark: stored prices are split-adjusted closes only.",
     ),
 }
 

@@ -72,8 +72,8 @@ def run(market: str, start: str, top_n: int = 3, lookback_days: int = 126,
 SR_DOC = {
     "key": "sector_rotation",
     "name": "Sector rotation",
-    "description": "Rank the market's sectors by trailing return each month and hold the strongest few, "
-                   "equal-weighted.",
+    "description": "Each month-end hold the {top_n} sectors with the best {lookback_days}-session (about "
+                   "six-month) return, equal-weighted.",
     "status": (
         "MEASURED, and it lands where the guide said it would. India beats modestly and the US does not, on "
         "BOTH windows -- which is the useful part, because unlike dual momentum the answer does not depend on "
@@ -85,36 +85,67 @@ SR_DOC = {
         "sectors rather than by catching the strongest -- and it comes with a materially better drawdown in "
         "both windows, which is the more interesting half. The US result reproduces the guide's own finding of "
         "no edge, over a different period and a different sector set, which is worth more than a single test. "
-        "Note India ranks ~6 sectors early and more later as ETFs list, so its opportunity set grows mid-run."
+        "Note India ranks only two to five sectors before 2021 and up to 11 later as ETFs list, so its opportunity "
+        "set grows mid-run."
     ),
     "thesis": "Leadership rotates between parts of the market and persists for months at a time — energy in "
               "2021-22, Indian IT in 2020-21 — so owning the sectors that have led should beat owning all of "
-              "them. The same momentum idea as ranking stocks, over a much smaller set of choices.",
+              "them. The same momentum idea as ranking stocks, over a much smaller set of choices, ranked by "
+              "relative strength alone rather than by a business-cycle call.",
     "how_it_works": (
-        "On each month-end, measure every sector index's trailing {lookback_days}-bar return.",
-        "Hold the top {top_n}, equal-weighted, until the next month-end.",
-        "A sector is ranked only once it has {MIN_BARS} bars of history, so a newly listed sector ETF cannot "
-        "enter the top on a return measured over a handful of days.",
-        "No stop and no target: the ranking is the whole rule, and a sector leaves the book when it leaves "
-        "the top {top_n}.",
+        "Once a month, on the last stored session of the month: rank the market's sector series by trailing "
+        "{lookback_days}-session (about six-month) return and hold the top {top_n} at equal weight until the "
+        "next month-end. Every trade is at that session's close. Entry and Exit give each test exactly.",
+        "The sectors, US: the eleven SPDR sector ETFs (XLC, XLY, XLP, XLE, XLF, XLV, XLI, XLB, XLRE, XLK, XLU).",
+        "The sectors, India: three NSE sector indices (Bank, IT, Pharma) and eight sector ETFs (PSU Bank, "
+        "Private Bank, Auto, FMCG, Metal, Infra, Energy, Consumption).",
+        "No stop, no target and, by default, no market filter: the ranking is the whole rule, and a sector "
+        "leaves the book when it leaves the top {top_n} at a month-end.",
     ),
     "caveats": (
         "**The guide expects little here, and says so.** Nine to twelve choices is very little to rank, and it "
         "reports no US edge over 1999-2026. This is built to measure that, not to assume otherwise.",
-        "**India's sector coverage is thin and late.** Of 11 mapped sectors only 8 have usable history, and "
-        "several ETFs list after 2020 — Auto from about 2022, FMCG from 2021 — so an India run ranks roughly "
-        "six sectors early on and more later. That is a changing opportunity set, not a fixed one.",
+        "**India's sector coverage is thin and late.** All 11 mapped series are stored, but most list late: the "
+        "Pharma index from 2011, Consumption 2014, Private Bank 2019, FMCG 2021, Auto 2022, and Energy, Infra "
+        "and Metal only in mid-2024. With the {MIN_BARS}-session history rule, an India run from 2010 ranks two "
+        "sectors at first, three until 2013 -- so with a top {top_n} it held every rankable sector and selected "
+        "nothing -- four or five until 2021, six to eight until late 2025, and all 11 only after that. A "
+        "changing opportunity set, not a fixed one. The US ranks 9 in 2010, 10 from about 2017 and 11 from "
+        "late 2019.",
+        "**Three India sectors are indices, not funds.** Bank, IT and Pharma are NSE price indices, which cannot "
+        "be bought directly; holding them assumes a fund that tracks them for no more than {cost_bps}bps a side.",
         "**Sector definitions are the index provider's.** NSE's sectoral indices and the SPDR sectors do not "
         "carve the market the same way, so the two markets are not running the same strategy.",
+        "**Dividends are left out** of the sectors and of the benchmark (SPY, Nifty 500) alike: stored prices "
+        "are closes without dividends.",
         "**Sector ETFs carry their own costs**, which are not modelled beyond {cost_bps}bps a side.",
     ),
     "entry_rules": (
-        "Bought at the month-end close when a sector enters the top {top_n}, sized to an equal share of the book.",
-        "The whole book is levelled at every rebalance, so a winner is trimmed and a laggard topped up.",
+        "Which sectors can be ranked. A series is used only if it has at least {MIN_BARS} stored sessions, and "
+        "it is ranked on a month-end only once it has {MIN_BARS} sessions of prices up to that date, so a newly "
+        "listed sector ETF cannot enter the top on a return measured over a handful of days.",
+        "Trailing return. Close on the month-end session ÷ close {lookback_days} sessions earlier − 1, counted "
+        "on the sectors' combined calendar -- about six months. No month is skipped. A series that did not "
+        "trade on a day carries its last price.",
+        "Selection. The {top_n} highest trailing returns are held. Any return qualifies, including a negative "
+        "one: there is no absolute-momentum test. With {top_n} or fewer rankable sectors, all of them are held.",
+        "Weighting. Equal: at every month-end the whole book -- cash plus holdings at their last price -- is "
+        "divided by the number of sectors held, and each holding is bought or sold to that value, in fractional "
+        "units. A change smaller than 0.01% of the book is skipped.",
+        "Fill and cost. At the month-end session's close. {cost_bps}bps of the traded value is charged on every "
+        "sale and every purchase, including the monthly resizing. Fees are paid after the book is sized, so "
+        "cash can sit slightly below zero, by the fees.",
+        "When it holds cash. Before the first month-end on or after the start date, and with `--market-filter` "
+        "(off by default): when the benchmark (SPY, Nifty 500) closes strictly below its 200-day average on the "
+        "month-end session, everything is sold and nothing is held until a month-end on which it is not below.",
     ),
     "exit_rules": (
-        "Sold at the month-end close when the sector leaves the top {top_n}. Nothing else sells it.",
-        "{cost_bps}bps is charged on each side of a switch.",
+        "Sold in full at a month-end close, less {cost_bps}bps, when the sector is no longer in the top "
+        "{top_n} -- or, with `--market-filter` on, when the benchmark closes below its 200-day average.",
+        "Resized at each month-end to the equal weight while it stays in the top {top_n}, so a winner is trimmed "
+        "and a laggard topped up.",
+        "Nothing else sells it: no stop, no target, and no trade between month-ends. Whatever is held at the end "
+        "of a test is valued at the final close, with no exit cost.",
     ),
 }
 
