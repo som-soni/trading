@@ -158,7 +158,7 @@ def stage2_near_high(ctx):
 
 def stage2_rs(ctx):
     """TT-08. The TRUE cross-sectional rank when the caller has rated the whole market, and the
-    per-stock 12-1 momentum stand-in only when it has not.
+    per-stock floor on the same weighted RS score only when it has not.
 
     A rank is cross-sectional, so a one-symbol evaluation cannot compute one -- which is why the
     stand-in exists at all. A caller that holds the whole market seeds `rs_ranked` and `rs_rank`

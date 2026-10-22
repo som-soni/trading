@@ -948,11 +948,11 @@ class MinerviniSpecStrategy(Strategy):
         "which flatters every result.",
         "**Corporate actions.** Prices are adjusted when fetched; a split or bonus after a symbol's last full "
         "fetch shows as a crash until its history is re-fetched (`marketdata.splits`).",
-        "**Relative strength** is cross-sectional, so where it is applied depends on what the caller can see. "
-        "The daily screening run rates the whole market and gates G8 on the true RS rating of {RS_MIN_RANK}+. "
-        "A backtest cannot do that inside a per-bar scan of one symbol, so G8 falls back to 12-1 month momentum "
-        "of {RS_MIN_SCORE}+ there and `--min-rs` applies the real rating to the collected signals — the same "
-        "threshold, one step later. A single-symbol tool keeps the stand-in and is therefore looser than both.",
+        "**Relative strength** is a ranking against the whole market, so where it is applied depends on what "
+        "the caller can see. The daily screen rates the whole market and gates G8 on the real RS rating of "
+        "{RS_MIN_RANK}+. A backtest scans one stock at a time, so G8 there is a floor of {RS_MIN_SCORE} on the "
+        "stock's own RS score, and `--min-rs` then applies the real rating to the collected signals — the "
+        "same threshold, one step later. A single-stock tool keeps only the floor, so it is looser than both.",
         "**Fundamentals (SEPA part 2) are optional in the backtest, off by default.** `--fundamentals guide` "
         "applies the Learn guide's tests (quarterly EPS up {FUND_EPS_GROWTH_MIN_PCT}%+ and faster than the "
         "quarter before, sales up {FUND_SALES_GROWTH_MIN_PCT}%+, net margin no more than "
@@ -1010,11 +1010,18 @@ class MinerviniSpecStrategy(Strategy):
               "rather than a gate.",
         "G6": "TT-06: close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low.",
         "G7": "TT-07: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
-        "G8": "TT-08: an RS rating of {RS_MIN_RANK}+ (1-99 across the market) whenever the caller has rated "
-              "the whole market — the daily screening run does. A one-symbol evaluation cannot rank, so "
-              "`inspect --no-rs-rank` and the chart indicators fall back to a floor of {RS_MIN_SCORE} on that "
-              "same weighted score; a backtest also falls back here and applies the rating to the "
-              "signals instead.",
+        "G8": "TT-08: an RS rating of {RS_MIN_RANK} or more. The RS score is the stock's gain over the "
+              "last 3, 6, 9 and 12 months added together, with the latest 3 months counted twice. The RS "
+              "rating ranks that score against every other stock in the market, from 1 to 99: a rating "
+              "of {RS_MIN_RANK} means the stock beat about {RS_MIN_RANK}% of the market. Because it is a "
+              "ranking, it can only be worked out with the whole market at hand. The daily screen has the "
+              "whole market, so it applies the {RS_MIN_RANK}+ rating directly. A backtest looks at one "
+              "stock at a time, so it does this in two steps: first a simple floor on the stock's own RS "
+              "score — at least {RS_MIN_SCORE}, which a stock rising a steady 5% a quarter just clears and "
+              "a flat stock (score 0) fails — and then, once every signal is collected, it drops the ones "
+              "rated under {RS_MIN_RANK} that day. Same rule, one step later. Tools that look at a single "
+              "stock — the chart indicators, and `inspect --no-rs-rank` — use only the floor, so they can "
+              "pass a stock the screen would reject.",
     }
     watch_docs = {
         "W1": "Closed through the pivot on light volume — under {VOL_MULT} × the 50-day average (MV-01a), "
