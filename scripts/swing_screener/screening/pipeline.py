@@ -390,14 +390,14 @@ def run(
     # staleness rules, so "LEADER" here is the same judgement as "LEADER" in a backtest's trades -- unlike the
     # live figures above, which come from a different source and are kept out of backtests by design. Reads the
     # store only: no network. In the US backtests, LEADER is the only verdict whose trades made money.
+    sepa_by_symbol: dict = {}
     if getattr(strategy, "wants_live_fundamentals", False) and all_rows:
         from types import SimpleNamespace
         from ..backtesting import fundamental_filter
         asof = pd.Timestamp(_dt.date.today())
         probes = [SimpleNamespace(symbol=r["symbol"], date=asof) for r in all_rows]
         verdict = fundamental_filter.verdicts(market_key, probes)
-        for r in all_rows:
-            r["sepa"] = verdict.get((r["symbol"], asof))
+        sepa_by_symbol = {r["symbol"]: verdict.get((r["symbol"], asof)) for r in all_rows}
 
     portfolio.apply_sector_filter(reviewed_rows, cfg.sector_limit_per_sector)  # mutates in place
     combined = out_mod.combined_risk_summary(all_rows, cfg.account_size, cfg.currency_symbol)
@@ -408,6 +408,10 @@ def run(
     # which rules produced these rows, so the Candidates tab can say so
     report["variant"] = live["name"] if live else ""
     report["spec_id"] = strategy.spec_id()
+    # attached to the REPORT, not the rows: universe_report keeps only its own column list, and a
+    # key set on the rows before it was dropped without a word -- the first run had no SEPA column
+    if sepa_by_symbol:
+        report["sepa"] = report["symbol"].map(sepa_by_symbol)
     # Screener output goes into the same per-run tree the backtests use, so a
     # day's candidates, its CSV and its charts sit together instead of in a
     # flat pile. The stable top-level CSV is kept as a convenience symlink
