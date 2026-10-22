@@ -3244,21 +3244,21 @@ async function companyPage(alive, market, symbol) {
   };
   const colLabel = (c) => { const m = String(c).match(/^(\d{4})-(\d{2})/); return m ? `${MONTHS[+m[2] - 1]} ${m[1]}` : c; };
   const BOLD = new Set(["sales", "operating_profit", "net_profit", "total_liabilities", "total_assets", "cfo", "fcf", "eps"]);
-  // `recent`: show the last N columns unless the section's History switch says all (older ones carry .oldc)
-  const table = (t, note = "", recent = 0) => {
+  // `paged`: each value cell carries its column index (data-c), so the section's pager can show a window of them
+  const table = (t, note = "", paged = false) => {
     if (!t || !t.rows?.length) return `<div class="muted small">Not in the filings stored for this company.</div>`;
-    const old = (i) => (recent && i < t.columns.length - recent ? " oldc" : "");
-    const withOld = (html, i) => (old(i) ? html.replace(/^<(td|th)( class="([^"]*)")?/, (m, tag, a, cls) => `<${tag} class="${(cls || "")}${old(i)}"`) : html);
-    return `<div class="fin-wrap"><table class="fin"><thead><tr><th></th>${t.columns.map((c, i) => `<th class="${old(i)}">${esc(colLabel(c))}</th>`).join("")}</tr></thead>
+    const withOld = (html, i) => (paged ? html.replace(/^<(td|th)/, `<$1 data-c="${i}"`) : html);
+    return `<div class="fin-wrap"><table class="fin"><thead><tr><th></th>${t.columns.map((c, i) => withOld(`<th>${esc(colLabel(c))}</th>`, i)).join("")}</tr></thead>
        <tbody>${t.rows.map((r) => `<tr class="${BOLD.has(r.key) ? "strong" : ""} ${r.kind === "pct" ? "pctrow" : ""} ${r.kind === "growth" ? "growthrow yoy" : r.kind === "growth_qoq" ? "growthrow qoq" : ""}"><th>${esc(r.label)}</th>${r.values.map((v, i) => withOld(cell(r, v, i), i)).join("")}</tr>`).join("")}</tbody></table></div>
        ${note ? `<div class="muted small fin-note">${note}</div>` : ""}`;
   };
   // which growth rows show: both YoY and QoQ (default), one of them (QoQ only in the quarterly table; the
   // annual one is always YoY) or none
   let growthMode = store.get("finGrowth", "both");
-  // quarterly history: the last few years (default) or every quarter stored — a switch only when there are more
-  let histMode = store.get("finHistory", "recent");
-  const qCols = d.quarters?.columns || [], qOlder = d.quarters_recent && qCols.length > d.quarters_recent;
+  // quarterly history: the table opens on the latest quarters_recent; a pager steps back (and forward) a year
+  // at a time through the older quarters stored — shown only when there are more
+  const qCols = d.quarters?.columns || [], qWin = d.quarters_recent || qCols.length, qOlder = qCols.length > qWin;
+  let qEnd = qCols.length;  // one past the newest quarter shown
   const st = d.status || {};
   const unitNote = `Figures in ${esc(unitWords(d.unit))} · ${esc(FUND_SOURCE[st.source] || st.source || "")}${st.basis && st.basis !== "as reported" ? ` · ${esc(st.basis)}` : ""}`;
   const fetchBtn = d.fetch_pending ? `<button class="btn" disabled>Fetch queued (#${d.fetch_pending})…</button>`
@@ -3328,10 +3328,10 @@ async function companyPage(alive, market, symbol) {
       ${d.profile?.about ? `<details class="co-about"><summary>About</summary><p>${esc(d.profile.about)}</p></details>` : ""}</section>
     <section class="co-sec" id="co-quarters"><h2>Quarterly results <span class="seg growth-seg" title="Growth rows under sales, operating profit, net profit and EPS. YoY: against the same quarter a year earlier (what earnings tests use; no seasonal effect). QoQ: against the quarter before (sooner, but partly the season).">
       <span class="muted small">Growth</span>${[["both", "YoY + QoQ"], ["yoy", "YoY"], ["qoq", "QoQ"], ["off", "Off"]].map(([k, t]) => `<button data-growth="${k}" class="${growthMode === k ? "on" : ""}">${t}</button>`).join("")}</span>
-      ${qOlder ? `<span class="seg growth-seg hist-seg" title="The table opens on the last ${d.quarters_recent} quarters; All shows every quarter stored, back to ${esc(colLabel(qCols[0]))}">
-        <span class="muted small">History</span><button data-hist="recent" class="${histMode === "recent" ? "on" : ""}">Last ${Math.round(d.quarters_recent / 4)} years</button><button data-hist="all" class="${histMode === "all" ? "on" : ""}">All · since ${esc(colLabel(qCols[0]))}</button></span>` : ""}
+      ${qOlder ? `<span class="seg hist-seg" title="Quarters are stored back to ${esc(colLabel(qCols[0]))}. Step back a year at a time; Latest returns to the newest quarters.">
+        <button data-hist="-4" title="A year earlier">◀ Earlier</button><span class="muted small hist-range"></span><button data-hist="4" title="A year later">Later ▶</button><button data-hist="latest">Latest</button></span>` : ""}
       <span class="muted small">${unitNote}</span></h2>${table(d.quarters,
-      `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`, d.quarters_recent || 0)}</section>
+      `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`, qOlder)}</section>
     <section class="co-sec" id="co-pl"><h2>Profit &amp; Loss <span class="muted small">${unitNote}</span></h2>${table(d.profit_loss,
       d.layout === "bank" ? "Banks: revenue is interest earned; financing profit = revenue − interest − expenses (incl. provisions), before other income." : "")}
       <div class="cg">${gbox("Compounded sales growth", g.sales)}${gbox("Compounded profit growth", g.profit)}${gbox("Stock price CAGR", g.price)}${gbox("Return on equity", g.roe)}</div></section>
@@ -3342,13 +3342,16 @@ async function companyPage(alive, market, symbol) {
     <section class="co-sec" id="co-peers"><h2>Peer comparison</h2>${peerHtml}</section>
     ${viewsHtml}`;
   const applyHist = () => {
-    $view.dataset.hist = histMode;
-    $view.querySelectorAll(".hist-seg button").forEach((b) => b.classList.toggle("on", b.dataset.hist === histMode));
+    if (!qOlder) return;
+    const lo = qEnd - qWin;
+    $view.querySelectorAll("#co-quarters [data-c]").forEach((c) => { const i = +c.dataset.c; c.hidden = i < lo || i >= qEnd; });
+    $view.querySelector(".hist-range").textContent = `${colLabel(qCols[lo])} – ${colLabel(qCols[qEnd - 1])}`;
+    const [back, fwd, latest] = $view.querySelectorAll(".hist-seg button");
+    back.disabled = lo <= 0; fwd.disabled = latest.disabled = qEnd >= qCols.length;
   };
   $view.querySelectorAll(".hist-seg button").forEach((b) => b.onclick = () => {
-    histMode = b.dataset.hist; store.set("finHistory", histMode); applyHist();
-    // all: open on the newest quarters (the right end), as before
-    const w = $view.querySelector("#co-quarters .fin-wrap"); if (w) w.scrollLeft = w.scrollWidth;
+    qEnd = b.dataset.hist === "latest" ? qCols.length : Math.min(qCols.length, Math.max(qWin, qEnd + +b.dataset.hist));
+    applyHist();
   });
   applyHist();
   const applyGrowth = () => {

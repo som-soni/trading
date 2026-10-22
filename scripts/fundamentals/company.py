@@ -4,7 +4,7 @@ Reads what `marketdata/financials.py` stores (statement lines, shareholding, pro
 metrics of `fundamentals/growth.py`, and builds:
 
   key ratios      market cap, price, 52-week high / low, P/E, book value, dividend yield, ROCE, ROE, face value, debt / equity
-  quarters        the last QUARTERS quarters' P&L (sales ... EPS) with OPM % and tax %, and the growth of sales,
+  quarters        every stored quarter (up to QUARTERS_MAX; the page opens on the last QUARTERS and pages back a year at a time) — P&L (sales ... EPS) with OPM % and tax %, and the growth of sales,
                   operating profit, net profit and EPS — year on year and quarter on quarter (in words from a loss)
   profit & loss   the last ANNUAL_YEARS fiscal years and the trailing twelve months, with dividend payout and
                   the same lines' year-on-year growth (TTM against the twelve months before)
@@ -30,7 +30,8 @@ from swing_screener.marketdata import db, financials
 
 from . import growth
 
-QUARTERS = 12                 # quarterly results columns
+QUARTERS = 12                 # quarterly results columns shown by default ...
+QUARTERS_MAX = 80             # ... of up to this many sent (the page pages back through the rest)
 ANNUAL_YEARS = 12             # profit & loss / balance sheet / cash flow columns
 GROWTH_WINDOWS = (10, 5, 3)   # compounded growth over these many years (plus TTM / 1 year)
 PEERS = 10                    # peers shown, largest by market cap
@@ -204,7 +205,8 @@ def build(market: str, symbol: str, snap=None) -> dict:
     # over every stored quarter, so the oldest shown has its year-ago (and quarter-ago) too
     _add_growth(qdata, "_yoy", YOY_DAYS)
     _add_growth(qdata, "_qoq", QOQ_DAYS)
-    qends = sorted(qdata)[-QUARTERS:]
+    qends = sorted(qdata)[-QUARTERS_MAX:]
+    out["quarters_recent"] = QUARTERS
     labels = PL_LABELS.get(layout, {})
     out["quarters"] = _table(qends, qdata, QPL, labels)
 

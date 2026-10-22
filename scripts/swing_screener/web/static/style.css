@@ -1288,7 +1288,12 @@ table.fin tr.growthrow td.neg { color: var(--down-text); }
 .growth-seg button { padding: 2px 9px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 5px; cursor: pointer; font-size: 12px; }
 .growth-seg button.on { background: var(--accent-soft); color: var(--strong); border-color: var(--accent); }
 /* the quarterly History switch: older quarters hidden until "All" */
-[data-hist="recent"] table.fin .oldc { display: none; }
+table.fin [data-c][hidden] { display: none; }
+.hist-seg { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px; font-size: 12px; font-weight: 400; }
+.hist-seg button { padding: 2px 9px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 5px; cursor: pointer; font-size: 12px; }
+.hist-seg button:not(:disabled):hover { color: var(--strong); border-color: var(--accent); }
+.hist-seg button:disabled { opacity: .4; cursor: default; }
+.hist-seg .hist-range { min-width: 140px; text-align: center; }
 table.fin tr.self th, table.fin tr.self td { background: var(--accent-soft); }
 table.fin.peers tbody th a { color: var(--link); }
 .fin-note { margin-top: 6px; }
