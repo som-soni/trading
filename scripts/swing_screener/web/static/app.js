@@ -4103,7 +4103,7 @@ function strategyRules(host, d, key) {
   const splitSecs = [
     ["entry", "Entry", "how a buy is placed and filled", d.entry_rules],
     ["stop", "Stop", "where the protective sell sits, and when it moves", d.stop_rules],
-    ["target", "Target", "how the reward is measured; it never sells", d.target_rules],
+    ["target", "Target", "what the trade aims for, and whether it sells there", d.target_rules],
     ["exit", "Exit", "what sells the position", d.exit_rules],
     ["sizing", "Position size", "how much to buy", d.sizing_rules],
     ["filters", "When no new trade is taken", "even with a valid setup", d.filter_rules],
