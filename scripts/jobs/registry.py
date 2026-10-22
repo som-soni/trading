@@ -237,8 +237,9 @@ def _rates(ctx: Ctx) -> None:
 
 
 def _indicators(ctx: Ctx) -> None:
-    """Growth, inflation and consumption indicators (marketdata/indicators.py): CPI, GDP, industrial
-    production, retail and vehicle sales, from FRED's free CSV endpoint."""
+    """Growth, inflation, consumption, housing and credit indicators (marketdata/indicators.py): CPI,
+    GDP, industrial production, durable goods, retail and vehicle sales, housing starts/permits, the
+    mortgage rate, bank credit and the Baa credit spread — from FRED's free CSV endpoint."""
     from swing_screener.marketdata import indicators
     out = indicators.refresh(ctx.market)
     ok = [k for k in out["written"] if k not in out["failed"]]
@@ -248,6 +249,22 @@ def _indicators(ctx: Ctx) -> None:
     ctx.step.detail = (f"{len(ok)} series · {n:,} new or changed values"
                        + (f" · failed: {', '.join(out['failed'])}" if out["failed"] else ""))
     ctx.step.stats = {"series": len(ok), "written": n, "failed": len(out["failed"])}
+
+
+def _flows(ctx: Ctx) -> None:
+    """FII/DII daily net institutional equity flows (marketdata/flows.py): NSE's provisional cash-market
+    activity. India only; an unofficial, scraped endpoint, so a fetch failure is recorded but does not
+    fail the job — the same tolerance the RBI rate scrape already gets."""
+    if ctx.market != "india":
+        ctx.step.skip("FII/DII flows are India only")
+        return
+    from swing_screener.marketdata import flows
+    out = flows.refresh(ctx.market)
+    ok = [k for k in out["written"] if k not in out["failed"]]
+    if not ok:
+        raise RuntimeError("no flow series could be fetched: " + "; ".join(f"{k}: {v}" for k, v in out["failed"].items()))
+    ctx.step.detail = f"{len(ok)} series" + (f" · failed: {', '.join(out['failed'])}" if out["failed"] else "")
+    ctx.step.stats = {"series": len(ok), "failed": len(out["failed"])}
 
 
 def _screened_symbols(market: str, strategies: list[str] | None = None) -> list[str]:
@@ -689,8 +706,11 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "oil, gold, copper and credit (marketdata/macro.py)", "daily", True, _indexes),
     Job("rates", "data", "interest rates: policy rate, bill and bond yields with long history — FRED (US), RBI (India) "
         "(marketdata/rates.py)", "daily", True, _rates),
-    Job("indicators", "data", "growth, inflation and consumption indicators: CPI, GDP, industrial production, retail "
-        "and vehicle sales — FRED (marketdata/indicators.py)", "daily", True, _indicators),
+    Job("indicators", "data", "growth, inflation, consumption, housing and credit indicators: CPI, GDP, industrial "
+        "production, durable goods, retail and vehicle sales, housing starts/permits, mortgage rate, bank credit, "
+        "Baa credit spread — FRED (marketdata/indicators.py)", "daily", True, _indicators),
+    Job("flows", "data", "FII/DII daily net institutional equity flows: NSE's provisional cash-market activity "
+        "(marketdata/flows.py, India only)", "daily", True, _flows),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
     Job("fno_bhav", "data", "F&O bhavcopy: NSE index futures and options, settle and open interest (India)",
         "daily", True, _fno_bhav),
@@ -731,7 +751,7 @@ JOBS: dict[str, Job] = {j.name: j for j in [
 PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
-              "jobs": ["universe", "prices", "indexes", "rates", "indicators", "breadth", "sectors", "screens", "postmarket",
+              "jobs": ["universe", "prices", "indexes", "rates", "indicators", "flows", "breadth", "sectors", "screens", "postmarket",
                        "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
@@ -742,7 +762,7 @@ PIPELINES: dict[str, dict] = {
                       ("ingest", {"only_new": True}), "readiness"],
              "defaults": {"strategies": ["all"]}},
     "daily": {"summary": "after each market's close — data only: prices, indexes, rates, breadth, sectors, the screens' snapshot, post-market analysis",
-              "jobs": ["universe", "prices", "indexes", "rates", "indicators", "breadth", "sectors", "screens", "postmarket"]},
+              "jobs": ["universe", "prices", "indexes", "rates", "indicators", "flows", "breadth", "sectors", "screens", "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
