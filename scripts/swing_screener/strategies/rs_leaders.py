@@ -122,34 +122,47 @@ class RsLeadersStrategy(Strategy):
     extra_numeric_columns = extra_columns
 
     thesis = ("The stocks that hold up during a fall are the ones institutions are unwilling to sell, and they "
-              "tend to lead the next advance. Ranking by relative strength finds them; waiting for a confirmed "
-              "recovery and a base breakout decides when to buy.")
+              "tend to lead the next advance. So the strategy waits for the market to fall and then recover, "
+              "keeps only stocks that stayed near their highs and kept pace with the index, and buys them as they "
+              "break out of a short flat base, with a stop under the base's last ten sessions.")
     how_it_works = (
-        "Market first: the index must have fallen {CORRECTION_PCT}% from its high, then risen {REBOUND_PCT}% off "
-        "its low and closed above its {INDEX_SMA}-day average. That day is the confirmation, and the strategy "
-        "trades for {CONFIRM_WINDOW} sessions after it — beyond that it is an ordinary uptrend, not a recovery.",
-        "Gates G1-G3 are the Near-highs screen: above the 200-day, the 200-day not falling, and within "
-        "{MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
-        "G4 adds the stacking the guide asks for: close above the 50-day and the 50-day above the 200-day.",
-        "G5 is the RS line — the stock divided by the index — within {RS_LINE_TOL_PCT}% of its own 52-week high. "
-        "A stock can sit near its price high while losing ground to the index; this is the test that separates them.",
-        "The base is {BASE_MIN_DAYS}-{BASE_MAX_DAYS} sessions no deeper than {BASE_MAX_DEPTH_PCT}%, and the pivot "
-        "is the highest high of the last {PIVOT_DAYS}.",
-        "RS rank {RS_MIN_RANK}+ and an industry group in the top fifth are CROSS-SECTIONAL and applied by the "
-        "backtest to the collected signals, because a one-symbol evaluation cannot rank a market.",
+        "The idea. After a correction, buy the stocks that held up best, as they break out of a short flat base. "
+        "The rules come from the Learn guide \"Relative-strength leaders\"; it has no numbered spec.",
+        "Step 1, the market (G6). Trade only in the {CONFIRM_WINDOW} sessions after the index confirms a "
+        "recovery from a {CORRECTION_PCT}% correction. Outside that window nothing is bought.",
+        "Step 2, the stock (G1-G5). An uptrend near the 52-week high, averages stacked, and an RS line near its own "
+        "high. The backtest then keeps only stocks rated {RS_MIN_RANK}+ in groups rated {GROUP_MIN_RANK}+ (see When "
+        "no new trade is taken).",
+        "Step 3, the setup (S1). A close through the pivot of a {BASE_MIN_DAYS}-{BASE_MAX_DAYS}-session base no "
+        "deeper than {BASE_MAX_DEPTH_PCT}%, on volume and not extended (W1, W2).",
+        "Step 4, the trade. Bought at the next open (Entry); stopped under the {STOP_DAYS}-session low (Stop); no "
+        "target order (Target); sold on the first close below the 50-day (Exit).",
+        "Timing. Everything is decided on daily closes; the buy happens the next morning.",
     )
     caveats = (
         "**The guide's own evidence is mixed, and leans against the US.** Leaders in strong groups beat the "
         "typical stock in 9 of 13 Indian recoveries over three months, but LAGGED in 6 of 7 US ones. Much of any "
         "edge has to come from the trade management rather than the selection.",
         "**Gap risk is the main danger.** The stop is a level, not a guarantee: on 7 April 2025 several Indian "
-        "leaders opened far below theirs, and a backtest on daily bars fills at the open in that case.",
+        "leaders opened far below theirs, and a backtest on daily bars fills at the open in that case, for a loss "
+        "larger than 1R.",
         "**The recovery window is the binding constraint.** Only {CONFIRM_WINDOW} sessions after each "
         "confirmation are tradeable, so this produces signals in bursts and nothing at all for long stretches.",
+        "**The partial profit is not traded.** The guide sells a third at +20-25% and the first version's "
+        "changelog says the same, but the backtest runs `--exit-mode ma --no-target` with no partial sale, so the "
+        "+{PARTIAL_GAIN_PCT}% level is only the plan's reported target. Every share leaves on the stop or the "
+        "50-day exit.",
+        "**The buy is not the guide's buy-stop.** The guide rests a buy-stop just above the pivot. The code waits "
+        "for a close through the pivot and buys at the next open, which pays any overnight gap, and refuses the "
+        "trade if that open is beyond the buy range or puts the stop too far away.",
+        "**The live screen is wider than the backtest.** The daily screen applies neither the RS-rating nor the "
+        "group filter, so it lists breakouts the backtest would drop.",
         "**Group strength is applied from stored group RS**, which starts in 2013 in both markets — a run from "
-        "earlier than that has no group filter at all.",
+        "earlier than that has no group filter at all. The group is today's industry classification, and a group "
+        "too small to rate is kept rather than dropped.",
         "**Surveillance and trade-for-trade filters (India) are not modelled**; the guide asks for them and the "
-        "stored data does not carry them.",
+        "stored data does not carry them. Neither are results dates: nothing stops a buy just before a "
+        "results announcement.",
     )
     status = (
         "MEASURED in India from 2020, and the headline misreads it. CAGR 3.80% against the Nifty 500's 12.63% "
@@ -167,59 +180,174 @@ class RsLeadersStrategy(Strategy):
     )
 
     gate_docs = {
-        "G1": "H1: close above the 200-day average.",
-        "G2": "H2: the 200-day is not falling.",
-        "G3": "H3: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
-        "G4": "Close above the 50-day average, and the 50-day above the 200-day.",
-        "G5": "The RS line (stock ÷ index) is within {RS_LINE_TOL_PCT}% of its own 52-week high.",
-        "G6": "The market is in a confirmed recovery: a {CORRECTION_PCT}% fall, then a {REBOUND_PCT}% rebound "
-              "closing above the {INDEX_SMA}-day, within the last {CONFIRM_WINDOW} sessions.",
+        "G1": "H1: the close is above the 200-day average.\n\n"
+              "- **Test:** today's close is strictly above the 200-day simple average of daily closes. A stock "
+              "without 200 sessions of history fails.",
+        "G2": "H2: the 200-day average is not falling.\n\n"
+              "- **Test:** the 200-day average is not more than the Near-highs screen's limit (0.5% today) below "
+              "its own value 20 sessions earlier. Flat passes, so does rising.\n"
+              "- **Where the numbers live:** the screen's constants; its page shows the live values.",
+        "G3": "H3: the close is within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.\n\n"
+              "- **Test:** (1 − close ÷ highest daily high of the last 252 sessions) × 100 is at most the limit.\n"
+              "- **Two copies of the number:** the gate reads the Near-highs screen's own limit; the strategy's "
+              "pre-filter applies {MAX_PCT_BELOW_52W_HIGH}% again. They agree today.",
+        "G4": "The averages are stacked: close above the 50-day, and the 50-day above the 200-day.\n\n"
+              "- **Test:** close > 50-day simple average > 200-day simple average, all on today's daily bar.",
+        "G5": "The RS line is within {RS_LINE_TOL_PCT}% of its own 52-week high.\n\n"
+              "- **RS line:** the stock's daily close divided by the index's close on the same day (the index "
+              "carried forward over a missing day).\n"
+              "- **Test:** today's RS line is no more than {RS_LINE_TOL_PCT}% below the highest RS line of the "
+              "last 252 sessions, today included. A new RS high passes.\n"
+              "- **Not checked (passes with a note):** no index stored, or fewer than 60 sessions where both "
+              "prices exist.",
+        "G6": "The market is inside a confirmed-recovery window.\n\n"
+              "- **Correction:** the index closes more than {CORRECTION_PCT}% below its highest close in the "
+              "stored history to that day.\n"
+              "- **Confirmation day:** the first session after that on which the index closes at least "
+              "{REBOUND_PCT}% above its lowest close since the correction began AND above its own {INDEX_SMA}-day "
+              "average.\n"
+              "- **Window:** {CONFIRM_WINDOW} sessions, counted from and including the confirmation day. Today "
+              "must be one of them.\n"
+              "- **One confirmation per drawdown:** after a confirmation, a new correction can only be declared "
+              "once the index has closed back within {CORRECTION_PCT}% of its high. A long bear market therefore "
+              "confirms once, not every time it bounces.\n"
+              "- **Not checked (passes with a note):** no index stored.",
     }
     watch_docs = {
-        "W1": "Breakout volume under {VOL_MULT}x the 50-day average — the guide sells such a fill at the close.",
-        "W2": "Closed more than {BUY_RANGE_PCT}% above the pivot: too extended to buy.",
-        "W3": "The stop would sit more than {MAX_STOP_PCT}% below entry, so it is capped and the trade risks more "
-              "than the base suggests.",
+        "W1": "The breakout came on light volume: under {VOL_MULT}x the 50-day average volume.\n\n"
+              "- **Test:** on the signal session, volume ÷ its 50-day average volume is below {VOL_MULT}.\n"
+              "- **Effect:** the decision drops to WATCH, so the stock is not bought (the backtest buys only HIGH "
+              "CONFIDENCE).",
+        "W2": "The breakout closed more than {BUY_RANGE_PCT}% above the pivot: too extended to buy.\n\n"
+              "- **Test:** close > pivot × (1 + {BUY_RANGE_PCT}%).\n"
+              "- **Effect:** the decision drops to WATCH, so the stock is not bought. The guide says to wait for "
+              "the next base.",
+        "W3": "The stop was capped: the {STOP_DAYS}-session low sits more than {MAX_STOP_PCT}% below the signal "
+              "close.\n\n"
+              "- **Test:** the lowest low of the {STOP_DAYS} sessions before the signal < close × (1 − "
+              "{MAX_STOP_PCT}%).\n"
+              "- **Effect:** the stop is raised to {MAX_STOP_PCT}% below the close instead. The decision does not "
+              "change, but at the fill the risk is re-checked, so in a backtest such a trade fills only if the "
+              "next open is below the signal close (see Entry).",
     }
     setup_docs = {
-        RSL01: "A flat base of {BASE_MIN_DAYS}-{BASE_MAX_DAYS} sessions no deeper than {BASE_MAX_DEPTH_PCT}%, with "
-               "today's close through the pivot — the highest high of the last {PIVOT_DAYS} sessions.",
+        RSL01: "Flat-base breakout: today's close clears the pivot of a base of {BASE_MIN_DAYS}-{BASE_MAX_DAYS} "
+               "sessions no deeper than {BASE_MAX_DEPTH_PCT}%.\n\n"
+               "- **Base:** the sessions up to yesterday. The strategy tries every length from {BASE_MAX_DAYS} "
+               "down to {BASE_MIN_DAYS} sessions and keeps the longest whose highest high and lowest low are within "
+               "{BASE_MAX_DEPTH_PCT}% of the high: (high − low) ÷ high × 100 ≤ {BASE_MAX_DEPTH_PCT}. Depth is the "
+               "only test; there is no separate test that the range is sideways.\n"
+               "- **Pivot:** the highest high of the {PIVOT_DAYS} sessions up to yesterday. It can sit below the "
+               "base's own high when that high is older than {PIVOT_DAYS} sessions.\n"
+               "- **Breakout:** yesterday's close was at or below the pivot and today's close is above it.\n\n"
+               "Volume and distance from the pivot are not part of the setup: a breakout that misses them still "
+               "counts, and shows as W1 or W2.",
     }
     entry_rules = (
-        "A buy-stop just above the pivot; the fill is the pivot, or the open if the stock gaps through it.",
-        "Refused more than {BUY_RANGE_PCT}% above the pivot — wait for the next base instead.",
-        "The breakout day must trade at least {VOL_MULT}x its 50-day average volume; a quiet fill is sold at the "
-        "next open.",
+        "Signal on the close. A stock that passes every gate and closes through the pivot (S1), on at least "
+        "{VOL_MULT}x its 50-day volume (W1 clear) and no more than {BUY_RANGE_PCT}% above the pivot (W2 clear), is a "
+        "HIGH CONFIDENCE buy signal on that session's close. Nothing else is bought: a backtest takes only HIGH "
+        "CONFIDENCE signals.",
+        "Bought at the next session's open. The order is a market order at the open of the session after the "
+        "signal, valid for that one session. It is not a buy-stop resting at the pivot, as the guide describes. "
+        "The plan shown live uses the signal close as its entry price.",
+        "Skipped above the buy range. If that open is more than {BUY_RANGE_PCT}% above the pivot, the buy is "
+        "cancelled.",
+        "Skipped when the stop ends up too far away. The stop was set from the signal close; if the price "
+        "actually paid puts it more than {MAX_STOP_PCT}% below, the buy is cancelled. A stop already capped at "
+        "{MAX_STOP_PCT}% (W3) therefore only fills on an open below the signal close.",
+        "No ranking among same-day signals. Every signal carries the same setup quality, so when more stocks "
+        "trigger than there are free position slots, strength does not decide which ones are bought.",
+    )
+    stop_rules = (
+        "Where it goes. At the lowest low of the {STOP_DAYS} sessions before the signal session (the signal "
+        "session's own low is not included), rounded down to the price tick.",
+        "Never more than {MAX_STOP_PCT}% away. If that low is more than {MAX_STOP_PCT}% below the signal close, the "
+        "stop is raised to {MAX_STOP_PCT}% below the close and W3 is noted.",
+        "It defines the risk. The distance from the price paid to the stop is the trade's risk, 1R. Results are "
+        "counted in R.",
+        "How it sells. The stop is a standing sell order: it sells during the session the moment the low touches "
+        "it, at the stop price. If the stock opens below the stop, it sells at that open, so a gap can lose more "
+        "than 1R.",
+        "It never moves. There is no move to breakeven and no trailing; the guide's rule to raise the stop to the "
+        "entry at +2R is not modelled.",
+    )
+    target_rules = (
+        "No sell order at the target. The plan's target is +{PARTIAL_GAIN_PCT}% above the signal close, the level "
+        "at which the guide sells a third. The backtest runs with `--no-target` and no partial sale, so nothing is "
+        "sold there; the level is reported only, and it sets the plan's reward-to-risk figure.",
+        "No reward-to-risk minimum. A trade is never refused for a low reward-to-risk ratio.",
     )
     exit_rules = (
-        "Stop: the lowest low of the {STOP_DAYS} sessions before the breakout, never more than {MAX_STOP_PCT}% "
-        "below entry.",
-        "A third is sold at +{PARTIAL_GAIN_PCT}% (O'Neil's 20-25% rule of thumb).",
-        "The rest goes on the first close below the 50-day average.",
+        "Each session after the buy, the stop is checked first (see Stop). The session of the buy itself is not "
+        "checked.",
+        "Trend exit. The first daily close below the 50-day simple average sells the whole position at that "
+        "close.",
+        "That is the only sell besides the stop. The guide's partial sale at +{PARTIAL_GAIN_PCT}%, its optional "
+        "time stop, its RS-line invalidation and its rule to close new positions when the index breaks its "
+        "correction low are not modelled.",
+    )
+    sizing_rules = (
+        "Risk per trade. Shares = the risk budget ÷ (price paid − stop). The budget is the market config's risk "
+        "per trade (1% of current equity in both markets today), so a stop-out loses about the same amount "
+        "whatever the stop's width, unless it gaps.",
+        "Caps. No position larger than the market config's maximum share of equity (25% today); at most the "
+        "config's number of open positions (10 today); a buy is scaled down to the cash available rather than "
+        "skipped.",
+        "Not modelled. The guide's limit of two positions per industry group and its advice to start with a few "
+        "positions after the confirmation day.",
+    )
+    filter_rules = (
+        "Outside a recovery window (G6). No new buy unless today falls in the {CONFIRM_WINDOW} sessions from a "
+        "confirmation day. Positions already held are kept.",
+        "RS rating below {RS_MIN_RANK} (backtest only, `--min-rs`). The RS score adds up the stock's 3-, 6-, 9- and "
+        "12-month returns, counting the latest 3 months twice; the rating ranks it from 1 to 99 across the "
+        "tradable market on the signal date. Signals rated below {RS_MIN_RANK}, or from stocks outside the rated "
+        "universe that day, are dropped.",
+        "Weak industry group (backtest only, `--min-group-rs`). Signals whose industry group was rated below "
+        "{GROUP_MIN_RANK} on the signal date are dropped. A group too small to be rated is kept.",
+        "Too thin. A stock whose 20-day average traded value is under the market's liquidity floor is not "
+        "evaluated.",
     )
     decision_docs = {
-        "TRADE_HIGH_CONFIDENCE": "Every gate passes and the base broke out on volume, within {BUY_RANGE_PCT}% of "
-                                 "the pivot.",
-        "TRADE_ON_TRIGGER": "A valid base whose pivot has not been cleared yet: a buy-stop rests above it.",
-        "WATCH_WAIT": "A valid setup held back — too extended, light volume, or results due.",
-        "AVOID": "A gate failed, or there is no base to trade.",
+        "TRADE_HIGH_CONFIDENCE": "Every gate passes, the close broke through the pivot today on at least "
+                                 "{VOL_MULT}x volume, and within {BUY_RANGE_PCT}% of the pivot. Buy at the next "
+                                 "open.",
+        "TRADE_ON_TRIGGER": "Not used. The setup only exists on the breakout session itself, so no buy-stop is "
+                            "ever left resting under a pivot.",
+        "WATCH_WAIT": "A breakout held back: light volume (W1), more than {BUY_RANGE_PCT}% above the pivot (W2), "
+                      "or the market regime (see the note below). Not bought.",
+        "AVOID": "A gate failed, or no breakout today (no base, or the close did not cross the pivot).",
     }
+    regime_note = (
+        "Live only. When the latest stored index session is outside a confirmed-recovery window (or, with no "
+        "index stored, when the shared market regime is risk-off), a HIGH CONFIDENCE breakout becomes WATCH with "
+        "the reason 'outside a confirmed recovery: no new buys'. WATCH and AVOID are untouched. In practice G6 "
+        "usually fails the stock first, which makes it AVOID."
+    )
     param_docs = (
-        ("Correction", "CORRECTION_PCT", "How far the index must fall before a recovery can confirm."),
-        ("Rebound", "REBOUND_PCT", "How far it must rise off the low, closing above its 50-day."),
-        ("Recovery window", "CONFIRM_WINDOW", "Sessions after confirmation in which the strategy trades."),
-        ("Base length", "BASE_MIN_DAYS", "Shortest flat base accepted."),
-        ("Base length, maximum", "BASE_MAX_DAYS", "Longest flat base accepted."),
-        ("Base depth", "BASE_MAX_DEPTH_PCT", "Deepest a base may be, high to low."),
-        ("Pivot", "PIVOT_DAYS", "Sessions whose highest high is the pivot."),
-        ("Breakout volume", "VOL_MULT", "Multiple of the 50-day average volume required."),
-        ("Buy range", "BUY_RANGE_PCT", "Most you may pay above the pivot."),
-        ("Stop lookback", "STOP_DAYS", "Sessions whose lowest low sets the stop."),
-        ("Maximum stop", "MAX_STOP_PCT", "Widest stop allowed, as a % of entry."),
-        ("Partial profit", "PARTIAL_GAIN_PCT", "Gain at which a third is sold."),
-        ("RS rank", "RS_MIN_RANK", "Cross-sectional; applied by the backtest's --min-rs."),
-        ("Group rank", "GROUP_MIN_RANK", "Cross-sectional; applied by the backtest's --min-group-rs."),
+        ("Correction", "CORRECTION_PCT", "How far below its highest close the index must close before a recovery "
+                                         "can confirm."),
+        ("Rebound", "REBOUND_PCT", "How far above its lowest close since then the index must close (and above its "
+                                   "average) to confirm."),
+        ("Index average", "INDEX_SMA", "Days in the index's simple average the confirmation close must be above."),
+        ("Recovery window", "CONFIRM_WINDOW", "Sessions, from the confirmation day, in which new buys are allowed."),
+        ("Near the high", "MAX_PCT_BELOW_52W_HIGH", "Most the close may sit below the 52-week high (pre-filter; "
+                                                    "the screen's H3 uses its own equal limit)."),
         ("RS line tolerance", "RS_LINE_TOL_PCT", "How far the RS line may sit below its own 52-week high."),
+        ("Base length", "BASE_MIN_DAYS", "Shortest base accepted, in sessions."),
+        ("Base length, maximum", "BASE_MAX_DAYS", "Longest base the search starts from, in sessions."),
+        ("Base depth", "BASE_MAX_DEPTH_PCT", "Deepest a base may be: (highest high − lowest low) ÷ highest high."),
+        ("Pivot", "PIVOT_DAYS", "Sessions before today whose highest high is the pivot."),
+        ("Breakout volume", "VOL_MULT", "Signal-day volume against its 50-day average; below it is W1."),
+        ("Buy range", "BUY_RANGE_PCT", "Most the close (W2) or the next open (skipped) may be above the pivot."),
+        ("Stop lookback", "STOP_DAYS", "Sessions before the signal whose lowest low is the stop."),
+        ("Maximum stop", "MAX_STOP_PCT", "Widest stop, as a % of the signal close (capped) and of the fill "
+                                         "(skipped)."),
+        ("Reported target", "PARTIAL_GAIN_PCT", "The plan's target above the signal close; never sold in a "
+                                                "backtest."),
+        ("RS rank", "RS_MIN_RANK", "Minimum RS rating, 1-99; applied by the backtest's --min-rs."),
+        ("Group rank", "GROUP_MIN_RANK", "Minimum industry-group rating; applied by the backtest's --min-group-rs."),
     )
     backtest_args = f"--min-rs {RS_MIN_RANK} --min-group-rs {GROUP_MIN_RANK} --exit-mode ma --no-target"
 
