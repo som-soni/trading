@@ -371,8 +371,8 @@ def metrics(rows: list[dict], meta: dict | None = None, today: dt.date | None = 
 
 def views() -> list:
     """The strategy sections shown on the Fundamentals page, each judging the shared metrics."""
-    from . import sepa
-    return [sepa]
+    from . import canslim, sepa
+    return [sepa, canslim]
 
 
 def criteria() -> dict:
@@ -386,7 +386,7 @@ CREATE TABLE IF NOT EXISTS fundamental_scores (
     market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL,
     computed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     metrics JSONB NOT NULL,              -- growth.metrics(): the shared numbers
-    views JSONB NOT NULL,                -- per strategy view: {"sepa": {verdict, code33, passed, scored, tests}}
+    views JSONB NOT NULL,                -- per strategy view: {"sepa": {...}, "canslim": {...}} each {verdict, code33, passed, scored, tests}
     PRIMARY KEY (market, symbol)
 );
 """

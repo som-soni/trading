@@ -14,7 +14,8 @@ metrics of `fundamentals/growth.py`, and builds:
   ratios          debtor days, inventory days, ROCE %, ROE %, OPM % per year
   shareholding    promoters / FII / DII / government / public per quarter (India)
   peers           the stock's peer group (Sectors page), largest first
-  views           each strategy's reading of the shared metrics (Minervini SEPA)
+  views           each strategy's reading of the shared metrics (Minervini SEPA; CAN SLIM, which also reads the
+                  stock's prices, RS rank, shareholding and the market, judged live)
 
 Money stays in the market's currency; the page divides by `MarketConfig.money_divisor` (₹ crore, $ million).
 EPS and dividends per share are put on today's share basis where the share count jumped by a split or bonus.
@@ -338,8 +339,14 @@ def build(market: str, symbol: str, snap=None) -> dict:
     out["peers"] = peers
 
     # strategy views
-    views = scores[1] if scores else {v.key: v.evaluate(m) for v in growth.views()}
-    out["views"] = [{**v.criteria(), "result": views.get(v.key)} for v in growth.views()]
+    views = scores[1] if scores else {}
+    results = {}
+    for v in growth.views():
+        if hasattr(v, "context"):   # a view that also reads the chart and the market (CAN SLIM): judged live
+            results[v.key] = v.evaluate(m, v.context(market, symbol, srow=srow, shareholding=out.get("shareholding")))
+        else:
+            results[v.key] = views.get(v.key) or v.evaluate(m)
+    out["views"] = [{**v.criteria(), "result": results.get(v.key)} for v in growth.views()]
     out["latest"] = {"end": str(m.get("latest_end")) if m.get("latest_end") else None, "fiscal": m.get("latest_fiscal"),
                      "filed": str(m.get("latest_filed")) if m.get("latest_filed") else None, "stale": m.get("stale"),
                      "split_adjusted": m.get("split_adjusted")}

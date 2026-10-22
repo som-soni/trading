@@ -280,7 +280,11 @@ right of the last bar. The right-hand rail opens panels:
 
 **Fundamentals** (Chart → Fundamentals) is one company's financials in tabs: Overview, Quarters, Profit &
 Loss, Balance Sheet, Cash Flows, Ratios, Shareholding (India: promoters, FIIs, DIIs, public) and Peers. It
-includes a **Minervini SEPA** section: tests F1–F8 and a verdict. See [earnings](learn-fund-earnings.md),
+includes a **Minervini SEPA** section (tests F1–F8 and a verdict) and a **CAN SLIM** section (`fundamentals/canslim.py`):
+C1–C2 and A1–A2 from the filings, then N (within 15% of the 52-week high), S (up-day over down-day volume, 50
+sessions), L (RS rank 80+), I (FII + DII up on the quarter; India only) and M (the index above its 50-day with at
+most 4 distribution days in 25 sessions), judged live — verdict QUALIFIES, EARNINGS PASS (wait for the stock or the
+market), WEAK or NO DATA. See [earnings](learn-fund-earnings.md),
 [quality](learn-fund-quality.md) and [valuation](learn-fund-valuation.md). Sales, operating profit, net profit and EPS each carry a **growth row** beneath them, green up / red down, in words ("turned profit", "loss narrowed / widened") where the earlier period was a loss. The Quarters table has a **Growth** switch beside its title: **YoY + QoQ** (the default, both rows under each line), **YoY** (each quarter against the same quarter a year earlier, free of seasonal swings), **QoQ** (against the quarter before: sooner, but partly the season) or **Off**. The Profit & Loss table shows year-on-year growth, its TTM column against the twelve months before.
 
 **News** is the same News & events feed on a full page.

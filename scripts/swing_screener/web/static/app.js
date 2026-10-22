@@ -2989,20 +2989,26 @@ async function qualityPage(alive, mkt) {
 
 // ------------------------------------------------------------ fundamentals: one company's financials (screener.in style)
 
-const sepaClass = (v) => (v === "LEADER" ? "trade" : v === "ACCEPTABLE" ? "watch" : v === "WEAK" ? "avoid" : "");
+// a strategy view's verdict -> tag colour (Minervini: LEADER / ACCEPTABLE; CAN SLIM: QUALIFIES / EARNINGS PASS)
+const sepaClass = (v) => (v === "LEADER" || v === "QUALIFIES" ? "trade" : v === "ACCEPTABLE" || v === "EARNINGS PASS" ? "watch" : v === "WEAK" ? "avoid" : "");
 const sepaPct = (v, d = 0) => (v == null ? "" : `${v > 0 ? "+" : ""}${(v * 100).toFixed(d)}%`);
 const FUND_SOURCE = { sec_edgar: "SEC filings", nse: "NSE filings", yfinance: "Yahoo (fallback)" };
 const bareSymbol = (x) => { const m = MKTS.find((k) => k.suffix && String(x).endsWith(k.suffix)); return m ? String(x).slice(0, -m.suffix.length) : String(x); };
 const companyHref = (m, s) => `#/company/${m}/${encodeURIComponent(s)}`;
 
+/** a test's value by its unit (a view may say: pct, pt, ratio, num); Minervini's tests predate units */
+function testValue(k, t) {
+  const u = t.unit || (k === "F2" ? "num" : k === "F4" || k === "F8" ? "pt" : "pct");
+  return u === "num" ? String(Math.round(t.value)) : u === "ratio" ? `${t.value.toFixed(2)}×`
+    : u === "pt" ? `${t.value > 0 ? "+" : ""}${(t.value * 100).toFixed(1)} pt` : esc(sepaPct(t.value, 1));
+}
 /** one strategy view's tests for one company */
 function viewTestsHtml(res, vc) {
   const lbl = Object.fromEntries(vc.tests.map((t) => [t.key, t]));
   return `<table class="dtab sepa-tests"><tbody>${Object.entries(res.tests || {}).map(([k, t]) => `<tr>
       <td><span class="tag ${t.status === "pass" ? "trade" : t.status === "fail" ? "avoid" : ""}">${t.status === "na" ? "n/a" : t.status}</span></td>
       <td><b>${k}</b> ${esc(lbl[k]?.label || "")}<div class="muted small">${esc(lbl[k]?.text || "")}</div></td>
-      <td class="num">${typeof t.value !== "number" ? "" : k === "F2" ? String(t.value)
-        : k === "F4" || k === "F8" ? `${t.value > 0 ? "+" : ""}${(t.value * 100).toFixed(1)} pt` : esc(sepaPct(t.value, 1))}
+      <td class="num">${typeof t.value !== "number" ? "" : testValue(k, t)}
         ${t.detail ? `<div class="muted small">${esc(t.detail)}</div>` : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 

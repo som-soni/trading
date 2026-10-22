@@ -321,11 +321,31 @@ def test_company_tables():
 
 def test_criteria_render():
     g = growth.criteria()
-    assert g["name"] == "Fundamentals" and [v["key"] for v in g["views"]] == ["sepa"]
+    assert g["name"] == "Fundamentals" and [v["key"] for v in g["views"]] == ["sepa", "canslim"]
     assert all("{" not in t for t in g["how_it_works"])
     c = sepa.criteria()
     assert len(c["tests"]) == len(sepa.TESTS) and all("{" not in t["text"] for t in c["tests"])
     assert "25%" in c["tests"][0]["text"]
+
+
+def test_canslim():
+    from fundamentals import canslim
+    c = canslim.criteria()
+    assert len(c["tests"]) == len(canslim.TESTS) and all("{" not in t["text"] for t in c["tests"])
+    m = {"quarters": 12, "eps_g": [0.40, 0.30, 0.28, 0.26], "rev_g": [0.25, 0.22, 0.20, 0.18], "latest_has_prior": True,
+         "eps_annual": [4.0, 3.0, 2.2, 1.6], "eps_annual_basis": "fiscal years", "roe": 0.25, "roe_source": "filings", "stale": False}
+    good = {"price": 95, "high_52w": 100, "updown": 1.3, "rs_rank": 90, "inst_now": 0.40, "inst_prev": 0.38,
+            "market": {"index": "SPY", "above_sma": True, "dist_days": 2}}
+    assert canslim.evaluate(m, good)["verdict"] == "QUALIFIES"
+    # the earnings pass but the market is in distribution: wait
+    assert canslim.evaluate(m, {**good, "market": {"index": "SPY", "above_sma": True, "dist_days": 6}})["verdict"] == "EARNINGS PASS"
+    # without a context (the batch), only C and A are scored: never QUALIFIES
+    r = canslim.evaluate(m)
+    assert r["verdict"] == "EARNINGS PASS" and r["tests"]["N"]["status"] == "na"
+    # one year below 25% fails A1 (each year, not the average)
+    assert canslim.evaluate({**m, "eps_annual": [4.0, 3.5, 2.2, 1.6]}, good)["verdict"] == "WEAK"
+    # 20% below the high fails N
+    assert canslim.evaluate(m, {**good, "price": 80})["tests"]["N"]["status"] == "fail"
 
 
 if __name__ == "__main__":
