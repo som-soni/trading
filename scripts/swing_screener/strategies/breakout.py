@@ -70,7 +70,7 @@ class BreakoutStrategy(Strategy):
     key = "breakout"
     name = "Volume breakout"
     description = (
-        "Long breakouts to new 55-day highs out of a tight consolidation, "
+        "Long breakouts to new {BREAKOUT_LOOKBACK}-day highs out of a tight consolidation, "
         "confirmed by expanding volume."
     )
     style = "breakout"
@@ -99,116 +99,270 @@ class BreakoutStrategy(Strategy):
         "A decisive, volume-confirmed break to new highs out of a tight "
         "consolidation continues, so buy strength rather than weakness."
     )
+    # Overview only; the exact tests are in the gate/watch/setup docs and the rule groups below.
+    # Every fact here was checked against prefilter_row / evaluate / build_plans / classify above,
+    # the pipeline's pre-filter and backtesting/portfolio_sim.py (resting buy-stop, bracket exit).
     how_it_works = (
-        "**Screen** for stocks above their SMA200 and within 20% of the 52-week high.",
-        "**Gates B1-B7** require an SMA200 that is not falling (no more than 0.5% "
-        "below its level 20 bars ago), price within 5% of the 52-week high, a "
-        "tight {CONSOLIDATION_BARS}-bar base (range under 6 ATR), not already "
-        "extended beyond 4 ATR above SMA20, ATR no more than 8% of price, and "
-        "no earnings inside 10 days.",
-        "**Setups**: BO-01 is a close above the {BREAKOUT_LOOKBACK}-day pivot on "
-        "confirming volume; BO-02 is a coil sitting within 3% below that pivot. "
-        "Only BO-01 is the entry signal, so only BO-01 can reach TRADE - HIGH CONFIDENCE.",
-        "**Entry** is 0.1% above the higher of today's high and the pivot, rounded "
-        "up to the tick; for BO-01 the signal *is* the setup, because the close "
-        "has already cleared the pivot.",
-        "**Exit**: stop below the consolidation (never wider than 2 ATR), target "
-        "the entry plus the base height, lowered to the nearest overhead level "
-        "if one is in the way. Plans projecting under 2R are not traded.",
+        "**The idea.** Buy a close through the {BREAKOUT_LOOKBACK}-day high on heavy volume, out of a "
+        "tight {CONSOLIDATION_BARS}-session base, near the 52-week high, and hold for the base's "
+        "measured move.",
+        "**Qualify.** A pre-filter (liquidity, trend, volatility, near the highs), then seven hard "
+        "gates G1-G7. See Gates and When no new trade is taken.",
+        "**Signal.** S1, a close above the pivot on more than 1.5 times average volume. S2 only marks "
+        "a close coiled within 3% under the pivot. See Setups.",
+        "**Buy.** A buy-stop 0.1% above the breakout session's high, filled on a later session that "
+        "trades through it. See Entry.",
+        "**Stop and target.** The stop is never more than 2 ATR under the entry; the target is the "
+        "base's height added to the entry, cut to the nearest overhead swing high, and must be at "
+        "least {min_structural_r}R away. In the backtest both are fixed sell orders. See Stop, "
+        "Target and Exit.",
+        "**What the backtest buys.** Only TRADE - HIGH CONFIDENCE: S1 with all seven gates, no W1 or "
+        "W3, a stop no more than 7% below the entry and at least 2R. It has no earnings calendar and "
+        "no market-regime downgrade.",
+        "**Where the rules come from.** Classic volume-breakout practice, with untuned thresholds. "
+        "There is no written spec with row ids: BO-01 and BO-02 are the setups' names from before the "
+        "S1/S2 codes, and are not the chart-pattern spec's rows of the same id.",
     )
     caveats = (
-        "**NOT VALIDATED.** The thresholds are reasonable defaults, not tuned. "
-        "Backtested once (US, 500-symbol sample, bracket exits): -1.74% CAGR, "
-        "about 14.6 points a year behind SPY — see research/momentum-trend-research.md.",
-        "Treat anything it produces as a hypothesis to test, not a signal to act on.",
-        "The target is the measured move off the base, with no floor; setups "
-        "projecting under 2R are rejected rather than padded. When an overhead "
-        "level lowers the target, the R column is smaller than `structural_r`, "
-        "and the 2R test uses the lowered R.",
-        "Watch flag W2 (breakout on below-average volume) can never fire: it needs "
-        "BO-01, which already requires volume above 1.5x average.",
+        "**NOT VALIDATED.** The thresholds are untuned defaults; see Status for the measured result. "
+        "Treat what it produces as a hypothesis to test, not a signal to act on.",
+        "**The stop is never under the base.** The price paid is above the base's high, so a stop "
+        "under the base risks more than the base's height and can never project {min_structural_r}R. "
+        "Every plan that passes therefore has the 2-ATR stop, inside the base. 'Stop below the "
+        "consolidation' is the rule's intent, not what any traded plan gets.",
+        "**R lands between {min_structural_r} and 3.** With the 2-ATR stop, the {min_structural_r}R "
+        "test needs a base at least {min_structural_r} × 2 ATR tall, and G4 allows at most 6 ATR.",
+        "**W2 can never fire.** It needs S1, and S1 already requires volume above 1.5 times average, "
+        "so 'a breakout on below-average volume' is impossible. Its WATCH cap and quality cut never "
+        "act.",
+        "**Overhead lowers R.** When an overhead level lowers the target, the R column is smaller than "
+        "`structural_r` (what the base alone projects), and the {min_structural_r}R test uses the "
+        "lowered R.",
+        "**The reward test is not repeated at the fill.** A gap up at the next open raises the price "
+        "paid without moving the stop or the target, so a trade can be bought at under 2R. It is "
+        "skipped only when the fill is at or above the target.",
+        "**The fill session is never checked.** In the backtest the stop and target are first tested "
+        "on the session after the fill. A session that triggers the buy and then trades through the "
+        "stop is held overnight, and survives if the next session stays above the stop: kinder than "
+        "a real stop order.",
+        "**Ties are arbitrary.** Every signal the backtest accepts scores the same setup quality, 2, so "
+        "when more trigger than there are free slots the book fills in scan order, roughly "
+        "alphabetical. `--rank-by` replaces that order.",
+        "**No price floor anywhere.** Version 1.1 removed `cfg.screener.min_price` from the "
+        "point-in-time pre-filter. The daily screen calls that same pre-filter, so it applies no "
+        "price floor either; only the Screens page's snapshot does.",
     )
 
     # --- full reference documentation (generated Strategy page) ---
+    # Numbers are `{NAME}` placeholders of the module constants and `min_structural_r`; a literal is
+    # written where the code uses a literal.
     status = (
         "Not validated, no demonstrated edge: thresholds are untuned defaults. Full US backtest "
         "from 2013 (v1.1, bracket exits, measured 2026-10-12 after the cost fix): 2.15% CAGR "
         "against SPY's 12.8%, max drawdown -29.7%. India not yet run at full size."
     )
     gate_docs = {
-        "G1": "The latest close must be strictly above the 200-day SMA. A missing SMA200 fails.",
-        "G2": "The 200-day SMA must not be falling. It fails only if SMA200 is more than 0.5% "
-              "below its value 20 bars ago, so a flat SMA200 passes as well as a rising one.",
-        "G3": "The close must be at least 95% of the 52-week high (high_252, which includes "
-              "today's bar), i.e. no more than 5% below it. Fails if the 52-week high is unavailable.",
-        "G4": "The {CONSOLIDATION_BARS} bars before today must form a tight base: their highest "
-              "high minus lowest low must be at most 6 x ATR14. Fails if there are fewer than "
-              "{CONSOLIDATION_BARS} prior bars or ATR is missing or zero.",
-        "G5": "The close must not be more than 4 x ATR14 above the 20-day SMA (exactly 4 ATR "
-              "passes). If SMA20 or ATR is missing the gate passes.",
-        "G6": "ATR14 as a percent of the close must be 8% or less. If ATR% is missing the gate passes.",
-        "G7": "Earnings must not be 10 or fewer days away. Passes when no earnings date is "
-              "known; the backtest has no historical earnings calendar, so it always passes there.",
+        "G1": "Close above the 200-day average (the Near-highs screen's H1).\n\n"
+              "- **Test:** today's close is strictly above today's 200-day simple moving average of closes.\n"
+              "- **Fails:** a close at or below it, or no average yet. The pre-filter applies the same "
+              "test first.",
+        "G2": "The 200-day average is not falling (the Near-highs screen's H2).\n\n"
+              "- **Falling:** today's 200-day average is more than 0.5% below its value 20 sessions ago.\n"
+              "- **Passes:** rising or flat (down 0.5% or less), and when either value is missing.",
+        "G3": "Close within 5% of the 52-week high.\n\n"
+              "- **52-week high:** the highest high of the last 252 sessions, today included.\n"
+              "- **Test:** close ≥ 0.95 × that high.\n"
+              "- **Fails:** a lower close, or no 52-week high.\n\n"
+              "Tighter than the Near-highs screen's own limit (H3), which this strategy does not apply.",
+        "G4": "The {CONSOLIDATION_BARS} sessions before today form a tight base: their range is at most "
+              "6 ATR.\n\n"
+              "- **Range:** the highest high minus the lowest low of the {CONSOLIDATION_BARS} sessions "
+              "before today. Today is excluded.\n"
+              "- **Test:** range ≤ 6 × ATR14, with ATR14 (the 14-day Wilder average true range) as of "
+              "today.\n"
+              "- **Fails:** a wider range, fewer than {CONSOLIDATION_BARS} earlier sessions, or a missing "
+              "or zero ATR.\n\n"
+              "The same window sets the stop and the target (see Stop and Target).",
+        "G5": "Close no more than 4 ATR above the 20-day average.\n\n"
+              "- **Test:** close − 20-day simple moving average ≤ 4 × ATR14. Exactly 4 ATR passes.\n"
+              "- **Passes:** when the average or ATR is missing.\n\n"
+              "W1 flags anything more than 2.5 ATR above it, which already keeps a plan from HIGH "
+              "CONFIDENCE.",
+        "G6": "ATR14 is at most 8% of the close.\n\n"
+              "- **Test:** ATR14 ÷ close × 100 ≤ 8.\n"
+              "- **Passes:** when ATR% is missing. The pre-filter separately requires it above the "
+              "Minimum ATR%.",
+        "G7": "No results due within 10 business days.\n\n"
+              "- **Test:** fails when the next earnings date is 10 or fewer business days away (0 = "
+              "today).\n"
+              "- **Passes:** when no date is known.\n"
+              "- **Backtest:** there is no historical earnings calendar, so it always passes.\n\n"
+              "Live, results 11 to 15 business days away still keep a plan from HIGH CONFIDENCE.",
     }
     watch_docs = {
-        "W1": "Raised when the close is more than 2.5 x ATR14 above the 20-day SMA (extended; the "
-               "note suggests SMA20 as a pullback level). Caps the decision at TRADE ON TRIGGER and "
-               "lowers setup quality by 0.5.",
-        "W2": "Meant to flag a breakout on below-average volume: raised only when BO-01 is active "
-               "AND today's volume is below its 50-day average. Would cap the decision at WATCH - "
-               "WAIT and cut setup quality by 1. In practice it can never fire, because BO-01 "
-               "itself requires volume above 1.5x the 50-day average.",
-        "W3": "Raised when RSI14 is above 80 (overbought). Caps the decision at TRADE ON TRIGGER; "
-               "no effect on setup quality.",
+        "W1": "Extended: the close is more than 2.5 ATR above the 20-day average.\n\n"
+              "- **Test:** close − 20-day simple moving average > 2.5 × ATR14.\n"
+              "- **Effect:** caps the decision at TRADE ON TRIGGER and cuts setup quality by 0.5. The "
+              "note gives the 20-day average as a pullback level.\n\n"
+              "The backtest buys only TRADE - HIGH CONFIDENCE, so it never trades a W1 stock.",
+        "W2": "A breakout (S1) on below-average volume. It can never fire.\n\n"
+              "- **Test:** S1 is active and today's volume is below its 50-day average.\n"
+              "- **Why never:** S1 itself requires volume above 1.5 × that average.\n"
+              "- **Effect, if it did:** WATCH - WAIT, and setup quality cut by 1.",
+        "W3": "Overbought: RSI14 is above 80.\n\n"
+              "- **Test:** the 14-day Wilder RSI of closes > 80, on any day.\n"
+              "- **Effect:** caps the decision at TRADE ON TRIGGER, so the backtest never trades it. No "
+              "effect on setup quality.",
     }
     setup_docs = {
-        "S1": "BO-01 breakout: today's close is strictly above the pivot (the highest high of the "
-                 "{BREAKOUT_LOOKBACK} bars before today) AND today's volume is more than 1.5x its "
-                 "50-day average. Entry-eligible, and it is also the entry signal, so only BO-01 can "
-                 "reach TRADE - HIGH CONFIDENCE (setup quality 2).",
-        "S2": "BO-02 coil: the close is within 3% below the pivot (between 97% and 100% of it), not "
-                 "through it yet. Entry-eligible but the signal has not fired, so the best it gets is "
-                 "TRADE ON TRIGGER (setup quality 1). If BO-01 is also true, BO-01 is used.",
+        "S1": "BO-01 breakout: today's close is above the {BREAKOUT_LOOKBACK}-session pivot on more than "
+              "1.5 times average volume.\n\n"
+              "- **Pivot:** the highest high of the {BREAKOUT_LOOKBACK} sessions before today. Today's "
+              "bar is excluded.\n"
+              "- **Breakout:** close > pivot, strictly.\n"
+              "- **Volume:** today's volume > 1.5 × the 50-day average volume (an average that "
+              "includes today).\n"
+              "- **Signal:** the setup is the entry signal. Only S1 can reach TRADE - HIGH CONFIDENCE, "
+              "and only S1 is bought by the backtest (setup quality 2).\n\n"
+              "It fires on every such close, not only the first.",
+        "S2": "BO-02 coil: today's close is within 3% below the pivot, not through it yet.\n\n"
+              "- **Test:** 0.97 × pivot ≤ close ≤ pivot. No volume test.\n"
+              "- **Signal:** none yet. It builds a plan, but the best decision is TRADE ON TRIGGER "
+              "(setup quality 1). The backtest never buys it.",
     }
     entry_rules = (
-        "Entry is a buy-stop at 0.1% above the higher of today's high and the "
-        "{BREAKOUT_LOOKBACK}-bar pivot, rounded up to the market's tick size.",
-        "Stop is the lowest low of the {CONSOLIDATION_BARS} bars before today minus 0.1 ATR, but "
-        "never more than 2 ATR below entry (whichever is higher), rounded down to the tick.",
-        "Target is entry plus the base height (highest high minus lowest low of the "
-        "{CONSOLIDATION_BARS} prior bars), with no minimum R. If an overhead supply level sits "
-        "between entry and that target, the target is lowered to the nearest one.",
-        "A plan is WATCH - WAIT if the position is too large for the account, the stop is more than "
-        "8% below entry, or the plan offers less than 2R. TRADE - HIGH CONFIDENCE additionally "
-        "needs BO-01, no watch-flag cap, a stop of 7% or less, at least 2R and no earnings within "
-        "15 days; otherwise TRADE ON TRIGGER. A market-regime downgrade lowers the label one tier.",
+        "Signal. An S1 breakout graded TRADE - HIGH CONFIDENCE. Live, an S2 coil or a capped S1 is "
+        "TRADE ON TRIGGER: the same order, placed by the trader.",
+        "Order. A buy-stop 0.1% above the higher of today's high and the {BREAKOUT_LOOKBACK}-session "
+        "pivot, rounded up to the tick. For S1 today's high is already above the pivot, so the order "
+        "sits 0.1% above the breakout session's high: the stock must trade above that high again.",
+        "Fill (backtest). On the first later session whose high reaches the entry, at the higher of "
+        "the entry and that session's open, plus slippage. It never fills on the signal session.",
+        "Expiry and cancel (backtest). An unfilled order rests for up to 10 business days. It is "
+        "cancelled if a session's low reaches the stop while its high stays under the entry, and "
+        "skipped if the fill would be at or above the target.",
+        "One position per stock (backtest). A signal in a stock already held, or with an order "
+        "already resting, is ignored.",
+        "No re-test at the fill. The stop-distance and reward tests use the planned entry. A gap up at "
+        "the open raises the price paid but moves neither the stop nor the target.",
+    )
+    stop_rules = (
+        "Where it goes. The higher of two prices, rounded down to the tick: 0.1 ATR under the lowest "
+        "low of the {CONSOLIDATION_BARS} sessions before today (under the base), and 2 ATR under the "
+        "entry. It is never more than 2 ATR below the entry.",
+        "Which one binds. In every plan that passes the {min_structural_r}R test it is the 2-ATR stop, "
+        "inside the base (see Caveats).",
+        "It defines 1R. The distance from the price paid to the stop is the trade's risk, 1R. Results "
+        "are counted in R.",
+        "How far is too far. A stop more than 8% below the entry is WATCH - WAIT. More than 7% keeps "
+        "it from HIGH CONFIDENCE, so the backtest only buys stops of 7% or less: ATR14 at most about "
+        "3.5% of the entry.",
+        "How it sells (backtest). A standing sell order: the first session whose low touches the stop "
+        "sells at the stop, or at the open if it opened below it. A gap can therefore lose more than "
+        "1R. The stop wins a same-session tie with the target.",
+        "It never moves. No trailing and no breakeven.",
+    )
+    target_rules = (
+        "A real sell order. The backtest uses the bracket exit: the first session whose high reaches "
+        "the target sells the whole position, at the target or at the open if it opened above it.",
+        "How it is measured. Entry + the base's height: the highest high minus the lowest low of the "
+        "{CONSOLIDATION_BARS} sessions before today. There is no floor and no padding.",
+        "Overhead supply caps it. If a swing high sits above the entry and below that target, the "
+        "target is lowered to the nearest one. A swing high is a high not exceeded within 3 sessions "
+        "either side on the daily chart (last 252 sessions), 3 weeks either side on the weekly chart "
+        "(last 260 weeks), or 2 months either side on the monthly chart (all history).",
+        "The {min_structural_r}R test. (target − entry) ÷ (entry − stop) must be at least "
+        "{min_structural_r}, after any overhead cut; below it the plan is WATCH - WAIT. HIGH "
+        "CONFIDENCE checks again against a fixed 2 written into the decision, so lowering "
+        "{min_structural_r} would not lower that bar. `structural_r` reports the base's own "
+        "projection, before the cut.",
     )
     exit_rules = (
-        "Live: a fixed bracket. The stop and target set at entry do not move; there is no trailing "
-        "stop or time exit in the strategy itself.",
-        "Backtest (default bracket mode): only TRADE - HIGH CONFIDENCE signals (so only BO-01) are "
-        "placed, as resting buy-stops that fill on a later bar trading through the entry (at the "
-        "open if it gaps above) and expire unfilled after 10 business days, or are cancelled if "
-        "price hits the stop first or gaps past the target.",
-        "Backtest exits: the first later bar whose low touches the stop or whose high touches the "
-        "target closes the trade; if both on one bar the stop is assumed first, and gaps fill at "
-        "the open. Positions still open at the end are marked at the last close.",
+        "A fixed bracket (backtest). Each session after the fill, the stop is checked first, then the "
+        "target; the first one touched sells everything. Neither moves.",
+        "No other exits. No time stop, breakeven, trailing stop or partial sale. A position still open "
+        "when the backtest ends is marked at the last close.",
+        "Live, nothing manages an open position. The plan's stop and target are for the trader to "
+        "place.",
+    )
+    sizing_rules = (
+        "Risk-based. Shares = (equity × Risk per trade) ÷ (price paid − stop), rounded down. Example: "
+        "$100,000 at 1% risks $1,000; paying $50 with the stop at $47 risks $3 a share, so 333 shares.",
+        "Capped. The position may not be worth more than Max position size × equity. With 1% risk and "
+        "a 25% cap, any stop closer than 4% below the price paid hits the cap, and the trade then "
+        "risks less than 1%.",
+        "Cash. When cash cannot buy the full size, the backtest buys what it can instead of skipping.",
+        "Backtest and live. The backtest sizes from current equity at the fill. The live screen sizes "
+        "from the configured account size, at the lower high-volatility risk when the volatility "
+        "index is above the market's threshold. A plan that cannot buy even one share is WATCH - WAIT.",
+        "Slots. At most Max open positions at once. A triggered order with no free slot keeps resting "
+        "until it expires, and may fill later at a higher open.",
+    )
+    filter_rules = (
+        "Pre-filter. A stock is evaluated only if the 20-day average of close × volume is at least "
+        "the Minimum liquidity, the close is above the 200-day average, ATR14 is more than the Minimum "
+        "ATR% of the close, the close is at least 80% of the 52-week high, and it has at least "
+        "{min_bars} daily bars. Live and in the backtest.",
+        "No price floor. Neither the daily screen nor the backtest applies the Minimum price (see "
+        "Caveats). India's daily screen also drops companies below the India config's minimum market "
+        "cap.",
+        "Results due. Live, results 10 or fewer business days away make the stock AVOID (G7), and 11 "
+        "to 15 days away cap it at TRADE ON TRIGGER. The backtest has no earnings calendar and applies "
+        "neither.",
+        "Market regime. Live, a risk-off market lowers every decision one tier, so nothing is HIGH "
+        "CONFIDENCE. The backtest does not apply it.",
+        "Already in the stock, or no room. See Entry and Position size.",
+    )
+    decision_docs = {
+        "TRADE_HIGH_CONFIDENCE": "All seven gates pass, S1 fired, neither W1 nor W3 is raised, the stop is "
+                                 "no more than 7% below the entry, the plan offers at least 2R, no results "
+                                 "are due within 15 business days and one share fits the account. The "
+                                 "only tier the backtest buys.",
+        "TRADE_ON_TRIGGER": "A plan that passes the stop and reward tests but is not HIGH CONFIDENCE: an "
+                            "S2 coil (buy only on the break), a W1 or W3 cap, a stop between 7% and 8% "
+                            "below the entry, results 11 to 15 business days away, or a HIGH CONFIDENCE "
+                            "lowered by a risk-off market.",
+        "WATCH_WAIT": "The stop is more than 8% below the entry, the plan offers under "
+                      "{min_structural_r}R, not even one share fits the account, or a TRADE ON TRIGGER "
+                      "lowered by a risk-off market.",
+        "AVOID": "A gate failed, or the plan's risk is not a positive number, or a WATCH - WAIT lowered "
+                 "by a risk-off market. A stock that passes every gate with no setup shows as NO SETUP "
+                 "instead.",
+    }
+    regime_note = (
+        "Live only. When the market is risk-off (the first two broad indices in the market's config "
+        "both close at or below their 50-day average), every decision drops one tier (HIGH CONFIDENCE "
+        "→ ON TRIGGER → WATCH → AVOID) and the reason says 'market-regime downgrade applied'. The "
+        "backtest does not apply it."
     )
     param_docs = (
-        ("Consolidation length", "CONSOLIDATION_BARS",
-         "Bars before today that must form the tight base (B4) and that define stop and target."),
+        ("Base length", "CONSOLIDATION_BARS",
+         "Sessions before today that must form the tight base (G4), and whose low and height set the "
+         "stop and the target."),
         ("Pivot lookback", "BREAKOUT_LOOKBACK",
-         "Bars before today whose highest high is the breakout pivot for BO-01/BO-02 and entry."),
+         "Sessions before today whose highest high is the pivot for S1, S2 and the entry."),
+        ("Minimum reward", "min_structural_r",
+         "The target must be at least this many R from the entry, after any overhead cut, or the "
+         "plan is WATCH - WAIT."),
+        ("Minimum history", "min_bars",
+         "Daily bars a stock needs before it is evaluated."),
         ("Minimum price", "cfg.screener.min_price",
-         "LIVE SCREENING ONLY: symbols closing below this price are not screened. A backtest's\n          point-in-time pre-filter skips it, because split-adjusted history puts a winner's\n          early price under the floor (see base.tradable_point_in_time)."),
+         "Not applied by this strategy: the daily screen and the backtest both use the point-in-time "
+         "pre-filter, which skips it. Only the Screens page's snapshot applies it."),
         ("Minimum ATR%", "cfg.screener.atr_pct_min",
-         "Pre-filter: ATR14 as % of close must exceed this, so very quiet stocks are skipped."),
+         "Pre-filter: ATR14 as a % of the close must be above this, so very quiet stocks are skipped."),
         ("Minimum liquidity", "cfg.screener.min_dollar_volume",
-         "Pre-filter: 20-day average dollar volume must be at least this."),
+         "Pre-filter: the 20-day average of close × volume must be at least this."),
+        ("Risk per trade", "cfg.risk_pct",
+         "Fraction of equity risked between the price paid and the stop."),
+        ("Max position size", "cfg.max_position_pct",
+         "Cap on one position's value as a fraction of equity."),
         ("Tick size", "cfg.tick_size",
-         "Entry is rounded up and the stop rounded down to this increment."),
+         "The entry is rounded up and the stop rounded down to this increment."),
         ("Max open positions", "cfg.max_open_positions",
-         "Portfolio backtest: position slots; signals arriving with no free slot are missed."),
+         "Backtest slots; a triggered order with no free slot keeps resting until it expires."),
+        ("Slippage", "cfg.slippage_bps",
+         "Backtest cost per side, in basis points of the fill price."),
     )
     backtest_args = ""
 

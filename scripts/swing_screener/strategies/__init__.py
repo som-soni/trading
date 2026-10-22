@@ -151,7 +151,7 @@ def describe_strategies() -> str:
     would think to look for it.
     """
     return "\n".join(
-        f"  {s.key:<16} {s.name} — {s.description}".replace("%", "%%")
+        f"  {s.key:<16} {s.name} — {type(s).render_doc(s.description)}".replace("%", "%%")
         for s in sorted(_REGISTRY.values(), key=lambda s: s.key)
     )
 
