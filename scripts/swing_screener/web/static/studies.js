@@ -919,6 +919,7 @@ const Studies = (() => {
           const cur = r?.current;
           setNote(id, !r ? "classification failed"
             : cur?.stage ? `${r.as_of}: Stage ${cur.stage}${cur.provisional ? " · week in progress" : ""} · 30-week line ${cur.line_state} (${cur.line_slope_pct > 0 ? "+" : ""}${cur.line_slope_pct}% / 4 wk)`
+              + (r.confirm_weeks ? ` · a stage is confirmed after ${r.confirm_weeks} weeks, so a breakout entry leads this band` : "")
             : r.note || "not enough history");
           paint();
         };

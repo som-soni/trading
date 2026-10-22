@@ -314,7 +314,13 @@ class StageAnalysisStrategy(Strategy):
     }
     watch_codes = ("W1", "W2", "W3")
     setup_codes = (STG01,)
-    setup_names = {STG01: "Stage 2 breakout"}
+    #: "Breakout INTO Stage 2", not "Stage 2 breakout": the setup fires on the week the close
+    #: clears the base high, and the state machine only ratifies Stage 2 {CONFIRM_WEEKS} weeks
+    #: later, so at entry the band on the chart is often still Stage 1 (or, briefly, Stage 4).
+    #: Measured over the Indian run, 33 of 241 entries sat in a band that had not turned, and
+    #: every winner among them was ratified within six weeks. The old name asserted a stage the
+    #: strategy had not yet been given, which read as the card contradicting the chart.
+    setup_names = {STG01: "Breakout into Stage 2"}
     #: 60 weeks of weekly bars, which the guide requires for the line and the 52-week range, plus
     #: the daily history needed to resample them. The Mansfield zero line wants more
     #: ({MANSFIELD_WEEKS} weeks of ratio history on top of its own average) and G6 simply passes
@@ -423,7 +429,10 @@ class StageAnalysisStrategy(Strategy):
     setup_docs = {
         STG01: "The weekly close clears the base's own high for the first time, with the "
                "{MA_WEEKS}-week line no longer declining beneath it and the base at least "
-               "{BASE_MIN_WEEKS} weeks old.",
+               "{BASE_MIN_WEEKS} weeks old. This is the breakout INTO Stage 2, not a stock already "
+               "in it: the stage machine ratifies the new stage only after {CONFIRM_WEEKS} weeks, so "
+               "at entry the chart's stage band has usually not turned yet — and when the breakout "
+               "fails it never does, which is the band doing its job rather than disagreeing.",
     }
     entry_rules = (
         "Bought at the close of the breakout week. The guide's alternative is the next session's "
@@ -801,7 +810,7 @@ class StageAnalysisStrategy(Strategy):
             return Decision(LABELS["AVOID"], LABELS["AVOID"], "no valid entry plan", 0.0, 0.0, q)
         risk_pct = plan.risk_per_share / plan.entry * 100
         if ctx.extras.get("broke_out"):
-            label, reasons = "TRADE_HIGH_CONFIDENCE", ["Stage 2 breakout above the base's high"]
+            label, reasons = "TRADE_HIGH_CONFIDENCE", ["breakout above the base's high, into Stage 2"]
         else:
             label, reasons = "TRADE_ON_TRIGGER", ["valid base, buy stop above its high"]
         if result.watch_flags.get("W1"):

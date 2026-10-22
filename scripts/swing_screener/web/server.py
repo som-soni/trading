@@ -1100,6 +1100,10 @@ def stage_analysis_live(market: str, symbol: str, date: str | None = None, years
         "line": [{"time": t, "value": round(float(v), 4)}
                  for t, v in zip(labels[lo_i:], line.iloc[lo_i:]) if v == v],
         "stages": segs,
+        # The machine holds a stage until the new one's condition has held this many weeks, so a
+        # breakout ENTRY necessarily leads the band that ratifies it -- the chart says so rather
+        # than leaving the two looking contradictory. The number is the strategy's, not retyped.
+        "confirm_weeks": int(stage_mod.CONFIRM_WEEKS),
         "current": {"stage": int(done.iloc[-1]) or None if len(done) else None,
                     "line_state": state,
                     "line_slope_pct": round(slope, 2) if slope == slope else None,

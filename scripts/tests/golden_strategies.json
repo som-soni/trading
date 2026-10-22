@@ -47328,7 +47328,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.0,
-    "reason": "Stage 2 breakout above the base's high; breakout volume below the threshold"
+    "reason": "breakout above the base's high, into Stage 2; breakout volume below the threshold"
    },
    "first_hard_fail": null,
    "hard_gates": {
