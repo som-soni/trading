@@ -136,14 +136,14 @@ class EarningsGapStrategy(Strategy):
     )
     # Every rule below was checked against the code that trades it: _reaction_day, evaluate,
     # build_plans, signal_meta and classify above, and portfolio_sim.simulate under this strategy's
-    # backtest_args (--exit-mode ma --no-target --ma-col sma20). There is no spec with row ids; the
-    # Learn guide research/learn-strat-earnings-gaps.md §3 is the specification, cited by section.
+    # backtest_args (--exit-mode ma --no-target --ma-col sma20). The rules come from the Learn guide
+    # research/learn-strat-earnings-gaps.md; the page describes the code, and where it departs from
+    # the guide is one caveat.
     how_it_works = (
         "The idea. A stock reports results, jumps a long way on heavy volume and closes near the "
         "day's high. The trade buys the break of that day's high and holds until the stock closes "
-        "below its 20-day average. The rules are the testable form of the Learn guide on earnings "
-        "gaps (its section 3). There is no spec with row ids, so each rule names the guide rule it "
-        "implements and says where it differs.",
+        "below its 20-day average. The rules are a testable, daily-bar form of the Learn guide on "
+        "earnings gaps; where they depart from it is listed under Known caveats.",
         "Step 1 — the reaction day (G2). One of the last {REACTION_WINDOW} sessions with a big "
         "move, heavy volume and a close near the high. The exact tests are under Rules.",
         "Step 2 — the news link (G3). That day must fall inside a window built from the stored "
@@ -161,8 +161,7 @@ class EarningsGapStrategy(Strategy):
         "TRIGGER. Add `--accept-labels 'TRADE ON TRIGGER'` to the command until the strategy's "
         "default backtest arguments include it.",
         "Only stocks with stored quarterly results can ever trade. With nothing to link a move to, "
-        "G3 refuses it. That is the guide's own requirement — without the link you are buying "
-        "random spikes — but it shrinks the universe hard: about 1,800 US and 580 Indian symbols "
+        "G3 refuses it. Without the link the trade would be buying random spikes, but it shrinks the universe hard: about 1,800 US and 580 Indian symbols "
         "had stored, dated quarters in October 2026. When the strategy was built, an alphabetical "
         "sample of 300 symbols a side had 113 US and 50 Indian ones covered; among those, the "
         "window linked 65% of US reaction days and 32% of Indian ones.",
@@ -183,30 +182,36 @@ class EarningsGapStrategy(Strategy):
         "least {CATALYST_MIN_DAYS} days ago and was not filed more than {CATALYST_FILED_GRACE} days "
         "ago — but the code reads it only from stored filings, so expect fewer live candidates "
         "than the backtest finds.",
-        "W1 does not measure what the guide asks. The guide's neglect test is the rise BEFORE the "
-        "news. W1 measures from {NEGLECT_LOOKBACK} sessions back to the signal session, so the "
+        "W1 includes the jump it is meant to come before. A neglect test should measure the rise "
+        "before the news; W1 measures from {NEGLECT_LOOKBACK} sessions back to the signal session, so the "
         "reaction day's own jump is included, and a stock that sat flat and then gapped more than "
         "{NEGLECT_MAX_RUN_PCT}% is flagged. W1 never blocks a trade, so the backtest is unaffected; "
         "only the live note is misleading.",
         "Same-day ties are not ranked by relative volume. A code comment says relative volume "
         "ranks signals, but every signal scores the same, so when slots are scarce the order "
         "placed first is filled first.",
-        "The guide's optional year-on-year profit-growth filter is not implemented: it needs "
-        "point-in-time fundamentals on the reaction day, which this path does not carry. Results "
-        "here are the unfiltered version of the setup, which the guide expects to be the weaker one.",
-        "The guide's trade management is not modelled: its partial sale of a third after 3 to 5 "
-        "sessions with the stop moved to the entry, and its time stop (sell if the close is not "
-        "above the entry after 10 sessions). The shared backtest's time stop sells after a fixed "
-        "number of sessions whatever the price, and its partial sale happens at a price target, so "
-        "neither matches. This measures the stop-and-trail core of the method, not its management.",
-        "The strategy has no profit target by construction, so the reported reward-to-risk is "
+                "The strategy has no profit target by construction, so the reported reward-to-risk is "
         "always a nominal {NOMINAL_TARGET_R}R, not an expectation.",
-        "The guide's own event study found results-day jumps did only slightly better than an "
-        "average results day in the US since 2009, and clearly better in India since 2020 on a "
-        "much smaller sample. Expect a low win rate carried by a few large winners, and judge it "
-        "on many trades.",
-        "Intraday entry — Kullamägi's break of the opening range on the reaction day itself — "
-        "cannot be tested on daily bars. The daily version enters a day later and higher.",
+        "**Where the code departs from the Learn guide.**\n\n"
+        "- **G1, the 200-day:** the guide filters the market, not the stock, and likes turnarounds; "
+        "here a stock below its 200-day is never bought, because every strategy draws from a screen.\n"
+        "- **G2, the reaction day:** the guide measures the first session after the news; here any "
+        "session in the {REACTION_WINDOW}-session window can be the reaction day, and G3 links it to "
+        "results afterwards.\n"
+        "- **G3, the news link:** the guide wants results announced from 3 days before the session to "
+        "the session; with no announcement calendar stored, the window here is about five weeks wide.\n"
+        "- **Universe:** the guide asks for $5 million or ₹5 crore of daily traded value and a $5 or "
+        "₹50 price; here the market's liquidity floor applies and there is no price floor.\n"
+        "- **W1, neglect:** the guide's optional filter is only a note here, because it is untested.\n"
+        "- **Profit growth:** the guide's optional year-on-year filter is not implemented — it needs "
+        "point-in-time fundamentals this path does not carry — so results are for the unfiltered setup.\n"
+        "- **Trade management:** the guide's partial sale of a third after 3 to 5 sessions (stop to "
+        "the entry) and its 10-session time stop are not modelled; the shared backtest's time stop "
+        "and partial sale work differently, so this tests the stop-and-trail core only.\n"
+        "- **Faster exit:** the guide's 10-day average for faster stocks is not used; every trade "
+        "exits on the 20-day.\n"
+        "- **Intraday entry:** the break of the reaction day's opening range cannot be tested on "
+        "daily bars, so the buy comes a day later and higher.",
     )
     status = (
         "Not yet measured. Built as the shelf's only event-driven per-symbol strategy, to test "
@@ -220,11 +225,8 @@ class EarningsGapStrategy(Strategy):
         "G1": "The close is above the 200-day moving average (the Above-the-200-day screen's A1).\n\n"
               "- **Test:** the signal session's close is strictly above the 200-day simple average "
               "of closes.\n"
-              "- **When:** on every signal session, not only on the reaction day.\n\n"
-              "**Guide:** not a guide rule. The guide filters the market, not the stock, and it likes "
-              "turnarounds. The gate is here because every strategy draws its candidates from a "
-              "screen and this is the loosest one. Differs: a deep turnaround still below its "
-              "200-day is never bought.",
+              "- **When:** on every signal session, not only on the reaction day.\n"
+              "- **Effect:** a turnaround still below its 200-day is never bought.",
         "G2": "A results-day reaction in the last {REACTION_WINDOW} sessions: a big move on heavy "
               "volume that closed near the day's high.\n\n"
               "- **Window:** the signal session and the sessions just before it, {REACTION_WINDOW} "
@@ -239,10 +241,8 @@ class EarningsGapStrategy(Strategy):
               "- **Close near the high:** (close − low) ÷ (high − low) is at least "
               "{MIN_CLOSE_POS}, where 0 is a close on the low and 1 a close on the high. A day with "
               "no range counts as 1.\n"
-              "- **News:** nothing here looks at news. G3 makes the link to results.\n\n"
-              "**Guide (§3 Setup):** the same four tests and thresholds. Differs: the guide "
-              "measures them on the first session after the news; here any session in the window "
-              "can be the reaction day, and G3 checks the news link afterwards.",
+              "- **News:** nothing here looks at news. Any session in the window can be the "
+              "reaction day; G3 makes the link to results afterwards.",
         "G3": "The reaction day falls in a stored results window: at least {CATALYST_MIN_DAYS} "
               "days after a quarter end and at most {CATALYST_FILED_GRACE} days after that "
               "quarter's filing.\n\n"
@@ -257,11 +257,9 @@ class EarningsGapStrategy(Strategy):
               "- **Why it holds:** a company announces after its quarter closes and files on or "
               "after the day it announces, so the announcement lies inside the window (unless it "
               "came within {CATALYST_MIN_DAYS} days of the quarter end).\n"
-              "- **No stored quarters:** the company cannot be linked and always fails.\n\n"
-              "**Guide (§3 Setup, an identifiable catalyst):** results announced from 3 days "
-              "before the session to the session. Differs: with no point-in-time announcement "
-              "calendar, the window is about five weeks wide at the median and admits non-results "
-              "spikes that land inside it.",
+              "- **Width:** about five weeks at the median, so a non-results spike that lands "
+              "inside the window is admitted too.\n"
+              "- **No stored quarters:** the company cannot be linked and always fails.",
         "G4": "The reaction day's low is a stop the trade can carry: no more than {MAX_STOP_PCT}% "
               "and no more than {MAX_STOP_ATR} ATR below the trigger.\n\n"
               "- **Distance:** the trigger (the reaction high + {ENTRY_BUFFER_PCT}%) minus the "
@@ -270,9 +268,7 @@ class EarningsGapStrategy(Strategy):
               "- **ATR cap:** the distance ÷ the 14-day ATR is at most {MAX_STOP_ATR}. The ATR is "
               "the signal session's, so it already includes the reaction day's own wide range.\n"
               "- **At the fill:** only the percent cap is tested again, on the price actually "
-              "paid (see Entry).\n\n"
-              "**Guide (§3 Initial stop):** the same two caps. The guide's alternative, an intraday "
-              "entry with a closer stop, cannot be tested on daily bars.",
+              "paid (see Entry).",
     }
     watch_docs = {
         "W1": "Up more than {NEGLECT_MAX_RUN_PCT}% over {NEGLECT_LOOKBACK} sessions: noted, never "
@@ -281,20 +277,18 @@ class EarningsGapStrategy(Strategy):
               "the close {NEGLECT_LOOKBACK} sessions earlier.\n"
               "- **What it includes:** the span ends on the signal session, so the reaction day's "
               "own jump is inside it (see Caveats).\n"
-              "- **Effect:** none on the decision; the note is added to its reason.\n\n"
-              "**Guide (§3 Setup, optional neglect filter):** the stock's close is less than "
-              "{NEGLECT_MAX_RUN_PCT}% above its level {NEGLECT_LOOKBACK} sessions earlier — Bonde's point that a stock that sat flat has "
-              "few holders ready to sell. The guide marks it optional and untested, so here it is "
-              "a note.",
+              "- **Effect:** none on the decision; the note is added to its reason.\n"
+              "- **Why:** a stock that sat flat before the news has few holders ready to sell into "
+              "the jump. The filter is untested, so it never blocks.",
         "W2": "Qualified on the opening gap alone: the close-to-close move was under "
               "{MIN_MOVE_PCT}%.\n\n"
               "- **Test:** the open was at least {MIN_GAP_PCT}% above the previous close, but the "
               "close was less than {MIN_MOVE_PCT}% above it.\n"
               "- **Effect:** none on the decision; the gap and the close's move are added to its "
-              "reason.\n\n"
-              "**Guide (§4, minimum gap):** the gap test is for overnight, US-style releases. In "
-              "India results often come mid-session, so the close-to-close move is the test that "
-              "travels.",
+              "reason.\n"
+              "- **Why the gap counts:** an overnight, US-style release shows as an opening gap. "
+              "Indian results often come mid-session, so there the close-to-close move is the test "
+              "that matters.",
     }
     setup_docs = {
         EG01: "Results-gap breakout: every gate passes, so a buy-stop waits just above the reaction "
@@ -304,8 +298,7 @@ class EarningsGapStrategy(Strategy):
               "- **Present when:** G1 to G4 all pass on the signal session. There is no other "
               "condition.\n\n"
               "Nothing is bought on the signal session itself. The decision is TRADE ON TRIGGER "
-              "and the order waits for the price (see Entry).\n\n"
-              "**Guide (§3 Entry):** the same — a buy-stop just above the reaction day's high.",
+              "and the order waits for the price (see Entry).",
     }
     entry_rules = (
         "The signal. Any session on which G1 to G4 pass is a signal; the first is normally the "
@@ -314,7 +307,7 @@ class EarningsGapStrategy(Strategy):
         "bought at the signal close.",
         "How it fills. A buy-stop, not a buy at the next open: it fills on the first session whose "
         "high reaches the trigger, at the trigger. If the stock opens above the trigger, it fills "
-        "at that open, a worse price the backtest counts, as the guide asks. No close above the "
+        "at that open, and the backtest counts that worse price. No close above the "
         "trigger is needed. The market's per-side slippage is added to the fill.",
         "How long it waits. Until the {ENTRY_EXPIRY_BDAYS}th weekday after the signal day, then it "
         "is cancelled (a market holiday still counts as a weekday). It is cancelled sooner if a "
@@ -362,8 +355,7 @@ class EarningsGapStrategy(Strategy):
         "Each session after the buy, the stop is checked first (see Stop). If it did not sell, "
         "the close is checked against the 20-day average.",
         "Trend exit. The first close below the 20-day simple average of closes sells the whole "
-        "position at that same close, not at the next open. This is the guide's trailing exit "
-        "(§3 Exits). The guide suggests the 10-day for faster stocks; this does not use it.",
+        "position at that same close, not at the next open.",
         "Nothing else sells. No partial sale, no time stop and no sale before the next results: a "
         "position still open a quarter later is held through its next report, with the gap risk "
         "described under Stop. A position still open when the backtest ends is valued at the last "
@@ -386,8 +378,7 @@ class EarningsGapStrategy(Strategy):
     filter_rules = (
         "Too thin. On the signal session the 20-day average traded value (close × volume) must "
         "reach the market's liquidity floor (see Parameters), and a 14-day ATR must exist. There "
-        "is no price floor, because back-adjusted prices would remove early winners. The guide "
-        "(§3 Universe) asks for $5 million or ₹5 crore of traded value and a $5 or ₹50 price.",
+        "is no price floor, because back-adjusted prices would remove early winners.",
         "Too little history. At least {min_bars} daily bars.",
         "Not linked to results. A stock with no stored quarter whose window holds the reaction "
         "day is never bought (G3).",
