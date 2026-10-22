@@ -390,6 +390,26 @@ class RsLeadersStrategy(Strategy):
 
     # ---------- plan ----------
 
+    def setup_shapes(self, ctx: StockContext, result: StrategyResult, sig: dict) -> list[dict]:
+        """For the chart's Trade setups layer (strategies/live_setups.py), the flat base the breakout left,
+        from the same windows evaluate() reads: the longest window of {BASE_MIN_DAYS}-{BASE_MAX_DAYS}
+        sessions within {BASE_MAX_DEPTH_PCT}%, and the pivot -- the highest high of {PIVOT_DAYS}
+        sessions -- the close has to clear. Drawing only: no rule reads it."""
+        d, e = ctx.daily, ctx.extras
+        day = lambda ts: str(pd.Timestamp(ts).date())
+        out: list[dict] = []
+        n, pivot = e.get("base_days"), e.get("pivot")
+        if n and len(d) > n + 1:
+            w = d.iloc[-(n + 1):-1]
+            hi, lo = float(w["high"].max()), float(w["low"].min())
+            out.append({"shape": "box", "from": day(w.index[0]), "to": day(w.index[-1]), "top": hi, "bottom": lo, "role": "base",
+                        "label": f"flat base · {n} days · {(hi - lo) / hi * 100:.0f}% deep"})
+        if pivot and len(d) > PIVOT_DAYS:
+            win = d.iloc[-(PIVOT_DAYS + 1):-1]
+            out.append({"shape": "level", "from": day(win["high"].idxmax()), "to": day(d.index[-1]), "price": float(pivot),
+                        "role": "pivot", "label": f"pivot {pivot:,.2f} · {PIVOT_DAYS}-day high"})
+        return out
+
     def build_plans(self, ctx: StockContext, result: StrategyResult, cfg: MarketConfig) -> PlanChoice:
         if not result.has_setup:
             return PlanChoice(None, None, "no base breakout")

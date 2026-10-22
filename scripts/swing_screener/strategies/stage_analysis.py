@@ -721,6 +721,37 @@ class StageAnalysisStrategy(Strategy):
 
     # ---------- plan ----------
 
+    def setup_shapes(self, ctx: StockContext, result: StrategyResult, sig: dict) -> list[dict]:
+        """For the chart's Trade setups layer (strategies/live_setups.py), the weekly structure the
+        setup was judged on, from the same windows evaluate() reads: the {MA_WEEKS}-week line over the
+        base (zone 1, with the gates that test it), the Stage 1 base -- the longest window of at least
+        {BASE_MIN_WEEKS} weeks within {BASE_MAX_DEPTH_PCT}% -- and its own high, the resistance the
+        breakout week has to close above. Drawing only: no rule reads it."""
+        wk, e = ctx.weekly, ctx.extras
+        day = lambda ts: str(pd.Timestamp(ts).date())
+        last_day = day(ctx.daily.index[-1])
+        out: list[dict] = []
+        n, res = e.get("base_weeks"), e.get("resistance")
+        hist = wk.iloc[:-1]
+        # the line: weekly points over the base and through the current week, ending on the last
+        # session (a week's label is its Friday, which can lie ahead of the data mid-week)
+        span = ma30(wk).iloc[-((n or BASE_MIN_WEEKS) + 1):].dropna()
+        if len(span) >= 2:
+            pts = [{"at": day(t), "price": float(v), "label": ""} for t, v in span.iloc[:-1].items()]
+            state, slope = line_state(wk)
+            pts.append({"at": last_day, "price": float(span.iloc[-1]), "label": f"30-week line {state} ({slope:+.1f}%)"})
+            out.append({"shape": "path", "from": pts[0]["at"], "to": last_day, "points": pts, "role": "uptrend",
+                        "label": f"{MA_WEEKS}-week line"})
+        if n and res and len(hist) >= n:
+            w = hist.iloc[-n:]
+            start = day(pd.Timestamp(w.index[0]) - pd.Timedelta(days=4))   # the week's Monday, not its Friday label
+            lo = float(w["low"].min())
+            out.append({"shape": "box", "from": start, "to": day(w.index[-1]), "top": float(res), "bottom": lo, "role": "base",
+                        "label": f"Stage 1 base · {n} weeks · {(res - lo) / res * 100:.0f}% deep"})
+            out.append({"shape": "level", "from": start, "to": last_day, "price": float(res), "role": "pivot",
+                        "label": f"resistance {res:,.2f} · the base's high"})
+        return out
+
     def build_plans(self, ctx: StockContext, result: StrategyResult, cfg: MarketConfig) -> PlanChoice:
         if not result.has_setup:
             return PlanChoice(None, None, "no Stage 2 breakout this week")

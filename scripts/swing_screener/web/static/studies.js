@@ -1024,6 +1024,9 @@ const Studies = (() => {
       tight: ["30-60% retracement", "#ff9800"], pivot: ["H, the resumption level", "#26a69a"], support: ["Prior swing low", "#ef5350"],
       base: ["Tight base", "#7e57c2"] }),
     // chart patterns: the strategy's own chart_anatomy draws each pattern (its points, touches and trigger)
+    setups_stage_analysis: genericSetups("stage_analysis", "learn-strat-stage-analysis", { uptrend: ["30-week line", "#ff9800"],
+      base: ["Stage 1 base", "#2962ff"], pivot: ["Resistance", "#26a69a"] }),
+    setups_rs_leaders: genericSetups("rs_leaders", "learn-strat-rs-leaders", { base: ["Flat base", "#2962ff"], pivot: ["Pivot", "#ff9800"] }),
     setups_chart_pattern: genericSetups("chart_pattern", "learn-strat-flags", { base: ["Pattern", "#ab47bc"],
       pivot: ["Trigger", "#26a69a"], support: ["Support", "#ef5350"] }),
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
