@@ -242,7 +242,7 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
            "pivot_pos": None, "pivot_zone": None, "tight_days_actual": None,
            "base_closes_below_200": None, "fail_why": None, "base_depth_pct": None,
            "deep_base": None, "dryup_quiet_days": None, "wide_and_loose": None,
-           "undercuts": None, "undercuts_failed": None,
+           "undercuts": None, "undercuts_failed": None, "undercuts_pending": None,
            "prior_low": None, "prior_low_date": None, "legs": [], "tight_from": None}
     d = daily.iloc[-p.lookback:]
     n = len(d)
@@ -421,7 +421,9 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # reclaims the earlier low quickly. What is worth separating is the undercut that does NOT
     # recover -- `undercut_failed` -- which is the one that reads as a breakdown. The recovery
     # window is counted in sessions from the undercut's own low.
-    undercuts, failed = 0, 0
+    # An undercut whose recovery window has not run out yet is PENDING, not failed: counting it as failed
+    # labelled a one-day-old undercut a breakdown before it had a chance to recover.
+    undercuts, failed, pending = 0, 0, 0
     for k in range(1, len(legs)):
         prev_low = min(g[1] for g in legs[:k])
         if legs[k][1] >= prev_low:
@@ -429,9 +431,13 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         undercuts += 1
         lo_i = legs[k][4]
         back = close[lo_i + 1: lo_i + 1 + p.undercut_recovery_days]
-        if not len(back) or not bool((back > prev_low).any()):
+        if len(back) and bool((back > prev_low).any()):
+            continue                                  # recovered
+        if len(back) < p.undercut_recovery_days:
+            pending += 1
+        else:
             failed += 1
-    out["undercuts"], out["undercuts_failed"] = undercuts, failed
+    out["undercuts"], out["undercuts_failed"], out["undercuts_pending"] = undercuts, failed, pending
     out["legs"] = [(d.index[g[3]], g[0], d.index[g[4]], g[1]) for g in legs]
     if len(legs) < p.min_contractions:
         out["fail"] = "VCP-04"

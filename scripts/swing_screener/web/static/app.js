@@ -4457,7 +4457,10 @@ async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
   // the essentials first; the other ~40 columns are one click away under Columns
   const order = [...SCREEN_COLS.map((c) => t.columns.indexOf(c)).filter((i) => i >= 0)];
   const keep = [...order, ...t.columns.map((_, i) => i).filter((i) => !order.includes(i))];
-  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "sepa", "decision", "base_stage", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
+  // the base's notes read beside its stage: what the pass/fail hides (the strategy's base_diagnostics)
+  const bn = keep.indexOf(t.columns.indexOf("base_notes")), bs = keep.indexOf(t.columns.indexOf("base_stage"));
+  if (bn >= 0 && bs >= 0) { const [x] = keep.splice(bn, 1); keep.splice(keep.indexOf(t.columns.indexOf("base_stage")) + 1, 0, x); }
+  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "sepa", "decision", "base_stage", "base_notes", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
   const draw = () => {
     drawChips();
     const rows = rowsFor(activeDec);

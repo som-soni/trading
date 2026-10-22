@@ -331,6 +331,64 @@ def cheat_cross(prev: dict, prev_close: float, close: float) -> str | None:
     return MV04 if prev["cheat_zone"] == "mid" else None
 
 
+def base_diagnostics(r: dict, daily: pd.DataFrame) -> dict:
+    """What a pass/fail hides about a base, from one `vcp_spec.detect` result: how it contracted, which
+    route its pivot passed by, how its volume dried up, its undercuts, its trend through the base and the
+    ATR its pullbacks are measured against. Display only -- nothing here decides a trade. Shared by
+    evaluate (the screen's row) and bases_live (the chart), so both say the same thing. A value is None
+    when the detector stopped before measuring it."""
+    out = {"base_reference": None, "pivot_route": None, "pivot_pos": None, "dryup_quiet_days": None,
+           "closes_below_200": None, "below_200_share_pct": None, "undercuts": None,
+           "undercuts_failed": None, "undercuts_pending": None, "bh_atr_pct": None, "atr_blocks_base": None}
+    if not r or r.get("bh") is None:
+        return out
+    ref, sizes = r.get("reference_i"), r.get("depths") or []
+    if ref is not None and ref < len(sizes):
+        out["base_reference"] = "clean" if ref == 0 else f"reset at pullback {ref + 1}, {sizes[ref]:.1f}%"
+    pos, pivot, bh = r.get("pivot_pos"), r.get("pivot"), r.get("bh")
+    if pos is not None and pos == pos and pivot:
+        routes = [n for n, ok in (("zone", pos >= UPPER_ZONE), ("near high", pivot >= PIVOT_NEAR_HIGH * bh)) if ok]
+        out["pivot_route"], out["pivot_pos"] = " + ".join(routes) or "neither", round(float(pos), 2)
+    if r.get("dryup") is not None:
+        out["dryup_quiet_days"] = r.get("dryup_quiet_days")
+    below, days = r.get("base_closes_below_200"), r.get("base_days")
+    if below is not None:
+        out["closes_below_200"] = int(below)
+        out["below_200_share_pct"] = round(below / days * 100, 1) if days else None
+    if r.get("undercuts") is not None:
+        out.update(undercuts=r["undercuts"], undercuts_failed=r["undercuts_failed"],
+                   undercuts_pending=r.get("undercuts_pending"))
+    bd = r.get("bh_date")
+    if bd is not None and bd in daily.index and "atr14" in daily.columns:
+        a, c = daily.at[bd, "atr14"], daily.at[bd, "close"]
+        if pd.notna(a) and c:
+            out["bh_atr_pct"] = round(float(a) / float(c) * 100, 2)
+            # the pullback floor (VCP-04) meets the tight-area cap (VCP-08): see the VCP-08 rule
+            out["atr_blocks_base"] = bool(VCP.zigzag_floor_atr_mult * out["bh_atr_pct"] > TIGHT_PCT)
+    return out
+
+
+def base_notes(r: dict, g: dict) -> str:
+    """The diagnostics in one readable line, for the Candidates table. Only what was measured."""
+    parts = []
+    sizes = r.get("depths") or []
+    if sizes:
+        parts.append(" → ".join(f"{x:.1f}" for x in sizes) + "%" + (f" ({g['base_reference']})" if g["base_reference"] else ""))
+    if g["pivot_route"]:
+        parts.append(f"pivot {g['pivot_pos']:.2f} up ({g['pivot_route']})")
+    if r.get("dryup") is not None:
+        q = g["dryup_quiet_days"]
+        parts.append(f"volume {r['dryup']:.2f}×, {q} quiet day{'' if q == 1 else 's'}")
+    if g["closes_below_200"]:
+        parts.append(f"{g['closes_below_200']} closes under the 200-day ({g['below_200_share_pct']:g}% of the base)")
+    if g["undercuts"]:
+        st = [f"{n} {w}" for n, w in ((g["undercuts_failed"], "failed"), (g["undercuts_pending"], "pending")) if n]
+        parts.append(f"{g['undercuts']} undercut{'s' if g['undercuts'] > 1 else ''}" + (f" ({', '.join(st)})" if st else ", recovered"))
+    if g["bh_atr_pct"] is not None:
+        parts.append(f"ATR {g['bh_atr_pct']:.1f}% at the high" + (" — too volatile to complete" if g["atr_blocks_base"] else ""))
+    return " · ".join(parts)
+
+
 def cheat_measured_move(base_high, entry: float, first_depth_pct) -> float:
     """A cheat's objective: it is bought below the old high, so the nearest objective is that high, and the
     base's own measured move is projected from there (first_depth is absent when the base never reached
@@ -847,10 +905,14 @@ class MinerviniSpecStrategy(Strategy):
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                      "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio", "breakout_volume_ratio",
-                     "vcp_fail", "rs_score")
+                     "vcp_fail", "rs_score", "base_notes", "base_reference", "pivot_route", "pivot_pos",
+                     "dryup_quiet_days", "closes_below_200", "below_200_share_pct", "undercuts",
+                     "undercuts_failed", "undercuts_pending", "bh_atr_pct", "atr_blocks_base")
     extra_numeric_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                              "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio",
-                             "breakout_volume_ratio", "rs_score")
+                             "breakout_volume_ratio", "rs_score", "pivot_pos", "dryup_quiet_days",
+                             "closes_below_200", "below_200_share_pct", "undercuts", "undercuts_failed",
+                             "undercuts_pending", "bh_atr_pct")
     needs_ctx_extras = True
     # SEPA part 2. The screener fetches current fundamentals for rows that already
     # cleared the screen and annotates them (revenue/earnings YoY, gross-margin
@@ -1122,7 +1184,9 @@ class MinerviniSpecStrategy(Strategy):
         "VCP-07": "**Higher lows: switched off.** A pullback whose low undercuts an earlier one is "
                   "kept — that is the shakeout. One that does not close back above the earlier low "
                   "within {UNDERCUT_RECOVERY_DAYS} sessions is recorded as a failed undercut, never "
-                  "rejected.",
+                  "rejected; one whose {UNDERCUT_RECOVERY_DAYS} sessions have not all passed yet is "
+                  "pending. The chart's base checklist and the Candidates tab's base notes show the "
+                  "count.",
         "VCP-08": "**Tight area ready.** The last pullback — from the pivot to today — is at least "
                   "{TIGHT_MIN_DAYS} sessions old, and the tight low is at most {TIGHT_PCT}% below "
                   "the pivot.\n\n"
@@ -1579,6 +1643,9 @@ class MinerviniSpecStrategy(Strategy):
             breakout_volume_ratio=vol_ratio if breakout else None,
             vcp_fail=base["fail"], breakout=breakout,
         )
+        # display only: what the pass/fail hides about this base (base_diagnostics)
+        diag = base_diagnostics(base, d)
+        e.update(diag, base_notes=base_notes(base, diag))
         result.recompute_first_fail()
         return result
 
@@ -1792,6 +1859,12 @@ class MinerviniSpecStrategy(Strategy):
             "tightness_pct": r("tightness_pct", 1), "dryup_ratio": r("dryup_ratio"),
             "breakout_volume_ratio": r("breakout_volume_ratio"), "vcp_fail": e.get("vcp_fail"),
             "rs_score": r("rs_score", 3), "cheat_withheld": e.get("cheat_withheld"),
+            "base_notes": e.get("base_notes") or None, "base_reference": e.get("base_reference"),
+            "pivot_route": e.get("pivot_route"), "pivot_pos": e.get("pivot_pos"),
+            "dryup_quiet_days": e.get("dryup_quiet_days"), "closes_below_200": e.get("closes_below_200"),
+            "below_200_share_pct": e.get("below_200_share_pct"), "undercuts": e.get("undercuts"),
+            "undercuts_failed": e.get("undercuts_failed"), "undercuts_pending": e.get("undercuts_pending"),
+            "bh_atr_pct": e.get("bh_atr_pct"), "atr_blocks_base": e.get("atr_blocks_base"),
         }
 
 
@@ -1904,11 +1977,14 @@ class MinerviniSpecStrategy(Strategy):
     # the VCP rules in the order the detector applies them, the zone of the setup each belongs to,
     # and the name the chart's checklist gives it
     _VCP_CHECKS = (("VCP-01", "uptrend", "Prior uptrend"), ("VCP-03", "uptrend", "Trend intact"),
-                   ("VCP-02", "base", "Base length"), ("VCP-04", "base", "Pullbacks"),
-                   ("VCP-05", "base", "First pullback"), ("VCP-06", "base", "Pullbacks shrink"),
+                   ("VCP-02", "base", "Base length"), ("VCP-05", "base", "Base depth"),
+                   ("VCP-04", "base", "Pullbacks"), ("VCP-06", "base", "Pullbacks shrink"),
                    ("VCP-08", "base", "Tight area"), ("VCP-09", "base", "Pivot near high"),
                    ("VCP-10", "base", "Volume dry-up"))
-    _VCP_ORDER = ("VCP-01", "VCP-02", "VCP-03", "VCP-04", "VCP-05", "VCP-06", "VCP-08", "VCP-09", "VCP-10")
+    # the order core/vcp_spec.detect runs them in: a rule after the failing one was never measured, so it
+    # must show "not reached" -- with VCP-04 listed before VCP-05 a depth failure showed the pullback
+    # count as passed although it was never counted
+    _VCP_ORDER = ("VCP-02", "VCP-01", "VCP-03", "VCP-05", "VCP-04", "VCP-06", "VCP-08", "VCP-09", "VCP-10")
     # what a failed rule means, short enough for the setup's header
     _VCP_FAILED = VCP_RULES
 
@@ -1962,6 +2038,7 @@ class MinerviniSpecStrategy(Strategy):
         up_days = bh_i - int(daily.index.get_loc(r["prior_low_date"])) if r["prior_low"] else None
         # one decimal, or two where one would hide which side of its limit a value falls (6.88% against
         # a 6.888% limit reads "6.9", which looks like a failure)
+        g = base_diagnostics(r, daily)
         near = lambda v, lim: abs(v - lim) < 0.1
         pct = lambda v, lim: f"{v:.2f}" if near(v, lim) else f"{v:.1f}"
         fine = bool(depths) and any(near(b, FINAL_REF_RATIO * a) for a, b in zip(depths, depths[1:]))
@@ -1970,26 +2047,53 @@ class MinerviniSpecStrategy(Strategy):
             "VCP-01": (f"+{pct(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) if near(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) else format(r['prior_advance_pct'], '.0f')}% in {up_days} days" if up_days is not None else "—",
                        f"at least {PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} days"),
             "VCP-02": (f"{r['base_days']} days", f"{BASE_MIN_DAYS}–{BASE_MAX_DAYS} days"),
-            "VCP-03": ("held" if fail != "VCP-03" else f"too new: bar {bh_i + 1}" if young else self._vcp_fail_why(r, daily, bh_i, rep),
-                       "trend template on the high's bar, the 150/200-day structure after"),
+            "VCP-03": ((f"held · {g['closes_below_200']} closes under the 200-day ({g['below_200_share_pct']:g}% of the base)"
+                        if g["closes_below_200"] is not None else "held") if fail != "VCP-03"
+                       else f"too new: bar {bh_i + 1}" if young else self._vcp_fail_why(r, daily, bh_i, rep),
+                       f"the 200-day no lower than at the high, the 150-day above it, at most "
+                       f"{MAX_CLOSES_BELOW_200} closes under it"),
             "VCP-04": (f"{len(depths)}" if depths else "—", f"at least {MIN_CONTRACTIONS}"),
             "VCP-05": (f"{r['base_depth_pct']:.1f}% deep" if r.get("base_depth_pct") is not None else "—",
                        f"at most {MAX_BASE_DEPTH_PCT:g}% (over {DEEP_BASE_FLAG_PCT:g}% is flagged)"),
-            "VCP-06": (" → ".join(dep(x) for x in depths) + "%" if depths else "—",
+            "VCP-06": (" → ".join(dep(x) for x in depths) + "%"
+                       + (f" · {g['base_reference']}" if g["base_reference"] else "") if depths else "—",
                        f"{MIN_FROM_REFERENCE} since the last widening, final ≤ {FINAL_REF_RATIO:g}× it"),
             "VCP-08": (f"{pct(r['tight_range_pct'], TIGHT_PCT)}%" if r["tight_range_pct"] is not None else "—", f"at most {TIGHT_PCT:g}%"),
-            "VCP-09": (f"{(1 - r['pivot'] / bh) * 100:.1f}% under" if r["pivot"] else "—",
+            "VCP-09": ((f"{g['pivot_pos']:.2f} up the base, " + (f"{(1 - r['pivot'] / bh) * 100:.1f}% under the high"
+                                                                 if r["pivot"] <= bh else
+                                                                 f"{(r['pivot'] / bh - 1) * 100:.1f}% above the high")
+                        + (f" · passes by {g['pivot_route']}" if g["pivot_route"] not in (None, "neither") else ""))
+                       if r["pivot"] and g["pivot_pos"] is not None
+                       else f"{(1 - r['pivot'] / bh) * 100:.1f}% under" if r["pivot"] else "—",
                        f"upper zone ({UPPER_ZONE:.2f}) or within {(1 - PIVOT_NEAR_HIGH) * 100:.0f}% of the high"),
-            "VCP-10": (f"{r['dryup']:.2f}× normal" if r["dryup"] is not None else "—", f"at most {DRYUP_RATIO:g}×"),
+            "VCP-10": (f"{r['dryup']:.2f}× normal · {g['dryup_quiet_days']} quiet day{'' if g['dryup_quiet_days'] == 1 else 's'}"
+                       if r["dryup"] is not None else "—",
+                       f"at most {DRYUP_RATIO:g}×, or {DRYUP_QUIET_DAYS} days at {DRYUP_QUIET_RATIO:g}× or less"),
         }
         checks = {z: [] for z in ("uptrend", "base", "entry")}
         for code, zone, name in self._VCP_CHECKS:
             checks[zone].append({"code": code, "name": name, "value": values[code][0], "limit": values[code][1],
                                  "state": state(code)})
+        # notes beside the checks: recorded, never a rejection (base_diagnostics)
+        if g["undercuts"]:
+            st = [f"{n} {w}" for n, w in ((g["undercuts_failed"], "failed"), (g["undercuts_pending"], "pending")) if n]
+            checks["base"].append({"code": "note", "name": "Undercuts",
+                                   "value": f"{g['undercuts']}" + (f" ({', '.join(st)})" if st else ", recovered"),
+                                   "limit": f"a low under an earlier one, reclaimed within {UNDERCUT_RECOVERY_DAYS} sessions",
+                                   "state": "warn" if g["undercuts_failed"] else "pass"})
+        if g["bh_atr_pct"] is not None:
+            floor = max(VCP.zigzag_floor_pct, VCP.zigzag_floor_atr_mult * g["bh_atr_pct"])
+            checks["base"].append({"code": "note", "name": "ATR at the high",
+                                   "value": f"{g['bh_atr_pct']:.1f}% · pullbacks count from {floor:.1f}%"
+                                            + (" — too volatile to complete" if g["atr_blocks_base"] else ""),
+                                   "limit": f"a last pullback must be deep enough to count and at most {TIGHT_PCT:g}%",
+                                   "state": "warn" if g["atr_blocks_base"] else "pass"})
         # a zone passes only when every rule in it passed; one with rules never reached is "skip"
-        zstate = lambda z: "fail" if any(c["state"] == "fail" for c in checks[z]) else \
-            "young" if any(c["state"] == "young" for c in checks[z]) else \
-            "pass" if all(c["state"] == "pass" for c in checks[z]) else "skip"
+        # (the "note" rows are diagnostics, not rules: they never decide a zone)
+        rules_in = lambda z: [c for c in checks[z] if c["code"] != "note"]
+        zstate = lambda z: "fail" if any(c["state"] == "fail" for c in rules_in(z)) else \
+            "young" if any(c["state"] == "young" for c in rules_in(z)) else \
+            "pass" if all(c["state"] == "pass" for c in rules_in(z)) else "skip"
         zones = []
 
         # ---- zone 1: the uptrend into the base
@@ -2073,6 +2177,7 @@ class MinerviniSpecStrategy(Strategy):
                  f"{FINAL_REF_RATIO:g}× that widening." if depths else "")
         verdict = "" if done or fail in (None, "VCP-03") else f" It failed here: {self._vcp_fail_why(r, daily, bh_i, rep)}."
         zones.append({"key": "base", "title": "Base", "state": zstate("base"), "from": bd, "to": at,
+                      "warn": any(c["code"] == "note" and c["state"] == "warn" for c in checks["base"]),
                       "line": f"{r['base_days']} days, {(1 - base_low / bh) * 100:.1f}% deep"
                               + (f", {len(depths)} pullbacks" if depths else ""),
                       "text": (f"{r['base_days']} sessions from the high of {px(bh)} on {bd} (a base lasts "
