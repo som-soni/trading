@@ -679,7 +679,10 @@ def simulate(
             pending[s.symbol] = {
                 "entry": s.entry, "stop": s.stop, "target": s.target,
                 "setup": s.setup, "decision": s.decision, "quality": s.quality,
-                "expires": today + pd.tseries.offsets.BDay(PENDING_EXPIRY_BDAYS),
+                # a strategy may name its own entry window: an episodic pivot's buy-stop is
+                # stale after a few sessions, because the move it was chasing has gone without it
+                "expires": today + pd.tseries.offsets.BDay(
+                    int(s.meta.get("expiry_bdays") or PENDING_EXPIRY_BDAYS)),
                 "meta": s.meta,
             }
 

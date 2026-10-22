@@ -10897,6 +10897,2068 @@
    }
   }
  },
+ "india/earnings_gaps": {
+  "AARON.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AARTIPHARM.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ABREL.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ADANIPOWER.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ADL.NS": {
+   "first_hard_fail": "G3",
+   "hard_gates": {
+    "G1": true,
+    "G2": true,
+    "G3": false,
+    "G4": false
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {
+    "S1": false
+   },
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {
+    "W1": false,
+    "W2": false
+   }
+  },
+  "AFFLE.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AGASTYAEN.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AIRAN.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ALKYLAMINE.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ALPA.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ANIKINDS.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ANTGRAPHIC.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ASHOKA.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ASIANHOTNR.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ASIANPAINT.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ASKAUTOLTD.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ASTEC.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AUROPHARMA.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BAJEL.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BALRAMCHIN.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BHEL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BLACKBUCK.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BLBLIMITED.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CHEMPLASTS.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CROMPTON.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "DAVANGERE.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "DGCONTENT.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "DPABHUSHAN.NS": {
+   "first_hard_fail": "G3",
+   "hard_gates": {
+    "G1": true,
+    "G2": true,
+    "G3": false,
+    "G4": false
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {
+    "S1": false
+   },
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {
+    "W1": true,
+    "W2": true
+   }
+  },
+  "ELLEN.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "FCL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "FIRSTCRY.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "FORCEMOT.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GAYAPROJ.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GLOBUSSPR.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GMRP&UI.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GOLDCASE.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GOODYEAR.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "HCC.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "INDNIPPON.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "INDORAMA.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "INDUSTOWER.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "INGERRAND.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "INTENTECH.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "IRCTC.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ITC.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "JAIPURKURT.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "JISLDVREQS.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "JUSTDIAL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "KAUSHALYA.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "KAYNES.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "KCP.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LAMBODHARA.NS": {
+   "first_hard_fail": "G3",
+   "hard_gates": {
+    "G1": true,
+    "G2": true,
+    "G3": false,
+    "G4": false
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {
+    "S1": false
+   },
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {
+    "W1": false,
+    "W2": false
+   }
+  },
+  "LGBBROSLTD.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LOWVOL1.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LTF.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LXCHEM.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "M&MFIN.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MAANALU.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MADRASFERT.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MAITHANALL.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MANGALAM.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MASFIN.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MBAPL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MCLOUD.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MOM30IETF.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MORARJEE.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MTARTECH.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MWL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "NIFTYADD.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "NORTHARC.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "OMAXE.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ORBTEXP.NS": {
+   "first_hard_fail": "G3",
+   "hard_gates": {
+    "G1": true,
+    "G2": true,
+    "G3": false,
+    "G4": false
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {
+    "S1": false
+   },
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {
+    "W1": false,
+    "W2": false
+   }
+  },
+  "ORIENTCER.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "OSWALPUMPS.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PARSVNATH.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PHOENIXLTD.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PIDILITIND.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PLAZACABLE.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PRECOT.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PREMIERENE.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "RADHIKAJWE.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "RAJESHEXPO.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "RAJRATAN.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "REFEX.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ROSSTECH.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ROUTE.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "RVHL.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "RVNL.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SAKUMA.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SALASAR.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SALZERELEC.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SANGAMIND.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SICAGEN.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SIEMENS.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SINTERCOM.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SMLT.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SOLEX.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SRHHYPOLTD.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "STALLION.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "STANLEY.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SUNDARAM.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SUNPHARMA.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SVPGLOB.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TAKE.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TATAGOLD.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TEXINFRA.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TEXMOPIPES.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TFCILTD.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "THANGAMAYL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TIIL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TIRUMALCHM.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TORNTPHARM.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TVSSRICHAK.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "UEL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "UNIVPHOTO.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "VBL.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "VENUSREM.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "VGUARD.NS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "VIJIFIN.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 500,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "WHIRLPOOL.NS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  }
+ },
  "india/minervini": {
   "AARON.NS": {
    "first_hard_fail": "G1",
@@ -37417,6 +39479,2048 @@
     "W1": false,
     "W2": true
    }
+  }
+ },
+ "us/earnings_gaps": {
+  "ACB": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ADAG": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ADIL": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ADTN": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AEIS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AESI": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AFL": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AIOT": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ALT": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ASAN": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ATLO": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AWRE": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "AXON": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BENF": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BKTI": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BMY": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BOLD": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BRUN": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "BTCT": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CDRE": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CEG": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CET": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CHE": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CISS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CMTL": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CPB": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CUE": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CVSA": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "CX": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "DLO": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "DMAC": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "DTST": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "EPOW": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ERH": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "EWBC": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "FFIV": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "FISV": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "FLR": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "FTFT": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GCBC": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GDL": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GEG": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GITS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GRF": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "GYRE": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "HLT": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "HMN": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "HOLO": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "HWBK": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "HYPR": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "IXHL": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "JBIO": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "JGH": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "KNSL": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "KTCC": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LAB": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LAND": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LNC": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LNT": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LSPD": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "LTRN": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MHF": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MUJ": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MUSA": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MVBF": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "MXC": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "NAUT": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "NEXT": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "NGS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "NRDS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "NRIM": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "NVO": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "OFG": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "OGS": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "OPLN": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PAMT": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PDFS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PMTS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PNBK": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "POWI": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PPLI": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PRIM": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "PTN": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "QDEL": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "QURE": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "RDNT": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "REPX": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "REX": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "RMMZ": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SABA": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SAIH": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SBH": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SEB": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SGHT": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SGU": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SHOP": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SLVM": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SNFCA": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SRRK": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SST": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "STHO": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "STNE": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "SXT": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TCMD": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "THO": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TROW": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "TULP": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "UBS": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "UI": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ULBI": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "ULTA": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "USPH": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "VGM": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "VYGR": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "WBUY": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "WCT": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "WGO": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "WLK": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "WPRT": {
+   "first_hard_fail": "G2",
+   "hard_gates": {
+    "G1": true,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    false,
+    "liquidity below 10,000,000"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
+  },
+  "XENE": {
+   "first_hard_fail": "G1",
+   "hard_gates": {
+    "G1": false,
+    "G2": false,
+    "G3": true,
+    "G4": true
+   },
+   "prefilter": [
+    true,
+    "passed"
+   ],
+   "setups": {},
+   "signal": false,
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_flags": {}
   }
  },
  "us/minervini": {

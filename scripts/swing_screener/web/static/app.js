@@ -2347,19 +2347,23 @@ function sparkSvg(vals, w = 90, h = 22) {
 /** the one line explaining a category with no free, machine-readable source for this market yet, instead
  *  of leaving it blank or erroring. */
 const IND_GAPS = {
-  india: { consumption: "India vehicle sales (SIAM) and retail sales have no free, machine-readable release — monthly PDF only — so they aren't tracked here yet." },
+  india: {
+    consumption: "India vehicle sales (SIAM) and retail sales have no free, machine-readable release — monthly PDF only — so they aren't tracked here yet.",
+    housing: "India has no free, machine-readable housing-starts or mortgage-rate release — housing finance companies' and banks' own disclosures are the closest proxy, and they aren't machine-readable.",
+    credit: "RBI publishes India's bank credit growth fortnightly, but only as a PDF bulletin — no free, machine-readable series was found.",
+  },
 };
 const IND_RANGES = [["1Y", 1], ["5Y", 5], ["10Y", 10], ["Max", 0]];
-const IND_CAT_COLOR = { inflation: "#f59e0b", growth: "#3b82f6", consumption: "#14b8a6" };
-const IND_CAT_LABEL = { inflation: "Inflation", growth: "Growth", consumption: "Consumption" };
+const IND_CAT_COLOR = { inflation: "#f59e0b", growth: "#3b82f6", consumption: "#14b8a6", housing: "#ec4899", credit: "#a855f7" };
+const IND_CAT_LABEL = { inflation: "Inflation", growth: "Growth", consumption: "Consumption", housing: "Housing", credit: "Credit" };
 /** one indicator's card: label, current value, 1M/1Y change and its own small chart (filled in by
  *  indicatorsSection once every card is in the DOM, so every indicator gets a real chart — not just a
  *  sparkline — the same as the rates card above it. */
-// a series lands weeks after its period ends even on time (FRED's own lag, or an OECD mirror of a
+// a series lands some time after its period ends even on time (FRED's own lag, or an OECD mirror of a
 // national release); flag it stale only well past that normal lag, so a merely-recent print never shows
-// an alarming chip — monthly: ~6 weeks; quarterly: ~4 months
-const IND_STALE_DAYS = { monthly: 45, quarterly: 120 };
-const IND_PERIOD = { monthly: "MoM", quarterly: "QoQ" };
+// an alarming chip
+const IND_STALE_DAYS = { daily: 5, weekly: 10, monthly: 45, quarterly: 120 };
+const IND_PERIOD = { daily: "DoD", weekly: "WoW", monthly: "MoM", quarterly: "QoQ" };
 function indicatorCard(x) {
   const num = (v, dp) => v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
   const chg = (v) => (v == null ? "—" : `<span class="${v >= 0 ? "pos" : "neg"}">${v > 0 ? "+" : ""}${num(v, Math.abs(v) < 10 ? 1 : 0)}${x.unit === "%" ? "pp" : "%"}</span>`);
@@ -2367,13 +2371,13 @@ function indicatorCard(x) {
   const ageDays = (Date.now() - new Date(x.date)) / 86400000;
   const staleAfter = IND_STALE_DAYS[x.freq] ?? 45;
   const stale = ageDays > staleAfter;
-  const staleMonths = Math.max(1, Math.round(ageDays / 30));
+  const staleAgo = x.freq === "daily" || x.freq === "weekly" ? `${Math.max(1, Math.round(ageDays))}d` : `${Math.max(1, Math.round(ageDays / 30))}mo`;
   const period = IND_PERIOD[x.freq] ?? "1M";
   return `<div class="ind-card" data-k="${esc(x.key)}">
       <div class="ind-card-h" title="${esc(x.label)} — ${esc(x.why)} Click to expand.">
         <b>${esc(x.short)}</b><span class="tag neutral" style="color:${IND_CAT_COLOR[x.category] || ""}">${esc(IND_CAT_LABEL[x.category] || "")}</span><span class="spacer"></span>
-        <span class="ind-val${stale ? " muted" : ""}">${val}${x.unit === "%" ? ' <span class="muted small">YoY</span>' : ""}</span><span class="ind-chev">⌄</span></div>
-      <div class="muted small">${period} ${chg(x.m1)} · YoY ${chg(x.y1)} · as of ${esc(prettyDate(x.date))}${stale ? ` <span class="tag warn" title="No fresher release found yet — this series updates ${x.freq}, and FRED's own release/mirror lag can run weeks behind the statistics office's original.">stale · ${staleMonths}mo</span>` : ""}</div>
+        <span class="ind-val${stale ? " muted" : ""}">${val}${x.yoy ? ' <span class="muted small">YoY</span>' : ""}</span><span class="ind-chev">⌄</span></div>
+      <div class="muted small">${period} ${chg(x.m1)} · YoY ${chg(x.y1)} · as of ${esc(prettyDate(x.date))}${stale ? ` <span class="tag warn" title="No fresher release found yet — this series updates ${x.freq}, and FRED's own release/mirror lag can run behind the statistics office's original.">stale · ${staleAgo}</span>` : ""}</div>
       <div class="ind-readout muted small"></div>
       <div class="ind-chart"></div></div>`;
 }
@@ -2385,14 +2389,14 @@ async function indicatorsSection(card, mkt, overlay = null) {
   const d = await api(`/api/indicators?market=${mkt}`).catch(() => null);
   if (!card.isConnected) return;
   const rows = d?.indicators || [];
-  const title = `Growth, inflation & consumption · ${esc(mktInfo(mkt).name)}`;
+  const title = `Economic indicators · ${esc(mktInfo(mkt).name)}`;
   if (!rows.length) { card.innerHTML = tdHead(title) + `<div class="muted small">${d ? "No indicators stored yet — they load with the daily <code>indicators</code> job." : "Could not load the indicators."}</div>`; return; }
   // one flowing grid, not a sub-grid per category (a category with one indicator left most of its row
   // empty) — each card carries its own category tag instead
-  const ordered = ["inflation", "growth", "consumption"].flatMap((c) => rows.filter((x) => x.category === c));
+  const ordered = ["inflation", "growth", "consumption", "housing", "credit"].flatMap((c) => rows.filter((x) => x.category === c));
   const gaps = Object.entries(IND_GAPS[mkt] || {}).map(([cat, text]) => `<div class="muted small ind-gap">${esc(IND_CAT_LABEL[cat] || cat)} — ${esc(text)}</div>`).join("");
   const range = store.get("indRange", "10Y");
-  card.innerHTML = tdHead(title, `${segmented(IND_RANGES.map(([k]) => [k, k]), range, "ind-range")}${info("<p>Growth, inflation and consumption indicators, as a year-on-year percent change where that reads better than the raw level (vehicle sales is the one shown as its raw monthly rate — SAAR, seasonally adjusted annual rate). Source: FRED's free series, mostly monthly or quarterly, so these move far less often than a price.</p><p>Click a card's header to expand it.</p>")}`)
+  card.innerHTML = tdHead(title, `${segmented(IND_RANGES.map(([k]) => [k, k]), range, "ind-range")}${info("<p>Inflation, growth, consumption, housing and credit indicators — sector-relevant ones (housing starts/mortgage rate, durable goods, the staples/discretionary retail split, vehicle sales) sit beside the economy-wide ones, each tagged with its category.</p><p>Shown as a year-on-year percent change where that reads better than the raw level — a rate or a spread (the mortgage rate, the credit spread) is shown as its own level instead, since it is not a growth figure. Source: FRED's free series, mostly weekly, monthly or quarterly, so these move far less often than a price.</p><p>Click a card's header to expand it.</p>")}`)
     + `<div class="ind-cards">${ordered.map(indicatorCard).join("")}</div>${gaps}`;
 
   // expanded cards (bigger chart, double width) persist per market, same spirit as the rates legend
@@ -2478,13 +2482,55 @@ function compareSelect(opts, selected) {
   return `<select class="ind-compare" aria-label="Compare the charts above with an index">
       <option value="">Compare with an index…</option>${group("Broad", "Broad index")}${group("Sector", "Sector")}</select>`;
 }
+/** FII/DII daily net institutional equity flows (/api/flows, India only): a histogram of each day's net
+ *  buy (green) or sell (red), in ₹ crore, for FII/FPI and DII — plus the running 5-day/20-day sums,
+ *  since a single day's net is noisy and the sums are what a sustained trend actually looks like. NSE's
+ *  own feed, not an official API, so a day can occasionally be missing — the card says so rather than
+ *  erroring. */
+async function flowsSection(card) {
+  const d = await api("/api/flows").catch(() => null);
+  if (!card.isConnected) return;
+  const rows = d?.flows || [];
+  const title = "FII / DII flows · India";
+  if (!rows.length) { card.innerHTML = tdHead(title) + `<div class="muted small">${d ? "No flow data stored yet — it loads with the daily <code>flows</code> job." : "Could not load flows."}</div>`; return; }
+  const num = (v) => `${v >= 0 ? "+" : ""}${Math.round(v).toLocaleString()}`;
+  card.innerHTML = tdHead(title, info("<p>FII/FPI and DII daily net cash-market buying (+) or selling (-), in ₹ crore — NSE's own provisional end-of-day figures.</p><p>A single day is noisy; the 5-day and 20-day running sums below each value are what a sustained trend looks like.</p><p>This is NSE's own feed, not a documented API, so an occasional day can be missing.</p>"))
+    + `<div class="ind-cards">${rows.map((x) => `<div class="ind-card" data-k="${esc(x.key)}">
+        <div class="ind-card-h" title="${esc(x.label)} — ${esc(x.why)}"><b>${esc(x.label)}</b><span class="spacer"></span>
+          <span class="ind-val ${x.value >= 0 ? "pos" : "neg"}">${num(x.value)} <span class="muted small">₹cr</span></span></div>
+        <div class="muted small">5-day ${num(x.sum5)} · 20-day ${num(x.sum20)} · as of ${esc(prettyDate(x.date))}</div>
+        <div class="ind-readout muted small"></div>
+        <div class="ind-chart"></div></div>`).join("")}</div>`;
+
+  const charts = rows.map((x) => {
+    const el_ = card.querySelector(`.ind-card[data-k="${CSS.escape(x.key)}"] .ind-chart`);
+    if (!el_) return null;
+    const readout = card.querySelector(`.ind-card[data-k="${CSS.escape(x.key)}"] .ind-readout`);
+    const pts = x.points.map(([t, v]) => ({ time: t, value: v, color: v >= 0 ? "rgba(38,166,154,.7)" : "rgba(239,83,80,.7)" }));
+    const theme = chartTheme();
+    const c = LC.createChart(el_, { autoSize: true, ...theme, handleScroll: false, handleScale: false,
+      timeScale: { ...theme.timeScale, barSpacing: fitBarSpacing(el_.clientWidth, pts.length), minBarSpacing: 0.001 } });
+    const s = c.addSeries(LC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false,
+      priceFormat: { type: "price", precision: 0, minMove: 1 } });
+    s.setData(pts);
+    c.subscribeCrosshairMove((param) => {
+      const t = rawTime(param.time);
+      if (!t) { readout.innerHTML = ""; return; }
+      const v = valueAsOf(pts, t);
+      readout.innerHTML = v != null ? `<b>${esc(prettyDate(t))}</b> <b class="${v >= 0 ? "pos" : "neg"}">${num(v)} ₹cr</b>` : `<b>${esc(prettyDate(t))}</b>`;
+    });
+    return c;
+  }).filter(Boolean);
+  { const prev = cleanup; cleanup = () => { charts.forEach((c) => c.remove()); prev(); }; }
+}
+
 /** The Macro tab: this market's full macro backdrop — market-derived stress first (it moves daily, so it
- *  is the freshest read), then policy rate & yields, then inflation, growth and consumption — each with
- *  its current value and full history. An optional index picker overlays that index's price on every
- *  chart below it (left axis), so a rate or inflation move can be read against what it did to the index —
- *  per the macro guides' own point that prices often move before the data does. Reuses the Today page's
- *  rates card (ratesSection) and macro strip (macroTiles) as-is; indicatorsSection is the only new
- *  renderer, for the indicators this tab adds (CPI, GDP, industrial production, retail & vehicle sales). */
+ *  is the freshest read), then (India only) FII/DII flows, then policy rate & yields, then economic
+ *  indicators (inflation, growth, consumption, housing, credit) — each with its current value and full
+ *  history. An optional index picker overlays that index's price on every chart below it (left axis), so
+ *  a rate or inflation move can be read against what it did to the index — per the macro guides' own
+ *  point that prices often move before the data does. Reuses the Today page's rates card (ratesSection)
+ *  and macro strip (macroTiles) as-is; indicatorsSection and flowsSection are the new renderers. */
 async function macroPage(alive, mkt) {
   mkt = pageMarket(mkt);
   document.title = "Macro · Trading";
@@ -2494,10 +2540,11 @@ async function macroPage(alive, mkt) {
   // picker's own fetch returned; MKTS almost always already has `indices` by the time this page opens,
   // so there is nothing worth blocking first paint on)
   $view.innerHTML = pageHead("Macro", { extra: marketSeg(mkt),
-      context: `${compareSelect(mktInfo(mkt).indices || [], compare)}${info("<p>This market's macro backdrop: market-derived stress (the dollar, oil, gold, credit, volatility — priced every day), the policy rate and bond yields, inflation, growth and consumption — each with its current value and as much history as is stored.</p><p>Macro moves slowly and sets the backdrop, not the trade: a headwind argues for smaller size and tighter selection, not for selling a working setup.</p><p>Pick an index to overlay its price on every chart below (its own axis, on the left) and compare timing by eye.</p>")}` })
+      context: `${compareSelect(mktInfo(mkt).indices || [], compare)}${info("<p>This market's macro backdrop: market-derived stress (the dollar, oil, gold, credit, volatility — priced every day), the policy rate and bond yields, and economic indicators spanning inflation, growth, consumption, housing and credit — each with its current value and as much history as is stored.</p><p>Macro moves slowly and sets the backdrop, not the trade: a headwind argues for smaller size and tighter selection, not for selling a working setup.</p><p>Pick an index to overlay its price on every chart below (its own axis, on the left) and compare timing by eye.</p>")}` })
     + `<div class="sec-card td-card" id="mc-derived">${tdHead(`Market-derived · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:160px">Loading…</div></div>
+    ${mkt === "india" ? `<div class="sec-card td-card" id="mc-flows">${tdHead("FII / DII flows · India")}<div class="muted small" style="min-height:220px">Loading…</div></div>` : ""}
     <div class="sec-card td-rates-card" id="mc-rates">${tdHead(`Rates & yields · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:380px">Loading…</div></div>
-    <div class="sec-card td-card" id="mc-ind">${tdHead(`Growth, inflation & consumption · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:480px">Loading…</div></div>`;
+    <div class="sec-card td-card" id="mc-ind">${tdHead(`Economic indicators · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:480px">Loading…</div></div>`;
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/macro/${b.dataset.v}`); });
   const wireCompare = () => { const sel = $view.querySelector(".ind-compare"); if (sel) sel.onchange = (e) => { store.set(`macroCompare_${mkt}`, e.target.value); route(); }; };
   wireCompare();
@@ -2517,6 +2564,7 @@ async function macroPage(alive, mkt) {
 
   ratesSection($view.querySelector("#mc-rates"), mkt, overlay);
   indicatorsSection($view.querySelector("#mc-ind"), mkt, overlay);
+  if (mkt === "india") flowsSection($view.querySelector("#mc-flows"));
   const derived = $view.querySelector("#mc-derived");
   const dd = await api(`/api/macro?market=${mkt}`).catch(() => null);
   if (!alive() || !derived.isConnected) return;
@@ -3196,13 +3244,21 @@ async function companyPage(alive, market, symbol) {
   };
   const colLabel = (c) => { const m = String(c).match(/^(\d{4})-(\d{2})/); return m ? `${MONTHS[+m[2] - 1]} ${m[1]}` : c; };
   const BOLD = new Set(["sales", "operating_profit", "net_profit", "total_liabilities", "total_assets", "cfo", "fcf", "eps"]);
-  const table = (t, note = "") => !t || !t.rows?.length ? `<div class="muted small">Not in the filings stored for this company.</div>`
-    : `<div class="fin-wrap"><table class="fin"><thead><tr><th></th>${t.columns.map((c) => `<th>${esc(colLabel(c))}</th>`).join("")}</tr></thead>
-       <tbody>${t.rows.map((r) => `<tr class="${BOLD.has(r.key) ? "strong" : ""} ${r.kind === "pct" ? "pctrow" : ""} ${r.kind === "growth" ? "growthrow yoy" : r.kind === "growth_qoq" ? "growthrow qoq" : ""}"><th>${esc(r.label)}</th>${r.values.map((v, i) => cell(r, v, i)).join("")}</tr>`).join("")}</tbody></table></div>
+  // `recent`: show the last N columns unless the section's History switch says all (older ones carry .oldc)
+  const table = (t, note = "", recent = 0) => {
+    if (!t || !t.rows?.length) return `<div class="muted small">Not in the filings stored for this company.</div>`;
+    const old = (i) => (recent && i < t.columns.length - recent ? " oldc" : "");
+    const withOld = (html, i) => (old(i) ? html.replace(/^<(td|th)( class="([^"]*)")?/, (m, tag, a, cls) => `<${tag} class="${(cls || "")}${old(i)}"`) : html);
+    return `<div class="fin-wrap"><table class="fin"><thead><tr><th></th>${t.columns.map((c, i) => `<th class="${old(i)}">${esc(colLabel(c))}</th>`).join("")}</tr></thead>
+       <tbody>${t.rows.map((r) => `<tr class="${BOLD.has(r.key) ? "strong" : ""} ${r.kind === "pct" ? "pctrow" : ""} ${r.kind === "growth" ? "growthrow yoy" : r.kind === "growth_qoq" ? "growthrow qoq" : ""}"><th>${esc(r.label)}</th>${r.values.map((v, i) => withOld(cell(r, v, i), i)).join("")}</tr>`).join("")}</tbody></table></div>
        ${note ? `<div class="muted small fin-note">${note}</div>` : ""}`;
+  };
   // which growth rows show: both YoY and QoQ (default), one of them (QoQ only in the quarterly table; the
   // annual one is always YoY) or none
   let growthMode = store.get("finGrowth", "both");
+  // quarterly history: the last few years (default) or every quarter stored — a switch only when there are more
+  let histMode = store.get("finHistory", "recent");
+  const qCols = d.quarters?.columns || [], qOlder = d.quarters_recent && qCols.length > d.quarters_recent;
   const st = d.status || {};
   const unitNote = `Figures in ${esc(unitWords(d.unit))} · ${esc(FUND_SOURCE[st.source] || st.source || "")}${st.basis && st.basis !== "as reported" ? ` · ${esc(st.basis)}` : ""}`;
   const fetchBtn = d.fetch_pending ? `<button class="btn" disabled>Fetch queued (#${d.fetch_pending})…</button>`
@@ -3272,8 +3328,10 @@ async function companyPage(alive, market, symbol) {
       ${d.profile?.about ? `<details class="co-about"><summary>About</summary><p>${esc(d.profile.about)}</p></details>` : ""}</section>
     <section class="co-sec" id="co-quarters"><h2>Quarterly results <span class="seg growth-seg" title="Growth rows under sales, operating profit, net profit and EPS. YoY: against the same quarter a year earlier (what earnings tests use; no seasonal effect). QoQ: against the quarter before (sooner, but partly the season).">
       <span class="muted small">Growth</span>${[["both", "YoY + QoQ"], ["yoy", "YoY"], ["qoq", "QoQ"], ["off", "Off"]].map(([k, t]) => `<button data-growth="${k}" class="${growthMode === k ? "on" : ""}">${t}</button>`).join("")}</span>
+      ${qOlder ? `<span class="seg growth-seg hist-seg" title="The table opens on the last ${d.quarters_recent} quarters; All shows every quarter stored, back to ${esc(colLabel(qCols[0]))}">
+        <span class="muted small">History</span><button data-hist="recent" class="${histMode === "recent" ? "on" : ""}">Last ${Math.round(d.quarters_recent / 4)} years</button><button data-hist="all" class="${histMode === "all" ? "on" : ""}">All · since ${esc(colLabel(qCols[0]))}</button></span>` : ""}
       <span class="muted small">${unitNote}</span></h2>${table(d.quarters,
-      `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`)}</section>
+      `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`, d.quarters_recent || 0)}</section>
     <section class="co-sec" id="co-pl"><h2>Profit &amp; Loss <span class="muted small">${unitNote}</span></h2>${table(d.profit_loss,
       d.layout === "bank" ? "Banks: revenue is interest earned; financing profit = revenue − interest − expenses (incl. provisions), before other income." : "")}
       <div class="cg">${gbox("Compounded sales growth", g.sales)}${gbox("Compounded profit growth", g.profit)}${gbox("Stock price CAGR", g.price)}${gbox("Return on equity", g.roe)}</div></section>
@@ -3283,11 +3341,21 @@ async function companyPage(alive, market, symbol) {
     <section class="co-sec" id="co-shp"><h2>Shareholding pattern</h2>${shpHtml}</section>
     <section class="co-sec" id="co-peers"><h2>Peer comparison</h2>${peerHtml}</section>
     ${viewsHtml}`;
+  const applyHist = () => {
+    $view.dataset.hist = histMode;
+    $view.querySelectorAll(".hist-seg button").forEach((b) => b.classList.toggle("on", b.dataset.hist === histMode));
+  };
+  $view.querySelectorAll(".hist-seg button").forEach((b) => b.onclick = () => {
+    histMode = b.dataset.hist; store.set("finHistory", histMode); applyHist();
+    // all: open on the newest quarters (the right end), as before
+    const w = $view.querySelector("#co-quarters .fin-wrap"); if (w) w.scrollLeft = w.scrollWidth;
+  });
+  applyHist();
   const applyGrowth = () => {
     $view.dataset.growth = growthMode;
-    $view.querySelectorAll(".growth-seg button").forEach((b) => b.classList.toggle("on", b.dataset.growth === growthMode));
+    $view.querySelectorAll(".growth-seg button[data-growth]").forEach((b) => b.classList.toggle("on", b.dataset.growth === growthMode));
   };
-  $view.querySelectorAll(".growth-seg button").forEach((b) => b.onclick = () => { growthMode = b.dataset.growth; store.set("finGrowth", growthMode); applyGrowth(); });
+  $view.querySelectorAll(".growth-seg button[data-growth]").forEach((b) => b.onclick = () => { growthMode = b.dataset.growth; store.set("finGrowth", growthMode); applyGrowth(); });
   applyGrowth();
   $view.querySelector(".co-nav").onclick = (e) => {
     const a = e.target.closest("[data-sec]"); if (!a) return;

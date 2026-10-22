@@ -6,7 +6,7 @@ did settle at -37.63 on 2020-04-20, and VIX-like spikes are the point, not artef
 the same `index_series` table under the market each one informs most, so each market's `indexes`
 job refreshes its own few:
 
-    us     US10Y, US5Y (yields, %), DXY, WTI, GOLD_FUT, COPPER, HYG (high-yield credit)
+    us     US10Y, US5Y (yields, %), DXY, WTI, GOLD_FUT, COPPER, NATGAS, HYG (high-yield credit)
     india  BRENT (India imports most of its oil); USD/INR and India VIX are already stored by
            index_data and the Breadth page
 
@@ -56,6 +56,8 @@ SERIES: dict[str, list[Macro]] = {
               "Fear and hedging demand; falls when real yields rise.", short="Gold"),
         Macro("COPPER", "HG=F", "Copper", "$/lb",
               "A rough read on global industrial growth; metals and miners.", short="Copper"),
+        Macro("NATGAS", "NG=F", "Natural gas (Henry Hub)", "$/MMBtu",
+              "Heating/cooling demand and power-generation cost; a swing factor for utilities and chemicals margins.", short="Nat gas"),
         Macro("HYG", "HYG", "High-yield corporate bonds (HYG)", "$",
               "Credit risk appetite: HYG falling while stocks rise is an early warning.", short="HY credit (HYG)"),
     ],
@@ -78,7 +80,7 @@ EXTRA = {
 # and the dollar, which drive foreign flows into India.
 STRIP: dict[str, list[tuple[str, str]]] = {
     "us": [("us", "US10Y"), ("us", "US5Y"), ("us", "DXY"), ("us", "WTI"), ("us", "GOLD_FUT"), ("us", "COPPER"),
-           ("us", "HYG")],
+           ("us", "NATGAS"), ("us", "HYG")],
     "india": [("india", "BRENT"), ("india", "USDINR"), ("us", "US10Y"), ("us", "DXY"), ("us", "GOLD_FUT")],
 }
 

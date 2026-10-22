@@ -192,6 +192,42 @@
     },
     "version": "1.0"
   },
+  "earnings_gaps": {
+    "family": "earnings_gaps",
+    "fingerprint": "305aa7f4",
+    "params": {
+      "CATALYST_FILED_GRACE": 5,
+      "CATALYST_MIN_DAYS": 10,
+      "ENTRY_BUFFER_PCT": 0.1,
+      "ENTRY_EXPIRY_BDAYS": 5,
+      "MAX_STOP_ATR": 1.5,
+      "MAX_STOP_PCT": 12.0,
+      "MIN_CLOSE_POS": 0.7,
+      "MIN_GAP_PCT": 5.0,
+      "MIN_MOVE_PCT": 10.0,
+      "MIN_REL_VOLUME": 3.0,
+      "NEGLECT_LOOKBACK": 60,
+      "NEGLECT_MAX_RUN_PCT": 30.0,
+      "NOMINAL_TARGET_R": 3.0,
+      "REACTION_WINDOW": 5,
+      "_key": "earnings_gaps",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ],
+      "min_bars": 260,
+      "setup_codes": [
+        "S1"
+      ],
+      "watch_codes": [
+        "W1",
+        "W2"
+      ]
+    },
+    "version": "1.0"
+  },
   "fno_income": {
     "family": "fno_income",
     "fingerprint": "8ecb963e",

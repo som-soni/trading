@@ -1415,12 +1415,21 @@ def rates_summary(market: str = "india"):
 
 @app.get("/api/indicators")
 def indicators_summary(market: str = "india"):
-    """The Macro tab's growth/inflation/consumption cards (marketdata/indicators.py): each indicator's
-    last value (YoY% where it applies), 1-month/1-year change, and history for a chart."""
+    """The Macro tab's economic-indicator cards (marketdata/indicators.py) — inflation, growth,
+    consumption, housing and credit: each indicator's last value (YoY% where it applies), 1-month/1-year
+    change, and history for a chart."""
     if market not in MARKETS:
         raise HTTPException(400, f"unknown market {market}")
     from ..marketdata import indicators
     return {"market": market, "indicators": indicators.summary(market)}
+
+
+@app.get("/api/flows")
+def flows_summary():
+    """The Macro tab's FII/DII flows card (marketdata/flows.py): each flow's last net value, running
+    5-day/20-day sums, and full history for a chart. India only — NSE publishes no US equivalent."""
+    from ..marketdata import flows
+    return {"flows": flows.summary()}
 
 
 # breadth_daily as single series for the guides' ```series charts (`us:breadth.pct50`); counts, or % of the day's n

@@ -1287,6 +1287,8 @@ table.fin tr.growthrow td.neg { color: var(--down-text); }
 .growth-seg .muted { margin-right: 6px; }
 .growth-seg button { padding: 2px 9px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 5px; cursor: pointer; font-size: 12px; }
 .growth-seg button.on { background: var(--accent-soft); color: var(--strong); border-color: var(--accent); }
+/* the quarterly History switch: older quarters hidden until "All" */
+[data-hist="recent"] table.fin .oldc { display: none; }
 table.fin tr.self th, table.fin tr.self td { background: var(--accent-soft); }
 table.fin.peers tbody th a { color: var(--link); }
 .fin-note { margin-top: 6px; }

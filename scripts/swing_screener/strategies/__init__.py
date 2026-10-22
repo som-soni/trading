@@ -50,6 +50,7 @@ from .breakout import BreakoutStrategy
 from .chart_pattern import ChartPatternCupStrategy, ChartPatternStrategy
 from .chart_pattern_spec import ChartPatternSpecStrategy
 from .donchian import DonchianStrategy
+from .earnings_gaps import EarningsGapStrategy
 from .minervini_spec import MinerviniSpecStrategy
 from .rs_leaders import RsLeadersStrategy
 from .stage_analysis import StageAnalysisStrategy
@@ -65,6 +66,7 @@ def register(strategy: Strategy) -> Strategy:
 
 register(TrendPullbackStrategy())
 register(DonchianStrategy())
+register(EarningsGapStrategy())
 register(BreakoutStrategy())
 register(ChartPatternSpecStrategy())
 register(MinerviniSpecStrategy())
@@ -157,7 +159,7 @@ def describe_strategies() -> str:
 __all__ = [
     "CAP_ORDER", "DOWNGRADE_MAP", "BEHAVIOURS", "LABELS", "SELECTION", "STYLES",
     "Decision", "PlanChoice", "Strategy", "StrategyResult", "TradePlan",
-    "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy",
+    "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy", "EarningsGapStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",
     "MinerviniSpecStrategy", "StageAnalysisStrategy",
     "portfolio_strategies", "all_specs",

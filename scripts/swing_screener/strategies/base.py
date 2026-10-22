@@ -52,6 +52,7 @@ STYLES = {
     "pullback": "Pullback / continuation",
     "breakout": "Breakout from a base",
     "trend": "Trend following",
+    "event": "Event / catalyst",
 }
 
 # The market behaviour a strategy tries to exploit — the standard first cut
