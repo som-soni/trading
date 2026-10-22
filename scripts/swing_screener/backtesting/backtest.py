@@ -1503,7 +1503,9 @@ def main(argv: list[str] | None = None) -> dict | None:
         if args.max_positions is None:
             args.max_positions = ms.MAX_POSITIONS
         if args.min_rs is None:
-            args.min_rs = 70
+            # TT-08's own threshold, the one the live screen gates G8 on -- a literal here would
+            # leave backtests on the old number the day RS_MIN_RANK is tuned
+            args.min_rs = int(ms.RS_MIN_RANK)
         if args.rank_by == "setup":
             args.rank_by = "rs"
         if args.max_open_risk is None:
