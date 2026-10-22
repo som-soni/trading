@@ -4222,7 +4222,7 @@ async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
   const ci = (c) => t.columns.indexOf(c);
   const di = ci("decision"), ti = ci("tradeable"), si = ci("symbol");
   const ffg = ci("first_failed_gate"), vf = ci("vcp_fail"), hs = ci("has_setup"), cw = ci("cheat_withheld");
-  const vi = ci("variant"), sp = ci("spec_id");
+  const vi = ci("variant"), sp = ci("spec_id"), si2 = ci("sepa");
   const rules = (doc && doc.base_rules) || {};
   const yes = (v) => v === true || v === "True" || v === "true" || v === 1;
   // Stages read what the run RECORDED for each stock -- the gates it passed, the structure check it
@@ -4243,6 +4243,9 @@ async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
     ["watch", "Watch", isWatch, "watch", "Decision held at WATCH"],
     ["tradeable", "Tradeable", (r) => r[ti] === true, "trade", "The decision rules accept it"],
     ...(cw >= 0 && t.rows.some((r) => r[cw]) ? [["withheld", "Withheld by variant", (r) => !!r[cw], "", "A cheat fired, and the live variant withheld it"]] : []),
+    // the backtests' own verdict, as of today: LEADER is the only one whose US trades made money
+    ...(si2 >= 0 ? [["sepa", "SEPA leader", (r) => r[si2] === "LEADER", "",
+      "SEPA verdict LEADER today — the same judgement a backtest stamps on each trade, from stored quarterly results. In the US backtests it is the only verdict whose trades made money"]] : []),
     ["all", "All", () => true, "", "Every stock the screen passed to this strategy"]];
   const stageOf = Object.fromEntries(STAGES.map((x) => [x[0], x]));
   const counts = {};
@@ -4275,7 +4278,7 @@ async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
   // the essentials first; the other ~40 columns are one click away under Columns
   const order = [...SCREEN_COLS.map((c) => t.columns.indexOf(c)).filter((i) => i >= 0)];
   const keep = [...order, ...t.columns.map((_, i) => i).filter((i) => !order.includes(i))];
-  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "decision", "base_stage", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
+  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "sepa", "decision", "base_stage", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
   const draw = () => {
     drawChips();
     const rows = rowsFor(activeDec);

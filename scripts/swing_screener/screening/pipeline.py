@@ -385,6 +385,20 @@ def run(
                 else "no"
             )
 
+    # The SEPA verdict a backtest stamps on every trade (backtesting/fundamental_filter.verdicts), for every
+    # screened stock as of today. From the STORED quarterly results with the backtest's own availability and
+    # staleness rules, so "LEADER" here is the same judgement as "LEADER" in a backtest's trades -- unlike the
+    # live figures above, which come from a different source and are kept out of backtests by design. Reads the
+    # store only: no network. In the US backtests, LEADER is the only verdict whose trades made money.
+    if getattr(strategy, "wants_live_fundamentals", False) and all_rows:
+        from types import SimpleNamespace
+        from ..backtesting import fundamental_filter
+        asof = pd.Timestamp(_dt.date.today())
+        probes = [SimpleNamespace(symbol=r["symbol"], date=asof) for r in all_rows]
+        verdict = fundamental_filter.verdicts(market_key, probes)
+        for r in all_rows:
+            r["sepa"] = verdict.get((r["symbol"], asof))
+
     portfolio.apply_sector_filter(reviewed_rows, cfg.sector_limit_per_sector)  # mutates in place
     combined = out_mod.combined_risk_summary(all_rows, cfg.account_size, cfg.currency_symbol)
 
