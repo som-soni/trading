@@ -922,7 +922,7 @@ class MinerviniSpecStrategy(Strategy):
         "today, and no more than {MAX_CLOSES_BELOW_200} closes below the 200-day along the way. The full "
         "Trend Template is recorded at the base start but not required there — Minervini applies it when "
         "he buys, so it is a hard gate on the signal day instead.",
-        "Pivot breakout (MV-01). The base was complete yesterday, yesterday's close sat at or below the "
+        "Pivot breakout (MV-01). The base passed every check as of yesterday, yesterday's close sat at or below the "
         "pivot, and today's close is above it — on at least {VOL_MULT} times average volume, finishing in "
         "the upper half of the day's range, and no more than {BUY_RANGE_PCT}% past the pivot. Bought at "
         "the next open.",
@@ -1035,24 +1035,57 @@ class MinerviniSpecStrategy(Strategy):
               "month and treating the preference as a gate would reject stocks the Trend Template admits.",
     }
     setup_docs = {
-        MV01: "MV-01 breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
-              "on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of the pivot.",
-        MV02: "MV-02 coiled: the base is complete and the close is within {COIL_PCT}% below the pivot.",
-        MV03: "MV-03 low cheat (on by default — LOW_CHEAT_ENABLED is {LOW_CHEAT_ENABLED}; set it to 0 to turn it off): "
-              "a shelf of {CHEAT_SHELF_DAYS} sessions spanning no more than "
-              "{CHEAT_SHELF_PCT}% sits in the LOWER third of a base that has cleared VCP-01/02/03, and "
-              "today's close went through its high. Taken while the base is still forming, so the stop "
-              "is the shelf low rather than the base low. Minervini calls this the riskiest of his "
-              "three in-base entries and uses it mainly in stocks he already knows.",
-        MV04: "MV-04 cheat (\"3C\"): the same shelf in the MIDDLE third of the base — the cup-completion "
-              "cheat, entered as the base recovers but before it reaches its old high.",
-        MV05: "MV-05 power play: price at least doubled ({PP_RUN_MULT}x) within {PP_RUN_WINDOW} sessions "
-              "measured AT the flag high, then paused for {PP_FLAG_MIN_DAYS}–{PP_FLAG_MAX_DAYS} sessions "
-              "falling no more than {PP_FLAG_MAX_DEPTH_PCT}%, and today's close went through the flag's "
-              "pivot on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of it. Detected "
-              "separately from the base path: the flag is shorter than {BASE_MIN_DAYS} sessions and the "
-              "averages have not caught up, so the base rules reject a power play before any contraction "
-              "is measured.",
+        MV01: "MV-01 pivot breakout: the stock closes above the pivot of a finished base, with conviction.\n\n"
+              "- **Finished base:** as of yesterday's close, the base passed every VCP check — a prior "
+              "advance, enough length, the trend held, enough pullbacks, not too deep, pullbacks shrinking, "
+              "a tight final area, the pivot near the top of the base, and volume drying up (VCP-01 to "
+              "VCP-10; the lower-lows check, VCP-07, is switched off).\n"
+              "- **Pivot:** the high of that final tight area, the price the base has to clear. It is read "
+              "from yesterday's chart, because a high that includes today's bar can never be beaten by "
+              "today's close.\n"
+              "- **Breakout:** yesterday's close was at or below the pivot, and today's close is above it.\n"
+              "- **Conviction:** volume at least {VOL_MULT} times its 50-day average; a close in the upper "
+              "half of the day's range (at least {UPPER_HALF} of the way from the low to the high), so "
+              "buyers held the gain; and a close no more than {BUY_RANGE_PCT}% above the pivot, so the "
+              "stock is not already extended.\n\n"
+              "A close through the pivot that misses any conviction test is not bought; the miss shows as "
+              "watch flag W1 (volume), W2 (extended) or W3 (weak close).",
+        MV02: "MV-02 coiled: a finished base whose close rests just under the pivot, ready to break out.\n\n"
+              "- **Finished base and pivot:** as in MV-01, but judged on today's chart.\n"
+              "- **Coiled:** today's close is at or below the pivot, and no more than {COIL_PCT}% under it.\n\n"
+              "Nothing is bought on the signal. A buy-stop order waits just above the pivot (see Entry).",
+        MV03: "MV-03 low cheat: an early buy from a short pause in the LOWER third of a base that is still "
+              "forming.\n\n"
+              "- **Base still forming:** the base only has to pass its own checks — a prior advance, enough "
+              "length, the trend held, not too deep (VCP-01, 02, 03 and 05). Its pullbacks need not have "
+              "tightened yet.\n"
+              "- **Shelf:** the last {CHEAT_SHELF_DAYS} sessions, up to yesterday, traded in a range no wider "
+              "than {CHEAT_SHELF_PCT}% of their high, and that high is below the base's old high.\n"
+              "- **Lower third:** the shelf's high sits in the bottom third of the base's range, measured from "
+              "the base's lowest low to its high.\n"
+              "- **Trigger:** yesterday's close was at or below the shelf's high, and today's close is above "
+              "it. Unlike MV-01 there is no volume or close-position test.\n\n"
+              "The point is the stop: it goes under the shelf's low, far nearer than the base low. Minervini "
+              "calls this the riskiest of his three in-base entries and uses it mainly in stocks he already "
+              "knows. On by default (LOW_CHEAT_ENABLED is {LOW_CHEAT_ENABLED}; 0 turns it off). Under the variant "
+              "the live screen runs, a cheat is withheld when its base has already finished tightening but "
+              "its pivot sits low in the base (it fails VCP-09).",
+        MV04: "MV-04 cheat (\"3C\", the cup-completion cheat): the same as MV-03, but the shelf's high sits "
+              "in the MIDDLE third of the base — the stock is recovering toward its old high and has not "
+              "reached it yet.",
+        MV05: "MV-05 power play: a stock that has run up very fast, then paused briefly. No base is needed.\n\n"
+              "- **Run:** the flag's high is at least {PP_RUN_MULT} times the lowest low of the "
+              "{PP_RUN_WINDOW} sessions before it.\n"
+              "- **Flag:** the pause since that high has lasted {PP_FLAG_MIN_DAYS}–{PP_FLAG_MAX_DAYS} "
+              "sessions, fallen no more than {PP_FLAG_MAX_DEPTH_PCT}%, and not yet closed above the flag's "
+              "high. Its last tight stretch spans no more than {TIGHT_PCT}%, and that stretch's high is the "
+              "pivot.\n"
+              "- **Trigger:** the same as MV-01's — yesterday's close at or below the pivot, today's close "
+              "above it on at least {VOL_MULT} times average volume, in the upper half of the day's range, "
+              "and within {BUY_RANGE_PCT}% of the pivot.\n\n"
+              "It is looked for separately from bases, because the base rules would reject it: the pause is "
+              "usually too short to count as a base, and after so fast a run the long averages have not "
+              "caught up.",
     }
     # The page shows each group as its own section (strategies/base.py). Every fact here was checked
     # against the code that trades it: signal_meta and build_plans above, portfolio_sim's fill checks,
