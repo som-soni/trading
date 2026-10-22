@@ -1776,6 +1776,10 @@ class MinerviniSpecStrategy(Strategy):
             label, reasons = "TRADE_HIGH_CONFIDENCE", ["confirmed breakout: buy at the next open"]
         elif plan.setup == MV02:
             label, reasons = "TRADE_ON_TRIGGER", ["coiled below the pivot: buy-stop through it"]
+        elif plan.setup == MV05:
+            # not a cheat: no base, no shelf -- it closed through the flag's pivot, like MV-01
+            label, reasons = "TRADE_ON_TRIGGER", ["power play: closed through the flag's pivot, buy at the "
+                                                  "next open, stopped under the flag's tight low"]
         else:
             # a cheat is neither coiled nor a buy-stop: it cleared its shelf on the close
             where = "lower" if plan.setup == MV03 else "middle"
