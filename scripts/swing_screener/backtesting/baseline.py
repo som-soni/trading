@@ -667,12 +667,16 @@ DOC = {
     "caveats": (
         "**Survivorship bias.** The universe is today's listed names; companies delisted during the window are "
         "absent, which flatters every backtest here.",
-        "**India: the trend filter empties the book for long stretches.** A few stray weekend sessions in India's "
-        "stored prices (2010-02-06, 2012-01-07, 2012-03-03, 2012-09-08) leave a gap in almost every stock's "
-        "last 200 sessions. The 200-day average needs all 200, so it is missing, and the stock ineligible, "
-        "for the next 200 sessions. On stored data almost no stock passes from February to October 2010 and "
-        "from January 2012 to June 2013, so India runs sit in cash then. This is a code defect, not a rule: "
-        "the average is taken before those sessions are dropped. It affects both momentum strategies.",
+        "**India runs made before 2026-10-22 sat in cash for long stretches.** Stored prices then carried a few "
+        "weekend dates priced for a handful of stocks (2010-02-06, 2012-01-07, 2012-03-03, 2012-09-08). Each "
+        "left a gap in every other stock's last 200 sessions, so its 200-day average was missing, and the stock "
+        "ineligible, for the next 200 sessions: almost nothing passed from February to October 2010 or from "
+        "January 2012 to June 2013. Those dates are now removed from stored prices; a run made before then "
+        "still shows the cash months.",
+        "**A stock with no bar on a real session loses its 200-day average for 200 sessions.** The average needs "
+        "a price on each of the last 200 sessions of the whole market. A stock the source did not price on a "
+        "session most of the market traded — a Diwali Muhurat hour, a Saturday budget day — fails the trend "
+        "test for the next 200 sessions.",
         "**US: a $10 floor on split-adjusted prices.** Stored history is divided by every later split, so a "
         "stock that split heavily reads under $10 in its early years and is excluded exactly while it was "
         "rising (NVDA does not clear it until mid-2020). The gated backtests drop the price floor for this "
@@ -1003,13 +1007,16 @@ VS_DOC = {
         "is gone. {cost_bps}bps is the defensible assumption for monthly rebalancing of small caps and is the "
         "default here; turnover runs about 4x the book a year, and a flat per-trade figure is still a "
         "simplification of a real spread.",
-        "**India: the trend filter empties the book for long stretches.** A few stray weekend sessions in India's "
-        "stored prices (2010-02-06, 2012-01-07, 2012-03-03, 2012-09-08) leave a gap in almost every stock's "
-        "last 200 sessions. The 200-day average needs all 200, so it is missing, and the stock ineligible, for "
-        "the next 200 sessions. On stored data almost no stock passes from February to October 2010 and from "
-        "January 2012 to June 2013, so the India runs from 2010 sit in cash then, and the before-2019 figures in "
-        "the status include those months. This is a code defect, not a rule: the average is taken before those "
-        "sessions are dropped.",
+        "**The India figures in the status include months in cash that a run today would not.** Stored prices "
+        "then carried a few weekend dates priced for a handful of stocks (2010-02-06, 2012-01-07, 2012-03-03, "
+        "2012-09-08). Each left a gap in every other stock's last 200 sessions, so its 200-day average was "
+        "missing, and the stock ineligible, for the next 200 sessions: the India runs from 2010 sat in cash from "
+        "February to October 2010 and from January 2012 to June 2013, and the before-2019 figures include those "
+        "months. Those dates were removed from stored prices on 2026-10-22; the runs have not been repeated since.",
+        "**A stock with no bar on a real session loses its 200-day average for 200 sessions.** The average needs "
+        "a price on each of the last 200 sessions of the whole market. A stock the source did not price on a "
+        "session most of the market traded — a Diwali Muhurat hour, a Saturday budget day — fails the trend "
+        "test for the next 200 sessions.",
         "**US: a $10 floor on split-adjusted prices.** Stored history is divided by every later split, so a "
         "stock that split heavily reads under $10 in its early years and is excluded exactly while it was "
         "rising (NVDA does not clear it until mid-2020).",

@@ -185,6 +185,17 @@ def _splits(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _sessions(ctx: Ctx) -> None:
+    from swing_screener.marketdata import sessions
+    r = sessions.repair(ctx.market, apply=True)
+    if not r["stray_sessions"]:
+        ctx.step.detail = "no stray sessions: every stored date is priced for most of the market"
+    else:
+        ctx.step.detail = (f"{len(r['stray_sessions'])} stray session(s) removed ({', '.join(r['stray_sessions'])}): "
+                           f"{r['bars_removed']} bar(s) in {r['symbols']} symbol(s)")
+    ctx.step.stats = {"stray_sessions": len(r["stray_sessions"]), "bars_removed": r["bars_removed"], "symbols": r["symbols"]}
+
+
 def _fno_bhav(ctx: Ctx) -> None:
     """NSE's daily derivatives bhavcopy (marketdata/derivatives.py): every index future and option
     that traded, with its settle price and open interest. India only — US options history is not
@@ -702,6 +713,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("prices", "data", "prices: daily bars for the whole universe", "daily", True, _prices, after=("universe",)),
     Job("splits", "data", "splits & bonus issues: re-fetch the full history of stocks that split after their last full fetch",
         "weekly", True, _splits, after=("prices",)),
+    Job("sessions", "data", "stray sessions: remove bars the source dates on a holiday or weekend that most of the market "
+        "did not trade, which would blank every symbol's 200-day average in a whole-market frame", "daily", False, _sessions,
+        after=("prices",)),
     Job("indexes", "data", "index, VIX & macro series: benchmarks, volatility, total-return series, and rates, the dollar, "
         "oil, gold, copper and credit (marketdata/macro.py)", "daily", True, _indexes),
     Job("rates", "data", "interest rates: policy rate, bill and bond yields with long history — FRED (US), RBI (India) "
@@ -751,8 +765,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
 PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
-              "jobs": ["universe", "prices", "indexes", "rates", "indicators", "flows", "breadth", "sectors", "screens", "postmarket",
-                       "strategies", "report", "ingest"],
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "indicators", "flows", "breadth", "sectors", "screens",
+                       "postmarket", "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
                         "re-run only the strategies left stale, then check everything is ready",
@@ -762,7 +776,7 @@ PIPELINES: dict[str, dict] = {
                       ("ingest", {"only_new": True}), "readiness"],
              "defaults": {"strategies": ["all"]}},
     "daily": {"summary": "after each market's close — data only: prices, indexes, rates, breadth, sectors, the screens' snapshot, post-market analysis",
-              "jobs": ["universe", "prices", "indexes", "rates", "indicators", "flows", "breadth", "sectors", "screens", "postmarket"]},
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "indicators", "flows", "breadth", "sectors", "screens", "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
