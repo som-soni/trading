@@ -145,8 +145,9 @@ function dataTable(host, columns, rows, opts = {}) {
   if (stack) hidden.add(1);
   let sortCol = opts.sort ? columns.indexOf(opts.sort[0]) : -1, sortDir = opts.sort ? opts.sort[1] : 1;
   let filter = "", limit = opts.limit || 300, visible = [];
+  const colFilter = new Map();   // column index -> {kind: "set"|"range"|"dates"|"text", ...}: the header funnels
   host.innerHTML = `<div class="tbar"><label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
-      <input placeholder="Filter rows" spellcheck="false"></label><span class="muted count"></span>
+      <input placeholder="Filter rows" spellcheck="false"></label><span class="muted count" style="white-space:nowrap"></span><span class="fchips" style="display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center;flex-shrink:0;max-width:60%"></span>
       ${opts.rowClick && opts.rowHint !== false ? `<span class="muted small rowhint">${esc(opts.rowHint || "Click a row to open its chart — ↑ / ↓ there step through this list")}</span>` : ""}<span class="spacer"></span>
       <span class="hscroll" hidden><button class="sm" data-dir="-1" title="Scroll to the columns on the left">‹ <span></span></button><button class="sm" data-dir="1" title="Scroll to the columns on the right"><span></span> ›</button></span>
       <span class="menu"><button class="sm colsbtn" title="Choose which columns to show">Columns</button><div class="menu-pop cols-pop" hidden></div></span>
@@ -216,14 +217,90 @@ function dataTable(host, columns, rows, opts = {}) {
   const peerFmt = (v) => (v ? String(v).split(" › ").at(-1) : "");
   const fmtFor = columns.map((c) => (opts.format && opts.format[c]) || (c === "symbol" ? bareSym : isPeer(c) ? peerFmt : fmt));
   const autoTags = Object.fromEntries(columns.filter(isGrpRs).map((c) => [c, (v) => (v >= 80 ? "pos" : v >= 50 ? "warn" : "neg")]));
+  // ---- per-column filters, from a funnel in each header. The control follows the column: a checklist of its
+  // values (with counts) when it has few, min / max for numbers, from / to for ISO dates, "contains" otherwise.
+  // They combine with each other and with the text box, and Export CSV writes what they leave.
+  const BLANK = "(blank)", keyOf = (v) => (v == null || v === "" ? BLANK : String(v));
+  const isoDate = columns.map((_, i) => !numeric[i] && rows.some((r) => r[i])
+    && rows.every((r) => r[i] == null || r[i] === "" || /^\d{4}-\d{2}-\d{2}/.test(String(r[i]))));
+  const distinct = (i) => { const m = new Map(); rows.forEach((r) => { const k = keyOf(r[i]); m.set(k, (m.get(k) || 0) + 1); }); return m; };
+  const kindOf = (i) => (numeric[i] ? "range" : isoDate[i] ? "dates" : distinct(i).size <= 40 ? "set" : "text");
+  const passes = (row) => {
+    for (const [i, f] of colFilter) {
+      const v = row[i];
+      if (f.kind === "set") { if (!f.values.has(keyOf(v))) return false; continue; }
+      if (f.kind === "text") { if (!String(v ?? "").toLowerCase().includes(f.q)) return false; continue; }
+      if (v == null || v === "") return false;
+      const x = f.kind === "dates" ? String(v).slice(0, 10) : v;
+      if (f.min != null && x < f.min) return false;
+      if (f.max != null && x > f.max) return false;
+    }
+    return true;
+  };
+  const describe = (i, f) => f.kind === "set" ? [...f.values].map((k) => (k === BLANK ? BLANK : fmtFor[i](k))).join(", ")
+    : f.kind === "text" ? `contains “${f.q}”`
+    : [f.min != null ? `≥ ${f.min}` : "", f.max != null ? `≤ ${f.max}` : ""].filter(Boolean).join(" and ");
+  const fchips = host.querySelector(".fchips");
+  const drawFilterChips = () => {
+    fchips.innerHTML = [...colFilter].map(([i, f]) => `<button class="chip on" data-clear="${i}" title="Remove this filter">${esc(label(columns[i]))}: ${esc(describe(i, f))} ✕</button>`).join("")
+      + (colFilter.size > 1 ? `<button class="ghost small" data-clear="all">Clear filters</button>` : "");
+    // the row hint is secondary: while filters are shown it gives them the room rather than wrap to a sliver
+    const hint = host.querySelector(".rowhint"); if (hint) hint.hidden = colFilter.size > 0;
+  };
+  fchips.onclick = (e) => {
+    const b = e.target.closest("[data-clear]"); if (!b) return;
+    b.dataset.clear === "all" ? colFilter.clear() : colFilter.delete(+b.dataset.clear);
+    header(); draw();
+  };
+  const FUNNEL = `<svg viewBox="0 0 16 16" width="10" height="10" style="vertical-align:-1px"><path d="M2 3h12l-4.5 5.2V13l-3 1.5V8.2z" fill="currentColor"/></svg>`;
+  let fpop = null;
+  const closeFilter = () => { if (!fpop) return; fpop.remove(); fpop = null; document.removeEventListener("click", outside, true); document.removeEventListener("keydown", onEsc); };
+  const outside = (ev) => { if (fpop && !fpop.contains(ev.target) && !ev.target.closest("[data-f]")) closeFilter(); };
+  const onEsc = (ev) => { if (ev.key === "Escape") closeFilter(); };
+  const openFilter = (i, anchor) => {
+    const same = fpop && fpop.dataset.i === String(i); closeFilter(); if (same) return;   // a second click closes it
+    const kind = kindOf(i), cur = colFilter.get(i), r = anchor.getBoundingClientRect();
+    fpop = el(`<div class="menu-pop cols-pop" data-i="${i}" style="position:fixed;top:${r.bottom + 6}px;left:${Math.max(8, Math.min(r.left - 8, innerWidth - 280))}px;right:auto;min-width:240px"></div>`);
+    const title = `<div class="muted small" style="padding:4px 8px">Filter · ${esc(label(columns[i]))}</div>`;
+    const apply = (f) => { f ? colFilter.set(i, f) : colFilter.delete(i); header(); draw(); };
+    if (kind === "set") {
+      const d = [...distinct(i)].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+      fpop.innerHTML = title + `<label><input type="checkbox" data-all ${cur ? "" : "checked"}> <b>All</b></label>`
+        + d.map(([k, n]) => `<label><input type="checkbox" data-k="${esc(k)}" ${!cur || cur.values.has(k) ? "checked" : ""}> ${esc(k === BLANK ? BLANK : fmtFor[i](k))}<span class="muted small" style="margin-left:auto">${n}</span></label>`).join("");
+      fpop.onchange = (ev) => {
+        const boxes = [...fpop.querySelectorAll("input[data-k]")];
+        if (ev.target.hasAttribute("data-all")) boxes.forEach((b) => (b.checked = ev.target.checked));
+        const chosen = boxes.filter((b) => b.checked).map((b) => b.dataset.k);
+        fpop.querySelector("[data-all]").checked = chosen.length === boxes.length;
+        apply(chosen.length === boxes.length ? null : { kind, values: new Set(chosen) });
+      };
+    } else if (kind === "text") {
+      fpop.innerHTML = title + `<input placeholder="contains…" spellcheck="false" value="${esc(cur ? cur.q : "")}" style="margin:4px 8px">`;
+      fpop.oninput = (ev) => { const q = ev.target.value.trim().toLowerCase(); apply(q ? { kind, q } : null); };
+    } else {
+      const ty = kind === "dates" ? "date" : "number";
+      const box = (b, txt) => `<label>${txt}<input type="${ty}" data-b="${b}" step="any" value="${cur && cur[b] != null ? esc(cur[b]) : ""}" style="margin-left:auto;width:140px"></label>`;
+      fpop.innerHTML = title + box("min", kind === "dates" ? "From" : "At least") + box("max", kind === "dates" ? "To" : "At most");
+      fpop.oninput = () => {
+        const g = (b) => { const x = fpop.querySelector(`[data-b="${b}"]`).value; return x === "" ? null : kind === "dates" ? x : parseFloat(x); };
+        const min = g("min"), max = g("max");
+        apply(min == null && max == null ? null : { kind, min, max });
+      };
+    }
+    host.appendChild(fpop);
+    setTimeout(() => { document.addEventListener("click", outside, true); document.addEventListener("keydown", onEsc); });
+    fpop.querySelector("input:not([data-all])")?.focus();
+  };
   opts = { ...opts, tags: { ...autoTags, ...(opts.tags || {}) } };
   const header = () => {
     thead.innerHTML = "<tr>" + cols.map((i) => `<th data-i="${i}" class="${numeric[i] ? "num" : ""}" title="${esc(COL_HELP[columns[i]] || label(columns[i]))}">${esc(label(columns[i]))}` +
-      `<span class="arrow">${i === sortCol ? (sortDir > 0 ? "▲" : "▼") : ""}</span></th>`).join("") + (opts.actions ? "<th></th>" : "") + "</tr>";
+      `<span class="arrow">${i === sortCol ? (sortDir > 0 ? "▲" : "▼") : ""}</span>` +
+      `<span data-f="${i}" title="Filter by ${esc(label(columns[i]))}" style="margin-left:6px;cursor:pointer;opacity:${colFilter.has(i) ? 1 : 0.35};color:${colFilter.has(i) ? "var(--accent)" : "inherit"}">${FUNNEL}</span></th>`).join("") + (opts.actions ? "<th></th>" : "") + "</tr>";
   };
   function draw() {
     const f = filter.toLowerCase();
-    visible = f ? rows.filter((row) => row.some((v) => String(v ?? "").toLowerCase().includes(f))) : rows.slice();
+    drawFilterChips();
+    visible = rows.filter((row) => (!f || row.some((v) => String(v ?? "").toLowerCase().includes(f))) && passes(row));
     if (sortCol >= 0) visible.sort((a, b) => {
       const x = a[sortCol], y = b[sortCol];
       if (x == null || x === "") return 1; if (y == null || y === "") return -1;
@@ -249,6 +326,8 @@ function dataTable(host, columns, rows, opts = {}) {
     requestAnimationFrame(() => { pin2(); edges(); });
   }
   thead.onclick = (e) => {
+    const fb = e.target.closest("[data-f]");
+    if (fb) { e.stopPropagation(); openFilter(+fb.dataset.f, fb); return; }
     const th = e.target.closest("th"); if (!th) return;
     const i = +th.dataset.i;
     sortDir = sortCol === i ? -sortDir : numeric[i] ? -1 : 1; sortCol = i;  // numbers sort high-first on first click
