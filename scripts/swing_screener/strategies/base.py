@@ -392,6 +392,14 @@ class Strategy(SpecMeta, ABC):
     # `exit_rules`, and bumps its version (its backtested behaviour changed).
     entry_rules: tuple = ()
     exit_rules: tuple = ()
+    # Optional finer split, for a strategy whose trade has more parts than "in" and "out". When
+    # `stop_rules` or `target_rules` is set, the page gives each group its own section -- Entry,
+    # Stop, Target, Exit, Position size, When no new trade is taken -- instead of one "Entry,
+    # stop and target" list, and `entry_rules` / `exit_rules` then hold only the buy and the sell.
+    stop_rules: tuple = ()
+    target_rules: tuple = ()
+    sizing_rules: tuple = ()
+    filter_rules: tuple = ()
     backtest_args: str = ""
     # The variant the DAILY SCREEN runs under: {"name", "const": {NAME: value}, "why"}, applied by
     # strategies/variants.apply_live_variant in the screening process only -- backtests measure the

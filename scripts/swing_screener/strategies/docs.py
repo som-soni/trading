@@ -21,6 +21,9 @@ from .. import paths
 from ..config import MARKETS
 from . import _REGISTRY, BEHAVIOURS, LABELS, SELECTION, STYLES
 
+# The optional finer split of entry/exit (strategies/base.py): Stop, Target, Position size, filters.
+RULE_GROUPS = ("stop_rules", "target_rules", "sizing_rules", "filter_rules")
+
 # What each decision label means, by label code. Shared by every Strategy subclass unless it
 # overrides a tier in `decision_docs`: the labels and the downgrade ladder are defined once,
 # in strategies/base.py.
@@ -122,6 +125,7 @@ def strategy_doc(key: str) -> dict:
         "watch": [{"code": c, "text": r(cls.watch_docs.get(c, ""))} for c in cls.watch_codes],
         "setups": [{"code": c, "text": r(cls.setup_docs.get(c, ""))} for c in cls.setup_codes],
         "entry_rules": [r(s) for s in cls.entry_rules], "exit_rules": [r(s) for s in cls.exit_rules],
+        **{k: [r(s) for s in getattr(cls, k)] for k in RULE_GROUPS},
         "params": [{"label": label, "source": src, "meaning": r(meaning),
                     "values": {m: _fmt(v) for m, v in _resolve_param(cls, src).items()}} for label, src, meaning in cls.param_docs],
         "decisions": [{"label": LABELS[c], "text": r(cls.decision_docs.get(c, t))} for c, t in DECISIONS], "regime_note": r(cls.regime_note),
@@ -275,6 +279,7 @@ def check() -> list[str]:
                 for c in sorted(set(docs) - codes):
                     problems.append(f"{where}: {docs_attr} documents '{c}', which is not in {codes_attr} (stale?)")
         texts = [cls.thesis, cls.status, cls.description, *cls.how_it_works, *cls.caveats, *cls.entry_rules, *cls.exit_rules,
+                 *(t for k in RULE_GROUPS for t in getattr(cls, k)),
                  *cls.gate_docs.values(), *cls.watch_docs.values(), *cls.setup_docs.values(), *(p[2] for p in cls.param_docs),
                  cls.regime_note, *cls.decision_docs.values()]
         for c in sorted(set(cls.decision_docs) - {c for c, _ in DECISIONS}):
@@ -400,7 +405,9 @@ def spec_markdown(key: str) -> str:
             L += [f"## {title}", "", "| code | meaning |", "|---|---|"]
             L += [f"| `{it[cols[0]]}` | {it[cols[1]]} |" for it in items] + [""]
 
-    for title, items in (("Entry", d["entry_rules"]), ("Exit", d["exit_rules"])):
+    for title, items in (("Entry", d["entry_rules"]), ("Stop", d.get("stop_rules")), ("Target", d.get("target_rules")),
+                         ("Exit", d["exit_rules"]), ("Position size", d.get("sizing_rules")),
+                         ("When no new trade is taken", d.get("filter_rules"))):
         if items:
             L += [f"## {title}", ""] + [f"- {s}" for s in items] + [""]
 

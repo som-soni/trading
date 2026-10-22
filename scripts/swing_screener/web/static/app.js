@@ -4085,6 +4085,17 @@ function strategyRules(host, d, key) {
   const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ol>` : "");
   const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "");
   const sec = (id, title, body) => (body ? `<section class="sd-sec" id="sd-${id}"><h2>${title}</h2>${body}</section>` : "");
+  // A strategy that splits its trade into stop / target / sizing / filter rules (strategies/base.py)
+  // gets one section per part, each answering one question, instead of a single "Entry & exit".
+  const split = d.kind !== "long-term" && ((d.stop_rules || []).length || (d.target_rules || []).length);
+  const splitSecs = [
+    ["entry", "Entry", "how a buy is placed and filled", d.entry_rules],
+    ["stop", "Stop", "where the protective sell sits, and when it moves", d.stop_rules],
+    ["target", "Target", "how the reward is measured; it never sells", d.target_rules],
+    ["exit", "Exit", "what sells the position", d.exit_rules],
+    ["sizing", "Position size", "how much to buy", d.sizing_rules],
+    ["filters", "When no new trade is taken", "even with a valid setup", d.filter_rules],
+  ].map(([id, title, sub, xs]) => sec(id, `${title} <span class="muted small">— ${sub}</span>`, ol(xs || []))).join("");
   const sameAcross = d.params.every((p) => p.values.us === p.values.india);
   const params = d.params.length ? `<table class="dtab"><thead><tr><th>Parameter</th>${sameAcross ? "<th class='num'>Value</th>" : "<th class='num'>US</th><th class='num'>India</th>"}<th>Meaning</th></tr></thead><tbody>${
     d.params.map((p) => `<tr><td>${esc(p.label)}<div class="muted small"><code>${esc(p.source)}</code></div></td>${
@@ -4108,7 +4119,7 @@ function strategyRules(host, d, key) {
       ${d.setups.length ? `<h3>${num()}Setups <span class="muted small">— the patterns that make a stock entry-eligible</span></h3>${codeTable(d.setups, "Setup")}` : ""}
       ${d.watch.length ? `<h3>Warning flags <span class="muted small">— don't disqualify, but cap or downgrade the decision</span></h3>${codeTable(d.watch, "Flag")}` : ""}
       </section>` : ""}
-    ${sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>${d.kind === "benchmark" ? "Entry" : "Entry, stop and target"}</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
+    ${split ? splitSecs : sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>${d.kind === "benchmark" ? "Entry" : "Entry, stop and target"}</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
     ${sec("decisions", "Decisions", d.decisions.length ? `<table class="dtab"><tbody>${d.decisions.map((x) => `<tr><td><span class="tag ${decisionClass(x.label)}">${esc(x.label)}</span></td><td>${esc(x.text)}</td></tr>`).join("")}</tbody></table>
       <p class="muted small">${esc(d.regime_note)}</p>` : "")}
     ${sec("params", "Parameters", params)}
