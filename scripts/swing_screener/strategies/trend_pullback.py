@@ -99,48 +99,68 @@ class TrendPullbackStrategy(Strategy):
     min_bars = 260
 
     thesis = (
-        "A stock in a confirmed uptrend that pulls back a measured amount and "
-        "then resumes should continue, so buy the resumption rather than the dip."
+        "A stock already in an established uptrend that pulls back a measured amount, or pauses in a "
+        "tight range on light volume, tends to resume the trend. So buy the resumption, not the dip: a "
+        "buy-stop above today's high once the stock has closed back up, a stop just under the pullback's "
+        "low, and a measured-move target."
     )
     how_it_works = (
-        "**Screen** the universe on price, liquidity, ADX and volatility, and "
-        "require SMA50 above SMA200.",
-        "**Hard gates (W/T/D)** confirm the uptrend is real — weekly price above "
-        "a rising 30-week EMA, higher swing lows, positive 12-1 momentum, within "
-        "25% of the 52-week high — and disqualify specific hazards such as "
-        "earnings inside 10 days or an unheld gap.",
-        "**Setups** look for the shape: TC-01 a pullback 30-60% of the prior "
-        "impulse (or 1-3 ATR) from a high 3-10 bars old, holding above the prior "
-        "swing low and not on rising volume; TC-02 a tight continuation base on "
-        "below-average volume. TC-04 is informational only.",
-        "**Watch flags (X1-X9)** cap confidence without disqualifying — e.g. X1 "
-        "marks a stock extended more than 2.5 ATR above its SMA20 or with RSI14 above 75.",
-        "**Entry is a resting buy-stop ABOVE the current price**, so you only buy "
-        "if price actually resumes. In the backtest it expires unfilled after 10 "
-        "business days (the live screener only states this in the report).",
-        "**Exit** is a fixed bracket: for TC-01 the stop sits just below the "
-        "pullback low and the target is a measured move; for TC-02 the stop is the "
-        "10-bar low minus 0.1 ATR and the target the 10-bar high plus twice the "
-        "range. Either target is cut to the nearest overhead level above entry. "
-        "There is no trailing stop and no time stop.",
+        "**The idea.** Wait for a stock in an established uptrend to pull back or pause, then buy only "
+        "once it starts up again. The rules come from the strategy's original rule set; each entry below "
+        "ends with the rule id it implements there (see the last step).",
+        "**1. Pre-screen.** A stock is looked at on a session only when it is liquid enough, its 50-day "
+        "average is above its 200-day, and its ADX14 and ATR14 clear the market's minimums (Parameters). "
+        "The backtest also needs {min_bars} daily bars.",
+        "**2. Gates G1-G14** (Rules). All must pass or the decision is AVOID. G1-G8 are the Established "
+        "uptrend screen's criteria U1-U8; G9-G14 are this strategy's own hazards.",
+        "**3. Setups** (Rules). {TC01} (a measured pullback) or {TC02} (a tight base) must be present; "
+        "the swing points and setup checks they use are in the table above them.",
+        "**4. Signal and plan** (Entry, Stop, Target). Today's close must resume upward; the plan is a "
+        "buy-stop above today's high, a stop under the setup's low and a measured-move target.",
+        "**5. Decision** (Decisions). The plan must risk at most {max_stop_atr_trade} ATR14 and "
+        "{max_stop_pct_trade}% of the price, offer at least 2R, and have no watch flag capping it, to be "
+        "TRADE - HIGH CONFIDENCE — the only tier the backtest buys.",
+        "**6. Exit** (Exit). A fixed bracket: the stop and the target are real orders and never move.",
+        "**Timing.** Everything is judged on a session's close. The buy can fill no earlier than the next "
+        "session, by buy-stop, and the order waits up to 10 business days.",
+        "**Rule ids.** Codes were renamed in v1.2. In the original rule set the gates G1-G2 were W1-W2 "
+        "(weekly), G3-G8 were T1-T6 (trend) and G9-G14 were D2-D7 (daily); the watch flags W1-W9 were "
+        "X1-X9; the setups {TC01}, {TC02}, {TC04} are TC-01, TC-02, TC-04, with setup checks S-01 to S-05. "
+        "So \"Spec W1\" under a gate means the old weekly gate, not today's watch flag W1.",
     )
     caveats = (
-        "**No demonstrated edge.** Backtested over 13.75 years it returned "
-        "-0.87% CAGR in the US and +0.57% in India, against indices doing 12.79% "
-        "and 11.68%.",
-        "The confidence tiers do not discriminate — TRADE - HIGH CONFIDENCE "
-        "performed no better than TRADE ON TRIGGER across 484 trades.",
-        "The fixed target caps the upside: on Micron's 2025 run it would have "
-        "exited at +36% against a +484% move.",
-        "Plan B enters at H when Plan A fails the 2R test, which manufactures the R "
-        "rather than earning it (when Plan A's resistance walk-up has already moved "
-        "past H, Plan B's entry is actually lower).",
+        "**No demonstrated edge.** The portfolio backtest from 2013 trailed its index by roughly 9 to 11 "
+        "points of CAGR a year in both markets (figures in Status); seven alternative exit policies did "
+        "not rescue it.",
+        "**The tiers do not discriminate.** TRADE - HIGH CONFIDENCE performed no better than TRADE ON "
+        "TRIGGER across 484 trades.",
+        "**The fixed target caps the upside.** On Micron's 2025 run it would have exited at +36% against "
+        "a +484% move.",
+        "**Plan B manufactures its R (known defect 1).** It is used exactly when Plan A fails the 2R test. "
+        "Its buy level is H with no resistance walk-up, so it can sit just under resistance; and when "
+        "Plan A's walk-up has already moved past H, Plan B buys lower, which is where its extra R comes "
+        "from.",
+        "**Earnings are not backtested.** G9 and the 14-day HIGH CONFIDENCE test need a point-in-time "
+        "earnings calendar the backtest does not have, so backtest trades can be held through reports the "
+        "live screen would have avoided.",
+        "**Two earnings windows (known defect 4).** G9 blocks at 10 or fewer trading days and HIGH "
+        "CONFIDENCE at 14 or fewer, for what was written as one rule.",
+        "**{TC02}'s window is defined two ways (known defect 3).** The setup checks, the stop and the "
+        "target use the last 10 sessions including today; the resumption signal uses the 10 sessions "
+        "before today.",
+        "**The live sector limit ignores the tier (known defect 5).** It ranks on setup quality, so a "
+        "TRADE ON TRIGGER name can push a HIGH CONFIDENCE one in the same sector down to WATCH - SECTOR "
+        "LIMIT.",
+        "**The fill is not re-checked.** The stop-width and 2R tests use the planned buy level. A "
+        "gap up at the fill raises the price paid without moving the stop or the target, so a filled "
+        "trade can risk more, and offer less than 2R, than the plan said.",
     )
 
     # ---------- full reference documentation (Strategy details page) ----------
-    # Most thresholds below are bare literals inside evaluate() /
-    # _compute_watch_flags() or class attributes (max_stop_*), not module
-    # constants, so they are written out as numbers here; keep in sync.
+    # Most thresholds below are bare literals inside evaluate() / _compute_watch_flags() / the
+    # swing helpers (core/swings.py) / the uptrend screen (screens/criteria.py), or class
+    # attributes (max_stop_*), not constants of this module, so most are written out as numbers.
+    # Keep them in sync by hand; adding a module constant here would move the fingerprint.
     status = (
         "No demonstrated edge: portfolio backtest from 2013 with bracket exits (v1.1, "
         "measured 2026-10-13/14 after the cost fix) returned 1.75% CAGR in the US (SPY 12.8%, "
@@ -148,152 +168,342 @@ class TrendPullbackStrategy(Strategy):
         "alternative exit policies did not rescue it."
     )
     gate_docs = {
-        "G1": "Passes when the latest weekly close is above the 30-week EMA AND that "
-              "EMA is higher than it was one week earlier. Fails with fewer than 31 "
-              "weekly bars.",
-        "G2": "Passes when the weekly SMA20 is strictly above the weekly SMA50. Fails "
-              "with fewer than 50 weekly bars.",
-        "G3": "Passes when daily SMA50 > SMA200 AND price has not broken down through "
-              "the SMA50 — i.e. the close is not more than 2 ATR14 below the SMA50 and "
-              "the last 5 closes are not all below the SMA50.",
-        "G4": "Passes unless either average is falling: SMA50 more than 1% below its "
-              "value 10 bars ago, or SMA200 more than 0.5% below its value 20 bars "
-              "ago. A flat average passes (a flat SMA50 raises X4).",
-        "G5": "Passes when the last two confirmed daily swing lows (3 bars either side) "
-              "in the last 50 bars are rising; with fewer than two, the lowest low of "
-              "the last 25 bars must be above the lowest low of the 25 bars before.",
-        "G6": "Passes when 12-1 month momentum is positive: the close 21 bars ago is "
-              "above the close 252 bars ago. Needs at least 253 daily bars.",
-        "G7": "Passes when the close is at least 75% of the 52-week (252-bar) high, "
-              "i.e. no more than 25% below it.",
-        "G8": "Fails only when BOTH the 63-bar (about 3-month) return is negative AND "
-              "the SMA50 is flat or falling (T2's definition); otherwise passes.",
-        "G9": "Passes unless the next earnings date is 10 or fewer business days "
-              "away. Unknown earnings dates pass, and the backtest never enforces this "
-              "gate (no point-in-time earnings calendar).",
-        "G10": "Fails when the pullback is on rising volume: the average volume of the "
-              "bars since the swing high H is higher than the average volume of the "
-              "impulse from L (lowest low in the 40 bars before H) up to H.",
-        "G11": "Fails when the close is below the prior structural swing low (the last "
-              "confirmed daily swing low before H); passes if there is none.",
-        "G12": "Fails when any overhead resistance level (daily swing highs of the last "
-              "year, weekly of ~5 years, monthly of all history, plus H) sits within 3% "
-              "above the close — unless the only such level is H itself and a "
-              "{TC01} or {TC02} setup is present.",
-        "G13": "Fails when ATR14 is more than 8% of price (too volatile).",
-        "G14": "Fails when any of the last 10 bars opened with a gap of more than 8% "
-              "(up or down) versus the prior close and the current close is still "
-              "below that pre-gap close.",
+        "G1": "Weekly close above a 30-week EMA that is itself rising.\n\n"
+              "- **Test:** the latest weekly close (this week's bar so far) is above the 30-week exponential "
+              "average of weekly closes, and that average is higher than one week earlier.\n"
+              "- **History:** fails with fewer than 31 weekly bars.\n\n"
+              "Screen criterion U1. **Spec W1:** same.",
+        "G2": "Weekly 20-week average above the 50-week average.\n\n"
+              "- **Test:** the simple average of the last 20 weekly closes is strictly above that of the "
+              "last 50.\n"
+              "- **History:** fails with fewer than 50 weekly bars.\n\n"
+              "Screen criterion U2. **Spec W2:** same.",
+        "G3": "Daily 50-day average above the 200-day, and price has not broken down through the 50-day.\n\n"
+              "- **Order:** the 50-day simple average is strictly above the 200-day.\n"
+              "- **No breakdown:** the close is not more than 2 ATR14 below the 50-day, and the last 5 "
+              "closes are not all below their day's 50-day.\n"
+              "- **History:** fails while the 50-day, the 200-day or ATR14 has no value.\n\n"
+              "A close slightly under the 50-day still passes; it raises W2 instead. Screen criterion U3. "
+              "**Spec T1:** same.",
+        "G4": "Neither the 50-day nor the 200-day average is falling.\n\n"
+              "- **50-day falling:** more than 1% below its value 10 sessions ago.\n"
+              "- **200-day falling:** more than 0.5% below its value 20 sessions ago.\n\n"
+              "A flat average passes; a flat 50-day raises W4. Screen criterion U4. **Spec T2:** same.",
+        "G5": "Higher swing lows over the last 50 sessions.\n\n"
+              "- **Two swing lows:** among the swing lows confirmed inside the last 50 sessions (a low that "
+              "is the lowest of the 3 sessions either side), the latest is strictly higher than the one "
+              "before it.\n"
+              "- **Fewer than two:** the lowest low of the last 25 sessions must be above the lowest low of "
+              "the 25 before.\n\n"
+              "Screen criterion U5. **Spec T3:** same.",
+        "G6": "Positive 12-1 month momentum: the close 21 sessions ago is above the close 252 sessions ago.\n\n"
+              "- **History:** fails with fewer than 253 daily bars.\n\n"
+              "Screen criterion U6. **Spec T4:** same.",
+        "G7": "Close no more than 25% below the 52-week high.\n\n"
+              "- **Test:** the close is at least 75% of the highest high of the last 252 sessions.\n"
+              "- **History:** fails while there is no 52-week high (fewer than 20 sessions).\n\n"
+              "Screen criterion U7 (its ceiling is the screen's UPTREND_MAX_PCT_BELOW_52W_HIGH). "
+              "**Spec T5:** same.",
+        "G8": "Trend not fading: fails only when the 3-month return is negative AND the 50-day average is "
+              "flat or falling.\n\n"
+              "- **3-month return:** today's close against the close 63 sessions ago.\n"
+              "- **Flat or falling:** the 50-day is not higher than 10 sessions ago.\n"
+              "- **History:** fails with fewer than 64 daily bars.\n\n"
+              "Screen criterion U8. **Spec T6:** same.",
+        "G9": "No earnings report due within 10 trading days.\n\n"
+              "- **Test:** fails when the next earnings date is 10 or fewer trading days away.\n"
+              "- **Unknown date:** passes.\n"
+              "- **Backtest:** never applied — there is no point-in-time earnings calendar.\n\n"
+              "**Spec D2:** same. TRADE - HIGH CONFIDENCE uses a different window, 14 trading days (known "
+              "defect 4).",
+        "G10": "The pullback is not on rising volume.\n\n"
+               "- **Pullback volume:** the average daily volume of the sessions after H.\n"
+               "- **Advance volume:** the average daily volume from L through H, both sessions included.\n"
+               "- **Test:** fails when the pullback average is higher than the advance average. Passes when "
+               "H is today (no pullback yet).\n\n"
+               "H and L are defined above the setups. {TC01} repeats this test as its check S-04. "
+               "**Spec D3:** same.",
+        "G11": "Close not below the prior structural swing low.\n\n"
+               "- **Prior swing low:** the last confirmed swing low before H (see the table above the "
+               "setups).\n"
+               "- **Test:** fails when today's close is below it; passes when there is none.\n\n"
+               "**Spec D4:** same.",
+        "G12": "No resistance within 3% above the close, unless the only such level is H and a setup is "
+               "present.\n\n"
+               "- **Resistance levels:** listed in the table above the setups — recent daily, weekly and "
+               "monthly swing highs, plus H.\n"
+               "- **Within 3%:** a level above the close and no higher than close × 1.03. Levels already "
+               "below the close do not count.\n"
+               "- **Exception:** when H is the only level in that band, the gate passes if {TC01} or {TC02} "
+               "is present — H is the high the setup exists to break.\n\n"
+               "**Spec D5:** same.",
+        "G13": "Not too volatile: ATR14 no more than 8% of the close.\n\n"
+               "- **Test:** fails when ATR14 ÷ close × 100 is above 8. Passes when ATR14 has no value.\n\n"
+               "**Spec D6:** same.",
+        "G14": "No unfilled large gap in the last 10 sessions.\n\n"
+               "- **Gap:** a session that opened more than 8% above or below the previous close.\n"
+               "- **Test:** fails when any of the last 10 sessions gapped and today's close is below the "
+               "close just before that gap. So a gap up fails once price falls back under where it gapped "
+               "from, and a gap down fails until price has closed back above it.\n\n"
+               "**Spec D7:** same.",
     }
     watch_docs = {
-        "W1": "Extended: close more than 2.5 ATR14 above the SMA20, OR RSI14 above "
-              "75. Caps the decision at WATCH - WAIT (wait for a pullback toward the "
-              "SMA20).",
-        "W2": "Close below the SMA50 while still passing T1. Caps the decision at "
-              "TRADE ON TRIGGER and lifts Plan A's trigger to at least 0.1% above the "
-              "SMA50.",
-        "W3": "Positive flag: close within 1 ATR14 of a rising SMA50. No cap; adds 1.0 "
-              "to setup quality (used for ranking).",
-        "W4": "SMA50 flat (neither higher than 10 bars ago nor more than 1% lower). "
-              "Labelled base (10-bar range at most 4.5 ATR and close within 10% of the "
-              "52-week high) or drift; drift caps at TRADE ON TRIGGER and subtracts 1.0 "
-              "from setup quality, base has no effect.",
-        "W5": "Low trend strength: ADX14 from 15 up to (not including) 20. Labelled "
-              "base or drift as for X4; drift subtracts 1.0 from setup quality. Never "
-              "caps the decision.",
-        "W6": "ADX14 lower than 5 bars ago. If price is more than 5% below H and is "
-              "closer to the SMA50 than 5 bars ago it is noted as momentum fading and "
-              "subtracts 1.0 from setup quality. Never caps the decision.",
-        "W7": "Late move: ADX14 above 40 together with X1. Forces Plan A (no switch to "
-              "Plan B); X1 already caps the decision at WATCH - WAIT.",
-        "W8": "Weak momentum: RSI14 below 40 while the close is above the SMA50. Caps "
-              "the decision at TRADE ON TRIGGER.",
-        "W9": "Monthly structure not confirmed (the former hard gate M1): with at least "
-              "24 months of history, any of — monthly close not above its 10-month SMA, "
-              "last-12-month high not above the prior 12 months', or last-12-month low "
-              "not above the prior 12 months'. Caps the decision at TRADE ON TRIGGER.",
+        "W1": "Extended: the close is more than 2.5 ATR14 above the 20-day average, or RSI14 is above 75.\n\n"
+              "- **Effect:** caps the decision at WATCH - WAIT; the note gives the 20-day as the level to "
+              "wait for.\n\n"
+              "**Spec X1:** same.",
+        "W2": "The close is below the 50-day average while G3 still passes.\n\n"
+              "- **Effect:** caps the decision at TRADE ON TRIGGER, and lifts Plan A's level to at least "
+              "0.1% above the 50-day, so its buy-stop sits at least about 0.2% above it.\n\n"
+              "**Spec X2:** same.",
+        "W3": "Positive: the close is within 1 ATR14 of a rising 50-day average.\n\n"
+              "- **Rising:** the 50-day is higher than 10 sessions ago.\n"
+              "- **Effect:** adds 1 to setup quality (the ranking score); no cap.\n\n"
+              "**Spec X3:** same.",
+        "W4": "The 50-day average is flat: not higher than 10 sessions ago, and not more than 1% lower.\n\n"
+              "- **Base:** the last 10 sessions span at most 4.5 ATR14 (highest high minus lowest low) and "
+              "the close is at least 90% of the 52-week high. No effect.\n"
+              "- **Drift:** anything else. Caps the decision at TRADE ON TRIGGER and subtracts 1 from setup "
+              "quality.\n\n"
+              "**Spec X4:** same.",
+        "W5": "Weak trend strength: ADX14 is at least 15 and below 20.\n\n"
+              "- **Base or drift:** judged as in W4. Drift subtracts 1 from setup quality; base has no "
+              "effect.\n"
+              "- **Never caps** the decision. The pre-screen already wants ADX14 above the market's minimum "
+              "(Parameters), so the flag covers the band from that minimum up to 20.\n\n"
+              "**Spec X5:** same.",
+        "W6": "ADX14 is lower than it was 5 sessions ago.\n\n"
+              "- **Healthy pause:** the close is at least 95% of H. No effect.\n"
+              "- **Momentum fading:** the close is more than 5% below H and nearer the 50-day than it was "
+              "5 sessions ago. Subtracts 1 from setup quality.\n"
+              "- **Otherwise:** noted as falling with no clear fade. No effect.\n\n"
+              "Never caps the decision. **Spec X6:** same.",
+        "W7": "Late move: ADX14 above 40 while W1 (extended) is set.\n\n"
+              "- **Effect:** forces Plan A (no switch to Plan B). W1 already caps the decision at WATCH - "
+              "WAIT.\n\n"
+              "**Spec X7:** same.",
+        "W8": "Weak momentum: RSI14 below 40 while the close is above the 50-day average.\n\n"
+              "- **Effect:** caps the decision at TRADE ON TRIGGER.\n\n"
+              "**Spec X8:** same.",
+        "W9": "Monthly structure not yet confirmed: the stock is recovering rather than in an established "
+              "monthly uptrend.\n\n"
+              "- **Raised when any of:** the latest monthly close (this month so far) is not above its "
+              "10-month average; the highest high of the last 12 months is not above that of the 12 months "
+              "before; the lowest low of the last 12 months is not above that of the 12 months before.\n"
+              "- **History:** never raised with fewer than 24 months.\n"
+              "- **Effect:** caps the decision at TRADE ON TRIGGER.\n\n"
+              "**Spec X9:** the original hard gate M1. Differs: a watch flag, not a gate — as a gate it "
+              "rejected a genuine recovery as hard as an ongoing downtrend.",
+    }
+    pattern_title = "Swing points and setup checks"
+    pattern_intro = (
+        "The setups and the plan are measured from a few prices on the daily chart:\n\n"
+        "- **H:** the highest high of the last 20 sessions, today included — the high the pullback "
+        "started from, and the level a resumption has to clear.\n"
+        "- **L:** the lowest low of the 40 sessions before H — where the advance into H began.\n"
+        "- **P:** the lowest low of the sessions after H — the pullback low (H's own low when H is "
+        "today).\n"
+        "- **Prior swing low:** the last confirmed swing low before H: a session whose low is the lowest "
+        "of the 3 sessions either side.\n"
+        "- **Resistance levels:** every daily swing high of the last 252 sessions and weekly swing high "
+        "of the last 260 weeks (highest of the 3 bars either side), every monthly swing high in the "
+        "whole history (highest of the 2 months either side), and H. A swing high needs its 3 (or 2) "
+        "later bars before it counts.\n\n"
+        "The setups combine these checks, in this order:"
+    )
+    pattern_docs = {
+        "S-01": "Depth ({TC01}): the drop from H to P is 30% to 60% of the advance H − L, or 1 to 3 ATR14. "
+                "Either passes.",
+        "S-02": "Recent high ({TC01}): H was set 3 to 10 sessions before today.",
+        "S-03": "Structure held: the low is above the prior swing low — P for {TC01}, the lowest low of "
+                "the last 10 sessions for {TC02}. Passes when there is no prior swing low.",
+        "S-04": "Quiet pullback ({TC01}): not on rising volume — the same test as gate G10.",
+        "S-05": "Tight and quiet ({TC02}): the last 10 sessions, today included, span at most 4.5 ATR14 "
+                "(highest high minus lowest low), and the 5-day average volume is below the 50-day "
+                "average volume.",
     }
     setup_docs = {
-        TC01: "Pullback (entry-eligible, takes priority over {TC02}). The drop from H to "
-              "the pullback low P is 30-60% of the impulse H-L, or 1-3 ATR14; H was "
-              "set 3-10 bars ago; P is above the prior structural swing low; and the "
-              "pullback is not on rising volume (the D3 test).",
-        TC02: "Tight continuation base (entry-eligible). The last 10 bars span at most "
-              "4.5 ATR14, the 5-day average volume is below the 50-day average, and "
-              "the 10-bar low is above the prior structural swing low.",
-        TC04: "Informational only, never an entry on its own: close within 2% of the "
-              "55-bar high or of the 52-week high. Adds 0.5 to setup quality.",
+        TC01: "Pullback: the stock has pulled back from a high set 3-10 sessions ago by a measured amount, "
+              "on no more volume than the advance, and held its structure.\n\n"
+              "- **Checks:** S-01 depth, S-02 recent high, S-03 above the prior swing low, S-04 quiet "
+              "pullback (table above). All four must pass.\n"
+              "- **Priority:** when {TC02} is also present, {TC01} sets the stop and the target.\n\n"
+              "Entry-eligible. **Spec TC-01:** same.",
+        TC02: "Tight base: the last 10 sessions have traded in a narrow range on below-average volume, above "
+              "the prior swing low.\n\n"
+              "- **Checks:** S-05 tight and quiet, S-03 above the prior swing low (table above).\n"
+              "- **No depth or timing test:** unlike {TC01}, it does not ask how far below H the base "
+              "sits or how recent H is.\n\n"
+              "Entry-eligible. **Spec TC-02:** same (see known defect 3 for its 10-session window).",
+        TC04: "Near the highs: the close is within 2% of the 55-session high or of the 52-week high.\n\n"
+              "- **Test:** the close is at least 98% of the highest high of the last 55 sessions, or of the "
+              "last 252.\n"
+              "- **Effect:** adds 0.5 to setup quality. Never an entry on its own.\n\n"
+              "Numbered S4, not S3, so an old run's TC-04 still maps to one setup. **Spec TC-04:** same.",
     }
     entry_rules = (
-        "The active setup is {TC01} if valid, otherwise {TC02}; with neither there is "
-        "no plan. Every hard gate must pass or the decision is AVOID.",
-        "Resumption signal (needed for TRADE - HIGH CONFIDENCE and for a backtest "
-        "entry): the close is above the SMA20 and above the prior bar's high ({TC01}) "
-        "or the highest high of the 10 bars before today ({TC02}), and no overhead "
-        "level within 3% above the close sits more than 0.5% above H (H itself does "
-        "not block).",
-        "Plan A trigger starts at today's high ({TC01}) or the higher of today's high "
-        "and the prior 10-bar high ({TC02}); with X2 it is raised to at least 0.1% "
-        "above the SMA50. It then walks up: while any overhead level lies within 3% "
-        "above the trigger, the trigger moves to the highest such level.",
-        "Plan B trigger is H with no resistance walk-up, so its entry can sit just "
+        "**When a buy is placed.** All 14 gates pass, {TC01} or {TC02} is present, the resumption signal "
+        "fired on today's close, and the plan is TRADE - HIGH CONFIDENCE (Decisions). The backtest places "
+        "an order only then; a TRADE ON TRIGGER plan is listed by the live screen but not traded.",
+        "**Resumption signal.** Today's close is above the 20-day average and above the prior high: "
+        "yesterday's high for {TC01}, the highest high of the 10 sessions before today for {TC02}. It also "
+        "wants no resistance level within 3% above the close that is more than {own_level_tol_pct}% above "
+        "H; once G12 has passed that cannot happen, so G12 is the resistance test in practice.",
+        "**Plan A buy level.** Start from today's high ({TC01}) or the highest high of the last 11 "
+        "sessions, today included ({TC02}); with W2, lift it to at least 0.1% above the 50-day. Then walk "
+        "it up: while a resistance level lies more than 0.1% and no more than about 3.1% above it (above "
+        "level × 1.001, up to level × 1.001 × 1.03), move to the highest such level. The buy-stop is 0.1% "
+        "above the result, rounded up to the tick.",
+        "**Plan B buy level.** 0.1% above H, rounded up to the tick, with no walk-up — so it can sit just "
         "under resistance (known defect 1).",
-        "Entry is a resting buy-stop at trigger + 0.1%, rounded up to the tick size, so "
-        "it only fills if price trades up through it on a later bar.",
-        "Stop: {TC01} uses the pullback low P minus 0.1 ATR14; {TC02} the lowest low of "
-        "the last 10 bars (including today) minus 0.1 ATR14; rounded down to the tick.",
-        "Target: {TC01} is P + (H - L), a measured move; {TC02} is the 10-bar high plus "
-        "twice the 10-bar range. Either is cut to the nearest overhead level above "
-        "the entry if that is lower.",
-        "Plan choice: with X7 always Plan A; otherwise if Plan A is below 2R and Plan B "
-        "reaches 2R, Plan B is used; else Plan A.",
-        "TRADE - HIGH CONFIDENCE needs the signal fired, no capping watch flag, a stop "
-        "no wider than 3.0 ATR and 12% of entry, at least 2R, and earnings not within "
-        "14 business days (note: D2 uses 10 — known defect 4).",
-        "WATCH - WAIT if the position is too large for the account, the stop exceeds "
-        "3.5 ATR or 15% of entry, R is below 2, demand/supply reads 'Supply in "
-        "control', or X1 is set. Everything else that passes the gates is TRADE ON "
-        "TRIGGER. Live, a market-regime downgrade then drops the label one tier.",
-        "A plan with NaN risk is not rejected in the live path (known defect 2); the "
-        "backtest discards it via TradePlan.is_valid.",
+        "**Which plan.** With W7, always Plan A. Otherwise Plan B when Plan A offers less than 2R and Plan "
+        "B at least 2R; else Plan A. Both use the setup's stop and target rules; only the buy level "
+        "differs.",
+        "**How it fills.** By buy-stop, never on the signal session. From the next session the order "
+        "fills on the first session whose high reaches it, at the buy-stop price, or at that session's "
+        "open if the stock opens above it (a gap fills worse). Slippage is added to the fill.",
+        "**How long it waits.** Up to 10 business days after the signal. In the backtest the order is "
+        "cancelled sooner if a session's low reaches the stop while its high stays under the buy level, "
+        "and skipped if the fill would be at or above the target. Live, the screen only lists the level; "
+        "placing and cancelling the order is the trader's.",
+        "**One at a time.** While an order rests or a position is open in a stock, new signals in that "
+        "stock are ignored.",
+    )
+    stop_rules = (
+        "**Where it goes.** {TC01}: the pullback low P minus 0.1 ATR14. {TC02}: the lowest low of the last "
+        "10 sessions, today included, minus 0.1 ATR14. Rounded down to the tick; the same stop serves Plan "
+        "A and Plan B.",
+        "**It defines the risk.** Buy level minus stop is the risk per share, 1R. Reward and results are "
+        "counted in R.",
+        "**How wide it may be.** For TRADE - HIGH CONFIDENCE, the only tier the backtest buys, the risk must "
+        "be at most {max_stop_atr_trade} ATR14 and at most {max_stop_pct_trade}% of the buy level. Beyond "
+        "{max_stop_atr_wait} ATR14 or {max_stop_pct_wait}% the plan is WATCH - WAIT; in between it is TRADE "
+        "ON TRIGGER. Both limits are tested on the planned buy level, not on the fill.",
+        "**How it sells.** A standing sell-stop: the first session whose low touches it sells at the stop. "
+        "If the stock opens below the stop it sells at that open, so a gap can lose more than 1R. If one "
+        "session touches both the stop and the target, the stop is assumed to come first.",
+        "**Not on the fill day.** In the portfolio backtest the stop and the target are watched from the "
+        "session after the buy fills; a drop through the stop on the fill session itself is not sold that day.",
+        "**It never moves.** No breakeven move and no trailing stop.",
+    )
+    target_rules = (
+        "**A real sell order.** In the backtest the target is a resting sell order: the first session "
+        "whose high reaches it sells at the target, or at the open if the stock opens above it.",
+        "**How it is measured.** {TC01}: P + (H − L), the advance from L to H added again from the "
+        "pullback low. {TC02}: the 10-session high plus twice the 10-session range (high minus low, today "
+        "included).",
+        "**Resistance caps it.** If a resistance level (the table above the setups, H included) lies above "
+        "the buy level, the target is lowered to the nearest one. A Plan A buy below H therefore has its "
+        "target cut to H, which is often what sends the plan to Plan B.",
+        "**The 2R test.** The reward (target − buy level) must be at least 2 times the risk (buy level − "
+        "stop); under 2R the plan is WATCH - WAIT and is not traded. Example: buy at 100 with the stop at 95 "
+        "risks 5; a target of 110 offers 10, exactly 2R, and passes; 108 offers 1.6R and fails.",
+        "**Not re-tested at the fill.** A gap up at the fill raises the price paid without moving the "
+        "target, so a filled trade can offer less than 2R. It is skipped only if the fill is at or above "
+        "the target.",
     )
     exit_rules = (
-        "Fixed bracket: the stop and target set at entry never move. No trailing stop, "
-        "no time stop, no exit on a trend break.",
-        "Unfilled buy-stops expire after 10 business days; in the backtest an order is "
-        "also cancelled if price falls to the stop before filling, or if it gaps open "
-        "at or above the target.",
-        "Backtest fills: a gap through the trigger fills at the open; if stop and "
-        "target are both touched on one bar the stop wins; a gap through the stop "
-        "exits at the open. Positions still open at the end are marked at the last "
-        "close.",
-        "The portfolio backtest (the default) adds a position cap, slippage and "
-        "commission, and sizes off current equity; it does not apply the earnings "
-        "gate, the market-regime downgrade or the per-sector cap.",
+        "**Only the stop and the target.** The trade ends when one of them is hit (Stop, Target). Both are "
+        "fixed when the plan is made.",
+        "**No other exit.** No trailing stop, no time stop, no breakeven move, no sale on a trend break or "
+        "on a watch flag. The backtest command adds no exit flags: it runs the default --exit-mode "
+        "bracket.",
+        "**End of the test.** A position still open on the last day is marked at that day's close (exit "
+        "reason OPEN).",
+        "**Live.** The screen does not manage open trades; the plan's stop and target are the orders to "
+        "place with the buy.",
     )
+    sizing_rules = (
+        "**Live size.** Risk amount = account size × risk per trade (the high-volatility rate instead when "
+        "the market's volatility index is above its threshold). Shares = risk amount ÷ (buy level − stop), "
+        "rounded down, then cut so the position is no more than the max position size of the account. "
+        "All four values are in Parameters.",
+        "**Too large.** If that leaves less than one share, the plan is WATCH - WAIT (\"too large for "
+        "account\") and is not traded.",
+        "**Backtest size.** The same arithmetic on current equity (cash plus open positions at their last "
+        "close) and on the actual fill price including slippage, always at the normal risk rate. If cash is "
+        "short it buys what cash allows rather than skipping.",
+        "**Costs.** Slippage per side, in basis points, is built into every fill price; the commission per "
+        "order is charged on the buy and on the sell (Parameters).",
+    )
+    filter_rules = (
+        "**Earnings due (live only).** Results within 10 trading days fail G9 (AVOID); within 14 they block "
+        "TRADE - HIGH CONFIDENCE. The backtest applies neither.",
+        "**Supply in control.** The decision is WATCH - WAIT when the demand/supply score is −2 or lower, "
+        "live and in the backtest.\n\n"
+        "- **Up/down volume, 50 sessions:** volume on up closes ÷ volume on down closes; 1.2 or more adds "
+        "1, under 0.8 subtracts 1.\n"
+        "- **Accumulation vs distribution, 25 sessions:** a close up (or down) at least 0.2% on higher "
+        "volume than the session before; more than one extra accumulation day adds 1, more than one extra "
+        "distribution day subtracts 1.\n"
+        "- **Pullback vs advance volume:** G10's two averages as a ratio; under 0.8 adds 1, over 1.1 "
+        "subtracts 1.",
+        "**Market regime (live only).** When the market is risk-off every decision drops one tier (see the "
+        "regime note). The backtest does not apply it.",
+        "**Sector limit (live only).** At most the per-sector limit of TRADE and TRADE ON TRIGGER names per "
+        "sector, ranked by setup quality, then R, then relative strength; the rest become WATCH - SECTOR "
+        "LIMIT.",
+        "**No free slot (backtest).** With the max open positions held, a triggered order does not fill; it "
+        "keeps resting until a slot frees or it expires. When several orders trigger on one session, the "
+        "higher setup quality fills first.\n\n"
+        "- **Setup quality:** 2 for {TC01} (else 1 for {TC02}), +0.5 for {TC04}, +1 for W3, and −1 each "
+        "for W4 drift, W5 drift and W6 momentum fading.",
+        "**Pre-screen.** A stock that fails the pre-screen on a session (How it works, step 1) is not "
+        "evaluated that session at all.",
+    )
+    decision_docs = {
+        "TRADE_HIGH_CONFIDENCE": "Every gate passes, {TC01} or {TC02} is present, the resumption signal fired "
+                                 "on today's close, no watch flag caps it (W1, W2, W4 drift, W8, W9), the stop "
+                                 "is within {max_stop_atr_trade} ATR14 and {max_stop_pct_trade}% of the buy "
+                                 "level, the target offers at least 2R, at least one share fits the account, "
+                                 "supply is not in control, and no earnings are due within 14 trading days. "
+                                 "The only tier the backtest buys.",
+        "TRADE_ON_TRIGGER": "Gates pass and no WATCH condition applies, but one HIGH CONFIDENCE condition is "
+                            "missing: the resumption signal has not fired; W2, W4 drift, W8 or W9 caps it; "
+                            "the stop is wider than {max_stop_atr_trade} ATR14 or {max_stop_pct_trade}% (but "
+                            "within {max_stop_atr_wait} ATR14 and {max_stop_pct_wait}%); or earnings are 11 "
+                            "to 14 trading days away. Also a HIGH CONFIDENCE plan dropped one tier by a "
+                            "risk-off market.",
+        "WATCH_WAIT": "Gates pass and a setup exists, but the first of these that applies holds it: less "
+                      "than one share at the planned size; a stop wider than {max_stop_atr_wait} ATR14 or "
+                      "{max_stop_pct_wait}% of the buy level, or a target under 2R; demand/supply reads "
+                      "Supply in control; W1 (extended). Also a TRADE ON TRIGGER plan dropped one tier by a "
+                      "risk-off market.",
+        "AVOID": "A hard gate failed; the reason names the first failing gate. Also a WATCH - WAIT plan "
+                 "dropped one tier by a risk-off market. When the gates pass but neither {TC01} nor {TC02} "
+                 "is present, the live screen shows NO SETUP instead.",
+    }
     param_docs = (
         ("Minimum price", "cfg.screener.min_price",
-         "Pre-screen: close must be at least this (0 disables it, as in India)."),
+         "Not applied by this strategy since v1.1, live or in the backtest: on split-adjusted history it "
+         "removed the early years of the biggest winners. Only the Screens pages' stock snapshot uses it."),
         ("Minimum liquidity", "cfg.screener.min_dollar_volume",
-         "Pre-screen: 20-day average of close x volume must be at least this."),
+         "Pre-screen: the 20-day average of close × volume must be at least this, in the market's currency."),
         ("Minimum ADX", "cfg.screener.adx_min",
          "Pre-screen: ADX14 must be strictly above this."),
         ("Minimum ATR %", "cfg.screener.atr_pct_min",
-         "Pre-screen: ATR14 as % of price must be strictly above this."),
+         "Pre-screen: ATR14 as % of the close must be strictly above this."),
         ("Tick size", "cfg.tick_size",
-         "Entry is rounded up and the stop rounded down to this increment."),
+         "The buy level is rounded up and the stop rounded down to this increment."),
+        ("Account size", "cfg.account_size",
+         "Live sizing, and the backtest's starting equity."),
         ("Risk per trade", "cfg.risk_pct",
-         "Fraction of the account risked between entry and stop; sets share count."),
+         "Fraction of the account (backtest: of current equity) lost if the stop is hit; sets the share count."),
         ("Risk per trade, high volatility", "cfg.risk_pct_high_vol",
-         "Used instead of risk_pct when the volatility index is above its threshold."),
+         "Live only: used instead of the risk per trade when the volatility index is above the threshold below."),
+        ("Volatility threshold", "cfg.vol_threshold",
+         "Live: the volatility-index level above which the high-volatility risk rate applies."),
         ("Max position size", "cfg.max_position_pct",
-         "Notional cap per position as a fraction of the account; can shrink size."),
+         "Notional cap per position as a fraction of the account (backtest: of equity); can shrink the size."),
         ("Max open positions", "cfg.max_open_positions",
-         "Portfolio backtest: signals arriving with no free slot are missed."),
+         "Backtest: at most this many positions at once; an order that triggers with no free slot keeps "
+         "waiting until it expires."),
         ("Per-sector limit", "cfg.sector_limit_per_sector",
          "Live: at most this many tradeable names kept per sector (ranked by setup quality); the rest become WATCH - SECTOR LIMIT."),
         ("Slippage", "cfg.slippage_bps",
-         "Portfolio backtest: cost per side in basis points of notional."),
+         "Backtest: cost per side in basis points of notional, built into the fill prices."),
+        ("Commission", "cfg.commission_per_order",
+         "Backtest: charged per order, on the buy and on the sell, in the market's currency."),
     )
     backtest_args = ""
 
