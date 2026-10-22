@@ -226,11 +226,19 @@ class StageAnalysisStrategy(Strategy):
     name = "Stage analysis"
     description = ("Buy the weekly breakout from a Stage 1 base into Stage 2 -- above the base's "
                    "own high and a {MA_WEEKS}-week average that is no longer declining, on "
-                   "{VOL_MULT}x volume -- and hold until the stop or, in the backtest, a daily close "
-                   "below the 50-day average.")
+                   "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
+                   "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.2"
-    changelog = (("2.2", "2026-10-22",
+    version = "2.3"
+    changelog = (("2.3", "2026-10-22",
+                  "The backtest sells on Weinstein's exit: a week that closes below the 30-week simple "
+                  "average of weekly closes, sold at that week's last close (--exit-mode weekly_ma "
+                  "--ma-weeks MA_WEEKS, new in the simulator, built from the same weekly bars the "
+                  "strategy reads). Until now it sold on the first DAILY close below the 50-day average "
+                  "(--exit-mode ma, default sma50) -- a much tighter exit the strategy never described, "
+                  "so every 2.2 result measured that instead. Entries, stops and gates are unchanged; "
+                  "the stop still sells during any session."),
+                 ("2.2", "2026-10-22",
                   "G9: the STOCK's own stage. G7 asks the market not to be in Stage 4 and G8 asks "
                   "the sector, and nothing asked it of the stock -- so a breakout could be bought "
                   "while this strategy's own state machine still called the stock declining. Over "
@@ -372,14 +380,12 @@ class StageAnalysisStrategy(Strategy):
         "Step 3, the setup (S1). A base of at least {BASE_MIN_WEEKS} weeks no deeper than {BASE_MAX_DEPTH_PCT}%, and "
         "a weekly close above its high on {VOL_MULT}x volume (W1).",
         "Step 4, the trade. Bought by a buy-stop at the signal close (Entry); stopped at the higher of the line and "
-        "the base low, at most {MAX_STOP_PCT}% away (Stop); no target order (Target); in the backtest sold on a "
-        "close below the DAILY 50-day average (Exit), not Weinstein's weekly line.",
+        "the base low, at most {MAX_STOP_PCT}% away (Stop); no target order (Target); sold when a week closes "
+        "below the {MA_WEEKS}-week line (Exit).",
     )
     caveats = (
-        "**The backtest's exit is not Weinstein's.** The method sells on a weekly close below the {MA_WEEKS}-week "
-        "line. The backtest runs `--exit-mode ma` with the default `--ma-col sma50`, so it sells on the first "
-        "DAILY close below the 50-day average — a much tighter, twitchier exit. Any result measures that exit, "
-        "not the weekly one.",
+        "**Runs before version 2.3 measured a different exit.** They sold on the first DAILY close below the "
+        "50-day average, a much tighter exit than the weekly line. Compare results only within one version.",
         "**Mid-week signals.** The strategy is evaluated every session against the week so far. A breakout can "
         "therefore fire on a Tuesday close that the Friday close would undo, and the volume test compares a part "
         "week with full weeks, so an early-week breakout rarely clears {VOL_MULT}x.",
@@ -562,9 +568,10 @@ class StageAnalysisStrategy(Strategy):
         "One use in the backtest. A buy-stop that would fill at or above that target is skipped.",
     )
     exit_rules = (
-        "Trend exit in the backtest. The first DAILY close below the 50-day simple average sells the whole "
-        "position at that close (`--exit-mode ma`, default `--ma-col sma50`). This is not Weinstein's weekly close "
-        "below the {MA_WEEKS}-week line; see the caveats.",
+        "Trend exit (Weinstein's). A week that closes below the {MA_WEEKS}-week simple average of weekly closes "
+        "sells the whole position at that close, the week's last session (usually Friday). The line includes that "
+        "week's own close. A close below the line mid-week does nothing; only the week's close counts "
+        "(`--exit-mode weekly_ma --ma-weeks {MA_WEEKS}`).",
         "Or the stop (see Stop), checked first each session.",
         "Nothing else. No target, no time stop, no Stage 3 sale.",
     )
@@ -617,7 +624,7 @@ class StageAnalysisStrategy(Strategy):
         ("Maximum stop", "MAX_STOP_PCT", "Widest stop; beyond it the stop is moved up and the setup is WATCH (W3)."),
         ("Target multiple", "BASE_TARGET_MULT", "Base heights added to the entry for the reported target."),
     )
-    backtest_args = "--exit-mode ma --no-target"
+    backtest_args = f"--exit-mode weekly_ma --ma-weeks {MA_WEEKS} --no-target"
 
     # ---------- screen ----------
 

@@ -1260,9 +1260,10 @@ def main(argv: list[str] | None = None) -> dict | None:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "ma", "donchian", "minervini"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "ma", "weekly_ma", "donchian", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
         "stop+target; the others test whether letting winners run beats capping them. "
+        "'weekly_ma' sells at a week's last close when that week closes below the --ma-weeks average of weekly closes. "
         "'minervini' is the spec's EX-01..EX-07 (research/minervini-backtest-spec.md).",
     )
     parser.add_argument("--spec", action="store_true",
@@ -1369,6 +1370,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     )
     parser.add_argument("--atr-mult", type=float, default=3.0, help="for --exit-mode trail_atr")
     parser.add_argument("--ma-col", default="sma50", help="for --exit-mode ma")
+    parser.add_argument("--ma-weeks", type=int, default=30,
+                        help="for --exit-mode weekly_ma: weeks in the simple average of weekly closes")
     parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
     parser.add_argument("--risk-pct", type=float, default=None,
                         help="risk per trade as a fraction, e.g. 0.005 (default: market config)")
@@ -1534,7 +1537,7 @@ def main(argv: list[str] | None = None) -> dict | None:
                                ("time_stop_days", args.time_stop)) if v is not None}
     policy = ExitPolicy(
         mode=args.exit_mode, use_target=not args.no_target,
-        atr_mult=args.atr_mult, ma_col=args.ma_col, donchian_bars=args.donchian_bars, **extra,
+        atr_mult=args.atr_mult, ma_col=args.ma_col, ma_weeks=args.ma_weeks, donchian_bars=args.donchian_bars, **extra,
     )
     try:
         tdf, perf, result = run_portfolio_backtest(
@@ -1652,6 +1655,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (f" --exit-mode {args.exit_mode}" if args.exit_mode != "bracket" else "")
             + (" --no-target" if args.no_target else "")
             + (f" --ma-col {args.ma_col}" if args.exit_mode == "ma" else "")
+            + (f" --ma-weeks {args.ma_weeks}" if args.exit_mode == "weekly_ma" else "")
             + (f" --rank-by {args.rank_by}" if args.rank_by != "setup" else "")
             + (f" --min-group-rs {args.min_group_rs}" if args.min_group_rs is not None else "")
             + (" --block-stage3" if args.block_stage3 else "")

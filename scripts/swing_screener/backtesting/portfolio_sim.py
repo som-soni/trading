@@ -63,6 +63,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from ..config.base import MarketConfig
+from ..core import indicators as ind
 from ..strategies import minervini_spec as _ms
 
 logger = logging.getLogger(__name__)
@@ -95,10 +96,12 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | ma | donchian | minervini
+    mode: str = "bracket"        # bracket | trail_atr | ma | weekly_ma | donchian | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
     ma_col: str = "sma50"        # for ma, and minervini's EX-06
+    ma_weeks: int = 30           # for weekly_ma: a completed week closing below the simple average of
+                                 #   this many weekly closes sells at that close (Weinstein's 30-week line)
     donchian_bars: int = 50      # for donchian
     # ---- minervini: the strategy's exit ladder. Defaults are minervini_spec's constants, so a
     # --spec run trades the strategy's documented numbers (1.8: the SEPA Learn guide's).
@@ -150,6 +153,8 @@ class ExitPolicy:
             bits.append(f"{self.atr_mult:g}ATR")
         elif self.mode == "ma":
             bits.append(self.ma_col)
+        elif self.mode == "weekly_ma":
+            bits.append(f"{self.ma_weeks}w")
         elif self.mode == "donchian":
             bits.append(f"{self.donchian_bars}d")
         bits.append("withTarget" if self.use_target else "noTarget")
@@ -299,6 +304,25 @@ class Exposure:
 
 _FLAT = Exposure()   # disabled: every entry risks the full risk_pct
 
+WEEKLY_LINE = "_weekly_line"   # the weekly_ma exit's level, added to each price frame by `simulate`
+
+
+def weekly_line(df: pd.DataFrame, weeks: int) -> pd.Series:
+    """The weekly_ma exit's level on each daily bar: on the LAST session of a week, the simple average of
+    the last `weeks` weekly closes, that week's included; NaN on every other session, so the exit is read
+    only off a completed week. Weeks are `ind.resample_weekly`, the bars the weekly strategies read. The
+    final stored bar counts as a week's last only on a Friday: mid-week, its week is not over."""
+    out = pd.Series(float("nan"), index=df.index)
+    if df.empty:
+        return out
+    line = ind.resample_weekly(df)["close"].rolling(weeks, min_periods=weeks).mean()
+    week = pd.Series(df.index.to_period("W-FRI"), index=df.index)
+    last = week != week.shift(-1)
+    last.iloc[-1] = df.index[-1].weekday() == 4
+    ends = week[last].map(lambda p: p.end_time.normalize())
+    out[last] = line.reindex(ends.values).values
+    return out
+
 
 def simulate(
     signals: list[Signal],
@@ -336,6 +360,8 @@ def simulate(
     policy = exit_policy or ExitPolicy()
     base_slip = cfg.slippage_bps if slippage_bps is None else slippage_bps
     fee_rate = cost_bps / 10_000.0
+    if policy.mode == "weekly_ma":
+        prices = {s: df.assign(**{WEEKLY_LINE: weekly_line(df, policy.ma_weeks)}) for s, df in prices.items()}
 
     # the calendar is the union of the dates of every symbol we might trade
     all_dates = sorted({d for df in prices.values() for d in df.index if d >= start})
@@ -451,11 +477,11 @@ def simulate(
             hit_stop = bar["low"] <= pos.stop
             hit_target = policy.use_target and bar["high"] >= pos.target
             trend_break = False
-            if not hit_stop and not hit_target and policy.mode in ("ma", "donchian"):
+            if not hit_stop and not hit_target and policy.mode in ("ma", "weekly_ma", "donchian"):
                 # trend-failure exits act on the CLOSE, so they are evaluated
                 # only once the bar is complete -- no intrabar clairvoyance
-                if policy.mode == "ma":
-                    ma = bar.get(policy.ma_col, float("nan"))
+                if policy.mode in ("ma", "weekly_ma"):
+                    ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
                     trend_break = ma == ma and float(bar["close"]) < float(ma)
                 else:
                     hist = df.loc[:today, "low"]
@@ -862,9 +888,9 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
         sell(pos, fill, n, today)
         pos.partial_shares = n
 
-    if policy.mode in ("ma", "donchian"):
-        if policy.mode == "ma":
-            ma = bar.get(policy.ma_col, float("nan"))
+    if policy.mode in ("ma", "weekly_ma", "donchian"):
+        if policy.mode in ("ma", "weekly_ma"):
+            ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
             broke = ma == ma and c < float(ma)
         else:
             hist = df.loc[:today, "low"]

@@ -8,7 +8,7 @@ import dataclasses
 
 import pandas as pd
 
-from swing_screener.backtesting.portfolio_sim import ExitPolicy, Signal, simulate
+from swing_screener.backtesting.portfolio_sim import ExitPolicy, Signal, simulate, weekly_line
 from swing_screener.config import MARKETS
 
 CFG = dataclasses.replace(MARKETS["india"], slippage_bps=0.0, commission_per_order=0.0, risk_pct=0.01,
@@ -97,9 +97,39 @@ def test_stop_wins_the_tie_with_the_target():
     assert t.exit_reason == "STOP" and t.partial_shares == 0
 
 
+def _weekly(closes: list[float]) -> pd.DataFrame:
+    """One bar per close from Monday 2024-01-01, business days; high 1 above the close, low 1 below."""
+    return _frame([(c, c + 1, c - 1, c) for c in closes])
+
+
+# week 1 at 100 (signal Mon, filled Tue); week 2 at 110; week 3 dips to 90 Mon-Thu but closes the
+# week at 120; week 4 holds 118 Mon-Thu and closes the week at 100, under the 2-week line of 110
+WEEKS = [100] * 5 + [110] * 5 + [90] * 4 + [120] + [118] * 4 + [100] + [100] * 3
+
+
+def test_weekly_line_is_read_on_a_weeks_last_session():
+    df = _weekly(WEEKS)
+    line = weekly_line(df, 2)
+    fridays = [i for i, d in enumerate(df.index) if d.weekday() == 4]
+    assert line.notna().sum() == len(fridays) - 1          # week 1 has no 2-week average yet
+    assert line.iloc[9] == 105 and line.iloc[14] == 115 and line.iloc[19] == 110
+    assert line.iloc[-1] != line.iloc[-1]                  # the final bar is a Wednesday: its week is not over
+    holiday = df.drop(df.index[14])                         # week 3's Friday is a holiday: Thursday ends it
+    assert weekly_line(holiday, 2).loc[df.index[13]] == 100  # (110 + 90) / 2
+
+
+def test_weekly_ma_sells_only_on_a_week_closing_below_the_line():
+    df = _weekly(WEEKS)
+    for policy in ({}, {"be_r": 50.0}):                     # the plain and the managed exit path
+        t = _run(df, _signal(df, stop=50.0, target=1000.0), mode="weekly_ma", ma_weeks=2, use_target=False, **policy)
+        assert t.entry_date == df.index[1] and t.exit_reason == "TREND_EXIT", (policy, t.exit_reason)
+        assert t.exit_date == df.index[19] and t.exit_price == 100, (policy, t.exit_date, t.exit_price)
+
+
 def test_label():
     assert ExitPolicy(be_r=1.0, time_stop_mult=2.0).label() == "bracket-withTarget-be1R-time2x"
     assert ExitPolicy(time_stop_bars=40, partial_at_target=0.5).label() == "bracket-withTarget-time40-partial0.5atT"
+    assert ExitPolicy(mode="weekly_ma", use_target=False).label() == "weekly_ma-30w-noTarget"
 
 
 if __name__ == "__main__":
