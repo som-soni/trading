@@ -86,6 +86,18 @@ SELECTION = {
 }
 
 
+class _DocFields:
+    """A settings dataclass seen from a doc placeholder: `{VCP.tight_pct}` renders like a module
+    constant does (a float through :g), so "10" rather than "10.0"."""
+
+    def __init__(self, obj):
+        self._obj = obj
+
+    def __getattr__(self, name):
+        v = getattr(self._obj, name)
+        return f"{v:g}" if isinstance(v, float) else v
+
+
 @dataclass
 class StrategyResult:
     """Outcome of evaluating one symbol against one strategy.
@@ -237,6 +249,15 @@ class SpecMeta:
     def render_doc(cls, text: str) -> str:
         ns = {k: (f"{v:g}" if isinstance(v, float) else v)
               for k, v in cls.doc_namespace().items()}
+        # A module-level settings object (minervini_spec's `VCP = VcpParams(...)`) is reachable as
+        # `{VCP.zigzag_pct}`, so a rule can quote a detector setting the module never names as its
+        # own constant. Rendering only: doc_namespace, which the fingerprint reads, is unchanged.
+        import dataclasses as _dc
+        import sys
+        mod = sys.modules.get(cls.__module__)
+        for k, v in (vars(mod).items() if mod else ()):
+            if k.isupper() and _dc.is_dataclass(v) and not isinstance(v, type):
+                ns.setdefault(k, _DocFields(v))
         return text.format_map(ns)
 
     @classmethod
@@ -411,6 +432,13 @@ class Strategy(SpecMeta, ABC):
     # Human labels for the codes of the strategy's structure check (e.g. VCP-02 -> "no base yet"),
     # so the Candidates tab can say where a qualifying stock is stuck without a second copy in JS.
     base_rules: dict | None = None
+    # A strategy whose setups sit on a detected pattern (a base, a cup) lists the pattern's own
+    # checks here, in the order they are evaluated: {check code: rule}. The Strategy page shows them
+    # as a table between the gates and the setups, under `pattern_title`, after `pattern_intro`
+    # (the terms the checks use). `{NAME}` placeholders render like the other docs.
+    pattern_title: str = ""
+    pattern_intro: str = ""
+    pattern_docs: dict = {}
 
     # --- identity and versioning ---
     # `family` is the high-level strategy a reader thinks in terms of

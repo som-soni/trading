@@ -24,6 +24,11 @@ from . import _REGISTRY, BEHAVIOURS, LABELS, SELECTION, STYLES
 # The optional finer split of entry/exit (strategies/base.py): Stop, Target, Position size, filters.
 RULE_GROUPS = ("stop_rules", "target_rules", "sizing_rules", "filter_rules")
 
+
+def _flat(t: str) -> str:
+    """A multi-paragraph rule (blank lines, "- " items) on one markdown line: a table row or a list item."""
+    return t.replace("\n- ", "<br>• ").replace("\n\n", "<br><br>").replace("\n", " ")
+
 # What each decision label means, by label code. Shared by every Strategy subclass unless it
 # overrides a tier in `decision_docs`: the labels and the downgrade ladder are defined once,
 # in strategies/base.py.
@@ -48,6 +53,12 @@ def _resolve_param(cls, source: str) -> dict:
                 obj = getattr(obj, part)
             out[market] = obj
         return out
+    if "." in source:
+        # a field of a module-level settings object, e.g. "VCP.zigzag_pct"
+        import sys
+        obj, field = source.split(".", 1)
+        v = getattr(getattr(sys.modules[cls.__module__], obj), field)
+        return {m: v for m in MARKETS}
     v = cls.doc_namespace()[source]
     return {m: v for m in MARKETS}
 
@@ -122,6 +133,9 @@ def strategy_doc(key: str) -> dict:
         "live_variant": ({"name": cls.live_variant.get("name", ""), "const": cls.live_variant.get("const", {}),
                           "why": r(cls.live_variant.get("why", ""))} if getattr(cls, "live_variant", None) else None),
         "base_rules": getattr(cls, "base_rules", None),
+        "pattern": ({"title": r(cls.pattern_title), "intro": r(cls.pattern_intro),
+                     "rows": [{"code": c, "text": r(t)} for c, t in cls.pattern_docs.items()]}
+                    if cls.pattern_docs else None),
         "watch": [{"code": c, "text": r(cls.watch_docs.get(c, ""))} for c in cls.watch_codes],
         "setups": [{"code": c, "text": r(cls.setup_docs.get(c, ""))} for c in cls.setup_codes],
         "entry_rules": [r(s) for s in cls.entry_rules], "exit_rules": [r(s) for s in cls.exit_rules],
@@ -280,6 +294,7 @@ def check() -> list[str]:
                     problems.append(f"{where}: {docs_attr} documents '{c}', which is not in {codes_attr} (stale?)")
         texts = [cls.thesis, cls.status, cls.description, *cls.how_it_works, *cls.caveats, *cls.entry_rules, *cls.exit_rules,
                  *(t for k in RULE_GROUPS for t in getattr(cls, k)),
+                 cls.pattern_title, cls.pattern_intro, *cls.pattern_docs.values(),
                  *cls.gate_docs.values(), *cls.watch_docs.values(), *cls.setup_docs.values(), *(p[2] for p in cls.param_docs),
                  cls.regime_note, *cls.decision_docs.values()]
         for c in sorted(set(cls.decision_docs) - {c for c, _ in DECISIONS}):
@@ -394,24 +409,26 @@ def spec_markdown(key: str) -> str:
         L += ["## Thesis", "", d["thesis"], ""]
     if d["how_it_works"]:
         L += ["## How it works", ""]
-        L += [f"{i}. {s}" for i, s in enumerate(d["how_it_works"], 1)] + [""]
+        L += [f"{i}. {_flat(s)}" for i, s in enumerate(d["how_it_works"], 1)] + [""]
 
     for title, items, cols in (
         ("Hard gates (failing any one means AVOID)", d["gates"], ("code", "text")),
         ("Watch flags (these cap confidence)", d["watch"], ("code", "text")),
+        (d["pattern"]["title"] if d.get("pattern") else "", d["pattern"]["rows"] if d.get("pattern") else [], ("code", "text")),
         ("Setups", d["setups"], ("code", "text")),
     ):
         if items:
-            L += [f"## {title}", "", "| code | meaning |", "|---|---|"]
-            # a multi-paragraph rule (blank lines, "- " items) must stay on one table row
-            cell = lambda t: t.replace("\n- ", "<br>• ").replace("\n\n", "<br><br>").replace("\n", " ")
-            L += [f"| `{it[cols[0]]}` | {cell(it[cols[1]])} |" for it in items] + [""]
+            L += [f"## {title}", ""]
+            if d.get("pattern") and items is d["pattern"]["rows"] and d["pattern"]["intro"]:
+                L += [d["pattern"]["intro"], ""]
+            L += ["| code | meaning |", "|---|---|"]
+            L += [f"| `{it[cols[0]]}` | {_flat(it[cols[1]])} |" for it in items] + [""]
 
     for title, items in (("Entry", d["entry_rules"]), ("Stop", d.get("stop_rules")), ("Target", d.get("target_rules")),
                          ("Exit", d["exit_rules"]), ("Position size", d.get("sizing_rules")),
                          ("When no new trade is taken", d.get("filter_rules"))):
         if items:
-            L += [f"## {title}", ""] + [f"- {s}" for s in items] + [""]
+            L += [f"## {title}", ""] + [f"- {_flat(s)}" for s in items] + [""]
 
     if d["params"]:
         L += ["## Parameters", "", "| parameter | value | meaning |", "|---|---|---|"]

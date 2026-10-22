@@ -4094,8 +4094,8 @@ function perfGlance(d, key) {
 function strategyRules(host, d, key) {
   const codeTable = (rows, head, extra) => rows.length ? `<table class="dtab"><thead><tr><th>${head}</th>${extra ? `<th>${extra[0]}</th>` : ""}<th>Rule</th></tr></thead><tbody>${rows.map((r) =>
     `<tr><td><code>${esc(r.code)}</code></td>${extra ? `<td>${extra[1](r)}</td>` : ""}<td>${mdBlock(r.text) || '<span class="neg">Not documented</span>'}</td></tr>`).join("")}</tbody></table>` : "";
-  const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ol>` : "");
-  const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "");
+  const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdBlock(x)}</li>`).join("")}</ol>` : "");
+  const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdBlock(x)}</li>`).join("")}</ul>` : "");
   const sec = (id, title, body) => (body ? `<section class="sd-sec" id="sd-${id}"><h2>${title}</h2>${body}</section>` : "");
   // A strategy that splits its trade into stop / target / sizing / filter rules (strategies/base.py)
   // gets one section per part, each answering one question, instead of a single "Entry & exit".
@@ -4124,10 +4124,12 @@ function strategyRules(host, d, key) {
     ${perfGlance(d, key)}
     ${sec("overview", "Overview", `${d.thesis ? `<p><b>Thesis.</b> ${mdInline(d.thesis)}</p>` : ""}<h3>How it works</h3>${ol(d.how_it_works)}`)}
     ${d.kind === "long-term" && d.gates.length ? sec("rules", "Quality tests", `<p class="muted small">Points out of 100.</p>${codeTable(d.gates, "Worth")}`) : ""}
-    ${d.kind !== "long-term" && (d.gates.length || d.watch.length || d.setups.length) ? `<section class="sd-sec" id="sd-rules"><h2>Rules</h2>
+    ${d.kind !== "long-term" && (d.gates.length || d.watch.length || d.setups.length || d.pattern) ? `<section class="sd-sec" id="sd-rules"><h2>Rules</h2>
       ${fromScreen.length ? `<h3>${num()}Qualify — from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen</h3>
         ${codeTable(fromScreen, "Gate", ["Screen", (r) => `<code>${r.screen}</code>`])}` : ""}
       ${own.length ? `<h3>${fromScreen.length ? `${num()}Trade rules — this strategy's own` : "Hard gates"} <span class="muted small">— all must pass, or the stock is AVOID</span></h3>${codeTable(own, "Gate")}` : ""}
+      ${d.pattern ? `<h3>${num()}${esc(d.pattern.title)} <span class="muted small">— checked in this order; the first that fails is where the stock is stuck</span></h3>
+        ${d.pattern.intro ? `<div class="sd-intro">${mdBlock(d.pattern.intro)}</div>` : ""}${codeTable(d.pattern.rows, "Check")}` : ""}
       ${d.setups.length ? `<h3>${num()}Setups <span class="muted small">— the patterns that make a stock entry-eligible</span></h3>${codeTable(d.setups, "Setup")}` : ""}
       ${d.watch.length ? `<h3>Warning flags <span class="muted small">— don't disqualify, but cap or downgrade the decision</span></h3>${codeTable(d.watch, "Flag")}` : ""}
       </section>` : ""}
