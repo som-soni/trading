@@ -1845,18 +1845,22 @@ async function watchlistPage(alive, lid) {
     return;
   }
   const cols = screener
-    ? ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", "strategies", "decision", "entry", "to entry %", "stop", "target R", "added"]
+    ? ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", "strategies", "decision", "can slim", "entry", "to entry %", "stop", "target R", "added"]
     : ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", "note", "added"];
   const rows = items.map((e) => {
     const base = [e.symbol, e.name || "", MKT_BADGE[e.market] || e.market, e.peer_group || e.sector || "", e.peer_rs ?? null, e.last, e.change_pct];
     if (!screener) return [...base, e.note || "", e.added_at];
     const p = bestPlan(e);
-    return [...base, e.strategies.map((x) => x.strategy).join(" · "), p.decision || "", p.entry ?? null,
+    // CAN SLIM (fundamentals/canslim.py, judged by the server): the verdict, and for EARNINGS PASS the letters
+    // still failing — what the stock or the market has to do first
+    const cs = e.canslim, csText = !cs ? "" : cs.verdict === "EARNINGS PASS" && cs.fails.length ? `${cs.verdict} · wait: ${cs.fails.join(" ")}` : cs.verdict;
+    return [...base, e.strategies.map((x) => x.strategy).join(" · "), p.decision || "", csText, p.entry ?? null,
       p.entry && e.last ? (p.entry / e.last - 1) * 100 : null, p.stop ?? null, p.target_r ?? null, e.added_at];
   });
   const find = (row) => items.find((x) => x.symbol === row[0] && (MKT_BADGE[x.market] || x.market) === row[2]);
   dataTable(host, cols, rows, {
     name: screener ? "watchlist_screener" : "watchlist_list", sort: ["added", -1],
+    tags: { "can slim": (v) => sepaClass(String(v).split(" · ")[0]) },
     // lists mix markets, so every price carries its currency
     format: { added: prettyDate, ...Object.fromEntries(["last", "entry", "stop"].map((c) => [c, (v, row) => v == null ? "" : `${(MKTS.find((m) => m.badge === row[2]) || {}).currency || ""}${fmt(v)}`])) },
     rowClick: (row, visible) => {

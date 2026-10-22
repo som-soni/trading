@@ -100,15 +100,36 @@ def _rising(vals: list, n: int) -> bool | None:
     return all(v[k] > v[k + 1] for k in range(n - 1))
 
 
-def context(market: str, symbol: str, srow: dict | None = None, shareholding: list | None = None) -> dict:
-    """The non-filing inputs for N, S, L, I and M, from stored prices, the day's snapshot row and the
-    shareholding pattern. Anything missing is left out (its letter is then unavailable)."""
+def market_state(market: str) -> dict | None:
+    """M's inputs — the same for every stock in `market`: the benchmark against its MARKET_SMA-day average and
+    its distribution days. Compute once and pass to context() when judging a list."""
     from swing_screener.config import MARKETS
     from swing_screener.core import demand_supply as ds
     from swing_screener.marketdata import cache
 
+    cfg = MARKETS.get(market)
+    idx = cache.load_cached(market, cfg.benchmark_ticker) if cfg else None
+    if idx is None or len(idx) <= MARKET_SMA:
+        return None
+    close, sma = float(idx["close"].iloc[-1]), float(idx["close"].iloc[-MARKET_SMA:].mean())
+    _, dist = ds.accumulation_distribution_days(idx, DIST_SESSIONS)
+    return {"index": cfg.benchmark_symbol, "above_sma": close > sma, "dist_days": int(dist)}
+
+
+_UNSET = object()
+
+
+def context(market: str, symbol: str, srow: dict | None = None, shareholding: list | None = None,
+            market_ctx=_UNSET, daily=None) -> dict:
+    """The non-filing inputs for N, S, L, I and M, from stored prices, the day's snapshot row and the
+    shareholding pattern. When judging many stocks at once, pass `market_ctx` (market_state(), once a market)
+    and `daily` (the stock's prices, loaded in one batch). Anything missing is left out (its letter is then
+    unavailable)."""
+    from swing_screener.core import demand_supply as ds
+    from swing_screener.marketdata import cache
+
     srow, ctx = srow or {}, {}
-    daily = cache.load_cached(market, symbol)
+    daily = cache.load_cached(market, symbol) if daily is None else daily
     if daily is not None and len(daily) > UPDOWN_SESSIONS:
         daily = daily[~((daily["volume"] <= 0) & (daily["high"] <= daily["low"]))]
         price = float(daily["close"].iloc[-1])
@@ -120,13 +141,9 @@ def context(market: str, symbol: str, srow: dict | None = None, shareholding: li
     sh = [r for r in (shareholding or []) if r.get("fii") is not None and r.get("dii") is not None]
     if len(sh) >= 2:
         ctx["inst_now"], ctx["inst_prev"] = sh[-1]["fii"] + sh[-1]["dii"], sh[-2]["fii"] + sh[-2]["dii"]
-    cfg = MARKETS.get(market)
-    idx = cache.load_cached(market, cfg.benchmark_ticker) if cfg else None
-    if idx is not None and len(idx) > MARKET_SMA:
-        close = float(idx["close"].iloc[-1])
-        sma = float(idx["close"].iloc[-MARKET_SMA:].mean())
-        _, dist = ds.accumulation_distribution_days(idx, DIST_SESSIONS)
-        ctx["market"] = {"index": cfg.benchmark_symbol, "above_sma": close > sma, "dist_days": int(dist)}
+    mk = market_state(market) if market_ctx is _UNSET else market_ctx
+    if mk:
+        ctx["market"] = mk
     return ctx
 
 

@@ -8,6 +8,7 @@ process never executes one.
     python3 -m swing_screener.web            # http://127.0.0.1:8000
 """
 
+import datetime as dt
 import json
 import re
 import threading
@@ -2946,10 +2947,60 @@ def watchlist_membership(market: str, symbol: str):
     return {"lists": wl.membership(market, symbol)}
 
 
+_canslim_cache: dict = {}   # (market, symbol, day) -> compact CAN SLIM result
+
+
+def _canslim_for(entries: list[dict]) -> dict:
+    """{(market, symbol): {verdict, passed, scored, fails}} — fundamentals/canslim.py on the stored growth
+    metrics plus each stock's prices, RS rank and shareholding, and its market's direction (computed once a
+    market). None for a stock with no stored fundamentals."""
+    from fundamentals import canslim
+    from ..marketdata import cache
+    day, out = dt.date.today().isoformat(), {}
+    by_mkt: dict[str, list[str]] = {}
+    for e in entries:
+        k = (e["market"], e["symbol"], day)
+        if k in _canslim_cache:
+            out[(e["market"], e["symbol"])] = _canslim_cache[k]
+        else:
+            by_mkt.setdefault(e["market"], []).append(e["symbol"])
+    for market, syms in by_mkt.items():
+        try:
+            snap = _snap(market)
+            rs = dict(zip(snap["symbol"], snap["rs_rank"])) if snap is not None and "rs_rank" in snap else {}
+        except Exception:  # noqa: BLE001 — no snapshot today: L is unavailable, nothing else changes
+            rs = {}
+        mk = canslim.market_state(market)
+        rows = q("SELECT symbol, metrics FROM fundamental_scores WHERE market=%s AND symbol = ANY(%s)", (market, syms)) \
+            if q("SELECT to_regclass('fundamental_scores') IS NOT NULL", ())[0][0] else []
+        stored = {sym: (m if isinstance(m, dict) else json.loads(m)) for sym, m in rows}
+        # prices and shareholding for the whole list in one query each, not one per stock
+        prices = cache.load_many_cached(market, list(stored), since=pd.Timestamp.today() - pd.Timedelta(days=400))
+        holds: dict[str, list] = {}
+        if q("SELECT to_regclass('shareholding') IS NOT NULL", ())[0][0]:
+            for sym, pe, fii, dii in q("SELECT symbol, period_end, fii, dii FROM shareholding WHERE market=%s AND symbol = ANY(%s) "
+                                       "ORDER BY symbol, period_end", (market, list(stored))):
+                holds.setdefault(sym, []).append({"period_end": pe, "fii": fii, "dii": dii})
+        for sym in syms:
+            res = None
+            if sym in stored:
+                r = canslim.evaluate(stored[sym], canslim.context(market, sym, srow={"rs_rank": rs.get(sym)}, shareholding=holds.get(sym),
+                                                                  market_ctx=mk, daily=prices.get(sym)))
+                res = {"verdict": r["verdict"], "passed": r["passed"], "scored": r["scored"],
+                       "fails": [k for k, t in r["tests"].items() if t["status"] == "fail"]}
+            if len(_canslim_cache) > 4096:
+                _canslim_cache.clear()
+            _canslim_cache[(market, sym, day)] = res
+            out[(market, sym)] = res
+    return out
+
+
 @app.get("/api/watchlists/{lid}/items")
 def watchlist_items(lid: str):
     if lid == SCREENER_LIST:
-        return _with_prices([{**e, "added_at": e["added_at"]} for e in wl.entries()])
+        items = _with_prices([{**e, "added_at": e["added_at"]} for e in wl.entries()])
+        verdicts = _canslim_for(items)   # the CAN SLIM column (fundamentals/canslim.py)
+        return [{**e, "canslim": verdicts.get((e["market"], e["symbol"]))} for e in items]
     return _with_prices(wl.items(int(lid)))
 
 

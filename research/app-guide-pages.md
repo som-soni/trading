@@ -294,7 +294,7 @@ market), WEAK or NO DATA. See [earnings](learn-fund-earnings.md),
 Your own lists keep a **note** per stock. The **Screener picks** list fills itself after each strategy
 run: every stock a strategy marks tradeable or on watch. Its columns are strategy, decision, entry, **to
 entry %** (how far the price is from the entry), stop, target R, peer group and group RS. Removing a pick
-hides it until it drops off the screen and is flagged again.
+hides it until it drops off the screen and is flagged again. Its **CAN SLIM** column is the Fundamentals page's CAN SLIM verdict for each pick (QUALIFIES / EARNINGS PASS / WEAK / NO DATA; blank where no fundamentals are stored); for EARNINGS PASS it adds the letters still failing — "wait: M" means the earnings qualify and the market does not.
 
 Watchlists hold symbols, notes and the planned levels. They do not hold positions.
 
