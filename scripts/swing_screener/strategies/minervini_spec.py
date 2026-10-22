@@ -175,6 +175,14 @@ CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpPar
 
 STOP_BUFFER_PCT = 0.5   # SL-01: stop this % under the tight low
 MAX_STOP_PCT = 10.0     # SL-03: skip a fill whose stop is further below it than this (the guide's limit)
+# EN-04's limit: how many times one base may be bought. 1 = the shipped rule, a base is barred
+# for good after one entry. Minervini re-buys a leader that shook him out, and the ladder makes
+# that common here -- EX-03 moves the stop to breakeven at +{BREAKEVEN_R}R, so an ordinary
+# pullback ends the trade at zero and, today, ends the base with it. Raising this lets only a
+# SHAKEOUT reopen a base (a stop or a breakeven stop, never a trend exit, which says the move is
+# over), and the setup still has to re-fire on its own. OFF until measured: `--const
+# MAX_ENTRIES_PER_BASE=2`.
+MAX_ENTRIES_PER_BASE = 1
 NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a third at 3R)
 # Minervini's stated minimum reward-to-risk (ChartMill's SEPA write-up and the
 # books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
@@ -566,8 +574,19 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.23"
+    version = "1.24"
     changelog = (
+        ("1.24", "2026-10-22",
+         "EN-04 can now allow more than one entry per base, though it still allows "
+         "{MAX_ENTRIES_PER_BASE} -- the switch is off until it is measured. A base was barred for "
+         "good after a single entry, which also barred the re-entry a shakeout invites, and the "
+         "ladder makes shakeouts common: EX-03 moves the stop to breakeven at +{BREAKEVEN_R}R, so "
+         "an ordinary pullback ends the trade at zero and ended the base with it. Minervini "
+         "re-buys a leader that shook him out; this implementation could not. Raised, only a stop "
+         "or a breakeven stop reopens a base -- never a trend exit, which says the move is over "
+         "rather than that the trade was shaken out -- and the setup must still re-fire by "
+         "itself. Measured with `--const MAX_ENTRIES_PER_BASE=2`. Detection is untouched and at "
+         "the shipped value nothing changes, so the golden harness is identical."),
         ("1.23", "2026-10-22",
          "EX-04 now also sells {STRENGTH_FRAC} at +{PARTIAL_R}R, the point EX-03 moves the stop to "
          "breakeven. The ladder raised the stop without ever banking anything, which converts an "
@@ -1250,8 +1269,12 @@ class MinerviniSpecStrategy(Strategy):
         "{BUY_RANGE_PCT}% above the shelf's high, or at or below the shelf's low.",
         "Power play (MV-05). Bought at the next session's open. Skipped if that open is more than "
         "{BUY_RANGE_PCT}% above the flag's pivot, or at or below the flag's tight low.",
-        "One entry per base (EN-04). Once a base, or a power play's flag, has been bought, it is "
-        "never bought again — not even after a stop-out.",
+        "{MAX_ENTRIES_PER_BASE} entry per base (EN-04). Once a base, or a power play's flag, has "
+        "been bought that many times, it is never bought again.\n\n"
+        "At the shipped value of 1 that means not even after a stop-out. Above 1, only a SHAKEOUT "
+        "reopens a base — the stop, or the breakeven stop — never a trend exit, which says the "
+        "move itself is over rather than that the trade was shaken out of it. The setup still has "
+        "to re-fire on its own; this only stops the veto.",
         "Same-day ties (PF-03). When more stocks trigger than there are free slots, the highest RS "
         "rating is bought first, then the smallest tight area (pivot to tight low, as a % of the "
         "pivot).",
@@ -1458,6 +1481,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Largest position", "cfg.max_position_pct", "SL-05: share of equity one position may hold."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Breakeven trigger", "BREAKEVEN_R", "EX-03: R gained before the stop moves to breakeven plus costs."),
+        ("Entries per base", "MAX_ENTRIES_PER_BASE", "EN-04: how many times one base may be bought. "
+                                                      "Above 1, only a stop or breakeven stop reopens it."),
         ("Part-sale trigger", "PARTIAL_R", "EX-04: R gained before about a third is sold. Pairs with the "
                                            "breakeven trigger, so the gain is banked as the stop moves up."),
         ("Failed-breakout window", "FAIL_DAYS", "EX-02: sessions after entry in which a close below the pivot sells (0 = off)."),
@@ -1817,6 +1842,7 @@ class MinerviniSpecStrategy(Strategy):
         base_id = e.get("pp_flag_high_date") if plan.setup == MV05 else e.get("base_date")
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": MAX_STOP_PCT / 100, "base_id": base_id,
+                "max_entries_per_base": MAX_ENTRIES_PER_BASE,
                 "min_structural_r": MIN_STRUCTURAL_R,
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:

@@ -257,6 +257,9 @@ class PortfolioResult:
 
 
 PENDING_EXPIRY_BDAYS = 10
+# A base reopens only after one of these: the trade was shaken out, not finished. A trend exit
+# (EX-06) says the move itself is over, so buying the same base again is chasing it.
+RE_ENTRY_AFTER = frozenset({"STOP", "BREAKEVEN_STOP"})
 
 
 def _slip(price: float, bps: float, side: str) -> float:
@@ -388,7 +391,13 @@ def simulate(
     costs_total = 0.0
     taken = missed_slot = missed_cash = partial_fills = 0
     skipped: dict[str, int] = {}
-    bases_entered: set = set()
+    # (symbol, base_id) -> entries taken, and how the last one ended. A base used to be barred
+    # for good after one entry, which also barred the re-entry a shakeout invites: a trade stopped
+    # at breakeven has given up nothing about the base, it has only been shaken out of it. A
+    # strategy says how many attempts it allows via `max_entries_per_base` (default 1 = the old
+    # behaviour), and only a shakeout reopens it -- a trend exit means the move is over.
+    bases_entered: dict = {}
+    base_last_exit: dict = {}
 
     def skip(reason: str) -> None:
         skipped[reason] = skipped.get(reason, 0) + 1
@@ -411,6 +420,8 @@ def simulate(
     def close_out(sym: str, pos: PortfolioTrade, raw: float, reason: str, today) -> None:
         fill = sell(pos, raw, pos.held, today)
         pos.exit_date, pos.exit_reason = today, reason
+        if pos.meta.get("base_id") is not None:
+            base_last_exit[(sym, pos.meta["base_id"])] = reason
         # blended over any partial sale; exactly the fill when there was none
         pos.exit_price = pos.sold_value / pos.shares if pos.partial_shares else fill
         closed.append(pos)
@@ -600,10 +611,17 @@ def simulate(
                 skip("gapped past the whole reward")
                 del pending[sym]
                 continue
-            if meta.get("base_id") is not None and (sym, meta["base_id"]) in bases_entered:
-                skip("base already entered")
-                del pending[sym]
-                continue
+            if meta.get("base_id") is not None:
+                _key = (sym, meta["base_id"])
+                _taken = bases_entered.get(_key, 0)
+                if _taken >= int(meta.get("max_entries_per_base", 1) or 1):
+                    skip("base already entered")
+                    del pending[sym]
+                    continue
+                if _taken and base_last_exit.get(_key) not in RE_ENTRY_AFTER:
+                    skip("base's last trade was not shaken out")
+                    del pending[sym]
+                    continue
             slip = meta.get("slippage_bps", base_slip)
             entry = _slip(raw_entry, slip, "buy")
             risk_per_share = entry - order["stop"]
@@ -693,7 +711,8 @@ def simulate(
                            if pyramid_frac and shares < full_shares else float("nan")),
             )
             if meta.get("base_id") is not None:
-                bases_entered.add((sym, meta["base_id"]))
+                _k = (sym, meta["base_id"])
+                bases_entered[_k] = bases_entered.get(_k, 0) + 1
             taken += 1
             del pending[sym]
             if policy.mode == "minervini":
