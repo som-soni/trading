@@ -362,9 +362,10 @@ FNO_DOC = {
     "key": "fno_income",
     "name": "Index option credit spreads",
     "description": "Sell a {SHORT_DELTA}-delta NIFTY credit spread {WIDTH_PCT}% wide, "
-                   "{DTE_MIN}-{DTE_MAX} days out, only when India VIX is above its "
-                   "{VIX_PERCENTILE}th percentile; take half the credit or stop at "
-                   "{STOP_CREDIT_MULT}x it.",
+                   "{DTE_MIN}-{DTE_MAX} days out, only when India VIX is at or above its "
+                   "{VIX_PERCENTILE}th percentile: a put spread above the {TREND_SMA}-day average, a "
+                   "call spread below a falling one. Take half the credit, stop at "
+                   "{STOP_CREDIT_MULT}x it, or close {CLOSE_DAYS_BEFORE} days before expiry.",
     "status": (
         "THE RESULT IS THE COST ASSUMPTION, AND THE DATA CANNOT SUPPLY IT. Swept 24 "
         "configurations on NIFTY from 2012 -- 2 structures x 3 short deltas x 4 slippage "
@@ -390,72 +391,130 @@ FNO_DOC = {
     ),
     "thesis": "Index options usually price more movement than arrives, so a seller who stays far "
               "enough from the money collects the difference. This is the only CARRY mechanism in the "
-              "Learn module -- it is paid for time passing rather than for being right about "
-              "direction -- which is why it is worth measuring even though the answer turns out to be "
+              "Learn module: it is paid for time passing rather than for being right about "
+              "direction. That is why it is worth measuring even though the answer turns out to be "
               "a cost assumption.",
     "how_it_works": (
-        "Sell only when volatility is paid for: India VIX at or above its {VIX_PERCENTILE}th "
-        "percentile of the trailing {VIX_WINDOW} sessions. A percentile rather than a level, "
-        "because a VIX of 15 meant something different in 2017 than in 2020 and a fixed threshold "
-        "would make this a bet on the regime instead of a rule.",
-        "Direction follows the index: above its {TREND_SMA}-day average sell puts, below it and "
-        "falling sell calls, and a condor sells both sides at once.",
-        "Each leg's own implied volatility is recovered by inverting Black-Scholes on its own "
-        "settle price, and delta comes from that -- per leg, not one index-level volatility for the "
-        "whole chain, because selling the skew is the entire point. The risk-free rate is the repo "
-        "rate of the day, which ranged 4% to 8% over the window.",
-        "The sold strike is the listed strike nearest {SHORT_DELTA} delta; the protective strike is "
-        "the nearest one listed at least {WIDTH_PCT}% of the index further out. Expiry "
-        "{DTE_MIN}-{DTE_MAX} days away, and every leg needs {MIN_OPEN_INTEREST} contracts of open "
-        "interest.",
-        "Size by MAXIMUM LOSS -- (width minus credit) -- never by the margin blocked, at "
-        "{RISK_PCT}% of capital. A condor's maximum loss is the WORSE side's, not the sum, because "
-        "the index cannot finish beyond both short strikes.",
-        "Out at half the credit, or when closing costs {STOP_CREDIT_MULT} times the credit "
-        "received, or {CLOSE_DAYS_BEFORE} days before expiry -- whichever comes first.",
+        "The idea. Sell a NIFTY credit spread when options are expensive, on the side the trend "
+        "favours, and buy it back early — at half the profit, at a loss of about one credit, or a "
+        "{CLOSE_DAYS_BEFORE} days before expiry.",
+        "A credit spread. Sell one option close to the money and buy one further out of the money, "
+        "same type and expiry. The bought option caps the loss: the most the spread can lose is the "
+        "gap between the strikes minus the credit received.",
+        "Steps, each session, in order: price the open structure off that day's chain and close it "
+        "if an exit applies (see Exit); then, if flat, check the volatility gate, pick the expiry, "
+        "the side and the strikes, and sell (see Entry). One structure at a time; a new one can "
+        "open on the session the previous one closed.",
+        "Data and timing. {UNDERLYING} index options from NSE's daily bhavcopy, India only. Option "
+        "prices are the day's exchange settlement price (its close where no settle is given), the "
+        "index level is the Nifty 50 close, and the volatility gate reads India VIX. Everything is "
+        "end of day. The data has no bid or ask (see Caveats).",
+        "Where the rules come from. The Learn guide's income chapter; the credit test departs from "
+        "it (see Entry). There is no written spec with row ids for this strategy.",
     ),
     "entry_rules": (
-        "India VIX at or above its {VIX_PERCENTILE}th percentile of the trailing {VIX_WINDOW} "
-        "sessions, and an expiry {DTE_MIN}-{DTE_MAX} days out with legs carrying at least "
-        "{MIN_OPEN_INTEREST} contracts of open interest.",
-        "Short strike within {DELTA_TOL} of {SHORT_DELTA} delta, computed from that leg's own "
-        "implied volatility. If the chain has no leg that close to the target, no trade -- "
-        "substituting the nearest available strike is how a backtest trades structures that were "
-        "never on offer.",
-        "Credit must be at least {MIN_CREDIT_VS_DELTA} times the short delta, as a fraction of the "
-        "width. NOT the guide's flat 25% of width: see the comment on MIN_CREDIT_VS_DELTA -- those "
-        "two rules of the guide cannot both hold, and the flat version admits 1-7% of chains.",
-        "One structure at a time. Nothing is added to an open position.",
+        "Volatility gate. India VIX at or above the {vix_percentile}th percentile of its last "
+        "{VIX_WINDOW} sessions, that day included (at least 120 sessions of history needed). A "
+        "percentile rather than a level, because a VIX of 15 meant something different in 2017 than "
+        "in 2020.",
+        "Expiry. The nearest listed expiry, weekly or monthly, between {DTE_MIN} and {DTE_MAX} "
+        "calendar days away. None in that range: no trade that day.",
+        "Which side. Set by the Nifty 50 against its {TREND_SMA}-day simple average (`structure`, "
+        "default {structure}).\n\n"
+        "- **Close above the average:** sell a put spread.\n"
+        "- **Close below it, the average lower than 20 calendar days earlier:** sell a call "
+        "spread.\n"
+        "- **Close below it, the average not falling:** no trade.\n"
+        "- **`condor`:** sells a put spread and a call spread together whatever the trend; both "
+        "sides must pass every test below or neither is sold.\n"
+        "- **`both_sides`:** currently behaves exactly like the default.",
+        "Open interest. Only strikes with open interest of at least {MIN_OPEN_INTEREST} are "
+        "considered, for both legs. The bhavcopy counts open interest in units of the index, not in "
+        "contracts, so this is a floor of a few lots — a loose one.",
+        "Short strike. The strike whose delta, ignoring sign, is nearest {short_delta}, accepted "
+        "only within {DELTA_TOL} of it. Otherwise no trade: the nearest available strike is never "
+        "substituted.\n\n"
+        "- **Implied volatility:** found per option by inverting Black-Scholes on its own settle "
+        "price, searched between 1% and 300%. A price below 98% of intrinsic value is treated as "
+        "stale and the strike dropped.\n"
+        "- **Delta:** Black-Scholes delta from that volatility. Time to expiry is calendar days ÷ "
+        "365.25, the rate is the RBI repo rate on the day, dividends are left out.\n"
+        "- **Why per option:** one index-level volatility would ignore the skew, and selling the "
+        "skew is the point.",
+        "Long (protective) strike. The nearest listed strike at least {width_pct}% of the index level "
+        "further out of the money: below the sold put, above the sold call. The width is the actual "
+        "gap between the two strikes.",
+        "Credit test. Credit is the sold leg's settle minus the bought leg's settle, in index "
+        "points. It must be positive, and credit ÷ width at least {MIN_CREDIT_VS_DELTA} times the "
+        "sold leg's delta — with a {SHORT_DELTA}-delta short, at least {MIN_CREDIT_VS_DELTA} × "
+        "{SHORT_DELTA} of the width.\n\n"
+        "- **Differs from the guide:** the guide asks for a credit of at least 25% of the width. "
+        "Credit ÷ width runs at roughly 0.73 times the short delta, so that rule and the guide's "
+        "delta range cannot both hold; the flat rule admits only 1-7% of chains.",
+        "Fill. Both legs trade at that session's settle prices — the prices the decision was made "
+        "on. No slippage is charged at entry; the whole round trip's cost is charged at the exit.",
+        "Position size. The quantity is set so that the maximum loss is {risk_pct}% of the current "
+        "equity.\n\n"
+        "- **Maximum loss:** the width minus the credit, in index points. A condor's is the wider "
+        "side's width minus the total credit, because the index cannot finish beyond both sold "
+        "strikes.\n"
+        "- **Quantity:** equity × {risk_pct}% ÷ maximum loss, using realised equity only. It is a "
+        "fractional number of index units, not whole exchange lots, and margin is not modelled.",
+        "When no trade is taken. A structure is already open; the VIX gate fails; no expiry is in "
+        "range; the trend picks neither side; or a leg fails the delta, strike, open-interest or "
+        "credit test.",
     ),
     "exit_rules": (
-        "At {PROFIT_TARGET_FRAC} of the maximum profit. The rest of the credit takes longest to "
-        "earn and carries the most gamma.",
-        "Or when buying the structure back costs {STOP_CREDIT_MULT} times the credit received.",
-        "Or {CLOSE_DAYS_BEFORE} days before expiry regardless, so nothing is held into the "
-        "expiry-week gamma.",
-        "Marked daily off the STORED chain for the same strikes, never re-modelled: a "
-        "Black-Scholes mark would replace the market's own skew with the model's and flatter a "
-        "short-volatility book exactly when the skew steepens, which is when it is losing.",
+        "Daily mark. Each session after the entry, the structure is priced at what it costs to buy "
+        "back: the sold legs' settle minus the bought legs' settle, for the same strikes, from that "
+        "day's stored chain — never a model price, which would replace the market's own skew with "
+        "the model's and flatter the seller exactly when the skew steepens. A leg with no stored "
+        "price that day is valued at its intrinsic value. The first rule below that applies closes "
+        "the whole structure at that day's mark.",
+        "Profit target. The mark is at or below (1 − {PROFIT_TARGET_FRAC}) times the credit, so at "
+        "least {PROFIT_TARGET_FRAC} of the maximum profit is kept. There is no resting order: it is "
+        "checked on the day's settle, and the exit is at that settle, which can be better than the "
+        "target. The rest of the credit takes longest to earn and carries the most gamma.",
+        "Stop. The mark is at or above {STOP_CREDIT_MULT} times the credit received, which is a loss "
+        "of about one credit plus costs. It is checked only on the day's settle, so a gap can carry "
+        "the mark well past {STOP_CREDIT_MULT} times the credit before it is seen. The loss is then "
+        "limited only by the spread's maximum loss (width minus credit).",
+        "Time exit. With {CLOSE_DAYS_BEFORE} calendar days or fewer to expiry the structure is "
+        "closed regardless, so nothing is held into expiry-week gamma and nothing is held to expiry.",
+        "Order. The profit target is tested first, then the stop, then the time exit. On a day with "
+        "no stored chain for the expiry, the target and the stop are skipped; only the time exit "
+        "can act.",
+        "Cost. {cost_points} index points per leg for the round trip (2 legs for a spread, 4 for a "
+        "condor), times the quantity, charged at the exit. It stands in for the bid-ask spread and "
+        "every other charge, none of which the data carries.",
     ),
     "caveats": (
         "**NO BID/ASK EXISTS IN THE DATA, and it decides the answer.** The bhavcopy carries settle, "
-        "close, volume and open interest -- not quotes. Sellers pay the spread twice per leg, four "
+        "close, volume and open interest, not quotes. Sellers pay the spread twice per leg, four "
         "times for a condor, and that cost is assumed here rather than measured. Since all 24 swept "
         "configurations change sign between 2 and 4 points per leg, no configuration of this "
         "strategy can be called profitable or unprofitable from stored data alone. Live quote "
         "capture is the only thing that would settle it.",
         "**The loss distribution is the real risk and a daily backtest understates it.** Marks come "
         "from daily settle prices, so a gap that opens through both strikes is scored at the day's "
-        "settle rather than at what it would have cost to get out intraday. Short premium fails on "
-        "exactly those days.",
+        "settle rather than at what it would have cost to get out during the day. Short premium "
+        "fails on exactly those days.",
+        "**The equity curve counts only closed structures.** An open structure is not marked into "
+        "the curve, so a loss that builds and then recovers before the exit never shows as a "
+        "drawdown. The measured drawdown is a floor.",
+        "**A missing chain on a time-exit day is priced wrongly (a code flaw, noted not fixed).** "
+        "If no chain is stored for the expiry on that day, the exit price is the distance from the "
+        "index to the first sold strike, capped at the width. That is backwards for a spread still "
+        "out of the money: it books a winning spread as a loss of up to the full width. It needs a "
+        "day with no stored chain, so it is rare.",
         "**It risks under 1% of the book, so it cannot be compared with a fully invested index on "
         "return.** The headline excess is about -11 CAGR points in every cell and that number is "
         "meaningless; SELECTION is the fair comparison and it ranges +0.97 to -3.20.",
-        "**Index options only.** `derivatives_bhav` carries NSE index contracts, so the guide's "
-        "covered calls and cash-secured puts on individual stocks cannot be tested at all. The "
+        "**Index options only.** The stored derivatives data is NSE's, so the guide's covered calls "
+        "and cash-secured puts on individual stocks are not tested, and there are no US chains. The "
         "stored S&P500 OPTIDX rows are NSE's cross-listed contract, which stopped trading in 2017.",
         "**No event filter.** The guide excludes results, RBI policy and the Budget before expiry. "
-        "RBI and Budget dates are not stored as a series, so that filter is absent -- which should "
+        "RBI and Budget dates are not stored as a series, so that filter is absent, which should "
         "make this result slightly WORSE than a faithful implementation, not better.",
         "**Dividends are omitted from the pricing model.** NIFTY's yield is around 1.2% and enters "
         "delta an order of magnitude below the uncertainty in the recovered implied volatility.",
