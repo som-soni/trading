@@ -301,9 +301,9 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
 PEAD_DOC = {
     "key": "pead",
     "name": "Post-earnings drift",
-    "description": "Buy a confirmed earnings surprise -- profit growth above {MIN_YOY_GROWTH}% year on year, "
-                   "accelerating, revenue up {MIN_REVENUE_GROWTH}%, top fifth of the season, and the market "
-                   "agreeing on the day -- and hold for {HOLD_SESSIONS} sessions.",
+    "description": "Buy a confirmed earnings surprise -- profit growth of at least {MIN_YOY_GROWTH}% year on year, "
+                   "accelerating, revenue up at least {MIN_REVENUE_GROWTH}%, in the top {SEASON_RANK_TOP}% of the season so far, and the market "
+                   "agreeing over the first {REACTION_DAYS} sessions -- and hold for {HOLD_SESSIONS} sessions.",
     "status": (
         "THE PUBLISHED PREDICTION IS CONFIRMED, AND THE STRATEGY STILL FAILS. The Learn guide states the "
         "expected answer before any code existed: the drift has mostly disappeared in large US stocks since "
@@ -322,47 +322,111 @@ PEAD_DOC = {
         "Note it never loses much either: max drawdown -30.1% US and -12.4% India, against SPY's own -34%. "
         "This is a weak signal, not a dangerous one."
     ),
+    # Every rule below was checked against run() and load_events() above. There is no spec with row
+    # ids; the Learn guide research/learn-strat-pead.md §3 is the specification, cited by section.
     "thesis": "Ball and Brown (1968) found prices keep drifting in the direction of an earnings surprise for "
               "weeks afterwards, and Bernard and Thomas (1989) argued investors under-react because they do "
               "not fully grasp that quarterly earnings are serially correlated -- a good quarter predicts the "
               "next one more strongly than people price in. The trade is the oldest documented anomaly in "
               "the Learn module and the only one here whose signal comes from a filing rather than a price.",
     "how_it_works": (
-        "The event is the FILING DATE, not the quarter end. The market cannot react to a quarter until it is "
-        "published, and the gap between the two runs 30-60 days -- longer than the drift window being traded, "
-        "so keying off the quarter end would be pure lookahead.",
-        "Surprise is measured without analysts' forecasts, three ways: profit growth year on year, its "
-        "acceleration against the previous quarter, and SUE (the EPS change divided by its own standard "
-        "deviation over {MIN_QUARTERS} quarters), which is the measure Bernard and Thomas used. Year-ago "
-        "figures come from the company's own filing a year earlier, not from the restated comparative.",
-        "A filing qualifies when growth is at least {MIN_YOY_GROWTH}% AND in the top {SEASON_RANK_TOP}% of "
-        "the season so far AND accelerating AND revenue is up at least {MIN_REVENUE_GROWTH}%. The season rank "
-        "is an EXPANDING window within the season, because a company's rank against the full season is not "
-        "knowable on the day it reports.",
-        "The market has to agree: the stock must beat the index over the {REACTION_DAYS} sessions around the "
-        "filing, by more than {MIN_REACTION}% and no more than {MAX_REACTION}% -- above that it is an "
-        "episodic pivot, a different setup with different rules.",
-        "Bought at the close after the reaction window, {POSITION_PCT}% of the book, up to {MAX_POSITIONS} "
-        "positions, strongest SUE first. Sold after {HOLD_SESSIONS} sessions, or before the next filing, or "
-        "on a close below the reaction day's low.",
+        "The idea. Buy a company whose quarterly profit jumped, ranked near the top of its season, after "
+        "the market has confirmed the news, and hold it through the weeks of drift that follow. The rules "
+        "are the testable form of the Learn guide on post-earnings drift (its section 3). There is no spec "
+        "with row ids, so each rule names the guide rule it implements and says where it differs.",
+        "Step 1 — the surprise (Entry: the filing). Each stored quarterly filing is tested once, on four "
+        "numbers from the company's own results: profit growth, its season rank, its acceleration and "
+        "revenue growth.",
+        "Step 2 — the market agrees (Entry: the reaction). Over the first sessions after the filing the "
+        "stock must beat the index, but not by too much.",
+        "Step 3 — the buy (Entry: the buy). At the close of the next session, a fixed {POSITION_PCT}% of the "
+        "account, strongest surprise first.",
+        "Step 4 — the sale (Exit). A close below the reaction low, the next filing, or {HOLD_SESSIONS} "
+        "market sessions, whichever comes first. Every sale is at a close.",
+        "Data. The event is the FILING DATE, not the quarter end: the market cannot react to a quarter "
+        "until it is published, and the gap between the two runs 30-60 days. In the US it is the date the "
+        "quarter's figures were first filed with the SEC (the 10-Q, or the annual 10-K for a fourth "
+        "quarter); in India, the date of the results filing on NSE. Analysts' forecasts are not used.",
+        "Running it. `python3 -m swing_screener.backtesting.pead --market us --start 2010-01-01`. The "
+        "options are the holding period, the number of positions, the position size, the minimum growth, "
+        "the season rank and the cost per side.",
     ),
     "entry_rules": (
-        "All four fundamental conditions on the same filing: growth >= {MIN_YOY_GROWTH}% year on year, in the "
-        "top {SEASON_RANK_TOP}% of the season so far, accelerating against the previous quarter, and revenue "
-        "growth >= {MIN_REVENUE_GROWTH}%.",
-        "Plus the price confirmation: the stock beat the index over {REACTION_DAYS} sessions from the close "
-        "before the filing, by more than {MIN_REACTION}% and at most {MAX_REACTION}%.",
-        "Plus tradability on the entry bar: above the market's price floor and its 20-day turnover floor.",
-        "Bought at the close of the session after the reaction window. No trigger and no limit -- the event "
-        "has already happened, so there is nothing to wait for.",
+        "The filing: profit growth. Net profit is at least {MIN_YOY_GROWTH}% above the same quarter a year "
+        "earlier.\n\n"
+        "- **Year-ago quarter:** the company's stored quarter that ended 330 to 400 days before this one, "
+        "as it was first published then (not the restated figure in the new filing).\n"
+        "- **Year-ago profit:** must be above zero. A filing with a year-ago loss, or no year-ago quarter, "
+        "is never tested.\n\n"
+        "**Guide (§3 Setup):** the same.",
+        "The filing: season rank. The growth is in the top {SEASON_RANK_TOP}% of its season so far.\n\n"
+        "- **Season:** every stored filing for a quarter ending on the same date.\n"
+        "- **So far:** the filing is ranked by growth among that season's filings made on or before its "
+        "own date (same-day filers in alphabetical order). The first filer of a season ranks top by "
+        "definition, so it always passes.\n\n"
+        "**Guide (§3 Setup):** top fifth of all companies reporting that season. Differs: the full season "
+        "is not known on the day a company reports, so ranking against it would be lookahead.",
+        "The filing: acceleration. This quarter's growth is more than {MIN_ACCELERATION} points above the "
+        "growth of the company's previous stored quarter (the previous one that had a year-ago quarter "
+        "with a profit). A company with no such previous quarter fails.\n\n"
+        "**Guide (§3 Setup):** acceleration above zero — the same.",
+        "The filing: revenue growth. Revenue is at least {MIN_REVENUE_GROWTH}% above the same quarter a year "
+        "earlier, so the profit rise is not only cost cuts or one-off gains. A filing with no positive "
+        "year-ago revenue fails.\n\n"
+        "**Guide (§3 Setup):** the same.",
+        "The reaction. The stock beats the benchmark index by more than {MIN_REACTION}% and at most "
+        "{MAX_REACTION}%.\n\n"
+        "- **Span:** from the close of the last session before the filing date to the close "
+        "{REACTION_DAYS} sessions later, counting the first session on or after the filing date as the "
+        "first.\n"
+        "- **Measure:** the stock's return minus the index's return over the same span, in % points.\n"
+        "- **Ceiling:** a bigger jump is an episodic pivot, which the Earnings gaps strategy trades.\n\n"
+        "**Guide (§3 Setup and Entry):** the same.",
+        "The buy. At the close of the session after the reaction span — the third session counting the "
+        "filing day. There is no trigger and no limit order: the event has already happened.\n\n"
+        "**Guide (§3 Entry):** the close of the second session after the results — the same session.",
+        "Tradable on the buy day. The close must be at or above the market's price floor, and the 20-day "
+        "average traded value (close × volume) at or above its liquidity floor — the screener's floors "
+        "($10 and $10 million in the US; no price floor and ₹50 crore in India, as configured in October "
+        "2026).\n\n"
+        "**Guide (§3 Universe):** $5 or ₹50 and $5 million or ₹5 crore. Differs: the market's own floors "
+        "are used, and they are higher.",
+        "Size. Each buy spends {POSITION_PCT}% of the account (cash plus open positions at the day's close), "
+        "or the cash left if that is less. Fractional shares are allowed. It is not sized from the stop, so "
+        "the amount lost at the stop varies from trade to trade.\n\n"
+        "**Guide (§3 Position size):** either risk 0.5% per trade sized from the stop, or equal weights of "
+        "at most 10% with no stop. Differs: this mixes the two — equal weights, and a stop as well.",
+        "Positions and ties. At most {MAX_POSITIONS} positions, one per company. When more filings "
+        "qualify on a session than there are free slots, the largest standardised surprise (SUE) is "
+        "bought first, then the highest growth; the rest are dropped, not kept for later.\n\n"
+        "- **SUE:** the change in EPS against the same quarter a year earlier, divided by the standard "
+        "deviation of that change over the previous {MIN_QUARTERS} quarters (at least 4 needed; with "
+        "fewer it counts as 0). It only ranks; it is not a filter.\n\n"
+        "**Guide (§3 Setup):** SUE is one of the three surprise measures. The guide's minimum of "
+        "{MIN_QUARTERS} quarters of history is not enforced.",
+        "Costs. {cost_bps} basis points of the amount traded, on each side. No slippage is added on top.",
     ),
     "exit_rules": (
-        "After {HOLD_SESSIONS} sessions, counted in MARKET sessions rather than the symbol's own, so a "
-        "halted or thin stock cannot stretch its own holding period.",
-        "Or before the company's next filing, whichever comes first -- holding through a results date means "
-        "holding through a gap the strategy has no view on.",
-        "Or on a close below the reaction day's low, which says the surprise has been rejected.",
-        "There is no target. The thesis is a drift over weeks, so the clock is the exit.",
+        "Each session after the buy, the position is checked at the close against these rules, in this "
+        "order, and the first that applies sells everything at that close. Exits are settled before the "
+        "day's buys, so cash freed by a sale can be spent the same session.",
+        "Stop. A close below the low of the last session of the reaction span (the session before the "
+        "buy). It is not a standing order: nothing sells during the day, and the sale is at the close, "
+        "which can be well below the stop.\n\n"
+        "**Guide (§3 Initial stop):** a close below the reaction-day low — the same.",
+        "Next results. The close of the first session on or after the company's next stored filing date. "
+        "That is the filing day itself, not the day before, so the results' own reaction is held whenever "
+        "it comes before that close — a release before or during the session, or, in the US, a press "
+        "release days before the SEC filing. Only filings that have a year-ago quarter with a profit are "
+        "in that list, so a next filing without one is missed.\n\n"
+        "**Guide (§3 Exits):** just before the next results date. Differs: the sale comes on, not "
+        "before, the filing date (see Caveats).",
+        "Drift window. After {HOLD_SESSIONS} sessions, counted in the benchmark's trading sessions rather "
+        "than the stock's own, so a halted or thin stock cannot stretch its holding period.\n\n"
+        "**Guide (§3 Exits):** the same.",
+        "No target, and no rank exit. The thesis is a drift over weeks, so the clock is the exit. The "
+        "guide's rank exit — sell if the next quarter's growth falls out of the top two-fifths — is not "
+        "implemented. A position open when the backtest ends is valued at its last close.",
     ),
     "caveats": (
         "**THE UNIVERSE IS SELECTED ON OUTCOME, and this is the most serious defect in any result here.** "
@@ -374,6 +438,20 @@ PEAD_DOC = {
         "31.49% a year from 2022 against the Nifty 500's 8.22%, a premium of +23.27 with no stock selection "
         "whatsoever. The US set is a wider slice over a longer window and its premium is +1.71, so the US "
         "result is far less affected -- which is the one to read.",
+        "**In the US the event date can lag the news.** The stored date is the SEC filing of the quarter's "
+        "figures, which comes on or after the results press release and, for a fourth quarter (the annual "
+        "10-K), can come weeks after it. On those events the reaction span measures days after the market "
+        "has already reacted, and the next-results exit sells after the next release's reaction. India's "
+        "dates are the exchange filing, which is the announcement.",
+        "**The next-results exit does not avoid the results gap.** It sells at the close of the filing day, "
+        "so whenever the results come out before that close the position holds through their reaction. "
+        "The guide's intent is to sell before.",
+        "**The price floor is applied to back-adjusted prices.** The US floor is tested on the stored close, "
+        "which is divided by every later split, so a stock that later split heavily can read under the floor "
+        "in its early years and be skipped exactly while it was rising.",
+        "**The 'R' figures in this strategy's reports are returns, not risk multiples.** A trade's R is its "
+        "profit divided by the amount invested (0.05 = 5%), because positions are sized as a share of the "
+        "account, not from the stop.",
         "**India's sample is too short and too narrow to conclude anything.** Filing dates begin in 2021, "
         "giving 4.8 years, 387 symbols and 203 trades, in a single strong mid-cap regime.",
         "**Low win rate with positive skew means the confidence interval is wide.** Under 30% of trades "
@@ -451,12 +529,18 @@ def main(argv: list[str] | None = None) -> dict | None:
     ap.add_argument("--strategy", default="pead")
     ap.add_argument("--market", required=True, choices=list(MARKETS.keys()))
     ap.add_argument("--start", required=True)
-    ap.add_argument("--hold-sessions", type=int, default=PeadStrategy.hold_sessions)
-    ap.add_argument("--max-positions", type=int, default=PeadStrategy.max_positions)
-    ap.add_argument("--position-pct", type=float, default=PeadStrategy.position_pct)
-    ap.add_argument("--min-yoy", type=float, default=PeadStrategy.min_yoy)
-    ap.add_argument("--season-top", type=float, default=PeadStrategy.season_top)
-    ap.add_argument("--cost-bps", type=float, default=PeadStrategy.cost_bps)
+    ap.add_argument("--hold-sessions", type=int, default=PeadStrategy.hold_sessions,
+                    help="drift window: market sessions a position is held before the time exit")
+    ap.add_argument("--max-positions", type=int, default=PeadStrategy.max_positions,
+                    help="most positions held at once, one per company")
+    ap.add_argument("--position-pct", type=float, default=PeadStrategy.position_pct,
+                    help="percent of the account (cash plus positions) spent on each buy")
+    ap.add_argument("--min-yoy", type=float, default=PeadStrategy.min_yoy,
+                    help="minimum net-profit growth, %% over the same quarter a year earlier")
+    ap.add_argument("--season-top", type=float, default=PeadStrategy.season_top,
+                    help="growth must rank in this top %% of the filings for the same quarter so far")
+    ap.add_argument("--cost-bps", type=float, default=PeadStrategy.cost_bps,
+                    help="cost per side, basis points of the amount traded")
     ap.add_argument("--no-ingest", action="store_true")
     a = ap.parse_args(argv)
 
