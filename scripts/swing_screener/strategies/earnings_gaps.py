@@ -88,8 +88,15 @@ EG01 = "S1"   # EG-01: the break of the reaction day's high
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-22",
+         "The backtest takes trades. A signal now places its buy-stop (entry_signal_fired is true "
+         "whenever the setup is present, as for Minervini's pivot buy), where before it was never "
+         "true, so the backtest dropped every setup before a plan was made. The backtest command "
+         "adds --accept-labels 'TRADE ON TRIGGER', the strategy's best decision; the default "
+         "accepts only TRADE - HIGH CONFIDENCE, which it never reaches. No entry, stop or exit "
+         "rule changed: 1.0 never traded in a backtest."),
         ("1.0", "2026-10-22",
          "First version, from the Learn guide: a results-day reaction of at least "
          "{MIN_MOVE_PCT}% close-to-close or a {MIN_GAP_PCT}% opening gap, on at least "
@@ -123,7 +130,7 @@ class EarningsGapStrategy(Strategy):
     extra_numeric_columns = ("reaction_high", "reaction_low", "reaction_move_pct",
                              "reaction_rel_volume", "reaction_close_pos")
     backtest_start = "2020-01-01"
-    backtest_args = "--exit-mode ma --no-target --ma-col sma20"
+    backtest_args = "--exit-mode ma --no-target --ma-col sma20 --accept-labels 'TRADE ON TRIGGER'"
 
     thesis = (
         "A large surprise changes what a business is worth, but investors do not all act on the "
@@ -136,7 +143,7 @@ class EarningsGapStrategy(Strategy):
     )
     # Every rule below was checked against the code that trades it: _reaction_day, evaluate,
     # build_plans, signal_meta and classify above, and portfolio_sim.simulate under this strategy's
-    # backtest_args (--exit-mode ma --no-target --ma-col sma20). The rules come from the Learn guide
+    # backtest_args (--exit-mode ma --no-target --ma-col sma20 --accept-labels 'TRADE ON TRIGGER'). The rules come from the Learn guide
     # research/learn-strat-earnings-gaps.md; the page describes the code, and where it departs from
     # the guide is one caveat.
     how_it_works = (
@@ -156,10 +163,6 @@ class EarningsGapStrategy(Strategy):
         "on, during the day. The stop sells during the day; the 20-day exit sells at that day's close.",
     )
     caveats = (
-        "The backtest command as shown takes no trades. A backtest accepts only TRADE - HIGH "
-        "CONFIDENCE decisions unless told otherwise, and this strategy's best decision is TRADE ON "
-        "TRIGGER. Add `--accept-labels 'TRADE ON TRIGGER'` to the command until the strategy's "
-        "default backtest arguments include it.",
         "Only stocks with stored quarterly results can ever trade. With nothing to link a move to, "
         "G3 refuses it. Without the link the trade would be buying random spikes, but it shrinks the universe hard: about 1,800 US and 580 Indian symbols "
         "had stored, dated quarters in October 2026. When the strategy was built, an alphabetical "
@@ -392,8 +395,8 @@ class EarningsGapStrategy(Strategy):
                                  "buy-stop, so its best tier is TRADE ON TRIGGER.",
         "TRADE_ON_TRIGGER": "G1 to G4 pass and the plan is valid: place the buy-stop "
                             "{ENTRY_BUFFER_PCT}% above the reaction high. W1 and W2 add their "
-                            "notes to the reason but do not lower the tier. A backtest takes these "
-                            "only with --accept-labels 'TRADE ON TRIGGER'.",
+                            "notes to the reason but do not lower the tier. The backtest command "
+                            "takes these (--accept-labels 'TRADE ON TRIGGER').",
         "WATCH_WAIT": "The plan is valid but not one share fits — one share would risk more than "
                       "the risk budget, or be worth more than the largest-position cap (reason: "
                       "too large for account). Or a risk-off market lowered TRADE ON TRIGGER to "
@@ -574,9 +577,10 @@ class EarningsGapStrategy(Strategy):
     # ---------- entry ----------
 
     def entry_signal_fired(self, ctx: StockContext, result: StrategyResult) -> bool:
-        """The reaction day is the signal; the break of its high is the TRIGGER, and a resting
-        buy-stop is what fills it. So this is never "already fired" on the signal bar."""
-        return False
+        """The setup places its order today: a resting buy-stop above the reaction high, filled by
+        the break of that high from the next session on. Like Minervini's MV-02, the order IS the
+        signal -- returning False here made the backtest drop every setup before it was planned."""
+        return result.has_setup
 
     def setup_quality(self, result: StrategyResult) -> float:
         """Relative volume is the guide's strongest claim about which gaps hold, so it ranks."""
