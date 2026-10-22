@@ -518,7 +518,7 @@
   },
   "stage_analysis": {
     "family": "stage_analysis",
-    "fingerprint": "5c1ce426",
+    "fingerprint": "1d691c80",
     "params": {
       "BASE_MAX_DEPTH_PCT": 30.0,
       "BASE_MAX_WEEKS": 104,
@@ -543,7 +543,8 @@
         "G5",
         "G6",
         "G7",
-        "G8"
+        "G8",
+        "G9"
       ],
       "min_bars": 330,
       "setup_codes": [
@@ -555,7 +556,7 @@
         "W3"
       ]
     },
-    "version": "2.1"
+    "version": "2.2"
   },
   "trend_pullback": {
     "family": "trend_pullback",

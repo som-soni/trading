@@ -17822,7 +17822,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -17848,7 +17849,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -17874,7 +17876,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -17900,7 +17903,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -17931,7 +17935,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "plan": {
     "entry": 84.0,
@@ -17971,7 +17976,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 1748.25,
@@ -18006,7 +18012,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18037,7 +18044,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "plan": {
     "entry": 18.55,
@@ -18077,7 +18085,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 2115.05,
@@ -18112,7 +18121,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18138,7 +18148,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18164,7 +18175,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18190,7 +18202,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18216,7 +18229,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18242,7 +18256,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18268,7 +18283,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18294,7 +18310,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18325,7 +18342,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 1740.05,
@@ -18360,7 +18378,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18391,7 +18410,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "plan": {
     "entry": 781.0,
@@ -18431,7 +18451,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 446.55,
@@ -18471,7 +18492,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "plan": {
     "entry": 708.05,
@@ -18506,7 +18528,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18532,7 +18555,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18558,7 +18582,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18584,7 +18609,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18610,7 +18636,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18636,7 +18663,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18662,7 +18690,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -18688,7 +18717,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -18714,7 +18744,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18740,7 +18771,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18766,7 +18798,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18792,7 +18825,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18818,7 +18852,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18844,7 +18879,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18870,7 +18906,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -18896,7 +18933,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18922,7 +18960,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18948,7 +18987,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -18974,7 +19014,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19000,7 +19041,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19026,7 +19068,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19052,7 +19095,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19078,7 +19122,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19104,7 +19149,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19130,7 +19176,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19156,7 +19203,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19182,7 +19230,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19208,7 +19257,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19234,7 +19284,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19260,7 +19311,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19286,7 +19338,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19312,7 +19365,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19338,7 +19392,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19369,7 +19424,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 203.85,
@@ -19404,7 +19460,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19430,7 +19487,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19456,7 +19514,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19482,7 +19541,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19508,7 +19568,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19534,7 +19595,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19560,7 +19622,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19586,7 +19649,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19612,7 +19676,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19638,7 +19703,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19664,7 +19730,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -19695,7 +19762,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 48.05,
@@ -19730,7 +19798,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19761,7 +19830,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "plan": {
     "entry": 334.05,
@@ -19796,7 +19866,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -19827,7 +19898,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 278.7,
@@ -19867,7 +19939,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 49.5,
@@ -19902,7 +19975,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19928,7 +20002,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -19959,7 +20034,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 2169.85,
@@ -19994,7 +20070,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20020,7 +20097,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20046,7 +20124,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20072,7 +20151,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20098,7 +20178,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20124,7 +20205,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20155,7 +20237,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 564.0,
@@ -20190,7 +20273,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20216,7 +20300,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -20242,7 +20327,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20268,7 +20354,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20294,7 +20381,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20320,7 +20408,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20346,7 +20435,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20372,7 +20462,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20403,7 +20494,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 672.55,
@@ -20438,7 +20530,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20469,7 +20562,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 4149.45,
@@ -20504,7 +20598,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20530,7 +20625,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20556,7 +20652,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20582,7 +20679,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20608,7 +20706,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20634,7 +20733,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20660,7 +20760,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20686,7 +20787,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -20712,7 +20814,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20738,7 +20841,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20764,7 +20868,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20795,7 +20900,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 126.65,
@@ -20830,7 +20936,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20856,7 +20963,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -20882,7 +20990,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20908,7 +21017,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -20934,7 +21044,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -20965,7 +21076,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 5250.05,
@@ -21000,7 +21112,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -21026,7 +21139,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -21052,7 +21166,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -21078,7 +21193,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -21109,7 +21225,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 2044.35,
@@ -21144,7 +21261,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -21170,7 +21288,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -21196,7 +21315,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     true,
@@ -44182,7 +44302,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -44208,7 +44329,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -44234,7 +44356,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -44260,7 +44383,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44286,7 +44410,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -44312,7 +44437,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -44338,7 +44464,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -44364,7 +44491,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44390,7 +44518,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44416,7 +44545,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44447,7 +44577,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 32.87,
@@ -44482,7 +44613,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44508,7 +44640,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44534,7 +44667,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44560,7 +44694,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44591,7 +44726,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 68.65,
@@ -44631,7 +44767,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 3.17,
@@ -44666,7 +44803,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -44692,7 +44830,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -44718,7 +44857,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44744,7 +44884,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44775,7 +44916,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 57.4,
@@ -44815,7 +44957,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 557.01,
@@ -44850,7 +44993,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44876,7 +45020,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44902,7 +45047,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -44928,7 +45074,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -44954,7 +45101,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -44980,7 +45128,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45011,7 +45160,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 16.16,
@@ -45046,7 +45196,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45072,7 +45223,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45098,7 +45250,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45124,7 +45277,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45150,7 +45304,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -45181,7 +45336,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 462.01,
@@ -45216,7 +45372,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45242,7 +45399,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45268,7 +45426,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45299,7 +45458,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 36.34,
@@ -45334,7 +45494,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45360,7 +45521,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45386,7 +45548,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45412,7 +45575,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45438,7 +45602,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45464,7 +45629,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -45490,7 +45656,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45516,7 +45683,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45547,7 +45715,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 40.61,
@@ -45582,7 +45751,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45608,7 +45778,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45634,7 +45805,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45660,7 +45832,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45686,7 +45859,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45712,7 +45886,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45738,7 +45913,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45764,7 +45940,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45795,7 +45972,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 47.68,
@@ -45830,7 +46008,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45861,7 +46040,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 11.1,
@@ -45896,7 +46076,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45922,7 +46103,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -45948,7 +46130,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -45974,7 +46157,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46005,7 +46189,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 32.0,
@@ -46040,7 +46225,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46066,7 +46252,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46092,7 +46279,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46118,7 +46306,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46144,7 +46333,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46170,7 +46360,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46196,7 +46387,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46227,7 +46419,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 54.48,
@@ -46262,7 +46455,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46288,7 +46482,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -46314,7 +46509,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46340,7 +46536,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -46366,7 +46563,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46392,7 +46590,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46418,7 +46617,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46449,7 +46649,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "plan": {
     "entry": 48.33,
@@ -46484,7 +46685,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46510,7 +46712,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46536,7 +46739,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46562,7 +46766,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46593,7 +46798,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 79.78,
@@ -46628,7 +46834,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -46654,7 +46861,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -46680,7 +46888,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46706,7 +46915,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46732,7 +46942,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46763,7 +46974,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": true
    },
    "plan": {
     "entry": 17.3,
@@ -46798,7 +47010,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46824,7 +47037,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46855,7 +47069,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 13.76,
@@ -46890,7 +47105,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -46916,7 +47132,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -46942,7 +47159,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46968,7 +47186,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -46994,7 +47213,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47020,7 +47240,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -47046,7 +47267,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47077,7 +47299,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 138.83,
@@ -47112,7 +47335,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47138,7 +47362,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47164,7 +47389,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     true,
@@ -47190,7 +47416,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47221,7 +47448,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "plan": {
     "entry": 56.0,
@@ -47256,7 +47484,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47282,7 +47511,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -47308,7 +47538,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47326,11 +47557,11 @@
   },
   "USPH": {
    "decision": {
-    "label": "WATCH - WAIT",
+    "label": "AVOID",
     "quality": 1.0,
-    "reason": "breakout above the base's high, into Stage 2; breakout volume below the threshold"
+    "reason": "fails G9: the stock itself is still in Stage 4"
    },
-   "first_hard_fail": null,
+   "first_hard_fail": "G9",
    "hard_gates": {
     "G1": true,
     "G2": true,
@@ -47339,7 +47570,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "plan": {
     "entry": 85.730003,
@@ -47374,7 +47606,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,
@@ -47400,7 +47633,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47426,7 +47660,8 @@
     "G5": false,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47452,7 +47687,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47478,7 +47714,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47504,7 +47741,8 @@
     "G5": false,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47530,7 +47768,8 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": false,
+    "G9": false
    },
    "prefilter": [
     false,
@@ -47556,7 +47795,8 @@
     "G5": true,
     "G6": false,
     "G7": true,
-    "G8": true
+    "G8": true,
+    "G9": true
    },
    "prefilter": [
     false,

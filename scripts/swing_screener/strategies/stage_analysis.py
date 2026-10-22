@@ -228,8 +228,24 @@ class StageAnalysisStrategy(Strategy):
                    "own high and a {MA_WEEKS}-week average that is no longer declining, on "
                    "{VOL_MULT}x volume -- and hold while the weekly close stays above the line.")
     family = "stage_analysis"
-    version = "2.1"
-    changelog = (("2.1", "2026-10-21",
+    version = "2.2"
+    changelog = (("2.2", "2026-10-22",
+                  "G9: the STOCK's own stage. G7 asks the market not to be in Stage 4 and G8 asks "
+                  "the sector, and nothing asked it of the stock -- so a breakout could be bought "
+                  "while this strategy's own state machine still called the stock declining. Over "
+                  "the Indian run 10 of 241 trades were, and the new gate refuses all ten and "
+                  "nothing else. They were close to free (+0.94R to -1.01R, -0.1R in sum), so this "
+                  "buys coherence rather than performance: the band on the chart and the entry now "
+                  "answer the same question. The machine holds Stage 4 until the next stage's "
+                  "condition has held {CONFIRM_WEEKS} weeks, and that lag is the point -- a base "
+                  "that has not yet earned Stage 1 has not shown the selling stopped. Read off "
+                  "completed weeks, so it matches what the chart paints. Stage 3 still only warns "
+                  "(W2) rather than blocking, as it does one layer up. Entering in Stage 1 remains "
+                  "correct and is untouched: that is the breakout out of the base, and the band "
+                  "turns green about {CONFIRM_WEEKS} weeks later if the move holds. The fingerprint "
+                  "moves with the gate list, which spec_params reads, so the version gate asked "
+                  "for this bump rather than it being a hand call."),
+                 ("2.1", "2026-10-21",
                   "The flat band is a FIXED {FLAT_BAND_PCT}% over {SLOPE_WEEKS} weeks -- the Learn "
                   "guide's own rule and the daily stage cycle's -- instead of 0.6 x "
                   "the stock's weekly-return stdev. That band measured the wrong quantity: a "
@@ -305,12 +321,12 @@ class StageAnalysisStrategy(Strategy):
 
     screen_key = "near_highs"
     screen_gates = {"G1": "H1", "G2": "H2", "G3": "H3"}
-    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9")
     gate_titles = {
         "G1": "Above the 200-day", "G2": "200-day not falling", "G3": "Near the 52-week high",
         "G4": "Weekly close above the 30-week line", "G5": "30-week line not falling",
         "G6": "Mansfield RS positive or improving", "G7": "Market not in Stage 4",
-        "G8": "Sector not in Stage 4",
+        "G8": "Sector not in Stage 4", "G9": "The stock not in Stage 4",
     }
     watch_codes = ("W1", "W2", "W3")
     setup_codes = (STG01,)
@@ -417,6 +433,11 @@ class StageAnalysisStrategy(Strategy):
         "G7": "Forest before trees: the market's own index is not in Stage 4.",
         "G8": "The same test one layer down: the stock's SECTOR index is not in Stage 4. Passes "
               "with a note when no sector index is mapped or stored.",
+        "G9": "The last layer: the STOCK itself is not in Stage 4, read off the same state machine "
+              "the chart paints. G7 and G8 ask this of the market and the sector; without it a "
+              "breakout could be bought while this strategy's own machine still called the stock "
+              "declining. Judged on completed weeks, and Stage 3 only warns (W2) rather than "
+              "blocking, as it does one layer up.",
     }
     watch_docs = {
         "W1": "The breakout week's volume was below {VOL_MULT}x the previous {VOL_WEEKS} weeks' "
@@ -578,7 +599,7 @@ class StageAnalysisStrategy(Strategy):
         self.apply_screen(ctx, result)
 
         if len(wk) < MA_WEEKS + SLOPE_WEEKS + 1:
-            for g in ("G4", "G5", "G6", "G7", "G8"):
+            for g in ("G4", "G5", "G6", "G7", "G8", "G9"):
                 result.fail(g, "insufficient weekly history")
             result.recompute_first_fail()
             return result
@@ -657,6 +678,20 @@ class StageAnalysisStrategy(Strategy):
                 result.fail("G8", f"sector index {tick} is in Stage 4")
             else:
                 result.ok("G8", f"sector index {tick} in Stage {sstage or 'unknown'}")
+
+        # Forest, then trees, then the tree itself. G7 and G8 asked the market and the sector; the
+        # stock's own stage went unasked, so a breakout could be bought while this strategy's own
+        # machine still read the stock as declining -- 10 of 241 trades in the Indian run were.
+        # The machine holds Stage 4 until the next stage's condition has held CONFIRM_WEEKS, and
+        # that lag is the point rather than a thing to route around: a base that has not yet earned
+        # Stage 1 has not shown that the selling stopped. Completed weeks only, to read what the
+        # chart's band reads. Stage 3 is left to W2, which warns without blocking, as one layer up.
+        own = stage_series(done)
+        ostage = int(own.iloc[-1]) if len(own) and own.iloc[-1] == own.iloc[-1] else 0
+        if ostage == 4:
+            result.fail("G9", "the stock itself is still in Stage 4")
+        else:
+            result.ok("G9", f"the stock is in Stage {ostage or 'unknown'}")
 
         # ---- the base, its resistance, and the breakout week
         hist = wk.iloc[:-1]
