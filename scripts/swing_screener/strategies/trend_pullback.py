@@ -125,8 +125,7 @@ class TrendPullbackStrategy(Strategy):
         "session, by buy-stop, and the order waits up to 10 business days.",
         "**Rule ids.** Codes were renamed in v1.2. In the original rule set the gates G1-G2 were W1-W2 "
         "(weekly), G3-G8 were T1-T6 (trend) and G9-G14 were D2-D7 (daily); the watch flags W1-W9 were "
-        "X1-X9; the setups {TC01}, {TC02}, {TC04} are TC-01, TC-02, TC-04, with setup checks S-01 to S-05. "
-        "So \"Spec W1\" under a gate means the old weekly gate, not today's watch flag W1.",
+        "X1-X9; the setups {TC01}, {TC02}, {TC04} are TC-01, TC-02, TC-04, with setup checks S-01 to S-05.",
     )
     caveats = (
         "**No demonstrated edge.** The portfolio backtest from 2013 trailed its index by roughly 9 to 11 "
@@ -169,131 +168,125 @@ class TrendPullbackStrategy(Strategy):
     )
     gate_docs = {
         "G1": "Weekly close above a 30-week EMA that is itself rising.\n\n"
-              "- **Test:** the latest weekly close (this week's bar so far) is above the 30-week exponential "
-              "average of weekly closes, and that average is higher than one week earlier.\n"
+              "- **Test:** the latest weekly close (this week's bar so far) is above the 30-week "
+              "exponential average of weekly closes, and that average is higher than one week "
+              "earlier.\n"
               "- **History:** fails with fewer than 31 weekly bars.\n\n"
-              "Screen criterion U1. **Spec W1:** same.",
+              "Screen criterion U1.",
         "G2": "Weekly 20-week average above the 50-week average.\n\n"
-              "- **Test:** the simple average of the last 20 weekly closes is strictly above that of the "
-              "last 50.\n"
+              "- **Test:** the simple average of the last 20 weekly closes is strictly above that of "
+              "the last 50.\n"
               "- **History:** fails with fewer than 50 weekly bars.\n\n"
-              "Screen criterion U2. **Spec W2:** same.",
-        "G3": "Daily 50-day average above the 200-day, and price has not broken down through the 50-day.\n\n"
+              "Screen criterion U2.",
+        "G3": "Daily 50-day average above the 200-day, and price has not broken down through the "
+              "50-day.\n\n"
               "- **Order:** the 50-day simple average is strictly above the 200-day.\n"
-              "- **No breakdown:** the close is not more than 2 ATR14 below the 50-day, and the last 5 "
-              "closes are not all below their day's 50-day.\n"
+              "- **No breakdown:** the close is not more than 2 ATR14 below the 50-day, and the last "
+              "5 closes are not all below their day's 50-day.\n"
               "- **History:** fails while the 50-day, the 200-day or ATR14 has no value.\n\n"
-              "A close slightly under the 50-day still passes; it raises W2 instead. Screen criterion U3. "
-              "**Spec T1:** same.",
+              "A close slightly under the 50-day still passes; it raises W2 instead. Screen "
+              "criterion U3.",
         "G4": "Neither the 50-day nor the 200-day average is falling.\n\n"
               "- **50-day falling:** more than 1% below its value 10 sessions ago.\n"
               "- **200-day falling:** more than 0.5% below its value 20 sessions ago.\n\n"
-              "A flat average passes; a flat 50-day raises W4. Screen criterion U4. **Spec T2:** same.",
+              "A flat average passes; a flat 50-day raises W4. Screen criterion U4.",
         "G5": "Higher swing lows over the last 50 sessions.\n\n"
-              "- **Two swing lows:** among the swing lows confirmed inside the last 50 sessions (a low that "
-              "is the lowest of the 3 sessions either side), the latest is strictly higher than the one "
-              "before it.\n"
-              "- **Fewer than two:** the lowest low of the last 25 sessions must be above the lowest low of "
-              "the 25 before.\n\n"
-              "Screen criterion U5. **Spec T3:** same.",
-        "G6": "Positive 12-1 month momentum: the close 21 sessions ago is above the close 252 sessions ago.\n\n"
+              "- **Two swing lows:** among the swing lows confirmed inside the last 50 sessions (a "
+              "low that is the lowest of the 3 sessions either side), the latest is strictly higher "
+              "than the one before it.\n"
+              "- **Fewer than two:** the lowest low of the last 25 sessions must be above the lowest "
+              "low of the 25 before.\n\n"
+              "Screen criterion U5.",
+        "G6": "Positive 12-1 month momentum: the close 21 sessions ago is above the close 252 "
+              "sessions ago.\n\n"
               "- **History:** fails with fewer than 253 daily bars.\n\n"
-              "Screen criterion U6. **Spec T4:** same.",
+              "Screen criterion U6.",
         "G7": "Close no more than 25% below the 52-week high.\n\n"
               "- **Test:** the close is at least 75% of the highest high of the last 252 sessions.\n"
               "- **History:** fails while there is no 52-week high (fewer than 20 sessions).\n\n"
-              "Screen criterion U7 (its ceiling is the screen's UPTREND_MAX_PCT_BELOW_52W_HIGH). "
-              "**Spec T5:** same.",
-        "G8": "Trend not fading: fails only when the 3-month return is negative AND the 50-day average is "
-              "flat or falling.\n\n"
+              "Screen criterion U7 (its ceiling is the screen's UPTREND_MAX_PCT_BELOW_52W_HIGH).",
+        "G8": "Trend not fading: fails only when the 3-month return is negative AND the 50-day "
+              "average is flat or falling.\n\n"
               "- **3-month return:** today's close against the close 63 sessions ago.\n"
               "- **Flat or falling:** the 50-day is not higher than 10 sessions ago.\n"
               "- **History:** fails with fewer than 64 daily bars.\n\n"
-              "Screen criterion U8. **Spec T6:** same.",
+              "Screen criterion U8.",
         "G9": "No earnings report due within 10 trading days.\n\n"
               "- **Test:** fails when the next earnings date is 10 or fewer trading days away.\n"
               "- **Unknown date:** passes.\n"
               "- **Backtest:** never applied — there is no point-in-time earnings calendar.\n\n"
-              "**Spec D2:** same. TRADE - HIGH CONFIDENCE uses a different window, 14 trading days (known "
-              "defect 4).",
+              "TRADE - HIGH CONFIDENCE uses a different window, 14 trading days (known defect 4).",
         "G10": "The pullback is not on rising volume.\n\n"
                "- **Pullback volume:** the average daily volume of the sessions after H.\n"
-               "- **Advance volume:** the average daily volume from L through H, both sessions included.\n"
-               "- **Test:** fails when the pullback average is higher than the advance average. Passes when "
-               "H is today (no pullback yet).\n\n"
-               "H and L are defined above the setups. {TC01} repeats this test as its check S-04. "
-               "**Spec D3:** same.",
+               "- **Advance volume:** the average daily volume from L through H, both sessions "
+               "included.\n"
+               "- **Test:** fails when the pullback average is higher than the advance average. "
+               "Passes when H is today (no pullback yet).\n\n"
+               "H and L are defined above the setups. {TC01} repeats this test as its check S-04.",
         "G11": "Close not below the prior structural swing low.\n\n"
-               "- **Prior swing low:** the last confirmed swing low before H (see the table above the "
-               "setups).\n"
-               "- **Test:** fails when today's close is below it; passes when there is none.\n\n"
-               "**Spec D4:** same.",
-        "G12": "No resistance within 3% above the close, unless the only such level is H and a setup is "
-               "present.\n\n"
-               "- **Resistance levels:** listed in the table above the setups — recent daily, weekly and "
-               "monthly swing highs, plus H.\n"
-               "- **Within 3%:** a level above the close and no higher than close × 1.03. Levels already "
-               "below the close do not count.\n"
-               "- **Exception:** when H is the only level in that band, the gate passes if {TC01} or {TC02} "
-               "is present — H is the high the setup exists to break.\n\n"
-               "**Spec D5:** same.",
+               "- **Prior swing low:** the last confirmed swing low before H (see the table above "
+               "the setups).\n"
+               "- **Test:** fails when today's close is below it; passes when there is none.",
+        "G12": "No resistance within 3% above the close, unless the only such level is H and a setup "
+               "is present.\n\n"
+               "- **Resistance levels:** listed in the table above the setups — recent daily, weekly "
+               "and monthly swing highs, plus H.\n"
+               "- **Within 3%:** a level above the close and no higher than close × 1.03. Levels "
+               "already below the close do not count.\n"
+               "- **Exception:** when H is the only level in that band, the gate passes if {TC01} or "
+               "{TC02} is present — H is the high the setup exists to break.",
         "G13": "Not too volatile: ATR14 no more than 8% of the close.\n\n"
-               "- **Test:** fails when ATR14 ÷ close × 100 is above 8. Passes when ATR14 has no value.\n\n"
-               "**Spec D6:** same.",
+               "- **Test:** fails when ATR14 ÷ close × 100 is above 8. Passes when ATR14 has no "
+               "value.",
         "G14": "No unfilled large gap in the last 10 sessions.\n\n"
                "- **Gap:** a session that opened more than 8% above or below the previous close.\n"
-               "- **Test:** fails when any of the last 10 sessions gapped and today's close is below the "
-               "close just before that gap. So a gap up fails once price falls back under where it gapped "
-               "from, and a gap down fails until price has closed back above it.\n\n"
-               "**Spec D7:** same.",
+               "- **Test:** fails when any of the last 10 sessions gapped and today's close is below "
+               "the close just before that gap. So a gap up fails once price falls back under where "
+               "it gapped from, and a gap down fails until price has closed back above it.",
     }
     watch_docs = {
-        "W1": "Extended: the close is more than 2.5 ATR14 above the 20-day average, or RSI14 is above 75.\n\n"
-              "- **Effect:** caps the decision at WATCH - WAIT; the note gives the 20-day as the level to "
-              "wait for.\n\n"
-              "**Spec X1:** same.",
+        "W1": "Extended: the close is more than 2.5 ATR14 above the 20-day average, or RSI14 is "
+              "above 75.\n\n"
+              "- **Effect:** caps the decision at WATCH - WAIT; the note gives the 20-day as the "
+              "level to wait for.",
         "W2": "The close is below the 50-day average while G3 still passes.\n\n"
-              "- **Effect:** caps the decision at TRADE ON TRIGGER, and lifts Plan A's level to at least "
-              "0.1% above the 50-day, so its buy-stop sits at least about 0.2% above it.\n\n"
-              "**Spec X2:** same.",
+              "- **Effect:** caps the decision at TRADE ON TRIGGER, and lifts Plan A's level to at "
+              "least 0.1% above the 50-day, so its buy-stop sits at least about 0.2% above it.",
         "W3": "Positive: the close is within 1 ATR14 of a rising 50-day average.\n\n"
               "- **Rising:** the 50-day is higher than 10 sessions ago.\n"
-              "- **Effect:** adds 1 to setup quality (the ranking score); no cap.\n\n"
-              "**Spec X3:** same.",
-        "W4": "The 50-day average is flat: not higher than 10 sessions ago, and not more than 1% lower.\n\n"
-              "- **Base:** the last 10 sessions span at most 4.5 ATR14 (highest high minus lowest low) and "
-              "the close is at least 90% of the 52-week high. No effect.\n"
-              "- **Drift:** anything else. Caps the decision at TRADE ON TRIGGER and subtracts 1 from setup "
-              "quality.\n\n"
-              "**Spec X4:** same.",
+              "- **Effect:** adds 1 to setup quality (the ranking score); no cap.",
+        "W4": "The 50-day average is flat: not higher than 10 sessions ago, and not more than 1% "
+              "lower.\n\n"
+              "- **Base:** the last 10 sessions span at most 4.5 ATR14 (highest high minus lowest "
+              "low) and the close is at least 90% of the 52-week high. No effect.\n"
+              "- **Drift:** anything else. Caps the decision at TRADE ON TRIGGER and subtracts 1 "
+              "from setup quality.",
         "W5": "Weak trend strength: ADX14 is at least 15 and below 20.\n\n"
-              "- **Base or drift:** judged as in W4. Drift subtracts 1 from setup quality; base has no "
-              "effect.\n"
-              "- **Never caps** the decision. The pre-screen already wants ADX14 above the market's minimum "
-              "(Parameters), so the flag covers the band from that minimum up to 20.\n\n"
-              "**Spec X5:** same.",
+              "- **Base or drift:** judged as in W4. Drift subtracts 1 from setup quality; base has "
+              "no effect.\n"
+              "- **Never caps** the decision. The pre-screen already wants ADX14 above the market's "
+              "minimum (Parameters), so the flag covers the band from that minimum up to 20.",
         "W6": "ADX14 is lower than it was 5 sessions ago.\n\n"
               "- **Healthy pause:** the close is at least 95% of H. No effect.\n"
-              "- **Momentum fading:** the close is more than 5% below H and nearer the 50-day than it was "
-              "5 sessions ago. Subtracts 1 from setup quality.\n"
+              "- **Momentum fading:** the close is more than 5% below H and nearer the 50-day than "
+              "it was 5 sessions ago. Subtracts 1 from setup quality.\n"
               "- **Otherwise:** noted as falling with no clear fade. No effect.\n\n"
-              "Never caps the decision. **Spec X6:** same.",
+              "Never caps the decision.",
         "W7": "Late move: ADX14 above 40 while W1 (extended) is set.\n\n"
-              "- **Effect:** forces Plan A (no switch to Plan B). W1 already caps the decision at WATCH - "
-              "WAIT.\n\n"
-              "**Spec X7:** same.",
+              "- **Effect:** forces Plan A (no switch to Plan B). W1 already caps the decision at "
+              "WATCH - WAIT.",
         "W8": "Weak momentum: RSI14 below 40 while the close is above the 50-day average.\n\n"
-              "- **Effect:** caps the decision at TRADE ON TRIGGER.\n\n"
-              "**Spec X8:** same.",
-        "W9": "Monthly structure not yet confirmed: the stock is recovering rather than in an established "
-              "monthly uptrend.\n\n"
-              "- **Raised when any of:** the latest monthly close (this month so far) is not above its "
-              "10-month average; the highest high of the last 12 months is not above that of the 12 months "
-              "before; the lowest low of the last 12 months is not above that of the 12 months before.\n"
+              "- **Effect:** caps the decision at TRADE ON TRIGGER.",
+        "W9": "Monthly structure not yet confirmed: the stock is recovering rather than in an "
+              "established monthly uptrend.\n\n"
+              "- **Raised when any of:** the latest monthly close (this month so far) is not above "
+              "its 10-month average; the highest high of the last 12 months is not above that of the "
+              "12 months before; the lowest low of the last 12 months is not above that of the 12 "
+              "months before.\n"
               "- **History:** never raised with fewer than 24 months.\n"
               "- **Effect:** caps the decision at TRADE ON TRIGGER.\n\n"
-              "**Spec X9:** the original hard gate M1. Differs: a watch flag, not a gate — as a gate it "
-              "rejected a genuine recovery as hard as an ongoing downtrend.",
+              "It was a hard gate in the original rules; as a gate it rejected a genuine recovery as "
+              "hard as an ongoing downtrend.",
     }
     pattern_title = "Swing points and setup checks"
     pattern_intro = (
@@ -323,23 +316,24 @@ class TrendPullbackStrategy(Strategy):
                 "average volume.",
     }
     setup_docs = {
-        TC01: "Pullback: the stock has pulled back from a high set 3-10 sessions ago by a measured amount, "
-              "on no more volume than the advance, and held its structure.\n\n"
-              "- **Checks:** S-01 depth, S-02 recent high, S-03 above the prior swing low, S-04 quiet "
-              "pullback (table above). All four must pass.\n"
+        TC01: "Pullback: the stock has pulled back from a high set 3-10 sessions ago by a measured "
+              "amount, on no more volume than the advance, and held its structure.\n\n"
+              "- **Checks:** S-01 depth, S-02 recent high, S-03 above the prior swing low, S-04 "
+              "quiet pullback (table above). All four must pass.\n"
               "- **Priority:** when {TC02} is also present, {TC01} sets the stop and the target.\n\n"
-              "Entry-eligible. **Spec TC-01:** same.",
-        TC02: "Tight base: the last 10 sessions have traded in a narrow range on below-average volume, above "
-              "the prior swing low.\n\n"
+              "Entry-eligible.",
+        TC02: "Tight base: the last 10 sessions have traded in a narrow range on below-average "
+              "volume, above the prior swing low.\n\n"
               "- **Checks:** S-05 tight and quiet, S-03 above the prior swing low (table above).\n"
-              "- **No depth or timing test:** unlike {TC01}, it does not ask how far below H the base "
-              "sits or how recent H is.\n\n"
-              "Entry-eligible. **Spec TC-02:** same (see known defect 3 for its 10-session window).",
-        TC04: "Near the highs: the close is within 2% of the 55-session high or of the 52-week high.\n\n"
-              "- **Test:** the close is at least 98% of the highest high of the last 55 sessions, or of the "
-              "last 252.\n"
+              "- **No depth or timing test:** unlike {TC01}, it does not ask how far below H the "
+              "base sits or how recent H is.\n\n"
+              "Entry-eligible. Its 10-session window is known defect 3.",
+        TC04: "Near the highs: the close is within 2% of the 55-session high or of the 52-week "
+              "high.\n\n"
+              "- **Test:** the close is at least 98% of the highest high of the last 55 sessions, or "
+              "of the last 252.\n"
               "- **Effect:** adds 0.5 to setup quality. Never an entry on its own.\n\n"
-              "Numbered S4, not S3, so an old run's TC-04 still maps to one setup. **Spec TC-04:** same.",
+              "Numbered S4, not S3, so an old run's TC-04 still maps to one setup.",
     }
     entry_rules = (
         "**When a buy is placed.** All 14 gates pass, {TC01} or {TC02} is present, the resumption signal "
