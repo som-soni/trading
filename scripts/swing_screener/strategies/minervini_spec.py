@@ -1010,18 +1010,17 @@ class MinerviniSpecStrategy(Strategy):
               "rather than a gate.",
         "G6": "TT-06: close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low.",
         "G7": "TT-07: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
-        "G8": "TT-08: an RS rating of {RS_MIN_RANK} or more. The RS score is the stock's gain over the "
-              "last 3, 6, 9 and 12 months added together, with the latest 3 months counted twice. The RS "
-              "rating ranks that score against every other stock in the market, from 1 to 99: a rating "
-              "of {RS_MIN_RANK} means the stock beat about {RS_MIN_RANK}% of the market. Because it is a "
-              "ranking, it can only be worked out with the whole market at hand. The daily screen has the "
-              "whole market, so it applies the {RS_MIN_RANK}+ rating directly. A backtest looks at one "
-              "stock at a time, so it does this in two steps: first a simple floor on the stock's own RS "
-              "score — at least {RS_MIN_SCORE}, which a stock rising a steady 5% a quarter just clears and "
-              "a flat stock (score 0) fails — and then, once every signal is collected, it drops the ones "
-              "rated under {RS_MIN_RANK} that day. Same rule, one step later. Tools that look at a single "
-              "stock — the chart indicators, and `inspect --no-rs-rank` — use only the floor, so they can "
-              "pass a stock the screen would reject.",
+        "G8": "TT-08: an RS rating of {RS_MIN_RANK} or more. The RS score adds up the stock's gains over "
+              "the last 3, 6, 9 and 12 months, counting the latest 3 months twice. The rating ranks that "
+              "score across the market from 1 to 99, so {RS_MIN_RANK} means it beat about {RS_MIN_RANK}% "
+              "of stocks.\n\n"
+              "A ranking needs the whole market, so how the rule is checked depends on where it runs:\n\n"
+              "- **Daily screen:** rates the whole market and applies {RS_MIN_RANK}+ directly.\n"
+              "- **Backtest:** the same rule in two steps. Scanning one stock, it requires an RS score of "
+              "{RS_MIN_SCORE}+ (a steady 5% a quarter just clears it; a flat stock scores 0). Once all "
+              "signals are in, it drops those rated under {RS_MIN_RANK} that day.\n"
+              "- **Single-stock tools** (chart indicators, `inspect --no-rs-rank`): the {RS_MIN_SCORE} "
+              "floor only, so they can pass a stock the screen would reject.",
     }
     watch_docs = {
         "W1": "Closed through the pivot on light volume — under {VOL_MULT} × the 50-day average (MV-01a), "

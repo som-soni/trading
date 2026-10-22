@@ -3393,6 +3393,18 @@ async function companyPage(alive, market, symbol) {
 
 // the strategy prose uses light markdown (**bold**, `code`, *italic*); escape first, then format
 const mdInline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/(^|[^*])\*([^*\s][^*]*?)\*/g, "$1<i>$2</i>");
+// A rule cell that needs more than one paragraph: blank lines split paragraphs, and a paragraph
+// whose lines all start with "- " becomes a list. A one-paragraph text renders exactly as mdInline.
+const mdBlock = (t) => {
+  const paras = String(t || "").split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+  if (paras.length < 2 && !/^- /m.test(paras[0] || "")) return mdInline(t);
+  return paras.map((x) => {
+    const lines = x.split("\n");
+    return lines.every((l) => /^- /.test(l))
+      ? `<ul class="cell-list">${lines.map((l) => `<li>${mdInline(l.slice(2))}</li>`).join("")}</ul>`
+      : `<p class="cell-p">${mdInline(x)}</p>`;
+  }).join("");
+};
 /** a strategy's status in a few words — the sentence up to its first colon or full stop ("No demonstrated edge") */
 const shortStatus = (t) => { const x = String(t || "").split(/[:.;]/)[0].replace(/\s*—.*$/, "").trim(); return x.length > 42 ? x.slice(0, 40) + "…" : x; };
 /** The verdict sentence at the head of a `status`: what the strategy's own record concludes,
@@ -4081,7 +4093,7 @@ function perfGlance(d, key) {
 
 function strategyRules(host, d, key) {
   const codeTable = (rows, head, extra) => rows.length ? `<table class="dtab"><thead><tr><th>${head}</th>${extra ? `<th>${extra[0]}</th>` : ""}<th>Rule</th></tr></thead><tbody>${rows.map((r) =>
-    `<tr><td><code>${esc(r.code)}</code></td>${extra ? `<td>${extra[1](r)}</td>` : ""}<td>${mdInline(r.text) || '<span class="neg">Not documented</span>'}</td></tr>`).join("")}</tbody></table>` : "";
+    `<tr><td><code>${esc(r.code)}</code></td>${extra ? `<td>${extra[1](r)}</td>` : ""}<td>${mdBlock(r.text) || '<span class="neg">Not documented</span>'}</td></tr>`).join("")}</tbody></table>` : "";
   const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ol>` : "");
   const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "");
   const sec = (id, title, body) => (body ? `<section class="sd-sec" id="sd-${id}"><h2>${title}</h2>${body}</section>` : "");

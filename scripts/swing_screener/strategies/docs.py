@@ -403,7 +403,9 @@ def spec_markdown(key: str) -> str:
     ):
         if items:
             L += [f"## {title}", "", "| code | meaning |", "|---|---|"]
-            L += [f"| `{it[cols[0]]}` | {it[cols[1]]} |" for it in items] + [""]
+            # a multi-paragraph rule (blank lines, "- " items) must stay on one table row
+            cell = lambda t: t.replace("\n- ", "<br>• ").replace("\n\n", "<br><br>").replace("\n", " ")
+            L += [f"| `{it[cols[0]]}` | {cell(it[cols[1]])} |" for it in items] + [""]
 
     for title, items in (("Entry", d["entry_rules"]), ("Stop", d.get("stop_rules")), ("Target", d.get("target_rules")),
                          ("Exit", d["exit_rules"]), ("Position size", d.get("sizing_rules")),
