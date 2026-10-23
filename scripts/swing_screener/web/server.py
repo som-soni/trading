@@ -2047,7 +2047,8 @@ def _screen_def(key: str) -> dict:
     if key in definitions.presets():
         p = definitions.presets()[key]
         return {"key": key, "builtin": True, "preset": True, "name": p["name"], "description": p["description"], "thesis": p["thesis"],
-                "criteria": None, "used_by": [], "conditions": p["conditions"], "sort_by": "rs_rank"}
+                "criteria": None, "used_by": [], "conditions": p["conditions"], "sort_by": p.get("sort_by", "rs_rank"),
+                "columns": p.get("columns", [])}
     if key.startswith("u") and key[1:].isdigit():
         u = definitions.get_user(int(key[1:]))
         if u:

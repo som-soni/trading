@@ -22,7 +22,7 @@ import pandas as pd
 
 from ..marketdata import db
 from . import criteria as c
-from .snapshot import BASE_MAX_DAYS, STAGE2_DAYS_WINDOW
+from .snapshot import BASE_MAX_DAYS, MDD_BARS, R2Y_BARS, STAGE2_DAYS_WINDOW
 
 OPS = (">", ">=", "<", "<=", "=", "!=", "is", "in")
 
@@ -81,6 +81,14 @@ LONG_BASE_MAX_DEPTH_PCT = 30.0    # the base's high-to-low depth; no looser than
 LONG_BASE_MAX_PCT_BELOW_HIGH = 10.0  # the close this close to the top of the base
 LONG_BASE_MIN_QUALITY = 60        # Quality score (fundamentals/quality.py), present-only
 
+BEAR_LEADER_MIN_REL_RETURN = 30.0    # rel_r2y: beat the market benchmark by this many points over two years
+BEAR_LEADER_MAX_DRAWDOWN = 35.0      # mdd_2y no deeper than this: it held up through the decline
+BEAR_LEADER_MAX_PCT_BELOW_HIGH = 25.0  # still near its 52-week high, not a past winner fading
+BEAR_LEADER_MIN_RS = 80              # still a leader today
+BEAR_LEADER_MIN_ROE = 15.0           # fundamentals (present-only): trailing-twelve-month ROE, %
+BEAR_LEADER_MIN_EPS_GROWTH = 20.0    # latest quarter's EPS vs a year earlier, %
+BEAR_LEADER_MIN_SALES_GROWTH = 15.0  # latest quarter's sales vs a year earlier, %
+
 
 def presets() -> dict[str, dict]:
     stage2 = builtin()["stage2"]["conditions"]
@@ -131,6 +139,34 @@ def presets() -> dict[str, dict]:
                 {"field": "sma200_not_falling", "op": "is", "value": True},
                 {"field": "quality", "op": ">=", "value": LONG_BASE_MIN_QUALITY},
             ]},
+        "bear_market_leaders": {
+            "name": "Bear-market leaders",
+            "description": f"Stocks that beat the market by {BEAR_LEADER_MIN_REL_RETURN:g}+ points over two years without falling more "
+                           f"than {BEAR_LEADER_MAX_DRAWDOWN:g}% from a peak, still within {BEAR_LEADER_MAX_PCT_BELOW_HIGH:g}% of the "
+                           f"52-week high and above the 200-day, RS {BEAR_LEADER_MIN_RS}+, with ROE {BEAR_LEADER_MIN_ROE:g}%+, EPS "
+                           f"growth {BEAR_LEADER_MIN_EPS_GROWTH:g}%+ and sales growth {BEAR_LEADER_MIN_SALES_GROWTH:g}%+.",
+            "thesis": ("Minervini and O'Neil both watch which stocks hold up while the market falls or goes nowhere: the ones that "
+                       "keep near their highs as the index corrects are being accumulated, and they tend to lead when the market "
+                       "turns. This screen asks it three ways. Relative return: the stock beat the market benchmark over the "
+                       f"last {R2Y_BARS} sessions (swap rel_r2y for rel_r12m or rel_r3y to change the window). Resilience: its "
+                       f"deepest fall from a peak over the last {MDD_BARS} sessions stayed shallow, so it did not get there by "
+                       "crashing and rebounding. Leadership now: near its highs, above the 200-day, a high RS rank. Fundamentals "
+                       "keep it to growing, profitable businesses; read the list by sector to find each group's leaders. The "
+                       "price half is point in time and can be studied; the fundamentals are present-only, so the study tests "
+                       "only the price half. A strong two-year return can come from one re-rating, so check the drawdown and "
+                       "results beside it."),
+            "conditions": [
+                {"field": "tradable", "op": "is", "value": True},
+                {"field": "rel_r2y", "op": ">=", "value": BEAR_LEADER_MIN_REL_RETURN},
+                {"field": "mdd_2y", "op": ">=", "value": -BEAR_LEADER_MAX_DRAWDOWN},
+                {"field": "pct_below_high", "op": "<=", "value": BEAR_LEADER_MAX_PCT_BELOW_HIGH},
+                {"field": "close", "op": ">", "ref": "sma200"},
+                {"field": "rs_rank", "op": ">=", "value": BEAR_LEADER_MIN_RS},
+                {"field": "roe", "op": ">=", "value": BEAR_LEADER_MIN_ROE},
+                {"field": "eps_growth_q", "op": ">=", "value": BEAR_LEADER_MIN_EPS_GROWTH},
+                {"field": "sales_growth_q", "op": ">=", "value": BEAR_LEADER_MIN_SALES_GROWTH},
+            ],
+            "columns": ["rel_r2y", "r2y", "mdd_2y", "rel_r12m"], "sort_by": "rel_r2y"},
         "leaders": {
             "name": "Strong stocks in leading groups",
             "description": f"Strong stocks (RS {LEADER_MIN_RS}+) in the strongest peer groups (group RS {LEADER_GROUP_RS}+), in an uptrend.",

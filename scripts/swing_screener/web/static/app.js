@@ -3603,8 +3603,13 @@ function wireClusters(root, tableHost) {
 
 function screenResults(host, r, mkt, d, fs) {
   const used = [...new Set(d.conditions.flatMap((c) => [c.field, c.ref]).filter(Boolean))];
-  const base = ["symbol", "name", "peer_group", "peer_rs", "peer_rank", "market_cap_usd", "rs_rank", "close", "pct_below_high", "r1m", "r3m", "industry", "peer_count", "atr_pct", "value20"];
-  const extra = used.filter((k) => !base.includes(k) && (fs.fields.find((f) => f.key === k) || {}).kind !== "bool" && k !== "tradable");
+  // sector and the fundamentals on every screen, so a list can be read for each sector's strong businesses
+  const fund = ["quality", "roe", "eps_growth_q", "sales_growth_q", "sepa_verdict"];
+  const base = ["symbol", "name", "sector", "peer_group", "peer_rs", "peer_rank", "market_cap_usd", "rs_rank", "close", "pct_below_high", "r1m", "r3m",
+    ...fund, "industry", "peer_count", "atr_pct", "value20"];
+  // a preset may name the fields it is about (d.columns); those show, the rest of a built-in's condition fields stay hidden
+  const shown = new Set(Array.isArray(d.columns) ? d.columns : []);
+  const extra = [...shown, ...used].filter((k, i, a) => a.indexOf(k) === i && !base.includes(k) && (fs.fields.find((f) => f.key === k) || {}).kind !== "bool" && k !== "tradable");
   const keys = [...base, ...extra];
   const lbl = (k) => k === "name" ? "name" : k === "value20" ? `value (${mkt === "india" ? "₹ Cr" : "$M"})` : fieldLabel(fs, k);
   const val = (k, v) => v == null ? null : k === "value20" ? +(v / (mkt === "india" ? 1e7 : 1e6)).toFixed(1)
@@ -3614,7 +3619,7 @@ function screenResults(host, r, mkt, d, fs) {
   const cols = [...keys.map(lbl), "setups", "new"];
   const rows = r.rows.map((x) => [...keys.map((k) => val(k, x[k])), x.setups.map((u) => `${u.strategy} · ${u.tradeable ? "TRADE" : "watch"}`).join(", "), x.new ? "new" : ""]);
   dataTable(host.querySelector("#stbl"), cols, rows, {
-    name: `screen_${d.key || "draft"}_${mkt}`, tags: { new: () => "trade" }, hidden: [lbl("industry"), lbl("peer_count"), lbl("atr_pct"), lbl("value20"), ...(d.builtin ? extra.map(lbl) : [])],
+    name: `screen_${d.key || "draft"}_${mkt}`, tags: { new: () => "trade" }, hidden: [lbl("industry"), lbl("peer_count"), lbl("atr_pct"), lbl("value20"), lbl("sepa_verdict"), ...(d.builtin ? extra.filter((k) => !shown.has(k)).map(lbl) : [])],
     format: { [lbl("peer_rank")]: (v, row) => (v == null ? "" : `${v} of ${row[keys.indexOf("peer_count")] ?? "?"}`) },
     rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((x) => x[0]), `${d.name || "Screen"} · ${prettyDate(r.date)}`, location.hash),
   });

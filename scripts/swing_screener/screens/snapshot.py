@@ -38,11 +38,14 @@ logger = logging.getLogger(__name__)
 SNAP_DIR = paths.DATA_DIR / "snapshots"
 KEEP_DAILY = 40                 # daily snapshots kept; month-end ones are kept for good
 MIN_SNAPSHOT_BARS = 60          # a stock needs this much history to appear at all (longer-window fields are empty until it has it)
-LOOKBACK_DAYS = 760             # calendar days loaded: enough sessions for BASE_MAX_DAYS
+LOOKBACK_DAYS = 1160            # calendar days loaded: enough sessions for R3Y_BARS (and BASE_MAX_DAYS)
 STAGE2_DAYS_WINDOW = 126       # stage2_days counts the Trend Template's sessions over this many (about six months)
 BASE_MAX_DAYS = 500            # base_days looks back at most this many sessions (about two years)
 BASE_MAX_DEPTH_PCT = 30.0      # a window is a base while its high-to-low depth is within this
 BASE_CONTRACTION_LOOKBACK = 120  # range_contracting reads the pullbacks of this many sessions
+R2Y_BARS = 504                 # r2y / rel_r2y: two years of sessions
+R3Y_BARS = 756                 # r3y / rel_r3y: three years
+MDD_BARS = 504                 # mdd_2y: the window the deepest fall is measured over
 PEER_MIN = 3                    # a sub-industry is a stock's peer group only with this many tradable stocks (else its industry group)
 
 # The field catalog: key, label, group, kind (price | pct | num | money | bool | text), description.
@@ -54,6 +57,14 @@ FIELDS = [
     ("r3m", "Return 3M", "Performance", "pct", "Return over the last 63 sessions."),
     ("r6m", "Return 6M", "Performance", "pct", "Return over the last 126 sessions."),
     ("r12m", "Return 12M", "Performance", "pct", "Return over the last 252 sessions."),
+    ("r2y", "Return 2Y", "Performance", "pct", f"Return over the last {R2Y_BARS} sessions."),
+    ("r3y", "Return 3Y", "Performance", "pct", f"Return over the last {R3Y_BARS} sessions."),
+    ("rel_r12m", "Return 12M vs market", "Performance", "pct", "Return 12M minus the market benchmark's return (S&P 500, Nifty 500) "
+                                                               "between the same two sessions, in percentage points."),
+    ("rel_r2y", "Return 2Y vs market", "Performance", "pct", "Return 2Y minus the benchmark's over the same sessions, in percentage points."),
+    ("rel_r3y", "Return 3Y vs market", "Performance", "pct", "Return 3Y minus the benchmark's over the same sessions, in percentage points."),
+    ("mdd_2y", "Max drawdown 2Y", "Performance", "pct", f"The deepest fall from a running closing high over the last {MDD_BARS} sessions "
+                                                        "(−30 means it was at worst 30% below its peak) — how well it held up."),
     ("mom_12_1", "Momentum 12-1M", "Performance", "pct", "Return from a year ago to a month ago (skips the latest month)."),
     ("rs_rank", "RS rank", "Performance", "num", "Relative strength 1–99 across every stock with a year of history "
                                                  "(2 × 3-month + 6 + 9 + 12-month return, ranked)."),
@@ -181,8 +192,9 @@ def _rs_raw(close: pd.Series, i: int) -> float | None:
     return 2 * q1 + (q2 if q2 is not None else q4) + (q3 if q3 is not None else q4) + q4
 
 
-def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int) -> dict:
-    """Every price-derived field of one stock as of bar i (point in time: only bars up to i are read)."""
+def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench: pd.Series | None = None) -> dict:
+    """Every price-derived field of one stock as of bar i (point in time: only bars up to i are read).
+    `bench`: the market benchmark's closes (DatetimeIndex), for the returns relative to it."""
     row = enriched.iloc[i]
     close = float(row["close"])
     c = enriched["close"]
@@ -190,6 +202,7 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int) -> di
     num = lambda k: (float(row[k]) if pd.notna(row.get(k)) else None)
     hi, lo = num("high_252"), num("low_252")
     out = {"symbol": sym, "close": close, "r1w": ret(5), "r1m": ret(21), "r3m": ret(63), "r6m": ret(126), "r12m": ret(252),
+           "r2y": ret(R2Y_BARS), "r3y": ret(R3Y_BARS),
            "mom_12_1": (num("mom_12_1") * 100 if num("mom_12_1") is not None else None), "rs_raw": _rs_raw(c, i),
            **{k: num(k) for k in ("sma20", "sma50", "sma150", "sma200", "ema20", "sma200_21d_ago", "atr_pct", "adx14", "rsi14", "high_252", "low_252")},
            "volume": num("volume"), "rvol": (float(row["volume"] / row["vol_sma50"]) if num("vol_sma50") else None),
@@ -207,10 +220,31 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int) -> di
                   ("sma200_not_falling", crit.sma200_not_falling), ("higher_swing_lows", crit.higher_swing_lows),
                   ("momentum_positive", crit.momentum_12_1_positive), ("trend_not_fading", crit.trend_not_fading)):
         out[k] = bool(fn(ctx)[0])
+    for k, rk, n in (("rel_r12m", "r12m", 252), ("rel_r2y", "r2y", R2Y_BARS), ("rel_r3y", "r3y", R3Y_BARS)):
+        b = _bench_ret(bench, c.index[i - n], c.index[i]) if out[rk] is not None else None
+        out[k] = out[rk] - b if b is not None else None
+    w = c.iloc[max(0, i + 1 - MDD_BARS): i + 1].astype(float)
+    out["mdd_2y"] = float((w / w.cummax() - 1).min() * 100) if len(w) >= MDD_BARS else None
     out["tradable"] = bool(i + 1 >= MIN_BARS and Screen.tradable(cfg, row)[0])
     out["stage2_days"] = _stage2_days(enriched, i)
     out.update(_base(enriched, i))
     return out
+
+
+def _bench_ret(bench: pd.Series | None, t0, t1) -> float | None:
+    """The benchmark's % return from its close on (or before) t0 to its close on (or before) t1."""
+    if bench is None or bench.empty or t0 < bench.index[0]:
+        return None
+    a, b = bench.asof(t0), bench.asof(t1)
+    return float(b / a - 1) * 100 if a and b and pd.notna(a) and pd.notna(b) else None
+
+
+def _bench(market: str, since) -> pd.Series:
+    """The market benchmark's closes — the same series the Sectors page measures groups against."""
+    from ..analytics.sectors import _bench as sector_bench
+    s = sector_bench(market, pd.Timestamp(since).date())
+    s.index = pd.to_datetime(s.index)
+    return s.sort_index()
 
 
 def _base(enriched: pd.DataFrame, i: int) -> dict:
@@ -467,12 +501,13 @@ def build(market: str, d=None) -> pd.DataFrame:
     cfg = MARKETS[market]
     d = pd.Timestamp(d or freshness.sessions(market)[-1])
     bars = _universe_bars(market, d - pd.Timedelta(days=LOOKBACK_DAYS))
+    bench = _bench(market, d - pd.Timedelta(days=LOOKBACK_DAYS + 10))
     rows = []
     for sym, raw in bars.items():
         raw = raw[raw.index <= d]
         if len(raw) < MIN_SNAPSHOT_BARS or raw.index[-1] != d:
             continue
-        rows.append(_row(cfg, sym, raw, ind.enrich_daily(raw), len(raw) - 1))
+        rows.append(_row(cfg, sym, raw, ind.enrich_daily(raw), len(raw) - 1, bench))
     df = _finish(market, rows, d, present=True)
     _save(market, df, d)
     df.attrs["date"] = d.date()
@@ -501,6 +536,7 @@ def backfill(market: str, years: float = 5, force: bool = False, refill: bool = 
     if not todo:
         return 0
     bars = _universe_bars(market, pd.Timestamp(todo[0]) - pd.Timedelta(days=LOOKBACK_DAYS))
+    bench = _bench(market, pd.Timestamp(todo[0]) - pd.Timedelta(days=LOOKBACK_DAYS + 10))
     per_date: dict = {d: [] for d in todo}
     for n, (sym, raw) in enumerate(bars.items(), 1):
         enriched = ind.enrich_daily(raw)
@@ -512,7 +548,7 @@ def backfill(market: str, years: float = 5, force: bool = False, refill: bool = 
             i = idx.get_loc(t)
             if i + 1 < MIN_SNAPSHOT_BARS:
                 continue
-            per_date[d].append(_row(cfg, sym, raw, enriched, i))
+            per_date[d].append(_row(cfg, sym, raw, enriched, i, bench))
         if n % 500 == 0:
             logger.info("  backfill %s: %d/%d symbols (%.0fs)", market, n, len(bars), time.time() - t0)
     for d, rows in per_date.items():
