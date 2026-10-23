@@ -86,13 +86,22 @@ index's last close.
    Nifty 500 (`screening/pipeline.py`). When **every one of them closes below its 50-day**,
    `downgrade_active` is set. If either index has no data, the rule cannot fire.
 
-| Strategy | What the downgrade does |
-|---|---|
-| Trend pullback, Volume breakout, Donchian channel, Chart patterns | Every label down one tier (`DOWNGRADE_MAP` in `strategies/base.py`): HIGH CONFIDENCE → ON TRIGGER → WATCH → AVOID |
-| Minervini SEPA | TRADE tiers become WATCH, reason "market filter: no new buys"; WATCH and AVOID are untouched |
+Not every strategy uses that test. A strategy can replace it with its own (`market_risk_off`), so
+"risk-off" means a different thing for these:
 
-The 200-day, the slope, the 30-week EMA and the breadth shares are printed in the run's report but drive
-nothing. The downgrade switches on and off often; read it as "be pickier today". See
+| Strategy | When it is risk-off | What it does then |
+|---|---|---|
+| Trend pullback, Volume breakout, Donchian channel, Chart patterns, Earnings gaps | The shared downgrade above | Every label down one tier (`DOWNGRADE_MAP` in `strategies/base.py`): HIGH CONFIDENCE → ON TRIGGER → WATCH → AVOID |
+| Minervini SEPA | Its own market filter (`backtesting/spec.py` `market_ok`, the same test its backtests apply). Risk-on needs all three: the benchmark closes above its `MKT_INDEX_SMA`-day average (50); that average is higher than `MKT_SMA_RISING_DAYS` sessions ago (10); breadth — the share of the 1,000 most-traded stocks above their own 50-day — is above `MKT_BREADTH_MIN_PCT` (50%) or higher than `MKT_BREADTH_RISING_DAYS` sessions ago (5) | TRADE tiers become WATCH, reason "market filter: no new buys"; WATCH and AVOID are untouched. If the index or breadth data is missing it falls back to the shared downgrade |
+| RS leaders | Outside a confirmed market recovery window (`_recovery_days`) | TRADE tiers become WATCH, reason "outside a confirmed recovery: no new buys" |
+| Stage analysis | The market index itself is in Stage 4 on the weekly chart | TRADE tiers become WATCH, reason "market not in an uptrend: no new buys" |
+
+Minervini's filter is stricter than the shared one: it also asks for a rising average and healthy
+breadth, not only a close above the 50-day. Its Strategy page lists it under "When no new trade is
+taken".
+
+The shared regime's 200-day, slope, 30-week EMA and breadth readings are printed in the run's report but
+drive nothing (Minervini's filter computes its own). The downgrade switches on and off often; read it as "be pickier today". See
 [the market's trend](learn-health-trend.md) and [regime filters](learn-strat-regime-filters.md).
 
 ## 4. Position sizing and the caps
