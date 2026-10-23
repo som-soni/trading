@@ -825,12 +825,12 @@ class StageAnalysisStrategy(Strategy):
         # shortest qualifying window would report every long base as a minimal one. Resistance is
         # that base's OWN high -- the top of the zone the breakout must clear -- not a fixed
         # lookback, which could reach past the base into an old spike high.
-        base_weeks, base_depth, resistance = 0, float("nan"), float("nan")
+        base_weeks, base_depth, resistance, base_low = 0, float("nan"), float("nan"), float("nan")
         for n in range(min(len(hist), BASE_MAX_WEEKS), BASE_MIN_WEEKS - 1, -1):
             w = hist.iloc[-n:]
             hi, lo = float(w["high"].max()), float(w["low"].min())
             if hi > 0 and (hi - lo) / hi * 100 <= BASE_MAX_DEPTH_PCT:
-                base_weeks, base_depth, resistance = n, (hi - lo) / hi * 100, hi
+                base_weeks, base_depth, resistance, base_low = n, (hi - lo) / hi * 100, hi, lo
                 break
         vol = float(wk["volume"].iloc[-1])
         vbase = (float(hist["volume"].iloc[-VOL_WEEKS:].mean())
@@ -863,6 +863,9 @@ class StageAnalysisStrategy(Strategy):
             resistance=round(resistance, 2) if resistance == resistance else None,
             base_weeks=base_weeks or None,
             base_depth_pct=round(base_depth, 2) if base_depth == base_depth else None,
+            # unrounded: build_plans places the stop from it, and a signal-cache hit has no weekly
+            # bars to read it from again
+            base_low=base_low if base_low == base_low else None,
             vol_ratio=round(vol_ratio, 2) if vol_ratio == vol_ratio else None,
             ma30=round(lv, 2) if lv == lv else None,
         )
@@ -920,6 +923,11 @@ class StageAnalysisStrategy(Strategy):
                         "label": f"resistance {res:,.2f} · the base's high"})
         return out
 
+    def cached_signal_ok(self, extras: dict) -> bool:
+        """A setup row written before `base_low` was recorded cannot be planned from the cache, whose
+        context carries no weekly bars: recompute it."""
+        return extras.get("resistance") is None or "base_low" in extras
+
     def build_plans(self, ctx: StockContext, result: StrategyResult, cfg: MarketConfig) -> PlanChoice:
         if not result.has_setup:
             return PlanChoice(None, None, "no Stage 2 breakout this week")
@@ -933,8 +941,9 @@ class StageAnalysisStrategy(Strategy):
             entry = float(ctx.close)
         else:
             entry = round_tick(float(resistance) + cfg.tick_size, cfg.tick_size, "up")
-        n = int(e.get("base_weeks") or BASE_MIN_WEEKS)
-        base_low = float(ctx.weekly["low"].iloc[-(n + 1):-1].min())
+        if e.get("base_low") is None:
+            return PlanChoice(None, None, "missing base low")
+        base_low = float(e["base_low"])
         # "Just below the HIGHER of the line and the base's low" -- the higher, because a stop under
         # the base low when the line sits above it gives away far more than the method intends.
         structural = max(float(line), base_low)
