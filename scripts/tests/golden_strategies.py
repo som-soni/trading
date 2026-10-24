@@ -114,11 +114,21 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--check", action="store_true")
+    ap.add_argument("--resample", action="store_true",
+                    help="with --write: draw a fresh sample from the universe instead of keeping the baseline's")
     a = ap.parse_args()
-    base = None if a.write else json.loads(BASELINE_PATH.read_text())
+    stored = json.loads(BASELINE_PATH.read_text()) if BASELINE_PATH.exists() else None
+    base = None if a.write else stored
     if base is not None and "_symbols" not in base:
         raise SystemExit("The baseline predates stored samples — record it again with --write.")
-    snap = json.loads(json.dumps(build(base["_symbols"] if base else None), sort_keys=True, default=str))
+    # --write keeps the baseline's own sample too. Re-recording is for new VALUES on the same
+    # stocks; drawing afresh from the universe file swapped most of the sample whenever the
+    # universe had been refreshed since the last write -- the trap the check side was fixed for,
+    # left open on this side -- so a two-row behaviour change (chart_pattern 1.13, two double
+    # bottoms) re-recorded as a 26,000-line diff over a different 120 stocks a market, and the
+    # check that followed passed against itself. --resample draws afresh, on purpose.
+    keep = None if (a.write and a.resample) else (stored or {}).get("_symbols")
+    snap = json.loads(json.dumps(build(keep), sort_keys=True, default=str))
     if a.write:
         BASELINE_PATH.write_text(json.dumps(snap, indent=1, sort_keys=True))
         print(f"Wrote {BASELINE_PATH}")
