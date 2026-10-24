@@ -38,12 +38,25 @@ BO02 = "S2"   # BO-02  # pre-breakout coil, sitting just under the pivot
 
 CONSOLIDATION_BARS = 20
 BREAKOUT_LOOKBACK = 55
+# Named, not bare, so a variant can move them (`--const`) and the page shows the live value. They
+# were literals in evaluate/classify until 1.4, which is why no backtest could test a wider stop.
+VOL_MULT = 1.5                 # S1: the breakout close's volume against its 50-day average
+HIGH_CONF_MAX_STOP_PCT = 7.0   # a stop this far below entry or less can be TRADE - HIGH CONFIDENCE
+MAX_STOP_PCT = 8.0             # beyond this the plan is WATCH - WAIT
 
 
 class BreakoutStrategy(Strategy):
     selection = "time_series"
-    version = "1.3"
+    version = "1.4"
     changelog = (
+        ("1.4", "2026-10-24",
+         "No rule changed. The breakout volume multiple and the two stop caps -- the "
+         "{HIGH_CONF_MAX_STOP_PCT}% that keeps a trade HIGH CONFIDENCE (and so the cap a backtest "
+         "really applies) and the {MAX_STOP_PCT}% beyond which it is WATCH -- were bare numbers in "
+         "the code, so no variant could move them and the page could not show them live. They are "
+         "named constants now. Done to test wider caps: measured over 2013-2021 "
+         "(research/crwd-gap-studies.md), breakouts with stops of 12-15% earned more per unit of "
+         "risk than those under 8%, in both markets."),
         ("1.3", "2026-10-24",
          "Same-day ties now go to the stronger stock rather than the earlier letter. Every accepted signal "
          "scores the same setup quality, so when more triggered than there was cash for, the tie fell "
@@ -114,7 +127,7 @@ class BreakoutStrategy(Strategy):
         "measured move.",
         "**Qualify.** A pre-filter (liquidity, trend, volatility, near the highs), then seven hard "
         "gates G1-G7. See Gates and When no new trade is taken.",
-        "**Signal.** S1, a close above the pivot on more than 1.5 times average volume. S2 only marks "
+        "**Signal.** S1, a close above the pivot on more than {VOL_MULT} times average volume. S2 only marks "
         "a close coiled within 3% under the pivot. See Setups.",
         "**Buy.** A buy-stop 0.1% above the breakout session's high, filled on a later session that "
         "trades through it. See Entry.",
@@ -123,7 +136,7 @@ class BreakoutStrategy(Strategy):
         "least {min_structural_r}R away. In the backtest both are fixed sell orders. See Stop, "
         "Target and Exit.",
         "**What the backtest buys.** Only TRADE - HIGH CONFIDENCE: S1 with all seven gates, no W1 or "
-        "W3, a stop no more than 7% below the entry and at least 2R. It has no earnings calendar and "
+        "W3, a stop no more than {HIGH_CONF_MAX_STOP_PCT}% below the entry and at least 2R. It has no earnings calendar and "
         "no market-regime downgrade.",
         "**Where the rules come from.** Classic volume-breakout practice, with untuned thresholds. "
         "There is no written spec with row ids: BO-01 and BO-02 are the setups' names from before the "
@@ -138,7 +151,7 @@ class BreakoutStrategy(Strategy):
         "consolidation' is the rule's intent, not what any traded plan gets.",
         "**R lands between {min_structural_r} and 3.** With the 2-ATR stop, the {min_structural_r}R "
         "test needs a base at least {min_structural_r} × 2 ATR tall, and G4 allows at most 6 ATR.",
-        "**W2 can never fire.** It needs S1, and S1 already requires volume above 1.5 times average, "
+        "**W2 can never fire.** It needs S1, and S1 already requires volume above {VOL_MULT} times average, "
         "so 'a breakout on below-average volume' is impossible. Its WATCH cap and quality cut never "
         "act.",
         "**Overhead lowers R.** When an overhead level lowers the target, the R column is smaller than "
@@ -225,7 +238,7 @@ class BreakoutStrategy(Strategy):
     }
     setup_docs = {
         "S1": "BO-01 breakout: today's close is above the {BREAKOUT_LOOKBACK}-session pivot on more than "
-              "1.5 times average volume.\n\n"
+              "{VOL_MULT} times average volume.\n\n"
               "- **Pivot:** the highest high of the {BREAKOUT_LOOKBACK} sessions before today. Today's "
               "bar is excluded.\n"
               "- **Breakout:** close > pivot, strictly.\n"
@@ -263,8 +276,8 @@ class BreakoutStrategy(Strategy):
         "inside the base (see Caveats).",
         "It defines 1R. The distance from the price paid to the stop is the trade's risk, 1R. Results "
         "are counted in R.",
-        "How far is too far. A stop more than 8% below the entry is WATCH - WAIT. More than 7% keeps "
-        "it from HIGH CONFIDENCE, so the backtest only buys stops of 7% or less: ATR14 at most about "
+        "How far is too far. A stop more than {MAX_STOP_PCT}% below the entry is WATCH - WAIT. More than {HIGH_CONF_MAX_STOP_PCT}% keeps "
+        "it from HIGH CONFIDENCE, so the backtest only buys stops of {HIGH_CONF_MAX_STOP_PCT}% or less: ATR14 at most about "
         "3.5% of the entry.",
         "How it sells (backtest). A standing sell order: the first session whose low touches the stop "
         "sells at the stop, or at the open if it opened below it. A gap can therefore lose more than "
@@ -324,14 +337,14 @@ class BreakoutStrategy(Strategy):
     )
     decision_docs = {
         "TRADE_HIGH_CONFIDENCE": "All seven gates pass, S1 fired, neither W1 nor W3 is raised, the stop is "
-                                 "no more than 7% below the entry, the plan offers at least 2R, no results "
+                                 "no more than {HIGH_CONF_MAX_STOP_PCT}% below the entry, the plan offers at least 2R, no results "
                                  "are due within 15 business days and one share fits the account. The "
                                  "only tier the backtest buys.",
         "TRADE_ON_TRIGGER": "A plan that passes the stop and reward tests but is not HIGH CONFIDENCE: an "
-                            "S2 coil (buy only on the break), a W1 or W3 cap, a stop between 7% and 8% "
+                            "S2 coil (buy only on the break), a W1 or W3 cap, a stop between {HIGH_CONF_MAX_STOP_PCT}% and {MAX_STOP_PCT}% "
                             "below the entry, results 11 to 15 business days away, or a HIGH CONFIDENCE "
                             "lowered by a risk-off market.",
-        "WATCH_WAIT": "The stop is more than 8% below the entry, the plan offers under "
+        "WATCH_WAIT": "The stop is more than {MAX_STOP_PCT}% below the entry, the plan offers under "
                       "{min_structural_r}R, not even one share fits the account, or a TRADE ON TRIGGER "
                       "lowered by a risk-off market.",
         "AVOID": "A gate failed, or the plan's risk is not a positive number, or a WATCH - WAIT lowered "
@@ -447,7 +460,7 @@ class BreakoutStrategy(Strategy):
         pivot = float(d["high"].iloc[-(BREAKOUT_LOOKBACK + 1) : -1].max())
         vol = float(d["volume"].iloc[-1])
         vol_sma50 = d["vol_sma50"].iloc[-1]
-        vol_ok = pd.notna(vol_sma50) and vol_sma50 and vol > 1.5 * vol_sma50
+        vol_ok = pd.notna(vol_sma50) and vol_sma50 and vol > VOL_MULT * vol_sma50
 
         # BO-01: closed above the pivot today, on expanding volume
         result.setups[BO01] = bool(close > pivot and vol_ok)
@@ -586,10 +599,10 @@ class BreakoutStrategy(Strategy):
         if sizing_result.too_large:
             label = "WATCH_WAIT"
             reasons.append("too large for account")
-        elif risk_pct > 8 or r_mult < self.min_structural_r:
+        elif risk_pct > MAX_STOP_PCT or r_mult < self.min_structural_r:
             label = "WATCH_WAIT"
-            if risk_pct > 8:
-                reasons.append(f"stop {risk_pct:.1f}% > 8%")
+            if risk_pct > MAX_STOP_PCT:
+                reasons.append(f"stop {risk_pct:.1f}% > {MAX_STOP_PCT:g}%")
             if r_mult < self.min_structural_r:
                 reasons.append(
                     f"base projects {r_mult:.2f}R < {self.min_structural_r:g}R "
@@ -598,7 +611,7 @@ class BreakoutStrategy(Strategy):
         elif cap == "WATCH_WAIT":
             label = "WATCH_WAIT"
             reasons.append(result.watch_notes.get("W2", "capped by watch flag"))
-        elif fired and cap == "TRADE_HIGH_CONFIDENCE" and risk_pct <= 7 and r_mult >= 2 and not earnings_block:
+        elif fired and cap == "TRADE_HIGH_CONFIDENCE" and risk_pct <= HIGH_CONF_MAX_STOP_PCT and r_mult >= 2 and not earnings_block:
             label = "TRADE_HIGH_CONFIDENCE"
             reasons.append(f"{plan.setup} fired on volume, {r_mult:.2f}R")
         else:
