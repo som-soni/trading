@@ -560,7 +560,7 @@
   },
   "stage_analysis": {
     "family": "stage_analysis",
-    "fingerprint": "1d691c80",
+    "fingerprint": "6514891e",
     "params": {
       "BASE_MAX_DEPTH_PCT": 30.0,
       "BASE_MAX_WEEKS": 104,
@@ -568,6 +568,7 @@
       "BASE_TARGET_MULT": 1.0,
       "CONFIRM_WEEKS": 3,
       "FLAT_BAND_PCT": 0.5,
+      "G7_BLOCK_STAGE": 4,
       "MANSFIELD_RISE_WEEKS": 4,
       "MANSFIELD_WEEKS": 52,
       "MAX_STOP_PCT": 15.0,
@@ -576,6 +577,8 @@
       "STAGE1_MIN_WEEKS": 6,
       "VOL_MULT": 2.0,
       "VOL_WEEKS": 4,
+      "W1_RANKS_ONLY": 0,
+      "W1_RANK_QUALITY": 0.5,
       "_key": "stage_analysis",
       "gate_codes": [
         "G1",
@@ -598,7 +601,7 @@
         "W3"
       ]
     },
-    "version": "2.3"
+    "version": "2.4"
   },
   "trend_pullback": {
     "family": "trend_pullback",

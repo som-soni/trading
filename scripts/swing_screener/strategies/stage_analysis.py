@@ -71,6 +71,21 @@ VOL_WEEKS = 4                 # the guide compares the breakout week with the pr
 MAX_STOP_PCT = 15.0           # skip or shrink if the structural stop is further than this
 BASE_TARGET_MULT = 1.0        # nominal target: the base's own height above the breakout
 
+# ---- experiments, OFF by default (2.4). Each was found by slicing the v2.3 run that will now judge
+# it, so it ships switched off and exists to be measured, not adopted. Numbers rather than bools so
+# spec_params fingerprints them: a run with one switched on carries its own spec id.
+#: 1 demotes W1 (low breakout volume) from a block to a rank. Over 2020-26 India the breakouts W1
+#: blocked had the same median 26-week excess as those it let through (+0.2%) and a positive mean
+#: (+4.7% vs +5.4%), but a thinner right tail (16.6% vs 20.8% beat the index by 25%) -- so it is
+#: kept as a preference when slots compete rather than a reason to hold cash, which is where the
+#: run spent half its capital.
+W1_RANKS_ONLY = 0
+W1_RANK_QUALITY = 0.5         # the setup score a low-volume breakout ranks at under W1_RANKS_ONLY
+#: The market stage G7 refuses new entries in. 4 is the shipped rule. The weekly machine confirms
+#: Stage 4 late -- in 15 of 16 episodes since 2010 the index ROSE while labelled Stage 4 -- while
+#: entries made in market Stage 3 lost (India 10 trades, 0 wins). 3 tests aiming G7 there instead.
+G7_BLOCK_STAGE = 4
+
 
 def _market_of(symbol: str) -> str:
     """Which market a symbol belongs to, from the configured ticker suffixes.
@@ -229,8 +244,20 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.3"
-    changelog = (("2.3", "2026-10-22",
+    version = "2.4"
+    changelog = (("2.4", "2026-10-24",
+                  "Two experiment switches, both OFF by default, so this version trades exactly as 2.3 "
+                  "(the golden harness is identical). W1_RANKS_ONLY demotes W1, low breakout volume, "
+                  "from a block to a rank: the breakouts it blocked in the 2020-26 Indian run matched "
+                  "the accepted ones on median 26-week excess and were positive on the mean, but "
+                  "carried a thinner right tail -- so they are worth filling empty slots with, not "
+                  "worth preferring, and the run held half its capital in cash. G7_BLOCK_STAGE moves "
+                  "the market gate from Stage 4 to Stage 3: the weekly machine confirms Stage 4 after "
+                  "the decline, and in 15 of 16 episodes since 2010 the index rose while so labelled, "
+                  "while entries made in market Stage 3 lost (India 10 of 10, US 7 of 9). Both were "
+                  "found by slicing the run that will judge them, which is why they ship off. The new "
+                  "constants move the fingerprint, so the version gate asked for this bump."),
+                 ("2.3", "2026-10-22",
                   "The backtest sells on Weinstein's exit: a week that closes below the 30-week simple "
                   "average of weekly closes, sold at that week's last close (--exit-mode weekly_ma "
                   "--ma-weeks MA_WEEKS, new in the simulator, built from the same weekly bars the "
@@ -623,6 +650,11 @@ class StageAnalysisStrategy(Strategy):
         ("Volume window", "VOL_WEEKS", "Completed weeks in that average."),
         ("Maximum stop", "MAX_STOP_PCT", "Widest stop; beyond it the stop is moved up and the setup is WATCH (W3)."),
         ("Target multiple", "BASE_TARGET_MULT", "Base heights added to the entry for the reported target."),
+        ("Demote W1 to a rank", "W1_RANKS_ONLY", "Experiment, off by default: 1 trades a low-volume breakout "
+                                                 "instead of holding it at WATCH, ranked behind confirmed ones."),
+        ("Low-volume rank", "W1_RANK_QUALITY", "The setup score such a breakout ranks at when the above is on."),
+        ("G7's blocked market stage", "G7_BLOCK_STAGE", "Experiment: 4 is the shipped rule; 3 refuses entries "
+                                                        "while the market tops instead of after it has fallen."),
     )
     backtest_args = f"--exit-mode weekly_ma --ma-weeks {MA_WEEKS} --no-target"
 
@@ -786,8 +818,8 @@ class StageAnalysisStrategy(Strategy):
         else:
             prior = [d for d in stages if d <= as_of]
             mstage = stages[max(prior)] if prior else 0
-            if mstage == 4:
-                result.fail("G7", "the market index is in Stage 4")
+            if mstage == G7_BLOCK_STAGE:
+                result.fail("G7", f"the market index is in Stage {mstage}")
             else:
                 result.ok("G7", f"market index in Stage {mstage or 'unknown'}")
 
@@ -888,7 +920,13 @@ class StageAnalysisStrategy(Strategy):
         return result.has_setup
 
     def setup_quality(self, result: StrategyResult) -> float:
-        return 1.0 if result.setups.get(STG01) else 0.0
+        if not result.setups.get(STG01):
+            return 0.0
+        # Under W1_RANKS_ONLY a low-volume breakout still trades, but queues behind confirmed ones
+        # when more signals compete than slots -- the simulator fills slots in quality order.
+        if W1_RANKS_ONLY and result.watch_flags.get("W1"):
+            return W1_RANK_QUALITY
+        return 1.0
 
     # ---------- plan ----------
 
@@ -981,8 +1019,10 @@ class StageAnalysisStrategy(Strategy):
             label, reasons = "TRADE_HIGH_CONFIDENCE", ["breakout above the base's high, into Stage 2"]
         else:
             label, reasons = "TRADE_ON_TRIGGER", ["valid base, buy stop above its high"]
-        if result.watch_flags.get("W1"):
+        if result.watch_flags.get("W1") and not W1_RANKS_ONLY:
             label = "WATCH_WAIT"; reasons.append("breakout volume below the threshold")
+        elif result.watch_flags.get("W1"):
+            reasons.append("breakout volume below the threshold: traded, ranked behind confirmed breakouts")
         if result.watch_flags.get("W2"):
             label = "WATCH_WAIT"; reasons.append("Stage 3: the line flattened after the advance")
         if result.watch_flags.get("W3"):
