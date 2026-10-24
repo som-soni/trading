@@ -26,6 +26,8 @@ CASES = [
      "v1.12 TL-04: closed above the upper line in November 2016, then touched it again"),
     ("india", "ICICIBANK.NS", "ATRI", "2025-03-21", False,
      "v1.12 TL-04: closed above the upper line in September 2024, then touched it again"),
+    ("india", "PFC.NS", "DBOT", "2020-02-12", False,
+     "v1.13 OW-03: the 'first low' 85.76 came after a 72.36 low below the base high"),
     # the same review's sound patterns must survive
     ("india", "ICICIBANK.NS", "DBOT", "2013-04-25", True, "a clean O'Neil W"),
     ("india", "ICICIBANK.NS", "FWDG", "2015-05-29", True, "a converging wedge, 61% to the apex"),

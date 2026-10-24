@@ -151,6 +151,11 @@ class PatternParams:
     # ...and its base, measured from the high before B (research/learn-bases.md §4):
     oneil_depth: tuple[float, float] = (20.0, 35.0)   # OW-01: that high to the lower low, %
     oneil_min_days: int = 35                          # OW-02: that high to D, about 7 weeks
+    # OW-03, beyond the spec: B is the bottom of the decline from that high -- no low in between under
+    # B by more than the price tolerance. PFC.NS was read as a W from 85.76 (2019-12-06) and 83.08
+    # (2020-01-22) under a 111 high of August 2019, although it had traded 72.36 in October: two higher
+    # lows inside a recovery, not a base's two bottoms. False reproduces the spec.
+    oneil_first_low: bool = False
     # TL-LV: a triple's three extremes may not STEP in one direction by more than
     # this % first to third. 0 keeps the spec (all three within tol only).
     triple_max_drift: float = 0.0
@@ -906,7 +911,7 @@ def _finish(out: dict, daily: pd.DataFrame, lv: Levels, last_pos: int,
 DB_RULES = ("DB-01", "DB-02", "DB-03", "DB-04", "DB-05")
 DT_RULES = ("DT-01", "DT-02", "DT-03", "DT-04")
 # the order a near-miss got through, for _pick: the added rules sit where they run
-OW_RULES = ("DB-01", "DB-02", "OW-01", "OW-02", "DB-03", "DB-04", "DB-05")
+OW_RULES = ("DB-01", "OW-03", "DB-02", "OW-01", "OW-02", "DB-03", "DB-04", "DB-05")
 TB_RULES = ("DB-01", "DB-02", "TL-LV", "DB-03", "DB-04")
 
 
@@ -961,6 +966,17 @@ def detect_doubles(daily: pd.DataFrame, p: PatternParams = PatternParams(), *,
             out["fail"] = rules[0]
             found.append(out)
             continue
+        if bull and oneil_w:
+            # the high the base corrects is a point of the pattern: the chart draws the W from it
+            out["points"]["A"] = {"pos": hp, "price": float(high[hp]), "date": idx[hp]}
+            # OW-03 (beyond the spec): B is the bottom of the first leg down from that high
+            if p.oneil_first_low and hp < b.pos:
+                floor = float(low[hp:b.pos].min())
+                out["metrics"]["first_leg_low"] = floor
+                if floor < B * (1 - t_frac):
+                    out["fail"] = "OW-03"
+                    found.append(out)
+                    continue
 
         # DB-02 / DT-02: the two extremes are level
         if oneil_w:

@@ -71,6 +71,7 @@ HORIZON = 60             # §3.3, bars over which an outcome is recorded
 W_UNDERCUT_MAX = 5.0     # the second low sits 0 to this % under the first
 W_MIN_DEPTH, W_MAX_DEPTH = 20.0, 35.0   # OW-01: the high before B to the lower low, %
 W_MIN_DAYS = 35          # OW-02: that high to the second low, about 7 weeks
+W_FIRST_LOW = 1          # OW-03, beyond the spec: the first low is the bottom of the decline from that high (1 = on)
 TRIPLE_MAX_DRIFT = 1.5   # TL-LV: a triple's lows may not step one way by more than this %
 CUP_RIGHT_LEFT_MIN = 0.5  # CH-06: a cup's recovery (B to C) takes at least this × its decline (A to B)
 # A cup's rims are a resistance zone, graded rather than judged (CH-03 stays the outer limit):
@@ -94,7 +95,7 @@ def _build_params() -> ps.PatternParams:
     oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT, right_left_min=CUP_RIGHT_LEFT_MIN,
     rim_ideal_pct=RIM_IDEAL_PCT, rim_ok_pct=RIM_OK_PCT, trigger_clears_rims=True,
     cup_under_rim=bool(CUP_UNDER_RIM), hs_origin=bool(HS_ORIGIN), hs_max_neck_change=HS_MAX_NECK_CHANGE,
-    early_breakout=bool(EARLY_BREAKOUT), wg_min_converge=WEDGE_MIN_CONVERGE,
+    early_breakout=bool(EARLY_BREAKOUT), oneil_first_low=bool(W_FIRST_LOW), wg_min_converge=WEDGE_MIN_CONVERGE,
     contain_breakout_side=bool(CONTAIN_BREAKOUT_SIDE),
 )
 
@@ -102,7 +103,7 @@ def _build_params() -> ps.PatternParams:
 _PARAM_CONSTANTS = ("K_MINOR", "K_MAJOR", "MIN_SWING_PCT", "ATR_MULT", "TOL_PCT", "TOL_ATR_MULT", "BO_BUFFER",
                     "BO_VOL", "MAX_WAIT", "FAIL_DAYS", "HORIZON", "W_UNDERCUT_MAX", "W_MIN_DEPTH", "W_MAX_DEPTH",
                     "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM",
-                    "HS_ORIGIN", "HS_MAX_NECK_CHANGE", "EARLY_BREAKOUT", "WEDGE_MIN_CONVERGE",
+                    "HS_ORIGIN", "HS_MAX_NECK_CHANGE", "EARLY_BREAKOUT", "WEDGE_MIN_CONVERGE", "W_FIRST_LOW",
                     "CONTAIN_BREAKOUT_SIDE")
 PARAMS = _build_params()
 _PARAMS_KEY: tuple = tuple(globals()[k] for k in _PARAM_CONSTANTS)
@@ -171,7 +172,7 @@ POINT_NAMES = {
     "RS": "right shoulder", "P0": "pole start", "X": "flag low", "S": "start",
 }
 # a double bottom reuses the cup's letters for different points, and a double top mirrors it
-POINT_NAMES_BY_CODE = {DBOT: {"B": "low 1", "C": "peak", "D": "low 2"},
+POINT_NAMES_BY_CODE = {DBOT: {"A": "base high", "B": "low 1", "C": "peak", "D": "low 2"},
                        "double top": {"B": "top 1", "C": "trough", "D": "top 2"}}
 BEARISH = {
     "double top": lambda d: ps.detect_double_top(d, _params()),
@@ -204,8 +205,15 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.12"
+    version = "1.13"
     changelog = (
+        ("1.13", "2026-10-24",
+         "O'Neil W: the first low must be the bottom of the decline from the high the base corrects (OW-03, "
+         "beyond the spec, W_FIRST_LOW). OW-01 measured the W's depth from the highest high of the window "
+         "before B, but never asked whether price went lower in between: PFC.NS was bought on 2020-02-13 "
+         "(-1.6R) as a W from 85.76 (2019-12-06) and 83.08 (2020-01-22) under a 111 high of August 2019, "
+         "although it had traded 72.36 in October -- two higher lows inside a recovery. The chart now "
+         "draws the W from that high ('base high'), so its depth can be seen."),
         ("1.12", "2026-10-20",
          "Four detector fixes from a review of ICICIBANK.NS's trades. (1) TR-05's near end: the spec's "
          "triangle and wedge break out between 50% and 80% of the way to the apex, but only the 80% end was "
@@ -637,6 +645,9 @@ class ChartPatternSpecStrategy(Strategy):
         "OW-01": "W depth: from that prior high down to the lower of the two lows is {W_MIN_DEPTH}% to "
                  "{W_MAX_DEPTH}%.",
         "OW-02": "W length: at least {W_MIN_DAYS} bars from that prior high to D (about 7 weeks).",
+        "OW-03": "Beyond the spec (W_FIRST_LOW = {W_FIRST_LOW}): the first low B is the bottom of the decline "
+                 "from that prior high -- no low in between sits under B by more than the price tolerance. "
+                 "A lower low before B means B is a higher low inside a recovery, not the base's first bottom.",
         "DB-03": "W middle peak high enough: (C − the lower low) ÷ the lower low is at least "
                  "{PARAMS.db_min_peak}%. There is no upper limit.",
         "DB-04": "W lows far enough apart: {PARAMS.db_days[0]} to {PARAMS.db_days[1]} bars from B to D.",
@@ -816,7 +827,7 @@ class ChartPatternSpecStrategy(Strategy):
                "so its resting order can block the cup with a handle that forms later.",
         DBOT: "O'Neil's W: a continuation base with two lows, the second undercutting the first, "
               "bought on the break of the peak between them.\n\n"
-              "- **Checks:** DB-01 (W), DB-02 (W), OW-01, OW-02, DB-03, DB-04 above.\n"
+              "- **Checks:** DB-01 (W), OW-03, DB-02 (W), OW-01, OW-02, DB-03, DB-04 above.\n"
               "- **Trigger T:** the middle peak C.\n"
               "- **Invalidation X:** the lower low × (1 − tol).\n"
               "- **Height H:** C − the lower low.\n"
@@ -1047,7 +1058,8 @@ class ChartPatternSpecStrategy(Strategy):
          "first to third."),
         ("W shape", "W_MIN_DEPTH",
          "OW-01/OW-02: the W is {W_MIN_DEPTH}-{W_MAX_DEPTH}% deep from the high it corrects and at least "
-         "{W_MIN_DAYS} bars long; the second low undercuts the first by up to {W_UNDERCUT_MAX}%."),
+         "{W_MIN_DAYS} bars long; the second low undercuts the first by up to {W_UNDERCUT_MAX}%; and "
+         "(OW-03, W_FIRST_LOW = {W_FIRST_LOW}) the first low is the bottom of the decline from that high."),
         ("Actionable band", "MAX_CHASE_PCT",
          "Gate G5 wants the close between {MAX_BELOW_TRIGGER_PCT}% below the "
          "trigger and {MAX_CHASE_PCT}% above it; the fill must be within {MAX_CHASE_PCT}% above it."),

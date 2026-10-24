@@ -31,7 +31,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "a43d36f3",
+    "fingerprint": "72cb5735",
     "params": {
       "ATR_MULT": 1.5,
       "BO_BUFFER": 0.5,
@@ -121,6 +121,7 @@
       "TRADE_CUPNH": 1,
       "TRIPLE_MAX_DRIFT": 1.5,
       "WEDGE_MIN_CONVERGE": 1.5,
+      "W_FIRST_LOW": 1,
       "W_MAX_DEPTH": 35.0,
       "W_MIN_DAYS": 35,
       "W_MIN_DEPTH": 20.0,
@@ -154,7 +155,7 @@
         "W3"
       ]
     },
-    "version": "1.12"
+    "version": "1.13"
   },
   "donchian": {
     "family": "donchian",
