@@ -95,8 +95,17 @@ class RsLeadersStrategy(Strategy):
 
     selection = "time_series"
     family = "rs_leaders"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-17",
+    version = "1.1"
+    changelog = (("1.1", "2026-10-24",
+                  "Same-day signals are now bought strongest first: the backtest ranks them by RS rating "
+                  "(`--rank-by rs`). Every signal scored the same setup quality, so when more triggered than "
+                  "there were free slots the tie fell through to Python's stable sort, i.e. the order the "
+                  "market was scanned in -- alphabetical. Measured on the 1.0 US run, A-H tickers were 44% "
+                  "of the candidate pool and 61% of the trades taken. For a strategy whose thesis is buying "
+                  "the strongest stocks, letting the alphabet pick among them contradicted the rule it "
+                  "implements. BUMPED BY HAND: backtest_args is not a numeric constant, so the fingerprint "
+                  "cannot see this."),
+                 ("1.0", "2026-10-17",
                   "First version, from the Learn guide: a confirmed-recovery market gate, the per-stock "
                   "leadership tests, a flat base with a pivot, a buy-stop entry on volume, a 10-day/8% stop, "
                   "a third off at +22% and the rest on a close below the 50-day. The RS rank and group rank "
@@ -256,8 +265,12 @@ class RsLeadersStrategy(Strategy):
         "Skipped when the stop ends up too far away. The stop was set from the signal close; if the price "
         "actually paid puts it more than {MAX_STOP_PCT}% below, the buy is cancelled. A stop already capped at "
         "{MAX_STOP_PCT}% (W3) therefore only fills on an open below the signal close.",
-        "No ranking among same-day signals. Every signal carries the same setup quality, so when more stocks "
-        "trigger than there are free position slots, strength does not decide which ones are bought.",
+        "Strongest first. When more stocks trigger than there are free position slots, the highest RS rating "
+        "is bought first. Every signal carries the same setup quality, so without this the tie fell through "
+        "to the order the market was scanned in -- alphabetical -- and in the US the A-H tickers took 61% of "
+        "the trades from a pool where they were 44%. RS is a whole number from {RS_MIN_RANK} to 99 here, so "
+        "two candidates can still share a rating; that residual tie is narrow (one rating level, at the margin "
+        "of the last free slot) but not zero.",
     )
     stop_rules = (
         "Where it goes. At the lowest low of the {STOP_DAYS} sessions before the signal session (the signal "
@@ -349,7 +362,8 @@ class RsLeadersStrategy(Strategy):
         ("RS rank", "RS_MIN_RANK", "Minimum RS rating, 1-99; applied by the backtest's --min-rs."),
         ("Group rank", "GROUP_MIN_RANK", "Minimum industry-group rating; applied by the backtest's --min-group-rs."),
     )
-    backtest_args = f"--min-rs {RS_MIN_RANK} --min-group-rs {GROUP_MIN_RANK} --exit-mode ma --no-target"
+    backtest_args = (f"--min-rs {RS_MIN_RANK} --min-group-rs {GROUP_MIN_RANK} --exit-mode ma --no-target "
+                     "--rank-by rs")
 
     # ---------- screen ----------
 
