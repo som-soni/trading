@@ -194,58 +194,107 @@ MA_DOC = {
         "ranks INSIDE this filter, so the filter is a drag and the edge is entirely in the ranking. "
         "Worth knowing before tuning a gate."
     ),
-    "thesis": "A long moving average separates markets that are rising from markets that are falling "
-              "without predicting either. It cannot pick winners and does not try; it cuts losers "
-              "early and lets a few long trends pay for many small whipsaws. Faber's published "
-              "contribution was showing how little machinery that needs -- one monthly check.",
+    "thesis": "A long moving average separates a market that is rising from one that is falling, "
+              "without predicting either. It cannot pick winners and does not try. It steps aside "
+              "early in a long decline and lets a few long trends pay for many small whipsaws. "
+              "Faber's published point (2007) was how little machinery that needs: one check a month. "
+              "Here it is the control. It has no ranking, no stop and no target, so any other trend "
+              "strategy has to beat it to show its extra rules add something.",
     "how_it_works": (
-        "On the last TRADING session of each month, compare the index close with the average of the "
-        "last {FABER_MONTHS} month-end closes. Above it, hold the index; below it, hold cash.",
-        "The average is of MONTH-END closes, not a daily average sampled monthly. Faber's rule is "
-        "defined on monthly data and the two differ -- a {FABER_MONTHS}-month average of month-ends "
-        "is smoother than any daily average, which is most of why this whipsaws less than its daily "
-        "cousins.",
-        "The decision is acted on at that same close. Both terms are known when the bar closes, so "
-        "it is not lookahead, and deferring to the next month-end is a materially worse rule: it "
-        "took India's drawdown from -25.6% to -45.4%, deeper than buy-and-hold.",
-        "There is no stop, no target and nothing to size: the position is the whole book or none of "
-        "it. The month-end check IS the stop.",
-        "The `stocks` mode instead holds every stock meeting the guide's four conditions -- above "
-        "the {FAST_SMA}-day, the {FAST_SMA} above the {SLOW_SMA}, above the {SLOW_SMA}, and the "
-        "{SLOW_SMA} higher than {SLOPE_BARS} sessions ago -- equal-weighted and rebalanced monthly. "
-        "It is an adaptation, not the guide's stock rule: see the caveats.",
+        "The idea. Hold what is above its long moving average and hold cash otherwise, checking "
+        "once a month. No ranking, no stop, no target.",
+        "Steps, on the last trading session of each month, in order: find what passes the rule "
+        "(see Entry), sell what no longer does (see Exit), then buy or re-weight what does — all "
+        "at that session's close. Nothing happens between month-ends.",
+        "Two modes. `index` (the default) is Faber's rule on the market's benchmark. `stocks` "
+        "applies the guide's four stock trend conditions to every stock, unranked.",
+        "Month-end means the last session of each calendar month that has a stored price — never "
+        "the calendar date, which is a trading day only about 40% of the time.",
+        "Where the rules come from. Faber (2007) for the index rule; the Learn guide's four stock "
+        "conditions for the stock mode, without its stop and next-open entry (see Caveats). There "
+        "is no written spec with row ids for this strategy.",
     ),
     "entry_rules": (
-        "Index mode: the month-end close above the {FABER_MONTHS}-month average of month-end "
-        "closes. Bought at that close. That is the entire entry rule.",
-        "Stocks mode: all four conditions true on a rebalance date. No trigger to wait for, because "
-        "there is no attempt to time the entry within the month.",
-        "No ranking in either mode. That is deliberate and is what makes this a control: the moment "
-        "a ranking is added it stops measuring the moving average.",
+        "Index mode, buy. In cash, a month-end close above the {FABER_MONTHS}-month average buys "
+        "the index with the whole book at that same close.\n\n"
+        "- **Series:** the market's benchmark from its config — SPY in the US, the Nifty 500 index "
+        "in India.\n"
+        "- **The average:** the simple mean of the last {FABER_MONTHS} month-end closes, this "
+        "month's included. Not a daily average sampled monthly: an average of month-ends is "
+        "smoother, which is most of why the rule whipsaws less than daily versions of it.\n"
+        "- **Timing:** both numbers are known when the session closes, so acting at that close is "
+        "not lookahead, and Faber's own tests do the same. Waiting for the next month-end tested "
+        "materially worse, with a deeper drawdown than buy-and-hold in India.",
+        "Stocks mode, buy. On each month-end close, every stock that passes all of the tests below "
+        "is held; a name not already held is bought at that close.\n\n"
+        "- **Universe:** the market's stored stock list, ETFs and liquid funds removed, keeping "
+        "stocks with at least {SLOW_SMA} + {SLOPE_BARS} + 2 stored sessions.\n"
+        "- **Trend (all four, simple averages of daily closes):** the close above the "
+        "{FAST_SMA}-day average; the {FAST_SMA}-day above the {SLOW_SMA}-day; the close above the "
+        "{SLOW_SMA}-day; the {SLOW_SMA}-day higher than it was {SLOPE_BARS} sessions earlier.\n"
+        "- **Missing prices:** an average needs every price in its window, so a stock with a "
+        "missing session in its last {SLOW_SMA} fails.\n"
+        "- **Price and liquidity:** the close at least the market screener's minimum price "
+        "(`min_price`), and the 20-day average of daily traded value (close times volume) at least "
+        "its liquidity floor (`min_dollar_volume`).\n"
+        "- **Cap:** when more than {max_names} pass, the {max_names} with the highest 20-day "
+        "average traded value are held. Liquidity, not strength, on purpose: ranking on strength "
+        "would bring back the selection this control exists to leave out.",
+        "Start. The book starts in cash. The first possible buy is the first month-end on or after "
+        "the backtest start.",
+        "Position size. Index mode: the whole book or nothing. Stocks mode: equal weights — the "
+        "whole book (cash plus holdings at that close) is split equally among the names to hold, "
+        "and holdings already owned are topped up or trimmed back to that weight. A change smaller "
+        "than 0.01% of the book is skipped.",
+        "Fill and cost. Every trade fills at the month-end close — the close the decision was made "
+        "on, not the next open. Each buy and each sell pays {cost_bps} basis points of the value "
+        "traded. A stock with no price that day trades at its last stored close.",
+        "When no trade is taken. Between month-ends nothing is bought or sold. In stocks mode, a "
+        "month-end on which no stock qualifies puts the whole book in cash. There is no ranking in "
+        "either mode: the moment one is added, this stops measuring the moving average.",
     ),
     "exit_rules": (
-        "Index mode: a month-end close below the average. Sold at that close, into cash.",
-        "Stocks mode: the stock stops meeting the four conditions on a rebalance date.",
-        "No profit target in either mode -- a target caps the rare long trend that pays for every "
-        "whipsaw, which is the only way this rule makes money.",
-        "No time stop, no ATR stop, nothing intraday. A month can fall 20% before the rule reacts, "
-        "and sizing is the only defence against that.",
+        "Index mode, sell. A month-end close at or below the {FABER_MONTHS}-month average sells the "
+        "whole position at that close, into cash.",
+        "Stocks mode, sell. On a month-end close, a holding no longer on the list is sold at that "
+        "close: it failed one of the four conditions, fell under the price or liquidity floor, or "
+        "dropped out of the {max_names} most liquid on a month when more than {max_names} qualify.",
+        "Stop. None. The month-end check is the only exit, and no price inside the month is looked "
+        "at. A position can fall a long way between two month-ends before the rule reacts; how much "
+        "of the account is in it is the only defence.",
+        "Target. None. A target would cap the rare long trend that pays for every whipsaw, which is "
+        "the only way this rule makes money.",
+        "Time limit. None. A position is held for as long as it passes the month-end check.",
+        "End of the backtest. Index mode: a position still held on the last day is valued at that "
+        "close but not recorded as a trade. Stocks mode: holdings still open are recorded as OPEN "
+        "trades at the last close, with no selling cost.",
     ),
     "caveats": (
         "**The `stocks` mode is an adaptation and should not be read as the guide's stock rule.** It "
-        "drops the guide's 3xATR initial stop and its next-open entry, which are what make that "
-        "version a swing trade. What is left is the SETUP alone, which is the thing worth isolating "
-        "-- but a faithful implementation would trade differently and probably worse, since the "
-        "stop would realise losses the monthly rebalance rides through.",
-        "**Index series are price series, not tradable instruments.** A real implementation buys an "
-        "ETF or a future, adding tracking difference, spread, and roll or management cost. None of "
-        "that is modelled beyond the flat cost per side.",
-        "**Dividends are excluded on both the strategy and the benchmark.** That understates both, "
-        "but not equally: this rule sits in cash 17-29% of the time, so it forgoes dividends the "
-        "benchmark collects. The real gap is slightly WORSE than measured.",
+        "drops the guide's initial stop at 3 times ATR and its next-open entry, which are what make "
+        "that version a swing trade. What is left is the setup alone, which is the thing worth "
+        "isolating. A faithful version would trade differently and probably worse, since the stop "
+        "would realise losses the monthly rebalance rides through.",
+        "**Stocks mode reports its cash and position count wrongly (a code flaw, noted not fixed).** "
+        "The shared month-end engine records the number of names held at the END of the run on every "
+        "day, so the run's cash line reads zero throughout, even on a month when nothing qualified "
+        "and the book sat in cash. The equity curve and the trades are right. The invested share and "
+        "the split between selection and cash drag of a stocks-mode run are not.",
+        "**The index is not always a tradable instrument.** In the US the series is SPY, a fund that "
+        "trades. In India it is the Nifty 500 index value, which cannot be bought directly; a real "
+        "book buys an ETF or a future, adding tracking difference, spread, and roll or management "
+        "cost. None of that is modelled beyond the {cost_bps} basis points per side.",
+        "**Dividends are excluded on both the strategy and the benchmark.** Stored prices carry no "
+        "dividends. That understates both, but not equally: this rule sits in cash 17-29% of the "
+        "time, so it forgoes dividends the benchmark collects. The real gap is slightly WORSE than "
+        "measured.",
         "**Cash earns nothing here.** The guide suggests a liquid fund when out. At the repo rates "
-        "of this window that is a material omission in the strategy's favour being left out -- "
-        "crediting it would raise the result, so this is conservative.",
+        "of this window that is a material omission against the strategy: crediting it would raise "
+        "the result, so this is conservative.",
+        "**Stocks mode has survivorship bias.** Its stock list is today's listed stocks, so companies "
+        "delisted before today are missing from the history, which flatters the result.",
+        "**The last month of a run is partial.** Its last stored session is treated as a month-end, "
+        "so a decision can be taken on it before the month is over.",
         "**Whipsaw is regime-dependent and 17 trades is a small sample.** The rule's cost is a "
         "sideways market, and whether this window had a representative number of them is not "
         "something two markets and sixteen years can establish.",

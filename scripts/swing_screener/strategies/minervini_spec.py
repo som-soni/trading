@@ -175,6 +175,14 @@ CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpPar
 
 STOP_BUFFER_PCT = 0.5   # SL-01: stop this % under the tight low
 MAX_STOP_PCT = 10.0     # SL-03: skip a fill whose stop is further below it than this (the guide's limit)
+# EN-04's limit: how many times one base may be bought. 1 = the shipped rule, a base is barred
+# for good after one entry. Minervini re-buys a leader that shook him out, and the ladder makes
+# that common here -- EX-03 moves the stop to breakeven at +{BREAKEVEN_R}R, so an ordinary
+# pullback ends the trade at zero and, today, ends the base with it. Raising this lets only a
+# SHAKEOUT reopen a base (a stop or a breakeven stop, never a trend exit, which says the move is
+# over), and the setup still has to re-fire on its own. OFF until measured: `--const
+# MAX_ENTRIES_PER_BASE=2`.
+MAX_ENTRIES_PER_BASE = 1
 NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a third at 3R)
 # Minervini's stated minimum reward-to-risk (ChartMill's SEPA write-up and the
 # books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
@@ -194,6 +202,15 @@ OVERHEAD_CLUSTER_ATR = 1.0
 # breakeven stop had reached a median 2.75R and realised -0.04R -- and 1.8 puts the
 # guide's figure back; `--breakeven-r 2.5` reproduces 1.7.)
 BREAKEVEN_R = 2.0
+# EX-04's trigger, and the other half of EX-03. Minervini sells into strength and THEN
+# raises the stop; this implementation did the raise without the sale, which converts an
+# unrealised gain into nothing instead of into cash. 1.6 saw the symptom -- breakeven-stop
+# exits had reached a median 2.75R and realised -0.04R -- and moved the threshold, which
+# treats a paired rule as a single one. Measured on the 1.22 runs, every breakeven-stop exit
+# in both books came from a trade that had reached +2R: 28 of India's 95 such trades and 26
+# of the US's 114 ended at a median -0.03R and -0.01R. Banking {STRENGTH_FRAC} at the same
+# +2R the stop moves on is the guide's own sequence, so the two fire on one bar.
+PARTIAL_R = 2.0
 # EX-02, the failed-breakout exit (a close back below the pivot within N sessions).
 # OFF: the guide leaves a dip below the pivot to the stop, and dips are normal --
 # on stored data about two in three breakouts close back below the pivot within ten
@@ -329,6 +346,64 @@ def cheat_cross(prev: dict, prev_close: float, close: float) -> str | None:
     if prev["cheat_zone"] == "low":
         return MV03 if LOW_CHEAT_ENABLED else None
     return MV04 if prev["cheat_zone"] == "mid" else None
+
+
+def base_diagnostics(r: dict, daily: pd.DataFrame) -> dict:
+    """What a pass/fail hides about a base, from one `vcp_spec.detect` result: how it contracted, which
+    route its pivot passed by, how its volume dried up, its undercuts, its trend through the base and the
+    ATR its pullbacks are measured against. Display only -- nothing here decides a trade. Shared by
+    evaluate (the screen's row) and bases_live (the chart), so both say the same thing. A value is None
+    when the detector stopped before measuring it."""
+    out = {"base_reference": None, "pivot_route": None, "pivot_pos": None, "dryup_quiet_days": None,
+           "closes_below_200": None, "below_200_share_pct": None, "undercuts": None,
+           "undercuts_failed": None, "undercuts_pending": None, "bh_atr_pct": None, "atr_blocks_base": None}
+    if not r or r.get("bh") is None:
+        return out
+    ref, sizes = r.get("reference_i"), r.get("depths") or []
+    if ref is not None and ref < len(sizes):
+        out["base_reference"] = "clean" if ref == 0 else f"reset at pullback {ref + 1}, {sizes[ref]:.1f}%"
+    pos, pivot, bh = r.get("pivot_pos"), r.get("pivot"), r.get("bh")
+    if pos is not None and pos == pos and pivot:
+        routes = [n for n, ok in (("zone", pos >= UPPER_ZONE), ("near high", pivot >= PIVOT_NEAR_HIGH * bh)) if ok]
+        out["pivot_route"], out["pivot_pos"] = " + ".join(routes) or "neither", round(float(pos), 2)
+    if r.get("dryup") is not None:
+        out["dryup_quiet_days"] = r.get("dryup_quiet_days")
+    below, days = r.get("base_closes_below_200"), r.get("base_days")
+    if below is not None:
+        out["closes_below_200"] = int(below)
+        out["below_200_share_pct"] = round(below / days * 100, 1) if days else None
+    if r.get("undercuts") is not None:
+        out.update(undercuts=r["undercuts"], undercuts_failed=r["undercuts_failed"],
+                   undercuts_pending=r.get("undercuts_pending"))
+    bd = r.get("bh_date")
+    if bd is not None and bd in daily.index and "atr14" in daily.columns:
+        a, c = daily.at[bd, "atr14"], daily.at[bd, "close"]
+        if pd.notna(a) and c:
+            out["bh_atr_pct"] = round(float(a) / float(c) * 100, 2)
+            # the pullback floor (VCP-04) meets the tight-area cap (VCP-08): see the VCP-08 rule
+            out["atr_blocks_base"] = bool(VCP.zigzag_floor_atr_mult * out["bh_atr_pct"] > TIGHT_PCT)
+    return out
+
+
+def base_notes(r: dict, g: dict) -> str:
+    """The diagnostics in one readable line, for the Candidates table. Only what was measured."""
+    parts = []
+    sizes = r.get("depths") or []
+    if sizes:
+        parts.append(" → ".join(f"{x:.1f}" for x in sizes) + "%" + (f" ({g['base_reference']})" if g["base_reference"] else ""))
+    if g["pivot_route"]:
+        parts.append(f"pivot {g['pivot_pos']:.2f} up ({g['pivot_route']})")
+    if r.get("dryup") is not None:
+        q = g["dryup_quiet_days"]
+        parts.append(f"volume {r['dryup']:.2f}×, {q} quiet day{'' if q == 1 else 's'}")
+    if g["closes_below_200"]:
+        parts.append(f"{g['closes_below_200']} closes under the 200-day ({g['below_200_share_pct']:g}% of the base)")
+    if g["undercuts"]:
+        st = [f"{n} {w}" for n, w in ((g["undercuts_failed"], "failed"), (g["undercuts_pending"], "pending")) if n]
+        parts.append(f"{g['undercuts']} undercut{'s' if g['undercuts'] > 1 else ''}" + (f" ({', '.join(st)})" if st else ", recovered"))
+    if g["bh_atr_pct"] is not None:
+        parts.append(f"ATR {g['bh_atr_pct']:.1f}% at the high" + (" — too volatile to complete" if g["atr_blocks_base"] else ""))
+    return " · ".join(parts)
 
 
 def cheat_measured_move(base_high, entry: float, first_depth_pct) -> float:
@@ -499,8 +574,31 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.22"
+    version = "1.24"
     changelog = (
+        ("1.24", "2026-10-22",
+         "EN-04 can now allow more than one entry per base, though it still allows "
+         "{MAX_ENTRIES_PER_BASE} -- the switch is off until it is measured. A base was barred for "
+         "good after a single entry, which also barred the re-entry a shakeout invites, and the "
+         "ladder makes shakeouts common: EX-03 moves the stop to breakeven at +{BREAKEVEN_R}R, so "
+         "an ordinary pullback ends the trade at zero and ended the base with it. Minervini "
+         "re-buys a leader that shook him out; this implementation could not. Raised, only a stop "
+         "or a breakeven stop reopens a base -- never a trend exit, which says the move is over "
+         "rather than that the trade was shaken out -- and the setup must still re-fire by "
+         "itself. Measured with `--const MAX_ENTRIES_PER_BASE=2`. Detection is untouched and at "
+         "the shipped value nothing changes, so the golden harness is identical."),
+        ("1.23", "2026-10-22",
+         "EX-04 now also sells {STRENGTH_FRAC} at +{PARTIAL_R}R, the point EX-03 moves the stop to "
+         "breakeven. The ladder raised the stop without ever banking anything, which converts an "
+         "unrealised gain into nothing instead of into cash -- half of the guide's rule, which is "
+         "to sell into strength and THEN raise the stop. 1.6 saw the symptom (breakeven-stop exits "
+         "had reached a median 2.75R and realised -0.04R) and moved the threshold, treating a "
+         "paired rule as a single one. Measured on the 1.22 runs: every breakeven-stop exit in "
+         "both books came from a trade that had reached +2R -- 28 of India's 95 such trades and 26 "
+         "of the US's 114 -- and they ended at a median -0.03R and -0.01R. The old EX-04 trigger, "
+         "a close {STRENGTH_EXT_PCT}% above the 50-day, is unchanged and still fires first when it "
+         "comes first; it is simply rare, taking a part off in 14% of Indian and 3.7% of US "
+         "trades. Detection is untouched, so the golden harness is identical."),
         ("1.22", "2026-10-21",
          "STRENGTH_FRAC is 0.33 instead of 1/3, so EX-04 reads \"sell 0.33 of the position\" on the "
          "page instead of \"0.333333\" -- the same rounding UPPER_ZONE got in 1.15, for the same "
@@ -847,10 +945,14 @@ class MinerviniSpecStrategy(Strategy):
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                      "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio", "breakout_volume_ratio",
-                     "vcp_fail", "rs_score")
+                     "vcp_fail", "rs_score", "base_notes", "base_reference", "pivot_route", "pivot_pos",
+                     "dryup_quiet_days", "closes_below_200", "below_200_share_pct", "undercuts",
+                     "undercuts_failed", "undercuts_pending", "bh_atr_pct", "atr_blocks_base")
     extra_numeric_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                              "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio",
-                             "breakout_volume_ratio", "rs_score")
+                             "breakout_volume_ratio", "rs_score", "pivot_pos", "dryup_quiet_days",
+                             "closes_below_200", "below_200_share_pct", "undercuts", "undercuts_failed",
+                             "undercuts_pending", "bh_atr_pct")
     needs_ctx_extras = True
     # SEPA part 2. The screener fetches current fundamentals for rows that already
     # cleared the screen and annotates them (revenue/earnings YoY, gross-margin
@@ -872,85 +974,58 @@ class MinerviniSpecStrategy(Strategy):
         "filtered by the guide's."
     )
     how_it_works = (
-        "In one line: buy a market leader that has already made a big advance, has paused in a range "
-        "that keeps getting tighter, and is starting to move again. That tightening pause is the "
-        "volatility contraction pattern — the VCP — and most of the rules below exist to tell a real "
-        "one from a stock that is simply drifting.",
-        "Qualifying first (G1-G8). Before any pattern is looked at, the stock must pass the Trend "
-        "Template: the close above its 50-, 150- and 200-day averages; those averages stacked, 50 above "
-        "150 above 200; the 200-day higher than it was {SMA200_RISING_BARS} sessions ago (the stated "
-        "minimum — W5 notes when it has not also been rising for {SMA200_RISING_PREF_BARS} sessions, the "
-        "4-5 months Minervini prefers); the close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low "
-        "and within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high; and a relative-strength rating of "
-        "{RS_MIN_RANK}+ against the whole market. Rating a stock means ranking it against every other, so "
-        "a backtest applies that last test to the signals it has collected rather than inside the "
-        "per-bar scan, which only ever sees one symbol.",
-        "Where the base begins. The base high is the highest swing high that no close has exceeded since. "
-        "A swing high counts only once {SWING_K} lower bars sit either side of it, so it is recognised "
-        "{SWING_K} sessions after it happens, never on the day. The base must follow an advance of "
-        "{PRIOR_ADVANCE_PCT}%, run for {BASE_MIN_DAYS}–{BASE_MAX_DAYS} sessions, and keep the long "
-        "averages in order throughout.",
-        "What counts as a contraction. Each pullback inside the base — from one swing high down to the "
-        "lowest low before the next — is one contraction. A base needs at least {MIN_CONTRACTIONS} of "
-        "them and must not be more than {MAX_BASE_DEPTH_PCT}% deep top to bottom. Moves smaller than "
-        "{MIN_SWING_PCT}% are noise and ignored. A base deeper than {DEEP_BASE_FLAG_PCT}%, or with more "
-        "than {MAX_CONTRACTIONS} contractions, is flagged for attention rather than rejected.",
-        "The idea the pattern is built on: each pullback should be shallower than the last, because that "
-        "is sellers running out. Demanding that literally would reject most real bases, so the test is "
-        "that volatility has contracted since the last time it widened. The most recent widening — a "
-        "pullback more than {WIDEN_TOL} times the one before it — becomes the reference point. The base "
-        "then needs {MIN_FROM_REFERENCE} contractions after that point, the last of them no bigger than "
-        "{FINAL_REF_RATIO} times the reference. So 15% → 25% → 12% → 6% passes, judged against its 25% "
-        "widening rather than its 15% start. A base that has widened and not yet tightened again is not "
-        "rejected; it is just not ready.",
-        "The tight area and the pivot. The last contraction is the tight area, and its own swing high is "
-        "the pivot — the price every buy is measured from. It has to be at least {TIGHT_MIN_DAYS} "
-        "sessions old and span no more than {TIGHT_PCT}%. Volume has to have dried up too: either the "
-        "area averages {DRYUP_RATIO} times the 50-day volume or less, or {DRYUP_QUIET_DAYS} sessions "
-        "inside it come in at {DRYUP_QUIET_RATIO} times or less.",
-        "Where the pivot sits decides which entry applies. Measure it up the base's range, 0 at the base low and 1 at the base high: a pivot at {UPPER_ZONE} or higher "
-        "— or at {PIVOT_NEAR_HIGH} times the base high or better — is a normal pivot buy, "
-        "MV-01 or MV-02. A pivot below that means the stock has not yet recovered its old high, so buying "
-        "there is one of Minervini's cheat entries: the middle third is MV-04, the lower third MV-03. A "
-        "double bottom's pivot is its middle peak, which always sits low in the range, so a double bottom "
-        "is traded as a cheat rather than a pivot buy.",
-        "Dips below an earlier low are kept, never rejected: that is the double-bottom shakeout, and it "
-        "is often the best part of the pattern. What is worth separating out is the undercut that does "
-        "not close back above the old low within {UNDERCUT_RECOVERY_DAYS} sessions.",
-        "The trend has to hold while the base forms, which is a looser test than the Trend Template "
-        "itself: the 200-day no lower than it was when the base began, the 150-day above the 200-day "
-        "today, and no more than {MAX_CLOSES_BELOW_200} closes below the 200-day along the way. The full "
-        "Trend Template is recorded at the base start but not required there — Minervini applies it when "
-        "he buys, so it is a hard gate on the signal day instead.",
-        "Pivot breakout (MV-01). The base was complete yesterday, yesterday's close sat at or below the "
-        "pivot, and today's close is above it — on at least {VOL_MULT} times average volume, finishing in "
-        "the upper half of the day's range, and no more than {BUY_RANGE_PCT}% past the pivot. Bought at "
-        "the next open.",
-        "Coiled (MV-02). The base is complete and the close has settled within {COIL_PCT}% below the "
-        "pivot. A buy-stop waits just above the pivot.",
-        "The cheats (MV-03 and MV-04). A short, tight shelf forms in the lower or middle third of a base "
-        "that is still forming. The buy is the close that clears the shelf's high, and the stop goes "
-        "under the shelf's low — far nearer than the base low, which is the whole reason for going early.",
-        "Power play (MV-05). No base at all: price at least {PP_RUN_MULT}x within {PP_RUN_WINDOW} "
-        "sessions, then a tight flag of {PP_FLAG_MIN_DAYS}–{PP_FLAG_MAX_DAYS} sessions giving back no "
-        "more than {PP_FLAG_MAX_DEPTH_PCT}%, bought through the flag's pivot and stopped under its low. "
-        "Minervini treats it as a special case and so does this: it is found on its own path, so a power "
-        "play and a base setup never compete for the same stock.",
-        "Liquidity and timing. The stock must trade at least \u20b9{MIN_TURNOVER_INR_CR} crore or "
-        "${MIN_TURNOVER_USD_M} million a day on a 50-day average; the live screen also wants a price of "
-        "at least \u20b9{LIVE_MIN_PRICE_INR} or ${LIVE_MIN_PRICE_USD}. No new buy is taken with results "
-        "due within {EARNINGS_BLACKOUT_DAYS} days, or while the market filter is risk-off.",
+        "**The idea.** Buy a stock that is already a market leader, after it has paused in a base "
+        "whose pullbacks keep getting smaller, on the day it breaks out of that base. Shrinking "
+        "pullbacks are the volatility contraction pattern (VCP): each sell-off is weaker than the "
+        "last, so sellers are running out.",
+        "**The steps, in order.** Each has its own section below.\n\n"
+        "- **Qualify** (G1–G8): the stock passes the Trend Template.\n"
+        "- **Find the base** (VCP-01 to VCP-10): the base checks.\n"
+        "- **Pick the setup** (S1–S5): a breakout, a coil under the pivot, two early \"cheat\" buys, "
+        "or a power play.\n"
+        "- **Buy** (Entry), **protect** (Stop), **check the reward** (Target) and **manage** (Exit).\n"
+        "- **Size** the position, and skip new buys in the cases under \"When no new trade is taken\".",
+        "**Timing.** Every rule is judged on a session's close, using only data up to that close. An "
+        "order fills in a later session — at the next open, or on a buy-stop — never on the bar that "
+        "produced it (spec section 10).",
+        "**Rule ids.** TT-05, VCP-02, EX-04 and the like name the rule in the written backtest spec "
+        "(research/minervini-backtest-spec.md), so a rule can be found there and in the code. Where the "
+        "code departs from that spec is listed once, under Known caveats.",
     )
     caveats = (
+        "**Where the code departs from the written spec.** It follows the spec's revision (v2) and the "
+        "Learn guide \"SEPA and the VCP\" instead in these places:\n\n"
+        "- **Base:** the base high is the HIGHEST unbeaten swing high, not the most recent (VCP-02); the "
+        "trend is tested across the base instead of the Trend Template on the base-high day (VCP-03); "
+        "pullbacks come from a shrinking zig-zag, and more than {MAX_CONTRACTIONS} is a flag, not a "
+        "limit (VCP-04); depth is the whole base, up to {MAX_BASE_DEPTH_PCT}%, not the first pullback up "
+        "to 35% (VCP-05); a deeper pullback resets the count instead of failing the base, where the spec "
+        "wants each pullback 0.80 times the last (VCP-06); the tight area is the last pullback, not a "
+        "fixed 10 days (VCP-08); a high pivot in a deep base also passes (VCP-09); volume up to "
+        "{DRYUP_RATIO} times, or quiet days, instead of 0.70 times (VCP-10).\n"
+        "- **Setups:** the cheats (MV-03, MV-04) and the power play (MV-05) are added. The spec's early "
+        "entry, EN-03, is not implemented.\n"
+        "- **Entry:** the buy-stop needs a close at or above the pivot, where the spec fills on a touch "
+        "(EN-02).\n"
+        "- **Stop and size:** a {MAX_STOP_PCT}% maximum stop instead of 8% (SL-03); half size until the "
+        "record pays (PE) is added; open risk is measured from the lower of the last close and the price "
+        "paid, not from the last close (PF-04).\n"
+        "- **Target:** the spec has none; the {MIN_STRUCTURAL_R}:1 test and the overhead cap are added.\n"
+        "- **Exits:** a part sold {STRENGTH_EXT_PCT}% above the 50-day instead of a third at +3R (EX-04); "
+        "a climax sells that part, not everything (EX-05); the 50-day exit needs no volume (EX-06); the "
+        "time stop is on at {TIME_STOP_DAYS} sessions instead of off at 20 (EX-07); the failed-breakout "
+        "exit is off instead of on at 5 sessions (EX-02); the light-volume exit is added.\n"
+        "- **Filters:** the Learn guide's market test instead of MKT-01; the results blackout is added; "
+        "higher US turnover and price floors than U-01 and U-02.",
         "**Survivorship bias.** The universe is today's listed stocks; companies delisted since are missing, "
         "which flatters every result.",
         "**Corporate actions.** Prices are adjusted when fetched; a split or bonus after a symbol's last full "
         "fetch shows as a crash until its history is re-fetched (`marketdata.splits`).",
-        "**Relative strength** is cross-sectional, so where it is applied depends on what the caller can see. "
-        "The daily screening run rates the whole market and gates G8 on the true RS rating of {RS_MIN_RANK}+. "
-        "A backtest cannot do that inside a per-bar scan of one symbol, so G8 falls back to 12-1 month momentum "
-        "of {RS_MIN_SCORE}+ there and `--min-rs` applies the real rating to the collected signals — the same "
-        "threshold, one step later. A single-symbol tool keeps the stand-in and is therefore looser than both.",
+        "**Relative strength** is a ranking against the whole market, so where it is applied depends on what "
+        "the caller can see. The daily screen rates the whole market and gates G8 on the real RS rating of "
+        "{RS_MIN_RANK}+. A backtest scans one stock at a time, so G8 there is a floor of {RS_MIN_SCORE} on the "
+        "stock's own RS score, and `--min-rs` then applies the real rating to the collected signals — the "
+        "same threshold, one step later. A single-stock tool keeps only the floor, so it is looser than both.",
         "**Fundamentals (SEPA part 2) are optional in the backtest, off by default.** `--fundamentals guide` "
         "applies the Learn guide's tests (quarterly EPS up {FUND_EPS_GROWTH_MIN_PCT}%+ and faster than the "
         "quarter before, sales up {FUND_SALES_GROWTH_MIN_PCT}%+, net margin no more than "
@@ -999,132 +1074,347 @@ class MinerviniSpecStrategy(Strategy):
     )
 
     gate_docs = {
-        "G1": "TT-05: close above the 50-day average.",
-        "G2": "TT-01: close above the 150-day average.",
-        "G3": "TT-01: close above the 200-day average.",
-        "G4": "TT-02 and TT-04: the 50-day above the 150-day above the 200-day.",
-        "G5": "TT-03: the 200-day higher than {SMA200_RISING_BARS} sessions ago — about a month, "
-              "which is the Trend Template's stated MINIMUM. The preferred 4-5 months is W5, a note "
-              "rather than a gate.",
-        "G6": "TT-06: close at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low.",
-        "G7": "TT-07: close within {MAX_PCT_BELOW_52W_HIGH}% of the 52-week high.",
-        "G8": "TT-08: an RS rating of {RS_MIN_RANK}+ (1-99 across the market) whenever the caller has rated "
-              "the whole market — the daily screening run does. A one-symbol evaluation cannot rank, so "
-              "`inspect --no-rs-rank` and the chart indicators fall back to a floor of {RS_MIN_SCORE} on that "
-              "same weighted score; a backtest also falls back here and applies the rating to the "
-              "signals instead.",
+        "G1": "TT-05: today's close is above the 50-day simple moving average.",
+        "G2": "TT-01, first half: today's close is above the 150-day average.",
+        "G3": "TT-01, second half: today's close is above the 200-day average.",
+        "G4": "TT-02 and TT-04: the averages are stacked — the 50-day above the 150-day, and the "
+              "150-day above the 200-day (so the 50-day is above the 200-day too).",
+        "G5": "TT-03: the 200-day average is higher today than {SMA200_RISING_BARS} sessions ago "
+              "(about a month).\n\n"
+              "The longer rise Minervini prefers — about 4-5 months — is watch flag W5, noted but "
+              "never blocking.",
+        "G6": "TT-06: today's close is at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low (the "
+              "lowest low of the last 252 sessions).",
+        "G7": "TT-07: today's close is no more than {MAX_PCT_BELOW_52W_HIGH}% below the 52-week high "
+              "(the highest high of the last 252 sessions).",
+        "G8": "TT-08: an RS rating of {RS_MIN_RANK} or more. The RS score adds up the stock's gains "
+              "over the last 3, 6, 9 and 12 months, counting the latest 3 months twice. The rating "
+              "ranks that score across the market from 1 to 99, so {RS_MIN_RANK} means it beat about "
+              "{RS_MIN_RANK}% of stocks.\n\n"
+              "A ranking needs the whole market, so how the rule is checked depends on where it "
+              "runs:\n\n"
+              "- **Daily screen:** rates the whole market and applies {RS_MIN_RANK}+ directly.\n"
+              "- **Backtest:** the same rule in two steps. Scanning one stock, it requires an RS "
+              "score of {RS_MIN_SCORE}+ (a steady 5% a quarter just clears it; a flat stock scores "
+              "0). Once all signals are in, it drops those rated under {RS_MIN_RANK} that day.\n"
+              "- **Single-stock tools** (chart indicators, `inspect --no-rs-rank`): the "
+              "{RS_MIN_SCORE} floor only, so they can pass a stock the screen would reject.",
     }
     watch_docs = {
-        "W1": "Closed through the pivot on light volume — under {VOL_MULT} × the 50-day average (MV-01a), "
-              "so not a confirmed breakout.",
-        "W2": "Closed more than {BUY_RANGE_PCT}% past the pivot (MV-01b): extended beyond the buy range.",
-        "W3": "Closed through the pivot but in the lower half of the day's range (MV-01c).",
-        "W4": "Results are due within {EARNINGS_BLACKOUT_DAYS} days: no new buy (the plan is held at WATCH).",
-        "W5": "TT-03, the preferred half: the 200-day is rising — G5 required it to be higher than "
-              "{SMA200_RISING_BARS} sessions ago — but it is NOT higher than {SMA200_RISING_PREF_BARS} "
-              "sessions ago, so the trend is younger than the 4-5 months Minervini prefers. Noted only; "
-              "unlike W1-W3 it does not downgrade the decision, because the stated requirement is the "
-              "month and treating the preference as a gate would reject stocks the Trend Template admits.",
+        "W1": "Light breakout volume (MV-01a): on a day the close crossed the pivot, volume was under "
+              "{VOL_MULT} times its 50-day average. That close is not an MV-01 signal and is not bought.",
+        "W2": "Extended (MV-01b): on a day the close crossed the pivot, it closed more than {BUY_RANGE_PCT}% "
+              "above it. That close is not an MV-01 signal and is not bought.",
+        "W3": "Weak close (MV-01c): on a day the close crossed the pivot, it closed in the lower part of the "
+              "day's range — under {UPPER_HALF} of the way from the low to the high. That close is not an "
+              "MV-01 signal and is not bought.",
+        "W4": "Results due within {EARNINGS_BLACKOUT_DAYS} days (from the earnings calendar): a valid plan "
+              "is held at WATCH instead of a buy. Not in the written spec; from the Learn guide.",
+        "W5": "Young uptrend (TT-03, the preferred half): the 200-day is higher than {SMA200_RISING_BARS} "
+              "sessions ago (G5 passed) but not higher than {SMA200_RISING_PREF_BARS} sessions ago, so it "
+              "has been rising for less than the 4-5 months Minervini prefers. Noted only; it never changes "
+              "the decision.",
     }
     setup_docs = {
-        MV01: "MV-01 breakout: yesterday's base was complete, and today's close went through yesterday's pivot "
-              "on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of the pivot.",
-        MV02: "MV-02 coiled: the base is complete and the close is within {COIL_PCT}% below the pivot.",
-        MV03: "MV-03 low cheat (on by default — LOW_CHEAT_ENABLED is {LOW_CHEAT_ENABLED}; set it to 0 to turn it off): "
-              "a shelf of {CHEAT_SHELF_DAYS} sessions spanning no more than "
-              "{CHEAT_SHELF_PCT}% sits in the LOWER third of a base that has cleared VCP-01/02/03, and "
-              "today's close went through its high. Taken while the base is still forming, so the stop "
-              "is the shelf low rather than the base low. Minervini calls this the riskiest of his "
-              "three in-base entries and uses it mainly in stocks he already knows.",
-        MV04: "MV-04 cheat (\"3C\"): the same shelf in the MIDDLE third of the base — the cup-completion "
-              "cheat, entered as the base recovers but before it reaches its old high.",
-        MV05: "MV-05 power play: price at least doubled ({PP_RUN_MULT}x) within {PP_RUN_WINDOW} sessions "
-              "measured AT the flag high, then paused for {PP_FLAG_MIN_DAYS}–{PP_FLAG_MAX_DAYS} sessions "
-              "falling no more than {PP_FLAG_MAX_DEPTH_PCT}%, and today's close went through the flag's "
-              "pivot on volume, in the upper half of the range, within {BUY_RANGE_PCT}% of it. Detected "
-              "separately from the base path: the flag is shorter than {BASE_MIN_DAYS} sessions and the "
-              "averages have not caught up, so the base rules reject a power play before any contraction "
-              "is measured.",
+        MV01: "MV-01 pivot breakout: the close crosses the pivot of a finished base, with "
+              "conviction.\n\n"
+              "- **Finished base:** on yesterday's close the base passed every base check above "
+              "(VCP-01 to VCP-10).\n"
+              "- **Pivot:** taken from yesterday's chart, so today's own bar cannot move it.\n"
+              "- **Breakout:** yesterday's close was at or below the pivot, and today's close is "
+              "above it.\n"
+              "- **Conviction (MV-01a–c):** volume at least {VOL_MULT} times its 50-day average; a "
+              "close at least {UPPER_HALF} of the way from the day's low to its high; and a close no "
+              "more than {BUY_RANGE_PCT}% above the pivot. A miss is recorded as W1, W2 or W3, and "
+              "the close is not bought.",
+        MV02: "MV-02 coiled: a finished base whose close sits just under the pivot, ready to break "
+              "out.\n\n"
+              "- **Finished base:** on today's close the base passes every base check above.\n"
+              "- **Coiled:** today's close is at or below the pivot and no more than {COIL_PCT}% "
+              "under it, and today is not an MV-01 breakout.\n\n"
+              "Nothing is bought on the signal: a buy-stop waits just above the pivot (see Entry).",
+        MV03: "MV-03 low cheat: an early buy from a short, tight shelf in the LOWER third of a base "
+              "that is still forming.\n\n"
+              "- **Base still forming:** the base passes VCP-02, VCP-01, VCP-03 and VCP-05 (length, "
+              "prior advance, trend, depth). The pullback checks after them need not pass yet.\n"
+              "- **Shelf:** the last {CHEAT_SHELF_DAYS} sessions up to yesterday, whose high-to-low "
+              "range is at most {CHEAT_SHELF_PCT}% of their high, with that high still below the "
+              "base high.\n"
+              "- **Lower third:** the shelf's high is less than one third of the way from the base "
+              "low to the base high.\n"
+              "- **Trigger:** yesterday's close was at or below the shelf's high, and today's close "
+              "is above it. There is no volume or close-position test.\n\n"
+              "The stop goes under the shelf's low, much nearer than the base low — the reason to "
+              "buy early. Minervini calls this the riskiest of his three in-base entries. On by "
+              "default (LOW_CHEAT_ENABLED = {LOW_CHEAT_ENABLED}). Under the variant the live screen "
+              "runs, a cheat is withheld when its base has passed every check up to VCP-08 but fails "
+              "VCP-09.",
+        MV04: "MV-04 cheat (\"3C\", the cup-completion cheat): the same as MV-03, but the shelf's "
+              "high is between one third and two thirds of the way from the base low to the base "
+              "high — the stock has recovered part of its decline but not its old high.",
+        MV05: "MV-05 power play: a stock that has run up very fast, then paused briefly. No base is "
+              "needed.\n\n"
+              "- **Flag high:** the most recent confirmed swing high that leaves a pause of "
+              "{PP_FLAG_MIN_DAYS}–{PP_FLAG_MAX_DAYS} sessions up to yesterday.\n"
+              "- **Run:** that high is at least {PP_RUN_MULT} times the lowest low of the "
+              "{PP_RUN_WINDOW} sessions before it.\n"
+              "- **Flag:** since the flag high, price has fallen no more than "
+              "{PP_FLAG_MAX_DEPTH_PCT}% and has not closed above it.\n"
+              "- **Tight area and pivot:** from the highest confirmed swing high inside the flag (or "
+              "the flag high, if there is none) to yesterday, covering at least the last "
+              "{TIGHT_MIN_DAYS} sessions. Its range is at most {TIGHT_PCT}%; its high is the pivot "
+              "and its low the stop's reference.\n"
+              "- **Trigger:** the same as MV-01's — yesterday's close at or below the pivot, today's "
+              "close above it on at least {VOL_MULT} times average volume, at least {UPPER_HALF} of "
+              "the way up the day's range, and no more than {BUY_RANGE_PCT}% above the pivot.\n\n"
+              "It is looked for separately from bases, because the base checks would reject it: the "
+              "pause is usually too short to count as a base, and after so fast a run the long "
+              "averages have not caught up.",
     }
+    pattern_title = "The base — VCP checks"
+    pattern_intro = (
+        "A base is complete when every check below passes. They are listed in the order the code runs "
+        "them, so the first one that fails is where a stock is stuck. The terms they use:\n\n"
+        "- **Swing high:** a day whose high is the highest of the {SWING_K} sessions on each side of it. "
+        "It is only known {SWING_K} sessions later, never on the day.\n"
+        "- **Base high:** where the base starts — the highest swing high that no close since has beaten "
+        "by more than {VCP.bh_break_atr} ATR. A close beyond that ends the base.\n"
+        "- **Base low:** the lowest low since the base high.\n"
+        "- **Pullback:** a fall from a high to the next low inside the base, as a % of the high. Also "
+        "called a contraction.\n"
+        "- **Tight area, pivot, tight low:** the last pullback is the tight area. The high it starts from "
+        "is the pivot; its lowest low is the tight low.\n"
+        "- **ATR:** average true range over 14 sessions — the stock's typical daily move. Used as a % of "
+        "the close on the base-high day."
+    )
+    pattern_docs = {
+        "VCP-02": "**A base exists, of the right length.** There is a base high, and it is at least "
+                  "{BASE_MIN_DAYS} and at most {BASE_MAX_DAYS} sessions old (about 3 to 65 weeks).",
+        "VCP-01": "**Prior advance.** The base high is at least {PRIOR_ADVANCE_PCT}% above the "
+                  "lowest low of the {VCP.prior_window} sessions (about six months) before it. A "
+                  "stock with less history than that fails.",
+        "VCP-03": "**Trend held during the base.** Three checks over the base:\n\n"
+                  "- the 200-day average today is no lower than on the base-high day;\n"
+                  "- the 150-day is above the 200-day today;\n"
+                  "- at most {MAX_CLOSES_BELOW_200} closes were below the 200-day since the base "
+                  "high.\n\n"
+                  "The full Trend Template is not required on the base-high day; it is checked on "
+                  "the signal day instead (G1–G8).",
+        "VCP-05": "**Not too deep.** From the base high down to the base low is at most "
+                  "{MAX_BASE_DEPTH_PCT}%. Deeper than {DEEP_BASE_FLAG_PCT}% is flagged, not rejected.",
+        "VCP-04": "**Enough pullbacks.** At least {MIN_CONTRACTIONS} pullbacks since the base high, "
+                  "counting the one still in progress. A turn counts only after price reverses by a "
+                  "threshold in both directions:\n\n"
+                  "- at first, the larger of {VCP.zigzag_pct}% and {VCP.zigzag_atr_mult} ATR;\n"
+                  "- after each pullback, {VCP.zigzag_shrink_ratio} times that pullback's depth, but "
+                  "never less than {VCP.zigzag_floor_pct}% or {VCP.zigzag_floor_atr_mult} ATR — so "
+                  "the small late pullbacks a VCP ends with can still register.\n\n"
+                  "Finished pullbacks shallower than {MIN_SWING_PCT}% are dropped. More than "
+                  "{MAX_CONTRACTIONS} is flagged, not rejected.",
+        "VCP-06": "**Pullbacks contracting.** Pullbacks must have got smaller since the last time "
+                  "they got bigger.\n\n"
+                  "- **Reference:** the latest pullback more than {WIDEN_TOL} times the one before "
+                  "it (a widening). With none, the first pullback.\n"
+                  "- From the reference on, inclusive, there are at least {MIN_FROM_REFERENCE} "
+                  "pullbacks, each no deeper than the one before it.\n"
+                  "- The last is at most {FINAL_REF_RATIO} times the reference.\n\n"
+                  "Example: 15%, 25%, 12%, 6%. The 25% is a widening, so it is the reference; 12% "
+                  "and 6% shrink; 6 ÷ 25 = 0.24. Passes. A base that has just widened and not "
+                  "tightened again fails here: it is not ready yet.",
+        "VCP-07": "**Higher lows: switched off.** A pullback whose low undercuts an earlier one is "
+                  "kept — that is the shakeout. One that does not close back above the earlier low "
+                  "within {UNDERCUT_RECOVERY_DAYS} sessions is recorded as a failed undercut, never "
+                  "rejected; one whose {UNDERCUT_RECOVERY_DAYS} sessions have not all passed yet is "
+                  "pending. The chart's base checklist and the Candidates tab's base notes show the "
+                  "count.",
+        "VCP-08": "**Tight area ready.** The last pullback — from the pivot to today — is at least "
+                  "{TIGHT_MIN_DAYS} sessions old, and the tight low is at most {TIGHT_PCT}% below "
+                  "the pivot.\n\n"
+                  "A very volatile stock can never pass this. A pullback only counts once it is at least "
+                  "{VCP.zigzag_floor_atr_mult} ATR deep (VCP-04), using the ATR on the base-high day. When "
+                  "{VCP.zigzag_floor_atr_mult} ATR is more than {TIGHT_PCT}% of the price — an ATR above "
+                  "about 6.7% with these settings — no last pullback can be both deep enough to count and "
+                  "shallow enough to pass. Measured from 2013, no such base completed: 1% of bases in India "
+                  "and 3% in the US.",
+        "VCP-09": "**Pivot near the top.** The pivot is at least {UPPER_ZONE} of the way from the "
+                  "base low to the base high, or at least {PIVOT_NEAR_HIGH} times the base high. A "
+                  "lower pivot is not a pivot buy; the base can still give a cheat (S3, S4).\n\n"
+                  "Example: a base from 100 down to 50 with the pivot at 85 is 0.7 of the way up, so "
+                  "it passes, though the pivot is only 0.85 times the base high.",
+        "VCP-10": "**Volume dried up.** Over the tight area, either average volume is at most "
+                  "{DRYUP_RATIO} times the 50-day average, or at least {DRYUP_QUIET_DAYS} sessions "
+                  "trade at or under {DRYUP_QUIET_RATIO} times it. The 50-day average is taken the "
+                  "day before the tight area began, so the quiet days do not lower their own "
+                  "yardstick.",
+        "VCP-11": "**Volatility shrink: switched off.** Today's ATR as a % of the close, against the "
+                  "same on the base-high day.",
+    }
+    # The page shows each group as its own section (strategies/base.py). Every fact here was checked
+    # against the code that trades it: signal_meta and build_plans above, portfolio_sim's fill checks,
+    # _manage_minervini and Exposure, and spec.market_ok / results_blackout.
     entry_rules = (
-        "Pivot breakout (MV-01, EN-01). Bought at the next session's open. Skipped if that open is more "
-        "than {BUY_RANGE_PCT}% above the pivot, or at or below the tight low.",
-        "Coiled (MV-02, EN-02). A buy-stop rests at the pivot plus 0.1% for up to 10 sessions. It fills "
-        "only on a session that CLOSES at or above the pivot, and fills at that close — or at the stop "
-        "price, if the close is below it. A session that pokes through the pivot and closes back under "
-        "leaves the order resting. It is skipped if the fill would be more than {BUY_RANGE_PCT}% above "
-        "the pivot, and cancelled by a close below the tight low. If the breakout day's volume comes in "
-        "under {VOL_MULT} times the 50-day average, it was not a confirmed breakout and the position is "
-        "sold at the next open.",
-        "The cheats (MV-03, MV-04). Bought at the close of the session that clears the shelf's high. The "
-        "stop goes {STOP_BUFFER_PCT}% under the SHELF low rather than the base low — that nearby stop is "
-        "the reason the entry exists. The objective is the old base high plus the base's measured move "
-        "from there.",
-        "One entry per base. A base that has already been traded is not entered again.",
-        "The stop. {STOP_BUFFER_PCT}% under the tight low. A fill whose stop would sit more than "
-        "{MAX_STOP_PCT}% below it is skipped: the loss would be too big to take.",
-        "Position size. 1% of equity at risk, capped by the market's position limit, and halved while "
-        "the recent record is not paying — see progressive exposure under the exits.",
-        "The target, and the {MIN_STRUCTURAL_R}:1 test. The objective comes from the chart, not from the "
-        "risk: it is the base's measured move — the first and deepest contraction projected up from the "
-        "entry — capped by overhead supply sitting at least {OVERHEAD_CLUSTER_ATR} ATR above the base "
-        "high. A setup offering less than {MIN_STRUCTURAL_R}R against its stop is refused rather than "
-        "padded up to look acceptable. The test runs twice: on the signal bar's close, and again on the "
-        "price actually paid. The order fills at the next open, and a gap up shortens the reward and "
-        "lengthens the risk at the same time, so a plan that cleared {MIN_STRUCTURAL_R}:1 on the close "
-        "can be bought at less — and is dropped. {NOMINAL_TARGET_R}R stays the nominal figure used for "
-        "sizing and reporting.",
+        "Every buy starts from a signal on a session's close and fills in a later session, so the signal "
+        "price and the price paid are never the same. The setups are described under Rules.",
+        "Pivot breakout (MV-01, EN-01). Bought at the next session's open. Skipped if that open is "
+        "more than {BUY_RANGE_PCT}% above the pivot (too extended to buy) or at or below the tight "
+        "low (the setup has already failed).",
+        "Coiled below the pivot (MV-02, EN-02). A buy-stop order is placed 0.1% above the pivot and "
+        "kept for up to 10 sessions.\n\n"
+        "- **Fills** only on a session that CLOSES at or above the pivot, at that close. A session "
+        "that pokes through during the day and closes back under it does not fill; the order keeps "
+        "waiting.\n"
+        "- **Skipped** if the fill would be more than {BUY_RANGE_PCT}% above the pivot.\n"
+        "- **Cancelled** by a close below the tight low.",
+        "Cheats (MV-03, MV-04). Bought at the next session's open. Skipped if that open is more than "
+        "{BUY_RANGE_PCT}% above the shelf's high, or at or below the shelf's low.",
+        "Power play (MV-05). Bought at the next session's open. Skipped if that open is more than "
+        "{BUY_RANGE_PCT}% above the flag's pivot, or at or below the flag's tight low.",
+        "{MAX_ENTRIES_PER_BASE} entry per base (EN-04). Once a base, or a power play's flag, has "
+        "been bought that many times, it is never bought again.\n\n"
+        "At the shipped value of 1 that means not even after a stop-out. Above 1, only a SHAKEOUT "
+        "reopens a base — the stop, or the breakeven stop — never a trend exit, which says the "
+        "move itself is over rather than that the trade was shaken out of it. The setup still has "
+        "to re-fire on its own; this only stops the veto.",
+        "Same-day ties (PF-03). When more stocks trigger than there are free slots, the highest RS "
+        "rating is bought first, then the smallest tight area (pivot to tight low, as a % of the "
+        "pivot).",
+        "Every fill must still pass the checks under Stop and Target, tested again on the price actually "
+        "paid: a gap at the open moves the buy price but not the stop or the target.",
+    )
+    stop_rules = (
+        "Where it goes (SL-01). {STOP_BUFFER_PCT}% under the tight low — the lowest low of the "
+        "base's last pullback. For a cheat it goes under the shelf's low; for a power play under the "
+        "flag's tight low. That low is where the setup is proven wrong: a stock that falls back "
+        "through it was not ready.",
+        "It defines the risk (SL-02). The distance from the price paid to the stop is the trade's "
+        "risk, called 1R. Every result is counted in R: +2R is a gain of twice the risk taken, −1R a "
+        "full stop-out.",
+        "How far is too far (SL-03). If the stop is more than {MAX_STOP_PCT}% below the price paid, "
+        "the trade is skipped: the loss would be too large. On the live screen such a setup shows as "
+        "WATCH.",
+        "How it sells (EX-01). The stop is a standing sell order: it sells during the session the "
+        "moment the low touches it. If the stock opens below the stop — after bad news overnight — "
+        "it sells at that open, so a gap can cost more than 1R.\n\n"
+        "If the stop and a profit level are both touched in one session, the stop is assumed to come "
+        "first.",
+        "It only ever moves up (EX-03). Once the trade's high has reached +{BREAKEVEN_R}R, the stop "
+        "is raised to the price paid plus the round trip's costs, from the next session on. A "
+        "reversal can then no longer turn the trade into a loss, short of a gap through the stop. "
+        "The stop is never lowered.",
+    )
+    target_rules = (
+        "There is no sell order at the target. Minervini does not sell a whole position at a fixed "
+        "price, and neither does this strategy: winners are sold by the rules under Exit. The target is "
+        "used for one thing — deciding whether the trade is worth taking.",
+        "How it is measured. From the chart, not from the risk.\n\n"
+        "- **Pivot buy (MV-01, MV-02):** the base's measured move — the depth of its first pullback, from "
+        "the base high down to that pullback's low — added to the price paid.\n"
+        "- **Cheat (MV-03, MV-04):** bought below the old high, so the target is the base high plus that "
+        "same measured move.\n"
+        "- **Power play (MV-05):** no base, so the flag's tight area — pivot minus tight low — added to the "
+        "price paid.",
+        "Overhead supply caps it. An older swing high above the base is where earlier buyers wait to sell, "
+        "so the target is lowered to the nearest one. Only a level at least {OVERHEAD_CLUSTER_ATR} ATR above "
+        "the base high counts; anything closer is part of the base's own ceiling.",
+        "The {MIN_STRUCTURAL_R}:1 test. The reward (price paid to target) must be at least "
+        "{MIN_STRUCTURAL_R} times the risk (price paid to stop). Example: buy at 100 with the stop at 94 "
+        "risks 6. A target of 115 offers 15, which is 2.5 times 6: taken. A target of 110 offers 10, only "
+        "1.7 times: skipped. A setup that falls short is skipped, never padded up.\n\n"
+        "It is tested twice: on the signal session's close, and again on the price actually paid. A gap "
+        "up raises the price paid without moving the stop or the target, so a setup that passed on the "
+        "close can fail at the open.",
     )
     exit_rules = (
-        "Each session an open position is checked against the rules below in order, and the first one "
-        "that applies acts.",
-        "EX-01 — the stop. Sold if the stop is touched; filled at the open when the price gapped through "
-        "it overnight.",
-        "EX-03 — breakeven. Once the trade's high reaches {BREAKEVEN_R}R, the stop moves up to breakeven "
-        "plus costs, so from then on the trade cannot lose money.",
-        "EX-04 — selling into strength. Once the close is {STRENGTH_EXT_PCT}% or more above the 50-day "
-        "average the stock has run a long way from its base, so {STRENGTH_FRAC} of the position is sold "
-        "at the next open.",
-        "EX-05 — climax run. Once the trade is up 25%, signs of a buying climax sell that same part if "
-        "EX-04 has not already taken it: the biggest up day on the biggest volume since entry, 8 up "
-        "closes out of 10, 70% above the 200-day average, or a 3% gap after a 50% gain.",
-        "EX-06 — the trend ends. Whatever is still held is sold on the first close below the 50-day "
-        "average, at the next open.",
-        "EX-07 — time stop. A trade whose high has not reached +1R within {TIME_STOP_DAYS} sessions is "
-        "sold at the next open: it is holding capital without having proved anything.",
-        "EX-02 — failed breakout, currently OFF ({FAIL_DAYS} sessions). A close back below the pivot "
-        "within a few sessions would exit here, but the guide allows a dip below the pivot as far as the "
-        "stop, so it is disabled. `--fail-days 5` restores it.",
-        "Position sizing (PE-01 … PE-04, `--pe`, on by default since 1.8). An entry risks half the normal "
-        "fraction while the last {PE_WINDOW} closed trades are not net positive, after two losing trades "
-        "in a row, or during the first {PE_WARMUP} trades of a run — and the full fraction otherwise. "
-        "`--pe-press` additionally allows 1.25x and two extra positions once that window is "
-        "{PE_PRESS_NET_R}R up. The rule is read once per session from trades that closed on EARLIER "
-        "sessions, so a stop-out this morning cannot resize an entry this afternoon. It aims at "
-        "drawdown, not return.",
-        "Market filter (`--market-filter`, the guide's since 1.8). New buys only while the benchmark "
-        "closes above its {MKT_INDEX_SMA}-day average AND breadth — the share of the most-traded stocks "
-        "above their own 50-day — is either above {MKT_BREADTH_MIN_PCT}% or higher than it was "
-        "{MKT_BREADTH_RISING_DAYS} sessions ago. While risk-off no new entry is taken and any resting "
-        "buy-stop is cancelled, but open positions are never forced out. The live screen applies the "
-        "same test. `--mkt01` restores 1.7's MKT-01 (the benchmark above its 200-day and its 50-day "
-        "above its 200-day), the one 1.7 rule measured to help. `--mkt-confirm` makes risk-on wait that "
-        "many sessions; it is off by default because at {MKT_CONFIRM_DAYS} sessions it sat out the first "
-        "days of recoveries.",
-        "Results blackout (`--results-blackout`, {EARNINGS_BLACKOUT_DAYS} days by default with `--spec`). "
-        "No new buy with results due within that many days.",
-        "Backtest settings. `--exit-mode minervini` in the portfolio simulator; the spec's run adds "
-        "`--spec`, which sets {MAX_POSITIONS} positions, a {MAX_OPEN_RISK_PCT}% open-risk cap, a "
-        "{MAX_ADV_PCT}% liquidity cap, RS ranking and the spec's costs.",
+        "Each session an open position is checked against these rules, in this order, and the first that "
+        "applies acts. Apart from the stop (see Stop), each exit is decided on the session's close and "
+        "sold at the next session's open.",
+        "Unconfirmed breakout (MV-02 buys only). If the session that filled the buy-stop traded less "
+        "than {VOL_MULT} times its 50-day average volume, the breakout was not confirmed: the whole "
+        "position is sold.\n\n"
+        "This is decided on the close of the session that filled, after the fill — the fill itself "
+        "never depends on that session's volume.",
+        "EX-04 — sell part into strength. {STRENGTH_FRAC} of the position (about a third) is sold "
+        "the first time EITHER trigger fires, once only, and the rest is held for the trend:\n\n"
+        "- the trade's high reaches +{PARTIAL_R}R — the same point EX-03 moves the stop to "
+        "breakeven, so the gain is banked on the bar the protection goes on;\n"
+        "- a close {STRENGTH_EXT_PCT}% or more above the 50-day average.\n\n"
+        "The +{PARTIAL_R}R trigger is the half this implementation was missing. Raising the stop "
+        "without selling anything turns an unrealised gain into nothing rather than into cash, and "
+        "measured on the 1.22 runs every breakeven-stop exit in both books came from a trade that "
+        "had already reached +{PARTIAL_R}R.",
+        "EX-05 — climax run. Once a close is 25% or more above the price paid, any sign of a buying "
+        "climax sells that same part, if EX-04 has not already:\n\n"
+        "- the biggest one-day gain since the buy, on the biggest volume since the buy;\n"
+        "- 8 or more up closes in the last 10 sessions;\n"
+        "- a close 70% or more above the 200-day average;\n"
+        "- an open 3% or more above the previous close, once the position is up more than 50%.",
+        "EX-06 — the trend ends. The first close below the 50-day average sells everything still "
+        "held. This is how most winners end.\n\n"
+        "Under the variant the live screen runs, that close must also come on at least the 50-day "
+        "average volume.",
+        "EX-07 — time stop. If the high has not reached +1R within {TIME_STOP_DAYS} sessions of the "
+        "buy, the position is sold: it has tied up money without proving itself.",
+        "EX-02 — failed breakout: switched off. A close back below the pivot soon after the buy "
+        "would sell here, but Minervini lets a dip below the pivot run to the stop, and on stored "
+        "data about two in three breakouts close back under the pivot within ten sessions. "
+        "`--fail-days 5` turns it on.",
+    )
+    sizing_rules = (
+        "Each trade risks 1% of the account (SL-04). Shares = 1% of the account ÷ the distance to "
+        "the stop, so the loss at the stop is the same whatever the stop's width. Example: a "
+        "$100,000 account risks $1,000; buying at $50 with the stop at $47 risks $3 a share, so 333 "
+        "shares.",
+        "No position over 25% of the account (SL-05); shares are cut to fit.",
+        "Half size until the record pays (PE-01 to PE-03). A trade risks {PE_PILOT_FRAC} times the "
+        "normal amount — half — during the first {PE_WARMUP} trades, after two losses in a row, or "
+        "while the last {PE_WINDOW} closed trades add up to zero or less. Full size returns once "
+        "they add up to a gain. Only trades closed on earlier sessions count, so a stop-out this "
+        "morning cannot resize a buy this afternoon. The aim is smaller drawdowns, not bigger "
+        "returns.",
+        "Pressing (PE-04, `--pe-press`, off by default). Once the last {PE_WINDOW} trades are "
+        "{PE_PRESS_NET_R}R or more up, a trade risks 1.25 times the normal amount and two extra "
+        "positions are allowed.",
+        "Portfolio limits.\n\n"
+        "- **Positions (PF-02):** at most {MAX_POSITIONS} at once.\n"
+        "- **Open risk (PF-04):** what all open positions would lose at their stops adds up to no "
+        "more than {MAX_OPEN_RISK_PCT}% of the account. Each position's risk is measured from the "
+        "lower of its last close and the price paid down to its stop, so a stop at or above the "
+        "price paid counts as no risk.\n"
+        "- **Order size (SL-06):** no order over {MAX_ADV_PCT}% of the stock's 50-day average daily "
+        "traded value.\n\n"
+        "In a backtest `--spec` sets these limits, the same-day ranking and the costs.",
+    )
+    filter_rules = (
+        "The market is unhealthy (the market filter). New buys only while all of these hold:\n\n"
+        "- the benchmark index closes above its {MKT_INDEX_SMA}-day average;\n"
+        "- that average is higher than {MKT_SMA_RISING_DAYS} sessions ago;\n"
+        "- breadth — the share of the 1,000 most-traded stocks above their own 50-day average — is "
+        "above {MKT_BREADTH_MIN_PCT}%, or higher than {MKT_BREADTH_RISING_DAYS} sessions ago.\n\n"
+        "When it fails, no new buy is taken and waiting buy-stops are cancelled; positions already "
+        "held are kept and managed as usual. The live screen applies the same test.\n\n"
+        "`--mkt01` swaps in an older test (the index above its 200-day, and its 50-day above its "
+        "200-day); `--mkt-confirm N` makes a recovery wait N sessions before buying resumes.",
+        "Results are due. No new buy with quarterly results due within {EARNINGS_BLACKOUT_DAYS} "
+        "days: a results-day gap can jump straight past the stop. Live, the date comes from the "
+        "earnings calendar; in a backtest it is estimated from the company's past announcement "
+        "timing, and the stored filing date is checked as well.",
+        "The stock is too thin. It must trade at least ₹{MIN_TURNOVER_INR_CR} crore or "
+        "${MIN_TURNOVER_USD_M} million a day (50-day average of volume × close). The live screen "
+        "also wants a price of at least ₹{LIVE_MIN_PRICE_INR} or ${LIVE_MIN_PRICE_USD}.\n\n"
+        "The price floor applies to the live screen only: a backtest reads split-adjusted prices, "
+        "where a winner's early price is divided by every later split.",
+        "There is no room. With {MAX_POSITIONS} positions open, or the open-risk limit used up, a "
+        "new signal is passed over; a waiting buy-stop keeps waiting for room until it expires.",
     )
     decision_docs = {
         "TRADE_HIGH_CONFIDENCE": "A confirmed breakout (MV-01): every Trend Template gate passes and the stop is "
                                  "within {MAX_STOP_PCT}% of entry. Buy at the next open. Watch flags never cap "
                                  "this strategy's decision.",
-        "TRADE_ON_TRIGGER": "A valid plan that is not a confirmed breakout: either coiled within {COIL_PCT}% below "
-                            "the pivot (MV-02), entered only if price trades through it on a resting buy-stop, or a "
-                            "cheat (MV-03 / MV-04) that cleared its shelf on the close, bought at the next open and "
-                            "stopped under the shelf low. The market regime never caps a decision to this tier.",
+        "TRADE_ON_TRIGGER": "A valid plan from any setup other than MV-01: coiled within {COIL_PCT}% below the "
+                            "pivot (MV-02), entered only on a session that closes through it; a cheat (MV-03 / "
+                            "MV-04) that cleared its shelf on the close, bought at the next open and stopped under "
+                            "the shelf low; or a power play (MV-05), bought at the next open and stopped under the "
+                            "flag's tight low. The market regime never caps a decision to this tier.",
         "WATCH_WAIT": "A valid plan held back: its stop sits more than {MAX_STOP_PCT}% below entry, results are due "
                       "within {EARNINGS_BLACKOUT_DAYS} days, or the market filter allows no new buys (see the note "
                       "below). Worth watching, not buying.",
@@ -1139,11 +1429,19 @@ class MinerviniSpecStrategy(Strategy):
     )
     param_docs = (
         ("Swing confirmation", "SWING_K", "Bars either side of a swing point; it is known only this many bars later."),
-        ("Prior advance", "PRIOR_ADVANCE_PCT", "Rise into the base high from the low of the 126 sessions before (VCP-01)."),
+        ("Base-high break", "VCP.bh_break_atr", "ATRs a close must clear the base high by to end the base (VCP-02)."),
+        ("Prior advance", "PRIOR_ADVANCE_PCT", "Rise into the base high from the lowest low of the window before it (VCP-01)."),
+        ("Prior-advance window", "VCP.prior_window", "Sessions before the base high that the prior advance is measured over (VCP-01)."),
         ("Base length, minimum", "BASE_MIN_DAYS", "Sessions from the base high (VCP-02)."),
         ("Base length, maximum", "BASE_MAX_DAYS", "About 65 weeks (VCP-02)."),
         ("Contractions, minimum", "MIN_CONTRACTIONS", "VCP-04."),
-        ("Contractions, maximum", "MAX_CONTRACTIONS", "VCP-04."),
+        ("Contractions, maximum", "MAX_CONTRACTIONS", "VCP-04: more is flagged, not rejected."),
+        ("Pullback turn, first", "VCP.zigzag_pct", "VCP-04: % reversal that counts as a turn at the start of the base …"),
+        ("Pullback turn, in ATRs", "VCP.zigzag_atr_mult", "… or this many ATRs, whichever is larger."),
+        ("Pullback turn, shrink", "VCP.zigzag_shrink_ratio", "VCP-04: after each pullback the turn threshold becomes this × its depth …"),
+        ("Pullback turn, floor", "VCP.zigzag_floor_pct", "… but never below this % …"),
+        ("Pullback turn, floor in ATRs", "VCP.zigzag_floor_atr_mult", "… or this many ATRs."),
+        ("Smallest pullback", "MIN_SWING_PCT", "VCP-04: finished pullbacks shallower than this % are dropped."),
         ("Base depth, deepest", "MAX_BASE_DEPTH_PCT", "Base high to base low, VCP-05."),
         ("Deep-base flag", "DEEP_BASE_FLAG_PCT", "Recorded, never a rejection (VCP-05)."),
         ("Volume dry-up, quiet days", "DRYUP_QUIET_DAYS", "The alternative route past VCP-10."),
@@ -1163,6 +1461,7 @@ class MinerviniSpecStrategy(Strategy):
         ("Volume dry-up", "DRYUP_RATIO", "Tight-area volume against its 50-day average (VCP-10)."),
         ("Coil distance", "COIL_PCT", "MV-02: how far below the pivot still counts."),
         ("Breakout volume", "VOL_MULT", "MV-01a, and MV-05's breakout."),
+        ("Breakout close position", "UPPER_HALF", "MV-01c: the close at least this far from the day's low to its high."),
         ("Power play, run", "PP_RUN_MULT", "MV-05: price multiple at the flag high, over PP_RUN_WINDOW."),
         ("Power play, run window", "PP_RUN_WINDOW", "MV-05: sessions the run is measured over."),
         ("Power play, flag length", "PP_FLAG_MIN_DAYS", "MV-05: shortest pause that counts."),
@@ -1178,8 +1477,14 @@ class MinerviniSpecStrategy(Strategy):
         ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
                                                               "when the base's own pivot is below the upper zone."),
         ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
+        ("Risk per trade", "cfg.risk_pct", "SL-04: share of equity risked per trade (0.01 = 1%)."),
+        ("Largest position", "cfg.max_position_pct", "SL-05: share of equity one position may hold."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Breakeven trigger", "BREAKEVEN_R", "EX-03: R gained before the stop moves to breakeven plus costs."),
+        ("Entries per base", "MAX_ENTRIES_PER_BASE", "EN-04: how many times one base may be bought. "
+                                                      "Above 1, only a stop or breakeven stop reopens it."),
+        ("Part-sale trigger", "PARTIAL_R", "EX-04: R gained before about a third is sold. Pairs with the "
+                                           "breakeven trigger, so the gain is banked as the stop moves up."),
         ("Failed-breakout window", "FAIL_DAYS", "EX-02: sessions after entry in which a close below the pivot sells (0 = off)."),
         ("Sell into strength", "STRENGTH_EXT_PCT", "EX-04: % above the 50-day at which a part is sold."),
         ("Part sold into strength", "STRENGTH_FRAC", "EX-04 / EX-05: share of the position sold."),
@@ -1195,6 +1500,7 @@ class MinerviniSpecStrategy(Strategy):
         ("Price floor, US (live)", "LIVE_MIN_PRICE_USD", "$; the live screen only."),
         ("Market filter", "MKT_GUIDE", "1 = the guide's test, 0 = MKT-01 (1.7)."),
         ("Index average", "MKT_INDEX_SMA", "Days in the benchmark's average the close must be above."),
+        ("Index average rising over", "MKT_SMA_RISING_DAYS", "Sessions over which that average must have risen (0 = off)."),
         ("Breadth floor", "MKT_BREADTH_MIN_PCT", "% of stocks above their 50-day that counts as healthy."),
         ("Breadth rising over", "MKT_BREADTH_RISING_DAYS", "Sessions over which breadth may instead be rising."),
         ("EPS growth (guide level)", "FUND_EPS_GROWTH_MIN_PCT", "--fundamentals guide: quarterly EPS growth, %."),
@@ -1391,6 +1697,9 @@ class MinerviniSpecStrategy(Strategy):
             breakout_volume_ratio=vol_ratio if breakout else None,
             vcp_fail=base["fail"], breakout=breakout,
         )
+        # display only: what the pass/fail hides about this base (base_diagnostics)
+        diag = base_diagnostics(base, d)
+        e.update(diag, base_notes=base_notes(base, diag))
         result.recompute_first_fail()
         return result
 
@@ -1533,6 +1842,7 @@ class MinerviniSpecStrategy(Strategy):
         base_id = e.get("pp_flag_high_date") if plan.setup == MV05 else e.get("base_date")
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": MAX_STOP_PCT / 100, "base_id": base_id,
+                "max_entries_per_base": MAX_ENTRIES_PER_BASE,
                 "min_structural_r": MIN_STRUCTURAL_R,
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:
@@ -1564,6 +1874,10 @@ class MinerviniSpecStrategy(Strategy):
             label, reasons = "TRADE_HIGH_CONFIDENCE", ["confirmed breakout: buy at the next open"]
         elif plan.setup == MV02:
             label, reasons = "TRADE_ON_TRIGGER", ["coiled below the pivot: buy-stop through it"]
+        elif plan.setup == MV05:
+            # not a cheat: no base, no shelf -- it closed through the flag's pivot, like MV-01
+            label, reasons = "TRADE_ON_TRIGGER", ["power play: closed through the flag's pivot, buy at the "
+                                                  "next open, stopped under the flag's tight low"]
         else:
             # a cheat is neither coiled nor a buy-stop: it cleared its shelf on the close
             where = "lower" if plan.setup == MV03 else "middle"
@@ -1600,6 +1914,12 @@ class MinerviniSpecStrategy(Strategy):
             "tightness_pct": r("tightness_pct", 1), "dryup_ratio": r("dryup_ratio"),
             "breakout_volume_ratio": r("breakout_volume_ratio"), "vcp_fail": e.get("vcp_fail"),
             "rs_score": r("rs_score", 3), "cheat_withheld": e.get("cheat_withheld"),
+            "base_notes": e.get("base_notes") or None, "base_reference": e.get("base_reference"),
+            "pivot_route": e.get("pivot_route"), "pivot_pos": e.get("pivot_pos"),
+            "dryup_quiet_days": e.get("dryup_quiet_days"), "closes_below_200": e.get("closes_below_200"),
+            "below_200_share_pct": e.get("below_200_share_pct"), "undercuts": e.get("undercuts"),
+            "undercuts_failed": e.get("undercuts_failed"), "undercuts_pending": e.get("undercuts_pending"),
+            "bh_atr_pct": e.get("bh_atr_pct"), "atr_blocks_base": e.get("atr_blocks_base"),
         }
 
 
@@ -1712,11 +2032,14 @@ class MinerviniSpecStrategy(Strategy):
     # the VCP rules in the order the detector applies them, the zone of the setup each belongs to,
     # and the name the chart's checklist gives it
     _VCP_CHECKS = (("VCP-01", "uptrend", "Prior uptrend"), ("VCP-03", "uptrend", "Trend intact"),
-                   ("VCP-02", "base", "Base length"), ("VCP-04", "base", "Pullbacks"),
-                   ("VCP-05", "base", "First pullback"), ("VCP-06", "base", "Pullbacks shrink"),
+                   ("VCP-02", "base", "Base length"), ("VCP-05", "base", "Base depth"),
+                   ("VCP-04", "base", "Pullbacks"), ("VCP-06", "base", "Pullbacks shrink"),
                    ("VCP-08", "base", "Tight area"), ("VCP-09", "base", "Pivot near high"),
                    ("VCP-10", "base", "Volume dry-up"))
-    _VCP_ORDER = ("VCP-01", "VCP-02", "VCP-03", "VCP-04", "VCP-05", "VCP-06", "VCP-08", "VCP-09", "VCP-10")
+    # the order core/vcp_spec.detect runs them in: a rule after the failing one was never measured, so it
+    # must show "not reached" -- with VCP-04 listed before VCP-05 a depth failure showed the pullback
+    # count as passed although it was never counted
+    _VCP_ORDER = ("VCP-02", "VCP-01", "VCP-03", "VCP-05", "VCP-04", "VCP-06", "VCP-08", "VCP-09", "VCP-10")
     # what a failed rule means, short enough for the setup's header
     _VCP_FAILED = VCP_RULES
 
@@ -1770,6 +2093,7 @@ class MinerviniSpecStrategy(Strategy):
         up_days = bh_i - int(daily.index.get_loc(r["prior_low_date"])) if r["prior_low"] else None
         # one decimal, or two where one would hide which side of its limit a value falls (6.88% against
         # a 6.888% limit reads "6.9", which looks like a failure)
+        g = base_diagnostics(r, daily)
         near = lambda v, lim: abs(v - lim) < 0.1
         pct = lambda v, lim: f"{v:.2f}" if near(v, lim) else f"{v:.1f}"
         fine = bool(depths) and any(near(b, FINAL_REF_RATIO * a) for a, b in zip(depths, depths[1:]))
@@ -1778,26 +2102,53 @@ class MinerviniSpecStrategy(Strategy):
             "VCP-01": (f"+{pct(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) if near(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) else format(r['prior_advance_pct'], '.0f')}% in {up_days} days" if up_days is not None else "—",
                        f"at least {PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} days"),
             "VCP-02": (f"{r['base_days']} days", f"{BASE_MIN_DAYS}–{BASE_MAX_DAYS} days"),
-            "VCP-03": ("held" if fail != "VCP-03" else f"too new: bar {bh_i + 1}" if young else self._vcp_fail_why(r, daily, bh_i, rep),
-                       "trend template on the high's bar, the 150/200-day structure after"),
+            "VCP-03": ((f"held · {g['closes_below_200']} closes under the 200-day ({g['below_200_share_pct']:g}% of the base)"
+                        if g["closes_below_200"] is not None else "held") if fail != "VCP-03"
+                       else f"too new: bar {bh_i + 1}" if young else self._vcp_fail_why(r, daily, bh_i, rep),
+                       f"the 200-day no lower than at the high, the 150-day above it, at most "
+                       f"{MAX_CLOSES_BELOW_200} closes under it"),
             "VCP-04": (f"{len(depths)}" if depths else "—", f"at least {MIN_CONTRACTIONS}"),
             "VCP-05": (f"{r['base_depth_pct']:.1f}% deep" if r.get("base_depth_pct") is not None else "—",
                        f"at most {MAX_BASE_DEPTH_PCT:g}% (over {DEEP_BASE_FLAG_PCT:g}% is flagged)"),
-            "VCP-06": (" → ".join(dep(x) for x in depths) + "%" if depths else "—",
+            "VCP-06": (" → ".join(dep(x) for x in depths) + "%"
+                       + (f" · {g['base_reference']}" if g["base_reference"] else "") if depths else "—",
                        f"{MIN_FROM_REFERENCE} since the last widening, final ≤ {FINAL_REF_RATIO:g}× it"),
             "VCP-08": (f"{pct(r['tight_range_pct'], TIGHT_PCT)}%" if r["tight_range_pct"] is not None else "—", f"at most {TIGHT_PCT:g}%"),
-            "VCP-09": (f"{(1 - r['pivot'] / bh) * 100:.1f}% under" if r["pivot"] else "—",
+            "VCP-09": ((f"{g['pivot_pos']:.2f} up the base, " + (f"{(1 - r['pivot'] / bh) * 100:.1f}% under the high"
+                                                                 if r["pivot"] <= bh else
+                                                                 f"{(r['pivot'] / bh - 1) * 100:.1f}% above the high")
+                        + (f" · passes by {g['pivot_route']}" if g["pivot_route"] not in (None, "neither") else ""))
+                       if r["pivot"] and g["pivot_pos"] is not None
+                       else f"{(1 - r['pivot'] / bh) * 100:.1f}% under" if r["pivot"] else "—",
                        f"upper zone ({UPPER_ZONE:.2f}) or within {(1 - PIVOT_NEAR_HIGH) * 100:.0f}% of the high"),
-            "VCP-10": (f"{r['dryup']:.2f}× normal" if r["dryup"] is not None else "—", f"at most {DRYUP_RATIO:g}×"),
+            "VCP-10": (f"{r['dryup']:.2f}× normal · {g['dryup_quiet_days']} quiet day{'' if g['dryup_quiet_days'] == 1 else 's'}"
+                       if r["dryup"] is not None else "—",
+                       f"at most {DRYUP_RATIO:g}×, or {DRYUP_QUIET_DAYS} days at {DRYUP_QUIET_RATIO:g}× or less"),
         }
         checks = {z: [] for z in ("uptrend", "base", "entry")}
         for code, zone, name in self._VCP_CHECKS:
             checks[zone].append({"code": code, "name": name, "value": values[code][0], "limit": values[code][1],
                                  "state": state(code)})
+        # notes beside the checks: recorded, never a rejection (base_diagnostics)
+        if g["undercuts"]:
+            st = [f"{n} {w}" for n, w in ((g["undercuts_failed"], "failed"), (g["undercuts_pending"], "pending")) if n]
+            checks["base"].append({"code": "note", "name": "Undercuts",
+                                   "value": f"{g['undercuts']}" + (f" ({', '.join(st)})" if st else ", recovered"),
+                                   "limit": f"a low under an earlier one, reclaimed within {UNDERCUT_RECOVERY_DAYS} sessions",
+                                   "state": "warn" if g["undercuts_failed"] else "pass"})
+        if g["bh_atr_pct"] is not None:
+            floor = max(VCP.zigzag_floor_pct, VCP.zigzag_floor_atr_mult * g["bh_atr_pct"])
+            checks["base"].append({"code": "note", "name": "ATR at the high",
+                                   "value": f"{g['bh_atr_pct']:.1f}% · pullbacks count from {floor:.1f}%"
+                                            + (" — too volatile to complete" if g["atr_blocks_base"] else ""),
+                                   "limit": f"a last pullback must be deep enough to count and at most {TIGHT_PCT:g}%",
+                                   "state": "warn" if g["atr_blocks_base"] else "pass"})
         # a zone passes only when every rule in it passed; one with rules never reached is "skip"
-        zstate = lambda z: "fail" if any(c["state"] == "fail" for c in checks[z]) else \
-            "young" if any(c["state"] == "young" for c in checks[z]) else \
-            "pass" if all(c["state"] == "pass" for c in checks[z]) else "skip"
+        # (the "note" rows are diagnostics, not rules: they never decide a zone)
+        rules_in = lambda z: [c for c in checks[z] if c["code"] != "note"]
+        zstate = lambda z: "fail" if any(c["state"] == "fail" for c in rules_in(z)) else \
+            "young" if any(c["state"] == "young" for c in rules_in(z)) else \
+            "pass" if all(c["state"] == "pass" for c in rules_in(z)) else "skip"
         zones = []
 
         # ---- zone 1: the uptrend into the base
@@ -1881,6 +2232,7 @@ class MinerviniSpecStrategy(Strategy):
                  f"{FINAL_REF_RATIO:g}× that widening." if depths else "")
         verdict = "" if done or fail in (None, "VCP-03") else f" It failed here: {self._vcp_fail_why(r, daily, bh_i, rep)}."
         zones.append({"key": "base", "title": "Base", "state": zstate("base"), "from": bd, "to": at,
+                      "warn": any(c["code"] == "note" and c["state"] == "warn" for c in checks["base"]),
                       "line": f"{r['base_days']} days, {(1 - base_low / bh) * 100:.1f}% deep"
                               + (f", {len(depths)} pullbacks" if depths else ""),
                       "text": (f"{r['base_days']} sessions from the high of {px(bh)} on {bd} (a base lasts "
@@ -1981,8 +2333,8 @@ class MinerviniSpecStrategy(Strategy):
                                    f"and not a backtest result. A cheat is bought while the base is still forming, before "
                                    f"the stock has recovered its old high, so its stop is close. On {c_from} the close "
                                    f"cleared a tight shelf ({cp['cheat_range_pct']:.1f}% over {CHEAT_SHELF_DAYS} sessions, "
-                                   f"at most {CHEAT_SHELF_PCT:g}%) in the {third} third of the base: buy at that close, "
-                                   f"{px(entry)}. The stop goes {STOP_BUFFER_PCT:g}% under the shelf low, at {px(stop)}: "
+                                   f"at most {CHEAT_SHELF_PCT:g}%) in the {third} third of the base. The buy is at the next "
+                                   f"session's open, estimated here by that close, {px(entry)}. The stop goes {STOP_BUFFER_PCT:g}% under the shelf low, at {px(stop)}: "
                                    f"a risk of {risk_pct:.1f}% (the strategy skips anything over {MAX_STOP_PCT:g}%). The "
                                    f"objective is the old high, {px(bh)}, plus the base's measured move: {px(target)}"
                                    + (f", {r_mult:.1f}R (it needs at least {MIN_STRUCTURAL_R:g}R, before any overhead "

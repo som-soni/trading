@@ -119,8 +119,9 @@ def run(market: str, start: str, lookback_months: int = 12, rebalance: str = "ME
 DM_DOC = {
     "key": "dual_momentum",
     "name": "Dual momentum",
-    "description": "Each month hold the strongest of a few broad assets — but only if it beats cash; "
-                   "otherwise hold the safe asset.",
+    "description": "Each month-end hold the one asset with the best {lookback_months}-month return -- but only if it "
+                   "beat the safe asset's own return; otherwise hold the safe asset (a liquid fund in India, "
+                   "7-10 year Treasuries in the US).",
     "status": (
         "MEASURED, AND THE WINDOW DECIDES IT. From 2020 it beats both markets with less drawdown: India 23.94% "
         "CAGR against the Nifty 500's 12.63% (+11.3), max drawdown -24.4% against -38.3%, Sharpe 1.06 against "
@@ -135,33 +136,67 @@ DM_DOC = {
     ),
     "thesis": "Trends persist across whole asset classes for the same reasons they persist in stocks — slow "
               "reaction to news, and investors who chase performance. Relative momentum says which asset to own; "
-              "absolute momentum says whether to own anything at all, which is what sidesteps a long bear market.",
+              "absolute momentum says whether to own anything risky at all, which is what sidesteps a long bear "
+              "market. This is Gary Antonacci's dual momentum (2014), over a small menu of stored series.",
     "how_it_works": (
-        "On each month-end, measure every choice's trailing {lookback_months}-month return.",
-        "RELATIVE momentum: the strongest of them is the candidate.",
-        "ABSOLUTE momentum: that candidate is held only if its return beats the safe asset's. If it does not, "
-        "the safe asset is held instead — this is the check that steps aside in a long decline.",
-        "One asset is held at a time, in full. Nothing is ranked within an asset and no stock is picked.",
+        "Once a month, on the last stored session of the month: rank the menu by trailing {lookback_months}-month "
+        "return (relative momentum), test the winner against the safe asset (absolute momentum), and hold the "
+        "answer with the whole account until the next month-end. It trades only when the answer changes. "
+        "Entry and Exit give each test exactly.",
+        "The menu, India: Nifty 50 total return (NIFTYBEES), Nifty Midcap 50 (price index), gold (GOLDBEES) "
+        "and the Nasdaq 100 in rupees (MON100). Safe asset: a liquid fund's growth NAV (Nippon India Liquid "
+        "Fund).",
+        "The menu, US: S&P 500 total return (the VFINX fund), Nasdaq 100 (QQQ), developed markets ex-US (EFA) "
+        "and gold (GLD). Safe asset: 7-10 year Treasuries (IEF).",
+        "One asset is held at a time, in full. Nothing is ranked within an asset, no stock is picked, and there "
+        "is no stop or target.",
     ),
     "caveats": (
         "**It is an allocation rule, not a trading strategy.** It holds whole markets, so it cannot be compared "
         "to a stock-picking strategy's trade statistics; its 'trades' are switches.",
+        "**The absolute test is against the safe asset, not cash.** Antonacci tests the winner against T-bills. "
+        "Here the bar is the safe asset's own return: in India a liquid fund, which is close to cash; in the US "
+        "7-10 year Treasuries, which are not -- a year when bonds rally raises the bar, and a year when they "
+        "fall lowers it.",
         "**It whipsaws in fast falls.** The 12-month signal turns only after a crash, so a V-shaped recovery sells "
         "near the low and buys back higher. India in March 2020 is the example.",
         "**It needs a safe asset that is actually safe.** In 2022 US Treasuries fell with equities, so the rule "
         "rotated into something that also lost.",
         "**The asset menu is a choice, not a law.** These four per market are what is stored; a different menu "
         "gives a different strategy, and the result should not be read as 'dual momentum works'.",
-        "Series are total-return where one is stored (NIFTY50_TR, SP500_TR) and price-only otherwise, so gold and "
-        "international returns exclude nothing but equity dividends are included unevenly across the menu.",
+        "**Dividends are in the strategy but not the benchmark.** Every series is total return (an adjusted ETF "
+        "or fund price, fees inside) except India's Nifty Midcap 50, a price index without dividends. The "
+        "benchmark it is reported against (SPY, Nifty 500) is a stored close without dividends, so the "
+        "measured excess is flattered by roughly the index's dividend yield, about 1-2 points a year.",
+        "**Late series.** An asset joins the ranking only once it has {lookback_months} × 21 sessions of history: "
+        "on stored data India's Nasdaq-in-rupees series from about March 2012, so India runs from 2010 rank "
+        "three choices until then.",
     ),
     "entry_rules": (
-        "Bought at the month-end close of the session the rule switches, in full.",
-        "No stop, no target, no position sizing: one asset, 100% of capital.",
+        "Trailing return. Close on the month-end session ÷ close {lookback_months} × 21 sessions earlier − 1, "
+        "counted on the menu's combined daily calendar -- about 12 months (351 to 369 calendar days on stored "
+        "data). No month is skipped. A series that did not trade on a day carries its last price.",
+        "Relative momentum. The menu asset with the highest trailing return is the candidate. An asset without "
+        "enough history for a trailing return is not ranked.",
+        "Absolute momentum. The candidate is held only if its trailing return is strictly greater than the safe "
+        "asset's trailing return; otherwise the safe asset is held. A candidate that lost money is still held "
+        "if the safe asset lost more. If the safe asset has no trailing return yet, or no menu asset does, the "
+        "safe asset is held.",
+        "Switch. When the answer differs from what is held, the holding is sold in full at the month-end "
+        "session's close and all of the proceeds buy the new asset at the same close, in fractional units. "
+        "{cost_bps}bps is taken on the sale and again on the purchase.",
+        "Weighting. One asset, 100% of the account. No stop, no target, no position sizing.",
+        "When it holds cash. Never, after the first month-end: the safe asset is the cash position. Before the "
+        "first month-end on or after the start date the account is uninvested.",
     ),
     "exit_rules": (
-        "Sold at the next month-end on which another asset ranks higher, or the winner stops beating the safe asset.",
-        "{cost_bps}bps is charged on each side of a switch.",
+        "Sold at a month-end close, in full, when the answer changes: another menu asset now ranks first and "
+        "beats the safe asset, or the held asset no longer beats the safe asset (then the safe asset is bought). "
+        "The safe asset is sold the same way once a menu winner beats it.",
+        "Nothing else sells it: no stop, no target, and no trade between month-ends. An unchanged answer is not "
+        "traded or topped up.",
+        "{cost_bps}bps is charged on each side of a switch. Whatever is held at the end of a test is valued at "
+        "the final close, with no exit cost.",
     ),
 }
 

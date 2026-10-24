@@ -509,6 +509,11 @@ table.dtab th { text-align: left; font-size: 12px; text-transform: uppercase; le
 table.dtab td { padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 table.dtab tr:last-child td { border-bottom: 0; }
 table.dtab td:first-child { white-space: nowrap; }
+table.dtab td .cell-p, .sd-list li .cell-p, .sd-intro .cell-p { margin: 0 0 6px; }
+table.dtab td .cell-list, .sd-list li .cell-list, .sd-intro .cell-list { margin: 0 0 6px; padding-left: 18px; }
+table.dtab td .cell-list li, .sd-list li .cell-list li, .sd-intro .cell-list li { margin: 2px 0; }
+table.dtab td > :last-child, .sd-list li > :last-child { margin-bottom: 0; }
+.sd-intro { margin: 0 0 10px; }
 table.dtab .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 table.dtab.click tbody tr { cursor: pointer; } table.dtab.click tbody tr:hover td { background: var(--panel-2); }
 .tile.link { color: var(--text); } .tile.link:hover { border-color: var(--accent); }

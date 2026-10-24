@@ -63,6 +63,7 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from ..config.base import MarketConfig
+from ..core import indicators as ind
 from ..strategies import minervini_spec as _ms
 
 logger = logging.getLogger(__name__)
@@ -95,28 +96,37 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | ma | donchian | minervini
+    mode: str = "bracket"        # bracket | trail_atr | ma | weekly_ma | donchian | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
     ma_col: str = "sma50"        # for ma, and minervini's EX-06
+    ma_weeks: int = 30           # for weekly_ma: a completed week closing below the simple average of
+                                 #   this many weekly closes sells at that close (Weinstein's 30-week line)
     donchian_bars: int = 50      # for donchian
     # ---- minervini: the strategy's exit ladder. Defaults are minervini_spec's constants, so a
     # --spec run trades the strategy's documented numbers (1.8: the SEPA Learn guide's).
-    fail_days: int = _ms.FAIL_DAYS              # EX-02: a close below the pivot within this many sessions of entry (0 = off)
-    breakeven_r: float = _ms.BREAKEVEN_R        # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
-    partial_r: float = 0.0                      # EX-04 (1.7): sell `partial_frac` at entry + this × R (0 = off)
-    partial_frac: float = _ms.STRENGTH_FRAC
-    strength_ext: float = _ms.STRENGTH_EXT_PCT / 100   # EX-04: sell `partial_frac` at the next open once the close is
+    #
+    # Read through a default_factory, NOT as a plain default. A plain default is evaluated once,
+    # when this class is created at import -- which is before `--const` patches the strategy
+    # module. So `--const BREAKEVEN_R=0` set the constant, changed the fingerprint and the run
+    # directory, and left the policy on 2.0: an experiment that silently measured the control
+    # while being filed as a distinct arm. `--const TREND_EXIT_NEEDS_VOLUME=1` was no-op the same
+    # way. A factory runs at construction, after the patch, so an override means what it says.
+    fail_days: int = field(default_factory=lambda: _ms.FAIL_DAYS)              # EX-02: a close below the pivot within this many sessions of entry (0 = off)
+    breakeven_r: float = field(default_factory=lambda: _ms.BREAKEVEN_R)        # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
+    partial_r: float = field(default_factory=lambda: _ms.PARTIAL_R)            # EX-04: sell `partial_frac` at entry + this × R (0 = off)
+    partial_frac: float = field(default_factory=lambda: _ms.STRENGTH_FRAC)
+    strength_ext: float = field(default_factory=lambda: _ms.STRENGTH_EXT_PCT / 100)   # EX-04: sell `partial_frac` at the next open once the close is
                                                 #   this far above `ma_col` (0 = off)
     climax: bool = True          # EX-05
-    climax_partial: bool = bool(_ms.CLIMAX_IS_PARTIAL)  # a climax sells `partial_frac` (if not yet sold), not everything
+    climax_partial: bool = field(default_factory=lambda: bool(_ms.CLIMAX_IS_PARTIAL))  # a climax sells `partial_frac` (if not yet sold), not everything
     climax_gain: float = 0.25    #   only once the position is up this much
     climax_up_days: int = 8      #   … at least this many up closes in the last 10
     climax_ext_200: float = 0.70 #   … close this far above SMA200
     climax_gap: float = 0.03     #   … a gap up this large after a rise of `climax_gap_after`
     climax_gap_after: float = 0.50
-    trend_volume: bool = bool(_ms.TREND_EXIT_NEEDS_VOLUME)  # EX-06 needs volume ≥ its 50-day average
-    time_stop_days: int = _ms.TIME_STOP_DAYS    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
+    trend_volume: bool = field(default_factory=lambda: bool(_ms.TREND_EXIT_NEEDS_VOLUME))  # EX-06 needs volume ≥ its 50-day average
+    time_stop_days: int = field(default_factory=lambda: _ms.TIME_STOP_DAYS)    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
     # ---- trade management for the other modes (bracket, trail_atr, ma, donchian). All off by default,
     # so a run without them trades exactly as before. `minervini` has its own ladder above and ignores these.
     be_r: float = 0.0            # stop to entry + round-trip costs once the HIGH reaches entry + this × R;
@@ -150,6 +160,8 @@ class ExitPolicy:
             bits.append(f"{self.atr_mult:g}ATR")
         elif self.mode == "ma":
             bits.append(self.ma_col)
+        elif self.mode == "weekly_ma":
+            bits.append(f"{self.ma_weeks}w")
         elif self.mode == "donchian":
             bits.append(f"{self.donchian_bars}d")
         bits.append("withTarget" if self.use_target else "noTarget")
@@ -245,6 +257,9 @@ class PortfolioResult:
 
 
 PENDING_EXPIRY_BDAYS = 10
+# A base reopens only after one of these: the trade was shaken out, not finished. A trend exit
+# (EX-06) says the move itself is over, so buying the same base again is chasing it.
+RE_ENTRY_AFTER = frozenset({"STOP", "BREAKEVEN_STOP"})
 
 
 def _slip(price: float, bps: float, side: str) -> float:
@@ -299,6 +314,25 @@ class Exposure:
 
 _FLAT = Exposure()   # disabled: every entry risks the full risk_pct
 
+WEEKLY_LINE = "_weekly_line"   # the weekly_ma exit's level, added to each price frame by `simulate`
+
+
+def weekly_line(df: pd.DataFrame, weeks: int) -> pd.Series:
+    """The weekly_ma exit's level on each daily bar: on the LAST session of a week, the simple average of
+    the last `weeks` weekly closes, that week's included; NaN on every other session, so the exit is read
+    only off a completed week. Weeks are `ind.resample_weekly`, the bars the weekly strategies read. The
+    final stored bar counts as a week's last only on a Friday: mid-week, its week is not over."""
+    out = pd.Series(float("nan"), index=df.index)
+    if df.empty:
+        return out
+    line = ind.resample_weekly(df)["close"].rolling(weeks, min_periods=weeks).mean()
+    week = pd.Series(df.index.to_period("W-FRI"), index=df.index)
+    last = week != week.shift(-1)
+    last.iloc[-1] = df.index[-1].weekday() == 4
+    ends = week[last].map(lambda p: p.end_time.normalize())
+    out[last] = line.reindex(ends.values).values
+    return out
+
 
 def simulate(
     signals: list[Signal],
@@ -336,6 +370,8 @@ def simulate(
     policy = exit_policy or ExitPolicy()
     base_slip = cfg.slippage_bps if slippage_bps is None else slippage_bps
     fee_rate = cost_bps / 10_000.0
+    if policy.mode == "weekly_ma":
+        prices = {s: df.assign(**{WEEKLY_LINE: weekly_line(df, policy.ma_weeks)}) for s, df in prices.items()}
 
     # the calendar is the union of the dates of every symbol we might trade
     all_dates = sorted({d for df in prices.values() for d in df.index if d >= start})
@@ -355,7 +391,13 @@ def simulate(
     costs_total = 0.0
     taken = missed_slot = missed_cash = partial_fills = 0
     skipped: dict[str, int] = {}
-    bases_entered: set = set()
+    # (symbol, base_id) -> entries taken, and how the last one ended. A base used to be barred
+    # for good after one entry, which also barred the re-entry a shakeout invites: a trade stopped
+    # at breakeven has given up nothing about the base, it has only been shaken out of it. A
+    # strategy says how many attempts it allows via `max_entries_per_base` (default 1 = the old
+    # behaviour), and only a shakeout reopens it -- a trend exit means the move is over.
+    bases_entered: dict = {}
+    base_last_exit: dict = {}
 
     def skip(reason: str) -> None:
         skipped[reason] = skipped.get(reason, 0) + 1
@@ -378,6 +420,8 @@ def simulate(
     def close_out(sym: str, pos: PortfolioTrade, raw: float, reason: str, today) -> None:
         fill = sell(pos, raw, pos.held, today)
         pos.exit_date, pos.exit_reason = today, reason
+        if pos.meta.get("base_id") is not None:
+            base_last_exit[(sym, pos.meta["base_id"])] = reason
         # blended over any partial sale; exactly the fill when there was none
         pos.exit_price = pos.sold_value / pos.shares if pos.partial_shares else fill
         closed.append(pos)
@@ -451,11 +495,11 @@ def simulate(
             hit_stop = bar["low"] <= pos.stop
             hit_target = policy.use_target and bar["high"] >= pos.target
             trend_break = False
-            if not hit_stop and not hit_target and policy.mode in ("ma", "donchian"):
+            if not hit_stop and not hit_target and policy.mode in ("ma", "weekly_ma", "donchian"):
                 # trend-failure exits act on the CLOSE, so they are evaluated
                 # only once the bar is complete -- no intrabar clairvoyance
-                if policy.mode == "ma":
-                    ma = bar.get(policy.ma_col, float("nan"))
+                if policy.mode in ("ma", "weekly_ma"):
+                    ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
                     trend_break = ma == ma and float(bar["close"]) < float(ma)
                 else:
                     hist = df.loc[:today, "low"]
@@ -567,10 +611,17 @@ def simulate(
                 skip("gapped past the whole reward")
                 del pending[sym]
                 continue
-            if meta.get("base_id") is not None and (sym, meta["base_id"]) in bases_entered:
-                skip("base already entered")
-                del pending[sym]
-                continue
+            if meta.get("base_id") is not None:
+                _key = (sym, meta["base_id"])
+                _taken = bases_entered.get(_key, 0)
+                if _taken >= int(meta.get("max_entries_per_base", 1) or 1):
+                    skip("base already entered")
+                    del pending[sym]
+                    continue
+                if _taken and base_last_exit.get(_key) not in RE_ENTRY_AFTER:
+                    skip("base's last trade was not shaken out")
+                    del pending[sym]
+                    continue
             slip = meta.get("slippage_bps", base_slip)
             entry = _slip(raw_entry, slip, "buy")
             risk_per_share = entry - order["stop"]
@@ -660,7 +711,8 @@ def simulate(
                            if pyramid_frac and shares < full_shares else float("nan")),
             )
             if meta.get("base_id") is not None:
-                bases_entered.add((sym, meta["base_id"]))
+                _k = (sym, meta["base_id"])
+                bases_entered[_k] = bases_entered.get(_k, 0) + 1
             taken += 1
             del pending[sym]
             if policy.mode == "minervini":
@@ -862,9 +914,9 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
         sell(pos, fill, n, today)
         pos.partial_shares = n
 
-    if policy.mode in ("ma", "donchian"):
-        if policy.mode == "ma":
-            ma = bar.get(policy.ma_col, float("nan"))
+    if policy.mode in ("ma", "weekly_ma", "donchian"):
+        if policy.mode in ("ma", "weekly_ma"):
+            ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
             broke = ma == ma and c < float(ma)
         else:
             hist = df.loc[:today, "low"]

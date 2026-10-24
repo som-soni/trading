@@ -13,7 +13,7 @@ import time
 
 import pandas as pd
 
-from . import db, frozen
+from . import db, frozen, sessions
 
 from ..core import indicators as ind
 from ..providers.base import DataProvider
@@ -101,6 +101,10 @@ def save_cached(market: str, symbol: str, df: pd.DataFrame) -> None:
         df = clean
         if df.empty:
             return
+    # a bar on a date the market did not trade for most of its symbols (marketdata/sessions.py)
+    df = sessions.drop_stray(market, symbol, df)
+    if df.empty:
+        return
     enriched = ind.enrich_daily(df)
     rows = [
         (

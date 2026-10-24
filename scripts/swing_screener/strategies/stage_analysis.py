@@ -226,10 +226,19 @@ class StageAnalysisStrategy(Strategy):
     name = "Stage analysis"
     description = ("Buy the weekly breakout from a Stage 1 base into Stage 2 -- above the base's "
                    "own high and a {MA_WEEKS}-week average that is no longer declining, on "
-                   "{VOL_MULT}x volume -- and hold while the weekly close stays above the line.")
+                   "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
+                   "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.2"
-    changelog = (("2.2", "2026-10-22",
+    version = "2.3"
+    changelog = (("2.3", "2026-10-22",
+                  "The backtest sells on Weinstein's exit: a week that closes below the 30-week simple "
+                  "average of weekly closes, sold at that week's last close (--exit-mode weekly_ma "
+                  "--ma-weeks MA_WEEKS, new in the simulator, built from the same weekly bars the "
+                  "strategy reads). Until now it sold on the first DAILY close below the 50-day average "
+                  "(--exit-mode ma, default sma50) -- a much tighter exit the strategy never described, "
+                  "so every 2.2 result measured that instead. Entries, stops and gates are unchanged; "
+                  "the stop still sells during any session."),
+                 ("2.2", "2026-10-22",
                   "G9: the STOCK's own stage. G7 asks the market not to be in Stage 4 and G8 asks "
                   "the sector, and nothing asked it of the stock -- so a breakout could be bought "
                   "while this strategy's own state machine still called the stock declining. Over "
@@ -349,52 +358,46 @@ class StageAnalysisStrategy(Strategy):
     extra_numeric_columns = extra_columns
 
     thesis = (
-        "A stock spends most of its life going nowhere, and the 30-week line sorts the going-nowhere "
+        "A stock spends most of its life going nowhere, and the {MA_WEEKS}-week line sorts the going-nowhere "
         "from the going-somewhere without predicting either. The transition out of a base is where "
         "the money is made, because that is when the holders who have been selling into every rally "
         "finally run out and institutions have to pay up for stock. Weekly bars are the point, not a "
         "convenience: they discard the four days of noise that make the same idea unusable daily."
     )
     how_it_works = (
-        "Everything is decided on WEEKLY bars -- a week's high, low, Friday close and total volume. "
-        "The {MA_WEEKS}-week simple average of weekly closes is the only line used.",
-        "The stage is a STATE MACHINE, not a one-bar reading: it starts from the line's slope over "
-        "{SLOPE_WEEKS} weeks and the close's side of the line, then a stage persists until a "
-        "transition's condition has held for {CONFIRM_WEEKS} weeks. That memory is what tells a "
-        "Stage 1 base from a Stage 3 top -- both are a flat line; what differs is what came before. "
-        "Leaving a base for Stage 2 takes a rising line, or a close above the base's own high once "
-        "it is {STAGE1_MIN_WEEKS} weeks old; a top resolves upward only above its own peak; a "
-        "decline ends in a base, never straight in a new advance.",
-        "The line is 'rising' when it is more than {FLAT_BAND_PCT}% above its value {SLOPE_WEEKS} "
-        "weeks ago, 'falling' when more than {FLAT_BAND_PCT}% below, and flat between -- the same "
-        "reading as the Learn guide's rule and the daily stage cycle.",
-        "The base is the LONGEST window of at least {BASE_MIN_WEEKS} weeks whose high-to-low depth "
-        "is within {BASE_MAX_DEPTH_PCT}% -- a contained range -- and resistance is that base's OWN "
-        "high, the top of the zone the breakout must clear.",
-        "The breakout week closes above that resistance, above a {MA_WEEKS}-week line that is no "
-        "longer declining (the guide's investor rule -- rising is better and the gate note says "
-        "which), with volume at least {VOL_MULT}x the average of the previous {VOL_WEEKS} weeks, "
-        "and Mansfield relative strength -- the stock/index ratio against its own "
-        "{MANSFIELD_WEEKS}-week zero line -- positive or at least improving over "
-        "{MANSFIELD_RISE_WEEKS} weeks.",
-        "Weinstein's forest-before-trees rule, both layers: no new buys while the market index "
-        "(G7) or the stock's own sector index (G8) is in Stage 4.",
-        "The stop is just below the higher of the {MA_WEEKS}-week line and the base's low. If that "
-        "is more than {MAX_STOP_PCT}% away the trade is flagged rather than silently resized.",
+        "The idea. Stan Weinstein's method: buy the breakout from a Stage 1 base into Stage 2, the advance, and "
+        "stay out of anything in Stage 4, the decline. The rules come from the Learn guide \"Stage analysis\"; it "
+        "has no numbered spec.",
+        "Weekly bars. A week is its sessions' high, low, last close and total volume. The strategy is evaluated "
+        "every session, so mid-week \"this week\" is the week so far. The one line is the {MA_WEEKS}-week simple "
+        "average of weekly closes.",
+        "Step 1, the stage. Every stock, sector index and market index is given a stage by one state machine "
+        "(see Stage and base checks): the line's slope over {SLOPE_WEEKS} weeks, which side of the line the close "
+        "is on, and what stage came before.",
+        "Step 2, the gates (G1-G9). A daily uptrend near the highs (the Near-highs screen), then the weekly tests: "
+        "close above a line that is not falling, relative strength positive or improving, and none of market, "
+        "sector or stock in Stage 4.",
+        "Step 3, the setup (S1). A base of at least {BASE_MIN_WEEKS} weeks no deeper than {BASE_MAX_DEPTH_PCT}%, and "
+        "a weekly close above its high on {VOL_MULT}x volume (W1).",
+        "Step 4, the trade. Bought by a buy-stop at the signal close (Entry); stopped at the higher of the line and "
+        "the base low, at most {MAX_STOP_PCT}% away (Stop); no target order (Target); sold when a week closes "
+        "below the {MA_WEEKS}-week line (Exit).",
     )
     caveats = (
+        "**Runs before version 2.3 measured a different exit.** They sold on the first DAILY close below the "
+        "50-day average, a much tighter exit than the weekly line. Compare results only within one version.",
+        "**Mid-week signals.** The strategy is evaluated every session against the week so far. A breakout can "
+        "therefore fire on a Tuesday close that the Friday close would undo, and the volume test compares a part "
+        "week with full weeks, so an early-week breakout rarely clears {VOL_MULT}x.",
         "**The first stage in a history is a guess.** The state machine remembers what came "
         "before, but the very first classifiable week has nothing to remember and is seeded from "
         "the one-bar reading -- so the opening stage of a short history (a recent IPO) carries "
         "the old flat-line ambiguity until the first real transition.",
-        "**Weekly bars mean weekly reaction.** The exit is a weekly close below the line, so a "
-        "stock can fall for four sessions before the rule looks. Weinstein placed real stop orders "
-        "for exactly this reason; this strategy's stop is held between weekly decisions, which is "
-        "closer to his practice than a weekly-only exit would be.",
+        "**Gaps.** The stop sells at the open when a stock gaps below it, so a loss can exceed 1R.",
         "**The screen gates are daily and the strategy's are weekly.** G1-G3 come from the "
         "`near_highs` screen on daily bars, which is the closest available proxy for Weinstein's "
         "universe and is not the same thing as his conditions. A stock can pass a daily 200-day "
-        "test and fail the weekly 30-week one.",
+        "test and fail the weekly {MA_WEEKS}-week one.",
         "**The sector gate leans on today's classification and a partial map.** A stock's sector "
         "comes from the current industry table (no history is kept), several sectors have no "
         "index proxy, and some proxies' history starts late -- in all of those cases G8 simply "
@@ -403,104 +406,225 @@ class StageAnalysisStrategy(Strategy):
         "layer's stage bands read the DAILY 150-day line as a stand-in; this strategy and the "
         "Stage analysis indicator read the true weekly {MA_WEEKS}-week line. Different clocks, "
         "occasionally different answers -- by design, not by accident.",
-        "**Overhead supply is noted, not enforced.** The guide says to avoid stocks with a band of "
-        "trapped buyers just above the breakout. The plan reports the nearest overhead level so it "
-        "is visible, but no gate rejects on it.",
+        "**Not modelled from the guide.** Overhead supply (the plan reports the nearest level above the entry, "
+        "but no rule rejects on it), the trailing stop under each Stage 2 correction, the Stage 3 stop-tightening "
+        "or half sale, the half-now-half-on-the-pullback entry, and the spread across sectors.",
     )
     status = (
         "NOT YET MEASURED. The stage model is validated against the guide's Trent narrative "
         "(Stage 2 from August 2023 through October 2024, close 2,049 to 7,128; Stage 4 by March "
-        "2025) but no backtest has been run, so there is no result to report and nothing here "
-        "should be read as one. Expect it to resemble the other per-symbol swing strategies: all "
+        "2025) but no backtest result has been recorded here yet, so there is no result to report "
+        "and nothing here should be read as one. Expect it to resemble the other per-symbol swing strategies: all "
         "six measured so far have NEGATIVE selection, between -0.38 and -4.48, which is worse than "
         "a 10-month moving average with no edge at all (see `ma_trend`). The reason to measure this "
         "one anyway is that it is the only WEEKLY strategy here, and weekly decisions are the one "
         "structural difference none of the others test."
     )
     gate_docs = {
-        "G1": "H1: the close is above its 200-day average.",
-        "G2": "H2: the 200-day average is not falling.",
-        "G3": "H3: the close is within the screen's distance of its 52-week high.",
-        "G4": "The weekly close is above the {MA_WEEKS}-week simple average of weekly closes.",
-        "G5": "That average is NOT FALLING over {SLOPE_WEEKS} weeks: no more than {FLAT_BAND_PCT}% "
-              "below its value then. The guide's investor rule: the line must no longer be declining "
-              "at the breakout; rising (more than {FLAT_BAND_PCT}% above) is better, and the note "
-              "says which this is.",
-        "G6": "Mansfield relative strength: the stock/index ratio of weekly closes against its own "
-              "{MANSFIELD_WEEKS}-week average (the zero line). Positive passes; negative passes "
-              "only if it has improved over the last {MANSFIELD_RISE_WEEKS} weeks. Judged on "
-              "completed weeks only, so a mid-week read cannot borrow the index's Friday close.",
-        "G7": "Forest before trees: the market's own index is not in Stage 4.",
-        "G8": "The same test one layer down: the stock's SECTOR index is not in Stage 4. Passes "
-              "with a note when no sector index is mapped or stored.",
-        "G9": "The last layer: the STOCK itself is not in Stage 4, read off the same state machine "
-              "the chart paints. G7 and G8 ask this of the market and the sector; without it a "
-              "breakout could be bought while this strategy's own machine still called the stock "
-              "declining. Judged on completed weeks, and Stage 3 only warns (W2) rather than "
-              "blocking, as it does one layer up.",
+        "G1": "H1: the daily close is above the 200-day average.\n\n"
+              "- **Test:** today's close is strictly above the 200-day simple average of daily closes. The "
+              "strategy's pre-filter asks the same.",
+        "G2": "H2: the 200-day average is not falling.\n\n"
+              "- **Test:** the 200-day average is not more than the Near-highs screen's limit (0.5% today) below "
+              "its value 20 sessions earlier. Flat passes.\n"
+              "- **Where the numbers live:** the screen's constants; its page shows the live values.",
+        "G3": "H3: the close is within the Near-highs screen's limit of the 52-week high (15% today).\n\n"
+              "- **Test:** (1 − close ÷ highest daily high of the last 252 sessions) × 100 is at most the limit.",
+        "G4": "This week's close is above the {MA_WEEKS}-week line.\n\n"
+              "- **Line:** the simple average of the last {MA_WEEKS} weekly closes, this week's close so far "
+              "included.\n"
+              "- **Test:** this week's close so far is strictly above it.",
+        "G5": "The {MA_WEEKS}-week line is not falling.\n\n"
+              "- **Slope:** (line now ÷ line {SLOPE_WEEKS} weeks ago − 1) × 100.\n"
+              "- **Test:** the slope is at least −{FLAT_BAND_PCT}%. Above +{FLAT_BAND_PCT}% is rising, in "
+              "between is flat; both pass, and the note says which. This is the guide's investor rule: the line "
+              "must have stopped declining.",
+        "G6": "Mansfield relative strength is positive, or negative but improving.\n\n"
+              "- **Ratio:** the stock's weekly close ÷ the index's weekly close, completed weeks only.\n"
+              "- **Mansfield RS:** (ratio ÷ its own {MANSFIELD_WEEKS}-week simple average − 1) × 100. Zero is the "
+              "average.\n"
+              "- **Test:** above zero passes; at or below zero passes only if higher than it was "
+              "{MANSFIELD_RISE_WEEKS} weeks earlier.\n"
+              "- **Not checked (passes with a note):** no index stored, or not more than "
+              "{MANSFIELD_WEEKS} + {MANSFIELD_RISE_WEEKS} weeks of ratio.",
+        "G7": "The market index is not in Stage 4.\n\n"
+              "- **Test:** the stage machine (Stage and base checks), run on the market's benchmark index, reads "
+              "anything but Stage 4 for the latest completed week. Unknown passes.\n"
+              "- **Not checked (passes with a note):** no index stored.",
+        "G8": "The stock's sector index is not in Stage 4.\n\n"
+              "- **Sector index:** the index or fund mapped to the stock's sector in the market config, from "
+              "today's industry classification.\n"
+              "- **Test:** the same stage machine on that index, latest completed week, is not Stage 4.\n"
+              "- **Not checked (passes with a note):** no index mapped for the sector, or none stored.",
+        "G9": "The stock itself is not in Stage 4.\n\n"
+              "- **Test:** the same stage machine on the stock's completed weeks is not Stage 4. A breakout out of "
+              "Stage 1 passes; Stage 3 passes too and is flagged by W2 instead.\n"
+              "- **Why it lags:** the machine leaves Stage 4 only after the next stage's condition has held "
+              "{CONFIRM_WEEKS} weeks, so a base that has just turned is still refused.",
+    }
+    pattern_title = "Stage and base checks"
+    pattern_intro = (
+        "The stage machine runs week by week from the first week with a {MA_WEEKS}-week line and a {SLOPE_WEEKS}-week "
+        "slope. Each week it reads the slope state and counts consecutive weeks: close above the line, close "
+        "below it, line rising, falling, not rising, not falling. A stage changes only when its condition has held "
+        "{CONFIRM_WEEKS} weeks in a row; the counts restart at every change, so every stage lasts at least "
+        "{CONFIRM_WEEKS} weeks. The base and resistance checks after the transitions are the setup's own, run on "
+        "the stock only."
+    )
+    pattern_docs = {
+        "Slope": "The line is rising, flat or falling.\n\n"
+                 "- **Rising:** more than {FLAT_BAND_PCT}% above its value {SLOPE_WEEKS} weeks ago. Once rising, it "
+                 "stays rising while it is above that value at all.\n"
+                 "- **Falling:** more than {FLAT_BAND_PCT}% below. Once falling, it stays falling while it is below "
+                 "that value at all.\n"
+                 "- **Flat:** anything else.",
+        "Seed": "The first week has no history, so it is read directly.\n\n"
+                "- **Rising line:** Stage 2 if the close is above it, else Stage 1.\n"
+                "- **Falling line:** Stage 3 if the close is above it, else Stage 4.\n"
+                "- **Flat line:** Stage 3 if the close is above it, else Stage 1.",
+        "1→2": "A base becomes an advance.\n\n"
+               "- **Always:** the close above the line and the line not falling, each for {CONFIRM_WEEKS} weeks.\n"
+               "- **And either:** the line rising for {CONFIRM_WEEKS} weeks, or Stage 1 at least "
+               "{STAGE1_MIN_WEEKS} weeks old with the close above the highest weekly high of this Stage 1 so far.",
+        "1→4": "A base fails: the close below the line and the line falling, each for {CONFIRM_WEEKS} weeks.",
+        "2→4": "A fast break skips the top: the close below the line and the line falling, each for "
+               "{CONFIRM_WEEKS} weeks.",
+        "2→3": "An advance tops out.\n\n"
+               "- **Needs:** the line rose during this Stage 2 (rising {CONFIRM_WEEKS} weeks in a row at some "
+               "point).\n"
+               "- **Then either:** the close below the line for {CONFIRM_WEEKS} weeks, or the line not rising for "
+               "{CONFIRM_WEEKS} weeks.",
+        "2→1": "A failed breakout: the close below the line for {CONFIRM_WEEKS} weeks, when the line never rose "
+               "during this Stage 2.",
+        "3→2": "A top resolves upward: the line rising and the close above it, each for {CONFIRM_WEEKS} weeks, "
+               "and the close above the highest weekly high of the Stage 2 before it.",
+        "3→4": "A top breaks down: the close below the line and the line falling, each for {CONFIRM_WEEKS} weeks.",
+        "3→1": "A top turns into a base: the close below the line for {CONFIRM_WEEKS} weeks with the line not "
+               "falling for {CONFIRM_WEEKS} weeks.",
+        "4→1": "A decline ends in a base: the line not falling for {CONFIRM_WEEKS} weeks and this week's close "
+               "above it. Stage 4 never goes straight to Stage 2.",
+        "Base": "The setup's base: the longest contained range before this week.\n\n"
+                "- **Window:** the completed weeks before this one. Every length from {BASE_MAX_WEEKS} weeks (or "
+                "the history available) down to {BASE_MIN_WEEKS} is tried, longest first.\n"
+                "- **Test:** (highest weekly high − lowest weekly low) ÷ highest high × 100 ≤ "
+                "{BASE_MAX_DEPTH_PCT}. The first window that passes is the base.\n"
+                "- **No base:** no window of at least {BASE_MIN_WEEKS} weeks passes, and there is no setup.",
+        "Resistance": "The base's own highest weekly high: the level the breakout week must close above.",
     }
     watch_docs = {
-        "W1": "The breakout week's volume was below {VOL_MULT}x the previous {VOL_WEEKS} weeks' "
-              "average. Weinstein treated volume as confirmation, so this is noted but never blocks.",
-        "W2": "Stage 3 warning: the stage machine reads this stock as Stage 3 -- the {MA_WEEKS}-week "
-              "line flattened after an advance, which is where a top forms.",
-        "W3": "The structural stop sits more than {MAX_STOP_PCT}% below the entry, so the position "
-              "has to be cut rather than taken at normal size.",
+        "W1": "The breakout week's volume is under {VOL_MULT}x the previous {VOL_WEEKS} weeks' average.\n\n"
+              "- **Test:** this week's volume so far ÷ the average volume of the {VOL_WEEKS} completed weeks "
+              "before it is below {VOL_MULT}. Checked only on a breakout.\n"
+              "- **Effect:** the decision drops to WATCH, so the backtest does not buy it.",
+        "W2": "The stock is in Stage 3: its line flattened or the close dropped below it after an advance.\n\n"
+              "- **Test:** the stage machine on the stock's completed weeks reads Stage 3.\n"
+              "- **Effect:** the decision drops to WATCH, so the backtest does not buy it.",
+        "W3": "The structural stop is more than {MAX_STOP_PCT}% below the entry.\n\n"
+              "- **Test:** the higher of the {MA_WEEKS}-week line and the base low < entry × (1 − "
+              "{MAX_STOP_PCT}%).\n"
+              "- **Effect:** the plan's stop is moved up to {MAX_STOP_PCT}% below the entry, and the decision "
+              "drops to WATCH, so the backtest does not buy it.",
     }
     setup_docs = {
-        STG01: "The weekly close clears the base's own high for the first time, with the "
-               "{MA_WEEKS}-week line no longer declining beneath it and the base at least "
-               "{BASE_MIN_WEEKS} weeks old. This is the breakout INTO Stage 2, not a stock already "
-               "in it: the stage machine ratifies the new stage only after {CONFIRM_WEEKS} weeks, so "
-               "at entry the chart's stage band has usually not turned yet — and when the breakout "
-               "fails it never does, which is the band doing its job rather than disagreeing.",
+        STG01: "Breakout into Stage 2: this week closes above the base's resistance after last week closed at or "
+               "below it.\n\n"
+               "- **Base:** at least {BASE_MIN_WEEKS} weeks, no deeper than {BASE_MAX_DEPTH_PCT}% (the Base check).\n"
+               "- **Line:** this week's close above the {MA_WEEKS}-week line, and the line not falling (G4, G5).\n"
+               "- **Breakout:** last week's close ≤ resistance < this week's close so far.\n"
+               "- **Armed (live only):** the same base and line, but this week's close still at or below "
+               "resistance. The plan is then a buy-stop one tick above resistance (TRADE ON TRIGGER).\n\n"
+               "\"Into\", not \"in\": the stage machine ratifies Stage 2 only after {CONFIRM_WEEKS} weeks, so at "
+               "entry the stock's stage band usually still reads Stage 1, and a failed breakout never turns it.",
     }
     entry_rules = (
-        "Bought at the close of the breakout week. The guide's alternative is the next session's "
-        "open; on weekly bars the difference is one session of drift and it is not modelled.",
-        "All eight gates must pass and the setup must fire in the same week. A breakout that happens "
-        "while the market is in Stage 4 is not taken.",
-        "No pyramiding and no half-position-on-the-pullback variant: the guide offers it, and adding "
-        "it would mean two entry prices per trade, which the plan has no way to express.",
+        "Signal. Every gate passes, the setup is a completed breakout, and no watch flag is set: a HIGH "
+        "CONFIDENCE signal on that session's close. The backtest buys only these; an armed base (TRADE ON "
+        "TRIGGER) and anything flagged W1-W3 are never bought there.",
+        "Buy-stop at the signal close. The backtest places a buy-stop at the signal session's close, from the next "
+        "session on. It fills on the first session whose high reaches it, at that price, or at the open if the "
+        "stock opens above it.",
+        "How long it waits. The order rests up to 10 business days. It is cancelled if a session's low reaches "
+        "the stop first, and skipped if the fill would be at or above the plan's target.",
+        "Live. The plan's entry is the signal close for a completed breakout, or one tick above resistance for an "
+        "armed base. Live decisions follow the same rules, but nothing is filled automatically.",
+        "One entry at a time. No pyramiding and no half-now-half-on-the-pullback variant, which the guide offers.",
+    )
+    stop_rules = (
+        "Where it goes. At the higher of the {MA_WEEKS}-week line (this week's value) and the lowest weekly low of "
+        "the base, rounded down to the price tick. No extra buffer below it.",
+        "Never more than {MAX_STOP_PCT}% away. If that level is more than {MAX_STOP_PCT}% below the entry, the "
+        "stop is raised to {MAX_STOP_PCT}% below it and W3 is set — which also makes the decision WATCH, so the "
+        "backtest does not take the trade.",
+        "It defines the risk. The distance from the price paid to the stop is 1R.",
+        "How it sells. A standing sell order, checked every session after the buy: it sells the moment the low "
+        "touches it, at the stop price, or at the open if the stock opens below it — so a gap can lose more than "
+        "1R.",
+        "It never moves. The guide's trailing stop under each Stage 2 correction is not modelled.",
+    )
+    target_rules = (
+        "No sell order at the target. The guide sets no profit target, and the backtest runs `--no-target`. The "
+        "plan's target is reported only: the entry plus the base's height (resistance minus base low, at least "
+        "1R) × {BASE_TARGET_MULT}.",
+        "One use in the backtest. A buy-stop that would fill at or above that target is skipped.",
     )
     exit_rules = (
-        "A weekly close below the {MA_WEEKS}-week average -- the main exit, and the one that defines "
-        "the method. Everything is held through intra-week noise above the line.",
-        "Or the stop, just below the higher of the line at entry and the base's low, which is held "
-        "continuously rather than checked weekly.",
-        "No profit target. The target shown on the plan is the base's own height projected above the "
-        "breakout and is REPORTING ONLY -- the guide sets no target and the trend ends the trade.",
+        "Trend exit (Weinstein's). A week that closes below the {MA_WEEKS}-week simple average of weekly closes "
+        "sells the whole position at that close, the week's last session (usually Friday). The line includes that "
+        "week's own close. A close below the line mid-week does nothing; only the week's close counts "
+        "(`--exit-mode weekly_ma --ma-weeks {MA_WEEKS}`).",
+        "Or the stop (see Stop), checked first each session.",
+        "Nothing else. No target, no time stop, no Stage 3 sale.",
+    )
+    sizing_rules = (
+        "Risk per trade. Shares = the risk budget ÷ (price paid − stop). The budget is the market config's risk "
+        "per trade (1% of current equity in both markets today).",
+        "Caps. No position larger than the market config's maximum share of equity (25% today); at most the "
+        "config's number of open positions (10 today); a buy is scaled down to the cash available rather than "
+        "skipped.",
+    )
+    filter_rules = (
+        "Market in Stage 4 (G7). No new buy while the market index reads Stage 4.",
+        "Sector in Stage 4 (G8). No new buy in a stock whose sector index reads Stage 4.",
+        "Too thin, or below the 200-day. A stock whose 20-day average traded value is under the market's "
+        "liquidity floor, or whose close is not above its 200-day average, is not evaluated.",
+        "Not filtered. Results dates and overhead supply.",
     )
     decision_docs = {
-        "TRADE_HIGH_CONFIDENCE": "Every gate passes and the week closed above the base's own high "
-                                 "on at least {VOL_MULT}x volume.",
-        "TRADE_ON_TRIGGER": "A valid Stage 1 base with the {MA_WEEKS}-week line no longer "
-                            "declining beneath it, but its high not yet cleared: a buy stop rests "
-                            "just above it. This is the guide's variant for anyone watching daily.",
-        "WATCH_WAIT": "A valid setup held back -- the breakout came on light volume, the stage "
-                      "machine reads Stage 3, or the structural stop is more than "
-                      "{MAX_STOP_PCT}% away.",
-        "AVOID": "A gate failed, or there is no base to trade.",
+        "TRADE_HIGH_CONFIDENCE": "Every gate passes, this week closed above the base's resistance, volume is at "
+                                 "least {VOL_MULT}x, the stock is not in Stage 3 and the stop is within "
+                                 "{MAX_STOP_PCT}%.",
+        "TRADE_ON_TRIGGER": "An armed base: every gate passes and the base is valid, but this week's close is "
+                            "still at or below resistance. A buy-stop rests one tick above it. Live only; the "
+                            "backtest does not trade this tier.",
+        "WATCH_WAIT": "A valid setup held back: light breakout volume (W1), Stage 3 (W2), a stop more than "
+                      "{MAX_STOP_PCT}% away (W3), or the market regime (see the note below).",
+        "AVOID": "A gate failed, or there is no base or no breakout to trade.",
     }
+    regime_note = (
+        "Live only. When the market index's latest stored week reads Stage 4 (or, with no index stored, when the "
+        "shared market regime is risk-off), HIGH CONFIDENCE and ON TRIGGER both become WATCH with the reason "
+        "'market not in an uptrend: no new buys'. WATCH and AVOID are untouched."
+    )
     param_docs = (
         ("The line", "MA_WEEKS", "Weeks in the simple average of weekly closes."),
-        ("Slope window", "SLOPE_WEEKS", "Weeks over which the line's slope is measured."),
+        ("Slope window", "SLOPE_WEEKS", "Weeks back the line is compared with to read its slope."),
         ("Flat band", "FLAT_BAND_PCT", "The line is rising / falling when it has moved more than this "
                                        "percent over the slope window; flat between."),
         ("Confirmation", "CONFIRM_WEEKS", "Weeks a transition's condition must hold before the stage "
                                           "changes -- and so the least a stage can last."),
-        ("Base age", "STAGE1_MIN_WEEKS", "Weeks a Stage 1 base must be old before a close above its "
-                                         "high counts as the breakout (under a flat line)."),
-        ("Base length", "BASE_MIN_WEEKS", "Minimum weeks of sideways movement before a breakout counts."),
-        ("Base depth", "BASE_MAX_DEPTH_PCT", "Maximum high-to-low depth for a window to count as a base."),
+        ("Base age", "STAGE1_MIN_WEEKS", "Weeks a Stage 1 must last before a close above its high counts as "
+                                         "Stage 2 without a rising line."),
+        ("Base length", "BASE_MIN_WEEKS", "Shortest base the setup accepts, in weeks."),
+        ("Base length, maximum", "BASE_MAX_WEEKS", "Longest base the search starts from, in weeks."),
+        ("Base depth", "BASE_MAX_DEPTH_PCT", "Deepest a base may be: (highest high − lowest low) ÷ highest high."),
         ("RS zero line", "MANSFIELD_WEEKS", "Weeks in the stock/index ratio's own average."),
-        ("RS improvement", "MANSFIELD_RISE_WEEKS", "Weeks over which a negative Mansfield reading "
-                                                   "must have improved to pass."),
-        ("Volume", "VOL_MULT", "Breakout week's volume against the previous weeks' average."),
-        ("Volume window", "VOL_WEEKS", "Weeks in that average, per the guide."),
-        ("Maximum stop", "MAX_STOP_PCT", "Beyond this the position is flagged for resizing."),
+        ("RS improvement", "MANSFIELD_RISE_WEEKS", "Weeks back a negative Mansfield reading is compared with."),
+        ("Volume", "VOL_MULT", "Breakout week's volume against the previous weeks' average; below it is W1."),
+        ("Volume window", "VOL_WEEKS", "Completed weeks in that average."),
+        ("Maximum stop", "MAX_STOP_PCT", "Widest stop; beyond it the stop is moved up and the setup is WATCH (W3)."),
+        ("Target multiple", "BASE_TARGET_MULT", "Base heights added to the entry for the reported target."),
     )
-    backtest_args = "--exit-mode ma --no-target"
+    backtest_args = f"--exit-mode weekly_ma --ma-weeks {MA_WEEKS} --no-target"
 
     # ---------- screen ----------
 

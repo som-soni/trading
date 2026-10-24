@@ -3393,6 +3393,18 @@ async function companyPage(alive, market, symbol) {
 
 // the strategy prose uses light markdown (**bold**, `code`, *italic*); escape first, then format
 const mdInline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/(^|[^*])\*([^*\s][^*]*?)\*/g, "$1<i>$2</i>");
+// A rule cell that needs more than one paragraph: blank lines split paragraphs, and a paragraph
+// whose lines all start with "- " becomes a list. A one-paragraph text renders exactly as mdInline.
+const mdBlock = (t) => {
+  const paras = String(t || "").split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+  if (paras.length < 2 && !/^- /m.test(paras[0] || "")) return mdInline(t);
+  return paras.map((x) => {
+    const lines = x.split("\n");
+    return lines.every((l) => /^- /.test(l))
+      ? `<ul class="cell-list">${lines.map((l) => `<li>${mdInline(l.slice(2))}</li>`).join("")}</ul>`
+      : `<p class="cell-p">${mdInline(x)}</p>`;
+  }).join("");
+};
 /** a strategy's status in a few words — the sentence up to its first colon or full stop ("No demonstrated edge") */
 const shortStatus = (t) => { const x = String(t || "").split(/[:.;]/)[0].replace(/\s*—.*$/, "").trim(); return x.length > 42 ? x.slice(0, 40) + "…" : x; };
 /** The verdict sentence at the head of a `status`: what the strategy's own record concludes,
@@ -4081,10 +4093,21 @@ function perfGlance(d, key) {
 
 function strategyRules(host, d, key) {
   const codeTable = (rows, head, extra) => rows.length ? `<table class="dtab"><thead><tr><th>${head}</th>${extra ? `<th>${extra[0]}</th>` : ""}<th>Rule</th></tr></thead><tbody>${rows.map((r) =>
-    `<tr><td><code>${esc(r.code)}</code></td>${extra ? `<td>${extra[1](r)}</td>` : ""}<td>${mdInline(r.text) || '<span class="neg">Not documented</span>'}</td></tr>`).join("")}</tbody></table>` : "";
-  const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ol>` : "");
-  const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdInline(x)}</li>`).join("")}</ul>` : "");
+    `<tr><td><code>${esc(r.code)}</code></td>${extra ? `<td>${extra[1](r)}</td>` : ""}<td>${mdBlock(r.text) || '<span class="neg">Not documented</span>'}</td></tr>`).join("")}</tbody></table>` : "";
+  const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdBlock(x)}</li>`).join("")}</ol>` : "");
+  const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdBlock(x)}</li>`).join("")}</ul>` : "");
   const sec = (id, title, body) => (body ? `<section class="sd-sec" id="sd-${id}"><h2>${title}</h2>${body}</section>` : "");
+  // A strategy that splits its trade into stop / target / sizing / filter rules (strategies/base.py)
+  // gets one section per part, each answering one question, instead of a single "Entry & exit".
+  const split = d.kind !== "long-term" && ((d.stop_rules || []).length || (d.target_rules || []).length);
+  const splitSecs = [
+    ["entry", "Entry", "how a buy is placed and filled", d.entry_rules],
+    ["stop", "Stop", "where the protective sell sits, and when it moves", d.stop_rules],
+    ["target", "Target", "what the trade aims for, and whether it sells there", d.target_rules],
+    ["exit", "Exit", "what sells the position", d.exit_rules],
+    ["sizing", "Position size", "how much to buy", d.sizing_rules],
+    ["filters", "When no new trade is taken", "even with a valid setup", d.filter_rules],
+  ].map(([id, title, sub, xs]) => sec(id, `${title} <span class="muted small">— ${sub}</span>`, ol(xs || []))).join("");
   const sameAcross = d.params.every((p) => p.values.us === p.values.india);
   const params = d.params.length ? `<table class="dtab"><thead><tr><th>Parameter</th>${sameAcross ? "<th class='num'>Value</th>" : "<th class='num'>US</th><th class='num'>India</th>"}<th>Meaning</th></tr></thead><tbody>${
     d.params.map((p) => `<tr><td>${esc(p.label)}<div class="muted small"><code>${esc(p.source)}</code></div></td>${
@@ -4101,14 +4124,16 @@ function strategyRules(host, d, key) {
     ${perfGlance(d, key)}
     ${sec("overview", "Overview", `${d.thesis ? `<p><b>Thesis.</b> ${mdInline(d.thesis)}</p>` : ""}<h3>How it works</h3>${ol(d.how_it_works)}`)}
     ${d.kind === "long-term" && d.gates.length ? sec("rules", "Quality tests", `<p class="muted small">Points out of 100.</p>${codeTable(d.gates, "Worth")}`) : ""}
-    ${d.kind !== "long-term" && (d.gates.length || d.watch.length || d.setups.length) ? `<section class="sd-sec" id="sd-rules"><h2>Rules</h2>
+    ${d.kind !== "long-term" && (d.gates.length || d.watch.length || d.setups.length || d.pattern) ? `<section class="sd-sec" id="sd-rules"><h2>Rules</h2>
       ${fromScreen.length ? `<h3>${num()}Qualify — from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen</h3>
         ${codeTable(fromScreen, "Gate", ["Screen", (r) => `<code>${r.screen}</code>`])}` : ""}
       ${own.length ? `<h3>${fromScreen.length ? `${num()}Trade rules — this strategy's own` : "Hard gates"} <span class="muted small">— all must pass, or the stock is AVOID</span></h3>${codeTable(own, "Gate")}` : ""}
+      ${d.pattern ? `<h3>${num()}${esc(d.pattern.title)} <span class="muted small">— checked in this order; the first that fails is where the stock is stuck</span></h3>
+        ${d.pattern.intro ? `<div class="sd-intro">${mdBlock(d.pattern.intro)}</div>` : ""}${codeTable(d.pattern.rows, "Check")}` : ""}
       ${d.setups.length ? `<h3>${num()}Setups <span class="muted small">— the patterns that make a stock entry-eligible</span></h3>${codeTable(d.setups, "Setup")}` : ""}
       ${d.watch.length ? `<h3>Warning flags <span class="muted small">— don't disqualify, but cap or downgrade the decision</span></h3>${codeTable(d.watch, "Flag")}` : ""}
       </section>` : ""}
-    ${sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>${d.kind === "benchmark" ? "Entry" : "Entry, stop and target"}</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
+    ${split ? splitSecs : sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>${d.kind === "benchmark" ? "Entry" : "Entry, stop and target"}</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
     ${sec("decisions", "Decisions", d.decisions.length ? `<table class="dtab"><tbody>${d.decisions.map((x) => `<tr><td><span class="tag ${decisionClass(x.label)}">${esc(x.label)}</span></td><td>${esc(x.text)}</td></tr>`).join("")}</tbody></table>
       <p class="muted small">${esc(d.regime_note)}</p>` : "")}
     ${sec("params", "Parameters", params)}
@@ -4432,7 +4457,10 @@ async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
   // the essentials first; the other ~40 columns are one click away under Columns
   const order = [...SCREEN_COLS.map((c) => t.columns.indexOf(c)).filter((i) => i >= 0)];
   const keep = [...order, ...t.columns.map((_, i) => i).filter((i) => !order.includes(i))];
-  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "sepa", "decision", "base_stage", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
+  // the base's notes read beside its stage: what the pass/fail hides (the strategy's base_diagnostics)
+  const bn = keep.indexOf(t.columns.indexOf("base_notes")), bs = keep.indexOf(t.columns.indexOf("base_stage"));
+  if (bn >= 0 && bs >= 0) { const [x] = keep.splice(bn, 1); keep.splice(keep.indexOf(t.columns.indexOf("base_stage")) + 1, 0, x); }
+  const DEFAULT_SHOWN = new Set(["symbol", "name", "peer_group", "group_rs", "sepa", "decision", "base_stage", "base_notes", "strategy_setup", "price", "entry", "stop", "risk_pct", "target_r"]);
   const draw = () => {
     drawChips();
     const rows = rowsFor(activeDec);

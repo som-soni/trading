@@ -37,6 +37,7 @@ Usage:
 import argparse
 import json
 import logging
+import os
 from dataclasses import dataclass, replace as dc_replace
 from pathlib import Path
 
@@ -783,41 +784,126 @@ class NoSignals(ValueError):
         self.funnel = funnel
 
 
+# Filled in the parent, before the pool forks (collect_portfolio_signals / _point_in_time_candidates,
+# workers>1): cfg, strategy, start, market_key, plus use_signal_cache, accept_labels, deep_data for
+# the scan. Fork gives every worker a read-only copy-on-write view of this for free; only `sym` (a
+# string) crosses the pool's IPC pipe per task, not a whole DataFrame/Strategy per call. Same idiom as spec_sensitivity.py's `_DATA`.
+_POOL_CTX: dict = {}
+
+
+def _pool_worker_init() -> None:
+    """Runs once per forked worker, before its first task, so the worker opens its own DB connection
+    (db.get_connection() is a module-level singleton — see marketdata/db.py).
+
+    The parent closed its connection before forking (collect_portfolio_signals), so what this drops
+    is an already-closed object: dropping a LIVE inherited one would let its finaliser send the
+    server a terminate over the socket the parent still shares, ending the parent's session.
+
+    GSSAPI is off for the worker's connect: libpq tries Kerberos encryption by default, and on macOS
+    the Kerberos frameworks are not fork-safe — a forked child hangs forever inside connect (every
+    worker at 0% CPU, no error). A local Postgres has no use for it."""
+    os.environ.setdefault("PGGSSENCMODE", "disable")
+    db._connection = None
+
+
+def _collect_one(sym: str) -> tuple[str, list, "pd.DataFrame | None", "funnel_mod.Funnel"]:
+    """One candidate's scan, run in a pool worker. Its own Funnel, so results merge back into the
+    caller's in candidate order (Funnel.merge) instead of racing to update a shared one."""
+    ctx = _POOL_CTX
+    raw = ctx["deep_data"].get(sym)
+    if raw is None:
+        raw = cache.load_cached(ctx["market_key"], sym)
+    fn = funnel_mod.Funnel()
+    sigs = collect_signals(
+        sym, raw, ctx["cfg"], ctx["start"], strategy=ctx["strategy"], market_key=ctx["market_key"],
+        use_signal_cache=ctx["use_signal_cache"], accept_labels=ctx["accept_labels"], fn=fn,
+    )
+    enriched = ind.enrich_daily(raw) if sigs else None
+    # drop_symbols is a defaultdict whose factory is a lambda, which cannot be pickled back to the
+    # parent; Funnel.merge only reads it with .items(), so a plain dict of the same content will do.
+    fn.drop_symbols = {stage: dict(reasons) for stage, reasons in fn.drop_symbols.items()}
+    return sym, sigs, enriched, fn
+
+
 def collect_portfolio_signals(
     market_key: str, cfg: MarketConfig, strategy, start: pd.Timestamp,
     candidates: list[str], deep_data: dict | None = None,
     use_signal_cache: bool = True,
     accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
     fn: "funnel_mod.Funnel | None" = None,
+    workers: int = 1,
 ):
     """Scan every candidate once and return (signals, enriched price frames).
 
     Separated from the simulation so several exit policies (or position
     caps) can be compared against the SAME signal set — otherwise each
     variant would re-scan, and any difference in the scan would confound
-    the comparison."""
+    the comparison.
+
+    `workers` > 1 forks that many processes and scans `workers` symbols at once (each symbol is
+    independent, so this is embarrassingly parallel). It pays off when build_context actually runs —
+    a cold signal cache, e.g. right after a strategy version bump — because that is genuinely
+    CPU-bound. On a warm cache most bars are a single indexed DB read (_load_cached_signal); that is
+    already cheap and mostly round-trip time, so more processes buys little and the serial path
+    (workers=1, the default) stays the one to use day to day."""
     deep_data = deep_data or {}
     all_signals = []
     prices: dict[str, pd.DataFrame] = {}
-    for i, sym in enumerate(candidates):
-        raw = deep_data.get(sym)
-        if raw is None:
-            raw = cache.load_cached(market_key, sym)
-        sigs = collect_signals(
-            sym, raw, cfg, start, strategy=strategy, market_key=market_key,
-            use_signal_cache=use_signal_cache, accept_labels=accept_labels, fn=fn,
-        )
-        if sigs:
-            all_signals.extend(sigs)
-            # enriched, not raw: the exit policies read atr14/sma50 off the bar
-            prices[sym] = ind.enrich_daily(raw)
-        _progress(f"scanning history: {i + 1:,}/{len(candidates):,} symbols · {len(all_signals):,} signals so far",
-                  done=i + 1, total=len(candidates))
-        if (i + 1) % 100 == 0:
-            logger.info(
-                "Scanned %d/%d symbols, %d signals so far",
-                i + 1, len(candidates), len(all_signals),
+
+    if workers <= 1:
+        for i, sym in enumerate(candidates):
+            raw = deep_data.get(sym)
+            if raw is None:
+                raw = cache.load_cached(market_key, sym)
+            sigs = collect_signals(
+                sym, raw, cfg, start, strategy=strategy, market_key=market_key,
+                use_signal_cache=use_signal_cache, accept_labels=accept_labels, fn=fn,
             )
+            if sigs:
+                all_signals.extend(sigs)
+                # enriched, not raw: the exit policies read atr14/sma50 off the bar
+                prices[sym] = ind.enrich_daily(raw)
+            _progress(f"scanning history: {i + 1:,}/{len(candidates):,} symbols · {len(all_signals):,} signals so far",
+                      done=i + 1, total=len(candidates))
+            if (i + 1) % 100 == 0:
+                logger.info(
+                    "Scanned %d/%d symbols, %d signals so far",
+                    i + 1, len(candidates), len(all_signals),
+                )
+    else:
+        import multiprocessing as mp
+        from concurrent.futures import ProcessPoolExecutor
+
+        global _POOL_CTX
+        _POOL_CTX = dict(
+            cfg=cfg, strategy=strategy, start=start, market_key=market_key,
+            use_signal_cache=use_signal_cache, accept_labels=accept_labels, deep_data=deep_data,
+        )
+        logger.info("Scanning %d symbols with %d worker processes", len(candidates), workers)
+        # Close, don't share: each worker opens its own (_pool_worker_init), and this process
+        # reopens lazily on its next query.
+        if db._connection is not None and not db._connection.closed:
+            db._connection.close()
+        # ProcessPoolExecutor, not multiprocessing.Pool: when a worker dies (a segfault in a C
+        # library, the OOM killer) Pool silently waits forever for the lost task, while the executor
+        # raises BrokenProcessPool at once — a multi-hour run must fail loudly, not hang at 0% CPU.
+        with ProcessPoolExecutor(workers, mp_context=mp.get_context("fork"), initializer=_pool_worker_init) as pool:
+            # map yields in candidate order, same as the serial path, so funnel sampling and anything
+            # else order-sensitive stay reproducible.
+            for i, (sym, sigs, enriched, sub_fn) in enumerate(pool.map(_collect_one, candidates)):
+                if fn:
+                    fn.merge(sub_fn)
+                if sigs:
+                    all_signals.extend(sigs)
+                    prices[sym] = enriched
+                _progress(f"scanning history: {i + 1:,}/{len(candidates):,} symbols · {len(all_signals):,} signals so far",
+                          done=i + 1, total=len(candidates))
+                if (i + 1) % 100 == 0:
+                    logger.info(
+                        "Scanned %d/%d symbols, %d signals so far",
+                        i + 1, len(candidates), len(all_signals),
+                    )
+        _POOL_CTX = {}
     logger.info("Collected %d signals across %d symbols", len(all_signals), len(prices))
     if not all_signals:
         raise NoSignals("no signals produced — nothing to simulate", fn)
@@ -858,9 +944,32 @@ def sample_candidates(
     return sorted(picked)
 
 
+def _prefilter_symbol(
+    cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp, sym: str,
+) -> tuple[bool, bool]:
+    """(passes the pre-filter on >=1 bar from `start`, but not on today's row) for one symbol."""
+    raw = cache.load_cached(market_key, sym)
+    if raw is None or len(raw) < 260:
+        return False, False
+    enriched = ind.enrich_daily(raw)
+    mask = strategy.prefilter_mask(cfg, enriched)
+    if not bool(mask[mask.index >= start].any()):
+        return False, False
+    return True, not bool(strategy.passes_prefilter(cfg, enriched)[0])
+
+
+def _prefilter_one(sym: str) -> tuple[bool, bool]:
+    """_prefilter_symbol in a pool worker, its arguments read from _POOL_CTX
+    (_point_in_time_candidates, workers>1). Touches no Funnel: the caller sets the
+    funnel's counts once, from the merged candidate list."""
+    ctx = _POOL_CTX
+    return _prefilter_symbol(ctx["cfg"], ctx["strategy"], ctx["market_key"], ctx["start"], sym)
+
+
 def _point_in_time_candidates(
     cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp,
     fn: "funnel_mod.Funnel | None" = None,
+    workers: int = 1,
 ) -> list[str]:
     """Symbols that would have been screened in on AT LEAST ONE bar in the
     window -- not the ones that pass today.
@@ -870,6 +979,10 @@ def _point_in_time_candidates(
     gets dropped from the whole simulation, discarding trades the live
     screener would genuinely have taken. Measured on US data, selecting on
     today's row silently excluded 1,421 of 2,544 real candidates.
+
+    `workers` > 1 pre-filters that many symbols at once in forked processes (same pattern
+    as collect_portfolio_signals); the candidate list comes back in universe order, identical
+    to the serial path (workers=1, the default).
     """
     tickers = universe.load_universe(market_key)
     logger.info(
@@ -878,18 +991,36 @@ def _point_in_time_candidates(
     )
     candidates: list[str] = []
     excluded_today = 0
-    for i, sym in enumerate(tickers):
-        _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
-                  done=i + 1, total=len(tickers))
-        raw = cache.load_cached(market_key, sym)
-        if raw is None or len(raw) < 260:
-            continue
-        enriched = ind.enrich_daily(raw)
-        mask = strategy.prefilter_mask(cfg, enriched)
-        if bool(mask[mask.index >= start].any()):
-            candidates.append(sym)
-            if not bool(strategy.passes_prefilter(cfg, enriched)[0]):
-                excluded_today += 1
+    if workers <= 1:
+        for i, sym in enumerate(tickers):
+            _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
+                      done=i + 1, total=len(tickers))
+            qualifies, missed_today = _prefilter_symbol(cfg, strategy, market_key, start, sym)
+            if qualifies:
+                candidates.append(sym)
+                excluded_today += missed_today
+    else:
+        import multiprocessing as mp
+        from concurrent.futures import ProcessPoolExecutor
+
+        global _POOL_CTX
+        _POOL_CTX = dict(cfg=cfg, strategy=strategy, market_key=market_key, start=start)
+        logger.info("Pre-filtering %d symbols with %d worker processes", len(tickers), workers)
+        # Same fork discipline as collect_portfolio_signals: close the parent's connection so no
+        # worker inherits a live one, fork-safe init per worker, and an executor that fails loudly.
+        if db._connection is not None and not db._connection.closed:
+            db._connection.close()
+        with ProcessPoolExecutor(workers, mp_context=mp.get_context("fork"), initializer=_pool_worker_init) as pool:
+            # map keeps universe order, so `candidates` is the same list the serial path builds.
+            # chunksize batches the IPC round trips: one symbol is only a few milliseconds of work.
+            results = pool.map(_prefilter_one, tickers, chunksize=16)
+            for i, (sym, (qualifies, missed_today)) in enumerate(zip(tickers, results)):
+                if qualifies:
+                    candidates.append(sym)
+                    excluded_today += missed_today
+                _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
+                          done=i + 1, total=len(tickers))
+        _POOL_CTX = {}
     logger.info(
         "Pre-filter (%s): %d/%d symbols qualify on >=1 bar in the window",
         strategy.key, len(candidates), len(tickers),
@@ -942,6 +1073,7 @@ def run_portfolio_backtest(
     max_adv_pct: float | None = None,
     only_symbols: list[str] | None = None,
     fundamentals: str | None = None,
+    workers: int = 1,
 ):
     """Portfolio-level backtest: one capital pool, a position cap and costs.
 
@@ -950,6 +1082,11 @@ def run_portfolio_backtest(
 
     `min_rs`, `use_market_filter`, `spec_costs`, `max_open_risk_pct` and `max_adv_pct` are the
     Minervini spec's portfolio rules (backtesting/spec.py); `rank_by="rs"` is its PF-03 ranking.
+
+    `workers` fans the point-in-time candidate selection (_point_in_time_candidates) and the
+    symbol scan (collect_portfolio_signals) out across forked processes. The selection is CPU-bound
+    and always gains; the scan helps on a cold signal cache, little or nothing on a warm one (see
+    that function's docstring).
 
     Returns (trades_df, Performance, PortfolioResult)."""
     from . import spec as spec_mod
@@ -985,7 +1122,7 @@ def run_portfolio_backtest(
 
     _progress("selecting point-in-time candidates")
     fn = funnel_mod.Funnel()
-    candidates = _point_in_time_candidates(cfg, strategy, market_key, start, fn=fn)
+    candidates = _point_in_time_candidates(cfg, strategy, market_key, start, fn=fn, workers=workers)
     if only_symbols:
         want = {s.strip().upper() for s in only_symbols if s and s.strip()}
         missing = sorted(w for w in want if w not in {c.upper() for c in candidates})
@@ -1015,7 +1152,7 @@ def run_portfolio_backtest(
 
     all_signals, prices = collect_portfolio_signals(
         market_key, cfg, strategy, start, candidates, deep_data,
-        use_signal_cache=use_signal_cache, accept_labels=accept_labels, fn=fn,
+        use_signal_cache=use_signal_cache, accept_labels=accept_labels, fn=fn, workers=workers,
     )
     spec_notes = []
     # the base count runs before any filter: a base counts whether or not its breakout was tradable
@@ -1230,6 +1367,13 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--market", choices=list(MARKETS.keys()), required=True)
     parser.add_argument("--start", required=True, help="YYYY-MM-DD")
     parser.add_argument("--limit", type=int, default=None, help="cap number of symbols tested")
+    parser.add_argument(
+        "--workers", type=int, default=1, metavar="N",
+        help="scan N symbols at once in forked processes (collect_portfolio_signals only; "
+        "--per-symbol stays single-process). Pays off on a cold signal cache — e.g. right "
+        "after a version bump, when build_context must run on every bar. A warm cache is "
+        "already cheap DB reads and gains little. Not more than your core count.",
+    )
     parser.add_argument("--strategy", default=DEFAULT_STRATEGY, choices=list_strategies())
     parser.add_argument(
         "--deep-lookback-days", type=int, default=1000,
@@ -1260,9 +1404,10 @@ def main(argv: list[str] | None = None) -> dict | None:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "ma", "donchian", "minervini"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "ma", "weekly_ma", "donchian", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
         "stop+target; the others test whether letting winners run beats capping them. "
+        "'weekly_ma' sells at a week's last close when that week closes below the --ma-weeks average of weekly closes. "
         "'minervini' is the spec's EX-01..EX-07 (research/minervini-backtest-spec.md).",
     )
     parser.add_argument("--spec", action="store_true",
@@ -1369,6 +1514,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     )
     parser.add_argument("--atr-mult", type=float, default=3.0, help="for --exit-mode trail_atr")
     parser.add_argument("--ma-col", default="sma50", help="for --exit-mode ma")
+    parser.add_argument("--ma-weeks", type=int, default=30,
+                        help="for --exit-mode weekly_ma: weeks in the simple average of weekly closes")
     parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
     parser.add_argument("--risk-pct", type=float, default=None,
                         help="risk per trade as a fraction, e.g. 0.005 (default: market config)")
@@ -1503,7 +1650,9 @@ def main(argv: list[str] | None = None) -> dict | None:
         if args.max_positions is None:
             args.max_positions = ms.MAX_POSITIONS
         if args.min_rs is None:
-            args.min_rs = 70
+            # TT-08's own threshold, the one the live screen gates G8 on -- a literal here would
+            # leave backtests on the old number the day RS_MIN_RANK is tuned
+            args.min_rs = int(ms.RS_MIN_RANK)
         if args.rank_by == "setup":
             args.rank_by = "rs"
         if args.max_open_risk is None:
@@ -1532,12 +1681,12 @@ def main(argv: list[str] | None = None) -> dict | None:
                                ("time_stop_days", args.time_stop)) if v is not None}
     policy = ExitPolicy(
         mode=args.exit_mode, use_target=not args.no_target,
-        atr_mult=args.atr_mult, ma_col=args.ma_col, donchian_bars=args.donchian_bars, **extra,
+        atr_mult=args.atr_mult, ma_col=args.ma_col, ma_weeks=args.ma_weeks, donchian_bars=args.donchian_bars, **extra,
     )
     try:
         tdf, perf, result = run_portfolio_backtest(
             args.market, args.start, args.limit, args.deep_lookback_days,
-            use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy,
+            use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy, workers=args.workers,
             accept_labels=labels, max_positions=args.max_positions, exit_policy=policy,
             sample=args.sample, refresh_history=args.refresh_history,
             include=[x.strip() for x in args.include.split(",") if x.strip()],
@@ -1650,6 +1799,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (f" --exit-mode {args.exit_mode}" if args.exit_mode != "bracket" else "")
             + (" --no-target" if args.no_target else "")
             + (f" --ma-col {args.ma_col}" if args.exit_mode == "ma" else "")
+            + (f" --ma-weeks {args.ma_weeks}" if args.exit_mode == "weekly_ma" else "")
             + (f" --rank-by {args.rank_by}" if args.rank_by != "setup" else "")
             + (f" --min-group-rs {args.min_group_rs}" if args.min_group_rs is not None else "")
             + (" --block-stage3" if args.block_stage3 else "")

@@ -367,7 +367,7 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 260
 
     status = (
-        "Not yet measured at v1.8 or v1.9 (which grade cup rims, lift a cup's trigger to its left rim, and reject a cup that made a new high between its lips). Last measured at v1.5, with no demonstrated edge: India, full "
+        "Not yet measured since v1.5: v1.8 to v1.12 (graded cup rims, a cup's trigger lifted to its left rim, CH-12, fill-time checks, HS-09/HS-10, TR-05's near end, WG-04, TL-04 and the early breakout search) have no run. Last measured at v1.5, with no demonstrated edge: India, full "
         "universe from 2013 (bracket exits, measured 2026-10-14): 3.61% CAGR against the index's "
         "11.6%, max drawdown -27.8%; no US v1.5 run was recorded. v1.6 renamed codes only and "
         "v1.7 admits stocks with {min_bars} bars of history instead of 320. (v1.2 stopped stale "
@@ -376,7 +376,7 @@ class ChartPatternSpecStrategy(Strategy):
         "only on the breakout bar, once per pattern.) The earlier v1.0 comparison, dominated by stale "
         "cups and late and repeat entries: backtested 2026-10-09 it lost by less than its sibling: -0.93% "
         "CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol "
-        "sample), against `chart_pattern`'s -5.60% and -0.309R on the same "
+        "sample), against `chart_pattern_legacy`'s -5.60% and -0.309R on the same "
         "run. The +0.234R difference has a Welch t of 1.16 and a 95% interval "
         "of [-0.16, +0.62], so the spec's discipline is NOT demonstrated to "
         "help; both lose 14-19 points of CAGR to the benchmark."
@@ -389,46 +389,57 @@ class ChartPatternSpecStrategy(Strategy):
         "reading of the same textbooks did not."
     )
     how_it_works = (
-        "**Swing points** come at two scales ({K_MINOR} and {K_MAJOR} bars "
-        "each side), alternating high/low, with moves under "
-        "max({MIN_SWING_PCT}%, {ATR_MULT} x ATR/close) dropped as wiggles. "
-        "Every level a pattern uses is built from them.",
-        "**Each pattern carries its own context rule** — a prior uptrend for "
-        "continuations, a prior downtrend for reversals — so the same shape "
-        "after a rise and after a fall are not treated as one thing.",
-        "**Patterns it detects (setups, long only):** cup with handle (CUP), "
-        "cup without handle (CUPNH), double bottom (DBOT), triple bottom "
-        "(TBOT), inverse head and shoulders (IHS), ascending triangle (ATRI), "
-        "symmetrical triangle (SYMM), falling wedge (FWDG), rectangle (RECT), "
-        "flat base (FBASE), bull flag or pennant (FLAG) and high tight flag "
-        "(HTF) — eleven pattern types, the cup counted with and without its "
-        "handle. Each is detected by its own numbered rules; the report names "
-        "which fired and, when none did, the first rule that failed.",
-        "**Patterns it detects as vetoes, never traded:** double top, head and "
-        "shoulders top, rising wedge and descending triangle. A confirmed one "
-        "fails gate G2; one still forming raises flag W1.",
-        "**Which pattern a trade was taken on** is the highest-priority live "
-        "match on the signal bar; it is the trade's `setup`, named in the "
-        "backtest trades panel, and the chart draws that pattern — its swing "
-        "points, fitted lines, trigger, invalidation and measured target.",
-        "**Gates S1-S5** require a bullish pattern that is complete or breaking "
-        "out on this bar, no CONFIRMED topping pattern on the same chart, no "
-        "earnings inside {EARNINGS_DAYS} trading days, ATR under {MAX_ATR_PCT}% "
-        "of price, and price no more than {MAX_CHASE_PCT}% past the trigger.",
-        "**One entry per pattern, on its breakout bar.** A pattern that broke out "
-        "earlier is history even while its outcome is still being recorded, and a "
-        "pattern already traded is never bought again — stopped out or not.",
-        "**Patterns expire.** A double, triple, head and shoulders or cup without a handle "
-        "completes once and is void if it does not break out within {MAX_WAIT} bars (BO-04); "
-        "a cup with a handle is bounded by its handle's 5-25 days instead.",
-        "**Entry** is a tick through T x (1 + {BO_BUFFER}%), the level BO-01 "
-        "calls a breakout, or the market price if price has already cleared "
-        "it. **Target** is BO-06's measured move, T + H.",
-        "**The trigger fires** on a close through it on {BO_VOL}x average "
-        "volume (BO-01 + BO-02). Without the volume it stays a setup, capped "
-        "at WATCH.",
+        "The idea: find classical chart patterns by fixed, numbered rules (research/chart-pattern-spec.md), "
+        "and buy a bullish one on the session it breaks out — unless a topping pattern on the same chart "
+        "says the trend is ending. Long only.",
+        "Step 1, pre-filter (When no new trade is taken): liquidity and length of history only. No trend "
+        "screen: each pattern carries its own prior-trend rule.",
+        "Step 2, detect (The patterns table): on every session's close, twelve bullish detectors and four "
+        "topping ones run on the bars up to that close. Each reports its state — complete, broke out, "
+        "failed or void — and, when it fails, the first check it failed.",
+        "Step 3, choose one pattern (Rules, G1): of the bullish patterns that are complete or broke out on "
+        "this bar, the first in a fixed priority order is the trade's setup. Its trigger, invalidation "
+        "level and height drive everything after.",
+        "Step 4, gates and flags (Rules): five hard gates (G1–G5) and three watch flags (W1–W3) decide the "
+        "label, from TRADE - HIGH CONFIDENCE down to AVOID (Decisions).",
+        "Step 5, the trade (Entry, Stop, Target, Exit): a buy-stop at the breakout close, a stop at the "
+        "pattern's invalidation level held within an ATR band, and a sell order at the measured move.",
+        "Timing.\n\n"
+        "- **Swing points** are known only {K_MINOR} or {K_MAJOR} sessions after they print, so a "
+        "pattern is seen late, never early.\n"
+        "- **The trigger** is set from bars up to the day before, so the breakout bar cannot move the level "
+        "it breaks (the flat base is the exception; see Caveats).\n"
+        "- **The signal** is decided on a session's close; the order can fill from the next session.",
+        "Rule ids. Each check opens with an id (CH-03, BO-01 …) that names the same rule in "
+        "core/pattern_spec.py and in the written spec, and in a stock's first-failed-rule note.",
     )
     caveats = (
+        "**Where the code departs from the written spec.**\n\n"
+        "- **CH-03:** every lip in the {PARAMS.right_lip[0]:g}–{PARAMS.right_lip[1]:g} × A band is tried, not only the first — judged on one day, the "
+        "first lip can be months old.\n"
+        "- **CH-06:** the recovery must also take {CUP_RIGHT_LEFT_MIN}x the decline's bars — a fast V passed "
+        "the {PARAMS.side_frac} floor.\n"
+        "- **CH-09:** a handle is never shorter than {K_MAJOR} bars, because the right lip needs {K_MAJOR} "
+        "bars to confirm.\n"
+        "- **Cup trigger:** raised to the left lip A — so the buy clears the left rim's supply.\n"
+        "- **Cup without handle:** triggers at max(A, C), the old high, not at C.\n"
+        "- **DBOT:** O'Neil's W (prior uptrend, second low undercutting, OW-01/OW-02) replaces the "
+        "textbook reversal.\n"
+        "- **Triple bottom:** TL-LV added, and a length of up to 2 × the double's maximum — the spec gives "
+        "none.\n"
+        "- **HS-09, HS-10:** added — a false left shoulder and a steep neckline passed.\n"
+        "- **TL-04:** the id is reused for the breakout-side containment rule; the spec's TL-04 is the "
+        "slope measure.\n"
+        "- **TR-02:** touches need not alternate between the lines.\n"
+        "- **WG-04:** added — near-parallel channels passed WG-02.\n"
+        "- **Flat base trigger:** includes today's high (the spec freezes it at yesterday).\n"
+        "- **BO-02:** the completing patterns take VOL50 before completion, not before their start.\n"
+        "- **BO-03:** tested only for the cup without handle, doubles, triples and head and shoulders.\n"
+        "- **BO-04:** the breakout is searched from the last key point, not from completion.\n"
+        "- **BO-05:** a pattern state only; no position is sold on it.\n"
+        "- **BO-06:** the height is added to the planned entry, not to T.\n"
+        "- **Pattern tracker:** not used; the detectors run fresh on each bar, so one pattern is not followed "
+        "from day to day.",
         "**Every result before v1.5 includes late and repeat entries.** A pattern "
         "stayed an entry signal for {HORIZON} bars after its breakout: in the v1.1 "
         "India run 20% of trades re-used a pattern another trade had already traded "
@@ -445,192 +456,531 @@ class ChartPatternSpecStrategy(Strategy):
         "reversal DBOT, replaced in v1.3 by O'Neil's W.",
         "**It is signal-saturated.** 942 signals produced 253 trades: 85 were "
         "passed up with all 10 slots full and 132 for insufficient cash, and "
-        "exposure ran at 93.9% against `chart_pattern`'s 79.3%. A position "
+        "exposure ran at 93.9% against `chart_pattern_legacy`'s 79.3%. A position "
         "cap, not the detector, decided much of what got traded.",
-        "**Five of the spec's rules cannot fire at its own default "
-        "parameters** (CH-09, HS-06, TR-04, TR-07, FL-04) because §2.1's 3% "
-        "minimum swing and §2.2's 3% tolerance are large relative to what "
-        "those rules ask for. They are implemented and tested, and the "
-        "defaults are left as written; see core/pattern_spec.py.",
+        "**The flat base can never break out on its own bar, so a backtest never buys it.** Its window "
+        "includes today, so its trigger (the window high) is at least today's high, and no close can be "
+        "{BO_BUFFER}% above it. Live, a flat base only ever shows as TRADE ON TRIGGER.",
+        "**The high tight flag is skipped at every fill.** It has no measured height, so its target is "
+        "exactly {MIN_R}R from the planned entry. Slippage makes the fill a touch higher, the re-test at "
+        "the fill then finds less than {MIN_R}:1, and the order is dropped.",
+        "**A cup's handle checks include the breakout bar.** CH-08 to CH-11 measure the handle from the bar "
+        "after the right lip through today. On a breakout day a high close can tilt the handle's slope "
+        "upward (CH-10) and its volume can lift the handle average (CH-11), so a cup can fail its checks on "
+        "the very bar it breaks out — and a backtest buys only that bar.",
+        "**A cup's trigger is not raised to the right lip.** T is the handle's high raised to the left "
+        "lip A. When the right lip C sits above A (up to {PARAMS.right_lip[1]:g} × A), T can be below C, "
+        "so the buy-stop can sit under the right rim.",
+        "**A sloping neckline is read at today's value for past bars.** For a head and shoulders (and the "
+        "breakout search of every completing pattern) each past close is compared with the trigger as of "
+        "today. A neckline falls up to {HS_MAX_NECK_CHANGE}%, so an earlier close above today's (lower) "
+        "neckline counts as an old breakout although it was below the line on its day.",
+        "**One pattern is chosen before the breakout is checked.** The highest-priority pattern that is "
+        "complete OR breaking out is chosen. If it is only complete while a lower-priority pattern breaks "
+        "out on the same bar, there is no buy that day.",
+        "**The near_highs screen is not applied.** The Strategies page names it as this strategy's "
+        "screen, so the two compare like for like with `chart_pattern_legacy`, but the pre-filter here "
+        "checks liquidity only: price need not be near its high or above the 200-day. The reversal "
+        "patterns (TBOT, IHS) are limited only by their own prior-downtrend rule and gate G5.",
+        "**Two volume yardsticks.** The detector's BO-02 measures the breakout bar against the 50-bar "
+        "average before the pattern started (for a cup, before its left lip, which can be a year earlier); "
+        "W2 measures it against the latest 50 days. A backtest buy needs both at {BO_VOL}x.",
+        "**Earnings are not known in a backtest**, so gate G3 never blocks there; it acts on the live "
+        "screen only.",
+        "**Five rules cannot fire at the default parameters** (CH-09, HS-06, TR-04, TR-07, FL-04) because "
+        "the {MIN_SWING_PCT}% minimum swing and the {TOL_PCT}% tolerance are large relative to what those "
+        "rules ask for. They are implemented and tested, and the defaults are left as written; see "
+        "core/pattern_spec.py.",
         "**Flags and the high tight flag find nothing in practice.** Over 283 "
         "liquid US names the pole rules rejected 255 of them (FP-01 172, "
-        "FP-02 63): a 15% rise inside 15 days on 1.3x volume is simply rare.",
+        "FP-02 63): a {PARAMS.pole_gain}% rise inside {PARAMS.pole_days} days on "
+        "{PARAMS.pole_rv}x volume is simply rare.",
         "**The flat base is the least selective pattern here**, firing on "
         "24% of random walks against the cup's 0%. It has no touch "
-        "requirement and its volume rule is off by default.",
-        "**Recent listings are judged on a short history.** From v1.7 a stock is eligible after "
-        "{min_bars} bars (about a year), the screen's own floor. The detectors look back about "
-        "two years of bars, so a new listing's prior-trend rules (PT-01/PT-02) see a truncated "
-        "window: that can only make a pattern harder to accept, never easier, but a base that "
-        "began before the listing cannot be seen at all.",
-        "**Detection costs ~40ms per symbol-day** against `chart_pattern`'s "
-        "~1ms, because eleven detectors run where seven did and each refits "
+        "requirement and its volume rule is off.",
+        "**There is no ceiling on a bottom's middle swing**, so two lows either side of a spike pass DB-03: "
+        "before v1.3, AEVA screened as a double bottom with lows of 13.51 and 13.90 around a 28.42 peak. "
+        "The W's depth cap (OW-01) now bounds DBOT, but a triple bottom still has no ceiling; gate G5's "
+        "band keeps a far-off trigger out of the report. `PatternParams.db_max_peak` exists to test a cap.",
+        "**Recent listings are judged on a short history.** A stock is eligible after "
+        "{min_bars} bars (about a year). The detectors look back {PARAMS.lookback} bars, so a new "
+        "listing's prior-trend rules (PT-01/PT-02) see a truncated window: that can only make a pattern "
+        "harder to accept, never easier, but a base that began before the listing cannot be seen at all.",
+        "**Detection costs ~40ms per symbol-day** against `chart_pattern_legacy`'s "
+        "~1ms, because twelve detectors run where seven did and each refits "
         "swings. A backtest of it is slower in proportion.",
-        "**§5 has no ceiling on the middle swing**, so two lows either side "
-        "of a spike pass DB-03: AEVA screened as a live double bottom with "
-        "lows of 13.51 and 13.90 around a 28.42 peak. Gate S5's band keeps "
-        "it out of the report rather than the detector rejecting it, because "
-        "the detector implements the spec as written; "
-        "`PatternParams.db_max_peak` exists to test a cap.",
-        "**The reversal patterns are mostly unreachable through this "
-        "screen.** `near_highs` wants price within 15% of the 52-week high "
-        "above a rising 200-day, while TBOT and IHS require a prior DOWNTREND "
-        "(PT-02) and form well below the highs. They are implemented and "
-        "tested, and they will rarely fire here. DBOT left this group in v1.3: "
-        "O'Neil's W follows an uptrend. It still collides with the screen "
-        "another way: a W {W_MIN_DEPTH}-{W_MAX_DEPTH}% deep triggers at a middle "
-        "peak that can itself sit more than 15% under the 52-week high, and then "
-        "the screen drops it. Measuring them needs a "
-        "screen that does not demand an uptrend — a deliberate follow-up, not "
-        "an oversight: changing the screen would also break the like-for-like "
-        "comparison with `chart_pattern` that this strategy exists for.",
         "Several patterns usually match one chart. The traded one is the "
         "highest-priority live match; `pattern` names it and the setup "
         "columns show the rest.",
     )
     gate_docs = {
-        "G1": "A bullish pattern must be COMPLETE (its buy-stop can rest at the "
-              "trigger) or break out ON THIS BAR — BO-01 and BO-02 met today, at "
-              "most {BREAKOUT_MAX_AGE} bars after the breakout bar. A pattern that "
-              "broke out earlier is history even while its {HORIZON}-bar outcome is "
-              "still being recorded, and one that BO-03/BO-04 voided never qualifies.",
-        "G2": "No CONFIRMED topping pattern (double top, head and shoulders "
-              "top, rising wedge, descending triangle) on the same chart. A "
-              "long bought inside a confirmed top is the trade this screener "
-              "would otherwise keep taking.",
-        "G3": "Earnings must not fall within {EARNINGS_DAYS} trading days: a "
-              "base breaking out two days before a print is a bet on the print.",
-        "G4": "ATR14 must be at most {MAX_ATR_PCT}% of price.",
-        "G5": "The close must sit in the actionable band around the trigger: "
-              "no more than {MAX_CHASE_PCT}% above it (past that the breakout "
-              "happened without you) and no more than "
-              "{MAX_BELOW_TRIGGER_PCT}% below it. The spec has no such rule "
-              "because §11's tracker holds a pattern from completion and lets "
-              "BO-04 expire it; a screener asked about one bar needs the "
-              "band, or it reports AEVA as a live double bottom with a "
-              "trigger 108% overhead.",
+        "G1": "A bullish pattern is complete and waiting, or broke out on today's bar.\n\n"
+              "- **Complete:** every check of the pattern passes (The patterns table) and it has not broken "
+              "out. A double, triple, head and shoulders or cup without handle must also not be void "
+              "(BO-03, BO-04).\n"
+              "- **Broke out today:** BO-01 and BO-02 are met on today's close — at most "
+              "{BREAKOUT_MAX_AGE} bars after the breakout bar, so the breakout bar only. The detector keeps "
+              "reporting a breakout for {HORIZON} bars; from the next bar on it fails here, so a pullback "
+              "into an old pivot is never bought.\n"
+              "- **CUPNH:** counts only while TRADE_CUPNH is 1 (now {TRADE_CUPNH}).\n"
+              "- **Which pattern:** when several pass, the first in the priority order CUP, HTF, IHS, CUPNH, "
+              "TBOT, ATRI, FLAG, DBOT, SYMM, RECT, FWDG, FBASE — rarest on random walks first.\n"
+              "- **When none passes:** the note names the first failed rule as CODE:RULE (e.g. CUP:CH-05), "
+              "taking the patterns in setup-list order.\n\n"
+              "A complete pattern is a live TRADE ON TRIGGER; only a breakout today can be TRADE - HIGH "
+              "CONFIDENCE, the one tier a backtest buys.",
+        "G2": "No confirmed topping pattern on the same chart.\n\n"
+              "- **Looked for:** double top, head-and-shoulders top, rising wedge, descending triangle, in "
+              "that order. Only the first that is live is considered.\n"
+              "- **Confirmed, double top or H&S top:** a close below its trigger by {BO_BUFFER}% (no "
+              "volume test) within the last {HORIZON} bars, and not failed since (BO-05).\n"
+              "- **Confirmed, rising wedge or descending triangle:** today's close is {BO_BUFFER}% below "
+              "the lower line.\n"
+              "- **Complete but not broken down:** raises W1 instead.\n\n"
+              "Long only, so a topping pattern is a veto, never a trade.",
+        "G3": "No earnings date within {EARNINGS_DAYS} weekdays.\n\n"
+              "- **Counted:** weekdays from today to the stored next earnings date. 0 to {EARNINGS_DAYS} "
+              "fails, and so does a negative count (a stored date that has passed). No known date passes.\n"
+              "- **In a backtest:** no point-in-time earnings dates are used, so this never blocks there.",
+        "G4": "ATR14 is at most {MAX_ATR_PCT}% of the close.\n\n"
+              "- **ATR14:** the 14-session average true range, the stock's typical daily move. A missing "
+              "value passes.",
+        "G5": "The close is between {MAX_BELOW_TRIGGER_PCT}% below and {MAX_CHASE_PCT}% above the chosen "
+              "pattern's trigger T.\n\n"
+              "- **Measured:** (close ÷ T − 1) × 100.\n"
+              "- **More than {MAX_CHASE_PCT}% above:** the breakout happened without you.\n"
+              "- **More than {MAX_BELOW_TRIGGER_PCT}% below:** not actionable — e.g. a double bottom whose "
+              "middle peak sits far overhead.",
     }
     watch_docs = {
-        "W1": "A topping pattern is FORMING (rolled over but not yet through "
-               "its neckline) on the same chart. Caps the decision at TRADE ON "
-               "TRIGGER; a confirmed one fails gate G2 outright.",
-        "W2": "Price is through the trigger but volume is below {BO_VOL}x its "
-               "50-day average, so BO-02 has not confirmed the breakout. Caps "
-               "at WATCH.",
-        "W3": "RSI14 above {OVERBOUGHT_RSI}. Caps at TRADE ON TRIGGER.",
+        "W1": "A topping pattern on the chart is complete but has not broken down.\n\n"
+              "- **Which:** the first live topping pattern in G2's order. If it has broken down, G2 fails "
+              "instead.\n"
+              "- **Effect:** caps the decision at TRADE ON TRIGGER and takes 0.5 off setup quality. A "
+              "backtest buys only TRADE - HIGH CONFIDENCE, so it does not buy.",
+        "W2": "The close is above the trigger T on volume under {BO_VOL} times the 50-day average volume.\n\n"
+              "- **The average:** the 50 sessions ending today.\n"
+              "- **Effect:** caps the decision at WATCH and takes 1.0 off setup quality.\n"
+              "- **Why it can fire on a breakout:** the detector's BO-02 uses a different 50-bar average, "
+              "taken before the pattern started. A buy needs both.",
+        "W3": "RSI14 is above {OVERBOUGHT_RSI}.\n\n"
+              "- **Effect:** caps the decision at TRADE ON TRIGGER, so a backtest does not buy.",
+    }
+    pattern_title = "The patterns — detector checks"
+    pattern_intro = (
+        "Each pattern is a run of checks, listed below pattern by pattern in the order the code runs them; "
+        "the first that fails is the rule a stock reports. The terms they use:\n\n"
+        "- **Swing high / swing low:** a bar whose high (low) is the highest (lowest) of the k bars on each "
+        "side. Minor scale k = {K_MINOR} (flags, short triangles); major scale k = {K_MAJOR} (cups, doubles, "
+        "triples, head and shoulders, long triangles). A swing is known only k bars later. Highs and lows "
+        "alternate (of two highs in a row the higher is kept), and a swing that moved less than "
+        "max({MIN_SWING_PCT}%, {ATR_MULT} × ATR14 ÷ close) from the previous one is dropped.\n"
+        "- **tol, the price tolerance:** max({TOL_PCT}%, {TOL_ATR_MULT} × ATR14 ÷ close), on today's "
+        "bar. Two prices are equal within tol when their gap ÷ their average is at most tol.\n"
+        "- **Prior trend (PT-01 / PT-02):** price at a point at least a given % above the lowest low "
+        "(below the highest high) of the {PARAMS.prior_window} bars before it.\n"
+        "- **Lines:** least-squares straight lines through swing highs (upper) and swing lows (lower). "
+        "Slope is per bar, as a fraction of the line's value at the pattern's midpoint; a line is flat "
+        "within ±{PARAMS.flat_slope}. A touch is a swing within tol of its line.\n"
+        "- **VOL50:** the average volume of the 50 bars before the pattern's start (BO-02 says which bar).\n"
+        "- **T, X, H:** each pattern's trigger, invalidation level and height (see Setups).\n"
+        "- **Lookback:** the detectors read the last {PARAMS.lookback} bars."
+    )
+    pattern_docs = {
+        # ---- cup (CUP; CUPNH runs CH-01 to CH-06 and CH-12)
+        "CH-01": "Cup — prior uptrend: the left lip A is at least {PARAMS.cup_prior_move}% above the lowest "
+                 "low of the {PARAMS.prior_window} bars before it.\n\n"
+                 "- **A:** every major swing high in the lookback is tried. Where several cups pass, the one "
+                 "with the highest A is kept.",
+        "CH-02": "Cup depth: (A − B) ÷ A is {PARAMS.cup_depth[0]:g}% to {PARAMS.cup_depth[1]:g}%.\n\n"
+                 "- **B, the cup low:** the lowest low from the bar after A through today. A lower low after "
+                 "the right lip moves B past every lip, so the cup fails CH-03.",
+        "CH-03": "Right lip: C is a major swing high after B, no later than yesterday, between "
+                 "{PARAMS.right_lip[0]:g} × A and {PARAMS.right_lip[1]:g} × A.\n\n"
+                 "- **Several qualify:** each is tried in time order; the first that passes every later "
+                 "check is the lip.\n"
+                 "- **Rim grade (not a rejection):** (C − A) ÷ A within {RIM_IDEAL_PCT}% is ideal, within "
+                 "{RIM_OK_PCT}% acceptable, beyond that loose. Ideal adds {RIM_IDEAL_BONUS} to setup quality, "
+                 "loose takes {RIM_LOOSE_PENALTY} off.",
+        "CH-12": "Cup stays under its rim: no high between A and C is above max(A, C) × (1 + tol). A new "
+                 "high in the middle is a failed breakout and a second decline, not one cup.",
+        "CH-04": "Cup length: {PARAMS.cup_days[0]} to {PARAMS.cup_days[1]} bars from A to C (about 7 to 65 "
+                 "weeks).",
+        "CH-05": "Rounded, not a V: at least max({PARAMS.round_min_days}, {PARAMS.round_frac} × the cup's "
+                 "bars, rounded down) bars from A to C have a low in the cup's bottom third — at or below "
+                 "B + (max(A, C) − B) ÷ 3.",
+        "CH-06": "Balanced sides: A to B and B to C each take at least {PARAMS.side_frac} of the cup's bars, "
+                 "and B to C takes at least {CUP_RIGHT_LEFT_MIN} times as many bars as A to B.\n\n"
+                 "- **Example:** 30 bars down and 13 up in a 43-bar cup passes the {PARAMS.side_frac} floor "
+                 "(13 ≥ 10.75) but fails the ratio (13 < {CUP_RIGHT_LEFT_MIN} × 30): a fast V-shaped "
+                 "recovery.",
+        "CH-07": "Handle in the cup's upper half: the handle low D — the lowest low after C, today's "
+                 "included — is at least B + {PARAMS.handle_half} × (A − B).",
+        "CH-08": "Handle depth: (C − D) ÷ C is {PARAMS.handle_depth[0]:g}% to {PARAMS.handle_depth[1]:g}%.",
+        "CH-09": "Handle length: {PARAMS.handle_days[0]} to {PARAMS.handle_days[1]} bars from C to today.\n\n"
+                 "- **In practice at least {K_MAJOR}:** C must be a confirmed major swing, which takes "
+                 "{K_MAJOR} bars, so a shorter handle is never seen.",
+        "CH-10": "Handle drifts down or sideways: a least-squares line through the closes from the bar after "
+                 "C through today has a slope of zero or less. Today's close is included (see Caveats).",
+        "CH-11": "Handle volume dries up: average volume from the bar after C through today is at most "
+                 "{PARAMS.handle_vol} × the 50-bar average before A. Today's volume is included.",
+        # ---- O'Neil's W (DBOT)
+        "DB-01 (W)": "W — prior uptrend into the high it corrects: the highest high of the "
+                     "{PARAMS.prior_window} bars before the first low B is at least {PARAMS.db_prior_move}% "
+                     "above the lowest low of the {PARAMS.prior_window} bars before that high.\n\n"
+                     "- **Points:** three consecutive major swings — low B, high C, low D.\n"
+                     "- **Which W:** of those that pass, the most recent.\n\n"
+                     "A continuation base after an advance; two equal lows after a decline (the textbook "
+                     "reversal) is not looked for.",
+        "DB-02 (W)": "W — the second low undercuts the first: (B − D) ÷ B is {PARAMS.oneil_undercut[0]:g}% "
+                     "to {W_UNDERCUT_MAX}%.",
+        "OW-01": "W depth: from that prior high down to the lower of the two lows is {W_MIN_DEPTH}% to "
+                 "{W_MAX_DEPTH}%.",
+        "OW-02": "W length: at least {W_MIN_DAYS} bars from that prior high to D (about 7 weeks).",
+        "DB-03": "W middle peak high enough: (C − the lower low) ÷ the lower low is at least "
+                 "{PARAMS.db_min_peak}%. There is no upper limit.",
+        "DB-04": "W lows far enough apart: {PARAMS.db_days[0]} to {PARAMS.db_days[1]} bars from B to D.",
+        "DB-05": "Lighter volume at the second low: switched off.",
+        # ---- triple bottom (TBOT)
+        "DB-01 (triple)": "Triple — prior downtrend: the first low B1 is at least {PARAMS.db_prior_move}% "
+                          "below the highest high of the {PARAMS.prior_window} bars before it.\n\n"
+                          "- **Points:** five consecutive major swings — lows B1, B2, B3 with peaks P1, P2 "
+                          "between them.\n"
+                          "- **Which triple:** of those that pass, the most recent.",
+        "DB-02 (triple)": "Triple — lows level: every pair of the three lows is equal within tol.",
+        "TL-LV": "Triple — not stepping: when the lows rise each time (or fall each time), B1 to B3 moves "
+                 "at most {TRIPLE_MAX_DRIFT}%. Lows that zig-zag are not tested. A rising floor is a range, "
+                 "not three tests of one support.",
+        "DB-03 (triple)": "Triple — peaks high enough: (T − the lowest low) ÷ the lowest low is at least "
+                          "{PARAMS.db_min_peak}%, T being the higher of P1 and P2.",
+        "DB-04 (triple)": "Triple length: {PARAMS.db_days[0]} to 2 × {PARAMS.db_days[1]} bars from B1 to "
+                          "B3.",
+        # ---- inverse head and shoulders (IHS); the top mirrors it
+        "HS-01": "H&S — prior trend: for the inverse, the left shoulder LS is at least "
+                 "{PARAMS.hs_prior_move}% below the highest high of the {PARAMS.prior_window} bars before "
+                 "it.\n\n"
+                 "- **Points:** five consecutive major swings — LS, N1, HD (the head), N2, RS; lows, highs, "
+                 "lows for the inverse.\n"
+                 "- **The top (a veto):** every check mirrored — a prior uptrend into LS, the head highest.\n"
+                 "- **Which one:** of those that pass, the most recent.",
+        "HS-09": "H&S — the left shoulder belongs to the trend being reversed: for the inverse, N1 (the "
+                 "rally after LS) is no higher than the highest high of the {PARAMS.prior_window} bars "
+                 "before LS. A low followed by a new high is part of the uptrend, not a left shoulder.",
+        "HS-02": "H&S — head clearly lowest: HD is at least {PARAMS.hs_min_head}% below the lower "
+                 "shoulder.",
+        "HS-03": "H&S — shoulders level: LS and RS equal within {PARAMS.hs_shoulder_tol_mult} × tol.",
+        "HS-04": "H&S — shoulders similar in time: (bars from HD to RS) ÷ (bars from LS to HD) is "
+                 "{PARAMS.hs_time_ratio[0]:g} to {PARAMS.hs_time_ratio[1]:g}.",
+        "HS-05": "H&S — neckline not steep: the line through N1 and N2 moves at most "
+                 "{PARAMS.hs_max_neck_slope} of its midpoint value per bar.",
+        "HS-10": "H&S — neckline drift: from N1 to N2 the neckline falls (inverse) or rises (top) by at most "
+                 "{HS_MAX_NECK_CHANGE}% in total, however long the pattern.",
+        "HS-06": "H&S — shoulders stand off the neckline: each shoulder is at least {PARAMS.hs_min_shoulder}% "
+                 "beyond the neckline on its own date (below it, for the inverse). It rarely bites at the "
+                 "default minimum swing (see Caveats).",
+        "HS-07": "H&S — length: {PARAMS.hs_days[0]} to {PARAMS.hs_days[1]} bars from LS to RS.",
+        "HS-08": "H&S — classic volume: switched off.",
+        # ---- triangles, wedges, rectangles (ATRI, SYMM, FWDG, RECT)
+        "TR-01": "Lines — window and scale: every confirmed swing {PARAMS.tr_days[0]} to {PARAMS.rc_days[1]} "
+                 "bars before today is tried as the start S, with minor swings when S is under "
+                 "{PARAMS.tr_scale_days} bars back and major swings otherwise.\n\n"
+                 "- **Fit:** the upper line through every swing high from S to yesterday, the lower through "
+                 "every swing low; at least 2 of each.\n"
+                 "- **Which one:** of each kind that passes, the one with the most touches, then the "
+                 "longest.",
+        "TL-05": "Lines — kind, from the two slopes:\n\n"
+                 "- **Rectangle (RECT):** both flat.\n"
+                 "- **Ascending triangle (ATRI):** upper flat, lower rising.\n"
+                 "- **Symmetrical triangle (SYMM):** upper falling, lower rising, neither slope more than "
+                 "{PARAMS.sym_slope_ratio} times the other.\n"
+                 "- **Falling wedge (FWDG):** both falling, the upper faster.\n"
+                 "- **Topping (vetoes):** descending triangle (lower flat, upper falling); rising wedge "
+                 "(both rising, the lower faster).\n\n"
+                 "Any other pair — diverging lines, a lopsided symmetrical — is no pattern.",
+        "TL-03": "Lines — price contained: no close from S to yesterday is beyond either line by more than "
+                 "tol.",
+        "TL-04": "Lines — breakout side clean: from S to the breakout line's last touch, no close is beyond "
+                 "that line by more than {BO_BUFFER}%. Closes within k bars of one of its touches are "
+                 "exempt.\n\n"
+                 "- **Breakout line:** the upper one for ATRI, SYMM, FWDG and RECT; the lower one for the "
+                 "topping kinds.\n"
+                 "- **Why:** a close through the line that was touched again later was a breakout that "
+                 "came back, so the line was not the boundary.",
+        "TR-02": "Lines — touches: at least {PARAMS.tr_min_touches_side} swings on each line and "
+                 "{PARAMS.tr_min_touches} in all. Rectangle (RC-02): {PARAMS.rc_min_touches_side} on each, "
+                 "{PARAMS.rc_min_touches} in all. The touches need not alternate between the lines.",
+        "RC-03": "Rectangle height: (upper − lower) ÷ lower at S is {PARAMS.rc_height[0]:g}% to "
+                 "{PARAMS.rc_height[1]:g}%.",
+        "RC-04": "Rectangle length: {PARAMS.rc_days[0]} to {PARAMS.rc_days[1]} bars from S to today. A "
+                 "rectangle runs no further checks.",
+        "TR-03": "Triangle/wedge — converging: the lines meet (the apex) after today.",
+        "TR-04": "Triangle/wedge — length: {PARAMS.tr_days[0]} to {PARAMS.tr_days[1]} bars from S to "
+                 "today.",
+        "TR-05": "Triangle/wedge — apex zone: today is {PARAMS.tr_apex_zone[0]:g} to "
+                 "{PARAMS.tr_apex_zone[1]:g} of the way from S to the apex, in bars.\n\n"
+                 "- **Past the far end:** void.\n"
+                 "- **Before the near end:** the lines have barely converged; not yet a pattern.",
+        "WG-04": "Wedge — real convergence: the steeper line slopes at least {WEDGE_MIN_CONVERGE} times the "
+                 "shallower one; nearer parallel is a channel.",
+        "TR-06": "Triangle/wedge — volume declines: a straight line fitted to log(volume) from S through "
+                 "today slopes down.",
+        "TR-07": "Triangle/wedge — big enough: the height at S, upper − lower, is at least "
+                 "{PARAMS.tr_min_height}% of today's close.",
+        # ---- flat base (FBASE)
+        "FB-02": "Flat base window: the longest run of N bars ending today, N from {PARAMS.fb_days[0]} to "
+                 "{PARAMS.fb_days[1]}, whose (highest high − lowest low) ÷ highest high is at most "
+                 "{PARAMS.fb_max_depth}%. Today's bar is inside the window, so its high is part of the "
+                 "trigger (see Caveats).",
+        "FB-01": "Flat base — prior advance: the window's first close is at least {PARAMS.fb_prior_move}% "
+                 "above the lowest low of the {PARAMS.prior_window} bars before it.",
+        "FB-03": "Flat base — long enough: at least {PARAMS.fb_days[0]} bars, which the window search "
+                 "already guarantees.",
+        "FB-04": "Flat base — near the highs: the window high is at least {PARAMS.fb_near_high} × the "
+                 "52-week high.",
+        "FB-05": "Flat base — volume dry-up: switched off.",
+        # ---- flag or pennant (FLAG) and high tight flag (HTF)
+        "FL-01": "Flag — pause length: the pole top P1 is {PARAMS.flag_days[0]} to {PARAMS.flag_days[1]} "
+                 "bars before today (HTF-04: {PARAMS.htf_flag_days[0]} to {PARAMS.htf_flag_days[1]}), and "
+                 "no high from P1 to yesterday is above it.\n\n"
+                 "- **Several lengths fit:** the one with the biggest pole gain is used.",
+        "FP-01": "Flag — pole gain: P1's high ÷ P0's low − 1 is at least {PARAMS.pole_gain}% (HTF-01: "
+                 "{PARAMS.htf_gain}%).\n\n"
+                 "- **P0:** the lowest low of the 2 × {PARAMS.pole_days} bars up to P1 (high tight flag: "
+                 "{PARAMS.htf_pole_days[1]} bars).",
+        "FP-02": "Flag — pole speed: at most {PARAMS.pole_days} bars from P0 to P1 (HTF-02: "
+                 "{PARAMS.htf_pole_days[0]} to {PARAMS.htf_pole_days[1]}).",
+        "HTF-03": "High tight flag — depth: (P1 − the lowest low since P1, today's included) ÷ P1 is at most "
+                  "{PARAMS.htf_depth}%. The high tight flag runs no further checks.",
+        "FP-03": "Flag — pole volume: average volume from P0 to P1 is at least {PARAMS.pole_rv} × the 50-bar "
+                 "average before P0.",
+        "FL-02": "Flag — shallow pause: (P1 − the lowest low since P1) ÷ (P1 − P0) is at most "
+                 "{PARAMS.flag_retrace}%.",
+        "FL-03": "Flag — volume declines: log(volume) from the bar after P1 through today slopes down.",
+        "FL-04": "Flag — shape: lines through the minor swings from P1 to yesterday (at least 2 highs and 2 "
+                 "lows) form a flag or a pennant.\n\n"
+                 "- **Flag:** both slopes at most +{PARAMS.flat_slope} (falling or flat), neither more than "
+                 "{PARAMS.flag_slope_ratio} times the other.\n"
+                 "- **Pennant:** upper falling, lower rising, apex after today.\n\n"
+                 "No touch count or containment test applies.",
+        # ---- the topping patterns (vetoes: G2, W1)
+        "DT-01–04": "Double top (a veto): three consecutive major swings — top B, trough C, top D.\n\n"
+                    "- **DT-01:** B at least {PARAMS.db_prior_move}% above the lowest low of the "
+                    "{PARAMS.prior_window} bars before it.\n"
+                    "- **DT-02:** B and D equal within tol.\n"
+                    "- **DT-03:** C at least {PARAMS.db_min_peak}% below the higher top.\n"
+                    "- **DT-04:** {PARAMS.db_days[0]} to {PARAMS.db_days[1]} bars from B to D.\n"
+                    "- **Levels:** T = C; void above the higher top × (1 + tol).",
+        # ---- the life of every pattern
+        "BO-01": "Breakout: today's close is above T × (1 + {BO_BUFFER}%) (topping patterns: below "
+                 "T × (1 − {BO_BUFFER}%)).",
+        "BO-02": "Breakout volume: today's volume is at least {BO_VOL} × VOL50. Topping patterns have no "
+                 "volume test.\n\n"
+                 "- **VOL50 is taken before:** the left lip A (CUP); the start S (ATRI, SYMM, FWDG, RECT); "
+                 "the window start (FBASE); P0 (FLAG, HTF); the bar a pattern completed, {K_MAJOR} bars "
+                 "after its last point (CUPNH, DBOT, TBOT, IHS).",
+        "BO-03": "Void: a close below X after the last key point — for a cup without handle, double, triple "
+                 "or head and shoulders only. The other patterns are detected afresh each bar and do not "
+                 "test X; their own checks (the handle low, the lines, the window) end them instead.",
+        "BO-04": "Expiry: a cup without handle, double, triple or head and shoulders is void when no "
+                 "breakout comes within {MAX_WAIT} bars of completing — {K_MAJOR} bars after its last "
+                 "point.\n\n"
+                 "- **The others have no clock:** CH-09's {PARAMS.handle_days[1]}-bar handle, TR-05's apex "
+                 "zone and FL-01's pause bound them; a rectangle or flat base never expires.\n"
+                 "- **Breakout search (EARLY_BREAKOUT = {EARLY_BREAKOUT}):** starts the bar after the last "
+                 "point, so a breakout during the {K_MAJOR} confirming bars counts — and is already old when "
+                 "the pattern becomes visible.",
+        "BO-05": "Failed: within {FAIL_DAYS} bars after a breakout, a close back below T × (1 − tol) "
+                 "(topping: above T × (1 + tol)). A failed pattern is no longer live, which matters for the "
+                 "topping vetoes. A pattern state only: no position is sold on it.",
     }
     setup_docs = {
-        CUP: "§4 cup with handle: a rounded correction of "
-             "12-33% recovering to its left lip — the recovery taking at least "
-             "{CUP_RIGHT_LEFT_MIN}x as long as the decline, so a fast V does not "
-             "count — then a 5-25 day handle drifting down in the upper half of "
-             "the cup on volume below 0.8x its 50-day average. The two rims are a "
-             "resistance ZONE, not a line: the right rim may sit 15% under to 3% over "
-             "the left, and inside that the gap is graded — within {RIM_IDEAL_PCT}% "
-             "ideal, within {RIM_OK_PCT}% acceptable, beyond that loose — and the "
-             "grade moves setup quality (+{RIM_IDEAL_BONUS} ideal, -{RIM_LOOSE_PENALTY} "
-             "loose), which ranks signals for the position slots. T is the handle's "
-             "high, raised to the left rim when the handle sits under it, so the "
-             "breakout clears the whole zone. Between the lips no high may top the "
-             "rim by more than the price tolerance (CH-12): a new high in the "
-             "middle is a failed breakout and a second decline, not a cup.",
-        CUPNH: "§4 the same cup read before a handle exists, with price still "
-               "at the rim. T is the OLD HIGH, the higher of the two lips -- "
-               "O'Neil's buy point -- since the right lip may sit up to 15% "
-               "under the left. O'Neil treats it as the "
-               "weaker variant, which is why it is a separate code. Its rims are "
-               "graded like CUP's ({RIM_IDEAL_PCT}% ideal, {RIM_OK_PCT}% acceptable), and it "
-               "must stay under its rim between the lips (CH-12). It is "
-               "complete {K_MAJOR} bars after C and void {MAX_WAIT} bars later "
-               "without a breakout. Traded only while TRADE_CUPNH is on ({TRADE_CUPNH}): "
-               "it fires at the rim, before any handle, so its resting order can "
-               "block the cup with a handle that forms later.",
-        DBOT: "§5.1 O'Neil's W, a continuation base: a prior uptrend into the "
-              "high it corrects, a second low 0-{W_UNDERCUT_MAX}% UNDER the "
-              "first (the shakeout), {W_MIN_DEPTH}-{W_MAX_DEPTH}% deep from that "
-              "high and at least {W_MIN_DAYS} bars long, with a middle peak at "
-              "least 10% above the lows. T is that peak. (The spec's textbook "
-              "reversal -- two equal lows after a decline -- is not traded.)",
-        TBOT: "§5 triple bottom: three lows after a decline, all within "
-              "tolerance of each other AND level -- lows that step up (or "
-              "down) each time may drift no more than {TRIPLE_MAX_DRIFT}% "
-              "first to third, since a rising floor is a range, not three "
-              "tests of one support. T is the higher of the two middle peaks.",
-        IHS: "§6.2 inverse head and shoulders: three lows with the middle one "
-             "lowest and the shoulders level, under a neckline sloping no "
-             "more than 0.3% per day, and falling no more than "
-             "{HS_MAX_NECK_CHANGE}% left anchor to right (HS-10). The left shoulder "
-             "must belong to the decline: the rally after it may not top the "
-             "high that decline began from (HS-09). T is the neckline at today's "
-             "bar, so it moves.",
-        ATRI: "§7 ascending triangle: a flat upper line and a rising lower "
-              "one, at least five touches between them, converging with the "
-              "apex still ahead and volume declining, breaking out between 50% and "
-              "80% of the way to the apex (TR-05), and no close above the upper "
-              "line by more than {BO_BUFFER}% that it was touched again after "
-              "(TL-04). T is the upper line.",
-        SYMM: "§7 symmetrical triangle: both lines converging at rates within "
-              "a factor of two. Neutral by reputation; recorded here as a "
-              "bullish break of the upper line.",
-        FWDG: "§10 falling wedge: both lines falling with the upper falling "
-              "faster, by at least {WEDGE_MIN_CONVERGE}x (WG-04) -- nearer parallel "
-              "is a channel. The triangle rules apply (TR-05, TL-04). The "
-              "textbook reading is a bullish break.",
-        RECT: "§8.1 rectangle: two flat lines, a 5-25% range held for 20-250 "
-              "days with at least four touches. T is the upper line.",
-        FBASE: "§8.2 flat base: a range no deeper than 15% over the longest "
-               "window of 25-120 days that holds it, after a 20% advance, "
-               "sitting within 5% of the 52-week high. T is the window high.",
-        FLAG: "§9.2 bull flag or pennant: a 15%+ pole inside 15 days on "
-              "1.3x volume, then a 5-20 day pause retracing at most half of "
-              "it on falling volume. T is the pause's upper line.",
-        HTF: "§9.3 high tight flag: a pole that at least doubles in 20-40 "
-             "days, then a 15-25 day flag no deeper than 25%. It carries no "
-             "measured target, because the textbooks give none.",
+        CUP: "Cup with handle: a rounded cup, then a short handle in its upper half, bought when price "
+             "clears the handle's high.\n\n"
+             "- **Checks:** CH-01 to CH-12 in the table above.\n"
+             "- **Trigger T:** the handle's highest high (bar after C to yesterday), raised to the left lip "
+             "A when lower, so the buy clears the left rim. It is not raised to C when C is the higher lip.\n"
+             "- **Invalidation X:** the handle low D.\n"
+             "- **Height H:** max(A, C) − B.\n"
+             "- **Life:** detected afresh every bar while the handle is {PARAMS.handle_days[0]} to "
+             "{PARAMS.handle_days[1]} bars old; no BO-04 clock.",
+        CUPNH: "Cup without handle: the same cup, bought when price clears the old high before any "
+               "handle forms.\n\n"
+               "- **Checks:** CH-01 to CH-06 and CH-12; no handle checks.\n"
+               "- **Trigger T:** max(A, C), the old high — not C, which may sit as low as "
+               "{PARAMS.right_lip[0]:g} × A, under the left lip's supply.\n"
+               "- **Invalidation X:** the cup low B.\n"
+               "- **Height H:** max(A, C) − B.\n"
+               "- **Life:** complete {K_MAJOR} bars after C; void after {MAX_WAIT} more bars without a "
+               "breakout, or on a close below B.\n"
+               "- **Switch:** traded only while TRADE_CUPNH = 1 (now {TRADE_CUPNH}). It fires at the rim, "
+               "so its resting order can block the cup with a handle that forms later.",
+        DBOT: "O'Neil's W: a continuation base with two lows, the second undercutting the first, "
+              "bought on the break of the peak between them.\n\n"
+              "- **Checks:** DB-01 (W), DB-02 (W), OW-01, OW-02, DB-03, DB-04 above.\n"
+              "- **Trigger T:** the middle peak C.\n"
+              "- **Invalidation X:** the lower low × (1 − tol).\n"
+              "- **Height H:** C − the lower low.\n"
+              "- **Life:** complete {K_MAJOR} bars after D; void after {MAX_WAIT} more bars without a "
+              "breakout, or on a close below X.",
+        TBOT: "Triple bottom: three level lows after a decline, bought on the break of the higher of the "
+              "two peaks between them.\n\n"
+              "- **Checks:** DB-01 to DB-04 (triple) and TL-LV above.\n"
+              "- **Trigger T:** the higher of P1 and P2.\n"
+              "- **Invalidation X:** the lowest low × (1 − tol).\n"
+              "- **Height H:** T − the lowest low.\n"
+              "- **Life:** complete {K_MAJOR} bars after B3; void after {MAX_WAIT} more bars without a "
+              "breakout, or on a close below X.",
+        IHS: "Inverse head and shoulders: three lows with the middle one lowest, bought on a close "
+             "above the neckline.\n\n"
+             "- **Checks:** HS-01 to HS-10 above.\n"
+             "- **Trigger T:** the neckline through N1 and N2, extended to today — it moves each bar.\n"
+             "- **Invalidation X:** the right shoulder's low; a close below it voids the pattern.\n"
+             "- **Height H:** the neckline at the head's date − the head.\n"
+             "- **Life:** complete {K_MAJOR} bars after RS; void after {MAX_WAIT} more bars without a "
+             "breakout.",
+        ATRI: "Ascending triangle: a flat upper line over a rising lower line, bought on a close above "
+              "the upper line.\n\n"
+              "- **Checks:** TR-01, TL-05, TL-03, TL-04, TR-02 to TR-07 above.\n"
+              "- **Trigger T:** the upper line today.\n"
+              "- **Invalidation X:** the lower line today.\n"
+              "- **Height H:** upper − lower at the start S.",
+        SYMM: "Symmetrical triangle: a falling upper and a rising lower line converging at similar "
+              "rates, bought on a close above the upper line.\n\n"
+              "- **Checks and levels:** as ATRI.\n"
+              "- **Direction:** only the upward break is traded.",
+        FWDG: "Falling wedge: two falling lines, the upper falling faster, bought on a close above the "
+              "upper line.\n\n"
+              "- **Checks:** as ATRI, plus WG-04.\n"
+              "- **Levels:** T = the upper line today, X = the lower line today, H = the height at S.",
+        RECT: "Rectangle: two flat lines, bought on a close above the upper one.\n\n"
+              "- **Checks:** TR-01, TL-05, TL-03, TL-04, RC-02 (in TR-02), RC-03, RC-04 above.\n"
+              "- **Levels:** T = the upper line today, X = the lower line today, H = the height at S.\n"
+              "- **Life:** no expiry. Only the upward break is traded.",
+        FBASE: "Flat base: a shallow sideways range near the highs after an advance, bought above its "
+               "high.\n\n"
+               "- **Checks:** FB-02, FB-01, FB-03, FB-04 above.\n"
+               "- **Levels:** T = the window high (today's high included), X = the window low, H = T − X.\n"
+               "- **In practice:** never breaks out on its own bar (see Caveats), so only a live TRADE ON "
+               "TRIGGER.",
+        FLAG: "Bull flag or pennant: a steep, fast pole, then a short shallow pause, bought on a close "
+              "above the pause's upper line.\n\n"
+              "- **Checks:** FL-01, FP-01, FP-02, FP-03, FL-02, FL-03, FL-04 above.\n"
+              "- **Trigger T:** the pause's upper line today.\n"
+              "- **Invalidation X:** the lowest low since P1.\n"
+              "- **Height H:** the pole, P1 − P0.",
+        HTF: "High tight flag: a pole that rises at least {PARAMS.htf_gain}% in {PARAMS.htf_pole_days[0]} to "
+             "{PARAMS.htf_pole_days[1]} bars, then a {PARAMS.htf_flag_days[0]} to {PARAMS.htf_flag_days[1]}-bar "
+             "flag no deeper than {PARAMS.htf_depth}%, bought above the flag's high.\n\n"
+             "- **Checks:** FL-01 (HTF-04), FP-01 (HTF-01), FP-02 (HTF-02), HTF-03 above.\n"
+             "- **Trigger T:** the highest high from P1 to yesterday — P1 itself.\n"
+             "- **Invalidation X:** the flag low.\n"
+             "- **Height:** none, so the target is {MIN_R}R (see Target).",
     }
     entry_rules = (
-        "**Entry** is a tick through T x (1 + {BO_BUFFER}%) — BO-01's "
-        "breakout level — rounded up to the tick size, or the market price "
-        "when price has already cleared it, since there is no resting "
-        "buy-stop below the market.",
-        "**Stop.** The spec's X is an INVALIDATION level, not a stop: BO-03 "
-        "voids a pattern on a close beyond X, and for a double bottom that "
-        "sits a full pattern height below the trigger. The stop is placed "
-        "under X but never wider than {MAX_STOP_ATR} ATR, and never tighter "
-        "than max({MIN_STOP_ATR} ATR, {MIN_STOP_PCT}%) — a stop inside the "
-        "spread is not a stop, and dividing a measured move by it fabricates R.",
-        "**Target** is BO-06's measured move, T + H, with no floor. A setup "
-        "projecting under {MIN_R}R is rejected rather than padded.",
-        "**At the fill** the same limits hold against the price paid: an order that would fill more "
-        "than {MAX_CHASE_PCT}% above T, project under {MIN_R}:1, or risk more than {MAX_RISK_PCT}% is "
-        "skipped. (An order can wait for a free position slot; it must not then buy whatever the open is.)",
-        "**Rejected as a trade** when the stop is more than {MAX_RISK_PCT}% "
-        "below the entry or the measured move projects under {MIN_R}R; the "
-        "row is kept as WATCH with the reason.",
-        "**Once per pattern, on its breakout bar.** The signal fires only on the "
-        "bar the breakout is confirmed; in a backtest each pattern carries its "
-        "identity (code and first key point) and the simulator skips a pattern "
-        "already entered (EN-04), so a stop-out is final for that pattern.",
+        "BO-01, BO-02 — the signal. A buy starts from a TRADE - HIGH CONFIDENCE signal on a session's "
+        "close: the chosen pattern broke out on that bar, no watch flag is up, and the plan passes the stop "
+        "and target tests. Nothing is bought on the signal bar itself.",
+        "A buy-stop at the breakout close.\n\n"
+        "- **Price:** max(T × (1 + {BO_BUFFER}%), the signal close), rounded up to the tick. On a breakout "
+        "bar the close is already above T × (1 + {BO_BUFFER}%), so it is the close.\n"
+        "- **Fills:** the first later session whose high reaches it, at that price — or at the open if the "
+        "stock opens above it.\n"
+        "- **Waits:** up to 10 business days, the backtest's limit for a resting order.\n"
+        "- **Cancelled:** if a low reaches the stop before it fills.",
+        "Checks at the fill. The order is skipped if:\n\n"
+        "- the fill is more than {MAX_CHASE_PCT}% above T;\n"
+        "- the stop is more than {MAX_RISK_PCT}% below the fill;\n"
+        "- the target is less than {MIN_R} times the risk away, measured from the fill.\n\n"
+        "A gap at the open raises the price paid without moving the stop or the target, and an order can "
+        "wait for a free slot; neither may buy whatever the open is.",
+        "One entry per pattern. A pattern is identified by its code and first key point (A, B, B1, LS, S "
+        "or P0). Once bought it is never bought again, even after a stop-out. A symbol already held, or with "
+        "an order resting, takes no new order.",
+        "Live screen only: a complete pattern that has not broken out shows as TRADE ON TRIGGER, with a "
+        "buy-stop at T × (1 + {BO_BUFFER}%) rounded up — the order to place by hand. The backtest places no "
+        "such order; it buys breakout bars only.",
+    )
+    stop_rules = (
+        "Where it goes: at the pattern's invalidation level X, held between two limits, rounded down to "
+        "the tick.\n\n"
+        "- **Not wider than:** {MAX_STOP_ATR} ATR below the entry — X can sit a full pattern height below "
+        "T.\n"
+        "- **Not tighter than:** max({MIN_STOP_ATR} ATR, {MIN_STOP_PCT}%) below the entry.\n"
+        "- **X per pattern:** the handle low (CUP); the cup low (CUPNH); the lower low × (1 − tol) (DBOT, "
+        "TBOT); the right shoulder (IHS); the lower line today (ATRI, SYMM, FWDG, RECT); the window low "
+        "(FBASE); the lowest low since the pole top (FLAG, HTF).",
+        "It defines the risk. Entry − stop is 1R; every result is counted in R.",
+        "Too wide: a stop more than {MAX_RISK_PCT}% below the entry makes the plan WATCH, not a trade. It is "
+        "tested on the signal close and again on the fill.",
+        "How it sells: a standing sell order that fills during the session when the low touches it. If the "
+        "stock opens below the stop it sells at that open, so a gap can cost more than 1R. When the stop and "
+        "the target are both touched in one session, the stop is assumed first. It never moves, unless "
+        "`--breakeven-r` is given.",
+    )
+    target_rules = (
+        "BO-06 — a real sell order at the measured move: target = entry + H, the height added to the "
+        "planned entry (the signal close), not to T. It sells the whole position when the high reaches it, "
+        "at the target — or at the open if the stock opens above it. The chart's \"measured target\" line "
+        "is T + H, a little lower.",
+        "High tight flag: no height, so target = entry + {MIN_R} × the risk.",
+        "The {MIN_R}:1 test: H ÷ the risk must be at least {MIN_R}, or the plan is WATCH. Tested on the "
+        "signal close and again on the fill; never padded.",
     )
     exit_rules = (
-        "Live: the plan's fixed bracket — the stop under the pattern's low, "
-        "or BO-06's measured target.",
-        "The spec's own exit is BO-05: a close back through T within "
-        "{FAIL_DAYS} days marks the pattern FAILED. That is a pattern-status "
-        "rule, not a position rule, and the portfolio simulator does not "
-        "implement it; a backtest of this strategy uses the shared exit "
-        "policies like any other.",
-        "Backtest: whatever `--exit-mode` selects (default the fixed bracket).",
-        "Trade management is opt-in and off in this strategy's own runs, so its value is measured, "
-        "not assumed: `--breakeven-r` (stop to break-even once the high reaches that many R), "
-        "`--time-stop-mult` (sold at the close after that multiple of the pattern's duration -- its "
-        "first key point to the entry, in bars), `--time-stop-bars` and `--partial-at-target`.",
+        "Only the bracket: the stop or the target, whichever is touched first. No time stop, trend exit or "
+        "failed-breakout exit (BO-05 marks a pattern failed but sells nothing). A position still open when "
+        "a backtest ends is valued at the last close.",
+        "Optional trade management, off in this strategy's own runs so its value is measured, not assumed: "
+        "`--breakeven-r` (stop to entry plus costs once the high reaches that many R), `--time-stop-mult` "
+        "(sold at the close after that multiple of the pattern's length — its first key point to the entry, "
+        "in bars), `--time-stop-bars`, `--partial-at-target`, and `--exit-mode` for a trailing exit.",
+        "Live: the screen does not manage positions. The plan's stop and target are the two orders to place.",
+    )
+    sizing_rules = (
+        "Risk per trade: shares = the market's risk per trade (cfg.risk_pct, 1% of equity) ÷ (entry − "
+        "stop), so a stop-out costs about the same whatever the stop's width.",
+        "Caps: no position over cfg.max_position_pct (25%) of equity, and never more than the cash "
+        "available — a short fill is bought smaller, not skipped.",
+        "Slots: at most cfg.max_open_positions (10) at once. An order that triggers with every slot full "
+        "keeps resting until one frees or it expires.",
+        "Same-day ranking: when more orders fill than slots are free, the higher setup quality goes first.\n\n"
+        "- **Quality:** 2.0 − 0.1 × the pattern's place in G1's priority order (0 for CUP, counting "
+        "up, at most 10), taken for the first live pattern in setup-list order.\n"
+        "- **Less:** 0.5 for W1, 1.0 for W2; never below 0.\n"
+        "- **Cup rims:** +{RIM_IDEAL_BONUS} ideal, −{RIM_LOOSE_PENALTY} loose (CH-03).",
+        "Live screen: a plan too large to buy one share at the account size is WATCH.",
+    )
+    filter_rules = (
+        "Pre-filter: the 20-day average traded value (close × volume) must reach cfg.screener.min_dollar_volume, "
+        "an ATR14 value must exist, and the stock needs {min_bars} bars of history. No price floor and no "
+        "trend test: the near_highs screen's criteria are not applied (see Caveats).",
+        "Market regime: on the live screen a risk-off market downgrades every decision one tier. A backtest "
+        "applies no downgrade; `--market-filter` instead drops new signals and cancels resting orders while "
+        "the market filter is risk-off.",
+        "Signal-bar tests: a backtest buys only TRADE - HIGH CONFIDENCE, so any failed gate (G1–G5) or "
+        "raised watch flag (W1–W3) on the breakout bar means no trade.",
+    )
+    decision_docs = {
+        "TRADE_HIGH_CONFIDENCE": "The chosen pattern broke out on this bar (BO-01 and BO-02), every gate "
+                                 "passes, no watch flag is up, the stop is within {MAX_RISK_PCT}% and the "
+                                 "measured move is at least {MIN_R}R. The only tier a backtest buys.",
+        "TRADE_ON_TRIGGER": "The chosen pattern is complete but has not broken out: place a buy-stop at "
+                            "T x (1 + {BO_BUFFER}%). Also a breakout capped by W1 or W3, or a high-confidence "
+                            "row downgraded by a risk-off market.",
+        "WATCH_WAIT": "Close through the trigger on thin volume (W2), a stop more than {MAX_RISK_PCT}% away, "
+                      "a measured move under {MIN_R}R, or a position too large for the account.",
+        "AVOID": "A hard gate failed — including G1, no tradeable pattern — or the plan has no valid stop.",
+    }
+    regime_note = (
+        "Live screen: when the market regime is risk-off, every decision is downgraded one tier (HIGH "
+        "CONFIDENCE → ON TRIGGER → WATCH → AVOID) and the reason says 'market-regime downgrade applied'. A "
+        "backtest never applies this; `--market-filter` blocks new buys instead."
     )
     param_docs = (
         ("Swing scales", "K_MAJOR",
          "Bars each side defining a confirmed swing point: {K_MINOR} for "
-         "flags and handles, {K_MAJOR} for cups, doubles and shoulders. A "
-         "swing at bar i is only known at bar i + k."),
+         "flags and short triangles, {K_MAJOR} for cups, doubles, triples, shoulders and long triangles. "
+         "A swing at bar i is only known at bar i + k."),
         ("Minimum swing", "MIN_SWING_PCT",
          "Moves smaller than max({MIN_SWING_PCT}%, {ATR_MULT} x ATR/close) "
          "are wiggles and are dropped before any pattern is looked for."),
@@ -638,55 +988,88 @@ class ChartPatternSpecStrategy(Strategy):
          "Two prices count as equal within max({TOL_PCT}%, {TOL_ATR_MULT} x "
          "ATR/close) — wider on a volatile stock, which a fixed percentage "
          "is not."),
+        ("Prior-trend window", "PARAMS.prior_window",
+         "PT-01/PT-02: bars before a pattern's first point searched for the low (or high) its prior trend "
+         "is measured from."),
+        ("Flat line", "PARAMS.flat_slope",
+         "TL-05: a line whose slope per bar is within this fraction of its value is flat."),
+        ("Cup depth", "PARAMS.cup_depth",
+         "CH-02: the cup's fall from the left lip, in %."),
+        ("Cup length", "PARAMS.cup_days",
+         "CH-04: bars from the left lip to the right lip."),
+        ("Handle depth", "PARAMS.handle_depth",
+         "CH-08: the handle's fall from the right lip, in %."),
+        ("Handle length", "PARAMS.handle_days",
+         "CH-09: bars from the right lip to today."),
         ("Breakout buffer", "BO_BUFFER",
          "BO-01: a close must clear the trigger by this percentage "
          "({BO_BUFFER}%)."),
         ("Breakout volume", "BO_VOL",
-         "BO-02: and do it on {BO_VOL}x the 50-day average volume."),
+         "BO-02: and do it on {BO_VOL}x the 50-bar average volume before the pattern."),
+        ("Breakout expiry", "MAX_WAIT",
+         "BO-04: bars after completion within which a double, triple, head and shoulders or cup without "
+         "handle must break out."),
         ("Breakout age", "BREAKOUT_MAX_AGE",
          "Bars after its breakout bar on which a confirmed pattern is still an "
          "entry ({BREAKOUT_MAX_AGE}: the breakout bar only)."),
+        ("Cup without handle", "TRADE_CUPNH",
+         "1 trades CUPNH; 0 detects and draws it but never buys it."),
         ("Rim alignment", "RIM_IDEAL_PCT",
          "A cup's rims are graded, not judged: the right rim within {RIM_IDEAL_PCT}% of the left is "
          "ideal (+{RIM_IDEAL_BONUS} setup quality), within {RIM_OK_PCT}% acceptable (no change), beyond "
          "that loose (-{RIM_LOOSE_PENALTY}). No published percentage exists; these are starting points."),
         ("Cup under its rim", "CUP_UNDER_RIM",
-         "CH-12, beyond the spec ({CUP_UNDER_RIM} = on): no high between a cup's lips may top the higher "
+         "CH-12 ({CUP_UNDER_RIM} = on): no high between a cup's lips may top the higher "
          "lip by more than the price tolerance, max({TOL_PCT}%, {TOL_ATR_MULT} x ATR/close)."),
+        ("Cup symmetry", "CUP_RIGHT_LEFT_MIN",
+         "CH-06: a cup's recovery (B to C) must take at least "
+         "{CUP_RIGHT_LEFT_MIN}x as many bars as its decline (A to B)."),
         ("H&S left shoulder", "HS_ORIGIN",
-         "HS-09, beyond the spec ({HS_ORIGIN} = on): the reaction after the left shoulder may not run past "
+         "HS-09 ({HS_ORIGIN} = on): the reaction after the left shoulder may not run past "
          "the point the reversed trend began from -- a low followed by a new high is part of the uptrend."),
         ("H&S neckline drift", "HS_MAX_NECK_CHANGE",
-         "HS-10, beyond the spec: the neckline may run against the pattern (an inverse's falling, a top's "
+         "HS-10: the neckline may run against the pattern (an inverse's falling, a top's "
          "rising) by at most {HS_MAX_NECK_CHANGE}% from its left anchor to its right."),
         ("Early breakout", "EARLY_BREAKOUT",
-         "Beyond the spec ({EARLY_BREAKOUT} = on): a pattern that completes once is confirmed {K_MAJOR} bars "
+         "BO-04 ({EARLY_BREAKOUT} = on): a pattern that completes once is confirmed {K_MAJOR} bars "
          "after its last point, but its breakout is searched from that point -- a close through T in "
          "between is the breakout, already old when the pattern can be seen."),
         ("Wedge convergence", "WEDGE_MIN_CONVERGE",
-         "WG-04, beyond the spec: a wedge's steeper line slopes at least {WEDGE_MIN_CONVERGE}x the "
+         "WG-04: a wedge's steeper line slopes at least {WEDGE_MIN_CONVERGE}x the "
          "shallower one; nearer parallel is a channel."),
         ("Breakout-side containment", "CONTAIN_BREAKOUT_SIDE",
-         "TL-04, beyond the spec ({CONTAIN_BREAKOUT_SIDE} = on): no close before today beyond the "
-         "breakout line by more than the breakout buffer ({BO_BUFFER}%) that the line was touched again "
-         "after -- price broke out and came back, so the line was not the boundary. Closes at the line's "
-         "own touches, and after its last touch, are exempt; TL-03's wider tolerance still applies."),
-        ("Cup symmetry", "CUP_RIGHT_LEFT_MIN",
-         "CH-06, beyond the spec: a cup's recovery (B to C) must take at least "
-         "{CUP_RIGHT_LEFT_MIN}x as many bars as its decline (A to B)."),
+         "TL-04 ({CONTAIN_BREAKOUT_SIDE} = on): no close before the breakout line's last "
+         "touch beyond that line by more than the breakout buffer ({BO_BUFFER}%) -- price broke out and "
+         "came back, so the line was not the boundary. Closes within k bars of a touch are exempt; TL-03's "
+         "wider tolerance still applies."),
+        ("Triple drift", "TRIPLE_MAX_DRIFT",
+         "TL-LV: a triple bottom's stepping lows may move at most {TRIPLE_MAX_DRIFT}% "
+         "first to third."),
+        ("W shape", "W_MIN_DEPTH",
+         "OW-01/OW-02: the W is {W_MIN_DEPTH}-{W_MAX_DEPTH}% deep from the high it corrects and at least "
+         "{W_MIN_DAYS} bars long; the second low undercuts the first by up to {W_UNDERCUT_MAX}%."),
         ("Actionable band", "MAX_CHASE_PCT",
-         "Gate S5 wants the close between {MAX_BELOW_TRIGGER_PCT}% below the "
-         "trigger and {MAX_CHASE_PCT}% above it."),
+         "Gate G5 wants the close between {MAX_BELOW_TRIGGER_PCT}% below the "
+         "trigger and {MAX_CHASE_PCT}% above it; the fill must be within {MAX_CHASE_PCT}% above it."),
+        ("Earnings window", "EARNINGS_DAYS",
+         "Gate G3: weekdays to the next earnings date that block a trade (live only)."),
+        ("Volatility ceiling", "MAX_ATR_PCT",
+         "Gate G4: ATR14 as a % of the close."),
+        ("Overbought", "OVERBOUGHT_RSI",
+         "Flag W3: RSI14 above this caps the decision at TRADE ON TRIGGER."),
         ("Stop width", "MAX_STOP_ATR",
-         "The stop sits under the pattern's invalidation level but never "
+         "The stop sits at the pattern's invalidation level but never "
          "wider than {MAX_STOP_ATR} ATR nor tighter than "
-         "max({MIN_STOP_ATR} ATR, {MIN_STOP_PCT}%)."),
+         "max({MIN_STOP_ATR} ATR, {MIN_STOP_PCT}%) below the entry."),
+        ("Maximum risk", "MAX_RISK_PCT",
+         "A stop more than {MAX_RISK_PCT}% below the entry (or the fill) is WATCH, not a trade."),
         ("Minimum reward", "MIN_R",
-         "A measured move projecting under {MIN_R}R is WATCH, not a trade."),
+         "A measured move projecting under {MIN_R}R (at the signal or at the fill) is not a trade."),
         ("Minimum price", "cfg.screener.min_price",
-         "LIVE SCREENING ONLY: closes below this price are excluded. Not applied point in\n          time in a backtest -- see base.tradable_point_in_time."),
+         "Not applied by this strategy, live or in a backtest: its pre-filter checks liquidity only "
+         "(base.tradable_point_in_time)."),
         ("Minimum liquidity", "cfg.screener.min_dollar_volume",
-         "Screen: the 20-day average of close x volume must reach this."),
+         "Pre-filter: the 20-day average of close x volume must reach this."),
         ("Tick size", "cfg.tick_size",
          "Entry is rounded up and the stop rounded down to this increment."),
         ("Risk per trade", "cfg.risk_pct",
@@ -1005,7 +1388,7 @@ class ChartPatternSpecStrategy(Strategy):
     setup_names = PATTERN_NAMES
     # short names for the chart's checklist; the rules themselves are gate_docs
     gate_titles = {"G1": "Pattern complete or breaking out", "G2": "No confirmed top on the chart",
-                   "G3": "No earnings within 10 days", "G4": "Volatility sane", "G5": "Close near the trigger"}
+                   "G3": "No earnings within {EARNINGS_DAYS} days", "G4": "Volatility sane", "G5": "Close near the trigger"}
 
     def cached_signal_ok(self, extras: dict) -> bool:
         """A pattern row saved before its geometry (and each line's touches) was recorded is

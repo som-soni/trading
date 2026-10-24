@@ -136,7 +136,8 @@ def signals(kind=None, name=None, value=None) -> list:
     return out
 
 
-def _with_rs(sigs: list, min_rs: int = 70) -> list:
+def _with_rs(sigs: list, min_rs: int | None = None) -> list:
+    min_rs = int(ms.RS_MIN_RANK) if min_rs is None else min_rs   # TT-08's threshold, as --spec uses
     out = []
     for s in sigs:
         r = _DATA["ratings"].get(pd.Timestamp(s.date))

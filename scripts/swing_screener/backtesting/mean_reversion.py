@@ -237,63 +237,98 @@ MR_DOC = {
         "index series, which is a real published effect (Jegadeesh 1990, Lehmann 1990) that at "
         "{cost_bps}bps a side and a 4-day hold does not survive contact with execution."
     ),
-    "thesis": "When many holders sell at once, whoever buys their shares is paid a small premium for "
-              "supplying liquidity (Nagel 2012), and a few down days inside a longer uptrend are more "
-              "often that kind of selling than the start of a decline. The trend filter is what "
-              "separates a pause from a repricing; the short hold is what keeps it a liquidity trade "
-              "rather than a directional bet.",
+    "thesis": "When many holders sell at once, whoever buys from them is paid a small premium for "
+              "supplying liquidity (Nagel 2012). A few sharp down days inside a longer uptrend are "
+              "more often that kind of selling than the start of a decline, and what fell over a "
+              "week has tended to rebound (Jegadeesh 1990, Lehmann 1990). The trend filter is what "
+              "separates a pause from a repricing. The short hold is what keeps it a liquidity trade "
+              "rather than a bet on direction.",
     "how_it_works": (
-        "The universe is INDEX series only -- every broad and sector index stored for the market. "
-        "An index cannot fall apart on one company's news, so its dips are market-wide selling that "
-        "tends to reverse, while a single stock's dip can be a permanent repricing. This is the "
-        "guide's own restriction and the condition under which the effect was published.",
-        "A signal needs both halves: the close above its {TREND_SMA}-day average (the trend filter), "
-        "and the {RSI_LENGTH}-day RSI by Wilder's method closing below {RSI_ENTRY}. In practice that "
-        "second condition means three or more lower closes in a row with the last ones large.",
-        "Entry is at that session's close -- there is no trigger to wait for and no stop. Position "
-        "size is {position_pct}% of the book per signal, at most {max_positions} at once; when "
-        "several indices fire on the same day the most oversold goes first.",
-        "The exit is a moving average or a clock: the first close above the {EXIT_SMA}-day average, "
-        "an RSI above {RSI_EXIT}, a close back below the {TREND_SMA}-day average, or "
-        "{MAX_HOLD} sessions, whichever comes first.",
-        "Flat the rest of the time, holding cash. That is faithful to the rule rather than flattering "
-        "to it, and it is why the headline is near zero while the drawdown is only about -11%.",
+        "The idea. Buy an index after a few days of sharp selling inside an uptrend, and sell as "
+        "soon as it bounces — usually within days.",
+        "Steps, each session, in order: check open positions for an exit and sell at the close "
+        "(see Exit); then buy new signals at that same close (see Entry). Money freed by a sale "
+        "can buy a new signal at the same close.",
+        "Three measures of oversold, chosen with `measure` (default {measure}): RSI(2), Bollinger "
+        "and Double 7s. Everything else is shared — trend filter, sizing, trend exit, time limit — "
+        "so comparing them compares the indicator and nothing else.",
+        "Flat most of the time, holding cash that earns nothing.",
+        "Where the rules come from. Connors' RSI(2) rule as the Learn guide states it, on index "
+        "series because that is where the effect was published. There is no written spec with row "
+        "ids for this strategy.",
     ),
     "entry_rules": (
-        "Close above the {TREND_SMA}-day simple average AND {RSI_LENGTH}-day Wilder RSI below "
-        "{RSI_ENTRY}, measured on the same close.",
-        "Bought at that close, {position_pct}% of the book, up to {max_positions} positions. "
-        "No trigger, no limit price, no stop -- Connors tested stops and reported they reduced "
-        "returns; the cost of leaving them out is a rare large loss.",
-        "Only index series qualify. Single stocks are deliberately excluded: see how it works.",
+        "Universe. Index series only: every broad and sector series in the market's config with at "
+        "least {MIN_BARS} stored sessions.\n\n"
+        "- **US:** funds — SPY, QQQ, IWM and the sector SPDR funds.\n"
+        "- **India:** the Nifty 50, Nifty 500, Midcap 150 and Smallcap 250 and the Bank, IT and "
+        "Pharma indices, plus a sector ETF where the config has no sector index.\n"
+        "- **Why not stocks:** an index cannot fall apart on one company's news, so its dips are "
+        "market-wide selling that tends to reverse; a single stock's dip can be a permanent "
+        "repricing.",
+        "Buy signal. On a session's close, the close above its {TREND_SMA}-day simple average AND "
+        "the chosen measure says oversold.\n\n"
+        "- **RSI(2), the default:** Wilder's RSI over {RSI_LENGTH} closes below {rsi_entry}. The "
+        "average up-move and average down-move are each smoothed with a weight of 1/{RSI_LENGTH} on "
+        "the newest move, and RSI = 100 − 100 / (1 + average up ÷ average down); it reads 100 when "
+        "there were no down-moves. Below {rsi_entry} usually takes several lower closes in a row, "
+        "the last ones large.\n"
+        "- **Bollinger:** the close below the lower band — the {BB_LENGTH}-day simple average minus "
+        "{BB_SD} times the standard deviation of the same {BB_LENGTH} closes.\n"
+        "- **Double 7s:** the close is the lowest close of the last {LOW_DAYS} sessions, that day "
+        "included (a tie counts).",
+        "Fill. Bought at that same session's close — the close the signal was computed on. There is "
+        "no next-open fill, no trigger and no limit price.",
+        "Position size. Each buy spends {position_pct}% of the book (cash plus open positions at "
+        "that close), or all the remaining cash if less is left. The cost comes out of that amount.",
+        "How many at once. At most {max_positions} positions, one per index. When more indices "
+        "signal than there are free places, RSI(2) buys the lowest RSI first; Bollinger and Double "
+        "7s take them in the config's order (broad indices, then sectors).",
+        "Stop. None. Connors tested stops and reported that they reduced returns. The price of "
+        "leaving them out is a rare large loss: a position is held through any fall until one of "
+        "the exits fires.",
+        "Cost. {cost_bps} basis points of the value traded, on each buy and each sell. On a trade "
+        "averaging +0.13% gross that is comparable to the whole edge.",
+        "When no trade is taken. No signal, every place full, or the index already held. An index "
+        "sold at a session's close can be bought again at that same close if it signals again.",
     ),
     "exit_rules": (
-        "The first close above the {EXIT_SMA}-day simple average. That is the trade's whole thesis "
-        "-- the dip stopped -- so it is the primary exit and most trades end there.",
-        "Or the {RSI_LENGTH}-day RSI closes above {RSI_EXIT}; or the close falls back below the "
-        "{TREND_SMA}-day average, which means the trend filter that justified the trade has failed.",
-        "Or {MAX_HOLD} sessions pass. Median hold is 4 sessions, so the clock rarely binds.",
-        "{cost_bps}bps a side. On a trade averaging +0.13% gross, the cost assumption is not a "
-        "detail -- it is comparable to the entire edge.",
+        "Exits are checked on each close of that index from the session after the buy, and sell "
+        "the whole position at that close. The first that applies acts.",
+        "Mean reverted — the bounce the trade was waiting for. Most trades end here.\n\n"
+        "- **RSI(2):** the close above the simple average of the last {EXIT_SMA} closes (that day "
+        "included), or the {RSI_LENGTH}-day RSI above {RSI_EXIT}.\n"
+        "- **Bollinger:** the close above the middle band, the {BB_LENGTH}-day simple average. This "
+        "measure has no {EXIT_SMA}-day exit.\n"
+        "- **Double 7s:** the close is the highest close of the last {LOW_DAYS} sessions, that day "
+        "included.",
+        "Trend broken, all three measures. The close below its {TREND_SMA}-day average: the filter "
+        "that justified the trade has failed.",
+        "Time limit. Sold at the close of the {max_hold}th session after the buy, counted in that "
+        "index's own sessions, whatever else has happened. The measured median hold is 4 sessions, "
+        "so the clock rarely binds.",
+        "Target. No fixed price. The mean-reversion exits above are the target, and each is decided "
+        "on a close.",
     ),
     "caveats": (
         "**The win rate invites over-confidence.** Two trades in three make money and the strategy "
         "still loses to doing nothing. Any variant of this rule should be judged on average return "
         "per trade against costs, never on hit rate.",
         "**No stop means the loss distribution has a tail this backtest may understate.** The rule "
-        "exits on a moving average or a clock, so a fast decline is held for up to {MAX_HOLD} "
-        "sessions. February 2020 is the archetype: still above the {TREND_SMA}-day average, signals "
-        "firing, and the fall continuing.",
-        "**Index series here are price series, not total return, and not tradable instruments.** A "
-        "real implementation buys an ETF or a futures contract, which adds tracking difference, bid-ask "
-        "and (for futures) roll and margin. None of that is modelled, so the measured result is "
-        "optimistic by an unquantified amount on top of the {cost_bps}bps charged.",
-        "**Sector indices are included and that is a judgement call.** The guide's named universe "
+        "exits on a close above an average or on a clock, so a fast decline is held for up to "
+        "{max_hold} sessions. February 2020 is the archetype: still above the {TREND_SMA}-day "
+        "average, signals firing, and the fall continuing.",
+        "**Not every series is a tradable instrument, and none includes dividends.** The US series "
+        "are funds and trade; India's broad and main sector series are index values, which cannot "
+        "be bought directly. A real book buys an ETF or a future, adding tracking difference, "
+        "bid-ask and (for futures) roll and margin. None of that is modelled, so the result is "
+        "optimistic by an unquantified amount on top of the {cost_bps} basis points charged.",
+        "**Sector indices are included, and that is a judgement call.** The guide's named universe "
         "includes Nifty Bank, which is a sector series, so restricting to broad indices would drop "
         "half of it. Sector indices are less diversified, so the 'cannot fall apart on one "
         "company's news' argument is weaker for them than for the broad ones.",
-        "**Survivorship does not apply** -- these are index series, which are maintained rather than "
-        "selected -- so this is one of the few results here with no survivorship discount at all.",
+        "**Survivorship does not apply.** These are index series, which are maintained rather than "
+        "selected, so this is one of the few results here with no survivorship discount.",
     ),
 }
 
