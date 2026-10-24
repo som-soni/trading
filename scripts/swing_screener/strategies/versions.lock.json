@@ -257,22 +257,24 @@
   },
   "ma_trend": {
     "family": "ma_trend",
-    "fingerprint": "8632fc73",
+    "fingerprint": "96972c5b",
     "params": {
+      "FABER_LOOKBACK_MAX": 12,
+      "FABER_LOOKBACK_MIN": 6,
+      "FABER_LOOKBACK_STEP": 2,
       "FABER_MONTHS": 10,
       "FAST_SMA": 50,
       "SLOPE_BARS": 20,
       "SLOW_SMA": 200,
       "_key": "ma_trend",
       "cost_bps": 10.0,
-      "faber_months": 10,
       "max_names": 50
     },
-    "version": "1.0"
+    "version": "2.0"
   },
   "mean_reversion": {
     "family": "mean_reversion",
-    "fingerprint": "a8ebdb42",
+    "fingerprint": "f5f08496",
     "params": {
       "BB_LENGTH": 20,
       "BB_SD": 2.0,
@@ -284,6 +286,7 @@
       "RSI_EXIT": 70.0,
       "RSI_LENGTH": 2,
       "TREND_SMA": 200,
+      "VOL_RANK_BARS": 20,
       "_key": "mean_reversion",
       "cost_bps": 10.0,
       "max_hold": 10,
@@ -291,7 +294,7 @@
       "position_pct": 25.0,
       "rsi_entry": 5.0
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "minervini": {
     "family": "minervini",
@@ -541,7 +544,7 @@
         "W3"
       ]
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "sector_rotation": {
     "family": "sector_rotation",
