@@ -415,3 +415,62 @@ half times longer, so its premium is small and its results remain readable.
 4. **Nothing already published moves.** PEAD is the only backtest drawing on this universe; the
    quality tracker and the Fundamentals page are live views of the present, where selecting on the
    present is correct.
+
+## 12. The momentum sweep, re-run — and a rank buffer it never saw
+
+*2026-10-24.* §4b chose `momentum_vol_scaled` from 18 variants on worst half-period excess and
+walk-forward tested the choice. Neither step was committed, so neither could be repeated when the
+ground moved: v1.1 took ETFs and liquid funds out of the universe (after which the walk-forward
+kept 58% of the hindsight pick instead of 86%), and v1.2 added a rank buffer — buy into the top N,
+hold until a name ranks outside `hold_rank` — because the stored book was held a median 33 days
+and turned over 4.6–5.2× a year on a twelve-month signal. Both steps are now
+`backtesting/momentum_sweep.py`, which reproduces the stored India run to the digit (CAGR 19.18%,
+max drawdown −50.99%, turnover 4.58×).
+
+Grid: rank (momentum / vol_scaled / residual) × holdings (20 / 50) × weighting (equal /
+inverse_vol) × buffer (off / 1.5× holdings) = 24 variants. Vol targeting was left out; §4b already
+rejected it, and each extra dimension cheapens a best-of-N result. Costs 50bps, the strategy's own
+turnover floors, excess over its segment index (Smallcap 250 / IWM), compounded.
+
+**The buffer helps almost everywhere.** Each variant against its unbuffered twin:
+
+| window | excess improved | worst half improved |
+|---|---|---|
+| India from 2010 | **12 of 12** | **12 of 12** |
+| India from 2020 | **12 of 12** | — |
+| US from 2010 | **11 of 12** (one flat) | 11 of 12 |
+| US from 2020 | 8 of 12 | — |
+
+That is the shape that matters, not the size of the best cell: a best-of-24 winner is not a
+finding, a change that improves 43 of 48 like-for-like pairs is. Turnover falls about a quarter
+(4.58× → 3.43× on the shipped variant). The weak cell is the US from 2020, where it lowered both
+top-20 vol_scaled variants (4.87 → 3.85, 5.53 → 4.46) — a single bull-market window, and the one
+place it hurt.
+
+**India — the shipped choice survives, buffered.** On the original criterion, worst half:
+
+| variant | excess | before 2019 | after | worst half | max DD | turnover | 36m worst | 36m positive |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **vol_scaled/top20/inverse_vol/hold30** | +8.38 | +7.98 | +8.95 | **+7.98** | −52.1% | 3.43× | **−6.05** | 88% |
+| residual/top20/inverse_vol/hold30 | +9.36 | +7.97 | +11.13 | +7.97 | −55.2% | 3.54× | −4.49 | 93% |
+| vol_scaled/top20/inverse_vol (shipped) | +7.51 | +7.88 | +7.12 | +7.12 | −51.0% | 4.58× | −11.75 | 82% |
+
+The shipped rank, holdings and weighting still win on worst half once buffered; residual ties it on
+worst half (+7.97) with more full-window excess and a 3-point deeper drawdown. The buffer's
+largest effect is the bad stretch: the worst rolling three years improves from −11.75 to −6.05.
+Drawdown is about a point worse. **Walk-forward 2014–2026: +7.06 against the hindsight pick's
++8.92 — it keeps 79%**, back up from v1.1's 58%. It picks top-20 in 9 of 13 years; §4b's finding
+that concentration is the robust parameter holds.
+
+**US — no variant works over the cycle.** All 24 have negative excess over IWM from 2010; the best
+is −0.20, the walk-forward −2.05. The buffer narrows the loss in 11 of 12 pairs but cannot make
+one positive, which confirms §10's "a market difference, not a variant one". One shape is worth
+noting: the US prefers **50** names to 20 in every pairing, the opposite of India — what a market
+with ~40% less momentum spread should do, since there is less in the top tail to concentrate on.
+From 2020 several US variants look healthy (+7.82 at best), but the walk-forward over those years
+keeps 10% of the hindsight result: in that window, choosing was luck.
+
+**What follows.** Turning the buffer on at 30 for `momentum_vol_scaled` is supported in both
+markets and both windows, by the like-for-like count rather than by a winner. It is still
+in-sample on the data that measured it, and only 1.5× was swept; the queued runs at 30 and 40
+decide the width. The US arm should not be deployed under any variant tested here.
