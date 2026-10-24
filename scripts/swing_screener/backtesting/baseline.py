@@ -199,10 +199,36 @@ def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
     return out
 
 
+def buffered_target(ranked: list, held, top_n: int, hold_rank: int | None) -> list:
+    """The names to hold after a rebalance: buy into the top `top_n`, hold until outside `hold_rank`.
+
+    Without a buffer the book is the fresh top `top_n` every rebalance, so a name that slips one
+    place -- rank 20 to 21 -- is sold outright and something else bought. The ranking here is
+    12-1 momentum, which barely moves in a month, yet the measured book was held a median 33 days
+    and turned over 4.6-5.2x a year: rank noise, not signal, was deciding most of the trades, and
+    at the default cost each turn of the book costs about a point of return.
+
+    With `hold_rank` set, a name already held stays while it ranks within `hold_rank` and is
+    still eligible (`ranked` is the eligible list, so a name that fails the trend or turnover
+    floor is sold regardless), and free slots go to the best-ranked names not held. `None`, or
+    any value not above `top_n`, is the plain top-`top_n` rule.
+
+    `ranked` is best first; `held` is any collection of the symbols held going in.
+    """
+    if not hold_rank or hold_rank <= top_n:
+        return list(ranked[:top_n])
+    band = set(ranked[:hold_rank])
+    held = set(held)
+    keep = [s for s in ranked if s in held and s in band]          # in rank order
+    fill = [s for s in ranked if s not in held][: max(0, top_n - len(keep))]
+    return (keep + fill)[:top_n]
+
+
 _SELECTION_CACHE: dict = {}
 
 
-def current_selection(market: str, strategy_key: str, limit: int | None = None) -> dict:
+def current_selection(market: str, strategy_key: str, limit: int | None = None,
+                      replay_months: int = 36) -> dict:
     """What the strategy would hold if it rebalanced on the latest stored bar.
 
     The portfolio equivalent of a screener's "setups today", and computed by the SAME selection the
@@ -228,6 +254,14 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None) 
     # only enough history to score it (lookback + skip) and to set a 200-day average. load_prices
     # takes ~70s on this universe, which is not a page load.
     need = cls.lookback + cls.skip + 260
+    # With a rank buffer, what is held depends on what was held last month, so the live view has to
+    # replay recent month-ends rather than rank one date: `replay_months` of them, from an empty
+    # book. A parameter of this view, not a module constant -- it changes what the page shows, not
+    # what the strategy does, so it must not move the strategy's fingerprint.
+    hold_rank = getattr(cls, "hold_rank", None)
+    buffered = bool(hold_rank and hold_rank > cls.top_n)
+    if buffered:
+        need += replay_months * 21
     since = pd.Timestamp.today().normalize() - pd.Timedelta(days=int(need * 1.6))
     skip = universe.non_stock_symbols(market)   # the same exclusion load_prices applies
     bars = cache.load_many_cached(market, [t for t in universe.load_universe(market) if t not in skip], since=since)
@@ -269,8 +303,35 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None) 
         floor_price=cfg.screener.min_price, liq_floor=liq_floor,
         trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None),
     )
-    ranked = sorted(mom, key=mom.get, reverse=True)[: (limit or cls.top_n)]
-    held = ranked[: cls.top_n]
+    full = sorted(mom, key=mom.get, reverse=True)
+    rank_of = {sym: i + 1 for i, sym in enumerate(full)}
+    replayed = 0
+    if buffered:
+        # The book a buffered rule would be carrying into today: replay each month-end rebalance
+        # in the loaded window with the SAME selection the backtest runs, starting from nothing.
+        # From an empty book the first rebalance is the plain top-N, and the replay converges on
+        # the full-history book as names cycle out. Measured on India at hold_rank 40: 18 of 20
+        # names match after 3 months of replay, 19 after 6, all 20 from 12 on -- so the default of
+        # 36 carries a threefold margin.
+        month_ends = pd.Series(px.index, index=px.index).resample("ME").last().dropna()
+        book: list = []
+        for d in month_ends:
+            if d >= today or d not in scores.index or scores.loc[d].notna().sum() == 0:
+                continue
+            m_d = eligible_scores(
+                px.columns, px.loc[d], dv.loc[d] if d in dv.index else None,
+                sma200.loc[d] if d in sma200.index else None, scores.loc[d],
+                floor_price=cfg.screener.min_price, liq_floor=liq_floor,
+                trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None),
+            )
+            book = buffered_target(sorted(m_d, key=m_d.get, reverse=True), book, cls.top_n, hold_rank)
+            replayed += 1
+        held = buffered_target(full, book, cls.top_n, hold_rank)
+    else:
+        held = full[: cls.top_n]
+    # what the page lists: the top of the ranking, plus any held name the buffer kept below it
+    ranked = full[: (limit or cls.top_n)]
+    ranked += [sym for sym in held if sym not in set(ranked)]
     # The weight the strategy would actually put on each name, by its own rule. The RANK says what
     # it points at; the weight says where the money goes, and the two differ enough to matter --
     # the liquid-ETF defect v1.1 fixed was invisible in the ranking and obvious in the weights.
@@ -286,15 +347,16 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None) 
     else:
         weights = {sym: 1.0 / len(held) for sym in held} if held else {}
     rows = [{
-        "rank": i + 1, "symbol": sym, "score": round(float(mom[sym]), 4),
+        "rank": rank_of[sym], "symbol": sym, "score": round(float(mom[sym]), 4),
         "close": round(float(px.loc[today, sym]), 2),
         "turnover": (round(float(dv.loc[today, sym])) if today in dv.index and sym in dv.columns
                      and pd.notna(dv.loc[today, sym]) else None),
         "weight_pct": (round(weights[sym] * 100, 2) if sym in weights else None),
         "held": sym in set(held),
-    } for i, sym in enumerate(ranked)]
+    } for sym in ranked]
     out = {"as_of": str(today.date()), "strategy": strategy_key, "market": market,
-           "spec_id": cls.spec_id(), "eligible": len(mom), "top_n": cls.top_n, "rows": rows}
+           "spec_id": cls.spec_id(), "eligible": len(mom), "top_n": cls.top_n, "rows": rows,
+           "hold_rank": hold_rank if buffered else None, "replayed_rebalances": replayed}
     if len(_SELECTION_CACHE) > 8:
         _SELECTION_CACHE.clear()
     _SELECTION_CACHE[key] = out
@@ -311,6 +373,7 @@ def run(
     weighting: str = "equal",
     vol_target: float | None = None,
     vol_window: int = 63,
+    hold_rank: int | None = None,
     fractional: bool = False,
     index_overlay: bool = False,
     overlay_months: int = 10,
@@ -320,6 +383,8 @@ def run(
 
     `rank`        momentum | vol_scaled | residual | path_quality
     `weighting`   equal | inverse_vol
+    `hold_rank`   buy into the top `top_n`, hold until a name ranks outside
+                  `hold_rank` (None = the plain top-`top_n` rule); see buffered_target
     `vol_target`  annualised portfolio vol to scale gross exposure to (no
                   leverage: exposure is capped at 100%)
     `index_overlay`  hold nothing while the benchmark is below its
@@ -420,7 +485,8 @@ def run(
                 floor_price=floor_price, liq_floor=liq_floor, trend_filter=trend_filter,
                 liquidity_rank_top=liquidity_rank_top,
             )
-            target = sorted(mom, key=mom.get, reverse=True)[:top_n]
+            target = buffered_target(sorted(mom, key=mom.get, reverse=True), holdings,
+                                     top_n, hold_rank)
             if overlay_ok is not None and not bool(overlay_ok.get(today, False)):
                 target = []   # benchmark below its trend: hold nothing
 
@@ -733,6 +799,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--vol-target", type=float, default=None,
                     help="annualised portfolio vol to scale gross exposure to, "
                          "e.g. 0.15. Never leverages — exposure caps at 100%%")
+    ap.add_argument("--hold-rank", type=int, default=None, metavar="N",
+                    help="rank buffer: buy into the top --top-n, hold a name until it ranks outside N "
+                         "(default off = the plain top-N rule)")
     ap.add_argument("--index-overlay", action="store_true",
                     help="hold nothing while the benchmark's month-end close is not above the average "
                          "of its last --overlay-months month-end closes, read a month late "
@@ -759,6 +828,7 @@ def build_parser() -> argparse.ArgumentParser:
 TUNABLES = {"top_n": "top_n", "lookback": "lookback", "skip": "skip", "rebalance": "rebalance",
             "cost_bps": "cost_bps", "rank": "rank", "weighting": "weighting",
             "vol_target": "vol_target", "min_turnover": "min_turnover", "vol_window": "vol_window",
+            "hold_rank": "hold_rank",
             "liquidity_top": "liquidity_top"}
 
 
@@ -810,6 +880,7 @@ def main(argv: list[str] | None = None) -> dict | None:
         rank=args.rank, weighting=args.weighting, vol_target=args.vol_target,
         vol_window=args.vol_window,
         index_overlay=args.index_overlay, overlay_months=args.overlay_months,
+        hold_rank=args.hold_rank,
     )
     from ..paths import run_dir
 
@@ -820,6 +891,7 @@ def main(argv: list[str] | None = None) -> dict | None:
                 + (f"_{args.weighting}" if args.weighting != "equal" else "")
                 + (f"_vt{args.vol_target:g}" if args.vol_target else "")
                 + ("_overlay" if args.index_overlay else "")
+                + (f"_hold{args.hold_rank}" if args.hold_rank and args.hold_rank > args.top_n else "")
                 + ("_frac" if args.fractional else "")
                 # In the market's own unit, never %g: a Rs10cr floor formats as "1e+08", and
                 # run_dir slugs "+" to "-", so the run was filed as "turnover1e-08" -- a name that
@@ -1039,8 +1111,18 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-10-24",
+         "A rank buffer, OFF until measured (hold_rank = None). Each month the book was rebuilt from "
+         "the fresh top 20, so a name slipping from rank 20 to 21 was sold outright. The ranking is "
+         "12-1 momentum, which barely moves in a month, yet the stored runs held a median 33 days and "
+         "turned the book over 4.6-5.2x a year -- rank noise rather than signal decided most trades, "
+         "and the caveats already say costs decide this strategy (+6.05 excess at 25bps, +3.66 at 50, "
+         "gone at 100). With hold_rank set, a held name stays while it ranks within hold_rank and is "
+         "still eligible; free slots go to the best names not held. The live holdings view replays "
+         "recent month-ends with the same rule, so it cannot drift from the backtest once the buffer "
+         "is on. At the default nothing changes: run() reproduces its prior output exactly."),
         ("1.1", "2026-10-17",
          "ETFs and liquid funds are out of the candidate universe (universe.non_stock_symbols). They "
          "were never meant to be in it, and a volatility-weighted book is actively broken by them: a "
@@ -1076,6 +1158,9 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     rebalance = "ME"
     cost_bps = 50.0
     vol_target = None
+    #: Rank buffer: hold a name until it ranks outside this (see buffered_target). None = off, the
+    #: plain top-`top_n` rule, until a run says what width earns its place.
+    hold_rank = None
     liquidity_top = 0            # the turnover floor is the control, not a rank cutoff
     #: Judge it against the SEGMENT it trades, not the broad index. A turnover-floored momentum
     #: book is a small-cap book: the Smallcap 250 returned 11.99% against the Nifty 500's 10.17%
@@ -1107,6 +1192,8 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
         ("Volatility window", "vol_window", "Bars of realised volatility used to weight positions. The ranking "
          "scales by volatility over the lookback instead."),
         ("Rebalance", "rebalance", "Pandas offset alias; ME is month-end."),
+        ("Rank buffer", "hold_rank", "Hold a name until it ranks outside this; off (None) = sell whatever "
+         "leaves the top {top_n}."),
         ("Cost per side", "cost_bps", "Basis points per side. The result is sensitive to this -- see the caveats."),
         ("Turnover floor, India", "min_turnover_cr", "Rs crore of 20-day average traded value a day."),
         ("Turnover floor, US", "min_turnover_usd_m", "$ million of 20-day average traded value a day."),

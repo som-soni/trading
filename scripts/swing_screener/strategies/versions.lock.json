@@ -473,7 +473,7 @@
       "top_n": 20,
       "vol_window": 63
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "pead": {
     "family": "pead",
