@@ -9,6 +9,12 @@ with `[x]` when done; move it under **Done** when you like.
 - [ ] Add the indicator for Supply and Demand zones _(added 2026-10-18)_
 - [ ] Screener to find business demonstrating growth (EPS, Sales) QoQ or Recovery. (Check Minervini's book) _(added 2026-10-19)_
 - [ ] Strategy: Implement following strategy "Buy when price closes above the 20- or 55-day high. Sell short below the low. Size so you risk ~1% of account (use ATR for stops at 2 ATR). Exit on opposite 10- or 20-day extreme. It has decades of positive expectancy across futures including NQ, ES and gold. Win rate sits around 45%. Most of the money comes from a few big trends. Long flat periods and drawdowns are normal. The hard part is sticking to the rules when it feels wrong." _(added 2026-10-22)_
+- [ ] Add stock guidance around earnings both from company and analysts (Trend) as that may indicate how the results may turn out to be. _(added 2026-10-23)_
+- [ ] Add a section in the learning module about analysing quarterly earnings incorporating details from the books I am reading (e.g. Minervini) _(added 2026-10-23)_
+- [ ] Earning analysis: We need a template to do the analysis which goes beyond basic analysis of top-line numbers but look into next level details (e.g. Minervini looks at inventory and compare it with growth) _(added 2026-10-23)_
+- [ ] Need similar dashboard - https://x.com/Ravindra_PE/status/2113466002159919322 _(added 2026-10-23)_
+- [ ] Minervini: Identify stocks which have been resilient or grown / leaders during India's bear market as they may become the leader during the bull run _(added 2026-10-23)_
+- [ ] Strategy (Implement): Honest answer: classic trend following via breakouts. Buy when price closes above the 20- or 55-day high. Sell short below the low. Size so you risk ~1% of account (use ATR for stops at 2 ATR). Exit on opposite 10- or 20-day extreme. It has decades of positive expectancy across futures including NQ, ES and gold. Win rate sits around 45%. Most of the money comes from a few big trends. Long flat periods and drawdowns are normal. _(added 2026-10-24)_
 
 ## Data
 

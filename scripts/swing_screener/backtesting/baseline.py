@@ -311,8 +311,8 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
         # in the loaded window with the SAME selection the backtest runs, starting from nothing.
         # From an empty book the first rebalance is the plain top-N, and the replay converges on
         # the full-history book as names cycle out. Measured on India at hold_rank 40: 18 of 20
-        # names match after 3 months of replay, 19 after 6, all 20 from 12 on -- so the default of
-        # 36 carries a threefold margin.
+        # names match after 3 months of replay, 19 after 6, all 20 from 12 on; the US matches all
+        # 20 from 3 months on. The default of 36 carries a threefold margin over the slower market.
         month_ends = pd.Series(px.index, index=px.index).resample("ME").last().dropna()
         book: list = []
         for d in month_ends:
