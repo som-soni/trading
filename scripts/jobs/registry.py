@@ -247,6 +247,22 @@ def _rates(ctx: Ctx) -> None:
     ctx.step.stats = {"series": len(ok), "written": n, "changes": len(out["changes"]), "failed": len(out["failed"])}
 
 
+def _funds(ctx: Ctx) -> None:
+    """Mutual fund NAVs (marketdata/funds.py): every direct-plan growth option from AMFI for India, a
+    curated list from Yahoo for the US. One small request for the days since the last stored NAV, plus any
+    month of history not yet stored — so the first run is the (long, resumable) backfill."""
+    from swing_screener.marketdata import funds
+    r = funds.refresh(ctx.market, progress=ctx.step.progress)
+    if not r["funds"]:
+        raise RuntimeError("no fund NAVs could be fetched" + (f" (failed: {', '.join(r['failed'])})" if r["failed"] else ""))
+    newest = r["newest"].date().isoformat() if r["newest"] is not None else "none"
+    ctx.step.detail = (f"{r['funds']:,} funds · {r['written']:,} NAVs written"
+                       + (f" ({r['backfilled']:,} from history)" if r["backfilled"] else "")
+                       + f" · newest {newest}"
+                       + (f" · failed: {', '.join(r['failed'])}" if r["failed"] else ""))
+    ctx.step.stats = {"funds": r["funds"], "written": r["written"], "backfilled": r["backfilled"], "failed": len(r["failed"])}
+
+
 def _indicators(ctx: Ctx) -> None:
     """Growth, inflation, consumption, housing and credit indicators (marketdata/indicators.py): CPI,
     GDP, industrial production, durable goods, retail and vehicle sales, housing starts/permits, the
@@ -720,6 +736,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "oil, gold, copper and credit (marketdata/macro.py)", "daily", True, _indexes),
     Job("rates", "data", "interest rates: policy rate, bill and bond yields with long history — FRED (US), RBI (India) "
         "(marketdata/rates.py)", "daily", True, _rates),
+    Job("funds", "data", "mutual fund NAVs: every direct-plan growth option from AMFI (India), a curated list (US); "
+        "the first run backfills history (marketdata/funds.py)", "daily", True, _funds),
     Job("indicators", "data", "growth, inflation, consumption, housing and credit indicators: CPI, GDP, industrial "
         "production, durable goods, retail and vehicle sales, housing starts/permits, mortgage rate, bank credit, "
         "Baa credit spread — FRED (marketdata/indicators.py)", "daily", True, _indicators),
@@ -765,18 +783,21 @@ JOBS: dict[str, Job] = {j.name: j for j in [
 PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
-              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "indicators", "flows", "breadth", "sectors", "screens",
-                       "postmarket", "strategies", "report", "ingest"],
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", "breadth", "sectors",
+                       "screens", "postmarket", "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
                         "re-run only the strategies left stale, then check everything is ready",
              # report and ingest only when a strategy actually re-ran: the report reads the last 30 hours,
              # so re-running it on a Monday morning would replace Friday's review with an empty one
-             "jobs": ["prices", "earnings", "news", ("strategies", {"only_stale": True}), ("report", {"only_new": True}),
+             # funds again here: AMFI publishes the day's NAVs late in the evening, after India's close routine
+             "jobs": ["prices", "funds", "earnings", "news", ("strategies", {"only_stale": True}), ("report", {"only_new": True}),
                       ("ingest", {"only_new": True}), "readiness"],
              "defaults": {"strategies": ["all"]}},
-    "daily": {"summary": "after each market's close — data only: prices, indexes, rates, breadth, sectors, the screens' snapshot, post-market analysis",
-              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "indicators", "flows", "breadth", "sectors", "screens", "postmarket"]},
+    "daily": {"summary": "after each market's close — data only: prices, indexes, rates, fund NAVs, breadth, sectors, the screens' snapshot, "
+                         "post-market analysis",
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", "breadth", "sectors", "screens",
+                       "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",

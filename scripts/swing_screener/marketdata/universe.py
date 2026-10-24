@@ -62,7 +62,8 @@ def load_universe(market: str) -> list[str]:
 
 
 def index_symbols(market: str) -> list[str]:
-    """The benchmark, broad indices and sector indices stored beside the stocks in `prices`.
+    """The benchmark, broad indices and sector indices stored beside the stocks in `prices`,
+    plus the tracked indices and ETFs (marketdata/instruments.py).
 
     They are not in the universe CSV (the US list drops ETFs, and indices are not
     listed securities), so every job that fetches prices adds them: the daily
@@ -70,8 +71,10 @@ def index_symbols(market: str) -> list[str]:
     the benchmark that backtests' market filter and the live screens read froze at
     the date of the last backfill."""
     from ..config import MARKETS
+    from . import instruments
     cfg = MARKETS[market]
-    extras = [cfg.benchmark_ticker, *cfg.broad_index_symbols.values(), *cfg.sector_index_map.values()]
+    extras = [cfg.benchmark_ticker, *cfg.broad_index_symbols.values(), *cfg.sector_index_map.values(),
+              *instruments.symbols(market)]
     return list(dict.fromkeys(e for e in extras if e))
 
 

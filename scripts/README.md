@@ -196,7 +196,7 @@ layers above it produced (`jobs/registry.py`):
 | layer | jobs | network | cadence |
 |---|---|---|---|
 | reference | `universe`, `names`, `classify`, `industries` | yes | weekly / monthly |
-| data | `prices`, `splits`, `indexes` (benchmarks, VIX, total-return series, and the macro series in `marketdata/macro.py`: US 10y/5y yields, dollar index, WTI and Brent crude, gold, copper, high-yield credit), `rates` (policy rates, bill and bond yields with long history: FRED for the US, RBI for India — `marketdata/rates.py`), `earnings`, `fundamentals`, `financials` (SEC / NSE company financials and shareholding) | yes | prices, indexes & rates daily, the rest weekly |
+| data | `prices` (the universe, plus the benchmark, sector indices and the tracked indices and ETFs of `marketdata/instruments.py` — stored in `prices` but never in the universe, so never screened), `splits`, `indexes` (benchmarks, VIX, total-return series, and the macro series in `marketdata/macro.py`: US 10y/5y yields, dollar index, WTI and Brent crude, gold, copper, high-yield credit), `rates` (policy rates, bill and bond yields with long history: FRED for the US, RBI for India — `marketdata/rates.py`), `funds` (mutual fund NAVs in `funds` / `fund_nav`: every direct-plan growth option from AMFI for India, history once per scheme from mfapi.in; a curated list from Yahoo for the US — `marketdata/funds.py`), `earnings`, `fundamentals`, `financials` (SEC / NSE company financials and shareholding) | yes | prices, indexes, rates & funds daily, the rest weekly |
 | analytics | `breadth`, `sectors` | no | daily, after prices |
 | screening | `screens` (the stock snapshot), `strategies` (one step per strategy), `screen_history`, `quality`, `fundamental_scores` (the Fundamentals page) | only `quality` | snapshot daily, history monthly, fundamental_scores weekly; strategies after each close; quality on demand |
 | publish | `postmarket` (daily), `report`, `ingest` (with strategies), `readiness` (before the open) | no | after their inputs |
@@ -206,15 +206,15 @@ layers above it produced (`jobs/registry.py`):
 
 | Routine | When | What |
 |---|---|---|
-| **close** | Mon–Fri 18:30 Kolkata · 18:00 New York | the day's data (universe check → prices → indexes → breadth → sectors → screens → postmarket), then every strategy's setups → report → ingest — tomorrow's trades are ready without a manual run |
-| **open** | Mon–Fri 08:00 Kolkata · 08:00 New York | catch up a price load the close missed → refresh earnings dates → re-run only the strategies whose setups predate the latest prices (report and ingest only if one did) → `readiness`, which fails, red on the Data status page, when prices or any strategy's setups are not current |
+| **close** | Mon–Fri 18:30 Kolkata · 18:00 New York | the day's data (universe check → prices → indexes → rates → funds → breadth → sectors → screens → postmarket), then every strategy's setups → report → ingest — tomorrow's trades are ready without a manual run |
+| **open** | Mon–Fri 08:00 Kolkata · 08:00 New York | catch up a price load the close missed → fund NAVs again (AMFI publishes the day's NAVs late in the evening, after India's close routine) → refresh earnings dates → re-run only the strategies whose setups predate the latest prices (report and ingest only if one did) → `readiness`, which fails, red on the Data status page, when prices or any strategy's setups are not current |
 
 Scheduled runs enter the queue ahead of runs queued by hand (`SCHEDULE_PRIORITY`),
 but the worker never interrupts a running job: a multi-hour backtest that is
 already running delays the routine until it ends.
 
-Pipelines: **close** and **open** (above), **daily** (data only: universe check → prices → indexes → breadth →
-sectors → screens → postmarket), **strategies** (on demand: strategies — all by
+Pipelines: **close** and **open** (above), **daily** (data only: universe check → prices → indexes → rates →
+funds → breadth → sectors → screens → postmarket), **strategies** (on demand: strategies — all by
 default — → report → ingest), **weekly** (universe, names, classify, splits —
 re-fetch the full history of stocks that split or issued bonus shares after
 their last full fetch — earnings, fundamentals, financials, fundamental_scores), **monthly** (industries, subindustries, screen_history,
