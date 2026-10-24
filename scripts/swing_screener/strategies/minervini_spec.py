@@ -56,6 +56,10 @@ from ..screens.criteria import (  # noqa: F401 (doc placeholders)
 #: means. It is recorded so the maturity of the trend is visible on every signal, and so the
 #: choice to tighten it later is a one-line change with a measurement behind it.
 SMA200_RISING_PREF_BARS = 100
+#: W5 as a RULE instead of a note: 1 holds a plan at WATCH (no new buy) while the 200-day has not risen
+#: over SMA200_RISING_PREF_BARS sessions -- Minervini's "preferably 4-5 months". Off until it is measured
+#: (`--const SMA200_PREF_REQUIRED=1`); `--const SMA200_RISING_PREF_BARS=N` sets how long.
+SMA200_PREF_REQUIRED = 0
 from .base import LABELS, Decision, PlanChoice, Strategy, StrategyResult, TradePlan, tradable_point_in_time
 from .trend_pullback import round_tick
 
@@ -574,8 +578,14 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.24"
+    version = "1.25"
     changelog = (
+        ("1.25", "2026-10-24",
+         "W5 can become a rule: SMA200_PREF_REQUIRED = 1 holds a plan at WATCH (no new buy) while the "
+         "200-day has not risen over {SMA200_RISING_PREF_BARS} sessions, Minervini's preferred 4-5 months "
+         "of uptrend; 0 (the default) keeps it a note, so the shipped rules trade as 1.24. Added to "
+         "measure it rather than assume it: G5's one month is the stated minimum, and the longer rise "
+         "is stated as a preference."),
         ("1.24", "2026-10-22",
          "EN-04 can now allow more than one entry per base, though it still allows "
          "{MAX_ENTRIES_PER_BASE} -- the switch is off until it is measured. A base was barred for "
@@ -1112,8 +1122,9 @@ class MinerviniSpecStrategy(Strategy):
               "is held at WATCH instead of a buy. Not in the written spec; from the Learn guide.",
         "W5": "Young uptrend (TT-03, the preferred half): the 200-day is higher than {SMA200_RISING_BARS} "
               "sessions ago (G5 passed) but not higher than {SMA200_RISING_PREF_BARS} sessions ago, so it "
-              "has been rising for less than the 4-5 months Minervini prefers. Noted only; it never changes "
-              "the decision.",
+              "has been rising for less than the 4-5 months Minervini prefers. With SMA200_PREF_REQUIRED = "
+              "{SMA200_PREF_REQUIRED} (the default, 0) it is noted only; set to 1 it holds the plan at WATCH, "
+              "so no new buy.",
     }
     setup_docs = {
         MV01: "MV-01 pivot breakout: the close crosses the pivot of a finished base, with "
@@ -1394,6 +1405,10 @@ class MinerviniSpecStrategy(Strategy):
         "held are kept and managed as usual. The live screen applies the same test.\n\n"
         "`--mkt01` swaps in an older test (the index above its 200-day, and its 50-day above its "
         "200-day); `--mkt-confirm N` makes a recovery wait N sessions before buying resumes.",
+        "The uptrend is young — only when SMA200_PREF_REQUIRED is 1 (it is {SMA200_PREF_REQUIRED}). No new "
+        "buy while the 200-day average is not higher than {SMA200_RISING_PREF_BARS} sessions ago (about 4-5 "
+        "months), even though it passed G5's one-month test. Minervini states the month as the minimum "
+        "and the longer rise as a preference, so this stays off until a backtest shows it helps.",
         "Results are due. No new buy with quarterly results due within {EARNINGS_BLACKOUT_DAYS} "
         "days: a results-day gap can jump straight past the stop. Live, the date comes from the "
         "earnings calendar; in a backtest it is estimated from the company's past announcement "
@@ -1416,8 +1431,9 @@ class MinerviniSpecStrategy(Strategy):
                             "the shelf low; or a power play (MV-05), bought at the next open and stopped under the "
                             "flag's tight low. The market regime never caps a decision to this tier.",
         "WATCH_WAIT": "A valid plan held back: its stop sits more than {MAX_STOP_PCT}% below entry, results are due "
-                      "within {EARNINGS_BLACKOUT_DAYS} days, or the market filter allows no new buys (see the note "
-                      "below). Worth watching, not buying.",
+                      "within {EARNINGS_BLACKOUT_DAYS} days, the 200-day has risen for under "
+                      "{SMA200_RISING_PREF_BARS} sessions while SMA200_PREF_REQUIRED is 1, or the market filter "
+                      "allows no new buys (see the note below). Worth watching, not buying.",
         "AVOID": "A Trend Template gate failed, or there is no valid entry plan — no breakout, coil or cheat setup, "
                  "or a plan that fails its checks (such as projecting under {MIN_STRUCTURAL_R}:1).",
     }
@@ -1494,6 +1510,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Light-volume fill exit", "LIGHT_VOLUME_EXIT", "EN-02: sell a buy-stop fill on under-average breakout volume (1 = on)."),
         ("Low cheat", "LOW_CHEAT_ENABLED", "MV-03 on (1) or off (0)."),
         ("Results blackout", "EARNINGS_BLACKOUT_DAYS", "Days before results with no new buy."),
+        ("Preferred uptrend", "SMA200_RISING_PREF_BARS", "W5: sessions over which the 200-day should have risen."),
+        ("Preferred uptrend required", "SMA200_PREF_REQUIRED", "1 = W5 holds the plan at WATCH (no new buy); 0 = noted only."),
         ("Turnover floor, India", "MIN_TURNOVER_INR_CR", "₹ crore a day, 50-day average volume × close."),
         ("Turnover floor, US", "MIN_TURNOVER_USD_M", "$ million a day, 50-day average volume × close."),
         ("Price floor, India (live)", "LIVE_MIN_PRICE_INR", "₹; the live screen only."),
@@ -1890,6 +1908,9 @@ class MinerviniSpecStrategy(Strategy):
         if earnings_days_away is not None and 0 <= earnings_days_away <= EARNINGS_BLACKOUT_DAYS:
             label = "WATCH_WAIT"
             reasons.append(f"results due in {earnings_days_away} days: no new buy within {EARNINGS_BLACKOUT_DAYS}")
+        if SMA200_PREF_REQUIRED and result.watch_flags.get("W5"):
+            label = "WATCH_WAIT"
+            reasons.append(f"200-day rising for under {SMA200_RISING_PREF_BARS} sessions: no new buy")
         label_before = label
         if regime_downgrade_active and label in ("TRADE_HIGH_CONFIDENCE", "TRADE_ON_TRIGGER"):
             label = "WATCH_WAIT"
