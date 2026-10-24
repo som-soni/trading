@@ -162,8 +162,11 @@ def every_strategy() -> None:
         paths.REPORTS_DIR = Path(tmp)
         try:
             jobs = [(k, "portfolio") for k in sorted(portfolio_strategies())] + [(k, "symbol") for k in list_strategies()]
+            from swing_screener.config import MARKETS
             for key, kind in jobs:
-                for market in ("us",):
+                # the first market the strategy supports: an India-only runner (fno_income) exits on the
+                # US, so a refusal moves on to the next market instead of failing the sweep
+                for market in MARKETS:
                     try:
                         with cache.offline(), windows.active(stage, start, end):
                             if kind == "portfolio":
@@ -175,8 +178,11 @@ def every_strategy() -> None:
                                 r = bt.main(["--market", market, "--start", start, "--strategy", key, "--sample", "25",
                                              *args, "--no-ingest"])
                     except SystemExit as e:
-                        check(f"{key} ({market}) ran", False, f"exited {e.code}")
-                        continue
+                        if market != list(MARKETS)[-1]:
+                            print(f"        {key} does not run on {market} ({str(e.code)[:70]}); trying the next market")
+                            continue
+                        check(f"{key} ran in some market", False, f"exited {e.code}")
+                        break
                     except Exception as e:   # noqa: BLE001
                         check(f"{key} ({market}) ran", False, f"{type(e).__name__}: {e}"[:160])
                         continue
@@ -196,6 +202,7 @@ def every_strategy() -> None:
                                     worst = max(worst, v)
                     check(f"{key} ({market}) stays inside the window -- last date {worst.date()}, tagged {d.name.endswith(windows.tag(stage, end))}",
                           worst <= OPT_END and d.name.endswith(windows.tag(stage, end)), f"{worst} / {d.name}")
+                    break
         finally:
             paths.REPORTS_DIR = real
 
