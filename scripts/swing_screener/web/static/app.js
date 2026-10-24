@@ -4667,7 +4667,12 @@ async function funnelTab(body, id, r, alive) {
   const open = new Set();
   const nf = (n) => Number(n).toLocaleString();
 
-  const chip = (sym) => `<button class="sym-chip" data-sym="${esc(sym)}" title="Open ${esc(sym)} on the chart">${esc(sym.replace(/\.NS$/, ""))}</button>`;
+  // `dates` (a drop's symbol -> the dates it was refused on) goes in the tooltip, so "why didn't
+  // this stock trade then?" reads straight off the chip
+  const chip = (sym, dates) => {
+    const on = dates && dates[sym] ? ` — refused on ${dates[sym].join(", ")}` : "";
+    return `<button class="sym-chip" data-sym="${esc(sym)}" title="Open ${esc(sym)} on the chart${esc(on)}">${esc(sym.replace(/\.NS$/, ""))}</button>`;
+  };
 
   const stageBody = (st, detail) => {
     if (!detail) return `<div class="fn-detail muted small">Loading the names…</div>`;
@@ -4677,10 +4682,10 @@ async function funnelTab(body, id, r, alive) {
     const names = detail.symbols || [];
     return `<div class="fn-detail">
       ${names.length ? `<div class="fn-grp"><b>${nf(names.length)} stock${names.length === 1 ? "" : "s"} reached this stage</b>${detail.symbols_truncated ? ` <span class="muted small">— a sample spread across the list, not all of them</span>` : ""}
-        <div class="syms">${names.map(chip).join("")}</div></div>` : ""}
+        <div class="syms">${names.map((s) => chip(s)).join("")}</div></div>` : ""}
       ${(detail.drops || []).filter((d) => d.symbols.length).map((d) => `<div class="fn-grp">
         <b>Stopped here — ${esc(d.reason)}</b> <span class="muted small">${nf(d.count)} ${esc(st.unit)}${d.truncated ? `, showing ${nf(d.symbols.length)} name${d.symbols.length === 1 ? "" : "s"}` : ""}</span>
-        <div class="syms">${d.symbols.map(chip).join("")}</div></div>`).join("")}
+        <div class="syms">${d.symbols.map((s) => chip(s, d.dates)).join("")}</div></div>`).join("")}
     </div>`;
   };
 

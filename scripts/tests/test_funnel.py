@@ -157,8 +157,70 @@ def _symbol_problems() -> list[str]:
     return bad
 
 
+def _dated_problems() -> list[str]:
+    """Drops after signal collection (portfolio filters, the simulator) name the stock AND the
+    date. Without them a stored run cannot answer "why didn't CRWD trade in August?" -- it took a
+    bar-by-bar replay to learn the results blackout had blocked its 08-14 and 08-17 signals."""
+    import pickle
+    from types import SimpleNamespace as Sig
+
+    import pandas as pd
+
+    bad = []
+    f = F.Funnel()
+    f.dropped_each("accepted", "results due within 14 days",
+                   [Sig(symbol="CRWD", date=pd.Timestamp("2026-08-17")),
+                    Sig(symbol="CRWD", date=pd.Timestamp("2026-08-14")),
+                    Sig(symbol="NVDA", date=pd.Timestamp("2026-05-20"))])
+    f.dropped_each("ranked", "all position slots full", [("TYL", pd.Timestamp("2021-03-02"))])
+    f.dropped_each("ranked", "not enough cash", [])
+    rows = {r["stage"]: r for r in f.rows()}
+    rb = next(d for d in rows["accepted"]["drops"] if d["reason"] == "results due within # days")
+    if rb["count"] != 3 or rb["symbols"] != ["CRWD", "NVDA"]:
+        bad.append(f"dropped_each should count 3 and name CRWD, NVDA: {rb}")
+    if rb.get("dates") != {"CRWD": ["2026-08-14", "2026-08-17"], "NVDA": ["2026-05-20"]}:
+        bad.append(f"blackout dates wrong: {rb.get('dates')}")
+    slot = next(d for d in rows["ranked"]["drops"] if d["reason"] == "all position slots full")
+    if slot.get("dates") != {"TYL": ["2021-03-02"]}:
+        bad.append(f"(symbol, date) pairs not recorded: {slot}")
+    cash = next((d for d in rows["ranked"]["drops"] if d["reason"] == "not enough cash"), None)
+    if cash is None or cash["count"] != 0 or "dates" in cash:
+        bad.append(f"an empty drop should still be a zero row with no dates: {cash}")
+    # a drop that does not know its date keeps the old shape
+    f.dropped("bars", "VCP-06", 1, symbol="A")
+    if "dates" in next(d for d in {r["stage"]: r for r in f.rows()}["bars"]["drops"]):
+        bad.append("an undated drop grew a dates field")
+
+    # dates follow the name cap: a symbol past MAX_DROP_NAMES is counted, not dated
+    g = F.Funnel()
+    many = [(f"S{i:04d}", "2024-01-02") for i in range(F.Funnel.MAX_DROP_NAMES + 10)]
+    g.dropped_each("ranked", "open-risk cap", many)
+    d = g.rows()[0]["drops"][0]
+    if d["count"] != len(many) or len(d["symbols"]) != F.Funnel.MAX_DROP_NAMES \
+            or set(d["dates"]) != set(d["symbols"]):
+        bad.append("dates are not capped with the names, or the count moved")
+    # and per symbol, only the most recent MAX_DROP_DATES are kept
+    h = F.Funnel()
+    days = pd.bdate_range("2020-01-01", periods=F.Funnel.MAX_DROP_DATES + 5)
+    h.dropped_each("ranked", "all position slots full", [("X", t) for t in days])
+    kept = h.rows()[0]["drops"][0]["dates"]["X"]
+    if len(kept) != F.Funnel.MAX_DROP_DATES or kept[-1] != str(days[-1].date()):
+        bad.append(f"per-symbol dates not capped to the most recent: {len(kept)}, last {kept[-1]}")
+
+    # a worker's funnel still pickles, and merge carries its dates
+    w = F.Funnel()
+    w.dropped_each("accepted", "RS rating below 70", [("B", "2023-04-05")])
+    w.drop_symbols = {st: dict(r) for st, r in w.drop_symbols.items()}
+    w = pickle.loads(pickle.dumps(w))
+    f.merge(w)
+    rs = next(d for d in {r["stage"]: r for r in f.rows()}["accepted"]["drops"] if d["reason"].startswith("RS"))
+    if rs.get("dates") != {"B": ["2023-04-05"]}:
+        bad.append(f"merge lost the dates: {rs}")
+    return bad
+
+
 def main() -> int:
-    bad = _problems() + _symbol_problems()
+    bad = _problems() + _symbol_problems() + _dated_problems()
     if bad:
         print("FAIL — funnel:")
         for b in bad:

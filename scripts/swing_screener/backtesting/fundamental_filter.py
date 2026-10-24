@@ -109,11 +109,14 @@ def filter_signals(signals: list, market: str, level: str) -> tuple[list, dict]:
     if level not in LEVELS:
         raise ValueError(f"--fundamentals must be one of {LEVELS}")
     v = verdicts(market, signals, level)
-    kept, counts = [], {}
+    kept, counts, gone = [], {}, {"below": []}
     for s in signals:
         x = v[(s.symbol, s.date)]
         counts[x] = counts.get(x, 0) + 1
         if x in PASSING[level]:
             kept.append(replace(s, meta={**s.meta, "sepa": x}))
+        else:
+            gone["below"].append(s)
     logger.info("Fundamentals (%s): kept %d of %d signals; verdicts %s", level, len(kept), len(signals), counts)
-    return kept, {"level": level, "kept": len(kept), "of": len(signals), "verdicts": counts}
+    return kept, {"level": level, "kept": len(kept), "of": len(signals), "verdicts": counts,
+                  "dropped_signals": gone}
