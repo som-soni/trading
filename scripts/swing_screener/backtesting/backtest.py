@@ -630,6 +630,7 @@ def filter_stage3(signals: "list", market_key: str, prices: dict) -> tuple[list,
         by.setdefault(s.symbol, []).append(s)
     logger.info("Stage filter: staging %d symbols...", len(by))
     kept, dropped, unknown = [], 0, 0
+    gone = {"dropped": []}
     for sym, sigs in by.items():
         df = prices.get(sym)
         if df is None or len(df) < 200:
@@ -651,10 +652,11 @@ def filter_stage3(signals: "list", market_key: str, prices: dict) -> tuple[list,
                 kept.append(s); unknown += 1; continue
             if stage[i] == 3:
                 dropped += 1
+                gone["dropped"].append(s)
             else:
                 kept.append(s)
     logger.info("Stage filter (no Stage 3): kept %d, dropped %d, unstaged %d (kept)", len(kept), dropped, unknown)
-    return kept, {"kept": len(kept), "dropped": dropped, "unknown": unknown}
+    return kept, {"kept": len(kept), "dropped": dropped, "unknown": unknown, "dropped_signals": gone}
 
 
 def filter_weak_groups(signals: "list", market_key: str, min_rs: int) -> tuple[list, dict]:
@@ -673,6 +675,7 @@ def filter_weak_groups(signals: "list", market_key: str, min_rs: int) -> tuple[l
     logger.info("Group filter: rating industry groups on %d signal dates (computed once, then stored)...", len(dates))
     ratings = group_history.ensure(market_key, dates)
     kept, dropped, unrated = [], 0, 0
+    gone = {"dropped": []}
     for s in signals:
         g = (ind.get(s.symbol) or (None, None))[1]
         rs = (ratings.get(pd.Timestamp(s.date).date(), {}).get("industry", {}) or {}).get(g) if g else None
@@ -683,8 +686,9 @@ def filter_weak_groups(signals: "list", market_key: str, min_rs: int) -> tuple[l
             kept.append(s)
         else:
             dropped += 1
+            gone["dropped"].append(s)
     logger.info("Group filter (industry-group RS >= %d): kept %d, dropped %d, unrated %d (kept)", min_rs, len(kept), dropped, unrated)
-    return kept, {"min_rs": min_rs, "kept": len(kept), "dropped": dropped, "unrated": unrated}
+    return kept, {"min_rs": min_rs, "kept": len(kept), "dropped": dropped, "unrated": unrated, "dropped_signals": gone}
 
 
 def _close_trade(pos: dict, exit_date: pd.Timestamp, reason: str, exit_price: float) -> Trade:
@@ -1183,16 +1187,16 @@ def run_portfolio_backtest(
             f"Base number: only the first {max_base_no} bases of a stock's advance are traded "
             f"({b['late']} signals dropped as late-stage, {b['kept']} kept"
             + (f", {b['unknown']} had no base number and were kept)." if b["unknown"] else ")."))
-        fn.dropped("accepted", f"base number above {max_base_no}", b["late"])
+        fn.dropped_each("accepted", f"base number above {max_base_no}", b["dropped_signals"]["late"])
     if min_rs is not None:
         all_signals, r = spec_mod.filter_min_rs(all_signals, market_key, min_rs)
         spec_notes.append(f"RS rating (TT-08): signals from stocks rated below {min_rs} (1-99 across the tradable universe "
                           f"on the signal date) skipped: {r['below']} below, {r['unrated']} outside the rated universe, {r['kept']} kept.")
-        fn.dropped("accepted", f"RS rating below {min_rs}", r["below"])
-        fn.dropped("accepted", "outside the rated universe", r["unrated"])
+        fn.dropped_each("accepted", f"RS rating below {min_rs}", r["dropped_signals"]["below"])
+        fn.dropped_each("accepted", "outside the rated universe", r["dropped_signals"]["unrated"])
     if top_dollar_volume and all_signals:
         all_signals, tdv = spec_mod.filter_top_dollar_volume(all_signals, market_key, top_dollar_volume)
-        fn.dropped("accepted", f"outside the {top_dollar_volume} most-traded stocks", tdv["outside"])
+        fn.dropped_each("accepted", f"outside the {top_dollar_volume} most-traded stocks", tdv["dropped_signals"]["outside"])
         spec_notes.append(
             f"Traded-value rank: only signals whose stock was among the {top_dollar_volume} most-traded "
             f"by 50-day average value ON THE SIGNAL DATE ({tdv['kept']} kept, {tdv['outside']} outside). "
@@ -1203,19 +1207,19 @@ def run_portfolio_backtest(
         all_signals, m = spec_mod.market_filter(all_signals, market_key, mkt_confirm, market_guide)
         if market_guide:
             from ..strategies import minervini_spec as _ms
-            fn.dropped("accepted", "market filter: index or breadth weak", m["blocked"])
+            fn.dropped_each("accepted", "market filter: index or breadth weak", m["dropped_signals"]["blocked"])
             spec_notes.append(
                 f"Market filter (the SEPA guide's): {m['blocked']} signals blocked on days the benchmark closed below "
                 f"its {_ms.MKT_INDEX_SMA}-day average, or breadth (stocks above their 50-day) was at or below "
                 f"{_ms.MKT_BREADTH_MIN_PCT:g}% and not higher than {_ms.MKT_BREADTH_RISING_DAYS} sessions earlier "
                 f"(open on {m['days_open_pct']}% of days).")
         else:
-            fn.dropped("accepted", "market filter: benchmark below its 200-day", m["blocked"])
+            fn.dropped_each("accepted", "market filter: benchmark below its 200-day", m["dropped_signals"]["blocked"])
             spec_notes.append(f"Market filter (MKT-01): {m['blocked']} signals blocked on days the benchmark was below its "
                               f"200-day average or its 50-day was below its 200-day (open on {m['days_open_pct']}% of days).")
     if results_blackout_days and all_signals:
         all_signals, rb = spec_mod.results_blackout(all_signals, market_key, results_blackout_days)
-        fn.dropped("accepted", f"results due within {results_blackout_days} days", rb["blocked"])
+        fn.dropped_each("accepted", f"results due within {results_blackout_days} days", rb["dropped_signals"]["blocked"])
         spec_notes.append(
             f"Results blackout: {rb['blocked']} signals skipped with results filed within {results_blackout_days} days "
             f"after the signal; results dates known for {rb['covered_symbols']} of {rb['of_symbols']} signalled stocks "
@@ -1224,8 +1228,7 @@ def run_portfolio_backtest(
         from . import fundamental_filter
         all_signals, f = fundamental_filter.filter_signals(all_signals, market_key, fundamentals)
         v = f["verdicts"]
-        dropped = f["of"] - f["kept"]
-        fn.dropped("accepted", f"SEPA fundamentals below '{fundamentals}'", dropped)
+        fn.dropped_each("accepted", f"SEPA fundamentals below '{fundamentals}'", f["dropped_signals"]["below"])
         spec_notes.append(
             f"Fundamentals (SEPA part 2, level '{fundamentals}'): each signal judged on the quarterly results public on its "
             f"date; {f['kept']} of {f['of']} kept. Verdicts: " + ", ".join(f"{n} {k}" for k, n in sorted(v.items(), key=lambda x: -x[1]))
@@ -1261,7 +1264,7 @@ def run_portfolio_backtest(
     group_note = None
     if block_stage3 and all_signals:
         all_signals, s3 = filter_stage3(all_signals, market_key, prices)
-        fn.dropped("ranked", "stock already in Stage 3 (topping)", s3["dropped"])
+        fn.dropped_each("ranked", "stock already in Stage 3 (topping)", s3["dropped_signals"]["dropped"])
         spec_notes.append(
             f"Stage filter: {s3['dropped']} signals skipped because the stage machine had the stock in "
             f"Stage 3 (topping) on the signal date -- it leaves Stage 2 on a lower swing low or the "
@@ -1269,7 +1272,7 @@ def run_portfolio_backtest(
             f"{s3['unknown']} signals could not be staged and were kept.")
     if min_group_rs is not None:
         all_signals, g = filter_weak_groups(all_signals, market_key, min_group_rs)
-        fn.dropped("ranked", f"industry group rated below RS {g['min_rs']}", g["dropped"])
+        fn.dropped_each("ranked", f"industry group rated below RS {g['min_rs']}", g["dropped_signals"]["dropped"])
         group_note = (f"Group filter: signals whose industry group was rated below RS {g['min_rs']} on the signal date were "
                       f"skipped ({g['dropped']} dropped, {g['kept']} kept, of which {g['unrated']} in groups too small to rate). "
                       "Group RS is rebuilt point in time from prices; the industry classification is today's.")
@@ -1288,10 +1291,12 @@ def run_portfolio_backtest(
     # what the simulator refused: slots, cash, and the per-fill checks it records
     fn.set_count("taken", len(result.trades))
     fn.set_symbols("taken", [t.symbol for t in result.trades])
-    fn.dropped("ranked", "all position slots full", result.signals_missed_no_slot)
-    fn.dropped("ranked", "not enough cash", result.signals_missed_no_cash)
-    for _reason, _n in (getattr(result, "skipped", None) or {}).items():
-        fn.dropped("ranked", _reason, _n)
+    # each with the symbol and the session it was refused on, so a stored run can answer
+    # "why didn't CRWD trade?" without a replay
+    fn.dropped_each("ranked", "all position slots full", result.missed_slot_at)
+    fn.dropped_each("ranked", "not enough cash", result.missed_cash_at)
+    for _reason, _at in result.skipped_at.items():
+        fn.dropped_each("ranked", _reason, _at)
     result.funnel = fn
 
     bench_raw = cache.load_cached(market_key, cfg.benchmark_ticker)

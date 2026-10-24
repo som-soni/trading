@@ -418,6 +418,7 @@ def report_funnel(rid: int):
         st["sample"] = names[:_FUNNEL_SAMPLE]
         for d in st.get("drops", []):
             dn = d.pop("symbols", None) or []
+            d.pop("dates", None)
             d["symbol_count"] = len(dn)
             d["sample"] = dn[:_FUNNEL_SAMPLE]
     return data
@@ -444,7 +445,9 @@ def report_funnel_stage(rid: int, stage: str):
     if st is None:
         raise HTTPException(404, f"no stage {stage!r} in this funnel")
     names = st.get("symbols") or []
+    # `dates`: symbol -> the dates it was refused on, for drops after signal collection
     drops = [{"reason": d["reason"], "count": d["count"], "symbols": d.get("symbols") or [],
+              "dates": d.get("dates") or {},
               "truncated": len(d.get("symbols") or []) < d["count"] and bool(d.get("symbols"))}
              for d in st.get("drops", [])]
     return {"stage": stage, "label": st["label"], "unit": st["unit"], "count": st["count"],

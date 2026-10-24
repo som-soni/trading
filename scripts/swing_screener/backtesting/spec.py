@@ -100,18 +100,21 @@ def filter_min_rs(signals: list, market: str, min_rs: int) -> tuple[list, dict]:
     A stock outside the rated universe that day (too cheap, too thin, too new) is dropped."""
     ratings = rs_ratings(market, [s.date for s in signals])
     kept, low, unrated = [], 0, 0
+    gone = {"below": [], "unrated": []}
     for s in signals:
         r = ratings.get(pd.Timestamp(s.date))
         rs = None if r is None else r.get(s.symbol)
         if rs is None or rs != rs:
             unrated += 1
+            gone["unrated"].append(s)
             continue
         if rs < min_rs:
             low += 1
+            gone["below"].append(s)
             continue
         kept.append(replace(s, meta={**s.meta, "rs": int(rs)}))
     logger.info("RS filter (>= %d): kept %d, below %d, outside the rated universe %d", min_rs, len(kept), low, unrated)
-    return kept, {"min_rs": min_rs, "kept": len(kept), "below": low, "unrated": unrated}
+    return kept, {"min_rs": min_rs, "kept": len(kept), "below": low, "unrated": unrated, "dropped_signals": gone}
 
 
 _RANK_ASOF: dict = {}
@@ -186,6 +189,7 @@ def filter_top_dollar_volume(signals: list, market: str, n: int) -> tuple[list, 
     """Keep signals whose stock was among the `n` most-traded on the signal date."""
     ranks = top_dollar_volume(market, [s.date for s in signals], n)
     kept, outside, unknown = [], 0, 0
+    gone = {"outside": []}
     for s in signals:
         top = ranks.get(pd.Timestamp(s.date))
         if top is None:
@@ -196,8 +200,9 @@ def filter_top_dollar_volume(signals: list, market: str, n: int) -> tuple[list, 
             kept.append(s)
         else:
             outside += 1
+            gone["outside"].append(s)
     logger.info("Top-%d traded filter: kept %d, outside %d, unranked %d", n, len(kept), outside, unknown)
-    return kept, {"n": n, "kept": len(kept), "outside": outside, "unranked": unknown}
+    return kept, {"n": n, "kept": len(kept), "outside": outside, "unranked": unknown, "dropped_signals": gone}
 
 
 def filter_max_base_no(signals: list, max_base: int) -> tuple[list, dict]:
@@ -214,6 +219,7 @@ def filter_max_base_no(signals: list, max_base: int) -> tuple[list, dict]:
     silently discarding them would make the filter look more selective than it is.
     """
     kept, late, unknown = [], 0, 0
+    gone = {"late": []}
     for s in signals:
         bn = s.meta.get("base_no")
         if bn is None:
@@ -222,11 +228,12 @@ def filter_max_base_no(signals: list, max_base: int) -> tuple[list, dict]:
             continue
         if int(bn) > max_base:
             late += 1
+            gone["late"].append(s)
             continue
         kept.append(s)
     logger.info("Base-number filter (<= %d): kept %d, dropped %d as late-stage, %d without a base number",
                 max_base, len(kept), late, unknown)
-    return kept, {"max_base": max_base, "kept": len(kept), "late": late, "unknown": unknown}
+    return kept, {"max_base": max_base, "kept": len(kept), "late": late, "unknown": unknown, "dropped_signals": gone}
 
 
 # ---------------------------------------------------------------- market filter (MKT-01)
@@ -313,7 +320,7 @@ def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]
     should be read with it in mind."""
     syms = sorted({s.symbol for s in signals})
     if not syms or not days:
-        return signals, {"days": days, "blocked": 0, "kept": len(signals)}
+        return signals, {"days": days, "blocked": 0, "kept": len(signals), "dropped_signals": {"blocked": []}}
     with db.get_connection().cursor() as cur:
         cur.execute("""SELECT DISTINCT symbol, filed FROM quarterly_results
                        WHERE market=%s AND symbol = ANY(%s) AND filed IS NOT NULL ORDER BY symbol, filed""",
@@ -323,23 +330,28 @@ def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]
     for sym, f in rows:
         filed.setdefault(sym, []).append(pd.Timestamp(f))
     kept, blocked = [], 0
+    gone = {"blocked": []}
     for s in signals:
         d = pd.Timestamp(s.date)
         nxt = next((f for f in filed.get(s.symbol, []) if f > d), None)
         if nxt is not None and (nxt - d).days <= days:
             blocked += 1
+            gone["blocked"].append(s)
         else:
             kept.append(s)
     logger.info("Results blackout (%d days): kept %d of %d signals", days, len(kept), len(signals))
     return kept, {"days": days, "blocked": blocked, "kept": len(kept),
-                  "covered_symbols": len(filed), "of_symbols": len(syms)}
+                  "covered_symbols": len(filed), "of_symbols": len(syms), "dropped_signals": gone}
 
 
 def market_filter(signals: list, market: str, confirm_days: int = 0, guide: bool = False) -> tuple[list, dict]:
     ok = market_ok(market, confirm_days, guide)
-    kept = [s for s in signals if bool(ok.asof(pd.Timestamp(s.date)))]
+    kept, gone = [], {"blocked": []}
+    for s in signals:
+        (kept if bool(ok.asof(pd.Timestamp(s.date))) else gone["blocked"]).append(s)
     logger.info("Market filter: kept %d of %d signals", len(kept), len(signals))
     return kept, {"kept": len(kept), "blocked": len(signals) - len(kept), "confirm_days": int(confirm_days or 0),
+                  "dropped_signals": gone,
                   "days_open_pct": round(float(ok[ok.index >= min(s.date for s in signals)].mean()) * 100, 1) if signals else None}
 
 

@@ -254,6 +254,11 @@ class PortfolioResult:
     signals_missed_no_cash: int = 0
     partial_fills: int = 0
     skipped: dict = field(default_factory=dict)   # spec-mode skips by reason (gap, risk, base, adv, open_risk)
+    # The same refusals one by one, as (symbol, session) -- what the funnel names, so a stored run
+    # answers "why didn't this stock trade?". Reporting only: nothing reads them to decide a trade.
+    skipped_at: dict = field(default_factory=dict)   # reason -> [(symbol, date)]
+    missed_slot_at: list = field(default_factory=list)
+    missed_cash_at: list = field(default_factory=list)
 
 
 PENDING_EXPIRY_BDAYS = 10
@@ -391,6 +396,9 @@ def simulate(
     costs_total = 0.0
     taken = missed_slot = missed_cash = partial_fills = 0
     skipped: dict[str, int] = {}
+    skipped_at: dict[str, list] = {}
+    missed_slot_at: list = []
+    missed_cash_at: list = []
     # (symbol, base_id) -> entries taken, and how the last one ended. A base used to be barred
     # for good after one entry, which also barred the re-entry a shakeout invites: a trade stopped
     # at breakeven has given up nothing about the base, it has only been shaken out of it. A
@@ -399,8 +407,9 @@ def simulate(
     bases_entered: dict = {}
     base_last_exit: dict = {}
 
-    def skip(reason: str) -> None:
+    def skip(reason: str, sym: str, day) -> None:
         skipped[reason] = skipped.get(reason, 0) + 1
+        skipped_at.setdefault(reason, []).append((sym, day))
 
     def sell(pos: PortfolioTrade, raw: float, n: int, today) -> float:
         """Sell n shares at raw (before slippage). Cash receives the slipped fill less commission and
@@ -452,7 +461,7 @@ def simulate(
             fill = max(pos.add_price, float(bar["open"]))        # a gap fills worse
             ceiling = pos.meta.get("max_fill")
             if ceiling is not None and fill > float(ceiling):
-                skip("add would lift the average cost past the buy range")
+                skip("add would lift the average cost past the buy range", sym, today)
                 pos.target_shares = 0
                 continue
             want = pos.target_shares - pos.shares
@@ -460,7 +469,7 @@ def simulate(
             affordable = int((cash - cfg.commission_per_order) // (fill_slipped * (1 + fee_rate)))
             add_n = min(want, max(0, affordable))
             if add_n < 1:
-                skip("not enough cash to add")
+                skip("not enough cash to add", sym, today)
                 pos.target_shares = 0
                 continue
             fee = fill_slipped * add_n * fee_rate
@@ -536,7 +545,7 @@ def simulate(
         # so open positions above are untouched.
         if regime_ok is not None and not bool(regime_ok.asof(today)):
             for sym in list(pending):
-                skip("cancelled: market filter is risk-off")
+                skip("cancelled: market filter is risk-off", sym, today)
                 del pending[sym]
 
         # Rank the ones that triggered today, because slots are scarce.
@@ -551,16 +560,16 @@ def simulate(
                 # EN-01: the next session's open, that day only
                 o = float(bar["open"])
                 if o > meta.get("max_fill", math.inf):
-                    skip("gapped above the buy range")
+                    skip("gapped above the buy range", sym, today)
                     del pending[sym]
                 elif o <= meta.get("min_open", -math.inf):
-                    skip("opened at or below the tight low")
+                    skip("opened at or below the tight low", sym, today)
                     del pending[sym]
                 else:
                     triggered.append((sym, order, bar))
                 continue
             if today > order["expires"]:
-                skip("the resting order expired unfilled")
+                skip("the resting order expired unfilled", sym, today)
                 del pending[sym]
                 continue
             if bar["high"] >= order["entry"]:
@@ -573,7 +582,7 @@ def simulate(
                 # base is intact until it closes below the tight low.
                 lvl = meta.get("confirm_close_above")
                 if lvl is not None and float(bar["close"]) < float(lvl):
-                    skip("poked through the pivot but closed back below it")
+                    skip("poked through the pivot but closed back below it", sym, today)
                 else:
                     triggered.append((sym, order, bar))
             elif bar["low"] <= order["stop"]:
@@ -589,6 +598,7 @@ def simulate(
                 continue
             if len(positions) >= slots_today:
                 missed_slot += 1
+                missed_slot_at.append((sym, today))
                 if meta.get("order") == "open":
                     del pending[sym]
                 continue  # keep it resting; a slot may free up before it expires
@@ -604,33 +614,33 @@ def simulate(
                 raw_entry = max(order["entry"], float(bar["open"]))  # gap fills worse
             if "max_fill" in meta:
                 if raw_entry > meta["max_fill"]:
-                    skip("gapped above the buy range")
+                    skip("gapped above the buy range", sym, today)
                     del pending[sym]
                     continue
             elif raw_entry >= order["target"]:
-                skip("gapped past the whole reward")
+                skip("gapped past the whole reward", sym, today)
                 del pending[sym]
                 continue
             if meta.get("base_id") is not None:
                 _key = (sym, meta["base_id"])
                 _taken = bases_entered.get(_key, 0)
                 if _taken >= int(meta.get("max_entries_per_base", 1) or 1):
-                    skip("base already entered")
+                    skip("base already entered", sym, today)
                     del pending[sym]
                     continue
                 if _taken and base_last_exit.get(_key) not in RE_ENTRY_AFTER:
-                    skip("base's last trade was not shaken out")
+                    skip("base's last trade was not shaken out", sym, today)
                     del pending[sym]
                     continue
             slip = meta.get("slippage_bps", base_slip)
             entry = _slip(raw_entry, slip, "buy")
             risk_per_share = entry - order["stop"]
             if risk_per_share <= 0:
-                skip("fill at or below the stop")
+                skip("fill at or below the stop", sym, today)
                 del pending[sym]
                 continue
             if risk_per_share / entry > meta.get("max_risk_pct", math.inf):
-                skip("stop too far below the fill")
+                skip("stop too far below the fill", sym, today)
                 del pending[sym]
                 continue
             # The reward-to-risk minimum was tested on the signal bar's CLOSE, but the order
@@ -641,7 +651,7 @@ def simulate(
             # the two checks above, which also re-test a signal-time rule against the fill.
             min_r = meta.get("min_structural_r")
             if min_r and (order["target"] - entry) / risk_per_share < min_r:
-                skip(f"projects under {min_r:g}:1 at the fill")
+                skip(f"projects under {min_r:g}:1 at the fill", sym, today)
                 del pending[sym]
                 continue
 
@@ -654,7 +664,7 @@ def simulate(
             if shares * entry > max_notional:
                 shares = int(max_notional // entry)
             if max_adv_pct is not None and meta.get("adv") and shares * entry > max_adv_pct * meta["adv"]:
-                skip("order too large for the stock's traded value")
+                skip("order too large for the stock's traded value", sym, today)
                 del pending[sym]
                 continue
             if max_open_risk_pct is not None:
@@ -671,7 +681,7 @@ def simulate(
                     max(0.0, min(_last_close(p, prices, today), p.entry_price) - p.stop) * p.held
                     for p in positions.values())
                 if open_risk + risk_per_share * shares > max_open_risk_pct * equity_now:
-                    skip("open-risk cap")
+                    skip("open-risk cap", sym, today)
                     if meta.get("order") == "open":
                         del pending[sym]
                     continue   # keep resting: risk frees up as stops rise or positions close
@@ -695,6 +705,7 @@ def simulate(
             cost = cfg.commission_per_order + (entry - raw_entry) * shares + fee
             if shares < 1:
                 missed_cash += 1
+                missed_cash_at.append((sym, today))
                 del pending[sym]
                 continue
 
@@ -723,10 +734,10 @@ def simulate(
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
             if s.symbol in positions:
-                skip("already holding this symbol")
+                skip("already holding this symbol", s.symbol, today)
                 continue
             if s.symbol in pending:
-                skip("an order is already resting in this symbol")
+                skip("an order is already resting in this symbol", s.symbol, today)
                 continue
             pending[s.symbol] = {
                 "entry": s.entry, "stop": s.stop, "target": s.target,
@@ -764,6 +775,7 @@ def simulate(
         signals_seen=len(signals), signals_taken=taken,
         signals_missed_no_slot=missed_slot, signals_missed_no_cash=missed_cash,
         partial_fills=partial_fills, skipped=skipped,
+        skipped_at=skipped_at, missed_slot_at=missed_slot_at, missed_cash_at=missed_cash_at,
     )
 
 
