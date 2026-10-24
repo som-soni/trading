@@ -56,6 +56,9 @@ MAX_HOLD = 10               # sessions, if nothing else has happened
 CATASTROPHE = True          # also sell on a close back below the trend average
 
 MEASURES = ("rsi2", "bollinger", "double7")
+RANKS = ("rsi", "vol")            # which firing series is bought first when slots are short
+TRENDS = ("above200", "off")      # whether a signal needs the close above the 200-day
+VOL_RANK_BARS = 20                # realized volatility window for rank="vol"
 
 
 def wilder_rsi(close: pd.Series, length: int = RSI_LENGTH) -> pd.Series:
@@ -95,11 +98,22 @@ def load_indices(market: str) -> dict:
     return out
 
 
-def oversold_signals(close: pd.Series, measure: str, rsi_entry: float = RSI_ENTRY) -> tuple:
-    """(entry mask, exit mask) for one series -- the only thing the three variants disagree on."""
+def oversold_signals(close: pd.Series, measure: str, rsi_entry: float = RSI_ENTRY,
+                     trend: str = "above200") -> tuple:
+    """(entry mask, exit mask) for one series -- the only thing the three variants disagree on.
+
+    trend="off" drops the 200-day filter AND the catastrophe exit together: below the 200-day the
+    catastrophe exit would fire on the first bar, so keeping it would quietly reinstate the filter.
+    Measured on US index series since 2000, the filter does the opposite of its purpose in bear
+    years -- early in a decline the index is still above its 200-day, so it keeps the first dips
+    of a top (2008: -2.06% a trade, 2022: -1.13%) and discards the capitulation dips below it
+    (+1.34%, +0.63%).
+    """
+    if trend not in TRENDS:
+        raise ValueError(f"unknown trend '{trend}', choose from {TRENDS}")
     sma_trend = close.rolling(TREND_SMA).mean()
     sma_exit = close.rolling(EXIT_SMA).mean()
-    uptrend = close > sma_trend
+    uptrend = (close > sma_trend) if trend == "above200" else pd.Series(True, index=close.index)
 
     if measure == "rsi2":
         r = wilder_rsi(close, RSI_LENGTH)
@@ -116,14 +130,15 @@ def oversold_signals(close: pd.Series, measure: str, rsi_entry: float = RSI_ENTR
     else:
         raise ValueError(f"unknown measure '{measure}', choose from {MEASURES}")
 
-    if CATASTROPHE:
+    if CATASTROPHE and trend == "above200":
         exit_ = exit_ | (close < sma_trend)
     return entry.fillna(False), exit_.fillna(False)
 
 
 def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_ENTRY,
         position_pct: float = 25.0, max_positions: int = 2, cost_bps: float = 10.0,
-        max_hold: int = MAX_HOLD, preloaded: dict | None = None):
+        max_hold: int = MAX_HOLD, preloaded: dict | None = None,
+        rank: str = "rsi", trend: str = "above200"):
     """Event-driven, not calendar-driven: a signal can fire on any session.
 
     Neither existing engine fits, and bending one would have cost more than the 60 lines here.
@@ -136,8 +151,12 @@ def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_E
     series = preloaded if preloaded is not None else load_indices(market)
     start_ts = pd.Timestamp(start)
 
-    sigs = {name: oversold_signals(c, measure, rsi_entry) for name, c in series.items()}
+    if rank not in RANKS:
+        raise ValueError(f"unknown rank '{rank}', choose from {RANKS}")
+    sigs = {name: oversold_signals(c, measure, rsi_entry, trend) for name, c in series.items()}
     rsi = {name: wilder_rsi(c) for name, c in series.items()} if measure == "rsi2" else {}
+    # point-in-time realized volatility, for rank="vol" (data up to and including the signal close)
+    vol = {name: c.pct_change().rolling(VOL_RANK_BARS).std() for name, c in series.items()}
     dates = sorted({d for c in series.values() for d in c.index if d >= start_ts})
 
     cash = float(cfg.account_size)
@@ -175,11 +194,19 @@ def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_E
             })
             del open_pos[name]
 
-        # ---- entries: most oversold first when several fire together
+        # ---- entries: when several fire together, which is bought first.
+        # rank="rsi" (the shipped rule) takes the most oversold. But RSI(2) counts consecutive down
+        # closes, not how hard a series will rebound: defensive sectors drift down in small steps,
+        # reach extreme readings easily and bounce least, so the US run held XLU (-0.09% a trade
+        # since 2000) 50 times and QQQ (+1.18%) 32. rank="vol" takes the most volatile series by
+        # its own trailing volatility, a point-in-time stand-in for beta.
         if len(open_pos) < max_positions:
             firing = [n for n, (e, _) in sigs.items()
                       if n not in open_pos and d in series[n].index and bool(e.get(d, False))]
-            firing.sort(key=lambda n: float(rsi[n].get(d, 50.0)) if rsi else 0.0)
+            if rank == "vol":
+                firing.sort(key=lambda n: -float(vol[n].get(d, 0.0) or 0.0))
+            else:
+                firing.sort(key=lambda n: float(rsi[n].get(d, 50.0)) if rsi else 0.0)
             for name in firing[: max_positions - len(open_pos)]:
                 price = mark(name, d)
                 if price != price or price <= 0:
@@ -345,8 +372,17 @@ class MeanReversionStrategy(PortfolioStrategy):
     key = MR_DOC["key"]
     doc = MR_DOC
     family = "mean_reversion"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-18",
+    version = "1.1"
+    changelog = (("1.1", "2026-10-24",
+                  "Two options, both off by default so the shipped run is unchanged. `rank vol` buys the "
+                  "most volatile firing series first instead of the most oversold: RSI(2) depth counts "
+                  "down closes rather than predicting the rebound, and the US run held its worst series "
+                  "most (XLU -0.09% a trade since 2000, 50 times; QQQ +1.18%, 32), with high-beta series "
+                  "beating low-beta ones in both halves of 2000-2026. `trend off` drops the 200-day filter "
+                  "and the catastrophe exit together: in 2008 and 2022 the trades it kept lost (-2.06%, "
+                  "-1.13%) and the ones it discarded won (+1.34%, +0.63%). Indian index series show no "
+                  "edge in any regime once two corrupt PSUBNKBEES.NS bars are masked."),
+                 ("1.0", "2026-10-18",
                   "First version: Connors' RSI(2) with the 200-day trend filter, the 5-day exit and a "
                   "10-session time stop, on every stored broad and sector index. Validated against the "
                   "guide's own worked example before being measured -- RSI(2) 4.1 on the Nifty 50 on "
@@ -379,6 +415,8 @@ class MeanReversionStrategy(PortfolioStrategy):
     max_positions = 2
     max_hold = MAX_HOLD
     cost_bps = 10.0
+    rank = "rsi"
+    trend = "above200"
     backtest_start = "2010-01-01"
 
     param_docs = (
@@ -389,6 +427,10 @@ class MeanReversionStrategy(PortfolioStrategy):
         ("Concurrent positions", "max_positions", "How many index positions may be open at once."),
         ("Maximum hold", "max_hold", "Sessions before the time stop sells regardless."),
         ("Cost per side", "cost_bps", "Basis points per side. Comparable to the whole edge -- see the caveats."),
+        ("Ranking", "rank", "rsi | vol. Which firing series is bought first when slots are short: the most "
+                            "oversold (shipped) or the most volatile, a point-in-time stand-in for beta."),
+        ("Trend filter", "trend", "above200 | off. Off drops the 200-day entry filter and the catastrophe "
+                                  "exit together, so signals below the 200-day count."),
     )
 
 
@@ -405,6 +447,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     ap.add_argument("--max-positions", type=int, default=MeanReversionStrategy.max_positions)
     ap.add_argument("--max-hold", type=int, default=MeanReversionStrategy.max_hold)
     ap.add_argument("--cost-bps", type=float, default=MeanReversionStrategy.cost_bps)
+    ap.add_argument("--rank", default=MeanReversionStrategy.rank, choices=list(RANKS))
+    ap.add_argument("--trend", default=MeanReversionStrategy.trend, choices=list(TRENDS))
     ap.add_argument("--no-ingest", action="store_true")
     a = ap.parse_args(argv)
 
@@ -412,16 +456,21 @@ def main(argv: list[str] | None = None) -> dict | None:
     tdf, eq, held, csh, costs, series = run(
         a.market, a.start, measure=a.measure, rsi_entry=a.rsi_entry,
         position_pct=a.position_pct, max_positions=a.max_positions,
-        cost_bps=a.cost_bps, max_hold=a.max_hold)
+        cost_bps=a.cost_bps, max_hold=a.max_hold, rank=a.rank, trend=a.trend)
 
     b = cache.load_cached(a.market, cfg.benchmark_ticker)
     bc = b["close"].astype(float).reindex(eq.index).ffill() if b is not None else None
     notes = [
         f"A TIMING rule on {len(series)} index series, not a stock selection: there is no universe to "
         "pick from and no survivorship discount, because indices are maintained rather than selected.",
-        f"Measure '{a.measure}'; entry needs the close above its {TREND_SMA}-day average. Exit on the "
-        f"first close above the {EXIT_SMA}-day average, RSI above {RSI_EXIT}, a close back below the "
-        f"{TREND_SMA}-day average, or {a.max_hold} sessions.",
+        (f"Measure '{a.measure}'; entry needs the close above its {TREND_SMA}-day average. Exit on the "
+         f"first close above the {EXIT_SMA}-day average, RSI above {RSI_EXIT}, a close back below the "
+         f"{TREND_SMA}-day average, or {a.max_hold} sessions." if a.trend == "above200" else
+         f"Measure '{a.measure}' with NO trend filter: signals below the {TREND_SMA}-day count, and the "
+         f"catastrophe exit is off with it. Exit on the first close above the {EXIT_SMA}-day average, "
+         f"RSI above {RSI_EXIT}, or {a.max_hold} sessions."),
+        ("When several series fire at once the most oversold is bought first." if a.rank == "rsi" else
+         f"When several series fire at once the most volatile ({VOL_RANK_BARS}-day realized) is bought first."),
         f"{a.position_pct:g}% of the book per signal, at most {a.max_positions} at once, cash otherwise -- "
         "which is why the headline is small and the SELECTION line below is the one to read.",
         "Index series are PRICE series and not tradable instruments; a real book buys an ETF or a future, "
@@ -436,8 +485,9 @@ def main(argv: list[str] | None = None) -> dict | None:
             setattr(perf, k, v)
     perf.benchmark_name = f"{cfg.benchmark_symbol} ({cfg.benchmark_ticker})"
 
+    variant = ("" if a.rank == "rsi" else f"_rank{a.rank}") + ("" if a.trend == "above200" else f"_trend{a.trend}")
     name = (f"{a.start}_{a.measure}_rsi{a.rsi_entry:g}_pos{a.max_positions}x{a.position_pct:g}pct"
-            f"_{a.cost_bps:g}bps_{MeanReversionStrategy.spec_id()}")
+            f"_{a.cost_bps:g}bps{variant}_{MeanReversionStrategy.spec_id()}")
     out = run_dir(a.market, a.strategy, name)
     tdf.to_csv(out / "trades.csv", index=False)
     # `cash` is written because the drag decomposition needs it and this strategy is flat ~90% of
@@ -451,7 +501,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         md = report_mod.write_report(
             out, f"{cfg.name} — index mean reversion ({a.measure}), {a.start} onward",
             perf, eq, held, tdf, cfg.currency_symbol, a.max_positions, bc,
-            f"python3 -m swing_screener.backtesting.mean_reversion --market {a.market} --start {a.start}")
+            f"python3 -m swing_screener.backtesting.mean_reversion --market {a.market} --start {a.start}"
+            + (f" --rank {a.rank}" if a.rank != "rsi" else "") + (f" --trend {a.trend}" if a.trend != "above200" else ""))
         print(f"Report -> {md}")
     except Exception as e:   # noqa: BLE001
         print(f"(markdown report not generated: {type(e).__name__}: {e})")
