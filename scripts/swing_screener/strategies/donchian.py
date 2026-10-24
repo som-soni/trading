@@ -54,8 +54,18 @@ DC02 = "S2"   # DC-02  # coiled just under the channel high
 
 class DonchianStrategy(Strategy):
     selection = "time_series"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-24",
+         "Same-day ties now go to the stronger stock rather than the earlier letter. Every accepted "
+         "signal scores 2 and the book is slot-limited -- full on 82% (India) and 88% (US) of days in "
+         "the 1.1 runs -- so the tie fell to the scan order: A-H tickers took 77% of US trades from 43% "
+         "of the pool. The backtest now keeps the setup score and breaks ties by 12-1 momentum "
+         "(`--rank-by setup_momentum`). With every accepted signal tied, that is effectively a "
+         "momentum ranking: measured on the 2013 Indian run as +7.8 points of CAGR over a random "
+         "order (13.83% vs 6.05%, against the Nifty 500's 11.68%), and drawdown slightly worse "
+         "(-52.6% vs -49.8%). Unmeasured in the US. Bumped by hand: backtest_args is not a numeric "
+         "constant."),
         ("1.2", "2026-10-16",
          "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
          "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
@@ -152,9 +162,14 @@ class DonchianStrategy(Strategy):
         "the nominal target, which caps exactly the winners the strategy exists to keep.",
         "**Live and backtest exits differ.** The screen reports the {exit_channel}-day low as the exit "
         "level, but every recorded backtest exits on the 50-day low.",
-        "**Ties are arbitrary.** Every signal the backtest accepts scores the same setup quality, 2. "
-        "When more breakouts trigger than there are free slots, the book fills in scan order, which "
-        "is roughly alphabetical. `--rank-by` (momentum, vol_scaled, random) replaces that order.",
+        "**The strongest breakout gets the slot.** Every signal the backtest accepts scores the same "
+        "setup quality, 2, and the book is full most of the time -- on the 1.1 runs slots were full on "
+        "82% (India) and 88% (US) of days, and 62,379 / 374,334 signal-days were turned away for it. "
+        "Before 1.3 the tie fell to the scan order: A-H tickers took 77% of US trades from a pool where "
+        "they were 43%. Now the setup score decides and 12-1 month momentum breaks the tie "
+        "(`--rank-by setup_momentum`). Because every accepted signal ties, that is in practice a "
+        "momentum ranking, the change measured on the 2013 Indian run at +7.8 points of CAGR over a "
+        "random order. It has not been measured in the US.",
         "**No price floor anywhere.** Version 1.1 removed `cfg.screener.min_price` from the "
         "point-in-time pre-filter. The daily screen calls that same pre-filter, so it applies no "
         "price floor either; only the Screens page's snapshot does.",
@@ -372,7 +387,7 @@ class DonchianStrategy(Strategy):
         ("Slippage", "cfg.slippage_bps",
          "Backtest cost per side, in basis points of the fill price."),
     )
-    backtest_args = "--exit-mode donchian --no-target --donchian-bars 50"
+    backtest_args = "--exit-mode donchian --no-target --donchian-bars 50 --rank-by setup_momentum"
 
     # ---------- screen ----------
 
