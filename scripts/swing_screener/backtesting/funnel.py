@@ -85,6 +85,10 @@ class Funnel:
     # them is always the true total. Capped so a rule that rejects 200,000 bars does
     # not carry 200,000 strings through the run and into the JSON.
     MAX_DROP_NAMES = 500
+    # Dates kept per named symbol in one drop row: enough to answer "why didn't CRWD trade in
+    # August?" (the blackout blocked its 08-14 and 08-17 signals), short enough that a stock
+    # refused on hundreds of bars does not bloat funnel.json. The most recent are kept.
+    MAX_DROP_DATES = 50
     # A stage list is for looking a stock up, so the cap must not decide WHICH stocks can be
     # looked up. At 2,000 with an alphabetical cut it did exactly that: on a US run the
     # `candidates` list stopped at NMIH, so NVDA -- and everything else late in the alphabet --
@@ -106,6 +110,10 @@ class Funnel:
         # these are symbol counts and do not match the bar counts beside them.
         self.stage_symbols: dict[str, set] = collections.defaultdict(set)
         self.drop_symbols: dict[str, dict] = collections.defaultdict(lambda: collections.defaultdict(set))
+        # stage -> reason -> symbol -> {ISO date}, for the named symbols of drops that know their
+        # date (the portfolio filters and the simulator). Plain dicts, so a per-symbol Funnel still
+        # pickles back from a pool worker.
+        self.drop_dates: dict[str, dict] = {}
 
     # ---- recording
     def reached(self, stage: str, n: int = 1, symbol: str | None = None) -> None:
@@ -118,9 +126,30 @@ class Funnel:
         key = normalise(reason)
         self.drops[stage][key] += n
         if symbol:
-            names = self.drop_symbols[stage][key]
-            if len(names) < self.MAX_DROP_NAMES:
-                names.add(symbol)
+            self._name(stage, key, symbol)
+
+    def dropped_each(self, stage: str, reason: object, items) -> None:
+        """Record each dropped item by name and date: `items` are signals (anything with
+        .symbol and .date) or (symbol, date) pairs. The count is len(items), so a filter's
+        own tally and the funnel's cannot disagree; an empty list still records the row at
+        zero, exactly as dropped(stage, reason, 0) would."""
+        items = list(items)
+        key = normalise(reason)
+        self.drops[stage][key] += len(items)
+        for it in items:
+            sym, date = (it.symbol, it.date) if hasattr(it, "symbol") else it
+            self._name(stage, key, sym, date)
+
+    def _name(self, stage: str, key: str, symbol: str, date=None) -> None:
+        names = self.drop_symbols[stage][key]
+        if symbol not in names:
+            if len(names) >= self.MAX_DROP_NAMES:
+                return
+            names.add(symbol)
+        if date is not None:
+            day = str(date)[:10]
+            (self.drop_dates.setdefault(stage, {}).setdefault(key, {})
+             .setdefault(symbol, set()).add(day))
 
     def set_symbols(self, stage: str, symbols) -> None:
         """Name the stocks at a stage counted in bulk rather than one at a time."""
@@ -140,6 +169,13 @@ class Funnel:
             for reason, names in reasons.items():
                 have = self.drop_symbols[stage][reason]
                 have |= set(list(names)[: max(0, self.MAX_DROP_NAMES - len(have))])
+        for stage, reasons in other.drop_dates.items():
+            for reason, by_sym in reasons.items():
+                named = self.drop_symbols[stage][reason]
+                mine = self.drop_dates.setdefault(stage, {}).setdefault(reason, {})
+                for sym, days in by_sym.items():
+                    if sym in named:
+                        mine.setdefault(sym, set()).update(days)
 
     # ---- reading
     def rows(self) -> list[dict]:
@@ -159,8 +195,7 @@ class Funnel:
                 "label": _LABEL[key],
                 "unit": _UNIT[key],
                 "count": int(self.counts.get(key, 0)),
-                "drops": [{"reason": r, "count": int(n),
-                            "symbols": sorted(self.drop_symbols.get(key, {}).get(r, ()))}
+                "drops": [self._drop_row(key, r, n)
                           for r, n in self.drops.get(key, collections.Counter()).most_common()],
                 "symbols": _capped(self.stage_symbols.get(key, ()), self.MAX_STAGE_NAMES),
                 "symbols_truncated": len(self.stage_symbols.get(key, ())) > self.MAX_STAGE_NAMES,
@@ -177,6 +212,16 @@ class Funnel:
             if lost > 0 and gap > 0:
                 r["drops"].append({"reason": "not attributed to a named rule", "count": int(gap), "symbols": []})
         return out
+
+    def _drop_row(self, stage: str, reason: str, n: int) -> dict:
+        row = {"reason": reason, "count": int(n),
+               "symbols": sorted(self.drop_symbols.get(stage, {}).get(reason, ()))}
+        # symbol -> the dates it was refused on (a signal's date for a filter, the session for a
+        # simulator refusal), most recent MAX_DROP_DATES; only where the drop knew its date
+        dates = self.drop_dates.get(stage, {}).get(reason)
+        if dates:
+            row["dates"] = {sym: sorted(days)[-self.MAX_DROP_DATES:] for sym, days in sorted(dates.items())}
+        return row
 
     def to_dict(self) -> dict:
         return {"stages": self.rows(), "symbols": list(self.symbols)}
