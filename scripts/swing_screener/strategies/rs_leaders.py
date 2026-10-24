@@ -99,9 +99,11 @@ class RsLeadersStrategy(Strategy):
     changelog = (("1.1", "2026-10-24",
                   "Same-day signals are now bought strongest first: the backtest ranks them by RS rating "
                   "(`--rank-by rs`). Every signal scored the same setup quality, so when more triggered than "
-                  "there were free slots the tie fell through to Python's stable sort, i.e. the order the "
-                  "market was scanned in -- alphabetical. Measured on the 1.0 US run, A-H tickers were 44% "
-                  "of the candidate pool and 61% of the trades taken. For a strategy whose thesis is buying "
+                  "there was cash for, the tie fell through to Python's stable sort, i.e. the order the "
+                  "market was scanned in -- alphabetical. The competition is for CASH, not slots, which "
+                  "never fill here: on the 1.0 US run 143 signals were turned away for want of cash against "
+                  "69 trades taken, and A-H tickers were 44% of the candidate pool and 61% of the trades. "
+                  "India barely competes (one signal turned away), so the change acts mainly in the US. For a strategy whose thesis is buying "
                   "the strongest stocks, letting the alphabet pick among them contradicted the rule it "
                   "implements. BUMPED BY HAND: backtest_args is not a numeric constant, so the fingerprint "
                   "cannot see this."),
@@ -265,12 +267,14 @@ class RsLeadersStrategy(Strategy):
         "Skipped when the stop ends up too far away. The stop was set from the signal close; if the price "
         "actually paid puts it more than {MAX_STOP_PCT}% below, the buy is cancelled. A stop already capped at "
         "{MAX_STOP_PCT}% (W3) therefore only fills on an open below the signal close.",
-        "Strongest first. When more stocks trigger than there are free position slots, the highest RS rating "
-        "is bought first. Every signal carries the same setup quality, so without this the tie fell through "
-        "to the order the market was scanned in -- alphabetical -- and in the US the A-H tickers took 61% of "
-        "the trades from a pool where they were 44%. RS is a whole number from {RS_MIN_RANK} to 99 here, so "
-        "two candidates can still share a rating; that residual tie is narrow (one rating level, at the margin "
-        "of the last free slot) but not zero.",
+        "Strongest first. When more stocks trigger on one day than there is cash to buy them all, the highest "
+        "RS rating is paid for first. The slots almost never fill -- this strategy sits mostly in cash -- but "
+        "the cash does: on the 1.0 US run, 143 signals were turned away for want of it against 69 trades "
+        "taken. Every signal carries the same setup quality, so without this the tie fell through to the order "
+        "the market was scanned in -- alphabetical -- and the A-H tickers took 61% of US trades from a pool "
+        "where they were 44%. India hardly competes for cash (one signal turned away), so there the ranking "
+        "rarely acts. RS is a whole number from {RS_MIN_RANK} to 99 here, so two candidates can still share a "
+        "rating; that residual tie is narrow but not zero.",
     )
     stop_rules = (
         "Where it goes. At the lowest low of the {STOP_DAYS} sessions before the signal session (the signal "
