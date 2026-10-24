@@ -784,10 +784,10 @@ class NoSignals(ValueError):
         self.funnel = funnel
 
 
-# Filled in the parent, before the pool forks (collect_portfolio_signals, workers>1): cfg, strategy,
-# start, market_key, use_signal_cache, accept_labels, deep_data. Fork gives every worker a read-only
-# copy-on-write view of this for free; only `sym` (a string) crosses the pool's IPC pipe per task,
-# not a whole DataFrame/Strategy per call. Same idiom as spec_sensitivity.py's `_DATA`.
+# Filled in the parent, before the pool forks (collect_portfolio_signals / _point_in_time_candidates,
+# workers>1): cfg, strategy, start, market_key, plus use_signal_cache, accept_labels, deep_data for
+# the scan. Fork gives every worker a read-only copy-on-write view of this for free; only `sym` (a
+# string) crosses the pool's IPC pipe per task, not a whole DataFrame/Strategy per call. Same idiom as spec_sensitivity.py's `_DATA`.
 _POOL_CTX: dict = {}
 
 
@@ -944,9 +944,32 @@ def sample_candidates(
     return sorted(picked)
 
 
+def _prefilter_symbol(
+    cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp, sym: str,
+) -> tuple[bool, bool]:
+    """(passes the pre-filter on >=1 bar from `start`, but not on today's row) for one symbol."""
+    raw = cache.load_cached(market_key, sym)
+    if raw is None or len(raw) < 260:
+        return False, False
+    enriched = ind.enrich_daily(raw)
+    mask = strategy.prefilter_mask(cfg, enriched)
+    if not bool(mask[mask.index >= start].any()):
+        return False, False
+    return True, not bool(strategy.passes_prefilter(cfg, enriched)[0])
+
+
+def _prefilter_one(sym: str) -> tuple[bool, bool]:
+    """_prefilter_symbol in a pool worker, its arguments read from _POOL_CTX
+    (_point_in_time_candidates, workers>1). Touches no Funnel: the caller sets the
+    funnel's counts once, from the merged candidate list."""
+    ctx = _POOL_CTX
+    return _prefilter_symbol(ctx["cfg"], ctx["strategy"], ctx["market_key"], ctx["start"], sym)
+
+
 def _point_in_time_candidates(
     cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp,
     fn: "funnel_mod.Funnel | None" = None,
+    workers: int = 1,
 ) -> list[str]:
     """Symbols that would have been screened in on AT LEAST ONE bar in the
     window -- not the ones that pass today.
@@ -956,6 +979,10 @@ def _point_in_time_candidates(
     gets dropped from the whole simulation, discarding trades the live
     screener would genuinely have taken. Measured on US data, selecting on
     today's row silently excluded 1,421 of 2,544 real candidates.
+
+    `workers` > 1 pre-filters that many symbols at once in forked processes (same pattern
+    as collect_portfolio_signals); the candidate list comes back in universe order, identical
+    to the serial path (workers=1, the default).
     """
     tickers = universe.load_universe(market_key)
     logger.info(
@@ -964,18 +991,36 @@ def _point_in_time_candidates(
     )
     candidates: list[str] = []
     excluded_today = 0
-    for i, sym in enumerate(tickers):
-        _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
-                  done=i + 1, total=len(tickers))
-        raw = cache.load_cached(market_key, sym)
-        if raw is None or len(raw) < 260:
-            continue
-        enriched = ind.enrich_daily(raw)
-        mask = strategy.prefilter_mask(cfg, enriched)
-        if bool(mask[mask.index >= start].any()):
-            candidates.append(sym)
-            if not bool(strategy.passes_prefilter(cfg, enriched)[0]):
-                excluded_today += 1
+    if workers <= 1:
+        for i, sym in enumerate(tickers):
+            _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
+                      done=i + 1, total=len(tickers))
+            qualifies, missed_today = _prefilter_symbol(cfg, strategy, market_key, start, sym)
+            if qualifies:
+                candidates.append(sym)
+                excluded_today += missed_today
+    else:
+        import multiprocessing as mp
+        from concurrent.futures import ProcessPoolExecutor
+
+        global _POOL_CTX
+        _POOL_CTX = dict(cfg=cfg, strategy=strategy, market_key=market_key, start=start)
+        logger.info("Pre-filtering %d symbols with %d worker processes", len(tickers), workers)
+        # Same fork discipline as collect_portfolio_signals: close the parent's connection so no
+        # worker inherits a live one, fork-safe init per worker, and an executor that fails loudly.
+        if db._connection is not None and not db._connection.closed:
+            db._connection.close()
+        with ProcessPoolExecutor(workers, mp_context=mp.get_context("fork"), initializer=_pool_worker_init) as pool:
+            # map keeps universe order, so `candidates` is the same list the serial path builds.
+            # chunksize batches the IPC round trips: one symbol is only a few milliseconds of work.
+            results = pool.map(_prefilter_one, tickers, chunksize=16)
+            for i, (sym, (qualifies, missed_today)) in enumerate(zip(tickers, results)):
+                if qualifies:
+                    candidates.append(sym)
+                    excluded_today += missed_today
+                _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
+                          done=i + 1, total=len(tickers))
+        _POOL_CTX = {}
     logger.info(
         "Pre-filter (%s): %d/%d symbols qualify on >=1 bar in the window",
         strategy.key, len(candidates), len(tickers),
@@ -1038,8 +1083,10 @@ def run_portfolio_backtest(
     `min_rs`, `use_market_filter`, `spec_costs`, `max_open_risk_pct` and `max_adv_pct` are the
     Minervini spec's portfolio rules (backtesting/spec.py); `rank_by="rs"` is its PF-03 ranking.
 
-    `workers` fans the symbol scan (collect_portfolio_signals) out across forked processes —
-    helps on a cold signal cache, little or nothing on a warm one (see that function's docstring).
+    `workers` fans the point-in-time candidate selection (_point_in_time_candidates) and the
+    symbol scan (collect_portfolio_signals) out across forked processes. The selection is CPU-bound
+    and always gains; the scan helps on a cold signal cache, little or nothing on a warm one (see
+    that function's docstring).
 
     Returns (trades_df, Performance, PortfolioResult)."""
     from . import spec as spec_mod
@@ -1075,7 +1122,7 @@ def run_portfolio_backtest(
 
     _progress("selecting point-in-time candidates")
     fn = funnel_mod.Funnel()
-    candidates = _point_in_time_candidates(cfg, strategy, market_key, start, fn=fn)
+    candidates = _point_in_time_candidates(cfg, strategy, market_key, start, fn=fn, workers=workers)
     if only_symbols:
         want = {s.strip().upper() for s in only_symbols if s and s.strip()}
         missing = sorted(w for w in want if w not in {c.upper() for c in candidates})
