@@ -42,8 +42,14 @@ BREAKOUT_LOOKBACK = 55
 
 class BreakoutStrategy(Strategy):
     selection = "time_series"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-24",
+         "Same-day ties now go to the stronger stock rather than the earlier letter. Every accepted signal "
+         "scores the same setup quality, so when more triggered than there was cash for, the tie fell "
+         "through to Python's stable sort -- the scan order, alphabetical. The backtest now keeps the "
+         "strategy's score and breaks only exact ties by 12-1 momentum (`--rank-by setup_momentum`). "
+         "Bumped by hand: backtest_args is not a numeric constant."),
         ("1.2", "2026-10-16",
          "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
          "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
@@ -145,9 +151,12 @@ class BreakoutStrategy(Strategy):
         "on the session after the fill. A session that triggers the buy and then trades through the "
         "stop is held overnight, and survives if the next session stays above the stop: kinder than "
         "a real stop order.",
-        "**Ties are arbitrary.** Every signal the backtest accepts scores the same setup quality, 2, so "
-        "when more trigger than there are free slots the book fills in scan order, roughly "
-        "alphabetical. `--rank-by` replaces that order.",
+        "**Ties go to the stronger stock.** Every signal the backtest accepts scores the same setup "
+        "quality, 2, so when more trigger on one day than there is cash to buy them all, something else "
+        "has to choose. Before 1.3 it was the order the market was scanned in -- alphabetical. Now the "
+        "strategy's own score still decides, and 12-1 month momentum only breaks the tie "
+        "(`--rank-by setup_momentum`). The competition is for cash, not slots: on the 1.1 US run 314 "
+        "signals were turned away for want of cash against 705 trades, and 10 for a full book.",
         "**No price floor anywhere.** Version 1.1 removed `cfg.screener.min_price` from the "
         "point-in-time pre-filter. The daily screen calls that same pre-filter, so it applies no "
         "price floor either; only the Screens page's snapshot does.",
@@ -364,7 +373,7 @@ class BreakoutStrategy(Strategy):
         ("Slippage", "cfg.slippage_bps",
          "Backtest cost per side, in basis points of the fill price."),
     )
-    backtest_args = ""
+    backtest_args = "--rank-by setup_momentum"
 
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
         ok, why = tradable_point_in_time(cfg, last)

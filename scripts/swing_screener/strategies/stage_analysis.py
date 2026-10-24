@@ -244,8 +244,15 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.4"
-    changelog = (("2.4", "2026-10-24",
+    version = "2.5"
+    changelog = (("2.5", "2026-10-24",
+                  "Same-day ties now go to the stronger stock rather than the earlier letter. The book is "
+                  "slot-limited -- on the 2.3 US run 1,947 signals lost out to a full book against 133 "
+                  "trades -- and the accepted signals share one setup score, so the tie fell through to the "
+                  "scan order, alphabetical. The backtest now keeps the setup score (so W1_RANKS_ONLY still "
+                  "demotes a low-volume breakout) and breaks only exact ties by 12-1 momentum "
+                  "(`--rank-by setup_momentum`). Bumped by hand: backtest_args is not a numeric constant."),
+                 ("2.4", "2026-10-24",
                   "Two experiment switches, both OFF by default, so this version trades exactly as 2.3 "
                   "(the golden harness is identical). W1_RANKS_ONLY demotes W1, low breakout volume, "
                   "from a block to a rank: the breakouts it blocked in the 2020-26 Indian run matched "
@@ -567,6 +574,11 @@ class StageAnalysisStrategy(Strategy):
         "Signal. Every gate passes, the setup is a completed breakout, and no watch flag is set: a HIGH "
         "CONFIDENCE signal on that session's close. The backtest buys only these; an armed base (TRADE ON "
         "TRIGGER) and anything flagged W1-W3 are never bought there.",
+        "Strongest first when slots run out. More breakouts trigger than the book can hold -- on the 2.3 US run "
+        "1,947 signals were turned away for a full book against 133 trades -- so the order they are filled in "
+        "decides the portfolio. The setup score decides first (it is what demotes a low-volume breakout under "
+        "W1_RANKS_ONLY); an exact tie goes to the stock with the stronger 12-1 month momentum, Weinstein's "
+        "own preference for the relatively strongest. Before 2.5 a tie fell to the scan order, alphabetical.",
         "Buy-stop at the signal close. The backtest places a buy-stop at the signal session's close, from the next "
         "session on. It fills on the first session whose high reaches it, at that price, or at the open if the "
         "stock opens above it.",
@@ -656,7 +668,7 @@ class StageAnalysisStrategy(Strategy):
         ("G7's blocked market stage", "G7_BLOCK_STAGE", "Experiment: 4 is the shipped rule; 3 refuses entries "
                                                         "while the market tops instead of after it has fallen."),
     )
-    backtest_args = f"--exit-mode weekly_ma --ma-weeks {MA_WEEKS} --no-target"
+    backtest_args = f"--exit-mode weekly_ma --ma-weeks {MA_WEEKS} --no-target --rank-by setup_momentum"
 
     # ---------- screen ----------
 

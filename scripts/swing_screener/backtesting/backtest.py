@@ -36,6 +36,7 @@ Usage:
 
 import argparse
 import json
+import math
 import logging
 import os
 from dataclasses import dataclass, replace as dc_replace
@@ -511,7 +512,10 @@ def collect_signals(
     return out
 
 
-RANK_MODES = ("setup", "momentum", "vol_scaled", "random")
+RANK_MODES = ("setup", "momentum", "vol_scaled", "random", "setup_momentum")
+# Bounded below the smallest gap between any strategy's setup-quality levels (0.5 today), so the
+# tie-break can reorder exact ties and nothing else.
+TIEBREAK_SCALE = 1e-3
 
 
 def rerank_signals(
@@ -533,6 +537,10 @@ def rerank_signals(
     earns its edge from. `vol_scaled` divides that by realised volatility.
     `random` is the control: if an informative ranking does not beat a seeded
     coin flip, the ranking is not the lever after all.
+    `setup_momentum` KEEPS the strategy's own score and uses 12-1 momentum only to
+    break exact ties. The other modes replace the score, which throws away a
+    strategy's own ordering (a confirmed breakout over an unconfirmed one, a
+    flag's penalty); this keeps it and removes only the alphabetical fallback.
 
     Scores are computed strictly from bars at or before each signal's own date,
     so this cannot leak future information.
@@ -569,6 +577,17 @@ def rerank_signals(
             v = ser.at[sig.date]
             if pd.notna(v):
                 val = float(v)
+        if kind == "setup_momentum":
+            # the strategy's score decides; momentum only orders an exact tie, squashed into
+            # (0, TIEBREAK_SCALE) so it can never cross a gap between quality levels. Unknown
+            # momentum adds nothing, so it sorts below every known one at the same level.
+            if val is None:
+                missing += 1
+                tb = 0.0
+            else:
+                tb = TIEBREAK_SCALE * (math.atan(val) / math.pi + 0.5)
+            out.append(dc_replace(sig, quality=float(sig.quality) + tb))
+            continue
         if val is None:
             missing += 1
             # unrankable goes last, never first -- an unknown score must not
