@@ -1359,6 +1359,36 @@ def _exposure_from(args):
                     pilot_frac=args.pe_pilot, press_net_r=args.pe_press)
 
 
+
+def _portfolio_suffix(args, cfg) -> str:
+    """Run-name parts for the portfolio limits that change a result.
+
+    A run is filed under its name, so every input that changes the trades has to be in it, or two
+    different runs share a directory and the later one silently replaces the earlier -- with the
+    stored report then describing the wrong configuration. `--max-positions`, `--max-open-risk`,
+    `--max-adv-pct` and `--max-base` were missing: a `--max-positions 4` run overwrote the default
+    run it was meant to be compared against, and `--max-base 1` and `--max-base 2` named the same
+    directory.
+
+    A part is added only when the value differs from the default the run would have used anyway
+    (spec mode fills these from the strategy's constants), so existing runs keep their names.
+    """
+    from ..strategies import minervini_spec as ms
+    spec = bool(getattr(args, "spec", False))
+    parts = []
+    default = ms.MAX_POSITIONS if spec else cfg.max_open_positions
+    if args.max_positions is not None and args.max_positions != default:
+        parts.append(f"_mp{args.max_positions}")
+    default = ms.MAX_OPEN_RISK_PCT if spec else None
+    if args.max_open_risk is not None and args.max_open_risk != default:
+        parts.append(f"_or{args.max_open_risk:g}")
+    default = ms.MAX_ADV_PCT if spec else None
+    if args.max_adv_pct is not None and args.max_adv_pct != default:
+        parts.append(f"_adv{args.max_adv_pct:g}")
+    if getattr(args, "max_base", None) is not None:
+        parts.append(f"_maxbase{args.max_base}")
+    return "".join(parts)
+
 def main(argv: list[str] | None = None) -> dict | None:
     """CLI entry point. `argv` lets the `backtest` job (jobs/registry.py) run it in-process with the
     same arguments the command line would take; the portfolio branch returns {run_dir, trades, perf}
@@ -1756,6 +1786,7 @@ def main(argv: list[str] | None = None) -> dict | None:
         run += f"_dv{args.min_dollar_volume / 1e6:g}m"
     if args.pyramid:
         run += f"_pyr{args.pyramid:g}at{args.pyramid_add_pct:g}pct"
+    run += _portfolio_suffix(args, cfg)
     if args.symbols:
         picked = [x.strip().upper() for x in args.symbols.split(",") if x.strip()]
         run += "_only-" + ("+".join(picked) if len(picked) <= 4 else f"{len(picked)}syms")
