@@ -856,10 +856,13 @@ def strategy_defaults(key: str, market: str) -> dict:
     return out
 
 
-def main(argv: list[str] | None = None) -> dict | None:
-    """`argv` so the job runner can call this in-process, the way backtest.main is called."""
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    from ..strategies import portfolio_strategies
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """The command line, with the named strategy's registered tunables as its defaults.
+
+    Split out of main() so another runner can run a registered ranking strategy exactly as its
+    own runs do -- `combination` runs momentum_vol_scaled as a sleeve -- instead of restating
+    which flag maps to which argument and drifting from it.
+    """
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--strategy", default="momentum_baseline")
     pre.add_argument("--market")
@@ -867,10 +870,12 @@ def main(argv: list[str] | None = None) -> dict | None:
     ap = build_parser()
     if chosen.market:
         ap.set_defaults(**strategy_defaults(chosen.strategy, chosen.market))
-    args = ap.parse_args(argv)
+    return ap.parse_args(argv)
 
-    cfg = MARKETS[args.market]
-    tdf, perf, eq, pos = run(
+
+def run_args(args: argparse.Namespace):
+    """run() for a parsed command line: the one place a flag is mapped to an argument."""
+    return run(
         args.market, args.start, top_n=args.top_n, lookback=args.lookback,
         skip=args.skip, rebalance=args.rebalance,
         trend_filter=not args.no_trend_filter, cost_bps=args.cost_bps,
@@ -882,6 +887,16 @@ def main(argv: list[str] | None = None) -> dict | None:
         index_overlay=args.index_overlay, overlay_months=args.overlay_months,
         hold_rank=args.hold_rank,
     )
+
+
+def main(argv: list[str] | None = None) -> dict | None:
+    """`argv` so the job runner can call this in-process, the way backtest.main is called."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    from ..strategies import portfolio_strategies
+    args = parse_args(argv)
+
+    cfg = MARKETS[args.market]
+    tdf, perf, eq, pos = run_args(args)
     from ..paths import run_dir
 
     # NOT `run`: this module's main entry point is also called run(), and a

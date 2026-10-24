@@ -461,6 +461,15 @@
     },
     "version": "1.0"
   },
+  "momentum_dual_combo": {
+    "family": "momentum_dual_combo",
+    "fingerprint": "a22c5cbf",
+    "params": {
+      "_key": "momentum_dual_combo",
+      "momentum_weight": 0.5
+    },
+    "version": "1.0"
+  },
   "momentum_vol_scaled": {
     "family": "momentum_vol_scaled",
     "fingerprint": "006f8206",
