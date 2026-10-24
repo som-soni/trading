@@ -871,6 +871,25 @@ def report_archive(run_id: int, request: Request, archived: bool = Body(..., emb
     return {"id": run_id, "archived": bool(archived)}
 
 
+def run_variant(spec_id: str | None, overrides: dict | None, current: str | None) -> dict:
+    """Whether a run tested the strategy as configured, or an experiment on it -- and why.
+
+    Two ways a run is a variant. It recorded overrides (backtesting/windows.overrides: a --const, a
+    --vcp, a --bt passthrough such as a turnover floor or a rank buffer). Or it carries the CURRENT
+    version number under a fingerprint that is not the current one -- a --const run made outside the
+    queue, which recorded nothing but whose rules visibly differ. An older version is not a variant;
+    it is stale, which the page already marks. `overrides` None (not recorded) with the current
+    fingerprint counts as configured: the runs made before 2026-10-24 that the backfill could not
+    trace to a queue item are mostly plain runs, and calling them all experiments would empty the page.
+    """
+    from ..backtesting import windows
+    if overrides:
+        return {"variant": True, "overrides": windows.describe(overrides)}
+    if spec_id and current and spec_id != current and spec_id.split("-")[0] == current.split("-")[0]:
+        return {"variant": True, "overrides": [f"rules differ from {current} (an override that moved the fingerprint)"]}
+    return {"variant": False, "overrides": []}
+
+
 @app.get("/api/strategies/{key}")
 def strategy(key: str):
     strat_docs = _strategy_docs()
@@ -879,8 +898,8 @@ def strategy(key: str):
     d = strat_docs.strategy_doc(key)
     d["backtests"] = [{"id": i, "market": m, "run": r, "summary": s, "generated_at": g.isoformat() if g else None,
                        "spec_id": sp, "version": sp.split("-")[0].lstrip("v") if sp else None,
-                       "archived": a is not None, **_stage(r)}
-                      for i, m, r, s, g, sp, a in q("SELECT id, market, run_name, summary, generated_at, spec_id, archived_at "
+                       "archived": a is not None, **_stage(r), **run_variant(sp, ov, d.get("spec_id"))}
+                      for i, m, r, s, g, sp, a, ov in q("SELECT id, market, run_name, summary, generated_at, spec_id, archived_at, overrides "
                                                     "FROM report_runs WHERE strategy=%s AND kind='backtest' "
                                                     "ORDER BY generated_at DESC NULLS LAST", (key,))]
     d["versions"] = _run_versions(d)

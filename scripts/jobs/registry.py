@@ -508,6 +508,17 @@ def _backtest_steps(ctx: Ctx) -> list:
             repeat = windows.check(c.market, key, spec, c.opts) if stage == "verify" else False
             with windows.active(stage, start, end):
                 out = _run(c, start)
+            if out:
+                # What this run changed about the strategy, beside its report, so the Strategies page can
+                # tell the strategy as configured from an experiment on it. The run directory name alone
+                # cannot: a `--bt` passthrough (a turnover floor, a rank buffer) moves no fingerprint, so
+                # an experiment shares the spec_id of the real thing and read as its headline result.
+                import json
+                from pathlib import Path
+                own = "" if key in portfolio_strategies() else (type(_get(key)).backtest_args or "")
+                over = windows.overrides(c.opts, own)
+                (Path(out) / "overrides.json").write_text(json.dumps(
+                    {"overrides": over, "described": windows.describe(over), "stage": stage}, indent=1))
             if stage == "verify":
                 windows.record(c.market, key, spec, c.opts, repeat, out)
             c.step.detail = f"[{stage} {start} → {end or 'latest'}] " + (c.step.detail or "")

@@ -53,6 +53,11 @@ CREATE INDEX IF NOT EXISTS report_runs_spec ON report_runs (strategy, spec_id);
 -- run name like spec_id. NULL = a LEGACY run, made before stages existed, on its own mixed window --
 -- shown, but never as a verified result.
 ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS stage TEXT;
+-- what the run changed about the strategy (backtesting/windows.overrides), from the overrides.json the
+-- backtest job writes beside the report: {} = the strategy as configured, NULL = not recorded (a run
+-- made outside the queue, or before 2026-10-24). A --bt passthrough moves no fingerprint, so without
+-- this an experiment shares the spec_id of the real thing and the Strategies page cannot tell them apart.
+ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS overrides JSONB;
 CREATE TABLE IF NOT EXISTS report_figures (
     run_id INT NOT NULL REFERENCES report_runs(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -160,6 +165,17 @@ def _classify(rel: Path) -> tuple[str, str, str, str] | None:
     return None
 
 
+def _overrides(run_dir: Path) -> str | None:
+    """The run's overrides.json as stored JSON, or None when the run did not record one."""
+    f = run_dir / "overrides.json"
+    if not f.exists():
+        return None
+    try:
+        return json.dumps(json.loads(f.read_text()).get("overrides") or {})
+    except (ValueError, OSError):
+        return None
+
+
 def _store(cur, source: str, meta: tuple, markdown: str, files: list[Path]) -> None:
     kind, market, strategy, run = meta
     sig = _signature(files)
@@ -171,16 +187,19 @@ def _store(cur, source: str, meta: tuple, markdown: str, files: list[Path]) -> N
     # every bookmarked /#/reports/<id> link keeps working) across reloads
     cur.execute(
         """INSERT INTO report_runs
-           (source_path, kind, market, strategy, run_name, title, markdown, summary, signature, generated_at, spec_id, stage)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, to_timestamp(%s), %s, %s)
+           (source_path, kind, market, strategy, run_name, title, markdown, summary, signature, generated_at, spec_id, stage,
+            overrides)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, to_timestamp(%s), %s, %s, %s)
            ON CONFLICT (source_path) DO UPDATE SET
              kind=EXCLUDED.kind, market=EXCLUDED.market, strategy=EXCLUDED.strategy,
              run_name=EXCLUDED.run_name, title=EXCLUDED.title, markdown=EXCLUDED.markdown,
              summary=EXCLUDED.summary, signature=EXCLUDED.signature,
-             generated_at=EXCLUDED.generated_at, spec_id=EXCLUDED.spec_id, stage=EXCLUDED.stage, loaded_at=now()
+             generated_at=EXCLUDED.generated_at, spec_id=EXCLUDED.spec_id, stage=EXCLUDED.stage,
+             overrides=EXCLUDED.overrides, loaded_at=now()
            RETURNING id""",
         (source, kind, market, strategy, run, _title(markdown, run), markdown,
-         json.dumps(_headline(markdown)), sig, files[0].stat().st_mtime, spec_id_of(run), stage_of(run)["stage"]),
+         json.dumps(_headline(markdown)), sig, files[0].stat().st_mtime, spec_id_of(run), stage_of(run)["stage"],
+         _overrides(files[0].parent)),
     )
     run_id = cur.fetchone()[0]
     cur.execute("DELETE FROM report_figures WHERE run_id=%s", (run_id,))
@@ -212,6 +231,8 @@ def ingest(force: bool = False) -> dict:
                 continue
             d = md.parent
             files = [md] + [f for f in d.glob("*.csv")] + [f for f in (d / "figures").glob("*.png")]
+            if (d / "overrides.json").exists():
+                files.append(d / "overrides.json")   # in the signature, so a later backfill is picked up
             source = str(Path("reports") / rel.parent)
             seen.add(source)
             _store(cur, source, meta, md.read_text(), files)

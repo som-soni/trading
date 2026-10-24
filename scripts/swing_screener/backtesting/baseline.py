@@ -27,6 +27,7 @@ avoids the short-term reversal that contaminates the most recent weeks.
 """
 
 import argparse
+import shlex
 import logging
 
 import pandas as pd
@@ -873,6 +874,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return ap.parse_args(argv)
 
 
+def changed_flags(args: argparse.Namespace) -> list[str]:
+    """The command-line flags whose values differ from the strategy's own defaults, as typed.
+
+    What the Reproduce line must add to `--strategy --market --start` to repeat THIS run. It used to
+    name only those three, so the report of a `--min-turnover 100000000` experiment told the reader
+    to run the default strategy -- a different run, with no sign of the difference.
+    """
+    plain = parse_args(["--strategy", args.strategy, "--market", args.market, "--start", str(args.start)])
+    out = []
+    for act in build_parser()._actions:
+        dest = act.dest
+        if dest in ("help", "strategy", "market", "start", "no_ingest") or not act.option_strings:
+            continue
+        mine, base = getattr(args, dest, None), getattr(plain, dest, None)
+        if mine == base:
+            continue
+        flag = act.option_strings[-1]
+        if isinstance(act, argparse._StoreTrueAction):
+            out.append(flag)
+        elif isinstance(act, argparse._StoreFalseAction):
+            out.append(flag)
+        elif isinstance(mine, list):
+            out += [f"{flag} {shlex.quote(str(x))}" for x in mine]
+        else:
+            out.append(f"{flag} {shlex.quote(str(mine))}")
+    return out
+
+
 def run_args(args: argparse.Namespace):
     """run() for a parsed command line: the one place a flag is mapped to an argument."""
     return run(
@@ -957,8 +986,8 @@ def main(argv: list[str] | None = None) -> dict | None:
 
         # The strategy IS its tunables, so the reproduce line names it rather than respelling
         # every flag -- and unlike the old spelling it cannot drift from what the page documents.
-        cmd = (f"python3 -m swing_screener.backtesting.baseline --strategy {args.strategy} "
-               f"--market {args.market} --start {args.start}")
+        cmd = " ".join([f"python3 -m swing_screener.backtesting.baseline --strategy {args.strategy} "
+                        f"--market {args.market} --start {args.start}", *changed_flags(args)])
         md = report_mod.write_report(
             out,
             f"{cfg.name} — {portfolio_strategies()[args.strategy].name} (top {args.top_n}), {args.start} onward",

@@ -4063,7 +4063,11 @@ function stageInfo(b) {
 function stageChip(b) { const i = stageInfo(b); return `<span class="stg ${i.cls}" title="${esc(i.tip)}">${i.text}</span>`; }
 
 function perfGlance(d, key) {
-  const runs = (d.backtests || []).filter((b) => b.summary && b.summary.cagr && !b.archived);
+  // Experiments never stand in for the strategy: a run that changed its settings (b.variant -- a
+  // --const, a --bt turnover floor or rank buffer) is read on Backtests, not here. A --bt passthrough
+  // moves no fingerprint, so before this a $100m-floor experiment headlined as the US result.
+  const all = (d.backtests || []).filter((b) => b.summary && b.summary.cagr && !b.archived);
+  const runs = all.filter((b) => !b.variant);
   const vers = d.versions || [];
   const isOld = (sid) => { const v = vers.find((x) => x.spec_id === sid); return v ? !v.is_current : false; };
   const sign = (x) => (/^-/.test(String(x || "")) ? "neg" : x ? "pos" : "");
@@ -4071,7 +4075,7 @@ function perfGlance(d, key) {
   const st = (d.stages && d.stages.stages) || {};
   const ver = st.verify || {};
 
-  if (!runs.length) {
+  if (!all.length) {
     const none = (d.backtests || []).length
       ? `${d.backtests.length} run${d.backtests.length === 1 ? "" : "s"} recorded, none with trades to report`
       : "No backtest has been run yet";
@@ -4094,10 +4098,16 @@ function perfGlance(d, key) {
       <td class="num">${esc(s.sharpe || "")}</td>
       <td class="muted small">${prettyDate(b.generated_at)}</td></tr>`; };
   // `d.backtests` arrives newest-first, so the first match is the latest
-  const mkts = [...new Set(runs.map((b) => b.market))].sort();
+  const mkts = [...new Set(all.map((b) => b.market))].sort();
   let anyLegacy = false;
   const rows = mkts.map((m) => {
     const mine = runs.filter((b) => b.market === m);
+    if (!mine.length) {
+      const n = all.filter((b) => b.market === m).length;
+      return `<tr class="muted"><td>${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}</td><td></td>
+        <td colspan="5" class="small">no run of the strategy as configured — ${n} experiment${n === 1 ? "" : "s"} on
+        <a href="#/strategies/${esc(key)}/backtests">Backtests</a></td></tr>`;
+    }
     const oos = mine.find((b) => b.stage === "verify");
     const ins = mine.find((b) => b.stage === "optimise");
     const out = [];
@@ -4111,6 +4121,7 @@ function perfGlance(d, key) {
   }).join("");
 
   const anyStale = runs.some((b) => isOld(b.spec_id));
+  const nVariant = all.length - runs.length;
   return `<section class="sd-sec sd-glance" id="sd-glance">
     <h2>Measured outcome</h2>
     <table class="dtab click"><thead><tr><th>Market</th><th>Stage</th>
@@ -4122,7 +4133,7 @@ function perfGlance(d, key) {
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
       the gap between the two is the measure of how much.
       ${anyLegacy ? "<b>Legacy</b> runs predate stages and mix both windows — reference only. " : ""}
-      ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}Click a row for the report, or see
+      ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}${nVariant ? `${nVariant} experiment${nVariant === 1 ? "" : "s"} (changed settings) left out. ` : ""}Click a row for the report, or see
       <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.</p></section>`;
 }
 
@@ -4345,7 +4356,11 @@ function strategyBacktests(host, d, key) {
         ? `<div class="muted small">${esc(o.slice(0, OPTS_SHOWN).join(" · "))}${more > 0 ? ` <span class="bt-more">+${more}</span>` : ""}</div>`
         : "";
       const tip = [b.run, o.length > OPTS_SHOWN ? o.join(" · ") : ""].filter(Boolean).join("\n");
-      return `<td title="${esc(tip)}">${stageChip(b)} ${prettyDate(rp.start)} · ${esc(rp.exit)}${opts}</td>`; };
+      // an experiment says what it changed, from the overrides the job recorded -- not parsed from the name
+      const exp = b.variant
+        ? `<div class="small"><span class="tag neutral" title="${esc("Changed the strategy's settings, so the Measured outcome panel leaves it out:\n" + (b.overrides || []).join("\n"))}">experiment</span> <span class="muted">${esc((b.overrides || []).join(" · "))}</span></div>`
+        : "";
+      return `<td title="${esc(tip)}">${stageChip(b)} ${prettyDate(rp.start)} · ${esc(rp.exit)}${opts}${exp}</td>`; };
     return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th><th></th></tr></thead><tbody>${
       shown.map((b) => { const s = b.summary || {};
         const v = vers.find((x) => x.spec_id === b.spec_id);

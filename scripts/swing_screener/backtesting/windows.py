@@ -108,9 +108,88 @@ CREATE INDEX IF NOT EXISTS verify_runs_key ON verify_runs (market, strategy, spe
 _NOT_IDENTITY = {"stage", "start", "again", "strategies", "force", "no_ingest", "allow_stale"}
 
 
+# `--bt` passthroughs that change how fast a run goes, not what it tests -> how many values each takes.
+# Without this, every run queued with `--bt=--workers 6` reads as a variant of the strategy, and two
+# verify requests that differ only in worker count look like different tests.
+_SPEED_ONLY_BT = {"--workers": 1}
+
+
+def _arg_pairs(args: str) -> tuple[set, set]:
+    """(flag, value) pairs and bare flags in a command-line string such as a strategy's backtest_args."""
+    import shlex
+    toks, pairs, bare = shlex.split(args or ""), set(), set()
+    for i, t in enumerate(toks):
+        if not t.startswith("--"):
+            continue
+        if "=" in t:
+            f, v = t.split("=", 1); pairs.add((f, v))
+        elif i + 1 < len(toks) and not toks[i + 1].startswith("--"):
+            pairs.add((t, toks[i + 1]))
+        else:
+            bare.add(t)
+    return pairs, bare
+
+
+def overrides(opts: dict, strategy_args: str | None = None) -> dict:
+    """What a queue item changes about the strategy it tests: the options outside _NOT_IDENTITY.
+
+    Empty means the strategy exactly as it is configured -- its own `backtest_args` and constants,
+    in whatever window the stage gives it. Pass the strategy's `backtest_args` as `strategy_args` and an
+    option that merely repeats one of them is not counted. This is the one definition of "a variant": verify's
+    de-duplication keys on it, and the Strategies page uses it to keep variants out of the headline.
+    """
+    import shlex
+    out = {k: v for k, v in sorted((opts or {}).items())
+           if k not in _NOT_IDENTITY and v not in (None, False, "", [])}
+    # An option that only repeats the strategy's own `backtest_args` changes nothing: early minervini
+    # runs passed --accept-labels with exactly the labels the strategy already names.
+    pairs, bare = _arg_pairs(strategy_args or "")
+    for k in list(out):
+        if k == "bt":
+            continue
+        flag, v = "--" + k.replace("_", "-"), out[k]
+        if (v is True and flag in bare) or (not isinstance(v, (list, bool)) and (flag, str(v)) in pairs):
+            out.pop(k)
+    if "bt" in out:
+        kept = []
+        for extra in out["bt"]:
+            toks, i, keep = shlex.split(str(extra)), 0, []
+            while i < len(toks):
+                flag = toks[i].split("=", 1)[0]
+                if flag in _SPEED_ONLY_BT:
+                    i += 1 + (0 if "=" in toks[i] else _SPEED_ONLY_BT[flag])
+                    continue
+                nxt = toks[i + 1] if i + 1 < len(toks) and not toks[i + 1].startswith("--") else None
+                if (nxt is not None and (toks[i], nxt) in pairs) or (nxt is None and toks[i] in bare):
+                    i += 2 if nxt is not None else 1      # restates the strategy's own argument
+                    continue
+                keep.append(toks[i]); i += 1
+            if keep:
+                kept.append(" ".join(keep))
+        if kept:
+            out["bt"] = kept
+        else:
+            out.pop("bt")
+    return out
+
+
+def describe(over: dict) -> list[str]:
+    """`overrides()` as the command-line pieces a reader recognises: ["--const X=1", "--min-turnover 1e8"]."""
+    parts = []
+    for k, v in sorted((over or {}).items()):
+        if k == "bt":
+            parts += [str(x) for x in v]
+        elif isinstance(v, list):
+            parts += [f"--{k.replace('_', '-')} {x}" for x in v]
+        elif v is True:
+            parts.append(f"--{k.replace('_', '-')}")
+        else:
+            parts.append(f"--{k.replace('_', '-')} {v}")
+    return parts
+
+
 def signature(opts: dict) -> str:
-    return json.dumps({k: v for k, v in sorted((opts or {}).items())
-                       if k not in _NOT_IDENTITY and v not in (None, False, "", [])}, sort_keys=True, default=str)
+    return json.dumps(overrides(opts), sort_keys=True, default=str)
 
 
 def _init() -> None:
