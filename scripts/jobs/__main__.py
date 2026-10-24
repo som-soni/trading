@@ -212,7 +212,12 @@ def _run_args(r) -> None:
     r.add_argument("--years", type=float, default=None, help="`screen_history`: how many years of month-ends (default 5)")
     r.add_argument("--refill", action="store_true",
                    help="`screen_history`: recompute stored month-ends to add the fields they lack, keeping every stored value")
-    r.add_argument("--start", default=None, help="`backtest`: simulate from this date (YYYY-MM-DD, default 2013-01-01)")
+    r.add_argument("--start", default=None, help="`backtest`: move the start within the stage (YYYY-MM-DD). Without --stage, an explicit start means a FULL run from it to today, labelled context")
+    r.add_argument("--stage", default=None, choices=["optimise", "verify", "full"],
+                   help="`backtest`: which window -- optimise 2013-2021 (the default), verify 2022-today "
+                        "(once per version), full (context only). See swing_screener/backtesting/windows.py")
+    r.add_argument("--again", action="store_true",
+                   help="`backtest --stage verify`: repeat a verify run knowingly; it is recorded as a repeat")
     r.add_argument("--sample", type=int, default=None, help="`backtest`: a seeded random subset of N candidates (faster, unbiased)")
     r.add_argument("--accept-labels", default=None, metavar="LABELS",
                    help="`backtest`: which decision labels count as tradeable, comma separated "
@@ -265,7 +270,7 @@ def _opts(ap, a):
             ap.error(f"unknown strategies {bad}; choose from {known}")
     opts = {"strategies": strategies, "force": a.force, "allow_stale": a.allow_stale,
             "universe_days": a.universe_days, "quality_top": a.quality_top, "days": a.days, "years": a.years, "refill": a.refill,
-            "start": a.start, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols, "max_base": a.max_base, "min_dollar_volume": a.min_dollar_volume, "pyramid": a.pyramid,
+            "start": a.start, "stage": a.stage, "again": a.again, "sample": a.sample, "vcp": a.vcp, "const": a.const, "bt": a.bt, "symbols": a.symbols, "max_base": a.max_base, "min_dollar_volume": a.min_dollar_volume, "pyramid": a.pyramid,
             "market_filter": a.market_filter, "pe": a.pe, "pe_window": a.pe_window, "pe_warmup": a.pe_warmup, "pe_pilot": a.pe_pilot,
             "pe_press": a.pe_press, "mkt_confirm": a.mkt_confirm, "top_dollar_volume": a.top_dollar_volume,
             "accept_labels": a.accept_labels}

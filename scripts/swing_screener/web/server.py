@@ -373,6 +373,26 @@ def _with_name_col(market: str, cols: list, rows: list) -> dict:
 
 # --------------------------------------------------------------- reports
 
+def _stage(run_name: str, kind: str = "backtest") -> dict:
+    """The backtest stage a run was made in -- optimise, verify, full, or legacy -- with its window.
+
+    Read from the run's own name (ingest.stage_of), so a page can never label a run differently from
+    the directory it lives in. Only backtests have stages; a research report gets none."""
+    if kind != "backtest":
+        return {}
+    from .ingest import stage_of
+    st = stage_of(run_name)
+    return {"stage": st["stage"] or "legacy", "window_start": st["start"], "window_end": st["end"]}
+
+
+@app.get("/api/backtest-stages")
+def backtest_stages():
+    """The stage windows, from backtesting/windows.py, so pages show the live dates and never hard-code them."""
+    from swing_screener.backtesting import windows
+    return {"default": windows.DEFAULT,
+            "stages": {k: {"start": w.start, "end": w.end, "purpose": w.purpose} for k, w in windows.STAGES.items()}}
+
+
 @app.get("/api/reports")
 def reports(kind: str | None = None, market: str | None = None):
     sql = ("SELECT id, kind, market, strategy, run_name, title, summary, generated_at "
@@ -386,7 +406,8 @@ def reports(kind: str | None = None, market: str | None = None):
         args.append(market)
     return [
         {"id": r[0], "kind": r[1], "market": r[2], "strategy": r[3], "run": r[4],
-         "title": r[5], "summary": r[6], "generated_at": r[7].isoformat() if r[7] else None}
+         "title": r[5], "summary": r[6], "generated_at": r[7].isoformat() if r[7] else None,
+         **_stage(r[4], r[1])}
         for r in q(sql + " ORDER BY market, strategy, run_name DESC", tuple(args))
     ]
 
@@ -469,7 +490,7 @@ def report(rid: int):
               for n, c in q("SELECT name, jsonb_array_length(rows) FROM report_tables "
                             "WHERE run_id=%s ORDER BY name", (rid,))]
     return {"id": r[0], "kind": r[1], "market": r[2], "strategy": r[3], "run": r[4],
-            "title": r[5], "markdown": md, "summary": r[7], "tables": tables}
+            "title": r[5], "markdown": md, "summary": r[7], "tables": tables, **_stage(r[4], r[1])}
 
 
 @app.get("/api/reports/{rid}/figures/{name}")
@@ -676,7 +697,7 @@ def trade_runs(market: str, symbol: str):
         i = cols.index("symbol")
         n = sum(1 for x in rows if x[i] == symbol)
         if n:
-            out.append({"id": rid, "strategy": strat, "run": name, "spec_id": spec, "trades": n})
+            out.append({"id": rid, "strategy": strat, "run": name, "spec_id": spec, "trades": n, **_stage(name)})
     return out
 
 
@@ -858,11 +879,12 @@ def strategy(key: str):
     d = strat_docs.strategy_doc(key)
     d["backtests"] = [{"id": i, "market": m, "run": r, "summary": s, "generated_at": g.isoformat() if g else None,
                        "spec_id": sp, "version": sp.split("-")[0].lstrip("v") if sp else None,
-                       "archived": a is not None}
+                       "archived": a is not None, **_stage(r)}
                       for i, m, r, s, g, sp, a in q("SELECT id, market, run_name, summary, generated_at, spec_id, archived_at "
                                                     "FROM report_runs WHERE strategy=%s AND kind='backtest' "
                                                     "ORDER BY generated_at DESC NULLS LAST", (key,))]
     d["versions"] = _run_versions(d)
+    d["stages"] = backtest_stages()
     d["screens"] = _latest_screens(key)
     return d
 
@@ -2418,6 +2440,11 @@ def jobs_run(request: Request, spec: dict = Body(...)):
         raise HTTPException(400, f"unknown market {market}")
     st = spec.get("strategies")
     opts = {"strategies": (["all"] if st == "all" else st) or None, "from": spec.get("from"), "force": bool(spec.get("force"))}
+    if spec.get("stage"):
+        # a backtest's window (backtesting/windows.py); absent, the job defaults to optimise
+        if spec["stage"] not in ("optimise", "verify", "full"):
+            raise HTTPException(400, f"unknown stage {spec['stage']}")
+        opts["stage"] = spec["stage"]
     jq = _jq()
     it = jq.enqueue(targets, market, opts, requested_by="you")
     return {"ok": True, "item": it["id"], "duplicate": bool(it.get("duplicate")), "position": jq.position(it["id"]),

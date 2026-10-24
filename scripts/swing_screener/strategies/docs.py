@@ -147,7 +147,11 @@ def strategy_doc(key: str) -> dict:
         "commands": {
             "Screen today": f"python3 -m swing_screener.screening.pipeline --market us --strategy {key}",
             "Explain one stock": f"python3 -m swing_screener.screening.inspect --market us --symbol AAPL --strategy {key}",
-            "Backtest (its real exit policy)": backtest,
+            # a backtest runs inside a STAGE (backtesting/windows.py): tune in-sample as often as you
+            # like, verify out-of-sample once per version; the direct command runs outside both
+            "Backtest in-sample (optimise)": f"python -m jobs enqueue backtest --market us --strategies {key} --stage optimise",
+            "Verify out-of-sample (once per version)": f"python -m jobs enqueue backtest --market us --strategies {key} --stage verify",
+            "Direct run, full history (context only)": backtest,
         },
         "source": _source_info(cls),
     }
@@ -218,8 +222,10 @@ def baseline_doc(key: str) -> dict:
         "exit_rules": [_MB.render_doc(x) for x in d.get("exit_rules", ())],
         "params": params, "decisions": [], "regime_note": "",
         # the strategy IS its tunables now, so the command names it instead of re-listing them
-        "commands": {"Backtest": f"python3 -m swing_screener.backtesting.baseline --strategy {key} "
-                                 f"--market india --start {getattr(_MB, 'backtest_start', '2013-01-01')}"},
+        "commands": {
+            "Backtest in-sample (optimise)": f"python -m jobs enqueue backtest --market india --strategies {key} --stage optimise",
+            "Verify out-of-sample (once per version)": f"python -m jobs enqueue backtest --market india --strategies {key} --stage verify",
+        },
         "source": _source_info(baseline),
     }
 

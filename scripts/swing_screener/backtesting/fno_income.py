@@ -32,6 +32,7 @@ import math
 import pandas as pd
 
 from ..config import MARKETS
+from ..marketdata import asof
 from ..marketdata import db
 from ..strategies.base import PortfolioStrategy
 from . import metrics
@@ -129,7 +130,7 @@ def load_context(market: str = "india") -> dict:
     out = {}
     for key, series in (("spot", "NIFTY50"), ("vix", "INDIAVIX"), ("repo", "IN_REPO")):
         d = pd.read_sql(q, con, params=(market, series), parse_dates=["date"])
-        out[key] = d.set_index("date")["close"].astype(float)
+        out[key] = asof.clip(d.set_index("date")["close"].astype(float))   # a stage's boundary
     out["sma"] = out["spot"].rolling(TREND_SMA).mean()
     # The VIX gate is a trailing PERCENTILE, not a level: a 15 VIX meant something different in
     # 2017 than in 2020, and a fixed threshold would make this a regime bet rather than a rule.
@@ -562,7 +563,6 @@ class FnoIncomeStrategy(PortfolioStrategy):
     risk_pct = RISK_PCT
     vix_percentile = VIX_PERCENTILE
     cost_points = 2.0
-    backtest_start = "2012-01-01"
 
     param_docs = (
         ("Structure", "structure", "put_spread sells one side by trend; condor sells both."),

@@ -49,6 +49,10 @@ ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS spec_id TEXT;   -- "v1.5-75bd22
 -- DO UPDATE list below, so re-ingesting a report never resurrects an archived run.
 ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS report_runs_spec ON report_runs (strategy, spec_id);
+-- the backtest stage a run was made in (backtesting/windows.py): optimise, verify or full, read from the
+-- run name like spec_id. NULL = a LEGACY run, made before stages existed, on its own mixed window --
+-- shown, but never as a verified result.
+ALTER TABLE report_runs ADD COLUMN IF NOT EXISTS stage TEXT;
 CREATE TABLE IF NOT EXISTS report_figures (
     run_id INT NOT NULL REFERENCES report_runs(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -75,6 +79,22 @@ _SPEC_ID = re.compile(r"_v(\d+(?:\.\d+)*)-([0-9a-f]{8})(?:_|$)")
 def spec_id_of(run_name: str) -> str | None:
     m = _SPEC_ID.search(run_name or "")
     return f"v{m.group(1)}-{m.group(2)}" if m else None
+
+
+_STAGE = re.compile(r"_stage-(optimise|verify|full)(?:-to-(\d{4}-\d{2}-\d{2}))?(?:_|$)")
+_START = re.compile(r"^(\d{4}-\d{2}-\d{2})_")
+
+
+def stage_of(run_name: str) -> dict:
+    """{"stage", "start", "end"} for a run, read from the name `paths.run_dir` gave it.
+
+    stage is None for a LEGACY run -- one made before stages, on whatever window it was given -- and
+    end is None for a run that went to the latest data. Read from the name, not stored separately,
+    so the stage can never disagree with the directory the run lives in.
+    """
+    m, s = _STAGE.search(run_name or ""), _START.match(run_name or "")
+    return {"stage": m.group(1) if m else None, "start": s.group(1) if s else None,
+            "end": m.group(2) if m and m.group(2) else None}
 
 
 _HEADLINE = {
@@ -151,16 +171,16 @@ def _store(cur, source: str, meta: tuple, markdown: str, files: list[Path]) -> N
     # every bookmarked /#/reports/<id> link keeps working) across reloads
     cur.execute(
         """INSERT INTO report_runs
-           (source_path, kind, market, strategy, run_name, title, markdown, summary, signature, generated_at, spec_id)
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, to_timestamp(%s), %s)
+           (source_path, kind, market, strategy, run_name, title, markdown, summary, signature, generated_at, spec_id, stage)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s, to_timestamp(%s), %s, %s)
            ON CONFLICT (source_path) DO UPDATE SET
              kind=EXCLUDED.kind, market=EXCLUDED.market, strategy=EXCLUDED.strategy,
              run_name=EXCLUDED.run_name, title=EXCLUDED.title, markdown=EXCLUDED.markdown,
              summary=EXCLUDED.summary, signature=EXCLUDED.signature,
-             generated_at=EXCLUDED.generated_at, spec_id=EXCLUDED.spec_id, loaded_at=now()
+             generated_at=EXCLUDED.generated_at, spec_id=EXCLUDED.spec_id, stage=EXCLUDED.stage, loaded_at=now()
            RETURNING id""",
         (source, kind, market, strategy, run, _title(markdown, run), markdown,
-         json.dumps(_headline(markdown)), sig, files[0].stat().st_mtime, spec_id_of(run)),
+         json.dumps(_headline(markdown)), sig, files[0].stat().st_mtime, spec_id_of(run), stage_of(run)["stage"]),
     )
     run_id = cur.fetchone()[0]
     cur.execute("DELETE FROM report_figures WHERE run_id=%s", (run_id,))

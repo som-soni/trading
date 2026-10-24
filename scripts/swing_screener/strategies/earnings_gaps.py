@@ -129,7 +129,6 @@ class EarningsGapStrategy(Strategy):
                      "reaction_rel_volume", "reaction_close_pos")
     extra_numeric_columns = ("reaction_high", "reaction_low", "reaction_move_pct",
                              "reaction_rel_volume", "reaction_close_pos")
-    backtest_start = "2020-01-01"
     backtest_args = "--exit-mode ma --no-target --ma-col sma20 --accept-labels 'TRADE ON TRIGGER'"
 
     thesis = (

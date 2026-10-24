@@ -58,6 +58,7 @@ from collections import defaultdict
 import requests
 
 from . import db
+from . import asof
 from ..config import MARKETS
 from ..paths import DATA_DIR
 
@@ -1284,6 +1285,10 @@ def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]
     args: tuple = (market,)
     if symbols is not None:
         sql, args = sql + " AND symbol = ANY(%s)", (market, list(symbols))
+    if asof.end_date():
+        # a backtest stage's boundary: a quarter exists from the day it was FILED, so a period
+        # that ended inside the window but was filed after it is not yet known
+        sql, args = (sql + " AND COALESCE(filed, period_end) <= %s", args + (asof.end_date(),))
     out: dict = defaultdict(list)
     with db.get_connection().cursor() as cur:
         cur.execute(sql + " ORDER BY symbol, period_end", args)

@@ -50,6 +50,13 @@ def run_dir(market: str, strategy: str, run: str, create: bool = True) -> Path:
     # `run` may contain "/" to nest (e.g. "screener/2026-10-03"); slug each
     # segment so the separator survives instead of being flattened to "-"
     parts = [slug(part) for part in str(run).split("/") if part]
+    # A run made inside a backtest stage carries the stage in its name (backtesting/windows.py), so
+    # an optimise run and a verify run of the same configuration never overwrite each other, and
+    # ingest can file each under its stage. Applied here because every runner names its directory
+    # through this function: one place, not nine. Outside a stage -- screening, research -- no tag.
+    from .marketdata import asof
+    if asof.label() and parts and not parts[-1].endswith(slug(asof.label())):
+        parts[-1] = f"{parts[-1]}_{slug(asof.label())}"
     d = REPORTS_DIR.joinpath(slug(market), slug(strategy), *parts)
     if create:
         d.mkdir(parents=True, exist_ok=True)

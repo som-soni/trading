@@ -799,7 +799,8 @@ async function chartPage(alive, market, symbol, tf) {
   const sector = (ctx.latest.find((l) => l.sector) || {}).sector;
 
   const sel = $("#trades");
-  tradeRuns.forEach((r) => sel.insertAdjacentHTML("beforeend", `<option value="${r.id}">${esc(r.strategy)} · ${esc(r.run)} — ${r.trades} trade${r.trades > 1 ? "s" : ""}</option>`));
+  // the stage leads each option: trades drawn from an in-sample run are trades on years that chose the rules
+  tradeRuns.forEach((r) => sel.insertAdjacentHTML("beforeend", `<option value="${r.id}" title="${esc(stageInfo(r).tip)}">[${esc(stageInfo(r).text)}] ${esc(r.strategy)} · ${esc(r.run)} — ${r.trades} trade${r.trades > 1 ? "s" : ""}</option>`));
   $("#trades-field").hidden = !tradeRuns.length;
   // a remembered run may no longer exist (or not trade this symbol): fall back to no overlay
   const want = store.get("tradeRun:" + market, "") + "";
@@ -1471,7 +1472,7 @@ async function chartPage(alive, market, symbol, tf) {
         ${t.setup_name ? `<div class="small">Pattern: <b>${esc(t.setup_name)}</b></div>` : ""}
         <div class="muted small">${esc([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · "))}</div>
         ${t.note ? `<div class="btr-note small">${esc(t.note)}</div>` : ""}</div>`).join("");
-    return `<section><h3>Backtest trades</h3><div class="muted small">${run ? esc(`${run.strategy} · ${run.run}`) : ""}</div>
+    return `<section><h3>Backtest trades</h3><div class="muted small">${run ? `${run.stage ? stageChip(run) + " " : ""}${esc(`${run.strategy} · ${run.run}`)}` : ""}</div>
       <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div></section>
       <div class="btrs">${rows || '<div class="muted small">This run has no trades in this symbol.</div>'}</div>`;
   }
@@ -4043,13 +4044,32 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
  *  A run from a superseded spec id is marked, the same way the Backtests tab marks it. Without
  *  that, the headline figure on the landing page could describe rules that no longer exist.
  */
+/** A backtest's stage (backtesting/windows.py), labelled from the run's OWN window, never hard-coded:
+ *  out-of-sample (verify) is the number to believe, in-sample (optimise) flatters the rules because
+ *  those dates chose them, full is context, and legacy runs predate stages altogether. */
+function stageInfo(b) {
+  const span = `${b.window_start || "?"} → ${b.window_end || "latest"}`;
+  switch (b.stage) {
+    case "verify": return { cls: "st-ver-oos", text: "Out-of-sample",
+      tip: `Verify window, ${span}. Run once per version on years the rules were never tuned on — the honest estimate.` };
+    case "optimise": return { cls: "st-ver-is", text: "In-sample",
+      tip: `Optimise window, ${span}. These years were used to choose the rules, so the result flatters them.` };
+    case "full": return { cls: "st-ver-full", text: "Full period",
+      tip: `${span}: tuning and hold-out years together. Context, not a verdict.` };
+    default: return { cls: "st-ver-legacy", text: "Legacy",
+      tip: `Made before backtest stages existed, on its own window (${span}), which mixes tuning and hold-out years. Shown for reference, never as a verdict.` };
+  }
+}
+function stageChip(b) { const i = stageInfo(b); return `<span class="stg ${i.cls}" title="${esc(i.tip)}">${i.text}</span>`; }
+
 function perfGlance(d, key) {
-  const runs = (d.backtests || []).filter((b) => b.summary && b.summary.cagr);
+  const runs = (d.backtests || []).filter((b) => b.summary && b.summary.cagr && !b.archived);
   const vers = d.versions || [];
   const isOld = (sid) => { const v = vers.find((x) => x.spec_id === sid); return v ? !v.is_current : false; };
-  const num = (x) => { const v = parseFloat(String(x ?? "").replace(/[^-\d.]/g, "")); return Number.isFinite(v) ? v : null; };
   const sign = (x) => (/^-/.test(String(x || "")) ? "neg" : x ? "pos" : "");
-  const stale = (sid) => (isOld(sid) ? '<i class="old" title="produced by rules that have since changed">\u25b2</i>' : "");
+  const stale = (sid) => (isOld(sid) ? '<i class="old" title="produced by rules that have since changed">▲</i>' : "");
+  const st = (d.stages && d.stages.stages) || {};
+  const ver = st.verify || {};
 
   if (!runs.length) {
     const none = (d.backtests || []).length
@@ -4060,40 +4080,50 @@ function perfGlance(d, key) {
         `Queue one from <a href="#/strategies/${esc(key)}/backtests">Backtests</a>.`}</p></section>`;
   }
 
-  // `d.backtests` arrives newest-first, so the first match per market IS the latest.
-  const mkts = [...new Set(runs.map((b) => b.market))].sort();
-  const rows = mkts.map((m) => {
-    const mine = runs.filter((b) => b.market === m);
-    const latest = mine[0];
-    const best = mine.reduce((a, b) => (num(b.summary.excess_cagr) > num(a.summary.excess_cagr) ? b : a), mine[0]);
-    const s = latest.summary;
-    const same = best.id === latest.id;
-    const mi = mktInfo(m);
-    return `<tr data-href="#/reports/${latest.id}" title="Open the latest ${esc(mi.name || m)} run">
-      <td>${mi.flag || ""} ${esc(mi.name || m.toUpperCase())}</td>
+  // Per market: the out-of-sample result beside the in-sample one -- the gap between them is how much
+  // the tuning flattered the rules. There is deliberately no "best run" column any more: the best of
+  // many runs is selection, which is exactly what a hold-out exists to correct. Legacy runs appear
+  // only when a market has no staged run at all, and say so.
+  const row = (b, m, first) => { const s = b.summary, mi = mktInfo(m);
+    return `<tr data-href="#/reports/${b.id}" title="Open this run">
+      <td>${first ? `${mi.flag || ""} ${esc(mi.name || m.toUpperCase())}` : ""}</td>
+      <td>${stageChip(b)}</td>
       <td class="num">${esc(s.cagr || "")}</td>
-      <td class="num ${sign(s.excess_cagr)}"><b>${esc(s.excess_cagr || "")}</b>${stale(latest.spec_id)}</td>
+      <td class="num ${sign(s.excess_cagr)}"><b>${esc(s.excess_cagr || "")}</b>${stale(b.spec_id)}</td>
       <td class="num">${esc(s.max_drawdown || "")}</td>
       <td class="num">${esc(s.sharpe || "")}</td>
-      <td class="muted small">${prettyDate(latest.generated_at)}${mine.length > 1 ? ` · ${mine.length} runs` : ""}</td>
-      <td class="num ${same ? "muted" : sign(best.summary.excess_cagr)}">${same ? "this one"
-        : `<a href="#/reports/${best.id}" title="${esc(best.run)}">${esc(best.summary.excess_cagr || "")}</a>${stale(best.spec_id)}`}</td></tr>`;
+      <td class="muted small">${prettyDate(b.generated_at)}</td></tr>`; };
+  // `d.backtests` arrives newest-first, so the first match is the latest
+  const mkts = [...new Set(runs.map((b) => b.market))].sort();
+  let anyLegacy = false;
+  const rows = mkts.map((m) => {
+    const mine = runs.filter((b) => b.market === m);
+    const oos = mine.find((b) => b.stage === "verify");
+    const ins = mine.find((b) => b.stage === "optimise");
+    const out = [];
+    if (oos) out.push(row(oos, m, true));
+    else if (ins) out.push(`<tr class="muted"><td>${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}</td>
+      <td><span class="stg st-ver-oos dim" title="${esc(`Verify window ${ver.start || ""} → latest`)}">Out-of-sample</span></td>
+      <td colspan="5" class="small">not yet verified — the in-sample result below is not a verdict</td></tr>`);
+    if (ins) out.push(row(ins, m, !out.length));
+    if (!out.length) { anyLegacy = true; const leg = mine.find((b) => b.stage === "legacy" || b.stage === "full") || mine[0]; out.push(row(leg, m, true)); }
+    return out.join("");
   }).join("");
 
   const anyStale = runs.some((b) => isOld(b.spec_id));
   return `<section class="sd-sec sd-glance" id="sd-glance">
     <h2>Measured outcome</h2>
-    <table class="dtab click"><thead><tr><th>Market</th>
+    <table class="dtab click"><thead><tr><th>Market</th><th>Stage</th>
       <th class="num">CAGR</th>
       <th class="num" title="The strategy's CAGR minus its benchmark's. Positive means it beat buying and holding the index.">Excess CAGR</th>
-      <th class="num">Max DD</th><th class="num">Sharpe</th><th>Latest run</th>
-      <th class="num" title="The best excess CAGR this strategy has recorded in this market, across every run.">Best ever</th></tr></thead>
+      <th class="num">Max DD</th><th class="num">Sharpe</th><th>Run</th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <p class="muted small">The latest run per market, with the best excess CAGR ever recorded beside it.
-      ${anyStale ? "\u25b2 marks a run produced by rules that have since changed. " : ""}Click a row for the full report, or see
-      <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.
-      Excess CAGR answers "did it beat doing nothing"; it does not separate a good signal from idle cash
-      \u2014 the report's SELECTION line does that.</p></section>`;
+    <p class="muted small"><b>Out-of-sample</b> is the number to believe: years ${esc(ver.start || "")} onward, which the rules were never tuned on.
+      <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
+      the gap between the two is the measure of how much.
+      ${anyLegacy ? "<b>Legacy</b> runs predate stages and mix both windows — reference only. " : ""}
+      ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}Click a row for the report, or see
+      <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.</p></section>`;
 }
 
 function strategyRules(host, d, key) {
@@ -4226,7 +4256,7 @@ function strategyBacktests(host, d, key) {
   // Portfolio strategies run too -- the backtest job dispatches them to the baseline runner
   // (jobs/registry._backtest_steps). Only the quality tracker has no backtest to queue.
   const canRun = d.kind === "screener" || d.kind === "benchmark";
-  const runBtn = () => canRun ? `<div class="bt-run"><button class="primary sm" id="btrun" title="Queue a full-history backtest of this strategy (its documented exit policy) — slow; follow it on System → Runs">Backtest <span id="btrunmkt">${esc(mktInfo(runMarket()).name)}</span>…</button>
+  const runBtn = () => canRun ? `<div class="bt-run"><button class="primary sm" id="btrun" title="Queue an IN-SAMPLE backtest of this strategy — the optimise window, ${esc(((d.stages || {}).stages || {}).optimise ? d.stages.stages.optimise.start + " → " + d.stages.stages.optimise.end : "")} — with its documented exit policy. The out-of-sample verify run is queued separately, once per version: python -m jobs enqueue backtest --stage verify. Follow it on System → Runs">Backtest <span id="btrunmkt">${esc(mktInfo(runMarket()).name)}</span>…</button>
       <span class="muted small">runs in the job queue — follow it on <a href="#/runs">System → Runs</a></span></div>` : "";
   const vers = d.versions || [];
   // A run's spec_id is version + the fingerprint of the rules behind it. Show the bare
@@ -4251,6 +4281,8 @@ function strategyBacktests(host, d, key) {
   // minervini has 47 against every other strategy's 4 or fewer.
   let showArchived = false;
   let msel = null;
+  // Stage, alongside Market and Version (backtesting/windows.py). Starts at All every visit.
+  let ssel = null;
   // the chip IS the country toggle for this tab: with one chosen, Backtest runs that market
   const runMarket = () => msel || pageMarket();
   // every market, not just the ones already run: with no runs there is nothing to choose from,
@@ -4267,6 +4299,15 @@ function strategyBacktests(host, d, key) {
     <button class="chip ${msel ? "" : "on"}" data-m="">All <span class="n">${d.backtests.filter((b) => !b.archived).length}</span></button>
     ${mkts.map((m) => `<button class="chip ${msel === m ? "on" : ""}" data-m="${esc(m)}">${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}
         <span class="n">${d.backtests.filter((b) => b.market === m && !b.archived).length}</span></button>`).join("")}${achip()}</div>`;
+
+  const STAGE_ORDER = ["verify", "optimise", "full", "legacy"];
+  const schips = () => { const present = STAGE_ORDER.filter((x) => d.backtests.some((b) => b.stage === x && !b.archived));
+    if (present.length <= 1 && !ssel) return "";
+    return `<div class="bt-vers"><span class="muted small">Stage</span>
+      <button class="chip ${ssel ? "" : "on"}" data-s="">All</button>
+      ${present.map((x) => { const i = stageInfo({ stage: x });
+        return `<button class="chip ${ssel === x ? "on" : ""}" data-s="${x}" title="${esc(i.tip.split(".")[0])}">${i.text}
+          <span class="n">${d.backtests.filter((b) => b.stage === x && !b.archived).length}</span></button>`; }).join("")}</div>`; };
 
   const chips = () => vers.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Version</span>
     <button class="chip ${sel ? "" : "on"}" data-v="">All <span class="n">${d.backtests.filter((b) => !b.archived).length}</span></button>
@@ -4290,7 +4331,7 @@ function strategyBacktests(host, d, key) {
   };
 
   // computed per paint, not once: `sel` changes when a chip is clicked
-  const table = () => { const shown = d.backtests.filter((b) => (!sel || b.spec_id === sel) && (!msel || b.market === msel)
+  const table = () => { const shown = d.backtests.filter((b) => (!sel || b.spec_id === sel) && (!msel || b.market === msel) && (!ssel || b.stage === ssel)
                                                                  && (showArchived ? b.archived : !b.archived));
     // The options list runs to six items on a minervini run ("ranked by RS · spec rules · mktg ·
     // rb14 · progressive exposure (10 trades, pilot 0.5) · entries: high-confidence + on-trigger"),
@@ -4298,13 +4339,13 @@ function strategyBacktests(host, d, key) {
     // whole list is in the cell's tooltip beside the run's full name.
     const OPTS_SHOWN = 2;
     const runCell = (b) => { const rp = runParts(b.run);
-      if (!rp) return `<td>${esc(b.run)}</td>`;
+      if (!rp) return `<td>${stageChip(b)} ${esc(b.run)}</td>`;
       const o = rp.options, more = o.length - OPTS_SHOWN;
       const opts = o.length
         ? `<div class="muted small">${esc(o.slice(0, OPTS_SHOWN).join(" · "))}${more > 0 ? ` <span class="bt-more">+${more}</span>` : ""}</div>`
         : "";
       const tip = [b.run, o.length > OPTS_SHOWN ? o.join(" · ") : ""].filter(Boolean).join("\n");
-      return `<td title="${esc(tip)}">${prettyDate(rp.start)} · ${esc(rp.exit)}${opts}</td>`; };
+      return `<td title="${esc(tip)}">${stageChip(b)} ${prettyDate(rp.start)} · ${esc(rp.exit)}${opts}</td>`; };
     return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th><th></th></tr></thead><tbody>${
       shown.map((b) => { const s = b.summary || {};
         const v = vers.find((x) => x.spec_id === b.spec_id);
@@ -4333,12 +4374,17 @@ function strategyBacktests(host, d, key) {
     // row and the Version row, splitting one group of filters in half with an unrelated action --
     // and because the button and an active chip share the accent fill, the three rows read as one
     // undifferentiated stack of orange controls rather than "two filters, one button".
-    host.innerHTML = `<div class="bt-bar"><div class="bt-filters">${mchips()}${d.backtests.length ? chips() : ""}</div>${runBtn()}</div>`
+    host.innerHTML = `<div class="bt-bar"><div class="bt-filters">${mchips()}${d.backtests.length ? schips() + chips() : ""}</div>${runBtn()}</div>`
       + (d.backtests.length ? detail() + table()
       : `<div class="empty"><b>No backtests loaded for this strategy</b><div class="muted">${canRun ? "Queue one with the button above, or run" : "Run"} the command under Rules › Commands; reports load into the app automatically.</div></div>`);
     host.querySelectorAll(".bt-vers .chip[data-v]").forEach((b) => b.onclick = () => {
       sel = b.dataset.v || null;
       store.set("btVer:" + key, sel);
+      paint();
+      wireBtRun();
+    });
+    host.querySelectorAll(".bt-vers .chip[data-s]").forEach((b) => b.onclick = () => {
+      ssel = b.dataset.s || null;
       paint();
       wireBtRun();
     });
@@ -5004,6 +5050,7 @@ async function reportPage(alive, id, tab) {
     .filter(([, v]) => v).map(([k, v]) => `<div class="tile"><span>${k}</span><b class="${/^-/.test(v) ? "neg" : k === "Max drawdown" ? "" : "pos"}">${esc(v)}</b></div>`).join("");
   $view.innerHTML = `<div class="crumbs"><a href="#/reports">Reports</a> / <span>${KIND_LABEL[r.kind] || r.kind}</span> / <span>${esc(r.market === "all" ? "" : r.market.toUpperCase() + " · ")}<a href="#/strategies/${encodeURIComponent(r.strategy)}" title="About this strategy">${esc(r.strategy)}</a></span></div>
     <div class="page-head"><h1>${esc(r.run)}</h1>${tiles ? `<div class="tiles">${tiles}</div>` : ""}</div>
+    ${r.kind === "backtest" ? `<p class="stage-note">${stageChip(r)} ${esc(stageInfo(r).tip)}</p>` : ""}
     <div class="tabs">${tabs.map((t) => `<a href="#/reports/${id}/${t[0]}" class="${t[0] === tab ? "on" : ""}">${t[1]}</a>`).join("")}</div><div id="body"></div>`;
   const body = $view.querySelector("#body");
   const tableOpts = (t, name) => {

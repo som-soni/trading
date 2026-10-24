@@ -32,6 +32,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from . import db
+from . import asof
 
 logger = logging.getLogger("index_data")
 
@@ -389,10 +390,11 @@ def load(market: str, key: str) -> pd.Series:
     a silently empty series would turn into a zero-return backtest."""
     conn = db.get_connection()
     with conn.cursor() as cur:
+        end = asof.end_date()   # a backtest stage's boundary
         cur.execute(
             "SELECT date, close FROM index_series WHERE market=%s AND series=%s "
-            "ORDER BY date",
-            (market, key),
+            + ("AND date <= %s " if end else "") + "ORDER BY date",
+            (market, key, end) if end else (market, key),
         )
         rows = cur.fetchall()
     if not rows:

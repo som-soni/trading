@@ -121,7 +121,9 @@ sizing) — update, in the same change:
 Write numbers as `{NAME}` placeholders that name a module constant or a numeric
 class attribute (e.g. `{entry_channel}`), not as literals, so the page shows the
 live value and a threshold change cannot leave stale text behind. After a new
-backtest, update `status` if the measured result changed.
+backtest, update `status` if the measured result changed — and name the **stage**
+every figure comes from (in-sample, out-of-sample, or legacy; see the rule below),
+because an in-sample number reads exactly like a verified one.
 
 **Codes are named by role, the same way in every strategy.** `G1…Gn` are the hard
 gates (they can stop a trade), `W1…Wn` the watch flags (noted, never blocking) and
@@ -164,6 +166,37 @@ placeholder, or a parameter row pointing at something that no longer exists.
 It cannot check that prose still matches behaviour — that is on you: re-read
 the affected `*_docs` entries against the code you changed. Restart the web
 server to see the updated page.
+
+## Rule: backtests run in stages — tune in one window, verify in another
+
+A rule tuned on the same years it is judged on agrees with them by construction. So every
+backtest runs inside a **stage** (`scripts/swing_screener/backtesting/windows.py`):
+
+| Stage | Window | Use |
+|---|---|---|
+| `optimise` (default) | 2013-01-01 → 2021-12-31 | tune, explore, compare variants — as often as you like |
+| `verify` | 2022-01-01 → today | judge a *finished* candidate, **once per version** |
+| `full` | 2013-01-01 → today | context for a reader, never a verdict |
+
+Queue with `python -m jobs enqueue backtest --market us --strategies X --stage optimise`
+(the default when no stage and no start is given). An explicit `--start` without `--stage`
+keeps its old meaning — a full run to today — and is labelled context.
+
+- **Never tune on verify results.** Look at a verify run, change a rule, and those years are
+  in-sample now. A changed rule is a new version; verify *that*.
+- **Verify once.** A second verify of the same version and options is refused
+  (`verify_runs` table); `--again` runs it knowingly and records it as a repeat.
+- **Decide the pass criteria before the verify run**, and report the result even when it fails.
+- **The boundary is in the data layer, not the runners.** Inside a stage,
+  `marketdata/asof.py` stops every loader a backtest reads through at the stage's end, and
+  `paths.run_dir` tags the run directory with the stage. A new loader a backtest uses must honour
+  `asof.end()`, and a new runner must name its directory through `paths.run_dir` — then run
+  `PYTHONPATH=. .venv/bin/python -m tests.test_backtest_stages --all`, which fails if any registered
+  strategy reads or trades past the boundary.
+- Runs made before stages existed read as **legacy**: shown for reference, never as a verdict.
+- Every year up to October 2026 informed some earlier decision, so strategies refined before then
+  have no clean historical hold-out. The stages protect decisions made from here on; for the rest,
+  the only clean test is forward data (paper trading).
 
 ## Rule: a Learn guide is registered in two files, and stands on its own
 

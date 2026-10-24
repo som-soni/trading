@@ -14,6 +14,7 @@ import time
 import pandas as pd
 
 from . import db, frozen, sessions
+from . import asof
 
 from ..core import indicators as ind
 from ..providers.base import DataProvider
@@ -55,11 +56,12 @@ def load_cached(market: str, symbol: str) -> pd.DataFrame | None:
     ind.enrich_daily() on top; the precomputed indicator columns in
     Postgres are there for the backtest fast-path, not this function."""
     conn = db.get_connection()
+    end = asof.end_date()   # a backtest stage's boundary: read nothing after it
     with conn.cursor() as cur:
         cur.execute(
             "SELECT date, open, high, low, close, volume FROM prices "
-            "WHERE market=%s AND symbol=%s ORDER BY date",
-            (market, symbol),
+            "WHERE market=%s AND symbol=%s" + (" AND date <= %s" if end else "") + " ORDER BY date",
+            (market, symbol, end) if end else (market, symbol),
         )
         rows = cur.fetchall()
     if not rows:
@@ -74,6 +76,8 @@ def load_cached_with_indicators(market: str, symbol: str, as_of: pd.Timestamp, t
     precomputed indicator columns — used by the backtest's cache-hit path
     so it doesn't need to re-run ind.enrich_daily() on an expanding slice
     every simulated day."""
+    if asof.end() is not None and as_of > asof.end():
+        as_of = asof.end()   # a backtest stage's boundary: no row after it
     conn = db.get_connection()
     cols = ", ".join(["date"] + _RAW_COLUMNS + _INDICATOR_COLUMNS)
     with conn.cursor() as cur:
@@ -235,6 +239,9 @@ def load_many_cached(
     if since is not None:
         sql += " AND date >= %s"
         params.append(since.date())
+    if asof.end_date():   # a backtest stage's boundary
+        sql += " AND date <= %s"
+        params.append(asof.end_date())
     sql += " ORDER BY symbol, date"
     with conn.cursor() as cur:
         cur.execute(sql, params)

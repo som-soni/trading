@@ -37,6 +37,7 @@ import logging
 import pandas as pd
 
 from ..config import MARKETS
+from ..marketdata import asof
 from ..marketdata import cache, db
 from ..strategies.base import PortfolioStrategy
 from . import metrics
@@ -93,6 +94,8 @@ def load_events(market: str) -> pd.DataFrame:
         return ev
     ev["filed"] = pd.to_datetime(ev["filed"])
     ev["period_end"] = pd.to_datetime(ev["period_end"])
+    if asof.end() is not None:   # a backtest stage's boundary: a filing after it has not happened
+        ev = ev[ev["filed"] <= asof.end()]
 
     # A growth rate off a loss is not a growth rate: the guide requires the year-ago profit to be
     # positive, and without that filter a swing from -1cr to +1cr reads as -200% and a swing from
@@ -510,7 +513,6 @@ class PeadStrategy(PortfolioStrategy):
     cost_bps = 10.0
     #: US only for the headline: India's filing dates start in 2021 and its universe premium is
     #: +23 points, so the India run is published as a diagnostic rather than as a result.
-    backtest_start = "2010-01-01"
 
     param_docs = (
         ("Holding period", "hold_sessions", "Market sessions held before the time exit."),

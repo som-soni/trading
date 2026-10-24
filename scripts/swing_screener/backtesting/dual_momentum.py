@@ -226,7 +226,6 @@ class DualMomentumStrategy(PortfolioStrategy):
     lookback_months = 12
     rebalance = "ME"
     cost_bps = 10.0
-    backtest_start = "2010-01-01"
 
     param_docs = (
         ("Lookback", "lookback_months", "Months of trailing return used for both checks."),

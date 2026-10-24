@@ -158,10 +158,10 @@ def command_for(targets: list, market: str, opts: dict) -> list[str]:
         cmd += ["--strategies", s if isinstance(s, str) else ",".join(s)]
     if opts.get("from"):
         cmd += ["--from", str(opts["from"])]
-    for flag in ("force", "allow_stale", "no_ingest", "refill"):
+    for flag in ("force", "allow_stale", "no_ingest", "refill", "again"):
         if opts.get(flag):
             cmd.append("--" + flag.replace("_", "-"))
-    for k in ("universe_days", "quality_top", "days", "years", "start", "sample"):
+    for k in ("universe_days", "quality_top", "days", "years", "start", "stage", "sample"):
         if opts.get(k) is not None:
             cmd += ["--" + k.replace("_", "-"), str(opts[k])]
     # repeatable flags, one occurrence per value. Anything missing here is silently

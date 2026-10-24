@@ -1640,3 +1640,16 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 /* Backtests: the run cell's option list is truncated, with the count standing in for the rest. */
 .dtab .bt-more { color: var(--muted); border: 1px solid var(--line-2); border-radius: 8px;
                  padding: 0 5px; font-size: 10px; white-space: nowrap; }
+
+/* Backtest stages (backtesting/windows.py). Out-of-sample is the number to believe, so it carries
+   the "good" colour; in-sample is informational; full and legacy are deliberately quiet. Text stays
+   in text tokens on a soft fill, so the chips read in both themes. */
+.stg { display: inline-block; font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 6px; border-radius: 4px;
+       white-space: nowrap; vertical-align: 1px; border: 1px solid transparent; }
+.stg.st-ver-oos    { background: var(--up-soft);   color: var(--up-text); }
+.stg.st-ver-is     { background: var(--info-soft); color: var(--info-text); }
+.stg.st-ver-full   { background: var(--panel-2);   color: var(--muted); border-color: var(--line-2); }
+.stg.st-ver-legacy { background: transparent;      color: var(--muted); border: 1px dashed var(--line-3); }
+.stg.dim { opacity: .55; }
+.stage-note { margin: 4px 0 10px; color: var(--muted); font-size: 12.5px; }
+.stage-note .stg { margin-right: 6px; }

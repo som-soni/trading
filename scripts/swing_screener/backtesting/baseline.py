@@ -1185,7 +1185,6 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     #: The window every measured figure in `status` comes from. Declared because the backtest job
     #: otherwise uses its own default (2013) while the documented command says 2010 -- the button
     #: and the page would then produce different runs and disagree about the same strategy.
-    backtest_start = "2010-01-01"
     min_turnover_cr = 10         # Rs crore/day (India); see min_turnover_for()
     min_turnover_usd_m = 20      # $ million/day (US)
 

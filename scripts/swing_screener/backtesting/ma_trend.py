@@ -432,7 +432,6 @@ class MaTrendStrategy(PortfolioStrategy):
     mode = "index"
     max_names = 50
     cost_bps = 10.0
-    backtest_start = "2020-01-01"
 
     param_docs = (
         ("Mode", "mode", "index: Faber's monthly rule on the benchmark. stocks: the unranked "

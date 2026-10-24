@@ -28,6 +28,7 @@ import numpy as np
 import pandas as pd
 
 from ..marketdata import db, industries, subindustries
+from ..marketdata import asof
 from . import sectors as sect
 from .breadth import eligible
 
@@ -51,8 +52,12 @@ def load(market: str, dates: list | None = None) -> dict:
     """{date: {"industry": {grp: rs}, "sub": {grp: rs}}} for the stored dates (or the given ones)."""
     init_schema()
     with db.get_connection().cursor() as cur:
+        end = asof.end_date()   # a backtest stage's boundary
         if dates:
+            dates = [d for d in dates if end is None or pd.Timestamp(d).date() <= end]
             cur.execute("SELECT date, level, grp, rs FROM group_rs_history WHERE market=%s AND date = ANY(%s)", (market, list(dates)))
+        elif end:
+            cur.execute("SELECT date, level, grp, rs FROM group_rs_history WHERE market=%s AND date <= %s", (market, end))
         else:
             cur.execute("SELECT date, level, grp, rs FROM group_rs_history WHERE market=%s", (market,))
         out: dict = {}

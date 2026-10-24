@@ -417,7 +417,6 @@ class MeanReversionStrategy(PortfolioStrategy):
     cost_bps = 10.0
     rank = "rsi"
     trend = "above200"
-    backtest_start = "2010-01-01"
 
     param_docs = (
         ("Oversold measure", "measure", "rsi2 | bollinger | double7. All three were measured and all "

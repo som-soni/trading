@@ -483,7 +483,7 @@ def _screen_history(ctx: Ctx) -> None:
     ctx.step.stats = {"built": n}
 
 
-BACKTEST_START = "2013-01-01"   # `backtest` simulates from here unless the request sets `start`
+# A backtest's window comes from its STAGE -- swing_screener/backtesting/windows.py -- not a constant here.
 
 
 def _backtest_steps(ctx: Ctx) -> list:
@@ -498,6 +498,23 @@ def _backtest_steps(ctx: Ctx) -> list:
 
     def one(key):
         def fn(c: Ctx) -> None:
+            # Every backtest runs inside a STAGE (backtesting/windows.py): a window to tune in, one to
+            # verify in, and a read boundary between them, so an optimise run cannot see the years
+            # kept back to judge it. The stage decides the dates; the body below only runs the strategy.
+            from swing_screener.backtesting import windows
+            from swing_screener.strategies import get_strategy as _get
+            stage, start, end = windows.resolve(c.opt("stage"), c.opt("start"))
+            spec = (portfolio_strategies()[key] if key in portfolio_strategies() else type(_get(key))).spec_id()
+            repeat = windows.check(c.market, key, spec, c.opts) if stage == "verify" else False
+            with windows.active(stage, start, end):
+                out = _run(c, start)
+            if stage == "verify":
+                windows.record(c.market, key, spec, c.opts, repeat, out)
+            c.step.detail = f"[{stage} {start} → {end or 'latest'}] " + (c.step.detail or "")
+            if c.step.stats is not None:
+                c.step.stats.update(stage=stage, end=end)
+
+        def _run(c: Ctx, start: str) -> str | None:
             import shlex
             from swing_screener.backtesting import backtest as bt
             from swing_screener.marketdata import cache
@@ -512,11 +529,9 @@ def _backtest_steps(ctx: Ctx) -> list:
                 import importlib
                 mod = getattr(portfolio_strategies()[key], "runner", "baseline")
                 bl = importlib.import_module(f"swing_screener.backtesting.{mod}")
-                # the strategy's own window before the job's generic default, so the button and
-                # the command on its page produce the same run
-                start_ = str(c.opt("start") or getattr(portfolio_strategies()[key], "backtest_start", None)
-                             or BACKTEST_START)
-                argv = ["--strategy", key, "--market", c.market, "--start", start_, "--no-ingest"]
+                # the stage decides the window for every strategy alike -- a strategy's own preferred
+                # start would put different strategies on different windows and make them incomparable
+                argv = ["--strategy", key, "--market", c.market, "--start", start, "--no-ingest"]
                 for extra in (c.opt("bt") or []):
                     argv += shlex.split(str(extra))
                 with cache.offline():   # stored prices only, like the gated backtest
@@ -526,10 +541,9 @@ def _backtest_steps(ctx: Ctx) -> list:
                     c.step.detail = (f"{r['trades']} trades · CAGR {pf.cagr_pct:+.2f}% · "
                                      f"excess {pf.cagr_pct - (pf.benchmark_cagr_pct or 0):+.2f}% · "
                                      f"max DD {pf.max_drawdown_pct:.1f}% · {r['run_dir']}")
-                return
+                return str(r["run_dir"]) if r else None
 
             cls = type(get_strategy(key))
-            start = str(c.opt("start") or BACKTEST_START)
             argv = ["--market", c.market, "--start", start, "--strategy", key] + shlex.split(cls.backtest_args or "")
             if c.opt("sample"):
                 argv += ["--sample", str(int(c.opt("sample")))]
@@ -571,6 +585,7 @@ def _backtest_steps(ctx: Ctx) -> list:
                 c.step.stats = {"trades": r["trades"], "cagr_pct": round(p.cagr_pct, 2),
                                 "max_drawdown_pct": round(p.max_drawdown_pct, 1), "avg_r": round(p.avg_r, 3),
                                 "start": start, "run_dir": str(r["run_dir"])}
+            return str(r["run_dir"]) if r else None
         return (f"backtest:{key}", f"backtest · {key}", fn)
     return [one(k) for k in keys]
 

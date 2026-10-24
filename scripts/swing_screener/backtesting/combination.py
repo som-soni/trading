@@ -151,7 +151,6 @@ class CombinationStrategy(PortfolioStrategy):
 
     momentum_weight = 0.5
     rebalance = "ME"
-    backtest_start = "2020-01-01"
 
     param_docs = (
         ("Momentum weight", "momentum_weight", "Share of the account in the momentum sleeve; the rest is in dual momentum."),

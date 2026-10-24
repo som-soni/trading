@@ -175,7 +175,6 @@ class SectorRotationStrategy(PortfolioStrategy):
     lookback_days = 126
     rebalance = "ME"
     cost_bps = 10.0
-    backtest_start = "2010-01-01"
 
     param_docs = (
         ("Sectors held", "top_n", "How many sectors are held at a time."),
