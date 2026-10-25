@@ -4481,6 +4481,27 @@ function perfGlance(d, key) {
       <td class="num">${esc(s.max_drawdown || "")}</td>
       <td class="num">${esc(s.sharpe || "")}</td>
       <td class="muted small">${prettyDate(b.generated_at)}</td></tr>`; };
+  const gap = (m, first, stageHtml, text) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
+      <td></td><td>${stageHtml}</td><td colspan="5" class="small">${text}</td></tr>`;
+  // the best version in one market: each version's newest run within the pool, ranked by excess CAGR
+  const winOf = (b) => `${b.window_start}|${b.window_end}`;
+  const bestOf = (mine, stage, prefer) => {
+    // Legacy runs each chose their own window, so they rank only against runs sharing one: the
+    // latest version's window when two or more versions ran in it (so "best" is never worse than
+    // "latest" beside it), else the window holding the most versions (newer on a tie).
+    const groups = new Map();
+    for (const b of mine) {
+      if (b.stage !== stage || !b.spec_id || pct(b.summary.excess_cagr) === null) continue;
+      const w = winOf(b);
+      if (!groups.has(w)) groups.set(w, new Map());
+      const g = groups.get(w);
+      if (!g.has(b.spec_id)) g.set(b.spec_id, b);       // each version's newest run in that window
+    }
+    let pick = prefer && groups.get(prefer) && groups.get(prefer).size > 1 ? groups.get(prefer) : null;
+    if (!pick) for (const g of groups.values()) if (!pick || g.size > pick.size) pick = g;
+    const ranked = pick ? [...pick.values()].sort((a, b) => pct(b.summary.excess_cagr) - pct(a.summary.excess_cagr)) : [];
+    return { best: ranked[0] || null, n: ranked.length };
+  };
   // `d.backtests` arrives newest-first, so the first match is the latest
   const mkts = [...new Set(all.map((b) => b.market))].sort();
   let anyLegacy = false, anyBest = false;
@@ -4540,6 +4561,7 @@ function perfGlance(d, key) {
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
       the gap between the two is the measure of how much.
       ${anyLegacy ? "<b>Legacy</b> runs predate stages and mix both windows — reference only. " : ""}
+      ${anyBest ? `<b>Best</b> is the version with the highest excess CAGR among each version's newest run in the same window — in-sample, where choosing between versions belongs; verify the one you pick, once. ` : ""}
       ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}${nVariant ? `${nVariant} experiment${nVariant === 1 ? "" : "s"} (changed settings) left out. ` : ""}Click a row for the report, or see
       <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.</p></section>`;
 }
@@ -4550,27 +4572,6 @@ function strategyRules(host, d, key) {
   const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdBlock(x)}</li>`).join("")}</ol>` : "");
   const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdBlock(x)}</li>`).join("")}</ul>` : "");
   const sec = (id, title, body) => (body ? `<section class="sd-sec" id="sd-${id}"><h2>${title}</h2>${body}</section>` : "");
-  const gap = (m, first, stageHtml, text) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
-      <td></td><td>${stageHtml}</td><td colspan="5" class="small">${text}</td></tr>`;
-  // the best version in one market: each version's newest run within the pool, ranked by excess CAGR
-  const winOf = (b) => `${b.window_start}|${b.window_end}`;
-  const bestOf = (mine, stage, prefer) => {
-    // Legacy runs each chose their own window, so they rank only against runs sharing one: the
-    // latest version's window when two or more versions ran in it (so "best" is never worse than
-    // "latest" beside it), else the window holding the most versions (newer on a tie).
-    const groups = new Map();
-    for (const b of mine) {
-      if (b.stage !== stage || !b.spec_id || pct(b.summary.excess_cagr) === null) continue;
-      const w = winOf(b);
-      if (!groups.has(w)) groups.set(w, new Map());
-      const g = groups.get(w);
-      if (!g.has(b.spec_id)) g.set(b.spec_id, b);       // each version's newest run in that window
-    }
-    let pick = prefer && groups.get(prefer) && groups.get(prefer).size > 1 ? groups.get(prefer) : null;
-    if (!pick) for (const g of groups.values()) if (!pick || g.size > pick.size) pick = g;
-    const ranked = pick ? [...pick.values()].sort((a, b) => pct(b.summary.excess_cagr) - pct(a.summary.excess_cagr)) : [];
-    return { best: ranked[0] || null, n: ranked.length };
-  };
   // A strategy that splits its trade into stop / target / sizing / filter rules (strategies/base.py)
   // gets one section per part, each answering one question, instead of a single "Entry & exit".
   const split = d.kind !== "long-term" && ((d.stop_rules || []).length || (d.target_rules || []).length);
@@ -4607,7 +4608,6 @@ function strategyRules(host, d, key) {
       ${d.setups.length ? `<h3>${num()}Setups <span class="muted small">— the patterns that make a stock entry-eligible</span></h3>${codeTable(d.setups, "Setup")}` : ""}
       ${d.watch.length ? `<h3>Warning flags <span class="muted small">— don't disqualify, but cap or downgrade the decision</span></h3>${codeTable(d.watch, "Flag")}` : ""}
       </section>` : ""}
-      ${anyBest ? `<b>Best</b> is the version with the highest excess CAGR among each version's newest run in the same window — in-sample, where choosing between versions belongs; verify the one you pick, once. ` : ""}
     ${split ? splitSecs : sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>${d.kind === "benchmark" ? "Entry" : "Entry, stop and target"}</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
     ${sec("decisions", "Decisions", d.decisions.length ? `<table class="dtab"><tbody>${d.decisions.map((x) => `<tr><td><span class="tag ${decisionClass(x.label)}">${esc(x.label)}</span></td><td>${esc(x.text)}</td></tr>`).join("")}</tbody></table>
       <p class="muted small">${esc(d.regime_note)}</p>` : "")}
