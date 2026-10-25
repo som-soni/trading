@@ -43,6 +43,7 @@ import logging
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..config import MARKETS
 from ..marketdata import cache
 from ..strategies.base import PortfolioStrategy
@@ -127,8 +128,10 @@ class CombinationStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "momentum_dual_combo"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("1.0", "2026-10-24",
          "First version, from the Learn guide on combining strategies: half the account in "
          "momentum_vol_scaled, half in dual_momentum, rebalanced to the split each month-end and "
@@ -142,7 +145,7 @@ class CombinationStrategy(PortfolioStrategy):
     status = DOC["status"]
     thesis = DOC["thesis"]
     how_it_works = DOC["how_it_works"]
-    caveats = DOC["caveats"]
+    caveats = tuple(DOC["caveats"]) + (corporate_actions.CAVEAT_HELD,)
 
     behaviour = "trend_momentum"
     selection = "cross_sectional"

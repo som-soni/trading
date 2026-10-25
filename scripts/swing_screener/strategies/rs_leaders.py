@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..config.base import MarketConfig
 from ..core.context import StockContext
 from .base import (LABELS, Decision, PlanChoice, Strategy, StrategyResult, TradePlan,
@@ -95,8 +96,18 @@ class RsLeadersStrategy(Strategy):
 
     selection = "time_series"
     family = "rs_leaders"
-    version = "1.1"
-    changelog = (("1.1", "2026-10-24",
+    version = "1.2"
+    changelog = (
+        ("1.2", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited "
+         "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
+         "entry, stop, target and other levels move down by the payout; before, the stored close fell by "
+         "it and the trade booked the payout as a loss, or was stopped out by it. An order resting in the "
+         "stock that day is cancelled. Only trades held across such an ex-date move. Stored prices were "
+         "also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and "
+         "GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py "
+         "correct)."),
+        ("1.1", "2026-10-24",
                   "Same-day signals are now bought strongest first: the backtest ranks them by RS rating "
                   "(`--rank-by rs`). Every signal scored the same setup quality, so when more triggered than "
                   "there was cash for, the tie fell through to Python's stable sort, i.e. the order the "
@@ -174,6 +185,7 @@ class RsLeadersStrategy(Strategy):
         "**Surveillance and trade-for-trade filters (India) are not modelled**; the guide asks for them and the "
         "stored data does not carry them. Neither are results dates: nothing stops a buy just before a "
         "results announcement.",
+        corporate_actions.CAVEAT_TRADED,
     )
     status = (
         "MEASURED in India from 2020, and the headline misreads it. CAGR 3.80% against the Nifty 500's 12.63% "

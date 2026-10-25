@@ -45,6 +45,7 @@ Honest limits
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..config.base import MarketConfig
 from ..core.context import StockContext
 from .base import (
@@ -88,8 +89,17 @@ EG01 = "S1"   # EG-01: the break of the reaction day's high
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited "
+         "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
+         "entry, stop, target and other levels move down by the payout; before, the stored close fell by "
+         "it and the trade booked the payout as a loss, or was stopped out by it. An order resting in the "
+         "stock that day is cancelled. Only trades held across such an ex-date move. Stored prices were "
+         "also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and "
+         "GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py "
+         "correct)."),
         ("1.1", "2026-10-22",
          "The backtest takes trades. A signal now places its buy-stop (entry_signal_fired is true "
          "whenever the setup is present, as for Minervini's pivot buy), where before it was never "
@@ -214,6 +224,7 @@ class EarningsGapStrategy(Strategy):
         "exits on the 20-day.\n"
         "- **Intraday entry:** the break of the reaction day's opening range cannot be tested on "
         "daily bars, so the buy comes a day later and higher.",
+        corporate_actions.CAVEAT_TRADED,
     )
     status = (
         "Not yet measured. Built as the shelf's only event-driven per-symbol strategy, to test "

@@ -45,7 +45,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..marketdata import cache, db, universe
+from ..marketdata import cache, corporate_actions, db, universe
 
 from ..core import indicators as ind, sizing
 from ..core import context as ctx_mod
@@ -1322,12 +1322,14 @@ def run_portfolio_backtest(
     sim_kw = {}
     if spec_costs:
         sim_kw.update(cost_bps=spec_mod.COST_BPS[market_key], slippage_bps=spec_mod.SLIPPAGE_BPS[market_key])
+    credits = corporate_actions.Credits.for_market(market_key, list(prices))
+    spec_notes.append(credits.note())
     result = simulate(
         all_signals, prices, cfg, start,
         max_positions=max_positions, exit_policy=policy,
         max_open_risk_pct=max_open_risk_pct, max_adv_pct=max_adv_pct,
         pyramid_frac=pyramid_frac, pyramid_add_pct=pyramid_add_pct,
-        exposure=exposure, regime_ok=regime_ok, **sim_kw,
+        exposure=exposure, regime_ok=regime_ok, credits=credits, **sim_kw,
     )
     tdf = p_trades_to_df(result.trades)
     # what the simulator refused: slots, cash, and the per-fill checks it records

@@ -17,6 +17,7 @@ backtest.py before trusting it.
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..core import swings as sw
 from ..config.base import MarketConfig
 from ..core.context import StockContext
@@ -47,8 +48,17 @@ MAX_STOP_PCT = 8.0             # beyond this the plan is WATCH - WAIT
 
 class BreakoutStrategy(Strategy):
     selection = "time_series"
-    version = "1.4"
+    version = "1.5"
     changelog = (
+        ("1.5", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited "
+         "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
+         "entry, stop, target and other levels move down by the payout; before, the stored close fell by "
+         "it and the trade booked the payout as a loss, or was stopped out by it. An order resting in the "
+         "stock that day is cancelled. Only trades held across such an ex-date move. Stored prices were "
+         "also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and "
+         "GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py "
+         "correct)."),
         ("1.4", "2026-10-24",
          "No rule changed. The breakout volume multiple and the two stop caps -- the "
          "{HIGH_CONF_MAX_STOP_PCT}% that keeps a trade HIGH CONFIDENCE (and so the cap a backtest "
@@ -173,6 +183,7 @@ class BreakoutStrategy(Strategy):
         "**No price floor anywhere.** Version 1.1 removed `cfg.screener.min_price` from the "
         "point-in-time pre-filter. The daily screen calls that same pre-filter, so it applies no "
         "price floor either; only the Screens page's snapshot does.",
+        corporate_actions.CAVEAT_TRADED,
     )
 
     # --- full reference documentation (generated Strategy page) ---

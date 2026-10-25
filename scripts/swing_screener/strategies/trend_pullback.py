@@ -17,6 +17,7 @@ import math
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..core import indicators as ind
 from ..core import swings as sw
 from ..core import demand_supply as ds_mod
@@ -50,8 +51,17 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 class TrendPullbackStrategy(Strategy):
     selection = "time_series"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited "
+         "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
+         "entry, stop, target and other levels move down by the payout; before, the stored close fell by "
+         "it and the trade booked the payout as a loss, or was stopped out by it. An order resting in the "
+         "stock that day is cancelled. Only trades held across such an ex-date move. Stored prices were "
+         "also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and "
+         "GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py "
+         "correct)."),
         ("1.2", "2026-10-16",
          "Gate, watch and setup codes renamed to one scheme shared by every strategy: G1..Gn for the hard "
          "gates, W1..Wn for the watch flags, S1..Sn for the setups. "
@@ -153,6 +163,7 @@ class TrendPullbackStrategy(Strategy):
         "**The fill is not re-checked.** The stop-width and 2R tests use the planned buy level. A "
         "gap up at the fill raises the price paid without moving the stop or the target, so a filled "
         "trade can risk more, and offer less than 2R, than the plan said.",
+        corporate_actions.CAVEAT_TRADED,
     )
 
     # ---------- full reference documentation (Strategy details page) ----------

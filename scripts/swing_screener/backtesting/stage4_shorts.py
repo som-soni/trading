@@ -37,7 +37,7 @@ import pandas as pd
 
 from ..config import MARKETS
 from ..core import indicators as ind
-from ..marketdata import cache, universe
+from ..marketdata import cache, corporate_actions, universe
 from ..strategies.base import PortfolioStrategy
 from ..strategies.stage_analysis import MA_WEEKS, ma30, stage_series
 from . import metrics
@@ -211,7 +211,10 @@ def prepare(market: str) -> dict:
         # Ranking the full tape would need every frame in memory; see the caveats.
         fno_rank = pd.DataFrame(turnover).rank(axis=1, ascending=False)
     return {"market": market, "bench": bench, "frames": frames, "fno_rank": fno_rank,
-            "weak": market_weak(bench), "n_universe": len(tickers)}
+            "weak": market_weak(bench), "n_universe": len(tickers),
+            # a short PAYS a special dividend or a demerger's value on the ex-date (the flat yield
+            # covers ordinary dividends only)
+            "credits": corporate_actions.Credits.for_market(market, list(frames))}
 
 
 def candidates(prep: dict, entries: str, use_filter: bool, start: pd.Timestamp) -> dict:
@@ -282,14 +285,14 @@ def run(prep: dict, start: str, entries: str = "B", use_filter: bool = True, cos
         fee = p["shares"] * price * side
         cash -= p["shares"] * price + fee
         costs_total += fee
-        pnl = p["proceeds"] - p["shares"] * price - fee - p["fee"] - p["carry"]
+        pnl = p["proceeds"] - p["shares"] * price - fee - p["fee"] - p["carry"] - p["paid"]
         risk = p["shares"] * p["risk_ps"]
         trades.append({
             "symbol": sym, "direction": "short", "setup": p["entry"], "entry_date": p["date"],
             "entry_price": round(p["price"], 4), "initial_stop": round(p["stop0"], 4),
             "exit_date": d, "exit_price": round(price, 4), "shares": round(p["shares"], 4),
             "exit_reason": reason, "pnl": round(pnl, 2), "notional": round(p["proceeds"], 2),
-            "costs": round(fee + p["fee"], 2), "carry": round(p["carry"], 2),
+            "costs": round(fee + p["fee"], 2), "carry": round(p["carry"], 2), "paid": round(p["paid"], 2),
             "holding_days": (d - p["date"]).days, "sessions": p["n"],
             "r_multiple": round(pnl / risk, 4) if risk > 0 else float("nan"),
             "mfe_r": round(p["mfe"] / p["risk_ps"], 3) if p["risk_ps"] > 0 else float("nan"),
@@ -297,7 +300,21 @@ def run(prep: dict, start: str, entries: str = "B", use_filter: bool = True, cos
         del open_pos[sym]
 
     last_close: dict = {}
+    credits = prep.get("credits")
+    credit_after = cal[0] - pd.Timedelta(days=1)
     for d in cal:
+        # ---- a special dividend or demerger on a name held short: the short pays it, and the stop
+        # and entry move down with the price (as for a long in portfolio_sim.credit_action)
+        if credits is not None:
+            for s, c in credits.on(d, credit_after, open_pos).items():
+                p = open_pos[s]
+                cash -= c * p["shares"]
+                p["paid"] += c * p["shares"]
+                for k in ("price", "stop", "stop0"):
+                    p[k] -= c
+                if s in last_close:
+                    last_close[s] -= c
+            credit_after = d
         # ---- equity at the previous close, which sizes today's entries
         liab = sum(p["shares"] * last_close.get(s, p["price"]) for s, p in open_pos.items())
         equity = cash - liab
@@ -331,7 +348,7 @@ def run(prep: dict, start: str, entries: str = "B", use_filter: bool = True, cos
             costs_total += fee
             open_pos[s] = {"shares": shares, "price": o, "proceeds": shares * o, "fee": fee, "date": d,
                            "stop": stop, "stop0": stop, "risk_ps": stop - o, "entry": c["entry"], "n": 0,
-                           "carry": 0.0, "mfe": 0.0, "was_below50": False, "trailed": False}
+                           "carry": 0.0, "paid": 0.0, "mfe": 0.0, "was_below50": False, "trailed": False}
         pending = []
         # ---- the day's exits, intraday stop first, then the close rules
         for s in list(open_pos):
@@ -630,8 +647,16 @@ class Stage4ShortsStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "stage4_shorts"
-    version = "1.1"
-    changelog = (("1.1", "2026-10-25",
+    version = "1.2"
+    changelog = (
+        ("1.2", "2026-10-25",
+         "Backtest mechanics, no rule changed: a short now pays special dividends and demergers on the "
+         "ex-date (marketdata/corporate_actions.py), with its stop moved down by the payout; the flat "
+         "dividend yield covers ordinary ones only. Before, a short pocketed the payout as a fall. Stored "
+         "prices were also corrected where the source left a split unadjusted before its year-start "
+         "(MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar "
+         "(marketdata/splits.py correct)."),
+        ("1.1", "2026-10-25",
                   "Skip a short whose next open is above the high its stop sits over (the stop less its ATR "
                   "buffer). v1.0 shorted those opens with a sliver of risk to the stop -- one US trade risked "
                   "0.01% and booked +4,677R -- so its R statistics were meaningless, though the 20% position "
@@ -647,7 +672,7 @@ class Stage4ShortsStrategy(PortfolioStrategy):
     status = DOC["status"]
     thesis = DOC["thesis"]
     how_it_works = tuple(DOC["how_it_works"])
-    caveats = tuple(DOC["caveats"])
+    caveats = tuple(DOC["caveats"]) + (corporate_actions.CAVEAT_SHORT,)
     entry_rules = tuple(DOC["entry_rules"])
     exit_rules = tuple(DOC["exit_rules"])
 

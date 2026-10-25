@@ -29,7 +29,7 @@ import logging
 import pandas as pd
 
 from ..config import MARKETS
-from ..marketdata import cache, index_data
+from ..marketdata import cache, corporate_actions, index_data
 from ..strategies.base import PortfolioStrategy
 from . import baseline, metrics, rotation
 
@@ -224,7 +224,8 @@ def stocks(market: str, start: str, cost_bps: float = 10.0, max_names: int = 50,
 
     tdf, eq, held, costs = rotation.simulate(
         px, pick, start=start, rebalance=REBALANCE, cost_bps=cost_bps,
-        account_size=cfg.account_size, lookback_days=SLOW_SMA)
+        account_size=cfg.account_size, lookback_days=SLOW_SMA,
+        credits=corporate_actions.Credits.for_market(market, list(px.columns)))
     # Fully invested whenever anything qualifies, so cash is only the stretches with nothing to own.
     cash = pd.Series([0.0 if h else e for e, h in zip(eq, held)], index=eq.index)
     return tdf, eq, held, cash, costs
@@ -394,8 +395,11 @@ class MaTrendStrategy(PortfolioStrategy):
     key = MA_DOC["key"]
     doc = MA_DOC
     family = "ma_trend"
-    version = "2.0"
-    changelog = (("2.0", "2026-10-24",
+    version = "2.1"
+    changelog = (
+        ("2.1", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
+        ("2.0", "2026-10-24",
                   "Two corrections and one change of rule. Cash now earns the market's cash rate "
                   "while out (index_data.cash_rate_series, accrued per calendar day): 1.0 left it at "
                   "zero, which charged the rule for every month it stepped aside -- the months it "
@@ -424,7 +428,7 @@ class MaTrendStrategy(PortfolioStrategy):
     status = MA_DOC["status"]
     thesis = MA_DOC["thesis"]
     how_it_works = tuple(MA_DOC["how_it_works"])
-    caveats = tuple(MA_DOC["caveats"])
+    caveats = tuple(MA_DOC["caveats"]) + ("Stocks mode only (the index holds no single stock): " + corporate_actions.CAVEAT_HELD,)
     entry_rules = tuple(MA_DOC["entry_rules"])
     exit_rules = tuple(MA_DOC["exit_rules"])
 

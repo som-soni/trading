@@ -213,6 +213,10 @@ class PortfolioTrade:
     target_shares: int = 0         # full intended size; 0 when not pyramiding
     add_price: float = float("nan")  # resting buy-stop for the remaining tranche
     adds: int = 0
+    # Cash received from special dividends and demergers while held (`credit_action`). It is a return
+    # of capital: every price level the trade carries -- entry_price included -- is lowered by the
+    # payout per share on the ex-date, so pnl and R already contain it; this field only reports it.
+    credited: float = 0.0
 
     @property
     def held(self) -> int:
@@ -265,6 +269,32 @@ PENDING_EXPIRY_BDAYS = 10
 # A base reopens only after one of these: the trade was shaken out, not finished. A trend exit
 # (EX-06) says the move itself is over, so buying the same base again is chasing it.
 RE_ENTRY_AFTER = frozenset({"STOP", "BREAKEVEN_STOP"})
+
+
+# price levels a position or its order carries in `meta`, lowered with the price on an ex-date
+_META_LEVELS = ("pivot", "_be", "_max_high", "max_fill", "min_open", "cancel_close_below", "confirm_close_above")
+
+
+def credit_action(pos: "PortfolioTrade", cash_per_share: float) -> float:
+    """A special dividend or demerger while `pos` is held: the cash it receives, with every level it
+    carries moved down by the payout, as if the stop and target were re-placed against the ex-date
+    price. Brokers do not move a resting stop for a dividend, but a stop hit only because the stock
+    went ex a payout the holder received is not a loss of the trade's thesis, and leaving it would
+    count the payout as a stop-out. Returns the cash for the account."""
+    c = float(cash_per_share)
+    held = pos.held
+    for attr in ("entry_price", "initial_stop", "stop", "target", "peak_close", "add_price"):
+        v = getattr(pos, attr)
+        if v == v:
+            setattr(pos, attr, v - c)
+    # shares sold before the ex-date keep their proceeds; on the lowered basis they are worth c less each
+    pos.sold_value -= c * (pos.shares - held)
+    for k in _META_LEVELS:
+        v = pos.meta.get(k)
+        if isinstance(v, (int, float)) and v == v:
+            pos.meta[k] = v - c
+    pos.credited += c * held
+    return c * held
 
 
 def _slip(price: float, bps: float, side: str) -> float:
@@ -355,6 +385,7 @@ def simulate(
     max_adv_pct: float | None = None,
     pyramid_frac: float | None = None,
     pyramid_add_pct: float = 2.0,
+    credits=None,
 ) -> PortfolioResult:
     """Walk every trading day once, with one shared pool of capital.
 
@@ -370,7 +401,11 @@ def simulate(
     from what he paid, so an add that lifts the average far above the pivot widens
     the loss if he is wrong. The add is therefore refused above meta["max_fill"],
     the same buy-range ceiling the initial entry respects, and refused once any
-    partial profit has been taken. None or 1.0 keeps the old single-tranche fill."""
+    partial profit has been taken. None or 1.0 keeps the old single-tranche fill.
+
+    `credits` (marketdata.corporate_actions.Credits): on a special dividend's or demerger's ex-date a
+    held position receives the cash and its levels move down by it (`credit_action`); an order
+    still resting in that symbol is cancelled, its levels set against the pre-payout price."""
     cap = max_positions if max_positions is not None else cfg.max_open_positions
     policy = exit_policy or ExitPolicy()
     base_slip = cfg.slippage_bps if slippage_bps is None else slippage_bps
@@ -437,8 +472,19 @@ def simulate(
         del positions[sym]
 
     eq_rows, pos_rows, cash_rows = [], [], []
+    credit_after = all_dates[0] - pd.Timedelta(days=1)
 
     for today in all_dates:
+        # ---- corporate actions: the payout of a special dividend or demerger, before the session
+        if credits is not None:
+            for sym, c in credits.on(today, credit_after, set(positions) | set(pending)).items():
+                if sym in positions:
+                    cash += credit_action(positions[sym], c)
+                if sym in pending:
+                    skip("cancelled: the stock went ex a special dividend or demerger", sym, today)
+                    del pending[sym]
+            credit_after = today
+
         # ---- progressive exposure: fixed for the whole session, computed from trades
         # that closed on EARLIER sessions. Reading it here rather than at the fill is
         # the whole point — today's stop-out must not resize today's entry.
@@ -984,7 +1030,7 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
             "exit_reason": t.exit_reason, "exit_price": round(t.exit_price, 4),
             "notional": round(t.notional, 2), "costs": round(t.costs, 2),
             "pnl": round(t.pnl, 2), "r_multiple": round(t.r_multiple, 3),
-            "holding_days": t.holding_days,
+            "holding_days": t.holding_days, "credited": round(t.credited, 2),
             **({"partial_shares": t.partial_shares, "pivot": t.meta.get("pivot"), "base_id": t.meta.get("base_id"),
                 "base_no": t.meta.get("base_no"), "rs": t.meta.get("rs"), "sepa": t.meta.get("sepa")} if t.meta else {}),
         }
@@ -994,7 +1040,7 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
         "symbol", "setup", "decision", "entry_date", "entry_price", "stop",
         "initial_stop", "target",
         "shares", "exit_date", "exit_reason", "exit_price", "notional", "costs",
-        "pnl", "r_multiple", "holding_days",
+        "pnl", "r_multiple", "holding_days", "credited",
     ]
     if any(t.meta for t in trades):
         cols += ["partial_shares", "pivot", "base_id", "base_no", "rs", "sepa"]

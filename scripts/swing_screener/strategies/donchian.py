@@ -32,6 +32,7 @@ for sizing, not an expectation.
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..config.base import MarketConfig
 from ..core import indicators as ind  # noqa: F401  (kept for symmetry/extension)
 from ..core.context import StockContext
@@ -54,8 +55,17 @@ DC02 = "S2"   # DC-02  # coiled just under the channel high
 
 class DonchianStrategy(Strategy):
     selection = "time_series"
-    version = "1.3"
+    version = "1.4"
     changelog = (
+        ("1.4", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited "
+         "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
+         "entry, stop, target and other levels move down by the payout; before, the stored close fell by "
+         "it and the trade booked the payout as a loss, or was stopped out by it. An order resting in the "
+         "stock that day is cancelled. Only trades held across such an ex-date move. Stored prices were "
+         "also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and "
+         "GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py "
+         "correct)."),
         ("1.3", "2026-10-24",
          "Same-day ties now go to the stronger stock rather than the earlier letter. Every accepted "
          "signal scores 2 and the book is slot-limited -- full on 82% (India) and 88% (US) of days in "
@@ -180,6 +190,7 @@ class DonchianStrategy(Strategy):
         "**Every new high signals.** S1 is not only the first break. Every close above the prior "
         "{entry_channel} sessions' high counts, so a stock in a run signals day after day, and after "
         "an exit the next such close can buy it again.",
+        corporate_actions.CAVEAT_TRADED,
     )
 
     # --- full reference documentation (the web app's Strategy page) ---

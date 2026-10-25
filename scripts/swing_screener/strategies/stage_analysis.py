@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..config.base import MarketConfig
 from ..core.context import StockContext
 from .base import (LABELS, Decision, PlanChoice, Strategy, StrategyResult, TradePlan,
@@ -244,8 +245,18 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.5"
-    changelog = (("2.5", "2026-10-24",
+    version = "2.6"
+    changelog = (
+        ("2.6", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited "
+         "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
+         "entry, stop, target and other levels move down by the payout; before, the stored close fell by "
+         "it and the trade booked the payout as a loss, or was stopped out by it. An order resting in the "
+         "stock that day is cancelled. Only trades held across such an ex-date move. Stored prices were "
+         "also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and "
+         "GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py "
+         "correct)."),
+        ("2.5", "2026-10-24",
                   "Same-day ties now go to the stronger stock rather than the earlier letter. The book is "
                   "slot-limited -- on the 2.3 US run 1,947 signals lost out to a full book against 133 "
                   "trades -- and the accepted signals share one setup score, so the tie fell through to the "
@@ -443,6 +454,7 @@ class StageAnalysisStrategy(Strategy):
         "**Not modelled from the guide.** Overhead supply (the plan reports the nearest level above the entry, "
         "but no rule rejects on it), the trailing stop under each Stage 2 correction, the Stage 3 stop-tightening "
         "or half sale, the half-now-half-on-the-pullback entry, and the spread across sectors.",
+        corporate_actions.CAVEAT_TRADED,
     )
     status = (
         "NOT YET MEASURED. The stage model is validated against the guide's Trent narrative "

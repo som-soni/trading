@@ -184,11 +184,38 @@ def _splits(ctx: Ctx) -> None:
     if sus.empty:
         ctx.step.detail = "no split-shaped gaps since each symbol's last full fetch"
         ctx.step.stats = {"gaps": 0}
+        _correct_source_errors(ctx)
         return
     r = splits.repair(ctx.market, sus)
     ctx.step.detail = (f"{r['gaps']} split-shaped gap(s) in {r['symbols']} symbol(s): full history re-fetched for {r['fixed']}; "
                        f"{r['gaps'] - r['still_there']} repaired, {r['still_there']} still there (real moves or a source error)")
     ctx.step.stats = r
+    _correct_source_errors(ctx)
+
+
+def _correct_source_errors(ctx: Ctx) -> None:
+    """Errors in the source's own history a re-fetch cannot fix (splits.correct): an unadjusted split a stored
+    split/bonus corroborates, and stray bars. Idempotent -- re-applied when a re-fetch brings one back."""
+    from swing_screener.marketdata import splits
+    c = splits.correct(ctx.market)
+    note = f"source errors: {c['unadjusted']} unadjusted split(s) rescaled, {c['stray']} stray bar(s) fixed ({c['deleted']} deleted)"
+    ctx.step.detail = f"{ctx.step.detail} · {note}" if ctx.step.detail else note
+    ctx.step.stats = {**(ctx.step.stats or {}), "corrected": c}
+
+
+def _corporate_actions(ctx: Ctx) -> None:
+    """Dividends and splits (Yahoo, every stored symbol) and India's demergers, bonuses and face-value splits
+    (NSE): what a backtest credits for a special dividend or a demerger (marketdata/corporate_actions.py)."""
+    from swing_screener.marketdata import corporate_actions
+    r = corporate_actions.refresh(ctx.market, full=bool(ctx.opt("force")), progress=ctx.step.progress)
+    y, n = r["yahoo"], r.get("nse")
+    cr = corporate_actions.credits(ctx.market)
+    k = cr["kind"].value_counts().to_dict() if len(cr) else {}
+    ctx.step.detail = (f"Yahoo: {y['answered']:,} / {y['symbols']:,} symbols ({y['full']:,} read in full), {y['rows']:,} rows"
+                       + (f" · NSE: {n['rows']:,} actions from {n['windows']} quarters"
+                          + (f", {n['failed']} failed" if n["failed"] else "") if n else "")
+                       + f" · credited in backtests: {k.get('special_dividend', 0)} special dividends, {k.get('demerger', 0)} demergers")
+    ctx.step.stats = {**r, "credits": k}
 
 
 def _sessions(ctx: Ctx) -> None:
@@ -798,8 +825,12 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("subindustries", "reference", "sub-industries: official industry codes (BSE / Nasdaq) and the sub-industry coverage", "monthly", True,
         _subindustries, after=("industries",)),
     Job("prices", "data", "prices: daily bars for the whole universe", "daily", True, _prices, after=("universe",)),
-    Job("splits", "data", "splits & bonus issues: re-fetch the full history of stocks that split after their last full fetch",
-        "weekly", True, _splits, after=("prices",)),
+    Job("splits", "data", "splits & bonus issues: re-fetch the full history of stocks that split after their last full fetch, "
+        "and fix the source's own unadjusted splits and stray bars (marketdata/splits.py)",
+        "weekly", True, _splits, after=("prices", "corporate_actions")),
+    Job("corporate_actions", "data", "corporate actions: dividends and splits (Yahoo), demergers and bonuses (NSE) — the "
+        "special dividends and demergers backtests credit to a holder (marketdata/corporate_actions.py)",
+        "weekly", True, _corporate_actions, after=("prices",)),
     Job("sessions", "data", "stray sessions: remove bars the source dates on a holiday or weekend that most of the market "
         "did not trade, which would blank every symbol's 200-day average in a whole-market frame", "daily", False, _sessions,
         after=("prices",)),
@@ -877,8 +908,8 @@ PIPELINES: dict[str, dict] = {
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
                  "jobs": ["backtest", "ingest"]},
     "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, fundamentals, company financials "
-                          "and their scores, quality scores; split & bonus repair",
-               "jobs": [("universe", {"force": True}), "names", "classify", "splits", "earnings", "fundamentals", "financials", "fundamental_scores", "quality", "fpi_sectors"]},
+                          "and their scores, quality scores; corporate actions; split & bonus repair",
+               "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "splits", "earnings", "fundamentals", "financials", "fundamental_scores", "quality", "fpi_sectors"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},
     "quality": {"summary": "on demand: fetch financial statements and score companies (the Quality screen) — slow, network-heavy",

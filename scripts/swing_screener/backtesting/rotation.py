@@ -24,12 +24,15 @@ def rebalance_dates(index: pd.DatetimeIndex, start: pd.Timestamp, rule: str) -> 
 
 def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
              cost_bps: float = 10.0, account_size: float = 1_000_000.0,
-             lookback_days: int = 252):
+             lookback_days: int = 252, credits=None):
     """Walk the calendar holding whatever `pick` returns.
 
     `pick(date, returns, px)` -> list of column names to hold, equal-weighted. An empty list means
     hold nothing (cash). Returns are trailing `lookback_days` simple returns, passed in rather than
     recomputed per strategy so both see the same definition.
+
+    `credits` (marketdata.corporate_actions.Credits), for a frame of stocks: a holding receives the
+    cash of a special dividend or demerger on its ex-date, where the stored close only falls.
     """
     start_ts = pd.Timestamp(start)
     ret = px / px.shift(lookback_days) - 1.0
@@ -58,7 +61,14 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
         return cash + sum(u * float(pxv.loc[d, s]) for s, u in units.items()
                           if pd.notna(pxv.loc[d, s]))
 
+    credited: dict[str, float] = {}
+    credit_after = None
     for d in px.index[px.index >= start_ts]:
+        if credits is not None:
+            for s, c in credits.on(d, credit_after, units).items():
+                cash += units[s] * c
+                credited[s] = credited.get(s, 0.0) + units[s] * c
+            credit_after = d
         if d in rebals:
             target = list(pick(d, ret.loc[d], px) or [])
             # sell what is no longer wanted, at this session's close
@@ -69,12 +79,14 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
                 cash += gross - fee
                 costs_total += fee
                 e_date, e_price, e_cost = entry.pop(s)
+                cr = credited.pop(s, 0.0)
                 trades.append({"symbol": s, "entry_date": e_date, "entry_price": round(e_price, 4),
                                "exit_date": d, "exit_price": round(price, 4), "shares": round(units[s], 4),
-                               "exit_reason": "ROTATE", "pnl": round(gross - fee - e_cost, 2),
+                               "exit_reason": "ROTATE", "pnl": round(gross - fee - e_cost + cr, 2),
+                               **({"credited": round(cr, 2)} if credits is not None else {}),
                                "notional": round(e_cost, 2), "costs": round(fee, 2),
                                "holding_days": (d - e_date).days,
-                               "r_multiple": round((gross - fee) / e_cost - 1, 4)})
+                               "r_multiple": round((gross - fee + cr) / e_cost - 1, 4)})
                 del units[s]
             if target:
                 # equal weight across the target, rebuilt from the whole book so weights stay level
@@ -101,12 +113,14 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
         for s, u in units.items():
             price = float(pxv.loc[d, s])
             e_date, e_price, e_cost = entry[s]
+            cr = credited.get(s, 0.0)
             trades.append({"symbol": s, "entry_date": e_date, "entry_price": round(e_price, 4),
                            "exit_date": d, "exit_price": round(price, 4), "shares": round(u, 4),
-                           "exit_reason": "OPEN", "pnl": round(u * price - e_cost, 2),
+                           "exit_reason": "OPEN", "pnl": round(u * price - e_cost + cr, 2),
+                           **({"credited": round(cr, 2)} if credits is not None else {}),
                            "notional": round(e_cost, 2), "costs": 0.0,
                            "holding_days": (d - e_date).days,
-                           "r_multiple": round(u * price / e_cost - 1, 4)})
+                           "r_multiple": round((u * price + cr) / e_cost - 1, 4)})
     tdf = pd.DataFrame(trades)
     held = pd.Series([len(units) or 1] * len(eq), index=eq.index)
     return tdf, eq, held, costs_total

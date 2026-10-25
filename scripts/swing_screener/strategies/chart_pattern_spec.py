@@ -42,6 +42,7 @@ import math
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..config.base import MarketConfig
 from ..core import pattern_spec as ps
 from ..core.context import StockContext
@@ -210,8 +211,17 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.14"
+    version = "1.15"
     changelog = (
+        ("1.15", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited "
+         "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
+         "entry, stop, target and other levels move down by the payout; before, the stored close fell by "
+         "it and the trade booked the payout as a loss, or was stopped out by it. An order resting in the "
+         "stock that day is cancelled. Only trades held across such an ex-date move. Stored prices were "
+         "also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and "
+         "GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py "
+         "correct)."),
         ("1.14", "2026-10-25",
          "Triangles, wedges and rectangles redrawn around HINDCOPPER.NS's missed 2026 top (highs 760, "
          "618, 587 over a ~450 floor, broken 2026-10-19 -- the chart showed nothing on any of those "
@@ -544,6 +554,7 @@ class ChartPatternSpecStrategy(Strategy):
         "Several patterns usually match one chart. The traded one is the "
         "highest-priority live match; `pattern` names it and the setup "
         "columns show the rest.",
+        corporate_actions.CAVEAT_TRADED,
     )
     gate_docs = {
         "G1": "A bullish pattern is complete and waiting, or broke out on today's bar.\n\n"

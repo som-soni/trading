@@ -32,7 +32,7 @@ import logging
 
 import pandas as pd
 
-from ..marketdata import cache, universe
+from ..marketdata import cache, corporate_actions, universe
 
 from . import metrics
 from ..config import MARKETS
@@ -387,6 +387,7 @@ def run(
     regime: str | None = None,
     preloaded: tuple | None = None,
     universe_filter=None,
+    credit_actions: bool = True,
 ):
     """Hold the top `top_n` by `rank`, rebalanced on `rebalance`.
 
@@ -405,6 +406,8 @@ def run(
                   scored pool on each rebalance before the top `top_n` are taken -- how a variant
                   (quality_momentum) narrows the pool without a second copy of this loop. A
                   `notes()` method on it, if present, adds lines to the report's caveats.
+    `credit_actions`  credit a held position the cash of a special dividend or a demerger on its
+                  ex-date (marketdata/corporate_actions.py), where the stored close only falls
     """
     cfg = MARKETS[market]
     start_ts = pd.Timestamp(start)
@@ -481,6 +484,10 @@ def run(
                                          dv=dv, liq_floor=liq_floor)
         cash_rate = index_data.cash_rate_series(market, dates)[0]
     in_regime_cash, prev_day = False, None
+    # special dividends and demergers: the stored close falls by the payout, the holder gets it in cash
+    credits = corporate_actions.Credits.for_market(market, list(px.columns)) if credit_actions else None
+    credited: dict[str, float] = {}   # symbol -> cash credited to the open position
+    credited_total, credit_after = 0.0, dates[0] - pd.Timedelta(days=1)
 
     # rebalance on the last trading day of each period present in the data
     rebal_dates = set(pd.Series(dates, index=dates).resample(rebalance).last().dropna())
@@ -503,6 +510,12 @@ def run(
             if r_ == r_ and r_ > 0:
                 cash *= (1.0 + r_ / 365.0) ** (today - prev_day).days
         prev_day = today
+        if credits is not None:
+            for s, c in credits.on(today, credit_after, holdings).items():
+                cash += c * holdings[s]
+                credited[s] = credited.get(s, 0.0) + c * holdings[s]
+                credited_total += c * holdings[s]
+            credit_after = today
 
         held_value = sum(
             sh * float(mark[s]) for s, sh in holdings.items()
@@ -544,11 +557,12 @@ def run(
                 costs_total += cost
                 turnover_notional += price * holdings[s]
                 ed, ep, esh = entry_info.pop(s, (today, price, holdings[s]))
+                cr = credited.pop(s, 0.0)
                 trades.append({
                     "symbol": s, "entry_date": ed, "entry_price": round(ep, 4),
                     "exit_date": today, "exit_price": round(fill, 4), "shares": esh,
                     "exit_reason": "REBALANCE_OUT",
-                    "pnl": round((fill - ep) * esh - cost, 2),
+                    "pnl": round((fill - ep) * esh - cost + cr, 2), "credited": round(cr, 2),
                     "notional": round(ep * esh, 2), "costs": round(cost, 2),
                     "holding_days": (today - ed).days,
                 })
@@ -630,6 +644,7 @@ def run(
                         if holdings[s] == 0:
                             del holdings[s]
                             entry_info.pop(s, None)
+                            credited.pop(s, None)
 
         held_value = sum(
             sh * float(mark[s]) for s, sh in holdings.items()
@@ -648,10 +663,11 @@ def run(
             continue
         price = float(final[s])
         ed, ep, esh = entry_info.get(s, (last, price, sh))
+        cr = credited.get(s, 0.0)
         trades.append({
             "symbol": s, "entry_date": ed, "entry_price": round(ep, 4),
             "exit_date": last, "exit_price": round(price, 4), "shares": sh,
-            "exit_reason": "OPEN", "pnl": round((price - ep) * sh, 2),
+            "exit_reason": "OPEN", "pnl": round((price - ep) * sh + cr, 2), "credited": round(cr, 2),
             "notional": round(ep * sh, 2), "costs": 0.0,
             "holding_days": (last - ed).days,
         })
@@ -673,7 +689,7 @@ def run(
     notes = [
         "SURVIVORSHIP BIAS: today's listed names only; companies delisted during "
         "the window are absent, which biases returns upward.",
-        f"Costs: {cost_bps:.0f}bps per side. Dividends are excluded on BOTH the "
+        f"Costs: {cost_bps:.0f}bps per side. Ordinary dividends are excluded on BOTH the "
         "strategy and the benchmark, so absolute returns understate reality for each.",
         f"Rules: top {top_n} by {lookback}-bar momentum skipping {skip} bars, "
         f"rebalanced {rebalance}, ranked within the top "
@@ -688,6 +704,8 @@ def run(
             f"Regime filter '{regime}' (index close > its {regime_mod.INDEX_SMA_DAYS}-day average"
             f" / >= {regime_mod.BREADTH_MIN_PCT:g}% of liquid names above their 200-day): off on "
             f"{100.0 * regime_off_days / len(dates):.1f}% of sessions, held in cash at the stored cash rate.")
+    if credits is not None:
+        notes.append(credits.note() + f" Credited to this run's holdings: {cfg.currency_symbol}{credited_total:,.0f}.")
     if universe_filter is not None and hasattr(universe_filter, "notes"):
         notes += list(universe_filter.notes())
     perf = metrics.compute(
@@ -795,8 +813,9 @@ DOC = {
         "stock that split heavily reads under $10 in its early years and is excluded exactly while it was "
         "rising (NVDA does not clear it until mid-2020). The gated backtests drop the price floor for this "
         "reason; this one keeps it.",
-        "**Dividends are left out** of both the strategy and the benchmark (SPY, Nifty 500): stored prices are "
-        "split-adjusted closes only, so absolute returns understate both.",
+        "**Ordinary dividends are left out** of both the strategy and the benchmark (SPY, Nifty 500): stored "
+        "prices are split-adjusted closes only, so absolute returns understate both.",
+        corporate_actions.CAVEAT_HELD,
         "**The live ranking is not quite the backtest.** The current-holdings ranking skips the turnover floor "
         "for this strategy (it declares no per-market floor) and needs 300 stored sessions, so it can list names "
         "the backtest would not hold.",
@@ -1198,8 +1217,9 @@ VS_DOC = {
         "segment's -60.8%, which is a real improvement, but it is not a comfortable ride and the holding "
         "period is years. In the US it is deeper than the index's: -49.5% against -42.3%.",
         "**Benchmarked against the Nifty Smallcap 250 (US: IWM), not the broad index.** Measuring this against "
-        "the Nifty 500 counts segment beta as skill. Dividends are left out of both the strategy and the "
-        "benchmark: stored prices are split-adjusted closes only.",
+        "the Nifty 500 counts segment beta as skill. Ordinary dividends are left out of both the strategy "
+        "and the benchmark: stored prices are split-adjusted closes only.",
+        corporate_actions.CAVEAT_HELD,
     ),
 }
 
@@ -1214,8 +1234,10 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("1.2", "2026-10-24",
          "A rank buffer, OFF until measured (hold_rank = None). Each month the book was rebuilt from "
          "the fresh top 20, so a name slipping from rank 20 to 21 was sold outright. The ranking is "
@@ -1317,7 +1339,7 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     key = "momentum_baseline"
     doc = DOC
     family = "momentum_baseline"
-    version = "1.0"
+    version = "1.1"
     name = DOC["name"]
     description = DOC["description"]
     status = DOC["status"]
@@ -1345,6 +1367,8 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     )
 
     changelog = (
+        ("1.1", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("1.0", "2026-10-09",
          "Brought into the registry so it carries a version and a generated "
          "spec. Defaults unchanged: top 10, 12-1 momentum, monthly rebalance, "

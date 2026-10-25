@@ -48,6 +48,7 @@ import logging
 import pandas as pd
 
 from fundamentals.growth import STALE_RESULTS_DAYS
+from ..marketdata import corporate_actions
 from ..marketdata.financials import LINES_FILING_LAG_DAYS
 from ..strategies.base import PortfolioStrategy
 from . import baseline
@@ -335,8 +336,10 @@ class QualityMomentumStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "quality_momentum"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("1.0", "2026-10-25",
          "First version: momentum_baseline's rules unchanged, the ranked pool narrowed each month-end "
          "to companies passing ROE, sales, net debt and free-cash-flow tests on the filings public that "
@@ -347,7 +350,7 @@ class QualityMomentumStrategy(PortfolioStrategy):
     status = DOC["status"]
     thesis = DOC["thesis"]
     how_it_works = tuple(DOC["how_it_works"])
-    caveats = tuple(DOC["caveats"])
+    caveats = tuple(DOC["caveats"]) + (corporate_actions.CAVEAT_HELD,)
     entry_rules = tuple(DOC["entry_rules"])
     exit_rules = tuple(DOC["exit_rules"])
 

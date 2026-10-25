@@ -28,7 +28,7 @@ import logging
 import pandas as pd
 
 from ..config import MARKETS
-from ..marketdata import cache
+from ..marketdata import cache, corporate_actions
 from ..strategies.base import PortfolioStrategy
 from ..strategies.rs_leaders import RsLeadersStrategy
 from . import baseline, metrics, rotation
@@ -99,9 +99,10 @@ def run(market: str, start: str, top_n: int = 10, lookback: int = TRADING_DAYS,
         chosen[d] = held
         return held or [BENCH_COL]
 
+    credits = corporate_actions.Credits.for_market(market, list(candidates))
     tdf, eq, pos, costs = rotation.simulate(
         px, pick, start=start, rebalance=rebalance, cost_bps=cost_bps,
-        account_size=cfg.account_size, lookback_days=lookback)
+        account_size=cfg.account_size, lookback_days=lookback, credits=credits)
 
     rebals = rotation.rebalance_dates(px.index, pd.Timestamp(start), rebalance)
     in_rec = sum(1 for d in rebals if d in recovery)

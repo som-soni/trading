@@ -33,6 +33,7 @@ import dataclasses
 
 import pandas as pd
 
+from ..marketdata import corporate_actions
 from ..config.base import MarketConfig
 from ..core import vcp_spec
 from ..core import swings as sw
@@ -578,8 +579,17 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.25"
+    version = "1.26"
     changelog = (
+        ("1.26", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited "
+         "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
+         "entry, stop, target and other levels move down by the payout; before, the stored close fell by "
+         "it and the trade booked the payout as a loss, or was stopped out by it. An order resting in the "
+         "stock that day is cancelled. Only trades held across such an ex-date move. Stored prices were "
+         "also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and "
+         "GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py "
+         "correct)."),
         ("1.25", "2026-10-24",
          "W5 can become a rule: SMA200_PREF_REQUIRED = 1 holds a plan at WATCH (no new buy) while the "
          "200-day has not risen over {SMA200_RISING_PREF_BARS} sessions, Minervini's preferred 4-5 months "
@@ -1085,6 +1095,7 @@ class MinerviniSpecStrategy(Strategy):
         "average, rebuilt daily from stored prices back to 2009; today's lists only, like everything else here.",
         "The detector turns a chart-reading judgement into numbers; every threshold is a parameter of the "
         "spec (section 11), most of them marked there as assumptions.",
+        corporate_actions.CAVEAT_TRADED,
     )
     status = (
         "NOT YET MEASURED on the current rules. Every figure this strategy used to quote came from "

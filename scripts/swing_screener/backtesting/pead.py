@@ -38,7 +38,7 @@ import pandas as pd
 
 from ..config import MARKETS
 from ..marketdata import asof
-from ..marketdata import cache, db
+from ..marketdata import cache, corporate_actions, db
 from ..strategies.base import PortfolioStrategy
 from . import metrics
 
@@ -241,9 +241,19 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
         hit = df.index[df.index <= d]
         return float(df.loc[hit[-1], "close"]) if len(hit) else float("nan")
 
+    # a special dividend or demerger while held: the cash, and the stop moved down by it
+    credits = corporate_actions.Credits.for_market(market, list(prices))
+    credit_after = start_ts - pd.Timedelta(days=1)
+
     for i, d in enumerate(cal):
         if d < start_ts:
             continue
+        for sym, c in credits.on(d, credit_after, open_pos).items():
+            p = open_pos[sym]
+            cash += p["units"] * c
+            p["credited"] += p["units"] * c
+            p["stop"] -= c
+        credit_after = d
         # ---- exits first, so freed capital can be redeployed the same session
         for sym in list(open_pos):
             p = open_pos[sym]
@@ -267,10 +277,11 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
             trades.append({
                 "symbol": sym, "entry_date": p["date"], "entry_price": round(p["price"], 4),
                 "exit_date": d, "exit_price": round(price, 4), "shares": round(p["units"], 4),
-                "exit_reason": reason, "pnl": round(gross - fee - p["cost"], 2),
+                "exit_reason": reason, "pnl": round(gross - fee - p["cost"] + p["credited"], 2),
+                "credited": round(p["credited"], 2),
                 "notional": round(p["cost"], 2), "costs": round(fee + p["fee"], 2),
                 "holding_days": (d - p["date"]).days,
-                "r_multiple": round((gross - fee) / p["cost"] - 1, 4),
+                "r_multiple": round((gross - fee + p["credited"]) / p["cost"] - 1, 4),
             })
             del open_pos[sym]
 
@@ -289,7 +300,7 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
             costs_total += fee
             open_pos[c["symbol"]] = {
                 "units": (spend - fee) / c["price"], "price": c["price"], "date": d,
-                "cost": spend - fee, "fee": fee, "i": i, "stop": c["stop"], "filed": c["filed"]}
+                "cost": spend - fee, "fee": fee, "i": i, "stop": c["stop"], "filed": c["filed"], "credited": 0.0}
 
         val = cash + sum(p["units"] * px_on(s, d) for s, p in open_pos.items())
         equity.append((d, val))
@@ -481,8 +492,11 @@ class PeadStrategy(PortfolioStrategy):
     key = PEAD_DOC["key"]
     doc = PEAD_DOC
     family = "pead"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-18",
+    version = "1.1"
+    changelog = (
+        ("1.1", "2026-10-25",
+         "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
+        ("1.0", "2026-10-18",
                   "First version. Validated against the guide's worked example before being measured: "
                   "Polycab's June 2023 quarter reads +81.69% year on year against the guide's +81.7%, "
                   "the March quarter +30.56% against +30.6%, and the acceleration +51.13 points against "
@@ -494,7 +508,7 @@ class PeadStrategy(PortfolioStrategy):
     status = PEAD_DOC["status"]
     thesis = PEAD_DOC["thesis"]
     how_it_works = tuple(PEAD_DOC["how_it_works"])
-    caveats = tuple(PEAD_DOC["caveats"])
+    caveats = tuple(PEAD_DOC["caveats"]) + (corporate_actions.CAVEAT_HELD,)
     entry_rules = tuple(PEAD_DOC["entry_rules"])
     exit_rules = tuple(PEAD_DOC["exit_rules"])
 
@@ -583,7 +597,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         "filing a year earlier rather than from the current filing's restated comparative.",
         "The season rank is an expanding window within the season: a company's rank against the FULL season "
         "is not knowable on the day it reports.",
-        f"Costs: {a.cost_bps:g}bps per side. Dividends are excluded on both the strategy and the benchmark.",
+        f"Costs: {a.cost_bps:g}bps per side. Ordinary dividends are excluded on both the strategy and the benchmark; "
+        "special dividends and demergers are credited to a holder.",
     ]
     perf = metrics.compute(equity=eq, positions_open=held, trades=tdf,
                            max_open_positions=a.max_positions, costs_paid=costs,
