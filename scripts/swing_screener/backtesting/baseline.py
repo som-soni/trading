@@ -384,6 +384,7 @@ def run(
     fractional: bool = False,
     index_overlay: bool = False,
     overlay_months: int = 10,
+    regime: str | None = None,
     preloaded: tuple | None = None,
     universe_filter=None,
 ):
@@ -398,6 +399,8 @@ def run(
     `index_overlay`  hold nothing while the benchmark is below its
                   `overlay_months`-month average
     `trend_filter`   require each stock above its own 200-day average
+    `regime`      index_sma | breadth | both (backtesting/regime.py): at a rebalance where the
+                  market is off, hold nothing; that cash earns the stored cash rate
     `universe_filter`  optional `(date, {symbol: score}) -> {symbol: score}` applied to the eligible,
                   scored pool on each rebalance before the top `top_n` are taken -- how a variant
                   (quality_momentum) narrows the pool without a second copy of this loop. A
@@ -466,6 +469,19 @@ def run(
     if len(dates) < 2:
         raise ValueError("not enough trading dates in range")
 
+    # Market-regime switch (off by default). Read on the rebalance session's close, like the
+    # per-stock trend filter. Only the cash the switch creates earns interest, so an arm differs
+    # from its control by the switch alone -- the control's leftover cash still earns nothing.
+    regime_ok = cash_rate = None
+    regime_off_days = 0
+    if regime:
+        from . import regime as regime_mod
+        from ..marketdata import index_data
+        regime_ok = regime_mod.regime_on(regime, px.index, bench_px=bench_px, px=px, sma200=sma200,
+                                         dv=dv, liq_floor=liq_floor)
+        cash_rate = index_data.cash_rate_series(market, dates)[0]
+    in_regime_cash, prev_day = False, None
+
     # rebalance on the last trading day of each period present in the data
     rebal_dates = set(pd.Series(dates, index=dates).resample(rebalance).last().dropna())
 
@@ -481,6 +497,12 @@ def run(
     for today in dates:
         row = px.loc[today]       # today's actual prices — used for trading
         mark = marks.loc[today]   # last known prices — used for valuation
+        if in_regime_cash and prev_day is not None:
+            # calendar-day accrual, index_core's rule (rate/252 per bar under-pays)
+            r_ = float(cash_rate.get(today, float("nan")))
+            if r_ == r_ and r_ > 0:
+                cash *= (1.0 + r_ / 365.0) ** (today - prev_day).days
+        prev_day = today
 
         held_value = sum(
             sh * float(mark[s]) for s, sh in holdings.items()
@@ -503,6 +525,10 @@ def run(
                                      top_n, hold_rank)
             if overlay_ok is not None and not bool(overlay_ok.get(today, False)):
                 target = []   # benchmark below its trend: hold nothing
+            if regime_ok is not None:
+                in_regime_cash = not bool(regime_ok.get(today, True))
+                if in_regime_cash:
+                    target = []   # market regime off: hold cash until a rebalance finds it on
 
             # sell anything not in the new target
             for s in list(holdings):
@@ -610,6 +636,7 @@ def run(
             if s in mark.index and pd.notna(mark[s])
         )
         eq_rows.append(cash + held_value)
+        regime_off_days += int(in_regime_cash)
         pos_rows.append(len(holdings))
         cash_rows.append(cash)
 
@@ -656,6 +683,11 @@ def run(
         "'r_multiple' here is notional-relative (no stop exists), so it is NOT "
         "comparable to the gated strategy's stop-relative R.",
     ]
+    if regime:
+        notes.append(
+            f"Regime filter '{regime}' (index close > its {regime_mod.INDEX_SMA_DAYS}-day average"
+            f" / >= {regime_mod.BREADTH_MIN_PCT:g}% of liquid names above their 200-day): off on "
+            f"{100.0 * regime_off_days / len(dates):.1f}% of sessions, held in cash at the stored cash rate.")
     if universe_filter is not None and hasattr(universe_filter, "notes"):
         notes += list(universe_filter.notes())
     perf = metrics.compute(
@@ -824,6 +856,12 @@ def build_parser() -> argparse.ArgumentParser:
                          "(cut SPY's max drawdown -50.8%% -> -23.0%%)")
     ap.add_argument("--overlay-months", type=int, default=10,
                     help="months in the --index-overlay average of the benchmark's month-end closes")
+    from . import regime as _rg
+    ap.add_argument("--regime", default=None, choices=list(_rg.KINDS),
+                    help=f"market-regime switch read at each rebalance close: index_sma = benchmark above "
+                         f"its {_rg.INDEX_SMA_DAYS}-day average, breadth = at least {_rg.BREADTH_MIN_PCT:g}%% of "
+                         "liquid names above their own 200-day, both = both. When off, hold cash at the stored "
+                         "cash rate (default: off)")
     ap.add_argument(
         "--min-turnover", type=float, default=None,
         help="20-day average turnover floor in account currency (overrides the market "
@@ -928,7 +966,7 @@ def run_args(args: argparse.Namespace, universe_filter=None):
         fractional=args.fractional,
         rank=args.rank, weighting=args.weighting, vol_target=args.vol_target,
         vol_window=args.vol_window,
-        index_overlay=args.index_overlay, overlay_months=args.overlay_months,
+        index_overlay=args.index_overlay, overlay_months=args.overlay_months, regime=args.regime,
         hold_rank=args.hold_rank, universe_filter=universe_filter,
     )
 
@@ -956,6 +994,7 @@ def main(argv: list[str] | None = None, universe_filter=None, run_suffix: str = 
                 + (f"_{args.weighting}" if args.weighting != "equal" else "")
                 + (f"_vt{args.vol_target:g}" if args.vol_target else "")
                 + ("_overlay" if args.index_overlay else "")
+                + (f"_regime-{args.regime}" if args.regime else "")
                 + (f"_hold{args.hold_rank}" if args.hold_rank and args.hold_rank > args.top_n else "")
                 + ("_frac" if args.fractional else "")
                 # In the market's own unit, never %g: a Rs10cr floor formats as "1e+08", and
