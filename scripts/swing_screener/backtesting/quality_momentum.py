@@ -32,7 +32,10 @@ Variants (`--variant`), fixed before any run and not to be added to after one:
                 "has filings" is itself a selection (bigger, older, better-documented companies);
   strict        every threshold one notch tighter (the STRICT_* constants);
   filings_only  ROE and sales only -- the two tests the quarterly filings answer, which in the US reach
-                back to 2011, while statement lines (debt, cash flow) start in 2016.
+                back to 2011, while statement lines (debt, cash flow) start in 2016;
+  filings_covered  the coverage control for filings_only (ROE and sales data required, nothing judged).
+                ADDED AFTER the first four had run, when they showed coverage itself carries a look-ahead
+                bias (see the caveats); a control, not a threshold, so it can only weaken the case.
 
     PYTHONPATH=. python3 -m swing_screener.backtesting.quality_momentum --market us --start 2013-01-01
     PYTHONPATH=. python3 -m swing_screener.backtesting.quality_momentum --market us --start 2013-01-01 --variant covered
@@ -68,7 +71,7 @@ STRICT_SALES_GROWTH_MIN_PCT = 5
 # ---------------------------------------------------------------- data freshness (mechanics)
 QM_STATEMENT_STALE_DAYS = 550     # a fiscal year or balance sheet older than this (about 18 months) is no data
 
-VARIANTS = ("quality", "covered", "strict", "filings_only")
+VARIANTS = ("quality", "covered", "strict", "filings_only", "filings_covered")
 
 
 def thresholds(variant: str) -> dict:
@@ -83,6 +86,8 @@ def thresholds(variant: str) -> dict:
         return {"roe": None, "sales": None, "debt": None, "cash": None}
     if variant == "filings_only":
         return {"roe": QM_ROE_MIN_PCT / 100, "sales": QM_SALES_GROWTH_MIN_PCT / 100}
+    if variant == "filings_covered":
+        return {"roe": None, "sales": None}
     raise ValueError(f"--variant must be one of {VARIANTS}")
 
 
@@ -216,20 +221,29 @@ DOC = {
                    "rebalance date show ROE of at least {QM_ROE_MIN_PCT}%, modest net debt, positive free "
                    "cash flow and no shrinking sales; top {top_n}, rebalanced every month-end.",
     "status": (
-        "OPTIMISE STAGE ONLY (2013-01-01 to 2021-12-31); not verified. Measured against momentum_baseline "
-        "run in the same window, the control it differs from by the filter alone. "
-        "US optimise: the full test can only judge non-financial companies from 2017, when stored "
-        "balance-sheet and cash-flow lines begin, so it is compared with momentum_baseline from 2017-04-01 "
-        "(both runs, same start); the filings_only variant (ROE and sales, covered from 2011) is the one "
-        "run over the whole window. "
-        "India optimise CANNOT BE JUDGED: stored Indian filings begin in 2021, so every rebalance before "
-        "late 2021 has no covered name and the book holds cash -- the optimise window holds no evidence "
-        "either way. "
-        "PASS CRITERION FOR A FUTURE VERIFY RUN, fixed before it is run (2022-01-01 to today, once, "
-        "variant `quality`, defaults unchanged): in EACH market, CAGR at least 2 points a year above "
-        "momentum_baseline in the same verify window AND max drawdown no deeper than momentum_baseline's; "
-        "in India additionally at least the CAGR of momentum_vol_scaled in that window. Failing any part "
-        "is a fail, and is reported as one."
+        "FAILS IN THE OPTIMISE STAGE (US); UNTESTABLE THERE (India). Optimise only (2013-01-01 to "
+        "2021-12-31); not verified. "
+        "The clean control is the covered variant, not momentum_baseline: the stored fundamentals are "
+        "fetched for TODAY's liquid and Stage-2 stocks, so requiring them drops the momentum names that "
+        "later collapsed -- a look-ahead that favours every filtered run over the baseline (see the "
+        "caveats). Covered shares that bias; the gap between it and this strategy is the quality test's "
+        "own effect. "
+        "US, 2017-04-01 to 2021-12-31 (the full test can judge non-financial companies only from 2017, when "
+        "stored balance sheets and cash flows begin): this strategy 14.86% CAGR, max drawdown -41.5%; the "
+        "covered control 29.85%, -50.1%; momentum_baseline 9.17%, -57.2%; SPY 15.95%, -34.1% "
+        "(excess -1.09). Against the covered control the test costs 15.0 points a year for 8.6 points less "
+        "drawdown: it removes the strongest names (CELH, NTLA, MRNA, GME among them). The strict variant is "
+        "no better (14.61%, -47.3%). Its +5.69 over the baseline is the look-ahead, not the test. "
+        "US, 2013 to 2021, ROE and sales only (filings_only): 14.51%, -42.1%, against momentum_baseline's "
+        "-2.11%, -79.9% and SPY's 14.01%; its coverage control (filings_covered) decides what that means. "
+        "India: stored filings begin in 2021, so no rebalance in the window had a covered name and the book "
+        "held cash -- no evidence either way. "
+        "PASS CRITERION FOR A FUTURE VERIFY RUN, fixed before it is run (2022-01-01 to today, once, variant "
+        "`quality` and its covered control, defaults unchanged): in EACH market, CAGR at least 2 points a "
+        "year above the covered control in the same window AND max drawdown no deeper than the covered "
+        "control's; reported beside momentum_baseline (and momentum_vol_scaled in India) for context only, "
+        "since those comparisons carry the look-ahead. Failing any part is a fail, and is reported as one. "
+        "On the optimise evidence the US is expected to fail; spending the India verify run is the user's call."
     ),
     "thesis": "Momentum buys whatever rose most, and some of what rises most is a weak business carried by "
               "a story -- losses, debt, shrinking sales. Those are the names most likely to give a rally back. "
@@ -254,7 +268,9 @@ DOC = {
         "Four variants were fixed before any run, as experiments on this one: covered (data required, no "
         "threshold -- the control for having filings at all), strict (ROE {STRICT_ROE_MIN_PCT}%, net debt "
         "{STRICT_NET_DEBT_EQUITY_MAX}x equity, free cash flow {STRICT_FCF_CONVERSION_MIN_PCT}% of profit, "
-        "sales growth {STRICT_SALES_GROWTH_MIN_PCT}%) and filings_only (ROE and sales only).",
+        "sales growth {STRICT_SALES_GROWTH_MIN_PCT}%) and filings_only (ROE and sales only). A fifth, "
+        "filings_covered (ROE and sales data required, nothing judged), was added after those ran, as "
+        "filings_only's coverage control.",
     ),
     "entry_rules": (
         "Everything the momentum baseline requires on the month-end session: universe, price and turnover "
@@ -285,6 +301,13 @@ DOC = {
         "Nothing sells between month-ends; there is no stop and no target.",
     ),
     "caveats": (
+        "**Having fundamentals is a look-ahead filter.** Stored filings exist for the companies the "
+        "financials job fetches: today's most liquid tradable stocks plus today's Stage-2 stocks. A 2020 "
+        "momentum name that collapsed and is illiquid now was never fetched, so it is 'missing data' and "
+        "never eligible -- in the US 2017-2021 run, 72 of the 102 names the baseline held and the covered "
+        "control did not had no filings fetched at all. That lifts every variant above momentum_baseline "
+        "for reasons a trader could not have known. Judge the test against the covered control, which "
+        "carries the same bias; a comparison with the baseline overstates it.",
         "**India has no stored filings before 2021.** The optimise window therefore contains no India test "
         "at all: the book is in cash until the first covered rebalance. The verify window (2022 on) is the "
         "first and only look, so its pass criterion is written in Status before it is run.",
