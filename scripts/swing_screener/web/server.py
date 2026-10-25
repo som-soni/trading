@@ -65,7 +65,7 @@ def _startup() -> None:
     qual.init_schema()
     growth_mod.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
-    threading.Thread(target=_freshness_loop, daemon=True).start()  # /api/status never computes it on a request
+    threading.Thread(target=_background_refresh, daemon=True).start()  # what the Today page needs, computed ahead
     threading.Thread(target=db_mod.releasing(_prewarm_sectors), daemon=True).start()
     threading.Thread(target=db_mod.releasing(lambda: [(_names(m), _liquidity(m)) for m in tuple(MARKETS)]),
                      daemon=True).start()  # first search is instant
@@ -946,7 +946,8 @@ from ..analytics import breadth as br
 
 _breadth_jobs: dict[str, subprocess.Popen] = {}
 _breadth_tried: dict = {}     # market -> the price day a top-up was last asked for
-_sector_cache: dict[tuple, dict] = {}
+_sector_cache: dict[tuple, dict] = {}     # (market, latest breadth day) -> _sectors() result, one per market
+_sector_locks: dict[str, threading.Lock] = {}
 
 
 def _breadth_topup(market: str) -> bool:
@@ -994,6 +995,17 @@ def _sectors(market: str) -> dict:
     key = (market, last)
     if key in _sector_cache:
         return _sector_cache[key]
+    # ~10 s of price history: concurrent requests (and the background refresh) compute it once
+    with _sector_locks.setdefault(market, threading.Lock()):
+        if key not in _sector_cache:
+            res = _sectors_compute(market, last)
+            for k in [k for k in _sector_cache if k[0] == market]:
+                del _sector_cache[k]
+            _sector_cache[key] = res
+    return _sector_cache[key]
+
+
+def _sectors_compute(market: str, last) -> dict:
     elig = br.eligible(market)
     top = q("""SELECT symbol FROM (SELECT DISTINCT ON (symbol) symbol, dollar_vol_sma20 FROM prices
                WHERE market=%s AND symbol = ANY(%s) AND date BETWEEN %s::date - 10 AND %s AND dollar_vol_sma20 IS NOT NULL
@@ -1036,10 +1048,7 @@ def _sectors(market: str) -> dict:
                     "members": [{"symbol": r.symbol, "r3m": r.r3m, "r1m": r.r1m, "above50": r.a0}
                                 for r in g.sort_values("r3m", ascending=False).itertuples()]})
     out.sort(key=lambda x: -x["r3m_vs"])
-    res = {"sectors": out, "uptrend": uptrend, "n_sectors": len(out), "covered": int(len(s)), "total": int(len(p))}
-    _sector_cache.clear()
-    _sector_cache[key] = res
-    return res
+    return {"sectors": out, "uptrend": uptrend, "n_sectors": len(out), "covered": int(len(s)), "total": int(len(p))}
 
 
 def _dedupe_events(events: list) -> list:
@@ -3027,10 +3036,10 @@ def postmarket_api(market: str = "us", date: str | None = None):
 
 from . import status as status_mod
 
-# freshness() takes seconds to tens of seconds (it counts recent price rows per day), so a background
-# thread keeps a copy current and /api/status serves it; the lock makes a request that arrives before
-# the first copy wait for that computation rather than start a second one beside it
-FRESHNESS_EVERY_S = 60
+# freshness() takes seconds (tens before price_day_counts existed), so a background thread keeps a copy
+# current and /api/status serves it; the lock makes a request that arrives before the first copy wait
+# for that computation rather than start a second one beside it
+REFRESH_EVERY_S = 60
 _fresh: dict = {}
 _fresh_lock = threading.Lock()
 
@@ -3053,14 +3062,21 @@ def _refresh_freshness(if_missing: bool = False) -> dict:
         return _fresh["v"]
 
 
-def _freshness_loop() -> None:
+def _background_refresh() -> None:
+    """Keep the Today page's slow inputs computed before anyone asks: freshness every round; the breadth
+    page's sector leadership and the screener list's CAN SLIM column are cached per day, so a round only
+    recomputes them when a new day lands."""
     import time
+    warm = [("freshness", _refresh_freshness),
+            *((f"sectors {m}", lambda m=m: _sectors(m)) for m in tuple(MARKETS)),
+            ("CAN SLIM", lambda: _canslim_for(wl.entries()))]
     while True:
-        try:
-            db_mod.releasing(_refresh_freshness)()
-        except Exception as exc:  # noqa: BLE001 - keep serving the last copy; try again next round
-            print(f"freshness refresh failed: {exc}")
-        time.sleep(FRESHNESS_EVERY_S)
+        for name, fn in warm:
+            try:
+                db_mod.releasing(fn)()
+            except Exception as exc:  # noqa: BLE001 - keep serving the last copy; try again next round
+                print(f"background refresh, {name}: {exc}")
+        time.sleep(REFRESH_EVERY_S)
 
 
 def _freshness() -> dict:
