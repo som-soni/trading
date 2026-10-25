@@ -2,26 +2,33 @@
 business cycle, as opposed to the policy rates and market-priced series already covered by
 `rates.py` and `macro.py`.
 
-Stored in `index_series` (one row per series per date, FRED's native daily/weekly/monthly/quarterly
-cadence — no resampling) under the market each one describes, fetched from FRED's free, key-less
-CSV endpoint (`rates.fred()`, the same helper `rates.py` uses for US yields):
+Stored in `index_series` (one row per series per date, the source's native daily/weekly/monthly/
+quarterly cadence — no resampling) under the market each one describes. Each indicator names its
+`source`:
 
-    us     CPI (CPIAUCSL), real GDP (GDPC1), industrial production (INDPRO), retail sales
-           (RSAFS, and its staples/discretionary split RSDBS/RSGMS), light-vehicle sales
-           (TOTALSA), durable goods orders (DGORDER), housing starts and permits (HOUST,
-           PERMIT), the 30-year mortgage rate (MORTGAGE30US), bank credit (TOTLL) and the Baa
-           corporate credit spread (BAA10Y)
-    india  CPI (INDCPIALLMINMEI) and industrial production (INDPROINDMISMEI), both OECD's India
-           mirror of MOSPI releases; GDP (INDGDPRQPSMEI, already a YoY growth rate, not a level)
+    fred       FRED's free, key-less CSV endpoint (`rates.fred()`, the helper `rates.py` uses):
+               us     CPI (CPIAUCSL), real GDP (GDPC1), industrial production (INDPRO), retail
+                      sales (RSAFS, and its staples/discretionary split RSDBS/RSGMS), light-vehicle
+                      sales (TOTALSA), durable goods orders (DGORDER), housing starts and permits
+                      (HOUST, PERMIT), the 30-year mortgage rate (MORTGAGE30US), bank credit (TOTLL)
+                      and the Baa corporate credit spread (BAA10Y)
+               india  CPI (INDCPIALLMINMEI, OECD's mirror), real GDP growth (INDGDPRQPSMEI) and real
+                      private consumption growth (NAEXKP02INQ659S) — the last two already YoY rates
+    mospi_iip  MoSPI's own IIP API (api.mospi.gov.in, JSON, no key): the general index and the
+               use-based consumer durables / non-durables groups, as MoSPI's published YoY growth.
+               Replaces FRED's OECD mirror of the IIP, which stopped at Jan-2023.
+    vahan      the Vahan dashboard's all-India new vehicle registrations per month — an
+               undocumented JSON endpoint that answers a plain GET; a failed day is skipped.
 
-India vehicle sales (SIAM/FADA), the unemployment rate (PLFS/CMIE), and sector-level series
-(housing starts, mortgage rates, bank credit growth) have no free, machine-readable release — PDF
-or press-release only, fortnightly bulletins, or paywalled — so they are not here. `summary()`
-reports them as absent rather than guessing at a number.
+Still missing for India, because no free machine-readable release exists (PDF or press release
+only, behind bot protection, or paywalled): segment-wise vehicle sales (SIAM/FADA), retail sales,
+GST collections, consumer confidence (RBI, behind a session gateway), unemployment (PLFS/CMIE),
+housing and bank-credit series. `summary()` reports a series it has no data for as absent rather
+than guessing at a number.
 
-FRED's OECD mirror of an India series can lag the live MOSPI/SIAM release by weeks; `summary()`
-always reports the as-of date of the last stored point so staleness is visible rather than
-hidden behind a number.
+A mirror can lag the original release (FRED's OECD copy of India CPI stops at Mar-2025);
+`summary()` always reports the as-of date of the last stored point so staleness is visible rather
+than hidden behind a number.
 
     PYTHONPATH=. python3 -m swing_screener.marketdata.indicators            # refresh both markets
     PYTHONPATH=. python3 -m swing_screener.marketdata.indicators --list     # what is stored
@@ -30,6 +37,8 @@ hidden behind a number.
 import argparse
 import datetime as dt
 import logging
+import re
+import ssl
 from dataclasses import dataclass
 
 import pandas as pd
@@ -38,6 +47,15 @@ from . import db
 from .rates import fred
 
 logger = logging.getLogger(__name__)
+
+TIMEOUT = 60
+MOSPI_IIP = "https://api.mospi.gov.in/api/iip/getIIPData"
+MOSPI_BASES = ("2011-12", "2022-23")   # oldest first: a later base's growth rate wins where both have a month
+VAHAN = ("https://analytics.parivahan.gov.in/analytics/publicdashboard/vahandashboard/"
+         "durationWiseRegistrationTable")
+VAHAN_FROM = 2019   # the dashboard reaches back decades, but states joined Vahan over time; earlier is noise
+BROWSER_UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"}
 
 
 @dataclass(frozen=True)
@@ -48,10 +66,12 @@ class Indicator:
     category: str     # "inflation" | "growth" | "consumption" | "housing" | "credit"
     unit: str         # unit of the stored level (not the derived YoY%, which is always "%")
     freq: str         # "daily" | "weekly" | "monthly" | "quarterly" — periods/year, for the YoY calc
-    yoy: bool         # derive and report YoY% from the stored level; False when the level is itself
-                      # a rate or spread, already in percent, that a trader reads as a level, not growth
-    source_id: str    # FRED series id
+    yoy: bool         # derive and report YoY% from the stored level; False when the stored value is
+                      # already a rate, a spread or a growth rate, read as it is
+    source_id: str    # FRED series id; MoSPI IIP category ("General", "Consumer Durables", ...); unused for vahan
     why: str          # what it tells a trader, for the app
+    source: str = "fred"   # "fred" | "mospi_iip" | "vahan" — see the module docstring
+    growth: bool = False   # the stored value already IS a year-on-year growth rate (yoy is then False)
 
 
 INDICATORS: dict[str, list[Indicator]] = {
@@ -87,9 +107,24 @@ INDICATORS: dict[str, list[Indicator]] = {
         Indicator("IN_CPI", "India CPI, all items", "India CPI", "inflation", "index (2015=100, NSA)", "monthly", True,
                   "INDCPIALLMINMEI", "India's food-heavy inflation basket; drives RBI policy and real returns."),
         Indicator("IN_GDP", "India real GDP growth", "India real GDP", "growth", "%", "quarterly", False,
-                  "INDGDPRQPSMEI", "Already a year-on-year growth rate. Quarterly and arrives with a longer lag than the US figure."),
-        Indicator("IN_INDPROD", "India industrial production", "India industrial production", "growth", "index (2015=100)", "monthly", True,
-                  "INDPROINDMISMEI", "A monthly stand-in for the IIP release; OECD's mirror can lag MOSPI's own by weeks."),
+                  "INDGDPRQPSMEI", "Already a year-on-year growth rate. Quarterly and arrives with a longer lag than the US figure.", growth=True),
+        # a new key, not IN_INDPROD: that one holds the old FRED mirror's index levels, these are growth rates
+        Indicator("IN_IIP", "India industrial production (IIP), YoY growth", "India IIP", "growth", "%", "monthly", False,
+                  "General", "MoSPI's monthly factory, mining and power output index — the release markets react to, about six weeks after the month.",
+                  source="mospi_iip", growth=True),
+        Indicator("IN_IIP_DURABLES", "India IIP: consumer durables, YoY growth", "India consumer durables output", "consumption", "%", "monthly", False,
+                  "Consumer Durables", "Output of cars, two-wheelers, appliances, phones — urban and discretionary demand, read from the factory side.",
+                  source="mospi_iip", growth=True),
+        Indicator("IN_IIP_NONDURABLES", "India IIP: consumer non-durables, YoY growth", "India consumer non-durables output", "consumption", "%", "monthly", False,
+                  "Consumer Non-durables", "Output of food, personal care and other everyday goods — the staples/FMCG and rural-demand read.",
+                  source="mospi_iip", growth=True),
+        Indicator("IN_VEHICLE_REG", "India new vehicle registrations (Vahan)", "India vehicle registrations", "consumption", "registrations", "monthly", True,
+                  "", "Every new vehicle registered nationwide, out within days of the month — the freshest consumption read India has. "
+                      "Earlier years undercount as states joined Vahan, so growth before 2024 is overstated; the festive season "
+                      "(Oct/Nov) moves between months, so compare year on year.",
+                  source="vahan"),
+        Indicator("IN_PFCE", "India real private consumption growth", "India private consumption", "consumption", "%", "quarterly", False,
+                  "NAEXKP02INQ659S", "Household spending in the national accounts, adjusted for prices — about 55-60% of India's GDP. Quarterly and late, so it confirms a trend rather than calls it.", growth=True),
     ],
 }
 
@@ -117,6 +152,94 @@ def _upsert(market: str, key: str, s: pd.Series) -> int:
     return len(rows)
 
 
+def _mospi_session():
+    """A requests session that can talk to api.mospi.gov.in: its server only completes the TLS handshake
+    with legacy renegotiation, which OpenSSL 3 refuses by default. Allowed for that one host only, and
+    certificate verification stays on — a read-only GET of public statistics, nothing sent but the query."""
+    import requests
+    from requests.adapters import HTTPAdapter
+
+    class _LegacyRenegotiation(HTTPAdapter):
+        def init_poolmanager(self, *a, **kw):
+            ctx = ssl.create_default_context()
+            ctx.options |= getattr(ssl, "OP_LEGACY_SERVER_CONNECT", 0x4)
+            kw["ssl_context"] = ctx
+            return super().init_poolmanager(*a, **kw)
+
+    s = requests.Session()
+    s.mount("https://api.mospi.gov.in", _LegacyRenegotiation())
+    return s
+
+
+def mospi_iip(category: str) -> pd.Series:
+    """MoSPI's published IIP year-on-year growth (%) for one category — "General", or a use-based group
+    such as "Consumer Durables" — monthly, indexed by each month's first day. The growth rate is used
+    rather than the index so the 2011-12 and 2022-23 bases join without a level break; the newer base
+    wins where both have a month."""
+    s = _mospi_session()
+    typ = "General" if category == "General" else "Use-based category"
+    got: dict[pd.Timestamp, float] = {}
+    for base in MOSPI_BASES:
+        page = 1
+        while True:
+            r = s.get(MOSPI_IIP, params={"base_year": base, "type": typ, "frequency": "Monthly", "limit": 200,
+                                         "page": page, "Format": "JSON"}, headers=BROWSER_UA, timeout=TIMEOUT)
+            r.raise_for_status()
+            j = r.json()
+            for x in j.get("data") or []:
+                if x.get("category") != category or x.get("growth_rate") in (None, ""):
+                    continue
+                d = dt.datetime.strptime(f"{x['year']} {x['month']}", "%Y %B")
+                got[pd.Timestamp(d)] = float(x["growth_rate"])
+            if page >= (j.get("meta_data") or {}).get("totalPages", 1):
+                break
+            page += 1
+    if not got:
+        raise ValueError(f"MoSPI IIP {category}: no data returned")
+    return pd.Series(got).sort_index()
+
+
+def vahan_registrations() -> pd.Series:
+    """All-India new vehicle registrations per month from the Vahan dashboard, from VAHAN_FROM, completed
+    months only (the running month is partial). The response also carries placeholder rows (odd years,
+    zero counts) that are skipped."""
+    import requests
+    # The endpoint returns its whole history whatever range is asked for, but answers some fromYear values
+    # with a 500 (2019 did, consistently, while 2015 and 2025 worked) — so ask for a range known to work,
+    # with a fallback, and filter to VAHAN_FROM here.
+    year = dt.date.today().year
+    r = None
+    for from_year in (year - 1, 2015):
+        params = {"calendarType": 3, "stateCode": -1, "rtoCode": -1, "fromYear": from_year, "toYear": year,
+                  "timePeriod": 2, "fitnessCheck": 0, "vehicleType": "", "archiveTypeAC": "ACTIVE_COMPLIANT",
+                  "archiveTypeANC": "ACTIVE_NON_COMPLIANT", "archiveTypePA": "", "archiveTypeTA": "", "archiveTypeNA": ""}
+        r = requests.get(VAHAN, params=params, headers=BROWSER_UA, timeout=TIMEOUT)
+        if r.ok:
+            break
+    r.raise_for_status()
+    this_month = dt.date.today().replace(day=1)
+    got: dict[pd.Timestamp, float] = {}
+    for x in r.json():
+        m = re.fullmatch(r"(\d{4})-([A-Za-z]+)", x.get("yearAsString") or "")
+        n = x.get("registeredVehicleCount") or 0
+        if not m or n <= 0:
+            continue
+        d = dt.datetime.strptime(f"{m[1]} {m[2]}", "%Y %B").date()
+        if d.year >= VAHAN_FROM and d < this_month:
+            got[pd.Timestamp(d)] = float(n)
+    if not got:
+        raise ValueError("Vahan: no monthly registrations returned")
+    return pd.Series(got).sort_index()
+
+
+def _fetch(ind: Indicator) -> pd.Series:
+    if ind.source == "mospi_iip":
+        return mospi_iip(ind.source_id)
+    if ind.source == "vahan":
+        return vahan_registrations()
+    return fred(ind.source_id)
+
+
 def refresh(market: str) -> dict:
     """Fetch and store the market's indicators. -> {"written": {key: rows}, "failed": {key: error}}."""
     from . import index_data
@@ -124,7 +247,7 @@ def refresh(market: str) -> dict:
     written, failed = {}, {}
     for ind in INDICATORS.get(market, []):
         try:
-            written[ind.key] = _upsert(market, ind.key, fred(ind.source_id))
+            written[ind.key] = _upsert(market, ind.key, _fetch(ind))
         except Exception as e:  # noqa: BLE001 — one series failing must not stop the rest
             failed[ind.key] = str(e)[:200]
             logger.warning("indicators %s %s: %s", market, ind.key, e)
@@ -167,7 +290,7 @@ def summary(market: str) -> list[dict]:
         unit = "%" if ind.yoy else ind.unit
         pct = unit != "%"
         out.append({"key": ind.key, "label": ind.label, "short": ind.short, "category": ind.category,
-                    "unit": unit, "freq": ind.freq, "yoy": ind.yoy, "why": ind.why,
+                    "unit": unit, "freq": ind.freq, "yoy": ind.yoy or ind.growth, "why": ind.why,
                     "date": str(shown.index[-1].date()), "value": float(shown.iloc[-1]),
                     "m1": _change(shown, 30, pct), "y1": _change(shown, 365, pct),
                     "points": [[d.strftime("%Y-%m-%d"), round(float(v), 4)] for d, v in shown.items()]})

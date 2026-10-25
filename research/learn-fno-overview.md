@@ -57,13 +57,17 @@ Each job below starts from a concrete case.
 | Job | Example | What you give up |
 |---|---|---|
 | Leverage | One lot of Nifty futures controls ₹14.9 lakh for a deposit of a small fraction of that | A fall hurts as much as a rise helps, and losses can exceed the deposit |
-| Hedging | An investor holding ₹30 lakh of shares sells two lots of Nifty futures before a risky event | The gain if the market rises; the hedge also removes the upside |
+| Hedging | An investor holding ₹30 lakh across a diversified portfolio of shares sells two lots of Nifty futures before a risky event | The gain if the market rises; the hedge also removes the upside |
 | Income | An options seller sells a call or put far from the current price and keeps the premium if the price stays away | Small, frequent gains in exchange for rare, large losses |
 | A view on volatility | A trader buys both a call and a put before an event, betting on a big move in either direction | The premium, if the move turns out smaller than the options assumed |
 
 **Leverage** means controlling a large position with a small deposit. The deposit is called **margin** in F&O; it is a good-faith amount the broker and exchange hold against losses. Leverage multiplies both outcomes. The guide on futures basics shows how fast a margin deposit can disappear.
 
 **Hedging** means taking a position that gains when your main holding loses. It is the original purpose of these markets. A hedge costs something: either the premium of a put option, or the upside you give away with a short future.
+
+A Nifty future does not track any one stock — it tracks the index. Across a *diversified* portfolio, each stock's own news mostly cancels out, and most of the day-to-day swing left is the market moving together. Shorting the index, sized by the portfolio's beta, roughly cancels that shared swing.
+
+A single stock is different: most of its move is that company's own, not the market's. Hedging it calls for a put or future on that stock itself, where one exists. [Trading and hedging with futures](learn-fno-futures-trading.md) works through the sizing, and measures how much variance a hedge actually removes, for a basket versus a single name.
 
 **Income** usually means selling options. The seller collects premium and wins most of the time. The rare loss can wipe out months of gains, which is why sizing for sellers is a separate subject.
 

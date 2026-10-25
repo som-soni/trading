@@ -151,6 +151,93 @@ def quadrant(p: dict | None) -> str | None:
     return ("Leading" if p["mom"] >= 100 else "Weakening") if p["ratio"] >= 100 else ("Improving" if p["mom"] >= 100 else "Lagging")
 
 
+def _group_row(base: dict, g: str, syms: list, level: str) -> tuple[dict, float | None, float | None]:
+    """One group's row (equal-weight index, returns, breadth, rotation, ranked members) and its RS score
+    now and RS_CHANGE_BARS ago. Shared by every level — industry, sector, sub-industry and theme."""
+    rets, mkt_idx, ind, members = base["rets"], base["mkt_idx"], base["ind"], base["members"]
+    gidx = (1 + rets[syms].mean(axis=1).fillna(0)).cumprod()
+    rs_line = gidx / mkt_idx
+    rel = {b: _ret(gidx, b) - _ret(mkt_idx, b) for b, _ in RS_WEIGHTS if _ret(gidx, b) is not None}
+    prev = {b: _ret(gidx.iloc[:-RS_CHANGE_BARS], b) - _ret(mkt_idx.iloc[:-RS_CHANGE_BARS], b)
+            for b, _ in RS_WEIGHTS if _ret(gidx.iloc[:-RS_CHANGE_BARS], b) is not None}
+    ms = [members[s] for s in syms]
+    caps = np.array([m["cap"] or 0 for m in ms], dtype=float)
+    cw = {}
+    for h in HORIZONS:
+        v = np.array([m[h] if m[h] is not None else np.nan for m in ms])
+        ok = ~np.isnan(v) & (caps > 0)
+        cw[h] = float((v[ok] * caps[ok]).sum() / caps[ok].sum()) if ok.any() else None
+    frac = lambda k: (sum(1 for m in ms if m[k]) / sum(1 for m in ms if m[k] is not None)) if any(m[k] is not None for m in ms) else None
+    rrg = _rrg(rs_line)
+    spark = rs_line.iloc[::-1].iloc[::5].iloc[::-1].tail(27)
+    row = {
+        "group": g, "sector": ind[syms[0]][0] if level != "theme" else None, "n": len(syms),
+        "industry": ind[syms[0]][1] if level not in ("sector", "theme") else None,
+        "ew": {h: _ret(gidx, b) for h, b in HORIZONS.items()},
+        "rel": {h: (_ret(gidx, b) - _ret(mkt_idx, b)) if _ret(gidx, b) is not None else None for h, b in HORIZONS.items()},
+        "cw": cw,
+        "above50": frac("above50"), "above200": frac("above200"),
+        "highs": sum(m["new_high"] for m in ms), "lows": sum(m["new_low"] for m in ms),
+        "up3m": (sum(1 for m in ms if (m["3M"] or 0) > 0) / len(ms)),
+        "rrg": rrg, "quadrant": quadrant(rrg[-1] if rrg else None),
+        "spark": [round(float(v / spark.iloc[0]), 4) for v in spark],
+        "members": [s for s in sorted(syms, key=lambda s: -(members[s]["rs_score"] if members[s]["rs_score"] is not None else -9))],
+        # daily group index and RS line over the last year, for the group chart
+        "series": [{"time": d.isoformat(), "group": round(float(gv), 5), "market": round(float(mv), 5)}
+                   for d, gv, mv in zip(gidx.index[-260:], gidx.iloc[-260:], mkt_idx.iloc[-260:])],
+    }
+    return row, _rs_score(rel), _rs_score(prev)
+
+
+def rate_against(score: float | None, ref: list) -> int | None:
+    """A score's 1-99 rating on a reference distribution (the industry groups' scores): the percentile it
+    would rank at among them. A theme is one of a handful, so ranking themes against each other would say
+    little; placed on the industry scale, a theme rated 85 is as strong as an industry group rated 85."""
+    if score is None or not np.isfinite(score) or not ref:
+        return None
+    pct = (sum(1 for v in ref if v < score) + 0.5 * sum(1 for v in ref if v == score)) / len(ref)
+    return int(min(99, max(1, round(1 + 98 * pct))))
+
+
+THEME_CONFIRM_RS = 70        # the playbook's confirmation: RS rating above this and rising, quadrant Improving/Leading
+THEME_INVALID_RS = 40        # ... and its price invalidation: RS rating below this, or Lagging
+
+
+def theme_signals(row: dict) -> dict:
+    """The playbook's confirmation and invalidation checks (§3.2) on a theme's live numbers."""
+    rs, prev, q = row.get("rs"), row.get("rs_prev"), row.get("quadrant")
+    return {
+        "rs_strong": rs is not None and rs > THEME_CONFIRM_RS,
+        "rs_rising": rs is not None and prev is not None and rs > prev,
+        "quadrant_ok": q in ("Improving", "Leading"),
+        "broadening": (row.get("above50") or 0) >= 0.5 and row.get("highs", 0) > row.get("lows", 0),
+        "invalidated": (rs is not None and rs < THEME_INVALID_RS) or q == "Lagging",
+    }
+
+
+def theme_rows(data: dict, themes: list[dict]) -> list[dict]:
+    """Every theme as a group row, from an existing compute() result — milliseconds, so a theme edit shows at
+    once. Members are the theme's CURRENT members that clear the liquidity floor (`n`); `size` counts all of
+    them. The index runs back over the members as they are now (the same hindsight the industry groups have:
+    today's classification); analytics/group_history.py rebuilds the rating with each stock counted only
+    from the day it joined."""
+    base = data.get("_base")
+    out = []
+    for t in themes:
+        syms = [s for s in t["members"] if base and s in base["members"]]
+        row = {"group": t["name"], "n": len(syms), "rs": None, "rs_prev": None}
+        if base and len(syms) >= MIN_MEMBERS:
+            row, score, prev = _group_row(base, t["name"], syms, "theme")
+            row["rs"] = rate_against(score, base.get("industry_scores", []))
+            row["rs_prev"] = rate_against(prev, base.get("industry_prev_scores", []))
+        row.update(theme_id=t["id"], status=t["status"], status_since=t["status_since"], opened=t["opened"],
+                   size=len(t["members"]), unlisted=sorted(set(t["members"]) - set(syms)),
+                   signals=theme_signals(row) if row.get("rs") is not None else None,
+                   **{k: t.get(k) for k in ("thesis", "evidence_for", "evidence_against", "invalidation", "notes")})
+        out.append(row)
+    return sorted(out, key=lambda r: -(r["rs"] or 0))
+
+
 def compute(market: str) -> dict:
     t0 = time.time()
     ind = industries.load(market)
@@ -218,6 +305,7 @@ def compute(market: str) -> dict:
            "market_ret": {h: _ret(mkt_idx, b) for h, b in HORIZONS.items()},
            "bench": {"label": BENCH_INDEX[market][1],
                      **{h: _ret(bench[bench.index <= d1], b) for h, b in HORIZONS.items()}} if len(bench) else None}
+    base = {"rets": rets, "mkt_idx": mkt_idx, "ind": ind, "members": members}
     for level in ("industry", "sector", "sub"):
         groups = {}
         for sym, m in members.items():
@@ -230,43 +318,23 @@ def compute(market: str) -> dict:
         for g, syms in groups.items():
             if len(syms) < MIN_MEMBERS:
                 continue
-            gidx = (1 + rets[syms].mean(axis=1).fillna(0)).cumprod()
-            rs_line = gidx / mkt_idx
-            rel = {b: _ret(gidx, b) - _ret(mkt_idx, b) for b, _ in RS_WEIGHTS if _ret(gidx, b) is not None}
-            prev = {b: _ret(gidx.iloc[:-RS_CHANGE_BARS], b) - _ret(mkt_idx.iloc[:-RS_CHANGE_BARS], b)
-                    for b, _ in RS_WEIGHTS if _ret(gidx.iloc[:-RS_CHANGE_BARS], b) is not None}
-            scores[g], prev_scores[g] = _rs_score(rel), _rs_score(prev)
-            ms = [members[s] for s in syms]
-            caps = np.array([m["cap"] or 0 for m in ms], dtype=float)
-            cw = {}
-            for h in HORIZONS:
-                v = np.array([m[h] if m[h] is not None else np.nan for m in ms])
-                ok = ~np.isnan(v) & (caps > 0)
-                cw[h] = float((v[ok] * caps[ok]).sum() / caps[ok].sum()) if ok.any() else None
-            frac = lambda k: (sum(1 for m in ms if m[k]) / sum(1 for m in ms if m[k] is not None)) if any(m[k] is not None for m in ms) else None
-            rrg = _rrg(rs_line)
-            spark = rs_line.iloc[::-1].iloc[::5].iloc[::-1].tail(27)
-            rows[g] = {
-                "group": g, "sector": ind[syms[0]][0], "n": len(syms),
-                "industry": ind[syms[0]][1] if level != "sector" else None,
-                "ew": {h: _ret(gidx, b) for h, b in HORIZONS.items()},
-                "rel": {h: (_ret(gidx, b) - _ret(mkt_idx, b)) if _ret(gidx, b) is not None else None for h, b in HORIZONS.items()},
-                "cw": cw,
-                "above50": frac("above50"), "above200": frac("above200"),
-                "highs": sum(m["new_high"] for m in ms), "lows": sum(m["new_low"] for m in ms),
-                "up3m": (sum(1 for m in ms if (m["3M"] or 0) > 0) / len(ms)),
-                "rrg": rrg, "quadrant": quadrant(rrg[-1] if rrg else None),
-                "spark": [round(float(v / spark.iloc[0]), 4) for v in spark],
-                "members": [s for s in sorted(syms, key=lambda s: -(members[s]["rs_score"] if members[s]["rs_score"] is not None else -9))],
-                # daily group index and RS line over the last year, for the group chart
-                "series": [{"time": d.isoformat(), "group": round(float(gv), 5), "market": round(float(mv), 5)}
-                           for d, gv, mv in zip(gidx.index[-260:], gidx.iloc[-260:], mkt_idx.iloc[-260:])],
-            }
+            rows[g], scores[g], prev_scores[g] = _group_row(base, g, syms, level)
         rank, prev_rank = _rank(scores), _rank(prev_scores)
         for g, r in rows.items():
             r["rs"], r["rs_prev"] = rank.get(g), prev_rank.get(g)
         out[level] = sorted(rows.values(), key=lambda r: -(r["rs"] or 0))
+        if level == "industry":
+            # themes are rated on the industry groups' scale (see theme_rows)
+            base["industry_scores"] = [v for v in scores.values() if v is not None]
+            base["industry_prev_scores"] = [v for v in prev_scores.values() if v is not None]
     out["members"] = members
+    out["_base"] = base            # kept in memory (not serialised) so themes can be rated without recomputing
+    try:
+        from ..marketdata import themes as themes_mod
+        out["theme"] = theme_rows(out, themes_mod.load(market))
+    except Exception as exc:  # noqa: BLE001 - themes are optional; the ranking stands without them
+        logger.warning("themes %s: %s", market, exc)
+        out["theme"] = []
     logger.info("sectors %s: %d stocks, %d industries, %d sectors in %.1fs", market, len(members),
                 len(out["industry"]), len(out["sector"]), time.time() - t0)
     return out

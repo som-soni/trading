@@ -10,7 +10,8 @@ names it — and each label records its source, which the review page (Library �
   curated      data/sub_industries.csv: market, industry, sub_industry, symbol (in git; `--export` writes
                your portal edits into it)
   rule         where a list is impractical: US regional banks by size and ADR status; US asset management
-               split into managers / BDCs / crypto-treasury companies
+               split into managers / BDCs / crypto-treasury companies; US biotechnology by revenue (commercial,
+               early commercial, clinical stage — see BIOTECH_*), from the stored quarterly results
   suggested    data/sub_industries_suggested.csv: proposed labels awaiting review (same columns)
   code         data/sub_industry_codes.csv: an official code → sub-industry, per group (market, industry,
                code, sub_industry; industry "*" = any group). Codes: marketdata/classcodes.py — BSE's
@@ -20,6 +21,12 @@ names it — and each label records its source, which the review page (Library �
 
 A label applies only while Yahoo still files the stock under that industry (a reclassified stock falls
 back rather than keeping a stale label).
+
+The biotech rule reads TODAY's revenue, and a company becomes "commercial" by succeeding — usually after
+its stock has moved. Group histories rebuilt for past dates (analytics/group_history.py) use today's
+labels, so for these sub-industries that history has real look-ahead: read it as illustration, not
+evidence. Stored revenue also includes collaboration and licence income, so a clinical-stage company with a
+large partnership can land in "commercial"; your label overrides the rule.
 
 This module also identifies US closed-end funds and income trusts (`us_funds`): the Nasdaq listing does not
 flag them as ETFs, Yahoo files them under Asset Management, and as funds rather than companies they
@@ -49,6 +56,11 @@ CREATE TABLE IF NOT EXISTS sub_industry_map (
 );
 """
 BANK_LARGE, BANK_MID = 20e9, 2e9          # US regional banks: market cap tiers
+# US biotechnology by trailing-12-month revenue (quarterly_results): at least BIOTECH_COMMERCIAL_REV is
+# commercial, at least BIOTECH_EARLY_REV early commercial, less clinical stage. No stored results: unassigned.
+BIOTECH_COMMERCIAL_REV, BIOTECH_EARLY_REV = 100e6, 1e6
+BIOTECH_TTM_DAYS = 400                    # quarters ending within this many days count towards the trailing year
+REVENUE_RULE_GROUPS = {"us": ("Biotechnology",)}   # groups split by revenue: `financials` fetches all their members
 FUND_MAX_CAP = 5e9                        # funds and trusts are small; real managers named "...Trust" are not
 # a fund whatever its size
 _FUND_STRONG = re.compile(r"\b(Fund|Fd|Municipal|Muni|Closed[- ]End|Term Trust|Income Trust|Opportunities Trust)\b", re.I)
@@ -111,6 +123,28 @@ def init_schema() -> None:
         cur.execute(SCHEMA)
 
 
+def ttm_revenue(market: str, symbols: list) -> dict:
+    """symbol -> trailing-12-month revenue from the stored quarters (the last BIOTECH_TTM_DAYS; fewer than four
+    quarters are scaled up to a year). Companies with no stored quarter are absent."""
+    if not symbols:
+        return {}
+    try:
+        with db.get_connection().cursor() as cur:
+            cur.execute("""SELECT symbol, count(*), sum(coalesce(revenue, 0)) FROM quarterly_results
+                           WHERE market=%s AND symbol = ANY(%s) AND period_end > current_date - %s GROUP BY symbol""",
+                        (market, list(symbols), BIOTECH_TTM_DAYS))
+            return {s: float(total) * 4 / min(4, n) for s, n, total in cur.fetchall() if n}
+    except Exception:  # noqa: BLE001 - no financials stored yet
+        return {}
+
+
+def biotech_label(revenue: float | None) -> str:
+    if revenue is None:
+        return "other"
+    return ("Commercial biotech" if revenue >= BIOTECH_COMMERCIAL_REV
+            else "Early commercial biotech" if revenue >= BIOTECH_EARLY_REV else "Clinical-stage biotech")
+
+
 def _yours(market: str) -> dict:
     try:
         init_schema()
@@ -158,9 +192,11 @@ def load_detail(market: str) -> dict[str, tuple[str, str, str]]:
     bse_split = _bse_mixed(ind, codes) if market == "india" else set()
     split |= bse_split
     adrs = set()
+    revenue = {}
     if market == "us":
-        split |= {"Banks—Regional", "Asset Management"}
+        split |= {"Banks—Regional", "Asset Management", *REVENUE_RULE_GROUPS["us"]}
         adrs = _adrs(market)
+        revenue = ttm_revenue(market, [s for s, v in ind.items() if v[1] in REVENUE_RULE_GROUPS["us"]])
     out = {}
     for s, (sec, indus, cap) in ind.items():
         if indus not in split:
@@ -180,6 +216,8 @@ def load_detail(market: str) -> dict[str, tuple[str, str, str]]:
             name = nm.get(s) or ""
             out[s] = (indus, "Crypto treasury companies" if _CRYPTO.search(name) and s not in _MANAGERS
                       else "BDCs & private credit" if _BDC.search(name) and s not in _MANAGERS else "Asset managers & alternatives", "rule")
+        elif market == "us" and indus == "Biotechnology" and s in revenue:
+            out[s] = (indus, biotech_label(revenue[s]), "rule")
         elif s in suggested and suggested[s][0] == indus:
             out[s] = (indus, suggested[s][1], "suggested")
         elif code and ((indus, code) in cmap or ("*", code) in cmap):

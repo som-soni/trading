@@ -266,7 +266,8 @@ def _funds(ctx: Ctx) -> None:
 def _indicators(ctx: Ctx) -> None:
     """Growth, inflation, consumption, housing and credit indicators (marketdata/indicators.py): CPI,
     GDP, industrial production, durable goods, retail and vehicle sales, housing starts/permits, the
-    mortgage rate, bank credit and the Baa credit spread — from FRED's free CSV endpoint."""
+    mortgage rate, bank credit and the Baa credit spread — from FRED's free CSV endpoint; for India also
+    MoSPI's IIP API (general index, consumer durables/non-durables) and Vahan vehicle registrations."""
     from swing_screener.marketdata import indicators
     out = indicators.refresh(ctx.market)
     ok = [k for k in out["written"] if k not in out["failed"]]
@@ -292,6 +293,23 @@ def _flows(ctx: Ctx) -> None:
         raise RuntimeError("no flow series could be fetched: " + "; ".join(f"{k}: {v}" for k, v in out["failed"].items()))
     ctx.step.detail = f"{len(ok)} series" + (f" · failed: {', '.join(out['failed'])}" if out["failed"] else "")
     ctx.step.stats = {"series": len(ok), "failed": len(out["failed"])}
+
+
+def _fpi_sectors(ctx: Ctx) -> None:
+    """Fortnightly FPI net equity investment by sector (marketdata/fpi_sectors.py): NSDL's FPI Monitor
+    reports. India only; scraped static pages, so a report that fails is recorded but does not fail the
+    job, and it is tried again next run — the same tolerance the RBI rate scrape gets."""
+    if ctx.market != "india":
+        ctx.step.skip("NSDL sector-wise FPI flows are India only")
+        return
+    from swing_screener.marketdata import fpi_sectors
+    out = fpi_sectors.refresh(ctx.market, progress=ctx.step.progress)
+    if not out["written"] and out["failed"]:
+        raise RuntimeError("no NSDL sector report could be read: " + "; ".join(f"{k}: {v}" for k, v in list(out["failed"].items())[:5]))
+    ctx.step.detail = (f"{out['written']} fortnights · {out['rows']:,} sector rows"
+                       + (f" · newest {out['newest']}" if out["newest"] else "")
+                       + (f" · failed: {', '.join(out['failed'])}" if out["failed"] else ""))
+    ctx.step.stats = {"fortnights": out["written"], "rows": out["rows"], "failed": len(out["failed"])}
 
 
 def _screened_symbols(market: str, strategies: list[str] | None = None) -> list[str]:
@@ -384,6 +402,9 @@ CREATE TABLE IF NOT EXISTS sector_daily (
 """
 
 
+THEME_HISTORY_YEARS = 3     # how far back a theme's weekly RS rating is rebuilt
+
+
 def _sectors(ctx: Ctx) -> None:
     """Rank sectors / industry groups and keep each day's ranking (`sector_daily`) — the history behind
     the playbook's "RS rating over time" and alerts. The web page computes its own live view."""
@@ -397,13 +418,26 @@ def _sectors(ctx: Ctx) -> None:
     rows = [(ctx.market, r["date"], level, g["group"], g["sector"], g["n"], g["rs"], g["rs_prev"], g["quadrant"],
              g["ew"]["1M"], g["ew"]["3M"], g["ew"]["6M"], g["ew"]["12M"], g["rel"]["3M"], g["above50"], g["above200"],
              g["highs"], g["lows"]) for level in ("industry", "sector", "sub") for g in r.get(level, [])]
+    # themes, keyed by id (a rename keeps the history) with the name in `sector`; only those with enough members
+    rows += [(ctx.market, r["date"], "theme", str(g["theme_id"]), g["group"], g["n"], g["rs"], g["rs_prev"], g["quadrant"],
+              g["ew"]["1M"], g["ew"]["3M"], g["ew"]["6M"], g["ew"]["12M"], g["rel"]["3M"], g["above50"], g["above200"],
+              g["highs"], g["lows"]) for g in r.get("theme", []) if g.get("ew")]
     db.execute_values("""INSERT INTO sector_daily VALUES %s ON CONFLICT (market, date, level, grp) DO UPDATE SET
         sector=EXCLUDED.sector, n=EXCLUDED.n, rs=EXCLUDED.rs, rs_prev=EXCLUDED.rs_prev, quadrant=EXCLUDED.quadrant,
         ew_1m=EXCLUDED.ew_1m, ew_3m=EXCLUDED.ew_3m, ew_6m=EXCLUDED.ew_6m, ew_12m=EXCLUDED.ew_12m, rel_3m=EXCLUDED.rel_3m,
         above50=EXCLUDED.above50, above200=EXCLUDED.above200, highs=EXCLUDED.highs, lows=EXCLUDED.lows""", rows)
+    # keep the rebuilt RS history current: today's industry / sub-industry ratings, and each theme's
+    # weekly rating over the last THEME_HISTORY_YEARS (only the dates not stored yet are computed)
+    from swing_screener.analytics import group_history
+    import pandas as pd
+    day = pd.Timestamp(r["date"]).date()
+    group_history.ensure(ctx.market, [day])
+    weekly = [d.date() for d in pd.date_range(end=pd.Timestamp(day), periods=52 * THEME_HISTORY_YEARS, freq="W-FRI")]
+    n_theme = group_history.ensure_themes(ctx.market, weekly + [day])
     top = ", ".join(g["group"] for g in r["industry"][:3])
-    ctx.step.detail = (f"{len(r['sector'])} sectors, {len(r['industry'])} industry groups, {len(r.get('sub', []))} sub-industries "
-                       f"ranked for {r['date']} · leading: {top}")
+    ctx.step.detail = (f"{len(r['sector'])} sectors, {len(r['industry'])} industry groups, {len(r.get('sub', []))} sub-industries, "
+                       f"{len(r.get('theme', []))} themes ranked for {r['date']} · leading: {top}"
+                       + (f" · {n_theme} theme history rows added" if n_theme else ""))
 
 
 # ------------------------------------------------------------------ screening
@@ -664,7 +698,10 @@ def _financials(ctx: Ctx) -> None:
         skip = financials.no_data(ctx.market)     # funds, ETFs: nothing filed at the last look
         liquid = [s for s in tradable.sort_values("value20", ascending=False)["symbol"] if s not in skip][:FINANCIALS_TOP[ctx.market]]
         stage2 = snap[definitions.mask(snap, definitions.builtin()["stage2"]["conditions"])]["symbol"]
-        syms = list(dict.fromkeys([*liquid, *(s for s in stage2 if s not in skip)]))
+        # groups split by revenue (marketdata/subindustries.py REVENUE_RULE_GROUPS) need every tradable member's results
+        from swing_screener.marketdata import subindustries
+        by_rev = tradable[tradable["industry"].isin(subindustries.REVENUE_RULE_GROUPS.get(ctx.market, ()))]["symbol"]
+        syms = list(dict.fromkeys([*liquid, *(s for s in stage2 if s not in skip), *(s for s in by_rev if s not in skip)]))
     r = financials.run(ctx.market, syms, force=bool(ctx.opt("force")))
     ctx.step.detail = f"{len(syms):,} companies · " + ", ".join(f"{k.replace('_', ' ')} {v:,}" for k, v in r.items())
     ctx.step.stats = r
@@ -766,9 +803,12 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "the first run backfills history (marketdata/funds.py)", "daily", True, _funds),
     Job("indicators", "data", "growth, inflation, consumption, housing and credit indicators: CPI, GDP, industrial "
         "production, durable goods, retail and vehicle sales, housing starts/permits, mortgage rate, bank credit, "
-        "Baa credit spread — FRED (marketdata/indicators.py)", "daily", True, _indicators),
+        "Baa credit spread — FRED; India IIP consumer groups (MoSPI) and vehicle registrations (Vahan) "
+        "(marketdata/indicators.py)", "daily", True, _indicators),
     Job("flows", "data", "FII/DII daily net institutional equity flows: NSE's provisional cash-market activity "
         "(marketdata/flows.py, India only)", "daily", True, _flows),
+    Job("fpi_sectors", "data", "FPI net equity investment by sector, per fortnight: NSDL's FPI Monitor reports "
+        "(marketdata/fpi_sectors.py, India only)", "weekly", True, _fpi_sectors),
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
     Job("fno_bhav", "data", "F&O bhavcopy: NSE index futures and options, settle and open interest (India)",
         "daily", True, _fno_bhav),
@@ -830,7 +870,7 @@ PIPELINES: dict[str, dict] = {
                  "jobs": ["backtest", "ingest"]},
     "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, fundamentals, company financials "
                           "and their scores, quality scores; split & bonus repair",
-               "jobs": [("universe", {"force": True}), "names", "classify", "splits", "earnings", "fundamentals", "financials", "fundamental_scores", "quality"]},
+               "jobs": [("universe", {"force": True}), "names", "classify", "splits", "earnings", "fundamentals", "financials", "fundamental_scores", "quality", "fpi_sectors"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},
     "quality": {"summary": "on demand: fetch financial statements and score companies (the Quality screen) — slow, network-heavy",

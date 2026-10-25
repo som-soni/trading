@@ -1476,6 +1476,36 @@ def flows_summary():
     return {"flows": flows.summary()}
 
 
+@app.get("/api/fpi-sectors")
+def fpi_sectors_summary(market: str, fortnights: int = 24):
+    """The Macro tab's sector heatmap (marketdata/fpi_sectors.py): NSDL's fortnightly net FPI equity
+    investment by sector, ₹ crore — fortnight dates, sectors, the sector x fortnight matrix, and each
+    sector's cumulative last 12 months (rows sorted by it). Empty for a market NSDL does not cover."""
+    if market not in MARKETS:
+        raise HTTPException(400, "unknown market")
+    from ..marketdata import fpi_sectors
+    if market != fpi_sectors.MARKET:
+        return {"fortnights": [], "sectors": [], "values": [], "cum12m": [], "asof": None}
+    return fpi_sectors.summary(max(1, min(int(fortnights), 120)))
+
+
+@app.get("/api/earnings-season")
+def earnings_season_api(market: str, quarter: str | None = None, basis: str = "yoy"):
+    """The Earnings page (fundamentals/earnings_season.py): one calendar quarter's results summed over
+    the companies the app tracks — reported count, revenue, gross profit and net profit against the
+    year-ago (yoy) or previous (qoq) quarter, per market-cap class, and every reporting company."""
+    if market not in MARKETS:
+        raise HTTPException(400, "unknown market")
+    if basis not in ("yoy", "qoq"):
+        raise HTTPException(400, "basis must be yoy or qoq")
+    try:
+        q = dt.date.fromisoformat(quarter) if quarter else None
+    except ValueError:
+        raise HTTPException(400, "quarter must be a date (YYYY-MM-DD)")
+    from fundamentals import earnings_season
+    return earnings_season.scoreboard(market, q, basis)
+
+
 # breadth_daily as single series for the guides' ```series charts (`us:breadth.pct50`); counts, or % of the day's n
 BREADTH_FIELDS = {
     "pct50": "above50 * 100.0 / n", "pct5": "above5 * 100.0 / n", "highs": "highs", "lows": "lows", "hl": "highs - lows",
@@ -1998,16 +2028,28 @@ def _prewarm_sectors() -> None:
             print(f"sectors prewarm {m}: {exc}")
 
 
+_THEME_BLANK = {"ew": {}, "rel": {}, "cw": {}, "above50": None, "above200": None, "highs": 0, "lows": 0, "up3m": None,
+                "rrg": [], "quadrant": None, "spark": [], "members": [], "series": [], "sector": None, "industry": None}
+
+
+def _theme_rows(market: str, data: dict) -> list[dict]:
+    """Every theme rated against the cached ranking — current members, so an edit shows at once. A theme
+    with too few liquid members still gets a row (blank figures) so it can be opened and edited."""
+    from ..marketdata import themes as themes_mod
+    return [{**_THEME_BLANK, **r} for r in sect.theme_rows(data, themes_mod.load(market))]
+
+
 @app.get("/api/sectors")
 def sectors_api(market: str = "us", level: str = "industry"):
-    if level not in ("industry", "sector", "sub"):
-        raise HTTPException(400, "level must be sector, industry or sub")
+    if level not in ("industry", "sector", "sub", "theme"):
+        raise HTTPException(400, "level must be sector, industry, sub or theme")
     data, updating = _sector_data(market, wait=market not in _sector_cache)
     if data.get("empty"):
         return data
     members = data["members"]
+    source = _theme_rows(market, data) if level == "theme" else data[level]
     groups = [{**{k: v for k, v in g.items() if k not in ("series", "members")},
-               "leaders": [{"symbol": s, "name": members[s]["name"]} for s in g["members"][:3]]} for g in data[level]]
+               "leaders": [{"symbol": s, "name": members[s]["name"]} for s in g["members"][:3]]} for g in source]
     return {k: data[k] for k in ("market", "date", "stocks", "doc", "market_ret", "bench")} | {
         "level": level, "groups": groups, "updating": updating}
 
@@ -2015,10 +2057,25 @@ def sectors_api(market: str = "us", level: str = "industry"):
 @app.get("/api/sectors/group")
 def sector_group(market: str, level: str, group: str):
     data, _ = _sector_data(market, wait=market not in _sector_cache)
-    g = next((x for x in data.get(level, []) if x["group"] == group), None)
+    pool = _theme_rows(market, data) if level == "theme" else data.get(level, [])
+    g = next((x for x in pool if x["group"] == group), None)
     if not g:
         raise HTTPException(404, f"no {level} '{group}' in {market}")
     members = data["members"]
+    if level == "theme":
+        from ..analytics import group_history
+        from ..marketdata import themes as themes_mod
+        t = themes_mod.get(g["theme_id"])
+        return {"market": market, "date": data["date"], "level": level, "doc": data["doc"], "market_ret": data["market_ret"],
+                "group": {k: v for k, v in g.items() if k != "members"},
+                "members": [members[s] for s in g["members"]],
+                "unlisted": [{"symbol": s, "name": _name(market, s)} for s in g.get("unlisted", [])],
+                "history": group_history.theme_history(market, g["theme_id"]),
+                "first_added": (themes_mod.first_added(t).isoformat() if t and themes_mod.first_added(t) else None),
+                "spans": [{"symbol": s, "added": a.isoformat(), "removed": r.isoformat() if r else None} for s, a, r in (t or {}).get("spans", [])],
+                "statuses": list(themes_mod.STATUSES),
+                "thresholds": {"confirm_rs": sect.THEME_CONFIRM_RS, "invalid_rs": sect.THEME_INVALID_RS},
+                "child_level": None, "children": []}
     # the level below: a sector's industry groups, an industry group's sub-industries
     child_level = {"sector": "industry", "industry": "sub"}.get(level)
     key = "sector" if level == "sector" else "industry"
@@ -2027,6 +2084,81 @@ def sector_group(market: str, level: str, group: str):
             "group": {k: v for k, v in g.items() if k != "members"},
             "members": [members[s] for s in g["members"]], "child_level": child_level,
             "children": [{k: v for k, v in x.items() if k not in ("series", "members")} for x in children]}
+
+
+@app.post("/api/themes")
+def theme_create(request: Request, spec: dict = Body(...)):
+    """Create a theme (spec: market, name, symbols?)."""
+    _require_local(request)
+    from ..marketdata import themes as themes_mod
+    market = spec.get("market") or "us"
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    try:
+        tid = themes_mod.create(market, spec.get("name") or "", _theme_symbols(market, spec.get("symbols") or []))
+    except Exception as exc:  # noqa: BLE001 - a duplicate name or an empty one
+        raise HTTPException(400, str(exc).splitlines()[0])
+    return {"ok": True, "id": tid}
+
+
+def _theme_symbols(market: str, symbols: list) -> list[str]:
+    """Symbols as typed -> stored symbols (India's .NS added when missing); unknown ones are refused."""
+    out, unknown = [], []
+    with get_connection().cursor() as cur:
+        for raw in symbols:
+            s = (raw or "").strip().upper()
+            if not s:
+                continue
+            cands = [s] + ([f"{s}{MARKETS[market].symbol_suffix}"] if MARKETS[market].symbol_suffix and not s.endswith(MARKETS[market].symbol_suffix) else [])
+            cur.execute("SELECT symbol FROM prices WHERE market=%s AND symbol = ANY(%s) LIMIT 1", (market, cands))
+            r = cur.fetchone()
+            (out.append(r[0]) if r else unknown.append(s))
+    if unknown:
+        raise HTTPException(400, f"no stored prices for: {', '.join(unknown)}")
+    return out
+
+
+@app.post("/api/themes/{theme_id}")
+def theme_update(theme_id: int, request: Request, spec: dict = Body(...)):
+    """Edit a theme: name, status, the thesis log fields; `add` / `remove` symbol lists change its members
+    (dated today — a removed stock keeps its past membership, and the theme's stored history is rebuilt)."""
+    _require_local(request)
+    from ..analytics import group_history
+    from ..marketdata import themes as themes_mod
+    t = themes_mod.get(theme_id)
+    if not t:
+        raise HTTPException(404, "no such theme")
+    with get_connection().cursor() as cur:
+        cur.execute("SELECT market FROM themes WHERE id=%s", (theme_id,))
+        market = cur.fetchone()[0]
+    fields = {k: v for k, v in spec.items() if k not in ("add", "remove")}
+    try:
+        themes_mod.update(theme_id, **fields)
+    except Exception as exc:  # noqa: BLE001 - a bad status, an empty or duplicate name
+        raise HTTPException(400, str(exc).splitlines()[0])
+    changed = 0
+    if spec.get("add"):
+        changed += themes_mod.add_members(theme_id, _theme_symbols(market, spec["add"]))
+    if spec.get("remove"):
+        changed += themes_mod.remove_members(theme_id, spec["remove"])
+    if changed:
+        group_history.clear_theme(market, theme_id)   # the next `sectors` job rebuilds it
+    return {"ok": True, "members_changed": changed}
+
+
+@app.delete("/api/themes/{theme_id}")
+def theme_delete(theme_id: int, request: Request):
+    _require_local(request)
+    from ..analytics import group_history
+    from ..marketdata import themes as themes_mod
+    with get_connection().cursor() as cur:
+        cur.execute("SELECT market FROM themes WHERE id=%s", (theme_id,))
+        r = cur.fetchone()
+    if not r:
+        raise HTTPException(404, "no such theme")
+    group_history.clear_theme(r[0], theme_id)
+    themes_mod.delete(theme_id)
+    return {"ok": True}
 
 
 # ------------------------------------------------------------- screens & today's setups
@@ -2594,6 +2726,11 @@ def subindustries_api(market: str = "us"):
     snap = snapshot.load(market)
     trad = set(snap.loc[snap["tradable"], "symbol"]) if not snap.empty else set()
     cap = dict(zip(snap["symbol"], snap["market_cap_usd"])) if "market_cap_usd" in snap else {}
+    value = dict(zip(snap["symbol"], snap["value20"])) if "value20" in snap else {}
+    # the stocks you follow: on any watchlist (Active Trades included), so a review can start with them
+    with get_connection().cursor() as cur:
+        cur.execute("SELECT DISTINCT symbol FROM watchlist_items WHERE market=%s", (market,))
+        watched = {r[0] for r in cur.fetchall()}
     groups: dict[str, dict] = {}
     for sym, (sec, indus, _c) in ind.items():
         if sym not in trad:
@@ -2601,11 +2738,15 @@ def subindustries_api(market: str = "us"):
         g = groups.setdefault(indus, {"industry": indus, "sector": sec, "members": []})
         d = detail.get(sym)
         mc = cap.get(sym)
+        v = value.get(sym)
         g["members"].append({"symbol": sym, "name": _name(market, sym), "cap": None if mc is None or mc != mc else round(float(mc), 2),
+                             "value": None if v is None or v != v else float(v), "watched": sym in watched,
                              "sub": d[1] if d else None, "source": d[2] if d else None, "code": (codes.get(sym) or {}).get("code")})
     out = []
     for g in groups.values():
-        g["members"].sort(key=lambda x: -(x["cap"] or 0))
+        # what still needs a decision first, then by size
+        g["members"].sort(key=lambda x: (x["source"] not in ("other", "suggested"), -(x["cap"] or 0)))
+        g["watched"] = sum(1 for m in g["members"] if m["watched"])
         g["split"] = any(m["sub"] for m in g["members"])
         g["subs"] = sorted({m["sub"] for m in g["members"] if m["sub"] and m["sub"] != "other"})
         g["open"] = sum(1 for m in g["members"] if m["source"] in ("other", "suggested"))
@@ -2617,7 +2758,8 @@ def subindustries_api(market: str = "us"):
                          "labelled": sum(1 for m in split_members if m["source"] not in ("other",)),
                          "reviewed": sum(1 for m in split_members if m["source"] in ("you", "curated", "rule")),
                          "suggested": sum(1 for m in split_members if m["source"] == "suggested"),
-                         "other": sum(1 for m in split_members if m["source"] == "other")},
+                         "other": sum(1 for m in split_members if m["source"] == "other"),
+                         "watched_open": sum(1 for g in out for m in g["members"] if m["watched"] and m["source"] in ("other", "suggested"))},
             "scheme": {"us": "Nasdaq industry (SIC-based)", "india": "BSE industry"}.get(market, "")}
 
 

@@ -636,7 +636,7 @@
       "US_DIVIDEND_PCT": 2.0,
       "_key": "stage4_shorts"
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "stage_analysis": {
     "family": "stage_analysis",

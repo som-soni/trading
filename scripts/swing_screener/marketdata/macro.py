@@ -7,7 +7,8 @@ the same `index_series` table under the market each one informs most, so each ma
 job refreshes its own few:
 
     us     US10Y, US5Y (yields, %), DXY, WTI, GOLD_FUT, COPPER, NATGAS, HYG (high-yield credit)
-    india  BRENT (India imports most of its oil); USD/INR and India VIX are already stored by
+    india  BRENT (India imports most of its oil); NIFTY_CONSUMPTION and NIFTY_AUTO, the market's
+           daily proxies for household demand; USD/INR and India VIX are already stored by
            index_data and the Breadth page
 
 Yahoo has no India 10-year government bond yield, so it is not here.
@@ -65,6 +66,13 @@ SERIES: dict[str, list[Macro]] = {
         Macro("BRENT", "BZ=F", "Brent crude oil", "$/bbl",
               "India imports most of its oil: dearer crude widens the deficit, weakens the rupee and "
               "lifts inflation. Oil marketers, paints, aviation, tyres.", short="Brent crude"),
+        # market proxies for consumption: priced daily, so they move months before the IIP or GDP data
+        Macro("NIFTY_CONSUMPTION", "^CNXCONSUM", "Nifty India Consumption index", "index",
+              "Consumer-facing stocks — FMCG, autos, retail, durables, telecom: the market's daily read on "
+              "household demand, well ahead of the official consumption data.", short="Nifty Consumption"),
+        Macro("NIFTY_AUTO", "^CNXAUTO", "Nifty Auto index", "index",
+              "Carmakers, two-wheeler makers and auto parts — the market's read on big-ticket, credit-financed "
+              "spending; compare with monthly vehicle registrations.", short="Nifty Auto"),
     ],
 }
 
@@ -81,7 +89,8 @@ EXTRA = {
 STRIP: dict[str, list[tuple[str, str]]] = {
     "us": [("us", "US10Y"), ("us", "US5Y"), ("us", "DXY"), ("us", "WTI"), ("us", "GOLD_FUT"), ("us", "COPPER"),
            ("us", "NATGAS"), ("us", "HYG")],
-    "india": [("india", "BRENT"), ("india", "USDINR"), ("us", "US10Y"), ("us", "DXY"), ("us", "GOLD_FUT")],
+    "india": [("india", "BRENT"), ("india", "USDINR"), ("us", "US10Y"), ("us", "DXY"), ("us", "GOLD_FUT"),
+              ("india", "NIFTY_CONSUMPTION"), ("india", "NIFTY_AUTO")],
 }
 
 

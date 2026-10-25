@@ -65,6 +65,11 @@ class MarketConfig:
     money_unit: str = ""         # "$ M", "₹ Cr"
     money_divisor: float = 1.0   # 1e6, 1e7
     currency_code: str = ""      # ISO code of the share prices ("USD", "INR"): a company whose statements are in another is not valued
+    # market-cap classes for the earnings-season scoreboard (fundamentals/earnings_season.py), by today's
+    # market cap: ("rank", large, mid) = the top `large` companies are large caps, the next to `mid` are mid caps
+    # (SEBI's rule); ("cap", large, mid) = at least `large` / `mid` in the market's currency. `cap_note` says whose rule it is.
+    cap_classes: tuple = ()
+    cap_note: str = ""
 
     # maps the data provider's own sector taxonomy (e.g. yfinance's
     # "Financial Services", "Healthcare") onto the keys used in

@@ -296,7 +296,9 @@ reviewed name by name.
 ## 5. Themes (separate from the taxonomy)
 
 Cross-cutting baskets that span groups — tracked like a group (equal-weight
-index, RS rating, rotation) but defined by a thesis, not a classification:
+index, RS rating, rotation) but defined by a thesis, not a classification.
+Built: Sectors → Themes (marketdata/themes.py, `theme_rows` in analytics/sectors.py),
+with dated membership and the playbook's thesis log. Starters:
 AI infrastructure (chips, networking, data-centre power & cooling, utilities);
 India defence; India railways; capital-markets plays (brokers, AMCs, exchanges,
 depositories); EV supply chain; power & T&D capex. See the playbook §3 and

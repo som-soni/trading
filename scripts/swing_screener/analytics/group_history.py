@@ -17,6 +17,12 @@ business, so the look-ahead is small, but it is not zero.
 Stored in `group_rs_history` (market, date, level, grp, rs, n). `ensure(market, dates)` computes the
 dates not stored yet.
 
+Themes (marketdata/themes.py) are stored at level "theme", keyed by the theme's id (so a rename keeps its
+history), and rated on the industry groups' scale (sectors.rate_against). A theme's members are taken as
+they stood on each date — a stock counts only from the day it was added — except before the theme's first
+member was added, where there is no record and today's members stand in (hindsight; the page marks it).
+`ensure_themes(market, dates)` fills them; editing a theme's members clears its stored history.
+
     PYTHONPATH=. python3 -m swing_screener.analytics.group_history --market us --check
 """
 
@@ -66,8 +72,10 @@ def load(market: str, dates: list | None = None) -> dict:
     return out
 
 
-def compute(market: str, dates: list) -> dict:
-    """The ratings on each date (sessions only; a date without prices is skipped)."""
+def compute(market: str, dates: list, themes: list | None = None) -> dict:
+    """The ratings on each date (sessions only; a date without prices is skipped). With `themes`
+    (marketdata/themes.load), each theme's rating too, under level "theme"."""
+    from ..marketdata import themes as themes_mod
     t0 = time.time()
     dates = sorted(pd.Timestamp(d) for d in dates)
     ind = industries.load(market)
@@ -116,6 +124,20 @@ def compute(market: str, dates: list) -> dict:
                 scores[g], sizes[g] = sect._rs_score(rel), len(members)
             ranks = sect._rank(scores)
             res[level] = {g: (ranks.get(g), sizes[g]) for g in scores}
+            if level == "industry":
+                ref = [v for v in scores.values() if v is not None]
+        if themes:
+            res["theme"] = {}
+            liq = set(liquid)
+            for t in themes:
+                start = themes_mod.first_added(t)
+                who = themes_mod.members_on(t, d.date()) if start and d.date() >= start else t["members"]
+                members = [s for s in who if s in liq and s in win.columns]
+                if len(members) < sect.MIN_MEMBERS:
+                    continue
+                gidx = (1 + win[members].mean(axis=1).fillna(0)).cumprod()
+                rel = {b: sect._ret(gidx, b) - sect._ret(mkt_idx, b) for b, _ in sect.RS_WEIGHTS if sect._ret(gidx, b) is not None}
+                res["theme"][str(t["id"])] = (sect.rate_against(sect._rs_score(rel), ref), len(members))
         out[d.date()] = res
     logger.info("group history %s: %d dates rated in %.0fs", market, len(out), time.time() - t0)
     return out
@@ -134,6 +156,45 @@ def ensure(market: str, dates: list) -> dict:
                                  ON CONFLICT (market, date, level, grp) DO UPDATE SET rs=EXCLUDED.rs, n=EXCLUDED.n""", rows)
         have = load(market, dates)
     return have
+
+
+def ensure_themes(market: str, dates: list) -> int:
+    """Store every theme's rating on these dates where it is missing; returns the rows written."""
+    from ..marketdata import themes as themes_mod
+    init_schema()
+    themes = [t for t in themes_mod.load(market) if t["members"]]
+    if not themes or not dates:
+        return 0
+    with db.get_connection().cursor() as cur:
+        cur.execute("""SELECT grp, date FROM group_rs_history WHERE market=%s AND level='theme' AND date = ANY(%s)""",
+                    (market, list(dates)))
+        have = {(g, d) for g, d in cur.fetchall()}
+    todo = sorted({pd.Timestamp(d).date() for d in dates for t in themes if (str(t["id"]), pd.Timestamp(d).date()) not in have})
+    if not todo:
+        return 0
+    new = compute(market, todo, themes)
+    # every level, not just the themes: `ensure` treats a date with any row as done, so a date must never
+    # hold theme rows without its industry and sub-industry ratings
+    rows = [(market, d, lvl, g, rs, n) for d, levels in new.items() for lvl, groups in levels.items() for g, (rs, n) in groups.items()]
+    if rows:
+        db.execute_values("""INSERT INTO group_rs_history (market, date, level, grp, rs, n) VALUES %s
+                             ON CONFLICT (market, date, level, grp) DO UPDATE SET rs=EXCLUDED.rs, n=EXCLUDED.n""", rows)
+    return len(rows)
+
+
+def clear_theme(market: str, theme_id: int) -> None:
+    """Forget a theme's stored ratings (its members changed); the next ensure_themes rebuilds them."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("DELETE FROM group_rs_history WHERE market=%s AND level='theme' AND grp=%s", (market, str(theme_id)))
+
+
+def theme_history(market: str, theme_id: int) -> list[dict]:
+    """[{date, rs, n}] stored for one theme, oldest first."""
+    init_schema()
+    with db.get_connection().cursor() as cur:
+        cur.execute("""SELECT date, rs, n FROM group_rs_history WHERE market=%s AND level='theme' AND grp=%s ORDER BY date""",
+                    (market, str(theme_id)))
+        return [{"date": d.isoformat(), "rs": rs, "n": n} for d, rs, n in cur.fetchall()]
 
 
 def check(market: str) -> dict:

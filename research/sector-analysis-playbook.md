@@ -172,7 +172,7 @@ Status:             watching / confirmed / active / closed — with dates
 | Earnings revisions by group | — | Fundamental confirmation | ⬜ Phase 4 |
 | Revenue / margin trend by group | — | Fundamental confirmation | ⬜ Phase 4 |
 | Group RS history & alerts | — | Catch new leaders early | ⬜ Phase 5 |
-| Theme baskets | — | Track a thesis that spans industries | ⬜ Phase 6 |
+| Theme baskets | Sectors → Themes | Track a thesis that spans industries | ✅ Phase 6 |
 
 ---
 
@@ -232,10 +232,11 @@ Theme notes:     …
 - [ ] Alerts: group enters *Improving* / *Leading*, RS Δ ≥ 20 in a month,
       breadth broadening (members at highs rising 3 weeks running)
 
-### Phase 6 — Themes ⬜
-- [ ] Theme = named basket of stocks across industries (reuse watchlists),
-      with the same analytics as a group (EW index, RS, RRG point)
-- [ ] Thesis log page: the §3.2 template per theme, with status and dates
+### Phase 6 — Themes ✅
+- [x] Theme = named basket of stocks across industries (its own tables, with
+      dated membership), with the same analytics as a group (EW index, RS on the
+      industry groups' scale, RRG point, breadth, leaders) and a weekly RS history
+- [x] Thesis log page: the §3.2 template per theme, with status and dates
 
 ### Phase 7 — India refinements ⬜
 - [ ] NSE industry classification (Nifty Total Market list) as an alternative

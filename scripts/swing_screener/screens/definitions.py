@@ -89,6 +89,12 @@ BEAR_LEADER_MIN_ROE = 15.0           # fundamentals (present-only): trailing-twe
 BEAR_LEADER_MIN_EPS_GROWTH = 20.0    # latest quarter's EPS vs a year earlier, %
 BEAR_LEADER_MIN_SALES_GROWTH = 15.0  # latest quarter's sales vs a year earlier, %
 
+# Growth and recovery: two screens, not one with an "or" — screen conditions are all ANDed. Fundamentals
+# are present-only (screens/snapshot.py), so neither can be studied on past snapshots.
+GROWTH_VERDICTS = ["LEADER", "ACCEPTABLE"]   # fundamentals/sepa.py verdicts that count as growing
+RECOVERY_MIN_IMPROVING_QUARTERS = 2  # EPS above the year-ago quarter for at least this many quarters running
+RECOVERY_MIN_SALES_GROWTH = 10.0     # latest quarter's sales vs a year earlier, %: the profit is not cost cuts alone
+
 
 def presets() -> dict[str, dict]:
     stage2 = builtin()["stage2"]["conditions"]
@@ -167,6 +173,45 @@ def presets() -> dict[str, dict]:
                 {"field": "sales_growth_q", "op": ">=", "value": BEAR_LEADER_MIN_SALES_GROWTH},
             ],
             "columns": ["rel_r2y", "r2y", "mdd_2y", "rel_r12m"], "sort_by": "rel_r2y"},
+        "growth_leaders": {
+            "name": "Growth businesses above the 200-day",
+            "description": f"Quarterly results that pass Minervini's growth tests (SEPA verdict {' or '.join(GROWTH_VERDICTS)}), "
+                           "with the stock above its 200-day average. Its twin for turnarounds is Recoveries.",
+            "thesis": ("Minervini's fundamentals ask for strong, accelerating earnings and sales growth, measured against the same "
+                       "quarter a year earlier so seasonality cancels. LEADER passes every test (EPS and sales growth, EPS "
+                       "acceleration, margins, no slowdown); ACCEPTABLE passes growth and no slowdown without all the "
+                       "confirmation. The 200-day is the one price condition: Minervini buys growth only once the market agrees, "
+                       "and a growing business under a falling average is a different trade. For his full setup use Minervini "
+                       "leaders in Stage 2. Growth from a loss cannot be measured, so a company coming out of losses never "
+                       "appears here: see Recoveries. Present-only: the verdict exists only for the latest snapshot, so the "
+                       "screen cannot be studied."),
+            "conditions": [
+                {"field": "tradable", "op": "is", "value": True},
+                {"field": "sepa_verdict", "op": "in", "value": GROWTH_VERDICTS},
+                {"field": "close", "op": ">", "ref": "sma200"},
+            ],
+            "columns": ["sepa_verdict", "eps_growth_q", "sales_growth_q", "sepa_code33"], "sort_by": "eps_growth_q"},
+        "recoveries": {
+            "name": "Recoveries",
+            "description": f"Turnarounds: a profit in the latest quarter after a loss a year earlier, EPS above the year-ago quarter "
+                           f"for {RECOVERY_MIN_IMPROVING_QUARTERS}+ quarters running, sales up {RECOVERY_MIN_SALES_GROWTH:g}%+, "
+                           "and the stock above its 200-day average.",
+            "thesis": ("Growth tests skip a company coming out of losses: a rate of growth from a loss is not defined. Minervini "
+                       "takes such turnarounds case by case, and what he looks for is that the recovery is real: more than one "
+                       "quarter of improvement, and sales growing so the profit is not cost cuts alone. So the screen asks for a "
+                       "year-ago loss turned into a profit, a run of quarters each beating its year-ago quarter (losses included), "
+                       "and sales growth. The 200-day keeps it to recoveries the market has started to believe; one below a "
+                       "falling average is a value bet, not a momentum trade. Sales growth accelerating is a field of its own for "
+                       "a stricter version. Present-only: the quarterly results exist only for the latest snapshot, so the screen "
+                       "cannot be studied. One-off gains are not removed: check the filing behind a sudden profit."),
+            "conditions": [
+                {"field": "tradable", "op": "is", "value": True},
+                {"field": "eps_turned_positive", "op": "is", "value": True},
+                {"field": "eps_improving_q", "op": ">=", "value": RECOVERY_MIN_IMPROVING_QUARTERS},
+                {"field": "sales_growth_q", "op": ">=", "value": RECOVERY_MIN_SALES_GROWTH},
+                {"field": "close", "op": ">", "ref": "sma200"},
+            ],
+            "columns": ["eps_improving_q", "sales_growth_q", "sales_accelerating"], "sort_by": "sales_growth_q"},
         "leaders": {
             "name": "Strong stocks in leading groups",
             "description": f"Strong stocks (RS {LEADER_MIN_RS}+) in the strongest peer groups (group RS {LEADER_GROUP_RS}+), in an uptrend.",

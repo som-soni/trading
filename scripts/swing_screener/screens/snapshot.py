@@ -28,6 +28,7 @@ import pandas as pd
 from .. import paths
 from ..config import MARKETS
 from ..core import indicators as ind
+from fundamentals.growth import SALES_ACCELERATING_QUARTERS
 from ..core.pattern_spec import longest_window_within_depth
 from ..core.swings import is_contracting, volatility_contractions
 from ..marketdata import cache, db, freshness
@@ -131,11 +132,17 @@ FIELDS = [
     ("sepa_verdict", "Minervini SEPA verdict", "Fundamentals", "text", "Minervini's fundamental tests on the quarterly results: "
                                                                           "LEADER, ACCEPTABLE, WEAK or NO DATA (Fundamentals page)."),
     ("sepa_code33", "Minervini Code 33", "Fundamentals", "bool", "EPS growth, sales growth and net margin all rising for three quarters."),
+    ("eps_turned_positive", "EPS turned positive", "Fundamentals", "bool", "Latest quarter profitable, the same quarter a year "
+                                                                            "earlier a loss (or zero): a recovery, which growth % cannot measure."),
+    ("eps_improving_q", "Quarters of improving EPS", "Fundamentals", "num", "Consecutive quarters, from the latest back, whose EPS "
+                                                                           "beat the same quarter a year earlier — losses included."),
+    ("sales_accelerating", "Sales growth accelerating", "Fundamentals", "bool", f"Sales growth (year on year) rising into the latest "
+                                                                               f"quarter for {SALES_ACCELERATING_QUARTERS} quarters in a row."),
 ]
 FIELD_KEYS = [f[0] for f in FIELDS]
 PRESENT_ONLY = ("sector", "industry", "sub_industry", "group_rs", "peer_group", "peer_rs", "peer_rank", "peer_count",
                 "market_cap", "market_cap_usd", "quality", "earnings_days", "eps_growth_q", "sales_growth_q", "roe",
-                "sepa_verdict", "sepa_code33")
+                "sepa_verdict", "sepa_code33", "eps_turned_positive", "eps_improving_q", "sales_accelerating")
 
 
 def _path(market: str, d) -> "pd.Path":
@@ -344,7 +351,8 @@ def _add_present(market: str, df: pd.DataFrame, d) -> None:
 # a column that is not in PRESENT_ONLY.
 PRESENT_INPUTS = (
     ("fundamentals", "Fundamentals (SEPA)",
-     ("eps_growth_q", "sales_growth_q", "roe", "sepa_verdict", "sepa_code33"),
+     ("eps_growth_q", "sales_growth_q", "roe", "sepa_verdict", "sepa_code33",
+      "eps_turned_positive", "eps_improving_q", "sales_accelerating"),
      ("sql", "SELECT max(computed_at) FROM fundamental_scores WHERE market=%s")),
     ("quality", "Quality scores", ("quality",),
      ("sql", "SELECT max(computed_at) FROM quality_scores WHERE market=%s")),
@@ -443,12 +451,15 @@ def _add_fundamentals(market: str, df: pd.DataFrame) -> None:
     with db.get_connection().cursor() as cur:
         try:
             cur.execute("""SELECT symbol, (metrics->'eps_g'->>0)::float, (metrics->'rev_g'->>0)::float, (metrics->>'roe')::float,
-                                  views->'sepa'->>'verdict', (views->'sepa'->>'code33')::boolean
+                                  views->'sepa'->>'verdict', (views->'sepa'->>'code33')::boolean,
+                                  (metrics->>'eps_turned_positive')::boolean, (metrics->>'eps_improving_q')::int,
+                                  (metrics->>'sales_accelerating')::boolean
                            FROM fundamental_scores WHERE market=%s""", (market,))
             rows = {r[0]: r[1:] for r in cur.fetchall()}
         except Exception:  # noqa: BLE001 — the table appears with the first `fundamental_scores` run
             rows = {}
-    for i, key in enumerate(("eps_growth_q", "sales_growth_q", "roe", "sepa_verdict", "sepa_code33")):
+    for i, key in enumerate(("eps_growth_q", "sales_growth_q", "roe", "sepa_verdict", "sepa_code33",
+                             "eps_turned_positive", "eps_improving_q", "sales_accelerating")):
         pct = key in ("eps_growth_q", "sales_growth_q", "roe")   # pct fields are percentages (12.5 = 12.5%)
         df[key] = df["symbol"].map(lambda s, i=i, pct=pct: (rows[s][i] * 100 if pct else rows[s][i])
                                    if s in rows and rows[s][i] is not None else None)

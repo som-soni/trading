@@ -1899,6 +1899,195 @@ function moneyShort(v, market) {
 /** a statement table's unit in words: "$ M" -> "$ millions", "₹ Cr" -> "₹ crore" */
 const unitWords = (u) => String(u || "").replace(/\s*M$/, " millions").replace(/\s*Cr$/, " crore").replace(/\s*B$/, " billions");
 
+// ------------------------------------------------------------- earnings season page
+
+/** The earnings trend: one metric's change (sum ÷ sum − 1, or the median company's) per quarter, one line per
+ *  size bucket — All in the page's ink, the classes in their own --es-* hues — on one % axis with zero marked.
+ *  A point whose base covers under `thin_base` of that quarter's reporters is a gap; the quarter still in
+ *  season is hollow and dashed in; past the axis' bounds a point sits on the edge with its true value in the
+ *  tooltip. Hovering a quarter shows every bucket; clicking it opens that quarter. `onPick(quarter)`. */
+function earningsTrend(host, d, onPick) {
+  const SER = [["all", "All", "--series", 2.5], ["large", "Large cap", "--es-large", 2], ["mid", "Mid cap", "--es-mid", 2], ["small", "Small cap", "--es-small", 2]]
+    .filter(([k]) => d.buckets.some((b) => b.key === k));
+  const has = (m) => d.trend.some((t) => (t.buckets.all?.metrics[m]?.n || 0) >= d.min_companies);   // India files no gross profit
+  const metrics = d.metrics.filter((m) => has(m.key));
+  const prefs = { metric: "revenue", measure: "sum", table: false, ...store.get("earningsTrend", {}) };
+  if (!metrics.some((m) => m.key === prefs.metric)) prefs.metric = metrics[0]?.key;
+  const vs = d.basis === "yoy" ? "YoY" : "QoQ";
+  const qLabel = (iso) => { const t = new Date(iso + "T00:00:00Z"); return `${t.toLocaleString("en", { month: "short", timeZone: "UTC" })} ${String(t.getUTCFullYear()).slice(2)}`; };
+  const pct = (v) => v == null ? "—" : Math.abs(v) >= 9.995 ? (v > 0 ? ">+999%" : "<−999%") : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(1)}%`;
+  /** the plotted value of one bucket in one quarter, or null for a gap (with why) */
+  const point = (t, k) => {
+    const b = t.buckets[k], a = b?.metrics[prefs.metric];
+    if (!a || !a.n) return { v: null, why: "no figures" };
+    if (a.n < d.thin_base * b.reported) return { v: null, why: `only ${a.n} of ${b.reported} have a comparable base`, a, b };
+    const v = prefs.measure === "sum" ? a.change : a.median;
+    return { v, why: v == null ? (a.n < d.min_companies ? "too few companies" : "the base was a loss") : "", a, b };
+  };
+  const draw = () => {
+    store.set("earningsTrend", prefs);
+    const mLabel = metrics.find((m) => m.key === prefs.metric)?.label || "";
+    host.innerHTML = `<div class="sec-card-h es-trh"><h3>Trend · ${esc(mLabel)} ${vs}${prefs.measure === "median" ? " · median company" : ""}</h3><span class="spacer"></span>
+        ${segmented(metrics.map((m) => [m.key, esc(m.label)]), prefs.metric, "etm")}
+        ${segmented([["sum", "Sum"], ["median", "Median"]], prefs.measure, "ets")}
+        <button class="sm ghost etab">${prefs.table ? "Chart" : "Table"}</button></div>
+      <div class="es-leg">${SER.map(([, l, c]) => `<span><i style="background:var(${c})"></i>${esc(l)}</span>`).join("")}
+        <span class="muted small">${prefs.measure === "sum" ? "Sum of this quarter ÷ sum of the base − 1." : "The median company's own change."} ▲▼ ran off the axis. Click a quarter to open it.</span></div>
+      <div class="es-plot"></div>`;
+    host.querySelectorAll(".etm button").forEach((b) => b.onclick = () => { prefs.metric = b.dataset.v; draw(); });
+    host.querySelectorAll(".ets button").forEach((b) => b.onclick = () => { prefs.measure = b.dataset.v; draw(); });
+    host.querySelector(".etab").onclick = () => { prefs.table = !prefs.table; draw(); };
+    const plot = host.querySelector(".es-plot");
+    if (prefs.table) {
+      plot.innerHTML = `<div class="tablewrap"><table class="data es-ttab"><thead><tr><th>Quarter</th>${SER.map(([, l]) => `<th class="num">${esc(l)}</th>`).join("")}<th class="num">Reported</th></tr></thead>
+        <tbody>${[...d.trend].reverse().map((t) => `<tr class="click ${t.quarter === d.quarter ? "es-cur" : ""}" data-q="${t.quarter}"><td>${esc(qLabel(t.quarter))}${t.in_progress ? ' <span class="muted small">in season</span>' : ""}</td>
+          ${SER.map(([k]) => { const p = point(t, k); return `<td class="num ${p.v > 0 ? "pos" : p.v < 0 ? "neg" : "muted"}" title="${esc(p.why || (p.a ? `${p.a.n} companies · ${p.a.grew} grew` : ""))}">${pct(p.v)}</td>`; }).join("")}
+          <td class="num muted">${t.buckets.all.reported.toLocaleString()}</td></tr>`).join("")}</tbody></table></div>`;
+      plot.querySelectorAll("tr[data-q]").forEach((tr) => tr.onclick = () => onPick(tr.dataset.q));
+      return;
+    }
+    const W = Math.max(320, plot.clientWidth), H = 260, L = 46, R = 74, T = 12, B = 26;
+    const n = d.trend.length, x = (i) => L + (n > 1 ? i * (W - L - R) / (n - 1) : (W - L - R) / 2);
+    const vals = d.trend.flatMap((t) => SER.map(([k]) => point(t, k).v)).filter((v) => v != null);
+    // the axis follows the data but stops at -60% / +100%: one wild sum must not flatten every other line
+    const LO = -0.6, HI = 1.0;
+    let lo = Math.max(LO, Math.min(0, ...vals)), hi = Math.min(HI, Math.max(0, ...vals));
+    const pad = (hi - lo) * 0.08 || 0.05; lo -= pad; hi += pad;
+    const step = [0.01, 0.02, 0.05, 0.1, 0.2, 0.25, 0.5].find((s) => (hi - lo) / s <= 6) || 0.5;
+    const y = (v) => T + (hi - Math.max(lo, Math.min(hi, v))) / (hi - lo) * (H - T - B);
+    const ticks = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) ticks.push(+v.toFixed(4));
+    const cur = d.trend.findIndex((t) => t.quarter === d.quarter);
+    const lines = SER.map(([k, , c, w]) => {
+      const pts = d.trend.map((t, i) => ({ i, ...point(t, k), live: t.in_progress }));
+      let path = "", dash = "", prev = null;
+      pts.forEach((p) => {
+        if (p.v == null || p.v < lo || p.v > hi) { prev = null; return; }   // a gap, or off the axis: the line breaks there
+        const seg = `${x(p.i).toFixed(1)},${y(p.v).toFixed(1)}`;
+        if (p.live && prev) dash += `M${prev}L${seg}`;        // the quarter still reporting: dashed in
+        else path += `${prev && !p.live ? "L" : "M"}${seg}`;
+        prev = seg;
+      });
+      const dots = pts.filter((p) => p.v != null).map((p) => {
+        const clip = p.v < lo || p.v > hi;
+        if (clip) {   // an arrow on the edge it ran past; the tooltip has the true value
+          const X = x(p.i), Y = y(p.v), s = p.v > hi ? -1 : 1;
+          return `<path d="M${(X - 5).toFixed(1)},${(Y + s * 2).toFixed(1)}L${(X + 5).toFixed(1)},${(Y + s * 2).toFixed(1)}L${X.toFixed(1)},${(Y - s * 6).toFixed(1)}Z" style="fill:var(${c})"/>`;
+        }
+        return `<circle cx="${x(p.i).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="${p.i === cur ? 4.5 : 3}" class="${p.live || clip ? "es-hollow" : ""}" style="${p.live || clip ? `stroke:var(${c})` : `fill:var(${c})`}"/>`;
+      }).join("");
+      // labelled at its newest point, unless that ran off the axis (the legend still names it)
+      const last = [...pts].reverse().find((p) => p.v != null);
+      if (last && (last.v < lo || last.v > hi)) last.off = true;
+      return { k, c, last, svg: `<path d="${path}" style="stroke:var(${c});stroke-width:${w}" class="es-line"/><path d="${dash}" style="stroke:var(${c});stroke-width:${w}" class="es-line es-dash"/>${dots}` };
+    });
+    // direct labels at the right end, nudged apart so they never overlap
+    const labs = lines.filter((l) => l.last && !l.last.off).map((l) => ({ l, yy: y(l.last.v) })).sort((a, b) => a.yy - b.yy);
+    labs.forEach((o, i) => { if (i && o.yy - labs[i - 1].yy < 13) o.yy = labs[i - 1].yy + 13; });
+    plot.innerHTML = `<svg class="es-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${esc(`${metrics.find((m) => m.key === prefs.metric)?.label} ${vs} by quarter`)}">
+      ${cur >= 0 ? `<rect class="es-curband" x="${(x(cur) - 10).toFixed(1)}" y="${T}" width="20" height="${H - T - B}"/>` : ""}
+      ${ticks.map((v) => `<line class="${Math.abs(v) < 1e-9 ? "es-zero" : "es-grid"}" x1="${L}" x2="${W - R + 8}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text class="es-ax" x="${L - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.round(Math.abs(v) * 100)}%</text>`).join("")}
+      ${d.trend.map((t, i) => (n <= 12 || i % 2 === (n - 1) % 2) ? `<text class="es-ax" x="${x(i).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(qLabel(t.quarter))}</text>` : "").join("")}
+      ${lines.map((l) => l.svg).join("")}
+      ${labs.map((o) => `<text class="es-dl" x="${(x(o.l.last.i) + 8).toFixed(1)}" y="${(o.yy + 4).toFixed(1)}">${esc(SER.find(([k]) => k === o.l.k)[1].replace(" cap", ""))} ${pct(o.l.last.v)}</text>`).join("")}
+      <line class="es-cross" x1="0" x2="0" y1="${T}" y2="${H - B}" visibility="hidden"/>
+      ${d.trend.map((t, i) => `<rect class="es-hit" data-i="${i}" x="${(x(i) - (W - L - R) / Math.max(1, n - 1) / 2).toFixed(1)}" y="0" width="${((W - L - R) / Math.max(1, n - 1)).toFixed(1)}" height="${H}"/>`).join("")}
+    </svg><div class="es-tip" hidden></div>`;
+    const svg = plot.querySelector("svg"), tip = plot.querySelector(".es-tip"), cross = svg.querySelector(".es-cross");
+    svg.querySelectorAll(".es-hit").forEach((r) => {
+      const i = +r.dataset.i, t = d.trend[i];
+      r.onmouseenter = () => {
+        cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
+        tip.innerHTML = `<b>${esc(qLabel(t.quarter))}</b>${t.in_progress ? ` <span class="muted">· in season, ${t.buckets.all.reported}/${t.buckets.all.reported_prev} reported</span>` : ""}
+          ${SER.map(([k, l, c]) => { const p = point(t, k); return `<div><i style="background:var(${c})"></i>${esc(l)} <b class="${p.v > 0 ? "pos" : p.v < 0 ? "neg" : ""}">${pct(p.v)}</b>
+            <span class="muted">${esc(p.v == null ? p.why : `${p.a.n} cos · ${p.a.grew} grew`)}</span></div>`; }).join("")}`;
+        tip.hidden = false;
+        const left = x(i) / W * plot.clientWidth;
+        tip.style.left = `${Math.max(0, Math.min(plot.clientWidth - tip.offsetWidth, left + (left > plot.clientWidth / 2 ? -tip.offsetWidth - 12 : 12)))}px`;
+      };
+      r.onclick = () => onPick(t.quarter);
+    });
+    svg.onmouseleave = () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); };
+  };
+  draw();
+  // redraw at the new width (the SVG is drawn in pixels so its text stays crisp); stops once the page is gone
+  let w0 = host.clientWidth;
+  const ro = new ResizeObserver(() => { if (!host.isConnected) return ro.disconnect(); if (Math.abs(host.clientWidth - w0) > 4 && !prefs.table) { w0 = host.clientWidth; draw(); } });
+  ro.observe(host);
+}
+
+/** The earnings-season scoreboard (/api/earnings-season, fundamentals/earnings_season.py): one calendar
+ *  quarter's results summed over the companies the app tracks, per market-cap class — how many have
+ *  reported, and revenue, gross profit and net profit against the year-ago (YoY) or previous (QoQ) quarter.
+ *  Under it, every reporting company; a row opens its Fundamentals page. */
+async function earningsPage(alive, mkt) {
+  mkt = pageMarket(mkt);
+  const prefs = { basis: "yoy", ...store.get("earningsPrefs", {}) };
+  const quarter = store.get(`earningsQuarter:${mkt}`, null);
+  document.title = "Earnings season · Trading";
+  $view.innerHTML = pageHead("Earnings season", { context: marketSeg(mkt) + segmented([["yoy", "YoY"], ["qoq", "QoQ"]], prefs.basis, "eb") + `<span id="es-q"></span>` })
+    + `<div id="es">${LOADING}</div>`;
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(`#/earnings/${b.dataset.v}`));
+  $view.querySelectorAll(".eb button").forEach((b) => b.onclick = () => { store.set("earningsPrefs", { ...prefs, basis: b.dataset.v }); route(); });
+  const d = await api(`/api/earnings-season?market=${encodeURIComponent(mkt)}&basis=${prefs.basis}${quarter ? `&quarter=${quarter}` : ""}`)
+    .catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  const host = $view.querySelector("#es");
+  if (d.error || d.empty) { host.innerHTML = `<div class="empty"><b>No quarterly results stored for ${esc(mktInfo(mkt).name)}</b><div class="muted">${esc(d.error || "The financials job has not run for this market.")}</div></div>`; return; }
+
+  const qName = (iso) => { const t = new Date(iso + "T00:00:00Z"); return `${t.toLocaleString("en", { month: "short", timeZone: "UTC" })} ${t.getUTCFullYear()} quarter`; };
+  const qShort = (iso) => { const t = new Date(iso + "T00:00:00Z"); return `${t.toLocaleString("en", { month: "short", timeZone: "UTC" })} ${String(t.getUTCFullYear()).slice(2)}`; };
+  const qs = $view.querySelector("#es-q");
+  qs.innerHTML = datePicker(d.quarters.map((x) => ({ value: x.quarter, label: `${qName(x.quarter)} · ${x.reported.toLocaleString()} reported` })), d.quarter, "quarters");
+  wireDatePicker(qs, d.quarters.map((x) => ({ value: x.quarter })), d.quarter, (v, latest) => { store.set(`earningsQuarter:${mkt}`, latest ? null : v); route(); });
+
+  const vs = d.basis === "yoy" ? "YoY" : "QoQ";
+  // a sum over a tiny (or near-zero) base gives absurd rates: past ±999% the number is shown as a bound
+  const pct = (v) => v == null ? "—" : Math.abs(v) >= 9.995 ? (v > 0 ? ">+999%" : "<−999%") : `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(1)}%`;
+  const tone = (v) => (v == null ? "muted" : v > 0 ? "pos" : v < 0 ? "neg" : "");
+  const metricRow = (m, a, b) => {
+    const why = a.n === 0 ? "no company in this group files it" : a.n < d.min_companies ? `only ${a.n} compan${a.n > 1 ? "ies file" : "y files"} it` : a.change == null ? "the base quarter's sum was a loss" : "";
+    return `<div class="es-m" title="${esc(`${m.label}, ${b.label}: ${a.n} companies with this quarter's figure and the ${vs === "YoY" ? "year-ago" : "previous"} one${why ? ` — ${why}` : ""}`)}">
+      <span class="es-ml">${esc(m.label)}</span>
+      <b class="es-mv">${a.n && a.change != null ? esc(moneyShort(a.current, d.market)) : "—"}</b>
+      <span class="es-mc ${tone(a.change)}">${pct(a.change)}</span>
+      <span class="es-ms muted small">${a.median != null ? `median ${pct(a.median)} · ${a.grew} of ${a.n} grew` : esc(why || "")}</span></div>`;
+  };
+  const tile = (b) => {
+    const share = b.reported_prev ? Math.min(1, b.reported / b.reported_prev) : 0;
+    return `<section class="sec-card es-tile"><div class="es-th"><h3>${esc(b.label)}</h3>
+        <span class="es-rep" title="Companies with results stored for this quarter / for the quarter before (${esc(qName(d.prev_quarter))})"><b>${b.reported.toLocaleString()}</b>/${b.reported_prev.toLocaleString()} reported</span></div>
+      <span class="es-bar"><i style="width:${(share * 100).toFixed(1)}%"></i></span>
+      ${d.metrics.map((m) => metricRow(m, b.metrics[m.key], b)).join("")}</section>`;
+  };
+  const noCap = d.no_cap ? ` ${d.no_cap.toLocaleString()} reporting compan${d.no_cap > 1 ? "ies have no stored market cap and count" : "y has no stored market cap and counts"} in All only.` : "";
+  host.innerHTML = `<p class="es-cov"><b>Covers ${d.universe.toLocaleString()} companies the app tracks</b> (screened and watchlisted stocks with stored financials), <b>not the whole market</b>.
+      ${esc(qName(d.quarter))}, ${vs}: against the ${esc(qName(d.base_quarter))}. ${info(`<p><b>How it adds up.</b> Per metric, only companies with both this quarter's figure and the ${d.basis === "yoy" ? "year-ago" : "previous quarter's"} one count: the tile shows their summed figure and sum ÷ sum − 1. A few giants dominate a sum, so the median company's change is shown beside it.</p>
+        <p><b>Quarters.</b> A fiscal quarter counts in the calendar quarter whose end is nearest its own (a quarter ending 27 Sep is a Sep quarter). <b>Reported</b> is companies with results stored for this quarter against the quarter before, so it shows how far the season has got.</p>
+        <p><b>YoY base.</b> The comparative printed in the same filing where the source gives one (SEC), else the stored quarter a year earlier.</p>
+        <p><b>Size classes</b> use today's market cap: ${esc(d.cap_note)}. Index membership (e.g. the benchmark's constituents) is not stored, so there is no index group.</p>
+        <p><b>The trend</b> uses today's tracked companies for every quarter, so older quarters leave out companies since dropped or delisted. A quarter where fewer than ${Math.round(d.thin_base * 100)}% of the reporters have a comparable base is left as a gap.</p>
+        <p><b>Missing is not zero.</b> Banks and most Indian filings report no gross profit; a metric a company does not file drops out of that metric's count, and fewer than ${d.min_companies} filers show "—".${d.foreign_excluded ? ` ${d.foreign_excluded} companies reporting in another currency are left out.` : ""}</p>`)}${esc(noCap)}</p>
+    <div class="es-tiles">${d.buckets.map(tile).join("")}</div>
+    <section class="sec-card es-trend" id="es-trend"></section>
+    <section class="sec-card"><h3>Reporting companies · ${esc(qShort(d.quarter))} · ${vs}</h3><div id="es-t"></div></section>`;
+
+  earningsTrend($view.querySelector("#es-trend"), d, (q) => { store.set(`earningsQuarter:${mkt}`, q === d.quarters[0].quarter ? null : q); route(); });
+  const notes = new Map(d.companies.map((c) => [c.symbol, c]));
+  const chg = (m) => (v, row) => v != null ? pct(v / 100) : notes.get(row[0])?.[`${m}_note`] || "—";
+  const amt = (v) => v == null ? "—" : moneyShort(v, d.market);
+  const CAP = { large: "Large", mid: "Mid", small: "Small" };
+  const cols = ["symbol", "name", "size", "quarter end", "filed", "revenue", "revenue %", "gross profit", "gross profit %", "net profit", "net profit %", "market cap"];
+  const p100 = (v) => v == null ? null : +(v * 100).toFixed(2);
+  dataTable($view.querySelector("#es-t"), cols, d.companies.map((c) => [c.symbol, c.name || "", CAP[c.cap_class] || "", c.period_end, c.filed,
+    c.revenue, p100(c.revenue_chg), c.gross_profit, p100(c.gross_profit_chg), c.net_income, p100(c.net_income_chg), c.market_cap]), {
+    name: "earnings_season", sort: ["market cap", -1], signed: ["revenue %", "gross profit %", "net profit %"],
+    hidden: d.companies.some((c) => c.gross_profit != null) ? [] : ["gross profit", "gross profit %"],   // a market whose filings carry none
+    format: { revenue: amt, "gross profit": amt, "net profit": amt, "market cap": amt, "revenue %": chg("revenue"), "gross profit %": chg("gross_profit"), "net profit %": chg("net_income"),
+      "quarter end": (v) => prettyDate(v), filed: (v) => (v ? prettyDate(v) : "") },
+    rowClick: (row) => go(companyHref(d.market, row[0])), rowHint: "Click a row to open its Fundamentals page",
+  });
+}
+
 async function moversPage(alive, mkt) {
   const prefs = { period: "1D", universe: "liquid", ...store.get("moversPrefs", {}) };
   mkt = pageMarket(mkt, ["both"]);
@@ -2107,7 +2296,7 @@ async function postmarketPage(alive, mkt, date, tab) {
 
 // ------------------------------------------------------------- sectors page
 
-const LEVEL_NAME = { sector: "sectors", industry: "industry groups", sub: "sub-industries" };
+const LEVEL_NAME = { sector: "sectors", industry: "industry groups", sub: "sub-industries", theme: "themes" };
 /** a sub-industry key is "Industry › Sub"; show the sub part, with the industry as context */
 const groupParts = (g) => { const i = g.indexOf(" › "); return i < 0 ? [g, null] : [g.slice(i + 3), g.slice(0, i)]; };
 const QUADS = ["Leading", "Improving", "Weakening", "Lagging"];
@@ -2187,6 +2376,20 @@ function rebase100(points, fromTime) {
  *  to "show more history," build a new one sized for exactly the history being shown. */
 function fitBarSpacing(width, maxCount) {
   return Math.max(0.001, (width || 900) / Math.max(1, maxCount));
+}
+
+/** Calls `fn` (debounced) when `el` changes width — a window resize or a card expanding. A chart built
+ *  with fitBarSpacing is sized for the width it was built at, so a wider or narrower box needs a rebuild
+ *  to stay exactly filled. Returns a function that stops watching. */
+function onWidthChange(el, fn) {
+  let w = el.clientWidth, t = null;
+  const ro = new ResizeObserver(() => {
+    const nw = el.clientWidth;
+    if (Math.abs(nw - w) < 4) return;
+    w = nw; clearTimeout(t); t = setTimeout(fn, 120);
+  });
+  ro.observe(el);
+  return () => { ro.disconnect(); clearTimeout(t); };
 }
 
 /** a lightweight-charts crosshair/time param's `time` as a plain "YYYY-MM-DD" string — it comes back as
@@ -2304,6 +2507,7 @@ async function ratesSection(card, mkt, overlay = null) {
     card.querySelectorAll(".rt-range button").forEach((o) => o.classList.toggle("on", o === b));
     store.set("ratesRange", b.dataset.v); build(b.dataset.v);
   });
+  const stopWatch = onWidthChange(el_, () => build(card.querySelector(".rt-range button.on")?.dataset.v || range));
 
   // legend chip and table row both toggle / highlight the same line — two entry points to one series
   const toggle = (k) => {
@@ -2331,7 +2535,7 @@ async function ratesSection(card, mkt, overlay = null) {
     tr.onmouseleave = () => highlight(null);
   });
 
-  { const prev = cleanup; cleanup = () => { chart?.remove(); prev(); }; }
+  { const prev = cleanup; cleanup = () => { stopWatch(); chart?.remove(); prev(); }; }
 }
 
 /** a sparkline of a group's RS line (values relative to its first point) */
@@ -2349,7 +2553,7 @@ function sparkSvg(vals, w = 90, h = 22) {
  *  of leaving it blank or erroring. */
 const IND_GAPS = {
   india: {
-    consumption: "India vehicle sales (SIAM) and retail sales have no free, machine-readable release — monthly PDF only — so they aren't tracked here yet.",
+    consumption: "Vehicle sales by segment (SIAM/FADA), retail sales and GST collections have no free, machine-readable release — PDF only — so total Vahan registrations and the IIP consumer groups stand in for them. Nifty Consumption and Nifty Auto (market-derived, above) are the daily market read.",
     housing: "India has no free, machine-readable housing-starts or mortgage-rate release — housing finance companies' and banks' own disclosures are the closest proxy, and they aren't machine-readable.",
     credit: "RBI publishes India's bank credit growth fortnightly, but only as a PDF bulletin — no free, machine-readable series was found.",
   },
@@ -2360,10 +2564,10 @@ const IND_CAT_LABEL = { inflation: "Inflation", growth: "Growth", consumption: "
 /** one indicator's card: label, current value, 1M/1Y change and its own small chart (filled in by
  *  indicatorsSection once every card is in the DOM, so every indicator gets a real chart — not just a
  *  sparkline — the same as the rates card above it. */
-// a series lands some time after its period ends even on time (FRED's own lag, or an OECD mirror of a
-// national release); flag it stale only well past that normal lag, so a merely-recent print never shows
-// an alarming chip
-const IND_STALE_DAYS = { daily: 5, weekly: 10, monthly: 45, quarterly: 120 };
+// A point is dated by the START of its period (September's CPI is 2026-09-01), and lands weeks after the
+// period ends — so an on-time monthly print is already ~45-75 days "old" by that date, a quarterly one up
+// to ~7 months. Flag stale only when the next print is clearly overdue: period + usual release lag + slack.
+const IND_STALE_DAYS = { daily: 5, weekly: 16, monthly: 100, quarterly: 240 };
 const IND_PERIOD = { daily: "DoD", weekly: "WoW", monthly: "MoM", quarterly: "QoQ" };
 function indicatorCard(x) {
   const num = (v, dp) => v.toLocaleString(undefined, { minimumFractionDigits: dp, maximumFractionDigits: dp });
@@ -2453,7 +2657,9 @@ async function indicatorsSection(card, mkt, overlay = null) {
       });
     };
     build(range);
-    charts[x.key] = { build, remove: () => c?.remove() };
+    // a window resize or the card expanding changes its width — rebuild so bar spacing fits it again
+    const stop = onWidthChange(el_, () => build(card.querySelector(".ind-range button.on")?.dataset.v || range));
+    charts[x.key] = { build, remove: () => { stop(); c?.remove(); } };
   }
   card.querySelectorAll(".ind-range button").forEach((b) => b.onclick = () => {
     card.querySelectorAll(".ind-range button").forEach((o) => o.classList.toggle("on", o === b));
@@ -2466,9 +2672,6 @@ async function indicatorsSection(card, mkt, overlay = null) {
     on ? expanded.add(k) : expanded.delete(k);
     el.classList.toggle("expanded", on);
     store.set(expandedKey, [...expanded]);
-    // the card is now a different width (collapsed/expanded) — rebuild so bar spacing fits it again
-    const curRange = card.querySelector(".ind-range button.on")?.dataset.v || range;
-    charts[k]?.build(curRange);
   });
   { const prev = cleanup; cleanup = () => { Object.values(charts).forEach(({ remove }) => remove()); prev(); }; }
 }
@@ -2508,21 +2711,69 @@ async function flowsSection(card) {
     if (!el_) return null;
     const readout = card.querySelector(`.ind-card[data-k="${CSS.escape(x.key)}"] .ind-readout`);
     const pts = x.points.map(([t, v]) => ({ time: t, value: v, color: v >= 0 ? "rgba(38,166,154,.7)" : "rgba(239,83,80,.7)" }));
-    const theme = chartTheme();
-    const c = LC.createChart(el_, { autoSize: true, ...theme, handleScroll: false, handleScale: false,
-      timeScale: { ...theme.timeScale, barSpacing: fitBarSpacing(el_.clientWidth, pts.length), minBarSpacing: 0.001 } });
-    const s = c.addSeries(LC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false,
-      priceFormat: { type: "price", precision: 0, minMove: 1 } });
-    s.setData(pts);
-    c.subscribeCrosshairMove((param) => {
-      const t = rawTime(param.time);
-      if (!t) { readout.innerHTML = ""; return; }
-      const v = valueAsOf(pts, t);
-      readout.innerHTML = v != null ? `<b>${esc(prettyDate(t))}</b> <b class="${v >= 0 ? "pos" : "neg"}">${num(v)} ₹cr</b>` : `<b>${esc(prettyDate(t))}</b>`;
-    });
-    return c;
+    let c = null;
+    const build = () => {
+      if (c) c.remove();
+      const theme = chartTheme();
+      c = LC.createChart(el_, { autoSize: true, ...theme, handleScroll: false, handleScale: false,
+        timeScale: { ...theme.timeScale, barSpacing: fitBarSpacing(el_.clientWidth, pts.length), minBarSpacing: 0.001 } });
+      const s = c.addSeries(LC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false,
+        priceFormat: { type: "price", precision: 0, minMove: 1 } });
+      s.setData(pts);
+      c.subscribeCrosshairMove((param) => {
+        const t = rawTime(param.time);
+        if (!t) { readout.innerHTML = ""; return; }
+        const v = valueAsOf(pts, t);
+        readout.innerHTML = v != null ? `<b>${esc(prettyDate(t))}</b> <b class="${v >= 0 ? "pos" : "neg"}">${num(v)} ₹cr</b>` : `<b>${esc(prettyDate(t))}</b>`;
+      });
+    };
+    build();
+    const stop = onWidthChange(el_, build);
+    return () => { stop(); c?.remove(); };
   }).filter(Boolean);
-  { const prev = cleanup; cleanup = () => { charts.forEach((c) => c.remove()); prev(); }; }
+  { const prev = cleanup; cleanup = () => { charts.forEach((remove) => remove()); prev(); }; }
+}
+
+/** FPI net equity investment by sector, per fortnight (/api/fpi-sectors, NSDL's FPI Monitor): a heatmap —
+ *  rows are NSDL's own sectors, columns the last fortnights, each cell the net ₹ crore, red (out) to green
+ *  (in) around zero — plus each sector's cumulative last 12 months, which the rows are sorted by. FPI only:
+ *  no public source splits domestic institutions' flows by sector. The card stays hidden for a market the
+ *  endpoint returns nothing for. */
+async function fpiSectorsSection(card, mkt) {
+  const d = await api(`/api/fpi-sectors?market=${encodeURIComponent(mkt)}&fortnights=24`).catch(() => null);
+  if (!card.isConnected || !d?.sectors?.length) return;
+  const kcr = (v) => {   // compact ₹k Cr: 12,345 -> +12.3k, 456 -> +456
+    if (v == null) return "";
+    const a = Math.abs(v), sgn = v > 0 ? "+" : v < 0 ? "−" : "";
+    return sgn + (a >= 1000 ? `${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k` : `${Math.round(a)}`);
+  };
+  const full = (v) => `${v > 0 ? "+" : ""}${Math.round(v).toLocaleString("en-IN")} ₹cr`;
+  // colour scale: clamp at the 90th percentile of |cell| so one huge fortnight does not wash out the rest
+  const mags = d.values.flat().filter((v) => v != null).map(Math.abs).sort((a, b) => a - b);
+  const cap = mags[Math.floor(mags.length * 0.9)] || 1;
+  const tint = (v, c) => {
+    if (v == null || v === 0) return "";
+    const p = Math.round(8 + 57 * Math.sqrt(Math.min(1, Math.abs(v) / c)));
+    return `background:color-mix(in srgb, var(${v > 0 ? "--up" : "--down"}) ${p}%, transparent)`;
+  };
+  const cmax = Math.max(...d.cum12m.map(Math.abs), 1);
+  const fdate = (s) => { const [y, m, dd] = s.split("-"); return `${+dd} ${MONTHS[+m - 1]}${m === "01" && +dd === 15 || s === d.fortnights[0] ? ` ’${y.slice(2)}` : ""}`; };
+  const period = (i) => {   // the fortnight a column covers: day after the previous report to this one
+    const end = d.fortnights[i], [y, m, dd] = end.split("-");
+    return +dd <= 15 ? `1–${+dd} ${MONTHS[+m - 1]} ${y}` : `16–${+dd} ${MONTHS[+m - 1]} ${y}`;
+  };
+  card.hidden = false;
+  card.innerHTML = tdHead(`FPI flows by sector · fortnightly · ${esc(mktInfo(mkt).name)}`,
+      info("<p>Net foreign portfolio investor (FPI) investment in listed <b>equity</b>, by sector, for each fortnight (1st–15th and 16th–month-end), in ₹ crore. Green is net buying, red net selling; the deeper the colour, the larger the flow.</p><p>The right-hand column is each sector's cumulative net over the last 12 months (24 fortnights), and rows are sorted by it — largest inflow at the top.</p><p>Source: NSDL's FPI Monitor fortnightly sector reports, with NSDL's own sector names. <b>FPI only</b> — no public source splits domestic institutions' (DII) flows by sector.</p>"))
+    + `<div class="fpi-hm-wrap"><table class="fpi-hm">
+        <thead><tr><th class="fpi-sec">Sector</th>${d.fortnights.map((f, i) => `<th title="${esc(period(i))}">${esc(fdate(f))}</th>`).join("")}<th class="fpi-cum">12 months</th></tr></thead>
+        <tbody>${d.sectors.map((sec, r) => `<tr><th class="fpi-sec" title="${esc(sec)}">${esc(sec)}</th>${d.values[r].map((v, i) =>
+          `<td style="${tint(v, cap)}" title="${esc(sec)} · ${esc(period(i))}: ${v == null ? "no row in this report" : esc(full(v))}">${esc(kcr(v))}</td>`).join("")}
+          <td class="fpi-cum" title="${esc(sec)} · last 12 months (24 fortnights to ${esc(prettyDate(d.asof))}):${esc(full(d.cum12m[r]))}">
+            <span class="fpi-bar"><i class="${d.cum12m[r] >= 0 ? "pos" : "neg"}" style="width:${Math.max(2, Math.round(100 * Math.abs(d.cum12m[r]) / cmax))}%"></i></span>
+            <b class="${d.cum12m[r] >= 0 ? "pos" : "neg"}">${esc(kcr(d.cum12m[r]))}</b></td></tr>`).join("")}</tbody>
+      </table></div>
+      <div class="muted small fpi-note">Net equity investment, ₹ crore (k = thousand crore) · as of ${esc(prettyDate(d.asof))} · Source: NSDL FPI Monitor, FPI only (not DII).</div>`;
 }
 
 /** The Macro tab: this market's full macro backdrop — market-derived stress first (it moves daily, so it
@@ -2544,6 +2795,7 @@ async function macroPage(alive, mkt) {
       context: `${compareSelect(mktInfo(mkt).indices || [], compare)}${info("<p>This market's macro backdrop: market-derived stress (the dollar, oil, gold, credit, volatility — priced every day), the policy rate and bond yields, and economic indicators spanning inflation, growth, consumption, housing and credit — each with its current value and as much history as is stored.</p><p>Macro moves slowly and sets the backdrop, not the trade: a headwind argues for smaller size and tighter selection, not for selling a working setup.</p><p>Pick an index to overlay its price on every chart below (its own axis, on the left) and compare timing by eye.</p>")}` })
     + `<div class="sec-card td-card" id="mc-derived">${tdHead(`Market-derived · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:160px">Loading…</div></div>
     ${mkt === "india" ? `<div class="sec-card td-card" id="mc-flows">${tdHead("FII / DII flows · India")}<div class="muted small" style="min-height:220px">Loading…</div></div>` : ""}
+    <div class="sec-card td-card" id="mc-fpi-sectors" hidden></div>
     <div class="sec-card td-rates-card" id="mc-rates">${tdHead(`Rates & yields · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:380px">Loading…</div></div>
     <div class="sec-card td-card" id="mc-ind">${tdHead(`Economic indicators · ${esc(mktInfo(mkt).name)}`)}<div class="muted small" style="min-height:480px">Loading…</div></div>`;
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/macro/${b.dataset.v}`); });
@@ -2566,6 +2818,7 @@ async function macroPage(alive, mkt) {
   ratesSection($view.querySelector("#mc-rates"), mkt, overlay);
   indicatorsSection($view.querySelector("#mc-ind"), mkt, overlay);
   if (mkt === "india") flowsSection($view.querySelector("#mc-flows"));
+  fpiSectorsSection($view.querySelector("#mc-fpi-sectors"), mkt);
   const derived = $view.querySelector("#mc-derived");
   const dd = await api(`/api/macro?market=${mkt}`).catch(() => null);
   if (!alive() || !derived.isConnected) return;
@@ -2633,7 +2886,7 @@ function rrgSvg(groups, hot, pinned, width = 560) {
 
 async function sectorsPage(alive, mkt, level, group) {
   mkt = pageMarket(mkt);
-  level = ["industry", "sector", "sub"].includes(level) ? level : store.get("secLevel", "industry");
+  level = ["industry", "sector", "sub", "theme"].includes(level) ? level : store.get("secLevel", "industry");
   store.set("secLevel", level);
   if (group) return sectorGroupPage(alive, mkt, level, group);
   document.title = "Sectors · Trading";
@@ -2642,7 +2895,14 @@ async function sectorsPage(alive, mkt, level, group) {
   const save = () => store.set("secPrefs", prefs);
   $view.innerHTML = `<div class="page-head"><h1>Sectors</h1>
       ${marketSeg(mkt)}
-      ${segmented([["sector", "Sectors"], ["industry", "Industry groups"], ["sub", "Sub-industries"]], level, "lv")}</div><div id="sec">${LOADING}</div>`;
+      ${segmented([["sector", "Sectors"], ["industry", "Industry groups"], ["sub", "Sub-industries"], ["theme", "Themes"]], level, "lv")}
+      ${level === "theme" ? '<span class="spacer"></span><button class="primary sm" id="newtheme">New theme…</button>' : ""}</div><div id="sec">${LOADING}</div>`;
+  $view.querySelector("#newtheme")?.addEventListener("click", async () => {
+    const name = await askText("New theme", "", "e.g. Data-centre power & cooling");
+    if (!name?.trim()) return;
+    try { await api("/api/themes", jsonReq("POST", { market: mkt, name: name.trim() })); go(secHref(mkt, "theme", name.trim())); }
+    catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
+  });
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(secHref(b.dataset.v, level)));
   $view.querySelectorAll(".lv button").forEach((b) => b.onclick = () => go(secHref(mkt, b.dataset.v)));
   const d = await api(`/api/sectors?market=${mkt}&level=${level}`).catch((e) => ({ error: e.message }));
@@ -2656,7 +2916,7 @@ async function sectorsPage(alive, mkt, level, group) {
   const sectorsList = [...new Set(d.groups.map((g) => g.sector))].sort();
   const mret = d.market_ret, bench = d.bench;
   host.innerHTML = `
-    <div class="sec-sub muted">${prettyDate(d.date)} · ${d.stocks.toLocaleString()} liquid stocks in ${d.groups.length} ${LEVEL_NAME[level]}${level === "sub" ? " (large, mixed industry groups split further — data/sub_industries.csv)" : ""}
+    <div class="sec-sub muted">${prettyDate(d.date)} · ${level === "theme" ? `${d.groups.length} themes — your own baskets across industry groups, each rated on the industry groups' 1–99 scale` : `${d.stocks.toLocaleString()} liquid stocks in ${d.groups.length} ${LEVEL_NAME[level]}`}${level === "sub" ? " (large, mixed industry groups split further — data/sub_industries.csv)" : ""}
       · typical stock ${SEC_H.map((h) => `${h} <b class="${pctCls(mret[h])}">${pct1(mret[h])}</b>`).join(" ")}
       ${bench ? ` · ${esc(bench.label)} 3M <b class="${pctCls(bench["3M"])}">${pct1(bench["3M"])}</b> 12M <b class="${pctCls(bench["12M"])}">${pct1(bench["12M"])}</b>` : ""}
       ${d.updating ? ' <span class="tag watch">updating…</span>' : ""}
@@ -2668,7 +2928,7 @@ async function sectorsPage(alive, mkt, level, group) {
     </div>
     <div class="sec-filters">
       <label class="filter"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="sf" placeholder="Filter groups" spellcheck="false"></label>
-      ${level !== "sector" ? `<select id="ssec"><option value="">All sectors</option>${sectorsList.map((x) => `<option ${x === prefs.sector ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>` : ""}
+      ${level !== "sector" && level !== "theme" ? `<select id="ssec"><option value="">All sectors</option>${sectorsList.map((x) => `<option ${x === prefs.sector ? "selected" : ""}>${esc(x)}</option>`).join("")}</select>` : ""}
       <div class="chips" id="squad">${["all", ...QUADS].map((q) => `<button class="chip ${q === prefs.quad ? "on" : ""}" data-q="${q}">${q === "all" ? "All" : q}<span>${q === "all" ? d.groups.length : d.groups.filter((g) => g.quadrant === q).length}</span></button>`).join("")}</div>
       <span class="spacer"></span>
       <label class="check"><input type="checkbox" id="srel" ${prefs.rel ? "checked" : ""}> Returns vs the typical stock</label>
@@ -2676,8 +2936,8 @@ async function sectorsPage(alive, mkt, level, group) {
     <div id="stbl"></div>`;
   let text = "", hot = null, pinned = null;
   const shown = () => {
-    let gs = d.groups.filter((g) => (prefs.quad === "all" || g.quadrant === prefs.quad) && (!prefs.sector || level === "sector" || g.sector === prefs.sector)
-      && (!text || g.group.toLowerCase().includes(text) || g.sector.toLowerCase().includes(text) || g.leaders.some((l) => l.symbol.toLowerCase().includes(text))));
+    let gs = d.groups.filter((g) => (prefs.quad === "all" || g.quadrant === prefs.quad) && (!prefs.sector || level === "sector" || level === "theme" || g.sector === prefs.sector)
+      && (!text || g.group.toLowerCase().includes(text) || (g.sector || "").toLowerCase().includes(text) || g.leaders.some((l) => l.symbol.toLowerCase().includes(text))));
     const v = (g) => prefs.sort === "rs" ? g.rs : prefs.sort === "drs" ? (g.rs ?? 0) - (g.rs_prev ?? g.rs ?? 0) : prefs.sort === "group" ? g.group
       : prefs.sort === "n" ? g.n : prefs.sort === "above50" ? g.above50 : prefs.sort === "above200" ? g.above200 : prefs.sort === "hl" ? g.highs - g.lows
       : (prefs.rel ? g.rel : g.ew)[prefs.sort];
@@ -2700,7 +2960,7 @@ async function sectorsPage(alive, mkt, level, group) {
     const th = (k, t, cls = "num", title = "") => `<th class="${cls} ${prefs.sort === k ? "on" : ""}" data-k="${k}" title="${esc(title)}">${t}${prefs.sort === k ? (prefs.dir > 0 ? " ↑" : " ↓") : ""}</th>`;
     $view.querySelector("#stbl").innerHTML = `<div class="sect-wrap"><table class="sect"><thead><tr>
         ${th("rs", "RS", "num", "RS rating 1–99 across groups")}${th("drs", "Δ 1M", "num", "Change in RS rating over the last month")}
-        ${th("group", { industry: "Industry group", sector: "Sector", sub: "Sub-industry" }[level], "")}${th("n", "Stocks")}
+        ${th("group", { industry: "Industry group", sector: "Sector", sub: "Sub-industry", theme: "Theme" }[level], "")}${th("n", "Stocks", "num", level === "theme" ? "Members that clear the liquidity floor / all members" : "")}
         ${SEC_H.map((h) => th(h, h, "num", prefs.rel ? "Equal-weight return minus the typical stock's" : "Equal-weight return")).join("")}
         ${th("above50", "> 50D", "", "% of members above their 50-day average")}${th("above200", "> 200D", "", "% of members above their 200-day average")}
         ${th("hl", "Highs / lows", "num", "Members at a new 52-week closing high / low")}<th>Rotation</th><th>RS line 6M</th><th>Leaders</th></tr></thead>
@@ -2708,8 +2968,9 @@ async function sectorsPage(alive, mkt, level, group) {
         const dr = g.rs != null && g.rs_prev != null ? g.rs - g.rs_prev : null, r = prefs.rel ? g.rel : g.ew;
         return `<tr data-g="${esc(g.group)}"><td class="num">${rsBadge(g.rs)}</td>
           <td class="num ${dr == null ? "" : dr >= 10 ? "pos" : dr <= -10 ? "neg" : "muted"}">${dr == null ? "" : (dr > 0 ? "▲" : dr < 0 ? "▼" : "") + Math.abs(dr)}</td>
-          <td class="gname"><b>${esc(groupParts(g.group)[0])}</b>${level === "industry" ? `<span class="muted sec-of">${esc(g.sector)}</span>` : level === "sub" ? `<span class="muted sec-of">${esc(g.industry)} · ${esc(g.sector)}</span>` : ""}</td>
-          <td class="num muted">${g.n}</td>
+          <td class="gname"><b>${esc(groupParts(g.group)[0])}</b>${level === "industry" ? `<span class="muted sec-of">${esc(g.sector)}</span>` : level === "sub" ? `<span class="muted sec-of">${esc(g.industry)} · ${esc(g.sector)}</span>`
+            : level === "theme" ? `<span class="muted sec-of">${esc(g.status)}${g.rs == null ? " · too few liquid members to rate" : ""}${g.signals?.invalidated ? ' · <span class="neg">invalidation signal</span>' : ""}</span>` : ""}</td>
+          <td class="num muted">${level === "theme" && g.size !== g.n ? `${g.n}/${g.size}` : g.n}</td>
           ${SEC_H.map((h) => `<td class="num ${pctCls(r[h])}">${pct1(r[h])}</td>`).join("")}
           <td class="pc">${bar(g.above50)}</td><td class="pc">${bar(g.above200)}</td>
           <td class="num"><span class="pos">${g.highs}</span> / <span class="neg">${g.lows}</span></td>
@@ -2746,12 +3007,127 @@ async function sectorsPage(alive, mkt, level, group) {
   redraw();
 }
 
+/** A theme (Sectors → Themes): the group view plus what a thesis needs — the log, the playbook's
+ *  confirmation / invalidation checks, the RS rating over time and its members, editable. */
+const THEME_FIELDS = [["thesis", "Thesis", "What demand, from whom, why now — two lines"],
+  ["evidence_for", "Evidence for", "Capex guidance, order books, estimate revisions, policy"],
+  ["evidence_against", "Evidence against", "Capacity additions, competition, valuation, customer concentration"],
+  ["invalidation", "Invalidation", "What would prove it wrong"], ["notes", "Notes", ""]];
+
+function themeDetail(mkt, d) {
+  const g = d.group, th = d.thresholds, dr = g.rs != null && g.rs_prev != null ? g.rs - g.rs_prev : null;
+  document.title = `${g.group} · Themes · Trading`;
+  const save = async (spec, msg = "Saved") => {
+    try { const r = await api(`/api/themes/${g.theme_id}`, jsonReq("POST", spec)); toast(msg, "ok"); return r; }
+    catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); return null; }
+  };
+  const sig = g.signals || {};
+  const check = (ok, text, bad = false) => `<li class="${ok == null ? "muted" : ok ? (bad ? "neg" : "pos") : "muted"}">${ok == null ? "–" : ok ? (bad ? "✕" : "✓") : "○"} ${text}</li>`;
+  const ret = (o, h) => `<td class="num ${pctCls(o[h])}">${pct1(o[h])}</td>`;
+  const rated = g.rs != null;
+  $view.innerHTML = backLink(secHref(mkt, "theme"), "Themes") + `<div class="page-head">
+      <h1>${esc(g.group)}</h1><span class="mkt">${MKT_BADGE[mkt]}</span>${rsBadge(g.rs)}
+      ${dr != null ? `<span class="${dr >= 10 ? "pos" : dr <= -10 ? "neg" : "muted"}">${dr > 0 ? "▲" : dr < 0 ? "▼" : ""}${Math.abs(dr)} in a month</span>` : ""}
+      ${g.quadrant ? `<span class="qtag ${QUAD_CLS[g.quadrant]}">${g.quadrant}</span>` : ""}
+      <select id="tstatus" title="Status — the date it changed is kept">${d.statuses.map((x) => `<option ${x === g.status ? "selected" : ""}>${x}</option>`).join("")}</select>
+      <span class="muted small">since ${prettyDate(g.status_since)} · opened ${prettyDate(g.opened)}</span><span class="spacer"></span>
+      <button class="ghost sm" id="trename">Rename…</button><button class="ghost sm" id="tdelete">Delete</button></div>
+    <div class="sec-top">
+      <section class="sec-card"><div class="sec-card-h"><h3>Theme vs the typical stock</h3><span class="muted small">equal-weight, current members, rebased to 100 a year ago · lower pane: RS line</span></div>
+        ${rated ? '<div id="gchart" class="gchart"></div>' : `<div class="empty small"><b>Too few liquid members to rate</b><div class="muted">A theme needs 3+ members that clear the liquidity floor (${g.n} do now).</div></div>`}</section>
+      <section class="sec-card"><h3>Confirmation and invalidation</h3>
+        <ul class="tsig">${check(rated ? sig.rs_strong : null, `RS rating above ${th.confirm_rs}`)}${check(rated ? sig.rs_rising : null, "RS rating rising over the last month")}
+          ${check(rated ? sig.quadrant_ok : null, "Rotation: Improving or Leading")}${check(rated ? sig.broadening : null, "Breadth broadening: half the members above their 50-day, more new highs than lows")}
+          ${check(rated ? sig.invalidated : null, `Invalidation signal: RS rating below ${th.invalid_rs}, or Lagging`, true)}</ul>
+        <p class="muted small">The sector playbook's checks (§3.2), on today's numbers. The rating places the theme on the industry groups' 1–99 scale: a theme rated 85 is as strong as an industry group rated 85.</p>
+        ${rated ? `<h3>Returns</h3><table class="sect mini"><thead><tr><th></th>${SEC_H.map((h) => `<th class="num">${h}</th>`).join("")}</tr></thead><tbody>
+          <tr><td>Theme (equal-weight)</td>${SEC_H.map((h) => ret(g.ew, h)).join("")}</tr>
+          <tr><td class="muted">Typical stock</td>${SEC_H.map((h) => ret(d.market_ret, h)).join("")}</tr>
+          <tr><td>Theme vs market</td>${SEC_H.map((h) => ret(g.rel, h)).join("")}</tr></tbody></table>` : ""}
+      </section></div>
+    <div class="sec-top">
+      <section class="sec-card"><div class="sec-card-h"><h3>RS rating over time</h3><span class="muted small">weekly, rebuilt from stored prices${d.first_added ? ` · solid from ${prettyDate(d.first_added)}, when the first member was added; earlier (faded) uses today's members — hindsight` : ""}</span></div>
+        ${d.history.length ? '<div id="thist" class="gchart"></div>' : '<div class="empty small"><div class="muted">No history yet — the next daily sectors run rebuilds it (it is cleared when members change).</div></div>'}</section>
+      <section class="sec-card"><h3>Thesis log</h3><div class="tform">${THEME_FIELDS.map(([k, label, ph]) => `<label><span>${label}</span><textarea data-k="${k}" rows="${k === "thesis" ? 2 : 3}" placeholder="${esc(ph)}">${esc(g[k] || "")}</textarea></label>`).join("")}</div>
+        <div class="tform-act"><button class="primary sm" id="tsave">Save the log</button><span class="muted small">Industry groups: the members' groups are listed below.</span></div></section></div>
+    <section class="sec-card"><div class="sec-card-h"><h3>Members</h3><span class="muted small">strongest first · click a row for its chart</span><span class="spacer"></span>
+      <input id="tadd" placeholder="Add symbols, comma-separated" spellcheck="false"><button class="sm" id="taddb">Add</button></div>
+      <div id="gmem"></div>
+      <div class="tchips">${[...d.members.map((m) => ({ symbol: m.symbol, name: m.name, listed: true })), ...d.unlisted.map((m) => ({ ...m, listed: false }))]
+        .map((m) => `<span class="chip-s ${m.listed ? "" : "dn"}" title="${esc(m.name || "")}${m.listed ? "" : " — below the liquidity floor, not in the index"}">${esc(m.symbol.replace(/\.NS$/, ""))}<button class="x" data-rm="${esc(m.symbol)}" title="Remove from the theme (its past membership is kept)">×</button></span>`).join("")}</div>
+      ${d.spans.some((x) => x.removed) ? `<p class="muted small">Former members: ${d.spans.filter((x) => x.removed).map((x) => `${esc(x.symbol.replace(/\.NS$/, ""))} (${prettyDate(x.added)} – ${prettyDate(x.removed)})`).join(", ")}</p>` : ""}
+    </section>`;
+
+  if (rated) {
+    const el_ = $view.querySelector("#gchart");
+    const chart = LC.createChart(el_, { autoSize: true, ...chartTheme(), handleScroll: false, handleScale: false, crosshair: { mode: LC.CrosshairMode.Normal } });
+    const s0 = g.series[0];
+    chart.addSeries(LC.LineSeries, { color: cssVar("--series"), lineWidth: 2, priceLineVisible: false, title: g.group.slice(0, 24) })
+      .setData(g.series.map((p) => ({ time: p.time, value: (100 * p.group) / s0.group })));
+    chart.addSeries(LC.LineSeries, { color: cssVar("--muted"), lineWidth: 1.5, priceLineVisible: false, title: "Typical stock" })
+      .setData(g.series.map((p) => ({ time: p.time, value: (100 * p.market) / s0.market })));
+    chart.addSeries(LC.LineSeries, { color: "#ff9800", lineWidth: 1.5, priceLineVisible: false, title: "RS line" }, 1)
+      .setData(g.series.map((p) => ({ time: p.time, value: (100 * p.group / p.market) / (s0.group / s0.market) })));
+    chart.panes()[1]?.setHeight(110);
+    chart.timeScale().fitContent();
+    { const prev = cleanup; cleanup = () => { chart.remove(); prev(); }; }
+  }
+  if (d.history.length) {
+    const el_ = $view.querySelector("#thist");
+    const chart = LC.createChart(el_, { autoSize: true, ...chartTheme(), handleScroll: false, handleScale: false });
+    const pts = d.history.filter((h) => h.rs != null);
+    const cut = d.first_added || "0000";
+    const before = pts.filter((h) => h.date < cut), after = pts.filter((h) => h.date >= cut);
+    let hs = null, s = null;
+    if (before.length) {
+      hs = chart.addSeries(LC.LineSeries, { color: cssVar("--muted"), lineWidth: 1.5, lineStyle: 2, priceLineVisible: false, lastValueVisible: !after.length, title: "today's members (hindsight)" });
+      hs.setData([...before, ...after.slice(0, 1)].map((h) => ({ time: h.date, value: h.rs })));
+    }
+    if (after.length) {
+      s = chart.addSeries(LC.LineSeries, { color: cssVar("--series"), lineWidth: 2, priceLineVisible: false, title: "RS rating" });
+      s.setData(after.map((h) => ({ time: h.date, value: h.rs })));
+    }
+    // the thresholds go on a series that has data: an empty one draws nothing, price lines included
+    const host = s || hs;
+    for (const [lvl, c] of [[th.confirm_rs, "--up"], [th.invalid_rs, "--down"]]) host?.createPriceLine({ price: lvl, color: cssVar(c), lineWidth: 1, lineStyle: 2, axisLabelVisible: true });
+    chart.timeScale().fitContent();
+    { const prev = cleanup; cleanup = () => { chart.remove(); prev(); }; }
+  }
+  const p100 = (v) => (v == null ? null : +(v * 100).toFixed(1));
+  dataTable($view.querySelector("#gmem"), ["rank", "symbol", "name", "industry", "rs", "1M %", "3M %", "12M %", "off 52w high", "> 50D", "last"],
+    d.members.map((m, i) => [i + 1, m.symbol, m.name || "", m.sub ? `${m.industry} · ${m.sub}` : m.industry, m.rs, p100(m["1M"]), p100(m["3M"]), p100(m["12M"]), p100(m.from_high), m.above50, m.last]),
+    { name: "theme_members", sort: ["rank", 1], rowClick: (row, visible) => openChartFromList(mkt, row[1], visible.map((r) => r[1]), `${g.group} · members`, location.hash) });
+
+  $view.querySelector("#tstatus").onchange = async (e) => { if (await save({ status: e.target.value }, `Status: ${e.target.value}`)) route(); };
+  $view.querySelector("#tsave").onclick = () => {
+    const spec = {}; $view.querySelectorAll(".tform textarea").forEach((t) => { spec[t.dataset.k] = t.value; });
+    save(spec, "Thesis log saved");
+  };
+  $view.querySelector("#trename").onclick = async () => {
+    const name = await askText("Rename the theme", g.group, "Name");
+    if (name?.trim() && name.trim() !== g.group && await save({ name: name.trim() }, "Renamed")) go(secHref(mkt, "theme", name.trim()));
+  };
+  $view.querySelector("#tdelete").onclick = async () => {
+    if (!confirm(`Delete the theme “${g.group}”, its members and its history?`)) return;
+    try { await api(`/api/themes/${g.theme_id}`, { method: "DELETE" }); toast("Deleted", "ok"); go(secHref(mkt, "theme")); }
+    catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); }
+  };
+  const add = async () => {
+    const syms = $view.querySelector("#tadd").value.split(/[,\s]+/).filter(Boolean);
+    if (syms.length && await save({ add: syms }, `Added ${syms.length}`)) route();
+  };
+  $view.querySelector("#taddb").onclick = add;
+  $view.querySelector("#tadd").onkeydown = (e) => { if (e.key === "Enter") add(); };
+  $view.querySelectorAll("[data-rm]").forEach((b) => b.onclick = async () => { if (await save({ remove: [b.dataset.rm] }, "Removed")) route(); });
+}
+
 async function sectorGroupPage(alive, mkt, level, group) {
   document.title = `${groupParts(group)[0]} · Sectors · Trading`;
   $view.innerHTML = LOADING;
   const d = await api(`/api/sectors/group?market=${mkt}&level=${level}&group=${encodeURIComponent(group)}`).catch((e) => ({ error: e.message }));
   if (!alive()) return;
   if (d.error) { $view.innerHTML = `<div class="empty"><b>${esc(group)}</b><div class="muted">${esc(d.error)}</div><a href="${secHref(mkt, level)}">Back to sectors</a></div>`; return; }
+  if (level === "theme") return themeDetail(mkt, d);
   const g = d.group, dr = g.rs != null && g.rs_prev != null ? g.rs - g.rs_prev : null;
   const ret = (o, h) => `<td class="num ${pctCls(o[h])}">${pct1(o[h])}</td>`;
   $view.innerHTML = backLink(secHref(mkt, level), "Sectors") + `<div class="page-head">
@@ -6002,21 +6378,22 @@ async function subindustriesPage(alive, mkt, group) {
   if (!alive()) return;
   if (d.error) { $view.innerHTML = `<div class="empty"><b>Could not load sub-industries</b><div class="muted">${esc(d.error)}</div></div>`; return; }
   const show = store.get("subShow", "review");
-  const list = d.groups.filter((g) => show === "all" || (show === "split" ? g.split : g.open > 0));
+  const list = d.groups.filter((g) => show === "all" || (show === "split" ? g.split : show === "mine" ? g.watched > 0 : g.open > 0));
   group = group ? decodeURIComponent(group) : (list[0] || d.groups[0])?.industry;
   const g = d.groups.find((x) => x.industry === group) || list[0];
   const c = d.coverage;
   const href = (x) => `#/subindustries/${mkt}/${encodeURIComponent(x)}`;
   $view.innerHTML = pageHead("Sub-industries", {
       extra: marketSeg(mkt),
-      context: `<span class="muted small">${c.labelled.toLocaleString()} of ${c.in_split_groups.toLocaleString()} tradable stocks in split groups labelled · ${c.suggested} suggested · ${c.other} unassigned</span>${info(`
+      context: `<span class="muted small">${c.labelled.toLocaleString()} of ${c.in_split_groups.toLocaleString()} tradable stocks in split groups labelled · ${c.suggested} suggested · ${c.other} unassigned${c.watched_open ? ` · <b>${c.watched_open} of your watchlist stocks</b> still to review` : ""}</span>${info(`
         <p>A sub-industry splits an industry group that mixes businesses (Semiconductors → AI &amp; compute, Analog, Memory…). Coherent groups (Restaurants, Homebuilding) are not split.</p>
         <p>Each label shows where it came from: <b>you</b> (your edits — always win) · <b>curated</b> (data/sub_industries.csv) · <b>rule</b> (US banks by size, asset managers vs BDCs) · <b>suggested</b> (proposed, awaiting your review) · <b>code</b> (an official code mapped in data/sub_industry_codes.csv) · <b>BSE</b> (India: BSE's own industry, where a group spans several) · <b>unassigned</b>.</p>
+        <p>Only tradable stocks are listed (the market's price and traded-value floor), so everything here is in the group rankings. <b>My stocks</b> shows the groups holding a stock on any of your watchlists (★); unreviewed members are listed first.</p>
         <p>Official codes: ${esc(d.scheme)}. Labelling a stock in an unsplit group splits that group. <code>python -m swing_screener.marketdata.subindustries --export</code> writes your labels into the curated CSV (for git).</p>`)}` })
     + `<div class="rep-layout"><aside class="rep-nav strat-nav sub-nav">
-        ${segmented([["review", "Needs review"], ["split", "Split"], ["all", "All"]], show, "subshow")}
+        ${segmented([["review", "Needs review"], ["mine", "My stocks"], ["split", "Split"], ["all", "All"]], show, "subshow")}
         ${list.map((x) => `<a class="nav-item ${g && x.industry === g.industry ? "active" : ""}" href="${href(x.industry)}" title="${esc(x.sector || "")}">
-          <span><b class="sn">${esc(x.industry)}</b></span><span class="n" title="${x.open ? x.open + " to review" : x.members.length + " tradable stocks"}">${x.open || x.members.length}</span></a>`).join("") || '<div class="nav-empty muted small">Nothing to review.</div>'}
+          <span><b class="sn">${x.watched ? "★ " : ""}${esc(x.industry)}</b></span><span class="n" title="${x.open ? x.open + " to review" : x.members.length + " tradable stocks"}">${x.open || x.members.length}</span></a>`).join("") || `<div class="nav-empty muted small">${show === "mine" ? "None of your watchlist stocks is in a tradable group." : "Nothing to review."}</div>`}
       </aside><section id="submain" class="scr-main"></section></div>`;
   $view.querySelectorAll(".subshow button").forEach((b) => b.onclick = () => { store.set("subShow", b.dataset.v); route(); });
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(`#/subindustries/${b.dataset.v}`));
@@ -6028,10 +6405,10 @@ async function subindustriesPage(alive, mkt, group) {
       <span class="spacer"></span>${g.members.some((m) => m.source === "suggested") ? `<button class="primary sm" id="acceptall">Accept all suggestions</button>` : ""}</div>
     ${g.split ? `<div class="sub-chips">${Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="chip-s ${k === "other" ? "dn" : ""}">${esc(k === "other" ? "unassigned" : k)} <b>${n}</b></span>`).join("")}</div>` : ""}
     <div class="sub-bulk" hidden><span id="nsel"></span><select id="bulksub">${subOpts(null)}</select><button class="sm" id="bulkset">Set</button><button class="sm" id="bulkrevert">Revert to automatic</button></div>
-    <table class="stt subtab"><thead><tr><th><input type="checkbox" id="selall"></th><th>Company</th><th class="num">Mkt cap ($B)</th><th>Official code</th><th>Sub-industry</th><th>Source</th></tr></thead><tbody>
+    <table class="stt subtab"><thead><tr><th><input type="checkbox" id="selall"></th><th>Company</th><th class="num">Mkt cap ($B)</th><th class="num" title="Average traded value a day, last 20 sessions">Traded / day</th><th>Official code</th><th>Sub-industry</th><th>Source</th></tr></thead><tbody>
       ${g.members.map((m, i) => `<tr data-i="${i}" class="${m.source === "other" ? "open" : ""}"><td><input type="checkbox" class="rs"></td>
-        <td class="symcell"><div><b><a href="#/chart/${mkt}/${encodeURIComponent(m.symbol)}">${esc(m.symbol.replace(/\.NS$/, ""))}</a></b><span>${esc(m.name || "")}</span></div></td>
-        <td class="num">${m.cap != null ? fmt(m.cap) : ""}</td><td class="muted small">${esc(m.code || "—")}</td>
+        <td class="symcell"><div><b>${m.watched ? '<span title="On one of your watchlists">★ </span>' : ""}<a href="#/chart/${mkt}/${encodeURIComponent(m.symbol)}">${esc(m.symbol.replace(/\.NS$/, ""))}</a></b><span>${esc(m.name || "")}</span></div></td>
+        <td class="num">${m.cap != null ? fmt(m.cap) : ""}</td><td class="num">${m.value != null ? moneyShort(m.value, mkt) : ""}</td><td class="muted small">${esc(m.code || "—")}</td>
         <td><select class="rsub">${subOpts(m.source === "you" || m.source === "curated" || m.source === "suggested" || m.source === "rule" || m.source === "code" || m.source === "bse" ? m.sub : null).replace('<option value="">— automatic —</option>', `<option value="">${m.source === "you" ? "— revert to automatic —" : "— " + esc(m.sub && m.sub !== "other" ? m.sub : "unassigned") + " —"}</option>`)}</select></td>
         <td><span class="tag ${(SRC_LABEL[m.source] || ["", "neutral"])[1]}">${(SRC_LABEL[m.source] || [m.source || "—"])[0]}</span></td></tr>`).join("")}</tbody></table>`;
   const post = async (symbols, sub) => {
@@ -6141,6 +6518,7 @@ const SECTIONS = [
   { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, the macro backdrop, today's setups, new picks and data health"]] },
   { key: "markets", label: "Markets", pages: [["postmarket", "Post-market", "The day's recap after the close"], ["breadth", "Breadth", "How healthy is the market — risk, not direction"],
     ["sectors", "Sectors", "Leading sectors, industry groups and their leaders"], ["movers", "Movers", "Top gainers and losers"],
+    ["earnings", "Earnings", "Earnings season: how many companies have reported, and revenue and profit growth summed by size class"],
     ["macro", "Macro", "Key macro indicators: rates, inflation, growth, consumption and market stress — current value and history"]] },
   { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"]] },
   { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"]] },
@@ -6781,6 +7159,7 @@ async function route() {
     else if (page === "fundamentals" || page === "sepa") go(`#/company/${parts[1] || ""}`);   // the page's earlier names
     else if (page === "breadth") await breadthPage(alive, parts[1]);
     else if (page === "movers") await moversPage(alive, parts[1]);
+    else if (page === "earnings") await earningsPage(alive, parts[1]);
     else if (page === "macro") await macroPage(alive, parts[1]);
     else if (page === "postmarket") await postmarketPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "sectors") await sectorsPage(alive, parts[1], parts[2], parts[3]);

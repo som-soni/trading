@@ -7,6 +7,7 @@ US_CONFIG = MarketConfig(
     exchange="NYSE · Nasdaq", badge="US", flag="🇺🇸",
     quarterly_source="sec_edgar",
     money_unit="$ M", money_divisor=1e6,
+    cap_classes=("cap", 10e9, 2e9), cap_note="the common US convention: large caps $10B and up, mid caps $2–10B, small caps under $2B",
     tz="America/New_York",
     account_size=50_000,
     risk_pct=0.01,

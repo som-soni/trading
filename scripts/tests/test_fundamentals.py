@@ -265,6 +265,20 @@ def test_growth_from_a_loss_is_not_measured():
     assert r["verdict"] == "NO DATA"                               # one reading is not enough
 
 
+def test_recovery_readings():
+    # loss-making year-ago quarters, then EPS beats each one: -0.5 > -1.0, 0.2 > -0.8, 0.4 > -0.3
+    rows = _quarters([-1.0, -0.8, -0.3, 0.1, -0.5, 0.2, 0.4], [10, 10, 10, 10, 10, 10.5, 11.5])
+    m = growth.metrics(rows, today=rows[-1]["period_end"] + dt.timedelta(days=30))
+    assert m["eps_turned_positive"] is True and m["eps_improving_q"] == 3, m
+    assert m["sales_accelerating"] is True                          # sales growth 0%, 5%, 15%: rising
+    # profitable a year ago too: not a turnaround, though EPS improved
+    m = growth.metrics(_quarters([1.0, 1, 1, 1, 1.2], [10] * 5), today=D(2023, 6, 30))
+    assert m["eps_turned_positive"] is False and m["eps_improving_q"] == 1 and m["sales_accelerating"] is None
+    # no year-ago quarter: unknown, not "no"
+    m = growth.metrics(_quarters([1.0, 1.2], [10, 11]), today=D(2022, 9, 30))
+    assert m["eps_turned_positive"] is None and m["eps_improving_q"] is None
+
+
 def test_metrics_are_strategy_neutral():
     rows = _quarters([1.0, 1.0, 1.0, 1.0, 1.5], [10, 10, 10, 10, 13])
     m = growth.metrics(rows, today=rows[-1]["period_end"] + dt.timedelta(days=30))

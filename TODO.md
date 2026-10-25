@@ -6,15 +6,16 @@ with `[x]` when done; move it under **Done** when you like.
 
 ## Inbox
 
-- [ ] Add the indicator for Supply and Demand zones _(added 2026-10-18)_
-- [ ] Screener to find business demonstrating growth (EPS, Sales) QoQ or Recovery. (Check Minervini's book) _(added 2026-10-19)_
+- [x] Add the indicator for Supply and Demand zones _(added 2026-10-18)_
+- [x] Screener to find business demonstrating growth (EPS, Sales) QoQ or Recovery. (Check Minervini's book) _(added 2026-10-19)_
 - [ ] Strategy: Implement following strategy "Buy when price closes above the 20- or 55-day high. Sell short below the low. Size so you risk ~1% of account (use ATR for stops at 2 ATR). Exit on opposite 10- or 20-day extreme. It has decades of positive expectancy across futures including NQ, ES and gold. Win rate sits around 45%. Most of the money comes from a few big trends. Long flat periods and drawdowns are normal. The hard part is sticking to the rules when it feels wrong." _(added 2026-10-22)_
 - [ ] Add stock guidance around earnings both from company and analysts (Trend) as that may indicate how the results may turn out to be. _(added 2026-10-23)_
 - [ ] Add a section in the learning module about analysing quarterly earnings incorporating details from the books I am reading (e.g. Minervini) _(added 2026-10-23)_
 - [ ] Earning analysis: We need a template to do the analysis which goes beyond basic analysis of top-line numbers but look into next level details (e.g. Minervini looks at inventory and compare it with growth) _(added 2026-10-23)_
-- [ ] Need similar dashboard - https://x.com/Ravindra_PE/status/2113466002159919322 _(added 2026-10-23)_
-- [ ] Minervini: Identify stocks which have been resilient or grown / leaders during India's bear market as they may become the leader during the bull run _(added 2026-10-23)_
+- [x] Need similar dashboard - https://x.com/Ravindra_PE/status/2113466002159919322 _(added 2026-10-23)_
+- [x] Minervini: Identify stocks which have been resilient or grown / leaders during India's bear market as they may become the leader during the bull run _(added 2026-10-23)_
 - [ ] Strategy (Implement): Honest answer: classic trend following via breakouts. Buy when price closes above the 20- or 55-day high. Sell short below the low. Size so you risk ~1% of account (use ATR for stops at 2 ATR). Exit on opposite 10- or 20-day extreme. It has decades of positive expectancy across futures including NQ, ES and gold. Win rate sits around 45%. Most of the money comes from a few big trends. Long flat periods and drawdowns are normal. _(added 2026-10-24)_
+- [x] Add this dashboard - https://x.com/MrBsCoffee30/status/2113694563911315862 _(added 2026-10-24)_
 
 ## Data
 
@@ -28,15 +29,21 @@ with `[x]` when done; move it under **Done** when you like.
 
 ## Sectors & themes
 
-- [ ] **Review `data/sub_industries.csv`** — the first-pass sub-industry
-      assignments (811 stocks in 15 groups) were made from company names; check
-      the groups you trade and correct any line. Stocks a split group's list
-      does not name show as "other" and are not ranked.
-- [ ] **Split the remaining large US groups** — Biotechnology (commercial vs
-      clinical stage: needs product revenue from fundamentals), Software—Application
-      (enterprise / vertical SaaS / fintech / consumer / ad-tech), Medical Devices.
+- [ ] **Review the sub-industry labels** — System → Sub-industries. Start with
+      **My stocks** (groups holding a watchlist stock, ★); unreviewed stocks list
+      first, with their traded value. US: 344 suggestions await approval (most in
+      Software—Application, Software—Infrastructure, Medical Devices). Then
+      `python -m swing_screener.marketdata.subindustries --export` to keep your
+      edits in git.
+- [x] **Split the remaining large US groups** — Biotechnology is split by
+      trailing revenue (rule: commercial / early commercial / clinical stage,
+      `BIOTECH_*` in marketdata/subindustries.py; collaboration revenue counts, so
+      check e.g. BEAM); `financials` now fetches every tradable biotech, so the
+      unassigned ones fill in as it runs. Software—Application and Medical Devices
+      were already split — their labels are among the suggestions above.
 
-- [ ] **Themes** — named, editable baskets of stocks that share an investment
+- [x] **Themes** — built: Sectors → Themes (5 starter drafts to review and
+      write a thesis for). Named, editable baskets of stocks that share an investment
       story across industry groups (e.g. AI infrastructure; India power & grid
       capex; India railways; India defence; India capital markets). Track each
       like a group: equal-weight index, RS rating, rotation point, breadth,

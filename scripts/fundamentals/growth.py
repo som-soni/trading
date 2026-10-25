@@ -40,6 +40,7 @@ STALE_RESULTS_DAYS = 200      # latest results older than this are flagged stale
 GROWTH_READINGS = 8           # quarterly growth readings kept per company
 SERIES_QUARTERS = 12          # quarters kept for the page's charts
 SURPRISE_MATCH_DAYS = 45      # an earnings-history row belongs to the latest quarter when this close to its end
+SALES_ACCELERATING_QUARTERS = 3   # sales growth rising into the latest quarter for this many quarters = accelerating
 
 # share-count jumps read as a split or bonus issue (new shares / old): n-for-1 splits (Apple 7:1, O'Reilly
 # 15:1, Booking 25:1, Chipotle 50:1 ...), a:b bonuses ((a+b)/b) and reverse splits; small ratios (1:5
@@ -89,7 +90,9 @@ DOC = {
     ),
     "caveats": (
         "US Q4 is not filed on its own: it is the full year minus the first nine months, so its EPS is approximate.",
-        "Growth from a loss (or a zero) is not measurable and is left blank.",
+        "Growth from a loss (or a zero) is not measurable and is left blank. Recoveries are read without it: whether the "
+        "latest quarter turned a year-ago loss into a profit, and for how many quarters in a row EPS has beaten the "
+        "year-ago quarter, losses included.",
         "India: consolidated results where the company files them for most quarters, else standalone. Indian filings "
         "carry no year-ago figures, so EPS is put on today's share basis from the share count when it jumps by a split "
         "or bonus ratio; a large share issue at such a ratio would be misread.",
@@ -112,6 +115,32 @@ def _g(cur, prior) -> float | None:
     if cur is None or prior is None or prior <= 0:
         return None
     return cur / prior - 1
+
+
+def rising(vals: list, n: int) -> bool | None:
+    """vals newest first: True when the first n are strictly rising into the latest (None when missing)."""
+    v = vals[:n]
+    if len(v) < n or any(x is None for x in v):
+        return None
+    return all(v[k] > v[k + 1] for k in range(n - 1))
+
+
+def recovery(new: list[dict]) -> dict:
+    """Turnaround readings from growth_series (newest first), where growth from a loss has no rate:
+    eps_turned_positive — the latest quarter is profitable and the year-ago quarter was a loss (or zero);
+    eps_improving_q — consecutive quarters, from the latest back, whose EPS beat the year-ago quarter's
+    (losses included: -0.40 after -0.90 counts); sales_accelerating — sales growth rising into the
+    latest quarter for SALES_ACCELERATING_QUARTERS quarters. None where the year-ago quarter is missing."""
+    latest = new[0] if new else {}
+    eps, prior = latest.get("eps"), latest.get("eps_prior")
+    n = 0
+    for x in new:
+        if x["eps"] is None or x["eps_prior"] is None or not x["eps"] > x["eps_prior"]:
+            break
+        n += 1
+    return {"eps_turned_positive": None if eps is None or prior is None else eps > 0 >= prior,
+            "eps_improving_q": n if new and new[0]["eps_prior"] is not None else None,
+            "sales_accelerating": rising([x["rev_g"] for x in new], SALES_ACCELERATING_QUARTERS)}
 
 
 def _big(x: float) -> bool:
@@ -359,7 +388,7 @@ def metrics(rows: list[dict], meta: dict | None = None, today: dt.date | None = 
         "margins": [x["margin"] for x in new[:GROWTH_READINGS]], "latest_has_prior": latest["eps_prior"] is not None,
         "margin": latest["margin"], "margin_prior": latest["margin_prior"],
         "eps_ttm": ttm(s, 0), "eps_annual": years, "eps_annual_basis": basis, "eps_cagr": cagr, "roe": r, "roe_source": r_src,
-        "surprise": last,
+        "surprise": last, **recovery(new),
         "surprise_current": bool(last and abs((dt.date.fromisoformat(last["quarter"]) - latest["end"]).days) <= SURPRISE_MATCH_DAYS),
         "split_adjusted": any(f != 1.0 for f in split_factors(rows)),
         "source": rows[-1].get("source"), "basis": rows[-1].get("basis"), "name": meta.get("name"),

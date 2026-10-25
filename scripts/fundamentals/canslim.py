@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from .growth import ANNUAL_YEARS, metrics as _metrics  # noqa: F401 — ANNUAL_YEARS is a {placeholder} in TESTS
+from .growth import ANNUAL_YEARS, metrics as _metrics, rising as _rising  # noqa: F401 — ANNUAL_YEARS is a {placeholder} in TESTS
 
 key = "canslim"
 
@@ -91,13 +91,6 @@ DOC = {
 
 def criteria() -> dict:
     return {**DOC, "tests": [{"key": k, "label": label, "text": _fmt(t)} for k, label, t in TESTS]}
-
-
-def _rising(vals: list, n: int) -> bool | None:
-    v = vals[:n]
-    if len(v) < n or any(x is None for x in v):
-        return None
-    return all(v[k] > v[k + 1] for k in range(n - 1))
 
 
 def market_state(market: str) -> dict | None:

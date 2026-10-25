@@ -125,8 +125,8 @@ Below the cards:
 
 ### 3.3 Sectors
 
-Leading sectors, industry groups and their leaders. Pick the level: **Sectors**, **Industry groups** or
-**Sub-industries**. Everything is recomputed daily from stored prices. See
+Leading sectors, industry groups and their leaders. Pick the level: **Sectors**, **Industry groups**,
+**Sub-industries** or **Themes**. Everything is recomputed daily from stored prices. See
 [sectors and groups](learn-sectors-groups.md) and [the cycle](learn-macro-cycle.md).
 
 | Column or part | Meaning |
@@ -150,6 +150,23 @@ beside cap-weight), *Breadth*, its sub-groups, and *Members, strongest first*. *
 watchlist…** copies the leaders to a list. Cap-weight far above equal-weight means a few giants carry the
 group.
 
+
+**Themes** are your own baskets of stocks that share an investment story across industry groups (AI
+infrastructure; India railways, defence, capital markets, power & grid capex are the starters, as drafts to
+edit). Each market has its own, since an equal-weight index cannot mix currencies. A theme is tracked like a
+group — equal-weight index, breadth, rotation, leaders — but its **RS** is placed on the industry groups'
+1–99 scale (a theme rated 85 is as strong as an industry group rated 85), because ranking a handful of
+themes against each other would say little. **New theme…** creates one; its page carries:
+
+| Part | Meaning |
+|---|---|
+| Status | watching / confirmed / active / closed, with the date it last changed |
+| **Confirmation and invalidation** | The sector playbook's checks on today's numbers: RS above 70 and rising, Improving or Leading, breadth broadening; and the invalidation signal, RS below 40 or Lagging (`THEME_CONFIRM_RS` / `THEME_INVALID_RS` in analytics/sectors.py) |
+| **RS rating over time** | Weekly, rebuilt from stored prices for three years by the daily `sectors` job. A stock counts only from the day it was added; before the first member was added, today's members stand in, drawn faded (hindsight) |
+| **Thesis log** | The playbook's §3.2 template: thesis, evidence for and against, invalidation, notes |
+| **Members** | Add symbols (India's `.NS` is optional); × removes one, keeping its past membership. Members below the liquidity floor are listed but not in the index. Changing members clears the stored history, which the next `sectors` run rebuilds |
+
+Stored in `themes` and `theme_members` (marketdata/themes.py).
 ### 3.4 Movers
 
 Top gainers and losers over 1D, 1W, 1M, 3M, 6M, YTD or 1Y, among liquid stocks or all stocks. Columns:
@@ -317,7 +334,7 @@ pattern catalogue and the glossary.
 | **Runs** | Every run, its steps and log; a failed run can be resumed |
 | **Schedules** | When each routine runs, with **run now** |
 | **Reports archive** | Every backtest and screening report. A run opens with tabs *Report*, *Funnel* (backtests), *Equity curve* and *Trades* |
-| **Sub-industries** | Which sub-industry each company belongs to; review and edit |
+| **Sub-industries** | Which sub-industry each company belongs to; review and edit. **Needs review** lists groups with unassigned or suggested labels, **My stocks** the groups holding a stock on any of your watchlists (★). Each row shows its traded value a day, and unreviewed stocks come first |
 | **TODO** | Ideas and follow-ups |
 
 The default schedules run on each market's own clock:

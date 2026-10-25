@@ -247,7 +247,8 @@ def candidates(prep: dict, entries: str, use_filter: bool, start: pd.Timestamp) 
                     dropped["market"] += 1
                     continue
                 out.setdefault(d, []).append({"symbol": sym, "entry": kind, "stop": stop,
-                                              "signal_close": close, "rs_excess": float(r["rs_excess"])})
+                                              "signal_close": close, "rs_excess": float(r["rs_excess"]),
+                                              "atr": float(r["atr"])})
     for d in out:
         out[d].sort(key=lambda c: c["rs_excess"])
     return out, dropped
@@ -310,7 +311,10 @@ def run(prep: dict, start: str, entries: str = "B", use_filter: bool = True, cos
                 skipped["no_open"] += 1
                 continue
             o, stop = float(b["open"]), c["stop"]
-            if o >= stop or (stop / o - 1) * 100 > MAX_STOP_PCT:
+            # the open must still be below the structure the stop sits above (the stop less its ATR
+            # buffer): an open past it means the rally has already resumed, and the risk to the stop is a
+            # sliver -- v1.0 took those and booked R multiples in the thousands on them
+            if o >= stop - STOP_ATR_BUFFER * c["atr"] or (stop / o - 1) * 100 > MAX_STOP_PCT:
                 skipped["gap_past_stop"] += 1
                 continue
             open_risk = sum(p["shares"] * max(p["stop"] - last_close.get(x, p["price"]), 0)
@@ -540,8 +544,8 @@ DOC = {
         "Initial stop. B: the highest high of the last {RALLY_BARS} sessions (the rally into the "
         "line) plus {STOP_ATR_BUFFER} ATR({ATR_BARS}). A: the lower of the {BREAKDOWN_STOP_BARS}-session "
         "high and the line, plus the same buffer. A signal whose stop is more than {MAX_STOP_PCT}% "
-        "above the close is skipped, and so is one whose next open is at or above the stop or more "
-        "than {MAX_STOP_PCT}% below it.\n\n**Guide (§3 Initial stop):** the same.",
+        "above the close is skipped, and so is one whose next open is above the high the stop sits "
+        "over (the stop less its buffer) or more than {MAX_STOP_PCT}% below the stop.\n\n**Guide (§3 Initial stop):** the same.",
         "Market filter. The signal's date has the index below its {INDEX_SMA}-day average, or that "
         "average below its value {INDEX_SLOPE_BARS} sessions earlier.\n\n"
         "**Guide (§3 Universe):** the same (the guide says test both; the variant without it is run).",
@@ -615,8 +619,14 @@ class Stage4ShortsStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "stage4_shorts"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-25",
+    version = "1.1"
+    changelog = (("1.1", "2026-10-25",
+                  "Skip a short whose next open is above the high its stop sits over (the stop less its ATR "
+                  "buffer). v1.0 shorted those opens with a sliver of risk to the stop -- one US trade risked "
+                  "0.01% and booked +4,677R -- so its R statistics were meaningless, though the 20% position "
+                  "cap kept the equity effect small. Found on the v1.0 optimise runs; a degenerate geometry, "
+                  "not a tuned threshold."),
+                 ("1.0", "2026-10-25",
                   "First version, built to research/learn-strat-stage4-shorts.md §3 on the Stage analysis "
                   "stage model. Its own short simulator (the per-symbol engine is long-only); explicit "
                   "borrow, roll and dividend costs with a three-level sensitivity; a month-end sleeve "

@@ -1443,7 +1443,7 @@ table.fin.peers tbody th a { color: var(--link); }
 
 .ind-gap { padding: 4px 0 2px; }
 .ind-gap:first-of-type { margin-top: 10px; }
-.ind-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 420px)); gap: 12px; }
+.ind-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
 .ind-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
 .ind-card.expanded { grid-column: span 2; }
 .ind-card-h { display: flex; align-items: baseline; gap: 8px; cursor: pointer; }
@@ -1453,8 +1453,24 @@ table.fin.peers tbody th a { color: var(--link); }
 .ind-chev { color: var(--muted); font-size: 11px; transition: transform .15s; }
 .ind-card.expanded .ind-chev { transform: rotate(180deg); }
 .ind-readout { min-height: 15px; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ind-chart { height: 140px; margin-top: 2px; }
-.ind-card.expanded .ind-chart { height: 320px; }
+/* height follows width (a wide card gets a taller chart instead of a flat strip), within sane bounds */
+.ind-chart { aspect-ratio: 5 / 2; min-height: 140px; max-height: 260px; margin-top: 2px; }
+.ind-card.expanded .ind-chart { aspect-ratio: auto; height: 340px; max-height: none; }
+/* Macro: FPI flows by sector heatmap (fpiSectorsSection) — cells tinted from --up/--down, so both themes work */
+.fpi-hm-wrap { overflow-x: auto; margin-top: 6px; }
+.fpi-hm { border-collapse: separate; border-spacing: 2px; font-size: 11px; font-variant-numeric: tabular-nums; width: 100%; }
+.fpi-hm th { font-weight: 500; color: var(--muted); white-space: nowrap; padding: 2px 4px; text-align: center; }
+.fpi-hm td { text-align: center; padding: 3px 4px; border-radius: 3px; color: var(--text); white-space: nowrap; min-width: 38px; }
+.fpi-hm .fpi-sec { text-align: left; color: var(--text); max-width: 190px; overflow: hidden; text-overflow: ellipsis;
+  position: sticky; left: 0; background: var(--panel); z-index: 1; }
+.fpi-hm td.fpi-cum { text-align: right; min-width: 120px; padding-left: 10px; }
+.fpi-hm th.fpi-cum { text-align: right; padding-left: 10px; }
+.fpi-hm td.fpi-cum b { display: inline-block; min-width: 44px; }
+.fpi-bar { display: inline-block; width: 60px; height: 8px; vertical-align: middle; margin-right: 6px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+.fpi-bar i { display: block; height: 100%; }
+.fpi-bar i.pos { background: var(--up); }
+.fpi-bar i.neg { background: var(--down); }
+.fpi-note { margin-top: 6px; }
 .ind-compare { height: var(--h); border-radius: var(--radius); border: 1px solid var(--line-2); background: var(--panel-2); color: var(--text); padding: 0 10px; }
 
 /* tables whose rows open something: say so, and show it on hover */
@@ -1653,3 +1669,59 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .stg.dim { opacity: .55; }
 .stage-note { margin: 4px 0 10px; color: var(--muted); font-size: 12.5px; }
 .stage-note .stg { margin-right: 6px; }
+
+/* ---- earnings season (Markets → Earnings) */
+.es-cov { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+.es-cov b { color: var(--text); font-weight: 600; }
+.es-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.es-tiles .sec-card { margin-bottom: 0; }
+.es-th { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.es-th h3 { margin-bottom: 4px; }
+.es-rep { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.es-rep b { color: var(--strong); font-size: 15px; font-variant-numeric: tabular-nums; }
+.es-bar { display: block; height: 3px; background: var(--line); border-radius: 2px; margin: 2px 0 10px; overflow: hidden; }
+.es-bar i { display: block; height: 100%; background: var(--accent); }
+.es-m { display: grid; grid-template-columns: 1fr auto auto; column-gap: 10px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); }
+.es-ml { font-size: 12px; color: var(--muted); }
+.es-mv { font-variant-numeric: tabular-nums; color: var(--strong); font-weight: 600; }
+.es-mc { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 62px; text-align: right; }
+.es-mc.pos { color: var(--up-text); } .es-mc.neg { color: var(--down-text); }
+.es-ms { grid-column: 1 / -1; }
+/* earnings trend chart: the size classes' hues (validated as a categorical set on each theme's panel; All uses --series ink) */
+:root { --es-large: #3987e5; --es-mid: #d95926; --es-small: #199e70; }
+:root[data-theme="light"] { --es-large: #2a78d6; --es-mid: #eb6834; --es-small: #1baf7a; }
+.es-trh { flex-wrap: wrap; gap: 8px; align-items: center; }
+.es-trh h3 { margin: 0; }
+.es-leg { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; margin: 8px 0 4px; }
+.es-leg i, .es-tip i { display: inline-block; width: 10px; height: 3px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+.es-plot { position: relative; min-width: 0; }
+.es-svg { display: block; width: 100%; height: auto; overflow: visible; stroke: none; }   /* the app's icon rule strokes every svg */
+.es-svg text, .es-svg rect { stroke: none; }
+.es-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.es-zero { stroke: var(--line-3); stroke-width: 1; }
+.es-ax { fill: var(--chart-text); font-size: 11px; font-variant-numeric: tabular-nums; }
+.es-dl { fill: var(--text); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.es-line { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+.es-dash { stroke-dasharray: 4 4; }
+.es-svg circle { stroke: var(--panel); stroke-width: 2; }
+.es-svg circle.es-hollow { fill: var(--panel); stroke-width: 2; }
+.es-curband { fill: var(--accent-soft); }
+.es-cross { stroke: var(--line-3); stroke-width: 1; stroke-dasharray: 2 3; }
+.es-hit { fill: transparent; cursor: pointer; }
+.es-tip { position: absolute; top: 8px; z-index: 3; background: var(--panel-glass); border: 1px solid var(--line-2); border-radius: var(--radius);
+  padding: 8px 10px; font-size: 12px; pointer-events: none; box-shadow: 0 4px 16px var(--shadow-c); min-width: 210px; }
+.es-tip div { margin-top: 3px; white-space: nowrap; }
+.es-tip b.pos { color: var(--up-text); } .es-tip b.neg { color: var(--down-text); }
+.es-ttab tr.es-cur td { background: var(--accent-soft); }
+
+/* Sectors → Themes: the confirmation checklist, the thesis log and the member chips */
+.tsig { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.tform { display: grid; gap: 8px; }
+.tform label { display: grid; gap: 3px; }
+.tform label span { font-size: 12px; color: var(--muted); }
+.tform textarea { width: 100%; resize: vertical; font: inherit; font-size: 13px; }
+.tform-act { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+.tchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tchips .x { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 0 0 4px; font-size: 13px; }
+.tchips .x:hover { color: var(--down); }
+#tadd { min-width: 240px; }
