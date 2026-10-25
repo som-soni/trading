@@ -1523,7 +1523,9 @@ class ChartPatternSpecStrategy(Strategy):
             shapes = self.chart_anatomy({"market": market, "symbol": symbol, "date": date, "extras": extras})
             geo = extras["pattern_geometry"]
             dates = [q["date"] for q in geo["points"]] + [ln["from"] for ln in geo["lines"]]
+            bo = res["metrics"].get("bars_since_breakout")
             out.append({"code": code, "name": name, "direction": direction, "state": res["state"],
+                        "breakout": str(daily.index[-1 - bo].date()) if bo is not None else None,
                         "tradeable": direction == "bullish" and _tradeable(res),
                         "trigger": round(float(lv.trigger), 4), "invalidation": round(float(lv.invalidation), 4),
                         "target": round(float(lv.target), 4), "start": min(dates) if dates else str(date),
@@ -1539,9 +1541,14 @@ class ChartPatternSpecStrategy(Strategy):
 
         Each pattern: {code, name, direction, start, first_seen, last_seen, sightings, state (as last
         seen), states, tradeable (on any sighting), trigger, invalidation, target, shapes, and what price
-        did against its own levels afterwards: crossed (the first close through the trigger after it was
-        first seen — above for a bullish pattern, below for a topping one) and invalidated (the first
-        close beyond its invalidation level)}, newest first."""
+        did against its own levels: crossed (the detector's own breakout date — the first close through
+        the trigger it was judging THAT day, not the last sighting's; else a close through the final
+        trigger within MAX_WAIT bars of the last sighting, BO-04's wait) and invalidated (the first
+        close beyond the invalidation level inside the pattern's life — up to HORIZON bars after the
+        last sighting; a level crossed years after a pattern died is noise, not an outcome). A pattern
+        invalidated before any breakout is void, so its crossed is None. Once a sighting has broken out,
+        its levels freeze: a sloping trigger keeps decaying with t, and showing the decayed line put an
+        inverse H&S's "trigger" below its invalidation."""
         if daily.empty:
             return []
         since = daily.index[-1] - pd.DateOffset(years=years) if years else daily.index[0]
@@ -1561,7 +1568,12 @@ class ChartPatternSpecStrategy(Strategy):
                     found.append({**m, "first_seen": as_of, "last_seen": as_of, "sightings": 1, "states": [m["state"]],
                                   "tradeable": m["tradeable"]})
                 else:
-                    same.update({k: m[k] for k in ("state", "trigger", "invalidation", "target", "shapes", "start")})
+                    # levels freeze at the breakout: after it, a sloping trigger only decays with t
+                    keys = ("state", "shapes", "start") if same.get("breakout") else (
+                        "state", "trigger", "invalidation", "target", "shapes", "start")
+                    same.update({k: m[k] for k in keys})
+                    if not same.get("breakout"):
+                        same["breakout"] = m["breakout"]
                     same["last_seen"] = as_of
                     same["sightings"] += 1
                     same["tradeable"] = same["tradeable"] or m["tradeable"]
@@ -1569,12 +1581,22 @@ class ChartPatternSpecStrategy(Strategy):
                         same["states"].append(m["state"])
         close = daily["close"]
         for p in found:
-            after = close[close.index > pd.Timestamp(p["first_seen"])]
+            last_i = pos.get(pd.Timestamp(p["last_seen"]), len(daily) - 1)
+            life_end = daily.index[min(last_i + HORIZON, len(daily) - 1)]
             bull = p["direction"] == "bullish"
-            hit = after[after > p["trigger"]] if bull else after[after < p["trigger"]]
-            bad = after[after < p["invalidation"]] if bull else after[after > p["invalidation"]]
-            p["crossed"] = str(hit.index[0].date()) if len(hit) else None
+            if p.get("breakout"):
+                p["crossed"] = p["breakout"]
+            else:
+                # never confirmed while seen: a close through the final trigger inside BO-04's wait
+                wait_end = daily.index[min(last_i + MAX_WAIT, len(daily) - 1)]
+                w = close[(close.index > pd.Timestamp(p["last_seen"])) & (close.index <= wait_end)]
+                hit = w[w > p["trigger"]] if bull else w[w < p["trigger"]]
+                p["crossed"] = str(hit.index[0].date()) if len(hit) else None
+            life = close[(close.index > pd.Timestamp(p["first_seen"])) & (close.index <= life_end)]
+            bad = life[life < p["invalidation"]] if bull else life[life > p["invalidation"]]
             p["invalidated"] = str(bad.index[0].date()) if len(bad) else None
+            if p["crossed"] and p["invalidated"] and p["invalidated"] < p["crossed"]:
+                p["crossed"] = None   # BO-03: voided before it ever broke out
         return sorted(found, key=lambda p: p["last_seen"], reverse=True)
 
 
