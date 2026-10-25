@@ -20,18 +20,26 @@ def _lag(s: pd.Series) -> pd.Series:
     return s.shift(1)
 
 
-def sma_overlay(px: pd.Series, months: int = 10) -> pd.Series:
+def sma_overlay(px: pd.Series, months: int = 10,
+                index: pd.DatetimeIndex | None = None) -> pd.Series:
     """Faber: invested while the month-end close is above its N-month SMA.
 
     Monthly rather than daily on purpose — the original rule trades roughly
     once a year, and `dma_cross` exists to measure what daily evaluation
-    does to that.
+    does to that. `index` is the dates to return the signal on (default
+    `px.index`), for a caller trading a different calendar than `px`'s.
     """
     m = px.resample("ME").last()
     sig = m > m.rolling(months, min_periods=months).mean()
-    # shift on the MONTHLY series: a decision inside month k uses month k-1
+    # Key the decision by calendar month and shift on the MONTHLY series, so
+    # every day of month k reads month k-1's decision. Forward-filling the
+    # month-END labels onto days instead would hand days 1..end-1 of month k
+    # the label dated end of k-1 -- after the shift, month k-2's decision.
+    sig.index = sig.index.to_period("M")
     sig = sig.shift(1)
-    return sig.reindex(px.index, method="ffill").fillna(False).astype(bool)
+    days = px.index if index is None else index
+    on = sig.reindex(days.to_period("M")).to_numpy()
+    return pd.Series(on, index=days).fillna(False).astype(bool)
 
 
 def dma_cross(px: pd.Series, window: int = 200) -> pd.Series:

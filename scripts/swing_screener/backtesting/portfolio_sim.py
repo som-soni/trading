@@ -65,6 +65,7 @@ import pandas as pd
 from ..config.base import MarketConfig
 from ..core import indicators as ind
 from ..strategies import minervini_spec as _ms
+from .spec import market_open
 
 logger = logging.getLogger(__name__)
 
@@ -543,7 +544,7 @@ def simulate(
         # was open can still be resting when it closes, and filling it would buy a
         # breakout the regime rule says to refuse. The filter never forces an exit,
         # so open positions above are untouched.
-        if regime_ok is not None and not bool(regime_ok.asof(today)):
+        if regime_ok is not None and not market_open(regime_ok, today):
             for sym in list(pending):
                 skip("cancelled: market filter is risk-off", sym, today)
                 del pending[sym]

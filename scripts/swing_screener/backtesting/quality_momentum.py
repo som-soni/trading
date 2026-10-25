@@ -18,7 +18,7 @@ The four tests, each from code that already exists:
   * cash       latest fiscal year's operating cash flow positive and free cash flow (operating cash
                flow - capex) at least QM_FCF_CONVERSION_MIN of net profit (skipped for banks/insurers).
 
-Point in time: a quarter counts from its filing date, or `fundamental_filter.FILING_LAG_DAYS` after it
+Point in time: a quarter counts from its filing date, or `financials.FILING_LAG_DAYS` after it
 ended when none was recorded (`fundamental_filter._available`); a fiscal year's statement lines carry
 no date and count `financials.LINES_FILING_LAG_DAYS` after the period ended. Missing data is NOT
 eligible. Every rebalance records how many ranked names had the data and how many passed
@@ -335,8 +335,10 @@ class QualityMomentumStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "quality_momentum"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-25",
+         "The loop it shares with momentum_baseline (1.1): Trade rows count every resize. Each month-end re-weights the book, topping a laggard up and trimming a winner, but a trade row was built from the first fill alone, so win rate, profit factor, average R and turnover were wrong while the equity curve (read from cash) was right. A row is now the whole holding period: P&L is every buy, trim and sale with costs, the entry price the average paid, the notional the total paid -- and a holding resized to nothing (a slot below one whole share) now gets its row instead of vanishing. Equity, CAGR and drawdown are unchanged; stored runs' trade statistics are stale."),
         ("1.0", "2026-10-25",
          "First version: momentum_baseline's rules unchanged, the ranked pool narrowed each month-end "
          "to companies passing ROE, sales, net debt and free-cash-flow tests on the filings public that "

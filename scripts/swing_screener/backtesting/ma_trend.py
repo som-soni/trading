@@ -316,7 +316,8 @@ MA_DOC = {
         "it in cash, so the book is invested in steps of one sleeve. Stocks mode: equal weights — the "
         "whole book (cash plus holdings at that close) is split equally among the names to hold, "
         "and holdings already owned are topped up or trimmed back to that weight. A change smaller "
-        "than 0.01% of the book is skipped.",
+        "than 0.01% of the book is skipped. A trade is the whole holding period: its P&L counts every "
+        "top-up and trim, with costs, and its entry price is the average paid.",
         "Fill and cost. Every trade fills at the month-end close — the close the decision was made "
         "on, not the next open. Each buy and each sell pays {cost_bps} basis points of the value "
         "traded. A stock with no price that day trades at its last stored close.",
@@ -394,8 +395,10 @@ class MaTrendStrategy(PortfolioStrategy):
     key = MA_DOC["key"]
     doc = MA_DOC
     family = "ma_trend"
-    version = "2.0"
-    changelog = (("2.0", "2026-10-24",
+    version = "2.1"
+    changelog = (("2.1", "2026-10-25",
+                  "Stocks mode only (index mode has its own loop and is unchanged): rotation.simulate, the engine it runs on, had two accounting errors. Its positions series was the final holding count repeated for every session, so exposure read 100% invested through every stretch in cash; it is now the count per session. And trade rows were built from each holding's first fill, ignoring the month-end resizes; a row is now the whole holding period -- every buy, trim and sale with costs, the entry price the average paid. Equity, CAGR and drawdown are unchanged; stored runs' exposure and trade statistics are stale."),
+                 ("2.0", "2026-10-24",
                   "Two corrections and one change of rule. Cash now earns the market's cash rate "
                   "while out (index_data.cash_rate_series, accrued per calendar day): 1.0 left it at "
                   "zero, which charged the rule for every month it stepped aside -- the months it "

@@ -280,6 +280,11 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
         for c in todays:
             if len(open_pos) >= max_positions:
                 break
+            if c["symbol"] in open_pos:
+                # two filings by one company resolving to the same entry session (an amended
+                # or duplicate filing): the stronger, sorted first, is bought; the other would
+                # overwrite that live position, spending its cash twice and dropping it from equity
+                continue
             book = cash + sum(p["units"] * px_on(s, d) for s, p in open_pos.items())
             spend = min(book * position_pct / 100, cash)
             if spend <= 0:
@@ -401,7 +406,9 @@ PEAD_DOC = {
         "at most 10% with no stop. Differs: this mixes the two — equal weights, and a stop as well.",
         "Positions and ties. At most {MAX_POSITIONS} positions, one per company. When more filings "
         "qualify on a session than there are free slots, the largest standardised surprise (SUE) is "
-        "bought first, then the highest growth; the rest are dropped, not kept for later.\n\n"
+        "bought first, then the highest growth; the rest are dropped, not kept for later. Two filings "
+        "by one company reaching their buy on the same session (an amended or duplicate filing) buy once, "
+        "the first in that order.\n\n"
         "- **SUE:** the change in EPS against the same quarter a year earlier, divided by the standard "
         "deviation of that change over the previous {MIN_QUARTERS} quarters (at least 4 needed; with "
         "fewer it counts as 0). It only ranks; it is not a filter.\n\n"
@@ -481,8 +488,14 @@ class PeadStrategy(PortfolioStrategy):
     key = PEAD_DOC["key"]
     doc = PEAD_DOC
     family = "pead"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-18",
+    version = "1.1"
+    changelog = (("1.1", "2026-10-25",
+                  "One position per company, as the entry rules already said. Two filings by one company "
+                  "that reached their buy on the same session (an amended or duplicate filing; 129 such "
+                  "same-day pairs are stored) both bought: the second overwrote the first, so its cash "
+                  "was spent twice and the first position vanished from equity. The second is now "
+                  "skipped. Stored runs are stale: equity, trades and every figure can move."),
+                 ("1.0", "2026-10-18",
                   "First version. Validated against the guide's worked example before being measured: "
                   "Polycab's June 2023 quarter reads +81.69% year on year against the guide's +81.7%, "
                   "the March quarter +30.56% against +30.6%, and the acceleration +51.13 points against "

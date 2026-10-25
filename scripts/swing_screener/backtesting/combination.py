@@ -127,8 +127,13 @@ class CombinationStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "momentum_dual_combo"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-10-25",
+         "The momentum sleeve's trade rows count every resize (momentum_vol_scaled 1.3): they were built "
+         "from each holding's first fill alone, so the combined book's win rate, profit factor and "
+         "average R were wrong. Equity and every return figure are unchanged; stored runs' trade "
+         "statistics are stale."),
         ("1.0", "2026-10-24",
          "First version, from the Learn guide on combining strategies: half the account in "
          "momentum_vol_scaled, half in dual_momentum, rebalanced to the split each month-end and "

@@ -143,7 +143,8 @@ SR_DOC = {
         "Sold in full at a month-end close, less {cost_bps}bps, when the sector is no longer in the top "
         "{top_n} -- or, with `--market-filter` on, when the benchmark closes below its 200-day average.",
         "Resized at each month-end to the equal weight while it stays in the top {top_n}, so a winner is trimmed "
-        "and a laggard topped up.",
+        "and a laggard topped up. A trade is the whole holding period: its P&L counts every resize, with "
+        "costs, and its entry price is the average paid.",
         "Nothing else sells it: no stop, no target, and no trade between month-ends. Whatever is held at the end "
         "of a test is valued at the final close, with no exit cost.",
     ),
@@ -156,8 +157,9 @@ class SectorRotationStrategy(PortfolioStrategy):
     key = SR_DOC["key"]
     doc = SR_DOC
     family = "sector_rotation"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-17", "First version: rank the market's sector indices by 6-month return each "
+    version = "1.1"
+    changelog = (("1.1", "2026-10-25", "rotation.simulate, the engine it runs on, had two accounting errors. Its positions series was the final holding count repeated for every session, so exposure read 100% through every stretch in cash; it is now the count per session. And trade rows were built from each holding's first fill, ignoring the month-end resizes; a row is now the whole holding period -- every buy, trim and sale with costs, the entry price the average paid. Equity, CAGR and drawdown are unchanged; stored runs' exposure and trade statistics are stale."),
+                 ("1.0", "2026-10-17", "First version: rank the market's sector indices by 6-month return each "
                                        "month-end and hold the top 3, equal-weighted."),)
     name = SR_DOC["name"]
     description = SR_DOC["description"]

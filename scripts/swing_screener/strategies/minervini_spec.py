@@ -578,8 +578,16 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.25"
+    version = "1.26"
     changelog = (
+        ("1.26", "2026-10-25",
+         "Two point-in-time clips in the backtest's signal filters. The results blackout read filing "
+         "dates past the stage's end, so a signal in the last {EARNINGS_BLACKOUT_DAYS} days of an "
+         "optimise run could be blocked by a filing the stage must not see; it now reads filings up "
+         "to the boundary only. And the market filter let a signal through on a date before the "
+         "benchmark's first stored session (NaN read as risk-on); that is now risk-off -- no stored "
+         "stage starts that early, so this one cannot move a result. Optimise runs are stale for "
+         "signals near the stage's end; nothing else moves."),
         ("1.25", "2026-10-24",
          "W5 can become a rule: SMA200_PREF_REQUIRED = 1 holds a plan at WATCH (no new buy) while the "
          "200-day has not risen over {SMA200_RISING_PREF_BARS} sessions, Minervini's preferred 4-5 months "

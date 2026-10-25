@@ -51,8 +51,22 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
 
     cash = float(account_size)
     units: dict[str, float] = {}
-    entry: dict[str, tuple] = {}
-    trades, equity, costs_total = [], [], 0.0
+    # per holding period: entry date, cash paid (buys with costs), cash got back (trims net of
+    # costs), units bought, costs. A rebalance resizes a holding that stays in the target, so
+    # a trade row from the first fill alone misstated its P&L while equity, read from cash,
+    # stayed right.
+    entry: dict[str, dict] = {}
+    trades, equity, held, costs_total = [], [], [], 0.0
+
+    def row(s, d, price, u, fee, reason) -> dict:
+        e = entry.pop(s)
+        return {"symbol": s, "entry_date": e["date"],
+                "entry_price": round(e["paid"] / e["bought"], 4) if e["bought"] else round(price, 4),
+                "exit_date": d, "exit_price": round(price, 4), "shares": round(e["bought"], 4),
+                "exit_reason": reason, "pnl": round(u * price - fee + e["got"] - e["paid"], 2),
+                "notional": round(e["paid"], 2), "costs": round(e["costs"] + fee, 2),
+                "holding_days": (d - e["date"]).days,
+                "r_multiple": round((u * price - fee + e["got"]) / e["paid"] - 1, 4)}
 
     def value(d) -> float:
         return cash + sum(u * float(pxv.loc[d, s]) for s, u in units.items()
@@ -68,13 +82,7 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
                 fee = gross * cost_bps / 10_000
                 cash += gross - fee
                 costs_total += fee
-                e_date, e_price, e_cost = entry.pop(s)
-                trades.append({"symbol": s, "entry_date": e_date, "entry_price": round(e_price, 4),
-                               "exit_date": d, "exit_price": round(price, 4), "shares": round(units[s], 4),
-                               "exit_reason": "ROTATE", "pnl": round(gross - fee - e_cost, 2),
-                               "notional": round(e_cost, 2), "costs": round(fee, 2),
-                               "holding_days": (d - e_date).days,
-                               "r_multiple": round((gross - fee) / e_cost - 1, 4)})
+                trades.append(row(s, d, price, units[s], fee, "ROTATE"))
                 del units[s]
             if target:
                 # equal weight across the target, rebuilt from the whole book so weights stay level
@@ -91,22 +99,24 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
                     cash -= delta * price + fee
                     costs_total += fee
                     units[s] = want
-                    if s not in entry:
-                        entry[s] = (d, price, want * price)
+                    e = entry.setdefault(s, {"date": d, "paid": 0.0, "got": 0.0,
+                                             "bought": 0.0, "costs": 0.0})
+                    if delta > 0:
+                        e["paid"] += delta * price + fee
+                        e["bought"] += delta
+                    else:
+                        e["got"] += -delta * price - fee
+                    e["costs"] += fee
         equity.append((d, value(d)))
+        held.append(len(units))
 
     eq = pd.Series(dict(equity)).sort_index()
     if units:
         d = eq.index[-1]
         for s, u in units.items():
-            price = float(pxv.loc[d, s])
-            e_date, e_price, e_cost = entry[s]
-            trades.append({"symbol": s, "entry_date": e_date, "entry_price": round(e_price, 4),
-                           "exit_date": d, "exit_price": round(price, 4), "shares": round(u, 4),
-                           "exit_reason": "OPEN", "pnl": round(u * price - e_cost, 2),
-                           "notional": round(e_cost, 2), "costs": 0.0,
-                           "holding_days": (d - e_date).days,
-                           "r_multiple": round(u * price / e_cost - 1, 4)})
+            trades.append(row(s, d, float(pxv.loc[d, s]), u, 0.0, "OPEN"))
     tdf = pd.DataFrame(trades)
-    held = pd.Series([len(units) or 1] * len(eq), index=eq.index)
+    # holdings per SESSION -- exposure and the cash series read it, so a constant (the final
+    # count repeated, as it was) showed 100% exposure through every risk-off stretch
+    held = pd.Series(held, index=[d for d, _ in equity]).sort_index()
     return tdf, eq, held, costs_total

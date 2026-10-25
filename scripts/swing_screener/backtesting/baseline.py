@@ -370,6 +370,38 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     return out
 
 
+def _new_holding(today) -> dict:
+    """A holding period's running cash flows, so its trade row counts every resize.
+
+    `paid` is cash out (buys with costs), `got` cash in from trims net of costs, `bought` the
+    shares bought. A rebalance tops a laggard up and trims a winner, so a row built from the
+    first fill alone -- as it was -- misstated win rate, profit factor and average R while the
+    equity curve, which reads cash, stayed right.
+    """
+    return {"date": today, "paid": 0.0, "got": 0.0, "bought": 0.0, "costs": 0.0}
+
+
+def _holding_row(symbol, e, exit_date, exit_fill, shares, exit_cost, reason) -> dict:
+    """One trade row for a holding period closed by selling `shares` at `exit_fill`.
+
+    P&L is every cash flow of the period: what the last sale and the trims brought in less
+    what the buys paid. The entry price is the average fill paid, and the notional the total
+    paid, so `entry_price x shares bought == notional`.
+    """
+    if e is None:   # no recorded buy (should not happen): treat it as bought at the exit price
+        e = {"date": exit_date, "paid": exit_fill * shares, "got": 0.0, "bought": shares,
+             "costs": 0.0}
+    proceeds = exit_fill * shares
+    return {
+        "symbol": symbol, "entry_date": e["date"],
+        "entry_price": round(e["paid"] / e["bought"], 4) if e["bought"] else round(exit_fill, 4),
+        "exit_date": exit_date, "exit_price": round(exit_fill, 4), "shares": e["bought"],
+        "exit_reason": reason, "pnl": round(proceeds + e["got"] - e["paid"], 2),
+        "notional": round(e["paid"], 2), "costs": round(e["costs"] + exit_cost, 2),
+        "holding_days": (exit_date - e["date"]).days,
+    }
+
+
 def run(
     market: str, start: str, top_n: int = 10, lookback: int = TRADING_DAYS,
     skip: int = 21, rebalance: str = "ME", trend_filter: bool = True,
@@ -434,14 +466,16 @@ def run(
     # own long moving average. On 33 years of SPY this cut max drawdown from
     # -50.8% to -23.0% and lifted Sharpe 0.77 -> 0.89, at the cost of CAGR in
     # bull markets. Evaluated on the PREVIOUS month's close so the decision
-    # uses only information available when it is acted on.
+    # uses only information available when it is acted on -- index_signals'
+    # Faber rule, so every day of month k reads month k-1's decision. (A copy
+    # here forward-filled month-end labels and so read month k-2's on any
+    # month whose calendar end was not a session.)
     overlay_ok = None
     if index_overlay:
         if bench_px is None:
             raise ValueError("index overlay needs a benchmark series")
-        bm = bench_px.resample("ME").last()
-        bsig = (bm > bm.rolling(overlay_months).mean()).shift(1).fillna(False)
-        overlay_ok = bsig.reindex(px.index, method="ffill").fillna(False)
+        from .index_signals import sma_overlay
+        overlay_ok = sma_overlay(bench_px, overlay_months, index=px.index)
 
     # Drop partial days. If the cache was refreshed for part of the universe
     # (a screener run mid-session, say), the newest date can carry prices for a
@@ -543,15 +577,8 @@ def run(
                 cash += proceeds
                 costs_total += cost
                 turnover_notional += price * holdings[s]
-                ed, ep, esh = entry_info.pop(s, (today, price, holdings[s]))
-                trades.append({
-                    "symbol": s, "entry_date": ed, "entry_price": round(ep, 4),
-                    "exit_date": today, "exit_price": round(fill, 4), "shares": esh,
-                    "exit_reason": "REBALANCE_OUT",
-                    "pnl": round((fill - ep) * esh - cost, 2),
-                    "notional": round(ep * esh, 2), "costs": round(cost, 2),
-                    "holding_days": (today - ed).days,
-                })
+                trades.append(_holding_row(s, entry_info.pop(s, None), today, fill,
+                                           holdings[s], cost, "REBALANCE_OUT"))
                 del holdings[s]
 
             # equal-weight the target across current equity
@@ -618,8 +645,10 @@ def run(
                         costs_total += (fill - price) * buy
                         turnover_notional += price * buy
                         holdings[s] = have + buy
-                        if s not in entry_info:
-                            entry_info[s] = (today, fill, holdings[s])
+                        e = entry_info.setdefault(s, _new_holding(today))
+                        e["paid"] += need
+                        e["bought"] += buy
+                        e["costs"] += (fill - price) * buy
                     elif want_shares < have:
                         sell = have - want_shares
                         fill = price * (1 - cost_bps / 10_000)
@@ -628,8 +657,15 @@ def run(
                         turnover_notional += price * sell
                         holdings[s] = have - sell
                         if holdings[s] == 0:
+                            # sized to nothing (a slot below one whole share): the holding
+                            # ends here, so it is a trade like any other exit
                             del holdings[s]
-                            entry_info.pop(s, None)
+                            trades.append(_holding_row(s, entry_info.pop(s, None), today, fill,
+                                                       sell, (price - fill) * sell, "REBALANCE_OUT"))
+                        else:
+                            e = entry_info.setdefault(s, _new_holding(today))
+                            e["got"] += fill * sell
+                            e["costs"] += (price - fill) * sell
 
         held_value = sum(
             sh * float(mark[s]) for s, sh in holdings.items()
@@ -647,14 +683,7 @@ def run(
         if s not in final.index or pd.isna(final[s]):
             continue
         price = float(final[s])
-        ed, ep, esh = entry_info.get(s, (last, price, sh))
-        trades.append({
-            "symbol": s, "entry_date": ed, "entry_price": round(ep, 4),
-            "exit_date": last, "exit_price": round(price, 4), "shares": sh,
-            "exit_reason": "OPEN", "pnl": round((price - ep) * sh, 2),
-            "notional": round(ep * sh, 2), "costs": 0.0,
-            "holding_days": (last - ed).days,
-        })
+        trades.append(_holding_row(s, entry_info.get(s), last, price, sh, 0.0, "OPEN"))
 
     eq = pd.Series(eq_rows, index=dates)
     pos = pd.Series(pos_rows, index=dates)
@@ -760,8 +789,8 @@ DOC = {
         "runs short, a buy is cut to the whole shares the cash covers.",
         "When it holds cash. When no stock is eligible, and for whatever rounding to whole shares leaves over. "
         "Optional `--index-overlay` (off): hold nothing while the benchmark's month-end close is not above the "
-        "average of its last 10 month-end closes (`--overlay-months`), read from an earlier month-end so the "
-        "decision uses only known prices. Optional `--vol-target` (off): scale every position down so the "
+        "average of its last 10 month-end closes (`--overlay-months`), as of the previous month-end, so every "
+        "day of a month uses the month before's close and only known prices. Optional `--vol-target` (off): scale every position down so the "
         "basket's trailing volatility is at most the target, never above 100% invested.",
     ),
     "exit_rules": (
@@ -769,6 +798,9 @@ DOC = {
         "not in the new top {top_n}: outranked, or failing a test that day -- the close at or below its 200-day "
         "average, turnover under the floor, price under the floor, or outside the {liquidity_top}-name liquid "
         "pool.",
+        "A trade is one holding period, from the first buy to the sale that empties it -- including a resize "
+        "to nothing, when a slot no longer buys one whole share. Its P&L counts every top-up and trim in "
+        "between, with costs; its entry price is the average paid, and its notional the total paid.",
         "Resized at a month-end. A holding that stays in the top {top_n} is sold down or bought up to the equal "
         "weight, at the same close and cost.",
         "Nothing sells between month-ends. There is no stop and no target: a stock that closes below its "
@@ -1214,8 +1246,10 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-25",
+         "Trade rows count every resize. Each month-end re-weights the book, topping a laggard up and trimming a winner, but a trade row was built from the first fill alone, so win rate, profit factor, average R and turnover were wrong while the equity curve (read from cash) was right. A row is now the whole holding period: P&L is every buy, trim and sale with costs, the entry price the average paid, the notional the total paid -- and a holding resized to nothing (a slot below one whole share) now gets its row instead of vanishing. Equity, CAGR and drawdown are unchanged; stored runs' trade statistics are stale."),
         ("1.2", "2026-10-24",
          "A rank buffer, OFF until measured (hold_rank = None). Each month the book was rebuilt from "
          "the fresh top 20, so a name slipping from rank 20 to 21 was sold outright. The ranking is "
@@ -1317,7 +1351,7 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     key = "momentum_baseline"
     doc = DOC
     family = "momentum_baseline"
-    version = "1.0"
+    version = "1.1"
     name = DOC["name"]
     description = DOC["description"]
     status = DOC["status"]
@@ -1345,6 +1379,12 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     )
 
     changelog = (
+        ("1.1", "2026-10-25",
+         "Trade rows count every resize. Each month-end re-weights the book, topping a laggard up and trimming a winner, but a trade row was built from the first fill alone, so win rate, profit factor, average R and turnover were wrong while the equity curve (read from cash) was right. A row is now the whole holding period: P&L is every buy, trim and sale with costs, the entry price the average paid, the notional the total paid -- and a holding resized to nothing (a slot below one whole share) now gets its row instead of vanishing. Equity, CAGR and drawdown are unchanged; stored runs' trade statistics are stale. "
+         "Also `--index-overlay` (off by default) read month k-2's decision on most days: it forward-filled "
+         "calendar month-end labels onto sessions, so every day before a month's calendar end got the "
+         "label dated a month earlier, already shifted once. It is now index_signals' Faber rule, which "
+         "gives every day of month k month k-1's decision."),
         ("1.0", "2026-10-09",
          "Brought into the registry so it carries a version and a generated "
          "spec. Defaults unchanged: top 10, 12-1 momentum, monthly rebalance, "
