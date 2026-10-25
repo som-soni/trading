@@ -153,6 +153,13 @@ fingerprint moves without a version bump. Note the fingerprint is keyed on numer
 constants, so a change it cannot see (new code paths, a changed default that is not
 a module constant) still needs the bump by hand.
 
+A strategy's `signal_exempt_consts` names the constants `evaluate()` never reads
+(exits, stop/target placement, sizing, portfolio rules). They stay in the spec id,
+but not in its `signal_id`, so a `--const` variant moving only those copies the
+matching run's cached signal rows (`backtest.seed_signal_cache`) instead of
+rescanning. Add a new post-scan constant there, and never a constant the scan
+reads; `PYTHONPATH=. .venv/bin/python -m tests.test_signal_exempt` checks it.
+
 Then run, from `scripts/`:
 
 ```bash

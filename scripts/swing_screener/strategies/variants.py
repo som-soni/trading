@@ -116,6 +116,16 @@ def apply_consts(strategy_key: str, consts: dict) -> dict:
     return applied
 
 
+def split_signal_exempt(strategy_key: str, consts: dict) -> tuple[dict, dict]:
+    """(overrides the signal scan reads, overrides it never reads) -- the second part is the
+    strategy's `signal_exempt_consts`. Applying the first alone gives the run whose cached
+    signal rows the full variant can reuse (backtest.seed_signal_cache)."""
+    from . import get_strategy
+    exempt = set(getattr(get_strategy(strategy_key), "signal_exempt_consts", ()))
+    scan = {k: v for k, v in consts.items() if str(k).strip() not in exempt}
+    return scan, {k: v for k, v in consts.items() if k not in scan}
+
+
 def apply_live_variant(strategy_key: str) -> dict | None:
     """Apply the strategy's declared `live_variant`, if it has one. Returns what was applied --
     {"name", "const", "spec_id", "why"} -- for the caller to record beside its output, or None."""
