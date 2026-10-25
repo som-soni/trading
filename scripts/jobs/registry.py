@@ -162,6 +162,7 @@ def _subindustries(ctx: Ctx) -> None:
 def _prices(ctx: Ctx) -> None:
     from swing_screener.marketdata import freshness
     from swing_screener.marketdata.refresh import refresh
+    freshness.ensure_day_counts()   # once: per-day row counts the web app reads instead of scanning prices
     r = refresh(ctx.market, force=bool(ctx.opt("force")))
     if not r["updated"]:
         raise RuntimeError(f"no symbols updated ({len(r['failed'])} failed) — is the data source reachable?")

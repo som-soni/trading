@@ -9,6 +9,7 @@ process never executes one.
 """
 
 import datetime as dt
+import inspect
 import json
 import re
 import threading
@@ -18,12 +19,14 @@ from pathlib import Path
 import pandas as pd
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 
 from .. import paths
 from ..config import MARKETS
 from ..marketdata import freshness
 from ..marketdata import names as names_mod
+from ..marketdata import db as db_mod
 from ..marketdata.db import get_connection, py_value
 from fundamentals import quality as qual  # long-term investing package (scripts/fundamentals)
 from fundamentals import growth as growth_mod  # quarterly fundamentals + strategy views (scripts/fundamentals)
@@ -32,7 +35,21 @@ from ..strategies import docs as _strat_docs_initial  # noqa: F401  (loaded once
 from . import ingest as ingest_mod
 
 STATIC = Path(__file__).parent / "static"
+
+
+class _PooledRoute(APIRoute):
+    """Each sync endpoint runs on its threadpool thread's own pooled connection (marketdata/db.py
+    use_pool), handed back when it returns — one slow query no longer holds up every other request."""
+
+    def __init__(self, path, endpoint, **kw):
+        if not inspect.iscoroutinefunction(endpoint):
+            endpoint = db_mod.releasing(endpoint)
+        super().__init__(path, endpoint, **kw)
+
+
+db_mod.use_pool(maxconn=12)
 app = FastAPI(title="Trading viewer")
+app.router.route_class = _PooledRoute
 
 
 def q(sql: str, params: tuple = ()) -> list[tuple]:
@@ -48,8 +65,10 @@ def _startup() -> None:
     qual.init_schema()
     growth_mod.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
-    threading.Thread(target=_prewarm_sectors, daemon=True).start()
-    threading.Thread(target=lambda: [(_names(m), _liquidity(m)) for m in tuple(MARKETS)], daemon=True).start()  # first search is instant
+    threading.Thread(target=_freshness_loop, daemon=True).start()  # /api/status never computes it on a request
+    threading.Thread(target=db_mod.releasing(_prewarm_sectors), daemon=True).start()
+    threading.Thread(target=db_mod.releasing(lambda: [(_names(m), _liquidity(m)) for m in tuple(MARKETS)]),
+                     daemon=True).start()  # first search is instant
     names_mod.init_schema()
     # first run: ask the job queue for company names (the web app never downloads; the UI shows tickers meanwhile)
     for m in [m for m in tuple(MARKETS) if not names_mod.load(m)]:
@@ -57,6 +76,7 @@ def _startup() -> None:
             _jq().enqueue(["names"], m, {}, requested_by="web: no company names stored", priority=10)
         except Exception as exc:  # noqa: BLE001 - no queue yet: the weekly reference run fetches them
             print(f"names {m}: could not queue the names job ({exc})")
+    db_mod.release_connection()  # startup ran on the event loop's thread: don't keep a pooled connection there
 
 
 # --------------------------------------------------------------- symbols
@@ -2017,7 +2037,7 @@ def _sector_data(market: str, wait: bool = True) -> tuple[dict | None, bool]:
                 return
             _sector_cache[market] = {"key": key, "data": sect.compute(market)}
     if hit and not wait:
-        threading.Thread(target=run, daemon=True).start()
+        threading.Thread(target=db_mod.releasing(run), daemon=True).start()
         return hit["data"], True
     run()
     return _sector_cache[market]["data"], False
@@ -3007,7 +3027,12 @@ def postmarket_api(market: str = "us", date: str | None = None):
 
 from . import status as status_mod
 
-_status_cache: dict = {}
+# freshness() takes seconds to tens of seconds (it counts recent price rows per day), so a background
+# thread keeps a copy current and /api/status serves it; the lock makes a request that arrives before
+# the first copy wait for that computation rather than start a second one beside it
+FRESHNESS_EVERY_S = 60
+_fresh: dict = {}
+_fresh_lock = threading.Lock()
 
 
 def _price_day(market: str):
@@ -3021,14 +3046,30 @@ def _price_day(market: str):
     return days[-1], partial, counts.get(days[-1]) or len(_rows_on(market, days[-1]))
 
 
+def _refresh_freshness(if_missing: bool = False) -> dict:
+    with _fresh_lock:
+        if not (if_missing and "v" in _fresh):
+            _fresh["v"] = status_mod.freshness(q, _price_day)
+        return _fresh["v"]
+
+
+def _freshness_loop() -> None:
+    import time
+    while True:
+        try:
+            db_mod.releasing(_refresh_freshness)()
+        except Exception as exc:  # noqa: BLE001 - keep serving the last copy; try again next round
+            print(f"freshness refresh failed: {exc}")
+        time.sleep(FRESHNESS_EVERY_S)
+
+
+def _freshness() -> dict:
+    return _fresh.get("v") or _refresh_freshness(if_missing=True)
+
+
 @app.get("/api/status")
 def status_api():
-    import time
-    hit = _status_cache.get("fresh")
-    if not hit or time.time() - hit[0] > 60:  # freshness is cheap but not free: recompute at most once a minute
-        hit = (time.time(), status_mod.freshness(q, _price_day))
-        _status_cache["fresh"] = hit
-    fresh = hit[1]
+    fresh = _freshness()
     runs = status_mod.runs(q, 40)
     overview = status_mod.jobs_overview(q)
     # the run shown in detail: a running one, else the most recent pipeline run, else the most recent run
