@@ -516,6 +516,31 @@
     },
     "version": "1.0"
   },
+  "quality_momentum": {
+    "family": "quality_momentum",
+    "fingerprint": "254bb297",
+    "params": {
+      "FILING_LAG_DAYS": 60,
+      "LINES_FILING_LAG_DAYS": 90,
+      "QM_FCF_CONVERSION_MIN_PCT": 0,
+      "QM_NET_DEBT_EQUITY_MAX": 1.0,
+      "QM_ROE_MIN_PCT": 12,
+      "QM_SALES_GROWTH_MIN_PCT": 0,
+      "QM_STATEMENT_STALE_DAYS": 550,
+      "STALE_RESULTS_DAYS": 200,
+      "STRICT_FCF_CONVERSION_MIN_PCT": 80,
+      "STRICT_NET_DEBT_EQUITY_MAX": 0.5,
+      "STRICT_ROE_MIN_PCT": 15,
+      "STRICT_SALES_GROWTH_MIN_PCT": 5,
+      "_key": "quality_momentum",
+      "cost_bps": 5.0,
+      "liquidity_top": 1000,
+      "lookback": 252,
+      "skip": 21,
+      "top_n": 10
+    },
+    "version": "1.0"
+  },
   "rs_leaders": {
     "family": "rs_leaders",
     "fingerprint": "a97259ef",

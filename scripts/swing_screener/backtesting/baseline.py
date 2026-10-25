@@ -248,6 +248,12 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     if not hasattr(cls, "lookback") or not hasattr(cls, "skip"):
         return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market, "available": False,
                 "note": f"{cls.name} does not rank stocks, so it has no ranked holdings to show here."}
+    # A ranking narrowed by more than prices (quality_momentum's point-in-time fundamentals) would be
+    # shown here WITHOUT its filter -- a list the strategy does not hold. Say so instead.
+    if getattr(cls, "live_selection", True) is False:
+        return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market, "available": False,
+                "note": f"{cls.name} filters its ranking on point-in-time fundamentals, which this live "
+                        "ranking does not apply, so it has no live holdings view yet."}
     # each knob as the backtest reads it: a strategy that does not set one gets run()'s default
     rank, weighting = getattr(cls, "rank", "momentum"), getattr(cls, "weighting", "equal")
     vol_window = getattr(cls, "vol_window", 63)
@@ -379,6 +385,7 @@ def run(
     index_overlay: bool = False,
     overlay_months: int = 10,
     preloaded: tuple | None = None,
+    universe_filter=None,
 ):
     """Hold the top `top_n` by `rank`, rebalanced on `rebalance`.
 
@@ -391,6 +398,10 @@ def run(
     `index_overlay`  hold nothing while the benchmark is below its
                   `overlay_months`-month average
     `trend_filter`   require each stock above its own 200-day average
+    `universe_filter`  optional `(date, {symbol: score}) -> {symbol: score}` applied to the eligible,
+                  scored pool on each rebalance before the top `top_n` are taken -- how a variant
+                  (quality_momentum) narrows the pool without a second copy of this loop. A
+                  `notes()` method on it, if present, adds lines to the report's caveats.
     """
     cfg = MARKETS[market]
     start_ts = pd.Timestamp(start)
@@ -486,6 +497,8 @@ def run(
                 floor_price=floor_price, liq_floor=liq_floor, trend_filter=trend_filter,
                 liquidity_rank_top=liquidity_rank_top,
             )
+            if universe_filter is not None:
+                mom = universe_filter(today, mom)
             target = buffered_target(sorted(mom, key=mom.get, reverse=True), holdings,
                                      top_n, hold_rank)
             if overlay_ok is not None and not bool(overlay_ok.get(today, False)):
@@ -643,6 +656,8 @@ def run(
         "'r_multiple' here is notional-relative (no stop exists), so it is NOT "
         "comparable to the gated strategy's stop-relative R.",
     ]
+    if universe_filter is not None and hasattr(universe_filter, "notes"):
+        notes += list(universe_filter.notes())
     perf = metrics.compute(
         equity=eq, positions_open=pos, trades=tdf, max_open_positions=top_n,
         costs_paid=costs_total, bench_close=bench_close, notes=notes,
@@ -902,7 +917,7 @@ def changed_flags(args: argparse.Namespace) -> list[str]:
     return out
 
 
-def run_args(args: argparse.Namespace):
+def run_args(args: argparse.Namespace, universe_filter=None):
     """run() for a parsed command line: the one place a flag is mapped to an argument."""
     return run(
         args.market, args.start, top_n=args.top_n, lookback=args.lookback,
@@ -914,18 +929,24 @@ def run_args(args: argparse.Namespace):
         rank=args.rank, weighting=args.weighting, vol_target=args.vol_target,
         vol_window=args.vol_window,
         index_overlay=args.index_overlay, overlay_months=args.overlay_months,
-        hold_rank=args.hold_rank,
+        hold_rank=args.hold_rank, universe_filter=universe_filter,
     )
 
 
-def main(argv: list[str] | None = None) -> dict | None:
-    """`argv` so the job runner can call this in-process, the way backtest.main is called."""
+def main(argv: list[str] | None = None, universe_filter=None, run_suffix: str = "",
+         reproduce_extra: tuple = ()) -> dict | None:
+    """`argv` so the job runner can call this in-process, the way backtest.main is called.
+
+    `universe_filter` and `run_suffix` are for a runner that reuses this one with a narrowed pool
+    (quality_momentum): the filter goes to run(), the suffix into the run name so its variants do
+    not overwrite each other, and `reproduce_extra` onto the Reproduce line.
+    """
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     from ..strategies import portfolio_strategies
     args = parse_args(argv)
 
     cfg = MARKETS[args.market]
-    tdf, perf, eq, pos = run_args(args)
+    tdf, perf, eq, pos = run_args(args, universe_filter=universe_filter)
     from ..paths import run_dir
 
     # NOT `run`: this module's main entry point is also called run(), and a
@@ -942,6 +963,7 @@ def main(argv: list[str] | None = None) -> dict | None:
                 # reads as ten nano-rupees. The run name is how a run is identified in the portal.
                 + (_turnover_tag(args.min_turnover, cfg) if args.min_turnover else "")
                 + ("_noTrendFilter" if args.no_trend_filter else "")
+                + run_suffix
                 # The spec id goes in the NAME because that is the only record of which rule set
                 # produced a report: ingest lifts it out with a regex (web/ingest.spec_id_of) and
                 # the Strategies page groups runs by it. Without it a portfolio run shows "—" for
@@ -986,8 +1008,9 @@ def main(argv: list[str] | None = None) -> dict | None:
 
         # The strategy IS its tunables, so the reproduce line names it rather than respelling
         # every flag -- and unlike the old spelling it cannot drift from what the page documents.
-        cmd = " ".join([f"python3 -m swing_screener.backtesting.baseline --strategy {args.strategy} "
-                        f"--market {args.market} --start {args.start}", *changed_flags(args)])
+        runner = getattr(portfolio_strategies()[args.strategy], "runner", "baseline")
+        cmd = " ".join([f"python3 -m swing_screener.backtesting.{runner} --strategy {args.strategy} "
+                        f"--market {args.market} --start {args.start}", *changed_flags(args), *reproduce_extra])
         md = report_mod.write_report(
             out,
             f"{cfg.name} — {portfolio_strategies()[args.strategy].name} (top {args.top_n}), {args.start} onward",

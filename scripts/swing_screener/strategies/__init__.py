@@ -112,12 +112,13 @@ def portfolio_strategies() -> dict:
     from ..backtesting.ma_trend import MaTrendStrategy
     from ..backtesting.mean_reversion import MeanReversionStrategy
     from ..backtesting.pead import PeadStrategy
+    from ..backtesting.quality_momentum import QualityMomentumStrategy
     from ..backtesting.sector_rotation import SectorRotationStrategy
 
     return {c.key: c for c in (MomentumBaselineStrategy, VolScaledMomentumStrategy,
                                 DualMomentumStrategy, SectorRotationStrategy,
                                 MeanReversionStrategy, PeadStrategy, FnoIncomeStrategy,
-                                MaTrendStrategy, CombinationStrategy)}
+                                MaTrendStrategy, CombinationStrategy, QualityMomentumStrategy)}
 
 
 def all_specs() -> dict:

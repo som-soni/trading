@@ -41,8 +41,9 @@ Re-fetching is cheap: a company is re-checked when a new quarter's results could
     PYTHONPATH=. python3 -m swing_screener.marketdata.financials --market us --symbols NVDA,AAPL
     PYTHONPATH=. python3 -m swing_screener.marketdata.financials --market india --symbols RELIANCE.NS --force
 
-Current figures only feed the live pages; the stored `filed` dates would let a backtest use them
-point-in-time, but nothing in `backtesting/` reads these tables yet.
+Backtests read these point in time: `load` and `load_lines` honour a stage's boundary (`asof`), and
+`backtesting/fundamental_filter.py`, `pead.py` and `quality_momentum.py` judge each date only on what
+was public by then.
 """
 
 from __future__ import annotations
@@ -79,6 +80,8 @@ MAX_AGE_DAYS = 30             # re-check every company at least this often
 RECHECK_DAYS = 3              # ... and this often while a new quarter's results are due
 RESULTS_GRACE_DAYS = 10       # a new quarter is "due" from the next quarter end + this many days
 NOT_FOUND_RETRY_DAYS = 30     # nothing at the source (fund, ETF, unlisted filer): look again after this
+LINES_FILING_LAG_DAYS = 90    # a statement line has no filing date: treat it as public this long after its period
+                              # ended (10-K / NSE annual results come within 60-90 days of the year end)
 SEC_PAUSE = 0.15              # SEC allows 10 requests/s
 NSE_PAUSE = 0.35
 YF_PAUSE = 0.3
@@ -1306,10 +1309,17 @@ def _nse_slips_raw(market: str, symbol: str) -> dict:
 
 def load_lines(market: str, symbol: str) -> dict:
     """{period_type: {period_end: {line: value}}} for one company (EPS scale slips corrected: `eps_scale`,
-    against the quarter's stored share count where there is one)."""
+    against the quarter's stored share count where there is one).
+
+    Inside a backtest stage's boundary (`asof`) a period is known only LINES_FILING_LAG_DAYS after it
+    ended: the lines carry no filing date, so a year that closed inside the window but was reported
+    after it is left out."""
     out: dict = defaultdict(lambda: defaultdict(dict))
+    sql, args = "SELECT period_type, period_end, line, value FROM financial_lines WHERE market=%s AND symbol=%s", (market, symbol)
+    if asof.end_date():
+        sql, args = sql + " AND period_end <= %s", args + (asof.end_date() - dt.timedelta(days=LINES_FILING_LAG_DAYS),)
     with db.get_connection().cursor() as cur:
-        cur.execute("SELECT period_type, period_end, line, value FROM financial_lines WHERE market=%s AND symbol=%s", (market, symbol))
+        cur.execute(sql, args)
         for pt, e, line, v in cur.fetchall():
             out[pt][e][line] = v
         cur.execute("SELECT period_end, shares FROM quarterly_results WHERE market=%s AND symbol=%s", (market, symbol))

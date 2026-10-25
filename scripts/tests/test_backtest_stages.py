@@ -74,6 +74,9 @@ def loaders() -> None:
         "index_data.total_return_index": lambda: index_data.total_return_index("us", "SPY")[0].index.max(),
         "financials.load": lambda: max(pd.Timestamp(r.get("filed") or r["period_end"])
                                        for rows in financials.load("us", ["AAPL", "MSFT"]).values() for r in rows),
+        # statement lines carry no filing date: a period is known LINES_FILING_LAG_DAYS after it ends
+        "financials.load_lines": lambda: max(pd.Timestamp(e) for periods in financials.load_lines("us", "AAPL").values()
+                                             for e in periods) + pd.Timedelta(days=financials.LINES_FILING_LAG_DAYS),
     }
     from swing_screener.analytics import group_history
     from swing_screener.backtesting import pead
