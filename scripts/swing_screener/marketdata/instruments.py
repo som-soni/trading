@@ -11,7 +11,9 @@ India's ETFs need no list: NSE's securities list already includes them, and the
 funds are NAVs, not traded bars, so they live in `marketdata/funds.py` instead.
 
 Every ticker was checked against the data source when it was added; one that stops
-returning data shows up as a failed symbol in the `prices` job's run log.
+returning data shows up as a failed symbol in the `prices` job's run log. Tickers prefixed
+`NSE:` / `BSE:` are India indices Yahoo lacks, fetched from the index provider itself
+(`official_indices.py`).
 """
 
 from __future__ import annotations
@@ -104,21 +106,29 @@ _US = [
 ]
 
 _INDIA = [
-    # Only indices Yahoo carries with real history. Checked Oct 2026 and left out: no series at all for
-    # Nifty Midcap 150, BSE MidCap / SmallCap, Nifty Total Market, Smallcap 100, Microcap 250, Oil & Gas,
-    # Consumer Durables and India Defence; only the last bar or two for Nifty Private Bank, Healthcare,
-    # Media, Services Sector and Commodities. NSE's own index history (niftyindices.com) has all of them.
+    # Yahoo tickers where Yahoo has real history. Checked Oct 2026: it has no series at all for Nifty
+    # Midcap 150, BSE MidCap / SmallCap, Nifty Total Market, Smallcap 100, Microcap 250, Oil & Gas,
+    # Consumer Durables and India Defence, and only the last bar or two for Nifty Private Bank, Healthcare,
+    # Media, Services Sector and Commodities. Those come from the index providers themselves (NSE Indices,
+    # BSE) under `NSE:` / `BSE:` tickers — official_indices.py fetches them and must list each one.
     *_indices("Broad market",
               ("^NSEI", "Nifty 50"), ("^BSESN", "BSE Sensex"), ("^NSMIDCP", "Nifty Next 50"), ("^CNX100", "Nifty 100"),
               ("^CNX200", "Nifty 200"), ("^CRSLDX", "Nifty 500"), ("^NSEMDCP50", "Nifty Midcap 50"),
-              ("NIFTYSMLCAP250.NS", "Nifty Smallcap 250"), ("^INDIAVIX", "India VIX")),
+              ("NIFTYSMLCAP250.NS", "Nifty Smallcap 250"), ("^INDIAVIX", "India VIX"),
+              ("NSE:NIFTY_MIDCAP_150", "Nifty Midcap 150"), ("NSE:NIFTY_SMALLCAP_100", "Nifty Smallcap 100"),
+              ("NSE:NIFTY_MICROCAP_250", "Nifty Microcap 250"), ("NSE:NIFTY_TOTAL_MARKET", "Nifty Total Market"),
+              ("BSE:MIDCAP", "BSE MidCap"), ("BSE:SMALLCAP", "BSE SmallCap")),
     *_indices("Sector",
               ("^NSEBANK", "Nifty Bank"), ("^CNXPSUBANK", "Nifty PSU Bank"), ("NIFTY_FIN_SERVICE.NS", "Nifty Financial Services"),
               ("^CNXIT", "Nifty IT"), ("^CNXPHARMA", "Nifty Pharma"), ("^CNXAUTO", "Nifty Auto"), ("^CNXFMCG", "Nifty FMCG"),
               ("^CNXMETAL", "Nifty Metal"), ("^CNXREALTY", "Nifty Realty"), ("^CNXENERGY", "Nifty Energy"),
-              ("^CNXINFRA", "Nifty Infrastructure")),
+              ("^CNXINFRA", "Nifty Infrastructure"), ("NSE:NIFTY_PRIVATE_BANK", "Nifty Private Bank"),
+              ("NSE:NIFTY_HEALTHCARE", "Nifty Healthcare"), ("NSE:NIFTY_MEDIA", "Nifty Media"),
+              ("NSE:NIFTY_OIL_GAS", "Nifty Oil & Gas"), ("NSE:NIFTY_CONSUMER_DURABLES", "Nifty Consumer Durables")),
     *_indices("Thematic",
-              ("^CNXPSE", "Nifty PSE"), ("^CNXMNC", "Nifty MNC"), ("^CNXCONSUM", "Nifty India Consumption")),
+              ("^CNXPSE", "Nifty PSE"), ("^CNXMNC", "Nifty MNC"), ("^CNXCONSUM", "Nifty India Consumption"),
+              ("NSE:NIFTY_SERVICES_SECTOR", "Nifty Services Sector"), ("NSE:NIFTY_COMMODITIES", "Nifty Commodities"),
+              ("NSE:NIFTY_INDIA_DEFENCE", "Nifty India Defence")),
 ]
 
 TRACKED: dict[str, list[Instrument]] = {"us": _US, "india": _INDIA}
