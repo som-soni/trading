@@ -39,6 +39,7 @@ import pandas as pd
 from . import cache, universe
 from ..config import MARKETS
 from ..providers import YFinanceProvider
+from .official_indices import RoutedProvider
 
 logger = logging.getLogger("backfill")
 
@@ -64,7 +65,8 @@ def backfill_max(market: str, batch_size: int = 20, pause: float = 2.0) -> dict:
         done = {r[0] for r in cur.fetchall()}
     todo = [s for s in dict.fromkeys([*universe.load_universe(market), *universe.index_symbols(market)]) if s not in done]
     logger.info("%s: %d symbols to fetch at full history (%d already done)", market, len(todo), len(done))
-    provider = YFinanceProvider(pause_sec=pause)
+    # indices Yahoo lacks go to their index provider (official_indices); everything else to Yahoo
+    provider = RoutedProvider(YFinanceProvider(pause_sec=pause))
     stats = {"requested": len(todo), "fetched": 0, "empty": 0, "bars": 0}
     t0 = time.time()
     for i in range(0, len(todo), batch_size):
@@ -135,7 +137,7 @@ def backfill_market(
         )
         todo = keep
 
-    provider = YFinanceProvider()
+    provider = RoutedProvider()
     stats = {"requested": len(todo), "fetched": 0, "failed": 0, "bars": 0}
     t0 = time.time()
 

@@ -27,8 +27,8 @@ import time
 import pandas as pd
 
 from ..config import MARKETS
-from ..providers import YFinanceProvider
 from . import cache, universe
+from .official_indices import RoutedProvider
 
 logger = logging.getLogger("refresh")
 
@@ -43,7 +43,8 @@ def refresh(
     force: bool = False,
 ) -> dict:
     # the whole universe plus the benchmark and index series stored beside it: they
-    # are not in the universe CSV, and without them the market filter reads a stale benchmark
+    # are not in the universe CSV, and without them the market filter reads a stale benchmark.
+    # Indices Yahoo lacks come from their index provider (official_indices.RoutedProvider).
     tickers = symbols if symbols else list(dict.fromkeys(
         [*sorted(universe.load_universe(market)), *universe.index_symbols(market)]))
     logger.info("Refreshing %d %s symbols (lookback %d days)...",
@@ -51,7 +52,7 @@ def refresh(
 
     t0 = time.time()
     bars, failed = cache.get_many_bars(
-        YFinanceProvider(), market, tickers, lookback_days,
+        RoutedProvider(), market, tickers, lookback_days,
         batch_size=batch_size, force=force,
     )
     elapsed = time.time() - t0
