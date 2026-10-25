@@ -425,12 +425,15 @@ def blend(long_eq: pd.Series, short_eq: pd.Series, weight_pct: float) -> pd.Seri
 
 
 def find_long_book(market: str, out_dir: Path) -> Path | None:
-    """The newest stored `LONG_BOOK` run with the same stage tag as this run, or None."""
+    """The newest stored `LONG_BOOK` run with the same start and stage tag as this run, or None. The start
+    matters as much as the tag: a shorter run of the long book has no crash years to compare."""
     tag = out_dir.name[out_dir.name.find("_stage-"):] if "_stage-" in out_dir.name else ""
+    start = out_dir.name.split("_", 1)[0]
     root = out_dir.parent.parent / LONG_BOOK
     if not tag or not root.exists():
         return None
-    runs = [p for p in root.iterdir() if p.name.endswith(tag) and (p / "equity.csv").exists()]
+    runs = [p for p in root.iterdir() if p.name.endswith(tag) and p.name.startswith(start + "_")
+            and (p / "equity.csv").exists()]
     return max(runs, key=lambda p: (p / "equity.csv").stat().st_mtime) if runs else None
 
 
@@ -477,10 +480,18 @@ DOC = {
         "Judged as a hedge beside the long momentum book, not on its own return."
     ),
     "status": (
-        "NOT YET MEASURED. Version 1.0 is built to the Learn guide and queued for the optimise stage "
-        "(2013-2021) only, in both markets, with three cost levels and a month-end blend against the "
-        "momentum_baseline optimise run at 0/20/30% sleeve weights. It has no verify result and must "
-        "not be read as having one. The pass criterion was written before any run: see the caveats."
+        "FAILS ITS PASS CRITERION IN BOTH MARKETS (optimise stage, 2013-2021, v1.1; no verify run). "
+        "Standalone, the shipped rule (failed rally to the line, market filter on, base costs) lost "
+        "2.0% a year in the US (max drawdown -22%, 215 trades, 24% won, -0.26R a trade) and 4.0% in "
+        "India (-32%, 267 trades, 23% won, -0.35R). As a 20% sleeve beside momentum_baseline it did "
+        "not beat the same 20% held in cash: drawdown +0.4 points better in the US and 0.4 worse in "
+        "India, against the 2 points required, with a lower Sharpe ratio in both. It helped in 2018 "
+        "and a little in 2020, but the book is too small and too late to matter -- about 8% of the "
+        "sleeve is short on an average day, because the weekly stage and the market filter confirm "
+        "after the fall has begun. The breakdown entry (A) about broke even in the US (-0.04% a year) "
+        "and did no better as a hedge. The one variant that cleared the drawdown test, India without "
+        "the market filter (+2.9 points over cash, Sharpe 0.77 vs 0.75), fails it at stress costs "
+        "(+1.6) and was found in-sample, so it is a hypothesis for a new version, not a result."
     ),
     "thesis": (
         "Every strategy on this shelf is long, so they all lose together in a bad year. Stage 4 stocks "
