@@ -4405,20 +4405,11 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
 
 /** The measured outcome, per market, at the head of the Rules tab.
  *
- *  A strategy's page used to require opening Backtests and reading a table to learn whether the
- *  thing worked. This answers it in one row per market: the LATEST run (what it does as the rules
- *  now stand) and the BEST excess CAGR ever recorded (what it has managed at its best). Both are
- *  shown because they differ for a reason worth seeing -- a strategy whose best run is three
- *  versions old has been tuned downwards, and one whose latest IS its best has not been cherry
- *  picked.
- *
- *  Excess CAGR orders "best" because that is the number the rest of the app decides on. It is
- *  deliberately NOT selection: the decomposition needs the equity curve's cash column, which the
- *  run summary does not carry, and inventing a different ranking here from the one the Backtests
- *  table shows would make the two disagree.
- *
- *  A run from a superseded spec id is marked, the same way the Backtests tab marks it. Without
- *  that, the headline figure on the landing page could describe rules that no longer exist.
+ *  One row group per market: the LATEST version (its out-of-sample run when verified, and its
+ *  in-sample run) and the BEST version run in the same window, so a reader can pick the rule set to
+ *  keep without reading the Backtests table. "Best" ranks by excess CAGR -- the number the rest of the
+ *  app decides on -- and only within one stage and window (see bestOf in perfGlance). A run from a
+ *  superseded spec id is marked, the same way the Backtests tab marks it.
  */
 /** A backtest's stage (backtesting/windows.py), labelled from the run's OWN window, never hard-coded:
  *  out-of-sample (verify) is the number to believe, in-sample (optimise) flatters the rules because
@@ -4460,14 +4451,31 @@ function perfGlance(d, key) {
         `Queue one from <a href="#/strategies/${esc(key)}/backtests">Backtests</a>.`}</p></section>`;
   }
 
-  // Per market: the out-of-sample result beside the in-sample one -- the gap between them is how much
-  // the tuning flattered the rules. There is deliberately no "best run" column any more: the best of
-  // many runs is selection, which is exactly what a hold-out exists to correct. Legacy runs appear
-  // only when a market has no staged run at all, and say so.
-  const row = (b, m, first) => { const s = b.summary, mi = mktInfo(m);
+  // Per market, two answers: the LATEST version (the rules as they stand -- its out-of-sample run if
+  // it has one, and its in-sample run) and the BEST version (the highest excess CAGR among every
+  // version's newest run in the SAME window), so a reader can pick the rule set worth keeping.
+  //
+  // "Best" is ranked only within one stage and one window: an optimise run and a legacy run from 2020
+  // cover different years, and ranking them together would crown whichever had the kinder market.
+  // In-sample (optimise) runs are the pool -- choosing between versions is what that window is for;
+  // while fewer than two versions have run there, legacy runs sharing one window are ranked as well.
+  // A tag names which row is which: "latest" (the current rules), "latest run" (the newest version
+  // with a run, when the current one has none yet) and "best". Verify runs
+  // never rank: the best of several hold-out results is selection on the hold-out, which is the one
+  // thing it must not be used for. Experiments (variants) stay out, as everywhere on this tab.
+  const pct = (x) => { const v = parseFloat(String(x || "").replace(/[%+,]/g, "")); return Number.isFinite(v) ? v : null; };
+  const verOf = (b) => b.version || (b.spec_id ? b.spec_id.split("-")[0].replace(/^v/, "") : "");
+  const vInfo = (sid) => vers.find((x) => x.spec_id === sid) || {};
+  const cur = d.spec_id || (runs[0] && runs[0].spec_id) || null;
+  const label = (b, tag) => { const v = vInfo(b.spec_id);
+    const tip = [v.date ? `v${verOf(b)}, ${v.date}` : "", v.changed || ""].filter(Boolean).join(" — ");
+    return `<td><span title="${esc(tip || b.spec_id || "")}">${verOf(b) ? `v${esc(verOf(b))}` : "—"}</span>
+      ${tag ? `<span class="tag ${tag === "best" ? "pos" : "neutral"} small">${tag}</span>` : ""}</td>`; };
+  const row = (b, m, first, tag, showWin) => { const s = b.summary, mi = mktInfo(m);
     return `<tr data-href="#/reports/${b.id}" title="Open this run">
       <td>${first ? `${mi.flag || ""} ${esc(mi.name || m.toUpperCase())}` : ""}</td>
-      <td>${stageChip(b)}</td>
+      ${label(b, tag)}
+      <td>${stageChip(b)}${showWin ? `<div class="muted small" title="a different window from the latest row above: not directly comparable">${esc(b.window_start || "?")} → ${esc(b.window_end || "latest")}</div>` : ""}</td>
       <td class="num">${esc(s.cagr || "")}</td>
       <td class="num ${sign(s.excess_cagr)}"><b>${esc(s.excess_cagr || "")}</b>${stale(b.spec_id)}</td>
       <td class="num">${esc(s.max_drawdown || "")}</td>
@@ -4475,24 +4483,47 @@ function perfGlance(d, key) {
       <td class="muted small">${prettyDate(b.generated_at)}</td></tr>`; };
   // `d.backtests` arrives newest-first, so the first match is the latest
   const mkts = [...new Set(all.map((b) => b.market))].sort();
-  let anyLegacy = false;
+  let anyLegacy = false, anyBest = false;
   const rows = mkts.map((m) => {
     const mine = runs.filter((b) => b.market === m);
     if (!mine.length) {
       const n = all.filter((b) => b.market === m).length;
-      return `<tr class="muted"><td>${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}</td><td></td>
-        <td colspan="5" class="small">no run of the strategy as configured — ${n} experiment${n === 1 ? "" : "s"} on
-        <a href="#/strategies/${esc(key)}/backtests">Backtests</a></td></tr>`;
+      return gap(m, true, "", `no run of the strategy as configured — ${n} experiment${n === 1 ? "" : "s"} on
+        <a href="#/strategies/${esc(key)}/backtests">Backtests</a>`);
     }
-    const oos = mine.find((b) => b.stage === "verify");
-    const ins = mine.find((b) => b.stage === "optimise");
-    const out = [];
-    if (oos) out.push(row(oos, m, true));
-    else if (ins) out.push(`<tr class="muted"><td>${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}</td>
-      <td><span class="stg st-ver-oos dim" title="${esc(`Verify window ${ver.start || ""} → latest`)}">Out-of-sample</span></td>
-      <td colspan="5" class="small">not yet verified — the in-sample result below is not a verdict</td></tr>`);
-    if (ins) out.push(row(ins, m, !out.length));
-    if (!out.length) { anyLegacy = true; const leg = mine.find((b) => b.stage === "legacy" || b.stage === "full") || mine[0]; out.push(row(leg, m, true)); }
+    // The current rules may not have run yet (a version bump with its runs still queued): then the
+    // newest version that HAS a run stands in, tagged as such, rather than the market showing nothing.
+    const out0 = [];
+    const curRuns = mine.filter((b) => b.spec_id === cur);
+    const latestSid = curRuns.length ? cur : mine[0].spec_id;
+    const latestTag = curRuns.length ? "latest" : "latest run";
+    const latest = mine.filter((b) => b.spec_id === latestSid);
+    if (!curRuns.length && cur) out0.push(gap(m, true, "", `the current version (${esc(cur.split("-")[0])}) has no run yet — the newest version that has one is shown`));
+    const oos = latest.find((b) => b.stage === "verify");
+    const ins = latest.find((b) => b.stage === "optimise");
+    const out = out0;
+    if (oos) out.push(row(oos, m, !out.length, latestTag));
+    else if (ins) out.push(gap(m, !out.length, `<span class="stg st-ver-oos dim" title="${esc(`Verify window ${ver.start || ""} → latest`)}">Out-of-sample</span>`,
+      `latest version not yet verified — the in-sample result below is not a verdict`));
+    if (ins) out.push(row(ins, m, !out.length, latestTag));
+    let leg = null;
+    if (!oos && !ins) {
+      leg = latest.find((b) => b.stage === "legacy" || b.stage === "full") || latest[0];
+      anyLegacy = anyLegacy || leg.stage === "legacy";
+      out.push(row(leg, m, !out.length, latestTag));
+    }
+    // In-sample first; when fewer than two versions ran there (the older ones predate stages), the
+    // legacy runs are ranked among themselves too, and the row says which window they shared.
+    for (const stage of ["optimise", "legacy"]) {
+      const ref = stage === "optimise" ? ins : leg;
+      const { best, n } = bestOf(mine, stage, ref ? winOf(ref) : null);
+      if (!best || n < 2) continue;
+      anyBest = true;
+      const where = stage === "legacy" ? ` (legacy runs, ${esc(best.window_start || "?")} → ${esc(best.window_end || "latest")})` : "";
+      if (best.spec_id === latestSid) out.push(gap(m, false, stageChip(best), `the latest version is also the best of ${n} versions run in this window${where}`));
+      else { anyLegacy = anyLegacy || stage === "legacy"; out.push(row(best, m, false, "best", stage === "legacy" && (!ref || winOf(ref) !== winOf(best)))); }
+      if (stage === "optimise") break;
+    }
     return out.join("");
   }).join("");
 
@@ -4500,7 +4531,7 @@ function perfGlance(d, key) {
   const nVariant = all.length - runs.length;
   return `<section class="sd-sec sd-glance" id="sd-glance">
     <h2>Measured outcome</h2>
-    <table class="dtab click"><thead><tr><th>Market</th><th>Stage</th>
+    <table class="dtab click"><thead><tr><th>Market</th><th>Version</th><th>Stage</th>
       <th class="num">CAGR</th>
       <th class="num" title="The strategy's CAGR minus its benchmark's. Positive means it beat buying and holding the index.">Excess CAGR</th>
       <th class="num">Max DD</th><th class="num">Sharpe</th><th>Run</th></tr></thead>
@@ -4519,6 +4550,27 @@ function strategyRules(host, d, key) {
   const ol = (xs) => (xs.length ? `<ol class="sd-list">${xs.map((x) => `<li>${mdBlock(x)}</li>`).join("")}</ol>` : "");
   const ul = (xs) => (xs.length ? `<ul class="sd-list">${xs.map((x) => `<li>${mdBlock(x)}</li>`).join("")}</ul>` : "");
   const sec = (id, title, body) => (body ? `<section class="sd-sec" id="sd-${id}"><h2>${title}</h2>${body}</section>` : "");
+  const gap = (m, first, stageHtml, text) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
+      <td></td><td>${stageHtml}</td><td colspan="5" class="small">${text}</td></tr>`;
+  // the best version in one market: each version's newest run within the pool, ranked by excess CAGR
+  const winOf = (b) => `${b.window_start}|${b.window_end}`;
+  const bestOf = (mine, stage, prefer) => {
+    // Legacy runs each chose their own window, so they rank only against runs sharing one: the
+    // latest version's window when two or more versions ran in it (so "best" is never worse than
+    // "latest" beside it), else the window holding the most versions (newer on a tie).
+    const groups = new Map();
+    for (const b of mine) {
+      if (b.stage !== stage || !b.spec_id || pct(b.summary.excess_cagr) === null) continue;
+      const w = winOf(b);
+      if (!groups.has(w)) groups.set(w, new Map());
+      const g = groups.get(w);
+      if (!g.has(b.spec_id)) g.set(b.spec_id, b);       // each version's newest run in that window
+    }
+    let pick = prefer && groups.get(prefer) && groups.get(prefer).size > 1 ? groups.get(prefer) : null;
+    if (!pick) for (const g of groups.values()) if (!pick || g.size > pick.size) pick = g;
+    const ranked = pick ? [...pick.values()].sort((a, b) => pct(b.summary.excess_cagr) - pct(a.summary.excess_cagr)) : [];
+    return { best: ranked[0] || null, n: ranked.length };
+  };
   // A strategy that splits its trade into stop / target / sizing / filter rules (strategies/base.py)
   // gets one section per part, each answering one question, instead of a single "Entry & exit".
   const split = d.kind !== "long-term" && ((d.stop_rules || []).length || (d.target_rules || []).length);
@@ -4555,6 +4607,7 @@ function strategyRules(host, d, key) {
       ${d.setups.length ? `<h3>${num()}Setups <span class="muted small">— the patterns that make a stock entry-eligible</span></h3>${codeTable(d.setups, "Setup")}` : ""}
       ${d.watch.length ? `<h3>Warning flags <span class="muted small">— don't disqualify, but cap or downgrade the decision</span></h3>${codeTable(d.watch, "Flag")}` : ""}
       </section>` : ""}
+      ${anyBest ? `<b>Best</b> is the version with the highest excess CAGR among each version's newest run in the same window — in-sample, where choosing between versions belongs; verify the one you pick, once. ` : ""}
     ${split ? splitSecs : sec("entry", d.kind === "long-term" ? "Is the price right?" : "Entry & exit", `${d.entry_rules.length ? (d.kind === "long-term" ? ul(d.entry_rules) : `<h3>${d.kind === "benchmark" ? "Entry" : "Entry, stop and target"}</h3>${ol(d.entry_rules)}`) : ""}${d.exit_rules.length ? `<h3>Exit</h3>${ol(d.exit_rules)}` : ""}`)}
     ${sec("decisions", "Decisions", d.decisions.length ? `<table class="dtab"><tbody>${d.decisions.map((x) => `<tr><td><span class="tag ${decisionClass(x.label)}">${esc(x.label)}</span></td><td>${esc(x.text)}</td></tr>`).join("")}</tbody></table>
       <p class="muted small">${esc(d.regime_note)}</p>` : "")}
