@@ -4459,8 +4459,8 @@ function perfGlance(d, key) {
   // cover different years, and ranking them together would crown whichever had the kinder market.
   // In-sample (optimise) runs are the pool -- choosing between versions is what that window is for;
   // while fewer than two versions have run there, legacy runs sharing one window are ranked as well.
-  // A tag names which row is which: "latest" (the current rules), "latest run" (the newest version
-  // with a run, when the current one has none yet) and "best". Verify runs
+  // A tag names which row is which: "latest" (the current rules -- "—" where they have no run yet)
+  // and "best". Verify runs
   // never rank: the best of several hold-out results is selection on the hold-out, which is the one
   // thing it must not be used for. Experiments (variants) stay out, as everywhere on this tab.
   const pct = (x) => { const v = parseFloat(String(x || "").replace(/[%+,]/g, "")); return Number.isFinite(v) ? v : null; };
@@ -4505,45 +4505,40 @@ function perfGlance(d, key) {
   // `d.backtests` arrives newest-first, so the first match is the latest
   const mkts = [...new Set(all.map((b) => b.market))].sort();
   let anyLegacy = false, anyBest = false;
+  // A row with no run behind it: the version and stage it would be, and "—" for every figure, so the
+  // latest version always has its row -- even before its runs land -- instead of an older one standing in.
+  const naRow = (m, first, stageHtml, why) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
+      <td>${cur ? `v${esc(cur.split("-")[0].replace(/^v/, ""))}` : "—"} <span class="tag neutral small">latest</span></td>
+      <td>${stageHtml || "—"}</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+      <td class="small">${why}</td></tr>`;
+  const oosChip = `<span class="stg st-ver-oos dim" title="${esc(`Verify window ${ver.start || ""} → latest`)}">Out-of-sample</span>`;
   const rows = mkts.map((m) => {
     const mine = runs.filter((b) => b.market === m);
-    if (!mine.length) {
-      const n = all.filter((b) => b.market === m).length;
-      return gap(m, true, "", `no run of the strategy as configured — ${n} experiment${n === 1 ? "" : "s"} on
-        <a href="#/strategies/${esc(key)}/backtests">Backtests</a>`);
-    }
-    // The current rules may not have run yet (a version bump with its runs still queued): then the
-    // newest version that HAS a run stands in, tagged as such, rather than the market showing nothing.
-    const out0 = [];
+    const out = [];
     const curRuns = mine.filter((b) => b.spec_id === cur);
-    const latestSid = curRuns.length ? cur : mine[0].spec_id;
-    const latestTag = curRuns.length ? "latest" : "latest run";
-    const latest = mine.filter((b) => b.spec_id === latestSid);
-    if (!curRuns.length && cur) out0.push(gap(m, true, "", `the current version (${esc(cur.split("-")[0])}) has no run yet — the newest version that has one is shown`));
-    const oos = latest.find((b) => b.stage === "verify");
-    const ins = latest.find((b) => b.stage === "optimise");
-    const out = out0;
-    if (oos) out.push(row(oos, m, !out.length, latestTag));
-    else if (ins) out.push(gap(m, !out.length, `<span class="stg st-ver-oos dim" title="${esc(`Verify window ${ver.start || ""} → latest`)}">Out-of-sample</span>`,
-      `latest version not yet verified — the in-sample result below is not a verdict`));
-    if (ins) out.push(row(ins, m, !out.length, latestTag));
-    let leg = null;
-    if (!oos && !ins) {
-      leg = latest.find((b) => b.stage === "legacy" || b.stage === "full") || latest[0];
-      anyLegacy = anyLegacy || leg.stage === "legacy";
-      out.push(row(leg, m, !out.length, latestTag));
+    const oos = curRuns.find((b) => b.stage === "verify");
+    const ins = curRuns.find((b) => b.stage === "optimise");
+    const leg = !oos && !ins ? (curRuns.find((b) => b.stage === "legacy" || b.stage === "full") || curRuns[0] || null) : null;
+    if (oos) out.push(row(oos, m, true, "latest"));
+    else if (ins) out.push(naRow(m, true, oosChip, "not verified yet"));
+    if (ins) out.push(row(ins, m, !out.length, "latest"));
+    if (leg) { anyLegacy = anyLegacy || leg.stage === "legacy"; out.push(row(leg, m, !out.length, "latest")); }
+    if (!curRuns.length) {
+      const nx = all.filter((b) => b.market === m && b.spec_id === cur).length;
+      out.push(naRow(m, true, "", nx ? `no plain run yet — ${nx} experiment${nx === 1 ? "" : "s"} on Backtests` : "no run yet"));
     }
-    // In-sample first; when fewer than two versions ran there (the older ones predate stages), the
-    // legacy runs are ranked among themselves too, and the row says which window they shared.
+    // Best: in-sample first. When the in-sample pool holds only the latest version itself (older
+    // versions predate stages), the legacy runs are ranked too, and a best row from a different window
+    // says which window it was.
     for (const stage of ["optimise", "legacy"]) {
       const ref = stage === "optimise" ? ins : leg;
       const { best, n } = bestOf(mine, stage, ref ? winOf(ref) : null);
-      if (!best || n < 2) continue;
+      if (!best || (best.spec_id === cur && n < 2)) continue;
       anyBest = true;
       const where = stage === "legacy" ? ` (legacy runs, ${esc(best.window_start || "?")} → ${esc(best.window_end || "latest")})` : "";
-      if (best.spec_id === latestSid) out.push(gap(m, false, stageChip(best), `the latest version is also the best of ${n} versions run in this window${where}`));
+      if (best.spec_id === cur) out.push(gap(m, false, stageChip(best), `the latest version is also the best of ${n} versions run in this window${where}`));
       else { anyLegacy = anyLegacy || stage === "legacy"; out.push(row(best, m, false, "best", stage === "legacy" && (!ref || winOf(ref) !== winOf(best)))); }
-      if (stage === "optimise") break;
+      break;
     }
     return out.join("");
   }).join("");
