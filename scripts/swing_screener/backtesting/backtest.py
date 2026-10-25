@@ -39,6 +39,7 @@ import json
 import math
 import logging
 import os
+import time
 from dataclasses import dataclass, replace as dc_replace
 from pathlib import Path
 
@@ -225,6 +226,41 @@ def _upsert_signals(rows: list[tuple], target: str) -> None:
             extras=EXCLUDED.extras, spec_id=EXCLUDED.spec_id
     """
     db.execute_values(query, rows)
+
+
+def seed_signal_cache(
+    market_key: str, strategy, source_spec: str, start: pd.Timestamp, symbols: list[str] | None = None,
+) -> int:
+    """Copy `source_spec`'s cached signal rows under this strategy's own spec_id, from `start` on.
+
+    Only for a source with the same `signal_id` -- a `--const` variant whose overrides beyond the
+    source's are all `signal_exempt_consts`, which evaluate() never reads -- so each copied row is
+    exactly the row this variant's own scan would write, and the scan then reads it as an ordinary
+    hit. Copied rather than shared, so everything keyed on a run's spec_id (the trade-anatomy
+    overlay, a re-run of this variant) finds its own rows. Existing rows are kept. Returns the
+    number copied."""
+    if source_spec == strategy.spec_id():
+        return 0
+    with db.get_connection().cursor() as cur:
+        if not db.signal_key_has_spec(cur):
+            return 0   # one row per bar: a copy would overwrite the source
+    cols = ("market, strategy, symbol, date, hard_gates_passed, first_failed_gate, hard_gates, has_setup, "
+            "setups, h_value, h_index, l_value, p_value, prior_swing_low, overhead_levels, watch_flags, "
+            "watch_notes, extras")
+    t0 = time.time()
+    with db.get_connection().cursor() as cur:
+        cur.execute(
+            f"INSERT INTO backtest_signals ({cols}, spec_id) "
+            f"SELECT {cols}, %s FROM backtest_signals "
+            f"WHERE market=%s AND strategy=%s AND spec_id=%s AND date >= %s "
+            f"AND (%s::text[] IS NULL OR symbol = ANY(%s::text[])) "
+            f"ON CONFLICT (market, strategy, symbol, date, spec_id) DO NOTHING",
+            (strategy.spec_id(), market_key, strategy.key, source_spec, start.date(), symbols, symbols),
+        )
+        n = cur.rowcount
+    logger.info("Signal cache: seeded %d rows from %s (same signal_id %s) in %.0fs",
+                n, source_spec, strategy.signal_id(), time.time() - t0)
+    return n
 
 
 def backtest_symbol(
@@ -757,6 +793,7 @@ def run_backtest(
     market_key: str, start_date: str, limit: int | None = None, deep_lookback_days: int = 1000,
     use_signal_cache: bool = True, strategy_key: str = DEFAULT_STRATEGY,
     accept_labels: tuple[str, ...] = ("TRADE - HIGH CONFIDENCE",),
+    signal_source: str | None = None,
 ) -> pd.DataFrame:
     db.init_schema()
     db.ensure_signal_key()   # a backtest is where no older-code writer can still be running (see db)
@@ -770,6 +807,8 @@ def run_backtest(
     if limit:
         candidates = candidates[:limit]
         logger.info("Capped to %d symbols for this run", len(candidates))
+    if signal_source and use_signal_cache:
+        seed_signal_cache(market_key, strategy, signal_source, start, candidates)
 
     from ..providers import YFinanceProvider
 
@@ -1098,6 +1137,7 @@ def run_portfolio_backtest(
     only_symbols: list[str] | None = None,
     fundamentals: str | None = None,
     workers: int = 1,
+    signal_source: str | None = None,
 ):
     """Portfolio-level backtest: one capital pool, a position cap and costs.
 
@@ -1164,6 +1204,8 @@ def run_portfolio_backtest(
     candidates = sample_candidates(candidates, sample, include=include) if sample else (
         candidates[:limit] if limit else candidates
     )
+    if signal_source and use_signal_cache:
+        seed_signal_cache(market_key, strategy, signal_source, start, candidates)
 
     deep_data: dict = {}
     if refresh_history:
@@ -1620,6 +1662,7 @@ def main(argv: list[str] | None = None) -> dict | None:
                     help="skip updating the viewer database after the run")
 
     args = parser.parse_args(argv)
+    signal_source = None   # a run whose cached signal rows this one would write too (seed_signal_cache)
     if getattr(args, "vcp", None):
         # Rebind the strategy module's VCP before anything reads it. spec_params()
         # expands that dataclass, so the fingerprint -- and therefore the signal cache
@@ -1651,13 +1694,22 @@ def main(argv: list[str] | None = None) -> dict | None:
         # fingerprint moves here too and the variant cannot overwrite the shipped run.
         # One implementation, shared with a strategy's live_variant -- and it REFUSES an override
         # that would move the fingerprint without moving the behaviour (strategies/variants.py).
-        from ..strategies.variants import apply_consts
+        from ..strategies.variants import apply_consts, split_signal_exempt
 
+        # The overrides the scan reads go first: the spec id between the two applications is the
+        # run that would write exactly the rows this variant writes, so its cache can seed ours.
+        scan_c, exempt_c = split_signal_exempt(args.strategy, dict(item.partition("=")[::2] for item in args.const))
         try:
-            applied = apply_consts(args.strategy, dict(item.partition("=")[::2] for item in args.const))
+            applied = apply_consts(args.strategy, scan_c)
+            source_spec, source_signal = get_strategy(args.strategy).spec_id(), get_strategy(args.strategy).signal_id()
+            applied.update(apply_consts(args.strategy, exempt_c))
         except ValueError as e:
             parser.error(f"--const: {e}")
         logger.info("const override %s -> spec %s", applied, get_strategy(args.strategy).spec_id())
+        if exempt_c and get_strategy(args.strategy).signal_id() == source_signal:
+            signal_source = source_spec
+            logger.info("%s are read only after the signal scan: seeding the signal cache from %s",
+                        sorted(exempt_c), source_spec)
     # A backtest must be attributable to a recorded version. If the rules have
     # moved without a version bump + `versions --update`, the report directory
     # would claim a version whose rules no longer match, so refuse instead.
@@ -1678,7 +1730,7 @@ def main(argv: list[str] | None = None) -> dict | None:
         df = run_backtest(
             args.market, args.start, args.limit, args.deep_lookback_days,
             use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy,
-            accept_labels=labels,
+            accept_labels=labels, signal_source=signal_source,
         )
         out_path = REPORT_DIR / f"{args.market}_{args.strategy}_persymbol_{args.start}.csv"
         df.to_csv(out_path, index=False)
@@ -1740,6 +1792,7 @@ def main(argv: list[str] | None = None) -> dict | None:
         tdf, perf, result = run_portfolio_backtest(
             args.market, args.start, args.limit, args.deep_lookback_days,
             use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy, workers=args.workers,
+            signal_source=signal_source,
             accept_labels=labels, max_positions=args.max_positions, exit_policy=policy,
             sample=args.sample, refresh_history=args.refresh_history,
             include=[x.strip() for x in args.include.split(",") if x.strip()],

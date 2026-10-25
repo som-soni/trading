@@ -303,6 +303,19 @@ class SpecMeta:
     def spec_id(cls) -> str:
         return f"v{cls.version}-{cls.fingerprint()}"
 
+    @classmethod
+    def signal_id(cls) -> str:
+        """What a cached signal row depends on: the version and every tunable except
+        `signal_exempt_consts`. Two spec ids with one signal id record identical rows. Never a
+        run's identity -- runs, the version gate and the Strategies page stay on spec_id."""
+        import hashlib
+        import json
+
+        exempt = set(getattr(cls, "signal_exempt_consts", ()))
+        params = {k: v for k, v in cls.spec_params().items() if k not in exempt}
+        blob = json.dumps(params, sort_keys=True, separators=(",", ":"))
+        return f"v{cls.version}-s{hashlib.sha256(blob.encode()).hexdigest()[:8]}"
+
 
 class PortfolioStrategy(SpecMeta):
     """A strategy that selects by ranking the whole universe and rebalancing,
@@ -368,6 +381,14 @@ class Strategy(SpecMeta, ABC):
     # ctx.extras. Such a strategy cannot use a cached signal that predates
     # extras being persisted — it must recompute that bar.
     needs_ctx_extras: bool = False
+    # Module constants that evaluate() never reads -- the exits, the stop and target placement,
+    # sizing, the portfolio rules, the prefilter's floors. A `backtest_signals` row records only
+    # build_context() + evaluate(), so it is the same whatever these are set to: a `--const`
+    # variant that moves only these may start from the rows of the run without them
+    # (`signal_id`, backtest.seed_signal_cache) instead of rescanning the universe. Still part of
+    # spec_params / spec_id: the variant is a different strategy and is grouped as one.
+    # tests/test_signal_exempt.py checks that evaluate() cannot reach any of them.
+    signal_exempt_consts: tuple[str, ...] = ()
     extra_columns: tuple[str, ...] = ()
     extra_numeric_columns: tuple[str, ...] = ()
     # True when the LIVE screener should attach current fundamentals to the

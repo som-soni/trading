@@ -964,6 +964,26 @@ class MinerviniSpecStrategy(Strategy):
                              "closes_below_200", "below_200_share_pct", "undercuts", "undercuts_failed",
                              "undercuts_pending", "bh_atr_pct")
     needs_ctx_extras = True
+    # Read after the scan, never by evaluate(): a `--const` variant moving only these reuses the
+    # shipped run's signal rows (base.Strategy.signal_exempt_consts). The detector's constants,
+    # the setups' (VOL_MULT, BUY_RANGE_PCT, COIL_PCT, UPPER_HALF, LOW_CHEAT_ENABLED,
+    # CHEAT_BLOCK_VCP09) and the watch flags' are not here: a variant on one of them rescans.
+    signal_exempt_consts = (
+        # the plan: build_plans, signal_meta, classify
+        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
+        "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR",
+        # the exits (portfolio_sim's ExitPolicy)
+        "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
+        "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
+        # sizing, the market filter and the book (backtesting/spec.py, --spec)
+        "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
+        "MKT_GUIDE", "MKT_INDEX_SMA", "MKT_BREADTH_MIN_PCT", "MKT_BREADTH_RISING_DAYS",
+        "MKT_SMA_RISING_DAYS", "MAX_POSITIONS", "MAX_OPEN_RISK_PCT", "MAX_ADV_PCT",
+        # which bars are scanned (prefilter_row) and the live price floor -- not what a scan records
+        "MIN_TURNOVER_INR_CR", "MIN_TURNOVER_USD_M", "LIVE_MIN_PRICE_INR", "LIVE_MIN_PRICE_USD",
+        # the --fundamentals filter, applied to signals after the scan
+        "FUND_EPS_GROWTH_MIN_PCT", "FUND_SALES_GROWTH_MIN_PCT", "FUND_MARGIN_SLACK_PP",
+    )
     # SEPA part 2. The screener fetches current fundamentals for rows that already
     # cleared the screen and annotates them (revenue/earnings YoY, gross-margin
     # change, fundamentals_ok). LIVE ONLY, and deliberately not a gate: the stored
