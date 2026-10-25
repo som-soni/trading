@@ -30,7 +30,9 @@ MARKET_NAME = {k: c.name for k, c in MARKETS.items()}
 BENCH_SERIES = {"us": "SPX", "india": "NIFTY50"}
 # (ok within, warn within) days for datasets that are not refreshed every trading day
 AGE_LIMITS = {"universe": (8, 15), "industries": (35, 60), "names": (60, 120), "quality": (8, 32), "earnings": (8, 15),
-              "rates": (4, 8)}   # rates: FRED publishes a day late, so a session check would warn every day
+              "rates": (4, 8),   # rates: FRED publishes a day late, so a session check would warn every day
+              # judged from the job's own run log (their data is monthly, fortnightly or per company):
+              "indicators": (4, 8), "news": (4, 8), "financials": (8, 15), "fpi_sectors": (8, 15)}
 LOG_TAIL_LINES = 150
 
 
@@ -55,7 +57,7 @@ def _age_item(key: str, label: str, when, note: str = "") -> dict:
     age = (dt.datetime.now(dt.timezone.utc) - when_dt).total_seconds() / 86400
     status = "ok" if age <= ok else "warn" if age <= warn else "stale"
     return {"key": key, "label": label, "date": when_dt.isoformat(), "status": status, "kind": "age",
-            "text": f"{age:.0f} days old (refresh every ~{ok - 1})" + (f" · {note}" if note else "")}
+            "text": f"{age:.0f} day{'' if round(age) == 1 else 's'} old (refresh every ~{ok - 1} days)" + (f" · {note}" if note else "")}
 
 
 def _snapshot_item(market: str, expected) -> dict:
@@ -84,6 +86,22 @@ def _snapshot_item(market: str, expected) -> dict:
         item["stale_inputs"] = stale
     if held:
         item["text"] += f" · {held}"
+    return item
+
+
+def _job_item(q, key: str, label: str, step: str, market: str, note: str = "") -> dict:
+    """Freshness of a dataset whose own dates cannot show it (monthly indicators, per-company filings):
+    when its job last succeeded, flagged when the latest run of that job failed."""
+    ok = q("""SELECT max(finished_at) FROM job_steps WHERE step=%s AND (market=%s OR market IS NULL OR market='all')
+              AND status='ok'""", (step, market))[0][0]
+    item = _age_item(key, label, ok, note)
+    last = q("""SELECT status, left(coalesce(error, detail, ''), 120) FROM job_steps WHERE step=%s
+                AND (market=%s OR market IS NULL OR market='all') AND status IN ('ok', 'failed', 'skipped')
+                ORDER BY finished_at DESC NULLS LAST LIMIT 1""", (step, market))
+    if last and last[0][0] == "failed":
+        item["status"] = "warn" if item["status"] == "ok" else item["status"]
+        item["text"] += f" · latest run failed: {last[0][1]}"
+    item["text"] = item["text"].replace(" old (", " since the job last succeeded (", 1)
     return item
 
 
@@ -117,6 +135,25 @@ def freshness(q, price_day) -> dict:
         items.append(_session_item("screening", "Screening", last_d, exp,
                                    f"strategies run that day: {', '.join(latest)}" if latest else ""))
         items.append(_snapshot_item(m, exp))
+        sd = q("SELECT max(date) FROM sector_daily WHERE market=%s", (m,))[0][0]
+        items.append(_session_item("sectors", "Sector ranking (Sectors, themes)", sd, exp))
+        pm = q("SELECT max(date) FROM postmarket_daily WHERE market=%s", (m,))[0][0]
+        items.append(_session_item("postmarket", "Post-market analysis", pm, exp))
+        nav = q("SELECT max(date) FROM fund_nav WHERE market=%s", (m,))[0][0]
+        if nav:
+            items.append(_session_item("funds", "Mutual fund NAVs", nav, exp))
+        if q("SELECT 1 FROM index_series WHERE market=%s AND series='FII_NET' LIMIT 1", (m,)):
+            fl = q("SELECT max(date) FROM index_series WHERE market=%s AND series='FII_NET'", (m,))[0][0]
+            items.append(_session_item("flows", "FII / DII flows", fl, exp))
+        if q("SELECT to_regclass('derivatives_bhav') IS NOT NULL")[0][0] and q("SELECT 1 FROM derivatives_bhav WHERE market=%s LIMIT 1", (m,)):
+            fo = q("SELECT max(trade_date) FROM derivatives_bhav WHERE market=%s", (m,))[0][0]
+            items.append(_session_item("fno", "F&O prices & open interest", fo, exp))
+        items.append(_job_item(q, "indicators", "Economic indicators (Macro)", "indicators", m))
+        items.append(_job_item(q, "news", "News & events", "news", m))
+        items.append(_job_item(q, "financials", "Company financials", "financials", m))
+        from ..marketdata import fpi_sectors
+        if m == fpi_sectors.MARKET and q("SELECT to_regclass('fpi_sector_flows') IS NOT NULL")[0][0]:
+            items.append(_job_item(q, "fpi_sectors", "FPI flows by sector (Macro)", "fpi_sectors", m))
         items.append(_age_item("universe", "Universe list", _mtime(paths.DATA_DIR / f"universe_{m}.csv")))
         items.append(_age_item("industries", "Industry classification (Sectors)",
                                q("SELECT max(updated_at) FROM symbol_industry WHERE market=%s", (m,))[0][0]))

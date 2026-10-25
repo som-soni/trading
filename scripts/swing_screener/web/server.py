@@ -51,9 +51,12 @@ def _startup() -> None:
     threading.Thread(target=_prewarm_sectors, daemon=True).start()
     threading.Thread(target=lambda: [(_names(m), _liquidity(m)) for m in tuple(MARKETS)], daemon=True).start()  # first search is instant
     names_mod.init_schema()
-    missing = [m for m in tuple(MARKETS) if not names_mod.load(m)]
-    if missing:  # first run: fetch company names in the background (a few seconds; the UI shows tickers meanwhile)
-        threading.Thread(target=lambda: [names_mod.refresh(m) for m in missing], daemon=True).start()
+    # first run: ask the job queue for company names (the web app never downloads; the UI shows tickers meanwhile)
+    for m in [m for m in tuple(MARKETS) if not names_mod.load(m)]:
+        try:
+            _jq().enqueue(["names"], m, {}, requested_by="web: no company names stored", priority=10)
+        except Exception as exc:  # noqa: BLE001 - no queue yet: the weekly reference run fetches them
+            print(f"names {m}: could not queue the names job ({exc})")
 
 
 # --------------------------------------------------------------- symbols

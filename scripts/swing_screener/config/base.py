@@ -57,6 +57,9 @@ class MarketConfig:
     # "sec_edgar" (SEC XBRL company facts) or "nse" (NSE results filings); yfinance is the fallback
     # for any company the source has nothing for, and for a market that names none
     quarterly_source: str = ""
+    # an exchange's official end-of-day file that completes the latest sessions after the provider pull
+    # (marketdata/eod_files.py; "nse_cm" = NSE's cash-market bhavcopy). Empty: the provider alone.
+    eod_file: str = ""
     # per-stock news (marketdata/news.py): the Google News edition to search, and the word that turns
     # a company name into a market-news query ("Apple stock", "Reliance Industries share")
     news_locale: str = "hl=en-US&gl=US&ceid=US:en"

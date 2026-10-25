@@ -128,6 +128,33 @@ def save_cached(market: str, symbol: str, df: pd.DataFrame) -> None:
     db.execute_values(query, rows)
 
 
+def append_bars(market: str, new: dict[str, pd.DataFrame], context_days: int = 600) -> int:
+    """Store bars for dates a symbol does not have yet, with their indicators computed on the full recent
+    history. `new`: symbol -> OHLCV rows indexed by date. Stored dates are never overwritten (the provider's
+    bar wins), and only the new rows are written. Returns the rows written."""
+    if not new:
+        return 0
+    first = min(df.index.min() for df in new.values() if df is not None and not df.empty)
+    have = load_many_cached(market, list(new), since=first - pd.Timedelta(days=context_days))
+    rows = []
+    for sym, add in new.items():
+        if add is None or add.empty:
+            continue
+        old = have.get(sym)
+        add = add[~add.index.isin(old.index)] if old is not None else add
+        if add.empty:
+            continue
+        combined = pd.concat([old, add]).sort_index() if old is not None else add.sort_index()
+        enriched = ind.enrich_daily(combined)
+        for idx, row in enriched.loc[enriched.index.isin(add.index)].iterrows():
+            rows.append((market, sym, idx.date(), *[db.py_value(row.get(c)) for c in _RAW_COLUMNS],
+                         *[db.py_value(row.get(c)) for c in _INDICATOR_COLUMNS]))
+    if rows:
+        cols = ["market", "symbol", "date"] + _RAW_COLUMNS + _INDICATOR_COLUMNS
+        db.execute_values(f"INSERT INTO prices ({', '.join(cols)}) VALUES %s ON CONFLICT (market, symbol, date) DO NOTHING", rows)
+    return len(rows)
+
+
 def get_bars(
     provider: DataProvider,
     market: str,

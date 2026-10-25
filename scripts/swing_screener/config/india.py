@@ -16,7 +16,7 @@ INDIA_CONFIG = MarketConfig(
     currency_symbol="₹",
     currency_code="INR",
     exchange="NSE", badge="NSE", flag="🇮🇳", symbol_suffix=".NS", fx_to_usd="USDINR",
-    quarterly_source="nse",
+    quarterly_source="nse", eod_file="nse_cm",
     news_locale="hl=en-IN&gl=IN&ceid=IN:en", news_term="share",
     money_unit="₹ Cr", money_divisor=1e7,
     cap_classes=("rank", 100, 250), cap_note="SEBI / AMFI: large caps are the 100 largest listed companies by market cap, mid caps the next 150, small caps the rest",

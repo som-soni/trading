@@ -166,8 +166,14 @@ def _prices(ctx: Ctx) -> None:
     if not r["updated"]:
         raise RuntimeError(f"no symbols updated ({len(r['failed'])} failed) — is the data source reachable?")
     st = freshness.price_status(ctx.market)
+    eod = r.get("eod") or {}
+    eod_txt = ""
+    if eod.get("source"):
+        eod_txt = (f" · {eod['source']}: " + (f"error {eod['error'][:80]}" if eod.get("error") else
+                   ", ".join(f"{x['day']} +{x['added']:,}" for x in eod["days"]) or "nothing missing")
+                   + (f" (no file yet for {', '.join(eod['absent'])})" if eod.get("absent") else ""))
     ctx.step.detail = (f"{r['updated']:,} / {r['requested']:,} symbols · {len(r['failed'])} failed · "
-                       f"{len(r['stale'])} lagging · {r['elapsed_s']:.0f}s · {freshness.describe(st)}")
+                       f"{len(r['stale'])} lagging · {r['elapsed_s']:.0f}s · {freshness.describe(st)}{eod_txt}")
     ctx.step.stats = {"requested": r["requested"], "updated": r["updated"], "failed": len(r["failed"]),
                       "lagging": len(r["stale"]), "latest": st["latest"], "lag": st["lag"]}
 
@@ -206,7 +212,9 @@ def _fno_bhav(ctx: Ctx) -> None:
     if ctx.market != "india":
         ctx.step.skip("NSE derivatives are India only")
         return
-    start = dt.date.fromisoformat(str(ctx.opt("start"))) if ctx.opt("start") else None
+    # scheduled runs look back `recent_days` only; the full history (from FIRST_DAY) is a one-off run without it
+    start = (dt.date.fromisoformat(str(ctx.opt("start"))) if ctx.opt("start") else
+             dt.date.today() - dt.timedelta(days=int(ctx.opt("recent_days"))) if ctx.opt("recent_days") else None)
     out = derivatives.ingest(ctx.market, start=start,
                              instruments=() if ctx.opt("all_instruments") else derivatives.INDEX_INSTRUMENTS)
     ctx.step.detail = (f"{out['rows']:,} contract rows from {out['sessions']} sessions"
@@ -849,7 +857,7 @@ JOBS: dict[str, Job] = {j.name: j for j in [
 PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
-              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", "breadth", "sectors",
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), "breadth", "sectors",
                        "screens", "postmarket", "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
@@ -862,7 +870,7 @@ PIPELINES: dict[str, dict] = {
              "defaults": {"strategies": ["all"]}},
     "daily": {"summary": "after each market's close — data only: prices, indexes, rates, fund NAVs, breadth, sectors, the screens' snapshot, "
                          "post-market analysis",
-              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", "breadth", "sectors", "screens",
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), "breadth", "sectors", "screens",
                        "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},

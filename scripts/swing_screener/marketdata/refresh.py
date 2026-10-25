@@ -55,6 +55,16 @@ def refresh(
         RoutedProvider(), market, tickers, lookback_days,
         batch_size=batch_size, force=force,
     )
+    # the exchange's official end-of-day file completes sessions the provider has only partly delivered
+    # (marketdata/eod_files.py; India: NSE's bhavcopy). Whole-universe runs only.
+    eod = None
+    if not symbols and MARKETS[market].eod_file:
+        from . import eod_files
+        try:
+            eod = eod_files.fill(market)
+        except Exception as exc:  # noqa: BLE001 - the provider's bars stand; the next run tries again
+            logger.warning("end-of-day file fill failed: %s", exc)
+            eod = {"source": MARKETS[market].eod_file, "error": str(exc), "added": 0, "days": []}
     elapsed = time.time() - t0
 
     # report the freshness actually achieved, not just the count: a symbol that
@@ -70,7 +80,7 @@ def refresh(
     return {
         "market": market, "requested": len(tickers), "updated": len(bars),
         "failed": failed, "elapsed_s": round(elapsed, 1),
-        "newest_bar": newest, "stale": stale,
+        "newest_bar": newest, "stale": stale, "eod": eod,
     }
 
 

@@ -330,7 +330,7 @@ pattern catalogue and the glossary.
 
 | Page | What it shows |
 |---|---|
-| **Status** | The **Job queue** (worker running or stopped, its lanes, running and waiting jobs) and, per market, every dataset with its date and a badge: ok, warn (one trading day behind — a holiday or a run not done yet) or stale |
+| **Status** | The **Job queue** (worker running or stopped, its lanes, running and waiting jobs) and, per market, every dataset with its date and a badge: ok, warn (one trading day behind — a holiday or a run not done yet) or stale. Daily datasets (prices, breadth, indices, the stock snapshot, sector ranking, post-market, fund NAVs, FII/DII flows, F&O) are checked against the trading day they should have reached; slower ones (rates, universe, names, industries, quality, earnings dates) by age; and economic indicators, news, company financials and FPI-by-sector — whose own dates cannot show it — by when their job last succeeded, with a warning when its latest run failed |
 | **Runs** | Every run, its steps and log; a failed run can be resumed |
 | **Schedules** | When each routine runs, with **run now** |
 | **Reports archive** | Every backtest and screening report. A run opens with tabs *Report*, *Funnel* (backtests), *Equity curve* and *Trades* |
