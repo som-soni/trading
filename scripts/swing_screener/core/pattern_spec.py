@@ -194,6 +194,23 @@ class PatternParams:
     # Beyond the spec: a wedge's lines converge at least this many times faster on the steep side
     # (WG-02 asks only that they converge, so nearly parallel lines -- a channel -- passed). 0 = off.
     wg_min_converge: float = 0.0
+    # TL-06, beyond the spec: boundary lines must BOUND price, not run through it. TL-01's least-squares
+    # fit passes through its swing points, so a small bounce among larger highs drags the upper line into
+    # the bars and TL-03 then rejects the real pattern: HINDCOPPER.NS's 2026 topping structure (falling
+    # highs 760 -> 618 -> 587 over a ~450 floor) found nothing because the July 512 bounce pulled the
+    # fitted line through price. True fits each line through the two swing points that keep every close
+    # on the pattern's side (within bo_buffer), preferring the pair the most swings touch; when no pair
+    # bounds the closes, the least-squares fit stands (and TL-03 judges it). False reproduces the spec.
+    bound_lines: bool = False
+    # Beyond the spec: a boundary pattern gets the same post-breakout life as a double or a head and
+    # shoulders (§3 walked from its breakout bar) instead of existing only while today's close breaks
+    # its refit lines. Without it a wedge's or descending triangle's breakdown vetoes (G2) only on the
+    # breakdown day itself: the next day the trailing closes sit beyond the line, containment fails and
+    # the pattern vanishes -- HINDCOPPER.NS broke its 2026 floor on 2026-10-17 and showed nothing by
+    # the 20th. The breakout bar is the first close past the line by bo_buffer AFTER the line's last
+    # touch (before it, TL-04 judges), on BO-02's volume when bullish; BO-05's close back through the
+    # frozen line within fail_days marks it FAILED. False reproduces the spec.
+    boundary_life: bool = False
     # Beyond the spec (TL-04): TL-03's containment allows a close up to `tol` (3%+) beyond a line, but
     # on the BREAKOUT side a close beyond the line by more than bo_buffer is a breakout (BO-01). If the
     # line was touched again after such a close, price broke out and came back: the line was never the
@@ -1358,9 +1375,45 @@ def classify_lines(upper: Line, lower: Line, mid_x: float,
     return None
 
 
+def bound_fit(side: list[tuple[int, float]], close: np.ndarray, lo: int, hi: int,
+              *, upper: bool, slack: float, t_frac: float, free_tail: bool = False) -> Line | None:
+    """TL-06: the line through two of the side's swing points that keeps every close in [lo, hi] on
+    the pattern's side of it (within `slack`), preferring the pair the most swings touch (TL-02's
+    tolerance), then the one contained longest, then the tightest fit. With `free_tail`
+    (boundary_life), a close through the line AFTER its last touch is tomorrow's breakout or a TL-03
+    for the §3 walk to judge, not the fit's business — without this, the trailing bars of a breakout
+    already under way reject every bounding pair and the fit falls back to least squares.
+    None when no pair bounds the closes."""
+    xs = np.arange(lo, hi + 1)
+    c = close[lo: hi + 1]
+    best: tuple[tuple[int, int, float], Line] | None = None
+    for i in range(len(side)):
+        for j in range(i + 1, len(side)):
+            (x0, y0), (x1, y1) = side[i], side[j]
+            if x1 == x0:
+                continue
+            slope = (y1 - y0) / (x1 - x0)
+            line = Line(float(slope), float(y0 - slope * x0))
+            v = line.slope * xs + line.intercept
+            if (v <= 0).any():
+                continue
+            viol = (c > v * (1 + slack)) if upper else (c < v * (1 - slack))
+            first = int(np.argmax(viol)) + lo if viol.any() else hi + 1
+            touched = [x for x, y in side if abs(y - line.at(x)) / line.at(x) <= t_frac]
+            if first <= (max(touched) if free_tail else hi):
+                continue
+            gap = float(sum(abs(y - line.at(x)) for x, y in side))
+            key = (len(touched), first, -gap)
+            if best is None or key > best[0]:
+                best = (key, line)
+    return best[1] if best else None
+
+
 def _channel(d: pd.DataFrame, pts: list[Swing], start: int, t_hi: int,
-             t_frac: float) -> tuple[Line, Line, int, int] | None:
-    """Fit TL-01's two lines to the swings in [start, t_hi]."""
+             t_frac: float, close: np.ndarray | None = None,
+             p: PatternParams | None = None) -> tuple[Line, Line, int, int] | None:
+    """Fit TL-01's two lines to the swings in [start, t_hi]; with `bound_lines` (TL-06, needs `close`
+    and `p`), each line is re-anchored to bound the closes."""
     highs = [(s.pos, s.price) for s in pts if s.kind == "H" and start <= s.pos <= t_hi]
     lows = [(s.pos, s.price) for s in pts if s.kind == "L" and start <= s.pos <= t_hi]
     if len(highs) < 2 or len(lows) < 2:
@@ -1368,6 +1421,11 @@ def _channel(d: pd.DataFrame, pts: list[Swing], start: int, t_hi: int,
     upper, lower = fit_line(highs), fit_line(lows)
     if upper is None or lower is None:
         return None
+    if p is not None and p.bound_lines and close is not None:
+        upper = bound_fit(highs, close, start, t_hi, upper=True, slack=p.bo_buffer,
+                          t_frac=t_frac, free_tail=p.boundary_life) or upper
+        lower = bound_fit(lows, close, start, t_hi, upper=False, slack=p.bo_buffer,
+                          t_frac=t_frac, free_tail=p.boundary_life) or lower
     swings_in = [s for s in pts if start <= s.pos <= t_hi]
     tu = touches(upper, [s for s in swings_in if s.kind == "H"], t_frac)
     tl = touches(lower, [s for s in swings_in if s.kind == "L"], t_frac)
@@ -1404,7 +1462,7 @@ def detect_boundaries(daily: pd.DataFrame, p: PatternParams = PatternParams()) -
             # TR-01: the scale follows the pattern's length
             if (dur < p.tr_scale_days) != (k == p.k_minor):
                 continue
-            fit = _channel(d, pts, anchor.pos, t_hi, t_frac)
+            fit = _channel(d, pts, anchor.pos, t_hi, t_frac, close, p)
             if fit is None:
                 continue
             upper, lower, tu, tl = fit
@@ -1442,23 +1500,57 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
         "upper_slope": upper.pct_slope(mid), "lower_slope": lower.pct_slope(mid),
     })
 
-    # TL-03 / TR-01: price stays inside the lines before the breakout
-    if not contained(upper, lower, close, s_pos, t_hi, t_frac):
-        out["fail"] = "TL-03"
-        return out
+    down = kind in (RISING_WEDGE, DESCENDING)
+    bo_line, far_line = (lower, upper) if down else (upper, lower)
+    last_touch = max(touch_pos) if touch_pos else None
+    bo_pos = None
+    # TL-03 / TR-01: price stays inside the lines before the breakout. With `boundary_life`, a close
+    # past the breakout-side line by BO-01's buffer after that line's last touch (on BO-02's volume
+    # when bullish) IS the breakout: §3 takes over from that bar, and containment ends there.
+    v50 = vol50(volume, s_pos) if p.boundary_life else float("nan")
+    for i in range(s_pos, t_hi + 1):
+        fv, bv = far_line.at(i), bo_line.at(i)
+        if fv and (close[i] > fv * (1 + t_frac) if down else close[i] < fv * (1 - t_frac)):
+            out["fail"] = "TL-03"
+            return out
+        if not bv:
+            continue
+        past_buf = close[i] < bv * (1 - p.bo_buffer) if down else close[i] > bv * (1 + p.bo_buffer)
+        if (p.boundary_life and past_buf and last_touch is not None and i > last_touch
+                and (down or (rv(volume, i, v50) == rv(volume, i, v50) and rv(volume, i, v50) >= p.bo_vol))):
+            bo_pos = i
+            break
+        if close[i] < bv * (1 - t_frac) if down else close[i] > bv * (1 + t_frac):
+            out["fail"] = "TL-03"
+            return out
+    if bo_pos is not None:
+        # BO-05: within fail_days, a close back through the frozen breakout level fails it
+        bo_trig = float(bo_line.at(bo_pos))
+        for j in range(bo_pos + 1, t_pos + 1):
+            if j - bo_pos > p.fail_days:
+                break
+            if close[j] > bo_trig * (1 + t_frac) if down else close[j] < bo_trig * (1 - t_frac):
+                out["state"] = FAILED
+                out["metrics"]["is_live"] = False
+                out["metrics"]["breakout_date"] = str(d.index[bo_pos].date())
+                return out
+        out["metrics"]["breakout_date"] = str(d.index[bo_pos].date())
+    # the pattern's own life ends at its breakout: duration, apex progress, the volume slope and the
+    # level lines are all judged there, not at today's bar
+    eff_t = t_pos if bo_pos is None else bo_pos
+    dur = eff_t - s_pos
+    out["metrics"]["duration_days"] = dur
     # TL-04 (beyond the spec): no close through the breakout-side line (the lower for the bearish
     # kinds, the upper for the rest) that the line was touched again after -- price broke out and came
     # back, so the line was never the boundary. The bars at the line's own touches are exempt (a
     # least-squares line runs through its swings, some above it), and so is a close after the last
     # touch: that is an attempt at today's breakout, which BO-01/BO-02 judge.
     if p.contain_breakout_side and touch_pos:
-        down = kind in (RISING_WEDGE, DESCENDING)
-        line = lower if down else upper
         last = max(touch_pos)
         for i in range(s_pos, last):
             if any(abs(i - q) <= k for q in touch_pos):
                 continue
-            v = line.at(i)
+            v = bo_line.at(i)
             if v and (close[i] < v * (1 - p.bo_buffer) if down else close[i] > v * (1 + p.bo_buffer)):
                 out["fail"] = "TL-04"
                 out["metrics"]["early_close"] = str(d.index[i].date())
@@ -1484,9 +1576,9 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
         if not (p.rc_days[0] <= dur <= p.rc_days[1]):
             out["fail"] = "RC-04"
             return out
-        lv = Levels(trigger=upper.at(t_pos), invalidation=lower.at(t_pos),
+        lv = Levels(trigger=upper.at(eff_t), invalidation=lower.at(eff_t),
                     height=height0)
-        return _boundary_state(out, lv, close, volume, s_pos, t_pos, p)
+        return _boundary_state(out, lv, close, volume, s_pos, t_pos, p, bo_pos)
 
     # TR-03: the lines converge, with the apex still ahead
     x = apex(upper, lower)
@@ -1500,8 +1592,8 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
         out["fail"] = "TR-04"
         return out
 
-    # TR-05: how far through the triangle price has travelled
-    progress = (t_pos - s_pos) / (x - s_pos) if x > s_pos else float("nan")
+    # TR-05: how far through the triangle price has travelled (to its breakout, if it broke out)
+    progress = (eff_t - s_pos) / (x - s_pos) if x > s_pos else float("nan")
     out["metrics"]["apex_progress"] = progress
     if not (progress == progress) or progress > p.tr_apex_zone[1]:
         out["fail"] = "TR-05"          # X: 80% of the way with no breakout
@@ -1522,7 +1614,7 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
             return out
 
     # TR-06: volume declines through the pattern
-    slope = log_volume_slope(volume, s_pos, t_pos)
+    slope = log_volume_slope(volume, s_pos, eff_t)
     out["metrics"]["log_volume_slope"] = slope
     if p.tr_volume and not (slope == slope and slope < 0):
         out["fail"] = "TR-06"
@@ -1535,27 +1627,36 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
 
     # §7.3 / §10: a triangle records both directions; a wedge leads with its bias
     if kind == RISING_WEDGE:
-        lv = Levels(trigger=lower.at(t_pos), invalidation=upper.at(t_pos),
+        lv = Levels(trigger=lower.at(eff_t), invalidation=upper.at(eff_t),
                     height=height0, direction=BEARISH)
     elif kind == FALLING_WEDGE:
-        lv = Levels(trigger=upper.at(t_pos), invalidation=lower.at(t_pos),
+        lv = Levels(trigger=upper.at(eff_t), invalidation=lower.at(eff_t),
                     height=height0)
     elif kind == DESCENDING:
-        lv = Levels(trigger=lower.at(t_pos), invalidation=upper.at(t_pos),
+        lv = Levels(trigger=lower.at(eff_t), invalidation=upper.at(eff_t),
                     height=height0, direction=BEARISH)
     else:
-        lv = Levels(trigger=upper.at(t_pos), invalidation=lower.at(t_pos),
+        lv = Levels(trigger=upper.at(eff_t), invalidation=lower.at(eff_t),
                     height=height0)
-    out["metrics"]["trigger_other_way"] = (lower.at(t_pos) if lv.direction == BULLISH
-                                           else upper.at(t_pos))
-    return _boundary_state(out, lv, close, volume, s_pos, t_pos, p)
+    out["metrics"]["trigger_other_way"] = (lower.at(eff_t) if lv.direction == BULLISH
+                                           else upper.at(eff_t))
+    return _boundary_state(out, lv, close, volume, s_pos, t_pos, p, bo_pos)
 
 
 def _boundary_state(out: dict, lv: Levels, close, volume, s_pos: int, t_pos: int,
-                    p: PatternParams) -> dict:
+                    p: PatternParams, bo_pos: int | None = None) -> dict:
     """Judged at t: the lines move every bar, so there is no completion date
-    to run BO-04's clock from — TR-05's apex zone plays that role instead."""
+    to run BO-04's clock from — TR-05's apex zone plays that role instead.
+    `bo_pos` (boundary_life) is a breakout already found in the walk up to
+    t-1: the pattern is CONFIRMED and lives out §11's horizon from there."""
     out["levels"] = lv
+    if bo_pos is not None:
+        out["state"] = CONFIRMED
+        out["breakout_pos"] = bo_pos
+        out["metrics"]["bars_since_breakout"] = t_pos - bo_pos
+        out["metrics"]["is_live"] = t_pos - bo_pos <= p.horizon
+        out["ok"] = True
+        return out
     fired = broke_out(float(close[t_pos]), rv(volume, t_pos, vol50(volume, s_pos)), lv, p)
     out["state"] = CONFIRMED if fired else COMPLETE
     out["breakout_pos"] = t_pos if fired else None

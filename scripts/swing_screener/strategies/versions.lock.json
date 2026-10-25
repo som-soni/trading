@@ -34,9 +34,11 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "72cb5735",
+    "fingerprint": "b1edc275",
     "params": {
       "ATR_MULT": 1.5,
+      "BOUNDARY_LIFE": 1,
+      "BOUND_LINES": 1,
       "BO_BUFFER": 0.5,
       "BO_VOL": 1.4,
       "BREAKOUT_MAX_AGE": 0,
@@ -110,7 +112,7 @@
       "PARAMS.tol_atr_mult": 0.75,
       "PARAMS.tol_pct": 3.0,
       "PARAMS.tr_min_height": 6.0,
-      "PARAMS.tr_min_touches": 5,
+      "PARAMS.tr_min_touches": 4,
       "PARAMS.tr_min_touches_side": 2,
       "PARAMS.tr_scale_days": 40,
       "PARAMS.triple_max_drift": 1.5,
@@ -123,6 +125,7 @@
       "TOL_PCT": 3.0,
       "TRADE_CUPNH": 1,
       "TRIPLE_MAX_DRIFT": 1.5,
+      "TR_MIN_TOUCHES": 4,
       "WEDGE_MIN_CONVERGE": 1.5,
       "W_FIRST_LOW": 1,
       "W_MAX_DEPTH": 35.0,
@@ -158,7 +161,7 @@
         "W3"
       ]
     },
-    "version": "1.13"
+    "version": "1.14"
   },
   "donchian": {
     "family": "donchian",

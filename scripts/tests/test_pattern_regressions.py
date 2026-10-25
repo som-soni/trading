@@ -14,7 +14,9 @@ from swing_screener.core import indicators as ind
 from swing_screener.marketdata import cache
 from swing_screener.strategies import chart_pattern_spec as m
 
-# (market, symbol, setup, signal date, tradeable now?, why)
+# (market, symbol, setup, signal date, expected now?, why)
+# A bullish code is judged by _tradeable (would the strategy act); a topping name from BEARISH by
+# _live (would it veto a long, gate G2 / flag W1).
 CASES = [
     ("india", "JINDALSTEL.NS", "IHS", "2022-10-25", False,
      "v1.11 HS-09: the 'left shoulder' low was followed by a new high"),
@@ -28,6 +30,10 @@ CASES = [
      "v1.12 TL-04: closed above the upper line in September 2024, then touched it again"),
     ("india", "PFC.NS", "DBOT", "2020-02-12", False,
      "v1.13 OW-03: the 'first low' 85.76 came after a 72.36 low below the base high"),
+    ("india", "HINDCOPPER.NS", "descending triangle", "2026-10-16", True,
+     "v1.14 TL-06/BOUNDARY_LIFE: falling highs 760/618/587 over a ~450 floor — complete before the break"),
+    ("india", "HINDCOPPER.NS", "descending triangle", "2026-10-23", True,
+     "v1.14 BOUNDARY_LIFE: the floor broke on 2026-10-19 and the veto must survive the breakdown"),
     # the same review's sound patterns must survive
     ("india", "ICICIBANK.NS", "DBOT", "2013-04-25", True, "a clean O'Neil W"),
     ("india", "ICICIBANK.NS", "FWDG", "2015-05-29", True, "a converging wedge, 61% to the apex"),
@@ -48,12 +54,14 @@ def main() -> None:
             print(f"skip  {sym} {code} {date} — no stored prices")
             continue
         ran += 1
-        r = m.BULLISH[code][1](d.loc[:date])
-        got = m._tradeable(r)
+        bull = code in m.BULLISH
+        r = (m.BULLISH[code][1] if bull else m.BEARISH[code])(d.loc[:date])
+        got = m._tradeable(r) if bull else m._live(r)
         detail = (f"state={r.get('state')} fail={r.get('fail')} "
                   f"age={r.get('metrics', {}).get('bars_since_breakout')}")
         ok = got == want
-        print(f"{'ok  ' if ok else 'FAIL'}  {sym} {code} {date} {'trades' if want else 'rejected'} — {why}"
+        verdict = ("trades" if bull else "vetoes") if want else "rejected"
+        print(f"{'ok  ' if ok else 'FAIL'}  {sym} {code} {date} {verdict} — {why}"
               + ("" if ok else f"  [{detail}]"))
         if not ok:
             failures.append(f"{sym} {code} {date}")

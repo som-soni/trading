@@ -86,6 +86,9 @@ HS_MAX_NECK_CHANGE = 5.0  # HS-10, beyond the spec: the neckline may run against
 EARLY_BREAKOUT = 1        # beyond the spec: a breakout is searched from the last key point, not from its confirmation
 WEDGE_MIN_CONVERGE = 1.5  # WG-04, beyond the spec: a wedge's steep line falls/rises at least this x the shallow one
 CONTAIN_BREAKOUT_SIDE = 1  # TL-04, beyond the spec: no earlier close through the breakout-side line (1 = on)
+BOUND_LINES = 1           # TL-06, beyond the spec: boundary lines bound the closes, not fitted through them (1 = on)
+BOUNDARY_LIFE = 1         # beyond the spec: a boundary pattern lives out §3 from its breakout bar (1 = on)
+TR_MIN_TOUCHES = 4        # TR-02: total touches a triangle, wedge or rectangle needs (2 per side still holds)
 def _build_params() -> ps.PatternParams:
     return ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
@@ -96,7 +99,8 @@ def _build_params() -> ps.PatternParams:
     rim_ideal_pct=RIM_IDEAL_PCT, rim_ok_pct=RIM_OK_PCT, trigger_clears_rims=True,
     cup_under_rim=bool(CUP_UNDER_RIM), hs_origin=bool(HS_ORIGIN), hs_max_neck_change=HS_MAX_NECK_CHANGE,
     early_breakout=bool(EARLY_BREAKOUT), oneil_first_low=bool(W_FIRST_LOW), wg_min_converge=WEDGE_MIN_CONVERGE,
-    contain_breakout_side=bool(CONTAIN_BREAKOUT_SIDE),
+    contain_breakout_side=bool(CONTAIN_BREAKOUT_SIDE), bound_lines=bool(BOUND_LINES),
+    boundary_life=bool(BOUNDARY_LIFE), tr_min_touches=TR_MIN_TOUCHES,
 )
 
 
@@ -104,7 +108,7 @@ _PARAM_CONSTANTS = ("K_MINOR", "K_MAJOR", "MIN_SWING_PCT", "ATR_MULT", "TOL_PCT"
                     "BO_VOL", "MAX_WAIT", "FAIL_DAYS", "HORIZON", "W_UNDERCUT_MAX", "W_MIN_DEPTH", "W_MAX_DEPTH",
                     "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM",
                     "HS_ORIGIN", "HS_MAX_NECK_CHANGE", "EARLY_BREAKOUT", "WEDGE_MIN_CONVERGE", "W_FIRST_LOW",
-                    "CONTAIN_BREAKOUT_SIDE")
+                    "CONTAIN_BREAKOUT_SIDE", "BOUND_LINES", "BOUNDARY_LIFE", "TR_MIN_TOUCHES")
 PARAMS = _build_params()
 _PARAMS_KEY: tuple = tuple(globals()[k] for k in _PARAM_CONSTANTS)
 
@@ -176,6 +180,7 @@ POINT_NAMES_BY_CODE = {DBOT: {"A": "base high", "B": "low 1", "C": "peak", "D": 
                        "double top": {"B": "top 1", "C": "trough", "D": "top 2"}}
 BEARISH = {
     "double top": lambda d: ps.detect_double_top(d, _params()),
+    "triple top": lambda d: ps.detect_triple_top(d, _params()),
     "head and shoulders top": lambda d: ps.detect_head_shoulders(d, _params()),
     "rising wedge": lambda d: _of_kind(d, (ps.RISING_WEDGE,)),
     "descending triangle": lambda d: _of_kind(d, (ps.DESCENDING,)),
@@ -205,8 +210,27 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.13"
+    version = "1.14"
     changelog = (
+        ("1.14", "2026-10-25",
+         "Triangles, wedges and rectangles redrawn around HINDCOPPER.NS's missed 2026 top (highs 760, "
+         "618, 587 over a ~450 floor, broken 2026-10-19 -- the chart showed nothing on any of those "
+         "days). Four changes. (1) TL-06 (BOUND_LINES): TL-01 fitted each line by least squares through "
+         "its swing points, so a small bounce among larger highs dragged the upper line into the bars "
+         "and TL-03 rejected the real structure; each line is now the one through two of its side's "
+         "swing points that keeps every close on the pattern's side (within {BO_BUFFER}%), preferring "
+         "the pair the most swings touch -- with no such pair the least-squares fit stands. Flags are "
+         "untouched. (2) BOUNDARY_LIFE: a boundary pattern now lives out the spec's §3 from its breakout "
+         "bar, like a double or a head and shoulders -- before, a wedge's or descending triangle's "
+         "breakdown existed only on the breakdown day itself, because the next day's refit failed "
+         "containment on the trailing closes, so gate G2's veto blinked off one day after a top broke "
+         "down. The breakout is the first close {BO_BUFFER}% past the line after its last touch (on "
+         "{BO_VOL}x volume when bullish); a close back through it within {FAIL_DAYS} days fails it "
+         "(BO-05); it stays live for {HORIZON} bars. (3) TR-02 now asks {TR_MIN_TOUCHES} touches in "
+         "all (still {PARAMS.tr_min_touches_side} per side): a bounding line touches fewer swings than "
+         "a regression through their middle, and Bulkowski's minimum is two per side. (4) The triple "
+         "top joins G2/W1's topping list: it was detected but never looked at, so three level highs "
+         "vetoed nothing."),
         ("1.13", "2026-10-24",
          "O'Neil W: the first low must be the bottom of the decline from the high the base corrects (OW-03, "
          "beyond the spec, W_FIRST_LOW). OW-01 measured the W's depth from the highest high of the window "
@@ -538,12 +562,12 @@ class ChartPatternSpecStrategy(Strategy):
               "A complete pattern is a live TRADE ON TRIGGER; only a breakout today can be TRADE - HIGH "
               "CONFIDENCE, the one tier a backtest buys.",
         "G2": "No confirmed topping pattern on the same chart.\n\n"
-              "- **Looked for:** double top, head-and-shoulders top, rising wedge, descending triangle, in "
-              "that order. Only the first that is live is considered.\n"
+              "- **Looked for:** double top, triple top, head-and-shoulders top, rising wedge, descending "
+              "triangle, in that order. Only the first that is live is considered.\n"
               "- **Confirmed, double top or H&S top:** a close below its trigger by {BO_BUFFER}% (no "
               "volume test) within the last {HORIZON} bars, and not failed since (BO-05).\n"
-              "- **Confirmed, rising wedge or descending triangle:** today's close is {BO_BUFFER}% below "
-              "the lower line.\n"
+              "- **Confirmed, rising wedge or descending triangle:** a close {BO_BUFFER}% below the lower "
+              "line within the last {HORIZON} bars, not failed since (BO-05).\n"
               "- **Complete but not broken down:** raises W1 instead.\n\n"
               "Long only, so a topping pattern is a veto, never a trade.",
         "G3": "No earnings date within {EARNINGS_DAYS} weekdays.\n\n"
@@ -699,6 +723,11 @@ class ChartPatternSpecStrategy(Strategy):
                  "every swing low; at least 2 of each.\n"
                  "- **Which one:** of each kind that passes, the one with the most touches, then the "
                  "longest.",
+        "TL-06": "Lines — each line BOUNDS price (BOUND_LINES = {BOUND_LINES}): of the lines through two "
+                 "of its side's swing points that keep every close on the pattern's side (within "
+                 "{BO_BUFFER}%), the one the most swings touch, then the one contained longest. A close "
+                 "through the line after its last touch is left to the breakout walk. With no such pair, "
+                 "TR-01's least-squares fit stands and TL-03 judges it.",
         "TL-05": "Lines — kind, from the two slopes:\n\n"
                  "- **Rectangle (RECT):** both flat.\n"
                  "- **Ascending triangle (ATRI):** upper flat, lower rising.\n"
@@ -709,7 +738,11 @@ class ChartPatternSpecStrategy(Strategy):
                  "(both rising, the lower faster).\n\n"
                  "Any other pair — diverging lines, a lopsided symmetrical — is no pattern.",
         "TL-03": "Lines — price contained: no close from S to yesterday is beyond either line by more than "
-                 "tol.",
+                 "tol — except the breakout (BOUNDARY_LIFE = {BOUNDARY_LIFE}): a close {BO_BUFFER}% past "
+                 "the breakout line after its last touch (on {BO_VOL}x volume when bullish) starts the "
+                 "spec's §3 life from that bar — CONFIRMED, failed by a close back through the frozen "
+                 "level within {FAIL_DAYS} days (BO-05), live for {HORIZON} bars. Duration, apex "
+                 "progress, the volume slope and the levels are all judged at the breakout, not today.",
         "TL-04": "Lines — breakout side clean: from S to the breakout line's last touch, no close is beyond "
                  "that line by more than {BO_BUFFER}%. Closes within k bars of one of its touches are "
                  "exempt.\n\n"
@@ -851,7 +884,7 @@ class ChartPatternSpecStrategy(Strategy):
              "breakout.",
         ATRI: "Ascending triangle: a flat upper line over a rising lower line, bought on a close above "
               "the upper line.\n\n"
-              "- **Checks:** TR-01, TL-05, TL-03, TL-04, TR-02 to TR-07 above.\n"
+              "- **Checks:** TR-01, TL-06, TL-05, TL-03, TL-04, TR-02 to TR-07 above.\n"
               "- **Trigger T:** the upper line today.\n"
               "- **Invalidation X:** the lower line today.\n"
               "- **Height H:** upper − lower at the start S.",
@@ -864,7 +897,7 @@ class ChartPatternSpecStrategy(Strategy):
               "- **Checks:** as ATRI, plus WG-04.\n"
               "- **Levels:** T = the upper line today, X = the lower line today, H = the height at S.",
         RECT: "Rectangle: two flat lines, bought on a close above the upper one.\n\n"
-              "- **Checks:** TR-01, TL-05, TL-03, TL-04, RC-02 (in TR-02), RC-03, RC-04 above.\n"
+              "- **Checks:** TR-01, TL-06, TL-05, TL-03, TL-04, RC-02 (in TR-02), RC-03, RC-04 above.\n"
               "- **Levels:** T = the upper line today, X = the lower line today, H = the height at S.\n"
               "- **Life:** no expiry. Only the upward break is traded.",
         FBASE: "Flat base: a shallow sideways range near the highs after an advance, bought above its "
@@ -1041,6 +1074,20 @@ class ChartPatternSpecStrategy(Strategy):
         ("H&S neckline drift", "HS_MAX_NECK_CHANGE",
          "HS-10: the neckline may run against the pattern (an inverse's falling, a top's "
          "rising) by at most {HS_MAX_NECK_CHANGE}% from its left anchor to its right."),
+        ("Bounding lines", "BOUND_LINES",
+         "TL-06, beyond the spec ({BOUND_LINES} = on): a triangle's, wedge's or rectangle's line is "
+         "fitted through the two swing points that keep every close on the pattern's side (within "
+         "{BO_BUFFER}%), preferring the pair the most swings touch -- a boundary, not a regression "
+         "through the middle of the swings. With no such pair, the least-squares fit stands and "
+         "TL-03's containment judges it."),
+        ("Boundary pattern life", "BOUNDARY_LIFE",
+         "Beyond the spec ({BOUNDARY_LIFE} = on): a triangle, wedge or rectangle lives out §3 from its "
+         "breakout bar like any other pattern, instead of existing only while today's close breaks its "
+         "refit lines — without this, a topping wedge's breakdown vetoes (G2) only on the breakdown day."),
+        ("Triangle touches", "TR_MIN_TOUCHES",
+         "TR-02: {TR_MIN_TOUCHES} touches in all, {PARAMS.tr_min_touches_side} per side. The spec said 5 "
+         "in all, tuned for a regression line through the middle of the swings; a bounding line touches "
+         "fewer, and Bulkowski's minimum is two per side."),
         ("Early breakout", "EARLY_BREAKOUT",
          "BO-04 ({EARLY_BREAKOUT} = on): a pattern that completes once is confirmed {K_MAJOR} bars "
          "after its last point, but its breakout is searched from that point -- a close through T in "
