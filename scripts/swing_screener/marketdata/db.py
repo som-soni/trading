@@ -127,6 +127,34 @@ CREATE TABLE IF NOT EXISTS backtest_signals (
     PRIMARY KEY (market, strategy, symbol, date, spec_id)
 );
 ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS spec_id VARCHAR(32);
+
+-- which signal_id each spec_id's backtest_signals rows were written under (Strategy.signal_id): two
+-- spec ids with one signal id hold identical rows, so a version that changed only its exits, or a
+-- variant of post-scan constants, starts each symbol from its peers' rows (backtest._signal_peers).
+CREATE TABLE IF NOT EXISTS backtest_signal_specs (
+    market VARCHAR(16) NOT NULL,
+    strategy VARCHAR(32) NOT NULL,
+    spec_id VARCHAR(32) NOT NULL,
+    signal_id VARCHAR(40) NOT NULL,
+    seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (market, strategy, spec_id)
+);
+
+-- a backtest's point-in-time pre-filter, per symbol (backtest._point_in_time_candidates): whether the
+-- symbol passes on >=1 bar of the window, and whether it fails on its last bar. `key` hashes the
+-- strategy's spec id, the market config, the window and the source of the code the pre-filter runs;
+-- `data_sig` fingerprints the symbol's stored prices up to the window's end, so a price fix or a new
+-- bar recomputes that symbol. Every per-symbol run of a strategy repeated this over the whole universe.
+CREATE TABLE IF NOT EXISTS backtest_prefilter_cache (
+    market VARCHAR(16) NOT NULL,
+    key VARCHAR(24) NOT NULL,
+    symbol VARCHAR(32) NOT NULL,
+    data_sig TEXT NOT NULL,
+    qualifies BOOLEAN NOT NULL,
+    missed_today BOOLEAN NOT NULL,
+    seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (market, key, symbol)
+);
 """
 
 # Tables created before the key included spec_id are moved over by ensure_signal_key().

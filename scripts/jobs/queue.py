@@ -13,8 +13,10 @@ the command line or the jobs themselves:
 
 Work runs in LANES, each its own worker process: the main lane runs the market routines, downloads and
 everything else, in order; the backtest lane runs backtests and other long research on stored data; the
-fast lane runs only short jobs on stored data (jobs/registry.py `fast_item` / `research_item`). So a screens
-rebuild or a scheduled close routine never waits hours behind a backtest. A lane has its own lock and
+portfolio lane runs backtests of portfolio strategies (minutes each); the fast lane runs only short jobs on
+stored data (jobs/registry.py `fast_item` / `research_item` / `portfolio_item`). So a screens rebuild or a
+scheduled close routine never waits hours behind a backtest, nor a ten-minute portfolio backtest behind a
+multi-hour per-symbol scan. A lane has its own lock and
 heartbeat row; an item records the lane that ran it.
 
 Schedules ("daily · India at 18:30, Mon–Fri") live here too: `due_schedules()` is what the worker checks
@@ -37,8 +39,8 @@ from swing_screener.marketdata import db
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 WORKER_ALIVE_S = 20          # a worker that has not checked in for this long is considered stopped
 LOCK_KEY = 742_003_117       # pg advisory lock: one worker per lane (LOCK_KEY + the lane's index in LANES)
-LANES = ("main", "fast", "backtest")
-_LANE_ROW = {"main": 1, "fast": 2, "backtest": 3}   # job_worker.id per lane
+LANES = ("main", "fast", "backtest", "portfolio")
+_LANE_ROW = {"main": 1, "fast": 2, "backtest": 3, "portfolio": 4}   # job_worker.id per lane
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS job_queue (
@@ -62,7 +64,7 @@ CREATE TABLE IF NOT EXISTS job_queue (
     note TEXT
 );
 CREATE INDEX IF NOT EXISTS job_queue_status ON job_queue (status, priority DESC, id);
-ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS lane TEXT;   -- the worker lane that ran it (main | fast)
+ALTER TABLE job_queue ADD COLUMN IF NOT EXISTS lane TEXT;   -- the worker lane that ran it (main | fast | backtest | portfolio)
 CREATE TABLE IF NOT EXISTS job_schedules (
     id SERIAL PRIMARY KEY,
     name TEXT NOT NULL,

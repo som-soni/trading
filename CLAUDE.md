@@ -30,8 +30,9 @@ standalone script or cron entry, so it is logged and shows on the Data status
 page. Jobs are run by the queue (`jobs/queue.py` + `python -m jobs worker`):
 the portal, schedules (`job_schedules`, System → Schedules) and `jobs enqueue`
 only *ask* through `jobs/queue.py`'s functions — never write the queue tables
-elsewhere, so the backend stays swappable (RQ / Celery). The worker runs three
-lanes (main: routines and downloads; backtest: `RESEARCH_JOBS`; fast: short
+elsewhere, so the backend stays swappable (RQ / Celery). The worker runs four
+lanes (main: routines and downloads; backtest: `RESEARCH_JOBS`; portfolio:
+backtests of portfolio strategies only, `portfolio_item`; fast: short
 stored-data jobs, `FAST_JOBS` in `jobs/registry.py`): a new job runs in the
 main lane unless you add it to one of those sets on purpose — then run
 `PYTHONPATH=. .venv/bin/python -m tests.test_job_lanes`.
@@ -161,6 +162,14 @@ but not in its `signal_id`, so a `--const` variant moving only those copies the
 matching run's cached signal rows (`backtest.seed_signal_cache`) instead of
 rescanning. Add a new post-scan constant there, and never a constant the scan
 reads; `PYTHONPATH=. .venv/bin/python -m tests.test_signal_exempt` checks it.
+
+Likewise a version bump that changes only what happens after `evaluate()` (exits,
+stop/target placement, sizing, plan rules) may pin `signal_version` to the previous
+version: the signal id then stays put and the next backtest carries the cached signal
+rows forward (`backtest._signal_peers`, `backtest_signal_specs`) instead of
+rescanning for hours. Never pin it across a change to `build_context()`, `evaluate()`
+or a detector — the carried rows would replay the old detections. Leave it unset
+otherwise (it defaults to `version`, so a bump rescans).
 
 Then run, from `scripts/`:
 

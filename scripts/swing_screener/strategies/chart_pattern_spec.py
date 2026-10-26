@@ -190,7 +190,28 @@ BEARISH = {
 
 
 def _of_kind(daily, kinds: tuple[str, ...]) -> dict:
-    return ps._pick_kinds(ps.detect_boundaries(daily, _params()), kinds, ps.TR_RULES)
+    return ps._pick_kinds(_boundaries(daily), kinds, ps.TR_RULES)
+
+
+# the last bar's detect_boundaries: (frame, its length and last date, params, candidates or the error)
+_BOUNDS: list = [None, None, None, None]
+
+
+def _boundaries(daily) -> list[dict]:
+    """detect_boundaries of this frame, computed once per bar: evaluate asks for six kinds of the one
+    detection (four setups, two tops), and recomputing it for each was ~60% of a scan. The frame is
+    held, not just its id, so a later frame cannot reuse the id; an error repeats for every kind."""
+    p = _params()
+    shape = (len(daily), daily.index[-1] if len(daily) else None)
+    if not (_BOUNDS[0] is daily and _BOUNDS[1] == shape and _BOUNDS[2] is p):
+        try:
+            out = ps.detect_boundaries(daily, p)
+        except Exception as e:  # noqa: BLE001 - re-raised below, to each kind's caller
+            out = e
+        _BOUNDS[:] = [daily, shape, p, out]
+    if isinstance(_BOUNDS[3], Exception):
+        raise _BOUNDS[3]
+    return _BOUNDS[3]
 
 
 def _live(res: dict) -> bool:
@@ -402,6 +423,12 @@ class ChartPatternSpecStrategy(Strategy):
     watch_codes = ("W1", "W2", "W3")
     setup_codes = tuple(BULLISH)
     needs_ctx_extras = True
+    # Read after the scan, never by evaluate(): a `--const` variant moving only these starts from the
+    # shipped run's signal rows (base.Strategy.signal_exempt_consts) — the stop and target (build_plans), the risk and reward limits and the rim's quality
+    # adjustment (classify, signal_meta). The detectors' constants are not here — they reach evaluate()
+    # through _params(), which the static check cannot see, so a variant on one rescans.
+    signal_exempt_consts = ("MAX_STOP_ATR", "MIN_STOP_ATR", "MIN_STOP_PCT", "MIN_R", "MAX_RISK_PCT",
+                            "RIM_IDEAL_BONUS", "RIM_LOOSE_PENALTY")
     extra_columns = (
         "pattern", "pattern_name", "pattern_state", "trigger", "invalidation", "measured_target",
         "pct_from_trigger", "structural_r", "topping_pattern", "pattern_note",

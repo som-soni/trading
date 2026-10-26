@@ -397,6 +397,10 @@ class StageAnalysisStrategy(Strategy):
     #: with a note until there is enough.
     min_bars = 330
     needs_ctx_extras = True
+    # Read after the scan, never by evaluate(): a `--const` variant moving only these starts from the
+    # shipped run's signal rows (base.Strategy.signal_exempt_consts) — the stop limit and the target (build_plans, classify), and
+    # W1_RANKS_ONLY's ranking (classify, setup_quality).
+    signal_exempt_consts = ("MAX_STOP_PCT", "BASE_TARGET_MULT", "W1_RANKS_ONLY", "W1_RANK_QUALITY")
     extra_columns = ("stage", "line_slope_pct", "resistance", "base_weeks", "base_depth_pct",
                      "vol_ratio", "ma30", "mansfield_pct")
     #: `broke_out` is carried in extras but is a BOOL, so it is not a numeric column.

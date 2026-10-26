@@ -140,6 +140,10 @@ class RsLeadersStrategy(Strategy):
     setup_names = {RSL01: "Flat-base breakout"}
     min_bars = 300
     needs_ctx_extras = True
+    # Read after the scan, never by evaluate(): a `--const` variant moving only these starts from the
+    # shipped run's signal rows (base.Strategy.signal_exempt_consts) — the prefilter's distance from the high (it picks which bars
+    # are scanned, not what a row records), the stop limit and the partial exit.
+    signal_exempt_consts = ("MAX_PCT_BELOW_52W_HIGH", "MAX_STOP_PCT", "PARTIAL_GAIN_PCT", "PARTIAL_FRAC")
     extra_columns = ("pivot", "base_days", "base_depth_pct", "rs_line_pct_off", "stop_low", "vol_ratio")
     extra_numeric_columns = extra_columns
 

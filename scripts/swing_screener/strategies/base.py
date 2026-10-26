@@ -314,7 +314,7 @@ class SpecMeta:
         exempt = set(getattr(cls, "signal_exempt_consts", ()))
         params = {k: v for k, v in cls.spec_params().items() if k not in exempt}
         blob = json.dumps(params, sort_keys=True, separators=(",", ":"))
-        return f"v{cls.version}-s{hashlib.sha256(blob.encode()).hexdigest()[:8]}"
+        return f"v{getattr(cls, 'signal_version', None) or cls.version}-s{hashlib.sha256(blob.encode()).hexdigest()[:8]}"
 
 
 class PortfolioStrategy(SpecMeta):
@@ -389,6 +389,14 @@ class Strategy(SpecMeta, ABC):
     # spec_params / spec_id: the variant is a different strategy and is grouped as one.
     # tests/test_signal_exempt.py checks that evaluate() cannot reach any of them.
     signal_exempt_consts: tuple[str, ...] = ()
+    # The version whose signal scan this one keeps, when a version bump changed only what happens
+    # AFTER evaluate() (exits, stop/target placement, sizing, plan rules) -- left unset, it is
+    # `version`, so every bump starts a fresh scan. Pin it to the previous version on such a bump and
+    # signal_id stays put, so the next backtest carries the cached signal rows forward
+    # (backtest._signal_peers) instead of rescanning the universe for hours. Never pin it
+    # across a change to build_context(), evaluate() or the detectors: the carried rows would replay
+    # the old detections. tests/test_signal_exempt.py checks it names a version in the changelog.
+    signal_version: str | None = None
     extra_columns: tuple[str, ...] = ()
     extra_numeric_columns: tuple[str, ...] = ()
     # True when the LIVE screener should attach current fundamentals to the

@@ -116,6 +116,9 @@ class BreakoutStrategy(Strategy):
     min_bars = 260
 
     needs_ctx_extras = True
+    # Read after the scan, never by evaluate(): a `--const` variant moving only these starts from the
+    # shipped run's signal rows (base.Strategy.signal_exempt_consts) — the stop-width limits of classify.
+    signal_exempt_consts = ("HIGH_CONF_MAX_STOP_PCT", "MAX_STOP_PCT")
     extra_columns = ("breakout_pivot", "pct_from_pivot", "structural_r")
     extra_numeric_columns = ("breakout_pivot", "pct_from_pivot", "structural_r")
 

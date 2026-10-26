@@ -8,17 +8,19 @@ Each item runs as `python -m jobs run ...` in its own process group — exactly 
 records as "stopped"; SIGKILL if it has not exited 30 s later). The item's final status comes from the
 run log when the run got that far (ok / partial → failed / interrupted → stopped), else from the exit code.
 
-Work runs in three LANES, one process each (jobs/queue.py):
+Work runs in four LANES, one process each (jobs/queue.py):
 
   main      the market routines, downloads and everything else, in queue order
   backtest  backtests and other long research on stored data (jobs/registry.py RESEARCH_JOBS)
+  portfolio backtests of portfolio strategies, minutes each (jobs/registry.py portfolio_item)
   fast      short jobs on stored data — screens, breadth, setups, reports (FAST_JOBS)
 
-so a scheduled close routine never waits behind a backtest, and the page that asked for a screens rebuild
-gets it in a minute. No lane starts an item that clashes with another's (the same job for the same market,
+so a scheduled close routine never waits behind a backtest, a portfolio backtest never waits hours behind a
+per-symbol scan, and the page that asked for a screens rebuild gets it in a minute. No lane starts an item that clashes with another's (the same job for the same market,
 or a fast job while that market's data is being downloaded). `python -m jobs worker` runs the main lane and
-keeps the other two running beside it as child processes; `--lane fast|backtest` runs only that lane,
-`--no-fast` / `--no-backtest-lane` leave one out (then the main lane runs its work).
+keeps the other three running beside it as child processes; `--lane fast|backtest|portfolio` runs only that
+lane, `--no-fast` / `--no-backtest-lane` / `--no-portfolio-lane` leave one out (then the main lane runs its
+work; without a portfolio lane, the backtest lane runs portfolio backtests).
 
 One worker per lane (a Postgres advisory lock each). If a lane restarts while one of its items is still
 running, it keeps following that process instead of starting another. Every few seconds each lane writes
@@ -171,7 +173,7 @@ def _start_lane(lane: str) -> subprocess.Popen:
                             env=env, stdout=f, stderr=subprocess.STDOUT)
 
 
-def run_forever(lane: str = "main", fast_child: bool = True, backtest_child: bool = True) -> int:
+def run_forever(lane: str = "main", fast_child: bool = True, backtest_child: bool = True, portfolio_child: bool = True) -> int:
     global _stop
     queue.init_schema()
     lock_conn = psycopg2.connect()
@@ -185,7 +187,7 @@ def run_forever(lane: str = "main", fast_child: bool = True, backtest_child: boo
     started = dt.datetime.now().astimezone()
     host, me = socket.gethostname(), os.getpid()
     last_sched = [0.0]
-    wanted = [ln for ln, on in (("fast", fast_child), ("backtest", backtest_child)) if on] if main else []
+    wanted = [ln for ln, on in (("fast", fast_child), ("backtest", backtest_child), ("portfolio", portfolio_child)) if on] if main else []
     children: dict = {ln: {"proc": None, "died_at": 0.0} for ln in wanted}
 
     def supervise() -> None:

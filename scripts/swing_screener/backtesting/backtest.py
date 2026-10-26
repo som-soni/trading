@@ -35,6 +35,7 @@ Usage:
 """
 
 import argparse
+import inspect
 import json
 import math
 import logging
@@ -45,7 +46,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..marketdata import cache, corporate_actions, db, universe
+from ..marketdata import asof, cache, corporate_actions, db, universe
 
 from ..core import indicators as ind, sizing
 from ..core import context as ctx_mod
@@ -133,7 +134,44 @@ def _load_cached_signal(
     if row is None:
         return None
     vals = dict(zip(_SIGNAL_FIELDS, row))
+    result = _cached_result(strategy, vals)
+    if result is None:
+        return None
+    ctx = _cached_ctx(market_key, symbol, date, vals, tail=True)
+    return (ctx, result) if ctx is not None else None
 
+
+def _cached_signal_rows(market_key: str, strategy, symbol: str, start: pd.Timestamp) -> dict:
+    """{date: row} of every cached signal row of this symbol under the current spec_id from `start`
+    on — one query per symbol instead of one per bar, which is what a warm scan mostly waited on.
+
+    A symbol with no rows of its own takes its peers' (_signal_peers: the same signal_id, so the same
+    rows) first, copied under this spec_id so the run's record is its own, as seed_signal_cache does."""
+    q = (f"SELECT date, {', '.join(_SIGNAL_FIELDS)} FROM backtest_signals "
+         f"WHERE market=%s AND strategy=%s AND symbol=%s AND spec_id=%s AND date >= %s")
+    args = (market_key, strategy.key, symbol, strategy.spec_id(), start.date())
+    with db.get_connection().cursor() as cur:
+        cur.execute(q, args)
+        rows = cur.fetchall()
+        peers = [] if rows else _signal_peers(market_key, strategy)
+        if peers:
+            cols = "market, strategy, symbol, date, " + ", ".join(_SIGNAL_FIELDS)
+            cur.execute(
+                f"INSERT INTO backtest_signals ({cols}, spec_id) "
+                f"SELECT DISTINCT ON (date) {cols}, %s FROM backtest_signals "
+                f"WHERE market=%s AND strategy=%s AND symbol=%s AND spec_id = ANY(%s) "
+                f"ORDER BY date, array_position(%s::text[], spec_id::text) "
+                f"ON CONFLICT (market, strategy, symbol, date, spec_id) DO NOTHING",
+                (strategy.spec_id(), market_key, strategy.key, symbol, peers, peers),
+            )
+            if cur.rowcount:
+                cur.execute(q, args)
+                rows = cur.fetchall()
+    return {pd.Timestamp(r[0]): dict(zip(_SIGNAL_FIELDS, r[1:])) for r in rows}
+
+
+def _cached_result(strategy, vals: dict) -> "StrategyResult | None":
+    """The StrategyResult a cached row records, or None when the row cannot stand in for a scan."""
     # A strategy whose build_plans() reads ctx.extras cannot use a row written
     # before extras were persisted: rebuilding from it yields an empty extras
     # dict and the strategy silently emits no signals. Treat that as a miss.
@@ -142,29 +180,35 @@ def _load_cached_signal(
     # ...nor one written before the strategy recorded something it now reads
     if not strategy.cached_signal_ok(vals.get("extras") or {}):
         return None
-
-    daily = cache.load_cached_with_indicators(market_key, symbol, date, tail=70)
-    if daily is None or len(daily) < 15:
-        return None  # not enough tail data cached for entry/demand-supply math — recompute fresh
-
-    result = StrategyResult(
+    return StrategyResult(
         first_hard_fail=vals["first_failed_gate"],
         hard_gates=vals.get("hard_gates") or {},
         setups=vals["setups"] or {},
         entry_setup_codes=strategy.setup_codes,
         watch_flags=vals["watch_flags"] or {}, watch_notes=vals["watch_notes"] or {},
     )
-    ctx = StockContext(
+
+
+def _cached_ctx(market_key: str, symbol: str, date: pd.Timestamp, vals: dict, tail: bool) -> "StockContext | None":
+    """The StockContext of a cached row. `tail` loads the daily tail the entry and plan read; a bar that
+    stops before them (a gate failed, no setup) needs none, so the scan skips that query (None = the
+    tail is too short: recompute the bar)."""
+    if tail:
+        daily = cache.load_cached_with_indicators(market_key, symbol, date, tail=70)
+        if daily is None or len(daily) < 15:
+            return None  # not enough tail data cached for entry/demand-supply math — recompute fresh
+    else:
+        daily = pd.DataFrame()
+    # weekly/monthly are intentionally empty on the cache-hit path: nothing
+    # between here and the trade decision reads them. If a strategy ever
+    # does, it must not use the signal cache (or this must be widened).
+    return StockContext(
         symbol=symbol, daily=daily, weekly=pd.DataFrame(), monthly=pd.DataFrame(),
         h_value=vals["h_value"], h_index=pd.Timestamp(vals["h_index"]) if vals["h_index"] else None,
         l_value=vals["l_value"], p_value=vals["p_value"], prior_swing_low=vals["prior_swing_low"],
         overhead=vals["overhead_levels"] or [], history_months=24,  # unused downstream of a cache hit
         extras=dict(vals.get("extras") or {}),
     )
-    # weekly/monthly are intentionally empty on the cache-hit path: nothing
-    # between here and the trade decision reads them. If a strategy ever
-    # does, it must not use the signal cache (or this must be widened).
-    return ctx, result
 
 
 def _signal_row(
@@ -261,6 +305,37 @@ def seed_signal_cache(
     logger.info("Signal cache: seeded %d rows from %s (same signal_id %s) in %.0fs",
                 n, source_spec, strategy.signal_id(), time.time() - t0)
     return n
+
+
+def record_signal_spec(market_key: str, strategy) -> None:
+    """Record the signal_id this spec's cached rows are written under (backtest_signal_specs), so a
+    later spec with the same signal_id — a version bump that kept `signal_version`, a `--const` variant
+    of post-scan constants, or the shipped rules after such a variant — finds them as its peers
+    (_signal_peers) and starts from their rows instead of rescanning."""
+    with db.get_connection().cursor() as cur:
+        cur.execute(
+            "INSERT INTO backtest_signal_specs (market, strategy, spec_id, signal_id) VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (market, strategy, spec_id) DO UPDATE SET signal_id = EXCLUDED.signal_id, seen_at = now()",
+            (market_key, strategy.key, strategy.spec_id(), strategy.signal_id()),
+        )
+    _PEERS.pop((market_key, strategy.key, strategy.spec_id()), None)
+
+
+_PEERS: dict = {}   # (market, strategy, spec_id) -> the other spec ids with its signal_id
+
+
+def _signal_peers(market_key: str, strategy) -> list[str]:
+    """Other spec ids whose cached rows are exactly this spec's (same signal_id), newest first."""
+    k = (market_key, strategy.key, strategy.spec_id())
+    if k not in _PEERS:
+        with db.get_connection().cursor() as cur:
+            cur.execute(
+                "SELECT spec_id FROM backtest_signal_specs WHERE market=%s AND strategy=%s AND signal_id=%s "
+                "AND spec_id <> %s ORDER BY seen_at DESC",
+                (market_key, strategy.key, strategy.signal_id(), strategy.spec_id()),
+            )
+            _PEERS[k] = [r[0] for r in cur.fetchall()]
+    return _PEERS[k]
 
 
 def backtest_symbol(
@@ -452,6 +527,8 @@ def collect_signals(
     # sliced context is identical to the rebuilt one.
     frames = ctx_mod.prepare_frames(raw_daily)
     screened_in = strategy.prefilter_mask(cfg, frames.daily)
+    cached_rows = (_cached_signal_rows(market_key, strategy, symbol, sim_dates[0])
+                   if (use_signal_cache and market_key) else {})
 
     for current_date in sim_dates:
         if not bool(screened_in.get(current_date, False)):
@@ -459,10 +536,16 @@ def collect_signals(
         if fn:
             fn.reached("bars", symbol=symbol)
 
-        cached = (
-            _load_cached_signal(market_key, strategy, symbol, current_date)
-            if (use_signal_cache and market_key) else None
-        )
+        # a cache hit: the same row _load_cached_signal reads, with the price tail loaded only for a
+        # bar that reaches the entry and plan (the rest never read ctx.daily)
+        cached = None
+        vals = cached_rows.get(current_date)
+        if vals is not None:
+            result = _cached_result(strategy, vals)
+            if result is not None:
+                ctx = _cached_ctx(market_key, symbol, current_date, vals,
+                                  tail=result.hard_gates_passed and result.has_setup)
+                cached = (ctx, result) if ctx is not None else None
         if cached is not None:
             ctx, result = cached
         else:
@@ -809,6 +892,8 @@ def run_backtest(
         logger.info("Capped to %d symbols for this run", len(candidates))
     if signal_source and use_signal_cache:
         seed_signal_cache(market_key, strategy, signal_source, start, candidates)
+    if use_signal_cache:
+        record_signal_spec(market_key, strategy)
 
     from ..providers import YFinanceProvider
 
@@ -851,6 +936,44 @@ class NoSignals(ValueError):
 # the scan. Fork gives every worker a read-only copy-on-write view of this for free; only `sym` (a
 # string) crosses the pool's IPC pipe per task, not a whole DataFrame/Strategy per call. Same idiom as spec_sensitivity.py's `_DATA`.
 _POOL_CTX: dict = {}
+
+
+# How many scan processes a backtest forks when not told (`--workers`): one per core, at most
+# MAX_SCAN_WORKERS, and no more than the memory free at the start holds at SCAN_WORKER_MEM_MB each — a
+# worker pushed into swap is slower than none. Measured on the M4 (4 performance + 6 efficiency cores),
+# a cold 40-symbol US breakout scan: 1 worker 713s, 4 workers 247s, 6 workers 157s, trades identical;
+# the efficiency cores still pay because a scan partly waits on Postgres. Each worker peaked near
+# 110 MB (785 MB for the whole tree at 6), so SCAN_WORKER_MEM_MB keeps ~3x headroom for longer
+# histories. Speed only: the scan is per symbol and merged in candidate order, so the trades are the
+# same for any count (windows._SPEED_ONLY_BT).
+MAX_SCAN_WORKERS = 6
+SCAN_WORKER_MEM_MB = 350
+
+
+def _free_memory_mb() -> int | None:
+    """Memory the OS can hand out now (free + inactive + speculative pages), or None if unknown."""
+    import subprocess
+    try:
+        out = subprocess.run(["vm_stat"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        try:
+            return os.sysconf("SC_AVPHYS_PAGES") * os.sysconf("SC_PAGE_SIZE") // 2**20
+        except (ValueError, OSError, AttributeError):
+            return None
+    import re
+    page = int(m.group(1)) if (m := re.search(r"page size of (\d+) bytes", out)) else 4096
+    pages = sum(int(m.group(1)) for k in ("free", "inactive", "speculative")
+                if (m := re.search(rf"Pages {k}:\s+(\d+)", out)))
+    return pages * page // 2**20 if pages else None
+
+
+def default_workers() -> int:
+    """The scan's process count when `--workers` is not given (see MAX_SCAN_WORKERS)."""
+    n = min(os.cpu_count() or 1, MAX_SCAN_WORKERS)
+    free = _free_memory_mb()
+    if free is not None:
+        n = min(n, free // SCAN_WORKER_MEM_MB)
+    return max(1, n)
 
 
 def _pool_worker_init() -> None:
@@ -905,10 +1028,11 @@ def collect_portfolio_signals(
     `workers` > 1 forks that many processes and scans `workers` symbols at once (each symbol is
     independent, so this is embarrassingly parallel). It pays off on a cold signal cache (e.g. right
     after a strategy version bump), where build_context runs on every bar and the work is CPU-bound,
-    and on a warm one too: there each bar is an indexed DB read (_load_cached_signal) plus the price
-    tail, so a scan is mostly waiting on round trips, which overlap across processes. Measured: 4
-    workers took a warm 40-symbol India scan from 26s to 6s; 6 workers took a warm US scan from ~40
-    to 267 symbols a minute."""
+    and on a warm one too: there a symbol is one read of its cached rows (_cached_signal_rows) plus the
+    price tail of each bar that reaches a plan, so a scan is mostly waiting on round trips, which
+    overlap across processes. Measured: 4 workers took a warm 40-symbol India scan from 26s to 6s; a
+    cold 40-symbol US breakout scan took 713s with 1 worker, 247s with 4 and 157s with 6
+    (default_workers)."""
     deep_data = deep_data or {}
     all_signals = []
     prices: dict[str, pd.DataFrame] = {}
@@ -1029,6 +1153,42 @@ def _prefilter_one(sym: str) -> tuple[bool, bool]:
     return _prefilter_symbol(ctx["cfg"], ctx["strategy"], ctx["market_key"], ctx["start"], sym)
 
 
+_CODE_SIG: list = []
+
+
+def _prefilter_key(cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp) -> str:
+    """What a stored pre-filter answer depends on besides the symbol's prices: the strategy's spec id
+    (every constant), the market config (a --min-dollar-volume override changes it), the window, and the
+    source of the packages the pre-filter runs (strategies, screens, core indicators, config) — a code
+    change without a version bump must not replay old answers."""
+    import hashlib
+    from .. import paths
+    if not _CODE_SIG:
+        h = hashlib.sha256()
+        for pkg in ("strategies", "screens", "core", "config"):
+            for f in sorted((paths.SCRIPTS_DIR / "swing_screener" / pkg).rglob("*.py")):
+                h.update(f.name.encode() + f.read_bytes())
+        h.update(inspect.getsource(_prefilter_symbol).encode())
+        _CODE_SIG.append(h.hexdigest())
+    blob = "|".join([strategy.key, strategy.spec_id(), repr(cfg), str(start.date()), str(asof.end_date()), _CODE_SIG[0]])
+    return hashlib.sha256(blob.encode()).hexdigest()[:24]
+
+
+def _price_sigs(market_key: str) -> dict[str, str]:
+    """{symbol: fingerprint of its stored prices up to the stage's end}, in one query. Exact numeric
+    sums, not float ones, so the fingerprint cannot drift with the order a parallel aggregate adds in."""
+    end = asof.end_date()
+    with db.get_connection().cursor() as cur:
+        cur.execute(
+            "SELECT symbol, count(*), min(date), max(date), sum(round(close::numeric, 6)), "
+            "sum(round(high::numeric, 6)), sum(round(low::numeric, 6)), "
+            "sum(round(open::numeric, 6)), sum(volume::numeric) FROM prices WHERE market=%s"
+            + (" AND date <= %s" if end else "") + " GROUP BY symbol",
+            (market_key, end) if end else (market_key,),
+        )
+        return {r[0]: "|".join(map(str, r[1:])) for r in cur.fetchall()}
+
+
 def _point_in_time_candidates(
     cfg: MarketConfig, strategy, market_key: str, start: pd.Timestamp,
     fn: "funnel_mod.Funnel | None" = None,
@@ -1054,15 +1214,23 @@ def _point_in_time_candidates(
     )
     candidates: list[str] = []
     excluded_today = 0
+    # Answers stored by an earlier run with the same rules, window and prices (backtest_prefilter_cache):
+    # only the symbols whose prices changed since, or never seen, are pre-filtered again.
+    key, sigs = _prefilter_key(cfg, strategy, market_key, start), _price_sigs(market_key)
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT symbol, data_sig, qualifies, missed_today FROM backtest_prefilter_cache "
+                    "WHERE market=%s AND key=%s", (market_key, key))
+        known = {r[0]: (r[2], r[3]) for r in cur.fetchall() if sigs.get(r[0]) == r[1]}
+    todo = [t for t in tickers if t not in known]
+    logger.info("Pre-filter: %d of %d symbols answered by the stored pre-filter, %d to compute",
+                len(tickers) - len(todo), len(tickers), len(todo))
+    fresh: dict[str, tuple[bool, bool]] = {}
     if workers <= 1:
-        for i, sym in enumerate(tickers):
-            _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
-                      done=i + 1, total=len(tickers))
-            qualifies, missed_today = _prefilter_symbol(cfg, strategy, market_key, start, sym)
-            if qualifies:
-                candidates.append(sym)
-                excluded_today += missed_today
-    else:
+        for i, sym in enumerate(todo):
+            _progress(f"selecting candidates point in time: {i + 1:,}/{len(todo):,} symbols",
+                      done=i + 1, total=len(todo))
+            fresh[sym] = _prefilter_symbol(cfg, strategy, market_key, start, sym)
+    elif todo:
         import multiprocessing as mp
         from concurrent.futures import ProcessPoolExecutor
 
@@ -1076,14 +1244,27 @@ def _point_in_time_candidates(
         with ProcessPoolExecutor(workers, mp_context=mp.get_context("fork"), initializer=_pool_worker_init) as pool:
             # map keeps universe order, so `candidates` is the same list the serial path builds.
             # chunksize batches the IPC round trips: one symbol is only a few milliseconds of work.
-            results = pool.map(_prefilter_one, tickers, chunksize=16)
-            for i, (sym, (qualifies, missed_today)) in enumerate(zip(tickers, results)):
-                if qualifies:
-                    candidates.append(sym)
-                    excluded_today += missed_today
-                _progress(f"selecting candidates point in time: {i + 1:,}/{len(tickers):,} symbols · {len(candidates):,} qualify",
-                          done=i + 1, total=len(tickers))
+            results = pool.map(_prefilter_one, todo, chunksize=16)
+            for i, (sym, res) in enumerate(zip(todo, results)):
+                fresh[sym] = res
+                _progress(f"selecting candidates point in time: {i + 1:,}/{len(todo):,} symbols",
+                          done=i + 1, total=len(todo))
         _POOL_CTX = {}
+    if fresh:
+        from psycopg2.extras import execute_values
+        with db.get_connection().cursor() as cur:
+            execute_values(
+                cur,
+                "INSERT INTO backtest_prefilter_cache (market, key, symbol, data_sig, qualifies, missed_today) VALUES %s "
+                "ON CONFLICT (market, key, symbol) DO UPDATE SET data_sig = EXCLUDED.data_sig, "
+                "qualifies = EXCLUDED.qualifies, missed_today = EXCLUDED.missed_today, seen_at = now()",
+                [(market_key, key, sym, sigs.get(sym, ""), bool(q), bool(m)) for sym, (q, m) in fresh.items()],
+            )
+    for sym in tickers:   # universe order, whichever way each answer came
+        qualifies, missed_today = known[sym] if sym in known else fresh[sym]
+        if qualifies:
+            candidates.append(sym)
+            excluded_today += missed_today
     logger.info(
         "Pre-filter (%s): %d/%d symbols qualify on >=1 bar in the window",
         strategy.key, len(candidates), len(tickers),
@@ -1206,6 +1387,8 @@ def run_portfolio_backtest(
     )
     if signal_source and use_signal_cache:
         seed_signal_cache(market_key, strategy, signal_source, start, candidates)
+    if use_signal_cache:
+        record_signal_spec(market_key, strategy)
 
     deep_data: dict = {}
     if refresh_history:
@@ -1466,10 +1649,12 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser.add_argument("--start", required=True, help="YYYY-MM-DD")
     parser.add_argument("--limit", type=int, default=None, help="cap number of symbols tested")
     parser.add_argument(
-        "--workers", type=int, default=1, metavar="N",
+        "--workers", type=int, default=None, metavar="N",
         help="pre-filter and scan N symbols at once in forked processes (portfolio mode; "
         "--per-symbol stays single-process). Speeds up the point-in-time candidate selection "
-        "and the signal scan, on a cold signal cache or a warm one. Not more than your core count.",
+        "and the signal scan, on a cold signal cache or a warm one; the trades do not change. "
+        f"Default: one per core, at most {MAX_SCAN_WORKERS}, fewer if free memory is short "
+        "(default_workers). 1 scans in this process.",
     )
     parser.add_argument("--strategy", default=DEFAULT_STRATEGY, choices=list_strategies())
     parser.add_argument(
@@ -1790,10 +1975,12 @@ def main(argv: list[str] | None = None) -> dict | None:
         mode=args.exit_mode, use_target=not args.no_target,
         atr_mult=args.atr_mult, ma_col=args.ma_col, ma_weeks=args.ma_weeks, donchian_bars=args.donchian_bars, **extra,
     )
+    workers = args.workers if args.workers is not None else default_workers()
+    logger.info("Scan workers: %d%s", workers, "" if args.workers is not None else " (default_workers)")
     try:
         tdf, perf, result = run_portfolio_backtest(
             args.market, args.start, args.limit, args.deep_lookback_days,
-            use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy, workers=args.workers,
+            use_signal_cache=not args.no_signal_cache, strategy_key=args.strategy, workers=workers,
             signal_source=signal_source,
             accept_labels=labels, max_positions=args.max_positions, exit_policy=policy,
             sample=args.sample, refresh_history=args.refresh_history,

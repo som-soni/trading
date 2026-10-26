@@ -15,6 +15,9 @@ Checked statically, per strategy, for every exempt NAME:
   - no module the strategy's module imports at module level (core/, screens/, ...) reads it as
     an attribute of another module (`_ms.NAME`).
 
+Also: a pinned `signal_version` (a version bump that kept the scan, so the next run carries the
+cached rows forward -- backtest._signal_peers) names a released version, not a later one.
+
 Run:  PYTHONPATH=. .venv/bin/python -m tests.test_signal_exempt
 """
 
@@ -149,9 +152,26 @@ def check(key: str) -> list[str]:
     return problems
 
 
+def check_signal_version(key: str) -> list[str]:
+    """A pinned `signal_version` names a released version no later than the current one (a typo would
+    match no cached rows -- harmless -- but a later version would carry rows the code never wrote)."""
+    cls = type(get_strategy(key))
+    sv = getattr(cls, "signal_version", None)
+    if not sv:
+        return []
+    released = [v for v, *_ in (getattr(cls, "changelog", None) or ())] + [cls.version]
+    if sv not in released:
+        return [f"{key}: signal_version {sv!r} is not a version in its changelog"]
+    num = lambda v: tuple(int(x) for x in v.split("."))
+    if num(sv) > num(cls.version):
+        return [f"{key}: signal_version {sv} is later than version {cls.version}"]
+    return []
+
+
 def main() -> int:
     problems, checked = [], []
     for key in list_strategies():
+        problems += check_signal_version(key)
         strat = get_strategy(key)
         if getattr(strat, "signal_exempt_consts", ()):
             checked.append(f"{key} ({len(strat.signal_exempt_consts)} exempt)")

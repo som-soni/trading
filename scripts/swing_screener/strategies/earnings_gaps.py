@@ -135,6 +135,9 @@ class EarningsGapStrategy(Strategy):
     nominal_target = True
     min_bars = 260
     needs_ctx_extras = True
+    # Read after the scan, never by evaluate(): a `--const` variant moving only these starts from the
+    # shipped run's signal rows (base.Strategy.signal_exempt_consts) — the order expiry (signal_meta) and the nominal target (build_plans).
+    signal_exempt_consts = ("ENTRY_EXPIRY_BDAYS", "NOMINAL_TARGET_R")
     extra_columns = ("reaction_date", "reaction_high", "reaction_low", "reaction_move_pct",
                      "reaction_rel_volume", "reaction_close_pos")
     extra_numeric_columns = ("reaction_high", "reaction_low", "reaction_move_pct",

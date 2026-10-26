@@ -959,6 +959,13 @@ FAST_JOBS = frozenset({"breadth", "sectors", "screens", "strategies", "postmarke
 # scheduled market routine in the main lane never waits behind one. Downloads stay in the main lane, so
 # two lanes never hit the data sources at once.
 RESEARCH_JOBS = frozenset({"backtest", "screen_history", "group_research"})
+# The portfolio lane runs backtests of PORTFOLIO strategies only (swing_screener.strategies
+# portfolio_strategies(): a ranking or allocation rule over the whole book, minutes per run), so one never
+# waits hours behind a per-symbol scan in the backtest lane. Its own lane rather than the fast lane: a
+# fast job is something a page is waiting on (seconds), and a ten-minute backtest there would hold up a
+# screens rebuild the page promised "within moments". A request mixing both kinds (`--strategies a,b`,
+# `all`) is one run — its steps in order, one ingest — so it stays whole and runs in the backtest lane.
+PORTFOLIO_JOBS = frozenset({"backtest"})
 # short, idempotent publishing steps that may run in two lanes at once: they do not count as a clash, or a
 # close routine ending in `ingest` would wait hours for a backtest that also ends in one
 CLASH_EXEMPT = frozenset({"ingest", "report"})
@@ -989,6 +996,26 @@ def research_item(item: dict) -> bool:
     return bool(jobs) and all(j in RESEARCH_JOBS for j in jobs)
 
 
+def item_strategies(item: dict) -> set[str]:
+    """The strategies a backtest item names (`all` expanded, none = the default strategy, as the job reads it)."""
+    from swing_screener.strategies import DEFAULT_STRATEGY, list_strategies, portfolio_strategies
+    s = (item.get("opts") or {}).get("strategies") or [DEFAULT_STRATEGY]
+    keys = [k.strip() for k in (s.split(",") if isinstance(s, str) else s) if k and k.strip()]
+    if keys == ["all"]:
+        keys = list_strategies() + sorted(portfolio_strategies())
+    return set(keys)
+
+
+def portfolio_item(item: dict) -> bool:
+    """A portfolio-lane item: backtests (publishing steps aside) of portfolio strategies and nothing else."""
+    from swing_screener.strategies import portfolio_strategies
+    jobs = [j for j in item_jobs(item["targets"]) if j not in CLASH_EXEMPT]
+    if not jobs or not all(j in PORTFOLIO_JOBS for j in jobs):
+        return False
+    keys = item_strategies(item)
+    return bool(keys) and keys <= set(portfolio_strategies())
+
+
 def _markets_overlap(a: str | None, b: str | None) -> bool:
     return (a or "all") == "all" or (b or "all") == "all" or a == b
 
@@ -996,13 +1023,18 @@ def _markets_overlap(a: str | None, b: str | None) -> bool:
 def clashes(item: dict, running: list) -> bool:
     """Starting `item` now would collide with a running item: the same job for the same market (two
     writers of one dataset), or — for a fast item — a data download in progress for that market (it
-    would read a half-written update)."""
+    would read a half-written update). Backtests are the same job only for the same strategy: each
+    strategy writes its own run directory and signal-cache rows, so a portfolio backtest may run beside
+    a per-symbol one for the same market."""
     mine = set(item_jobs(item["targets"])) - CLASH_EXEMPT
     for r in running:
         if not _markets_overlap(item.get("market"), r.get("market")):
             continue
         theirs = set(item_jobs(r["targets"])) - CLASH_EXEMPT
-        if mine & theirs:
+        shared = mine & theirs
+        if shared == {"backtest"} and not (item_strategies(item) & item_strategies(r)):
+            shared = set()
+        if shared:
             return True
         if fast_item(item) and any(JOBS[j].layer in FEED_LAYERS for j in theirs if j in JOBS):
             return True
@@ -1012,23 +1044,31 @@ def clashes(item: dict, running: list) -> bool:
 def choose_for(lane: str):
     """The claim policy of a lane, for queue.claim_next.
 
-    main      the queue in order, leaving research items to the backtest lane while that lane is alive;
-              it WAITS when its next item clashes rather than skip ahead (skipping could start a
-              multi-hour job in front of a routine that only had to wait a minute)
-    backtest  the first research item that does not clash
+    main      the queue in order, leaving research items to the backtest lane and portfolio backtests to
+              the portfolio lane while those lanes are alive; it WAITS when its next item clashes rather
+              than skip ahead (skipping could start a multi-hour job in front of a routine that only had
+              to wait a minute)
+    backtest  the first research item that does not clash, leaving portfolio backtests to a live
+              portfolio lane
+    portfolio the first portfolio backtest that does not clash
     fast      the first fast item that does not clash"""
     from . import queue
 
     def main(queued, running):
-        bt_alive = queue.worker_status("backtest")["alive"]
-        mine = [x for x in queued if not (bt_alive and research_item(x))]
+        bt_alive, pf_alive = queue.worker_status("backtest")["alive"], queue.worker_status("portfolio")["alive"]
+        mine = [x for x in queued if not ((bt_alive and research_item(x)) or (pf_alive and portfolio_item(x)))]
         if not mine:
             return None
         return None if clashes(mine[0], running) else mine[0]
 
     def backtest(queued, running):
-        return next((x for x in queued if research_item(x) and not clashes(x, running)), None)
+        pf_alive = queue.worker_status("portfolio")["alive"]
+        return next((x for x in queued if research_item(x) and not (pf_alive and portfolio_item(x))
+                     and not clashes(x, running)), None)
+
+    def portfolio(queued, running):
+        return next((x for x in queued if portfolio_item(x) and not clashes(x, running)), None)
 
     def fast(queued, running):
         return next((x for x in queued if fast_item(x) and not clashes(x, running)), None)
-    return {"main": main, "fast": fast, "backtest": backtest}[lane]
+    return {"main": main, "fast": fast, "backtest": backtest, "portfolio": portfolio}[lane]
