@@ -688,6 +688,26 @@
     },
     "version": "2.6"
   },
+  "supertrend": {
+    "family": "supertrend",
+    "fingerprint": "160056a8",
+    "params": {
+      "ATR_PERIOD": 10,
+      "MAX_STOP_PCT": 20,
+      "MULTIPLIER": 3,
+      "NOMINAL_TARGET_ATR": 10,
+      "REQUIRE_SMA200": 1,
+      "_key": "supertrend",
+      "gate_codes": [
+        "G1"
+      ],
+      "min_bars": 260,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "trend_pullback": {
     "family": "trend_pullback",
     "fingerprint": "10d54f8a",

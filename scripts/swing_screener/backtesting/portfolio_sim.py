@@ -65,6 +65,7 @@ import pandas as pd
 from ..config.base import MarketConfig
 from ..core import indicators as ind
 from ..strategies import minervini_spec as _ms
+from ..strategies import supertrend as _st
 
 logger = logging.getLogger(__name__)
 
@@ -96,13 +97,18 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | ma | weekly_ma | donchian | minervini
+    mode: str = "bracket"        # bracket | trail_atr | ma | weekly_ma | donchian | supertrend | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
     ma_col: str = "sma50"        # for ma, and minervini's EX-06
     ma_weeks: int = 30           # for weekly_ma: a completed week closing below the simple average of
                                  #   this many weekly closes sells at that close (Weinstein's 30-week line)
     donchian_bars: int = 50      # for donchian
+    # for supertrend: a close that turns the Supertrend down sells at that close. The strategy's own
+    # constants, through a factory for the reason given under `minervini` below (`--const` patches them
+    # after import).
+    st_period: int = field(default_factory=lambda: _st.ATR_PERIOD)
+    st_mult: float = field(default_factory=lambda: _st.MULTIPLIER)
     # ---- minervini: the strategy's exit ladder. Defaults are minervini_spec's constants, so a
     # --spec run trades the strategy's documented numbers (1.8: the SEPA Learn guide's).
     #
@@ -164,6 +170,8 @@ class ExitPolicy:
             bits.append(f"{self.ma_weeks}w")
         elif self.mode == "donchian":
             bits.append(f"{self.donchian_bars}d")
+        elif self.mode == "supertrend":
+            bits.append(f"{self.st_period}x{self.st_mult:g}")
         bits.append("withTarget" if self.use_target else "noTarget")
         if self.be_r:
             bits.append(f"be{self.be_r:g}R")
@@ -350,6 +358,7 @@ class Exposure:
 _FLAT = Exposure()   # disabled: every entry risks the full risk_pct
 
 WEEKLY_LINE = "_weekly_line"   # the weekly_ma exit's level, added to each price frame by `simulate`
+ST_DIR = "_st_dir"             # the supertrend exit's direction (1 up, -1 down), added the same way
 
 
 def weekly_line(df: pd.DataFrame, weeks: int) -> pd.Series:
@@ -412,6 +421,9 @@ def simulate(
     fee_rate = cost_bps / 10_000.0
     if policy.mode == "weekly_ma":
         prices = {s: df.assign(**{WEEKLY_LINE: weekly_line(df, policy.ma_weeks)}) for s, df in prices.items()}
+    elif policy.mode == "supertrend":
+        prices = {s: df.assign(**{ST_DIR: ind.supertrend(df, policy.st_period, policy.st_mult)["dir"]})
+                  for s, df in prices.items()}
 
     # the calendar is the union of the dates of every symbol we might trade
     all_dates = sorted({d for df in prices.values() for d in df.index if d >= start})
@@ -550,10 +562,12 @@ def simulate(
             hit_stop = bar["low"] <= pos.stop
             hit_target = policy.use_target and bar["high"] >= pos.target
             trend_break = False
-            if not hit_stop and not hit_target and policy.mode in ("ma", "weekly_ma", "donchian"):
+            if not hit_stop and not hit_target and policy.mode in ("ma", "weekly_ma", "donchian", "supertrend"):
                 # trend-failure exits act on the CLOSE, so they are evaluated
                 # only once the bar is complete -- no intrabar clairvoyance
-                if policy.mode in ("ma", "weekly_ma"):
+                if policy.mode == "supertrend":
+                    trend_break = bar.get(ST_DIR, 0) == -1
+                elif policy.mode in ("ma", "weekly_ma"):
                     ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
                     trend_break = ma == ma and float(bar["close"]) < float(ma)
                 else:
@@ -939,7 +953,7 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
       1. the stop (at the open if the stock gapped through it) -- it wins a tie with the target;
       2. the target: everything, or `partial_at_target` of the shares, after which the rest has no
          target and trails `atr_mult` × ATR14 under its highest close (a trailing mode keeps its own);
-      3. the mode's close-based exit (ma, donchian), at the close;
+      3. the mode's close-based exit (ma, donchian, supertrend), at the close;
       4. the time stop, at the close of its last session;
     then, for tomorrow: break-even once the high reached entry + `be_r` × R, and the trail.
     Exit reasons: STOP, BREAKEVEN (the raised stop), TRAIL_STOP (the remainder after a partial),
@@ -972,8 +986,10 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
         sell(pos, fill, n, today)
         pos.partial_shares = n
 
-    if policy.mode in ("ma", "weekly_ma", "donchian"):
-        if policy.mode in ("ma", "weekly_ma"):
+    if policy.mode in ("ma", "weekly_ma", "donchian", "supertrend"):
+        if policy.mode == "supertrend":
+            broke = bar.get(ST_DIR, 0) == -1
+        elif policy.mode in ("ma", "weekly_ma"):
             ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
             broke = ma == ma and c < float(ma)
         else:

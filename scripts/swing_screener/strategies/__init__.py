@@ -54,6 +54,7 @@ from .earnings_gaps import EarningsGapStrategy
 from .minervini_spec import MinerviniSpecStrategy
 from .rs_leaders import RsLeadersStrategy
 from .stage_analysis import StageAnalysisStrategy
+from .supertrend import SupertrendStrategy
 from .trend_pullback import TrendPullbackStrategy
 
 _REGISTRY: dict[str, Strategy] = {}
@@ -72,6 +73,7 @@ register(ChartPatternSpecStrategy())
 register(MinerviniSpecStrategy())
 register(RsLeadersStrategy())
 register(StageAnalysisStrategy())
+register(SupertrendStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
 # idea as the `_spec` strategy above it, which is built to the written detection

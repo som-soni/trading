@@ -10,6 +10,7 @@ import pandas as pd
 
 from swing_screener.backtesting.portfolio_sim import ExitPolicy, Signal, simulate, weekly_line
 from swing_screener.config import MARKETS
+from swing_screener.core import indicators as ind
 
 CFG = dataclasses.replace(MARKETS["india"], slippage_bps=0.0, commission_per_order=0.0, risk_pct=0.01,
                           max_position_pct=1.0, account_size=1_000_000)
@@ -124,6 +125,20 @@ def test_weekly_ma_sells_only_on_a_week_closing_below_the_line():
         t = _run(df, _signal(df, stop=50.0, target=1000.0), mode="weekly_ma", ma_weeks=2, use_target=False, **policy)
         assert t.entry_date == df.index[1] and t.exit_reason == "TREND_EXIT", (policy, t.exit_reason)
         assert t.exit_date == df.index[19] and t.exit_price == 100, (policy, t.exit_date, t.exit_price)
+
+
+def test_supertrend_sells_at_the_close_that_turns_it_down():
+    # Supertrend(3, 1): a steady climb, then one bar closing far below the rising lower band
+    bars = [(100 + i, 101 + i, 99 + i, 100.5 + i) for i in range(12)] + [(111, 111.5, 100, 101), (101, 102, 100, 101.5)]
+    df = _frame(bars)
+    st = ind.supertrend(df, 3, 1.0)
+    turn = int((st["dir"] == -1).to_numpy().argmax())
+    assert turn == 12 and (st["dir"].iloc[3:12] == 1).all(), st
+    for policy in ({}, {"be_r": 50.0}):                     # the plain and the managed exit path
+        t = _run(df, _signal(df, entry=101.0, stop=50.0, target=1000.0), mode="supertrend", st_period=3,
+                 st_mult=1.0, use_target=False, **policy)
+        assert t.exit_reason == "TREND_EXIT" and t.exit_date == df.index[12] and t.exit_price == 101, (policy, t)
+    assert ExitPolicy(mode="supertrend", use_target=False, st_period=10, st_mult=3).label() == "supertrend-10x3-noTarget"
 
 
 def test_label():

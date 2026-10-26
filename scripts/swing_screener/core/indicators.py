@@ -186,3 +186,62 @@ def atr_distance(close: float, level: float, atr_value: float) -> float:
     if not atr_value or pd.isna(atr_value):
         return float("nan")
     return (close - level) / atr_value
+
+
+class SupertrendState:
+    """Supertrend(ATR period, multiplier), one bar at a time.
+
+    THE Python definition, transcribed from the chart's Supertrend study (web/static/studies.js,
+    `st`) so the two draw the same line: the ATR is an RMA of the true range seeded with the
+    simple average of its first `period` values (not `wilder_smooth`, which seeds from the first
+    value); the basic bands are (high + low) / 2 ± multiplier × ATR; the final upper band only
+    falls and the final lower band only rises, unless the previous close crossed them; the trend
+    starts up, turns up on a close above the previous final upper band and down on a close below
+    the previous final lower band. The line is the final lower band in an up-trend and the final
+    upper band in a down-trend.
+
+    Stepping (rather than a function of a whole frame) is what lets a backtest that sees a growing
+    slice of one history extend it bar by bar instead of recomputing it -- every value depends
+    only on bars up to its own, so the extension equals a recomputation."""
+
+    __slots__ = ("period", "mult", "_seed", "_atr", "_prev_close", "upper", "lower", "dir")
+
+    def __init__(self, period: int, mult: float):
+        self.period, self.mult = int(period), float(mult)
+        self._seed: list[float] = []
+        self._atr = None
+        self._prev_close = None
+        self.upper = self.lower = None
+        self.dir = 1
+
+    def step(self, high: float, low: float, close: float) -> tuple[float, int, float, float]:
+        """Feed one bar; return (line, direction, final upper, final lower), NaN/0 until the ATR exists."""
+        pc = self._prev_close
+        tr = high - low if pc is None else max(high - low, abs(high - pc), abs(low - pc))
+        if self._atr is None:
+            self._seed.append(tr)
+            if len(self._seed) == self.period:
+                self._atr = sum(self._seed) / self.period
+        else:
+            self._atr += (tr - self._atr) / self.period
+        if self._atr is None:
+            self._prev_close = close
+            return float("nan"), 0, float("nan"), float("nan")
+        hl2 = (high + low) / 2
+        bu, bl = hl2 + self.mult * self._atr, hl2 - self.mult * self._atr
+        pu, pl = self.upper, self.lower
+        self.upper = bu if pu is None or bu < pu or pc > pu else pu
+        self.lower = bl if pl is None or bl > pl or pc < pl else pl
+        if pu is not None:
+            self.dir = (1 if close > pu else -1) if self.dir == -1 else (-1 if close < pl else 1)
+        self._prev_close = close
+        return (self.lower if self.dir == 1 else self.upper), self.dir, self.upper, self.lower
+
+
+def supertrend(df: pd.DataFrame, period: int, mult: float) -> pd.DataFrame:
+    """`SupertrendState` over a whole daily frame: columns line, dir (1 up, -1 down, 0 before the
+    ATR exists), upper, lower."""
+    st = SupertrendState(period, mult)
+    rows = [st.step(h, l, c) for h, l, c in zip(df["high"].to_numpy(float), df["low"].to_numpy(float),
+                                                 df["close"].to_numpy(float))]
+    return pd.DataFrame(rows, index=df.index, columns=["line", "dir", "upper", "lower"])
