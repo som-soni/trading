@@ -173,6 +173,12 @@ class PatternParams:
     # lowest low). A low followed by a NEW high is part of the uptrend before the bottom, not its left
     # shoulder: JINDALSTEL.NS was read as an inverse H&S from a 367.80 low (2022-02-24) that rallied to
     # 577.80, a new high, before the decline to the head. False reproduces the spec.
+    # CH-13, beyond the spec: a cup WITHOUT a handle must be without one -- no low between the right
+    # lip C and today under C by more than tol. CVLT was bought at its 72.33 rim (2021-05-25) as a
+    # handle-less cup although price had spent the two weeks after C at 64.22, 10% under the lip: a
+    # handle, and one too deep for CH-07 -- the with-handle detector had already rejected those very
+    # bars. False reproduces the spec, whose variant simply drops CH-07..CH-11.
+    cup_nh_no_handle: bool = False
     hs_origin: bool = False
     # HS-10, beyond the spec: the neckline may run AGAINST the pattern by at most this % from N1 to N2
     # (an inverse's neckline falling, a top's rising). HS-05 caps the slope per day, which over a long
@@ -574,7 +580,7 @@ def outcomes(daily: pd.DataFrame, bo_pos: int, lv: Levels,
 # ----------------------------------------------- §4 cup with handle
 
 # evaluated in this order, so "first failing rule" means the earliest one
-CUP_RULES = ("CH-01", "CH-02", "CH-03", "CH-12", "CH-04", "CH-05", "CH-06",
+CUP_RULES = ("CH-01", "CH-02", "CH-03", "CH-12", "CH-04", "CH-05", "CH-06", "CH-13",
              "CH-07", "CH-08", "CH-09", "CH-10", "CH-11")
 
 
@@ -730,6 +736,15 @@ def _cup_with_lip(base: dict, c_swing: Swing, d: pd.DataFrame, high, low, close,
 
     H = max(A, C) - B
     if not require_handle:
+        # CH-13 (cup_nh_no_handle): the bars after C are not free -- a dip below the rim by more than
+        # tol IS a handle, and CH-07..CH-11 (the with-handle read) are the rules that judge it
+        hseg = low[c_pos + 1: t_pos + 1]
+        if p.cup_nh_no_handle and hseg.size:
+            dip = float(hseg.min())
+            out["metrics"]["nh_dip_pct"] = round((dip / C - 1) * 100, 2)
+            if dip < C * (1 - tol(float(close[t_pos]), atr_t, p)):
+                out["fail"] = "CH-13"
+                return out
         # the spec's cup-without-handle variant: drop CH-07..CH-11. T is the
         # OLD HIGH max(A, C), not C: CH-03 lets C sit up to 15% under A, and
         # buying through C then buys under the left lip's overhead supply.

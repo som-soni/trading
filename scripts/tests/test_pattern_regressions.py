@@ -34,6 +34,8 @@ CASES = [
      "v1.14 TL-06/BOUNDARY_LIFE: falling highs 760/618/587 over a ~450 floor — complete before the break"),
     ("india", "HINDCOPPER.NS", "descending triangle", "2026-10-23", True,
      "v1.14 BOUNDARY_LIFE: the floor broke on 2026-10-19 and the veto must survive the breakdown"),
+    ("us", "CVLT", "CUPNH", "2021-05-24", False,
+     "v1.16 CH-13: two weeks at 64.22 after the 71.72 lip is a handle, and CH-07 had rejected it"),
     # the same review's sound patterns must survive
     ("india", "ICICIBANK.NS", "DBOT", "2013-04-25", True, "a clean O'Neil W"),
     ("india", "ICICIBANK.NS", "FWDG", "2015-05-29", True, "a converging wedge, 61% to the apex"),

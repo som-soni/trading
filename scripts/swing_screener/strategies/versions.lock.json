@@ -34,7 +34,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "b1edc275",
+    "fingerprint": "cd2096ea",
     "params": {
       "ATR_MULT": 1.5,
       "BOUNDARY_LIFE": 1,
@@ -43,6 +43,7 @@
       "BO_VOL": 1.4,
       "BREAKOUT_MAX_AGE": 0,
       "CONTAIN_BREAKOUT_SIDE": 1,
+      "CUPNH_NO_HANDLE": 1,
       "CUP_RIGHT_LEFT_MIN": 0.5,
       "CUP_UNDER_RIM": 1,
       "EARLY_BREAKOUT": 1,
@@ -161,7 +162,7 @@
         "W3"
       ]
     },
-    "version": "1.15"
+    "version": "1.16"
   },
   "donchian": {
     "family": "donchian",

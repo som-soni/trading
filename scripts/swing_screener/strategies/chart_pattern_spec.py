@@ -81,6 +81,7 @@ RIM_OK_PCT = 8.0          # ...within this: "acceptable"; beyond it (inside CH-0
 RIM_IDEAL_BONUS = 0.2     # setup quality added for ideal rims (it ranks signals for the position slots)
 RIM_LOOSE_PENALTY = 0.3   # ...and taken off for loose ones
 TRADE_CUPNH = 1           # 1 trades a cup WITHOUT a handle (CUPNH); 0 detects and draws it but never buys it
+CUPNH_NO_HANDLE = 1       # CH-13, beyond the spec: a handle-less cup may not have a dip below its rim (1 = on)
 CUP_UNDER_RIM = 1         # CH-12, beyond the spec: no high between a cup's lips above its rim (1 = on)
 HS_ORIGIN = 1             # HS-09, beyond the spec: the left shoulder belongs to the trend being reversed (1 = on)
 HS_MAX_NECK_CHANGE = 5.0  # HS-10, beyond the spec: the neckline may run against the pattern by at most this %, N1 to N2
@@ -98,7 +99,7 @@ def _build_params() -> ps.PatternParams:
     oneil_undercut=(0.0, W_UNDERCUT_MAX), oneil_depth=(W_MIN_DEPTH, W_MAX_DEPTH),
     oneil_min_days=W_MIN_DAYS, triple_max_drift=TRIPLE_MAX_DRIFT, right_left_min=CUP_RIGHT_LEFT_MIN,
     rim_ideal_pct=RIM_IDEAL_PCT, rim_ok_pct=RIM_OK_PCT, trigger_clears_rims=True,
-    cup_under_rim=bool(CUP_UNDER_RIM), hs_origin=bool(HS_ORIGIN), hs_max_neck_change=HS_MAX_NECK_CHANGE,
+    cup_under_rim=bool(CUP_UNDER_RIM), cup_nh_no_handle=bool(CUPNH_NO_HANDLE), hs_origin=bool(HS_ORIGIN), hs_max_neck_change=HS_MAX_NECK_CHANGE,
     early_breakout=bool(EARLY_BREAKOUT), oneil_first_low=bool(W_FIRST_LOW), wg_min_converge=WEDGE_MIN_CONVERGE,
     contain_breakout_side=bool(CONTAIN_BREAKOUT_SIDE), bound_lines=bool(BOUND_LINES),
     boundary_life=bool(BOUNDARY_LIFE), tr_min_touches=TR_MIN_TOUCHES,
@@ -107,7 +108,7 @@ def _build_params() -> ps.PatternParams:
 
 _PARAM_CONSTANTS = ("K_MINOR", "K_MAJOR", "MIN_SWING_PCT", "ATR_MULT", "TOL_PCT", "TOL_ATR_MULT", "BO_BUFFER",
                     "BO_VOL", "MAX_WAIT", "FAIL_DAYS", "HORIZON", "W_UNDERCUT_MAX", "W_MIN_DEPTH", "W_MAX_DEPTH",
-                    "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM",
+                    "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM", "CUPNH_NO_HANDLE",
                     "HS_ORIGIN", "HS_MAX_NECK_CHANGE", "EARLY_BREAKOUT", "WEDGE_MIN_CONVERGE", "W_FIRST_LOW",
                     "CONTAIN_BREAKOUT_SIDE", "BOUND_LINES", "BOUNDARY_LIFE", "TR_MIN_TOUCHES")
 PARAMS = _build_params()
@@ -211,8 +212,16 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.15"
+    version = "1.16"
     changelog = (
+        ("1.16", "2026-10-26",
+         "A cup without a handle must be without one (CH-13, beyond the spec, CUPNH_NO_HANDLE): no low "
+         "between the right lip C and today under C by more than the price tolerance. The handle-less "
+         "detector never looked at the bars after C, so CVLT was bought at its 72.33 rim (2021-05-25, "
+         "-1.7R) although price had spent the two weeks after the lip at 64.22, 10% under it -- a "
+         "handle, and one the with-handle read had already rejected as too deep (CH-07). The same rule "
+         "retires the stale-rim buys the ITC fix only aged out: ICICIBANK's 2020-11-05 entry cleared a "
+         "rim four months old with a 12% dip in between."),
         ("1.15", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited "
          "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
@@ -647,6 +656,10 @@ class ChartPatternSpecStrategy(Strategy):
                  "loose takes {RIM_LOOSE_PENALTY} off.",
         "CH-12": "Cup stays under its rim: no high between A and C is above max(A, C) × (1 + tol). A new "
                  "high in the middle is a failed breakout and a second decline, not one cup.",
+        "CH-13": "Without a handle, literally (CUPNH_NO_HANDLE = {CUPNH_NO_HANDLE}): no low between the "
+                 "right lip C and today under C by more than tol. A dip below the rim IS a handle -- "
+                 "CH-07 to CH-11 are the rules that judge one -- and a rim months old with price far "
+                 "beneath it is not a base, it is a resting order at a stale level.",
         "CH-04": "Cup length: {PARAMS.cup_days[0]} to {PARAMS.cup_days[1]} bars from A to C (about 7 to 65 "
                  "weeks).",
         "CH-05": "Rounded, not a V: at least max({PARAMS.round_min_days}, {PARAMS.round_frac} × the cup's "
@@ -860,7 +873,7 @@ class ChartPatternSpecStrategy(Strategy):
              "{PARAMS.handle_days[1]} bars old; no BO-04 clock.",
         CUPNH: "Cup without handle: the same cup, bought when price clears the old high before any "
                "handle forms.\n\n"
-               "- **Checks:** CH-01 to CH-06 and CH-12; no handle checks.\n"
+               "- **Checks:** CH-01 to CH-06, CH-12 and CH-13; no handle checks.\n"
                "- **Trigger T:** max(A, C), the old high — not C, which may sit as low as "
                "{PARAMS.right_lip[0]:g} × A, under the left lip's supply.\n"
                "- **Invalidation X:** the cup low B.\n"
@@ -868,7 +881,9 @@ class ChartPatternSpecStrategy(Strategy):
                "- **Life:** complete {K_MAJOR} bars after C; void after {MAX_WAIT} more bars without a "
                "breakout, or on a close below B.\n"
                "- **Switch:** traded only while TRADE_CUPNH = 1 (now {TRADE_CUPNH}). It fires at the rim, "
-               "so its resting order can block the cup with a handle that forms later.",
+               "so its resting order can block the cup with a handle that forms later.\n"
+               "- **No handle means no handle (CH-13):** no low between C and today under C by more "
+               "than tol. A dip below the rim is a handle, judged by the with-handle rules.",
         DBOT: "O'Neil's W: a continuation base with two lows, the second undercutting the first, "
               "bought on the break of the peak between them.\n\n"
               "- **Checks:** DB-01 (W), OW-03, DB-02 (W), OW-01, OW-02, DB-03, DB-04 above.\n"
@@ -1073,6 +1088,10 @@ class ChartPatternSpecStrategy(Strategy):
          "A cup's rims are graded, not judged: the right rim within {RIM_IDEAL_PCT}% of the left is "
          "ideal (+{RIM_IDEAL_BONUS} setup quality), within {RIM_OK_PCT}% acceptable (no change), beyond "
          "that loose (-{RIM_LOOSE_PENALTY}). No published percentage exists; these are starting points."),
+        ("Cup without a handle, strictly", "CUPNH_NO_HANDLE",
+         "CH-13, beyond the spec ({CUPNH_NO_HANDLE} = on): a handle-less cup allows no low between its "
+         "right lip and today under the lip by more than the price tolerance — a dip below the rim is "
+         "a handle, and the with-handle rules judge it."),
         ("Cup under its rim", "CUP_UNDER_RIM",
          "CH-12 ({CUP_UNDER_RIM} = on): no high between a cup's lips may top the higher "
          "lip by more than the price tolerance, max({TOL_PCT}%, {TOL_ATR_MULT} x ATR/close)."),
