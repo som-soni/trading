@@ -207,9 +207,10 @@ def stocks(market: str, start: str, cost_bps: float = 10.0, max_names: int = 50,
     """
     cfg = MARKETS[market]
     liq_floor = cfg.screener.min_dollar_volume if min_dollar_volume is None else min_dollar_volume
-    px, dv, _ = preloaded if preloaded is not None else baseline.load_prices(
+    px, dv, _, tr = preloaded if preloaded is not None else baseline.load_prices(
         market, min_bars=SLOW_SMA + SLOPE_BARS + 2)
-    mask = stock_mask(px)
+    # the trend conditions read the total-return close, so a demerger is not a broken trend
+    mask = stock_mask(tr)
 
     def pick(d, _ret, _px):
         if d not in mask.index:
@@ -395,8 +396,13 @@ class MaTrendStrategy(PortfolioStrategy):
     key = MA_DOC["key"]
     doc = MA_DOC
     family = "ma_trend"
-    version = "2.1"
+    version = "2.2"
     changelog = (
+        ("2.2", "2026-10-26",
+         "Stocks mode reads total return: the four trend conditions use closes back-adjusted for the "
+         "special dividends and demergers a holder is credited (corporate_actions.back_adjust), so a "
+         "demerged parent is not read as a broken trend for a year. Fills, valuation, the price floor and "
+         "turnover still read traded prices. Index mode is unchanged."),
         ("2.1", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("2.0", "2026-10-24",

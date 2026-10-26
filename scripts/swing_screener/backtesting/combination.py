@@ -128,8 +128,15 @@ class CombinationStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "momentum_dual_combo"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-10-26",
+         "Signals read total return: the momentum ranking, volatility weights and the 200-day trend test "
+         "now use closes back-adjusted for the special dividends and demergers a holder is credited "
+         "(corporate_actions.back_adjust). On traded prices a demerged parent read as a crash for a year "
+         "-- out of the ranking, failing the trend test, and given a huge volatility. Fills, valuation, "
+         "the price floor and turnover still read traded prices. Ratios only, so no action after the "
+         "signal date can leak into it."),
         ("1.1", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("1.0", "2026-10-24",

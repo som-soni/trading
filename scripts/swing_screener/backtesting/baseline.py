@@ -134,7 +134,13 @@ def realised_vol(px: pd.DataFrame, window: int = 63) -> pd.DataFrame:
 
 
 def load_prices(market: str, min_bars: int) -> tuple:
-    """(close, 20d dollar volume, SMA200) frames for the whole universe.
+    """(close, 20d dollar volume, SMA200, total-return close) frames for the whole universe.
+
+    `close` is what was traded: fills, valuation, the price floor and dollar volume read it. The
+    total-return close is the same series back-adjusted for the special dividends and demergers a
+    holder is credited (corporate_actions.back_adjust); every SIGNAL reads it -- momentum, volatility
+    and the 200-day trend test (SMA200 is computed on it) -- so a demerged parent does not read as a
+    crash for the next year. Ratios only, so no action dated after the bar can leak into it.
 
     Split out from `run` so a parameter sweep loads the ~15M-bar universe
     ONCE instead of per variant. Deliberately NOT truncated to the backtest
@@ -160,18 +166,22 @@ def load_prices(market: str, min_bars: int) -> tuple:
     logger.info("%s: %d/%d symbols have enough history", market, len(closes), len(tickers))
     px = pd.DataFrame(closes).sort_index()
     dv = pd.DataFrame(dollar_vol).sort_index().reindex(px.index)
-    sma200 = px.rolling(200, min_periods=200).mean()
-    return px, dv, sma200
+    tr = corporate_actions.back_adjust(px, corporate_actions.credits(market, list(px.columns)))
+    sma200 = tr.rolling(200, min_periods=200).mean()
+    return px, dv, sma200, tr
 
 
 def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
                     floor_price: float, liq_floor: float | None, trend_filter: bool,
-                    liquidity_rank_top: int | None) -> dict:
+                    liquidity_rank_top: int | None, trend_row=None) -> dict:
     """{symbol: score} for the names eligible on one date -- the strategy's whole selection rule.
 
     Extracted from `run`'s rebalance branch so a LIVE view of what the strategy would hold can
     call the same code instead of restating it. A second implementation of the selection is free
     to drift from the one that is backtested and versioned, and would drift silently.
+
+    `price_row` is the traded close (the price floor); `trend_row`, when given, is the total-return
+    close the 200-day test compares with `sma200_row` (both from `load_prices`).
     """
     out = {}
     for s in symbols:
@@ -184,7 +194,9 @@ def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
                 continue
         if trend_filter:
             ma = sma200_row[s] if sma200_row is not None and s in sma200_row.index else float("nan")
-            if ma != ma or price_now <= ma:
+            trend_now = price_now if trend_row is None else (
+                float(trend_row[s]) if s in trend_row.index and pd.notna(trend_row[s]) else float("nan"))
+            if ma != ma or trend_now != trend_now or trend_now <= ma:
                 continue
         m = float(score_row[s]) if score_row is not None and pd.notna(score_row.get(s)) else float("nan")
         if m == m:
@@ -282,7 +294,9 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
         return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
     px = pd.DataFrame(closes).sort_index()
     dv = pd.DataFrame(dollar_vol).reindex_like(px)
-    sma200 = px.rolling(200, min_periods=200).mean()
+    # the same total-return series load_prices gives the backtest's signals
+    tr = corporate_actions.back_adjust(px, corporate_actions.credits(market, list(px.columns)))
+    sma200 = tr.rolling(200, min_periods=200).mean()
     if px is None or px.empty:
         return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
     # The same partial-day rule run() applies: if the cache was refreshed for part of the universe
@@ -300,7 +314,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     cfg = MARKETS[market]
     bench = cache.load_cached(market, cfg.benchmark_ticker)
     bench_close = bench["close"].astype(float) if bench is not None else None
-    scores = score_matrix(px, rank, cls.lookback, cls.skip, benchmark=bench_close)
+    scores = score_matrix(tr, rank, cls.lookback, cls.skip, benchmark=bench_close)
     liq_floor = cls.min_turnover_for(market) if hasattr(cls, "min_turnover_for") else None
     mom = eligible_scores(
         px.columns, px.loc[today],
@@ -308,7 +322,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
         sma200.loc[today] if today in sma200.index else None,
         scores.loc[today] if today in scores.index else None,
         floor_price=cfg.screener.min_price, liq_floor=liq_floor,
-        trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None),
+        trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[today],
     )
     full = sorted(mom, key=mom.get, reverse=True)
     rank_of = {sym: i + 1 for i, sym in enumerate(full)}
@@ -329,7 +343,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
                 px.columns, px.loc[d], dv.loc[d] if d in dv.index else None,
                 sma200.loc[d] if d in sma200.index else None, scores.loc[d],
                 floor_price=cfg.screener.min_price, liq_floor=liq_floor,
-                trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None),
+                trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[d],
             )
             book = buffered_target(sorted(m_d, key=m_d.get, reverse=True), book, cls.top_n, hold_rank)
             replayed += 1
@@ -344,7 +358,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     # the liquid-ETF defect v1.1 fixed was invisible in the ranking and obvious in the weights.
     weights = {}
     if weighting == "inverse_vol":
-        vols = realised_vol(px, vol_window)
+        vols = realised_vol(tr, vol_window)
         inv = {}
         for sym in held:
             v = vols.loc[today, sym] if sym in vols.columns and today in vols.index else float("nan")
@@ -420,7 +434,7 @@ def run(
         cfg.screener.min_dollar_volume if min_dollar_volume is None else min_dollar_volume
     )
 
-    px, dv, sma200 = preloaded if preloaded is not None else load_prices(
+    px, dv, sma200, tr = preloaded if preloaded is not None else load_prices(
         market, min_bars=lookback + skip + 2
     )
 
@@ -430,8 +444,9 @@ def run(
         bench_px = bench_raw["close"]
 
     # scores and vols as whole matrices, once — not per symbol per rebalance
-    scores = score_matrix(px, rank, lookback, skip, benchmark=bench_px)
-    vols = realised_vol(px, vol_window) if weighting == "inverse_vol" else None
+    # signals read the total-return close (load_prices); fills and valuation the traded one
+    scores = score_matrix(tr, rank, lookback, skip, benchmark=bench_px)
+    vols = realised_vol(tr, vol_window) if weighting == "inverse_vol" else None
 
     # Index-level trend overlay: hold nothing while the benchmark is below its
     # own long moving average. On 33 years of SPY this cut max drawdown from
@@ -463,6 +478,7 @@ def run(
         px = px.loc[~partial]
         dv = dv.reindex(px.index)
         sma200 = sma200.reindex(px.index)
+        tr = tr.reindex(px.index)
 
     # Valuation uses the last known price, not today's cell: a holding that did
     # not print today is still worth its last trade, not nothing.
@@ -480,7 +496,7 @@ def run(
     if regime:
         from . import regime as regime_mod
         from ..marketdata import index_data
-        regime_ok = regime_mod.regime_on(regime, px.index, bench_px=bench_px, px=px, sma200=sma200,
+        regime_ok = regime_mod.regime_on(regime, px.index, bench_px=bench_px, px=tr, sma200=sma200,
                                          dv=dv, liq_floor=liq_floor)
         cash_rate = index_data.cash_rate_series(market, dates)[0]
     in_regime_cash, prev_day = False, None
@@ -530,7 +546,7 @@ def run(
                 sma200.loc[today] if today in sma200.index else None,
                 scores.loc[today] if today in scores.index else None,
                 floor_price=floor_price, liq_floor=liq_floor, trend_filter=trend_filter,
-                liquidity_rank_top=liquidity_rank_top,
+                liquidity_rank_top=liquidity_rank_top, trend_row=tr.loc[today],
             )
             if universe_filter is not None:
                 mom = universe_filter(today, mom)
@@ -601,7 +617,7 @@ def run(
                     # the option did nothing.
                     win = min(vol_window, len(px.loc[:today]) - 1)
                     if win > 20:
-                        hist_r = px.loc[:today, target].tail(win).pct_change()
+                        hist_r = tr.loc[:today, target].tail(win).pct_change()
                         wser = pd.Series(weights).reindex(hist_r.columns).fillna(0.0)
                         basket = hist_r.mul(wser, axis=1).sum(axis=1, min_count=1)
                         port_vol = float(basket.std()) * (252 ** 0.5)
@@ -1234,8 +1250,15 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.3"
+    version = "1.4"
     changelog = (
+        ("1.4", "2026-10-26",
+         "Signals read total return: the momentum ranking, volatility weights and the 200-day trend test "
+         "now use closes back-adjusted for the special dividends and demergers a holder is credited "
+         "(corporate_actions.back_adjust). On traded prices a demerged parent read as a crash for a year "
+         "-- out of the ranking, failing the trend test, and given a huge volatility. Fills, valuation, "
+         "the price floor and turnover still read traded prices. Ratios only, so no action after the "
+         "signal date can leak into it."),
         ("1.3", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("1.2", "2026-10-24",
@@ -1339,7 +1362,7 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     key = "momentum_baseline"
     doc = DOC
     family = "momentum_baseline"
-    version = "1.1"
+    version = "1.2"
     name = DOC["name"]
     description = DOC["description"]
     status = DOC["status"]
@@ -1367,6 +1390,13 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     )
 
     changelog = (
+        ("1.2", "2026-10-26",
+         "Signals read total return: the momentum ranking, volatility weights and the 200-day trend test "
+         "now use closes back-adjusted for the special dividends and demergers a holder is credited "
+         "(corporate_actions.back_adjust). On traded prices a demerged parent read as a crash for a year "
+         "-- out of the ranking, failing the trend test, and given a huge volatility. Fills, valuation, "
+         "the price floor and turnover still read traded prices. Ratios only, so no action after the "
+         "signal date can leak into it."),
         ("1.1", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("1.0", "2026-10-09",

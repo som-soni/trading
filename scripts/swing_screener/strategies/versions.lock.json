@@ -278,7 +278,7 @@
       "cost_bps": 10.0,
       "max_names": 50
     },
-    "version": "2.1"
+    "version": "2.2"
   },
   "mean_reversion": {
     "family": "mean_reversion",
@@ -467,7 +467,7 @@
       "skip": 21,
       "top_n": 10
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "momentum_dual_combo": {
     "family": "momentum_dual_combo",
@@ -476,7 +476,7 @@
       "_key": "momentum_dual_combo",
       "momentum_weight": 0.5
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "momentum_vol_scaled": {
     "family": "momentum_vol_scaled",
@@ -493,7 +493,7 @@
       "top_n": 20,
       "vol_window": 63
     },
-    "version": "1.3"
+    "version": "1.4"
   },
   "pead": {
     "family": "pead",
@@ -518,7 +518,7 @@
       "position_pct": 8.0,
       "season_top": 20.0
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "quality_momentum": {
     "family": "quality_momentum",
@@ -543,7 +543,7 @@
       "skip": 21,
       "top_n": 10
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "rs_leaders": {
     "family": "rs_leaders",
@@ -640,7 +640,7 @@
       "US_DIVIDEND_PCT": 2.0,
       "_key": "stage4_shorts"
     },
-    "version": "1.2"
+    "version": "1.3"
   },
   "stage_analysis": {
     "family": "stage_analysis",

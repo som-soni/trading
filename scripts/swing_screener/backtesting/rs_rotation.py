@@ -40,13 +40,13 @@ TRADING_DAYS = baseline.TRADING_DAYS
 
 
 def load_frame(market: str, min_bars: int) -> tuple:
-    """(close+index frame, dollar volume, SMA200, benchmark close).
+    """(close+index frame, dollar volume, SMA200, benchmark close, total-return close).
 
     The benchmark is appended to the price frame as a column so `rotation.simulate` can hold it
     like any other series. It is excluded from the candidate ranking by name, not by filtering
     the universe, so it can never be picked as a "leader".
     """
-    px, dv, sma200 = baseline.load_prices(market, min_bars=min_bars)
+    px, dv, sma200, tr = baseline.load_prices(market, min_bars=min_bars)
     cfg = MARKETS[market]
     raw = cache.load_cached(market, cfg.benchmark_ticker)
     if raw is None or raw.empty:
@@ -54,7 +54,7 @@ def load_frame(market: str, min_bars: int) -> tuple:
     bench = raw["close"].astype(float)
     px = px.copy()
     px[BENCH_COL] = bench.reindex(px.index).ffill()
-    return px, dv, sma200, bench
+    return px, dv, sma200, bench, tr
 
 
 def run(market: str, start: str, top_n: int = 10, lookback: int = TRADING_DAYS,
@@ -72,13 +72,13 @@ def run(market: str, start: str, top_n: int = 10, lookback: int = TRADING_DAYS,
     cfg = MARKETS[market]
     liq_floor = cfg.screener.min_dollar_volume if min_dollar_volume is None else min_dollar_volume
 
-    px, dv, sma200, bench = preloaded if preloaded is not None else load_frame(
+    px, dv, sma200, bench, tr = preloaded if preloaded is not None else load_frame(
         market, min_bars=lookback + skip + 2)
     candidates = [c for c in px.columns if c != BENCH_COL]
 
     # The SAME state machine the swing strategy gates on -- imported, not restated.
     recovery = RsLeadersStrategy._recovery_days(market) or set()
-    scores = baseline.score_matrix(px[candidates], rank, lookback, skip, benchmark=bench)
+    scores = baseline.score_matrix(tr[candidates], rank, lookback, skip, benchmark=bench)
 
     chosen: dict = {}
 
@@ -91,7 +91,7 @@ def run(market: str, start: str, top_n: int = 10, lookback: int = TRADING_DAYS,
             sma200.loc[d] if d in sma200.index else None,
             scores.loc[d] if d in scores.index else None,
             floor_price=cfg.screener.min_price, liq_floor=liq_floor,
-            trend_filter=True, liquidity_rank_top=liquidity_rank_top,
+            trend_filter=True, liquidity_rank_top=liquidity_rank_top, trend_row=tr.loc[d],
         )
         held = sorted(mom, key=mom.get, reverse=True)[:top_n]
         # An armed recovery with nothing eligible is still risk-on; hold the index rather than

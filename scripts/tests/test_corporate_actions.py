@@ -101,6 +101,64 @@ def test_simulator_moves_levels_and_pays_cash():
     assert r0.trades[0].exit_reason == "STOP", r0.trades[0].exit_reason   # the old behaviour
 
 
+def test_back_adjust_has_no_look_ahead():
+    # a ratio read at t is the same whether or not an action dated after t is in the data
+    idx = pd.bdate_range("2020-01-01", periods=300)
+    px = pd.DataFrame({"X": [100.0 + i * 0.1 for i in range(250)] + [40.0 + i * 0.1 for i in range(50)]}, index=idx)
+    cr = pd.DataFrame([{"symbol": "X", "date": idx[250], "kind": "demerger", "cash": 84.9, "prev_close": 124.9}])
+    tr = ca.back_adjust(px, cr)
+    before = idx[:250]
+    ratio_tr = (tr.loc[before, "X"] / tr.loc[before, "X"].shift(20)).dropna()
+    ratio_px = (px.loc[before, "X"] / px.loc[before, "X"].shift(20)).dropna()
+    assert (ratio_tr - ratio_px).abs().max() < 1e-12
+    # across the ex-date it is the holder's total return, not the -48% the traded close shows
+    assert abs(tr["X"].iloc[255] / tr["X"].iloc[245] - 1) < 0.02, tr["X"].iloc[[245, 255]]
+    # and a level put back on its own bar's scale equals the traded price
+    k = ca.pit_scale(px["X"], tr["X"])
+    assert ((tr["X"] * k - px["X"]).abs() < 1e-9).all()
+
+
+def test_demerged_parent_keeps_its_momentum_rank():
+    # ABREL demerged on 2019-10-11 (882 -> 390). With the 12-1 skip month the ex-date reaches the
+    # ranking at the November month-end: on traded prices it fell to the bottom decile, on total
+    # return it stays where it was.
+    from swing_screener.backtesting import baseline
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT symbol FROM prices WHERE market='india' AND date='2019-09-30' AND dollar_vol_sma20 > 1e8")
+        syms = [s for (s,) in cur.fetchall()]
+        cur.execute("SELECT symbol, date, close FROM prices WHERE market='india' AND symbol = ANY(%s) "
+                    "AND date BETWEEN '2018-06-01' AND '2019-11-30'", (syms,))
+        px = pd.DataFrame(cur.fetchall(), columns=["s", "d", "c"]).pivot(index="d", columns="s", values="c")
+    px.index = pd.to_datetime(px.index)
+    with asof.boundary("2021-12-31", "optimise"):
+        tr = ca.back_adjust(px, ca.credits("india", syms))
+
+    def pct(frame, day):
+        row = baseline.score_matrix(frame, "momentum", 252, 21).loc[day].dropna()
+        return row.rank(pct=True)["ABREL.NS"] * 100
+
+    before = pct(tr, "2019-09-30")
+    assert abs(pct(tr, "2019-11-29") - before) < 15, (before, pct(tr, "2019-11-29"))
+    assert pct(px, "2019-11-29") < 20     # the defect this fixes
+
+
+def test_stage4_levels_are_point_in_time():
+    # a short book's stop computed before an ex-date must not change when the action is added
+    from swing_screener.backtesting.stage4_shorts import symbol_frame
+    idx = pd.bdate_range("2019-01-01", periods=400)
+    close = pd.Series([200 - i * 0.2 for i in range(300)] + [60 - i * 0.05 for i in range(100)], index=idx)
+    df = pd.DataFrame({"open": close, "high": close * 1.01, "low": close * 0.99, "close": close, "volume": 1e6})
+    bench = pd.Series(100.0, index=idx)
+    cr = pd.DataFrame([{"symbol": "X", "date": idx[300], "kind": "demerger", "cash": 80.2,
+                        "prev_close": float(close.iloc[299])}])
+    with_action, without = symbol_frame(df, bench, cr), symbol_frame(df, bench, None)
+    cols = ["stop_a", "stop_b", "line", "sma50", "atr", "close"]
+    a, b = with_action.loc[idx[:300], cols], without.loc[idx[:300], cols]
+    assert ((a - b).abs().fillna(0) < 1e-6).all().all()
+    # after it, the demerger is not a fresh breakdown: no 52-week-low signal on the ex-date
+    assert not bool(with_action.loc[idx[300], "sig_a"])
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

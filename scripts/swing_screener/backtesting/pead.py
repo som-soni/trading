@@ -131,13 +131,19 @@ def load_event_prices(market: str, symbols) -> dict:
     Not `baseline.load_prices`: that returns close/turnover/SMA200 frames and this strategy needs
     the reaction day's LOW for its stop. Loading per symbol is affordable here precisely because
     the filing table is small -- 1,394 US names rather than the 5,000-name tape.
+
+    `tr_close` is the close back-adjusted for credited special dividends and demergers: the reaction
+    is measured on it, so an ex-date inside the window is not read as the market's verdict.
     """
     out = {}
+    symbols = list(symbols)
+    cr = corporate_actions.credits(market, symbols)
+    by = {s: g for s, g in cr.groupby("symbol")} if len(cr) else {}
     for s in symbols:
         d = cache.load_cached(market, s)
         if d is None or len(d) < 60:
             continue
-        out[s] = d
+        out[s] = d.assign(tr_close=corporate_actions.back_adjust_ohlc(d[["close"]], by.get(s))["close"])
     return out
 
 
@@ -191,7 +197,8 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
             dropped["no_bar"] += 1
             continue
         d_prev, d_react = before[-1], after[min(REACTION_DAYS - 1, len(after) - 1)]
-        p0, p1 = float(df.loc[d_prev, "close"]), float(df.loc[d_react, "close"])
+        tc = df["tr_close"] if "tr_close" in df else df["close"]   # ratio only: no future action leaks
+        p0, p1 = float(tc.loc[d_prev]), float(tc.loc[d_react])
         if p0 <= 0 or p1 != p1:
             dropped["no_bar"] += 1
             continue
@@ -492,8 +499,13 @@ class PeadStrategy(PortfolioStrategy):
     key = PEAD_DOC["key"]
     doc = PEAD_DOC
     family = "pead"
-    version = "1.1"
+    version = "1.2"
     changelog = (
+        ("1.2", "2026-10-26",
+         "The reaction window reads total return: the stock's move over the first sessions after a "
+         "filing is measured on closes back-adjusted for credited special dividends and demergers "
+         "(corporate_actions.back_adjust), so an ex-date inside the window is not taken for the market's "
+         "verdict on the results. Fills, the stop and turnover still read traded prices."),
         ("1.1", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited (marketdata/corporate_actions.py). On the ex-date a held position receives the cash, where the stored close only falls by it -- AURUM's 98% special dividend on 2020-12-23 was booked as a -98% loss, about 10% of the India vol-scaled book. Ordinary dividends stay out of strategy and benchmark. Stored prices were also corrected where the source left a split unadjusted before its year-start (MOTILALOFS and GPIL 2024-01-01, PARAS 2025-01-01 and others) or carried a stray bar (marketdata/splits.py correct)."),
         ("1.0", "2026-10-18",

@@ -81,16 +81,26 @@ _REST = ("Ordinary dividends stay out of both the strategy and its price-index b
          "large one-day falls the optimise-stage runs held.")
 CAVEAT_HELD = (f"**Special dividends and demergers are credited.** On the ex-date of {_WHAT}, a held "
                f"position receives the cash, where the stored close only falls by it (AURUM's 98% special "
-               f"dividend on 2020-12-23 was once booked as a -98% loss). {_REST}")
+               f"dividend on 2020-12-23 was once booked as a -98% loss). Every signal -- the momentum "
+               f"ranking, volatility weights and the 200-day trend test -- reads the closes back-adjusted "
+               f"for the same actions, so a demerged parent keeps its rank instead of reading as a crash "
+               f"for a year; fills, valuation, the price floor and turnover read the traded prices. "
+               f"{_REST}")
 CAVEAT_TRADED = (f"**Special dividends and demergers are credited as a return of capital.** On the ex-date of "
                  f"{_WHAT}, a held position receives the cash, and its entry, stop, target and every other "
                  f"level it carries move down by the payout per share, so the payout alone never hits the "
                  f"stop, and pnl and R include the cash. Brokers do not move a resting stop for a dividend; "
                  f"this models a trader re-placing it. An order still resting in that stock is cancelled. "
-                 f"{_REST}")
+                 f"The indicators the rules read (the moving averages, the 52-week high and low, RS) are "
+                 f"still computed on traded prices, so for a year after a large payout the stock can fail a "
+                 f"trend test it would pass on total return -- measured on the optimise stage, 1.4% of India's "
+                 f"and 0.9% of the US's trades entered within a year after a credited action, most of them "
+                 f"after a 5-10% dividend that barely moves those tests. {_REST}")
 CAVEAT_SHORT = (f"**A short pays special dividends and demergers.** On the ex-date of {_WHAT}, a short "
                 f"position pays the cash (it owes the lender what a holder receives), and its stop moves down "
-                f"by the payout. Ordinary dividends are the flat yield charged above.")
+                f"by the payout. The stage, the lines and the signals are computed on prices back-adjusted for "
+                f"the same actions, so a demerger is not read as a Stage 4 breakdown; each stop is then put "
+                f"back on its own day's price scale. Ordinary dividends are the flat yield charged above.")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS corporate_actions (
@@ -366,6 +376,53 @@ def credits(market: str, symbols=None) -> pd.DataFrame:
     df = pd.DataFrame(out, columns=cols)
     # one credit per symbol and session: a special dividend paid on a demerger's ex-date is inside its gap
     return df.sort_values(["date", "symbol", "kind"]).drop_duplicates(["symbol", "date"], keep="first").reset_index(drop=True)
+
+
+def back_adjust(px: pd.DataFrame, cr: pd.DataFrame | None) -> pd.DataFrame:
+    """`px` (dates x symbols, raw closes) back-adjusted for the credited actions `cr` (`credits`):
+    every close before an ex-date is multiplied by (prior close - cash) / prior close, so the series
+    shows the holder's total return instead of a fall on the ex-date.
+
+    Use it ONLY for scale-free signals -- returns, volatility, a close against its own moving average,
+    a relative-strength ratio. An action dated after t scales every bar up to t by the same factor, so
+    a ratio read at t cannot see it: no look-ahead. An absolute level read at t (a stop, an ATR, a
+    turnover floor, a price floor) is scaled by those future actions and would leak them; take levels
+    from the raw prices, or put an adjusted level back on t's scale with `pit_scale`."""
+    out = px.copy()
+    if cr is None or not len(cr):
+        return out
+    for r in cr.itertuples():
+        if r.symbol not in out.columns or not r.prev_close:
+            continue
+        f = (float(r.prev_close) - float(r.cash)) / float(r.prev_close)
+        if f > 0:
+            col = out.columns.get_loc(r.symbol)
+            mask = out.index < r.date
+            out.iloc[mask, col] = out.iloc[mask, col] * f
+    return out
+
+
+def back_adjust_ohlc(df: pd.DataFrame, cr: pd.DataFrame | None) -> pd.DataFrame:
+    """One symbol's OHLC frame back-adjusted the same way (`cr` already filtered to that symbol). Volume
+    is left as traded. Same caveat as `back_adjust`: levels read from it carry future actions."""
+    out = df.copy()
+    if cr is None or not len(cr):
+        return out
+    cols = [c for c in ("open", "high", "low", "close") if c in out.columns]
+    for r in cr.itertuples():
+        if not r.prev_close:
+            continue
+        f = (float(r.prev_close) - float(r.cash)) / float(r.prev_close)
+        if f > 0:
+            out.loc[out.index < r.date, cols] = out.loc[out.index < r.date, cols] * f
+    return out
+
+
+def pit_scale(raw_close: pd.Series, adj_close: pd.Series) -> pd.Series:
+    """Per bar, raw / adjusted close: multiply a level computed on the adjusted series AT bar t by this
+    bar-t value and it is on the scale of t's own price -- adjusted for every action up to t and for
+    none after it, i.e. point in time."""
+    return (raw_close / adj_close).where(adj_close > 0)
 
 
 class Credits:

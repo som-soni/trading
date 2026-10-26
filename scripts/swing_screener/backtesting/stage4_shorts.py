@@ -132,13 +132,19 @@ def _weekly_on_daily(df: pd.DataFrame, weekly_vals: pd.Series) -> pd.Series:
     return out
 
 
-def symbol_frame(df: pd.DataFrame, bench_close: pd.Series) -> pd.DataFrame:
+def symbol_frame(df: pd.DataFrame, bench_close: pd.Series, cr: pd.DataFrame | None = None) -> pd.DataFrame:
     """Everything the entries and exits read, per daily bar, causal.
 
     `stage` and `line` are the last COMPLETED week's (forward-filled from week-ends); `wk_line` is
     set only on a week's last session, where the stage exit reads it.
+
+    `cr` (this symbol's credited special dividends and demergers): the stage, the lines, the ATR and
+    the signals are computed on the series back-adjusted for them, so a demerger is not read as a
+    Stage 4 breakdown, and every price level is then put back on its own bar's scale (`pit_scale`),
+    so a stop never carries an action dated after it. Turnover and fills read the traded prices.
     """
-    df = df[["open", "high", "low", "close", "volume"]].astype(float)
+    raw = df[["open", "high", "low", "close", "volume"]].astype(float)
+    df = corporate_actions.back_adjust_ohlc(raw, cr)
     weekly = ind.resample_weekly(df)
     stage_w = stage_series(weekly).astype(float)
     line_w = ma30(weekly)
@@ -152,7 +158,7 @@ def symbol_frame(df: pd.DataFrame, bench_close: pd.Series) -> pd.DataFrame:
     out["stage4_run"] = s4.groupby((s4 == 0).cumsum()).cumsum()
     out["sma50"] = df["close"].rolling(TREND_SMA).mean()
     out["atr"] = ind.atr(df, ATR_BARS)
-    out["turnover"] = (df["close"] * df["volume"]).rolling(LIQ_BARS, min_periods=LIQ_BARS).median()
+    out["turnover"] = (raw["close"] * raw["volume"]).rolling(LIQ_BARS, min_periods=LIQ_BARS).median()
     b = bench_close.reindex(df.index).ffill()
     out["rs_excess"] = (df["close"] / df["close"].shift(RS_BARS) - b / b.shift(RS_BARS)) * 100
     # entry B: a rally into the falling line that closes back below it
@@ -167,6 +173,12 @@ def symbol_frame(df: pd.DataFrame, bench_close: pd.Series) -> pd.DataFrame:
                     & (df["volume"] >= BREAKDOWN_VOL_MULT * vol_avg))
     out["stop_a"] = (np.minimum(df["high"].rolling(BREAKDOWN_STOP_BARS).max(), out["line"])
                      + STOP_ATR_BUFFER * out["atr"])
+    if cr is not None and len(cr):
+        k = corporate_actions.pit_scale(raw["close"], df["close"])
+        for c in ("wk_line", "line", "sma50", "atr", "stop_b", "stop_a"):
+            out[c] = out[c] * k
+        for c in ("open", "high", "low", "close"):
+            out[c] = raw[c]
     return out
 
 
@@ -189,12 +201,14 @@ def prepare(market: str) -> dict:
     skip = universe.non_stock_symbols(market)
     tickers = [t for t in universe.load_universe(market) if t not in skip and t != cfg.benchmark_ticker]
     frames, turnover = {}, {}
+    cr = corporate_actions.credits(market)
+    cr_by = {s: g for s, g in cr.groupby("symbol")} if len(cr) else {}
     for i in range(0, len(tickers), 400):
         for sym, d in cache.load_many_cached(market, tickers[i:i + 400]).items():
             if d is None or len(d) < MIN_BARS:
                 continue
             try:
-                f = symbol_frame(d, bench)
+                f = symbol_frame(d, bench, cr_by.get(sym))
             except Exception as e:   # noqa: BLE001 -- one malformed history must not end the run
                 logger.warning("%s: skipped (%s)", sym, e)
                 continue
@@ -647,8 +661,10 @@ class Stage4ShortsStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "stage4_shorts"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-26",
+         "Signals read total return: the stage, the 30-week line, the 50-day, the ATR and both entries are computed on prices back-adjusted for credited special dividends and demergers, so a demerger is no longer read as a Stage 4 breakdown; each stop and line is then put back on its own day's price scale (corporate_actions.pit_scale), so none carries a later action. Fills and turnover read traded prices."),
         ("1.2", "2026-10-25",
          "Backtest mechanics, no rule changed: a short now pays special dividends and demergers on the "
          "ex-date (marketdata/corporate_actions.py), with its stop moved down by the payout; the flat "
