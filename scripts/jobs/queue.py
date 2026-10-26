@@ -133,7 +133,9 @@ def init_schema() -> None:
     global _ready
     if _ready:
         return
-    _q(SCHEMA, fetch=None)
+    # one statement string runs as one transaction: the lock serialises it against the other lanes'
+    # workers, which start together and otherwise deadlock on each other's ALTER TABLE
+    _q(f"SELECT pg_advisory_xact_lock({LOCK_KEY - 1});" + SCHEMA, fetch=None)
     if not _q("SELECT 1 FROM job_schedules LIMIT 1"):
         for s in DEFAULT_SCHEDULES:
             save_schedule(s)

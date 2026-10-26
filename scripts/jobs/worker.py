@@ -50,6 +50,7 @@ POLL_S = 2            # how often it looks for work while idle
 SCHEDULE_EVERY_S = 30 # how often it checks the schedules
 KILL_AFTER_S = 30     # after Stop: SIGKILL if the job has not exited by then
 FAST_RESTART_S = 30   # a lane child that died is restarted after this long
+CHILD_START_S = 20    # main lane: how long it waits for the lanes it starts to report in
 
 _stop = False
 
@@ -226,6 +227,13 @@ def run_forever(lane: str = "main", fast_child: bool = True, backtest_child: boo
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
     logger.info("%s-lane worker %d started on %s", lane, me, host)
+
+    # the main lane waits (briefly) for the lanes it just started: until their first heartbeat it would
+    # see them as down and claim their backtests itself, holding the market routines behind one
+    deadline = time.time() + CHILD_START_S
+    while children and not _stop and time.time() < deadline and not all(queue.worker_status(ln)["alive"] for ln in children):
+        tick()
+        time.sleep(POLL_S)
 
     # items this lane left "running": keep following their processes if still alive
     for it in queue.items()["running_all"]:
