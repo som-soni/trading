@@ -4709,6 +4709,13 @@ async function strategyHoldings(host, alive, d, key) {
     host.querySelector(".page-head.sub").insertAdjacentHTML("afterbegin",
       `<span class="run-label">Ranked ${esc(prettyDate(r.as_of))} — ${r.rows.filter((x) => x.held).length} held of ${r.eligible} eligible</span>`);
     const nHeld = r.rows.filter((x) => x.held).length;
+    // The strategy's market filter (backtesting/regime.py) is read on the same close as the ranking.
+    // While it is off the strategy holds cash, so the page says so rather than showing an empty book.
+    const regimeOff = r.regime && !r.regime.on;
+    if (regimeOff) host.querySelector("#dec").insertAdjacentHTML("beforebegin",
+      `<div class="muted small sd-intro"><b>Market filter off — holding cash.</b> On ${esc(prettyDate(r.as_of))} the benchmark
+        index closed at or below its 200-day average, so at a month-end this strategy sells everything and holds cash
+        until the index is back above it. <b>All ranked</b> shows what it would buy then.</div>`);
     const dec = host.querySelector("#dec");
     const drawChips = () => {
       dec.innerHTML = [["held", "Held", nHeld, "trade"], ["all", "All ranked", r.rows.length, ""]]
@@ -4722,7 +4729,7 @@ async function strategyHoldings(host, alive, d, key) {
       drawChips();
       const rows = (show === "held" ? r.rows.filter((x) => x.held) : r.rows)
         .map((x) => [x.rank, x.symbol, x.weight_pct, x.score, x.close, x.turnover]);
-      if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>Nothing held</b></div>`; return; }
+      if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>Nothing held</b>${regimeOff ? `<div class="muted">The market filter is off: the strategy is in cash.</div>` : ""}</div>`; return; }
       dataTable(tbl, cols, rows, {
         name: `selection_${key}`, sort: [0, 1], noStack: true,
         rowHint: "Click a row to open its chart",

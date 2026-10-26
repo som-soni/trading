@@ -35,6 +35,7 @@ import pandas as pd
 from ..marketdata import cache, corporate_actions, universe
 
 from . import metrics
+from . import regime as _regime
 from ..config import MARKETS
 
 logger = logging.getLogger("baseline")
@@ -350,6 +351,17 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
         held = buffered_target(full, book, cls.top_n, hold_rank)
     else:
         held = full[: cls.top_n]
+    # The market-regime switch, read on the same close as the ranking with the same rule run() uses:
+    # while it is off the strategy holds nothing, so the page must not list a book it would not hold.
+    regime_state = None
+    kind = cls.regime_for(market) if hasattr(cls, "regime_for") else None
+    if kind:
+        from . import regime as regime_mod
+        on = bool(regime_mod.regime_on(kind, pd.DatetimeIndex([today]), bench_px=bench_close, px=tr,
+                                       sma200=sma200, dv=dv, liq_floor=liq_floor).iloc[0])
+        regime_state = {"kind": kind, "on": on}
+        if not on:
+            held = []
     # what the page lists: the top of the ranking, plus any held name the buffer kept below it
     ranked = full[: (limit or cls.top_n)]
     ranked += [sym for sym in held if sym not in set(ranked)]
@@ -377,7 +389,8 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     } for sym in ranked]
     out = {"as_of": str(today.date()), "strategy": strategy_key, "market": market,
            "spec_id": cls.spec_id(), "eligible": len(mom), "top_n": cls.top_n, "rows": rows,
-           "hold_rank": hold_rank if buffered else None, "replayed_rebalances": replayed}
+           "hold_rank": hold_rank if buffered else None, "replayed_rebalances": replayed,
+           "regime": regime_state}
     if len(_SELECTION_CACHE) > 8:
         _SELECTION_CACHE.clear()
     _SELECTION_CACHE[key] = out
@@ -892,11 +905,12 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--overlay-months", type=int, default=10,
                     help="months in the --index-overlay average of the benchmark's month-end closes")
     from . import regime as _rg
-    ap.add_argument("--regime", default=None, choices=list(_rg.KINDS),
+    ap.add_argument("--regime", default=None, choices=[*_rg.KINDS, "off"],
                     help=f"market-regime switch read at each rebalance close: index_sma = benchmark above "
                          f"its {_rg.INDEX_SMA_DAYS}-day average, breadth = at least {_rg.BREADTH_MIN_PCT:g}%% of "
                          "liquid names above their own 200-day, both = both. When off, hold cash at the stored "
-                         "cash rate (default: off)")
+                         "cash rate. Default: the strategy's own per-market setting (regime_for), else off; "
+                         "'off' switches a default regime off, for a control run")
     ap.add_argument(
         "--min-turnover", type=float, default=None,
         help="20-day average turnover floor in account currency (overrides the market "
@@ -942,6 +956,10 @@ def strategy_defaults(key: str, market: str) -> dict:
     # markets; a strategy that cares declares min_turnover_for() and resolves it per run.
     if hasattr(cls, "min_turnover_for"):
         out["min_turnover"] = cls.min_turnover_for(market)
+    # Likewise the market-regime switch: adopted where it was measured to help (regime_for), so the
+    # same strategy can switch it on in one market and leave it off in another.
+    if hasattr(cls, "regime_for"):
+        out["regime"] = cls.regime_for(market)
     return out
 
 
@@ -1001,7 +1019,8 @@ def run_args(args: argparse.Namespace, universe_filter=None):
         fractional=args.fractional,
         rank=args.rank, weighting=args.weighting, vol_target=args.vol_target,
         vol_window=args.vol_window,
-        index_overlay=args.index_overlay, overlay_months=args.overlay_months, regime=args.regime,
+        index_overlay=args.index_overlay, overlay_months=args.overlay_months,
+        regime=None if args.regime == "off" else args.regime,
         hold_rank=args.hold_rank, universe_filter=universe_filter,
     )
 
@@ -1029,7 +1048,7 @@ def main(argv: list[str] | None = None, universe_filter=None, run_suffix: str = 
                 + (f"_{args.weighting}" if args.weighting != "equal" else "")
                 + (f"_vt{args.vol_target:g}" if args.vol_target else "")
                 + ("_overlay" if args.index_overlay else "")
-                + (f"_regime-{args.regime}" if args.regime else "")
+                + (f"_regime-{args.regime}" if args.regime else "")   # "off" -> _regime-off, the control
                 + (f"_hold{args.hold_rank}" if args.hold_rank and args.hold_rank > args.top_n else "")
                 + ("_frac" if args.fractional else "")
                 # In the market's own unit, never %g: a Rs10cr floor formats as "1e+08", and
@@ -1115,6 +1134,16 @@ VS_DOC = {
     "description": "Rank liquid stocks by 12-1 momentum divided by realised volatility, hold the top {top_n} "
                    "weighted inverse to volatility, rebalance at every month-end.",
     "status": (
+        "v1.5 ADOPTS THE 200-DAY INDEX FILTER IN INDIA; NOT YET VERIFIED. In-sample (optimise stage, "
+        "2013-2021, v1.4 runs with corporate actions credited): India plain 25.31% CAGR, +9.88 excess, max "
+        "drawdown -50.5%; with the filter 24.13%, +8.70, -37.1% -- thirteen points of drawdown for 1.2 of "
+        "CAGR, and it did not miss the 2020 rebound. The US keeps no filter: it helped a little there "
+        "(5.31% -> 6.01%) but the book still trails IWM, so adopting it would tune a strategy with no edge. "
+        "Pass criterion for the one verify run (2022 onward, written before it is run, as pre-registered "
+        "by the regime study): against a regime-off verify run of the same version, max drawdown at least "
+        "5 points shallower, CAGR no more than 2 points a year lower, and excess not negative where the "
+        "control's is not. Everything below is LEGACY context, measured before stages and before the "
+        "filter. "
         "EARNS ITS EDGE IN INDIA, NOT IN THE US. Measured on current code from 2010 against the Nifty "
         "Smallcap 250 -- the honest control, because it drops and replaces constituents and so carries the "
         "failures a survivor-only universe cannot. India: 19.18% CAGR against the index's 11.68%, +7.51 "
@@ -1164,6 +1193,9 @@ VS_DOC = {
         "trade.",
         "There is no stop, no target and no trigger to wait for. The rank IS the trade rule, which is why this "
         "has a Holdings tab rather than setups.",
+        "India only (v1.5): a market filter. On a month-end where the benchmark index closes at or below its "
+        "{regime_sma_days}-day average the book sells everything and holds cash, earning the stored cash rate, "
+        "until a month-end finds the index back above it. The US runs without it.",
     ),
     "entry_rules": (
         "Universe. Every stock stored for the market, minus ETFs, liquid funds and other listings that are not "
@@ -1195,8 +1227,11 @@ VS_DOC = {
         "Fill and cost. Every trade is at the month-end session's close: a buy pays the close plus {cost_bps}bps, "
         "a sale receives the close minus {cost_bps}bps. Sales are done first, then buys in rank order; if cash "
         "runs short, a buy is cut to the whole shares the cash covers.",
-        "When it holds cash. Only when no stock is eligible, and for whatever rounding to whole shares leaves "
-        "over. Otherwise it is fully invested: there is no market filter and no volatility target.",
+        "When it holds cash. In India, on any month-end where the market filter is off: the benchmark index "
+        "closes at or below its {regime_sma_days}-day simple average (v1.5); the whole book is sold and the "
+        "cash earns the stored cash rate until a month-end finds the index above it again. In both markets, "
+        "when no stock is eligible, and whatever rounding to whole shares leaves over. There is no volatility "
+        "target, and the US has no market filter.",
     ),
     "exit_rules": (
         "Sold at a month-end. A holding is sold in full at that session's close, less {cost_bps}bps, when it is "
@@ -1236,6 +1271,11 @@ VS_DOC = {
         "the Nifty 500 counts segment beta as skill. Ordinary dividends are left out of both the strategy "
         "and the benchmark: stored prices are split-adjusted closes only.",
         corporate_actions.CAVEAT_HELD,
+        "**The India market filter was chosen in-sample.** It was measured against no filter and a breadth "
+        "filter on 2013-2021 and adopted for the drawdown it saves; the {regime_sma_days}-day length was "
+        "fixed before any run (the Learn guide's trend rule), not tuned. It whipsaws in sideways years -- "
+        "2018 cost a few points -- and sits in cash about a quarter of the time. Its control is the same "
+        "version run with `--regime off`.",
     ),
 }
 
@@ -1250,8 +1290,16 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.4"
+    version = "1.5"
     changelog = (
+        ("1.5", "2026-10-26",
+         "India adopts the market-regime switch by default: on a month-end where the benchmark closes at "
+         "or below its 200-day average the book holds cash at the stored cash rate (backtesting/regime.py, "
+         "index_sma). Measured in-sample on v1.4 (2013-2021): India 25.31% -> 24.13% CAGR, max drawdown "
+         "-50.5% -> -37.1%; the breadth variant lost return and saved no drawdown, so it was not adopted. "
+         "The US stays off -- it gained 0.7 points there but still trails IWM, and adopting it would tune "
+         "a book with no edge. `--regime off` runs the control. The live holdings view applies the same "
+         "switch, so it shows cash while the filter is off."),
         ("1.4", "2026-10-26",
          "Signals read total return: the momentum ranking, volatility weights and the 200-day trend test "
          "now use closes back-adjusted for the special dividends and demergers a holder is credited "
@@ -1323,12 +1371,23 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     #: and the page would then produce different runs and disagree about the same strategy.
     min_turnover_cr = 10         # Rs crore/day (India); see min_turnover_for()
     min_turnover_usd_m = 20      # $ million/day (US)
+    #: Market-regime switch per market (backtesting/regime.py), None = off. Adopted where it was
+    #: measured to earn its place: in India it cut the in-sample drawdown by 13 points for 1.2 of CAGR.
+    regime_by_market = {"india": "index_sma"}
+    #: The switch's average length, mirrored from regime.INDEX_SMA_DAYS so the page renders the live
+    #: value and the fingerprint moves if it ever changes.
+    regime_sma_days = _regime.INDEX_SMA_DAYS
 
     @classmethod
     def min_turnover_for(cls, market: str) -> float:
         """The floor in the market's own currency: one number cannot serve both."""
         return (cls.min_turnover_cr * 1e7 if MARKETS[market].currency_code == "INR"
                 else cls.min_turnover_usd_m * 1e6)
+
+    @classmethod
+    def regime_for(cls, market: str) -> str | None:
+        """The market-regime switch this strategy runs with in `market` (None = no switch)."""
+        return cls.regime_by_market.get(market)
 
     param_docs = (
         ("Ranking", "rank", "vol_scaled: 12-1 return divided by realised volatility."),
@@ -1344,6 +1403,8 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
         ("Cost per side", "cost_bps", "Basis points per side. The result is sensitive to this -- see the caveats."),
         ("Turnover floor, India", "min_turnover_cr", "Rs crore of 20-day average traded value a day."),
         ("Turnover floor, US", "min_turnover_usd_m", "$ million of 20-day average traded value a day."),
+        ("Market filter average (India)", "regime_sma_days", "Days in the benchmark's moving average; at a "
+         "month-end close at or below it the India book holds cash. The US runs without the filter."),
     )
 
 

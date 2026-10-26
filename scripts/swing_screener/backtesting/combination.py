@@ -128,8 +128,13 @@ class CombinationStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "momentum_dual_combo"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-26",
+         "The momentum sleeve is momentum_vol_scaled v1.5, which in India now holds cash on any month-end "
+         "the benchmark closes at or below its 200-day average. The sleeve runs through that strategy's "
+         "own defaults (baseline.parse_args), so the India combination inherits the switch; the US is "
+         "unchanged. No rule of the combination itself moved."),
         ("1.2", "2026-10-26",
          "Signals read total return: the momentum ranking, volatility weights and the 200-day trend test "
          "now use closes back-adjusted for the special dividends and demergers a holder is credited "

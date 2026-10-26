@@ -476,11 +476,11 @@
       "_key": "momentum_dual_combo",
       "momentum_weight": 0.5
     },
-    "version": "1.2"
+    "version": "1.3"
   },
   "momentum_vol_scaled": {
     "family": "momentum_vol_scaled",
-    "fingerprint": "006f8206",
+    "fingerprint": "1c842ba9",
     "params": {
       "TRADING_DAYS": 252,
       "_key": "momentum_vol_scaled",
@@ -489,11 +489,12 @@
       "lookback": 252,
       "min_turnover_cr": 10,
       "min_turnover_usd_m": 20,
+      "regime_sma_days": 200,
       "skip": 21,
       "top_n": 20,
       "vol_window": 63
     },
-    "version": "1.4"
+    "version": "1.5"
   },
   "pead": {
     "family": "pead",
