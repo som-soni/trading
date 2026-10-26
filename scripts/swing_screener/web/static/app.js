@@ -4516,7 +4516,8 @@ function perfGlance(d, key) {
   const label = (b, tag) => { const v = vInfo(b.spec_id);
     const tip = [v.date ? `v${verOf(b)}, ${v.date}` : "", v.changed || ""].filter(Boolean).join(" — ");
     return `<td><span title="${esc(tip || b.spec_id || "")}">${verOf(b) ? `v${esc(verOf(b))}` : "—"}</span>
-      ${tag ? `<span class="tag ${tag === "best" ? "pos" : "neutral"} small">${tag}</span>` : ""}</td>`; };
+      ${tag ? `<span class="tag ${tag.startsWith("best") ? "pos" : "neutral"} small">${tag}</span>` : ""}
+      ${b.variant && (b.overrides || []).length ? `<div class="muted small" title="an experiment: these settings differ from the strategy as configured">+ ${esc(b.overrides.join(" "))}</div>` : ""}</td>`; };
   const row = (b, m, first, tag, showWin) => { const s = b.summary, mi = mktInfo(m);
     return `<tr data-href="#/reports/${b.id}" title="Open this run">
       <td>${first ? `${mi.flag || ""} ${esc(mi.name || m.toUpperCase())}` : ""}</td>
@@ -4531,6 +4532,9 @@ function perfGlance(d, key) {
       <td></td><td>${stageHtml}</td><td colspan="5" class="small">${text}</td></tr>`;
   // the best version in one market: each version's newest run within the pool, ranked by excess CAGR
   const winOf = (b) => `${b.window_start}|${b.window_end}`;
+  // A configuration is a version plus any experiment settings: v1.2 with a $100m turnover floor is a
+  // different candidate from plain v1.2, and either may be the one worth keeping.
+  const cfgOf = (b) => `${b.spec_id}|${(b.overrides || []).join(" ")}`;
   const bestOf = (mine, stage, prefer) => {
     // Legacy runs each chose their own window, so they rank only against runs sharing one: the
     // latest version's window when two or more versions ran in it (so "best" is never worse than
@@ -4541,7 +4545,7 @@ function perfGlance(d, key) {
       const w = winOf(b);
       if (!groups.has(w)) groups.set(w, new Map());
       const g = groups.get(w);
-      if (!g.has(b.spec_id)) g.set(b.spec_id, b);       // each version's newest run in that window
+      if (!g.has(cfgOf(b))) g.set(cfgOf(b), b);         // each configuration's newest run in that window
     }
     let pick = prefer && groups.get(prefer) && groups.get(prefer).size > 1 ? groups.get(prefer) : null;
     if (!pick) for (const g of groups.values()) if (!pick || g.size > pick.size) pick = g;
@@ -4573,18 +4577,22 @@ function perfGlance(d, key) {
       const nx = all.filter((b) => b.market === m && b.spec_id === cur).length;
       out.push(naRow(m, true, "", nx ? `no plain run yet — ${nx} experiment${nx === 1 ? "" : "s"} on Backtests` : "no run yet"));
     }
-    // Best: in-sample first. When the in-sample pool holds only the latest version itself (older
-    // versions predate stages), the legacy runs are ranked too, and a best row from a different window
-    // says which window it was.
+    // Best, per stage: every configuration (versions AND experiments) ranked within one window. The
+    // in-sample best is the one to carry forward; the legacy best is shown too, beside its window,
+    // because a lead found there is worth re-testing in-sample -- but a legacy window reaching past the
+    // optimise end includes hold-out years, so it is never the verdict.
+    const pool = all.filter((b) => b.market === m);
     for (const stage of ["optimise", "legacy"]) {
       const ref = stage === "optimise" ? ins : leg;
-      const { best, n } = bestOf(mine, stage, ref ? winOf(ref) : null);
-      if (!best || (best.spec_id === cur && n < 2)) continue;
+      const { best, n } = bestOf(pool, stage, ref ? winOf(ref) : null);
+      if (!best) continue;
+      if (ref && best.id === ref.id) {
+        if (n > 1) { anyBest = true; out.push(gap(m, false, stageChip(best), `the latest version is also the best of ${n} configurations run in this window`)); }
+        continue;
+      }
       anyBest = true;
-      const where = stage === "legacy" ? ` (legacy runs, ${esc(best.window_start || "?")} → ${esc(best.window_end || "latest")})` : "";
-      if (best.spec_id === cur) out.push(gap(m, false, stageChip(best), `the latest version is also the best of ${n} versions run in this window${where}`));
-      else { anyLegacy = anyLegacy || stage === "legacy"; out.push(row(best, m, false, "best", stage === "legacy" && (!ref || winOf(ref) !== winOf(best)))); }
-      break;
+      if (stage === "legacy") anyLegacy = true;
+      out.push(row(best, m, false, stage === "legacy" ? "best legacy" : "best", stage === "legacy" && (!ref || winOf(ref) !== winOf(best))));
     }
     return out.join("");
   }).join("");
@@ -4602,8 +4610,9 @@ function perfGlance(d, key) {
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
       the gap between the two is the measure of how much.
       ${anyLegacy ? "<b>Legacy</b> runs predate stages and mix both windows — reference only. " : ""}
-      ${anyBest ? `<b>Best</b> is the version with the highest excess CAGR among each version's newest run in the same window — in-sample, where choosing between versions belongs; verify the one you pick, once. ` : ""}
-      ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}${nVariant ? `${nVariant} experiment${nVariant === 1 ? "" : "s"} (changed settings) left out. ` : ""}Click a row for the report, or see
+      ${anyBest ? `<b>Best</b> is the configuration — a version, or a version with experiment settings (shown as <i>+ …</i>) — with the highest excess CAGR in the same window, in-sample, where choosing belongs; verify the one you pick, once.
+        <b>Best legacy</b> ranks the pre-stage runs the same way, beside their window: a window running past ${esc((st.optimise || {}).end || "")} includes hold-out years, so treat it as a lead to re-test in-sample, not a result. ` : ""}
+      ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}${nVariant ? `${nVariant} experiment${nVariant === 1 ? "" : "s"} (changed settings) left out of the latest rows; they compete for best. ` : ""}Click a row for the report, or see
       <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.</p></section>`;
 }
 
