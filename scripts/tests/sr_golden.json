@@ -1,0 +1,147 @@
+{
+  "_about": "Golden set for core/sr_levels.py (the chart's Support & Resistance indicator). Each case cuts the stored daily history at as_of and states the levels a careful reader of the bare candle chart marks, labelled from the candles before the module's output was looked at, then checked against the bars. 'must' = a level price reacted at two or more times (a double/triple top or bottom, a broken multi-touch floor), or a fresh extreme price is testing; 'should' = a single reaction or a judgment call. 'must' expectations fail tests.test_sr_levels; 'should' ones are reported as misses; a 'known' note marks a must the module does not yet draw, with the reason - reported every run, not failed, so the gate stays usable while the gap stays visible. A level passes when a KEY zone (what the chart draws by default) of an allowed role contains the price, within tol_atr x the chart timeframe's ATR of its edges; 'or_line' also accepts a drawn reference line there (a provisional 52-week extreme, say). 'no_key' forbids any key zone of that role; 'empty' forbids any key zone overlapping the range; 'line' requires a reference line of that kind.",
+  "tol_atr": 0.5,
+  "_sample": {
+    "us": ["ADEA", "ASTC", "AWR", "BLKB", "COHR", "CSWC", "DGRO", "DOV", "EWG", "FIVN", "FMC", "FORM", "FTK", "GE", "GOOGL", "ILMN", "INTU", "JFR", "LOW", "MGPI", "MTG", "MUFG", "NPKI", "ODC", "PDBC", "PPL", "SCI", "SMP", "STZ", "SXI", "THFF", "TIP", "TOL", "TRST", "UCB", "UPS", "URA", "WEC", "WMS", "XENE"],
+    "india": ["ABFRL.NS", "ADANIPORTS.NS", "ALKEM.NS", "ASIANTILES.NS", "BASF.NS", "BAYERCROP.NS", "BIOCON.NS", "CANTABIL.NS", "CCL.NS", "DCW.NS", "DRREDDY.NS", "EIMCOELECO.NS", "GANECOS.NS", "GOCLCORP.NS", "GPPL.NS", "GRASIM.NS", "HINDZINC.NS", "IBULLSLTD.NS", "INDIGO.NS", "JINDALPOLY.NS", "JISLJALEQS.NS", "JKPAPER.NS", "KARURVYSYA.NS", "KIRLOSBROS.NS", "LINDEINDIA.NS", "MINDACORP.NS", "NBCC.NS", "NMDC.NS", "OFSS.NS", "PIDILITIND.NS", "SATIN.NS", "TATACOMM.NS", "TMPV.NS", "TRIVENI.NS", "TTML.NS", "TVSELECT.NS", "VAIBHAVGBL.NS", "ZEEL.NS", "ZENTEC.NS", "^CNXFMCG"]
+  },
+  "cases": [
+    {
+      "id": "NVDA-2024-09-06", "market": "us", "symbol": "NVDA", "as_of": "2024-09-06", "tf": "D",
+      "story": "A pullback from a double top (June 140.76, July 136.15) through the June-August floor, back towards the March 2024 range top.",
+      "expect": [
+        {"level": 95.0, "role": "support", "must": true, "why": "March 2024 range top (97.40 on 8 Mar) and the 5 Aug 2024 capitulation low 90.69"},
+        {"level": 117.5, "role": "resistance", "must": true, "why": "the June-August floor: 24 Jun low 118.04, 29 Aug low 116.71, 31 Jul high 118.34 - broken in September"},
+        {"level": 130.5, "role": "resistance", "must": false, "why": "26 Aug high 131.26 and 15 Jul high 131.39 - the July one a lower high two days after the 11 Jul top"},
+        {"level": 138.0, "role": "resistance", "must": false, "why": "the double top: 20 Jun 140.76, 11 Jul 136.15"}
+      ]
+    },
+    {
+      "id": "MSFT-2025-04-21", "market": "us", "symbol": "MSFT", "as_of": "2025-04-21", "tf": "D",
+      "story": "A breakdown below the March-April 2025 floor; a fresh low two weeks old.",
+      "expect": [
+        {"level": 372.0, "role": "resistance", "must": true, "why": "the March-April floor: 11 Mar low 376.91, then 31 Mar 367.24, 10 Apr 367.80, 16-17 Apr 368.00 / 366.89 - broken on 21 Apr",
+         "known": "not drawn: none of the 367-368 lows is a turning point - each had a lower low within five bars (the slide went on), so only 11 Mar counts; three bars a side did not draw it either"},
+        {"level": 394.5, "role": "resistance", "must": true, "why": "a triple top: 25 Mar 396.36, 9 Apr 393.23, 14 Apr 394.65"},
+        {"level": 344.8, "role": "support", "or_line": true, "must": true, "why": "7 Apr 2025 low 344.79, the 52-week low"}
+      ]
+    },
+    {
+      "id": "AAPL-2023-01-06", "market": "us", "symbol": "AAPL", "as_of": "2023-01-06", "tf": "D",
+      "story": "The 2022 decline breaking the June 2022 low; price at that low again.",
+      "expect": [
+        {"level": 134.4, "role": "resistance", "must": true, "why": "13 Oct and 4 Nov 2022 lows 134.37 / 134.38 - a double bottom, broken in December"},
+        {"level": 129.04, "role": "any", "must": false, "why": "16 Jun 2022 low 129.04, the 2022 low before December - one reaction, half a weekly ATR under the 134 cluster"},
+        {"level": 124.2, "role": "support", "or_line": true, "must": false, "why": "3 Jan 2023 low 124.17 (unconfirmed) and May 2021 low 122.25"}
+      ]
+    },
+    {
+      "id": "TSLA-2024-04-22", "market": "us", "symbol": "TSLA", "as_of": "2024-04-22", "tf": "D",
+      "story": "Breaking below the April 2023 low and the 2024 base; a year's lows overhead.",
+      "expect": [
+        {"level": 160.5, "role": "resistance", "must": true, "why": "a double bottom: 14 Mar and 5 Apr 2024 lows, both 160.51 - broken on 15-16 Apr"},
+        {"level": 152.4, "role": "resistance", "must": false, "why": "27 Apr 2023 low 152.37, one reaction a year ago, broken on 19-22 Apr 2024"},
+        {"level": 104.0, "role": "support", "must": false, "why": "the Jan 2023 bottom: 6 Jan low 101.81, early-Jan lows near 104-108"}
+      ]
+    },
+    {
+      "id": "KO-2024-06-28", "market": "us", "symbol": "KO", "as_of": "2024-06-28", "tf": "D",
+      "story": "A range stock pressing its 18-month ceiling for the third time.",
+      "expect": [
+        {"level": 64.6, "role": ["resistance", "pivot"], "must": true, "why": "a triple top: 13 Dec 2022 64.70, 24 Apr 2023 64.99, 6 Jun 2024 64.36"},
+        {"level": 62.0, "role": "support", "must": false, "why": "20 Jun 2024 low 61.95 and 16 Dec 2022 low 62.33"},
+        {"level": 59.0, "role": "support", "must": true, "why": "the 2023-24 floor: 11 Jul 2023 58.84, 25 Jan 2024 58.66, Mar 2023 lows ~58.4-59"}
+      ]
+    },
+    {
+      "id": "INTC-2024-08-09", "market": "us", "symbol": "INTC", "as_of": "2024-08-09", "tf": "D",
+      "story": "A gap down to a ten-year low: no floor below in the last five years, broken floors above.",
+      "expect": [
+        {"no_key": "support", "must": true, "why": "INTC never traded below 24.59 between 2019 and July 2024: nothing below price to have reacted at"},
+        {"level": 24.65, "role": "resistance", "must": true, "why": "13 Oct 2022 low 24.59 and 28 Feb 2023 low 24.73 - a double bottom, broken by the 2 Aug 2024 gap"},
+        {"level": 30.0, "role": "resistance", "must": false, "why": "the May-July 2024 base: 8 May low 29.73, lows near 30 all summer"},
+        {"empty": [21.0, 24.0], "must": true, "why": "an air pocket: before the gap, price had not traded between 21 and 24.5 in five years"}
+      ]
+    },
+    {
+      "id": "AMZN-2023-12-29", "market": "us", "symbol": "AMZN", "as_of": "2023-12-29", "tf": "D",
+      "story": "A breakout above the 2022-23 double top; old 2022 levels overhead.",
+      "expect": [
+        {"level": 146.2, "role": "support", "must": true, "why": "16 Aug 2022 high 146.57 and 14 Sep 2023 high 145.86 - a double top, cleared in December"},
+        {"level": 170.8, "role": "resistance", "must": false, "why": "29 Mar 2022 high 170.83 (and 25 Mar low 162.25)"}
+      ]
+    },
+    {
+      "id": "JPM-2024-03-28", "market": "us", "symbol": "JPM", "as_of": "2024-03-28", "tf": "D",
+      "story": "A close at an all-time high: there is no resistance above.",
+      "expect": [
+        {"no_key": "resistance", "must": true, "why": "an all-time high has no historical ceiling"},
+        {"line": "round_above", "must": true, "why": "the next round number stands in for the missing level, labelled as such"},
+        {"level": 185.0, "role": "support", "must": false, "why": "4 Mar 2024 low 184.27 and 23 Feb high 185.20"}
+      ]
+    },
+    {
+      "id": "HDFCBANK-2024-06-03", "market": "india", "symbol": "HDFCBANK.NS", "as_of": "2024-06-03", "tf": "D",
+      "story": "A gap up through the April double top; a 16-month double bottom far below.",
+      "expect": [
+        {"level": 778.6, "role": "support", "must": true, "why": "8 Apr and 22 Apr 2024 highs 778.62 / 778.70 - a double top, cleared on 3 Jun"},
+        {"level": 682.0, "role": "support", "must": true, "why": "30 Sep 2022 low 682.50 and 14 Feb 2024 low 681.78 - a double bottom"},
+        {"level": 740.0, "role": "support", "must": false, "why": "19 Apr 2024 low 740.12 and 2 Feb high 740.42"},
+        {"level": 714.0, "role": "support", "must": false, "why": "10 May 2024 low 713.40"}
+      ]
+    },
+    {
+      "id": "ITC-2024-03-28", "market": "india", "symbol": "ITC.NS", "as_of": "2024-03-28", "tf": "D",
+      "story": "A bounce off a six-week floor into the lower half of the November 2023 range.",
+      "expect": [
+        {"level": 385.0, "role": "support", "must": true, "why": "a double bottom: 16 Feb 2024 low 384.59, 12 Mar low 384.54"},
+        {"level": 427.6, "role": "resistance", "must": true, "why": "16 Nov 2023 high 428.02 and 5 Feb 2024 high 427.20"},
+        {"level": 421.8, "role": "resistance", "must": false, "why": "13 Mar 2024 spike high 421.76"}
+      ]
+    },
+    {
+      "id": "TCS-2023-03-31", "market": "india", "symbol": "TCS.NS", "as_of": "2023-03-31", "tf": "D",
+      "story": "Back down from the February rally; the 2022 double bottom below, the 2022 highs above.",
+      "expect": [
+        {"level": 2940.0, "role": "support", "must": true, "why": "15 Jul 2022 low 2953 and 26 Sep 2022 low 2926.10 - a double bottom"},
+        {"level": 3430.0, "role": "resistance", "must": true, "why": "11 Aug 2022 high 3428.70, 1 Dec 2022 high 3480, Jan 2023 high 3458.45"},
+        {"level": 3170.0, "role": ["support", "pivot"], "must": false, "why": "20 Dec 2022 low 3163.65 and 6 Jan 2023 low 3200"}
+      ]
+    },
+    {
+      "id": "TRENT-2025-04-30", "market": "india", "symbol": "TRENT.NS", "as_of": "2025-04-30", "tf": "D",
+      "story": "A downtrend that found a floor in February-March 2025.",
+      "expect": [
+        {"level": 3146.0, "role": "support", "must": true, "why": "28 Feb 2025 low 3143.33 and 11 Mar low 3148.64 - a double bottom"},
+        {"level": 3834.0, "role": "resistance", "must": false, "why": "3 Apr 2025 high 3834, rejected into the 7 Apr crash"},
+        {"level": 3680.0, "role": "resistance", "must": false, "why": "28 Mar 2025 high 3683.97 and 29 Apr high 3673.34"}
+      ]
+    },
+    {
+      "id": "INFY-2023-06-30", "market": "india", "symbol": "INFY.NS", "as_of": "2023-06-30", "tf": "D",
+      "story": "The April 2023 gap down broke a triple floor; price climbing back towards it.",
+      "expect": [
+        {"level": 1362.0, "role": "resistance", "must": true, "why": "17 Jun 2022 low 1367.15, 26 Sep 2022 low 1355, 29 Mar 2023 low 1364.55 - broken by the April 2023 gap"},
+        {"level": 1433.0, "role": "resistance", "must": true, "why": "4 Oct 2022 high 1432.25 and 3 Apr 2023 high 1435 - a double top"},
+        {"level": 1215.0, "role": "support", "must": false, "why": "25 Apr 2023 low 1215 (17 Apr spike 1185.30)"},
+        {"level": 1240.0, "role": "support", "must": false, "why": "12 May 2023 low 1239.05"}
+      ]
+    },
+    {
+      "id": "NVDA-2024-09-06-W", "market": "us", "symbol": "NVDA", "as_of": "2024-09-06", "tf": "W",
+      "story": "The same NVDA pullback on a weekly chart.",
+      "expect": [
+        {"level": 95.0, "role": "support", "must": true, "why": "March 2024 range top 97.40 and the 5 Aug 2024 low 90.69"},
+        {"level": 138.0, "role": "resistance", "or_line": true, "must": false, "why": "the all-time high 140.76 (20 Jun) and the lower high 136.15 (11 Jul)"}
+      ]
+    },
+    {
+      "id": "KO-2024-06-28-W", "market": "us", "symbol": "KO", "as_of": "2024-06-28", "tf": "W",
+      "story": "The KO range on a weekly chart.",
+      "expect": [
+        {"level": 64.6, "role": ["resistance", "pivot"], "must": true, "why": "a triple top: Dec 2022 64.70, Apr 2023 64.99, Jun 2024 64.36"},
+        {"level": 59.0, "role": "support", "must": true, "why": "the 2023-24 floor near 58.4-59"}
+      ]
+    }
+  ]
+}

@@ -12,15 +12,18 @@ live here only, never in JavaScript. The procedure, top to bottom:
 3. **Cluster, then draw each zone from the structure.** Reactions spread over more than {SPLIT_ATR} ATR are
    separate levels (the sorted turning prices are split at their widest gaps until each group fits). A
    zone spans what price did there — from the wick extremes to the body cluster (the median body edge of
-   the turning bars); a lone wick more than {OUTLIER_ATR} ATR past the rest is ignored and is not a touch.
+   the turning bars); a lone wick — more than {OUTLIER_ATR} ATR from its neighbour and twice as far as the
+   rest are wide — is ignored and is not a touch (evenly spread turns have none).
    Height is never stretched or trimmed to an ATR band. Touches are distinct visits: a new one counts
    only after price closed {DEPART_ATR} ATR outside the zone. The reference line is where the reactions
    concentrate (their median turning price), not the midpoint.
 4. **Refine the higher timeframe with the finer one.** A weekly zone is redrawn from the daily turning
-   points inside it (finer structure; a weekly bar's body sits far from its wick), keeping its weekly
-   standing — or, when price has crossed the whole box again and again, as the separate daily reaction
+   points inside it over its own (weekly) look-back (finer structure; a weekly bar's body sits far from its
+   wick), keeping its weekly standing and starting at its first visit — or, when price has crossed the whole
+   box again and again, as the separate daily reaction
    clusters inside it that price still respects. If price has also lived inside the box ({CONGESTION_SHARE:.0%}+
-   of bars), the box is returned as a **congestion band**: context, not a level; a daily zone is kept only in the gaps between higher-timeframe zones.
+   of bars), the box is returned as a **congestion band**: context, not a level. A daily zone at least
+   {OVERLAP_SHARE:.0%} inside a higher-timeframe zone is left to it; one that merely overlaps it is kept.
 5. **Usable on the chart you are reading.** A zone taller than {WIDE_ATR} ATR of the chart's timeframe
    is split at its widest internal gap, when each part stands on its own (two visits, or one strong
    rejection); a part that no longer earns a level is retired; a zone that cannot be split is flagged
@@ -39,8 +42,11 @@ live here only, never in JavaScript. The procedure, top to bottom:
    score {KEY_MIN_SCORE}+ (a daily one with two visits): any pivot, the nearest qualifying zone each side,
    then the best of the rest by score — up to {MAX_KEY} in all, {MAX_PER_SIDE} a side, none if none
    qualifies. Price more than {GAP_ATR} ATR from its nearest key zone promotes the best graded zone in the
-   gap, or marks the next round number. Overlapping key zones merge. A zone still taller than {CAP_ATR}
-   ATR of its own timeframe is cut back to its body side. Weekly / monthly zones beyond the window whose 3+
+   gap, or marks the next round number. Same-role zones that overlap or nearly touch become one zone (the
+   coarser timeframe's, each visit once) before key levels are chosen — unless it would be taller than
+   {CAP_ATR} ATR, when overlapping ones keep the better; zones of different roles never merge. A zone still
+   taller than {CAP_ATR} ATR of its own timeframe is cut back to its body side, keeping the visits that came
+   to it (none left: no level). Weekly / monthly zones beyond the window whose 3+
    reactions span {LONG_TERM_SPAN_YEARS}+ years, within a factor of {LONG_TERM_RANGE} of price, are returned as
    long-term levels, the best {LONG_TERM_PER_SIDE} a side. The 52-week (and, near price, all-time) high
    and low are marked as provisional levels: a fresh extreme has no confirmed swing yet.
@@ -91,6 +97,7 @@ KEY_MIN_SCORE = 4           # a key zone scores at least this; a daily one also 
 RELEVANCE_ATR = {"D": 8, "W": 6, "M": 5}   # key zones lie within this many ATR of price (chart timeframe)
 GAP_ATR = 3                 # price this far from its nearest key zone: promote a hidden level in the gap
 CAP_ATR = 1.0               # a zone still taller than this (its own timeframe's ATR) is cut back to its body side
+OVERLAP_SHARE = 0.5         # a chart-timeframe zone at least this much inside a higher-timeframe one is left to it
 LONG_TERM_PER_SIDE = 3      # long-term levels beyond the relevance window, shown muted, each side ...
 LONG_TERM_SPAN_YEARS = 1.5  # ... a weekly / monthly zone whose reactions span at least this long ...
 LONG_TERM_RANGE = 2.0       # ... within this factor of price (half to double it): a 2006 low at a hundredth of it says nothing
@@ -160,15 +167,23 @@ def _turning_points(df: pd.DataFrame, tf: str) -> list[dict]:
 
 
 def _edges(g: list[dict], u: float) -> tuple[float, float, list[dict]]:
-    """A zone from the structure of its turning points: the wick extremes (a lone wick more than
-    OUTLIER_ATR beyond the rest dropped) and the median body edge. Nothing is stretched or trimmed.
-    Returns the edges and the turning points kept — a dropped spike is not a touch either."""
+    """A zone from the structure of its turning points: the wick extremes (a lone wick beyond the rest
+    dropped) and the median body edge. Nothing is stretched or trimmed. Returns the edges and the turning
+    points kept — a dropped spike is not a touch either.
+
+    A lone wick stands apart from a cluster: more than OUTLIER_ATR from its neighbour, and more than twice
+    as far as the rest are wide. Evenly spread turning points have none (dropping both ends of three such
+    points once left a zone of one price), and at least two points always stay."""
     pts = sorted(g, key=lambda p: p["wick"])
-    if len(pts) >= 3:
-        if pts[1]["wick"] - pts[0]["wick"] > OUTLIER_ATR * u:
-            pts = pts[1:]
-        if pts[-1]["wick"] - pts[-2]["wick"] > OUTLIER_ATR * u:
-            pts = pts[:-1]
+
+    def gap(end: int) -> float:
+        return pts[1]["wick"] - pts[0]["wick"] if end == 0 else pts[-1]["wick"] - pts[-2]["wick"]
+    for end in sorted((0, -1), key=gap, reverse=True) if len(pts) >= 3 else ():
+        if len(pts) < 3:
+            break
+        rest = pts[1:] if end == 0 else pts[:-1]
+        if gap(end) > OUTLIER_ATR * u and gap(end) > 2 * (rest[-1]["wick"] - rest[0]["wick"]):
+            pts = rest
     body = float(np.median([p["body"] for p in pts]))
     return min(pts[0]["wick"], body), max(pts[-1]["wick"], body), pts
 
@@ -200,13 +215,21 @@ class _Frame:
     ap: float = field(init=False)     # ATR as a share of price
     pts: list[dict] = field(init=False)
     first: int = field(init=False)    # first bar of the look-back
+    all_pts: list[dict] = field(init=False)   # every turning point, look-back or not (for refining a coarser zone)
 
     def __post_init__(self):
         self.cl = self.df["close"].to_numpy(float)
         self.ap = float(ind.atr(self.df, ATR_BARS).iloc[-1]) / float(self.df["close"].iloc[-1])
         cut = self.df.index[-1] - pd.DateOffset(months=int(TF[self.tf]["years"] * 12))
         self.first = int(np.searchsorted(self.df.index.values, np.datetime64(cut)))
-        self.pts = [p for p in _turning_points(self.df, self.tf) if p["i"] >= self.first]
+        self.all_pts = _turning_points(self.df, self.tf)
+        self.pts = [p for p in self.all_pts if p["i"] >= self.first]
+
+    def since(self, date: pd.Timestamp) -> list[dict]:
+        """Turning points on these bars from `date` on — a coarser zone is refined over its own look-back
+        (five years of daily points for a weekly zone), not this frame's shorter one."""
+        i = int(np.searchsorted(self.df.index.values, np.datetime64(date)))
+        return [p for p in self.all_pts if p["i"] >= i]
 
     def unit(self, price: float) -> float:
         """One ATR at `price` (ATR as a share of price, applied at the zone's own level: a stock that went
@@ -307,8 +330,7 @@ def _merge(zones: list[dict], chart: _Frame) -> list[dict]:
             m = _zone(prev["_pts"] + z["_pts"], z["_fr"], z["tf"], accept=False)
             if m:
                 m["refs"] = sorted(prev["refs"] + z["refs"])
-                m["from"] = min(prev["from"], z["from"])
-                m["merged"] = True
+                m["merged"] = True   # it starts at its own first visit (`_zone` set it from the joint visits)
                 _place(m, chart.close)
                 out[-1] = m
                 continue
@@ -316,12 +338,50 @@ def _merge(zones: list[dict], chart: _Frame) -> list[dict]:
     return out
 
 
+def _cap(z: dict, unit: Callable[[float], float]) -> bool:
+    """A zone still taller than CAP_ATR of its own timeframe (`unit(price)` = one ATR there) is cut back to
+    its body side — the wick side is trimmed (for a mixed zone, the side away from price). Its visits are
+    the ones that came to the zone as cut: a high at or above its bottom, a low at or below its top (a
+    wick that went through it and back still visited it; a turning point now wholly outside did not), so
+    its start, visit count, grade and height are re-read from them. False when no visit is left: the cut
+    zone has no evidence and is not a level."""
+    u = unit(z["reference"])
+    if z["top"] - z["bottom"] <= CAP_ATR * u:
+        return True
+    kinds = [t["kind"] for t in z["touches"]]
+    trim_top = kinds.count("H") > kinds.count("L") if kinds.count("H") != kinds.count("L") else z["role"] == "support"
+    ref = z["reference"]
+    for _ in range(4):   # the reference moves into the cut zone, and one ATR is measured there
+        if trim_top:
+            z["top"] = z["bottom"] + CAP_ATR * u
+        else:
+            z["bottom"] = z["top"] - CAP_ATR * u
+        u = unit(min(z["top"], max(z["bottom"], ref)))
+    tol = 0.1 * u
+    came = [t for t in z["touches"] if (t["price"] >= z["bottom"] - tol if t["kind"] == "H" else t["price"] <= z["top"] + tol)]
+    if not came:
+        return False
+    z["touches"], z["from"] = came, came[0]["date"]
+    z["factors"]["touches"] = len(came) >= 2
+    z["score"] = sum(z["factors"].values())
+    z["strong"], z["worn"] = z["score"] >= STRONG_SCORE, len(came) >= WORN_TOUCHES
+    z["refs"] = [min(z["top"], max(z["bottom"], x)) for x in z["refs"]]
+    z["reference"] = min(z["top"], max(z["bottom"], z["reference"]))
+    z["height_atr"] = round((z["top"] - z["bottom"]) / unit(z["reference"]), 2)
+    z["capped"] = True
+    return True
+
+
 def _refine(z: dict, fine: _Frame) -> list[dict]:
     """A higher-timeframe zone redrawn from the finer timeframe's turning points inside it — finer edges,
     distinct visits on the finer bars, the first fine reaction as its start. It keeps its own timeframe's
     standing. A weekly zone is always refined with daily bars, whichever chart is open, so the same
-    weekly level reads the same on both."""
-    inside = sorted((p for p in fine.pts if z["bottom"] <= p["wick"] <= z["top"]), key=lambda p: p["wick"])
+    weekly level reads the same on both. The finer points are taken over the zone's own look-back: a
+    weekly zone of four bottoms since 2020 redrawn from only the last eighteen months of daily points
+    kept one of them."""
+    fr = z["_fr"]
+    pool = fine.since(fr.df.index[min(fr.first, len(fr.df) - 1)])
+    inside = sorted((p for p in pool if z["bottom"] <= p["wick"] <= z["top"]), key=lambda p: p["wick"])
     r = _zone(inside, fine, z["tf"], accept=False) if len(inside) >= 2 else None
     if r:
         parts = [r]
@@ -346,9 +406,11 @@ def _refine(z: dict, fine: _Frame) -> list[dict]:
     if not parts:
         return [z]   # nothing finer stands: the higher-timeframe box stays, as drawn
     for m in parts:
-        m["from"] = min(m["from"], z["from"])
+        # it starts at its own first visit: a coarse visit that falls outside the finer box is not one of it
+        m["from"] = m["touches"][0]["date"]
         m["factors"]["timeframe"] = True
         m["score"] = sum(m["factors"].values())
+        m["strong"] = m["score"] >= STRONG_SCORE
         m["refined"] = True
     return parts
 
@@ -409,8 +471,17 @@ def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
             out += parts
         return out
     top = [y for z in _merge(ref(_zones_for(hi_fr)), own_fr) for y in _split_wide(z, own_fr)] if hi_fr else []
-    low = [z for z in ref(_zones_for(own_fr))   # in the gaps the (split) higher zones leave
-           if not any(z["bottom"] <= h["top"] and z["top"] >= h["bottom"] for h in top)]
+    def within_higher(z: dict) -> bool:
+        """Most of the zone lies inside a (split) higher-timeframe zone: the higher one already says it. A
+        sliver of overlap does not — a four-visit daily zone sharing its top two points with a two-visit
+        weekly one is the better-evidenced level, and dropping it hid it."""
+        h_ = z["top"] - z["bottom"]
+        for h in top:
+            ov = min(z["top"], h["top"]) - max(z["bottom"], h["bottom"])
+            if ov >= 0 and (ov >= OVERLAP_SHARE * h_ if h_ > 0 else True):
+                return True
+        return False
+    low = [z for z in ref(_zones_for(own_fr)) if not within_higher(z)]   # in the gaps the higher zones leave
     allz = top + [y for z in _merge(low, own_fr) for y in _split_wide(z, own_fr)]
     # final roles against the chart's own volatility; congestion where price has lived inside the zone
     cl, dates = own_fr.cl, [d.date().isoformat() for d in odf.index]
@@ -437,26 +508,56 @@ def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
         z["atr_tf"] = z["tf"]
         z.setdefault("wide", False)
     # Cap: a zone still taller than CAP_ATR of its own timeframe after splitting (a lone spike bar, say)
-    # is cut back to its body side — the wick side is trimmed (for a mixed zone, the side away from price)
+    # is cut back to its body side (`_cap`); one left with no visit is dropped
+    allz = [z for z in allz if _cap(z, frame(z["tf"]).unit)]
     for z in allz:
-        u = frame(z["tf"]).unit(z["reference"])
-        if z["top"] - z["bottom"] > CAP_ATR * u:
-            kinds = [t["kind"] for t in z["touches"]]
-            trim_top = kinds.count("H") > kinds.count("L") if kinds.count("H") != kinds.count("L") else z["role"] == "support"
-            if trim_top:
-                z["top"] = z["bottom"] + CAP_ATR * u
-            else:
-                z["bottom"] = z["top"] - CAP_ATR * u
-            z["refs"] = [min(z["top"], max(z["bottom"], x)) for x in z["refs"]]
-            z["reference"] = min(z["top"], max(z["bottom"], z["reference"]))
-            z["height_atr"] = round((z["top"] - z["bottom"]) / u, 2)
-            z["touches"] = [t for t in z["touches"] if z["bottom"] - 0.1 * u <= t["price"] <= z["top"] + 0.1 * u] or z["touches"][:1]
-            z["capped"] = True
-            _place(z, close, AT_PRICE_ATR * day_fr.unit(close))
+        _place(z, close, AT_PRICE_ATR * day_fr.unit(close))
     lines = list(_period_lines(daily, tf))
     note = None
     unit = own_fr.unit(close)
     dist = lambda z: abs(z["line"] - close)  # noqa: E731
+    # One area, one zone. Same-role zones that overlap or nearly touch (a daily zone half inside a weekly one,
+    # say) become one zone standing as the coarser timeframe, each visit listed once, measured again — unless
+    # that zone would be taller than CAP_ATR, when overlapping ones keep the better (score, then timeframe)
+    # and merely adjacent ones stay apart. Zones of different roles are never merged: the better one is kept.
+    # Run before key levels are chosen (so one area takes one slot) and again after (a promoted zone).
+    rank = {"D": 0, "W": 1, "M": 2}
+
+    def merge_keys(zs: list[dict], across_roles: bool = True) -> list[dict]:
+        better = lambda a, b: a if (a["score"], rank[a["tf"]], -dist(a)) >= (b["score"], rank[b["tf"]], -dist(b)) else b  # noqa: E731
+        out: list[dict] = []
+        for z in sorted(zs, key=lambda z: z["bottom"]):
+            prev = out[-1] if out else None
+            if prev and z["bottom"] - prev["top"] < 0.25 * unit:
+                overlap = z["bottom"] < prev["top"]
+                if prev["role"] == z["role"]:
+                    tf_ = prev["tf"] if rank[prev["tf"]] >= rank[z["tf"]] else z["tf"]
+                    top_, bottom_ = max(prev["top"], z["top"]), prev["bottom"]
+                    refs = sorted(prev["refs"] + z["refs"])
+                    ref_ = refs[0] if len(refs) == 1 else (top_ + bottom_) / 2
+                    if top_ - bottom_ <= CAP_ATR * frame(tf_).unit(ref_) * 1.0001:
+                        seen, visits = set(), []
+                        for t in sorted(prev["touches"] + z["touches"], key=lambda t: t["date"]):
+                            if (t["date"], t["kind"]) not in seen:
+                                seen.add((t["date"], t["kind"]))
+                                visits.append(t)
+                        m = dict(prev, tf=tf_, atr_tf=tf_, top=top_, refs=refs, reference=ref_, touches=visits,
+                                 score=max(prev["score"], z["score"]), worn=len(visits) >= WORN_TOUCHES, merged=True,
+                                 promoted=bool(prev.get("promoted") and z.get("promoted")),
+                                 height_atr=round((top_ - bottom_) / frame(tf_).unit(ref_), 2), **{"from": visits[0]["date"]})
+                        m["strong"] = m["score"] >= STRONG_SCORE
+                        _place(m, close, AT_PRICE_ATR * day_fr.unit(close))
+                        out[-1] = m
+                        continue
+                    if not overlap:
+                        out.append(z)
+                        continue
+                if across_roles or prev["role"] == z["role"]:
+                    out[-1] = better(prev, z)
+                    continue
+            out.append(z)
+        return out
+    allz = merge_keys(allz, across_roles=False)
     # Key levels — proximity first, not a fixed quota. Only zones within the relevance window qualify,
     # with a score of at least KEY_MIN_SCORE (a daily zone also needs two visits). Any pivot first, then
     # the nearest qualifying zone each side, then the best of the rest by score, up to MAX_KEY in all and
@@ -486,7 +587,9 @@ def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
             z["reference"] = z["refs"][0]
             z["height_atr"] = round((z["top"] - z["bottom"]) / frame(below).unit(z["reference"]), 2)
             z.update(atr_tf=z["tf"], wide=False, time_inside=0.0, congestion=False)
-            lower.append(z)
+            if _cap(z, frame(below).unit):   # promoted onto the chart: no taller than any other zone on it
+                _place(z, close, AT_PRICE_ATR * day_fr.unit(close))
+                lower.append(z)
     for role, sgn in (("support", -1), ("resistance", 1)):
         side = [z for z in pick if z["role"] == role]
         gap_to = min((dist(z) for z in side), default=window)
@@ -506,23 +609,7 @@ def levels(daily: pd.DataFrame, tf: str = "D") -> dict:
             if abs(rn - close) < gap_to:
                 lines.append({"kind": "round", "price": float(rn), "from": str(odf.index[-1].date()),
                               "label": f"round number — no {role} within {GAP_ATR} ATR"})
-    # Overlapping or touching key zones are merged; one is never drawn inside another
-    pick.sort(key=lambda z: z["bottom"])
-    merged: list[dict] = []
-    for z in pick:
-        prev = merged[-1] if merged else None
-        if prev and z["bottom"] - prev["top"] < 0.25 * unit:
-            if prev["role"] == z["role"]:
-                prev.update(top=max(prev["top"], z["top"]), refs=sorted(prev["refs"] + z["refs"]),
-                            score=max(prev["score"], z["score"]), touches=sorted(prev["touches"] + z["touches"], key=lambda t: t["date"]),
-                            **{"from": min(prev["from"], z["from"])}, merged=True)
-                _place(prev, close, AT_PRICE_ATR * day_fr.unit(close))
-                continue
-            if z["score"] > prev["score"]:
-                merged[-1] = z
-            continue
-        merged.append(z)
-    pick = sorted(merged, key=lambda z: -z["top"])
+    pick = sorted(merge_keys(pick), key=lambda z: -z["top"])
     others = sorted((z for z in allz if z not in pick and not any(z["bottom"] < y["top"] and z["top"] > y["bottom"] for y in pick)),
                     key=lambda z: -z["top"])
     # Long-term levels: a weekly or monthly zone price has reacted at over years (first to last reaction at

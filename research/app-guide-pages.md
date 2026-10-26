@@ -253,23 +253,28 @@ detection)** runs the chart-pattern detectors on stored prices. **Support & Resi
 on the server (`core/sr_levels.py`, `/api/sr-levels`): weekly zones first, then daily (monthly then weekly on a
 weekly chart); turning points that drew a clear reaction, clustered (reactions spread over more than 1 ATR are
 separate levels) into zones drawn from the structure — wick extremes to the body cluster, never stretched or
-trimmed to an ATR band; a lone spike wick neither sets an edge nor counts as a touch. A weekly zone takes its
-edges, touches and start from the daily turns inside it, and two same-role zones less than half an ATR apart
-become one zone with both reference levels. Touches are distinct visits (price must close half an ATR outside the
+trimmed to an ATR band; a lone wick standing apart from the cluster neither sets an edge nor counts as a touch
+(evenly spread turns have none). A weekly zone takes its edges, touches and start from the daily turns inside it
+over its own five-year look-back; a daily zone at least half inside a weekly one is left to it, one that merely
+overlaps it is kept; and two same-role zones less than half an ATR apart become one zone with both reference levels. Touches are distinct visits (price must close half an ATR outside the
 zone before another counts). Each zone carries its height ÷ the ATR of its own timeframe ("wide" above 1.5), its
 grade on seven factors (kept at 3+), its role ("Support (was resistance)") and "worn" at five or more visits; zones
 crossed repeatedly are dropped. Key levels are chosen proximity-first, not by quota: within 8 / 6 / 5 ATR of price
 (daily / weekly / monthly chart), scoring 4+ (a daily zone also needs two visits) — the nearest each side, then the
 best of the rest, up to 7 in all and 4 a side; a side may show none. If price is more than 3 ATR from its nearest
 key zone, the nearest graded zone in that gap is promoted (on a weekly or monthly chart it may come from the
-timeframe below), or the next round number is marked. Overlapping key zones merge; a zone still taller than one
-ATR of its own timeframe is cut back to its body side. The 52-week high and low (and the all-time high / low near
+timeframe below), or the next round number is marked. Same-role zones that overlap become one zone (the coarser
+timeframe's, each visit counted once) before key levels are chosen, unless that zone would be taller than one ATR,
+when the better is kept; a zone still taller than one ATR of its own timeframe is cut back to its body side,
+keeping only the visits that came to it. The 52-week high and low (and the all-time high / low near
 price) are always marked as provisional levels, since a fresh extreme has no confirmed swing yet. Long-term levels —
 weekly or monthly zones beyond that window whose three or more reactions span 1.5+ years, within half to double
 the price — are drawn as muted bands with a "Long-term …" axis tag (up to three a side). The setting "All
 graded levels" also draws the other graded zones as thin dashed outlines (off by default). The measurement behind all of
-this is `python -m swing_screener.analytics.level_study` (zones vs a same-geometry placebo). Labels are Short by default ("Support · weekly"); Full adds grade, visits and
-height; None hides them. Price inside a zone, or within a quarter of a daily ATR of it, makes it a pivot ("Pivot — price inside" /
+this is `python -m swing_screener.analytics.level_study` (zones vs a same-geometry placebo); `python -m
+tests.test_sr_levels` checks the drawing against a golden set of hand-labelled charts and rules every chart must
+obey. Labels sit on the price axis by default ("Axis only"); Short adds an in-chart tag ("Support · weekly"), Full
+adds grade, visits and height. Price inside a zone, or within a quarter of a daily ATR of it, makes it a pivot ("Pivot — price inside" /
 "At price"); a zone price has closed inside on 30%+ of bars is labelled a congestion zone. A higher-timeframe
 box price keeps crossing is redrawn as the daily clusters inside it that still hold, and — if price has lived in
 it — drawn as a grey **congestion band** (context, not a level). Earnings within 10 sessions add a warning to the
