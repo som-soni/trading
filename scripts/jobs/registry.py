@@ -198,7 +198,8 @@ def _correct_source_errors(ctx: Ctx) -> None:
     split/bonus corroborates, and stray bars. Idempotent -- re-applied when a re-fetch brings one back."""
     from swing_screener.marketdata import splits
     c = splits.correct(ctx.market)
-    note = f"source errors: {c['unadjusted']} unadjusted split(s) rescaled, {c['stray']} stray bar(s) fixed ({c['deleted']} deleted)"
+    note = (f"source errors: {c['unadjusted']} unadjusted split(s) rescaled, {c['stray']} stray bar(s) fixed ({c['deleted']} deleted)"
+            + (f", {c['recorded_runs_reapplied']} recorded bar(s) re-applied" if c.get("recorded_runs_reapplied") else ""))
     ctx.step.detail = f"{ctx.step.detail} · {note}" if ctx.step.detail else note
     ctx.step.stats = {**(ctx.step.stats or {}), "corrected": c}
 
