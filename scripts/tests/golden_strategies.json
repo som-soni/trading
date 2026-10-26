@@ -3692,27 +3692,13 @@
    }
   },
   "ADANIPOWER.NS": {
-   "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.2,
-    "reason": "SYMM complete, waiting for a close through 209.65 on 1.4x volume"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 209.65,
-    "r": 2.812196,
-    "reason": "SYMM trigger 208.59",
-    "setup": "SYMM",
-    "stop": 202.35,
-    "target": 230.179027,
-    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -3729,7 +3715,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": true,
+    "SYMM": false,
     "TBOT": false
    },
    "signal": false,
@@ -3743,8 +3729,8 @@
   "ADL.NS": {
    "decision": {
     "label": "WATCH - WAIT",
-    "quality": 1.9,
-    "reason": "stop 13.5% > 8%; CUPNH projects 1.57R < 2R"
+    "quality": 1.0,
+    "reason": "stop 11.6% > 8%"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -3755,12 +3741,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 84.4,
-    "r": 1.574561,
-    "reason": "CUPNH trigger 83.95",
-    "setup": "CUPNH",
-    "stop": 73.0,
-    "target": 102.349997,
+    "entry": 83.8,
+    "r": 3.534677,
+    "reason": "ATRI trigger 83.37",
+    "setup": "ATRI",
+    "stop": 74.05,
+    "target": 118.263099,
     "which": "SPEC"
    },
    "prefilter": [
@@ -3768,48 +3754,48 @@
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": false,
+    "ATRI": true,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": true,
+    "RECT": false,
     "SYMM": false,
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
   },
   "AFFLE.NS": {
    "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.0,
-    "reason": "FWDG complete, waiting for a close through 1568.55 on 1.4x volume"
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 14.1% below the trigger \u2014 not actionable"
    },
-   "first_hard_fail": null,
+   "first_hard_fail": "G5",
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
    },
    "plan": {
-    "entry": 1568.55,
-    "r": 2.549241,
-    "reason": "FWDG trigger 1560.74",
-    "setup": "FWDG",
-    "stop": 1476.2,
-    "target": 1803.972433,
+    "entry": 1767.2,
+    "r": 5.600412,
+    "reason": "ATRI trigger 1758.39",
+    "setup": "ATRI",
+    "stop": 1674.85,
+    "target": 2284.398019,
     "which": "SPEC"
    },
    "prefilter": [
@@ -3817,13 +3803,13 @@
     "passed"
    ],
    "setups": {
-    "ATRI": false,
+    "ATRI": true,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -3909,13 +3895,27 @@
    }
   },
   "ALKYLAMINE.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "FWDG complete, waiting for a close through 1855.90 on 1.4x volume"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 1855.9,
+    "r": 2.852918,
+    "reason": "FWDG trigger 1846.62",
+    "setup": "FWDG",
+    "stop": 1734.2,
+    "target": 2203.100073,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -3928,7 +3928,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -3944,20 +3944,34 @@
    }
   },
   "ALPA.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 16.6% below the trigger \u2014 not actionable"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 71.7,
+    "r": 6.155571,
+    "reason": "ATRI trigger 71.33",
+    "setup": "ATRI",
+    "stop": 66.2,
+    "target": 105.55564,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": false,
+    "ATRI": true,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
@@ -4015,7 +4029,7 @@
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": true,
+    "RECT": false,
     "SYMM": false,
     "TBOT": true
    },
@@ -4061,10 +4075,10 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
-    "RECT": false,
+    "RECT": true,
     "SYMM": false,
     "TBOT": true
    },
@@ -4077,13 +4091,27 @@
    }
   },
   "ASHOKA.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "FWDG complete, waiting for a close through 110.20 on 1.4x volume"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 110.2,
+    "r": 2.787407,
+    "reason": "FWDG trigger 109.63",
+    "setup": "FWDG",
+    "stop": 103.9,
+    "target": 127.760667,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -4096,7 +4124,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -4185,7 +4213,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.1,
-    "reason": "RECT projects 1.54R < 2R"
+    "reason": "RECT projects 1.67R < 2R"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -4196,12 +4224,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 674.25,
-    "r": 1.544009,
-    "reason": "RECT trigger 670.86",
+    "entry": 680.85,
+    "r": 1.67033,
+    "reason": "RECT trigger 677.43",
     "setup": "RECT",
-    "stop": 622.2,
-    "target": 754.615679,
+    "stop": 628.8,
+    "target": 767.790681,
     "which": "SPEC"
    },
    "prefilter": [
@@ -4234,7 +4262,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -4267,14 +4295,14 @@
   },
   "AUROPHARMA.NS": {
    "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
+    "label": "TRADE ON TRIGGER",
+    "quality": 0.5,
+    "reason": "FBASE complete, waiting for a close through 1748.70 on 1.4x volume; capped by watch flag (W1)"
    },
-   "first_hard_fail": "G2",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
-    "G2": false,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
@@ -4307,9 +4335,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -4318,7 +4346,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": false,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
@@ -4402,7 +4430,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "ATRI complete, waiting for a close through 448.00 on 1.4x volume; capped by watch flag (W1)"
+    "reason": "ATRI complete, waiting for a close through 442.15 on 1.4x volume; capped by watch flag (W1)"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -4413,12 +4441,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 448.0,
-    "r": 2.692994,
-    "reason": "ATRI trigger 445.76",
+    "entry": 442.15,
+    "r": 3.487432,
+    "reason": "ATRI trigger 439.92",
     "setup": "ATRI",
-    "stop": 424.45,
-    "target": 511.420011,
+    "stop": 418.6,
+    "target": 524.279031,
     "which": "SPEC"
    },
    "prefilter": [
@@ -4435,7 +4463,7 @@
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": false,
+    "RECT": true,
     "SYMM": false,
     "TBOT": false
    },
@@ -4448,27 +4476,13 @@
    }
   },
   "BLACKBUCK.NS": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 14.1% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 710.95,
-    "r": 4.615721,
-    "reason": "CUPNH trigger 707.40",
-    "setup": "CUPNH",
-    "stop": 665.15,
-    "target": 922.350024,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     true,
@@ -4477,7 +4491,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -4497,27 +4511,13 @@
    }
   },
   "BLBLIMITED.NS": {
-   "decision": {
-    "label": "WATCH - WAIT",
-    "quality": 1.2,
-    "reason": "stop 8.1% > 8%"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 18.6,
-    "r": 2.726667,
-    "reason": "CUPNH trigger 18.50",
-    "setup": "CUPNH",
-    "stop": 17.1,
-    "target": 22.69,
-    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -4526,14 +4526,14 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": true,
+    "RECT": false,
     "SYMM": false,
     "TBOT": false
    },
@@ -4581,13 +4581,27 @@
    }
   },
   "CROMPTON.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 10.5% below the trigger \u2014 not actionable"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 234.35,
+    "r": 3.434243,
+    "reason": "FWDG trigger 233.15",
+    "setup": "FWDG",
+    "stop": 223.5,
+    "target": 271.611542,
+    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -4600,7 +4614,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -4619,7 +4633,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -4794,7 +4808,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -4829,12 +4843,12 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed descending triangle on the same chart"
+    "reason": "fails hard gate G5: 13.0% below the trigger \u2014 not actionable"
    },
-   "first_hard_fail": "G2",
+   "first_hard_fail": "G5",
    "hard_gates": {
     "G1": true,
-    "G2": false,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": false
@@ -4859,10 +4873,10 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
-    "RECT": false,
+    "RECT": true,
     "SYMM": false,
     "TBOT": true
    },
@@ -4910,13 +4924,27 @@
    }
   },
   "GLOBUSSPR.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "FWDG complete, waiting for a close through 842.00 on 1.4x volume"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
-    "G2": false,
+    "G1": true,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 842.0,
+    "r": 3.322905,
+    "reason": "FWDG trigger 837.80",
+    "setup": "FWDG",
+    "stop": 797.25,
+    "target": 990.700012,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -4929,7 +4957,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -4981,25 +5009,25 @@
   },
   "GOLDCASE.NS": {
    "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 10.9% below the trigger \u2014 not actionable"
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.5,
+    "reason": "ATRI complete, waiting for a close through 25.85 on 1.4x volume"
    },
-   "first_hard_fail": "G5",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
+    "G5": true
    },
    "plan": {
-    "entry": 26.15,
-    "r": 5.541175,
-    "reason": "CUPNH trigger 25.98",
-    "setup": "CUPNH",
-    "stop": 25.3,
-    "target": 30.859999,
+    "entry": 25.85,
+    "r": 8.824451,
+    "reason": "ATRI trigger 25.68",
+    "setup": "ATRI",
+    "stop": 25.0,
+    "target": 33.350783,
     "which": "SPEC"
    },
    "prefilter": [
@@ -5007,9 +5035,9 @@
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": false,
+    "ATRI": true,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -5169,13 +5197,27 @@
    }
   },
   "INDUSTOWER.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "FWDG complete, waiting for a close through 382.65 on 1.4x volume"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 382.65,
+    "r": 5.609673,
+    "reason": "FWDG trigger 380.70",
+    "setup": "FWDG",
+    "stop": 363.7,
+    "target": 488.95331,
+    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -5188,7 +5230,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -5196,9 +5238,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_ON_TRIGGER",
+   "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
-    "W1": true,
+    "W1": false,
     "W2": false,
     "W3": false
    }
@@ -5272,11 +5314,11 @@
     "DBOT": true,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -5291,7 +5333,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "FWDG complete, waiting for a close through 482.10 on 1.4x volume"
+    "reason": "FWDG complete, waiting for a close through 485.15 on 1.4x volume"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -5302,12 +5344,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 482.1,
-    "r": 6.615321,
-    "reason": "FWDG trigger 479.66",
+    "entry": 485.15,
+    "r": 11.775159,
+    "reason": "FWDG trigger 482.71",
     "setup": "FWDG",
-    "stop": 465.5,
-    "target": 591.914334,
+    "stop": 468.55,
+    "target": 680.617644,
     "which": "SPEC"
    },
    "prefilter": [
@@ -5337,13 +5379,27 @@
    }
   },
   "ITC.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.2,
+    "reason": "SYMM complete, waiting for a close through 271.70 on 1.4x volume"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 271.7,
+    "r": 2.304571,
+    "reason": "SYMM trigger 270.32",
+    "setup": "SYMM",
+    "stop": 262.7,
+    "target": 292.441138,
+    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -5360,7 +5416,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -5399,9 +5455,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -5512,13 +5568,27 @@
    }
   },
   "KAYNES.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 12.1% below the trigger \u2014 not actionable"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 4003.0,
+    "r": 7.678065,
+    "reason": "SYMM trigger 3983.06",
+    "setup": "SYMM",
+    "stop": 3725.55,
+    "target": 6133.279264,
+    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -5535,7 +5605,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -5550,7 +5620,7 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G5: 14.6% below the trigger \u2014 not actionable"
+    "reason": "fails hard gate G5: 14.1% below the trigger \u2014 not actionable"
    },
    "first_hard_fail": "G5",
    "hard_gates": {
@@ -5561,12 +5631,12 @@
     "G5": false
    },
    "plan": {
-    "entry": 181.35,
-    "r": 2.83063,
-    "reason": "CUPNH trigger 180.40",
-    "setup": "CUPNH",
-    "stop": 170.25,
-    "target": 212.769998,
+    "entry": 180.45,
+    "r": 6.136497,
+    "reason": "ATRI trigger 179.54",
+    "setup": "ATRI",
+    "stop": 169.35,
+    "target": 248.565115,
     "which": "SPEC"
    },
    "prefilter": [
@@ -5574,9 +5644,9 @@
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": false,
+    "ATRI": true,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -5632,25 +5702,25 @@
   },
   "LGBBROSLTD.NS": {
    "decision": {
-    "label": "AVOID",
+    "label": "WATCH - WAIT",
     "quality": 0.0,
-    "reason": "fails hard gate G5: 15.5% below the trigger \u2014 not actionable"
+    "reason": "through the trigger on 0.38x volume (BO-02 wants 1.4x)"
    },
-   "first_hard_fail": "G5",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
+    "G5": true
    },
    "plan": {
-    "entry": 2058.25,
-    "r": 7.965654,
-    "reason": "CUPNH trigger 2048.00",
-    "setup": "CUPNH",
-    "stop": 1982.55,
-    "target": 2661.25,
+    "entry": 1738.6,
+    "r": 6.588411,
+    "reason": "SYMM trigger 1729.94",
+    "setup": "SYMM",
+    "stop": 1662.9,
+    "target": 2237.34269,
     "which": "SPEC"
    },
    "prefilter": [
@@ -5660,7 +5730,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -5668,14 +5738,14 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "WATCH_WAIT",
    "watch_flags": {
-    "W1": false,
-    "W2": false,
+    "W1": true,
+    "W2": true,
     "W3": false
    }
   },
@@ -5683,7 +5753,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -5715,27 +5785,13 @@
    }
   },
   "LTF.NS": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 19.6% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 331.1,
-    "r": 5.015916,
-    "reason": "CUPNH trigger 329.45",
-    "setup": "CUPNH",
-    "stop": 312.25,
-    "target": 425.650018,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     true,
@@ -5744,7 +5800,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -5904,27 +5960,13 @@
    }
   },
   "MAITHANALL.NS": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed head and shoulders top on the same chart"
-   },
-   "first_hard_fail": "G2",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": false,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 1211.05,
-    "r": 5.57079,
-    "reason": "CUPNH trigger 1205.00",
-    "setup": "CUPNH",
-    "stop": 1143.95,
-    "target": 1584.849988,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     false,
@@ -5933,7 +5975,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -5980,9 +6022,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -6110,7 +6152,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.1,
-    "reason": "RECT projects 1.62R < 2R"
+    "reason": "RECT projects 1.73R < 2R"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -6121,12 +6163,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 32.7,
-    "r": 1.618603,
-    "reason": "RECT trigger 32.52",
+    "entry": 32.55,
+    "r": 1.731928,
+    "reason": "RECT trigger 32.39",
     "setup": "RECT",
-    "stop": 31.6,
-    "target": 34.480463,
+    "stop": 31.45,
+    "target": 34.455121,
     "which": "SPEC"
    },
    "prefilter": [
@@ -6299,7 +6341,7 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G5: 14.0% below the trigger \u2014 not actionable"
+    "reason": "fails hard gate G5: 11.5% below the trigger \u2014 not actionable"
    },
    "first_hard_fail": "G5",
    "hard_gates": {
@@ -6310,12 +6352,12 @@
     "G5": false
    },
    "plan": {
-    "entry": 335.7,
-    "r": 2.890737,
-    "reason": "CUPNH trigger 334.00",
-    "setup": "CUPNH",
-    "stop": 314.65,
-    "target": 396.550006,
+    "entry": 326.2,
+    "r": 2.28266,
+    "reason": "FBASE trigger 324.55",
+    "setup": "FBASE",
+    "stop": 305.15,
+    "target": 374.249988,
     "which": "SPEC"
    },
    "prefilter": [
@@ -6325,7 +6367,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": true,
     "FLAG": false,
@@ -6407,9 +6449,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -6744,13 +6786,27 @@
    }
   },
   "RAJESHEXPO.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 16.5% below the trigger \u2014 not actionable"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 77.9,
+    "r": 9.167157,
+    "reason": "FWDG trigger 77.50",
+    "setup": "FWDG",
+    "stop": 71.1,
+    "target": 140.23667,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -6763,7 +6819,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -6930,15 +6986,15 @@
     "G2": false,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
    },
    "plan": {
-    "entry": 39.6,
-    "r": 1.933322,
-    "reason": "FWDG trigger 39.40",
-    "setup": "FWDG",
-    "stop": 36.05,
-    "target": 46.463292,
+    "entry": 49.8,
+    "r": 6.459355,
+    "reason": "ATRI trigger 49.52",
+    "setup": "ATRI",
+    "stop": 45.85,
+    "target": 75.314452,
     "which": "SPEC"
    },
    "prefilter": [
@@ -6946,13 +7002,13 @@
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": false,
+    "ATRI": true,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -7003,13 +7059,27 @@
    }
   },
   "SAKUMA.NS": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 14.6% below the trigger \u2014 not actionable"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 1.85,
+    "r": 9.422551,
+    "reason": "SYMM trigger 1.83",
+    "setup": "SYMM",
+    "stop": 1.7,
+    "target": 3.263383,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -7026,7 +7096,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -7041,7 +7111,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -7076,7 +7146,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 1.0,
-    "reason": "FWDG complete, waiting for a close through 548.25 on 1.4x volume"
+    "reason": "FWDG complete, waiting for a close through 554.10 on 1.4x volume"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -7087,12 +7157,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 548.25,
-    "r": 4.902319,
-    "reason": "FWDG trigger 545.52",
+    "entry": 554.1,
+    "r": 5.370128,
+    "reason": "FWDG trigger 551.33",
     "setup": "FWDG",
-    "stop": 515.1,
-    "target": 710.761886,
+    "stop": 520.95,
+    "target": 732.119739,
     "which": "SPEC"
    },
    "prefilter": [
@@ -7244,7 +7314,7 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G5: 19.0% below the trigger \u2014 not actionable"
+    "reason": "fails hard gate G5: 13.4% below the trigger \u2014 not actionable"
    },
    "first_hard_fail": "G5",
    "hard_gates": {
@@ -7255,12 +7325,12 @@
     "G5": false
    },
    "plan": {
-    "entry": 99.15,
-    "r": 3.055277,
-    "reason": "CUPNH trigger 98.65",
-    "setup": "CUPNH",
-    "stop": 89.2,
-    "target": 129.550002,
+    "entry": 92.8,
+    "r": 2.061307,
+    "reason": "TBOT trigger 92.30",
+    "setup": "TBOT",
+    "stop": 82.85,
+    "target": 113.310002,
     "which": "SPEC"
    },
    "prefilter": [
@@ -7268,9 +7338,9 @@
     "liquidity below 500,000,000"
    ],
    "setups": {
-    "ATRI": true,
+    "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -7500,27 +7570,13 @@
    }
   },
   "SUNPHARMA.NS": {
-   "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.0,
-    "reason": "FWDG complete, waiting for a close through 1857.20 on 1.4x volume"
-   },
-   "first_hard_fail": null,
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
-   },
-   "plan": {
-    "entry": 1857.2,
-    "r": 2.892636,
-    "reason": "FWDG trigger 1847.96",
-    "setup": "FWDG",
-    "stop": 1801.75,
-    "target": 2017.596675,
-    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -7533,7 +7589,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -7620,25 +7676,25 @@
   },
   "TATAGOLD.NS": {
    "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 19.2% below the trigger \u2014 not actionable"
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.5,
+    "reason": "ATRI complete, waiting for a close through 15.95 on 1.4x volume"
    },
-   "first_hard_fail": "G5",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
+    "G5": true
    },
    "plan": {
-    "entry": 17.8,
-    "r": 9.960001,
-    "reason": "CUPNH trigger 17.70",
-    "setup": "CUPNH",
-    "stop": 17.3,
-    "target": 22.78,
+    "entry": 15.95,
+    "r": 6.71111,
+    "reason": "ATRI trigger 15.85",
+    "setup": "ATRI",
+    "stop": 15.45,
+    "target": 19.305555,
     "which": "SPEC"
    },
    "prefilter": [
@@ -7648,7 +7704,7 @@
    "setups": {
     "ATRI": true,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -7656,7 +7712,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": true,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -7920,12 +7976,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 5100.55,
-    "r": 3.635481,
-    "reason": "ATRI trigger 5075.15",
-    "setup": "ATRI",
-    "stop": 4907.6,
-    "target": 5802.016105,
+    "entry": 4887.95,
+    "r": 2.57409,
+    "reason": "FWDG trigger 4863.60",
+    "setup": "FWDG",
+    "stop": 4728.9,
+    "target": 5297.359091,
     "which": "SPEC"
    },
    "prefilter": [
@@ -7933,16 +7989,16 @@
     "passed"
    ],
    "setups": {
-    "ATRI": true,
+    "ATRI": false,
     "CUP": false,
     "CUPNH": false,
     "DBOT": false,
     "FBASE": true,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
-    "RECT": true,
+    "RECT": false,
     "SYMM": false,
     "TBOT": false
    },
@@ -8095,27 +8151,13 @@
    }
   },
   "VENUSREM.NS": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 12.1% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 2054.55,
-    "r": 3.527606,
-    "reason": "CUPNH trigger 2044.30",
-    "setup": "CUPNH",
-    "stop": 1885.2,
-    "target": 2651.950024,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     false,
@@ -8124,7 +8166,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -8147,7 +8189,7 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G5: 13.6% below the trigger \u2014 not actionable"
+    "reason": "fails hard gate G5: 14.9% below the trigger \u2014 not actionable"
    },
    "first_hard_fail": "G5",
    "hard_gates": {
@@ -8158,12 +8200,12 @@
     "G5": false
    },
    "plan": {
-    "entry": 344.9,
-    "r": 1.732812,
-    "reason": "RECT trigger 343.16",
+    "entry": 350.3,
+    "r": 3.264698,
+    "reason": "RECT trigger 348.52",
     "setup": "RECT",
-    "stop": 326.85,
-    "target": 376.177265,
+    "stop": 332.25,
+    "target": 409.227791,
     "which": "SPEC"
    },
    "prefilter": [
@@ -32492,21 +32534,35 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
   },
   "AESI": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 12.5% below the trigger \u2014 not actionable"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 13.8,
+    "r": 7.142961,
+    "reason": "FWDG trigger 13.72",
+    "setup": "FWDG",
+    "stop": 12.03,
+    "target": 26.443041,
+    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -32519,7 +32575,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -32677,8 +32733,8 @@
   "ATLO": {
    "decision": {
     "label": "TRADE ON TRIGGER",
-    "quality": 1.5,
-    "reason": "ATRI complete, waiting for a close through 32.99 on 1.4x volume"
+    "quality": 1.0,
+    "reason": "ATRI complete, waiting for a close through 33.17 on 1.4x volume; capped by watch flag (W1)"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -32689,12 +32745,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 32.99,
-    "r": 3.269268,
-    "reason": "ATRI trigger 32.82",
+    "entry": 33.17,
+    "r": 3.224072,
+    "reason": "ATRI trigger 33.00",
     "setup": "ATRI",
-    "stop": 31.57,
-    "target": 37.63236,
+    "stop": 31.81,
+    "target": 37.554738,
     "which": "SPEC"
    },
    "prefilter": [
@@ -32716,9 +32772,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -32727,7 +32783,7 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed descending triangle on the same chart"
+    "reason": "fails hard gate G2: confirmed triple top on the same chart"
    },
    "first_hard_fail": "G2",
    "hard_gates": {
@@ -32735,15 +32791,15 @@
     "G2": false,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
    },
    "plan": {
-    "entry": 1.2,
-    "r": 2.194148,
-    "reason": "FWDG trigger 1.19",
-    "setup": "FWDG",
-    "stop": 1.1,
-    "target": 1.419415,
+    "entry": 1.3,
+    "r": 3.166317,
+    "reason": "SYMM trigger 1.29",
+    "setup": "SYMM",
+    "stop": 1.16,
+    "target": 1.743284,
     "which": "SPEC"
    },
    "prefilter": [
@@ -32761,7 +32817,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -32811,7 +32867,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": false,
     "G5": true
@@ -32876,7 +32932,7 @@
     "DBOT": true,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -32962,13 +33018,27 @@
    }
   },
   "BRUN": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "WATCH - WAIT",
+    "quality": 0.0,
+    "reason": "stop 17.9% > 8%"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 16.5,
+    "r": 3.773908,
+    "reason": "FWDG trigger 15.93",
+    "setup": "FWDG",
+    "stop": 13.54,
+    "target": 27.670768,
+    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -32981,7 +33051,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -32989,10 +33059,10 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "WATCH_WAIT",
    "watch_flags": {
     "W1": false,
-    "W2": false,
+    "W2": true,
     "W3": false
    }
   },
@@ -33067,27 +33137,13 @@
    }
   },
   "CEG": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 23.9% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 335.47,
-    "r": 5.477603,
-    "reason": "CUPNH trigger 333.80",
-    "setup": "CUPNH",
-    "stop": 316.27,
-    "target": 440.639983,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     true,
@@ -33096,7 +33152,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -33118,8 +33174,8 @@
   "CET": {
    "decision": {
     "label": "TRADE ON TRIGGER",
-    "quality": 1.5,
-    "reason": "ATRI complete, waiting for a close through 56.93 on 1.4x volume"
+    "quality": 1.0,
+    "reason": "ATRI complete, waiting for a close through 57.20 on 1.4x volume; capped by watch flag (W1)"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -33130,12 +33186,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 56.93,
-    "r": 3.000812,
-    "reason": "ATRI trigger 56.64",
+    "entry": 57.2,
+    "r": 3.380953,
+    "reason": "ATRI trigger 56.91",
     "setup": "ATRI",
-    "stop": 55.07,
-    "target": 62.511511,
+    "stop": 55.43,
+    "target": 63.184286,
     "which": "SPEC"
    },
    "prefilter": [
@@ -33152,14 +33208,14 @@
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": false,
+    "RECT": true,
     "SYMM": false,
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -33284,13 +33340,27 @@
    }
   },
   "CPB": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G2: confirmed double top on the same chart"
+   },
+   "first_hard_fail": "G2",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 20.03,
+    "r": 2.754545,
+    "reason": "FWDG trigger 19.92",
+    "setup": "FWDG",
+    "stop": 18.93,
+    "target": 23.059999,
+    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -33303,7 +33373,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -33427,7 +33497,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -33494,13 +33564,27 @@
    }
   },
   "DTST": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 4.4% above the trigger"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 3.45,
+    "r": 3.114257,
+    "reason": "FWDG trigger 3.30",
+    "setup": "FWDG",
+    "stop": 2.99,
+    "target": 4.882558,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -33513,7 +33597,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -33602,7 +33686,7 @@
    "decision": {
     "label": "WATCH - WAIT",
     "quality": 1.1,
-    "reason": "RECT projects 1.72R < 2R"
+    "reason": "RECT projects 1.78R < 2R"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -33613,12 +33697,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 133.89,
-    "r": 1.719309,
-    "reason": "RECT trigger 133.22",
+    "entry": 137.53,
+    "r": 1.784005,
+    "reason": "RECT trigger 136.85",
     "setup": "RECT",
-    "stop": 129.1,
-    "target": 142.12549,
+    "stop": 132.74,
+    "target": 146.075385,
     "which": "SPEC"
    },
    "prefilter": [
@@ -33945,7 +34029,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 1.1,
-    "reason": "RECT complete, waiting for a close through 10.61 on 1.4x volume"
+    "reason": "RECT complete, waiting for a close through 11.10 on 1.4x volume"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -33956,12 +34040,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 10.61,
-    "r": 3.565073,
-    "reason": "RECT trigger 10.55",
+    "entry": 11.1,
+    "r": 2.516909,
+    "reason": "RECT trigger 11.04",
     "setup": "RECT",
-    "stop": 10.31,
-    "target": 11.679522,
+    "stop": 10.8,
+    "target": 11.855073,
     "which": "SPEC"
    },
    "prefilter": [
@@ -34078,7 +34162,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -34110,13 +34194,27 @@
    }
   },
   "HOLO": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 18.9% below the trigger \u2014 not actionable"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 1.99,
+    "r": 6.441965,
+    "reason": "SYMM trigger 1.97",
+    "setup": "SYMM",
+    "stop": 1.83,
+    "target": 3.020714,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -34129,11 +34227,11 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -34172,9 +34270,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -34244,7 +34342,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -34267,7 +34365,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -34404,13 +34502,27 @@
    }
   },
   "LAB": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "WATCH - WAIT",
+    "quality": 0.0,
+    "reason": "stop 10.7% > 8%"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 0.75,
+    "r": 7.029605,
+    "reason": "FWDG trigger 0.71",
+    "setup": "FWDG",
+    "stop": 0.67,
+    "target": 1.312368,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -34423,7 +34535,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -34431,10 +34543,10 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "WATCH_WAIT",
    "watch_flags": {
     "W1": false,
-    "W2": false,
+    "W2": true,
     "W3": false
    }
   },
@@ -34515,9 +34627,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -34558,13 +34670,27 @@
    }
   },
   "LSPD": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.2,
+    "reason": "SYMM complete, waiting for a close through 10.72 on 1.4x volume"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 10.72,
+    "r": 4.573086,
+    "reason": "SYMM trigger 10.66",
+    "setup": "SYMM",
+    "stop": 10.15,
+    "target": 13.326659,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -34581,7 +34707,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -34699,25 +34825,25 @@
   },
   "MUSA": {
    "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 15.3% below the trigger \u2014 not actionable"
+    "label": "WATCH - WAIT",
+    "quality": 1.3,
+    "reason": "ATRI projects 1.99R < 2R"
    },
-   "first_hard_fail": "G5",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
+    "G5": true
    },
    "plan": {
-    "entry": 598.27,
-    "r": 3.393664,
-    "reason": "DBOT trigger 595.29",
-    "setup": "DBOT",
-    "stop": 567.33,
-    "target": 703.269969,
+    "entry": 538.82,
+    "r": 1.990454,
+    "reason": "ATRI trigger 536.14",
+    "setup": "ATRI",
+    "stop": 511.58,
+    "target": 593.039955,
     "which": "SPEC"
    },
    "prefilter": [
@@ -34725,7 +34851,7 @@
     "passed"
    ],
    "setups": {
-    "ATRI": false,
+    "ATRI": true,
     "CUP": false,
     "CUPNH": false,
     "DBOT": true,
@@ -34747,13 +34873,27 @@
    }
   },
   "MVBF": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.1,
+    "reason": "RECT complete, waiting for a close through 32.06 on 1.4x volume"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 32.06,
+    "r": 2.463378,
+    "reason": "RECT trigger 31.90",
+    "setup": "RECT",
+    "stop": 30.56,
+    "target": 35.755067,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -34769,7 +34909,7 @@
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": false,
+    "RECT": true,
     "SYMM": false,
     "TBOT": false
    },
@@ -34855,7 +34995,7 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G5: 28.5% below the trigger \u2014 not actionable"
+    "reason": "fails hard gate G5: 16.8% below the trigger \u2014 not actionable"
    },
    "first_hard_fail": "G5",
    "hard_gates": {
@@ -34866,12 +35006,12 @@
     "G5": false
    },
    "plan": {
-    "entry": 8.93,
-    "r": 4.445313,
-    "reason": "CUPNH trigger 8.89",
-    "setup": "CUPNH",
-    "stop": 8.29,
-    "target": 11.775,
+    "entry": 7.67,
+    "r": 8.449745,
+    "reason": "SYMM trigger 7.63",
+    "setup": "SYMM",
+    "stop": 7.03,
+    "target": 13.077837,
     "which": "SPEC"
    },
    "prefilter": [
@@ -34881,7 +35021,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -34889,7 +35029,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -34901,27 +35041,13 @@
    }
   },
   "NGS": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 10.2% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 36.24,
-    "r": 3.309338,
-    "reason": "FWDG trigger 36.05",
-    "setup": "FWDG",
-    "stop": 33.86,
-    "target": 44.116224,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     false,
@@ -34934,7 +35060,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": true,
+    "FWDG": false,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -34985,13 +35111,27 @@
    }
   },
   "NRIM": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "FWDG complete, waiting for a close through 25.96 on 1.4x volume"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 25.96,
+    "r": 3.119451,
+    "reason": "FWDG trigger 25.83",
+    "setup": "FWDG",
+    "stop": 24.79,
+    "target": 29.609758,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -35004,7 +35144,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -35056,14 +35196,14 @@
   },
   "OFG": {
    "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.0,
-    "reason": "FBASE complete, waiting for a close through 54.75 on 1.4x volume"
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
    },
-   "first_hard_fail": null,
+   "first_hard_fail": "G2",
    "hard_gates": {
     "G1": true,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -35107,7 +35247,7 @@
    "first_hard_fail": "G1",
    "hard_gates": {
     "G1": false,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
@@ -35174,13 +35314,27 @@
    }
   },
   "PAMT": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
+   },
+   "first_hard_fail": "G2",
    "hard_gates": {
-    "G1": false,
-    "G2": true,
+    "G1": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 12.62,
+    "r": 5.290196,
+    "reason": "FWDG trigger 12.55",
+    "setup": "FWDG",
+    "stop": 10.92,
+    "target": 21.613333,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -35193,7 +35347,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -35279,13 +35433,27 @@
    }
   },
   "PNBK": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G5: 24.5% below the trigger \u2014 not actionable"
+   },
+   "first_hard_fail": "G5",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 1.23,
+    "r": 5.892951,
+    "reason": "SYMM trigger 1.22",
+    "setup": "SYMM",
+    "stop": 1.11,
+    "target": 1.937154,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -35302,7 +35470,7 @@
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,
@@ -35384,13 +35552,27 @@
    }
   },
   "PRIM": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "WATCH - WAIT",
+    "quality": 1.0,
+    "reason": "stop 8.8% > 8%"
+   },
+   "first_hard_fail": null,
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
+   },
+   "plan": {
+    "entry": 76.63,
+    "r": 3.723495,
+    "reason": "FWDG trigger 76.25",
+    "setup": "FWDG",
+    "stop": 69.87,
+    "target": 101.800826,
+    "which": "SPEC"
    },
    "prefilter": [
     true,
@@ -35403,7 +35585,7 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
@@ -35679,25 +35861,25 @@
   },
   "SABA": {
    "decision": {
-    "label": "TRADE ON TRIGGER",
-    "quality": 1.1,
-    "reason": "RECT complete, waiting for a close through 8.37 on 1.4x volume"
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G2: confirmed descending triangle on the same chart"
    },
-   "first_hard_fail": null,
+   "first_hard_fail": "G2",
    "hard_gates": {
     "G1": true,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": true
    },
    "plan": {
-    "entry": 8.37,
-    "r": 2.127221,
-    "reason": "RECT trigger 8.33",
+    "entry": 8.46,
+    "r": 4.720986,
+    "reason": "RECT trigger 8.41",
     "setup": "RECT",
-    "stop": 8.16,
-    "target": 8.816716,
+    "stop": 8.25,
+    "target": 9.451407,
     "which": "SPEC"
    },
    "prefilter": [
@@ -35764,8 +35946,8 @@
   "SBH": {
    "decision": {
     "label": "TRADE ON TRIGGER",
-    "quality": 1.0,
-    "reason": "FBASE complete, waiting for a close through 17.38 on 1.4x volume"
+    "quality": 0.5,
+    "reason": "FBASE complete, waiting for a close through 17.38 on 1.4x volume; capped by watch flag (W1)"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -35803,9 +35985,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -35884,7 +36066,7 @@
    "decision": {
     "label": "TRADE ON TRIGGER",
     "quality": 0.6,
-    "reason": "RECT complete, waiting for a close through 13.06 on 1.4x volume; capped by watch flag (W1)"
+    "reason": "RECT complete, waiting for a close through 13.07 on 1.4x volume; capped by watch flag (W1)"
    },
    "first_hard_fail": null,
    "hard_gates": {
@@ -35895,12 +36077,12 @@
     "G5": true
    },
    "plan": {
-    "entry": 13.06,
-    "r": 2.10507,
-    "reason": "RECT trigger 12.99",
+    "entry": 13.07,
+    "r": 6.815572,
+    "reason": "RECT trigger 13.00",
     "setup": "RECT",
-    "stop": 12.65,
-    "target": 13.923079,
+    "stop": 12.66,
+    "target": 15.864384,
     "which": "SPEC"
    },
    "prefilter": [
@@ -36000,27 +36182,13 @@
    }
   },
   "SNFCA": {
-   "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G5: 12.8% below the trigger \u2014 not actionable"
-   },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G1",
    "hard_gates": {
-    "G1": true,
+    "G1": false,
     "G2": true,
     "G3": true,
     "G4": true,
-    "G5": false
-   },
-   "plan": {
-    "entry": 10.03,
-    "r": 6.779463,
-    "reason": "CUPNH trigger 9.98",
-    "setup": "CUPNH",
-    "stop": 9.64,
-    "target": 12.673991,
-    "which": "SPEC"
+    "G5": true
    },
    "prefilter": [
     false,
@@ -36029,7 +36197,7 @@
    "setups": {
     "ATRI": false,
     "CUP": false,
-    "CUPNH": true,
+    "CUPNH": false,
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
@@ -36119,13 +36287,27 @@
    }
   },
   "STHO": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
+   },
+   "first_hard_fail": "G2",
    "hard_gates": {
-    "G1": false,
-    "G2": true,
+    "G1": true,
+    "G2": false,
     "G3": true,
     "G4": true,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 10.07,
+    "r": 2.859223,
+    "reason": "RECT trigger 10.01",
+    "setup": "RECT",
+    "stop": 9.46,
+    "target": 11.814126,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -36141,7 +36323,7 @@
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": false,
+    "RECT": true,
     "SYMM": false,
     "TBOT": false
    },
@@ -36265,9 +36447,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -36325,12 +36507,12 @@
    "decision": {
     "label": "AVOID",
     "quality": 0.0,
-    "reason": "fails hard gate G5: 11.0% below the trigger \u2014 not actionable"
+    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
    },
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G2",
    "hard_gates": {
     "G1": true,
-    "G2": true,
+    "G2": false,
     "G3": true,
     "G4": true,
     "G5": false
@@ -36477,7 +36659,7 @@
     "FWDG": false,
     "HTF": false,
     "IHS": false,
-    "RECT": false,
+    "RECT": true,
     "SYMM": false,
     "TBOT": true
    },
@@ -36540,25 +36722,25 @@
   },
   "ULTA": {
    "decision": {
-    "label": "AVOID",
-    "quality": 0.0,
-    "reason": "fails hard gate G2: confirmed rising wedge on the same chart"
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "ATRI complete, waiting for a close through 572.92 on 1.4x volume; capped by watch flag (W1)"
    },
-   "first_hard_fail": "G2",
+   "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
-    "G2": false,
+    "G2": true,
     "G3": true,
     "G4": true,
     "G5": true
    },
    "plan": {
     "entry": 572.92,
-    "r": 4.149907,
+    "r": 4.295372,
     "reason": "ATRI trigger 570.06",
     "setup": "ATRI",
-    "stop": 543.67,
-    "target": 694.304787,
+    "stop": 544.82,
+    "target": 693.619943,
     "which": "SPEC"
    },
    "prefilter": [
@@ -36580,9 +36762,9 @@
     "TBOT": false
    },
    "signal": false,
-   "watch_cap": "TRADE_HIGH_CONFIDENCE",
+   "watch_cap": "TRADE_ON_TRIGGER",
    "watch_flags": {
-    "W1": false,
+    "W1": true,
     "W2": false,
     "W3": false
    }
@@ -36693,13 +36875,27 @@
    }
   },
   "WBUY": {
-   "first_hard_fail": "G1",
+   "decision": {
+    "label": "AVOID",
+    "quality": 0.0,
+    "reason": "fails hard gate G4: ATR% 12.0 > 10%"
+   },
+   "first_hard_fail": "G4",
    "hard_gates": {
-    "G1": false,
+    "G1": true,
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": true
+    "G5": false
+   },
+   "plan": {
+    "entry": 1.03,
+    "r": 4.390741,
+    "reason": "SYMM trigger 1.02",
+    "setup": "SYMM",
+    "stop": 0.85,
+    "target": 1.820333,
+    "which": "SPEC"
    },
    "prefilter": [
     false,
@@ -36712,11 +36908,11 @@
     "DBOT": false,
     "FBASE": false,
     "FLAG": false,
-    "FWDG": false,
+    "FWDG": true,
     "HTF": false,
     "IHS": false,
     "RECT": false,
-    "SYMM": false,
+    "SYMM": true,
     "TBOT": false
    },
    "signal": false,

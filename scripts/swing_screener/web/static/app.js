@@ -502,7 +502,12 @@ const BENCH = { us: "SPY", india: "NIFTY50" };
  *  bonuses stay in the News & events panel) — each under the bar it falls on
  *  (upcoming ones in the empty space right of the last bar, hollow). Hover shows a card with the
  *  details (a past report with that quarter's EPS and revenue from `quarters`, the stored quarterly
- *  results; the next one with its EPS estimate); click calls onOpen. Returns { set(events), destroy() }. */
+ *  results, and its EPS against the analyst consensus; the next one with the consensus, its 30 / 90-day
+ *  trend and revisions, and the beat record — marketdata/estimates.py, attached by /api/news); click
+ *  calls onOpen. Returns { set(events), destroy() }. */
+/** an estimate move for display: "↑ 2.5%", "↓ 1.1%", "unchanged" (the direction is estimates.py's call) */
+const estDir = (v, dir) => (dir === "flat" ? "unchanged" : `${dir === "up" ? "↑" : "↓"} ${Math.abs(v * 100).toFixed(1)}%`);
+const estDirClass = (dir) => (dir === "up" ? "up" : dir === "down" ? "dn" : "muted");
 function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
   const KIND = { earnings: "E", results: "E", dividend: "D" };
   const NAME = { E: "Earnings", D: "Dividend" };
@@ -526,9 +531,18 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
   const card = (e) => {
     const L = KIND[e.kind], up = e.date >= today, det = e.detail || {}, rows = [];
     if (L === "E" && up) {
-      const lastQ = quarters.at(-1), yago = lastQ && days(lastQ.end, e.date) <= 160 ? quarters.at(-4) : null;
-      if (det.eps_estimate != null) rows.push(["EPS estimate", num(det.eps_estimate) + (det.eps_low != null ? ` <span class="muted">(${num(det.eps_low)} – ${num(det.eps_high)})</span>` : "")]);
-      if (yago && det.eps_estimate != null && yago.eps > 0) rows.push(["vs year-ago quarter", `${num(yago.eps)} → ${pct(det.eps_estimate / yago.eps - 1)}`]);
+      const lastQ = quarters.at(-1), yago = lastQ && days(lastQ.end, e.date) <= 160 ? quarters.at(-4) : null, c = det.consensus;
+      if (c && c.eps_avg != null) {
+        rows.push(["EPS consensus", `${num(c.eps_avg)}${c.eps_low != null ? ` <span class="muted">(${num(c.eps_low)} – ${num(c.eps_high)})</span>` : ""}${c.eps_analysts ? ` <span class="muted">· ${c.eps_analysts} analysts</span>` : ""}`]);
+        if (c.eps_year_ago != null) rows.push(["vs year-ago quarter", `${num(c.eps_year_ago)} → <span class="${c.eps_growth > 0 ? "up" : c.eps_growth < 0 ? "dn" : "muted"}">${pct(c.eps_growth)}</span>`]);
+        if (c.chg_90d != null || c.chg_30d != null) rows.push(["Estimate trend", [["90 days", c.chg_90d, c.dir_90d], ["30 days", c.chg_30d, c.dir_30d]].filter((x) => x[1] != null).map(([k, v, dir]) => `<span class="${estDirClass(dir)}">${estDir(v, dir)}</span> <span class="muted">${k}</span>`).join(" · ")]);
+        if (c.up_30d != null || c.down_30d != null) rows.push(["Revisions, 30 days", `<span class="up">${c.up_30d || 0} up</span> · <span class="dn">${c.down_30d || 0} down</span>`]);
+        if (c.rev_avg != null) rows.push(["Revenue consensus", `${moneyShort(c.rev_avg, market)}${c.rev_growth != null ? ` <span class="${c.rev_growth > 0 ? "up" : c.rev_growth < 0 ? "dn" : "muted"}">${pct(c.rev_growth)}</span>` : ""}`]);
+        if (det.beats) rows.push(["Beat record", `${det.beats.beat} of the last ${det.beats.of} quarters`]);
+      } else {
+        if (det.eps_estimate != null) rows.push(["EPS estimate", num(det.eps_estimate) + (det.eps_low != null ? ` <span class="muted">(${num(det.eps_low)} – ${num(det.eps_high)})</span>` : "")]);
+        if (yago && det.eps_estimate != null && yago.eps > 0) rows.push(["vs year-ago quarter", `${num(yago.eps)} → ${pct(det.eps_estimate / yago.eps - 1)}`]);
+      }
     } else if (L === "E") {
       const q = quarterOf(e.date);
       if (q) {
@@ -536,6 +550,8 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
         rows.push(["EPS", `${num(q.eps)} <span class="${q.eps_g > 0 ? "up" : q.eps_g < 0 ? "dn" : "muted"}">${pct(q.eps_g)}</span>`]);
         if (q.rev != null) rows.push(["Revenue", `${moneyShort(q.rev, market)} <span class="${q.rev_g > 0 ? "up" : q.rev_g < 0 ? "dn" : "muted"}">${pct(q.rev_g)}</span>`]);
       }
+      const s = det.surprise;
+      if (s) rows.push(["vs consensus", `${num(s.actual)} vs ${num(s.estimate)} <span class="${s.beat ? "up" : "dn"}">${s.beat ? "beat" : "miss"}${s.surprise != null ? ` ${s.surprise >= 0 ? "+" : "−"}${Math.abs(s.surprise * 100).toFixed(0)}%` : ""}</span>`]);
     } else if (L === "D") {
       if (det.amount != null) rows.push(["Amount", `${(MKTS.find((m) => m.key === market) || {}).currency || ""}${(+det.amount).toFixed(det.amount < 1 ? 3 : 2)} per share`]);
       if (det.pay_date) rows.push(["Pay date", prettyDate(det.pay_date)]);
@@ -546,11 +562,13 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
       ${rows.length ? `<table>${rows.map(([k, v]) => `<tr><td class="muted">${k}</td><td>${v}</td></tr>`).join("")}</table>` : ""}
       <div class="ev-t muted">${esc(e.title)}${e.source ? ` · ${esc(e.source)}` : ""}</div></div>`;
   };
-  // colour: a past report by EPS growth vs the year-ago quarter (no consensus history is stored, so
-  // not beat / miss as on TradingView); upcoming events hollow
+  // colour: a past report beat / missed the consensus, as on TradingView, where the surprise is stored;
+  // otherwise by EPS growth vs the year-ago quarter; upcoming events hollow
   const tone = (e) => {
     if (e.date >= today) return "soon";
     if (KIND[e.kind] !== "E") return "";
+    const s = e.detail?.surprise;
+    if (s && s.beat != null) return s.beat ? "pos" : "neg";
     const q = quarterOf(e.date);
     return q?.eps_g > 0 ? "pos" : q?.eps_g < 0 ? "neg" : "";
   };
@@ -3697,7 +3715,34 @@ async function companyPage(alive, market, symbol) {
       ${res ? viewTestsHtml(res, v) : '<div class="muted small">Not scored yet.</div>'}
       <details class="qhow"><summary>Verdicts and caveats</summary><ul class="sd-list">${v.verdicts.map((x) => `<li>${esc(x)}</li>`).join("")}${v.caveats.map((x) => `<li class="muted">${esc(x)}</li>`).join("")}</ul></details></section>`;
   }).join("");
-  const SECS = [["overview", "Overview"], ["quarters", "Quarters"], ["pl", "Profit & Loss"], ["bs", "Balance Sheet"], ["cf", "Cash Flows"],
+  // analyst estimates (marketdata/estimates.py summary): a column per period, then the surprise record
+  const est = d.estimates;
+  const estHtml = (() => {
+    if (!est || (!est.periods.length && !est.surprises.length)) return `<div class="muted small">No analyst estimates stored for this company${est?.note ? ` (last look: ${esc(est.note)})` : ""}. Opening its chart fetches them.</div>`;
+    const P = est.periods, f2 = (v) => (v == null ? "" : (+v).toFixed(2));
+    const gpct = (v) => (v == null ? "" : `<span class="${v > 0 ? "pos" : v < 0 ? "neg" : ""}">${v >= 0 ? "+" : "−"}${Math.abs(v * 100).toFixed(1)}%</span>`);
+    const money = (v) => (v == null ? "" : est.currency && d.currency_code && est.currency !== d.currency_code ? `${(v / 1e6).toLocaleString(undefined, { maximumFractionDigits: 0 })}M ${esc(est.currency)}` : moneyShort(v, market));
+    const trend = (p, n) => (p[`chg_${n}d`] == null ? "" : `<span class="${p[`dir_${n}d`] === "up" ? "pos" : p[`dir_${n}d`] === "down" ? "neg" : "muted"}">${estDir(p[`chg_${n}d`], p[`dir_${n}d`])}</span> <span class="muted">from ${f2(p[`trend_${n}d`])}</span>`);
+    const rows = [
+      ["EPS consensus", (p) => `<b>${f2(p.eps_avg)}</b>`, "strong"],
+      ["Range", (p) => (p.eps_low == null ? "" : `${f2(p.eps_low)} – ${f2(p.eps_high)}`)],
+      ["Year ago", (p) => (p.eps_year_ago == null ? "" : `${f2(p.eps_year_ago)} ${gpct(p.eps_growth)}`)],
+      ["Analysts", (p) => p.eps_analysts ?? ""],
+      ["Trend, 30 days", (p) => trend(p, 30)],
+      ["Trend, 90 days", (p) => trend(p, 90)],
+      ["Since first stored", (p) => (p.since ? `${gpct(p.since.change)} <span class="muted">from ${f2(p.since.eps)} on ${prettyDate(p.since.asof)}</span>` : "")],
+      ["Revisions, 30 days", (p) => (p.up_30d == null && p.down_30d == null ? "" : `<span class="pos">${p.up_30d || 0} up</span> · <span class="neg">${p.down_30d || 0} down</span>`)],
+      ["Revenue consensus", (p) => money(p.rev_avg), "strong"],
+      ["Revenue growth", (p) => gpct(p.rev_growth)],
+    ].filter(([, fn]) => P.some((p) => fn(p) !== ""));
+    const tbl = P.length ? `<div class="fin-wrap"><table class="fin est"><thead><tr><th></th>${P.map((p) => `<th>${esc(p.name)}<div class="muted small">to ${esc(colLabel(p.end_date || ""))}</div></th>`).join("")}</tr></thead>
+      <tbody>${rows.map(([k, fn, cls]) => `<tr class="${cls || ""}"><th>${k}</th>${P.map((p) => `<td>${fn(p)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>` : "";
+    const sur = est.surprises.length ? `<h3 class="est-h">Earnings surprises</h3><div class="fin-wrap"><table class="fin est"><thead><tr><th>Quarter to</th><th>Consensus</th><th>Reported</th><th>Surprise</th></tr></thead>
+      <tbody>${est.surprises.map((x) => `<tr><th>${esc(colLabel(x.quarter))}</th><td>${f2(x.estimate)}</td><td>${f2(x.actual)}</td><td>${x.beat == null ? "" : `<span class="${x.beat ? "pos" : "neg"}">${x.beat ? "beat" : "miss"}</span> ${gpct(x.surprise)}`}</td></tr>`).join("")}</tbody></table></div>` : "";
+    return `${est.read.length ? `<ul class="est-read">${est.read.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}${tbl}${sur}
+      <div class="muted small fin-note">EPS on the basis analysts use (often adjusted, so it can differ from the reported EPS above). Trend: the consensus now against 30 and 90 days ago; a move under ${esc(String(Math.round((est.flat || 0.01) * 100)))}% reads as unchanged. Snapshot ${est.asof ? prettyDate(est.asof) : "—"} · ${esc(est.source)}. Company guidance is not included — no free source carries it as numbers.</div>`;
+  })();
+  const SECS = [["overview", "Overview"], ["quarters", "Quarters"], ["est", "Estimates"], ["pl", "Profit & Loss"], ["bs", "Balance Sheet"], ["cf", "Cash Flows"],
     ["ratios", "Ratios"], ["shp", "Shareholding"], ["peers", "Peers"], ...(d.views || []).map((v) => [`view-${v.key}`, v.name])];
   $view.innerHTML = head + `<nav class="co-nav">${SECS.map(([k, t]) => `<a href="#co-${k}" data-sec="co-${k}">${esc(t)}</a>`).join("")}</nav>
     <section class="co-sec" id="co-overview"><div class="co-ratios">${ratio.map(([k, v]) => `<div><span class="muted">${k}</span><b>${v}</b></div>`).join("")}</div>
@@ -3709,6 +3754,7 @@ async function companyPage(alive, market, symbol) {
         <button data-hist="-4" title="A year earlier">◀ Earlier</button><span class="muted small hist-range"></span><button data-hist="4" title="A year later">Later ▶</button><button data-hist="latest">Latest</button></span>` : ""}
       <span class="muted small">${unitNote}</span></h2>${table(d.quarters,
       `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`, qOlder)}</section>
+    <section class="co-sec" id="co-est"><h2>Analyst estimates <span class="muted small">What analysts expect, which way that has moved, and how past results compared</span></h2>${estHtml}</section>
     <section class="co-sec" id="co-pl"><h2>Profit &amp; Loss <span class="muted small">${unitNote}</span></h2>${table(d.profit_loss,
       d.layout === "bank" ? "Banks: revenue is interest earned; financing profit = revenue − interest − expenses (incl. provisions), before other income." : "")}
       <div class="cg">${gbox("Compounded sales growth", g.sales)}${gbox("Compounded profit growth", g.profit)}${gbox("Stock price CAGR", g.price)}${gbox("Return on equity", g.roe)}</div></section>
@@ -5592,6 +5638,9 @@ const NOTE_TEMPLATES = {
     body: "## Setup\n\n## Entry / stop / target\n- Entry:\n- Stop:\n- Target:\n- Size / risk:\n\n## Why now\n\n## What would prove me wrong\n" }) },
   review: { label: "Trade review", make: (sym) => ({ title: `Review — ${sym ? sym.symbol.replace(/\.NS$/, "") : ""}`, tags: ["review"],
     body: "## What happened\n\n## What I did well\n\n## What I'd do differently\n\n## Lesson\n" }) },
+  // the six checks of the Learn guide "Reading a quarterly report — beyond the headline"
+  earnings: { label: "Earnings analysis", make: (sym) => ({ title: `Results — ${sym ? sym.symbol.replace(/\.NS$/, "") : ""} — ${longDate(todayLocal())}`, tags: ["earnings"],
+    body: "## Headline\n| | This quarter | Year ago | Change |\n|---|---|---|---|\n| Sales |  |  |  |\n| EPS |  |  |  |\n| Pre-tax profit |  |  |  |\n| Gross margin % |  |  |  |\n\n- **Last 4 quarters:** accelerating / steady / slowing\n\n## Six checks\n1. **Source of profit:** pre-tax growth vs EPS growth · exceptional items, other income, tax rate\n2. **Gross margin:** up / flat / down vs year ago — why\n3. **Inventory:** inventory growth − sales growth = __ pts · inventory days __ → explained by (guidance, orders, launch)?\n4. **Receivables:** receivables growth − sales growth = __ pts · debtor days __\n5. **Cash:** cash from operations vs net profit, last 12 months\n6. **Shares:** EPS growth vs net profit growth · buyback or new issue?\n\n## Distortions\n- Acquisition / one-off / season / data error?\n\n## Guidance\n- \n\n## Verdict\n- **Trust in this quarter's growth:** full / partial / none — because\n- **Price reaction:** confirmed / rejected\n" }) },
 };
 
 const KIND_FILTERS = [["", "All"], ["note", "Notes"], ["journal", "Journal"], ["book", "Books"]];
@@ -6700,7 +6749,7 @@ document.addEventListener("keydown", (e) => {
 const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield-curve", "learn-macro-inflation", "learn-macro-cycle", "learn-macro-currencies", "learn-macro-liquidity-credit", "learn-macro-commodities", "learn-macro-calendar",
   "learn-health-trend", "learn-health-breadth", "learn-health-volatility", "learn-health-distribution",
   "learn-sectors-groups",
-  "learn-fund-earnings", "learn-fund-valuation", "learn-fund-quality",
+  "learn-fund-earnings", "learn-fund-reading-results", "learn-fund-valuation", "learn-fund-quality",
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
@@ -6712,7 +6761,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
 const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
   "learn-health-trend": "health", "learn-health-breadth": "health", "learn-health-volatility": "health", "learn-health-distribution": "health",
   "learn-sectors-groups": "sectors",
-  "learn-fund-earnings": "fundamentals", "learn-fund-valuation": "fundamentals", "learn-fund-quality": "fundamentals",
+  "learn-fund-earnings": "fundamentals", "learn-fund-reading-results": "fundamentals", "learn-fund-valuation": "fundamentals", "learn-fund-quality": "fundamentals",
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
@@ -6843,6 +6892,7 @@ const GUIDE_BLURB = {
   "learn-health-distribution": "O'Neil's distribution days and follow-through days: spotting tops and new uptrends from index volume.",
   "learn-sectors-groups": "Why leaders cluster in leading groups, how the Sectors page rates them, and how money rotates between them.",
   "learn-fund-earnings": "EPS and sales growth, acceleration, surprises and guidance — what earnings do to a stock, and when.",
+  "learn-fund-reading-results": "Beyond the headline: six checks on a quarterly report — profit source, gross margin, inventory, receivables, cash, shares.",
   "learn-fund-valuation": "P/E, PEG and EV/EBITDA for traders: why leaders look expensive, and when valuation does matter.",
   "learn-fund-quality": "Margins, returns, debt and cash flow; CAN SLIM and SEPA's fundamentals; the app's Quality and Fundamentals pages.",
   "learn-risk-expectancy": "Win rate times average win against loss rate times average loss — measured on this app's own backtest trades.",

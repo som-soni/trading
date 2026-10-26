@@ -10,7 +10,7 @@
 
 This guide covers what "quality" means to a trader and to an investor. It explains margins, return on equity, debt and cash flow, then the CAN SLIM letters and Minervini's SEPA fundamentals as a checklist. It ends with worked examples, red flags, India specifics and what the evidence says about filtering on growth.
 
-It is the third of three fundamentals guides, after [earnings that move stocks](learn-fund-earnings.md) and [valuation for traders](learn-fund-valuation.md).
+It is the last of the fundamentals guides, after [earnings that move stocks](learn-fund-earnings.md), [reading a quarterly report](learn-fund-reading-results.md) and [valuation for traders](learn-fund-valuation.md). The quarterly-report guide turns these lines into six checks to run on each new filing.
 
 ---
 

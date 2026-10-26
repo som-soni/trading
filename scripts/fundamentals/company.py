@@ -14,6 +14,8 @@ metrics of `fundamentals/growth.py`, and builds:
   ratios          debtor days, inventory days, ROCE %, ROE %, OPM % per year
   shareholding    promoters / FII / DII / government / public per quarter (India)
   peers           the stock's peer group (Sectors page), largest first
+  estimates       analysts' EPS and revenue consensus per period, its 30 / 90-day trend and revisions, and the
+                  earnings surprise history (marketdata/estimates.py summary)
   views           each strategy's reading of the shared metrics (Minervini SEPA; CAN SLIM, which also reads the
                   stock's prices, RS rank, shareholding and the market, judged live)
 
@@ -339,6 +341,9 @@ def build(market: str, symbol: str, snap=None) -> dict:
                           "sales_g": (pm.get("rev_g") or [None])[0], "eps_g": (pm.get("eps_g") or [None])[0], "roe": pm.get("roe"),
                           "rs_rank": r.get("rs_rank"), "self": r["symbol"] == symbol})
     out["peers"] = peers
+    # what analysts expect next, which way that has moved, and how past results compared (marketdata/estimates.py)
+    from swing_screener.marketdata import estimates
+    out["estimates"] = estimates.summary(market, symbol)
 
     # strategy views
     views = scores[1] if scores else {}

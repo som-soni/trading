@@ -285,7 +285,12 @@ Drawings (trend lines, horizontal lines, rectangles, Fibonacci and more) are sav
 symbol. Shortcuts: Alt+T trend line, Alt+H horizontal line, Alt+Shift+R rectangle; ⌘Z undoes.
 
 Markers along the bottom show **E** (earnings or results) and **D** (ex-dividend); upcoming ones sit to the
-right of the last bar. The right-hand rail opens panels:
+right of the last bar. A past **E** is green when the company beat the analyst consensus, red when it missed
+(by EPS growth where no consensus is stored), and its card shows reported EPS against the consensus. The
+upcoming **E** card shows the consensus for the quarter being reported: its range and analyst count, growth
+against the year-ago quarter, the **estimate trend** (the consensus now against 30 and 90 days ago — raised
+estimates into a report tend to precede a beat), upward and downward revisions over 30 days, the revenue
+consensus and the beat record (`marketdata/estimates.py`). The right-hand rail opens panels:
 
 | Panel | Contents |
 |---|---|
@@ -296,7 +301,12 @@ right of the last bar. The right-hand rail opens panels:
 | **Chart patterns** / **Zones** | Shown while that indicator is on: every pattern / supply-demand zone found; click one to go to it |
 
 **Fundamentals** (Chart → Fundamentals) is one company's financials in tabs: Overview, Quarters, Profit &
-Loss, Balance Sheet, Cash Flows, Ratios, Shareholding (India: promoters, FIIs, DIIs, public) and Peers. It
+Loss, Balance Sheet, Cash Flows, Ratios, Shareholding (India: promoters, FIIs, DIIs, public) and Peers, plus
+**Analyst estimates**: EPS and revenue consensus for this and next quarter and fiscal year (range, analysts,
+growth against a year ago, the 30- and 90-day trend, revisions, and "since first stored" once the weekly
+snapshots reach past Yahoo's 90 days), a one-line read, and the earnings surprise record (consensus against
+reported, beat or miss). Analysts' EPS is often adjusted, so it can differ from the filed EPS above; company
+guidance is not included (no free source carries it as numbers). It
 includes a **Minervini SEPA** section (tests F1–F8 and a verdict) and a **CAN SLIM** section (`fundamentals/canslim.py`):
 C1–C2 and A1–A2 from the filings, then N (within 15% of the 52-week high), S (up-day over down-day volume, 50
 sessions), L (RS rank 80+), I (FII + DII up on the quarter; India only) and M (the index above its 50-day with at

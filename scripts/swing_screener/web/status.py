@@ -32,7 +32,7 @@ BENCH_SERIES = {"us": "SPX", "india": "NIFTY50"}
 AGE_LIMITS = {"universe": (8, 15), "industries": (35, 60), "names": (60, 120), "quality": (8, 32), "earnings": (8, 15),
               "rates": (4, 8),   # rates: FRED publishes a day late, so a session check would warn every day
               # judged from the job's own run log (their data is monthly, fortnightly or per company):
-              "indicators": (4, 8), "news": (4, 8), "financials": (8, 15), "fpi_sectors": (8, 15)}
+              "indicators": (4, 8), "news": (4, 8), "financials": (8, 15), "estimates": (8, 15), "fpi_sectors": (8, 15)}
 LOG_TAIL_LINES = 150
 
 
@@ -151,6 +151,7 @@ def freshness(q, price_day) -> dict:
         items.append(_job_item(q, "indicators", "Economic indicators (Macro)", "indicators", m))
         items.append(_job_item(q, "news", "News & events", "news", m))
         items.append(_job_item(q, "financials", "Company financials", "financials", m))
+        items.append(_job_item(q, "estimates", "Analyst estimates", "estimates", m))
         from ..marketdata import fpi_sectors
         if m == fpi_sectors.MARKET and q("SELECT to_regclass('fpi_sector_flows') IS NOT NULL")[0][0]:
             items.append(_job_item(q, "fpi_sectors", "FPI flows by sector (Macro)", "fpi_sectors", m))

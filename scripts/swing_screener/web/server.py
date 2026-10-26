@@ -681,11 +681,30 @@ def stock_news(market: str, symbol: str, refresh: bool = False):
     events = [{"date": d.isoformat(), "kind": k, "title": t, "detail": dtl, "url": u, "source": s}
               for d, k, t, dtl, u, s in q("""SELECT date, kind, title, detail, url, source FROM stock_events
                                            WHERE market=%s AND symbol=%s ORDER BY date DESC""", (market, symbol))]
+    # analyst consensus (marketdata/estimates.py): each past report gets the surprise of the quarter it covered,
+    # the upcoming one the quarter's consensus and its trend — for the chart's earnings badges
+    from ..marketdata import estimates as est_mod
+    est = est_mod.summary(market, symbol)
+    if est:
+        today = _dt.date.today().isoformat()
+        by_report = est_mod.surprises_by_report(est["surprises"], [e["date"] for e in events
+                                                                    if e["kind"] in ("earnings", "results") and e["date"] < today])
+        for e in events:
+            if e["kind"] not in ("earnings", "results"):
+                continue
+            if e["date"] < today:
+                s = by_report.get(e["date"])
+                if s:
+                    e["detail"] = {**(e["detail"] or {}), "surprise": s}
+            else:
+                p = est_mod.period_for_report(est["periods"], e["date"])
+                if p:
+                    e["detail"] = {**(e["detail"] or {}), "consensus": p, "beats": est["beats"]}
     filings = {"sec_edgar": "SEC 8-K filings", "nse": "NSE announcements, corporate actions and board meetings"}
     sources = ["Google News", filings.get(MARKETS[market].quarterly_source, ""), "Yahoo"]
     return {"market": market, "symbol": symbol, "name": _name(market, symbol),
             "fetched_at": fetched_at.isoformat() if fetched_at else None,
-            "note": note, "pending": pending, "news": news, "events": events,
+            "note": note, "pending": pending, "news": news, "events": events, "estimates": est,
             "sources": " · ".join(x for x in sources if x)}
 
 

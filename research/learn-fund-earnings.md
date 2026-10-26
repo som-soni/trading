@@ -10,7 +10,7 @@
 
 This guide covers what a quarterly report contains, why growth is measured year over year, and why accelerating earnings sit behind most big winners. It then measures what a "beat" means and how big the results-day move usually is. Every reaction figure is measured on stored daily prices and filing dates, and the method is stated each time.
 
-Related guides: [the calendar guide](learn-macro-calendar.md) for earnings season, [Valuation for traders](learn-fund-valuation.md) for valuation, and [Quality and the growth checklist](learn-fund-quality.md) for margins, returns on capital and a full growth checklist.
+Related guides: [the calendar guide](learn-macro-calendar.md) for earnings season, [Valuation for traders](learn-fund-valuation.md) for valuation, and [Quality and the growth checklist](learn-fund-quality.md) for margins, returns on capital and a full growth checklist. To check whether a strong quarter's growth is real, read [Reading a quarterly report — beyond the headline](learn-fund-reading-results.md) next.
 
 ---
 

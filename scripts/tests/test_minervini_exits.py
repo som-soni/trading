@@ -74,7 +74,8 @@ def test_breakeven_then_partial_then_trend_break():
     ])
     sig = _signal(df, pivot=99.0, stop=95.0, max_fill=99 * 1.05)
     t = _run(df, sig)
-    assert t.partial_shares == t.shares // 3, (t.partial_shares, t.shares)
+    # the part sold is the policy's own fraction (STRENGTH_FRAC, 0.33 since 1.22), not an exact third
+    assert t.partial_shares == int(t.shares * POLICY.partial_frac), (t.partial_shares, t.shares, POLICY.partial_frac)
     assert t.exit_reason == "BREAKEVEN_STOP", t.exit_reason
     expected = (t.partial_shares * 115 + (t.shares - t.partial_shares) * t.stop) / t.shares
     assert abs(t.exit_price - expected) < 1e-6 and t.r_multiple > 0
@@ -158,8 +159,12 @@ def test_guide_sells_a_third_into_strength():
         (114, 115, 113, 114.5),        # ... sold at this open, 114
         (113, 114, 40, 45, 5000),      # far below the breakeven stop
     ], sma50=90.0)
-    t = _guide_run(df, _signal(df, pivot=99.0, stop=95.0, max_fill=99 * 1.05))
-    assert t.partial_shares == t.shares // 3, (t.partial_shares, t.shares)
+    # since 1.23 the guide also banks a part at +2R (PARTIAL_R), which this frame touches at 110 before the
+    # strength close; switch that off so the frame tests the strength sale alone
+    policy = dataclasses.replace(GUIDE, partial_r=0.0)
+    t = simulate([_signal(df, pivot=99.0, stop=95.0, max_fill=99 * 1.05)], {"X": df}, CFG, df.index[0],
+                 exit_policy=policy).trades[0]
+    assert t.partial_shares == int(t.shares * policy.partial_frac), (t.partial_shares, t.shares, policy.partial_frac)
     assert t.exit_reason == "BREAKEVEN_STOP", t.exit_reason
     expected = (t.partial_shares * 114 + (t.shares - t.partial_shares) * t.stop) / t.shares
     assert abs(t.exit_price - expected) < 1e-6, (t.exit_price, expected)

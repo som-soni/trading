@@ -20,7 +20,9 @@ Sources, per market (`MarketConfig.quarterly_source` picks the filings feed):
                    (dividends, splits, bonuses with their ex-dates) and board meetings (results
                    dates), through the browser session marketdata/financials.py keeps for NSE.
   yfinance         both: the next earnings date with its EPS estimate and the ex-dividend date
-                   (`Ticker.calendar`); US dividends and splits; US analyst rating changes.
+                   (`Ticker.calendar`); US dividends and splits; US analyst rating changes; and the
+                   analyst consensus with its trend and the surprise history (marketdata/estimates.py,
+                   its own tables).
 
     PYTHONPATH=. python3 -m swing_screener.marketdata.news --market us --symbols AAPL,NVDA
 """
@@ -399,6 +401,13 @@ def fetch_symbol(market: str, symbol: str, name: str | None = None) -> dict:
             news += got[0]
             events += got[1]
     events += yahoo
+    # the analyst consensus and surprise history for the earnings badges (marketdata/estimates.py): the
+    # weekly `estimates` job covers the Fundamentals companies; this fills in any chart opened
+    from . import estimates
+    estimates.init_schema()
+    # fetch_symbol records a failure in its own status table rather than raising, so read its note
+    got = estimates.fetch_symbol(market, symbol)
+    notes.append("Yahoo estimates " + ("failed" if got["note"].startswith("failed") else "ok"))
     _store(market, symbol, news, events, " · ".join(notes), refetched)
     return {"news": len(news), "events": len(events), "note": " · ".join(notes)}
 

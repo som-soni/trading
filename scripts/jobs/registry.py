@@ -714,29 +714,55 @@ def _quality(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _company_symbols(market: str) -> list[str] | None:
+    """The companies the Fundamentals page keeps current: the FINANCIALS_TOP most liquid tradable stocks, every
+    Stage-2 stock, and every tradable member of a group split by revenue — None before the first snapshot."""
+    from swing_screener.marketdata import financials, subindustries
+    from swing_screener.screens import definitions, snapshot
+    snap = snapshot.load(market)
+    if snap.empty:
+        return None
+    tradable = snap[snap["tradable"] == True]  # noqa: E712
+    skip = financials.no_data(market)     # funds, ETFs: nothing filed at the last look
+    liquid = [s for s in tradable.sort_values("value20", ascending=False)["symbol"] if s not in skip][:FINANCIALS_TOP[market]]
+    stage2 = snap[definitions.mask(snap, definitions.builtin()["stage2"]["conditions"])]["symbol"]
+    # groups split by revenue (marketdata/subindustries.py REVENUE_RULE_GROUPS) need every tradable member's results
+    by_rev = tradable[tradable["industry"].isin(subindustries.REVENUE_RULE_GROUPS.get(market, ()))]["symbol"]
+    return list(dict.fromkeys([*liquid, *(s for s in stage2 if s not in skip), *(s for s in by_rev if s not in skip)]))
+
+
+def _estimates(ctx: Ctx) -> None:
+    """Analyst estimates, their trend and the surprise history (marketdata/estimates.py), weekly — each run a
+    dated snapshot, so the estimate trend builds up past Yahoo's own 90 days. Covers the Fundamentals page's
+    companies plus every watchlisted and picked stock; any other is fetched with its chart's news."""
+    from swing_screener.marketdata import estimates
+    if ctx.opt("symbols"):
+        syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()]
+    else:
+        syms = list(dict.fromkeys([*_news_symbols(ctx.market), *(_company_symbols(ctx.market) or [])]))
+    if not syms:
+        ctx.step.skip("no stock snapshot, watchlist or picks to fetch estimates for")
+        return
+    r = estimates.refresh(ctx.market, syms, force=bool(ctx.opt("force")), progress=ctx.step.progress)
+    ctx.step.detail = (f"{r['requested'] - r['skipped_fresh']:,} / {r['requested']:,} symbols fetched ({r['skipped_fresh']:,} still fresh) · "
+                       f"{r['with_estimates']:,} with estimates · {r['none']:,} none · {r['failed']} failed")
+    ctx.step.stats = r
+
+
 def _financials(ctx: Ctx) -> None:
     """Company financials for the Fundamentals page: the most liquid tradable stocks plus every stock passing
     the Trend Template in the latest snapshot (the technical leaders, whose businesses matter most); any other
     company is fetched when you open it (the page's "Fetch now", with --symbols).
     Only companies whose results may have changed are fetched (financials.due); --force fetches all."""
     from swing_screener.marketdata import financials
-    from swing_screener.screens import definitions, snapshot
     financials.init_schema()
     if ctx.opt("symbols"):
         syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()]
     else:
-        snap = snapshot.load(ctx.market)
-        if snap.empty:
+        syms = _company_symbols(ctx.market)
+        if syms is None:
             ctx.step.skip("no stock snapshot yet: run `screens` first (the list is its most liquid and Stage-2 stocks)")
             return
-        tradable = snap[snap["tradable"] == True]  # noqa: E712
-        skip = financials.no_data(ctx.market)     # funds, ETFs: nothing filed at the last look
-        liquid = [s for s in tradable.sort_values("value20", ascending=False)["symbol"] if s not in skip][:FINANCIALS_TOP[ctx.market]]
-        stage2 = snap[definitions.mask(snap, definitions.builtin()["stage2"]["conditions"])]["symbol"]
-        # groups split by revenue (marketdata/subindustries.py REVENUE_RULE_GROUPS) need every tradable member's results
-        from swing_screener.marketdata import subindustries
-        by_rev = tradable[tradable["industry"].isin(subindustries.REVENUE_RULE_GROUPS.get(ctx.market, ()))]["symbol"]
-        syms = list(dict.fromkeys([*liquid, *(s for s in stage2 if s not in skip), *(s for s in by_rev if s not in skip)]))
     r = financials.run(ctx.market, syms, force=bool(ctx.opt("force")))
     ctx.step.detail = f"{len(syms):,} companies · " + ", ".join(f"{k.replace('_', ' ')} {v:,}" for k, v in r.items())
     ctx.step.stats = r
@@ -853,6 +879,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "daily", True, _fno_bhav),
     Job("news", "data", "news & key events: headlines, filings, exchange announcements, earnings, dividends, splits "
         "for watchlisted and picked stocks (marketdata/news.py)", "daily", True, _news),
+    Job("estimates", "data", "analyst estimates: EPS and revenue consensus, its 7–90 day trend and revisions, and the "
+        "earnings surprise history (Yahoo) for the Fundamentals page's companies and watchlisted / picked stocks "
+        "(marketdata/estimates.py)", "weekly", True, _estimates, after=("screens",)),
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
     Job("financials", "data", "company financials: quarterly and annual results, balance sheet, cash flow, shareholding "
         "(SEC / NSE filings) for the Fundamentals page", "weekly", True, _financials, after=("screens",)),
@@ -907,9 +936,10 @@ PIPELINES: dict[str, dict] = {
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
                  "jobs": ["backtest", "ingest"]},
-    "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, fundamentals, company financials "
-                          "and their scores, quality scores; corporate actions; split & bonus repair",
-               "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "splits", "earnings", "fundamentals", "financials", "fundamental_scores", "quality", "fpi_sectors"]},
+    "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, analyst estimates, fundamentals, "
+                          "company financials and their scores, quality scores; corporate actions; split & bonus repair",
+               "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "splits", "earnings", "estimates", "fundamentals", "financials",
+                        "fundamental_scores", "quality", "fpi_sectors"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},
     "quality": {"summary": "on demand: fetch financial statements and score companies (the Quality screen) — slow, network-heavy",

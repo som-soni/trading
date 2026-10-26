@@ -1294,6 +1294,10 @@ table.fin tr.growthrow td.neg { color: var(--down-text); }
 .growth-seg button.on { background: var(--accent-soft); color: var(--strong); border-color: var(--accent); }
 /* the quarterly History switch: older quarters hidden until "All" */
 table.fin [data-c][hidden] { display: none; }
+table.fin.est td { white-space: nowrap; }
+table.fin.est td .pos, table.fin.est td.pos { color: var(--up-text); } table.fin.est td .neg { color: var(--down-text); }
+.est-read { margin: 4px 0 10px; padding-left: 18px; } .est-read li { margin: 2px 0; }
+.est-h { font-size: 13px; margin: 14px 0 6px; }
 .hist-seg { display: inline-flex; align-items: center; gap: 4px; margin: 0 6px; font-size: 12px; font-weight: 400; }
 .hist-seg button { padding: 2px 9px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 5px; cursor: pointer; font-size: 12px; }
 .hist-seg button:not(:disabled):hover { color: var(--strong); border-color: var(--accent); }
@@ -1531,7 +1535,7 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .ev-ic.D { background: #2962ff; }
 .ev-ic.soon { background: var(--panel); border-style: dashed; }
 .ev-ic.E.soon { color: #ff9800; border-color: #ff9800; } .ev-ic.D.soon { color: #2962ff; border-color: #2962ff; }
-.ev-tip { position: absolute; z-index: 20; pointer-events: none; max-width: 320px; background: var(--panel); border: 1px solid var(--line-2);
+.ev-tip { position: absolute; z-index: 20; pointer-events: none; max-width: 380px; background: var(--panel); border: 1px solid var(--line-2);
   border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.28); padding: 10px 12px; display: grid; gap: 10px; font-size: 12.5px; }
 .ev-card .ev-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ev-card .ev-h .ev-ic { position: static; box-shadow: none; pointer-events: none; }

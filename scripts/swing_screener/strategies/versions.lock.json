@@ -732,5 +732,30 @@
       ]
     },
     "version": "1.3"
+  },
+  "turtle_trend": {
+    "family": "turtle_trend",
+    "fingerprint": "e52d0c63",
+    "params": {
+      "ATR_BARS": 20,
+      "BENCH_EQUITY_PCT": 60,
+      "BORROW_PCT": 1.0,
+      "COST_BPS": 5.0,
+      "MARGIN_RATE_PCT": 2.0,
+      "MAX_GROSS_PCT": 200.0,
+      "MAX_OPEN_RISK_PCT": 10.0,
+      "MAX_POSITION_PCT": 50.0,
+      "MIN_HISTORY": 300,
+      "RISK_PCT": 1.0,
+      "S1_ENTRY": 20,
+      "S1_EXIT": 10,
+      "S2_ENTRY": 55,
+      "S2_EXIT": 20,
+      "STOP_ATR": 2.0,
+      "TOP_SHARE_PCT": 10,
+      "_key": "turtle_trend",
+      "n_assets": 13
+    },
+    "version": "1.0"
   }
 }
