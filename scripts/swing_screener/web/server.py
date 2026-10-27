@@ -47,6 +47,8 @@ def _startup() -> None:
     ingest_mod.init_schema()
     qual.init_schema()
     growth_mod.init_schema()
+    from analysis import store as analysis_store
+    analysis_store.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
     threading.Thread(target=_prewarm_sectors, daemon=True).start()
     threading.Thread(target=lambda: [(_names(m), _liquidity(m)) for m in tuple(MARKETS)], daemon=True).start()  # first search is instant
@@ -1975,6 +1977,93 @@ def company_fetch(request: Request, market: str = Body(...), symbol: str = Body(
 def fundamentals_criteria():
     """The page's explanation: the shared data (sources, method, caveats), then each strategy view's rules."""
     return growth_mod.criteria()
+
+
+# --------------------------------------------------------------- stock analysis (scripts/analysis)
+
+def _analysis_evidence(market: str, symbol: str) -> dict:
+    """The framework's checks on today's stored data, and their summary — what an analysis freezes."""
+    from analysis import evidence, framework as fw
+    try:
+        snap = _snap(market)
+    except HTTPException:
+        snap = None
+    ev = evidence.gather(market, symbol, snap)
+    res = fw.evaluate(ev)
+    rt = (ev["company"].get("ratios_top") or {})
+    return {"name": ev.get("name") or _name(market, symbol), "asof": ev["asof"], "framework_version": fw.VERSION,
+            "price": rt.get("price") or ev["snap"].get("close"), "currency": ev["company"].get("currency"),
+            "results": res, "summary": fw.summarise(res)}
+
+
+@app.get("/api/analysis/framework")
+def analysis_framework():
+    from analysis import framework as fw
+    return {**fw.criteria(), "formats": fw.check_formats()}
+
+
+@app.get("/api/analysis")
+def analysis_live(market: str, symbol: str):
+    """One stock read through the framework now, and the analyses saved for it."""
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    from analysis import store
+    return json.loads(json.dumps({"market": market, "symbol": symbol, **_analysis_evidence(market, symbol),
+                                  "history": store.list_for(market, symbol)}, default=str))
+
+
+@app.get("/api/analyses")
+def analyses_list():
+    from analysis import store
+    rows = store.list_all()
+    for r in rows:
+        r["name"] = _name(r["market"], r["symbol"])
+    return rows
+
+
+@app.get("/api/analyses/{aid}")
+def analyses_get(aid: int):
+    from analysis import store
+    a = store.get(aid)
+    if not a:
+        raise HTTPException(404, "analysis not found")
+    return a
+
+
+@app.post("/api/analyses")
+def analyses_create(market: str = Body(...), symbol: str = Body(...)):
+    """A new draft analysis: today's evidence, and the answers of the stock's previous analysis to revise."""
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    from analysis import store
+    ev = _analysis_evidence(market, symbol)
+    return store.create(market, symbol, ev["framework_version"], ev["asof"], json.loads(json.dumps(ev, default=str)))
+
+
+@app.put("/api/analyses/{aid}")
+def analyses_update(aid: int, spec: dict = Body(...)):
+    """Save answers / verdict; status 'final' finishes it; `refresh` re-reads a draft's evidence."""
+    from analysis import store
+    a = store.get(aid)
+    if not a:
+        raise HTTPException(404, "analysis not found")
+    ev = None
+    if spec.get("refresh"):
+        if a["status"] == "final":
+            raise HTTPException(400, "a finished analysis keeps the evidence it was made on — start a new one")
+        ev = json.loads(json.dumps(_analysis_evidence(a["market"], a["symbol"]), default=str))
+    try:
+        return store.update(aid, answers=spec.get("answers"), verdict=spec.get("verdict"), status=spec.get("status"),
+                            evidence=ev, version=ev and ev["framework_version"], asof=ev and ev["asof"])
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.delete("/api/analyses/{aid}")
+def analyses_delete(aid: int):
+    from analysis import store
+    store.delete(aid)
+    return {"ok": True}
 
 
 @app.post("/api/quality/watch")

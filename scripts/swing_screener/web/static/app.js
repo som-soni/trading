@@ -6655,6 +6655,7 @@ const SECTIONS = [
   { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"]] },
   { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"],
     ["company", "Fundamentals", "The company's financials: quarterly results, profit & loss, balance sheet, cash flows, ratios, shareholding, peers"],
+    ["analysis", "Analysis", "The stock read through the analysis framework: ten pillars of evidence, your answers and your verdict"],
     ["news", "News", "Headlines, filings and exchange announcements, and key events — earnings, dividends, splits, analyst ratings"]] },
   { key: "watchlists", label: "Watchlists", pages: [["watchlist", "Watchlists", "Your lists and the screener's picks"]] },
   // Library is reading material; the data-maintenance tools (TODO, sub-industry labels) live under System
@@ -6682,15 +6683,15 @@ const tabRoot = (p) => withMarket(`#/${p}`);
  *  with several pages shows them as a tab row under the header, the same tabs pattern pages use inside. */
 function renderNav(page) {
   const sec = sectionOf(page);
-  // Chart, Fundamentals and News are views of one stock: each tab opens the stock on screen — read from the URL,
+  // Chart, Fundamentals, Analysis and News are views of one stock: each tab opens the stock on screen — read from the URL,
   // since the nav is drawn before the page stores it — else the stock you were last looking at
   const stockHref = (p) => {
     const [cur, um, us] = location.hash.replace(/^#\//, "").split("/").map(decodeURIComponent);
-    const onStock = ["chart", "company", "news"].includes(cur) && isMarket(um) && us;
+    const onStock = ["chart", "company", "analysis", "news"].includes(cur) && isMarket(um) && us;
     const m = onStock ? um : store.get("lastMarket", MKTS[0]?.key || "us"), s = onStock ? us : store.get("lastSymbol:" + m, null);
     return s ? `#/${p}/${m}/${encodeURIComponent(s)}` : `#/${p}`;
   };
-  const pageHref = (p) => esc(["chart", "company", "news"].includes(p) ? stockHref(p) : tabRoot(p));
+  const pageHref = (p) => esc(["chart", "company", "analysis", "news"].includes(p) ? stockHref(p) : tabRoot(p));
   const secHref_ = (s) => esc(`#/${s.pages[0][0]}`);   // a section link always opens its home page
   $nav.innerHTML = SECTIONS.map((s, i) => `<a href="${secHref_(s)}" data-sec="${s.key}" data-href="${secHref_(s)}" class="sec ${s === sec ? "active" : ""}"
       title="${esc(s.pages.map((x) => x[1]).join(" · "))} (Alt+${i + 1})">${s.label}</a>`).join("");
@@ -7287,6 +7288,7 @@ async function route() {
     else if (page === "strategies") await strategiesPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "quality") await qualityPage(alive, parts[1]);
     else if (page === "company") await companyPage(alive, parts[1], parts[2]);
+    else if (page === "analysis") await analysisPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "news") await stockNewsPage(alive, parts[1], parts[2]);
     else if (page === "fundamentals" || page === "sepa") go(`#/company/${parts[1] || ""}`);   // the page's earlier names
     else if (page === "breadth") await breadthPage(alive, parts[1]);

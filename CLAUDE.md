@@ -183,6 +183,16 @@ It cannot check that prose still matches behaviour — that is on you: re-read
 the affected `*_docs` entries against the code you changed. Restart the web
 server to see the updated page.
 
+## Stock analysis framework
+
+`scripts/analysis/` (Chart › Analysis) reads one stock through a fixed framework: pillars, data
+**checks** graded good / ok / bad (`framework.py`, thresholds as `{NAME}` placeholders of module
+constants) and your **questions** and verdict, saved per stock in `stock_analyses` (`store.py`).
+`evidence.py` only reads stored data. A check reuses an existing rule rather than restating it (the
+built-in screens' conditions, the Quality page's votes, SEPA's tests). A change to a check, threshold or
+question bumps `VERSION` and adds a `CHANGELOG` entry — saved analyses record the version they were
+made under — then run `PYTHONPATH=. .venv/bin/python -m tests.test_analysis`.
+
 ## Rule: backtests run in stages — tune in one window, verify in another
 
 A rule tuned on the same years it is judged on agrees with them by construction. So every

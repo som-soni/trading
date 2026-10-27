@@ -30,7 +30,7 @@ config, so a page always shows the market you picked last.
 | **Markets** | Post-market · Breadth · Sectors · Movers | How healthy is the market, and where is the strength? | [Breadth](learn-health-breadth.md), [sectors](learn-sectors-groups.md) |
 | **Screens** | Screens (and Quality companies) | Which stocks qualify? | [Stages](learn-price-stages.md), [system filters](learn-system-filters.md) |
 | **Strategies** | Today's setups · one page per strategy | Is there a trade, at what price, with what stop? | [Strategies overview](learn-strat-overview.md) |
-| **Chart** | Chart · Fundamentals · News | What does this one stock look like? | [Indicators](learn-price-indicators.md), [earnings](learn-fund-earnings.md) |
+| **Chart** | Chart · Fundamentals · Analysis · News | What does this one stock look like — and what do I make of it? | [Indicators](learn-price-indicators.md), [earnings](learn-fund-earnings.md) |
 | **Watchlists** | Watchlists | What am I following, and what did the screener pick? | [Journal](learn-process-journal.md) |
 | **Library** | Notes · Research · Learn | My notes and journal; reference reading | [Journal](learn-process-journal.md) |
 | **System** | Status · Runs · Schedules · Reports archive · Sub-industries · TODO | Is the data current, and what did the jobs do? | — |
@@ -318,6 +318,28 @@ sessions), L (RS rank 80+), I (FII + DII up on the quarter; India only) and M (t
 most 4 distribution days in 25 sessions), judged live — verdict QUALIFIES, EARNINGS PASS (wait for the stock or the
 market), WEAK or NO DATA. See [earnings](learn-fund-earnings.md),
 [quality](learn-fund-quality.md) and [valuation](learn-fund-valuation.md). Sales, operating profit, net profit and EPS each carry a **growth row** beneath them, green up / red down, in words ("turned profit", "loss narrowed / widened") where the earlier period was a loss. The Quarters table has a **Growth** switch beside its title: **YoY + QoQ** (the default, both rows under each line), **YoY** (each quarter against the same quarter a year earlier, free of seasonal swings), **QoQ** (against the quarter before: sooner, but partly the season) or **Off**. The table opens on the last three years; **◀ Earlier** / **Later ▶** step a year at a time through the older quarters stored (US filings back to 2009, India from 2021) and **Latest** returns. The Profit & Loss table shows year-on-year growth, its TTM column against the twelve months before.
+
+**Analysis** (Chart → Analysis) reads the stock through one framework (`scripts/analysis/framework.py`) in ten
+pillars — Business, Growth, Profitability, Financial health, Earnings quality, Expectations, Ownership, Valuation,
+Trend & strength, Risk — each asking one question about the company. The stored data answers what it can: each
+**check** (G1, E2, T1 …) is graded good / ok / bad, or n/a where the data is missing or the rule does not apply (a
+bank has no inventory days), with its thresholds as constants shown in the rule. Checks reuse the app's own rules
+rather than restating them: T1 and T5 are the Stage 2 and Established uptrend screens' conditions, V1–V3 the
+Quality page's valuation votes, G5 Minervini SEPA's F2 / F8. Earnings quality is the "next level" read of the
+results: cash from operations against profit, debtor and inventory days against sales, other income and one-offs
+as a share of pre-tax profit, the tax rate. Each pillar is rated from its checks (Strong / Mixed / Weak, Thin with
+fewer than two scored) and the summary averages them into an **evidence score**, listing **red flags** (a bad
+reading on E1–E3, H1, H2, O1 or R5) whatever the pillar's rating. Under each pillar are **your questions** (the
+moat, management, what is priced in, the bear case …): rate each good / ok / bad and write why. The **verdict** —
+decision, conviction 1–5, thesis, what would prove it wrong, when to review — is always yours.
+
+An analysis is saved in Postgres (`stock_analyses`); the first answer starts one, and it autosaves. **Finish**
+freezes the day's evidence with your answers; opening a finished analysis later shows the evidence it was made on
+and marks each check that reads differently today. **Revise** starts a new draft on today's evidence from the
+last answers, so the next results mean revising, not starting over; the drop-down lists every analysis of the
+stock. *How the framework works* shows every pillar, rule and question with live thresholds and the framework's
+changelog (each analysis records the version it was made under); *All analyses* lists every stock analysed. From
+the command line: `PYTHONPATH=. python3 -m analysis --market us --symbol NVDA` (or `--framework`).
 
 **News** is the same News & events feed on a full page.
 
