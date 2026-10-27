@@ -282,12 +282,14 @@
   },
   "mean_reversion": {
     "family": "mean_reversion",
-    "fingerprint": "f5f08496",
+    "fingerprint": "9ef4c176",
     "params": {
+      "ADV_BARS": 50,
       "BB_LENGTH": 20,
       "BB_SD": 2.0,
       "EXIT_SMA": 5,
       "LOW_DAYS": 7,
+      "MAX_ADV_PCT": 5.0,
       "MAX_HOLD": 10,
       "MIN_BARS": 300,
       "RSI_ENTRY": 5.0,
@@ -302,7 +304,7 @@
       "position_pct": 25.0,
       "rsi_entry": 5.0
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "minervini": {
     "family": "minervini",

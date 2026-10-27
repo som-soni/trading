@@ -59,6 +59,11 @@ MEASURES = ("rsi2", "bollinger", "double7")
 RANKS = ("rsi", "vol")            # which firing series is bought first when slots are short
 TRENDS = ("above200", "off")      # whether a signal needs the close above the 200-day
 VOL_RANK_BARS = 20                # realized volatility window for rank="vol"
+# The largest buy, as a % of the series' 50-day average traded value -- the same cap as Minervini's
+# SL-06, held as this strategy's own constant. An index series (a Yahoo index code, or a series that
+# never records volume) stands in for a future or ETF and is not checked; an exchange-traded fund is.
+MAX_ADV_PCT = 5.0
+ADV_BARS = 50
 
 
 def wilder_rsi(close: pd.Series, length: int = RSI_LENGTH) -> pd.Series:
@@ -95,6 +100,30 @@ def load_indices(market: str) -> dict:
         out[f"{label} ({tkr})"] = d["close"].astype(float).sort_index()
     if not out:
         raise ValueError(f"no usable index series for {market}")
+    return out
+
+
+def load_turnover(market: str) -> dict:
+    """{label: 50-day average traded value, or None for an index series that is not checked}.
+
+    Keyed exactly as `load_indices`. An index is told apart by its data, not by a list: a Yahoo index
+    code (the `^` prefix is Yahoo's convention in every market) or a series with no recorded volume at
+    all. Patchy volume does NOT make a series an index -- AUTOBEES.NS, a real fund, records volume on
+    about a quarter of its sessions, and those empty sessions are exactly the illiquidity to catch, so
+    a missing volume counts as nothing traded.
+    """
+    cfg = MARKETS[market]
+    out = {}
+    for label, tkr in {**(cfg.broad_index_symbols or {}),
+                       **{k: v for k, v in (cfg.sector_index_map or {}).items()}}.items():
+        d = cache.load_cached(market, tkr)
+        if d is None or len(d) < MIN_BARS:
+            continue
+        vol = d["volume"].astype(float).fillna(0.0) if "volume" in d else None
+        if tkr.startswith("^") or vol is None or not (vol > 0).any():
+            out[f"{label} ({tkr})"] = None
+        else:
+            out[f"{label} ({tkr})"] = (d["close"].astype(float) * vol).rolling(ADV_BARS, min_periods=ADV_BARS).mean()
     return out
 
 
@@ -138,7 +167,8 @@ def oversold_signals(close: pd.Series, measure: str, rsi_entry: float = RSI_ENTR
 def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_ENTRY,
         position_pct: float = 25.0, max_positions: int = 2, cost_bps: float = 10.0,
         max_hold: int = MAX_HOLD, preloaded: dict | None = None,
-        rank: str = "rsi", trend: str = "above200"):
+        rank: str = "rsi", trend: str = "above200", turnover: dict | None = None,
+        max_adv_pct: float = MAX_ADV_PCT):
     """Event-driven, not calendar-driven: a signal can fire on any session.
 
     Neither existing engine fits, and bending one would have cost more than the 60 lines here.
@@ -157,6 +187,9 @@ def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_E
     rsi = {name: wilder_rsi(c) for name, c in series.items()} if measure == "rsi2" else {}
     # point-in-time realized volatility, for rank="vol" (data up to and including the signal close)
     vol = {name: c.pct_change().rolling(VOL_RANK_BARS).std() for name, c in series.items()}
+    if turnover is None:
+        turnover = load_turnover(market) if preloaded is None else {}
+    illiquid = 0          # signals skipped because the buy would exceed max_adv_pct of the fund's turnover
     dates = sorted({d for c in series.values() for d in c.index if d >= start_ts})
 
     cash = float(cfg.account_size)
@@ -207,6 +240,24 @@ def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_E
                 firing.sort(key=lambda n: -float(vol[n].get(d, 0.0) or 0.0))
             else:
                 firing.sort(key=lambda n: float(rsi[n].get(d, 50.0)) if rsi else 0.0)
+            # Liquidity, before places are given out, so a fund too thin to fill does not take a place
+            # a tradable signal could have had. CONSUMBEES.NS traded 2-2,223 units a day in 2015, so its
+            # +17.8% trade on 2015-04-30 was a print a 25% position could never have filled.
+            if max_adv_pct and turnover:
+                book_now = cash + sum(p["units"] * mark(n, d) for n, p in open_pos.items())
+                want = book_now * position_pct / 100
+                ok = []
+                for n in firing:
+                    tv = turnover.get(n)
+                    if tv is None:
+                        ok.append(n); continue          # an index series: not checked
+                    hit = tv.loc[:d]
+                    adv = float(hit.iloc[-1]) if len(hit) and hit.iloc[-1] == hit.iloc[-1] else 0.0
+                    if want <= adv * max_adv_pct / 100:
+                        ok.append(n)
+                    else:
+                        illiquid += 1
+                firing = ok
             for name in firing[: max_positions - len(open_pos)]:
                 price = mark(name, d)
                 if price != price or price <= 0:
@@ -233,6 +284,7 @@ def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_E
     eq = pd.Series(dict(equity)).sort_index()
     cash_series = pd.Series(dict(cash_log)).sort_index()
     held = pd.Series(dict(held_log)).sort_index()
+    run.illiquid_skips = illiquid       # read by main() for the report note; the return shape is unchanged
     return pd.DataFrame(trades), eq, held, cash_series, costs_total, series
 
 
@@ -256,7 +308,7 @@ MR_DOC = {
         "at a tenth of their price (2019-12-19/20); those bars are corrected in stored prices and the "
         "runs replaced. Not every ETF series is tradable at this size: CONSUMBEES.NS traded 2-2,223 units "
         "a day in 2015, so its largest trade here (+17.8%, 2015-04-30) is a print no 25% position could "
-        "have filled -- there is no liquidity check on the series. "
+        "have filled; 1.2 adds the liquidity check that skips it. "
         "Both options came from a study over 2000-2026 data, so the verify window is "
         "already in-sample for them and a verify run would not be a clean test.\n\n"
         "LEGACY (before stages, mixed windows -- reference only): "
@@ -333,8 +385,13 @@ MR_DOC = {
         "the exits fires.",
         "Cost. {cost_bps} basis points of the value traded, on each buy and each sell. On a trade "
         "averaging +0.13% gross that is comparable to the whole edge.",
-        "When no trade is taken. No signal, every place full, or the index already held. An index "
-        "sold at a session's close can be bought again at that same close if it signals again.",
+        "Liquidity. A fund is bought only when the buy is at most {MAX_ADV_PCT}% of its {ADV_BARS}-day "
+        "average traded value; a signal from a thinner fund is skipped before places are given out, so it "
+        "does not take a place from a tradable one. Index series are not checked: they stand in for a "
+        "future or ETF, and the volume the source reports for an index is not something one trades.",
+        "When no trade is taken. No signal, every place full, the index already held, or a fund too thin "
+        "for the buy. An index sold at a session's close can be bought again at that same close if it "
+        "signals again.",
     ),
     "exit_rules": (
         "Exits are checked on each close of that index from the session after the buy, and sell "
@@ -364,7 +421,8 @@ MR_DOC = {
         "average, signals firing, and the fall continuing.",
         "**Not every series is a tradable instrument, and none includes dividends.** The US series "
         "are funds and trade; India's broad and main sector series are index values, which cannot "
-        "be bought directly. A real book buys an ETF or a future, adding tracking difference, "
+        "be bought directly (the thinner India funds are checked for liquidity; the indices are not). "
+        "A real book buys an ETF or a future, adding tracking difference, "
         "bid-ask and (for futures) roll and margin. None of that is modelled, so the result is "
         "optimistic by an unquantified amount on top of the {cost_bps} basis points charged.",
         "**Sector indices are included, and that is a judgement call.** The guide's named universe "
@@ -389,8 +447,17 @@ class MeanReversionStrategy(PortfolioStrategy):
     key = MR_DOC["key"]
     doc = MR_DOC
     family = "mean_reversion"
-    version = "1.1"
-    changelog = (("1.1", "2026-10-24",
+    version = "1.2"
+    changelog = (("1.2", "2026-10-26",
+                  "A liquidity check: a fund is bought only when the buy is at most {MAX_ADV_PCT}% of its "
+                  "{ADV_BARS}-day average traded value, the same cap as Minervini's SL-06. Several India "
+                  "series are thin funds, and one was untradable at this size -- CONSUMBEES.NS traded 2-2,223 "
+                  "units a day in 2015, so its +17.8% trade on 2015-04-30 was a print no 25% position could "
+                  "have filled. At India's account size a buy needs about Rs 10m a day of turnover, which "
+                  "keeps CONSUMBEES out until about 2023 and PSUBNKBEES until about 2021; every US series is "
+                  "a fund trading hundreds of millions a day and is never held back. Index series are not "
+                  "checked: they stand in for a future or ETF. A skipped signal does not take a place."),
+                 ("1.1", "2026-10-24",
                   "Two options, both off by default so the shipped run is unchanged. `rank vol` buys the "
                   "most volatile firing series first instead of the most oversold: RSI(2) depth counts "
                   "down closes rather than predicting the rebound, and the US run held its worst series "
@@ -445,6 +512,8 @@ class MeanReversionStrategy(PortfolioStrategy):
         ("Cost per side", "cost_bps", "Basis points per side. Comparable to the whole edge -- see the caveats."),
         ("Ranking", "rank", "rsi | vol. Which firing series is bought first when slots are short: the most "
                             "oversold (shipped) or the most volatile, a point-in-time stand-in for beta."),
+        ("Liquidity cap", "MAX_ADV_PCT", "Largest buy as a % of a fund's {ADV_BARS}-day average traded "
+                                          "value. Index series are not checked."),
         ("Trend filter", "trend", "above200 | off. Off drops the 200-day entry filter and the catastrophe "
                                   "exit together, so signals below the 200-day count."),
     )
@@ -465,6 +534,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     ap.add_argument("--cost-bps", type=float, default=MeanReversionStrategy.cost_bps)
     ap.add_argument("--rank", default=MeanReversionStrategy.rank, choices=list(RANKS))
     ap.add_argument("--trend", default=MeanReversionStrategy.trend, choices=list(TRENDS))
+    ap.add_argument("--max-adv-pct", type=float, default=MAX_ADV_PCT,
+                    help="largest buy as %% of a fund's 50-day average traded value (0 = off)")
     ap.add_argument("--no-ingest", action="store_true")
     a = ap.parse_args(argv)
 
@@ -472,7 +543,7 @@ def main(argv: list[str] | None = None) -> dict | None:
     tdf, eq, held, csh, costs, series = run(
         a.market, a.start, measure=a.measure, rsi_entry=a.rsi_entry,
         position_pct=a.position_pct, max_positions=a.max_positions,
-        cost_bps=a.cost_bps, max_hold=a.max_hold, rank=a.rank, trend=a.trend)
+        cost_bps=a.cost_bps, max_hold=a.max_hold, rank=a.rank, trend=a.trend, max_adv_pct=a.max_adv_pct)
 
     b = cache.load_cached(a.market, cfg.benchmark_ticker)
     bc = b["close"].astype(float).reindex(eq.index).ffill() if b is not None else None
@@ -492,6 +563,10 @@ def main(argv: list[str] | None = None) -> dict | None:
         "Index series are PRICE series and not tradable instruments; a real book buys an ETF or a future, "
         f"adding tracking difference, spread and roll on top of the {a.cost_bps:g}bps charged here.",
         "No stop: a fast decline is held for up to the time stop. February 2020 is the archetype.",
+        (f"Liquidity: a fund is bought only when the buy is at most {a.max_adv_pct:g}% of its {ADV_BARS}-day "
+         f"average traded value; {getattr(run, 'illiquid_skips', 0)} signal(s) were skipped for it. Index series "
+         "are not checked -- they stand in for a future or ETF." if a.max_adv_pct else
+         "Liquidity: NOT checked (--max-adv-pct 0)."),
     ]
     perf = metrics.compute(equity=eq, positions_open=held, trades=tdf,
                            max_open_positions=a.max_positions, costs_paid=costs,
@@ -501,7 +576,8 @@ def main(argv: list[str] | None = None) -> dict | None:
             setattr(perf, k, v)
     perf.benchmark_name = f"{cfg.benchmark_symbol} ({cfg.benchmark_ticker})"
 
-    variant = ("" if a.rank == "rsi" else f"_rank{a.rank}") + ("" if a.trend == "above200" else f"_trend{a.trend}")
+    variant = (("" if a.rank == "rsi" else f"_rank{a.rank}") + ("" if a.trend == "above200" else f"_trend{a.trend}")
+               + ("" if a.max_adv_pct == MAX_ADV_PCT else f"_adv{a.max_adv_pct:g}"))
     name = (f"{a.start}_{a.measure}_rsi{a.rsi_entry:g}_pos{a.max_positions}x{a.position_pct:g}pct"
             f"_{a.cost_bps:g}bps{variant}_{MeanReversionStrategy.spec_id()}")
     out = run_dir(a.market, a.strategy, name)
