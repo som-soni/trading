@@ -41,6 +41,14 @@ Re-fetching is cheap: a company is re-checked when a new quarter's results could
     PYTHONPATH=. python3 -m swing_screener.marketdata.financials --market us --symbols NVDA,AAPL
     PYTHONPATH=. python3 -m swing_screener.marketdata.financials --market india --symbols RELIANCE.NS --force
 
+Results ANNOUNCEMENTS (`results_announcements`), India only: the moment NSE published each quarter's
+results, from both feeds, back to 2005. The quarter rows above start where NSE's XBRL documents do (about
+2017, and LOOKBACK_QUARTERS keeps five years), but NSE lists every older filing too -- with no XBRL document,
+only a link to an HTML page of figures, and its broadcast time. That time is all an event strategy needs
+to tie a price reaction to the news (`strategies/earnings_gaps.py`), and before it was stored India had no
+announcement history before 2020, so the 2013-2021 optimise window had almost nothing to tie a reaction to.
+The US has no equivalent: SEC filing dates land on or after the announcement, not at it.
+
 Backtests read these point in time: `load` and `load_lines` honour a stage's boundary (`asof`), and
 `backtesting/fundamental_filter.py`, `pead.py` and `quality_momentum.py` judge each date only on what
 was public by then.
@@ -121,6 +129,14 @@ CREATE TABLE IF NOT EXISTS shareholding (
 CREATE TABLE IF NOT EXISTS nse_documents (
     url TEXT PRIMARY KEY, kind VARCHAR(8) NOT NULL, parser INT NOT NULL,
     parsed JSONB, fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS results_announcements (
+    market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL, period_end DATE NOT NULL,
+    basis VARCHAR(16) NOT NULL,           -- consolidated | standalone
+    announced_at TIMESTAMP NOT NULL,      -- exchange local time the results were broadcast
+    source VARCHAR(24) NOT NULL,          -- nse_legacy | nse_integrated
+    fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (market, symbol, period_end, basis, announced_at)
 );
 CREATE TABLE IF NOT EXISTS quarterly_fetch (
     market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL,
@@ -633,6 +649,100 @@ def nse_filings(sym: str) -> list[dict]:
             break
         page += 1
     return [f for f in out if f["end"]]
+
+
+def _nse_ts(s) -> dt.datetime | None:
+    """An NSE broadcast time: '07-Aug-2026 18:43:09', or without seconds, or a bare date."""
+    s = str(s or "").strip()
+    for fmt in ("%d-%b-%Y %H:%M:%S", "%d-%b-%Y %H:%M", "%d-%b-%Y"):
+        try:
+            return dt.datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def nse_announcements(sym: str) -> list[dict]:
+    """Every quarterly results announcement NSE lists for one company, XBRL or not: {end, basis, at, source}.
+
+    Unlike `nse_filings` this keeps the rows with no XBRL document -- every filing before about 2017 -- because
+    only the broadcast time is wanted. A revised filing is a second row for the same quarter; the earliest is
+    the announcement.
+    """
+    out = []
+    legacy = _nse.get(NSE + "/api/corporates-financial-results", index="equities", symbol=sym, period="Quarterly").json() or []
+    for r in legacy:
+        if str(r.get("cumulative", "")).lower().startswith("cumulative"):
+            continue
+        end = _nse_date(r.get("toDate"), "%d-%b-%Y")
+        at = _nse_ts(r.get("broadCastDate")) or _nse_ts(r.get("filingDate"))
+        if end and at:
+            out.append({"end": end, "at": at, "source": "nse_legacy",
+                        "basis": "consolidated" if r.get("consolidated") == "Consolidated" else "standalone"})
+    page, seen = 1, 0
+    while True:
+        js = _nse.get(NSE + "/api/integrated-filing-results", index="equities", symbol=sym,
+                      type="Integrated Filing- Financials", period_ended="all", page=page).json() or {}
+        data = js.get("data") or []
+        for r in data:
+            end, at = _nse_date(r.get("qe_Date"), "%d-%b-%Y"), _nse_ts(r.get("broadcast_Date"))
+            if end and at:
+                out.append({"end": end, "at": at, "source": "nse_integrated",
+                            "basis": "consolidated" if r.get("consolidated") == "Consolidated" else "standalone"})
+        seen += len(data)
+        if not data or seen >= int(js.get("totalCount") or 0) or page >= 10:
+            break
+        page += 1
+    return out
+
+
+def refresh_announcements(market: str, symbols: list[str], progress=None) -> dict:
+    """Fetch and store every results announcement for these companies (`results_announcements`).
+
+    Only where the market's results source lists announcements (`MarketConfig.quarterly_source` 'nse').
+    A company NSE does not know (an ETF, a delisted name) simply stores nothing.
+    """
+    if getattr(MARKETS[market], "quarterly_source", None) != "nse":
+        return {"companies": 0, "skipped": f"{market}: its results source lists no announcement times"}
+    init_schema()
+    stored = companies_with = errors = 0
+    for i, sym in enumerate(symbols):
+        try:
+            rows = nse_announcements(_bare(sym, market))
+        except Exception as exc:   # noqa: BLE001 -- one company's failure must not stop the backfill
+            errors += 1
+            logger.warning("announcements %s: %s", sym, exc)
+            rows = []
+        if rows:
+            db.execute_values("""INSERT INTO results_announcements (market, symbol, period_end, basis, announced_at, source)
+                                 VALUES %s ON CONFLICT DO NOTHING""",
+                              [(market, sym, r["end"], r["basis"], r["at"], r["source"]) for r in rows])
+            stored += len(rows)
+            companies_with += 1
+        if progress:
+            progress(i + 1, len(symbols))
+    return {"companies": len(symbols), "with_announcements": companies_with, "announcements": stored, "errors": errors}
+
+
+def announcements(market: str) -> dict:
+    """{symbol: sorted announcement dates} -- when each company published each quarter's results.
+
+    Point in time: inside a backtest stage only announcements on or before its boundary are returned.
+    Empty for a market with no announcement source, so a caller falls back to whatever else it has.
+    """
+    sql, args = "SELECT symbol, announced_at FROM results_announcements WHERE market=%s", (market,)
+    if asof.end_date():
+        sql, args = sql + " AND announced_at::date <= %s", args + (asof.end_date(),)
+    try:
+        with db.get_connection().cursor() as cur:
+            cur.execute(sql, args)
+            rows = cur.fetchall()
+    except Exception:   # noqa: BLE001 -- the table does not exist until the first refresh
+        return {}
+    out: dict = {}
+    for sym, at in rows:
+        out.setdefault(sym, set()).add(dt.date(at.year, at.month, at.day))
+    return {sym: sorted(v) for sym, v in out.items()}
 
 
 def choose_filings(filings: list[dict]) -> tuple[str | None, list[dict]]:

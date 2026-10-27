@@ -28,6 +28,13 @@ the quarter rather than four days — but it is made of recorded facts rather th
 which is the lesson of the blackout work in `backtesting/spec.py`: an inferred announcement date
 carries a median error of 13 days and is not worth keying a rule on.
 
+Since 1.3, where an announcement IS recorded the guide's own rule is used instead: the reaction day
+must come within {ANNOUNCE_WINDOW_DAYS} calendar days after the company published results. India
+has these back to 2007 (`marketdata/financials.py`, `results_announcements`: NSE's broadcast time for
+every results filing, including the pre-2017 ones that carry no XBRL document). The bracket remains
+for a company with no recorded announcements -- every US company, since SEC filing dates come after
+the announcement rather than at it.
+
 Honest limits
 -------------
 * The bracket admits a non-results spike that happens to land in the window. It narrows the
@@ -74,6 +81,8 @@ NEGLECT_MAX_RUN_PCT = 30.0 # a stock up more than this into the news is noted, n
 # ---- the catalyst bracket (see the module docstring)
 CATALYST_MIN_DAYS = 10     # a reaction day sits at least this far after the quarter end
 CATALYST_FILED_GRACE = 5   # ...and no later than this many days after that quarter's filing
+ANNOUNCE_WINDOW_DAYS = 3   # with recorded announcements: results published at most this many calendar
+                           # days before the reaction day, or on it -- the guide's own rule
 
 # ---- entry and risk (guide §3, "Entry" / "Initial stop")
 ENTRY_BUFFER_PCT = 0.1     # the buy-stop sits this far above the reaction day's high
@@ -89,8 +98,18 @@ EG01 = "S1"   # EG-01: the break of the reaction day's high
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-27",
+         "G3 uses the guide's own rule where a company's results announcements are recorded: the results "
+         "must have been published at most {ANNOUNCE_WINDOW_DAYS} calendar days before the reaction day, or "
+         "on it. India now has them back to 2007 -- NSE's broadcast time for every results filing, including "
+         "the pre-2017 ones with no XBRL document (`results_announcements`). Before, India used the "
+         "quarter-end-to-filing window like the US, and its stored quarters began in March 2020, so the "
+         "2013-2021 optimise window held three Indian trades and the market could not be tuned at all. "
+         "Checked against the guide's worked example: Kaynes published on 2023-05-16 and gapped on the 17th, "
+         "inside the window. The US has no announcement history and keeps the window, so a company with no "
+         "recorded announcements is judged exactly as before."),
         ("1.2", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited "
          "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
@@ -165,8 +184,10 @@ class EarningsGapStrategy(Strategy):
         "earnings gaps; where they depart from it is listed under Known caveats.",
         "Step 1 — the reaction day (G2). One of the last {REACTION_WINDOW} sessions with a big "
         "move, heavy volume and a close near the high. The exact tests are under Rules.",
-        "Step 2 — the news link (G3). That day must fall inside a window built from the stored "
-        "quarter-end and filing dates, because no announcement calendar is stored.",
+        "Step 2 — the news link (G3). Where the company's results announcements are recorded, the "
+        "results must have been published at most {ANNOUNCE_WINDOW_DAYS} days before that day, or on "
+        "it. Where they are not, the day must fall inside a window built from the stored quarter-end "
+        "and filing dates.",
         "Step 3 — the stop and the order (G4, Entry, Stop). The reaction day's low must be close "
         "enough to carry. Then a buy-stop waits just above the reaction day's high.",
         "Step 4 — the exit (Exit). The stop sells during the session if touched. Otherwise the "
@@ -180,15 +201,20 @@ class EarningsGapStrategy(Strategy):
         "had stored, dated quarters in October 2026. When the strategy was built, an alphabetical "
         "sample of 300 symbols a side had 113 US and 50 Indian ones covered; among those, the "
         "window linked 65% of US reaction days and 32% of Indian ones.",
-        "India is in practice a 2022-onward test. Indian quarters start in March 2020 and are thin "
-        "until 2022: 5 filed quarters dated 2020, 585 in 2021 and 1,737 in 2022, against 6,000 to "
-        "7,000 a year for the US (counts from October 2026). So G3 refuses most early Indian "
-        "reactions, and the US arm is the one with full coverage over the window.",
+        "India and the US tie a reaction to results differently. India uses the exchange's recorded "
+        "announcement times, back to 2007, which is the guide's rule and is tight -- a few days. The "
+        "US has no announcement history, so it uses the quarter-end-to-filing window, about five weeks "
+        "wide. A US run therefore admits more non-results spikes, and the two markets' results are not "
+        "a like-for-like comparison of the same rule. (Before 1.3, India used the window too, and its "
+        "quarters began in March 2020, so the 2013-2021 window had three Indian trades.)",
         "The results link is a window, not a calendar. It runs from {CATALYST_MIN_DAYS} days after "
         "the quarter end to {CATALYST_FILED_GRACE} days after the filing — about five weeks at the "
         "median — so a non-results spike that lands inside it is admitted. In the US the filing is "
         "the SEC filing, and for a fourth quarter that is the annual report, which can come weeks "
         "after the announcement, so the window is widest there.",
+        "India's announcements are refreshed weekly (the `announcements` job), so live, a reaction in "
+        "the days after a company publishes can be refused until the next refresh stores the "
+        "announcement. The backtest has every announcement and links it.",
         "Live, G3 can refuse a fresh reaction that the backtest would link. A quarter enters the "
         "results table only once its filing is stored. The backtest sees each quarter's eventual "
         "filing date, so it links a reaction that came days before the filing. The live screen "
@@ -259,9 +285,16 @@ class EarningsGapStrategy(Strategy):
               "no range counts as 1.\n"
               "- **News:** nothing here looks at news. Any session in the window can be the "
               "reaction day; G3 makes the link to results afterwards.",
-        "G3": "The reaction day falls in a stored results window: at least {CATALYST_MIN_DAYS} "
-              "days after a quarter end and at most {CATALYST_FILED_GRACE} days after that "
-              "quarter's filing.\n\n"
+        "G3": "The reaction day is tied to a results announcement. Two ways, depending on what is "
+              "stored for the company:\n\n"
+              "- **Recorded announcements (India, back to 2007):** results were published at most "
+              "{ANNOUNCE_WINDOW_DAYS} calendar days before the reaction day, or on it. This is the "
+              "guide's own rule. The date is the exchange's broadcast time for the results filing, so "
+              "results published after the close tie to the next session's move.\n"
+              "- **No recorded announcements (every US company, and any Indian one the exchange does "
+              "not list):** the window below.\n\n"
+              "The window: the reaction day falls at least {CATALYST_MIN_DAYS} days after a quarter "
+              "end and at most {CATALYST_FILED_GRACE} days after that quarter's filing.\n\n"
               "- **Data:** the stored quarterly results — each quarter's end date and filing date. "
               "A US filing date is when the quarter's figures were first filed with the SEC (the "
               "10-Q, or the annual 10-K for a fourth quarter). An Indian one is the date of the "
@@ -430,6 +463,8 @@ class EarningsGapStrategy(Strategy):
         ("Minimum close position", "MIN_CLOSE_POS", "G2: (close − low) ÷ (high − low); 1 is a close on the high."),
         ("Reaction window", "REACTION_WINDOW", "G2: sessions, counting the signal session, in which a reaction day still offers its setup."),
         ("Catalyst: earliest", "CATALYST_MIN_DAYS", "G3: calendar days after a quarter end before a reaction can be linked to it."),
+        ("Announcement window", "ANNOUNCE_WINDOW_DAYS", "G3, with recorded announcements: calendar days "
+                                                        "before the reaction day the results may have come out."),
         ("Catalyst: latest", "CATALYST_FILED_GRACE", "G3: calendar days after that quarter's filing after which it cannot."),
         ("Maximum stop", "MAX_STOP_PCT", "G4 and at the fill: widest stop, in % below the trigger or the price paid."),
         ("Maximum stop (ATR)", "MAX_STOP_ATR", "G4: widest stop as a multiple of the 14-day ATR."),
@@ -474,12 +509,42 @@ class EarningsGapStrategy(Strategy):
         cls._quarters[market_key] = out
         return out
 
+    _announced: dict = {}
+
+    @classmethod
+    def _announcements(cls, market_key: str) -> dict:
+        """{symbol: sorted announcement dates}, cached per market AND stage boundary: the loader honours
+        the boundary, so a cache keyed on the market alone would hand an optimise run's dates to a full
+        run in the same process, or the reverse."""
+        from ..marketdata import asof, financials
+        key = (market_key, asof.end_date())
+        if key not in cls._announced:
+            cls._announced[key] = financials.announcements(market_key)
+        return cls._announced[key]
+
+    @classmethod
+    def _link(cls, symbol: str, day: pd.Timestamp) -> str | None:
+        """How the reaction day is tied to results, or None when it is not.
+
+        With recorded announcements, the guide's rule: published within ANNOUNCE_WINDOW_DAYS before the
+        reaction day, or on it (an Indian company often publishes after the close, so its reaction is
+        the next session). Without them, the bracket of stored quarter end and filing date.
+        """
+        market = _market_of(symbol)
+        dates = cls._announcements(market).get(symbol)
+        if dates:
+            import bisect
+            d = day.date()
+            i = bisect.bisect_left(dates, d - pd.Timedelta(days=ANNOUNCE_WINDOW_DAYS).to_pytimedelta())
+            return f"results announced {dates[i]}" if i < len(dates) and dates[i] <= d else None
+        wins = cls._results_windows(market).get(symbol)
+        if wins and any(lo <= day <= hi for lo, hi in wins):
+            return "inside a stored results window"
+        return None
+
     @classmethod
     def _linked_to_results(cls, symbol: str, day: pd.Timestamp) -> bool:
-        wins = cls._results_windows(_market_of(symbol)).get(symbol)
-        if not wins:
-            return False
-        return any(lo <= day <= hi for lo, hi in wins)
+        return cls._link(symbol, day) is not None
 
     # ---------- screening ----------
 
@@ -547,8 +612,11 @@ class EarningsGapStrategy(Strategy):
         e["reaction_close_pos"] = round(r["close_pos"], 3)
 
         # G3 — the news link
-        if self._linked_to_results(ctx.symbol, r["date"]):
-            result.ok("G3")
+        how = self._link(ctx.symbol, r["date"])
+        if how:
+            result.ok("G3", how)
+        elif self._announcements(_market_of(ctx.symbol)).get(ctx.symbol):
+            result.fail("G3", f"no results announced in the {ANNOUNCE_WINDOW_DAYS} days before the move")
         else:
             result.fail("G3", "the move is not inside a stored results window")
 

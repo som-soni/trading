@@ -769,6 +769,26 @@ def _financials(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _announcements(ctx: Ctx) -> None:
+    """When each company published each quarter's results (financials.refresh_announcements), back to 2005:
+    what an event strategy ties a price reaction to. Only where the market's results source lists them
+    (`quarterly_source` 'nse'); every company in the universe, since a reaction can come from any of them.
+    --symbols limits it."""
+    from swing_screener.config import MARKETS
+    from swing_screener.marketdata import financials, universe
+    if getattr(MARKETS[ctx.market], "quarterly_source", None) != "nse":
+        ctx.step.skip(f"{ctx.market}: its results source lists no announcement times")
+        return
+    if ctx.opt("symbols"):
+        syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()]
+    else:
+        syms = universe.load_universe(ctx.market)
+    r = financials.refresh_announcements(ctx.market, syms, progress=ctx.step.progress)
+    ctx.step.detail = (f"{r['companies']:,} companies · {r['with_announcements']:,} with announcements · "
+                       f"{r['announcements']:,} rows · {r['errors']} error(s)")
+    ctx.step.stats = r
+
+
 def _fundamental_scores(ctx: Ctx) -> None:
     from fundamentals import growth
     syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()] if ctx.opt("symbols") else None
@@ -886,6 +906,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
     Job("financials", "data", "company financials: quarterly and annual results, balance sheet, cash flow, shareholding "
         "(SEC / NSE filings) for the Fundamentals page", "weekly", True, _financials, after=("screens",)),
+    Job("announcements", "data", "results announcements: when each company published each quarter's results (NSE, back "
+        "to 2005) -- what an event strategy ties a price reaction to", "weekly", True, _announcements, after=("universe",)),
     Job("breadth", "analytics", "market breadth: advancers, highs/lows, % above averages", "daily", False, _breadth, after=("prices",)),
     Job("sectors", "analytics", "sector ranking: RS ratings, rotation, breadth per group (kept daily)", "daily", False, _sectors,
         after=("prices", "industries")),
