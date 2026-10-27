@@ -1,0 +1,786 @@
+{
+ "_about": "Golden set for the chart's Trade setups layer (tests/eval_trade_setups.py). Each case is a real trade from a backtest run on the strategy's then-current rules (run id and spec_id recorded), with the run's own fill date, fill price and initial stop pinned here. Expected: the layer, anchored on that trade, draws a passing setup covering the fill, with its stop at the run's initial stop and its buy near the fill. Sampled with a fixed seed per run, plus trades in symbols the owner reviewed on the chart (HEGAM, MUTHOOTFIN, RAJESHEXPO, HBLENGINE). When a strategy's rules change (new spec_id) a case can legitimately drift: re-check it against a new run, do not loosen the tolerance.",
+ "cases": [
+  {
+   "strategy": "breakout",
+   "market": "india",
+   "symbol": "HINDUNILVR.NS",
+   "entry": "2014-09-01",
+   "price": 746.3957,
+   "stop": 715.65,
+   "run": 1270,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "breakout",
+   "market": "india",
+   "symbol": "SUZLON.NS",
+   "entry": "2017-04-25",
+   "price": 18.7687,
+   "stop": 17.55,
+   "run": 1270,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "breakout",
+   "market": "india",
+   "symbol": "MUTHOOTFIN.NS",
+   "entry": "2019-12-26",
+   "price": 751.1504,
+   "stop": 714.15,
+   "run": 1270,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "breakout",
+   "market": "india",
+   "symbol": "TATAELXSI.NS",
+   "entry": "2021-09-17",
+   "price": 5259.0037,
+   "stop": 4972.7,
+   "run": 1270,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "breakout",
+   "market": "india",
+   "symbol": "MUTHOOTFIN.NS",
+   "entry": "2021-11-12",
+   "price": 1710.2586,
+   "stop": 1597.6,
+   "run": 1270,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "breakout",
+   "market": "us",
+   "symbol": "BIIB",
+   "entry": "2013-03-28",
+   "price": 186.6933,
+   "stop": 177.79,
+   "run": 1272,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "breakout",
+   "market": "us",
+   "symbol": "HCSG",
+   "entry": "2015-07-24",
+   "price": 35.0375,
+   "stop": 33.49,
+   "run": 1272,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "breakout",
+   "market": "us",
+   "symbol": "PLXS",
+   "entry": "2017-10-27",
+   "price": 62.011,
+   "stop": 59.34,
+   "run": 1272,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "breakout",
+   "market": "us",
+   "symbol": "MRVL",
+   "entry": "2018-03-09",
+   "price": 24.4622,
+   "stop": 23.18,
+   "run": 1272,
+   "spec_id": "v1.5-1b012d45"
+  },
+  {
+   "strategy": "chart_pattern",
+   "market": "india",
+   "symbol": "ICICIBANK.NS",
+   "entry": "2013-04-12",
+   "price": 189.3391,
+   "stop": 177.35,
+   "run": 1273,
+   "spec_id": "v1.16-cd2096ea"
+  },
+  {
+   "strategy": "chart_pattern",
+   "market": "india",
+   "symbol": "WOCKPHARMA.NS",
+   "entry": "2014-12-03",
+   "price": 867.482,
+   "stop": 801.3,
+   "run": 1273,
+   "spec_id": "v1.16-cd2096ea"
+  },
+  {
+   "strategy": "chart_pattern",
+   "market": "india",
+   "symbol": "BAJFINANCE.NS",
+   "entry": "2017-09-07",
+   "price": 188.188,
+   "stop": 178.3,
+   "run": 1273,
+   "spec_id": "v1.16-cd2096ea"
+  },
+  {
+   "strategy": "chart_pattern",
+   "market": "india",
+   "symbol": "GLENMARK.NS",
+   "entry": "2018-01-09",
+   "price": 601.601,
+   "stop": 575.85,
+   "run": 1273,
+   "spec_id": "v1.16-cd2096ea"
+  },
+  {
+   "strategy": "chart_pattern",
+   "market": "india",
+   "symbol": "HEGAM.NS",
+   "entry": "2019-01-17",
+   "price": 738.738,
+   "stop": 692.7,
+   "run": 1273,
+   "spec_id": "v1.16-cd2096ea"
+  },
+  {
+   "strategy": "chart_pattern",
+   "market": "india",
+   "symbol": "SHRIRAMFIN.NS",
+   "entry": "2019-03-06",
+   "price": 239.7395,
+   "stop": 224.3,
+   "run": 1273,
+   "spec_id": "v1.16-cd2096ea"
+  },
+  {
+   "strategy": "chart_pattern",
+   "market": "india",
+   "symbol": "HDFCLIFE.NS",
+   "entry": "2020-10-07",
+   "price": 585.585,
+   "stop": 555.55,
+   "run": 1273,
+   "spec_id": "v1.16-cd2096ea"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "IFCI.NS",
+   "entry": "2013-01-07",
+   "price": 38.5385,
+   "stop": 34.25,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "RAJESHEXPO.NS",
+   "entry": "2015-08-13",
+   "price": 586.586,
+   "stop": 514.55,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "RAJESHEXPO.NS",
+   "entry": "2015-11-10",
+   "price": 690.7901,
+   "stop": 622.05,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "INFY.NS",
+   "entry": "2016-02-01",
+   "price": 585.585,
+   "stop": 554.5,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "LUPIN.NS",
+   "entry": "2016-02-10",
+   "price": 1888.1863,
+   "stop": 1753.45,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "HEGAM.NS",
+   "entry": "2017-11-13",
+   "price": 377.1768,
+   "stop": 315.3,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "HEGAM.NS",
+   "entry": "2018-03-19",
+   "price": 667.667,
+   "stop": 554.0,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "RAJESHEXPO.NS",
+   "entry": "2018-09-28",
+   "price": 725.9752,
+   "stop": 675.95,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "BATAINDIA.NS",
+   "entry": "2019-08-30",
+   "price": 1511.8103,
+   "stop": 1392.35,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "india",
+   "symbol": "MUTHOOTFIN.NS",
+   "entry": "2020-02-28",
+   "price": 905.905,
+   "stop": 837.95,
+   "run": 1244,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "us",
+   "symbol": "NWE",
+   "entry": "2014-10-16",
+   "price": 49.6448,
+   "stop": 47.66,
+   "run": 1233,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "us",
+   "symbol": "TKO",
+   "entry": "2018-07-27",
+   "price": 84.2321,
+   "stop": 78.58,
+   "run": 1233,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "us",
+   "symbol": "PBR",
+   "entry": "2018-10-29",
+   "price": 16.6883,
+   "stop": 14.82,
+   "run": 1233,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "donchian",
+   "market": "us",
+   "symbol": "INSP",
+   "entry": "2020-02-28",
+   "price": 86.5332,
+   "stop": 76.76,
+   "run": 1233,
+   "spec_id": "v1.4-de67ca74"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "CME",
+   "entry": "2013-08-16",
+   "price": 74.6773,
+   "stop": 70.49,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "LKQ",
+   "entry": "2013-11-18",
+   "price": 32.6163,
+   "stop": 30.62,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "SSYS",
+   "entry": "2013-12-23",
+   "price": 127.5637,
+   "stop": 115.31,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "ALK",
+   "entry": "2015-03-03",
+   "price": 65.0325,
+   "stop": 62.08,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "NOC",
+   "entry": "2015-03-19",
+   "price": 162.8414,
+   "stop": 155.53,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "NNN",
+   "entry": "2016-05-04",
+   "price": 45.1626,
+   "stop": 43.3,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "ULTA",
+   "entry": "2016-12-19",
+   "price": 262.2611,
+   "stop": 247.3,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "MLM",
+   "entry": "2016-12-28",
+   "price": 230.4152,
+   "stop": 217.62,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "SQM",
+   "entry": "2017-01-04",
+   "price": 29.039,
+   "stop": 27.81,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "SLAB",
+   "entry": "2017-03-13",
+   "price": 70.7707,
+   "stop": 67.8,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "ZION",
+   "entry": "2017-05-24",
+   "price": 41.0305,
+   "stop": 38.23,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "META",
+   "entry": "2017-08-31",
+   "price": 170.4852,
+   "stop": 164.17,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "MU",
+   "entry": "2017-12-21",
+   "price": 45.5728,
+   "stop": 41.5,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "VIAV",
+   "entry": "2019-03-29",
+   "price": 12.4862,
+   "stop": 11.83,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "AMT",
+   "entry": "2019-08-01",
+   "price": 210.2151,
+   "stop": 202.63,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "SMG",
+   "entry": "2019-11-07",
+   "price": 104.052,
+   "stop": 96.6,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "APD",
+   "entry": "2020-08-17",
+   "price": 291.9259,
+   "stop": 277.5,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "TXRH",
+   "entry": "2020-12-04",
+   "price": 78.8994,
+   "stop": 73.11,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "ENTG",
+   "entry": "2021-06-07",
+   "price": 115.8279,
+   "stop": 111.57,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "GKOS",
+   "entry": "2021-06-22",
+   "price": 84.002,
+   "stop": 77.35,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "minervini",
+   "market": "us",
+   "symbol": "ULTA",
+   "entry": "2021-11-04",
+   "price": 383.4516,
+   "stop": 361.46,
+   "run": 1243,
+   "spec_id": "v1.26-e006d034"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "india",
+   "symbol": "DLF.NS",
+   "entry": "2016-07-05",
+   "price": 158.6585,
+   "stop": 146.15,
+   "run": 1255,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "india",
+   "symbol": "VEDL.NS",
+   "entry": "2017-01-27",
+   "price": 258.258,
+   "stop": 237.9,
+   "run": 1255,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "india",
+   "symbol": "BATAINDIA.NS",
+   "entry": "2019-03-07",
+   "price": 1346.345,
+   "stop": 1255.55,
+   "run": 1255,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "india",
+   "symbol": "MUTHOOTFIN.NS",
+   "entry": "2019-10-30",
+   "price": 701.3006,
+   "stop": 650.6,
+   "run": 1255,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "india",
+   "symbol": "BATAINDIA.NS",
+   "entry": "2019-11-01",
+   "price": 1803.802,
+   "stop": 1688.05,
+   "run": 1255,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "us",
+   "symbol": "BMRN",
+   "entry": "2013-03-04",
+   "price": 59.5698,
+   "stop": 54.84,
+   "run": 1256,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "us",
+   "symbol": "HUBS",
+   "entry": "2019-01-22",
+   "price": 153.3767,
+   "stop": 142.84,
+   "run": 1256,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "us",
+   "symbol": "FIVN",
+   "entry": "2019-02-01",
+   "price": 51.0455,
+   "stop": 47.03,
+   "run": 1256,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "rs_leaders",
+   "market": "us",
+   "symbol": "NOVT",
+   "entry": "2020-06-08",
+   "price": 112.3161,
+   "stop": 104.25,
+   "run": 1256,
+   "spec_id": "v1.2-a97259ef"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "india",
+   "symbol": "MOTHERSON.NS",
+   "entry": "2015-08-07",
+   "price": 45.1258,
+   "stop": 39.65,
+   "run": 1259,
+   "spec_id": "v2.6-6514891e"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "india",
+   "symbol": "MRF.NS",
+   "entry": "2018-04-09",
+   "price": 77214.3872,
+   "stop": 68796.1,
+   "run": 1259,
+   "spec_id": "v2.6-6514891e"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "india",
+   "symbol": "PIDILITIND.NS",
+   "entry": "2020-12-23",
+   "price": 867.867,
+   "stop": 737.75,
+   "run": 1259,
+   "spec_id": "v2.6-6514891e"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "india",
+   "symbol": "MUTHOOTFIN.NS",
+   "entry": "2021-06-03",
+   "price": 1444.1927,
+   "stop": 1221.65,
+   "run": 1259,
+   "spec_id": "v2.6-6514891e"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "india",
+   "symbol": "CUMMINSIND.NS",
+   "entry": "2021-08-20",
+   "price": 1018.017,
+   "stop": 831.95,
+   "run": 1259,
+   "spec_id": "v2.6-6514891e"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "us",
+   "symbol": "TDG",
+   "entry": "2013-06-24",
+   "price": 140.5612,
+   "stop": 121.72,
+   "run": 1269,
+   "spec_id": "v2.6-6514891e",
+   "known": "the stored series was re-adjusted after the run (special dividends): the run filled at 140.56 where the stored bar opens at 161.02, so its record and today's prices are in different bases"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "us",
+   "symbol": "DRI",
+   "entry": "2015-07-02",
+   "price": 63.3555,
+   "stop": 56.76,
+   "run": 1269,
+   "spec_id": "v2.6-6514891e"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "us",
+   "symbol": "VYX",
+   "entry": "2019-05-15",
+   "price": 19.0893,
+   "stop": 16.5,
+   "run": 1269,
+   "spec_id": "v2.6-6514891e"
+  },
+  {
+   "strategy": "stage_analysis",
+   "market": "us",
+   "symbol": "CPRT",
+   "entry": "2019-12-06",
+   "price": 22.3262,
+   "stop": 19.31,
+   "run": 1269,
+   "spec_id": "v2.6-6514891e"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "india",
+   "symbol": "JUBLPHARMA.NS",
+   "entry": "2015-10-21",
+   "price": 308.9086,
+   "stop": 274.65,
+   "run": 1232,
+   "spec_id": "v1.3-10d54f8a"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "india",
+   "symbol": "FEDERALBNK.NS",
+   "entry": "2017-03-24",
+   "price": 89.9899,
+   "stop": 82.55,
+   "run": 1232,
+   "spec_id": "v1.3-10d54f8a"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "india",
+   "symbol": "HEGAM.NS",
+   "entry": "2018-07-31",
+   "price": 839.1383,
+   "stop": 772.3,
+   "run": 1232,
+   "spec_id": "v1.3-10d54f8a"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "india",
+   "symbol": "ICICIBANK.NS",
+   "entry": "2019-03-28",
+   "price": 401.8014,
+   "stop": 381.65,
+   "run": 1232,
+   "spec_id": "v1.3-10d54f8a"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "india",
+   "symbol": "BATAINDIA.NS",
+   "entry": "2019-08-26",
+   "price": 1496.8454,
+   "stop": 1432.0,
+   "run": 1232,
+   "spec_id": "v1.3-10d54f8a"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "us",
+   "symbol": "ICUI",
+   "entry": "2016-10-25",
+   "price": 144.042,
+   "stop": 141.27,
+   "run": 1345,
+   "spec_id": "v1.3-10d54f8a"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "us",
+   "symbol": "ASTE",
+   "entry": "2016-12-07",
+   "price": 68.7043,
+   "stop": 65.07,
+   "run": 1345,
+   "spec_id": "v1.3-10d54f8a"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "us",
+   "symbol": "CMG",
+   "entry": "2019-08-08",
+   "price": 16.2681,
+   "stop": 15.37,
+   "run": 1345,
+   "spec_id": "v1.3-10d54f8a"
+  },
+  {
+   "strategy": "trend_pullback",
+   "market": "us",
+   "symbol": "BIO",
+   "entry": "2020-10-22",
+   "price": 574.6572,
+   "stop": 542.49,
+   "run": 1345,
+   "spec_id": "v1.3-10d54f8a"
+  }
+ ]
+}

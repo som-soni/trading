@@ -2016,7 +2016,7 @@ class MinerviniSpecStrategy(Strategy):
     # how far a base got through VCP-03 … VCP-11 (a completed VCP outranks every failure)
     _VCP_RANK = {"VCP-03": 3, "VCP-04": 4, "VCP-05": 5, "VCP-06": 6, "VCP-07": 7, "VCP-08": 8, "VCP-09": 9, "VCP-10": 10, "VCP-11": 11}
 
-    def bases_live(self, daily: pd.DataFrame, cfg: MarketConfig) -> list[dict]:
+    def bases_live(self, daily: pd.DataFrame, cfg: MarketConfig, anchors: list[dict] | None = None) -> list[dict]:
         """Every VCP setup the detector saw over `daily`, for the chart's Trend template indicator:
         `vcp_spec.detect` with this strategy's VCP params, run ON DEMAND bar by bar (each bar sees only
         itself and earlier bars, as in the backtest). Exploration only: what a run traded comes from
@@ -2028,7 +2028,12 @@ class MinerviniSpecStrategy(Strategy):
         and broke out, else the last bar it was complete, else the bar that got furthest through
         VCP-04 … VCP-11 — except the base still in force on the last bar, which is judged on that bar
         (as today's screen judges it). A base that triggered a cheat entry (MV-03 / MV-04, `cheat_cross`)
-        carries its latest one. Returns one dict per setup (see `_setup`)."""
+        carries its latest one. Returns one dict per setup (see `_setup`).
+
+        `anchors`: a selected backtest run's trades, each {"entry": fill date, "stop": initial stop}. A base
+        whose cheat entry the run bought -- a cheat crossed on the bar before the fill, else the base's first
+        cheat when it is the closest of its events before the fill, within 21 days -- is drawn as that cheat, judged on the base as it stood the bar before,
+        not as a later breakout the run never took."""
         start = 2 * VCP.swing_k + VCP.prior_window
         dets = [None] * len(daily)
         for i in range(start, len(daily)):
@@ -2073,9 +2078,36 @@ class MinerviniSpecStrategy(Strategy):
                     bases[p["bh_date"]]["cheat"] = (i, z, p)
         last = len(daily) - 1
         live = dets[last]["bh_date"] if last >= start and dets[last]["bh_date"] in bases else None
+        fills = [pd.Timestamp(a["entry"]) for a in (anchors or []) if a.get("entry")]
+        ts = lambda i: daily.index[i]  # noqa: E731
+        # The cheat a run bought is the one crossed on the bar before its fill (signal on the close, bought
+        # the next session) -- by the same cheat_cross test, so it can be a later shelf than the base's
+        # first: when the first cross was not entered (no slot, refused), EN-04's one entry per base is
+        # still unspent, and the run takes a later one.
+        signalled: dict = {}
+        for f in fills:
+            j = int(daily.index.searchsorted(f)) - 1
+            p = dets[j - 1] if j - 1 >= start else None
+            if p and p["bh_date"] in bases:
+                z = cheat_cross(p, close[j - 1], close[j])
+                if z:
+                    signalled[p["bh_date"]] = (j, z, p)
+
+        def traded_cheat(ch, bo) -> bool:
+            """Did a fill come within 21 days after the cheat's cross, with no breakout nearer to it?"""
+            for f in fills:
+                if ts(ch[0]) < f <= ts(ch[0]) + pd.Timedelta(days=21) and not (bo is not None and ts(ch[0]) < ts(bo) < f):
+                    return True
+            return False
         out = []
         for key, b in bases.items():
             bo = b["breakout"]
+            ch = signalled.get(key) or b["cheat"]
+            if ch and fills and (key in signalled or traded_cheat(ch, bo)):
+                # the run bought the cheat: draw that trade, from the base as it stood the bar before the cross
+                out.append(self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True))
+                out[-1]["anchored"] = True
+                continue
             now = key == live and bo is None   # still forming today: judge it as today's screen does
             rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
             out.append(self._setup(daily, cfg, dets[rep], rep, bo, b["cheat"], now))
@@ -2107,14 +2139,16 @@ class MinerviniSpecStrategy(Strategy):
         return bool((CHEAT_BLOCK_VCP09 or lv.get("CHEAT_BLOCK_VCP09")) and p and p.get("fail") == "VCP-09")
 
     def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
-               cheat: tuple | None = None, live: bool = False) -> dict:
+               cheat: tuple | None = None, live: bool = False, traded_cheat: bool = False) -> dict:
         """One setup for the chart: a frame around it, and its zones — the uptrend into the base, the
         base and its contractions, the pivot entry of a completed VCP, and the latest cheat entry
         (`cheat`: (bar, MV03 | MV04, yesterday's detection)) — each with its own shapes, its checklist
         rows and a writeup. The entry zones ILLUSTRATE where this strategy's own rules place the trade
         (pivot_buy_stop, pivot_stop, vcp_measured_move, cheat_measured_move, the exit constants); they
         are not backtest results, and the chart replaces them with a run's stored trade when one is
-        selected. `live`: the base is still forming, judged on the last bar.
+        selected. `live`: the base is still forming, judged on the last bar. `traded_cheat`: a run bought
+        `cheat` -- drawn as that cheat even when the base was already a complete VCP, without the pivot
+        entry the run never took (EN-04: one entry per base).
 
         Returns {"from", "base_from", "to", "kind" (vcp | cheat | young | fail), "complete", "fail", "breakout",
         "live", "as_of", "title", "summary", "frame": {from, to, top, bottom}, "zones": [{key, title,
@@ -2294,7 +2328,7 @@ class MinerviniSpecStrategy(Strategy):
         # ---- zone 3: the entry — illustrated from the strategy's own rules, for a completed VCP only
         top, bottom = bh, min(base_low, float(r["prior_low"]) if r["prior_low"] else base_low)
         entry_to = at
-        if done:
+        if done and not traded_cheat:
             pv, tl = float(r["pivot"]), float(r["tight_low"])
             buy, stop = pivot_buy_stop(pv, cfg.tick_size), pivot_stop(tl, cfg.tick_size)
             risk = buy - stop
@@ -2402,9 +2436,9 @@ class MinerviniSpecStrategy(Strategy):
             frame_to = max(frame_to, c_to)
 
         # ---- the frame, its kind, title and verdict
-        kind = "vcp" if done else "cheat" if cheat else "young" if young else "fail"
+        kind = "cheat" if traded_cheat and cheat else "vcp" if done else "cheat" if cheat else "young" if young else "fail"
         today = " · today" if live else ""
-        if done:
+        if kind == "vcp":
             # "trade skipped" means the strategy takes NOTHING on this base -- so it is read off the
             # entry illustrations, and only when every one of them fails.
             #
@@ -2431,7 +2465,8 @@ class MinerviniSpecStrategy(Strategy):
             withheld = ok and self._live_withholds(cheat[2])
             title = f"Cheat entry {'✓' if ok else '· trade skipped'}{' · the live screen withholds it' if withheld else ''}{today}"
             short = f"{len(depths)} pullbacks" if fail == "VCP-04" else self._VCP_FAILED.get(fail, fail)
-            summary = (f"Not a VCP ({short}), but on {day(cheat[0])} it cleared a tight "
+            summary = (("A complete VCP, bought early through its cheat: on" if done else f"Not a VCP ({short}), but on")
+                       + f" {day(cheat[0])} it cleared a tight "
                        f"shelf in the {'lower' if cheat[1] == MV03 else 'middle'} third of the base: a cheat entry."
                        + (f" The daily screen's live variant ({type(self).live_variant['name']}) withholds a cheat on "
                           f"a base that fails VCP-09, so it is not listed as a candidate." if withheld else ""))

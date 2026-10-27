@@ -134,12 +134,14 @@ const Studies = (() => {
   /** Bring the bars from `d0` to `d1` into view for something picked from a side-panel list: the stretch
    *  fills `fill` of the plot width, starting `lead` of the way in, and the price axis returns to
    *  auto-scale — after a manual vertical drag the picked thing could otherwise sit off-screen. */
-  const frameDates = (chart, times, ctx, d0, d1, { fill = 0.6, lead = 0.06, min = 40 } = {}) => {
+  // `price` ({top, bottom}, a setup's frame): the price axis also takes that in -- its target and stop are
+  // drawn as lines, which the candles' autoscale cannot see
+  const frameDates = (chart, times, ctx, d0, d1, { fill = 0.6, lead = 0.06, min = 40, price = null } = {}) => {
     const idx = (d) => { const i = times.findIndex((t) => t >= d); return i < 0 ? times.length - 1 : i; };
     const a = idx(d0), b = Math.max(a, idx(d1));
     const span = Math.max(min, (b - a + 1) / fill), from = a - span * lead;
     chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
-    ctx.fitPrice?.();
+    ctx.fitPrice?.(price);
   };
 
   /** How many years a Trade setups layer scans: its own setting, stretched back to the start of the
@@ -173,7 +175,9 @@ const Studies = (() => {
           owners = new Map(); ownersOf = ts;
           for (const t of ts) {
             const cover = all.filter((s) => t.entry_date >= s.base_from && t.entry_date <= s.to);
-            const best = cover.filter((s) => s.kind !== "fail").at(-1) || cover.at(-1);
+            // the setup judged on the bar the run traded (anchored by the selected run) wins over any other
+            // that happens to span the fill
+            const best = cover.find((s) => s.anchored) || cover.filter((s) => s.kind !== "fail").at(-1) || cover.at(-1);
             if (best && !owners.has(best)) owners.set(best, t);
           }
           return owners;
@@ -323,7 +327,9 @@ const Studies = (() => {
                 // card already say both, and saying them twice is what made the chart look doubled.
                 shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to,
                   price: +traded.entry_price, label: `bought ${(+traded.entry_price).toFixed(2)}` });
-                shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level"));
+                // the record's own stop and target only: every strategy's traded setup looks the same (its
+                // other levels -- resistance, swing lows -- vary by strategy and the zones already say them)
+                shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target")));
                 return;
               }
               // a failed setup's contraction line takes its grey, so a real VCP stands out
@@ -365,7 +371,7 @@ const Studies = (() => {
         });
         // frame a setup stepped to from the card in the left ~60% of the chart, so the card (which goes to
         // the roomier side) sits clear of it on the right
-        const reveal = (s) => frameDates(chart, times, ctx, s.from, s.to, { fill: 0.58, lead: 0.04 });
+        const reveal = (s) => frameDates(chart, times, ctx, s.from, s.to, { fill: 0.58, lead: 0.04, price: s.frame });
 
         // ---- the setup lane: one pill per setup along the bottom of the price pane, stacked where they overlap
         const lane = (() => {
@@ -432,6 +438,8 @@ const Studies = (() => {
         ctx.onFocusTrade?.((t) => {
           const s = t ? [...ownerMap()].find(([, x]) => x.entry_date === t.entry_date)?.[0] : null;
           if (s || !t) { pinned = s || null; hovered = null; paint(); }
+          // go to it: the setup's frame through the trade's exit, the price axis back on auto
+          if (s) frameDates(chart, times, ctx, s.from, t.exit_date && t.exit_date > s.to ? t.exit_date : s.to, { fill: 0.7, lead: 0.05, price: s.frame });
         });
         (async () => {
           setNote(id, "testing each bar…");
@@ -465,7 +473,8 @@ const Studies = (() => {
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
         const years = scanYears(p.years === "All" ? 0 : +p.years || 5, ctx);
         const load = async () => {
-          const x = await fetch(`/api/setups/${strategy}/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${years}`);
+          // with a backtest run selected, the server judges each setup that run traded on the bar it traded
+          const x = await fetch(`/api/setups/${strategy}/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${years}${ctx.runId ? `&run=${ctx.runId}` : ""}`);
           // a 404 here is a server started before this layer existed: say so rather than draw nothing
           if (x.status === 404) return { error: `the server has no ${stratName(strategy)} setups yet — restart it to load this layer` };
           if (!x.ok) return { error: `the setups could not be computed (HTTP ${x.status})` };
@@ -970,7 +979,7 @@ const Studies = (() => {
         const { p, col, tf, ctx, def } = args;
         if (tf !== "D" || !ctx.annotate) return { series: [], note: "daily charts only", setVisible() {} };
         const load = async () => {
-          const r = await fetch(`/api/setups/${def.setupsFor}/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${scanYears(5, ctx)}`)
+          const r = await fetch(`/api/setups/${def.setupsFor}/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${scanYears(5, ctx)}${ctx.runId ? `&run=${ctx.runId}` : ""}`)
             .then((x) => (x.ok ? x.json() : null));
           if (!r) return null;
           // Weinstein's four stages as background bands (minervini_spec.stage_cycle: the 150-day's slope,
@@ -979,7 +988,9 @@ const Studies = (() => {
           const stages = r.stages || [];
           const showOf = (x) => p.stages === "Hide" ? false : p.stages === "Stage 2 only" ? x.stage === 2 : true;
           const NAMES = { 1: "Stage 1 · basing", 2: "Stage 2 · advancing", 3: "Stage 3 · topping", 4: "Stage 4 · declining" };
-          let stage = stages.filter(showOf).flatMap((x) => [
+          // a run's traded setups (the backtest view, or a run picked from the menu) are drawn exactly like every
+          // other strategy's: no stage tints behind them -- the bands are this layer's own exploration aid
+          let stage = (p.tradedOnly ? [] : stages.filter(showOf)).flatMap((x) => [
             { shape: "box", role: `stage${x.stage}`, bg: true, from: x.from, to: x.to, top: x.high, bottom: x.low, label: "" },
             // a name on any band long enough to read, at its top
             ...(x.bars >= 20 ? [{ shape: "text", role: `stage${x.stage}`, at: x.from, price: x.high, label: NAMES[x.stage] }] : []),

@@ -736,7 +736,9 @@ async function chartPage(alive, market, symbol, tf) {
   let claimedTrades = new Set();
   const applyAnnotations = () => {
     if (!dr) return;
-    const run = runDrawnByStudy() ? tradeItems((t) => !claimedTrades.has(t.entry_date)) : [...vcpAnnotations, ...tradeItems()];
+    // a trade the setups layer could not place keeps the run's record, drawn lean -- buy, stop, target --
+    // the same three levels every traded setup shows, never the older boxes and callouts
+    const run = runDrawnByStudy() ? tradeItems((t) => !claimedTrades.has(t.entry_date), true) : [...vcpAnnotations, ...tradeItems()];
     dr.annotate([...run, ...studyItems()]);
   };
   let zoomToTrade = () => {};
@@ -900,7 +902,7 @@ async function chartPage(alive, market, symbol, tf) {
   const benchMap = bpx ? new Map((bpx.line || bpx.candles).map((d) => [d.time, d.value ?? d.close])) : null;
   // Shapes in the Strategy.chart_anatomy schema (strategies/base.py) -> annotation items. Used by the
   // backtest-trade overlay and by studies that draw patterns, so a pattern looks the same in both.
-  const ROLE = { base: "#2962ff", pivot: "#26a69a", stop: "#ef5350", target: "#26a69a", support: "#8a8a8a", level: "#ff9800" };
+  const ROLE = { base: "#2962ff", pivot: "#26a69a", stop: "#ef5350", target: "#26a69a", support: "#8a8a8a", level: "#ff9800", buy: "#26a69a" };
   const barOf = (d) => times.find((x) => x >= d);   // a date onto the nearest charted bar at or after it
   const tsOf = (d) => { const s = barOf(d); return s ? Date.parse(s + "T00:00:00Z") : null; };
   const idxOf = (d) => { const s = barOf(d); return s ? times.indexOf(s) : -1; };
@@ -970,7 +972,18 @@ async function chartPage(alive, market, symbol, tf) {
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn), claimTrades: (set) => { claimedTrades = set; },
     claimView: () => { viewClaimed = true; }, onFocusTrade: (fn) => focusHooks.push(fn),
     // a list pick frames its item: the price axis back on auto-scale (as the "auto" button does)
-    fitPrice: () => { try { chart.panes().forEach((_, i) => chart.priceScale("right", i).applyOptions({ autoScale: true })); syncAuto(); } catch {} },   // a study framed something itself: skip the opening view
+    fitPrice: (want) => {
+      try { chart.panes().forEach((_, i) => chart.priceScale("right", i).applyOptions({ autoScale: true })); syncAuto(); } catch {}
+      // a framed setup: once the candles have autoscaled, widen to its frame (its target / stop lines)
+      if (want && want.top > want.bottom) requestAnimationFrame(() => { try {
+        const sc = chart.priceScale("right", 0), r = sc.getVisibleRange();
+        if (!r) return;
+        const pad = (want.top - want.bottom) * 0.04;
+        if (want.top + pad > r.to || want.bottom - pad < r.from) sc.setVisibleRange({ from: Math.min(r.from, want.bottom - pad), to: Math.max(r.to, want.top + pad) });
+        syncAuto();
+      } catch {} });
+    },   // a study framed something itself: skip the opening view
+    runId: sel.value || null,   // the selected backtest run: its traded setups are judged on the bars it traded
     // the selected run's start date (its directory name begins with it), so a setups layer scans back that far
     runStart: (/^\d{4}-\d{2}-\d{2}/.exec(tradeRuns.find((r) => String(r.id) === String($("#trades").value))?.run || "") || [null])[0],
     onSetups: (feed) => { setupFeed = feed; if (prefs.tab === "setups") renderSide(); },
@@ -1061,12 +1074,17 @@ async function chartPage(alive, market, symbol, tf) {
       // anatomy shapes -> overlay items; the selected trade stays vivid, the rest dim to context
       const items = (t, i) => shapeItems(t.shapes, { dim: selTrade >= 0 && selTrade !== i,
         withNotes: selTrade === i || (selTrade < 0 && anatomy.length <= 3), at: t.entry_date, price: t.entry_price });
-      tradeItems = (keep = () => true) => anatomy.flatMap((t, i) => (keep(t) ? items(t, i) : []));
+      const lean = (t) => ({ ...t, shapes: [{ shape: "level", from: t.entry_date, to: t.exit_date || t.entry_date, price: +t.entry_price, role: "buy",
+        label: `bought ${(+t.entry_price).toFixed(2)}`, dash: false }, ...t.shapes.filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target"))] });
+      tradeItems = (keep = () => true, leanOnly = false) => anatomy.flatMap((t, i) => (keep(t) ? items(leanOnly ? lean(t) : t, i) : []));
+      // the same window for every strategy: 40 bars before the signal to 15 past the exit, price axis on
+      // auto (a setups layer then frames the trade's own setup on top of this). The old window ran back to
+      // the earliest level the record drew, which for some strategies was months before the trade.
       zoomToTrade = (t) => {
-        const ids = t.shapes.map((s) => (s.from ? idxOf(s.from) : s.bars ? idxOf(s.to || t.entry_date) - s.bars : -1)).filter((x) => x >= 0);
-        const i0 = Math.min(...(ids.length ? ids : [idxOf(t.signal_date || t.entry_date)]).filter((x) => x >= 0), idxOf(t.entry_date));
-        const i1 = Math.max(idxOf(t.exit_date || t.entry_date), i0);
-        if (i0 >= 0) chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, i0 - 8), to: i1 + 14 });
+        const i0 = idxOf(t.signal_date || t.entry_date), i1 = Math.max(idxOf(t.exit_date || t.entry_date), i0);
+        if (i0 < 0) return;
+        chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, i0 - 40), to: i1 + 15 });
+        try { chart.panes().forEach((_, k) => chart.priceScale("right", k).applyOptions({ autoScale: true })); syncAuto(); } catch {}
       };
       if (prefs.tab === "trades") renderSide();   // the panel rendered before the trades arrived
     }

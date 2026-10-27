@@ -656,12 +656,14 @@ class Strategy(SpecMeta, ABC):
         cannot carry (a consolidation's extent, the advance into it)."""
         return self.chart_anatomy(sig)
 
-    def setups_live(self, raw_daily, cfg: MarketConfig, symbol: str, years: int | None = 5) -> list[dict]:
+    def setups_live(self, raw_daily, cfg: MarketConfig, symbol: str, years: int | None = 5,
+                    anchors: list[dict] | None = None) -> list[dict]:
         """Every setup episode over the last `years` of `raw_daily`, run on demand through this
         strategy's own evaluate / build_plans / classify (see strategies/live_setups.py). Exploration
-        only: what a run traded comes from its stored signals."""
+        only: what a run traded comes from its stored signals. `anchors` (a selected run's trades, as
+        {"entry": fill date, "stop": initial stop}) makes an episode holding one be judged on the bar it traded."""
         from . import live_setups
-        return live_setups.scan(self, raw_daily, cfg, symbol, years)
+        return live_setups.scan(self, raw_daily, cfg, symbol, years, anchors)
 
     def __repr__(self) -> str:  # pragma: no cover - debug convenience
         return f"<Strategy {self.key}>"

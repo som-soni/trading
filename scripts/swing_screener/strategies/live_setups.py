@@ -33,8 +33,18 @@ CONTEXT_BARS = 20    # a setup's frame starts at least this far before its first
 ENTRY_BARS = 20      # how far the illustrated entry levels run past the judged bar
 
 
-def scan(strategy, raw: pd.DataFrame, cfg, symbol: str, years: int | None = YEARS) -> list[dict]:
-    """Every setup episode in the last `years` (None: all history), oldest first."""
+ANCHOR_DAYS = 21     # a run's order rests up to ~10 sessions: its signal bar is within this many days before the fill
+
+
+def scan(strategy, raw: pd.DataFrame, cfg, symbol: str, years: int | None = YEARS,
+         anchors: list[dict] | None = None) -> list[dict]:
+    """Every setup episode in the last `years` (None: all history), oldest first.
+
+    `anchors`: a selected backtest run's trades in this symbol, each {"entry": fill date, "stop": the
+    trade's initial stop, "price": its fill price (optional)}. The bar the run traded is the setup bar before the fill whose own plan has
+    exactly that stop (else the latest bar the strategy decided to trade); an episode holding it is split
+    there and judged on it — so the drawn plan is the one the run took, not the episode's first passing
+    bar (a weekly setup can stay armed for months, and the run may trade its third breakout)."""
     frames = ctx_mod.prepare_frames(raw)
     daily = frames.daily
     if daily.empty:
@@ -62,7 +72,62 @@ def scan(strategy, raw: pd.DataFrame, cfg, symbol: str, years: int | None = YEAR
         cur.append(rec)
     if cur:
         episodes.append(cur)
-    return [_episode(strategy, cfg, daily, ep) for ep in episodes]
+    traded = {}   # bar the run traded -> its fill date
+    for a in anchors or []:
+        i = _traded_bar(strategy, cfg, recs, a)
+        if i is not None:
+            traded[i] = max(traded.get(i, pd.Timestamp(a["entry"])), pd.Timestamp(a["entry"]))
+    out = []
+    for ep in episodes:
+        # split at each bar the run traded, judging that part on it; the setup bars after it up to the fill
+        # are the run's order still working, so they stay in that part rather than opening a new setup
+        cut, start = [], 0
+        for k, rec in enumerate(ep):
+            if rec[0] in traded and k >= start:
+                end = k
+                while end + 1 < len(ep) and ep[end + 1][1] <= traded[rec[0]]:
+                    end += 1
+                cut.append((start, k, end))
+                start = end + 1
+        for s0, k, end in cut:
+            out.append(_episode(strategy, cfg, daily, ep[s0:end + 1], judge=ep[k]))
+        if start < len(ep):
+            out.append(_episode(strategy, cfg, daily, ep[start:]))
+    return out
+
+
+def _traded_bar(strategy, cfg, recs: list, anchor: dict):
+    """The bar index a run's trade was signalled on: of the setup bars that fired with every gate passing
+    in the ANCHOR_DAYS before the fill, the one whose plan carries the trade's own initial stop (an exact
+    key: each bar's plan has its own); else the latest whose decision was to trade; else the latest."""
+    try:
+        fill = pd.Timestamp(anchor["entry"])
+    except Exception:  # noqa: BLE001
+        return None
+    stop, price = anchor.get("stop"), anchor.get("price")
+    cands = [x for x in recs if fill - pd.Timedelta(days=ANCHOR_DAYS) <= x[1] < fill and x[4] and x[3].hard_gates_passed]
+    if not cands:
+        return None
+    trade_ok, same_stop = None, []
+    for i, d, ctx, r, fired in reversed(cands):
+        choice = strategy.build_plans(ctx, r, cfg)
+        plan = choice.chosen if choice.chosen is not None and choice.chosen.is_valid else None
+        if plan is None:
+            continue
+        if stop and abs(plan.stop / float(stop) - 1) < 0.002:
+            # a stop set from weekly structure is the same on many daily bars: then the fill price decides
+            # -- the newest whose buy the fill reached (a buy-stop fills at its level or above, never below)
+            if not price or plan.entry <= float(price) * 1.005:
+                return i
+            same_stop.append(i)
+            continue
+        if trade_ok is None:
+            sz = sizing.size_position(cfg, plan.entry, plan.stop, vix_above_threshold=False)
+            if strategy.classify(ctx, r, plan, sz, None, False).label_before.startswith("TRADE - HIGH"):
+                trade_ok = i
+    if same_stop:
+        return same_stop[-1]   # every match's buy is above the fill (a market-at-open entry): the oldest
+    return trade_ok if trade_ok is not None else cands[-1][0]
 
 
 def _sig(ctx, r, d, symbol) -> dict:
@@ -80,12 +145,14 @@ def _first_sentence(text: str) -> str:
     return text if cut < 0 else text[: cut + 1]
 
 
-def _episode(strategy, cfg, daily: pd.DataFrame, ep: list) -> dict:
+def _episode(strategy, cfg, daily: pd.DataFrame, ep: list, judge=None) -> dict:
+    """One episode, judged on `judge` (a run's traded bar) or else its first bar that fired with every
+    hard gate passing, else its first that fired, else its last."""
     day = lambda i: str(daily.index[i].date())
     px = lambda v: f"{v:,.2f}" if abs(v) >= 1 else f"{v:.4g}"
     first_i, last_bar = ep[0][0], len(daily) - 1
-    pick = (next((x for x in ep if x[4] and x[3].hard_gates_passed), None)
-            or next((x for x in ep if x[4]), None) or ep[-1])
+    pick = judge or (next((x for x in ep if x[4] and x[3].hard_gates_passed), None)
+                     or next((x for x in ep if x[4]), None) or ep[-1])
     i, d, ctx, r, fired = pick
     names = getattr(strategy, "setup_names", {}) or {}
     active = r.active_setups
@@ -154,12 +221,13 @@ def _episode(strategy, cfg, daily: pd.DataFrame, ep: list) -> dict:
                   "checks": setup_rows + watch_rows,
                   "shapes": [s for s in setup_shapes if s.get("shape") != "note" and s.get("role") not in ("stop", "target")]})
 
-    top = max([float(daily["high"].iloc[frame_from_i: i + 1].max())] + [s["price"] for s in shapes if "price" in s and s["price"]]
+    end_i = max(i, ep[-1][0])
+    top = max([float(daily["high"].iloc[frame_from_i: end_i + 1].max())] + [s["price"] for s in shapes if "price" in s and s["price"]]
               + [s["top"] for s in shapes if s.get("top")])
-    bottom = min([float(daily["low"].iloc[frame_from_i: i + 1].min())] + [s["bottom"] for s in shapes if s.get("bottom")])
-    frame_to = day(i)
+    bottom = min([float(daily["low"].iloc[frame_from_i: end_i + 1].min())] + [s["bottom"] for s in shapes if s.get("bottom")])
+    frame_to = day(max(i, ep[-1][0]))   # never before the episode's last setup bar
     if plan:
-        to = day(min(last_bar, i + ENTRY_BARS))
+        to = day(min(last_bar, max(i + ENTRY_BARS, ep[-1][0])))
         risk = plan.entry - plan.stop
         nominal = bool(getattr(strategy, "nominal_target", False))   # the exit is a rule, not this price
         levels = [("buy", plan.entry, f"Buy {px(plan.entry)}"),
@@ -199,7 +267,7 @@ def _episode(strategy, cfg, daily: pd.DataFrame, ep: list) -> dict:
     if live:
         title += " · today"
         summary = f"Still active on today's bar, {day(last_bar)}. " + summary
-    return {"from": frame_from, "base_from": day(first_i), "to": frame_to, "kind": kind,
+    return {"from": frame_from, "base_from": day(first_i), "to": frame_to, "kind": kind, "anchored": judge is not None,
             "complete": kind == "pass", "fail": None if kind == "pass" else (r.first_hard_fail or "plan"),
             "breakout": day(i) if fired else None, "live": live, "as_of": day(i),
             "title": title, "summary": summary,

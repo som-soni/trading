@@ -1228,9 +1228,36 @@ def portfolio_selection(strategy: str, market: str, limit: int | None = None):
 _generic_cache: dict = {}   # (strategy, spec, market, symbol, last bar, years) -> response
 
 
-def _generic_setups(strat, market: str, symbol: str, date: str | None, years: int) -> dict:
+def _run_anchors(run: int | None, strategy: str, symbol: str) -> tuple:
+    """A selected backtest run's trades in this symbol, as ((fill date, initial stop, fill price), ...) from the run's
+    own trades table, only when the run is this strategy's. The setups layer finds the bar each was
+    signalled on (live_setups.scan's anchors, minervini's bases_live)."""
+    if not run:
+        return ()
+    meta = q("SELECT strategy FROM report_runs WHERE id=%s", (run,))
+    if not meta or meta[0][0] != strategy:
+        return ()
+    try:
+        t = report_table(run, "trades", symbol)
+    except HTTPException:
+        return ()
+    cols = t["columns"]
+    c = lambda n: cols.index(n) if n in cols else None  # noqa: E731
+    ie, ist, is0, ip = c("entry_date"), c("initial_stop"), c("stop"), c("entry_price")
+    out = set()
+    for row in t["rows"]:
+        if ie is None or not row[ie]:
+            continue
+        stop = row[ist] if ist is not None and row[ist] is not None else (row[is0] if is0 is not None else None)
+        price = row[ip] if ip is not None else None
+        out.add((str(row[ie])[:10], float(stop) if stop is not None else None, float(price) if price is not None else None))
+    return tuple(sorted(out))
+
+
+def _generic_setups(strat, market: str, symbol: str, date: str | None, years: int, run: int | None = None) -> dict:
     """A strategy's setups from the generic layer, cached per last bar (a full evaluate per bar is
-    seconds, not milliseconds)."""
+    seconds, not milliseconds). With `run`, episodes holding one of that run's trades are judged on
+    the bar it traded (live_setups.scan's anchors)."""
     from ..marketdata import cache
     raw = cache.load_cached(market, symbol)
     if raw is None or raw.empty:
@@ -1240,11 +1267,12 @@ def _generic_setups(strat, market: str, symbol: str, date: str | None, years: in
     if raw.empty:
         raise HTTPException(404, f"no bars for {symbol} up to {date}")
     as_of = str(raw.index[-1].date())
-    key = (strat.key, strat.spec_id(), market, symbol, as_of, years)
+    anchors = _run_anchors(run, strat.key, symbol)
+    key = (strat.key, strat.spec_id(), market, symbol, as_of, years, anchors)
     if key not in _generic_cache:
         if len(_generic_cache) > 64:
             _generic_cache.clear()
-        setups = strat.setups_live(raw, MARKETS[market], symbol, years or None)
+        setups = strat.setups_live(raw, MARKETS[market], symbol, years or None, [{"entry": e, "stop": st, "price": px} for e, st, px in anchors])
         n = {k: sum(x["kind"] == k for x in setups) for k in ("pass", "watch", "fail")}
         _generic_cache[key] = {
             "as_of": as_of, "spec_id": strat.spec_id(), "strategy": strat.key, "symbol": symbol, "market": market,
@@ -1256,7 +1284,8 @@ def _generic_setups(strat, market: str, symbol: str, date: str | None, years: in
 
 
 @app.get("/api/setups/{strategy}/{market}/{symbol}")
-def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = None, years: int = 5):
+def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = None, years: int = 5,
+                    run: int | None = None):
     """One strategy's trade setups over the stored bars, run ON DEMAND — the Trade setups layer.
 
     `strategy` is in the path because each strategy gets its own layer: the shape of the answer is
@@ -1295,7 +1324,7 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
         # own evaluate / build_plans / classify bar by bar over the last `years`, adding no rules of its own
         if not hasattr(strat, "setups_live"):
             raise HTTPException(404, f"{strategy} has no trade-setups layer")
-        return _generic_setups(strat, market, symbol, date, years)
+        return _generic_setups(strat, market, symbol, date, years, run)
     raw = cache.load_cached(market, symbol)
     if raw is None or raw.empty:
         raise HTTPException(404, f"no prices stored for {symbol}")
@@ -1305,7 +1334,8 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
     if daily.empty:
         raise HTTPException(404, f"no bars for {symbol} up to {date}")
     as_of = str(daily.index[-1].date())
-    key = (strategy, market, symbol, as_of, strat.spec_id())
+    anchors = _run_anchors(run, strategy, symbol)
+    key = (strategy, market, symbol, as_of, strat.spec_id(), anchors)
     if key in _tt_runs:
         return _tt_runs[key]
 
@@ -1337,7 +1367,7 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
     out = {"as_of": as_of, "spec_id": strat.spec_id(), "strategy": strategy, "symbol": symbol, "market": market,
            "bars": int(len(daily)), "passing": passing,
            "pct": round(100.0 * passing / max(len(daily), 1), 1),
-           "runs": runs, "stages": stages, "bases": strat.bases_live(daily, cfg),
+           "runs": runs, "stages": stages, "bases": strat.bases_live(daily, cfg, [{"entry": e, "stop": st, "price": px} for e, st, px in anchors]),
            "note": ((f"{names[last['stage']]} since {last['from']}"
                      + (f", Trend Template confirmed {last['confirmed']}" if last.get("confirmed") else
                         ", not yet confirmed by the Trend Template" if last["stage"] == 2 else "")) if last else "no stage yet")}
