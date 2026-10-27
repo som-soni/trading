@@ -36,7 +36,9 @@ def _synth(n: int = 80, seed: int = 11):
     r = rng.normal(rng.normal(0.0004, 0.0004, n), rng.uniform(0.01, 0.03, n), (len(idx), n))
     px = pd.DataFrame(100 * np.exp(np.cumsum(r, axis=0)), index=idx,
                       columns=[f"S{i:03d}" for i in range(n)])
-    return px, px * 1e6, px.rolling(200, min_periods=200).mean()
+    # (close, dollar volume, SMA200, total-return close): no corporate actions here, so the
+    # total-return series is the close itself (run() takes it since 3ae8aa3)
+    return px, px * 1e6, px.rolling(200, min_periods=200).mean(), px
 
 
 def _run(hold_rank):

@@ -213,6 +213,23 @@ def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
     return out
 
 
+def regime_series(market: str, ticker: str | None, default: "pd.Series | None") -> "pd.Series | None":
+    """The close series the market-regime switch reads: `ticker` when a strategy names one, else
+    `default` (the market's broad benchmark).
+
+    A filter should watch the market the book actually holds. momentum_vol_scaled holds small and mid
+    caps, and on the broad index the switch stayed on through 2018, when the Nifty 500 fell 3.4% and
+    the Smallcap 250 26.8%: the book lost 28.1% with the filter "on". Raises rather than falling back
+    when a named index is not stored -- a silent fallback would run the old filter under the new name.
+    """
+    if not ticker:
+        return default
+    raw = cache.load_cached(market, ticker)
+    if raw is None or raw.empty:
+        raise ValueError(f"regime index {ticker} is not stored for {market}")
+    return raw["close"].astype(float)
+
+
 def buffered_target(ranked: list, held, top_n: int, hold_rank: int | None) -> list:
     """The names to hold after a rebalance: buy into the top `top_n`, hold until outside `hold_rank`.
 
@@ -357,7 +374,9 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     kind = cls.regime_for(market) if hasattr(cls, "regime_for") else None
     if kind:
         from . import regime as regime_mod
-        on = bool(regime_mod.regime_on(kind, pd.DatetimeIndex([today]), bench_px=bench_close, px=tr,
+        rix = cls.regime_index_for(market) if hasattr(cls, "regime_index_for") else None
+        on = bool(regime_mod.regime_on(kind, pd.DatetimeIndex([today]),
+                                       bench_px=regime_series(market, rix, bench_close), px=tr,
                                        sma200=sma200, dv=dv, liq_floor=liq_floor).iloc[0])
         regime_state = {"kind": kind, "on": on}
         if not on:
@@ -412,6 +431,7 @@ def run(
     index_overlay: bool = False,
     overlay_months: int = 10,
     regime: str | None = None,
+    regime_index: str | None = None,
     preloaded: tuple | None = None,
     universe_filter=None,
     credit_actions: bool = True,
@@ -509,8 +529,8 @@ def run(
     if regime:
         from . import regime as regime_mod
         from ..marketdata import index_data
-        regime_ok = regime_mod.regime_on(regime, px.index, bench_px=bench_px, px=tr, sma200=sma200,
-                                         dv=dv, liq_floor=liq_floor)
+        regime_ok = regime_mod.regime_on(regime, px.index, bench_px=regime_series(market, regime_index, bench_px),
+                                         px=tr, sma200=sma200, dv=dv, liq_floor=liq_floor)
         cash_rate = index_data.cash_rate_series(market, dates)[0]
     in_regime_cash, prev_day = False, None
     # special dividends and demergers: the stored close falls by the payout, the holder gets it in cash
@@ -905,6 +925,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--overlay-months", type=int, default=10,
                     help="months in the --index-overlay average of the benchmark's month-end closes")
     from . import regime as _rg
+    ap.add_argument("--regime-index", default=None, metavar="TICKER",
+                    help="the index the --regime switch reads (default: the market's broad benchmark)")
     ap.add_argument("--regime", default=None, choices=[*_rg.KINDS, "off"],
                     help=f"market-regime switch read at each rebalance close: index_sma = benchmark above "
                          f"its {_rg.INDEX_SMA_DAYS}-day average, breadth = at least {_rg.BREADTH_MIN_PCT:g}%% of "
@@ -960,6 +982,8 @@ def strategy_defaults(key: str, market: str) -> dict:
     # same strategy can switch it on in one market and leave it off in another.
     if hasattr(cls, "regime_for"):
         out["regime"] = cls.regime_for(market)
+    if hasattr(cls, "regime_index_for"):
+        out["regime_index"] = cls.regime_index_for(market)
     return out
 
 
@@ -1021,6 +1045,7 @@ def run_args(args: argparse.Namespace, universe_filter=None):
         vol_window=args.vol_window,
         index_overlay=args.index_overlay, overlay_months=args.overlay_months,
         regime=None if args.regime == "off" else args.regime,
+        regime_index=args.regime_index if args.regime != "off" else None,
         hold_rank=args.hold_rank, universe_filter=universe_filter,
     )
 
@@ -1049,6 +1074,7 @@ def main(argv: list[str] | None = None, universe_filter=None, run_suffix: str = 
                 + (f"_vt{args.vol_target:g}" if args.vol_target else "")
                 + ("_overlay" if args.index_overlay else "")
                 + (f"_regime-{args.regime}" if args.regime else "")   # "off" -> _regime-off, the control
+                + (f"-on-{args.regime_index}" if args.regime_index and args.regime and args.regime != "off" else "")
                 + (f"_hold{args.hold_rank}" if args.hold_rank and args.hold_rank > args.top_n else "")
                 + ("_frac" if args.fractional else "")
                 # In the market's own unit, never %g: a Rs10cr floor formats as "1e+08", and
@@ -1193,9 +1219,10 @@ VS_DOC = {
         "trade.",
         "There is no stop, no target and no trigger to wait for. The rank IS the trade rule, which is why this "
         "has a Holdings tab rather than setups.",
-        "India only (v1.5): a market filter. On a month-end where the benchmark index closes at or below its "
-        "{regime_sma_days}-day average the book sells everything and holds cash, earning the stored cash rate, "
-        "until a month-end finds the index back above it. The US runs without it.",
+        "India only: a market filter. On a month-end where the Nifty Smallcap 250 -- the segment the book "
+        "holds, not the broad index (v1.6) -- closes at or below its {regime_sma_days}-day average, the book "
+        "sells everything and holds cash, earning the stored cash rate, until a month-end finds the index back "
+        "above it. The US runs without it.",
     ),
     "entry_rules": (
         "Universe. Every stock stored for the market, minus ETFs, liquid funds and other listings that are not "
@@ -1227,8 +1254,9 @@ VS_DOC = {
         "Fill and cost. Every trade is at the month-end session's close: a buy pays the close plus {cost_bps}bps, "
         "a sale receives the close minus {cost_bps}bps. Sales are done first, then buys in rank order; if cash "
         "runs short, a buy is cut to the whole shares the cash covers.",
-        "When it holds cash. In India, on any month-end where the market filter is off: the benchmark index "
-        "closes at or below its {regime_sma_days}-day simple average (v1.5); the whole book is sold and the "
+        "When it holds cash. In India, on any month-end where the market filter is off: the Nifty Smallcap 250 "
+        "closes at or below its {regime_sma_days}-day simple average (v1.5; on that index since v1.6); the whole "
+        "book is sold and the "
         "cash earns the stored cash rate until a month-end finds the index above it again. In both markets, "
         "when no stock is eligible, and whatever rounding to whole shares leaves over. There is no volatility "
         "target, and the US has no market filter.",
@@ -1273,9 +1301,11 @@ VS_DOC = {
         corporate_actions.CAVEAT_HELD,
         "**The India market filter was chosen in-sample.** It was measured against no filter and a breadth "
         "filter on 2013-2021 and adopted for the drawdown it saves; the {regime_sma_days}-day length was "
-        "fixed before any run (the Learn guide's trend rule), not tuned. It whipsaws in sideways years -- "
-        "2018 cost a few points -- and sits in cash about a quarter of the time. Its control is the same "
-        "version run with `--regime off`.",
+        "fixed before any run (the Learn guide's trend rule), not tuned. Its INDEX was not: v1.6 moved it from "
+        "the Nifty 500 to the Smallcap 250 after seeing 2018, when the broad index stayed above its average "
+        "while small caps fell 26.8% -- sound on the mechanism (watch what you hold), but chosen on the same "
+        "years, so only the verify run tests it. On the Smallcap 250 it sits in cash more often and re-enters "
+        "later after a crash. Its control is the same version run with `--regime off`.",
     ),
 }
 
@@ -1290,8 +1320,20 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.5"
+    version = "1.6"
     changelog = (
+        ("1.6", "2026-10-27",
+         "India's market filter reads the Nifty Smallcap 250 -- the segment the book holds and is judged "
+         "against -- instead of the broad Nifty 500. In the optimise window its one losing year was 2018 "
+         "(-28.1%): small caps fell 26.8% while the Nifty 500 fell 3.4% and stayed above its 200-day average, "
+         "so the switch never moved to cash, and the filter did slightly worse than none (-25.5%). Estimated "
+         "on v1.5's filter-off run by holding cash in each month the chosen index ended the previous month "
+         "at or below its 200-day average (a method that reproduces v1.5's own filter year by year, 2018 "
+         "-27.8% against -28.1%): 2018 -28% -> -15%, CAGR 24.3% -> 26.1%, month-end max drawdown -30% -> -18%; "
+         "the cost is slower re-entry after a crash (2020 +27.5% -> +15.5%). The index was chosen after "
+         "looking at 2018, so this is in-sample; the verify run (2022 onward, which holds a small-cap "
+         "correction) is its test, against the criterion already written in the status. The 200-day "
+         "length and the rule are unchanged; the US still runs without a filter."),
         ("1.5", "2026-10-26",
          "India adopts the market-regime switch by default: on a month-end where the benchmark closes at "
          "or below its 200-day average the book holds cash at the stored cash rate (backtesting/regime.py, "
@@ -1374,6 +1416,11 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     #: Market-regime switch per market (backtesting/regime.py), None = off. Adopted where it was
     #: measured to earn its place: in India it cut the in-sample drawdown by 13 points for 1.2 of CAGR.
     regime_by_market = {"india": "index_sma"}
+    #: The index that switch reads, per market (a broad_index_symbols key). India watches the SEGMENT the
+    #: book holds, the Smallcap 250, not the broad Nifty 500: in 2018 small caps fell 26.8% while the
+    #: Nifty 500 fell 3.4% and stayed above its 200-day, so the broad-index switch kept the book invested
+    #: through a 28.1% loss (v1.6).
+    regime_index_by_market = {"india": "NIFTYSMALLCAP250"}
     #: The switch's average length, mirrored from regime.INDEX_SMA_DAYS so the page renders the live
     #: value and the fingerprint moves if it ever changes.
     regime_sma_days = _regime.INDEX_SMA_DAYS
@@ -1388,6 +1435,12 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     def regime_for(cls, market: str) -> str | None:
         """The market-regime switch this strategy runs with in `market` (None = no switch)."""
         return cls.regime_by_market.get(market)
+
+    @classmethod
+    def regime_index_for(cls, market: str) -> str | None:
+        """The ticker that switch reads in `market`; None = the market's broad benchmark."""
+        key = cls.regime_index_by_market.get(market)
+        return MARKETS[market].broad_index_symbols.get(key) if key else None
 
     param_docs = (
         ("Ranking", "rank", "vol_scaled: 12-1 return divided by realised volatility."),
