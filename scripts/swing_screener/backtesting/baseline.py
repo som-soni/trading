@@ -1160,17 +1160,18 @@ VS_DOC = {
     "description": "Rank liquid stocks by 12-1 momentum divided by realised volatility, hold the top {top_n} "
                    "weighted inverse to volatility, rebalance at every month-end.",
     "status": (
-        "THE INDIA MARKET FILTER FAILED ITS VERIFY RUN (v1.6, 2026-10-27). Out-of-sample, India, 2022-01-01 "
-        "to 2026-10-26, against the same version with --regime off: CAGR 14.52% against 22.21%, excess over "
-        "the Smallcap 250 +3.37 against +11.06, max drawdown -38.5% against -32.1%. The pass criterion was "
-        "written before the run -- drawdown at least 5 points shallower, CAGR no more than 2 points lower, "
-        "excess not negative where the control's is not -- and it failed the first two. 2022 is why: the "
-        "filter sold into the small-cap correction and bought back late, -28.5% against -9.9%, then 2023 "
-        "made +71.4% against +90.2%; it sat in cash 23% of sessions. In-sample (optimise, 2013-2021) it had "
-        "looked strong -- 26.13% CAGR, +10.69 excess, -25.2% drawdown against 25.31%, +9.88, -50.5% without "
-        "it -- which is the gap a hold-out exists to expose. Without the filter the strategy itself held up "
-        "out-of-sample in India: +11.06 excess a year since 2022. Do NOT re-tune the filter on these years; "
-        "a different filter is a new version with its own single verify run. The US runs without a filter. "
+        "EARNS ITS EDGE IN INDIA, NOT IN THE US. Out-of-sample (verify, 2022-01-01 to 2026-10-26) India "
+        "returns 22.21% CAGR, +11.06 excess over the Smallcap 250, max drawdown -32.1%, with NO market filter, "
+        "which is how it runs from v1.7. The India market filter adopted in v1.5 and moved to the Smallcap 250 "
+        "in v1.6 failed its pre-registered verify run against that same version without it: 14.52% CAGR, +3.37 "
+        "excess, -38.5% drawdown. The criterion, written before the run, asked for a drawdown at least 5 points "
+        "shallower and a CAGR no more than 2 points lower, and it failed both. 2022 is why: the month-end "
+        "200-day test sold into the small-cap correction and bought back late (-28.5% against -9.9%), and 2023 "
+        "made +71.4% against +90.2%. In-sample (optimise, 2013-2021) it had looked strong -- 26.13% CAGR and "
+        "-25.2% drawdown against 25.31% and -50.5% -- which is the gap a hold-out exists to expose. Down years "
+        "remain without it, 2022 at -9.9% and 2025 at -7.9% out-of-sample. Do NOT re-adopt the filter on its "
+        "in-sample record; a different filter is a new version with its own single verify run. The US runs "
+        "without a filter. "
         "Everything below is LEGACY context, measured before stages and before the filter. "
         "EARNS ITS EDGE IN INDIA, NOT IN THE US. Measured on current code from 2010 against the Nifty "
         "Smallcap 250 -- the honest control, because it drops and replaces constituents and so carries the "
@@ -1221,10 +1222,10 @@ VS_DOC = {
         "trade.",
         "There is no stop, no target and no trigger to wait for. The rank IS the trade rule, which is why this "
         "has a Holdings tab rather than setups.",
-        "India only: a market filter. On a month-end where the Nifty Smallcap 250 -- the segment the book "
-        "holds, not the broad index (v1.6) -- closes at or below its {regime_sma_days}-day average, the book "
-        "sells everything and holds cash, earning the stored cash rate, until a month-end finds the index back "
-        "above it. The US runs without it.",
+        "No market filter, in either market: the book stays invested through a market decline and relies on "
+        "the per-stock 200-day test to drop names that break down. India ran a 200-day market filter from v1.5; "
+        "v1.7 dropped it after it failed its verify run on 2022 onward, where it sold into the correction and "
+        "bought back late. It remains available as `--regime index_sma` for research.",
     ),
     "entry_rules": (
         "Universe. Every stock stored for the market, minus ETFs, liquid funds and other listings that are not "
@@ -1256,12 +1257,9 @@ VS_DOC = {
         "Fill and cost. Every trade is at the month-end session's close: a buy pays the close plus {cost_bps}bps, "
         "a sale receives the close minus {cost_bps}bps. Sales are done first, then buys in rank order; if cash "
         "runs short, a buy is cut to the whole shares the cash covers.",
-        "When it holds cash. In India, on any month-end where the market filter is off: the Nifty Smallcap 250 "
-        "closes at or below its {regime_sma_days}-day simple average (v1.5; on that index since v1.6); the whole "
-        "book is sold and the "
-        "cash earns the stored cash rate until a month-end finds the index above it again. In both markets, "
-        "when no stock is eligible, and whatever rounding to whole shares leaves over. There is no volatility "
-        "target, and the US has no market filter.",
+        "When it holds cash. Only when no stock is eligible, and for whatever rounding to whole shares leaves "
+        "over. Otherwise it is fully invested: there is no market filter (India's was dropped in v1.7 after it "
+        "failed verification) and no volatility target.",
     ),
     "exit_rules": (
         "Sold at a month-end. A holding is sold in full at that session's close, less {cost_bps}bps, when it is "
@@ -1301,13 +1299,11 @@ VS_DOC = {
         "the Nifty 500 counts segment beta as skill. Ordinary dividends are left out of both the strategy "
         "and the benchmark: stored prices are split-adjusted closes only.",
         corporate_actions.CAVEAT_HELD,
-        "**The India market filter was chosen in-sample.** It was measured against no filter and a breadth "
-        "filter on 2013-2021 and adopted for the drawdown it saves; the {regime_sma_days}-day length was "
-        "fixed before any run (the Learn guide's trend rule), not tuned. Its INDEX was not: v1.6 moved it from "
-        "the Nifty 500 to the Smallcap 250 after seeing 2018, when the broad index stayed above its average "
-        "while small caps fell 26.8% -- sound on the mechanism (watch what you hold), but chosen on the same "
-        "years, so only the verify run tests it. On the Smallcap 250 it sits in cash more often and re-enters "
-        "later after a crash. Its control is the same version run with `--regime off`.",
+        "**Down years are part of it, and a market filter did not fix them.** Out-of-sample the book fell 9.9% "
+        "in 2022 and 7.9% in 2025. A {regime_sma_days}-day market filter was tried for India (v1.5-1.6): it "
+        "looked strong in-sample, halving the 2013-2021 drawdown, and failed its verify run -- a month-end "
+        "average reacts late to a fast correction, so it sold low and re-bought high. Do not re-adopt it on its "
+        "in-sample record; a different filter is a new version with its own single verify run.",
     ),
 }
 
@@ -1322,8 +1318,20 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.6"
+    version = "1.7"
     changelog = (
+        ("1.7", "2026-10-27",
+         "India runs without a market filter again. The filter adopted in v1.5 (and pointed at the Smallcap "
+         "250 in v1.6) failed its pre-registered verify run, India 2022-01-01 to 2026-10-26, against the same "
+         "version with --regime off: 14.52% CAGR against 22.21%, excess +3.37 against +11.06, max drawdown "
+         "-38.5% against -32.1%. The criterion, written before the run, asked for a drawdown at least 5 points "
+         "shallower and a CAGR no more than 2 points lower; it failed both. 2022 is why: the month-end 200-day "
+         "test sold into the small-cap correction and bought back late (-28.5% against -9.9%), and it went to "
+         "cash at the February 2023 low and re-entered after the rebound. The test was between exactly these "
+         "two versions, so dropping the filter is the decision it was set up to make, not a re-tune on the "
+         "hold-out. In-sample it had looked strong (2013-2021: drawdown -25.2% against -50.5%); this is the "
+         "gap a hold-out exists to expose. The switch stays available as --regime index_sma for research. "
+         "Bumped by hand: regime_by_market is not numeric, so the fingerprint does not move."),
         ("1.6", "2026-10-27",
          "India's market filter reads the Nifty Smallcap 250 -- the segment the book holds and is judged "
          "against -- instead of the broad Nifty 500. In the optimise window its one losing year was 2018 "
@@ -1415,13 +1423,15 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     #: and the page would then produce different runs and disagree about the same strategy.
     min_turnover_cr = 10         # Rs crore/day (India); see min_turnover_for()
     min_turnover_usd_m = 20      # $ million/day (US)
-    #: Market-regime switch per market (backtesting/regime.py), None = off. Adopted where it was
-    #: measured to earn its place: in India it cut the in-sample drawdown by 13 points for 1.2 of CAGR.
-    regime_by_market = {"india": "index_sma"}
+    #: Market-regime switch per market (backtesting/regime.py), None = off -- now off everywhere (v1.7).
+    #: India ran one from v1.5 and it failed its pre-registered verify run on 2022 onward: against the same
+    #: version without it, 14.52% CAGR vs 22.21% and a DEEPER drawdown, -38.5% vs -32.1%. The switch stays
+    #: available as `--regime index_sma` for research; re-adopting it is a new version with its own verify.
+    regime_by_market: dict = {}
     #: The index that switch reads, per market (a broad_index_symbols key). India watches the SEGMENT the
     #: book holds, the Smallcap 250, not the broad Nifty 500: in 2018 small caps fell 26.8% while the
     #: Nifty 500 fell 3.4% and stayed above its 200-day, so the broad-index switch kept the book invested
-    #: through a 28.1% loss (v1.6).
+    #: through a 28.1% loss (v1.6). Kept for `--regime index_sma` runs; it does nothing while the switch is off.
     regime_index_by_market = {"india": "NIFTYSMALLCAP250"}
     #: The switch's average length, mirrored from regime.INDEX_SMA_DAYS so the page renders the live
     #: value and the fingerprint moves if it ever changes.

@@ -497,7 +497,7 @@
       "top_n": 20,
       "vol_window": 63
     },
-    "version": "1.6"
+    "version": "1.7"
   },
   "pead": {
     "family": "pead",
