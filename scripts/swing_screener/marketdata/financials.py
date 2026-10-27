@@ -720,7 +720,8 @@ def refresh_announcements(market: str, symbols: list[str], progress=None) -> dic
             stored += len(rows)
             companies_with += 1
         if progress:
-            progress(i + 1, len(symbols))
+            progress(f"announcements {i + 1:,}/{len(symbols):,} companies ({companies_with:,} listed by NSE)",
+                     done=i + 1, total=len(symbols))
     return {"companies": len(symbols), "with_announcements": companies_with, "announcements": stored, "errors": errors}
 
 
