@@ -853,6 +853,13 @@ def _report(ctx: Ctx) -> None:
     ctx.step.detail = f"{md} · {len(latest)} strategy/market runs"
 
 
+def _prune_signals(ctx: Ctx) -> None:
+    from swing_screener.backtesting import signal_cache
+    r = signal_cache.prune(apply=True)
+    ctx.step.detail = (f"kept {r['kept']} of {r['spec_ids']} spec ids (current and previous version per strategy); "
+                       f"deleted {r['rows_deleted']} rows of {r['dropped']}")
+
+
 def _ingest(ctx: Ctx) -> None:
     from swing_screener.web.ingest import ingest
     if ctx.opt("only_new") and not _newer("report", None, "ingest", None):
@@ -931,6 +938,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("report", "publish", "consolidated report: the daily review across strategies and markets", "on demand", False, _report,
         per_market=False, after=("strategies",)),
     Job("ingest", "publish", "load reports into the web app", "on demand", False, _ingest, per_market=False),
+    Job("prune_signals", "screening", "signal cache: delete the backtest signal rows of strategy versions older than the "
+        "previous one, so the cache cannot fill the disk again (backtesting/signal_cache.py)", "weekly", False,
+        _prune_signals, per_market=False),
 ]}
 
 # A pipeline is an ordered list of jobs, optionally with per-job options, and `defaults` for options the
@@ -962,7 +972,7 @@ PIPELINES: dict[str, dict] = {
     "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, analyst estimates, fundamentals, "
                           "company financials and their scores, quality scores; corporate actions; split & bonus repair",
                "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "splits", "earnings", "estimates", "fundamentals", "financials",
-                        "fundamental_scores", "quality", "fpi_sectors"]},
+                        "fundamental_scores", "quality", "fpi_sectors", "prune_signals"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},
     "quality": {"summary": "on demand: fetch financial statements and score companies (the Quality screen) — slow, network-heavy",

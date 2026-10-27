@@ -51,6 +51,10 @@ SCHEDULE_EVERY_S = 30 # how often it checks the schedules
 KILL_AFTER_S = 30     # after Stop: SIGKILL if the job has not exited by then
 FAST_RESTART_S = 30   # a lane child that died is restarted after this long
 CHILD_START_S = 20    # main lane: how long it waits for the lanes it starts to report in
+#: Below this much free disk no lane claims new work: it waits, saying so in its heartbeat. On 2026-10-27
+#: the signal cache filled the disk and the queue drained into failures -- 42 backtests, each failing at
+#: start on writing its log -- because a worker kept claiming items it could not run.
+MIN_FREE_GB = 20
 
 _stop = False
 
@@ -83,6 +87,11 @@ def _outside_run() -> dict | None:
         if _alive(pid):
             return {"run_id": rid, "pid": pid}
     return None
+
+
+def _free_gb() -> float:
+    import shutil
+    return shutil.disk_usage(paths.REPO_ROOT).free / 1e9
 
 
 def _final_status(item: dict, exit_code: int | None) -> str:
@@ -254,6 +263,11 @@ def run_forever(lane: str = "main", fast_child: bool = True, backtest_child: boo
                     tick(None, f"waiting for run #{outside['run_id']} started outside the queue")
                     time.sleep(POLL_S * 5)
                     continue
+            free = _free_gb()
+            if free < MIN_FREE_GB:
+                tick(None, f"paused: {free:.1f} GB free on disk, below {MIN_FREE_GB} GB -- queued work waits")
+                time.sleep(POLL_S * 15)
+                continue
             item = queue.claim_next(lane, choose)
             if not item:
                 time.sleep(POLL_S)

@@ -169,7 +169,9 @@ version: the signal id then stays put and the next backtest carries the cached s
 rows forward (`backtest._signal_peers`, `backtest_signal_specs`) instead of
 rescanning for hours. Never pin it across a change to `build_context()`, `evaluate()`
 or a detector — the carried rows would replay the old detections. Leave it unset
-otherwise (it defaults to `version`, so a bump rescans).
+otherwise (it defaults to `version`, so a bump rescans). The cache keeps only each
+strategy's current and previous version: the weekly `prune_signals` job
+(`backtesting/signal_cache.py`) deletes older rows, because left alone they filled the disk.
 
 Then run, from `scripts/`:
 
