@@ -7288,7 +7288,7 @@ async function route() {
     else if (page === "strategies") await strategiesPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "quality") await qualityPage(alive, parts[1]);
     else if (page === "company") await companyPage(alive, parts[1], parts[2]);
-    else if (page === "analysis") await analysisPage(alive, parts[1], parts[2], parts[3]);
+    else if (page === "analysis") await analysisPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "news") await stockNewsPage(alive, parts[1], parts[2]);
     else if (page === "fundamentals" || page === "sepa") go(`#/company/${parts[1] || ""}`);   // the page's earlier names
     else if (page === "breadth") await breadthPage(alive, parts[1]);

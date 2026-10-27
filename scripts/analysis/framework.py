@@ -620,11 +620,14 @@ def evaluate(ev: dict) -> dict:
     return out
 
 
-def summarise(results: dict) -> dict:
-    """Pillar ratings, the overall evidence score and the red flags from evaluate()'s results."""
+def summarise(results: dict, checks_doc: tuple = CHECKS_DOC, pillar_keys: tuple = PILLAR_KEYS,
+              red_flags: tuple = RED_FLAGS) -> dict:
+    """Pillar ratings, the overall evidence score and the red flags from evaluate()'s results. The entry
+    framework (entry.py) passes its own checks, pillars and red flags: one rating rule for both."""
+    check_pillar = {c[0]: c[1] for c in checks_doc}
     pillars = {}
-    for k in PILLAR_KEYS:
-        st = [r["status"] for c, r in results.items() if CHECK_PILLAR.get(c) == k]
+    for k in pillar_keys:
+        st = [r["status"] for c, r in results.items() if check_pillar.get(c) == k]
         g, o, b = st.count("good"), st.count("ok"), st.count("bad")
         n = g + o + b
         score = (g + o / 2) / n if n else None
@@ -632,8 +635,8 @@ def summarise(results: dict) -> dict:
                   else "Thin" if n < MIN_SCORED else "Strong" if score >= STRONG_MIN else "Mixed" if score >= MIXED_MIN else "Weak")
         pillars[k] = {"good": g, "ok": o, "bad": b, "na": st.count("na"), "score": score, "rating": rating}
     rated = [p["score"] for p in pillars.values() if p["rating"] in ("Strong", "Mixed", "Weak")]
-    flags = [{"code": c, "label": next(x[2] for x in CHECKS_DOC if x[0] == c), "detail": results[c].get("detail") or ""}
-             for c in RED_FLAGS if (results.get(c) or {}).get("status") == "bad"]
+    flags = [{"code": c, "label": next(x[2] for x in checks_doc if x[0] == c), "detail": results[c].get("detail") or ""}
+             for c in red_flags if (results.get(c) or {}).get("status") == "bad"]
     return {"pillars": pillars, "score": round(100 * sum(rated) / len(rated)) if rated else None, "rated": len(rated), "flags": flags}
 
 

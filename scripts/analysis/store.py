@@ -7,6 +7,8 @@ One row is one stock read through the framework on one day:
   answers    {question code: {rating: good / ok / bad, note}} — and {pillar key: {note}} for a pillar's notes
   verdict    {decision, conviction, thesis, invalidation, review_on}
   status     'draft' while you work on it (the page autosaves), 'final' once you finish it
+  kind       'company' (framework.py: is the business worth owning?) or 'entry' (entry.py: is this session a
+             low-risk entry?). An entry analysis is read as of its `asof` session, and its verdict holds the plan.
 
 A stock keeps every analysis, newest first; a new one starts from the last one's answers and verdict, so
 re-analysing after the next results means revising, not starting over.
@@ -34,9 +36,11 @@ CREATE TABLE IF NOT EXISTS stock_analyses (
     finished_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS stock_analyses_stock ON stock_analyses (market, symbol, created_at DESC);
+ALTER TABLE stock_analyses ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'company';   -- 'company' | 'entry'
 """
-_COLS = "id, market, symbol, framework_version, asof, evidence, answers, verdict, status, created_at, updated_at, finished_at"
+_COLS = "id, market, symbol, framework_version, asof, evidence, answers, verdict, status, created_at, updated_at, finished_at, kind"
 STATUSES = ("draft", "final")
+KINDS = ("company", "entry")
 
 
 def init_schema() -> None:
@@ -45,8 +49,8 @@ def init_schema() -> None:
 
 
 def _row(r, full: bool = True) -> dict:
-    (aid, market, symbol, ver, asof, evidence, answers, verdict, status, created, updated, finished) = r
-    out = {"id": aid, "market": market, "symbol": symbol, "framework_version": ver, "asof": str(asof) if asof else None,
+    (aid, market, symbol, ver, asof, evidence, answers, verdict, status, created, updated, finished, kind) = r
+    out = {"id": aid, "kind": kind, "market": market, "symbol": symbol, "framework_version": ver, "asof": str(asof) if asof else None,
            "verdict": verdict or {}, "status": status, "created_at": created.isoformat(), "updated_at": updated.isoformat(),
            "finished_at": finished.isoformat() if finished else None,
            "score": ((evidence or {}).get("summary") or {}).get("score")}
@@ -57,22 +61,23 @@ def _row(r, full: bool = True) -> dict:
     return out
 
 
-def list_for(market: str, symbol: str) -> list[dict]:
+def list_for(market: str, symbol: str, kind: str = "company") -> list[dict]:
     with db.get_connection().cursor() as cur:
-        cur.execute(f"SELECT {_COLS} FROM stock_analyses WHERE market=%s AND symbol=%s ORDER BY created_at DESC", (market, symbol))
+        cur.execute(f"SELECT {_COLS} FROM stock_analyses WHERE market=%s AND symbol=%s AND kind=%s ORDER BY created_at DESC",
+                    (market, symbol, kind))
         return [_row(r, full=False) for r in cur.fetchall()]
 
 
 def list_all(limit: int = 500) -> list[dict]:
-    """The latest analysis of every stock, newest first."""
+    """The latest analysis of every stock, of each kind, newest first."""
     with db.get_connection().cursor() as cur:
-        cur.execute(f"""SELECT {_COLS} FROM (SELECT DISTINCT ON (market, symbol) {_COLS} FROM stock_analyses
-                        ORDER BY market, symbol, created_at DESC) x ORDER BY updated_at DESC LIMIT %s""", (limit,))
+        cur.execute(f"""SELECT {_COLS} FROM (SELECT DISTINCT ON (market, symbol, kind) {_COLS} FROM stock_analyses
+                        ORDER BY market, symbol, kind, created_at DESC) x ORDER BY updated_at DESC LIMIT %s""", (limit,))
         rows = [_row(r, full=False) for r in cur.fetchall()]
-        cur.execute("SELECT market, symbol, count(*) FROM stock_analyses GROUP BY 1, 2")
-        n = {(m, s): c for m, s, c in cur.fetchall()}
+        cur.execute("SELECT market, symbol, kind, count(*) FROM stock_analyses GROUP BY 1, 2, 3")
+        n = {(m, s, k): c for m, s, k, c in cur.fetchall()}
     for r in rows:
-        r["count"] = n.get((r["market"], r["symbol"]), 1)
+        r["count"] = n.get((r["market"], r["symbol"], r["kind"]), 1)
     return rows
 
 
@@ -83,16 +88,19 @@ def get(aid: int) -> dict | None:
     return _row(r) if r else None
 
 
-def create(market: str, symbol: str, version: str, asof: str | None, evidence: dict) -> dict:
-    """A new draft, starting from the stock's previous analysis's answers and verdict."""
+def create(market: str, symbol: str, version: str, asof: str | None, evidence: dict, kind: str = "company") -> dict:
+    """A new draft, starting from the stock's previous analysis (of the same kind): its answers, and — for a company
+    analysis — its verdict. An entry plan is for its own session, so a new entry analysis starts without one."""
+    if kind not in KINDS:
+        raise ValueError(f"kind must be one of {KINDS}")
     with db.get_connection().cursor() as cur:
-        cur.execute("SELECT answers, verdict FROM stock_analyses WHERE market=%s AND symbol=%s ORDER BY created_at DESC LIMIT 1",
-                    (market, symbol))
+        cur.execute("SELECT answers, verdict FROM stock_analyses WHERE market=%s AND symbol=%s AND kind=%s ORDER BY created_at DESC LIMIT 1",
+                    (market, symbol, kind))
         prev = cur.fetchone()
-        answers, verdict = (prev[0], prev[1]) if prev else ({}, {})
-        cur.execute(f"""INSERT INTO stock_analyses (market, symbol, framework_version, asof, evidence, answers, verdict)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING {_COLS}""",
-                    (market, symbol, version, asof, json.dumps(evidence, default=str), json.dumps(answers), json.dumps(verdict)))
+        answers, verdict = (prev[0], prev[1] if kind == "company" else {}) if prev else ({}, {})
+        cur.execute(f"""INSERT INTO stock_analyses (market, symbol, framework_version, asof, evidence, answers, verdict, kind)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING {_COLS}""",
+                    (market, symbol, version, asof, json.dumps(evidence, default=str), json.dumps(answers), json.dumps(verdict), kind))
         return _row(cur.fetchone())
 
 

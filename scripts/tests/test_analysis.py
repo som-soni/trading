@@ -1,5 +1,5 @@
-"""Stock-analysis framework (scripts/analysis/framework.py): the documentation contract and the checks,
-on hand-made evidence. No database.
+"""Stock-analysis frameworks (scripts/analysis/framework.py — the company; entry.py — the entry): the
+documentation contract and the checks, on hand-made evidence. No database.
 
     PYTHONPATH=. python3 -m tests.test_analysis
 """
@@ -8,6 +8,7 @@ import re
 
 import pandas as pd
 
+from analysis import entry
 from analysis import framework as fw
 
 CODES = [c[0] for c in fw.CHECKS_DOC]
@@ -136,6 +137,89 @@ def test_summary_maths():
     assert sm["pillars"]["profitability"]["rating"] == "Thin"     # one scored check
     assert sm["pillars"]["health"]["rating"] == "No data"
     assert sm["score"] == 50 and sm["rated"] == 1
+
+
+# ---------------------------------------------------------------- the entry framework
+
+def _entry_evidence(**over):
+    """A leader in a strong group, at its pivot, in a healthy market."""
+    row = {"tradable": True, "close": 100.0, "sma50": 95.0, "sma150": 88.0, "sma200": 85.0, "sma200_21d_ago": 80.0,
+           "pct_above_low": 70.0, "pct_below_high": 2.0, "pct_vs_sma50": 5.3, "r3m": 25.0, "rel_r3m": 15.0,
+           "base_days": 40, "base_depth_pct": 18.0, "pct_below_base_high": 2.0, "range_contracting": True, "atr_pct": 2.5}
+    ev = {
+        "close": 100.0, "atr": 2.5, "row": row, "frame": pd.DataFrame([{**row, "rs_rank": 92}]),
+        "xs": {"rs_rank": 92, "peer_rank": 1, "peer_count": 10, "snapshot_date": "2026-10-23"},
+        "group": {"name": "X", "rs": 85, "rs_then": 70, "then": "2026-09-23", "rs_date": "2026-10-23", "n": 10, "above50": 0.8},
+        "market_state": {"gate": True, "trend": True, "breadth": 65.0, "breadth_then": 55.0, "dist_days": 1,
+                         "index_from_high": -0.02, "index": "SPY"},
+        "stage": {"stage": 2, "line": "rising"},
+        "patterns": [{"code": "FBASE", "name": "Flat base", "direction": "bullish", "state": "complete", "tradeable": True,
+                      "trigger": 102.0, "invalidation": 94.0, "target": 120.0}],
+        "support": [{"role": "support", "tf": "D", "bottom": 95.0, "top": 97.0, "strong": True}],
+        "resistance": [],
+        "volume": {"updown": 1.6, "recent": 700.0, "avg50": 1000.0},
+        "results_in_days": 40,
+    }
+    ev.update(over)
+    return ev
+
+
+ENTRY_CODES = [c[0] for c in entry.CHECKS_DOC]
+
+
+def test_entry_docs_contract():
+    assert len(set(ENTRY_CODES)) == len(ENTRY_CODES)
+    assert {c[1] for c in entry.CHECKS_DOC} <= set(entry.PILLAR_KEYS) and {q[1] for q in entry.QUESTIONS} <= set(entry.PILLAR_KEYS)
+    assert set(entry.RED_FLAGS) <= set(ENTRY_CODES)
+    for k in entry.PILLAR_KEYS:
+        assert any(c[1] == k for c in entry.CHECKS_DOC) and any(q[1] == k for q in entry.QUESTIONS), k
+    for code, _p, _l, rule, _w, kind in entry.CHECKS_DOC:
+        assert kind in ("pct", "pp", "pct_raw", "pp_raw", "num", "x", "days", "text"), code
+        assert "{" not in entry._fmt(rule), code
+        assert not re.search(r"\d%", re.sub(r"\{[^}]*\}", "", rule)), (code, "a literal percentage — name a constant")
+    c = entry.criteria()
+    assert c["version"] == entry.VERSION and c["changelog"][0]["version"] == entry.VERSION
+    assert {p["key"] for p in c["plan"]} >= {"decision", "entry", "stop", "target"}
+
+
+def test_entry_every_check_answers():
+    for ev in ({}, _entry_evidence()):
+        res = entry.evaluate(ev)
+        assert set(res) == set(ENTRY_CODES)
+        assert all(r["status"] in ("good", "ok", "bad", "na") for r in res.values())
+
+
+def test_entry_ideal_setup():
+    res = entry.evaluate(_entry_evidence())
+    bad = {k: v for k, v in res.items() if v["status"] != "good"}
+    assert not bad, bad
+    sm = entry.summarise(res)
+    assert sm["score"] == 100 and sm["flags"] == []
+
+
+def test_entry_warning_signs():
+    ev = _entry_evidence(
+        market_state={"gate": False, "trend": True, "breadth": 30.0, "dist_days": 6, "index_from_high": -0.12},
+        stage={"stage": 4, "line": "falling"}, results_in_days=3,
+        patterns=[{"name": "Head and shoulders top", "direction": "bearish"}],
+        support=[{"role": "support", "tf": "W", "bottom": 80.0, "top": 82.0}],
+        resistance=[{"role": "resistance", "tf": "D", "bottom": 104.0, "top": 106.0}],
+    )
+    ev["row"] = {**ev["row"], "pct_vs_sma50": 30.0, "pct_below_base_high": 25.0}
+    res = entry.evaluate(ev)
+    for code in ("M1", "M3", "M4", "M5", "T2", "P3", "L1", "L2", "L3", "L4", "R1"):
+        assert res[code]["status"] == "bad", (code, res[code])
+    assert {f["code"] for f in entry.summarise(res)["flags"]} == {"M1", "T2", "L1", "L2", "R1"}
+
+
+def test_entry_levels_on_the_right_side():
+    ev = _entry_evidence()
+    ev["row"] = {**ev["row"], "sma50": 103.0}       # a 50-day above the close is no stop
+    lv = entry.levels(ev)
+    assert all(x["price"] < 100 for x in lv if x["kind"] == "stop")
+    assert all(x["price"] > 100 for x in lv if x["kind"] == "target")
+    assert any(x["label"].startswith("Base high") and abs(x["price"] - 100 / 0.98) < 1e-9 for x in lv)
+    assert not any(x["label"] == "50-day average" for x in lv)
 
 
 if __name__ == "__main__":

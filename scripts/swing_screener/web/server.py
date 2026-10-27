@@ -1996,10 +1996,42 @@ def _analysis_evidence(market: str, symbol: str) -> dict:
             "results": res, "summary": fw.summarise(res)}
 
 
+def _entry_evidence(market: str, symbol: str, date: str | None = None) -> dict:
+    """The entry checks as of one session (analysis/entry.py), the reference levels and what happened after."""
+    from analysis import entry, evidence
+
+    def snap_loader(m, d):
+        try:
+            return _snap(m, d)
+        except HTTPException:
+            from ..screens import snapshot
+            return snapshot.load(m, d)
+    ev = evidence.gather_entry(market, symbol, date, snap_loader)
+    if ev.get("error"):
+        raise HTTPException(404, ev["error"])
+    res = entry.evaluate(ev)
+    return {"name": _name(market, symbol), "asof": ev["asof"], "latest": ev["latest"], "framework_version": entry.VERSION,
+            "price": ev["close"], "atr": ev["atr"], "currency": ev["currency"], "results": res, "summary": entry.summarise(res),
+            "levels": entry.levels(ev), "outcome": ev["outcome"],
+            "context": {"market": ev["market_state"], "stage": ev["stage"], "snapshot_date": ev["xs"].get("snapshot_date"),
+                        "group": {k: v for k, v in ev["group"].items() if k != "members"},
+                        "patterns": ev["patterns"]}}
+
+
 @app.get("/api/analysis/framework")
 def analysis_framework():
-    from analysis import framework as fw
-    return {**fw.criteria(), "formats": fw.check_formats()}
+    from analysis import entry, framework as fw
+    return {**fw.criteria(), "formats": fw.check_formats(), "entry": entry.criteria()}
+
+
+@app.get("/api/analysis/entry")
+def analysis_entry(market: str, symbol: str, date: str | None = None):
+    """One stock's entry read as of a session (default the latest stored), and the entry analyses saved for it."""
+    if market not in MARKETS:
+        raise HTTPException(404, f"unknown market {market}")
+    from analysis import store
+    return json.loads(json.dumps({"market": market, "symbol": symbol, **_entry_evidence(market, symbol, date),
+                                  "history": store.list_for(market, symbol, "entry")}, default=str))
 
 
 @app.get("/api/analysis")
@@ -2031,13 +2063,17 @@ def analyses_get(aid: int):
 
 
 @app.post("/api/analyses")
-def analyses_create(market: str = Body(...), symbol: str = Body(...)):
-    """A new draft analysis: today's evidence, and the answers of the stock's previous analysis to revise."""
+def analyses_create(market: str = Body(...), symbol: str = Body(...), kind: str = Body("company"), date: str | None = Body(None)):
+    """A new draft analysis: the evidence (today's, or for an entry analysis the session `date`), and the answers of
+    the stock's previous analysis of that kind to revise."""
     if market not in MARKETS:
         raise HTTPException(404, f"unknown market {market}")
     from analysis import store
-    ev = _analysis_evidence(market, symbol)
-    return store.create(market, symbol, ev["framework_version"], ev["asof"], json.loads(json.dumps(ev, default=str)))
+    ev = _entry_evidence(market, symbol, date) if kind == "entry" else _analysis_evidence(market, symbol)
+    try:
+        return store.create(market, symbol, ev["framework_version"], ev["asof"], json.loads(json.dumps(ev, default=str)), kind)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 
 @app.put("/api/analyses/{aid}")
@@ -2051,7 +2087,8 @@ def analyses_update(aid: int, spec: dict = Body(...)):
     if spec.get("refresh"):
         if a["status"] == "final":
             raise HTTPException(400, "a finished analysis keeps the evidence it was made on — start a new one")
-        ev = json.loads(json.dumps(_analysis_evidence(a["market"], a["symbol"]), default=str))
+        ev = _entry_evidence(a["market"], a["symbol"], a["asof"]) if a["kind"] == "entry" else _analysis_evidence(a["market"], a["symbol"])
+        ev = json.loads(json.dumps(ev, default=str))
     try:
         return store.update(aid, answers=spec.get("answers"), verdict=spec.get("verdict"), status=spec.get("status"),
                             evidence=ev, version=ev and ev["framework_version"], asof=ev and ev["asof"])

@@ -185,13 +185,17 @@ server to see the updated page.
 
 ## Stock analysis framework
 
-`scripts/analysis/` (Chart › Analysis) reads one stock through a fixed framework: pillars, data
-**checks** graded good / ok / bad (`framework.py`, thresholds as `{NAME}` placeholders of module
-constants) and your **questions** and verdict, saved per stock in `stock_analyses` (`store.py`).
+`scripts/analysis/` (Chart › Analysis) reads one stock through two fixed frameworks — the company
+(`framework.py`: is the business worth owning?) and the entry (`entry.py`: is this session a low-risk
+entry — market, group, chart — read as of one session, past dates point in time). Each has pillars, data
+**checks** graded good / ok / bad (thresholds as `{NAME}` placeholders of module constants) and your
+**questions**, and a verdict or plan, saved per stock in `stock_analyses` (`store.py`, `kind`).
 `evidence.py` only reads stored data. A check reuses an existing rule rather than restating it (the
-built-in screens' conditions, the Quality page's votes, SEPA's tests). A change to a check, threshold or
-question bumps `VERSION` and adds a `CHANGELOG` entry — saved analyses record the version they were
-made under — then run `PYTHONPATH=. .venv/bin/python -m tests.test_analysis`.
+built-in screens' conditions, the Quality page's votes, SEPA's tests, the strategies' market gate, the
+stage machine, the pattern detectors, `core/sr_levels.py`); the entry's reference levels are labelled as
+reference, never a recommendation. A change to a check, threshold or question bumps that framework's
+`VERSION` and adds a `CHANGELOG` entry — saved analyses record the version they were made under — then
+run `PYTHONPATH=. .venv/bin/python -m tests.test_analysis`.
 
 ## Rule: backtests run in stages — tune in one window, verify in another
 

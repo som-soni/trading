@@ -341,6 +341,25 @@ stock. *How the framework works* shows every pillar, rule and question with live
 changelog (each analysis records the version it was made under); *All analyses* lists every stock analysed. From
 the command line: `PYTHONPATH=. python3 -m analysis --market us --symbol NVDA` (or `--framework`).
 
+**Entry** (the switch beside the stock's name: **Company | Entry**) asks a different question: is *now* a low-risk
+time to buy? It reads one session — the latest by default, or any past date from the **as of** picker — through
+six pillars (`scripts/analysis/entry.py`): **Market** (the strategies' own buy gate and long-term trend from
+`backtesting/spec.py` `market_ok`, breadth above the 50-day, distribution days, the index against its high),
+**Sector & group** (the peer group's RS rating and its change over a month from `group_rs_history`, the group's
+breadth, the stock's rank in it), **Trend** (the Stage 2 screen's conditions, Weinstein's weekly stage, RS rank, the
+last three months against the benchmark), **Setup** (the base window, contraction, the chart-pattern detectors,
+volume drying up, up/down volume), **Entry point** (distance from the base's high, extension above the 50-day, risk
+to the nearest support and room to the nearest resistance from the Support & Resistance indicator's zones) and
+**Event risk** (days to results, liquidity, ATR). A past date reads only what was known then: the stock's own
+fields are recomputed from its bars up to that session, the group's rating and breadth are as they stood (by
+today's classification), and RS rank comes from the latest snapshot on or before it (shown). **Reference levels**
+list the prices the chart offers for a plan — the base's high, a pattern's trigger, invalidation and measured
+target, support and resistance, an ATR stop — each with a *use as* button into the **Plan**: decision (Buy now /
+Buy on trigger / Wait / Pass), conviction, entry, stop, target, account size and risk per trade, which the page turns
+into risk per share, reward / risk and a position size. For a past date, **Since** shows the returns after it and
+replays your plan on the following bars: when the entry filled, then whether the stop or the target came first.
+Entry analyses are saved like company ones (`stock_analyses.kind = 'entry'`, as of their session).
+
 **News** is the same News & events feed on a full page.
 
 ## 7. Watchlists
