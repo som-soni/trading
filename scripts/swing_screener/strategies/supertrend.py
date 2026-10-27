@@ -162,11 +162,14 @@ class SupertrendStrategy(Strategy):
     )
 
     status = (
-        "NOT YET MEASURED. Optimise-stage backtests (2013-2021, in-sample) are queued for India and "
-        "the US, with two variants decided up front: MULTIPLIER=2 and REQUIRE_SMA200=0. Pass "
-        "criterion for a verify run, set before any result: in the optimise stage, the base rules "
-        "beat the market's benchmark CAGR with a max drawdown no worse than the benchmark's plus 10 "
-        "points, and a positive average R, in at least one market. Failing that, verify is not run."
+        "No demonstrated edge; failed its pass criterion, so verify was not run. Pass criterion, set "
+        "before any result: in the optimise stage, the base rules beat the market's benchmark CAGR "
+        "with a max drawdown no worse than the benchmark's plus 10 points, and a positive average R, "
+        "in at least one market. Optimise stage (2013-2021, in-sample, v1.0, measured 2026-10-27): "
+        "India 8.34% CAGR vs 13.54% (max drawdown -27.6% vs -38.3%, 461 trades, win rate 41.7%, "
+        "+0.22R a trade); US 0.90% vs 14.01% (max drawdown -34.8% vs -34.1%, 658 trades, 36.6%, "
+        "+0.04R). Neither up-front variant beat the index either: MULTIPLIER=2 India 6.36% / US "
+        "-1.17%; REQUIRE_SMA200=0 India 7.01% / US 4.18%."
     )
     gate_docs = {
         "G1": (
