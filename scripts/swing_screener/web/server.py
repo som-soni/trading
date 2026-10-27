@@ -517,33 +517,81 @@ def report_table(rid: int, name: str, symbol: str | None = None):
     if symbol and "symbol" in cols:
         i = cols.index("symbol")
         rows = [x for x in rows if x[i] == symbol]
-    if name == "trades" and "symbol" in cols and "mkt_cap_usd_b" not in cols:
-        # TODAY'S market cap ($B, USD — the snapshot's cross-market figure), joined at serve time:
-        # trades.csv records no cap, and no point-in-time cap history exists, so this is the current
-        # size of each name, old runs included. Inserted right after `symbol`; every consumer
-        # (trades tab, chart overlay, trade anatomy) looks columns up by name, never by position.
-        caps = _mkt_caps(rid)
-        if caps:
+    if name == "trades" and "symbol" in cols and "entry_date" in cols \
+            and not any(str(c).startswith("mkt_cap") for c in cols):
+        # Each trade's market cap ON ITS ENTRY DATE, joined at serve time (trades.csv records none).
+        # It used to be today's cap, which is the wrong yardstick for a backtest: judging a 2013 trade
+        # by 2026 size both keeps companies that have since grown 30x and drops ones that have since
+        # collapsed. On momentum_vol_scaled India, "under Rs 500 cr" picked 32 trades by today's cap
+        # and 8 by the cap at entry -- different trades, not just fewer. Inserted right after
+        # `symbol`; every consumer (trades tab, chart overlay, trade anatomy) looks columns up by name.
+        col, caps = _mkt_caps_at_entry(rid, cols, rows)
+        if col:
             i = cols.index("symbol")
-            cols = [*cols[:i + 1], "mkt_cap_usd_b", *cols[i + 1:]]
-            rows = [[*x[:i + 1], caps.get(x[i]), *x[i + 1:]] for x in rows]
+            cols = [*cols[:i + 1], col, *cols[i + 1:]]
+            rows = [[*x[:i + 1], c, *x[i + 1:]] for x, c in zip(rows, caps)]
     return {"columns": cols, "rows": rows}
 
 
-def _mkt_caps(rid: int) -> dict:
-    """symbol -> market cap in US$ billions from the run's market's latest stock snapshot ({} when
-    the market is 'all' or no snapshot has been built yet)."""
+_CAP_AT_ENTRY: dict = {}
+
+
+def _mkt_caps_at_entry(rid: int, cols: list, rows: list) -> tuple[str | None, list]:
+    """(column name, one market cap per row) -- each trade's company size on its entry date.
+
+    There is no stored history of market caps, but there is of prices: the latest stored cap
+    (symbol_industry, in the market's own currency) scaled by entry price over the price on the day
+    that cap was taken. Stored prices are split-adjusted, so a split does not move the result; what
+    it ignores is shares issued or bought back since. That error is real for heavy buyback companies:
+    AAPL in March 2015 reads $449B against the ~$720B it was then, because about a third of its shares
+    have been retired since (NVDA in July 2020 reads $264B against ~$260B). Companies that have issued
+    stock read larger than they were. It is a size bucket, not a quote -- the right tool for "was this
+    a small company when it was bought", not for a precise figure. In the market's currency, crore for rupees, so an Indian run
+    reads in the unit its own filters use. Memoised per run and snapshot date: a run's trades do not
+    change, and the trades tab, chart overlay and anatomy each ask for the same table.
+    """
     run = q("SELECT market FROM report_runs WHERE id=%s", (rid,))
     if not run or run[0][0] not in MARKETS:
-        return {}
-    try:
-        snap = _snap(run[0][0])
-    except HTTPException:
-        return {}
-    if snap is None or "market_cap_usd" not in snap:
-        return {}
-    return {s: (None if c is None or c != c else round(float(c), 2))
-            for s, c in zip(snap["symbol"], snap["market_cap_usd"])}
+        return None, []
+    market = run[0][0]
+    cfg = MARKETS[market]
+    inr = cfg.currency_code == "INR"
+    col, unit = ("mkt_cap_cr_at_entry", 1e7) if inr else ("mkt_cap_m_at_entry", 1e6)
+    ref = {s: (float(c), pd.Timestamp(u).tz_localize(None).normalize())
+           for s, c, u in q("SELECT symbol, market_cap, updated_at FROM symbol_industry "
+                            "WHERE market=%s AND market_cap IS NOT NULL", (market,))}
+    if not ref:
+        return None, []
+    si, ei = cols.index("symbol"), cols.index("entry_date")
+    key = (rid, max(u for _, u in ref.values()), len(rows))
+    if key not in _CAP_AT_ENTRY:
+        # ONE indexed query for exactly the closes needed -- each trade's entry and each name's
+        # cap date, the last close on or before it. Reading every bar since the first entry for
+        # every traded name took ~24s on a 9-year run, which is not a page load.
+        pairs = {(x[si], str(x[ei])[:10]) for x in rows if x[si] in ref and x[ei]}
+        pairs |= {(sym, str(ref[sym][1].date())) for sym, _ in pairs}
+        out = {}
+        if pairs:
+            ss, ds = zip(*sorted(pairs))
+            close = {(sym, str(d)): float(c) for sym, d, c in q(
+                "SELECT t.sym, t.d, p.close FROM unnest(%s::text[], %s::date[]) AS t(sym, d) "
+                "CROSS JOIN LATERAL (SELECT close FROM prices WHERE market=%s AND symbol=t.sym "
+                "AND date <= t.d ORDER BY date DESC LIMIT 1) p", (list(ss), list(ds), market))}
+            for x in rows:
+                sym, d = x[si], str(x[ei])[:10]
+                if sym not in ref or not x[ei]:
+                    continue
+                cap, asof = ref[sym]
+                p_ref, p_in = close.get((sym, str(asof.date()))), close.get((sym, d))
+                if p_ref and p_in:
+                    out[(sym, str(x[ei]))] = round(cap * p_in / p_ref / unit, 0 if inr else 1)
+        if len(_CAP_AT_ENTRY) > 16:
+            _CAP_AT_ENTRY.clear()
+        _CAP_AT_ENTRY[key] = out
+    got = _CAP_AT_ENTRY[key]
+    vals = [got.get((x[si], str(x[ei]))) for x in rows]
+    # a run that trades funds or indexes has no company to size: show no column, not a blank one
+    return (col, vals) if any(v is not None for v in vals) else (None, [])
 
 
 @app.get("/api/reports/{rid}/trade-anatomy")
