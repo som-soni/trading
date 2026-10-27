@@ -192,18 +192,20 @@ class RsLeadersStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "MEASURED in India from 2020, and the headline misreads it. CAGR 3.80% against the Nifty 500's 12.63% "
-        "-- a -8.84 excess -- on 64 trades with a 37.5% win rate and a -13.2% maximum drawdown. But it is "
-        "invested only 17.3% of the time, because the recovery window is open for {CONFIRM_WINDOW} sessions "
-        "after each confirmation and nothing else. Against the index held at THAT exposure it is +1.39, which "
-        "is the best selection figure of any per-symbol strategy here (minervini India is +0.86 and the rest are "
-        "negative). The whole shortfall is idle capital: parking it in the index would have returned 14.16%. "
-        "So the recovery gate appears to improve what gets picked and guarantees the result cannot compound -- "
-        "and +1.39 over 64 trades is still inside the noise. "
-        "US 2020 says the same thing more faintly: CAGR 3.76% against SPY's 13.41% (-9.65), 69 trades, 42.0% "
-        "win rate, 18.9% invested, selection +0.28 -- positive but indistinguishable from zero, which matches "
-        "the guide's own finding that leaders LAGGED in 6 of 7 US recoveries. Both markets agree on the shape: "
-        "the gate picks a little better and trades far too rarely to compound."
+        "MEASURED in the optimise stage (2013-2021), v1.2. US: 115 trades, profit factor 2.18, an average "
+        "+0.59R, CAGR 5.26% at 23% invested -- and against the index held at that exposure, +2.32, with a "
+        "-13.9% maximum drawdown and the gain spread across 2013, 2018, 2019 and 2020 (no year more than 42% "
+        "of it). India: 44 trades, profit factor 1.49, +0.31R, CAGR 1.43% at 8% invested, +0.40 against the "
+        "matched index, and all of it from 2020. "
+        "The recovery gate was then held open for good (an A/B in the same stage, {CONFIRM_WINDOW} sessions "
+        "replaced by the whole window), and it turns out to do a different job in each market. In the US it is "
+        "a quality filter: without it trades rise from 115 to 644, profit factor falls to 1.27, and at 91% "
+        "invested the strategy runs -8.81 behind the index at its own exposure. In India it is mostly a "
+        "throttle: trades triple to 134 at nearly the same quality (profit factor 1.42), the matched figure "
+        "rises to +1.28 and CAGR to 3.47%, but the maximum drawdown doubles to -33.4%. So the gate stays. "
+        "Neither arm comes near its index on headline CAGR, because neither is invested enough to. "
+        "NOT YET VERIFIED: the 2022-onward window has not been run on these rules. Legacy runs from 2020 "
+        "(v1.0) read +1.39 India and +0.28 US at about 18% invested -- a different window, not comparable."
     )
 
     gate_docs = {
