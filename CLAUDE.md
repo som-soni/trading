@@ -37,6 +37,23 @@ stored-data jobs, `FAST_JOBS` in `jobs/registry.py`): a new job runs in the
 main lane unless you add it to one of those sets on purpose — then run
 `PYTHONPATH=. .venv/bin/python -m tests.test_job_lanes`.
 
+## Sidebar: every thread lives in its module's section, numbered
+
+The Code-tab sidebar has one section per top-level module thread (`01. Strategies Module`
+… `13. …`), each listing its threads A–Z, so a thread's position never moves. The app does
+not file new threads there by itself, so **on your first turn in a session, file yourself**
+(when the ccd sidebar/session tools are available; skip silently when they are not):
+
+1. `get_session("self")`. If `group` is already set, stop.
+2. Walk `parentSessionId` up to the top-level thread (no parent); its `group` is the module's
+   section. If it has none, stop — don't create sections unasked.
+3. `move_sessions(["self"], group_id=<that group>)`.
+4. Rename yourself `NN. <title>`: one more than the highest `NN.` among that section's threads
+   (`list_sessions(group=…)`), `00.` reserved for the module's `00. Orchestrator`. Keep the rest of
+   the title.
+
+A session you start yourself files the same way on its own first turn; nothing to do for it.
+
 ## Markets come from config
 
 The markets are `scripts/swing_screener/config/MARKETS` (name, exchange, badge, flag,
