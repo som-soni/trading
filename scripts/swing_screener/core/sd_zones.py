@@ -3,10 +3,14 @@
 The chart's Supply & demand zones indicator draws what this module returns (/api/sd-zones); the
 rules live here only, never in JavaScript. A zone is found from price alone and judged afterwards:
 
-1. **Departure first.** A move of 1–{DEPART_MAX_BARS} bars that closes beyond the base and carries
-   the close at least {DEPART_MIN_ATR} ATR past the base's near edge, every bar closing further on
-   (limited overlap), each bar's close-to-close gain averaging at least {DEPART_MIN_BODY:.0%} of
-   its true range (substantial bodies; a gap counts as progress).
+1. **Departure first.** Either a move of 1–{DEPART_MAX_BARS} bars that closes beyond the base and
+   carries the close at least {DEPART_MIN_ATR} ATR past the base's near edge, every bar closing further
+   on (limited overlap), each bar's close-to-close gain averaging at least {DEPART_MIN_BODY:.0%} of its
+   true range (substantial bodies; a gap counts as progress) — or one explosive leg-out candle right
+   after the base: closing beyond it, with a body of at least {LEGOUT_BODY_ATR} ATR and at least
+   {LEGOUT_BODY_SHARE:.0%} of its own range. The second is the common published rule (the base /
+   leg-out scripts on the charting platforms, after Seiden's "strong departure"); the first catches a
+   departure built over two or three bars, or one that gapped.
 2. **Trace it back to the base** — the compact pause right before it: walking back from the
    departure, bars no wider than {BASE_BAR_MAX_ATR} ATR each unless their body is at most
    {BASE_BAR_MAX_BODY:.0%} of their range (an indecision bar), the whole pause no wider than
@@ -43,6 +47,8 @@ ATR_BARS = 14
 DEPART_MAX_BARS = 3          # a departure is one to three bars
 DEPART_MIN_ATR = 2.0         # how far past the base's near edge the departure must close, in ATR
 DEPART_MIN_BODY = 0.5        # the departure bars' average close-to-close gain as a share of their true range
+LEGOUT_BODY_ATR = 1.5        # or one explosive leg-out candle: a body at least this many ATR ...
+LEGOUT_BODY_SHARE = 0.5      # ... and at least this share of its own range (a full-bodied candle, not a spike)
 STRONG_DEPART_ATR = 3.0      # checklist: a strong departure
 BASE_MAX_BARS = 6            # the base: at most this many bars
 BASE_BAR_MAX_ATR = 1.0       # each base bar no wider than this ...
@@ -101,11 +107,15 @@ def _departure(o, h, l, c, j: int, sign: int, proximal: float, edge: float, atr:
     shares = []
     for k in range(j, min(n, j + DEPART_MAX_BARS)):
         if sign * (c[k] - c[k - 1]) <= 0:
-            return None
+            break   # the run stalled: not a multi-bar departure (a lone leg-out candle may still be)
         tr = max(h[k], c[k - 1]) - min(l[k], c[k - 1])
         shares.append(abs(c[k] - c[k - 1]) / tr if tr > 0 else 0.0)
         if sign * (c[k] - proximal) >= DEPART_MIN_ATR * atr and np.mean(shares) >= DEPART_MIN_BODY:
             return k
+    # one explosive leg-out candle (it already closed beyond the base, checked above)
+    rng, body = h[j] - l[j], c[j] - o[j]
+    if sign * body >= LEGOUT_BODY_ATR * atr and rng > 0 and abs(body) / rng >= LEGOUT_BODY_SHARE:
+        return j
     return None
 
 
