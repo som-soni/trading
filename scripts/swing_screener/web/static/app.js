@@ -793,8 +793,8 @@ async function chartPage(alive, market, symbol, tf) {
   // await the registry first: a layer is NAMED for its strategy, and opening before /api/strategies
   // lands would list the raw key
   setupBtn.onclick = async () => {
-    await STRATEGIES;
-    Studies.openSetupPicker({ onChange: () => { leaveBtView(); markSetup(); rerender(); } });
+    await Promise.all([STRATEGIES, loadEdges()]);
+    Studies.openSetupPicker({ onChange: () => { leaveBtView(); markSetup(); rerender(); }, badge: (k) => edgeDot(k, market) });
   };
   // leaving the backtest view (below): a pick of your own means you want your layers back
   function leaveBtView() { const l = store.get("chartList", null); if (l?.backtest) store.set("chartList", { ...l, backtest: { ...l.backtest, layers: true } }); }
@@ -857,6 +857,12 @@ async function chartPage(alive, market, symbol, tf) {
   const want = store.get("tradeRun:" + market, "") + "";
   sel.value = [...sel.options].some((o) => o.value === want) ? want : "";
   sel.onchange = () => { store.set("tradeRun:" + market, sel.value); route(); };
+  // an option cannot hold a coloured dot, so the chosen run's strategy shows its edge beside the menu
+  loadEdges().then(() => {
+    const run = tradeRuns.find((x) => String(x.id) === sel.value);
+    sel.parentElement?.querySelector(".edge-sel")?.remove();
+    if (run) sel.insertAdjacentHTML("afterend", `<span class="edge-sel">${edgeDot(run.strategy, market)}</span>`);
+  });
   // The BACKTEST VIEW: arrived from a backtest's Trades table and still on that run. The chart shows
   // that run's trades and nothing else of the viewer's — overlay layers (zones, patterns, other
   // strategies' setups) stand down for this list, unsaved, until "show my layers" or a new pick.
@@ -2393,7 +2399,7 @@ async function postmarketPage(alive, mkt, date, tab) {
   tab = PM_TABS.some(([k]) => k === tab) ? tab : store.get("pmTab", "summary");
   document.title = "Post-market · Trading";
   $view.innerHTML = LOADING;
-  const r = await api(`/api/postmarket?market=${mkt}${date ? `&date=${date}` : ""}`).catch((e) => ({ error: e.message }));
+  const [r] = await Promise.all([api(`/api/postmarket?market=${mkt}${date ? `&date=${date}` : ""}`).catch((e) => ({ error: e.message })), loadEdges()]);
   if (!alive()) return;
   const head = (context = "") => pageHead("Post-market", { context, extra: marketSeg(mkt) });
   const pmInfo = (p, r) => info([p.doc.tone, p.doc.liquid, p.doc.volume, p.doc.highs_lows].map((t) => `<p>${esc(t)}</p>`).join("")
@@ -2482,7 +2488,7 @@ async function postmarketPage(alive, mkt, date, tab) {
         ${p.watchlists.map((x, j) => `<tr data-k="wl" data-i="${j}"><td><b>${sym(x.symbol)}</b><span class="muted small mv-sec">${esc(x.name || "")}</span></td><td class="muted small">${esc(x.lists.join(", "))}</td>
           <td class="num">${fmt(x.close)}</td><td class="num"><span class="mv-pct ${x.pct >= 0 ? "up" : "dn"}">${pc(x.pct)}</span></td><td class="num ${x.rvol >= 2 ? "strong" : "muted"}">${x.rvol != null ? x.rvol.toFixed(1) + "×" : ""}</td>
           <td class="pm-flags">${x.cross50 === "up" ? '<span class="pos">crossed above 50D</span>' : x.cross50 === "down" ? '<span class="neg">fell below 50D</span>' : ""}${x.new_high ? '<span class="pos">new 52w high</span>' : ""}${x.new_low ? '<span class="neg">new 52w low</span>' : ""}${x.rvol >= 2 ? `<span>${x.pct >= 0 ? "heavy buying" : "heavy selling"}</span>` : ""}${x.earnings ? `<span class="warn">earnings ${prettyDate(x.earnings)}</span>` : ""}</td></tr>`).join("")}</tbody></table>` : '<div class="muted small">Your watchlists are empty for this market.</div>'}</section>
-    <section class="sec-card"><h3>Screener changes</h3>${p.screener.length ? `<div class="pm-scr">${p.screener.map((x) => `<div class="pm-s"><div class="pm-sh"><b>${esc(x.strategy)}</b><span class="muted small">${x.tradeable} tradeable · ${x.watch} on watch · run ${prettyDate(x.run)}${x.prev_run ? ` vs ${prettyDate(x.prev_run)}` : ""}</span></div>
+    <section class="sec-card"><h3>Screener changes</h3>${p.screener.length ? `<div class="pm-scr">${p.screener.map((x) => `<div class="pm-s"><div class="pm-sh"><b>${edgeDot(x.strategy, mkt)}${esc(EDGE?.strategies?.[x.strategy]?.name || x.strategy)}</b><span class="muted small">${x.tradeable} tradeable · ${x.watch} on watch · run ${prettyDate(x.run)}${x.prev_run ? ` vs ${prettyDate(x.prev_run)}` : ""}</span></div>
         <div class="pm-ch">${x.new_tradeable.length ? `<span class="muted small">New tradeable</span>${x.new_tradeable.map((t) => `<a class="chip-s up" href="#/chart/${mkt}/${encodeURIComponent(t.symbol)}" title="${esc([t.decision, t.setup, t.entry ? "entry " + fmt(t.entry) : "", t.stop ? "stop " + fmt(t.stop) : ""].filter(Boolean).join(" · "))}">${sym(t.symbol)}</a>`).join("")}` : '<span class="muted small">No new tradeable names</span>'}</div>
         ${x.dropped_tradeable.length ? `<div class="pm-ch"><span class="muted small">No longer tradeable</span>${x.dropped_tradeable.map((t) => `<a class="chip-s dn" href="#/chart/${mkt}/${encodeURIComponent(t)}">${sym(t)}</a>`).join("")}</div>` : ""}
         ${x.new_watch.length ? `<div class="pm-ch"><span class="muted small">New on watch</span>${x.new_watch.slice(0, 30).map((t) => `<a class="chip-s" href="#/chart/${mkt}/${encodeURIComponent(t)}">${sym(t)}</a>`).join("")}${x.new_watch.length > 30 ? `<span class="muted small">+${x.new_watch.length - 30}</span>` : ""}</div>` : ""}</div>`).join("")}</div>` : '<div class="muted small">No screening run for this day.</div>'}</section>
@@ -3830,7 +3836,7 @@ async function companyPage(alive, market, symbol) {
   store.set("lastMarket", market); store.set("lastSymbol:" + market, symbol);
   document.title = `${bareSymbol(symbol)} fundamentals · Trading`;
   $view.innerHTML = LOADING;
-  const d = await api(`/api/company?market=${market}&symbol=${encodeURIComponent(symbol)}`);
+  const [d] = await Promise.all([api(`/api/company?market=${market}&symbol=${encodeURIComponent(symbol)}`), loadEdges()]);
   if (!alive()) return;
   const loc = d.currency === "₹" ? "en-IN" : "en-US";       // ₹ figures grouped the Indian way (1,23,456)
   const money = (v) => (v == null ? "" : (v / d.divisor).toLocaleString(loc, { maximumFractionDigits: Math.abs(v / d.divisor) < 10 ? 1 : 0 }));
@@ -3919,7 +3925,7 @@ async function companyPage(alive, market, symbol) {
   const viewsHtml = (d.views || []).map((v) => {
     const res = v.result;
     return `<section class="co-sec" id="co-view-${esc(v.key)}"><h2>${esc(v.name)} ${res ? `<span class="tag ${sepaClass(res.verdict)}">${esc(res.verdict)}</span>${res.code33 ? ' <span class="tag trade">CODE 33</span>' : ""} <span class="muted small">${res.passed}/${res.scored} tests pass</span>` : ""}
-        ${v.strategy ? `<a class="muted small" href="#/strategies/${encodeURIComponent(v.strategy)}">the strategy →</a>` : ""}</h2>
+        ${v.strategy ? `${edgeChip(v.strategy, market)}<a class="muted small" href="#/strategies/${encodeURIComponent(v.strategy)}">the strategy →</a>` : ""}</h2>
       <p class="muted small">${esc(v.description)} ${esc(v.thesis || "")}</p>
       ${res ? viewTestsHtml(res, v) : '<div class="muted small">Not scored yet.</div>'}
       <details class="qhow"><summary>Verdicts and caveats</summary><ul class="sd-list">${v.verdicts.map((x) => `<li>${esc(x)}</li>`).join("")}${v.caveats.map((x) => `<li class="muted">${esc(x)}</li>`).join("")}</ul></details></section>`;
@@ -4148,7 +4154,7 @@ async function screensPage(alive, key, mkt, tab, date) {
     return screenBuilder(main, alive, mkt, fs, base, tab === "edit" ? key : null);
   }
   tab = ["results", "study"].includes(tab) ? tab : "results";   // the old criteria tab is folded into this view; a date in old URLs is ignored (the screen always shows the latest data)
-  const r = await api(`/api/screens/${encodeURIComponent(key)}?market=${mkt}`).catch((e) => ({ error: e.message }));
+  const [r] = await Promise.all([api(`/api/screens/${encodeURIComponent(key)}?market=${mkt}`).catch((e) => ({ error: e.message })), loadEdges()]);
   if (!alive()) return;
   if (r.error || r.empty) { main.innerHTML = `<div class="empty"><b>${r.empty ? "No snapshot for this market yet" : "Screen not found"}</b><div class="muted">${esc(r.error || "Build it (from scripts/, PYTHONPATH=.):")}</div>${r.command ? `<code>${esc(r.command)}</code>` : ""}</div>`; return; }
   const d = r.def;
@@ -4173,7 +4179,7 @@ async function screensPage(alive, key, mkt, tab, date) {
           <button class="sm" id="sreset">Reset</button><button class="primary sm" id="ssave">${d.builtin ? "Save as my screen…" : "Save changes"}</button></span></div>
       <div id="sconds"></div>
       ${d.builtin ? `<p class="muted small">A built-in screen is generated from the strategy code, so edits preview live here but save as a screen of your own — the original stays as coded.</p>` : ""}
-      ${d.used_by?.length ? `<p class="muted small">Used by: ${d.used_by.map((u) => `<a href="#/strategies/${u.key}/rules">${esc(u.name)}</a>`).join(" · ")}</p>` : ""}</div>
+      ${d.used_by?.length ? `<p class="muted small">Used by: ${d.used_by.map((u) => `${edgeDot(u.key, mkt)}<a href="#/strategies/${u.key}/rules">${esc(u.name)}</a>`).join(" · ")}</p>` : ""}</div>
     ${tabsHtml([["results", `Results <span class="n" id="scount">${r.count}</span>`, href("results")], ["study", "Study", href("study")]], tab)}
     <div id="stab"></div>`;
   main.querySelectorAll(".mk button").forEach((b) => b.onclick = () => go(href(tab, b.dataset.v)));
@@ -4654,7 +4660,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
       ${d.kind === "long-term" ? `<span class="spacer"></span><a class="btn" href="#/quality">Open the Quality page →</a>` : ""}</div>
     ${EDGE?.strategies?.[key] ? `<div class="edge-row">${MKTS.map((m) => edgeChip(key, m.key)).join("")}</div>` : ""}
     ${d.status ? `<div class="sd-badge"><span class="tag ${statusClass(d.status) === "watch" ? "warn" : statusClass(d.status) === "trade" ? "pos" : "neutral"}" title="${esc(statusVerdict(d.status))}">${esc(shortStatus(d.status))}</span></div>` : ""}
-    <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of <a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}${d.live_variant ? ` The daily screen currently lists them under the variant <b>${esc(d.live_variant.name)}</b> (provisional — see <a href="#/strategies/${encodeURIComponent(key)}/setups">Candidates</a>).` : ""}</p>
+    <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of ${MKTS.map((m) => edgeDot(d.variant_of.key, m.key)).join("")}<a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}${d.live_variant ? ` The daily screen currently lists them under the variant <b>${esc(d.live_variant.name)}</b> (provisional — see <a href="#/strategies/${encodeURIComponent(key)}/setups">Candidates</a>).` : ""}</p>
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
   const host = root.querySelector("#stab");
   if (tab === "setups") return strategySetups(host, alive, key, mkt, runKey, d);
@@ -5301,9 +5307,12 @@ const pct = (x) => (x == null ? null : parseFloat(String(x).replace(/[^0-9.\-]/g
 async function reportsPage(alive) {
   document.title = "Reports · Trading";
   $view.innerHTML = LOADING;
-  const list = await api("/api/reports");
+  const [list] = await Promise.all([api("/api/reports"), loadEdges()]);
   if (!alive()) return;
   const st = store.get("repState", { market: "all", kind: "backtest", strategy: "all" });
+  // a strategy's edge dot for each market in view, and its display name (reports carry the key)
+  const stratDots = (s) => MKTS.filter((m) => st.market === "all" || m.key === st.market).map((m) => edgeDot(s, m.key)).join("");
+  const stratName = (s) => EDGE?.strategies?.[s]?.name || s;
   const inMarket = (r) => st.market === "all" || r.market === st.market || r.market === "all";
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav"></aside><section class="rep-main"></section></div>`;
   const nav = $view.querySelector(".rep-nav"), main = $view.querySelector(".rep-main");
@@ -5323,7 +5332,7 @@ async function reportsPage(alive) {
         const n = mk.filter((r) => r.kind === k).length;
         return `<div class="nav-item ${k === st.kind ? "active" : ""}" data-k="${k}"><svg viewBox="0 0 20 20">${KIND_ICON[k]}</svg><span>${KIND_LABEL[k]}</span><span class="n">${n}</span></div>` +
           (k === st.kind && strategies.length > 1 ? `<div class="nav-sub"><div class="nav-item ${st.strategy === "all" ? "active" : ""}" data-s="all"><span>All strategies</span><span class="n">${ofKind.length}</span></div>` +
-            strategies.map((s) => `<div class="nav-item ${st.strategy === s ? "active" : ""}" data-s="${esc(s)}"><span>${esc(s)}</span><span class="n">${ofKind.filter((r) => r.strategy === s).length}</span></div>`).join("") + "</div>" : "");
+            strategies.map((s) => `<div class="nav-item ${st.strategy === s ? "active" : ""}" data-s="${esc(s)}"><span>${stratDots(s)}${esc(stratName(s))}</span><span class="n">${ofKind.filter((r) => r.strategy === s).length}</span></div>`).join("") + "</div>" : "");
       }).join("");
     nav.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { st.market = b.dataset.v; save(); });
     nav.querySelectorAll("[data-k]").forEach((b) => b.onclick = () => { st.kind = b.dataset.k; st.strategy = "all"; save(); });
@@ -5345,6 +5354,7 @@ async function reportsPage(alive) {
     dataTable(main.querySelector("#rt"), cols, data, {
       hidden: ["id", ...(isBt ? ["run"] : [])], name: `reports_${st.kind}`, sort: ["generated", -1],
       format: { generated: prettyDate },  // sorting still uses the raw ISO value
+      html: { strategy: (v, row) => `${edgeDot(v, String(row[1]).toLowerCase())}${esc(v ?? "")}` },
       rowClick: (row) => go(`#/reports/${row[0]}`), rowHint: "Click a run to open its report",
     });
   }
@@ -5772,7 +5782,7 @@ async function drawSeriesFigure(fig, spec) {
 
 async function reportPage(alive, id, tab) {
   $view.innerHTML = LOADING;
-  const r = await api(`/api/reports/${id}`).catch((e) => ({ error: e.message }));
+  const [r] = await Promise.all([api(`/api/reports/${id}`).catch((e) => ({ error: e.message })), loadEdges()]);
   if (!alive()) return;
   if (r.error) {
     $view.innerHTML = `<div class="empty"><b>Report not found</b><div class="muted">It may have been deleted on disk or re-generated. <a href="#/reports">Back to reports</a></div></div>`;
@@ -5787,7 +5797,8 @@ async function reportPage(alive, id, tab) {
   const s = r.summary || {};
   const tiles = [["CAGR", s.cagr], ["Excess CAGR", s.excess_cagr], ["Max drawdown", s.max_drawdown], ["Sharpe", s.sharpe], ["Total return", s.total_return]]
     .filter(([, v]) => v).map(([k, v]) => `<div class="tile"><span>${k}</span><b class="${/^-/.test(v) ? "neg" : k === "Max drawdown" ? "" : "pos"}">${esc(v)}</b></div>`).join("");
-  $view.innerHTML = `<div class="crumbs"><a href="#/reports">Reports</a> / <span>${KIND_LABEL[r.kind] || r.kind}</span> / <span>${esc(r.market === "all" ? "" : r.market.toUpperCase() + " · ")}<a href="#/strategies/${encodeURIComponent(r.strategy)}" title="About this strategy">${esc(r.strategy)}</a></span></div>
+  $view.innerHTML = `<div class="crumbs"><a href="#/reports">Reports</a> / <span>${KIND_LABEL[r.kind] || r.kind}</span> / <span>${esc(r.market === "all" ? "" : r.market.toUpperCase() + " · ")}<a href="#/strategies/${encodeURIComponent(r.strategy)}" title="About this strategy">${esc(EDGE?.strategies?.[r.strategy]?.name || r.strategy)}</a></span>
+      ${r.market !== "all" ? edgeChip(r.strategy, r.market) : ""}</div>
     <div class="page-head"><h1>${esc(r.run)}</h1>${tiles ? `<div class="tiles">${tiles}</div>` : ""}</div>
     ${r.kind === "backtest" ? `<p class="stage-note">${stageChip(r)} ${esc(stageInfo(r).tip)}</p>` : ""}
     <div class="tabs">${tabs.map((t) => `<a href="#/reports/${id}/${t[0]}" class="${t[0] === tab ? "on" : ""}">${t[1]}</a>`).join("")}</div><div id="body"></div>`;

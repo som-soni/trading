@@ -1566,7 +1566,8 @@ const Studies = (() => {
    *  guide (`learnGuide`) and the category is that guide's group in app.js's GUIDE_GROUP ("Breakouts
    *  from a base", "Trend following"...), so the two can never disagree. Resolved here, not at module
    *  scope, because app.js loads after this file. */
-  function openSetupPicker({ onChange } = {}) {
+  /** badge(strategyKey) → HTML before each name (the Chart page passes the strategy's edge dot for the chart's market) */
+  function openSetupPicker({ onChange, badge } = {}) {
     const { el, close } = modal(`<div class="sm-head"><b>Trade setups</b><button class="sm-x" title="Close">${BTN.x}</button></div>
       <div class="sm-search"><input placeholder="Search" spellcheck="false"></div>
       <div class="sm-body"><nav class="sm-cats"></nav><div class="sm-list"></div></div>
@@ -1582,7 +1583,7 @@ const Studies = (() => {
       const items = layers.filter((l) => (cat === "All" || group(l.type) === cat)
         && (!f || l.name.toLowerCase().includes(f) || group(l.type).toLowerCase().includes(f)));
       list.innerHTML = items.map((l) => `<div class="sm-item${l.type === cur ? " act" : ""}" data-set="${l.type}">
-          <span>${esc(l.name)}</span><span class="muted">${esc(group(l.type))}${l.type === cur ? " · <b>on chart</b>" : ""}</span></div>`).join("")
+          <span>${badge ? badge(l.strategy) : ""}${esc(l.name)}</span><span class="muted">${esc(group(l.type))}${l.type === cur ? " · <b>on chart</b>" : ""}</span></div>`).join("")
         || `<div class="muted sm-empty">${layers.length ? `No setups match “${esc(q.value)}”.` : "No strategy has a trade-setups layer yet."}</div>`;
     };
     q.oninput = draw;

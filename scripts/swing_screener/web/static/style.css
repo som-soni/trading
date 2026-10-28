@@ -1828,3 +1828,5 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .edge-legend .edge { margin-right: 3px; }
 .nav-legend { padding: 4px 12px 8px; }
 .edge-legend .el { white-space: nowrap; }
+.edge-sel { margin-left: 6px; display: inline-flex; align-items: center; }
+.crumbs .edge-chip, .co-sec h2 .edge-chip { margin: 0 8px; font-weight: normal; vertical-align: middle; }
