@@ -82,9 +82,16 @@ vcp
 - **Contractions.** Find each pullback from a swing high to the next swing low, as a percentage of the high. Count 2 to 6 of them. Ignore reversals smaller than about 1.5 times the 14-day ATR.
 - **Shrinking.** Each pullback is at most 0.8 times the one before.
 - **Limits.** The first pullback is at most 35% deep (up to 50% after a bear market). The last is at most 10%, ideally under 6%.
-- **Volume dry-up.** Average volume over the last 5–10 sessions before the breakout is at most 0.7 times the 50-day average.
+- **Depth.** Most constructive bases correct 10–35%. Minervini rarely buys one that fell 60% or more. He also avoids a stock that fell more than two to three times as far as the market.
+- **Volume dry-up.** Average volume over the last 5–10 sessions before the breakout is at most 0.7 times the 50-day average. Volume at the pivot is below average, with one or two extremely quiet days.
 - **Pivot.** The high of the last contraction. It sits within 10% of the base high.
 - **Footprint.** Write it down as weeks / deepest % / last % / number of contractions, e.g. "8W 10/4 4T".
+
+**Judgement checks.** These are hard to code, and Minervini gives them as much weight as the numbers. They are explained, with examples, in [VCP](learn-vcp.md).
+
+- **Shakeouts.** One to three dips under an earlier low inside the base, quickly recovered: at the lows, on the right side or in the handle. Stops cluster under obvious support, and each shakeout clears out holders who would sell into the breakout.
+- **Evidence of demand.** Big up days and gaps on heavy volume off the lows and up the right side. Up days bigger and more frequent than down days. Avoid a big up day followed by bigger down days on volume.
+- **Time.** A right side that shoots straight back to the high (a V) is usually too early. The trapped buyers from the top have not had time to sell.
 
 ### Entry
 
@@ -92,6 +99,55 @@ vcp
 - **Buy zone.** Do not buy more than 5% above the pivot.
 - **Cheat entry.** A small shelf forms in the middle third of the base: 3–10 quiet sessions with a narrow range. Buy one tick above the shelf's high, stop under the shelf's low. Minervini calls a version of this the "3C" (cup completion cheat).
 - **Low cheat.** The same, but in the lower third of the base. Cheaper and riskier: the base is less finished.
+- **Flat base.** A base that moved sideways and corrected no more than 10–15%, with no clear tight area at the end. Its high is the pivot.
+
+**The 3C turn in full.** Minervini's cheat asks for the stock to qualify first, and for a particular sequence inside the base:
+
+| Step | Condition |
+|---|---|
+| Before the base | A prior advance of 25–100% over 3 to 36 months, above a rising 200-day average |
+| The base | 3–45 weeks long; most are 7–25 |
+| The decline | The stock corrects in a downtrend |
+| The first rally | It wins back a third to a half of the decline |
+| The pause | A 5–10% plateau, ideally undercutting a prior low, with volume drying up |
+| The buy | As the price clears the plateau's high |
+
+The idea goes back to Jesse Livermore: do not buy the low of a downtrend. Wait for the trend to change, with a rally, a pullback that holds and a second push up. Buy that second push as it clears the pause.
+
+### A second setup: the power play
+
+Viking Therapeutics, a drug developer, had slid from about 24 to 8.28 by late October 2023. Over the next seven weeks it rose 140%, to 19.91. The biggest jump came in two days in early December, on four to four and a half times average volume.
+
+It then went sideways for about three and a half weeks. The flag's high was 20.03 and its low 17.23, a correction of 14%. Over its last two weeks, volume was mostly below average, at times only half of it.
+
+```series
+title: Viking Therapeutics — a power play, December 2023 to February 2024
+from: 2023-09-15
+to: 2024-03-08
+tf: D
+line: us:VKTX | Viking Therapeutics | log
+line: us:VKTX@sma50 | 50-day average
+line: us:VKTX@vol | Volume | pane2 bars
+mark: 2023-10-26 | low 8.28
+mark: 2023-12-05 | explosive move on huge volume
+mark: 2024-01-03 | flag low 17.23
+mark: 2024-01-09 | breakout, 2.3× volume
+caption: A 140% move in seven weeks, a 14% flag on fading volume, then a breakout. Seven weeks later the stock traded above 90.
+```
+
+On 9 January 2024 it cleared 20.03 on 2.3 times average volume. A buy-stop at 20.04 filled that day. By late February the stock traded above 90. This is an illustrative textbook-rule trade, picked because it worked; it is not a measured result.
+
+Minervini's power play has three parts:
+
+| Part | His criteria |
+|---|---|
+| The move | Explosive, on huge volume, often after a long quiet spell: 100% or more in under eight weeks |
+| The flag | Sideways, correcting no more than 20–25%, over three to six weeks (some are ready after 12 days) |
+| The breakout | Volume contracts sharply just before it; buy as the price clears the flag's high |
+
+It is the one setup he will buy before the Trend Template has lined up. A stock that has just doubled out of a long quiet spell has not had time to get its averages in order. Viking also shows the cost: the stop under the flag's low was 14% away, past the usual 10% limit. Trade it smaller, or wait for a tighter entry.
+
+Viking came off a long slide rather than a flat, quiet range, so it matches the move and the flag better than the "dormancy". For the closely related pattern, see [Flags, pennants and high tight flags](learn-strat-flags.md).
 - **Daily-data version.** For testing, a buy-stop above the pivot fills at the pivot, or at the open if the open is higher. The trade is kept only if the close is above the pivot.
 
 ### Initial stop
@@ -105,6 +161,8 @@ vcp
 - **Sell into strength.** Sell a third to a half of the position when the close is 25% or more above the 50-day average, or after the biggest up-day since the breakout, late in the move.
 - **Sell into weakness.** Sell the rest on the first close below the 50-day average.
 - **Failed breakout.** If the price closes back below the pivot and then below the last contraction's low, the stop handles it. Do not wait for it to recover.
+- **Squat.** A breakout that closes well off its high, even back near the pivot, is not yet a failure. Give it a day, sometimes up to about ten sessions, under the original stop. Taking out the breakout day's high is a reversal recovery.
+- **20-day test.** A good breakout holds its 20-day average. A close below it soon after entry, especially on volume, is the first sign of trouble.
 - **Time.** If the trade has not reached +1R within 15 sessions, consider selling. Strong breakouts tend to move soon.
 
 ### Position size
@@ -119,7 +177,9 @@ vcp
 
 - Never add to a losing trade.
 - You may add a second piece when the price clears a new, smaller pivot above the first entry.
-- A stock that stops you out can be bought again if it builds a new, valid setup. Re-entry is part of the method.
+- **Tennis-ball action.** Normal pullbacks after a breakout recover within a few days, on lighter volume. Swings that widen instead of tightening mean the pattern is loosening.
+- A stock that stops you out can be bought again if it builds a new, valid setup. Re-entry is part of the method, so keep it on the watch list.
+- **Reset or rebuild.** After a *pivot failure* the base is still intact, and a new pivot can form within days. After a *base failure* the price broke through the base's lows, and it needs a whole new base.
 
 ## 4. The parameters
 
@@ -134,6 +194,9 @@ vcp
 | Sales growth | ≥ 15% | Quality of earnings growth | 10–25% |
 | Prior advance | ≥ 30% | Uptrend into the base | 25–100% |
 | Base length | 3–65 weeks | Base maturity | Very short bases fail more |
+| Base depth | 10–35% | Damage to repair | Up to ~50% in a bear market; rarely 60%+ |
+| Depth vs the market | ≤ 2–3 × the market's decline | Relative weakness | Deeper means sellers singled it out |
+| Shakeouts | 1–3 undercuts of earlier lows | Weak holders cleared | Judgement; hard to code |
 | Number of contractions | 2–6 | Shape | Usually 2–4 |
 | Minimum swing size | 1.5 × ATR(14) | What counts as a contraction | Smaller counts noise as pullbacks |
 | Contraction ratio | ≤ 0.8 × previous | "Shrinking" | 0.5–0.9 |
@@ -149,12 +212,16 @@ vcp
 | Part sold into strength | 1/3 to 1/2 | Locking gains | |
 | Final exit | close below 50-day | Trend break | 20-day or 10-day for faster trading |
 | Time stop | +1R within 15 sessions | Dead money | Optional |
+| Squat recovery window | 1 to ~10 sessions | Patience after a weak close | Original stop stays in place |
+| Flat-base depth | ≤ 10–15% | When the base high is the pivot | |
+| Power play move | ≥ 100% in < 8 weeks | Explosive start | On huge volume |
+| Power play flag | ≤ 20–25% over 3–6 weeks | Rest after the move | Some are ready after 12 days |
 | Risk per trade | 0.5–2.5% | Position size | Start low |
 | Starting size (progressive exposure) | 25–50% of normal | Exposure control | Increase after wins |
 
 ## 5. Variations
 
-- **Minervini's own books** (*Trade Like a Stock Market Wizard*, *Think & Trade Like a Champion*) are the source of the rules above. He also trades "power plays": stocks up 100% or more in under eight weeks that then go sideways briefly. That is close to the high tight flag in [Flags, pennants and high tight flags](learn-strat-flags.md).
+- **Minervini's own books** (*Trade Like a Stock Market Wizard*, *Think & Trade Like a Champion*) are the source of the rules above. He also trades "power plays" (section 3): stocks up 100% or more in under eight weeks that then go sideways briefly. That is close to the high tight flag in [Flags, pennants and high tight flags](learn-strat-flags.md).
 - **O'Neil's CAN SLIM** uses the same idea with wider stops (7–8%) and named base shapes. See [CAN SLIM breakouts](learn-strat-canslim-breakout.md).
 - **Stan Weinstein's stage analysis** supplies the trend filter that the Trend Template formalises: buy only in Stage 2.
 - **Shorter-term versions.** Some traders use the same tight setups but exit on a close below the 10-day or 20-day average. Exits come sooner; gains are smaller and more frequent.
@@ -219,6 +286,7 @@ caption: The September breakout failed within six sessions. The stock rebuilt a 
 - **What happened.** The stock closed back below the pivot two days later. On 4 October the low reached ₹2,007.60 and the stop sold at ₹2,012. Loss: −5.6%, or −1R.
 - **The second base.** The stock pulled back 8.1% and then 8.2%, and broke out above ₹2,185 on 1 November. Those pullbacks did not shrink, so strict VCP rules did not allow a re-entry. By May 2024 it had traded at more than double that breakout price.
 - **Lesson.** The stop did its job: a small, planned loss. Strict pattern rules then missed the larger move. Whether you allow a looser re-entry rule is a parameter to test, not a matter of opinion.
+- **Reset, not breakdown.** In late October the price dipped under its September lows, then closed back above them the same day: a shakeout. The stock rebuilt within weeks instead of breaking down. That is why a stock that stops you out stays on the watch list.
 
 ## 7. Common mistakes
 
@@ -233,6 +301,9 @@ caption: The September breakout failed within six sessions. The stock rebuilt a 
 | Selling a winner on the first dip below the pivot | Use the stop, not your nerves |
 | Never selling into strength | Fast, extended moves often give back much of the gain |
 | Refusing to re-enter after a stop-out | Re-entry on a new setup is part of the method |
+| Buying before the base has shaken out its weak holders | They sell into the breakout |
+| Buying a V-shaped right side as it reaches the old high | The base has had no time to tighten |
+| Selling a squat on the breakout day's weak close | Many good breakouts recover within days |
 
 ## 8. What the evidence says
 
@@ -320,12 +391,14 @@ manage daily:
 - [ ] Quarterly EPS up 20%+ and accelerating; sales up 15%+ (announced numbers)
 - [ ] Prior advance of 30%+ into the base
 - [ ] 2–6 contractions, each at most 0.8 times the one before; the last under 10%
-- [ ] Volume dried up in the last contraction
+- [ ] Volume dried up in the last contraction, with one or two very quiet days at the pivot
+- [ ] Base depth 10–35%, no more than two to three times the market's; one to three shakeouts; heavy-volume up days off the lows
 - [ ] Footprint written: weeks / deepest / last / count
 - [ ] Pivot and stop marked; stop no more than 10% (ideally under 6%) below the pivot
 - [ ] Position size from the stop and the current exposure level
 - [ ] Breakout volume at least 1.4 times average; entry within 5% of the pivot
 - [ ] Plan written: breakeven at +2R, part sold into strength, rest on a close below the 50-day
+- [ ] After entry: a squat gets up to ~10 sessions under the original stop; watch the 20-day average
 - [ ] In India: stock not locked at its price band; no results due within two weeks
 
 ## Further reading
