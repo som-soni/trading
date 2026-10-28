@@ -44,8 +44,14 @@ IS_END = "2019-12-31"      # in-sample through this date, out-of-sample after (s
 
 # ---------------------------------------------------------------- RS rating (TT-08)
 
-def rs_ratings(market: str, dates: list) -> dict:
-    """{date: Series(symbol -> RS 1..99)} across the tradable universe on each date."""
+def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
+    """{date: Series(symbol -> RS 1..99)} across the tradable universe on each date.
+
+    `young_min_bars` > 0 also rates a listing younger than MIN_HISTORY once it has traded that many
+    sessions: its return since listing, ranked against the rated universe's return over the same
+    number of sessions. The rated stocks' own ratings are unchanged -- a young listing is placed
+    against them, never ranked among them -- and the default leaves young listings unrated, so a
+    strategy that does not ask sees exactly what it saw before."""
     dates = sorted({pd.Timestamp(d) for d in dates})
     if not dates:
         return {}
@@ -91,14 +97,34 @@ def rs_ratings(market: str, dates: list) -> dict:
             continue
         pct = v.rank(pct=True)
         out[d] = (1 + 98 * (pct - 1 / len(v)) / (1 - 1 / len(v))).round()
+        if young_min_bars:
+            h = have.iloc[i]
+            young = ((c >= MIN_PRICE[market]) & (v50.iloc[i] >= MIN_VALUE_50D[market]) & ~age_ok
+                     & (h >= young_min_bars) & c.notna())
+            extra = {}
+            for sym in young[young].index:
+                k = int(h[sym]) - 1                      # sessions since its first stored close
+                if k < 1 or i - k < 0:
+                    continue
+                first = close[sym].iloc[i - k]
+                if not first == first or first <= 0:
+                    continue
+                r_sym = c[sym] / first - 1
+                peers = (c[v.index] / close[v.index].iloc[i - k] - 1).dropna()
+                if len(peers) < 20:
+                    continue
+                share = float((peers <= r_sym).mean())
+                extra[sym] = round(1 + 98 * share)
+            if extra:
+                out[d] = pd.concat([out[d], pd.Series(extra, dtype=float)])
     logger.info("RS ratings: %d dates rated", len(out))
     return out
 
 
-def filter_min_rs(signals: list, market: str, min_rs: int) -> tuple[list, dict]:
+def filter_min_rs(signals: list, market: str, min_rs: int, young_min_bars: int = 0) -> tuple[list, dict]:
     """TT-08: keep signals whose stock was rated `min_rs`+ on the signal date; the rating goes in meta["rs"].
     A stock outside the rated universe that day (too cheap, too thin, too new) is dropped."""
-    ratings = rs_ratings(market, [s.date for s in signals])
+    ratings = rs_ratings(market, [s.date for s in signals], young_min_bars)
     kept, low, unrated = [], 0, 0
     gone = {"below": [], "unrated": []}
     for s in signals:
@@ -120,7 +146,7 @@ def filter_min_rs(signals: list, market: str, min_rs: int) -> tuple[list, dict]:
 _RANK_ASOF: dict = {}
 
 
-def rs_rank_asof(market: str, date) -> tuple[dict, bool]:
+def rs_rank_asof(market: str, date, young_min_bars: int = 0) -> tuple[dict, bool]:
     """{symbol: RS 1-99} on one date, and whether the market could be rated at all.
 
     The LIVE counterpart of `filter_min_rs`, and deliberately the same `rs_ratings` it gates on:
@@ -136,10 +162,10 @@ def rs_rank_asof(market: str, date) -> tuple[dict, bool]:
     reads the whole market's last 420 sessions.
     """
     d = pd.Timestamp(date).normalize()
-    key = (market, d.isoformat())
+    key = (market, d.isoformat(), young_min_bars)
     if key not in _RANK_ASOF:
         try:
-            ser = rs_ratings(market, [d]).get(d)
+            ser = rs_ratings(market, [d], young_min_bars).get(d)
         except Exception:                      # noqa: BLE001 -- never fail a screen over the rank
             logger.exception("RS ratings unavailable for %s on %s; falling back to the stand-in",
                              market, d.date())

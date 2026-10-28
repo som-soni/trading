@@ -414,6 +414,19 @@ class Strategy(SpecMeta, ABC):
     screen_gates: dict[str, str] = {}
     # minimum daily bars before this strategy will evaluate a symbol
     min_bars: int = 260
+    # the first session a signal may come on, when earlier than min_bars (None = min_bars); min_bars
+    # stays the history a backtest loads before its start. See `signal_floor`. None, not 0: a
+    # numeric class attribute enters every strategy's fingerprint, and an unused default must not.
+    min_signal_bars: int | None = None
+
+    def signal_floor(self) -> int:
+        """Bars a symbol needs before it can give a signal."""
+        return self.min_signal_bars or self.min_bars
+
+    def rs_young_min_bars(self) -> int:
+        """Sessions after which the RS rating rates a listing younger than a year on its history so
+        far; 0 = it stays unrated until it has a year (backtesting/spec.rs_ratings)."""
+        return 0
     # What classify() does when `regime_downgrade_active` (a risk-off market), in words, for
     # the Strategy page -- including the reason text it appends. Defaults to the shared
     # one-tier downgrade; override it when classify() does anything else, and change it in

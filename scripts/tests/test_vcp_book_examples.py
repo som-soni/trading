@@ -6,6 +6,10 @@ buy itself (S1, a close through the pivot) or the coil before it (S2, a buy-stop
 pivot). A detector that catches none of the book's own examples is not a VCP detector, whatever
 its rules say; 1.27 caught 1 of them.
 
+This checks the detector and the gates (`evaluate`), not the liquidity floor applied before them:
+several examples traded under MIN_TURNOVER_USD_M in their own year's dollars (CRUS, BBY, SYK, DKS,
+EDU), so a backtest would not have seen them.
+
 KNOWN_MISSES lists examples the current rules do not catch, and why. They are printed, not
 asserted, so a change that catches one shows up as an improvement rather than as a failure. Move a
 case into CASES once it is caught on purpose.
@@ -29,6 +33,8 @@ CASES = [
     ("CRUS", "2010-03-29", "S2", "Fig 10.34: coiled the day before the 30 Mar 2010 buy at $8.09"),
     ("BBY", "1997-12-01", "S1", "Fig 10.62: lowest volume the day before the breakout"),
     ("SYK", "1995-01-05", "S1", "Fig 10.44: bought as it emerged from a VCP in January 1995"),
+    ("EDU", "2007-04-16", "S1", "Fig 10.32: footprint 8W 22/2 3T, seven months after listing"),
+    ("DKS", "2003-03-31", "S2", "Fig 10.64: coiled the day before the 1 Apr 2003 buy, six months after listing"),
 ]
 
 # (symbol, around, what the book shows, why the rules miss it)
@@ -42,10 +48,8 @@ KNOWN_MISSES = [
      "MV-05 is detected, but the breakout closed 5.6% above the pivot, over BUY_RANGE_PCT; he buys "
      "intraday as it crosses the pivot"),
     ("MELI", "2007-12-03", "Fig 10.28 / 10.55: a base reset after the IPO",
-     "G2/G3: under 200 sessions listed, so no 150- or 200-day average yet"),
-    ("EDU", "2007-04-16", "Fig 10.32: footprint 8W 22/2 3T", "G2/G3: under 200 sessions listed"),
-    ("DKS", "2003-04-01", "Fig 10.64: a technical buy point after positive guidance",
-     "G2: under 200 sessions listed"),
+     "the October 2007 primary base came under YOUNG_MIN_BARS sessions after listing; the December "
+     "reset's final contraction is 0.72x the reference, over the 0.6 limit"),
 ]
 
 

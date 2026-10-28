@@ -514,7 +514,7 @@ def collect_signals(
         strategy = get_strategy(DEFAULT_STRATEGY)
     out: list = []
     new_signal_rows: list[tuple] = []
-    if raw_daily is None or len(raw_daily) < strategy.min_bars:
+    if raw_daily is None or len(raw_daily) < strategy.signal_floor():
         return out
 
     sim_dates = raw_daily.index[raw_daily.index >= start_date]
@@ -550,7 +550,7 @@ def collect_signals(
             ctx, result = cached
         else:
             bars_so_far = int(raw_daily.index.searchsorted(current_date, side="right"))
-            if bars_so_far < strategy.min_bars:
+            if bars_so_far < strategy.signal_floor():
                 if fn:
                     fn.dropped("bars", "not enough history yet", symbol=symbol)
                 continue
@@ -1417,7 +1417,8 @@ def run_portfolio_backtest(
             + (f", {b['unknown']} had no base number and were kept)." if b["unknown"] else ")."))
         fn.dropped_each("accepted", f"base number above {max_base_no}", b["dropped_signals"]["late"])
     if min_rs is not None:
-        all_signals, r = spec_mod.filter_min_rs(all_signals, market_key, min_rs)
+        all_signals, r = spec_mod.filter_min_rs(all_signals, market_key, min_rs,
+                                                strategy.rs_young_min_bars())
         spec_notes.append(f"RS rating (TT-08): signals from stocks rated below {min_rs} (1-99 across the tradable universe "
                           f"on the signal date) skipped: {r['below']} below, {r['unrated']} outside the rated universe, {r['kept']} kept.")
         fn.dropped_each("accepted", f"RS rating below {min_rs}", r["dropped_signals"]["below"])

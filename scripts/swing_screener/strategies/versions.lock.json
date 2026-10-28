@@ -364,7 +364,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "aeda739a",
+    "fingerprint": "6bc0b6ff",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -384,6 +384,10 @@
       "FAIL_DAYS": 0,
       "FAIL_SMA20_DAYS": 10,
       "FINAL_REF_RATIO": 0.6,
+      "FLAT_MAX_DAYS": 35,
+      "FLAT_MAX_DEPTH_PCT": 15.0,
+      "FLAT_MIN_DAYS": 20,
+      "FLAT_PIVOT_DAYS": 10,
       "FUND_EPS_GROWTH_MIN_PCT": 20.0,
       "FUND_MARGIN_SLACK_PP": 1.0,
       "FUND_SALES_GROWTH_MIN_PCT": 15.0,
@@ -488,6 +492,8 @@
       "VCP.undercut_recovery_days": 5,
       "VCP.upper_zone": 0.67,
       "VCP.widen_tol": 1.1,
+      "VCP.young_listing": 1,
+      "VCP.young_min_prior": 10,
       "VCP.zigzag_atr_mult": 1.5,
       "VCP.zigzag_floor_atr_mult": 1.5,
       "VCP.zigzag_floor_pct": 1.5,
@@ -495,6 +501,8 @@
       "VCP.zigzag_shrink_ratio": 0.35,
       "VOL_MULT": 1.4,
       "WIDEN_TOL": 1.1,
+      "YOUNG_LISTING": 1,
+      "YOUNG_MIN_BARS": 60,
       "_key": "minervini",
       "gate_codes": [
         "G1",
@@ -507,12 +515,14 @@
         "G8"
       ],
       "min_bars": 300,
+      "min_signal_bars": 60,
       "setup_codes": [
         "S1",
         "S2",
         "S3",
         "S4",
-        "S5"
+        "S5",
+        "S6"
       ],
       "watch_codes": [
         "W1",
@@ -522,7 +532,7 @@
         "W5"
       ]
     },
-    "version": "1.28"
+    "version": "1.29"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

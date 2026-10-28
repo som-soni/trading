@@ -204,7 +204,7 @@ def run(
     if getattr(get_screen(strategy.screen_key), "rank_rs", False):
         from ..backtesting import spec as spec_mod
         asof = max(df.index[-1] for df in bars_by_symbol.values() if df is not None and len(df))
-        rs_ranks, rs_ranked = spec_mod.rs_rank_asof(market_key, asof)
+        rs_ranks, rs_ranked = spec_mod.rs_rank_asof(market_key, asof, strategy.rs_young_min_bars())
         logger.info("RS rank (TT-08) as of %s: %s", pd.Timestamp(asof).date(),
                     f"{len(rs_ranks)} stocks rated" if rs_ranked
                     else "unavailable — falling back to the 12-1 momentum stand-in")
@@ -226,10 +226,10 @@ def run(
         sector = sectors.get(sym, "Unknown")
         # The strategy's own floor, as the backtest and the live pattern endpoint apply it:
         # without it a stock the backtest could never have traded was listed as tradeable.
-        if len(raw) < strategy.min_bars:
+        if len(raw) < strategy.signal_floor():
             all_rows.append(_empty_universe_row(
                 strategy, sym, sector, "NOT REVIEWED",
-                f"insufficient history ({len(raw)} bars < {strategy.min_bars})"))
+                f"insufficient history ({len(raw)} bars < {strategy.signal_floor()})"))
             continue
         ctx = ctx_mod.build_context(sym, raw, earnings_map.get(sym))
         if ctx is None:

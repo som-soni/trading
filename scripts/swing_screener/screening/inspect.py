@@ -63,7 +63,7 @@ def inspect(market_key: str, symbol: str, fresh: bool = False, strategy_key: str
         from ..screens import get_screen
         if getattr(get_screen(strategy.screen_key), "rank_rs", False):
             from ..backtesting import spec as spec_mod
-            ranks, ranked = spec_mod.rs_rank_asof(market_key, raw.index[-1])
+            ranks, ranked = spec_mod.rs_rank_asof(market_key, raw.index[-1], strategy.rs_young_min_bars())
             if ranked:
                 ctx.extras["rs_ranked"] = True
                 ctx.extras["rs_rank"] = ranks.get(symbol)

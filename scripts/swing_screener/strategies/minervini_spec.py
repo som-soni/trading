@@ -69,6 +69,7 @@ MV02 = "S2"   # MV-02: coiled just below the pivot
 MV03 = "S3"   # MV-03: low cheat, a shelf in the lower third of the base
 MV04 = "S4"   # MV-04: cheat / 3C, a shelf in the middle third of the base
 MV05 = "S5"   # MV-05: power play -- an explosive run, then a short tight flag
+FLAT = "S6"   # flat base: a shallow, sideways base with no pivot but its own high (1.28)
 
 # ---- section 5: base and VCP (core/vcp_spec.py)
 SWING_K = 5
@@ -116,10 +117,33 @@ PP_RUN_MULT = 2.0            # … during which price at least doubled, measured
 PP_FLAG_MIN_DAYS = 10        # the pause: about 2 …
 PP_FLAG_MAX_DAYS = 30        # … to 6 weeks
 PP_FLAG_MAX_DEPTH_PCT = 25.0
+# ---- S6, the flat base (1.28). "Not all consolidations have tight pivot points. When a flat base
+# occurs with no real pivot other than the high of the base, an investor can look to buy as the
+# stock moves above the highest price at the top of the base provided that the base corrects no
+# more than 10 or 15 percent" -- a base "four to seven weeks in duration" with little volatility
+# contraction to measure. Before 1.28 such a base could only fail VCP-04 or VCP-06.
+FLAT_MIN_DAYS = 20          # about four weeks …
+FLAT_MAX_DAYS = 35          # … to seven
+FLAT_MAX_DEPTH_PCT = 15.0   # base high to base low, at most
+FLAT_PIVOT_DAYS = 10        # the sessions before the breakout: their low is the stop's reference, and
+                            # their volume must pass VCP-10's dry-up test ("every correct pivot point
+                            # will develop with a contraction in volume")
+
 # PP-06 (1.27): the flag's tight area must show VCP-10's volume dry-up. Minervini's third power-play
 # condition -- "within the base (usually just days before a breakout), volume will contract
 # considerably" -- was the one 1.26 did not check. 0 turns it off.
 PP_DRYUP = 1
+# ---- young listings (1.28). Minervini applies the 200-day test "provided that 200 days of trading
+# in the stock has occurred", and several of the book's examples are a stock's first bases after
+# its listing (MercadoLibre and New Oriental 2007, Dick's 2003). 1 judges such a stock on the
+# history it has: a Trend Template condition whose average or 52-week range needs more sessions
+# than exist is waived, or read over the history since listing (`young_template_row`); the base's
+# prior advance runs from the low since listing (VcpParams.young_listing); and its RS rating
+# compares its return since listing with the market's over the same sessions
+# (backtesting/spec.rs_ratings). 0 = such a stock waits for a year of history, as in 1.27.
+YOUNG_LISTING = 1
+YOUNG_MIN_BARS = 60     # sessions listed before anything is judged: core.context's minimum, past the 50-day
+
 # MV-03/MV-04 (1.27): the cheat shelf must show VCP-10's volume dry-up as well as its tightness.
 # Minervini: a valid cheat area "should exhibit a contraction in volume as well as tightness in the
 # range of price". Until 1.27 a cheat had no volume test at all, so a base that VCP-10 rejected for
@@ -161,7 +185,7 @@ VCP = vcp_spec.VcpParams(
     undercut_recovery_days=UNDERCUT_RECOVERY_DAYS,
     tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
-    cheat_dryup=CHEAT_DRYUP,
+    cheat_dryup=CHEAT_DRYUP, young_listing=YOUNG_LISTING,
 )
 
 # ---- section 6: setups
@@ -477,6 +501,46 @@ def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
     return True, "passed"
 
 
+_YOUNG_INPUTS = ("sma150", "sma200", "sma200_21d_ago", "low_252", "high_252", "rs_score")
+
+
+def is_young_row(last, bars: int) -> bool:
+    """Whether a row belongs to a young listing: listed at least YOUNG_MIN_BARS sessions, but not long
+    enough for every Trend Template input to exist."""
+    return bool(YOUNG_LISTING and bars >= YOUNG_MIN_BARS
+                and any(pd.isna(last.get(k)) for k in _YOUNG_INPUTS))
+
+
+def young_template_row(cfg: MarketConfig, last, low_since: float, high_since: float) -> tuple[bool, str]:
+    """The Trend Template for a young listing (YOUNG_LISTING), as of one row: every condition whose
+    input exists is applied as in `trend_template_row`; an average that needs more sessions than the
+    stock has traded is waived; the 52-week range is the range since listing when a year has not
+    passed. RS is left to the rating, which rates a young listing on its history since listing."""
+    ok, why = tradable_point_in_time(cfg, last)
+    if not ok:
+        return False, why
+    close = float(last["close"])
+    s50, s150, s200 = last.get("sma50"), last.get("sma150"), last.get("sma200")
+    s200_prev = last.get("sma200_21d_ago")
+    if pd.isna(s50):
+        return False, "insufficient history for the trend template"
+    if not close > s50:
+        return False, "price below the 50-day average"
+    if pd.notna(s150) and not (close > s150 and s50 > s150):
+        return False, "price or the 50-day below the 150-day average"
+    if pd.notna(s200) and not (close > s200 and pd.notna(s150) and s150 > s200):
+        return False, "price or the 150-day below the 200-day average"
+    if pd.notna(s200) and pd.notna(s200_prev) and not s200 > s200_prev:
+        return False, "200-day average not rising"
+    lo = last.get("low_252") if pd.notna(last.get("low_252")) else low_since
+    hi = last.get("high_252") if pd.notna(last.get("high_252")) else high_since
+    if lo <= 0 or close < lo * (1 + MIN_PCT_ABOVE_52W_LOW / 100):
+        return False, f"less than {MIN_PCT_ABOVE_52W_LOW:g}% above the low since listing"
+    if hi <= 0 or close < hi * (1 - MAX_PCT_BELOW_52W_HIGH / 100):
+        return False, f"more than {MAX_PCT_BELOW_52W_HIGH:g}% below the high since listing"
+    return True, "passed (young listing)"
+
+
 # The stage cycle's reading of the 30-week line (the 150-day), from the Learn guide on stages (2.2):
 # "stopped rising" is the Trend Template's own test applied to the 150-day (no higher than a month ago),
 # "falling" is the guide's example rule (more than 0.5% below a month ago). Lowercase on purpose: these
@@ -599,8 +663,22 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.28"
+    version = "1.29"
     changelog = (
+        ("1.29", "2026-10-29",
+         "Two of the book's setups the code could not take. (1) Young listings: Minervini applies the "
+         "200-day test \"provided that 200 days of trading in the stock has occurred\", and several of "
+         "his examples are a stock's first bases after listing. With YOUNG_LISTING = 1 a stock listed "
+         "60 or more sessions but under a year is judged on the history it has: a Trend Template "
+         "average that needs more sessions is waived, the 52-week range is the range since listing, "
+         "the base's prior advance runs from the low since listing, and the RS rating compares its "
+         "return since listing with the market's over the same sessions (rated stocks' own ratings "
+         "unchanged). Signals can now come from a stock's 60th session (min_signal_bars). New "
+         "Oriental's Apr 2007 breakout and Dick's Apr 2003 coil, seven and six months after listing, "
+         "are now caught: 7 of 11 book examples. (2) S6, the flat base: a 4-7 week base at most 15% "
+         "deep with no pivot but its own high, bought on a close through that high with the MV-01 "
+         "conviction tests and a volume dry-up over the 10 sessions before, stopped under their low. "
+         "YOUNG_LISTING=0 restores (1); S6 has no switch."),
         ("1.28", "2026-10-29",
          "The base detector now finds Minervini's own examples. Run on the charts in Trade Like a "
          "Stock Market Wizard, chapter 10, 1.27 gave the book's signal on 1 of 11; 1.28 gives it on 5 "
@@ -1011,7 +1089,7 @@ class MinerviniSpecStrategy(Strategy):
 
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     watch_codes = ("W1", "W2", "W3", "W4", "W5")
-    setup_codes = (MV01, MV02, MV03, MV04, MV05)
+    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT)
     extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days",
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
@@ -1057,6 +1135,9 @@ class MinerviniSpecStrategy(Strategy):
     screen_key = "stage2"
     screen_gates = {"G1": "C1", "G2": "C2", "G3": "C3", "G4": "C4", "G5": "C5", "G6": "C6", "G7": "C7", "G8": "C8"}
     min_bars = 300
+    # A signal can come before min_bars: a young listing (YOUNG_LISTING) is judged from its 60th
+    # session. min_bars stays the history a backtest loads before its start.
+    min_signal_bars = YOUNG_MIN_BARS
 
     thesis = (
         "Minervini's SEPA — buy Stage-2 leaders as a volatility contraction completes, with small, capped "
@@ -1072,8 +1153,8 @@ class MinerviniSpecStrategy(Strategy):
         "**The steps, in order.** Each has its own section below.\n\n"
         "- **Qualify** (G1–G8): the stock passes the Trend Template.\n"
         "- **Find the base** (VCP-01 to VCP-10): the base checks.\n"
-        "- **Pick the setup** (S1–S5): a breakout, a coil under the pivot, two early \"cheat\" buys, "
-        "or a power play.\n"
+        "- **Pick the setup** (S1–S6): a breakout, a coil under the pivot, two early \"cheat\" buys, "
+        "a power play, or a flat base.\n"
         "- **Buy** (Entry), **protect** (Stop), **check the reward** (Target) and **manage** (Exit).\n"
         "- **Size** the position, and skip new buys in the cases under \"When no new trade is taken\".",
         "**Timing.** Every rule is judged on a session's close, using only data up to that close. An "
@@ -1196,7 +1277,13 @@ class MinerviniSpecStrategy(Strategy):
               "score of {RS_MIN_SCORE}+ (a steady 5% a quarter just clears it; a flat stock scores "
               "0). Once all signals are in, it drops those rated under {RS_MIN_RANK} that day.\n"
               "- **Single-stock tools** (chart indicators, `inspect --no-rs-rank`): the "
-              "{RS_MIN_SCORE} floor only, so they can pass a stock the screen would reject.",
+              "{RS_MIN_SCORE} floor only, so they can pass a stock the screen would reject.\n\n"
+              "**Young listings** (YOUNG_LISTING = {YOUNG_LISTING}): a stock listed at least "
+              "{YOUNG_MIN_BARS} sessions but under a year has no 12-month score, so its rating "
+              "compares its return since listing with every rated stock's return over the same "
+              "number of sessions. Its gates G2–G7 follow Minervini's \"provided that 200 days of "
+              "trading in the stock has occurred\": an average that needs more sessions than it has "
+              "traded is waived, and the 52-week range is the range since listing.",
     }
     watch_docs = {
         "W1": "Light breakout volume (MV-01a): on a day the close crossed the pivot, volume was under "
@@ -1277,6 +1364,21 @@ class MinerviniSpecStrategy(Strategy):
               "It is looked for separately from bases, because the base checks would reject it: the "
               "pause is usually too short to count as a base, and after so fast a run the long "
               "averages have not caught up.",
+        FLAT: "Flat base: a shallow, sideways base with no pivot of its own, bought through its high. "
+              "Minervini: when a flat base has \"no real pivot other than the high of the base\", buy "
+              "\"as the stock moves above the highest price at the top of the base\".\n\n"
+              "- **Base:** yesterday's base passed VCP-01, VCP-02, VCP-03 and VCP-05 but never became a "
+              "complete VCP; it is {FLAT_MIN_DAYS}–{FLAT_MAX_DAYS} sessions old (four to seven weeks) "
+              "and at most {FLAT_MAX_DEPTH_PCT}% deep.\n"
+              "- **Quiet before the breakout:** the {FLAT_PIVOT_DAYS} sessions before today pass "
+              "VCP-10's volume test (average at most {DRYUP_RATIO} times the 50-day, or "
+              "{DRYUP_QUIET_DAYS} sessions at or under {DRYUP_QUIET_RATIO} times it).\n"
+              "- **Trigger:** yesterday's close at or below the base high, today's close above it on "
+              "at least {VOL_MULT} times average volume, at least {UPPER_HALF} of the way up the day's "
+              "range, and no more than {BUY_RANGE_PCT}% above the high.\n\n"
+              "The stop goes under the low of those {FLAT_PIVOT_DAYS} sessions; the objective is the "
+              "base's depth added to the price paid. A base that is also a complete VCP is bought as "
+              "S1 instead.",
     }
     pattern_title = "The base — VCP checks"
     pattern_intro = (
@@ -1392,6 +1494,9 @@ class MinerviniSpecStrategy(Strategy):
         "{BUY_RANGE_PCT}% above the shelf's high, or at or below the shelf's low.",
         "Power play (MV-05). Bought at the next session's open. Skipped if that open is more than "
         "{BUY_RANGE_PCT}% above the flag's pivot, or at or below the flag's tight low.",
+        "Flat base (S6). Bought at the next session's open. Skipped if that open is more than "
+        "{BUY_RANGE_PCT}% above the base high, or at or below the low of the {FLAT_PIVOT_DAYS} "
+        "sessions before the breakout.",
         "Up to {MAX_ENTRIES_PER_BASE} entries per base (EN-04), the failure reset. Once a base, or a "
         "power play's flag, has been bought that many times, it is never bought again.\n\n"
         "Only a SHAKEOUT reopens a base — the stop, the breakeven stop, or a failed 20-day "
@@ -1438,7 +1543,10 @@ class MinerviniSpecStrategy(Strategy):
         "- **Cheat (MV-03, MV-04):** bought below the old high, so the target is the base high plus that "
         "same measured move.\n"
         "- **Power play (MV-05):** no base, so the flag's tight area — pivot minus tight low — added to the "
-        "price paid.",
+        "price paid.\n"
+        "- **Flat base (S6):** the base's depth, high to low, added to the price paid. A base at most "
+        "{FLAT_MAX_DEPTH_PCT}% deep projects at most that, so the 2:1 test below rejects most flat bases: "
+        "on 60 random US stocks, 2013-2021, all 12 that broke out were refused at 0.3-1.5R.",
         "Overhead supply caps it. An older swing high above the base is where earlier buyers wait to sell, "
         "so the target is lowered to the nearest one. Only a level at least {OVERHEAD_CLUSTER_ATR} ATR above "
         "the base high counts; anything closer is part of the base's own ceiling.",
@@ -1604,6 +1712,14 @@ class MinerviniSpecStrategy(Strategy):
         ("Power play, flag length", "PP_FLAG_MIN_DAYS", "MV-05: shortest pause that counts."),
         ("Power play, flag length max", "PP_FLAG_MAX_DAYS", "MV-05: longest pause that counts."),
         ("Power play, flag depth", "PP_FLAG_MAX_DEPTH_PCT", "MV-05: deepest the flag may fall."),
+        ("Flat base, length", "FLAT_MIN_DAYS", "S6: shortest flat base, in sessions."),
+        ("Flat base, length max", "FLAT_MAX_DAYS", "S6: longest flat base, in sessions."),
+        ("Flat base, depth", "FLAT_MAX_DEPTH_PCT", "S6: deepest a flat base may be, high to low."),
+        ("Flat base, pivot area", "FLAT_PIVOT_DAYS", "S6: sessions before the breakout whose volume must dry "
+                                                   "up and whose low sets the stop."),
+        ("Young listings", "YOUNG_LISTING", "1 = a stock listed under a year is judged on its history so far "
+                                            "(averages that do not exist yet are waived); 0 = it waits a year (1.27)."),
+        ("Young listing, first session", "YOUNG_MIN_BARS", "Sessions listed before a young listing is judged."),
         ("Power play, dry-up", "PP_DRYUP", "PP-06: 1 = the flag's tight area must pass VCP-10's volume test, 0 = off (1.26)."),
         ("Buy range", "BUY_RANGE_PCT", "MV-01b, and the most a fill may sit above the pivot."),
         ("Stop buffer", "STOP_BUFFER_PCT", "SL-01."),
@@ -1700,7 +1816,69 @@ class MinerviniSpecStrategy(Strategy):
             floor = _live_min_price(cfg)
             if float(enriched_daily["close"].iloc[-1]) < floor:
                 return False, f"price below {floor:g}"
+        d = enriched_daily
+        if d is not None and len(d) and is_young_row(d.iloc[-1], len(d)):
+            ok, why = self.prefilter_row(cfg, d.iloc[-1])
+            if ok or why.startswith("turnover"):
+                return ok, why
+            return young_template_row(_without_liquidity_floor(cfg), d.iloc[-1],
+                                      float(d["low"].min()), float(d["high"].max()))
         return super().passes_prefilter(cfg, enriched_daily)
+
+    def prefilter_mask(self, cfg: MarketConfig, enriched_daily) -> "pd.Series":
+        """The shared mask, plus a young listing's sessions (YOUNG_LISTING) judged by
+        `young_template_row` on the low and high since listing."""
+        m = super().prefilter_mask(cfg, enriched_daily)
+        d = enriched_daily
+        if not YOUNG_LISTING or d is None or d.empty:
+            return m
+        lo, hi = d["low"].cummin(), d["high"].cummax()
+        floor, ycfg = _min_turnover(cfg), _without_liquidity_floor(cfg)
+        for i in range(YOUNG_MIN_BARS - 1, min(len(d), 260)):
+            row = d.iloc[i]
+            if m.iloc[i] or not is_young_row(row, i + 1):
+                continue
+            v50, close = row.get("vol_sma50"), row.get("close")
+            if pd.isna(v50) or pd.isna(close) or float(v50) * float(close) < floor:
+                continue
+            m.iloc[i] = young_template_row(ycfg, row, float(lo.iloc[i]), float(hi.iloc[i]))[0]
+        return m
+
+    def rs_young_min_bars(self) -> int:
+        """Sessions after which the RS rating rates a young listing on its history so far."""
+        return YOUNG_MIN_BARS if YOUNG_LISTING else 0
+
+    def _young_gates(self, ctx: StockContext, result: StrategyResult) -> None:
+        """G2-G8 for a young listing: a condition whose input needs more sessions than the stock has
+        traded is waived, or read over the history since listing (the same tests as
+        `young_template_row`)."""
+        d = ctx.daily
+        last, n = d.iloc[-1], len(d)
+        c = float(last["close"])
+        s50, s150, s200 = last.get("sma50"), last.get("sma150"), last.get("sma200")
+        listed = f"waived: listed {n} sessions"
+        if pd.isna(s150):
+            result.ok("G2", f"{listed}, the 150-day needs 150")
+        if pd.isna(s200):
+            result.ok("G3", f"{listed}, the 200-day needs 200")
+        if pd.isna(s150) or pd.isna(s200):
+            ok = (pd.isna(s150) or s50 > s150) and (pd.isna(s150) or pd.isna(s200) or s150 > s200)
+            (result.ok if ok else result.fail)("G4", "the averages that exist are stacked" if ok
+                                               else "the averages that exist are not stacked")
+        if pd.isna(last.get("sma200_21d_ago")):
+            result.ok("G5", f"{listed}, a rising 200-day needs {200 + SMA200_RISING_BARS}")
+        if pd.isna(last.get("low_252")):
+            pct = (c / float(d["low"].min()) - 1) * 100
+            (result.ok if pct >= MIN_PCT_ABOVE_52W_LOW else result.fail)(
+                "G6", f"{pct:.1f}% above the low since listing")
+        if pd.isna(last.get("high_252")):
+            pct = (1 - c / float(d["high"].max())) * 100
+            (result.ok if pct <= MAX_PCT_BELOW_52W_HIGH else result.fail)(
+                "G7", f"{pct:.1f}% below the high since listing")
+        if pd.isna(last.get("rs_score")) and not ctx.extras.get("rs_ranked"):
+            result.ok("G8", f"young listing: rated on its {n} sessions when the run rates the market")
+        result.recompute_first_fail()
+        ctx.extras["young_listing_bars"] = n
 
     def market_risk_off(self, market_key: str, default: bool) -> bool:
         """Live: the same market filter the backtest applies (backtesting/spec.py market_ok),
@@ -1726,6 +1904,8 @@ class MinerviniSpecStrategy(Strategy):
         d = ctx.daily
         result = StrategyResult(entry_setup_codes=self.setup_codes)
         self.apply_screen(ctx, result)
+        if is_young_row(d.iloc[-1], len(d)):
+            self._young_gates(ctx, result)
         e = ctx.extras
         today, prev = vcp_spec.detect(d, VCP), vcp_spec.detect(d.iloc[:-1], VCP)
         last = d.iloc[-1]
@@ -1773,6 +1953,23 @@ class MinerviniSpecStrategy(Strategy):
         result.setups[MV01], result.setups[MV02] = mv01, mv02
         result.setups[MV03], result.setups[MV04] = mv03, mv04
         result.setups[MV05] = mv05
+        # S6, the flat base: yesterday's base, if it never became a VCP, is shallow and four to seven
+        # weeks long, and today closes through its high with the MV-01 conviction tests.
+        flat = False
+        if (not prev["ok"] and prev.get("bh") and prev["fail"] not in ("VCP-01", "VCP-02", "VCP-03", "VCP-05")
+                and prev.get("base_days") is not None and FLAT_MIN_DAYS <= prev["base_days"] <= FLAT_MAX_DAYS
+                and prev.get("base_depth_pct") is not None and prev["base_depth_pct"] <= FLAT_MAX_DEPTH_PCT):
+            fh = float(prev["bh"])
+            area = d.iloc[-1 - FLAT_PIVOT_DAYS:-1]
+            dry, quiet = vcp_spec._dryup(d.iloc[:-1], len(d) - 1 - FLAT_PIVOT_DAYS, area["volume"],
+                                         DRYUP_QUIET_RATIO)
+            e.update(flat_pivot=fh, flat_low=float(area["low"].min()),
+                     flat_depth_pct=float(prev["base_depth_pct"]), flat_dryup=float(dry), flat_quiet_days=int(quiet),
+                     flat_base_date=str(prev["bh_date"].date()))
+            flat = bool(prev_close <= fh < close and vol_ratio >= VOL_MULT and upper >= UPPER_HALF
+                        and close <= fh * (1 + BUY_RANGE_PCT / 100)
+                        and (dry <= DRYUP_RATIO or quiet >= DRYUP_QUIET_DAYS))
+        result.setups[FLAT] = flat
         if pp_ok:
             ctx.extras.update(pp_pivot=pp_prev["pivot"], pp_tight_low=pp_prev["tight_low"],
                               # a STRING, like base_date above: ctx.extras is serialised to JSON
@@ -1856,6 +2053,8 @@ class MinerviniSpecStrategy(Strategy):
             return 1.0
         # a cheat is a lower-confidence entry than the pivot buy, and the low cheat
         # lower than the 3C -- he describes it as the riskiest of the three
+        if result.setups.get(FLAT):
+            return 1.0
         return 0.8 if result.setups.get(MV04) else (0.6 if result.setups.get(MV03) else 0.0)
 
     # ---------- plan ----------
@@ -1866,6 +2065,14 @@ class MinerviniSpecStrategy(Strategy):
         e = ctx.extras
         cheat = result.setups.get(MV03) or result.setups.get(MV04)
         power = result.setups.get(MV05)
+        flat = result.setups.get(FLAT) and not (result.setups.get(MV01) or result.setups.get(MV02))
+        if flat:
+            # S6: the pivot is the base's own high, the stop under the low of the sessions before the
+            # breakout, and the objective the base's depth added to the price paid
+            fp, fl, fd = e.get("flat_pivot"), e.get("flat_low"), e.get("flat_depth_pct")
+            if not fp or fl is None or pd.isna(fl):
+                return PlanChoice(None, None, "missing flat-base pivot")
+            cheat = power = False
         # A power play has no base, so its pivot and stop come from the FLAG, not from
         # e["pivot"]/e["tight_low"] -- which are None for it, since the base path rejected it.
         pivot, tl = ((e.get("pp_pivot"), e.get("pp_tight_low")) if power
@@ -1873,9 +2080,13 @@ class MinerviniSpecStrategy(Strategy):
         # Only the pivot buy needs the FINAL tight area. A cheat is taken while the
         # base is still forming, so that area does not exist yet -- requiring it here
         # rejected 122 of 133 cheats before they reached their own branch.
-        if not cheat and (not pivot or tl is None or pd.isna(tl)):
+        if not cheat and not flat and (not pivot or tl is None or pd.isna(tl)):
             return PlanChoice(None, None, "missing pivot / tight low")
-        if cheat and not power:
+        if flat:
+            setup, pivot = FLAT, float(fp)
+            entry = float(ctx.close)              # confirmed by the close, bought at the next open
+            stop = pivot_stop(fl, cfg.tick_size)
+        elif cheat and not power:
             # A cheat is bought at its shelf, not the base's pivot, and stopped under
             # the SHELF low. That nearby stop is the entire point of the entry: the
             # base low is far away mid-base, and risking down to it would make the
@@ -1906,7 +2117,9 @@ class MinerviniSpecStrategy(Strategy):
         # the base high less its deepest low, which (because VCP-06 forces each
         # contraction to shrink) is the first contraction's low.
         bh, first_depth = e.get("base_high"), e.get("first_depth_pct")
-        if power:
+        if flat:
+            measured_move = float(fp) * float(fd) / 100 if fd is not None else float("nan")
+        elif power:
             # No base, so no base-depth measured move. The flag's own range is the only structure
             # the setup offers; beyond that any number would be the risk formula wearing a chart's
             # clothes, which is the trap the comment below describes.
@@ -1975,13 +2188,16 @@ class MinerviniSpecStrategy(Strategy):
             pivot, tl = float(e["cheat_pivot"]), float(e["cheat_low"])
         elif plan.setup == MV05:
             pivot, tl = float(e["pp_pivot"]), float(e["pp_tight_low"])
+        elif plan.setup == FLAT:
+            pivot, tl = float(e["flat_pivot"]), float(e["flat_low"])
         else:
             pivot, tl = float(e["pivot"]), float(e["tight_low"])
         # EN-04 ("one entry per base") keys on `base_id`, and a power play has no base -- so
         # without an id of its own it would be the one setup that could be re-entered on the same
         # structure after a stop-out, which is exactly what EN-04 exists to stop. The flag high's
         # date identifies the flag the way the base start identifies a base.
-        base_id = e.get("pp_flag_high_date") if plan.setup == MV05 else e.get("base_date")
+        base_id = (e.get("pp_flag_high_date") if plan.setup == MV05
+                   else e.get("flat_base_date") if plan.setup == FLAT else e.get("base_date"))
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": MAX_STOP_PCT / 100, "base_id": base_id,
                 "max_entries_per_base": MAX_ENTRIES_PER_BASE,
@@ -2016,6 +2232,9 @@ class MinerviniSpecStrategy(Strategy):
             label, reasons = "TRADE_HIGH_CONFIDENCE", ["confirmed breakout: buy at the next open"]
         elif plan.setup == MV02:
             label, reasons = "TRADE_ON_TRIGGER", ["coiled below the pivot: buy-stop through it"]
+        elif plan.setup == FLAT:
+            label, reasons = "TRADE_ON_TRIGGER", ["flat base: closed through the base's high, buy at the "
+                                                  "next open, stopped under the low of the sessions before"]
         elif plan.setup == MV05:
             # not a cheat: no base, no shelf -- it closed through the flag's pivot, like MV-01
             label, reasons = "TRADE_ON_TRIGGER", ["power play: closed through the flag's pivot, buy at the "

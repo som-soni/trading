@@ -144,6 +144,15 @@ class VcpParams:
     # 1.28: VCP-06's "no deeper than the one before" allows `widen_tol`, like the widening test.
     # 1 = strict, any deeper pullback fails (1.27).
     strict_shrink: int = 0
+    # 1.28, a young listing's first bases. Minervini applies the 200-day test "provided that 200 days
+    # of trading in the stock has occurred", and several of his examples are bases built within
+    # months of a listing (MercadoLibre 2007, New Oriental 2007, Dick's 2003). 1 lets such a base be
+    # judged on what exists: VCP-01 measures the advance from the lowest low since listing when
+    # there are fewer than `prior_window` bars before the base (at least `young_min_prior`), and
+    # VCP-03 waives any check whose average is not computable yet. Only when the frame starts at
+    # the listing -- a stock with a long history never takes this path. 0 = off (1.27).
+    young_listing: int = 0
+    young_min_prior: int = 10
     min_from_reference: int = 2      # VCP-06: contractions from the reference onward, inclusive
     final_ref_ratio: float = 0.6     # VCP-06: final contraction / reference contraction, at most
     min_contractions: int = 2        # VCP-04
@@ -373,7 +382,10 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
                            f"{p.base_min_days}-{p.base_max_days}")
         return out
     prior = low[max(0, start_i - p.prior_window): start_i]
-    if len(prior) < p.prior_window:
+    listed = len(daily) <= p.lookback and start_i < p.prior_window   # the frame starts at the listing
+    young = bool(p.young_listing and listed and len(prior) >= p.young_min_prior)
+    out["young_listing"] = young
+    if len(prior) < p.prior_window and not young:
         out["fail"] = "VCP-01"          # not enough history to judge the prior advance
         return out
     adv = (high[bh_i] / prior.min() - 1) * 100 if len(prior) and prior.min() > 0 else float("nan")
@@ -400,11 +412,17 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         out["fail_why"] = "not enough moving-average history across the base"
         return out
     out["base_closes_below_200"] = below
-    if not (s200_now >= s200_then):
+    # a young listing: a check whose average does not exist yet is waived, not failed
+    waive = (lambda *v: young and any(x != x for x in v))
+    if waive(s200_now, s200_then):
+        pass
+    elif not (s200_now >= s200_then):
         out["fail"] = "VCP-03"
         out["fail_why"] = "the 200-day is lower now than when the base started"
         return out
-    if not (s150_now > s200_now):
+    if waive(s150_now, s200_now):
+        pass
+    elif not (s150_now > s200_now):
         out["fail"] = "VCP-03"
         out["fail_why"] = "the 150-day is not above the 200-day"
         return out
