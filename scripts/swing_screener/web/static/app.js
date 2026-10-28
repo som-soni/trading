@@ -319,6 +319,7 @@ function dataTable(host, columns, rows, opts = {}) {
         if (typeof v === "number" && (opts.inverse || []).includes(columns[i])) cls += v < 0 ? " pos" : v > 0 ? " neg" : "";  // lower is better
         else if (typeof v === "number" && (SIGNED_COL.test(columns[i]) || (opts.signed || []).includes(columns[i]))) cls += v < 0 ? " neg" : v > 0 ? " pos" : "";
         if (typeof v === "boolean") cls += v ? " yes" : " no";
+        if (opts.html && opts.html[columns[i]]) return `<td class="${cls}">${opts.html[columns[i]](v, row)}</td>`;
         return `<td class="${cls}"${typeof v === "string" && (v.length > 40 || isPeer(columns[i])) ? ` title="${esc(v)}"` : ""}>${esc(fmtFor[i](v, row))}</td>`;
       }).join("") + (opts.actions ? `<td class="acts">${opts.actions.map((a) => `<button class="ghost icon" data-act="${a.key}" title="${esc(a.title)}">${a.icon}</button>`).join("")}</td>` : "") + "</tr>").join("");
     more.hidden = visible.length <= limit;
@@ -397,6 +398,33 @@ function marketSeg(m, extra = []) {
  *  staleness the Status page reports is visible where you act on the data. Filled from the status check
  *  the header already makes (FRESH); repainted in place when that check comes back. */
 let FRESH = null;
+/** Has a strategy shown an edge, per market? Graded on the server from its stored runs (server.strategy_edges:
+ *  the current rules' verify run, else its optimise run, else an older one, which the label says). Loaded once
+ *  per page view and shared, so every page that names a strategy colours it the same way. */
+let EDGE = null, EDGE_AT = 0, EDGE_P = null;
+function loadEdges() {
+  if (!EDGE_P || Date.now() - EDGE_AT > 120e3) {
+    EDGE_AT = Date.now();
+    EDGE_P = api("/api/strategy-edges").then((r) => (EDGE = r)).catch(() => EDGE);
+  }
+  return EDGE_P;
+}
+const EDGE_SHORT = { verified: "Edge (verified)", failed: "Failed verify", in_sample: "In-sample only", none: "No edge", unmeasured: "Not measured" };
+/** a coloured dot for one strategy in one market; the tooltip carries the grade and the number behind it */
+function edgeDot(key, mkt, flag = false) {
+  const e = EDGE?.strategies?.[key]?.[mkt];
+  if (!e) return "";
+  return `<i class="edge e-${e.level}${e.current === false ? " old" : ""}" title="${esc(`${mktInfo(mkt).name}: ${e.label}`)}">${flag ? esc(mktInfo(mkt).flag || "") : ""}</i>`;
+}
+/** the same grade as a labelled chip, for a page header */
+function edgeChip(key, mkt) {
+  const e = EDGE?.strategies?.[key]?.[mkt];
+  if (!e) return "";
+  return `<span class="edge-chip e-${e.level}" title="${esc(e.label)}"><i class="edge e-${e.level}"></i>${esc(mktInfo(mkt).flag || mktInfo(mkt).name)} ${esc(EDGE_SHORT[e.level] || e.level)}${e.excess != null ? ` <b>${e.excess > 0 ? "+" : ""}${e.excess.toFixed(1)}%</b>` : ""}</span>`;
+}
+/** strategy key for a display name (tables carry the name) */
+const edgeKeyOf = (name) => Object.entries(EDGE?.strategies || {}).find(([, v]) => v.name === name)?.[0];
+const edgeLegend = () => `<span class="edge-legend muted small">${["verified", "in_sample", "none", "failed"].map((l) => `<span class="el"><i class="edge e-${l}"></i>${EDGE_SHORT[l]}</span>`).join("")}</span>`;
 function freshBadgeInner(m, flag = false) {
   const p = FRESH?.[m]?.items?.find((i) => i.key === "prices");
   if (!p || !p.date) return "";
@@ -1972,7 +2000,7 @@ async function watchlistPage(alive, lid) {
   const lists = await WL.lists();
   if (lid && lists.some((l) => String(l.id) === String(lid))) WL.setActive(lid);
   const cur = WL.active(lists);
-  const items = cur ? await WL.items(cur.id) : [];
+  const [items] = await Promise.all([cur ? WL.items(cur.id) : [], loadEdges()]);
   if (!alive()) return;
   const screener = !!cur?.builtin;
   $view.innerHTML = `<div class="page-head"><h1>Watchlists</h1>${freshBadges()}<span class="spacer"></span>
@@ -2046,6 +2074,9 @@ async function watchlistPage(alive, lid) {
   dataTable(host, cols, rows, {
     name: screener ? "watchlist_screener" : "watchlist_list", sort: ["added", -1],
     tags: { "can slim": (v) => sepaClass(String(v).split(" · ")[0]) },
+    // each strategy that picked the stock, with its edge dot in the stock's market
+    html: { strategies: (v, row) => { const m = (MKTS.find((x) => x.badge === row[2]) || {}).key;
+      return String(v || "").split(" · ").filter(Boolean).map((k) => `${edgeDot(k, m)}${esc(k)}`).join(" · "); } },
     // lists mix markets, so every price carries its currency
     format: { added: prettyDate, ...Object.fromEntries(["last", "entry", "stop"].map((c) => [c, (v, row) => v == null ? "" : `${(MKTS.find((m) => m.badge === row[2]) || {}).currency || ""}${fmt(v)}`])) },
     rowClick: (row, visible) => {
@@ -4474,9 +4505,11 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const [list, tax] = await Promise.all([
     api("/api/strategies").catch(() => []),
     api("/api/taxonomy").catch(() => ({ behaviours: [] })),
+    loadEdges(),
   ]);
   if (!alive()) return;
-  const dot = (x) => (x.kind === "screener" ? `<i class="st-dot ${statusClass(x.status) || "neutral"}" title="${esc(shortStatus(x.status))}"></i>` : "");
+  // one dot per market: has this strategy shown an edge there (server.strategy_edges)
+  const dot = (x) => `<span class="edge-dots">${MKTS.map((m) => edgeDot(x.key, m.key)).join("")}</span>`;
   const ver = (x) => (x.version && x.version !== "1.0") || !x.is_current ? `<span class="st-ver" title="${esc(x.spec_id || "")}">v${esc(x.version || "1.0")}</span>` : "";
   const item = (x, sub) => `<a class="nav-item${sub ? " sub" : ""} ${x.key === key ? "active" : ""}" href="#/strategies/${x.key}" title="${esc(x.description || "")}">
       <span><b class="sn">${dot(x)}${esc(x.name)}${ver(x)}</b><span class="muted small sk">${esc(x.screen_name || "")}</span></span>${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
@@ -4520,6 +4553,7 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const rest = ungrouped.length ? `<div class="nav-h">Other</div>${ungrouped.map((x) => item(x)).join("")}` : "";
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
+      <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div></div>
       ${stratNav}${rest}
       ${untried.length ? `<details class="nav-untried"><summary class="nav-h">Not yet explored (${untried.length})</summary>
         <div class="nav-empty muted small">Kinds of market behaviour no strategy here trades yet: ${untried.map((b) => esc(b.label)).join(" · ")}.</div></details>` : ""}
@@ -4535,7 +4569,7 @@ async function setupsPage(alive, root) {
   const mkt = pageMarket();
   document.title = "Today's setups · Trading";
   root.innerHTML = LOADING;
-  const r = await api(`/api/setups?market=${mkt}`).catch((e) => ({ error: e.message }));
+  const [r] = await Promise.all([api(`/api/setups?market=${mkt}`).catch((e) => ({ error: e.message })), loadEdges()]);
   if (!alive()) return;
   let show = store.get("setupsShow", "all");
   const newest = r.runs?.length ? r.runs.map((x) => x.run).sort().at(-1) : null;
@@ -4551,7 +4585,7 @@ async function setupsPage(alive, root) {
         : "A refresh could not be queued automatically — use <b>Run strategies…</b>"}</span></div>` : ""}
     ${r.error ? `<div class="empty"><b>Could not load setups</b><div class="muted">${esc(r.error)}</div></div>` : `
     <div class="setup-runs">${r.runs.map((x) => `<a class="sec-card setup-run" href="#/strategies/${x.strategy}/setups/${mkt}">
-        <b>${esc(x.name)}</b><div class="small"><span class="${x.tradeable ? "pos" : "muted"}">${x.tradeable} tradeable</span> · ${x.watch} on watch</div>
+        <b>${edgeDot(x.strategy, mkt)}${esc(x.name)}</b><div class="small"><span class="${x.tradeable ? "pos" : "muted"}">${x.tradeable} tradeable</span> · ${x.watch} on watch</div>
         <div class="muted small">${x.screened} from ${esc(x.screen || "its screen")} · ${prettyDate(x.run)}</div></a>`).join("")}</div>
     <div class="chips" id="sshow">${[["all", "All", r.rows.length], ["trade", "Tradeable", r.rows.filter((x) => x.tradeable).length], ["watch", "On watch", r.rows.filter((x) => !x.tradeable).length]]
       .map(([k, t, n]) => `<button class="chip ${k === show ? "on" : ""}" data-s="${k}">${t}<span>${n}</span></button>`).join("")}</div><div id="sclus"></div><div id="stbl"></div>`}`;
@@ -4565,6 +4599,7 @@ async function setupsPage(alive, root) {
     const hide = ["target_r", "setup_quality", "wait_for"];
     dataTable(root.querySelector("#stbl"), cols, xs.map((x) => [x.symbol, x.name || "", x.peer_group || "", x.peer_rs ?? null, x.strategy_name, x.decision, x.setup, x.price, x.entry, x.stop, x.risk_pct, x.target_r, x.quality, x.wait_for || ""]), {
       name: `setups_${mkt}`, sort: ["setup_quality", -1], hidden: hide,
+      html: { strategy: (v) => `${edgeDot(edgeKeyOf(v), mkt)}${esc(v ?? "")}` },
       rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((y) => y[0]), "Today's setups", location.hash),
     });
     root.querySelector("#sclus").innerHTML = clusterChips(xs.map((x) => x.peer_group));
@@ -4582,7 +4617,7 @@ const SCREEN_COLS = ["symbol", "name", "peer_group", "group_rs", "decision", "st
  *  Candidates (what it points at, from its latest run) · Backtests. */
 async function strategyPage(alive, root, key, tab, mkt, runKey) {
   root.innerHTML = LOADING;
-  const d = await api(`/api/strategies/${encodeURIComponent(key)}`).catch(() => null);
+  const [d] = await Promise.all([api(`/api/strategies/${encodeURIComponent(key)}`).catch(() => null), loadEdges()]);
   if (!alive()) return;
   if (!d) { root.innerHTML = `<div class="empty"><b>Strategy not found</b><div class="muted"><a href="#/strategies">Today's setups</a></div></div>`; return; }
   const trades = d.kind === "screener";
@@ -4617,6 +4652,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   root.innerHTML = `<div class="crumbs">${kind}</div>
     <div class="page-head"><h1>${esc(d.name)}</h1><code>${esc(d.key)}</code>
       ${d.kind === "long-term" ? `<span class="spacer"></span><a class="btn" href="#/quality">Open the Quality page →</a>` : ""}</div>
+    ${EDGE?.strategies?.[key] ? `<div class="edge-row">${MKTS.map((m) => edgeChip(key, m.key)).join("")}</div>` : ""}
     ${d.status ? `<div class="sd-badge"><span class="tag ${statusClass(d.status) === "watch" ? "warn" : statusClass(d.status) === "trade" ? "pos" : "neutral"}" title="${esc(statusVerdict(d.status))}">${esc(shortStatus(d.status))}</span></div>` : ""}
     <p class="sd-lead">${mdInline(d.description)}${d.variant_of ? ` A variant of <a href="#/strategies/${d.variant_of.key}/rules">${esc(d.variant_of.name)}</a>.` : ""}${d.screen ? ` Draws its candidates from the <a href="#/screens/${d.screen.key}/${pageMarket()}/criteria">${esc(d.screen.name)}</a> screen.` : ""}${d.live_variant ? ` The daily screen currently lists them under the variant <b>${esc(d.live_variant.name)}</b> (provisional — see <a href="#/strategies/${encodeURIComponent(key)}/setups">Candidates</a>).` : ""}</p>
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
@@ -7353,7 +7389,7 @@ async function todayPage(alive, mkt) {
   $view.innerHTML = LOADING;
   const get = (u) => api(u).catch(() => null);
   const [status, setups, picks, pm, bd] = await Promise.all([get("/api/status"), get(`/api/setups?market=${mkt}`),
-    get("/api/watchlists/screener/items"), get(`/api/postmarket?market=${mkt}`), get(`/api/breadth?market=${mkt}`)]);
+    get("/api/watchlists/screener/items"), get(`/api/postmarket?market=${mkt}`), get(`/api/breadth?market=${mkt}`), loadEdges()]);
   if (!alive()) return;
   const post = { [mkt]: pm }, breadth = { [mkt]: bd };
   if (status) { FRESH = status.freshness; }
@@ -7401,13 +7437,13 @@ async function todayPage(alive, mkt) {
   const rows = setups?.rows || [];
   const trade = rows.filter((x) => x.tradeable).sort((a, b) => (/HIGH/.test(b.decision) - /HIGH/.test(a.decision)) || ((b.quality ?? 0) - (a.quality ?? 0)));
   const watchN = rows.length - trade.length;
-  const runChips = (setups?.runs || []).map((x) => `<a class="chip-s" href="#/strategies/${x.strategy}/setups/${mkt}" title="${esc(x.name)}: ${x.tradeable} tradeable, ${x.watch} on watch — run ${prettyDate(x.run)}">${esc(x.name)} <b>${x.tradeable}</b></a>`).join("");
+  const runChips = (setups?.runs || []).map((x) => `<a class="chip-s" href="#/strategies/${x.strategy}/setups/${mkt}" title="${esc(x.name)}: ${x.tradeable} tradeable, ${x.watch} on watch — run ${prettyDate(x.run)}">${edgeDot(x.strategy, mkt)}${esc(x.name)} <b>${x.tradeable}</b></a>`).join("");
 
   // ---- 4. screener picks: what is new on the list since the last session
   const mine = (picks || []).filter((x) => x.market === mkt);
   const newest = mine.length ? mine.map((x) => x.added_at).sort().at(-1) : null;
   const fresh = newest ? mine.filter((x) => new Date(newest) - new Date(x.added_at) < 20 * 3600e3) : [];
-  const pickChip = (x) => `<a class="chip-s" href="#/chart/${x.market}/${encodeURIComponent(x.symbol)}" title="${esc(x.name || "")} — ${esc((x.strategies || []).map((s) => `${s.strategy}: ${s.decision}`).join(" · "))}">${esc(bareSymbol(x.symbol))}</a>`;
+  const pickChip = (x) => `<a class="chip-s" href="#/chart/${x.market}/${encodeURIComponent(x.symbol)}" title="${esc(x.name || "")} — ${esc((x.strategies || []).map((s) => `${s.strategy}: ${s.decision}`).join(" · "))}">${(x.strategies || []).map((s) => edgeDot(s.strategy, x.market)).join("")}${esc(bareSymbol(x.symbol))}</a>`;
 
   $view.innerHTML = pageHead("Today", { extra: marketSeg(mkt),
       context: `<span class="muted small">${new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</span>${info("<p>Your starting point each day: how each market closed, whether the data behind everything is current, the macro backdrop, what can be traded today, and what is new on the screener list. Each part opens its full page.</p><p>The market toggle chooses the market for the whole page.</p>")}` })
@@ -7415,7 +7451,7 @@ async function todayPage(alive, mkt) {
       <div class="sec-card td-card" id="td-macro">${tdHead(`Macro · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div></div>
     <div class="mstrip td-tiles" id="td-tiles"></div>
     <div class="sec-card td-rates-card" id="td-rates">${tdHead(`Rates & yields · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div>
-    <div class="sec-card td-setups">${tdHead(`Today's setups · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${trade.length} tradeable · ${watchN} on watch</span><a class="small" href="#/strategies">All setups →</a>`)}
+    <div class="sec-card td-setups">${tdHead(`Today's setups · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${trade.length} tradeable · ${watchN} on watch</span>${edgeLegend()}<a class="small" href="#/strategies">All setups →</a>`)}
       ${setups?.behind ? `<div class="muted small td-warn">Newer prices have loaded since these runs — the decisions below were made on older bars.</div>` : ""}
       <div class="scr-top td-runs">${runChips || '<span class="muted small">No strategy runs yet for this market.</span>'}</div>
       <div id="td-tbl"></div></div>
@@ -7430,6 +7466,7 @@ async function todayPage(alive, mkt) {
   const cols = ["symbol", "name", "peer_group", "group_rs", "strategy", "decision", "setup", "price", "entry", "stop", "risk_pct", "target_r"];
   dataTable(host, cols, trade.map((x) => [x.symbol, x.name || "", x.peer_group || "", x.peer_rs ?? null, x.strategy_name, x.decision, x.setup, x.price, x.entry, x.stop, x.risk_pct, x.target_r]), {
     name: "today_setups", limit: 15,
+    html: { strategy: (v) => `${edgeDot(edgeKeyOf(v), mkt)}${esc(v ?? "")}` },
     rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((x) => x[0]), "Today's setups", location.hash),
   });
 }

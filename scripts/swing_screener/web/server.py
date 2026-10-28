@@ -867,6 +867,85 @@ def strategies():
     return out
 
 
+# ------------------------------------------------------------ edge: has this strategy shown one?
+# One grade per strategy per market, from its stored runs, so every page that names a strategy can say
+# whether the rules behind a stock have earned trust. Read from the CURRENT rules' run as configured
+# (no experiment, not archived), strongest evidence first: a verify run (out-of-sample, the verdict),
+# else an optimise run (in-sample: flattered by construction), else the newest run of an older version
+# or a pre-stage run, which says so. "Edge" means excess CAGR over the run's benchmark above zero --
+# the number the Strategies page already ranks on -- not a judgement made here.
+EDGE_LEVELS = {
+    "verified": "Edge out-of-sample",
+    "failed": "Failed out-of-sample",
+    "in_sample": "Edge in-sample only — not verified",
+    "none": "No edge",
+    "unmeasured": "Not measured",
+}
+_EDGE_CACHE: dict = {}
+
+
+def _excess(summary) -> float | None:
+    try:
+        return float(str((summary or {}).get("excess_cagr", "")).replace("%", "").replace("+", ""))
+    except ValueError:
+        return None
+
+
+def strategy_edges() -> dict:
+    """{strategy key: {"name", market: {"level", "label", "excess", "stage", "version", "current", "run_id"}}}."""
+    import time
+    if _EDGE_CACHE.get("at", 0) > time.time() - 120:
+        return _EDGE_CACHE["data"]
+    strat_docs = _strategy_docs()
+    rows = q("SELECT id, strategy, market, run_name, summary, spec_id, overrides FROM report_runs "
+             "WHERE kind='backtest' AND archived_at IS NULL ORDER BY generated_at DESC NULLS LAST")
+    by = {}
+    for i, k, m, r, s, sp, ov in rows:
+        by.setdefault((k, m), []).append((i, r, s, sp, ov))
+    out = {}
+    for k in strat_docs.keys():
+        d = strat_docs.strategy_doc(k)
+        if d.get("kind") == "long-term":
+            continue
+        cur = d.get("spec_id") or None
+        ent = {"name": d["name"]}
+        for m in MARKETS:
+            plain = [(i, r, s, sp) for i, r, s, sp, ov in by.get((k, m), [])
+                     if _excess(s) is not None and not run_variant(sp, ov, cur)["variant"]]
+            mine = [x for x in plain if cur and x[3] == cur]
+            pick, current = None, True
+            for stage in ("verify", "optimise"):
+                pick = next((x for x in mine if _stage(x[1])["stage"] == stage), None)
+                if pick:
+                    break
+            if not pick:
+                current = False
+                pick = (next((x for x in plain if _stage(x[1])["stage"] == "verify"), None)
+                        or next((x for x in plain if _stage(x[1])["stage"] == "optimise"), None)
+                        or next((x for x in plain if not cur or x[3] != cur), None)
+                        or next(iter(mine or plain), None))
+            if not pick:
+                ent[m] = {"level": "unmeasured", "label": EDGE_LEVELS["unmeasured"]}
+                continue
+            i, r, s, sp = pick
+            st, ex = _stage(r)["stage"], _excess(s)
+            level = (("verified" if ex > 0 else "failed") if st == "verify"
+                     else ("in_sample" if ex > 0 else "none"))
+            ver = (sp or "").split("-")[0].lstrip("v")
+            where = {"verify": "out-of-sample", "optimise": "in-sample", "full": "full period"}.get(st, "legacy run")
+            label = f"{EDGE_LEVELS[level]}: excess {ex:+.2f}%/yr ({where}{'' if current else f', v{ver} — current rules not run yet'})"
+            ent[m] = {"level": level, "label": label, "excess": ex, "stage": st, "version": ver,
+                      "current": current, "run_id": i}
+        out[k] = ent
+    _EDGE_CACHE.update(at=time.time(), data=out)
+    return out
+
+
+@app.get("/api/strategy-edges")
+def strategy_edges_api():
+    return {"levels": EDGE_LEVELS, "strategies": strategy_edges()}
+
+
 @app.get("/api/taxonomy")
 def taxonomy():
     """The full set of groups, including those with no strategies yet."""

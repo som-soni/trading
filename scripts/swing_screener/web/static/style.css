@@ -1810,3 +1810,21 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .renko-card .sm-head { display: flex; gap: 10px; align-items: center; }
 .rk-chart { height: min(460px, 60vh); margin: 6px 0; }
 .rk-info { margin: 4px 0 2px; }
+
+/* Edge grades (server.strategy_edges): one dot per strategy per market, the same colours on every page */
+.edge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; flex-shrink: 0; font-style: normal; }
+.edge.e-verified { background: var(--up); }
+.edge.e-in_sample { background: var(--warn); }
+.edge.e-failed { background: var(--down); }
+.edge.e-none { background: var(--line-3); }
+.edge.e-unmeasured { background: transparent; box-shadow: inset 0 0 0 1px var(--line-3); }
+.edge.old { opacity: .55; }
+.edge-dots { display: inline-flex; gap: 2px; margin-right: 4px; }
+.edge-dots .edge { margin-right: 0; }
+.edge-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+.edge-chip { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--line-2, var(--line-3)); }
+.edge-chip.e-verified { border-color: var(--up); } .edge-chip.e-in_sample { border-color: var(--warn); } .edge-chip.e-failed { border-color: var(--down); }
+.edge-legend { display: inline-flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; }
+.edge-legend .edge { margin-right: 3px; }
+.nav-legend { padding: 4px 12px 8px; }
+.edge-legend .el { white-space: nowrap; }
