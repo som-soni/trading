@@ -364,13 +364,14 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "e006d034",
+    "fingerprint": "8f718b0e",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
       "BREAKEVEN_R": 2.0,
       "BUY_RANGE_PCT": 5.0,
       "CHEAT_BLOCK_VCP09": 0,
+      "CHEAT_DRYUP": 1,
       "CHEAT_SHELF_DAYS": 7,
       "CHEAT_SHELF_PCT": 8.0,
       "CLIMAX_IS_PARTIAL": 1,
@@ -381,6 +382,7 @@
       "DRYUP_RATIO": 0.8,
       "EARNINGS_BLACKOUT_DAYS": 14,
       "FAIL_DAYS": 0,
+      "FAIL_SMA20_DAYS": 10,
       "FINAL_REF_RATIO": 0.6,
       "FUND_EPS_GROWTH_MIN_PCT": 20.0,
       "FUND_MARGIN_SLACK_PP": 1.0,
@@ -393,7 +395,7 @@
       "MAX_BASE_DEPTH_PCT": 50.0,
       "MAX_CLOSES_BELOW_200": 10,
       "MAX_CONTRACTIONS": 6,
-      "MAX_ENTRIES_PER_BASE": 1,
+      "MAX_ENTRIES_PER_BASE": 2,
       "MAX_OPEN_RISK_PCT": 6.0,
       "MAX_PCT_BELOW_52W_HIGH": 25.0,
       "MAX_POSITIONS": 8,
@@ -419,6 +421,10 @@
       "PE_WARMUP": 5,
       "PE_WINDOW": 10,
       "PIVOT_NEAR_HIGH": 0.9,
+      "POWER_PLAY.dryup": 1,
+      "POWER_PLAY.dryup_quiet_days": 2,
+      "POWER_PLAY.dryup_quiet_ratio": 0.5,
+      "POWER_PLAY.dryup_ratio": 0.8,
       "POWER_PLAY.flag_max_days": 30,
       "POWER_PLAY.flag_max_depth_pct": 25.0,
       "POWER_PLAY.flag_min_days": 10,
@@ -427,6 +433,7 @@
       "POWER_PLAY.swing_k": 5,
       "POWER_PLAY.tight_min_days": 5,
       "POWER_PLAY.tight_pct": 10.0,
+      "PP_DRYUP": 1,
       "PP_FLAG_MAX_DAYS": 30,
       "PP_FLAG_MAX_DEPTH_PCT": 25.0,
       "PP_FLAG_MIN_DAYS": 10,
@@ -454,6 +461,7 @@
       "VCP.base_min_days": 15,
       "VCP.bh_break_atr": 1.0,
       "VCP.bh_break_pct": 2.0,
+      "VCP.cheat_dryup": 1,
       "VCP.cheat_shelf_days": 7,
       "VCP.cheat_shelf_pct": 8.0,
       "VCP.deep_base_flag_pct": 35.0,
@@ -511,7 +519,7 @@
         "W5"
       ]
     },
-    "version": "1.26"
+    "version": "1.27"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

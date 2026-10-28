@@ -135,6 +135,7 @@ def test_policy_defaults_are_the_strategy_constants():
     assert p.time_stop_days == ms.TIME_STOP_DAYS and abs(p.strength_ext - ms.STRENGTH_EXT_PCT / 100) < 1e-12
     assert p.partial_frac == ms.STRENGTH_FRAC and p.climax_partial == bool(ms.CLIMAX_IS_PARTIAL)
     assert p.trend_volume == bool(ms.TREND_EXIT_NEEDS_VOLUME)
+    assert p.fail_sma20_days == ms.FAIL_SMA20_DAYS
 
 
 def _guide_run(df, sig):
@@ -198,6 +199,28 @@ def test_guide_trend_exit_needs_no_volume():
     # close 49 < SMA50 50 on light volume: sold at the next open, 49 (1.7 waited for volume)
     t = _guide_run(df, _signal(df, stop=40.0, max_risk_pct=1.0))
     assert t.exit_reason == "TREND_EXIT" and t.exit_date == df.index[9], (t.exit_reason, t.exit_date)
+
+
+def test_guide_breakout_that_closes_below_its_20_day_is_sold():
+    # EX-02b: entry 101 at the open; two days later the close 99.5 is under the 20-day (100) -> out next open
+    df = _frame([(99, 101, 98, 100.5), (101, 102, 100, 101), (101, 101.5, 100.5, 101), (100.5, 101, 99, 99.5),
+                 (99.4, 100, 98, 99)], sma50=90.0)
+    df["sma20"] = 100.0
+    t = _guide_run(df, _signal(df))
+    assert t.exit_reason == "FAILED_SMA20" and t.exit_date == df.index[4] and t.exit_price == 99.4, \
+        (t.exit_reason, t.exit_date, t.exit_price)
+
+
+def test_guide_20_day_rule_ends_after_its_window():
+    # the same close under the 20-day, but only after FAIL_SMA20_DAYS sessions: left to the other rules
+    from swing_screener.strategies import minervini_spec as ms
+    n = ms.FAIL_SMA20_DAYS
+    df = _frame([(99, 101, 98, 100.5), (101, 102, 100, 101)] + [(101, 103, 100.5, 102)] * n
+                + [(101, 101.5, 99, 99.5), (99.5, 100, 99, 99.6)], sma50=90.0)
+    df["sma20"] = 100.0
+    t = simulate([_signal(df)], {"X": df}, CFG, df.index[0],
+                 exit_policy=dataclasses.replace(GUIDE, time_stop_days=0)).trades[0]
+    assert t.exit_reason == "OPEN", t.exit_reason
 
 
 if __name__ == "__main__":

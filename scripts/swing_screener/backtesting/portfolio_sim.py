@@ -130,6 +130,7 @@ class ExitPolicy:
     # while being filed as a distinct arm. `--const TREND_EXIT_NEEDS_VOLUME=1` was no-op the same
     # way. A factory runs at construction, after the patch, so an override means what it says.
     fail_days: int = field(default_factory=lambda: _ms.FAIL_DAYS)              # EX-02: a close below the pivot within this many sessions of entry (0 = off)
+    fail_sma20_days: int = field(default_factory=lambda: _ms.FAIL_SMA20_DAYS)  # EX-02b: a close below the 20-day average within this many sessions of entry (0 = off)
     breakeven_r: float = field(default_factory=lambda: _ms.BREAKEVEN_R)        # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
     partial_r: float = field(default_factory=lambda: _ms.PARTIAL_R)            # EX-04: sell `partial_frac` at entry + this × R (0 = off)
     partial_frac: float = field(default_factory=lambda: _ms.STRENGTH_FRAC)
@@ -170,6 +171,8 @@ class ExitPolicy:
                 bits.append(f"strength{self.strength_ext * 100:g}" if self.strength_ext else "noStrength")
             if self.fail_days != _ms.FAIL_DAYS:
                 bits.append(f"fail{self.fail_days}" if self.fail_days else "noFail")
+            if self.fail_sma20_days != _ms.FAIL_SMA20_DAYS:
+                bits.append(f"fail20d{self.fail_sma20_days}" if self.fail_sma20_days else "noFail20d")
             if self.time_stop_days != _ms.TIME_STOP_DAYS:
                 bits.append(f"time{self.time_stop_days}" if self.time_stop_days else "noTime")
             return "-".join(bits)
@@ -291,7 +294,9 @@ class PortfolioResult:
 PENDING_EXPIRY_BDAYS = 10
 # A base reopens only after one of these: the trade was shaken out, not finished. A trend exit
 # (EX-06) says the move itself is over, so buying the same base again is chasing it.
-RE_ENTRY_AFTER = frozenset({"STOP", "BREAKEVEN_STOP"})
+# The exits that say the trade was shaken out rather than that the move is over. FAILED_SMA20 (minervini
+# EX-02b) is a pivot failure, which is exactly what Minervini's "failure reset" re-buys.
+RE_ENTRY_AFTER = frozenset({"STOP", "BREAKEVEN_STOP", "FAILED_SMA20"})
 
 
 # price levels a position or its order carries in `meta`, lowered with the price on an ex-date
@@ -942,6 +947,11 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
     pivot = m.get("pivot")
     if pivot and policy.fail_days and pos.bars_held <= policy.fail_days and c < pivot:
         pos.queued_exit = "FAILED_BREAKOUT"
+        return
+    # EX-02b: the breakout did not hold its 20-day average
+    s20 = float(bar.get("sma20", float("nan")))
+    if policy.fail_sma20_days and pos.bars_held <= policy.fail_sma20_days and s20 == s20 and c < s20:
+        pos.queued_exit = "FAILED_SMA20"
         return
     if not entry_day and r > 0:
         # EX-03: breakeven, effective from the next session

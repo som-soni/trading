@@ -116,6 +116,15 @@ PP_RUN_MULT = 2.0            # … during which price at least doubled, measured
 PP_FLAG_MIN_DAYS = 10        # the pause: about 2 …
 PP_FLAG_MAX_DAYS = 30        # … to 6 weeks
 PP_FLAG_MAX_DEPTH_PCT = 25.0
+# PP-06 (1.27): the flag's tight area must show VCP-10's volume dry-up. Minervini's third power-play
+# condition -- "within the base (usually just days before a breakout), volume will contract
+# considerably" -- was the one 1.26 did not check. 0 turns it off.
+PP_DRYUP = 1
+# MV-03/MV-04 (1.27): the cheat shelf must show VCP-10's volume dry-up as well as its tightness.
+# Minervini: a valid cheat area "should exhibit a contraction in volume as well as tightness in the
+# range of price". Until 1.27 a cheat had no volume test at all, so a base that VCP-10 rejected for
+# volume could still be bought through its shelf. 0 = tightness only, as before.
+CHEAT_DRYUP = 1
 
 # What each VCP failure code means TODAY, read from core/vcp_spec.detect. One table, used by the
 # chart's failed-base titles and by the Candidates tab's stage view. The chart's own copy had gone
@@ -138,6 +147,8 @@ POWER_PLAY = vcp_spec.PowerPlayParams(
     run_window=PP_RUN_WINDOW, run_mult=PP_RUN_MULT, flag_min_days=PP_FLAG_MIN_DAYS,
     flag_max_days=PP_FLAG_MAX_DAYS, flag_max_depth_pct=PP_FLAG_MAX_DEPTH_PCT,
     tight_pct=TIGHT_PCT, tight_min_days=TIGHT_MIN_DAYS, swing_k=SWING_K,
+    dryup=PP_DRYUP, dryup_ratio=DRYUP_RATIO, dryup_quiet_days=DRYUP_QUIET_DAYS,
+    dryup_quiet_ratio=DRYUP_QUIET_RATIO,
 )
 
 VCP = vcp_spec.VcpParams(
@@ -150,6 +161,7 @@ VCP = vcp_spec.VcpParams(
     undercut_recovery_days=UNDERCUT_RECOVERY_DAYS,
     tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
+    cheat_dryup=CHEAT_DRYUP,
 )
 
 # ---- section 6: setups
@@ -185,9 +197,11 @@ MAX_STOP_PCT = 10.0     # SL-03: skip a fill whose stop is further below it than
 # that common here -- EX-03 moves the stop to breakeven at +{BREAKEVEN_R}R, so an ordinary
 # pullback ends the trade at zero and, today, ends the base with it. Raising this lets only a
 # SHAKEOUT reopen a base (a stop or a breakeven stop, never a trend exit, which says the move is
-# over), and the setup still has to re-fire on its own. OFF until measured: `--const
-# MAX_ENTRIES_PER_BASE=2`.
-MAX_ENTRIES_PER_BASE = 1
+# over), and the setup still has to re-fire on its own. 2 since 1.27: Minervini's "failure reset" --
+# a pivot failure that resets within days -- is one of his own setups ("some of my biggest winners
+# were stocks that stopped me out and then reset"), so a shakeout now leaves the base buyable once
+# more. `--const MAX_ENTRIES_PER_BASE=1` restores 1.26.
+MAX_ENTRIES_PER_BASE = 2
 NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a third at 3R)
 # Minervini's stated minimum reward-to-risk (ChartMill's SEPA write-up and the
 # books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
@@ -221,6 +235,12 @@ PARTIAL_R = 2.0
 # on stored data about two in three breakouts close back below the pivot within ten
 # sessions. In 1.7 this exit closed ~80% of trades for about -0.3R each.
 FAIL_DAYS = 0
+# EX-02b (1.27), the breakout that fails its 20-day average: a close below the 20-day average within
+# this many sessions of the buy sells at the next open. Minervini judges a breakout by the 20-day,
+# not by the pivot: "the stock price should hold its 20-day moving average and in most cases should
+# not close below it", and a squat that closes below it "lowers the probability of success". He gives
+# a squat up to ten days to recover, which is the window. 0 = off (1.26).
+FAIL_SMA20_DAYS = 10
 # EX-04, selling into strength: a part of the position once the close is this far
 # above the 50-day average, at the next open. Replaces 1.7's "a third at 3R".
 STRENGTH_EXT_PCT = 25.0
@@ -579,8 +599,22 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.26"
+    version = "1.27"
     changelog = (
+        ("1.27", "2026-10-29",
+         "Four rules brought into line with Minervini's own description of the method (Trade Like a "
+         "Stock Market Wizard, chapter 10), none of them yet measured. (1) A cheat shelf (MV-03, "
+         "MV-04) must show VCP-10's volume dry-up as well as tightness (CHEAT_DRYUP): he says a valid "
+         "cheat area contracts in volume as well as in price, and until now a base VCP-10 rejected "
+         "for volume could still be bought through its shelf -- ESNT's 14 Mar 2017 cheat was one. "
+         "(2) A power play's tight area must show the same dry-up (PP-06, PP_DRYUP), his third "
+         "power-play condition. (3) The failure reset: EN-04 allows 2 entries per "
+         "base, so a stop, a breakeven stop or a failed 20-day no longer bars the base for good -- a pivot that fails "
+         "and resets within days is one of his own setups. (4) EX-02b sells on a close below the "
+         "20-day average within 10 sessions of the buy: he judges a breakout by "
+         "whether it holds the 20-day, and gives a squat about ten days to recover. "
+         "`--vcp cheat_dryup=0`, `--const MAX_ENTRIES_PER_BASE=1` and `--const FAIL_SMA20_DAYS=0` "
+         "each restore one piece of 1.26."),
         ("1.26", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited "
          "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
@@ -598,7 +632,7 @@ class MinerviniSpecStrategy(Strategy):
          "is stated as a preference."),
         ("1.24", "2026-10-22",
          "EN-04 can now allow more than one entry per base, though it still allows "
-         "{MAX_ENTRIES_PER_BASE} -- the switch is off until it is measured. A base was barred for "
+         "1 -- the switch is off until it is measured. A base was barred for "
          "good after a single entry, which also barred the re-entry a shakeout invites, and the "
          "ladder makes shakeouts common: EX-03 moves the stop to breakeven at +{BREAKEVEN_R}R, so "
          "an ordinary pullback ends the trade at zero and ended the base with it. Minervini "
@@ -983,7 +1017,7 @@ class MinerviniSpecStrategy(Strategy):
         "STOP_BUFFER_PCT", "MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
         "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR",
         # the exits (portfolio_sim's ExitPolicy)
-        "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
+        "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
         "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
@@ -1033,8 +1067,9 @@ class MinerviniSpecStrategy(Strategy):
         "code departs from that spec is listed once, under Known caveats.",
     )
     caveats = (
-        "**Where the code departs from the written spec.** It follows the spec's revision (v2) and the "
-        "Learn guide \"SEPA and the VCP\" instead in these places:\n\n"
+        "**Where the code departs from the written spec.** It follows the spec's revision (v2), the "
+        "Learn guide \"SEPA and the VCP\" and, since 1.27, Minervini's own book instead in these "
+        "places:\n\n"
         "- **Base:** the base high is the HIGHEST unbeaten swing high, not the most recent (VCP-02); the "
         "trend is tested across the base instead of the Trend Template on the base-high day (VCP-03); "
         "pullbacks come from a shrinking zig-zag, and more than {MAX_CONTRACTIONS} is a flag, not a "
@@ -1043,8 +1078,10 @@ class MinerviniSpecStrategy(Strategy):
         "wants each pullback 0.80 times the last (VCP-06); the tight area is the last pullback, not a "
         "fixed 10 days (VCP-08); a high pivot in a deep base also passes (VCP-09); volume up to "
         "{DRYUP_RATIO} times, or quiet days, instead of 0.70 times (VCP-10).\n"
-        "- **Setups:** the cheats (MV-03, MV-04) and the power play (MV-05) are added. The spec's early "
-        "entry, EN-03, is not implemented.\n"
+        "- **Setups:** the cheats (MV-03, MV-04) and the power play (MV-05) are added, each with a "
+        "volume dry-up test (CHEAT_DRYUP, PP-06). The spec's early entry, EN-03, is not implemented.\n"
+        "- **Re-entry:** a base may be bought {MAX_ENTRIES_PER_BASE} times after a shakeout (EN-04); "
+        "the spec allows one.\n"
         "- **Entry:** the buy-stop needs a close at or above the pivot, where the spec fills on a touch "
         "(EN-02).\n"
         "- **Stop and size:** a {MAX_STOP_PCT}% maximum stop instead of 8% (SL-03); half size until the "
@@ -1054,7 +1091,8 @@ class MinerviniSpecStrategy(Strategy):
         "- **Exits:** a part sold {STRENGTH_EXT_PCT}% above the 50-day instead of a third at +3R (EX-04); "
         "a climax sells that part, not everything (EX-05); the 50-day exit needs no volume (EX-06); the "
         "time stop is on at {TIME_STOP_DAYS} sessions instead of off at 20 (EX-07); the failed-breakout "
-        "exit is off instead of on at 5 sessions (EX-02); the light-volume exit is added.\n"
+        "exit is off instead of on at 5 sessions (EX-02); a close below the 20-day within "
+        "{FAIL_SMA20_DAYS} sessions sells instead (EX-02b); the light-volume exit is added.\n"
         "- **Filters:** the Learn guide's market test instead of MKT-01; the results blackout is added; "
         "higher US turnover and price floors than U-01 and U-02.",
         "**Survivorship bias.** The universe is today's listed stocks; companies delisted since are missing, "
@@ -1184,8 +1222,13 @@ class MinerviniSpecStrategy(Strategy):
               "base high.\n"
               "- **Lower third:** the shelf's high is less than one third of the way from the base "
               "low to the base high.\n"
+              "- **Quiet shelf:** the shelf's volume has dried up, by VCP-10's test: its average is "
+              "at most {DRYUP_RATIO} times the 50-day average (taken the session before the shelf), "
+              "or at least {DRYUP_QUIET_DAYS} of its sessions trade at or under {DRYUP_QUIET_RATIO} "
+              "times it. Minervini wants a cheat area to contract in volume as well as in price. "
+              "Only while CHEAT_DRYUP is 1 (it is {CHEAT_DRYUP}).\n"
               "- **Trigger:** yesterday's close was at or below the shelf's high, and today's close "
-              "is above it. There is no volume or close-position test.\n\n"
+              "is above it. There is no breakout-volume or close-position test.\n\n"
               "The stop goes under the shelf's low, much nearer than the base low — the reason to "
               "buy early. Minervini calls this the riskiest of his three in-base entries. On by "
               "default (LOW_CHEAT_ENABLED = {LOW_CHEAT_ENABLED}). Under the variant the live screen "
@@ -1206,6 +1249,9 @@ class MinerviniSpecStrategy(Strategy):
               "the flag high, if there is none) to yesterday, covering at least the last "
               "{TIGHT_MIN_DAYS} sessions. Its range is at most {TIGHT_PCT}%; its high is the pivot "
               "and its low the stop's reference.\n"
+              "- **Volume dried up (PP-06):** the tight area passes VCP-10's test — average volume at "
+              "most {DRYUP_RATIO} times the 50-day average, or at least {DRYUP_QUIET_DAYS} sessions at "
+              "or under {DRYUP_QUIET_RATIO} times it. Only while PP_DRYUP is 1 (it is {PP_DRYUP}).\n"
               "- **Trigger:** the same as MV-01's — yesterday's close at or below the pivot, today's "
               "close above it on at least {VOL_MULT} times average volume, at least {UPPER_HALF} of "
               "the way up the day's range, and no more than {BUY_RANGE_PCT}% above the pivot.\n\n"
@@ -1311,12 +1357,15 @@ class MinerviniSpecStrategy(Strategy):
         "{BUY_RANGE_PCT}% above the shelf's high, or at or below the shelf's low.",
         "Power play (MV-05). Bought at the next session's open. Skipped if that open is more than "
         "{BUY_RANGE_PCT}% above the flag's pivot, or at or below the flag's tight low.",
-        "{MAX_ENTRIES_PER_BASE} entry per base (EN-04). Once a base, or a power play's flag, has "
-        "been bought that many times, it is never bought again.\n\n"
-        "At the shipped value of 1 that means not even after a stop-out. Above 1, only a SHAKEOUT "
-        "reopens a base — the stop, or the breakeven stop — never a trend exit, which says the "
-        "move itself is over rather than that the trade was shaken out of it. The setup still has "
-        "to re-fire on its own; this only stops the veto.",
+        "Up to {MAX_ENTRIES_PER_BASE} entries per base (EN-04), the failure reset. Once a base, or a "
+        "power play's flag, has been bought that many times, it is never bought again.\n\n"
+        "Only a SHAKEOUT reopens a base — the stop, the breakeven stop, or a failed 20-day "
+        "(EX-02b) — never a trend exit, "
+        "which says the move itself is over rather than that the trade was shaken out of it. The "
+        "setup still has to re-fire on its own; this only stops the veto. Minervini keeps a stock "
+        "that stopped him out on his list, because a failed pivot can reset within days and "
+        "become a better entry than the first. At 1, a base is never bought again after a "
+        "stop-out.",
         "Same-day ties (PF-03). When more stocks trigger than there are free slots, the highest RS "
         "rating is bought first, then the smallest tight area (pivot to tight low, as a % of the "
         "pivot).",
@@ -1396,6 +1445,12 @@ class MinerviniSpecStrategy(Strategy):
         "average volume.",
         "EX-07 — time stop. If the high has not reached +1R within {TIME_STOP_DAYS} sessions of the "
         "buy, the position is sold: it has tied up money without proving itself.",
+        "EX-02b — the breakout fails its 20-day average. A close below the 20-day average within "
+        "{FAIL_SMA20_DAYS} sessions of the buy sells everything at the next open. Minervini judges "
+        "a breakout by the 20-day rather than the pivot: once out, it should hold the 20-day and "
+        "in most cases not close below it, and a squat (a breakout that closes off its high and "
+        "slips back into the base) gets up to about ten days to recover — unless it closes below "
+        "the 20-day, which lowers the odds. 0 turns it off.",
         "EX-02 — failed breakout: switched off. A close back below the pivot soon after the buy "
         "would sell here, but Minervini lets a dip below the pivot run to the stop, and on stored "
         "data about two in three breakouts close back under the pivot within ten sessions. "
@@ -1514,11 +1569,13 @@ class MinerviniSpecStrategy(Strategy):
         ("Power play, flag length", "PP_FLAG_MIN_DAYS", "MV-05: shortest pause that counts."),
         ("Power play, flag length max", "PP_FLAG_MAX_DAYS", "MV-05: longest pause that counts."),
         ("Power play, flag depth", "PP_FLAG_MAX_DEPTH_PCT", "MV-05: deepest the flag may fall."),
+        ("Power play, dry-up", "PP_DRYUP", "PP-06: 1 = the flag's tight area must pass VCP-10's volume test, 0 = off (1.26)."),
         ("Buy range", "BUY_RANGE_PCT", "MV-01b, and the most a fill may sit above the pivot."),
         ("Stop buffer", "STOP_BUFFER_PCT", "SL-01."),
         ("Maximum stop", "MAX_STOP_PCT", "SL-03, checked at the fill."),
         ("Cheat shelf length", "CHEAT_SHELF_DAYS", "Sessions in the shelf a cheat is bought from (MV-03/MV-04)."),
         ("Cheat shelf tightness", "CHEAT_SHELF_PCT", "Widest shelf, high to low, that counts as a cheat."),
+        ("Cheat shelf dry-up", "CHEAT_DRYUP", "MV-03/MV-04: 1 = the shelf must pass VCP-10's volume test, 0 = tightness only (1.26)."),
         ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused — "
                                                  "tested on the signal close and again on the fill."),
         ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
@@ -1528,11 +1585,12 @@ class MinerviniSpecStrategy(Strategy):
         ("Largest position", "cfg.max_position_pct", "SL-05: share of equity one position may hold."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Breakeven trigger", "BREAKEVEN_R", "EX-03: R gained before the stop moves to breakeven plus costs."),
-        ("Entries per base", "MAX_ENTRIES_PER_BASE", "EN-04: how many times one base may be bought. "
-                                                      "Above 1, only a stop or breakeven stop reopens it."),
+        ("Entries per base", "MAX_ENTRIES_PER_BASE", "EN-04: how many times one base may be bought — the failure reset. "
+                                                      "Above 1, only a stop, breakeven stop or failed 20-day reopens it."),
         ("Part-sale trigger", "PARTIAL_R", "EX-04: R gained before about a third is sold. Pairs with the "
                                            "breakeven trigger, so the gain is banked as the stop moves up."),
         ("Failed-breakout window", "FAIL_DAYS", "EX-02: sessions after entry in which a close below the pivot sells (0 = off)."),
+        ("20-day failure window", "FAIL_SMA20_DAYS", "EX-02b: sessions after entry in which a close below the 20-day average sells (0 = off)."),
         ("Sell into strength", "STRENGTH_EXT_PCT", "EX-04: % above the 50-day at which a part is sold."),
         ("Part sold into strength", "STRENGTH_FRAC", "EX-04 / EX-05: share of the position sold."),
         ("Climax sells a part", "CLIMAX_IS_PARTIAL", "EX-05: 1 = the strength part only, 0 = everything (1.7)."),
@@ -2405,6 +2463,13 @@ class MinerviniSpecStrategy(Strategy):
             c_checks = [
                 {"code": cz, "name": "Shelf", "value": f"{cp['cheat_range_pct']:.1f}%, {third} third",
                  "limit": f"at most {CHEAT_SHELF_PCT:g}% over {CHEAT_SHELF_DAYS} days, below the high", "state": "pass"},
+            ] + ([
+                {"code": cz, "name": "Shelf volume",
+                 "value": (f"{cp['cheat_dryup']:.2f}x avg, {cp['cheat_quiet_days']} quiet"
+                           if cp.get("cheat_dryup") == cp.get("cheat_dryup") and cp.get("cheat_dryup") is not None else "—"),
+                 "limit": f"at most {DRYUP_RATIO:g}x, or {DRYUP_QUIET_DAYS} sessions at or under {DRYUP_QUIET_RATIO:g}x",
+                 "state": "pass"},
+            ] if CHEAT_DRYUP else []) + [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
                 {"code": "R:R", "name": "Reward / risk", "value": f"{r_mult:.1f}R" if r_mult else "—",

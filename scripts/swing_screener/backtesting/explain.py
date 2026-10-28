@@ -142,6 +142,10 @@ def _why_exit(reason: str, bar, policy_ma: str, pivot, entry: float,
                    f"within the spec's grace window of the entry")
         out.append("      The breakout did not hold. This is the rule doing its job, not a loss "
                    "to tune away.")
+    elif reason == "FAILED_SMA20":
+        s20 = float(bar.get("sma20", float("nan")))
+        out.append(f"EX-02b failed breakout: closed {c:,.2f}, below the 20-day average {s20:,.2f}, "
+                   f"within the spec's grace window of the entry")
     elif reason == "CLIMAX":
         out.append(f"EX-05 climax: closed {c:,.2f}, {(c / entry - 1) * 100:+.1f}% from entry, "
                    f"on an exhaustion signature (biggest daily gain on biggest volume, a run "

@@ -26,6 +26,7 @@ OVERRIDES = {
     "partial_r": ("PARTIAL_R", 0.0, 0.0),
     "partial_frac": ("STRENGTH_FRAC", 0.5, 0.5),
     "fail_days": ("FAIL_DAYS", 7, 7),
+    "fail_sma20_days": ("FAIL_SMA20_DAYS", 5, 5),
     "time_stop_days": ("TIME_STOP_DAYS", 30, 30),
     "trend_volume": ("TREND_EXIT_NEEDS_VOLUME", 1, True),
     "climax_partial": ("CLIMAX_IS_PARTIAL", 0, False),

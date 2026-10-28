@@ -70,6 +70,12 @@ class VcpParams:
     # complete is the pivot buy, by definition.
     cheat_shelf_days: int = 7        # bars in the shelf  [assumption]
     cheat_shelf_pct: float = 8.0     # shelf high-to-low range, % of the high  [assumption]
+    # Minervini, on the cheat area: like a handle, it "should exhibit a contraction in volume as
+    # well as tightness in the range of price". True applies VCP-10's test to the shelf (its
+    # average volume at most `dryup_ratio` x the 50-day, or `dryup_quiet_days` sessions at or
+    # under `dryup_quiet_ratio` x it, the average taken the bar before the shelf). 0 = tightness only.
+    # An int, not a bool, so a strategy's fingerprint sees it.
+    cheat_dryup: int = 0
     bh_break_pct: float = 2.0        # fallback when ATR is unavailable  [assumption]
     min_swing_pct: float = 2.0       # contractions shallower than this are wiggles  [assumption]
     zigzag_atr_mult: float = 1.5     # the zig-zag threshold is at least this many ATRs. A FIXED
@@ -228,6 +234,18 @@ def _template_ok(row) -> bool:
     return template_miss(row) is None
 
 
+def _dryup(d: pd.DataFrame, start: int, vol: pd.Series, quiet_ratio: float) -> tuple[float, int]:
+    """VCP-10's two measures of a quiet stretch beginning at bar `start` of `d`: its average volume
+    as a multiple of the 50-day average, and how many of its sessions traded at or under
+    `quiet_ratio` x that average. The average is read on the bar BEFORE the stretch: the last bar's
+    already includes the quiet days, which drags it down and makes the test easier to pass."""
+    v_i = max(0, start - 1)
+    v50 = float(d["vol_sma50"].iloc[v_i]) if "vol_sma50" in d else float("nan")
+    if not (v50 and v50 == v50):
+        return float("nan"), 0
+    return float(vol.mean()) / v50, int((vol <= quiet_ratio * v50).sum())
+
+
 def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     """The base in force on the last bar of `daily`, and whether its VCP is complete.
 
@@ -239,6 +257,7 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
            "depths": [], "lows": [], "pivot": None, "tight_low": None, "tight_range_pct": None, "dryup": None, "base_tt": None, "zigzag_pct_used": None,
            "base_low": None, "cheat_ok": False, "cheat_pivot": None, "cheat_low": None,
            "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None,
+           "cheat_dryup": None, "cheat_quiet_days": None, "cheat_fail_why": None,
            "pivot_pos": None, "pivot_zone": None, "tight_days_actual": None,
            "base_closes_below_200": None, "fail_why": None, "base_depth_pct": None,
            "deep_base": None, "dryup_quiet_days": None, "wide_and_loose": None,
@@ -369,6 +388,13 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # stock has recovered its old high and the entry is the pivot buy, not a cheat
     out["cheat_ok"] = bool(sh_rng == sh_rng and sh_rng <= p.cheat_shelf_pct
                            and sh_hi < high[bh_i] and len(sh) >= p.cheat_shelf_days)
+    sh_dry, sh_quiet = _dryup(d, len(d) - len(sh), sh["volume"], p.dryup_quiet_ratio)
+    out["cheat_dryup"], out["cheat_quiet_days"] = sh_dry, sh_quiet
+    if out["cheat_ok"] and p.cheat_dryup and not (sh_dry <= p.dryup_ratio or sh_quiet >= p.dryup_quiet_days):
+        out["cheat_ok"] = False
+        out["cheat_fail_why"] = (f"the shelf's volume averaged {sh_dry:.2f}x its 50-day (needs <= "
+                                 f"{p.dryup_ratio:g}) with {sh_quiet} session(s) at or under "
+                                 f"{p.dryup_quiet_ratio:g}x (needs {p.dryup_quiet_days})")
 
     # ---- step 2: the contractions, segmented by zig-zag
     # A leg turns only after a `zigzag_pct` reversal in BOTH directions. Segmenting on swing
@@ -538,10 +564,7 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # Baseline from the bar BEFORE the tight area: the last bar's 50-day average already
     # includes the quiet tight-area days, which drags it down and makes the dry-up test
     # easier to pass than intended.
-    v_i = max(0, ta_start - 1)
-    v50 = float(d["vol_sma50"].iloc[v_i]) if "vol_sma50" in d else float("nan")
-    dry = float(ta["volume"].mean()) / v50 if v50 and v50 == v50 else float("nan")
-    quiet = int((ta["volume"] <= p.dryup_quiet_ratio * v50).sum()) if v50 and v50 == v50 else 0
+    dry, quiet = _dryup(d, ta_start, ta["volume"], p.dryup_quiet_ratio)
     out["dryup"], out["dryup_quiet_days"] = dry, quiet
     # Two ways to pass (v2 §4.4): the tight area's AVERAGE volume is down, or it contains enough
     # of the very quiet days Minervini points to. One average can be lifted past the threshold by
@@ -585,6 +608,13 @@ class PowerPlayParams:
     tight_pct: float = 10.0       # the final tight area, as elsewhere
     tight_min_days: int = 5
     swing_k: int = 5
+    # Minervini's third power-play requirement: "within the base (usually just days before a
+    # breakout), volume will contract considerably". 1 applies VCP-10's test to the flag's tight
+    # area (PP-06); 0 skips it. An int, not a bool, so a strategy's fingerprint sees it.
+    dryup: int = 0
+    dryup_ratio: float = 0.80
+    dryup_quiet_days: int = 2
+    dryup_quiet_ratio: float = 0.5
 
 
 def detect_power_play(d: pd.DataFrame, p: "PowerPlayParams | None" = None) -> dict:
@@ -596,7 +626,7 @@ def detect_power_play(d: pd.DataFrame, p: "PowerPlayParams | None" = None) -> di
     p = p or PowerPlayParams()
     out = {"fail": None, "fail_why": None, "run_pct": None, "flag_high": None, "flag_high_date": None,
            "flag_days": None, "flag_depth_pct": None, "pivot": None, "tight_low": None,
-           "tight_range_pct": None}
+           "tight_range_pct": None, "dryup": None, "dryup_quiet_days": None}
     need = p.run_window + p.flag_max_days + p.swing_k + 2
     if len(d) < need:
         out["fail"] = "PP-00"
@@ -657,5 +687,13 @@ def detect_power_play(d: pd.DataFrame, p: "PowerPlayParams | None" = None) -> di
     if not (rng <= p.tight_pct):
         out["fail"] = "PP-05"
         out["fail_why"] = f"the flag's tight area spans {rng:.1f}%, more than {p.tight_pct:g}%"
+        return out
+    dry, quiet = _dryup(d, ta_i, d["volume"].iloc[ta_i:], p.dryup_quiet_ratio)
+    out["dryup"], out["dryup_quiet_days"] = dry, quiet
+    if p.dryup and not (dry <= p.dryup_ratio or quiet >= p.dryup_quiet_days):
+        out["fail"] = "PP-06"
+        out["fail_why"] = (f"volume in the flag's tight area averaged {dry:.2f}x its 50-day (needs <= "
+                           f"{p.dryup_ratio:g}) with {quiet} session(s) at or under {p.dryup_quiet_ratio:g}x "
+                           f"(needs {p.dryup_quiet_days})")
         return out
     return out
