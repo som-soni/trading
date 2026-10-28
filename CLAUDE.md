@@ -37,21 +37,22 @@ stored-data jobs, `FAST_JOBS` in `jobs/registry.py`): a new job runs in the
 main lane unless you add it to one of those sets on purpose — then run
 `PYTHONPATH=. .venv/bin/python -m tests.test_job_lanes`.
 
-## Sidebar: threads are numbered so their position never moves
+## Sidebar: threads are marked so their position never moves
 
 The Code-tab sidebar groups threads by project, nests each thread under the thread that
 started it, and sorts every level A–Z. So a thread's title starts with its marker at its own
-level, in creation order: top-level modules `01.` … `13.`; under a module, `00. Orchestrator`
-then `01.`, `02.` …; a thread started by one of those `A.`, `B.` …; one level deeper `a.`, `b.` ….
-The nesting already shows the parent, so a marker never repeats its parent's. Do not use sidebar
-sections or groups for this: they replace the project grouping and duplicate the module names.
+level, in creation order: top-level modules `01.` … `13.`; a module's threads `A.`, `B.` … (its
+`00. Orchestrator`, if any, keeps `00.` so it sorts first); a thread started by one of those
+`a.`, `b.` …; deeper still `i.`, `ii.` …. The nesting already shows the parent, so a marker never
+repeats its parent's. Do not use sidebar sections or groups for this: they replace the project
+grouping and duplicate the module names.
 
 **On your first turn in a new session, mark yourself** (when the ccd session tools are
 available; skip silently when they are not): if your title does not already start with a
 marker, `get_session("self")` for your `parentSessionId`, read your siblings' titles
 (`list_sessions`, those with the same parent), and rename yourself with the next marker at your
-level — `NN.` under a top-level module, `A.` under one of its threads, `a.` below that. Keep the
-rest of the title.
+level — `A.` under a top-level module, `a.` one level below, `i.` below that. Keep the rest of
+the title.
 
 ## Markets come from config
 
