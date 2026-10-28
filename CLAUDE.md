@@ -44,7 +44,8 @@ The Code-tab sidebar has one section per top-level module thread (`01. Strategie
 not file new threads there by itself, so **on your first turn in a session, file yourself**
 (when the ccd sidebar/session tools are available; skip silently when they are not):
 
-1. `get_session("self")`. If `group` is already set, stop.
+1. `get_session("self")`. If `group` is already set and the title already starts with `NN. `,
+   stop; if only the group is set, skip to step 4.
 2. Walk `parentSessionId` up to the top-level thread (no parent); its `group` is the module's
    section. If it has none, stop — don't create sections unasked.
 3. `move_sessions(["self"], group_id=<that group>)`.
