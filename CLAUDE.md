@@ -40,17 +40,18 @@ main lane unless you add it to one of those sets on purpose — then run
 ## Sidebar: threads are numbered so their position never moves
 
 The Code-tab sidebar groups threads by project, nests each thread under the thread that
-started it, and sorts every level A–Z. So a thread's title starts with its number at its own
-level: top-level modules `01.` … `13.`; under a module, `00. Orchestrator` then `01.`, `02.` …
-in creation order; a thread started by one of those carries its parent's number first —
-`00.01`, `00.02` under the orchestrator, `02.01` under `02.`. Do not use sidebar sections or
-groups for this: they replace the project grouping and duplicate the module names.
+started it, and sorts every level A–Z. So a thread's title starts with its marker at its own
+level, in creation order: top-level modules `01.` … `13.`; under a module, `00. Orchestrator`
+then `01.`, `02.` …; a thread started by one of those `A.`, `B.` …; one level deeper `a.`, `b.` ….
+The nesting already shows the parent, so a marker never repeats its parent's. Do not use sidebar
+sections or groups for this: they replace the project grouping and duplicate the module names.
 
-**On your first turn in a new session, number yourself** (when the ccd session tools are
+**On your first turn in a new session, mark yourself** (when the ccd session tools are
 available; skip silently when they are not): if your title does not already start with a
-number, `get_session("self")` for your `parentSessionId`, read your siblings' titles
-(`list_sessions`, those with the same parent), and rename yourself `<parent's number>.<next NN>
-<title>` — or `NN. <title>` when your parent is the top-level module. Keep the rest of the title.
+marker, `get_session("self")` for your `parentSessionId`, read your siblings' titles
+(`list_sessions`, those with the same parent), and rename yourself with the next marker at your
+level — `NN.` under a top-level module, `A.` under one of its threads, `a.` below that. Keep the
+rest of the title.
 
 ## Markets come from config
 
