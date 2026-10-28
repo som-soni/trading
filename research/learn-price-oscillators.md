@@ -8,7 +8,7 @@
 - Measured on stored prices, RSI, Bollinger %B and the distance from the 50-day average are nearly the same number. Three momentum indicators on one chart give one opinion three times.
 - Choose indicators that answer different questions: trend, swing size, trend steadiness, volume and comparison with the market.
 
-Moving averages, ATR and ADX — the trend and volatility indicators — are in [the trend and volatility indicators guide](learn-price-indicators.md), which also explains what an indicator is. For basic words, see [Start here](learn-start-here.md).
+Moving averages, ATR and ADX — the trend and volatility indicators — are in [the trend and volatility indicators guide](learn-price-indicators.md), which also explains what an indicator is. Every other indicator has a family guide, listed in [Indicators — the map](learn-ind-map.md). For basic words, see [Start here](learn-start-here.md).
 
 ---
 
@@ -153,17 +153,21 @@ Charting tools differ in one detail. Some use the population standard deviation 
 
 ## 4. The wider family of indicators
 
-Most charting packages offer dozens of studies. Nearly all of them fall into a few families, and members of one family mostly repeat each other (section 5). The usual default settings are in brackets.
+Most charting packages offer dozens of studies. Nearly all of them fall into a few families, and members of one family mostly repeat each other (section 5). The usual default settings are in brackets. Each family has its own guide, and [Indicators — the map](learn-ind-map.md) measures the overlap across all of them.
 
 | Family | Common studies (default settings) |
 |---|---|
-| Moving averages | Simple (20); exponential (20); weighted (20); a ribbon of several lengths (20/50/100/200) |
-| Bands & channels | Bollinger Bands (20, 2); Keltner Channels (20-day EMA ± 2 × 10-day ATR); Donchian Channels (20) |
-| Support & resistance | Swing pivots high/low (10 bars each side); floor-trader pivot points (Traditional, Fibonacci or Camarilla); swing support and resistance levels |
-| Trend | Parabolic SAR (0.02/0.02/0.2); Supertrend (10, 3); Ichimoku Cloud (9/26/52); Directional Movement Index (ADX 14); Aroon (14); an RS line against an index |
-| Momentum | RSI (14; lines at 70/50/30); MACD (12/26/9); Stochastic (14/3/3); Stochastic RSI (14/14/3/3); Commodity Channel Index (20); Williams %R (14); Rate of Change (9); Momentum (10) |
-| Volatility | Average True Range (14); ATR % of price (14); Bollinger BandWidth (20, 2) |
-| Volume | Volume with a 20-bar average; rolling VWAP (20); Money Flow Index (14); On Balance Volume; Chaikin Money Flow (20) |
+| Moving averages | Simple (20); exponential (20); weighted (20); a ribbon of several lengths (20/50/100/200); double exponential, DEMA (20); Hull (9); Kaufman adaptive, KAMA (10/2/30); Williams Alligator (three smoothed averages, 13/8/5) |
+| Bands & channels | Bollinger Bands (20, 2); Keltner Channels (20-day EMA ± 2 × 10-day ATR); Donchian Channels (20); moving-average envelopes (20-day average ± a fixed %); ATR bands (an average ± a multiple of ATR) |
+| Support & resistance | Swing pivots high/low (10 bars each side); floor-trader pivot points (Traditional, Fibonacci or Camarilla); swing support and resistance levels; Fibonacci retracements (38.2/50/61.8% of a swing); Zig Zag (swings of at least 5%; it redraws its last leg); Darvas boxes (the range a stock holds after a new high); volume by price |
+| Trend | Parabolic SAR (0.02/0.02/0.2); Supertrend (10, 3); Chandelier Exit (22, 3 × ATR); Ichimoku Cloud (9/26/52); Directional Movement Index (ADX 14); Aroon and the Aroon Oscillator (14); Vortex (14); Chande Trend Meter; an RS line against an index |
+| Momentum | RSI (14; lines at 70/50/30); MACD (12/26/9); Stochastic (14/3/3); Stochastic RSI (14/14/3/3); Commodity Channel Index (20); Williams %R (14); Rate of Change (9); Momentum (10); distance from a moving average; Bollinger %B (20, 2); PPO (12/26/9); TRIX (15); True Strength Index (25/13); Ultimate Oscillator (7/14/28); Pring's Special K; Price Momentum Oscillator (35/20/10); Connors RSI (3/2/100); Detrended Price Oscillator (20); Balance of Power |
+| Volatility | Average True Range (14); ATR % of price (14); Bollinger BandWidth (20, 2); standard deviation (20); Mass Index (25); Ulcer Index (14); TTM Squeeze (Bollinger Bands inside Keltner Channels) |
+| Volume | Volume with a 20-bar average; rolling VWAP (20); Money Flow Index (14); On Balance Volume; Chaikin Money Flow (20); Accumulation/Distribution line; Chaikin Oscillator (3/10, a MACD of the A/D line); Force Index (13); Ease of Movement (14) |
+
+The families group studies by **what they measure**: direction, speed, swing size, volume or price levels. Some lists add columns such as "oscillators" or "trading signals". Those describe how a study is drawn or used, so most studies would fit two or three columns. Most momentum studies are drawn as oscillators, and Parabolic SAR, Supertrend and the Chandelier Exit are trailing-stop rules built on trend and ATR.
+
+Some names mislead. **%B** sits with momentum, not volatility: it is the price's position inside the bands, and it tracks RSI closely (section 5). **TRIX** is the rate of change of a smoothed average, so it is momentum too. Ichimoku draws several studies at once, so it appears in many lists; its cloud is a trend filter.
 
 Packages also differ in small details. Most follow Wilder's smoothing for RSI, ATR and ADX. Some start an EMA from the average of its first N bars, others from the first close. The two agree after the first few dozen bars. Support and resistance levels are covered in [the chart patterns guide](learn-chart-patterns.md).
 

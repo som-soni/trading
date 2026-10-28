@@ -8,7 +8,7 @@
 - ADX measures how strongly the price is trending, up or down. It repeats almost nothing the direction-based indicators say, but it is slow.
 - Use indicators as filters and flags. Take entries and stops from price levels.
 
-The momentum indicators — RSI, MACD and Bollinger Bands — are in [the momentum indicators guide](learn-price-oscillators.md). That guide also measures how much indicators overlap, and maps which indicator answers which question. For basic words, see [Start here](learn-start-here.md). For stages and trend in a stock, see [the stages guide](learn-price-stages.md); for volume, [the volume guide](learn-price-volume.md); for relative strength against the index, [the relative strength guide](learn-price-rs.md).
+The momentum indicators — RSI, MACD and Bollinger Bands — are in [the momentum indicators guide](learn-price-oscillators.md). That guide also measures how much indicators overlap, and maps which indicator answers which question. Every other indicator, sorted by family with its own guide, is in [Indicators — the map](learn-ind-map.md). For basic words, see [Start here](learn-start-here.md). For stages and trend in a stock, see [the stages guide](learn-price-stages.md); for volume, [the volume guide](learn-price-volume.md); for relative strength against the index, [the relative strength guide](learn-price-rs.md).
 
 ---
 

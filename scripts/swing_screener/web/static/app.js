@@ -5480,7 +5480,9 @@ function renderResearchMd(host, markdown) {
  *            indicators as core/indicators.py computes them: @ema21, @rsi14 (Wilder), @atr14 (Wilder; needs
  *            high/low), @atrp14 (ATR as % of close), @macd / @macdsig / @macdhist (12-26-9), @bbup20 / @bblo20
  *            (2 standard deviations), @chg63 (% change over N sessions), @vol (daily volume), @rvol50 (volume ÷
- *            its N-day average)
+ *            its N-day average); or any Chart-page study by its catalogue key and plot, computed by studies.js
+ *            itself so a guide draws exactly what the Chart page does: @stoch.k, @kc.upper, @squeeze.mom, with
+ *            optional settings @distma(unit=ATR).d — needs a stock or ETF (daily open/high/low), not an index series
  *    band:   <from> <to> | <label>   a shaded period (repeat)
  *    mark:   <date> | <label>         an arrow on the first line (repeat)
  *    caption: what to look at
@@ -5510,7 +5512,7 @@ async function seriesDaily(ref) {
         .then((r) => r.line.map((c) => [c.time, c.value])))(symbol.match(/^fund\.(.+)\.([a-z_]+)$/))
       : grs ? api(`/api/group-rs-series?market=${encodeURIComponent(market)}&level=${grs[1]}&grp=${encodeURIComponent(grs[2])}`).then((r) => r.line.map((c) => [c.time, c.value]))
       : api(`/api/prices?market=${encodeURIComponent(market)}&symbol=${encodeURIComponent(symbol)}&tf=D&bars=${ALL_BARS}`)
-        .then((r) => (r.candles ? r.candles.map((c, i) => [c.time, c.close, r.volume?.[i]?.value, c.high, c.low]) : (r.line || []).map((c) => [c.time, c.value])));
+        .then((r) => (r.candles ? r.candles.map((c, i) => [c.time, c.close, r.volume?.[i]?.value, c.high, c.low, c.open]) : (r.line || []).map((c) => [c.time, c.value])));
     seriesCache.set(ref, raw.then((xs) => (mod ? seriesTransform(xs, mod, ref) : xs)));
   }
   return seriesCache.get(ref);
@@ -5525,6 +5527,22 @@ function seriesTransform(xs, mod, ref) {
   const m = mod.match(/^([a-z]+?)(\d*)$/), kind = m?.[1], n = m?.[2] ? +m[2] : null;
   const dates = xs.map((x) => x[0]), close = xs.map((x) => x[1]);
   const keep = (vals) => vals.map((v, i) => (v == null || !Number.isFinite(v) ? null : [dates[i], v])).filter(Boolean);
+  const study = mod.match(/^([a-z_0-9]+)(?:\(([^)]*)\))?\.([a-z_0-9]+)$/i);
+  if (study) {   // a Chart-page study (studies.js), with its default settings unless overridden
+    const [, type, args, plot] = study, d = Studies.CATALOG[type];
+    if (!d?.calc || d.custom || d.needsBench) throw new Error(`@${mod}: "${type}" is not a study that can be drawn here`);
+    if (!xs.some((x) => x[3] != null)) throw new Error(`${ref}: studies need daily open/high/low (a stock or ETF, not an index series)`);
+    const p = Object.fromEntries(Object.entries(d.params || {}).map(([k, v]) => [k, v && typeof v === "object" ? v.def : v]));
+    for (const kv of (args || "").split(",").filter(Boolean)) {
+      const [k, v] = kv.split("=").map((s) => s.trim());
+      p[k] = v !== "" && Number.isFinite(+v) ? +v : v;
+    }
+    const b = { O: xs.map((x) => x[5] ?? x[1]), H: xs.map((x) => x[3]), L: xs.map((x) => x[4]), C: close, V: xs.map((x) => x[2] ?? 0) };
+    if (d.needsVolume && !b.V.some((v) => v > 0)) throw new Error(`${ref}: no volume stored for this series`);
+    const out = d.calc(b, p);
+    if (!out[plot]) throw new Error(`@${mod}: ${type} has no plot "${plot}" (it has ${Object.keys(out).filter((k) => k[0] !== "_").join(", ")})`);
+    return keep(out[plot]);
+  }
   const needN = () => { if (!n) throw new Error(`@${mod}: give a length, e.g. @${kind}14`); return n; };
   const smaOf = (vals, k) => { let sum = 0, cnt = 0; return vals.map((v, i) => { sum += v; cnt++; if (i >= k) { sum -= vals[i - k]; cnt--; } return i >= k - 1 ? sum / k : null; }); };
   const sdOf = (vals, k) => vals.map((_, i) => { if (i < k - 1) return null; const w = vals.slice(i - k + 1, i + 1), mu = w.reduce((a, b) => a + b, 0) / k;
@@ -6984,7 +7002,9 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-fund-earnings", "learn-fund-reading-results", "learn-fund-valuation", "learn-fund-quality",
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
-  "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
+  "learn-price-stages", "learn-price-volume", "learn-price-rs",
+  "learn-ind-map", "learn-price-indicators", "learn-price-oscillators", "learn-ind-moving-averages", "learn-ind-bands-channels", "learn-ind-trend",
+  "learn-ind-momentum-range", "learn-ind-momentum-rate", "learn-ind-volatility", "learn-ind-volume", "learn-ind-levels",
   "learn-strat-overview", "learn-strat-swing-trading", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-vol-scaled-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
   "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing", "learn-system-filters",
   "learn-test-backtesting",
@@ -6996,7 +7016,10 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-fund-earnings": "fundamentals", "learn-fund-reading-results": "fundamentals", "learn-fund-valuation": "fundamentals", "learn-fund-quality": "fundamentals",
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
-  "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
+  "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price",
+  "learn-ind-map": "indicators", "learn-price-indicators": "indicators", "learn-price-oscillators": "indicators", "learn-ind-moving-averages": "indicators",
+  "learn-ind-bands-channels": "indicators", "learn-ind-trend": "indicators", "learn-ind-momentum-range": "indicators", "learn-ind-momentum-rate": "indicators",
+  "learn-ind-volatility": "indicators", "learn-ind-volume": "indicators", "learn-ind-levels": "indicators",
   "learn-strat-overview": "strategies", "learn-strat-swing-trading": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-livermore": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-kullamagi": "strategies", "learn-strat-zanger": "strategies", "learn-strat-morales-kacher": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-vol-scaled-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
   "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno", "learn-system-filters": "system",
   "learn-test-backtesting": "system",
@@ -7005,6 +7028,10 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
 /** a sub-heading for a guide inside its topic's menu — for a topic large enough to need categories
  *  (Strategies: "Trend following", "Breakouts from a base", ...). Guides without one sit under "Guides". */
 const GUIDE_GROUP = {
+  "learn-ind-map": "Start here",
+  "learn-price-indicators": "Core indicators", "learn-price-oscillators": "Core indicators",
+  "learn-ind-moving-averages": "By family", "learn-ind-bands-channels": "By family", "learn-ind-trend": "By family", "learn-ind-momentum-range": "By family",
+  "learn-ind-momentum-rate": "By family", "learn-ind-volatility": "By family", "learn-ind-volume": "By family", "learn-ind-levels": "By family",
   "learn-strat-overview": "Start here",
   "learn-strat-swing-trading": "Start here",
   "learn-strat-ma-trend": "Trend following",
@@ -7140,6 +7167,15 @@ const GUIDE_BLURB = {
   "learn-price-rs": "Relative strength: the RS line and RS rating, why leaders show strength first, and how the app ranks it.",
   "learn-price-indicators": "Moving averages, ATR and ADX — what an indicator is, and what each trend and volatility measure adds beyond price.",
   "learn-price-oscillators": "RSI, MACD and Bollinger Bands, the Chart page's studies, and how much indicators repeat each other — measured.",
+  "learn-ind-map": "Every indicator sorted into eight families, which ones say the same thing (measured), and one indicator per question.",
+  "learn-ind-moving-averages": "SMA, EMA, WMA, DEMA, Hull, KAMA, the Alligator and ribbons: the trade-off between lag and false turns, measured.",
+  "learn-ind-bands-channels": "Bollinger, Keltner, Donchian, envelopes and ATR bands: four ways to set a band's width, and what each band repeats.",
+  "learn-ind-trend": "DMI and ADX, Aroon, Vortex, Parabolic SAR, Supertrend, Chandelier Exit and Ichimoku — trend strength against trend direction.",
+  "learn-ind-momentum-range": "Stochastic, Williams %R, CCI, %B, Ultimate Oscillator, Connors RSI and Balance of Power: where the close sits in its range.",
+  "learn-ind-momentum-rate": "Rate of change, distance from an average, PPO, TRIX, TSI, KST and Special K, PMO and DPO: how fast the price is changing.",
+  "learn-ind-volatility": "ATR, standard deviation, BandWidth, historical volatility, Mass Index, Ulcer Index and the TTM Squeeze — tested.",
+  "learn-ind-volume": "Relative volume, OBV, the A/D line, Chaikin, MFI, Force Index, Ease of Movement, VWAP and volume by price.",
+  "learn-ind-levels": "Pivot points, swing pivots, Fibonacci retracements, Zig Zag and Darvas boxes: indicators that output prices, not lines.",
   "learn-process-plan": "A written plan and a daily and weekly routine — what to check, in what order, using this app's pages.",
   "learn-process-journal": "What to record on every trade, and how to review it to find what actually works — and what doesn't.",
   "learn-process-biases": "Loss aversion, FOMO, revenge trading, anchoring and overconfidence — what each costs, measured on the app's trades.",
@@ -7164,7 +7200,7 @@ const guideShort = (x, t) => { const l = guideLabel(x), norm = (s) => s.toLowerC
   return sub ? sub[0].toUpperCase() + sub.slice(1) : "Field guide"; };
 // the learning path: context (macro, the market) -> reading a stock (price, candles, patterns, levels, fundamentals)
 // -> trading it (risk, process) -> building and testing a system of your own
-const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "candles", "charts", "levels", "fundamentals", "strategies", "fno", "risk", "process", "system"];
+const LEARN_TOPICS = ["start", "macro", "health", "sectors", "price", "indicators", "candles", "charts", "levels", "fundamentals", "strategies", "fno", "risk", "process", "system"];
 /** a topic with more patterns than this gets an "All N patterns" grid to compare their shapes; a smaller one
  *  lists its patterns directly (its guide already covers them), and gains the grid once it grows */
 const TOPIC_GRID_MIN = 6;

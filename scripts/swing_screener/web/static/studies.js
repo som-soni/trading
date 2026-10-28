@@ -75,6 +75,19 @@ const Studies = (() => {
     hl2: zip((h, l) => (h + l) / 2, b.H, b.L), hlc3: zip((h, l, c) => (h + l + c) / 3, b.H, b.L, b.C),
     ohlc4: zip((o, h, l, c) => (o + h + l + c) / 4, b.O, b.H, b.L, b.C) }[s] || b.C);
   const hasVolume = (b) => b.V.some((v) => v > 0);
+  /** % change over n bars */
+  const roc = (a, n) => a.map((v, i) => (i < n || v == null || !a[i - n] ? null : (100 * (v - a[i - n])) / a[i - n]));
+  /** Pring's KST family: the sum of weighted simple averages of rates of change, terms [[roc, sma, weight], ...] */
+  const rocSum = (a, terms) => terms.map(([r, s, w]) => sma(roc(a, r), s).map((v) => (v == null ? null : v * w)))
+    .reduce((acc, x) => zip((u, v) => u + v, acc, x));
+  /** least-squares line through the last n values, read at the latest bar (TradingView's ta.linreg(src, n, 0)) */
+  const linreg = (a, n) => win(a, n, (w) => {
+    const mx = (n - 1) / 2, my = w.reduce((x, y) => x + y, 0) / n; let num = 0, den = 0;
+    w.forEach((y, x) => { num += (x - mx) * (y - my); den += (x - mx) ** 2; });
+    return my + (num / den) * (n - 1 - mx);
+  });
+  /** Accumulation/Distribution line: volume weighted by where the close sits in the bar's range, summed */
+  const adLine = (b) => { let s = 0; return b.C.map((c, i) => (s += b.H[i] === b.L[i] ? 0 : (((c - b.L[i]) - (b.H[i] - c)) / (b.H[i] - b.L[i])) * (b.V[i] || 0))); };
 
   /** Swing pivots, standard (fractal) definition — TradingView's ta.pivothigh/pivotlow: a bar is a
    *  pivot high when its high is above the `left` bars before it and not exceeded by the `right`
@@ -506,6 +519,33 @@ const Studies = (() => {
       calc: (b, p) => ({ ma: wma(source(b, p.source), p.length) }) },
     ribbon: ribbon("Moving Average Ribbon (SMA)", "MA Ribbon", "SMA"),
     ribbon_ema: ribbon("Moving Average Ribbon (EMA)", "MA Ribbon", "EMA"),  // label shows the type: "MA Ribbon EMA 20 50 ..."
+    dema: { name: "Double Exponential Moving Average (DEMA)", short: "DEMA", cat: "Moving averages", overlay: true, params: { length: 20, source: SRC }, plots: [{ k: "ma", c: "#43a047" }],
+      calc: (b, p) => { const e1 = ema(source(b, p.source), p.length), e2 = ema(e1, p.length); return { ma: zip((x, y) => 2 * x - y, e1, e2) }; } },
+    hma: { name: "Hull Moving Average", short: "HMA", cat: "Moving averages", overlay: true, params: { length: 9, source: SRC }, plots: [{ k: "ma", c: "#ab47bc" }],
+      calc: (b, p) => { const s = source(b, p.source), half = Math.max(1, Math.floor(p.length / 2)), sq = Math.max(1, Math.round(Math.sqrt(p.length)));
+        return { ma: wma(zip((x, y) => 2 * x - y, wma(s, half), wma(s, p.length)), sq) }; } },
+    kama: { name: "Kaufman Adaptive Moving Average (KAMA)", short: "KAMA", cat: "Moving averages", overlay: true, params: { length: 10, fast: 2, slow: 30, source: SRC },
+      plots: [{ k: "ma", c: "#00897b" }],
+      calc: (b, p) => {
+        // efficiency ratio = net move ÷ the sum of every bar's move; it slides the smoothing between the fast and slow EMA speeds
+        const s = source(b, p.source), n = s.length, o = nul(n), fsc = 2 / (p.fast + 1), ssc = 2 / (p.slow + 1);
+        let k = null;
+        for (let i = p.length; i < n; i++) {
+          if (s[i] == null || s[i - p.length] == null) { k = null; continue; }
+          let noise = 0; for (let j = i - p.length + 1; j <= i; j++) noise += Math.abs(s[j] - s[j - 1]);
+          const er = noise ? Math.abs(s[i] - s[i - p.length]) / noise : 0, sc = (er * (fsc - ssc) + ssc) ** 2;
+          k = k == null ? s[i - 1] : k;
+          k += sc * (s[i] - k); o[i] = k;
+        }
+        return { ma: o };
+      } },
+    alligator: { name: "Williams Alligator", short: "Alligator", cat: "Moving averages", overlay: true,
+      params: { jaw: 13, jawShift: 8, teeth: 8, teethShift: 5, lips: 5, lipsShift: 3 },
+      plots: [{ k: "jaw", t: "Jaw", c: "#2962ff" }, { k: "teeth", t: "Teeth", c: "#f23645" }, { k: "lips", t: "Lips", c: "#43a047" }],
+      // three Wilder-smoothed averages of the bar's midpoint, each drawn `shift` bars later (Williams draws them
+      // forward into the future; here each bar shows the value from `shift` bars before, so the future part is omitted)
+      calc: (b, p) => { const m = source(b, "hl2"), sh = (a, k) => a.map((_, i) => (i >= k ? a[i - k] : null));
+        return { jaw: sh(rma(m, p.jaw), p.jawShift), teeth: sh(rma(m, p.teeth), p.teethShift), lips: sh(rma(m, p.lips), p.lipsShift) }; } },
     bb: { name: "Bollinger Bands", short: "BB", cat: "Bands & channels", overlay: true, params: { length: 20, mult: 2, source: SRC },
       plots: [{ k: "basis", t: "Basis", c: "#ff9800" }, { k: "upper", t: "Upper", c: "#2962ff" }, { k: "lower", t: "Lower", c: "#2962ff" }],
       calc: (b, p) => { const s = source(b, p.source), m = sma(s, p.length), sd = stdev(s, p.length);
@@ -517,6 +557,14 @@ const Studies = (() => {
     dc: { name: "Donchian Channels", short: "DC", cat: "Bands & channels", overlay: true, params: { length: 20 },
       plots: [{ k: "upper", t: "Upper", c: "#2962ff" }, { k: "basis", t: "Basis", c: "#ff6d00" }, { k: "lower", t: "Lower", c: "#2962ff" }],
       calc: (b, p) => { const u = highest(b.H, p.length), l = lowest(b.L, p.length); return { upper: u, lower: l, basis: zip((x, y) => (x + y) / 2, u, l) }; } },
+    env: { name: "Moving Average Envelopes", short: "Env", cat: "Bands & channels", overlay: true, params: { length: 20, percent: 2.5 },
+      plots: [{ k: "basis", t: "Basis", c: "#ff9800" }, { k: "upper", t: "Upper", c: "#2962ff" }, { k: "lower", t: "Lower", c: "#2962ff" }],
+      calc: (b, p) => { const m = sma(b.C, p.length), f = p.percent / 100;
+        return { basis: m, upper: m.map((x) => (x == null ? null : x * (1 + f))), lower: m.map((x) => (x == null ? null : x * (1 - f))) }; } },
+    atrbands: { name: "ATR Bands", short: "ATR Bands", cat: "Bands & channels", overlay: true, params: { length: 20, atrLength: 14, mult: 2 },
+      plots: [{ k: "basis", t: "Basis", c: "#ff9800" }, { k: "upper", t: "Upper", c: "#2962ff" }, { k: "lower", t: "Lower", c: "#2962ff" }],
+      calc: (b, p) => { const m = sma(b.C, p.length), a = rma(trueRange(b.H, b.L, b.C), p.atrLength);
+        return { basis: m, upper: zip((x, r) => x + p.mult * r, m, a), lower: zip((x, r) => x - p.mult * r, m, a) }; } },
     vwap: { name: "Rolling VWAP", short: "VWAP", cat: "Volume", overlay: true, needsVolume: true, params: { length: 20 }, plots: [{ k: "vwap", c: "#e040fb" }],
       calc: (b, p) => { const tp = source(b, "hlc3"); return { vwap: zip((x, y) => (y ? x / y : null), sum(zip((t, v) => t * v, tp, b.V), p.length), sum(b.V, p.length)) }; } },
     sar: { name: "Parabolic SAR", short: "SAR", cat: "Trend", overlay: true, params: { start: 0.02, increment: 0.02, maximum: 0.2 }, plots: [{ k: "sar", c: "#2962ff", s: "dots" }],
@@ -560,6 +608,20 @@ const Studies = (() => {
         const conv = mid(p.conversion), base = mid(p.base);
         return { conv, base, spanA: zip((x, y) => (x + y) / 2, conv, base), spanB: mid(p.spanB) };
       } },
+    vortex: { name: "Vortex Indicator", short: "VI", cat: "Trend", params: { length: 14 }, levels: [1],
+      plots: [{ k: "vip", t: "VI+", c: "#2962ff" }, { k: "vim", t: "VI−", c: "#f23645" }],
+      calc: (b, p) => {
+        // VI+ sums how far each high reached above the previous low, VI− how far each low reached below the previous high, both ÷ the true range
+        const n = b.C.length, vp = nul(n), vm = nul(n);
+        for (let i = 1; i < n; i++) { vp[i] = Math.abs(b.H[i] - b.L[i - 1]); vm[i] = Math.abs(b.L[i] - b.H[i - 1]); }
+        const tr = trueRange(b.H, b.L, b.C); tr[0] = null;
+        const st = sum(tr, p.length);
+        return { vip: zip((x, t) => (t ? x / t : null), sum(vp, p.length), st), vim: zip((x, t) => (t ? x / t : null), sum(vm, p.length), st) };
+      } },
+    chandelier: { name: "Chandelier Exit", short: "Chandelier", cat: "Trend", overlay: true, params: { length: 22, mult: 3 },
+      plots: [{ k: "long", t: "Long exit", c: "#089981" }, { k: "short", t: "Short exit", c: "#f23645" }],
+      calc: (b, p) => { const a = rma(trueRange(b.H, b.L, b.C), p.length);
+        return { long: zip((h, r) => h - p.mult * r, highest(b.H, p.length), a), short: zip((l, r) => l + p.mult * r, lowest(b.L, p.length), a) }; } },
     // ---- support & resistance (drawn on the price series itself: markers, step lines, price lines)
     pivots_hl: { name: "Pivot Points High Low (swing pivots)", short: "Pivots HL", cat: "Support & resistance", overlay: true, custom: true,
       label: (p) => `Pivots HL ${p.left}/${p.right}`,
@@ -637,6 +699,38 @@ const Studies = (() => {
         const last = shown.at(-1);
         return { series, note: last ? `${p.method} · ${{ W: "weekly", M: "monthly", Q: "quarterly", Y: "yearly" }[unit]} · P ${fmtPx(last.lv.P)}` : "",
           setVisible: (on) => series.forEach((x) => x.applyOptions({ visible: on })) };
+      } },
+    zigzag: { name: "Zig Zag", short: "ZigZag", cat: "Support & resistance", overlay: true, params: { deviation: 5 }, plots: [{ k: "zz", c: "#ff9800", w: 2 }],
+      calc: (b, p) => {
+        // swing points where price reversed by at least `deviation` % (highs and lows), joined by straight
+        // lines. The last leg runs to the latest extreme and is redrawn as new bars arrive — it repaints.
+        const n = b.C.length, o = nul(n), piv = [], d = p.deviation / 100;
+        if (n < 2) return { zz: o };
+        // A bar is checked for a reversal against the extreme of EARLIER bars before it can set a new
+        // extreme itself: a daily bar does not say whether its high or its low came first, so one wide
+        // bar never becomes both a swing high and a swing low.
+        let dir = 0, hi = 0, lo = 0;
+        for (let i = 1; i < n; i++) {
+          if (b.H[i] == null || b.L[i] == null) continue;
+          if (dir === 1) {
+            if (b.L[i] <= b.H[hi] * (1 - d)) { piv.push({ i: hi, v: b.H[hi] }); dir = -1; lo = i; }
+            else if (b.H[i] > b.H[hi]) hi = i;
+          } else if (dir === -1) {
+            if (b.H[i] >= b.L[lo] * (1 + d)) { piv.push({ i: lo, v: b.L[lo] }); dir = 1; hi = i; }
+            else if (b.L[i] < b.L[lo]) lo = i;
+          } else {
+            if (b.H[i] > b.H[hi]) hi = i;
+            if (b.L[i] < b.L[lo]) lo = i;
+            if (hi > lo && b.H[hi] >= b.L[lo] * (1 + d)) { piv.push({ i: lo, v: b.L[lo] }); dir = 1; }
+            else if (lo > hi && b.L[lo] <= b.H[hi] * (1 - d)) { piv.push({ i: hi, v: b.H[hi] }); dir = -1; }
+          }
+        }
+        if (dir === 1) piv.push({ i: hi, v: b.H[hi] }); else if (dir === -1) piv.push({ i: lo, v: b.L[lo] });
+        for (let k = 0; k + 1 < piv.length; k++) {
+          const a = piv[k], c = piv[k + 1];
+          for (let i = a.i; i <= c.i; i++) o[i] = c.i === a.i ? c.v : a.v + ((c.v - a.v) * (i - a.i)) / (c.i - a.i);
+        }
+        return { zz: o };
       } },
     // ---- support & resistance ZONES from core/sr_levels.py (/api/sr-levels). Every rule is there; this
     // only draws, with one visual channel per kind of information:
@@ -1070,6 +1164,69 @@ const Studies = (() => {
       calc: (b, p) => ({ roc: b.C.map((c, i) => (i < p.length ? null : (100 * (c - b.C[i - p.length])) / b.C[i - p.length])) }) },
     mom: { name: "Momentum", short: "Mom", cat: "Momentum", params: { length: 10 }, levels: [0], plots: [{ k: "mom", c: "#2962ff" }],
       calc: (b, p) => ({ mom: b.C.map((c, i) => (i < p.length ? null : c - b.C[i - p.length])) }) },
+    // -- where the close sits in a recent range or band
+    bbpct: { name: "Bollinger %B", short: "%B", cat: "Momentum", params: { length: 20, mult: 2 }, levels: [1, 0.5, 0], plots: [{ k: "pb", c: "#2962ff" }],
+      calc: (b, p) => { const m = sma(b.C, p.length), sd = stdev(b.C, p.length);
+        return { pb: zip((c, x, d) => (d ? (c - (x - p.mult * d)) / (2 * p.mult * d) : null), b.C, m, sd) }; } },
+    uo: { name: "Ultimate Oscillator", short: "UO", cat: "Momentum", params: { fast: 7, middle: 14, slow: 28 }, levels: [70, 50, 30], plots: [{ k: "uo", c: "#7e57c2" }],
+      calc: (b, p) => {
+        // buying pressure = close − the lower of (low, previous close), over the true range, on three lengths weighted 4:2:1
+        const lo = b.L.map((l, i) => (i ? Math.min(l, b.C[i - 1]) : null)), hi = b.H.map((h, i) => (i ? Math.max(h, b.C[i - 1]) : null));
+        const bp = zip((c, l) => c - l, b.C, lo), tr = zip((h, l) => h - l, hi, lo), avg = (n) => zip((x, y) => (y ? x / y : null), sum(bp, n), sum(tr, n));
+        return { uo: zip((a, m, s) => (100 * (4 * a + 2 * m + s)) / 7, avg(p.fast), avg(p.middle), avg(p.slow)) };
+      } },
+    crsi: { name: "Connors RSI", short: "CRSI", cat: "Momentum", params: { rsiLength: 3, streakLength: 2, rankLength: 100 }, levels: [90, 50, 10], plots: [{ k: "crsi", c: "#7e57c2" }],
+      calc: (b, p) => {
+        // the average of: a 3-day RSI; a 2-day RSI of the up/down streak; the % of the last 100 one-day changes below today's
+        const n = b.C.length, streak = nul(n), rank = nul(n), chg = roc(b.C, 1);
+        let s = 0;
+        for (let i = 1; i < n; i++) { const d = b.C[i] - b.C[i - 1]; s = d > 0 ? (s > 0 ? s + 1 : 1) : d < 0 ? (s < 0 ? s - 1 : -1) : 0; streak[i] = s; }
+        for (let i = p.rankLength; i < n; i++) {
+          if (chg[i] == null) continue;
+          let below = 0; for (let j = i - p.rankLength; j < i; j++) if (chg[j] != null && chg[j] < chg[i]) below++;
+          rank[i] = (100 * below) / p.rankLength;
+        }
+        return { crsi: zip((a, c, r) => (a + c + r) / 3, rsi(b.C, p.rsiLength), rsi(streak, p.streakLength), rank) };
+      } },
+    bop: { name: "Balance of Power", short: "BOP", cat: "Momentum", params: { length: 14 }, levels: [0], plots: [{ k: "bop", c: "#2962ff" }],
+      calc: (b, p) => ({ bop: sma(b.C.map((c, i) => (b.O[i] == null || b.H[i] === b.L[i] ? 0 : (c - b.O[i]) / (b.H[i] - b.L[i]))), p.length) }) },
+    // -- how fast the price is changing
+    distma: { name: "Distance from Moving Average", short: "Dist MA", cat: "Momentum", levels: [0], plots: [{ k: "d", c: "#2962ff" }],
+      params: { length: 50, unit: { type: "select", def: "%", options: ["%", "ATR"] }, atrLength: 14 },
+      calc: (b, p) => { const m = sma(b.C, p.length);
+        if (p.unit === "ATR") { const a = rma(trueRange(b.H, b.L, b.C), p.atrLength); return { d: zip((c, x, r) => (r ? (c - x) / r : null), b.C, m, a) }; }
+        return { d: zip((c, x) => 100 * (c / x - 1), b.C, m) }; } },
+    ppo: { name: "Percentage Price Oscillator", short: "PPO", cat: "Momentum", params: { fast: 12, slow: 26, signal: 9 }, levels: [0],
+      plots: [{ k: "hist", t: "Histogram", c: "#26a69a", s: "hist" }, { k: "ppo", t: "PPO", c: "#2962ff" }, { k: "signal", t: "Signal", c: "#ff6d00" }],
+      calc: (b, p) => { const v = zip((f, s) => (s ? (100 * (f - s)) / s : null), ema(b.C, p.fast), ema(b.C, p.slow)), sig = ema(v, p.signal);
+        return { ppo: v, signal: sig, hist: zip((x, y) => x - y, v, sig) }; } },
+    trix: { name: "TRIX", short: "TRIX", cat: "Momentum", params: { length: 15, signal: 9 }, levels: [0],
+      plots: [{ k: "trix", t: "TRIX", c: "#2962ff" }, { k: "signal", t: "Signal", c: "#ff6d00" }],
+      calc: (b, p) => { const t = roc(ema(ema(ema(b.C, p.length), p.length), p.length), 1); return { trix: t, signal: ema(t, p.signal) }; } },
+    tsi: { name: "True Strength Index", short: "TSI", cat: "Momentum", params: { long: 25, short: 13, signal: 13 }, levels: [0],
+      plots: [{ k: "tsi", t: "TSI", c: "#2962ff" }, { k: "signal", t: "Signal", c: "#ff6d00" }],
+      calc: (b, p) => {
+        const ch = b.C.map((c, i) => (i ? c - b.C[i - 1] : null));
+        const num = ema(ema(ch, p.long), p.short), den = ema(ema(ch.map((x) => (x == null ? null : Math.abs(x))), p.long), p.short);
+        const t = zip((x, y) => (y ? (100 * x) / y : null), num, den);
+        return { tsi: t, signal: ema(t, p.signal) };
+      } },
+    kst: { name: "Know Sure Thing (KST)", short: "KST", cat: "Momentum", params: { signal: 9 }, levels: [0],
+      plots: [{ k: "kst", t: "KST", c: "#2962ff" }, { k: "signal", t: "Signal", c: "#ff6d00" }],
+      calc: (b, p) => { const k = rocSum(b.C, [[10, 10, 1], [15, 10, 2], [20, 10, 3], [30, 15, 4]]); return { kst: k, signal: sma(k, p.signal) }; } },
+    specialk: { name: "Pring's Special K", short: "Special K", cat: "Momentum", params: {}, levels: [0], plots: [{ k: "sk", c: "#2962ff" }],
+      // twelve smoothed rates of change, from two weeks to about two years — the daily formula as Pring published it
+      calc: (b) => ({ sk: rocSum(b.C, [[10, 10, 1], [15, 10, 2], [20, 10, 3], [30, 15, 4], [40, 50, 1], [65, 65, 2], [75, 75, 3], [100, 100, 4],
+        [195, 130, 1], [265, 130, 2], [390, 130, 3], [530, 195, 4]]) }) },
+    pmo: { name: "Price Momentum Oscillator (DecisionPoint)", short: "PMO", cat: "Momentum", params: { first: 35, second: 20, signal: 10 }, levels: [0],
+      plots: [{ k: "pmo", t: "PMO", c: "#2962ff" }, { k: "signal", t: "Signal", c: "#ff6d00" }],
+      // the 1-day % change, smoothed twice with DecisionPoint's "custom" average (multiplier 2/n, not 2/(n+1)), times 10 in between
+      calc: (b, p) => { const s1 = smooth(roc(b.C, 1), p.first, 2 / p.first).map((v) => (v == null ? null : 10 * v)), pm = smooth(s1, p.second, 2 / p.second);
+        return { pmo: pm, signal: ema(pm, p.signal) }; } },
+    dpo: { name: "Detrended Price Oscillator", short: "DPO", cat: "Momentum", params: { length: 20 }, levels: [0], plots: [{ k: "dpo", c: "#2962ff" }],
+      // the close (n/2 + 1) bars ago less today's n-bar average: the average is centred on that old close, so the trend drops out
+      calc: (b, p) => { const m = sma(b.C, p.length), back = Math.floor(p.length / 2) + 1;
+        return { dpo: m.map((x, i) => (x == null || i < back ? null : b.C[i - back] - x)) }; } },
     mfi: { name: "Money Flow Index", short: "MFI", cat: "Volume", needsVolume: true, params: { length: 14 }, levels: [80, 20], plots: [{ k: "mfi", c: "#7e57c2" }],
       calc: (b, p) => {
         const tp = source(b, "hlc3"), pos = tp.map((t, i) => (i && t > tp[i - 1] ? t * b.V[i] : 0)), neg = tp.map((t, i) => (i && t < tp[i - 1] ? t * b.V[i] : 0));
@@ -1080,12 +1237,47 @@ const Studies = (() => {
     cmf: { name: "Chaikin Money Flow", short: "CMF", cat: "Volume", needsVolume: true, params: { length: 20 }, levels: [0], plots: [{ k: "cmf", c: "#43a047" }],
       calc: (b, p) => { const mfv = b.C.map((c, i) => (b.H[i] === b.L[i] ? 0 : (((c - b.L[i]) - (b.H[i] - c)) / (b.H[i] - b.L[i])) * b.V[i]));
         return { cmf: zip((x, y) => (y ? x / y : 0), sum(mfv, p.length), sum(b.V, p.length)) }; } },
+    adl: { name: "Accumulation/Distribution Line", short: "A/D", cat: "Volume", needsVolume: true, volumeFormat: true, params: {}, plots: [{ k: "ad", c: "#2962ff" }],
+      calc: (b) => ({ ad: adLine(b) }) },
+    chosc: { name: "Chaikin Oscillator", short: "Chaikin Osc", cat: "Volume", needsVolume: true, volumeFormat: true, params: { fast: 3, slow: 10 }, levels: [0],
+      plots: [{ k: "co", c: "#43a047" }],
+      calc: (b, p) => { const ad = adLine(b); return { co: zip((x, y) => x - y, ema(ad, p.fast), ema(ad, p.slow)) }; } },
+    force: { name: "Force Index", short: "Force", cat: "Volume", needsVolume: true, volumeFormat: true, params: { length: 13 }, levels: [0], plots: [{ k: "fi", c: "#f23645" }],
+      calc: (b, p) => ({ fi: ema(b.C.map((c, i) => (i ? (c - b.C[i - 1]) * (b.V[i] || 0) : null)), p.length) }) },
+    eom: { name: "Ease of Movement", short: "EOM", cat: "Volume", needsVolume: true, params: { length: 14, divisor: 10000 }, levels: [0], plots: [{ k: "eom", c: "#2962ff" }],
+      // how far the bar's midpoint moved, times its range, per unit of volume: a big move on light volume scores high
+      calc: (b, p) => ({ eom: sma(b.C.map((_, i) => (i && b.V[i] ? (p.divisor * ((b.H[i] + b.L[i]) / 2 - (b.H[i - 1] + b.L[i - 1]) / 2) * (b.H[i] - b.L[i])) / b.V[i] : null)), p.length) }) },
     atr: { name: "Average True Range", short: "ATR", cat: "Volatility", params: { length: 14 }, plots: [{ k: "atr", c: "#f23645" }],
       calc: (b, p) => ({ atr: rma(trueRange(b.H, b.L, b.C), p.length) }) },
     atrp: { name: "ATR % of price", short: "ATR%", cat: "Volatility", params: { length: 14 }, plots: [{ k: "atrp", c: "#f23645" }],
       calc: (b, p) => ({ atrp: zip((a, c) => (100 * a) / c, rma(trueRange(b.H, b.L, b.C), p.length), b.C) }) },
     bbw: { name: "Bollinger BandWidth", short: "BBW", cat: "Volatility", params: { length: 20, mult: 2 }, plots: [{ k: "bbw", c: "#2962ff" }],
       calc: (b, p) => { const m = sma(b.C, p.length), sd = stdev(b.C, p.length); return { bbw: zip((x, d) => (x ? (2 * p.mult * d) / x : null), m, sd) }; } },
+    stdev: { name: "Standard Deviation", short: "StDev", cat: "Volatility", params: { length: 20 }, plots: [{ k: "sd", c: "#2962ff" }],
+      calc: (b, p) => ({ sd: stdev(b.C, p.length) }) },
+    hv: { name: "Historical Volatility (annualised %)", short: "HV", cat: "Volatility", params: { length: 20, periods: 252 }, plots: [{ k: "hv", c: "#f23645" }],
+      calc: (b, p) => ({ hv: stdev(b.C.map((c, i) => (i && c > 0 && b.C[i - 1] > 0 ? Math.log(c / b.C[i - 1]) : null)), p.length)
+        .map((v) => (v == null ? null : 100 * v * Math.sqrt(p.periods))) }) },
+    mass: { name: "Mass Index", short: "Mass", cat: "Volatility", params: { length: 9, sum: 25 }, levels: [27, 26.5], plots: [{ k: "mi", c: "#2962ff" }],
+      // the day's range smoothed once ÷ smoothed twice, summed over 25 bars: it rises when ranges widen fast
+      calc: (b, p) => { const e1 = ema(zip((h, l) => h - l, b.H, b.L), p.length), e2 = ema(e1, p.length);
+        return { mi: sum(zip((x, y) => (y ? x / y : null), e1, e2), p.sum) }; } },
+    ulcer: { name: "Ulcer Index", short: "UI", cat: "Volatility", params: { length: 14 }, plots: [{ k: "ui", c: "#f23645" }],
+      // the root-mean-square of the % drop below the highest close of the last n bars: only declines count
+      calc: (b, p) => { const dd = zip((c, h) => (100 * (c - h)) / h, b.C, highest(b.C, p.length));
+        return { ui: win(dd, p.length, (w) => Math.sqrt(w.reduce((x, y) => x + y * y, 0) / w.length)) }; } },
+    squeeze: { name: "TTM Squeeze", short: "Squeeze", cat: "Volatility", params: { length: 20, bbMult: 2, kcMult: 1.5 }, levels: [0],
+      plots: [{ k: "mom", t: "Momentum", c: "#26a69a", s: "hist" }, { k: "on", t: "Squeeze on", c: "#f23645", s: "dots" }, { k: "off", t: "Squeeze off", c: "#089981", s: "dots" }],
+      calc: (b, p) => {
+        // on while the Bollinger Bands (2 sd) sit inside a Keltner channel (1.5 ATR) around the same average;
+        // the histogram is the linear-regression value of the close's distance from the range midpoint
+        const n = p.length, m = sma(b.C, n), sd = stdev(b.C, n), a = rma(trueRange(b.H, b.L, b.C), n);
+        const sq = zip((x, d, r) => p.bbMult * d < p.kcMult * r, m, sd, a);
+        const mid = zip((h, l, x) => ((h + l) / 2 + x) / 2, highest(b.H, n), lowest(b.L, n), m);
+        const mom = linreg(zip((c, x) => c - x, b.C, mid), n);
+        const colors = mom.map((v, i) => (v == null ? null : v >= 0 ? (mom[i - 1] != null && v < mom[i - 1] ? "#b2dfdb" : "#26a69a") : (mom[i - 1] != null && v > mom[i - 1] ? "#ffcdd2" : "#ff5252")));
+        return { mom, on: sq.map((s) => (s === true ? 0 : null)), off: sq.map((s) => (s === false ? 0 : null)), _colors: { mom: colors } };
+      } },
     adx: { name: "Directional Movement Index (ADX)", short: "DMI", cat: "Trend", params: { length: 14 }, levels: [25],
       plots: [{ k: "adx", t: "ADX", c: "#ff6d00", w: 2 }, { k: "pdi", t: "+DI", c: "#2962ff" }, { k: "mdi", t: "−DI", c: "#f23645" }],
       calc: (b, p) => {
@@ -1100,6 +1292,8 @@ const Studies = (() => {
         const n = p.length, f = (a, cmp) => a.map((_, i) => { if (i < n) return null; let best = i - n; for (let j = i - n; j <= i; j++) if (cmp(a[j], a[best])) best = j; return (100 * (n - (i - best))) / n; });
         return { up: f(b.H, (x, y) => x >= y), down: f(b.L, (x, y) => x <= y) };
       } },
+    aroonosc: { name: "Aroon Oscillator", short: "Aroon Osc", cat: "Trend", params: { length: 14 }, levels: [50, 0, -50], plots: [{ k: "osc", c: "#ff6d00" }],
+      calc: (b, p) => { const a = CATALOG.aroon.calc(b, p); return { osc: zip((u, d) => u - d, a.up, a.down) }; } },
     rs: { name: "Relative Strength vs index", short: "RS", cat: "Trend", needsBench: true, params: { maLength: 50 }, levels: [100],
       plots: [{ k: "rs", t: "RS", c: "#2962ff", w: 2 }, { k: "ma", t: "RS MA", c: "#ff9800" }],
       calc: (b, p, ctx) => {
@@ -1119,6 +1313,10 @@ const Studies = (() => {
     back: "Number of periods back", lookback: "Lookback (bars)", tolerance: "Merge tolerance (× ATR)", minTouches: "Minimum touches",
     maxLevels: "Maximum levels", method: "Type", strategy: "Strategy", target: "Show target", type: "MA type", length1: "MA #1 length", length2: "MA #2 length", length3: "MA #3 length", length4: "MA #4 length",
     conversion: "Conversion line length", base: "Base line length", spanB: "Leading span B length",
+    percent: "Envelope %", jaw: "Jaw length", jawShift: "Jaw offset", teeth: "Teeth length", teethShift: "Teeth offset", lips: "Lips length",
+    lipsShift: "Lips offset", unit: "Measure in", middle: "Middle length", long: "Long length", short: "Short length", streakLength: "Streak RSI length",
+    rankLength: "Percent-rank length", first: "First smoothing", second: "Second smoothing", periods: "Bars per year", sum: "Sum length",
+    bbMult: "Bollinger multiplier", kcMult: "Keltner multiplier", deviation: "Reversal %", divisor: "Volume divisor",
     minBars: "Label stretches of at least (bars)", label: "Label", gaps: "Label gaps" };
   const CATS = ["Screener", "Moving averages", "Bands & channels", "Support & resistance", "Trend", "Momentum", "Volatility", "Volume"];
   const MA_COLORS = ["#f5a623", "#2196f3", "#e040fb", "#ffeb3b", "#00bcd4", "#ff5252", "#8bc34a"];

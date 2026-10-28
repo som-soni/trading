@@ -782,10 +782,10 @@ const Learn = (() => {
   // the topics the menu is organised by, each a set of pattern groups (the topics before candles have guides only)
   // `start` holds no patterns — it is the primer guide only. It needs a key
   // here regardless: groupsOf() indexes FAMILIES by topic and would throw.
-  const FAMILIES = { start: [], macro: [], health: [], sectors: [], fundamentals: [], risk: [], process: [], price: [], strategies: [], fno: [], system: [], candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"], levels: ["levels"] };
+  const FAMILIES = { start: [], macro: [], health: [], sectors: [], fundamentals: [], risk: [], process: [], price: [], indicators: [], strategies: [], fno: [], system: [], candles: ["basics", "single", "double", "triple"], charts: ["bases", "tops"], levels: ["levels"] };
   const familyOf = (p) => Object.keys(FAMILIES).find((f) => FAMILIES[f].includes(p.group)) || "candles";
   const groupsOf = (fam) => GROUPS.filter(([g]) => !fam || FAMILIES[fam].includes(g));
-  const FAMILY_LABEL = { start: "Start here", macro: "Macro", health: "Market health", sectors: "Sectors & groups", fundamentals: "Fundamentals", risk: "Risk & trade management", process: "Process & psychology", price: "Price & volume", strategies: "Strategies", fno: "Futures & options", system: "Building and testing a system", candles: "Candlesticks", charts: "Chart patterns", levels: "Levels & zones" };
+  const FAMILY_LABEL = { start: "Start here", macro: "Macro", health: "Market health", sectors: "Sectors & groups", fundamentals: "Fundamentals", risk: "Risk & trade management", process: "Process & psychology", price: "Price & volume", indicators: "Indicators", strategies: "Strategies", fno: "Futures & options", system: "Building and testing a system", candles: "Candlesticks", charts: "Chart patterns", levels: "Levels & zones" };
   const countOf = (fam) => P.filter((p) => familyOf(p) === fam).length;
   const keyOf = (p) => (p.name + " " + (p.code || "") + " " + p.key).toLowerCase();
 
