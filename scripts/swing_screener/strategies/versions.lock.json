@@ -532,7 +532,7 @@
         "W5"
       ]
     },
-    "version": "1.29"
+    "version": "1.30"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
@@ -666,7 +666,7 @@
         "W3"
       ]
     },
-    "version": "1.2"
+    "version": "1.3"
   },
   "sector_rotation": {
     "family": "sector_rotation",

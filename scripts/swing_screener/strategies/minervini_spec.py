@@ -663,8 +663,17 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.29"
+    version = "1.30"
     changelog = (
+        ("1.30", "2026-10-29",
+         "Backtest mechanics, no rule changed: the RS rating's price floor now reads the price a stock "
+         "traded at on the day, not its split-adjusted close (backtesting/spec.rs_ratings, "
+         "split_factor_after). Stored closes are back-adjusted for every later split, so NFLX's October "
+         "2009 close is stored as $0.72 against the ~$50 it traded at, and the $10 floor left exactly the "
+         "later multi-baggers unrated -- NFLX until 2013, NVDA until 2020 -- and their signals were "
+         "dropped as \"outside the rated universe\". On 2016-06-01 the US rating gains 24 such stocks "
+         "(ANET, CMG, CPRT, KLAC ...) and loses 31 that later reverse-split, which really traded under "
+         "$10 then."),
         ("1.29", "2026-10-29",
          "Two of the book's setups the code could not take. (1) Young listings: Minervini applies the "
          "200-day test \"provided that 200 days of trading in the stock has occurred\", and several of "

@@ -96,8 +96,20 @@ class RsLeadersStrategy(Strategy):
 
     selection = "time_series"
     family = "rs_leaders"
-    version = "1.2"
+    version = "1.3"
+    # 1.3 changes only the RS filter applied to the collected signals, never the scan, so the cached
+    # signal rows of 1.2 still describe this version's scan (CLAUDE.md, signal_version).
+    signal_version = "1.2"
     changelog = (
+        ("1.3", "2026-10-29",
+         "Backtest mechanics, no rule changed: the RS rating's price floor now reads the price a stock "
+         "traded at on the day, not its split-adjusted close (backtesting/spec.rs_ratings, "
+         "split_factor_after). Stored closes are back-adjusted for every later split, so NFLX's October "
+         "2009 close is stored as $0.72 against the ~$50 it traded at, and the $10 floor left exactly the "
+         "later multi-baggers unrated -- NFLX until 2013, NVDA until 2020 -- and their signals were "
+         "dropped as \"outside the rated universe\". On 2016-06-01 the US rating gains 24 such stocks "
+         "(ANET, CMG, CPRT, KLAC ...) and loses 31 that later reverse-split, which really traded under "
+         "$10 then."),
         ("1.2", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited "
          "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "

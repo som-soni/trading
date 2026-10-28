@@ -44,6 +44,30 @@ IS_END = "2019-12-31"      # in-sample through this date, out-of-sample after (s
 
 # ---------------------------------------------------------------- RS rating (TT-08)
 
+def split_factor_after(market: str, index: pd.DatetimeIndex, symbols) -> pd.DataFrame:
+    """Per date and symbol, the product of every stored split dated AFTER it: multiply a back-adjusted
+    close by this and it is the price the stock traded at that day.
+
+    Yahoo's split rows only, because Yahoo's are the adjustments the stored prices carry (NSE's feed
+    splits one event into a bonus and a face-value split, which would count it twice). Every stored
+    split is read, including any after a backtest stage's end -- a deliberate exception to
+    `asof.end()`: the stored prices are already adjusted for all of them, so leaving one out would put
+    the early bars on the wrong scale. What comes out is the price that was public on that day, so
+    nothing after it leaks into the rating.
+
+    Only the symbols with a split after the index's first date are returned; the others' factor is 1."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("""SELECT symbol, ex_date, value FROM corporate_actions
+                       WHERE market=%s AND kind='split' AND source='yahoo' AND value > 0
+                         AND ex_date > %s AND symbol = ANY(%s)""",
+                    (market, index[0].date(), list(symbols)))
+        rows = cur.fetchall()
+    out = pd.DataFrame(1.0, index=index, columns=sorted({r[0] for r in rows}))
+    for sym, ex, v in rows:
+        out.loc[out.index < pd.Timestamp(ex), sym] *= float(v)
+    return out
+
+
 def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
     """{date: Series(symbol -> RS 1..99)} across the tradable universe on each date.
 
@@ -74,6 +98,14 @@ def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
         cur.execute("SELECT symbol, min(date) FROM prices WHERE market=%s GROUP BY symbol", (market,))
         first = {s: pd.Timestamp(d) for s, d in cur.fetchall()}
     first_s = pd.Series(first).reindex(close.columns)
+    # The price floor reads the price the stock TRADED at on each date. Stored closes are back-adjusted
+    # for every later split, so NFLX's October 2009 close is stored as $0.72 against the ~$50 it traded
+    # at, and a $10 floor on it left exactly the later multi-baggers unrated -- NFLX until 2013, NVDA
+    # until 2020 -- and filter_min_rs then dropped their signals. The value floor needed no such fix:
+    # traded value is split-invariant (see strategies/base.tradable_point_in_time).
+    traded = close.copy()
+    k = split_factor_after(market, close.index, close.columns)
+    traded[k.columns] = close[k.columns] * k
     out = {}
     for d in dates:
         if d not in close.index:
@@ -87,11 +119,12 @@ def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
         if i < 252:
             continue
         c = close.iloc[i]
+        px = traded.iloc[i]
 
         # one definition of the score, in core.indicators; this ranks it across the market
         raw_rs = ind.rs_score(close).iloc[i]
         age_ok = (first_s <= d_use - pd.Timedelta(days=int(MIN_HISTORY * 1.4))) | (have.iloc[i] >= MIN_HISTORY)
-        ok = (c >= MIN_PRICE[market]) & (v50.iloc[i] >= MIN_VALUE_50D[market]) & age_ok & raw_rs.notna()
+        ok = (px >= MIN_PRICE[market]) & (v50.iloc[i] >= MIN_VALUE_50D[market]) & age_ok & raw_rs.notna()
         v = raw_rs[ok]
         if len(v) < 20:
             continue
@@ -99,7 +132,7 @@ def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
         out[d] = (1 + 98 * (pct - 1 / len(v)) / (1 - 1 / len(v))).round()
         if young_min_bars:
             h = have.iloc[i]
-            young = ((c >= MIN_PRICE[market]) & (v50.iloc[i] >= MIN_VALUE_50D[market]) & ~age_ok
+            young = ((px >= MIN_PRICE[market]) & (v50.iloc[i] >= MIN_VALUE_50D[market]) & ~age_ok
                      & (h >= young_min_bars) & c.notna())
             extra = {}
             for sym in young[young].index:
