@@ -68,6 +68,18 @@ def split_factor_after(market: str, index: pd.DatetimeIndex, symbols) -> pd.Data
     return out
 
 
+def traded_close(market: str, close: pd.DataFrame) -> pd.DataFrame:
+    """`close` (dates x symbols, back-adjusted) as the price each stock traded at on each date -- what
+    a price floor must read in a backtest (split_factor_after). Fills, valuation and returns keep the
+    adjusted close: this frame jumps at every split."""
+    out = close.astype(float)
+    if close.empty:
+        return out
+    k = split_factor_after(market, close.index, close.columns)
+    out[k.columns] = out[k.columns] * k
+    return out
+
+
 def rs_ratings(market: str, dates: list, young_min_bars: int = 0) -> dict:
     """{date: Series(symbol -> RS 1..99)} across the tradable universe on each date.
 

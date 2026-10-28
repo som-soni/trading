@@ -31,7 +31,7 @@ from ..config import MARKETS
 from ..marketdata import cache, corporate_actions
 from ..strategies.base import PortfolioStrategy
 from ..strategies.rs_leaders import RsLeadersStrategy
-from . import baseline, metrics, rotation
+from . import baseline, metrics, rotation, spec
 
 logger = logging.getLogger("backtest")
 
@@ -79,6 +79,8 @@ def run(market: str, start: str, top_n: int = 10, lookback: int = TRADING_DAYS,
     # The SAME state machine the swing strategy gates on -- imported, not restated.
     recovery = RsLeadersStrategy._recovery_days(market) or set()
     scores = baseline.score_matrix(tr[candidates], rank, lookback, skip, benchmark=bench)
+    # the price floor reads the price traded on the day, not the split-adjusted close (baseline.run)
+    floor_px = spec.traded_close(market, px[candidates]) if cfg.screener.min_price else px[candidates]
 
     chosen: dict = {}
 
@@ -92,6 +94,7 @@ def run(market: str, start: str, top_n: int = 10, lookback: int = TRADING_DAYS,
             scores.loc[d] if d in scores.index else None,
             floor_price=cfg.screener.min_price, liq_floor=liq_floor,
             trend_filter=True, liquidity_rank_top=liquidity_rank_top, trend_row=tr.loc[d],
+            floor_row=floor_px.loc[d],
         )
         held = sorted(mom, key=mom.get, reverse=True)[:top_n]
         # An armed recovery with nothing eligible is still risk-on; hold the index rather than

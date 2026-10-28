@@ -40,7 +40,7 @@ from ..config import MARKETS
 from ..marketdata import asof
 from ..marketdata import cache, corporate_actions, db
 from ..strategies.base import PortfolioStrategy
-from . import metrics
+from . import metrics, spec
 
 logger = logging.getLogger("backtest")
 
@@ -174,6 +174,10 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
     cal = bench.index if bench is not None else next(iter(prices.values())).index
     cal = pd.DatetimeIndex([d for d in cal if d >= start_ts - pd.Timedelta(days=400)])
     pos_of = {d: i for i, d in enumerate(cal)}
+    # The price floor reads the price traded on the buy day. The stored close is back-adjusted for
+    # every later split, so a $10 floor on it dropped the later multi-baggers' early filings.
+    # Every entry date is a calendar session (pos_of), so the factor frame is indexed on `cal`.
+    split_k = spec.split_factor_after(market, cal, list(prices)) if floor_price and len(cal) else None
 
     # qualify each filing ONCE, up front: the decision uses only that filing's own row plus
     # prices up to the entry bar, so there is nothing to recompute per day.
@@ -221,7 +225,9 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
         if d_entry < start_ts or d_entry not in pos_of:
             continue
         entry_px = float(df.loc[d_entry, "close"])
-        if entry_px != entry_px or entry_px < floor_price:
+        traded_px = entry_px * (float(split_k.at[d_entry, r.symbol])
+                                if split_k is not None and r.symbol in split_k.columns else 1.0)
+        if entry_px != entry_px or traded_px < floor_price:
             dropped["liquidity"] += 1
             continue
         turnover = float(df["close"].mul(df["volume"]).rolling(20).mean().loc[d_entry])
@@ -406,7 +412,8 @@ PEAD_DOC = {
         "The buy. At the close of the session after the reaction span — the third session counting the "
         "filing day. There is no trigger and no limit order: the event has already happened.\n\n"
         "**Guide (§3 Entry):** the close of the second session after the results — the same session.",
-        "Tradable on the buy day. The close must be at or above the market's price floor, and the 20-day "
+        "Tradable on the buy day. The close must be at or above the market's price floor -- read as the price "
+        "traded that day, the stored close multiplied back by every later split -- and the 20-day "
         "average traded value (close × volume) at or above its liquidity floor — the screener's floors "
         "($10 and $10 million in the US; no price floor and ₹50 crore in India, as configured in October "
         "2026).\n\n"
@@ -467,9 +474,6 @@ PEAD_DOC = {
         "**The next-results exit does not avoid the results gap.** It sells at the close of the filing day, "
         "so whenever the results come out before that close the position holds through their reaction. "
         "The guide's intent is to sell before.",
-        "**The price floor is applied to back-adjusted prices.** The US floor is tested on the stored close, "
-        "which is divided by every later split, so a stock that later split heavily can read under the floor "
-        "in its early years and be skipped exactly while it was rising.",
         "**The 'R' figures in this strategy's reports are returns, not risk multiples.** A trade's R is its "
         "profit divided by the amount invested (0.05 = 5%), because positions are sized as a share of the "
         "account, not from the stop.",
@@ -499,8 +503,10 @@ class PeadStrategy(PortfolioStrategy):
     key = PEAD_DOC["key"]
     doc = PEAD_DOC
     family = "pead"
-    version = "1.2"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-10-29",
+         "The price floor on the buy day reads the price traded then. The US $10 price floor reads the price the stock traded at that day: the stored close multiplied back by every later split Yahoo records (backtesting/spec.traded_close, the RS rating's fix in 1d16854). Stored closes are back-adjusted for every later split, so the floor had dropped the later multi-baggers from their early years -- NFLX's October 2009 close is stored as $0.72 against the ~$50 it traded at, NVDA read under $10 until mid-2020. On 2016-06-30 the US floor admits 2,092 stocks instead of 2,382: 47 that later split (NVDA, CMG, ANET, CPRT ...) come in, 337 that later reverse-split, and so really traded under $10, go out. India has no price floor and is unchanged."),
         ("1.2", "2026-10-26",
          "The reaction window reads total return: the stock's move over the first sessions after a "
          "filing is measured on closes back-adjusted for credited special dividends and demergers "

@@ -31,7 +31,7 @@ import pandas as pd
 from ..config import MARKETS
 from ..marketdata import cache, corporate_actions, index_data
 from ..strategies.base import PortfolioStrategy
-from . import baseline, metrics, rotation
+from . import baseline, metrics, rotation, spec
 
 logger = logging.getLogger("backtest")
 
@@ -211,12 +211,15 @@ def stocks(market: str, start: str, cost_bps: float = 10.0, max_names: int = 50,
         market, min_bars=SLOW_SMA + SLOPE_BARS + 2)
     # the trend conditions read the total-return close, so a demerger is not a broken trend
     mask = stock_mask(tr)
+    # the price floor reads the price traded on the day: the stored close is back-adjusted for every
+    # later split, which put the later multi-baggers under the floor in their early years
+    floor_px = spec.traded_close(market, px) if cfg.screener.min_price else px
 
     def pick(d, _ret, _px):
         if d not in mask.index:
             return []
         row = mask.loc[d]
-        ok = [s for s in row.index[row.values] if float(px.loc[d, s]) >= cfg.screener.min_price]
+        ok = [s for s in row.index[row.values] if float(floor_px.loc[d, s]) >= cfg.screener.min_price]
         if liq_floor and d in dv.index:
             ok = [s for s in ok if dv.loc[d, s] == dv.loc[d, s] and dv.loc[d, s] >= liq_floor]
         if len(ok) > max_names and d in dv.index:
@@ -306,8 +309,9 @@ MA_DOC = {
         "{SLOW_SMA}-day; the {SLOW_SMA}-day higher than it was {SLOPE_BARS} sessions earlier.\n"
         "- **Missing prices:** an average needs every price in its window, so a stock with a "
         "missing session in its last {SLOW_SMA} fails.\n"
-        "- **Price and liquidity:** the close at least the market screener's minimum price "
-        "(`min_price`), and the 20-day average of daily traded value (close times volume) at least "
+        "- **Price and liquidity:** the price traded that day at least the market screener's minimum price "
+        "(`min_price`; the stored close multiplied back by every later split, since stored history is "
+        "divided by them), and the 20-day average of daily traded value (close times volume) at least "
         "its liquidity floor (`min_dollar_volume`).\n"
         "- **Cap:** when more than {max_names} pass, the {max_names} with the highest 20-day "
         "average traded value are held. Liquidity, not strength, on purpose: ranking on strength "
@@ -396,8 +400,10 @@ class MaTrendStrategy(PortfolioStrategy):
     key = MA_DOC["key"]
     doc = MA_DOC
     family = "ma_trend"
-    version = "2.2"
+    version = "2.3"
     changelog = (
+        ("2.3", "2026-10-29",
+         "Stocks mode. The US $10 price floor reads the price the stock traded at that day: the stored close multiplied back by every later split Yahoo records (backtesting/spec.traded_close, the RS rating's fix in 1d16854). Stored closes are back-adjusted for every later split, so the floor had dropped the later multi-baggers from their early years -- NFLX's October 2009 close is stored as $0.72 against the ~$50 it traded at, NVDA read under $10 until mid-2020. On 2016-06-30 the US floor admits 2,092 stocks instead of 2,382: 47 that later split (NVDA, CMG, ANET, CPRT ...) come in, 337 that later reverse-split, and so really traded under $10, go out. India has no price floor and is unchanged. Index mode is unchanged."),
         ("2.2", "2026-10-26",
          "Stocks mode reads total return: the four trend conditions use closes back-adjusted for the "
          "special dividends and demergers a holder is credited (corporate_actions.back_adjust), so a "

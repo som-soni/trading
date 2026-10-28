@@ -34,7 +34,7 @@ import pandas as pd
 
 from ..marketdata import cache, corporate_actions, universe
 
-from . import metrics
+from . import metrics, spec
 from . import regime as _regime
 from ..config import MARKETS
 
@@ -137,7 +137,8 @@ def realised_vol(px: pd.DataFrame, window: int = 63) -> pd.DataFrame:
 def load_prices(market: str, min_bars: int) -> tuple:
     """(close, 20d dollar volume, SMA200, total-return close) frames for the whole universe.
 
-    `close` is what was traded: fills, valuation, the price floor and dollar volume read it. The
+    `close` is what was traded: fills, valuation and dollar volume read it (the price floor reads it
+    multiplied back by later splits, spec.traded_close). The
     total-return close is the same series back-adjusted for the special dividends and demergers a
     holder is credited (corporate_actions.back_adjust); every SIGNAL reads it -- momentum, volatility
     and the 200-day trend test (SMA200 is computed on it) -- so a demerged parent does not read as a
@@ -174,7 +175,7 @@ def load_prices(market: str, min_bars: int) -> tuple:
 
 def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
                     floor_price: float, liq_floor: float | None, trend_filter: bool,
-                    liquidity_rank_top: int | None, trend_row=None) -> dict:
+                    liquidity_rank_top: int | None, trend_row=None, floor_row=None) -> dict:
     """{symbol: score} for the names eligible on one date -- the strategy's whole selection rule.
 
     Extracted from `run`'s rebalance branch so a LIVE view of what the strategy would hold can
@@ -182,12 +183,17 @@ def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
     to drift from the one that is backtested and versioned, and would drift silently.
 
     `price_row` is the traded close (the price floor); `trend_row`, when given, is the total-return
-    close the 200-day test compares with `sma200_row` (both from `load_prices`).
+    close the 200-day test compares with `sma200_row` (both from `load_prices`). `floor_row`, when
+    given, is the price the floor reads instead: on a past date the stored close is back-adjusted for
+    every later split, so a backtest passes `spec.traded_close` here (NFLX's October 2009 close is
+    stored as $0.72 against the ~$50 it traded at).
     """
     out = {}
     for s in symbols:
         price_now = float(price_row[s]) if s in price_row.index and pd.notna(price_row[s]) else float("nan")
-        if price_now != price_now or price_now < floor_price:
+        floor_now = price_now if floor_row is None else (
+            float(floor_row[s]) if s in floor_row.index and pd.notna(floor_row[s]) else float("nan"))
+        if price_now != price_now or floor_now != floor_now or floor_now < floor_price:
             continue
         if liq_floor:
             liq = dv_row[s] if dv_row is not None and s in dv_row.index else float("nan")
@@ -334,6 +340,8 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     bench_close = bench["close"].astype(float) if bench is not None else None
     scores = score_matrix(tr, rank, cls.lookback, cls.skip, benchmark=bench_close)
     liq_floor = cls.min_turnover_for(market) if hasattr(cls, "min_turnover_for") else None
+    # the replay below runs on past month-ends, where the floor must read the price traded then
+    floor_px = spec.traded_close(market, px) if cfg.screener.min_price else px
     mom = eligible_scores(
         px.columns, px.loc[today],
         dv.loc[today] if today in dv.index else None,
@@ -341,6 +349,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
         scores.loc[today] if today in scores.index else None,
         floor_price=cfg.screener.min_price, liq_floor=liq_floor,
         trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[today],
+        floor_row=floor_px.loc[today],
     )
     full = sorted(mom, key=mom.get, reverse=True)
     rank_of = {sym: i + 1 for i, sym in enumerate(full)}
@@ -362,6 +371,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
                 sma200.loc[d] if d in sma200.index else None, scores.loc[d],
                 floor_price=cfg.screener.min_price, liq_floor=liq_floor,
                 trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[d],
+                floor_row=floor_px.loc[d],
             )
             book = buffered_target(sorted(m_d, key=m_d.get, reverse=True), book, cls.top_n, hold_rank)
             replayed += 1
@@ -516,6 +526,10 @@ def run(
     # Valuation uses the last known price, not today's cell: a holding that did
     # not print today is still worth its last trade, not nothing.
     marks = px.ffill()
+    # The price floor reads the price traded on the day, not the stored close: that is back-adjusted
+    # for every later split, so a $10 floor on it dropped the later multi-baggers from their early
+    # years (NFLX until 2013). Fills and valuation keep the adjusted close.
+    floor_px = spec.traded_close(market, px) if floor_price else px
 
     dates = px.index[px.index >= start_ts]
     if len(dates) < 2:
@@ -580,6 +594,7 @@ def run(
                 scores.loc[today] if today in scores.index else None,
                 floor_price=floor_price, liq_floor=liq_floor, trend_filter=trend_filter,
                 liquidity_rank_top=liquidity_rank_top, trend_row=tr.loc[today],
+                floor_row=floor_px.loc[today],
             )
             if universe_filter is not None:
                 mom = universe_filter(today, mom)
@@ -800,8 +815,8 @@ DOC = {
         "Universe. Every stock stored for the market, minus ETFs, liquid funds and other listings that are not "
         "operating companies, with at least {lookback} + {skip} + 2 stored sessions of history.",
         "Eligible on the month-end session. A stock must pass all four tests on that session's close.\n\n"
-        "- **Price floor:** close at or above $10 in the US (on split-adjusted history, see the caveats); no "
-        "floor in India.\n"
+        "- **Price floor:** close at or above $10 in the US, read as the price traded that day (see the "
+        "caveats); no floor in India.\n"
         "- **Turnover floor:** 20-session average of close × volume at or above $10 million a day in the US, "
         "₹50 crore in India (the market's screener floor).\n"
         "- **Trend:** close strictly above its 200-session simple moving average, which needs a price on each "
@@ -858,10 +873,10 @@ DOC = {
         "a price on each of the last 200 sessions of the whole market. A stock the source did not price on a "
         "session most of the market traded — a Diwali Muhurat hour, a Saturday budget day — fails the trend "
         "test for the next 200 sessions.",
-        "**US: a $10 floor on split-adjusted prices.** Stored history is divided by every later split, so a "
-        "stock that split heavily reads under $10 in its early years and is excluded exactly while it was "
-        "rising (NVDA does not clear it until mid-2020). The gated backtests drop the price floor for this "
-        "reason; this one keeps it.",
+        "**US: the $10 floor reads the price traded that day.** Stored history is divided by every later split, "
+        "so on it a stock that split heavily reads under $10 in its early years (NVDA until mid-2020). The floor "
+        "multiplies the close back by every later split Yahoo records (v1.3), so those stocks are eligible while "
+        "they rose, and a stock that later reverse-split is out while it really traded under $10.",
         "**Ordinary dividends are left out** of both the strategy and the benchmark (SPY, Nifty 500): stored "
         "prices are split-adjusted closes only, so absolute returns understate both.",
         corporate_actions.CAVEAT_HELD,
@@ -1233,8 +1248,8 @@ VS_DOC = {
         "Eligible on the month-end session. A stock must pass all four tests on that session's close.\n\n"
         "- **Turnover floor:** 20-session average of close × volume at or above ₹{min_turnover_cr} crore a day "
         "in India, ${min_turnover_usd_m} million in the US.\n"
-        "- **Price floor:** close at or above $10 in the US (on split-adjusted history, see the caveats); no "
-        "floor in India.\n"
+        "- **Price floor:** close at or above $10 in the US, read as the price traded that day (see the "
+        "caveats); no floor in India.\n"
         "- **Trend:** close strictly above its 200-session simple moving average, which needs a price on each "
         "of the last 200 sessions.\n"
         "- **Score exists:** the stock has a close on both ends of the window and a volatility reading.",
@@ -1289,9 +1304,10 @@ VS_DOC = {
         "a price on each of the last 200 sessions of the whole market. A stock the source did not price on a "
         "session most of the market traded — a Diwali Muhurat hour, a Saturday budget day — fails the trend "
         "test for the next 200 sessions.",
-        "**US: a $10 floor on split-adjusted prices.** Stored history is divided by every later split, so a "
-        "stock that split heavily reads under $10 in its early years and is excluded exactly while it was "
-        "rising (NVDA does not clear it until mid-2020).",
+        "**US: the $10 floor reads the price traded that day.** Stored history is divided by every later split, "
+        "so on it a stock that split heavily reads under $10 in its early years (NVDA until mid-2020). The floor "
+        "multiplies the close back by every later split Yahoo records (v1.8), so those stocks are eligible while "
+        "they rose, and a stock that later reverse-split is out while it really traded under $10.",
         "**The drawdown is a small-cap drawdown.** -51% peak to trough in India. It is better than the "
         "segment's -60.8%, which is a real improvement, but it is not a comfortable ride and the holding "
         "period is years. In the US it is deeper than the index's: -49.5% against -42.3%.",
@@ -1318,8 +1334,10 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.7"
+    version = "1.8"
     changelog = (
+        ("1.8", "2026-10-29",
+         "The US $10 price floor reads the price the stock traded at that day: the stored close multiplied back by every later split Yahoo records (backtesting/spec.traded_close, the RS rating's fix in 1d16854). Stored closes are back-adjusted for every later split, so the floor had dropped the later multi-baggers from their early years -- NFLX's October 2009 close is stored as $0.72 against the ~$50 it traded at, NVDA read under $10 until mid-2020. On 2016-06-30 the US floor admits 2,092 stocks instead of 2,382: 47 that later split (NVDA, CMG, ANET, CPRT ...) come in, 337 that later reverse-split, and so really traded under $10, go out. India has no price floor and is unchanged."),
         ("1.7", "2026-10-27",
          "India runs without a market filter again. The filter adopted in v1.5 (and pointed at the Smallcap "
          "250 in v1.6) failed its pre-registered verify run, India 2022-01-01 to 2026-10-26, against the same "
@@ -1488,7 +1506,7 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     key = "momentum_baseline"
     doc = DOC
     family = "momentum_baseline"
-    version = "1.2"
+    version = "1.3"
     name = DOC["name"]
     description = DOC["description"]
     status = DOC["status"]
@@ -1516,6 +1534,8 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     )
 
     changelog = (
+        ("1.3", "2026-10-29",
+         "The US $10 price floor reads the price the stock traded at that day: the stored close multiplied back by every later split Yahoo records (backtesting/spec.traded_close, the RS rating's fix in 1d16854). Stored closes are back-adjusted for every later split, so the floor had dropped the later multi-baggers from their early years -- NFLX's October 2009 close is stored as $0.72 against the ~$50 it traded at, NVDA read under $10 until mid-2020. On 2016-06-30 the US floor admits 2,092 stocks instead of 2,382: 47 that later split (NVDA, CMG, ANET, CPRT ...) come in, 337 that later reverse-split, and so really traded under $10, go out. India has no price floor and is unchanged."),
         ("1.2", "2026-10-26",
          "Signals read total return: the momentum ranking, volatility weights and the 200-day trend test "
          "now use closes back-adjusted for the special dividends and demergers a holder is credited "
