@@ -129,6 +129,21 @@ class VcpParams:
     # 12%, 6% that follow are what the base is judged on.
     undercut_recovery_days: int = 5  # sessions an undercut has to close back above the old low
     widen_tol: float = 1.1           # a contraction > this x the previous one is a WIDENING
+    # 1.28, what counts as a contraction (a "T"). A new one starts only at a rally that reaches at
+    # least this fraction of the way from the base's lowest low so far back up to its high; a
+    # smaller bounce belongs to the contraction in progress (see `_major_contractions`). Minervini
+    # counts 2-4 Ts in most bases -- Netflix's 2009 base is "27W 27/7 3T" -- where the zig-zag
+    # alone found 18, and with that many tiny legs VCP-06 failed on noise. 0 = every zig-zag leg
+    # is a contraction (1.27). The top quarter, not the book's "upper third" for a handle: at two
+    # thirds Stryker's January 1995 base split into one more contraction and failed VCP-06, and the
+    # one example it would have added (AMSC, Dec 2003) fails VCP-08 anyway on a 15% handle.
+    t_recovery: float = 0.75
+    # 1.28: a later, marginally higher swing high raises the base's ceiling but keeps its start
+    # (see step 1 of `detect`). 0 = it restarts the base there (1.27).
+    base_keeps_start: int = 1
+    # 1.28: VCP-06's "no deeper than the one before" allows `widen_tol`, like the widening test.
+    # 1 = strict, any deeper pullback fails (1.27).
+    strict_shrink: int = 0
     min_from_reference: int = 2      # VCP-06: contractions from the reference onward, inclusive
     final_ref_ratio: float = 0.6     # VCP-06: final contraction / reference contraction, at most
     min_contractions: int = 2        # VCP-04
@@ -234,6 +249,34 @@ def _template_ok(row) -> bool:
     return template_miss(row) is None
 
 
+def _major_contractions(legs: list, top_frac: float) -> list:
+    """Merge zig-zag legs into Minervini's contractions (Ts).
+
+    `legs` are (high, low, depth %, high index, low index), in order. A new contraction starts only
+    at a rally that gets back into the TOP of the base: at least `top_frac` of the way from the
+    base's lowest low so far up to its highest high so far. Anything less is a bounce inside the
+    contraction in progress -- its low deepens that contraction if lower, and is noise otherwise.
+
+    Why the whole base and not the pullback before: Netflix's 2009 base swung about 10% every few
+    days. Minervini's footprint is "27W 27/7 3T" -- 71.8 down to 51.8, back to 68.1 and down to
+    56.1, back to 68.9 and down to 63.3 -- and each of those three starts at a rally into the top
+    quarter of the base. Measured against each small pullback instead, every bounce "won back"
+    most of it and the 3 contractions read as 17."""
+    if not top_frac or len(legs) < 2:
+        return legs
+    out = [legs[0]]
+    ceil, floor_ = legs[0][0], legs[0][1]
+    for g in legs[1:]:
+        h, l, _, hi_i, lo_i = out[-1]
+        ceil = max(ceil, g[0])
+        if ceil > floor_ and (g[0] - floor_) / (ceil - floor_) >= top_frac:
+            out.append(g)
+        elif g[1] < l:
+            out[-1] = (h, g[1], (h - g[1]) / h * 100 if h > 0 else float("nan"), hi_i, g[4])
+        floor_ = min(floor_, g[1])
+    return out
+
+
 def _dryup(d: pd.DataFrame, start: int, vol: pd.Series, quiet_ratio: float) -> tuple[float, int]:
     """VCP-10's two measures of a quiet stretch beginning at bar `start` of `d`: its average volume
     as a multiple of the 50-day average, and how many of its sessions traded at or under
@@ -290,11 +333,22 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # poke above the base high does not end the base, only a close clearing it by more than
     # `bh_break_atr` ATRs (or `bh_break_pct`, when ATR is unavailable).
     atr = d["atr14"].to_numpy(float) if "atr14" in d.columns else np.full(n, np.nan)
+    #
+    # Two refinements (1.28), both from Minervini's own examples:
+    #
+    # * The base STARTS at the first unbeaten high, even when a later swing high pokes above it
+    #   without a decisive close. That later high raises the base's ceiling (`bh`, used for depth,
+    #   the prior advance and the pivot's position), but it does not restart the base: a handle
+    #   that edges over the left-side high is still the cup's handle. Restarting there made Best
+    #   Buy's Dec 1997 base 8 sessions old and Magna's Dec 2010 handle a base of its own, and both
+    #   failed VCP-02 as "too young". `bh_date` is the start, so a base keeps one identity while it forms.
+    # * A high older than `base_max_days` cannot anchor the base. Deckers' unbeaten 2004 high made
+    #   its 2006 base 430 sessions long, so the base it actually built was never seen.
     t = n - 1
-    bh_i = None
+    bh_i = start_i = None
     for j in range(n):
         # A swing high is only usable once confirmed, `swing_k` bars after it forms.
-        if not is_hi[j] or j + p.swing_k > t:
+        if not is_hi[j] or j + p.swing_k > t or t - j > p.base_max_days:
             continue
         if bh_i is not None and high[j] <= high[bh_i]:
             continue                      # cannot raise the base high; nothing to check
@@ -306,14 +360,19 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
             if bool(np.any(later > hj + marg)):
                 continue                  # a close resolved it: this high no longer caps a base
         bh_i = j
+        if start_i is None or not p.base_keeps_start:
+            start_i = j
     if bh_i is None:
         out["fail"] = "VCP-02"
         return out
-    out.update(bh=float(high[bh_i]), bh_date=d.index[bh_i], base_days=t - bh_i)
-    if not (p.base_min_days <= t - bh_i <= p.base_max_days):
+    out.update(bh=float(high[bh_i]), bh_date=d.index[start_i], bh_peak_date=d.index[bh_i],
+               base_days=t - start_i)
+    if not (p.base_min_days <= t - start_i <= p.base_max_days):
         out["fail"] = "VCP-02"
+        out["fail_why"] = (f"the base is {t - start_i} sessions old, outside "
+                           f"{p.base_min_days}-{p.base_max_days}")
         return out
-    prior = low[max(0, bh_i - p.prior_window): bh_i]
+    prior = low[max(0, start_i - p.prior_window): start_i]
     if len(prior) < p.prior_window:
         out["fail"] = "VCP-01"          # not enough history to judge the prior advance
         return out
@@ -321,17 +380,17 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     out["prior_advance_pct"] = adv
     if len(prior):
         k = int(prior.argmin())
-        out["prior_low"], out["prior_low_date"] = float(prior[k]), d.index[max(0, bh_i - p.prior_window) + k]
+        out["prior_low"], out["prior_low_date"] = float(prior[k]), d.index[max(0, start_i - p.prior_window) + k]
     if not (adv >= p.prior_advance_pct):
         out["fail"] = "VCP-01"
         return out
     # VCP-03 (v2 §2.6): the base-start template is recorded, never required; what must hold is
     # that the long trend did not break while the base formed.
     # Needed by VCP-05 (base depth) and VCP-09 (pivot position), so it is computed once here.
-    base_low = float(low[bh_i:].min())
+    base_low = float(low[start_i:].min())
     out["base_low"] = base_low
-    out["base_tt"] = _template_ok(d.iloc[bh_i])
-    base = d.iloc[bh_i:]
+    out["base_tt"] = _template_ok(d.iloc[start_i])
+    base = d.iloc[start_i:]
     try:
         s200_now, s200_then = float(base["sma200"].iloc[-1]), float(base["sma200"].iloc[0])
         s150_now = float(base["sma150"].iloc[-1])
@@ -405,8 +464,8 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # name and a wall on a quiet one
     zz = p.zigzag_pct
     atr_pct = float("nan")
-    if "atr14" in d and close[bh_i]:
-        atr_pct = float(d["atr14"].iloc[bh_i]) / float(close[bh_i]) * 100
+    if "atr14" in d and close[start_i]:
+        atr_pct = float(d["atr14"].iloc[start_i]) / float(close[start_i]) * 100
     if p.zigzag_atr_mult and atr_pct == atr_pct:
         zz = max(zz, p.zigzag_atr_mult * atr_pct)
     floor = p.zigzag_floor_pct
@@ -414,8 +473,8 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         floor = max(floor, p.zigzag_floor_atr_mult * atr_pct)
     out["zigzag_pct_used"] = round(zz, 2)
     # seeded with BH as the first high, so no leading-L cleanup is needed
-    piv = [(i + bh_i, v, k) for i, v, k in
-           _zigzag(high[bh_i:], low[bh_i:], zz, floor, p.zigzag_shrink_ratio)]
+    piv = [(i + start_i, v, k) for i, v, k in
+           _zigzag(high[start_i:], low[start_i:], zz, floor, p.zigzag_shrink_ratio)]
 
     legs, last_low_i = [], None
     for a, b in zip(piv, piv[1:]):
@@ -432,6 +491,7 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     if not legs:
         out["fail"] = "VCP-04"
         return out
+    legs = _major_contractions(legs, p.t_recovery)
     # the zig-zag already requires a real move in both directions, so a surviving leg is not
     # a wiggle; the filter stays only for thresholds set above zigzag_pct
     # No wiggle filter: the zig-zag's reversal threshold already decided what counts as a
@@ -506,13 +566,23 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # right side that is quietly getting looser. It also closes a hole the widening tolerance
     # leaves: a pullback that is the DEEPEST but only fractionally deeper than its predecessor
     # (20 then 21) is not a "widening", so the reference stays behind it; this test catches it.
+    #
+    # 1.28: "deeper" means deeper by more than `widen_tol`, the same tolerance that defines a
+    # widening. Minervini wants each contraction about half the last, "plus or minus a reasonable
+    # amount"; a strict comparison failed Cirrus Logic's March 2010 base on 5.4% then 5.7%. Within
+    # the tolerance a pullback is not widening -- but the FINAL one must still be no deeper than
+    # the tolerance allows over the smallest before it, so a right side that quietly loosens
+    # (25, 10, 6, 9) still fails.
     after = sizes[ref:]
-    bad = next((k for k in range(1, len(after)) if after[k] > after[k - 1]), None)
+    tol = 1.0 if p.strict_shrink else p.widen_tol
+    bad = next((k for k in range(1, len(after)) if after[k] > tol * after[k - 1]), None)
+    if bad is None and len(after) > 2 and after[-1] > tol * min(after[:-1]):
+        bad = len(after) - 1
     if bad is not None:
         out["fail"] = "VCP-06"
-        out["fail_why"] = (f"pullback {ref + bad + 1} ({after[bad]:.1f}%) is deeper than the one "
-                           f"before it ({after[bad - 1]:.1f}%) — the right side is widening, not "
-                           f"contracting")
+        out["fail_why"] = (f"pullback {ref + bad + 1} ({after[bad]:.1f}%) is deeper than the ones "
+                           f"before it ({', '.join(f'{x:.1f}%' for x in after[:bad])}) — the right "
+                           f"side is widening, not contracting")
         return out
     if not (out["final_ref_ratio"] <= p.final_ref_ratio):
         out["fail"] = "VCP-06"

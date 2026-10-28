@@ -599,8 +599,25 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.27"
+    version = "1.28"
     changelog = (
+        ("1.28", "2026-10-29",
+         "The base detector now finds Minervini's own examples. Run on the charts in Trade Like a "
+         "Stock Market Wizard, chapter 10, 1.27 gave the book's signal on 1 of 11; 1.28 gives it on 5 "
+         "(tests/test_vcp_book_examples.py lists them and the misses). Three changes. (1) A "
+         "contraction (a \"T\") starts only at a rally back into the top quarter of the base "
+         "(VcpParams.t_recovery 0.75); smaller bounces belong to the pullback in progress. The "
+         "zig-zag alone counted 17 pullbacks in Netflix's 2009 base, which the book writes as "
+         "\"27W 27/7 3T\", and VCP-06 then failed it on noise. (2) VCP-06 allows the widening "
+         "tolerance (1.1x) between pullbacks, his \"about half, plus or minus a reasonable "
+         "amount\": 1.27 failed Cirrus Logic's March 2010 base on 5.4% then 5.7% (strict_shrink). "
+         "(3) The base keeps its start when a later high pokes above it without a decisive close -- a "
+         "handle over the left lip had made Best Buy's Dec 1997 base 8 sessions old -- and a high "
+         "older than 325 sessions no longer anchors a base, which had hidden Deckers' 2006 base "
+         "behind its 2004 high (base_keeps_start). On 80 random US stocks, 2014-2021, the share of "
+         "stock-days with a complete VCP moved from 0.4% to 0.5%: the detector is not looser, it "
+         "measures the base the way the book does. `--vcp t_recovery=0 --vcp base_keeps_start=0 "
+         "--vcp strict_shrink=1` restores 1.27's detector."),
         ("1.27", "2026-10-29",
          "Four rules brought into line with Minervini's own description of the method (Trade Like a "
          "Stock Market Wizard, chapter 10), none of them yet measured. (1) A cheat shelf (MV-03, "
@@ -1070,12 +1087,14 @@ class MinerviniSpecStrategy(Strategy):
         "**Where the code departs from the written spec.** It follows the spec's revision (v2), the "
         "Learn guide \"SEPA and the VCP\" and, since 1.27, Minervini's own book instead in these "
         "places:\n\n"
-        "- **Base:** the base high is the HIGHEST unbeaten swing high, not the most recent (VCP-02); the "
-        "trend is tested across the base instead of the Trend Template on the base-high day (VCP-03); "
-        "pullbacks come from a shrinking zig-zag, and more than {MAX_CONTRACTIONS} is a flag, not a "
-        "limit (VCP-04); depth is the whole base, up to {MAX_BASE_DEPTH_PCT}%, not the first pullback up "
-        "to 35% (VCP-05); a deeper pullback resets the count instead of failing the base, where the spec "
-        "wants each pullback 0.80 times the last (VCP-06); the tight area is the last pullback, not a "
+        "- **Base:** the base starts at the first unbeaten swing high and its high is the HIGHEST one, "
+        "not the most recent (VCP-02); the trend is tested across the base instead of the Trend "
+        "Template on the base-high day (VCP-03); pullbacks come from a shrinking zig-zag, a pullback "
+        "starts only at a rally into the top of the base, and more than {MAX_CONTRACTIONS} is a flag, "
+        "not a limit (VCP-04); depth is the whole base, up to {MAX_BASE_DEPTH_PCT}%, not the first "
+        "pullback up to 35% (VCP-05); a deeper pullback resets the count instead of failing the base, "
+        "where the spec wants each pullback 0.80 times the last, and a pullback up to {WIDEN_TOL} "
+        "times the one before still counts as contracting (VCP-06); the tight area is the last pullback, not a "
         "fixed 10 days (VCP-08); a high pivot in a deep base also passes (VCP-09); volume up to "
         "{DRYUP_RATIO} times, or quiet days, instead of 0.70 times (VCP-10).\n"
         "- **Setups:** the cheats (MV-03, MV-04) and the power play (MV-05) are added, each with a "
@@ -1276,8 +1295,13 @@ class MinerviniSpecStrategy(Strategy):
         "the close on the base-high day."
     )
     pattern_docs = {
-        "VCP-02": "**A base exists, of the right length.** There is a base high, and it is at least "
-                  "{BASE_MIN_DAYS} and at most {BASE_MAX_DAYS} sessions old (about 3 to 65 weeks).",
+        "VCP-02": "**A base exists, of the right length.** The base starts at the first swing high, "
+                  "at most {BASE_MAX_DAYS} sessions old, that no close has since cleared by more than "
+                  "{VCP.bh_break_atr} ATR; it must be at least {BASE_MIN_DAYS} and at most "
+                  "{BASE_MAX_DAYS} sessions old (about 3 to 65 weeks).\n\n"
+                  "A later swing high that pokes above it without such a close — a handle edging over "
+                  "the left-side high — raises the base high (used for depth, the prior advance and "
+                  "the pivot's position) but does not restart the base.",
         "VCP-01": "**Prior advance.** The base high is at least {PRIOR_ADVANCE_PCT}% above the "
                   "lowest low of the {VCP.prior_window} sessions (about six months) before it. A "
                   "stock with less history than that fails.",
@@ -1297,6 +1321,14 @@ class MinerviniSpecStrategy(Strategy):
                   "- after each pullback, {VCP.zigzag_shrink_ratio} times that pullback's depth, but "
                   "never less than {VCP.zigzag_floor_pct}% or {VCP.zigzag_floor_atr_mult} ATR — so "
                   "the small late pullbacks a VCP ends with can still register.\n\n"
+                  "**What counts as a pullback** (Minervini's \"T\"). A new one starts only at a rally "
+                  "that gets at least {VCP.t_recovery} of the way from the base's lowest low so far "
+                  "back up to its high. A smaller bounce is part of the pullback in progress: a lower "
+                  "low after it deepens that pullback, a higher one is ignored.\n\n"
+                  "Example: Netflix in 2009 fell from 71.8 to 51.8, bounced to 61 twice, rallied to "
+                  "68.1, fell to 56.1, rallied to 68.9 and fell to 63.3. The bounces to 61 reach under "
+                  "half of the way back, so the base has three pullbacks — 28%, 18% and 8% — as "
+                  "Minervini's own footprint has it (\"27W 27/7 3T\"), not seventeen.\n\n"
                   "Finished pullbacks shallower than {MIN_SWING_PCT}% are dropped. More than "
                   "{MAX_CONTRACTIONS} is flagged, not rejected.",
         "VCP-06": "**Pullbacks contracting.** Pullbacks must have got smaller since the last time "
@@ -1304,7 +1336,10 @@ class MinerviniSpecStrategy(Strategy):
                   "- **Reference:** the latest pullback more than {WIDEN_TOL} times the one before "
                   "it (a widening). With none, the first pullback.\n"
                   "- From the reference on, inclusive, there are at least {MIN_FROM_REFERENCE} "
-                  "pullbacks, each no deeper than the one before it.\n"
+                  "pullbacks, each no more than {WIDEN_TOL} times as deep as the one before it, and "
+                  "the last no more than {WIDEN_TOL} times the smallest before it — Minervini's "
+                  "\"about half, plus or minus a reasonable amount\", so 5.4% then 5.7% still "
+                  "counts as contracting.\n"
                   "- The last is at most {FINAL_REF_RATIO} times the reference.\n\n"
                   "Example: 15%, 25%, 12%, 6%. The 25% is a widening, so it is the reference; 12% "
                   "and 6% shrink; 6 ÷ 25 = 0.24. Passes. A base that has just widened and not "
@@ -2046,7 +2081,7 @@ class MinerviniSpecStrategy(Strategy):
             out.append({"shape": "box", "from": str(bd), "to": d, "top": float(bh),
                         "bottom": float(tl) if tl else float(bh) * (1 - (e.get("first_depth_pct") or 10) / 100),
                         "role": "base", "label": f"base {e.get('base_days', '?')}d · {e.get('contractions', '?')}c {depths}"})
-            note = (f"Base: highest high {bh:g} on {bd}, {e.get('base_days', '?')} sessions. "
+            note = (f"Base: from the high on {bd}, its highest {bh:g}, {e.get('base_days', '?')} sessions. "
                     f"{e.get('contractions', '?')} contractions {depths} (the reset rule needs "
                     f"{MIN_FROM_REFERENCE} since the last widening, the final ≤ {FINAL_REF_RATIO:g}× it). ")
             if e.get("tightness_pct") is not None:
@@ -2379,7 +2414,7 @@ class MinerviniSpecStrategy(Strategy):
                       "warn": any(c["code"] == "note" and c["state"] == "warn" for c in checks["base"]),
                       "line": f"{r['base_days']} days, {(1 - base_low / bh) * 100:.1f}% deep"
                               + (f", {len(depths)} pullbacks" if depths else ""),
-                      "text": (f"{r['base_days']} sessions from the high of {px(bh)} on {bd} (a base lasts "
+                      "text": (f"{r['base_days']} sessions from the high on {bd}, highest {px(bh)} (a base lasts "
                                f"{BASE_MIN_DAYS}–{BASE_MAX_DAYS}), down to {px(base_low)} at its lowest.{pulls}{tight}{verdict}"),
                       "checks": checks["base"], "shapes": base_shapes})
 
