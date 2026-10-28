@@ -1311,6 +1311,9 @@ def run_portfolio_backtest(
     mkt_confirm: int = 0,
     market_guide: bool = False,
     results_blackout_days: int | None = None,
+    segment_filter_days: int | None = None,
+    tf_align: bool = False,
+    equal_alloc_pct: float | None = None,
     exposure: "portfolio_sim.Exposure | None" = None,
     spec_costs: bool = False,
     max_open_risk_pct: float | None = None,
@@ -1442,6 +1445,19 @@ def run_portfolio_backtest(
             fn.dropped_each("accepted", "market filter: benchmark below its 200-day", m["dropped_signals"]["blocked"])
             spec_notes.append(f"Market filter (MKT-01): {m['blocked']} signals blocked on days the benchmark was below its "
                               f"200-day average or its 50-day was below its 200-day (open on {m['days_open_pct']}% of days).")
+    if segment_filter_days and all_signals:
+        all_signals, sg = spec_mod.segment_filter(all_signals, market_key, segment_filter_days)
+        fn.dropped_each("accepted", f"segment index below its {segment_filter_days}-day average", sg["dropped_signals"]["blocked"])
+        spec_notes.append(
+            f"Segment filter: {sg['blocked']} signals skipped because the stock's own market-cap segment index was at or below "
+            f"its {segment_filter_days}-day average that day; segment by 50-day traded-value rank on the signal date. "
+            + "; ".join(f"{k}: {v['blocked']} blocked, {v['kept']} kept" for k, v in sg["by_segment"].items())
+            + (f"; {sg['unranked']} unranked (kept)." if sg["unranked"] else "."))
+    if tf_align and all_signals:
+        all_signals, ta = spec_mod.tf_align_filter(all_signals, prices)
+        fn.dropped_each("accepted", "trend not aligned on daily, weekly and monthly", ta["dropped_signals"]["misaligned"])
+        spec_notes.append(f"Timeframe alignment: {ta['misaligned']} signals skipped whose stock was not in an uptrend on the "
+                          "daily, weekly and monthly charts at once that day (screens/criteria.py trend_alignment).")
     if results_blackout_days and all_signals:
         all_signals, rb = spec_mod.results_blackout(all_signals, market_key, results_blackout_days)
         fn.dropped_each("accepted", f"results due within {results_blackout_days} days", rb["dropped_signals"]["blocked"])
@@ -1512,7 +1528,7 @@ def run_portfolio_backtest(
         max_positions=max_positions, exit_policy=policy,
         max_open_risk_pct=max_open_risk_pct, max_adv_pct=max_adv_pct,
         pyramid_frac=pyramid_frac, pyramid_add_pct=pyramid_add_pct,
-        exposure=exposure, regime_ok=regime_ok, credits=credits, **sim_kw,
+        exposure=exposure, regime_ok=regime_ok, credits=credits, equal_alloc_pct=equal_alloc_pct, **sim_kw,
     )
     tdf = p_trades_to_df(result.trades)
     # what the simulator refused: slots, cash, and the per-fill checks it records
@@ -1686,7 +1702,7 @@ def main(argv: list[str] | None = None) -> dict | None:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "ma", "weekly_ma", "donchian", "supertrend", "minervini"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "weekly_ma", "donchian", "supertrend", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
         "stop+target; the others test whether letting winners run beats capping them. "
         "'weekly_ma' sells at a week's last close when that week closes below the --ma-weeks average of weekly closes. "
@@ -1796,6 +1812,16 @@ def main(argv: list[str] | None = None) -> dict | None:
         help="deep-refresh candidates from yfinance first (skip if backfill already ran)",
     )
     parser.add_argument("--atr-mult", type=float, default=3.0, help="for --exit-mode trail_atr")
+    parser.add_argument("--trail-pct", type=float, default=4.0, metavar="PCT",
+                        help="for --exit-mode trail_pct: the stop trails PCT%% below the highest high since entry (default 4)")
+    parser.add_argument("--equal-alloc", type=float, default=None, metavar="PCT",
+                        help="size every position at PCT%% of equity (e.g. 20 with --max-positions 5) instead of from the "
+                             "stop and --risk-pct; the stop still decides the exit")
+    parser.add_argument("--segment-filter", type=int, default=None, metavar="DAYS",
+                        help="skip signals while the stock's own market-cap segment index (by traded-value rank that day: "
+                             "large / mid / small) is at or below its DAYS-session average (e.g. 21 or 50)")
+    parser.add_argument("--tf-align", action="store_true",
+                        help="skip signals whose stock is not in an uptrend on the daily, weekly and monthly charts at once")
     parser.add_argument("--ma-col", default="sma50", help="for --exit-mode ma")
     parser.add_argument("--ma-weeks", type=int, default=30,
                         help="for --exit-mode weekly_ma: weeks in the simple average of weekly closes")
@@ -1974,7 +2000,8 @@ def main(argv: list[str] | None = None) -> dict | None:
                                ("time_stop_days", args.time_stop)) if v is not None}
     policy = ExitPolicy(
         mode=args.exit_mode, use_target=not args.no_target,
-        atr_mult=args.atr_mult, ma_col=args.ma_col, ma_weeks=args.ma_weeks, donchian_bars=args.donchian_bars, **extra,
+        atr_mult=args.atr_mult, trail_pct=args.trail_pct / 100, ma_col=args.ma_col, ma_weeks=args.ma_weeks,
+        donchian_bars=args.donchian_bars, **extra,
     )
     workers = args.workers if args.workers is not None else default_workers()
     logger.info("Scan workers: %d%s", workers, "" if args.workers is not None else " (default_workers)")
@@ -1993,6 +2020,8 @@ def main(argv: list[str] | None = None) -> dict | None:
             pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct,
             use_market_filter=args.market_filter, mkt_confirm=args.mkt_confirm,
             market_guide=market_guide, results_blackout_days=args.results_blackout or None,
+            segment_filter_days=args.segment_filter, tf_align=args.tf_align,
+            equal_alloc_pct=args.equal_alloc / 100 if args.equal_alloc else None,
             top_dollar_volume=args.top_dollar_volume,
             exposure=_exposure_from(args),
             spec_costs=args.spec,
@@ -2051,6 +2080,12 @@ def main(argv: list[str] | None = None) -> dict | None:
     run += f"_sample{args.sample}" if args.sample else ""
     if args.min_dollar_volume:
         run += f"_dv{args.min_dollar_volume / 1e6:g}m"
+    if args.segment_filter:
+        run += f"_seg{args.segment_filter}"
+    if args.tf_align:
+        run += "_tfa"
+    if args.equal_alloc:
+        run += f"_eq{args.equal_alloc:g}"
     if args.pyramid:
         run += f"_pyr{args.pyramid:g}at{args.pyramid_add_pct:g}pct"
     run += _portfolio_suffix(args, cfg)
@@ -2106,6 +2141,10 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (" --mkt01" if args.mkt01 else "")
             + (f" --results-blackout {args.results_blackout}" if args.results_blackout is not None and not args.spec else "")
             + (" --pe" if args.pe else "")
+            + (f" --trail-pct {args.trail_pct:g}" if args.exit_mode == "trail_pct" else "")
+            + (f" --equal-alloc {args.equal_alloc:g}" if args.equal_alloc else "")
+            + (f" --segment-filter {args.segment_filter}" if args.segment_filter else "")
+            + (" --tf-align" if args.tf_align else "")
             + (f" --accept-labels '{args.accept_labels}'" if args.accept_labels != "TRADE - HIGH CONFIDENCE" else "")
             + (f" --partial-r {args.partial_r:g}" if args.partial_r is not None else "")
             + (f" --fail-days {args.fail_days}" if args.fail_days is not None else "")

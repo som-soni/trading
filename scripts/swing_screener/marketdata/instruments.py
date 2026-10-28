@@ -6,8 +6,10 @@ fetches their history), but they are NOT in the universe file. Breadth, screens,
 strategies and backtests all draw their symbols from the universe, so nothing here
 can leak into a stock count or a signal.
 
-India's ETFs need no list: NSE's securities list already includes them, and the
-`classify` job keeps them out of breadth. India's mutual funds and the US mutual
+India's ETFs are listed below too: NSE's securities list as stored carries only a few of them
+(MAFANG, MASPTOP50), and the most liquid ones -- GOLDBEES, NIFTYBEES, BANKBEES, SILVERBEES and the
+rest -- were not in `prices` at all. They are the ETF swing strategy's India universe
+(backtesting/etf_swing.py). India's mutual funds and the US mutual
 funds are NAVs, not traded bars, so they live in `marketdata/funds.py` instead.
 
 Every ticker was checked against the data source when it was added; one that stops
@@ -129,6 +131,15 @@ _INDIA = [
               ("^CNXPSE", "Nifty PSE"), ("^CNXMNC", "Nifty MNC"), ("^CNXCONSUM", "Nifty India Consumption"),
               ("NSE:NIFTY_SERVICES_SECTOR", "Nifty Services Sector"), ("NSE:NIFTY_COMMODITIES", "Nifty Commodities"),
               ("NSE:NIFTY_INDIA_DEFENCE", "Nifty India Defence")),
+    *_etfs("ETFs",
+           ("GOLDBEES.NS", "Nippon India ETF Gold BeES"), ("SILVERBEES.NS", "Nippon India Silver ETF"),
+           ("NIFTYBEES.NS", "Nippon India ETF Nifty 50 BeES"), ("JUNIORBEES.NS", "Nippon India ETF Nifty Next 50 Junior BeES"),
+           ("MID150BEES.NS", "Nippon India ETF Nifty Midcap 150"), ("BANKBEES.NS", "Nippon India ETF Nifty Bank BeES"),
+           ("PSUBNKBEES.NS", "Nippon India ETF Nifty PSU Bank BeES"), ("ITBEES.NS", "Nippon India ETF Nifty IT"),
+           ("PHARMABEES.NS", "Nippon India Nifty Pharma ETF"), ("AUTOBEES.NS", "Nippon India Nifty Auto ETF"),
+           ("CPSEETF.NS", "CPSE ETF"), ("MON100.NS", "Motilal Oswal Nasdaq 100 ETF"),
+           ("MAFANG.NS", "Mirae Asset NYSE FANG+ ETF"), ("MASPTOP50.NS", "Mirae Asset S&P 500 Top 50 ETF"),
+           ("HNGSNGBEES.NS", "Nippon India ETF Hang Seng BeES")),
 ]
 
 TRACKED: dict[str, list[Instrument]] = {"us": _US, "india": _INDIA}

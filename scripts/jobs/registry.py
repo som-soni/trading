@@ -162,7 +162,11 @@ def _subindustries(ctx: Ctx) -> None:
 def _prices(ctx: Ctx) -> None:
     from swing_screener.marketdata import freshness
     from swing_screener.marketdata.refresh import refresh
-    r = refresh(ctx.market, force=bool(ctx.opt("force")))
+    # --symbols (with --days of history) fetches just those: how a newly tracked symbol -- an ETF added to
+    # marketdata/instruments.py -- gets its history before the daily refresh keeps its tail current
+    syms = [s.strip() for s in str(ctx.opt("symbols") or "").split(",") if s.strip()]
+    kw = {"symbols": syms, "lookback_days": int(ctx.opt("days"))} if syms and ctx.opt("days") else {"symbols": syms or None}
+    r = refresh(ctx.market, force=bool(ctx.opt("force")), **kw)
     if not r["updated"]:
         raise RuntimeError(f"no symbols updated ({len(r['failed'])} failed) — is the data source reachable?")
     st = freshness.price_status(ctx.market)

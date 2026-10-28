@@ -215,6 +215,28 @@ def theme_signals(row: dict) -> dict:
     }
 
 
+def basket_since(data: dict, syms: list, since) -> dict:
+    """A basket's equal-weight return from a chosen date, and each member's return and lead over it in
+    percentage points — the "stock against the basket" view. Computed from the sessions AFTER `since`
+    (its close is the base), within the LOOKBACK_DAYS of returns compute() loads; an earlier date is
+    clamped to the first one available."""
+    base = data.get("_base")
+    syms = [s for s in syms if base and s in base["rets"].columns]
+    if not base or not syms:
+        return {"since": None, "basket": None, "members": {}}
+    rets = base["rets"][syms]
+    idx = pd.to_datetime(pd.Index(rets.index))           # the sessions are stored as dates
+    start = max(pd.Timestamp(since), idx[0])
+    window = rets[idx > start]
+    if window.empty:
+        return {"since": start.date().isoformat(), "basket": None, "members": {}}
+    basket = float((1 + window.mean(axis=1).fillna(0)).prod() - 1)
+    members = {}
+    for s in syms:
+        r = float((1 + window[s].fillna(0)).prod() - 1)
+        members[s] = {"ret": r, "vs": r - basket}
+    return {"since": start.date().isoformat(), "basket": basket, "members": members}
+
 def theme_rows(data: dict, themes: list[dict]) -> list[dict]:
     """Every theme as a group row, from an existing compute() result — milliseconds, so a theme edit shows at
     once. Members are the theme's CURRENT members that clear the liquidity floor (`n`); `size` counts all of

@@ -12,11 +12,18 @@ quarterly cadence — no resampling) under the market each one describes. Each i
                       sales (TOTALSA), durable goods orders (DGORDER), housing starts and permits
                       (HOUST, PERMIT), the 30-year mortgage rate (MORTGAGE30US), bank credit (TOTLL)
                       and the Baa corporate credit spread (BAA10Y)
-               india  CPI (INDCPIALLMINMEI, OECD's mirror), real GDP growth (INDGDPRQPSMEI) and real
-                      private consumption growth (NAEXKP02INQ659S) — the last two already YoY rates
+               india  real GDP growth (INDGDPRQPSMEI) and real private consumption growth
+                      (NAEXKP02INQ659S) — both already YoY rates
     mospi_iip  MoSPI's own IIP API (api.mospi.gov.in, JSON, no key): the general index and the
                use-based consumer durables / non-durables groups, as MoSPI's published YoY growth.
                Replaces FRED's OECD mirror of the IIP, which stopped at Jan-2023.
+    mospi_cpi  MoSPI's CPI API: all-India combined headline inflation (YoY %), as MoSPI publishes it —
+               the 2012-base series (getCPIIndex, Jan-2011 to Dec-2025, one call with state_code=99,
+               sector_code=3, group_code=0) and the 2024-base series (getCPIData, from Jan-2026, one
+               call per month by year and month_code). Joined on the published rate, so the two bases
+               need no splicing; the newer base wins where both have a month. Replaces FRED's OECD
+               mirror (INDCPIALLMINMEI), which stopped at Mar-2025; its old index levels stay stored
+               under IN_CPI.
     vahan      the Vahan dashboard's all-India new vehicle registrations per month — an
                undocumented JSON endpoint that answers a plain GET; a failed day is skipped.
 
@@ -51,6 +58,9 @@ logger = logging.getLogger(__name__)
 TIMEOUT = 60
 MOSPI_IIP = "https://api.mospi.gov.in/api/iip/getIIPData"
 MOSPI_BASES = ("2011-12", "2022-23")   # oldest first: a later base's growth rate wins where both have a month
+MOSPI_CPI_OLD = "https://api.mospi.gov.in/api/cpi/getCPIIndex"     # 2012 base, to Dec-2025
+MOSPI_CPI_NEW = "https://api.mospi.gov.in/api/cpi/getCPIData"      # 2024 base, from Jan-2026
+MOSPI_CPI_NEW_FROM = dt.date(2026, 1, 1)
 VAHAN = ("https://analytics.parivahan.gov.in/analytics/publicdashboard/vahandashboard/"
          "durationWiseRegistrationTable")
 VAHAN_FROM = 2019   # the dashboard reaches back decades, but states joined Vahan over time; earlier is noise
@@ -70,7 +80,7 @@ class Indicator:
                       # already a rate, a spread or a growth rate, read as it is
     source_id: str    # FRED series id; MoSPI IIP category ("General", "Consumer Durables", ...); unused for vahan
     why: str          # what it tells a trader, for the app
-    source: str = "fred"   # "fred" | "mospi_iip" | "vahan" — see the module docstring
+    source: str = "fred"   # "fred" | "mospi_iip" | "mospi_cpi" | "vahan" — see the module docstring
     growth: bool = False   # the stored value already IS a year-on-year growth rate (yoy is then False)
 
 
@@ -104,8 +114,10 @@ INDICATORS: dict[str, list[Indicator]] = {
                   "BAA10Y", "Widens when lenders demand more to hold lower-grade corporate debt — an early stress signal for financials and credit-sensitive sectors."),
     ],
     "india": [
-        Indicator("IN_CPI", "India CPI, all items", "India CPI", "inflation", "index (2015=100, NSA)", "monthly", True,
-                  "INDCPIALLMINMEI", "India's food-heavy inflation basket; drives RBI policy and real returns."),
+        # a new key, not IN_CPI: that one holds the old FRED mirror's index levels, these are inflation rates
+        Indicator("IN_CPI_YOY", "India CPI inflation, all-India combined (YoY)", "India CPI", "inflation", "%", "monthly", False,
+                  "General", "India's food-heavy inflation basket; drives RBI policy and real returns. MoSPI's published "
+                  "headline rate, about two weeks after the month.", source="mospi_cpi", growth=True),
         Indicator("IN_GDP", "India real GDP growth", "India real GDP", "growth", "%", "quarterly", False,
                   "INDGDPRQPSMEI", "Already a year-on-year growth rate. Quarterly and arrives with a longer lag than the US figure.", growth=True),
         # a new key, not IN_INDPROD: that one holds the old FRED mirror's index levels, these are growth rates
@@ -199,6 +211,41 @@ def mospi_iip(category: str) -> pd.Series:
     return pd.Series(got).sort_index()
 
 
+def mospi_cpi() -> pd.Series:
+    """MoSPI's all-India combined CPI inflation (YoY %), monthly, indexed by each month's first day: the
+    2012-base series to Dec-2025, then the 2024-base series (the newer base wins where both have a month)."""
+    s = _mospi_session()
+    got: dict[pd.Timestamp, float] = {}
+    page = 1
+    while True:                         # the API caps a page at 200 rows
+        r = s.get(MOSPI_CPI_OLD, params={"base_year": "2012", "state_code": "99", "sector_code": "3", "group_code": "0",
+                                         "limit": 200, "page": page, "Format": "JSON"}, headers=BROWSER_UA, timeout=TIMEOUT)
+        r.raise_for_status()
+        j = r.json()
+        for x in j.get("data") or []:
+            if x.get("inflation") in (None, "") or x.get("state") != "All India" or x.get("sector") != "Combined":
+                continue
+            got[pd.Timestamp(dt.datetime.strptime(f"{x['year']} {x['month']}", "%Y %B"))] = float(x["inflation"])
+        if page >= (j.get("meta_data") or {}).get("totalPages", 1):
+            break
+        page += 1
+    # the 2024 base filters only by year and month: one small call per month, newest last, until a month is empty
+    d, this_month = MOSPI_CPI_NEW_FROM, dt.date.today().replace(day=1)
+    while d <= this_month:
+        r = s.get(MOSPI_CPI_NEW, params={"base_year": "2024", "year": str(d.year), "month_code": str(d.month),
+                                         "limit": 10, "Format": "JSON"}, headers=BROWSER_UA, timeout=TIMEOUT)
+        r.raise_for_status()
+        row = next((x for x in r.json().get("data") or [] if x.get("state") == "All India" and x.get("sector") == "Combined"
+                    and x.get("division") == "CPI (General)" and x.get("inflation") not in (None, "")), None)
+        if row is None:
+            break                       # not published yet
+        got[pd.Timestamp(d)] = float(row["inflation"])
+        d = (d.replace(day=28) + dt.timedelta(days=4)).replace(day=1)
+    if not got:
+        raise ValueError("MoSPI CPI: no data returned")
+    return pd.Series(got).sort_index()
+
+
 def vahan_registrations() -> pd.Series:
     """All-India new vehicle registrations per month from the Vahan dashboard, from VAHAN_FROM, completed
     months only (the running month is partial). The response also carries placeholder rows (odd years,
@@ -235,6 +282,8 @@ def vahan_registrations() -> pd.Series:
 def _fetch(ind: Indicator) -> pd.Series:
     if ind.source == "mospi_iip":
         return mospi_iip(ind.source_id)
+    if ind.source == "mospi_cpi":
+        return mospi_cpi()
     if ind.source == "vahan":
         return vahan_registrations()
     return fred(ind.source_id)

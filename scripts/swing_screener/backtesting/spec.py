@@ -355,6 +355,106 @@ def market_filter(signals: list, market: str, confirm_days: int = 0, guide: bool
                   "days_open_pct": round(float(ok[ok.index >= min(s.date for s in signals)].mean()) * 100, 1) if signals else None}
 
 
+# ---------------------------------------------------------------- category (segment) filter
+
+# The "be in sync with your universe" rule: a stock is gated by the index of its own market-cap segment,
+# not one broad benchmark. Segments by 50-day traded-value RANK on the signal date (point in time;
+# market cap is only stored as of today), each (rank ceiling or None for the rest, index symbol, label).
+SEGMENT_INDEX = {
+    "india": ((100, "^NSEI", "Nifty 50"), (250, "NSE:NIFTY_MIDCAP_150", "Nifty Midcap 150"),
+              (None, "NIFTYSMLCAP250.NS", "Nifty Smallcap 250")),
+    "us": ((500, "SPY", "S&P 500 (SPY)"), (900, "MDY", "S&P MidCap 400 (MDY)"), (None, "IWM", "Russell 2000 (IWM)")),
+}
+
+
+def traded_value_ranks(market: str, dates: list) -> dict:
+    """{date: Series symbol -> rank (1 = most traded) by 50-day average traded value}, stocks only (the
+    index and ETF symbols stored beside them are left out)."""
+    from ..marketdata import universe
+    dates = sorted({pd.Timestamp(d) for d in dates})
+    if not dates:
+        return {}
+    skip = set(universe.index_symbols(market))
+    since = dates[0] - pd.Timedelta(days=150)
+    with db.get_connection().cursor() as cur:
+        cur.execute("""SELECT symbol, date, close, volume FROM prices
+                       WHERE market=%s AND date >= %s AND date <= %s AND close > 0 AND symbol NOT LIKE '^%%'""",
+                    (market, since.date(), dates[-1].date()))
+        raw = pd.DataFrame(cur.fetchall(), columns=["symbol", "date", "close", "volume"])
+    raw = raw[~raw["symbol"].isin(skip)]
+    if raw.empty:
+        return {}
+    raw["date"] = pd.to_datetime(raw["date"])
+    value = (raw.pivot(index="date", columns="symbol", values="close").astype(float)
+             * raw.pivot(index="date", columns="symbol", values="volume").astype(float)).sort_index()
+    v50 = value.rolling(50, min_periods=40).mean()
+    out = {}
+    for d in dates:
+        row = v50[v50.index <= d]
+        if not row.empty:
+            out[d] = row.iloc[-1].dropna().rank(ascending=False, method="first")
+    return out
+
+
+def segment_ok(market: str, days: int) -> dict:
+    """{index symbol: Series date -> close above its `days`-session simple average}."""
+    out = {}
+    for _cap, sym, _label in SEGMENT_INDEX[market]:
+        b = cache.load_cached(market, sym)
+        if b is None or b.empty:
+            continue
+        c = b["close"].astype(float)
+        out[sym] = c > c.rolling(days).mean()
+    return out
+
+
+def segment_filter(signals: list, market: str, days: int) -> tuple[list, dict]:
+    """Drop a signal whose stock's segment index (SEGMENT_INDEX, by traded-value rank that day) closed at or
+    below its `days`-session average on the signal date. A stock with no rank that day is kept."""
+    if market not in SEGMENT_INDEX or not signals:
+        return signals, {"days": days, "blocked": 0, "kept": len(signals), "unranked": 0, "by_segment": {},
+                         "dropped_signals": {"blocked": []}}
+    ranks = traded_value_ranks(market, [s.date for s in signals])
+    ok = segment_ok(market, days)
+    kept, gone, unranked, by = [], {"blocked": []}, 0, {}
+    for s in signals:
+        r = ranks.get(pd.Timestamp(s.date), pd.Series(dtype=float)).get(s.symbol)
+        if r is None or r != r:
+            unranked += 1
+            kept.append(s)
+            continue
+        seg = next(x for x in SEGMENT_INDEX[market] if x[0] is None or r <= x[0])
+        series = ok.get(seg[1])
+        good = bool(series.asof(pd.Timestamp(s.date))) if series is not None and len(series) else True
+        st = by.setdefault(seg[2], {"kept": 0, "blocked": 0})
+        if good:
+            kept.append(s); st["kept"] += 1
+        else:
+            gone["blocked"].append(s); st["blocked"] += 1
+    logger.info("Segment filter (%d-day): kept %d of %d", days, len(kept), len(signals))
+    return kept, {"days": days, "blocked": len(gone["blocked"]), "kept": len(kept), "unranked": unranked,
+                  "by_segment": by, "dropped_signals": gone}
+
+
+def tf_align_filter(signals: list, prices: dict) -> tuple[list, dict]:
+    """Keep a signal only if its stock's trend was aligned on the daily, weekly and monthly charts on the
+    signal date (screens/criteria.py trend_alignment — the snapshot field Trend aligned (D/W/M))."""
+    from ..screens import criteria as crit
+    cache_: dict = {}
+    kept, gone = [], {"misaligned": []}
+    for s in signals:
+        df = prices.get(s.symbol)
+        if df is None or df.empty:
+            kept.append(s)
+            continue
+        if s.symbol not in cache_:
+            cache_[s.symbol] = crit.trend_alignment(df["close"])["aligned"]
+        a = cache_[s.symbol]
+        (kept if bool(a.asof(pd.Timestamp(s.date))) else gone["misaligned"]).append(s)
+    logger.info("Timeframe alignment: kept %d of %d", len(kept), len(signals))
+    return kept, {"kept": len(kept), "misaligned": len(gone["misaligned"]), "dropped_signals": gone}
+
+
 # ---------------------------------------------------------------- ranking, base count, costs
 
 def rank_rs_then_tightness(signals: list) -> list:

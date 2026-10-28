@@ -97,7 +97,9 @@ def _clean_symbols(symbols) -> list[dict]:
 
 
 def search(q: str = "", tag: str | None = None, market: str | None = None, symbol: str | None = None,
-           kind: str | None = None, book: str | None = None) -> list[dict]:
+           kind: str | None = None, book: str | None = None, full: bool = False) -> list[dict]:
+    """Notes matching the filters. `full` returns each body (the chart's notes panel shows them in full);
+    otherwise a one-line snippet, for lists."""
     init_schema()
     sql, args = f"SELECT {_COLS} FROM notes WHERE true", []
     if q:
@@ -118,7 +120,7 @@ def search(q: str = "", tag: str | None = None, market: str | None = None, symbo
     order = "created_at DESC" if kind == "journal" else "pinned DESC, updated_at DESC"
     with db.get_connection().cursor() as cur:
         cur.execute(f"{sql} ORDER BY {order}", args)
-        return [_row(r, full=False) for r in cur.fetchall()]
+        return [_row(r, full=full) for r in cur.fetchall()]
 
 
 def get(nid: int) -> dict | None:

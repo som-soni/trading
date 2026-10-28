@@ -93,6 +93,9 @@ FIELDS = [
                                                           "a valid ATR — the floor the built-in screens and the strategies use."),
     ("weekly_uptrend", "Weekly uptrend", "Trend & structure", "bool", "Weekly close above a rising 30-week EMA."),
     ("weekly_ma_aligned", "Weekly averages aligned", "Trend & structure", "bool", "Weekly 20-week average above the 50-week."),
+    ("tf_aligned", "Trend aligned (D/W/M)", "Trend & structure", "bool",
+     "Uptrend on the daily, weekly and monthly charts at once: 50-day above a rising 200-day (both rising), "
+     "weekly close above a rising 30-week average, monthly close above a rising 10-month average (the current week and month as they stand that day)."),
     ("holding_50d", "Holding the 50-day", "Trend & structure", "bool", "50-day above the 200-day, and price has not broken down through the 50-day "
                                                                        "(more than 2 ATR below it, or 5 closes in a row under it)."),
     ("mas_not_falling", "Averages not falling", "Trend & structure", "bool", "Neither the 50-day nor the 200-day is falling."),
@@ -225,7 +228,8 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench
     for k, fn in (("weekly_uptrend", crit.weekly_above_rising_ema30), ("weekly_ma_aligned", crit.weekly_sma20_above_sma50),
                   ("holding_50d", crit.daily_structure), ("mas_not_falling", crit.averages_not_falling),
                   ("sma200_not_falling", crit.sma200_not_falling), ("higher_swing_lows", crit.higher_swing_lows),
-                  ("momentum_positive", crit.momentum_12_1_positive), ("trend_not_fading", crit.trend_not_fading)):
+                  ("momentum_positive", crit.momentum_12_1_positive), ("trend_not_fading", crit.trend_not_fading),
+                  ("tf_aligned", crit.trend_aligned_dwm)):
         out[k] = bool(fn(ctx)[0])
     for k, rk, n in (("rel_r12m", "r12m", 252), ("rel_r2y", "r2y", R2Y_BARS), ("rel_r3y", "r3y", R3Y_BARS)):
         b = _bench_ret(bench, c.index[i - n], c.index[i]) if out[rk] is not None else None

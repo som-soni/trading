@@ -1730,6 +1730,28 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .tchips .x:hover { color: var(--down); }
 #tadd { min-width: 240px; }
 
+/* ---- chart: My notes panel (this stock's notes, newest first; written and edited in place) */
+.cnpanel h3 { margin: 0; }
+.cnpanel .wld-nh { align-items: center; gap: 8px; }
+.cn-card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 10px 0; background: var(--panel); }
+.cn-head { display: flex; align-items: baseline; gap: 10px; }
+.cn-head a { cursor: pointer; }
+.cn-body { margin-top: 6px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.cn-body > :first-child { margin-top: 0; } .cn-body > :last-child { margin-bottom: 0; }
+.cn-body blockquote { margin: 0 0 6px; padding: 2px 8px; border-left: 3px solid var(--line); color: var(--muted); font-size: 12px; }
+.cn-body img { max-width: 100%; }
+.cn-edit { border: 1px solid var(--accent, var(--line)); border-radius: 8px; padding: 10px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.cn-title { font-weight: 600; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+.cn-modes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cn-modes a { cursor: pointer; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--line); font-size: 12px; }
+.cn-modes a.on { background: var(--accent-soft); border-color: transparent; }
+.cn-rich, .cn-md { min-height: 140px; max-height: 50vh; overflow: auto; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; line-height: 1.5; background: transparent; color: inherit; }
+.cn-md { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; resize: vertical; }
+.cn-rich:focus, .cn-md:focus, .cn-title:focus { outline: none; border-color: var(--accent, var(--link)); }
+.cn-rich:empty::before, .cn-rich:has(> p:only-child > br:only-child)::before { content: attr(data-ph); color: var(--muted); position: absolute; pointer-events: none; }
+.cn-rich { position: relative; }
+.cn-actions { display: flex; gap: 8px; align-items: center; }
+
 /* ---------------------------------------------------------------- Chart › Analysis (analysis.js) */
 .an-summary { display: grid; grid-template-columns: auto 1fr; gap: 12px 20px; align-items: start; }
 .an-score { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 10px 0 0; text-align: center; }
@@ -1782,3 +1804,9 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
   .an-use { white-space: normal; height: auto; padding: 2px 6px; }
   .an-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* Chart → Renko view */
+.renko-card { width: min(980px, 94vw); }
+.renko-card .sm-head { display: flex; gap: 10px; align-items: center; }
+.rk-chart { height: min(460px, 60vh); margin: 6px 0; }
+.rk-info { margin: 4px 0 2px; }

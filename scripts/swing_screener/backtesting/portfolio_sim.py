@@ -97,9 +97,11 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | ma | weekly_ma | donchian | supertrend | minervini
+    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | weekly_ma | donchian | supertrend | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
+    trail_pct: float = 0.04      # for trail_pct: the stop sits this fraction below the highest HIGH since entry
+                                 #   (the "fixed % from the peak" trail); it only ever rises
     ma_col: str = "sma50"        # for ma, and minervini's EX-06
     ma_weeks: int = 30           # for weekly_ma: a completed week closing below the simple average of
                                  #   this many weekly closes sells at that close (Weinstein's 30-week line)
@@ -164,6 +166,8 @@ class ExitPolicy:
             return "-".join(bits)
         if self.mode == "trail_atr":
             bits.append(f"{self.atr_mult:g}ATR")
+        elif self.mode == "trail_pct":
+            bits.append(f"{self.trail_pct * 100:g}pct")
         elif self.mode == "ma":
             bits.append(self.ma_col)
         elif self.mode == "weekly_ma":
@@ -395,6 +399,7 @@ def simulate(
     pyramid_frac: float | None = None,
     pyramid_add_pct: float = 2.0,
     credits=None,
+    equal_alloc_pct: float | None = None,
 ) -> PortfolioResult:
     """Walk every trading day once, with one shared pool of capital.
 
@@ -584,6 +589,8 @@ def simulate(
                     atr = bar.get("atr14", float("nan"))
                     if atr == atr and atr:
                         pos.stop = max(pos.stop, pos.peak_close - policy.atr_mult * float(atr))
+                elif policy.mode == "trail_pct":
+                    _trail_pct(pos, bar, policy)
                 continue
 
             if hit_stop:  # conservative: the stop wins a same-bar tie
@@ -718,11 +725,16 @@ def simulate(
             equity_now = cash + sum(
                 _mark(p, prices, today) for p in positions.values()
             )
-            risk_budget = equity_now * risk_pct_today
-            shares = int(risk_budget // risk_per_share)
-            max_notional = equity_now * cfg.max_position_pct
-            if shares * entry > max_notional:
-                shares = int(max_notional // entry)
+            if equal_alloc_pct:
+                # equal allocation: every position is the same share of equity, whatever its stop
+                # (five slots at 20%); the stop still decides the exit, not the size
+                shares = int(equity_now * equal_alloc_pct // entry)
+            else:
+                risk_budget = equity_now * risk_pct_today
+                shares = int(risk_budget // risk_per_share)
+                max_notional = equity_now * cfg.max_position_pct
+                if shares * entry > max_notional:
+                    shares = int(max_notional // entry)
             if max_adv_pct is not None and meta.get("adv") and shares * entry > max_adv_pct * meta["adv"]:
                 skip("order too large for the stock's traded value", sym, today)
                 del pending[sym]
@@ -1015,6 +1027,16 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
         atr = bar.get("atr14", float("nan"))
         if atr == atr and atr:
             pos.stop = max(pos.stop, pos.peak_close - policy.atr_mult * float(atr))
+    elif policy.mode == "trail_pct":
+        _trail_pct(pos, bar, policy)
+
+
+def _trail_pct(pos: "PortfolioTrade", bar, policy: ExitPolicy) -> None:
+    """The fixed-percentage trail: raise the stop to `trail_pct` below the highest high since entry.
+    Called after the session's exits, so today's high moves tomorrow's stop, never today's."""
+    peak = max(pos.meta.get("_peak_high", float("-inf")), float(bar["high"]))
+    pos.meta["_peak_high"] = peak
+    pos.stop = max(pos.stop, peak * (1 - policy.trail_pct))
 
 
 def _last_close(pos: PortfolioTrade, prices: dict[str, pd.DataFrame], today: pd.Timestamp) -> float:

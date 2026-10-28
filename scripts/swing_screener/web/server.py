@@ -2281,7 +2281,7 @@ def sectors_api(market: str = "us", level: str = "industry"):
 
 
 @app.get("/api/sectors/group")
-def sector_group(market: str, level: str, group: str):
+def sector_group(market: str, level: str, group: str, since: str | None = None):
     data, _ = _sector_data(market, wait=market not in _sector_cache)
     pool = _theme_rows(market, data) if level == "theme" else data.get(level, [])
     g = next((x for x in pool if x["group"] == group), None)
@@ -2297,6 +2297,8 @@ def sector_group(market: str, level: str, group: str):
                 "members": [members[s] for s in g["members"]],
                 "unlisted": [{"symbol": s, "name": _name(market, s)} for s in g.get("unlisted", [])],
                 "history": group_history.theme_history(market, g["theme_id"]),
+                # members against the basket from a chosen date (default: the start of the year)
+                "since": sect.basket_since(data, g["members"], since or f"{pd.Timestamp(data['date']).year}-01-01"),
                 "first_added": (themes_mod.first_added(t).isoformat() if t and themes_mod.first_added(t) else None),
                 "spans": [{"symbol": s, "added": a.isoformat(), "removed": r.isoformat() if r else None} for s, a, r in (t or {}).get("spans", [])],
                 "statuses": list(themes_mod.STATUSES),
@@ -3101,8 +3103,8 @@ from .. import notes as notes_mod
 
 @app.get("/api/notes")
 def notes_list(q: str = "", tag: str | None = None, market: str | None = None, symbol: str | None = None,
-                kind: str | None = None, book: str | None = None):
-    return {"notes": notes_mod.search(q.strip(), tag, market, symbol, kind, book),
+                kind: str | None = None, book: str | None = None, full: bool = False):
+    return {"notes": notes_mod.search(q.strip(), tag, market, symbol, kind, book, full),
             "tags": notes_mod.tags(), "books": notes_mod.books()}
 
 

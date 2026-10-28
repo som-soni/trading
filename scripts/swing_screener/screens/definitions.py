@@ -107,6 +107,15 @@ def presets() -> dict[str, dict]:
                        "(fundamentals/sepa.py): EPS growth, EPS acceleration, sales growth, margins and no slowdown must pass, and "
                        "annual EPS growth and ROE must not fail. Present-only: it is not available for past snapshots, so it cannot be studied."),
             "conditions": [*stage2, {"field": "sepa_verdict", "op": "in", "value": ["LEADER"]}]},
+        "trend_aligned_dwm": {
+            "name": "Trend aligned — daily, weekly and monthly",
+            "description": ("Stocks in an uptrend on all three charts at once: the 50-day above a rising 200-day (both rising), "
+                            "the weekly close above a rising 30-week average and the monthly close above a rising 10-month average."),
+            "thesis": ("Swing traders such as Deron Wagner check that a stock is ready to move on the daily, weekly and monthly "
+                       "charts before buying: convergence, not conflict. A strong monthly trend with a daily downtrend is not the "
+                       "setup they want. The three tests are the snapshot field Trend aligned (D/W/M), from screens/criteria.py "
+                       "trend_alignment; the backtester's --tf-align applies the same rule to any strategy's signals."),
+            "conditions": [{"field": "tf_aligned", "op": "is", "value": True}]},
         "early_stage2": {
             "name": "Early Stage 2",
             "description": f"Stocks that pass the full Trend Template today but held it on no more than {EARLY_STAGE2_MAX_DAYS} of "

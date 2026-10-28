@@ -110,6 +110,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.baseline import MomentumBaselineStrategy, VolScaledMomentumStrategy
     from ..backtesting.combination import CombinationStrategy
     from ..backtesting.dual_momentum import DualMomentumStrategy
+    from ..backtesting.etf_swing import EtfSwingStrategy
     from ..backtesting.fno_income import FnoIncomeStrategy
     from ..backtesting.ma_trend import MaTrendStrategy
     from ..backtesting.mean_reversion import MeanReversionStrategy
@@ -123,7 +124,7 @@ def portfolio_strategies() -> dict:
                                 DualMomentumStrategy, SectorRotationStrategy,
                                 MeanReversionStrategy, PeadStrategy, FnoIncomeStrategy,
                                 MaTrendStrategy, CombinationStrategy, QualityMomentumStrategy,
-                                Stage4ShortsStrategy, TurtleTrendStrategy)}
+                                Stage4ShortsStrategy, TurtleTrendStrategy, EtfSwingStrategy)}
 
 
 def all_specs() -> dict:

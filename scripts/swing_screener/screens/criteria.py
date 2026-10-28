@@ -198,6 +198,61 @@ def weekly_above_rising_ema30(ctx):
     return False, "weekly close not above a rising 30-week EMA"
 
 
+# ------------------------------------------------------------------ trend aligned on three timeframes
+# The "convergence, not conflict" rule: an uptrend on the daily, the weekly and the monthly chart at once.
+# Daily: the 50-day above the 200-day, both higher than TF_DAILY_RISE_BARS sessions ago. Weekly: the close
+# above a TF_WEEKS-week average that is higher than TF_WEEKLY_RISE_WEEKS weeks ago. Monthly: the close above
+# a TF_MONTHS-month average that is higher than TF_MONTHLY_RISE_MONTHS months ago. The current week and month
+# count as they stand that day (today's close closes them), so the flag is point in time and identical
+# whether the history ends that day or runs on.
+TF_DAILY_FAST = 50
+TF_DAILY_SLOW = 200
+TF_DAILY_RISE_BARS = 20
+TF_WEEKS = 30
+TF_WEEKLY_RISE_WEEKS = 4
+TF_MONTHS = 10
+TF_MONTHLY_RISE_MONTHS = 3
+
+
+def trend_alignment(close: pd.Series) -> pd.DataFrame:
+    """Per session: `daily`, `weekly`, `monthly` uptrend flags and `aligned` (all three), from closes on a
+    DatetimeIndex. Vectorised for backtests; `trend_aligned_dwm` reads its last row."""
+    c = close.astype(float)
+    f, sl = c.rolling(TF_DAILY_FAST).mean(), c.rolling(TF_DAILY_SLOW).mean()
+    daily = (f > sl) & (f > f.shift(TF_DAILY_RISE_BARS)) & (sl > sl.shift(TF_DAILY_RISE_BARS))
+
+    def to_date(freq: str, n: int, rise: int) -> pd.Series:
+        # On each session the week (month) is the period SO FAR: today's close stands in for the period's
+        # close, the earlier periods are complete. Its n-period average is (the n-1 completed closes before
+        # it + today's close) / n, and "rising" compares it with the completed average `rise` periods back.
+        # Every input is known on that session, so the flag is the same whether the history ends today or
+        # runs on for years -- the screen and a backtest read one definition.
+        per = c.index.to_period(freq)
+        last = c.groupby(per).last()                         # each period's close (only earlier ones are used)
+        prev_sum = last.shift(1).rolling(n - 1).sum()        # the n-1 completed closes before the period
+        ref = last.rolling(n).mean().shift(rise)             # the completed average `rise` periods back
+        ma = (prev_sum.reindex(per).to_numpy() + c.to_numpy()) / n
+        ref_d = ref.reindex(per).to_numpy()
+        ok = (c.to_numpy() > ma) & (ma > ref_d)
+        return pd.Series(ok, index=c.index).fillna(False).astype(bool)
+
+    weekly = to_date("W-FRI", TF_WEEKS, TF_WEEKLY_RISE_WEEKS)
+    monthly = to_date("M", TF_MONTHS, TF_MONTHLY_RISE_MONTHS)
+    return pd.DataFrame({"daily": daily.fillna(False), "weekly": weekly, "monthly": monthly,
+                         "aligned": daily.fillna(False) & weekly & monthly}, index=c.index)
+
+
+def trend_aligned_dwm(ctx):
+    d = ctx.daily
+    if len(d) < TF_DAILY_SLOW + TF_DAILY_RISE_BARS:
+        return False, "insufficient history for three timeframes"
+    r = trend_alignment(d["close"]).iloc[-1]
+    if r["aligned"]:
+        return True, ""
+    missing = [k for k in ("daily", "weekly", "monthly") if not r[k]]
+    return False, f"no uptrend on the {', '.join(missing)} chart"
+
+
 def weekly_sma20_above_sma50(ctx):
     w = ctx.weekly
     if len(w) < 50 or pd.isna(w["sma50"].iloc[-1]):

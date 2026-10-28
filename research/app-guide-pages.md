@@ -165,6 +165,7 @@ themes against each other would say little. **New theme…** creates one; its pa
 | **RS rating over time** | Weekly, rebuilt from stored prices for three years by the daily `sectors` job. A stock counts only from the day it was added; before the first member was added, today's members stand in, drawn faded (hindsight) |
 | **Thesis log** | The playbook's §3.2 template: thesis, evidence for and against, invalidation, notes |
 | **Members** | Add symbols (India's `.NS` is optional); × removes one, keeping its past membership. Members below the liquidity floor are listed but not in the index. Changing members clears the stored history, which the next `sectors` run rebuilds |
+| **Members against the basket** | Each member's return since a date you pick (1 January of this year by default; a date before the stored history starts is moved to its first day), beside the equal-weight basket's, and the points by which it is ahead or behind — is the theme broad, or carried by a few stocks? (`basket_since` in analytics/sectors.py) |
 
 Stored in `themes` and `theme_members` (marketdata/themes.py).
 ### 3.4 Movers
@@ -185,9 +186,11 @@ A screen only says which stocks qualify. It has no entry, stop or decision. See
 | **Near highs, rising 200-day** | Above a 200-day that is not falling, within 15% of the 52-week high (H1–H3) | Volume breakout, Chart patterns |
 | **Above the 200-day** | The long-term trend filter alone (A1) | Donchian channel |
 
-Two presets have no strategy behind them: **Strong stocks in leading groups** (RS 70+ in a peer group
-rated 80+, above the 50- and 200-day) and **Minervini leaders in Stage 2** (Stage 2 plus a SEPA verdict of
-LEADER). **+ New screen** builds your own from the
+Three presets have no strategy behind them: **Strong stocks in leading groups** (RS 70+ in a peer group
+rated 80+, above the 50- and 200-day), **Minervini leaders in Stage 2** (Stage 2 plus a SEPA verdict of
+LEADER) and **Trend aligned — daily, weekly and monthly** (the snapshot field *Trend aligned (D/W/M)*: the
+50-day above a rising 200-day, the close above a rising 30-week average and above a rising 10-month average,
+the current week and month counted as they stand that day; `trend_alignment` in screens/criteria.py). **+ New screen** builds your own from the
 snapshot's ~60 fields; editing a built-in saves a copy of your own.
 
 **Quality companies** is the long-term tracker. Each company gets a quality score out of 100 (70+ with no
@@ -249,7 +252,11 @@ them: [reading backtests](app-guide-backtests.md) and [backtesting honestly](lea
 studies, computed in the browser from the bars on screen; your list is saved and applies to every symbol.
 On first use the chart shows the 20-, 50- and 200-day SMA, Volume and RSI. Two studies are not
 indicators: **Screener levels** draws a strategy's entry, stop and target, and **Chart patterns (live
-detection)** runs the chart-pattern detectors on stored prices. **Support & Resistance (zones)** is computed
+detection)** runs the chart-pattern detectors on stored prices. **Renko** (toolbar, beside Fit) opens the bars on screen as Renko bricks of a fixed percentage (2, 3, 5 or 10%, remembered;
+5% by default): a green brick prints once the close is a full brick above the last one, a red one a brick below,
+and time drops out, so long flat stretches shrink and a break to a new high stands out. The dashed line is the
+highest close loaded; the line above the chart gives the current run of same-colour bricks and the distance from
+that high. Bricks are built from closes in the browser. **Support & Resistance (zones)** is computed
 on the server (`core/sr_levels.py`, `/api/sr-levels`): weekly zones first, then daily (monthly then weekly on a
 weekly chart); turning points that drew a clear reaction, clustered (reactions spread over more than 1 ATR are
 separate levels) into zones drawn from the structure — wick extremes to the body cluster, never stretched or
@@ -301,6 +308,7 @@ consensus and the beat record (`marketdata/estimates.py`). The right-hand rail o
 |---|---|
 | Watchlist | Your watchlists; a second icon holds the list you opened the chart from (a screen's results, today's setups), to step through it |
 | **Symbol details** | Sector › industry group › sub-industry (each a link); *Quarterly fundamentals* (latest EPS and sales growth, ROE, SEPA verdict, Code 33); *Fundamentals* from the Quality tracker; *Screener — latest* (each strategy's plan); *Decision history*; your linked notes with **+ note** |
+| **My notes** | Your own notes on this stock, newest first with their dates: write one beside the chart (Rich or Markdown, the same editor modes as Library › Notes), edit or delete it in place. A new note is stamped with the last close and its date. They are ordinary notes linked to the stock, so they also appear in Notes and in Symbol details |
 | **News & events** | Headlines, filings and exchange announcements; earnings dates, dividends, splits, analyst ratings |
 | **Backtest trades** | A stored run's buys and exits in this symbol; click one to zoom to it |
 | **Chart patterns** / **Zones** | Shown while that indicator is on: every pattern / supply-demand zone found; click one to go to it |

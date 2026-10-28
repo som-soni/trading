@@ -237,6 +237,21 @@
     },
     "version": "1.3"
   },
+  "etf_swing": {
+    "family": "etf_swing",
+    "fingerprint": "f3285588",
+    "params": {
+      "ALLOC_PCT": 20.0,
+      "COST_BPS": 10.0,
+      "ENTRY_DAYS": 21,
+      "MAX_POSITIONS": 5,
+      "MIN_BARS": 120,
+      "RANK_DAYS": 5,
+      "TRAIL_EMA": 21,
+      "_key": "etf_swing"
+    },
+    "version": "1.0"
+  },
   "fno_income": {
     "family": "fno_income",
     "fingerprint": "8ecb963e",

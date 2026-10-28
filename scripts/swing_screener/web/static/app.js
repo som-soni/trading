@@ -648,6 +648,7 @@ async function chartPage(alive, market, symbol, tf) {
       <label class="field" id="trades-field" title="Mark the buys and exits a backtest run made in this symbol"><span>Backtest trades</span>
         <select id="trades"><option value="">None</option></select></label>
       <button class="ghost icon" id="fit" title="Show full history"><svg viewBox="0 0 20 20"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"/></svg></button>
+      <button class="ghost" id="renkobtn" title="Renko view: price-only bricks of a fixed % move, so time and sideways stretches drop out and breakouts to new highs stand out"><svg viewBox="0 0 20 20"><rect x="3" y="11" width="4" height="5"/><rect x="8" y="7" width="4" height="5"/><rect x="13" y="3" width="4" height="5"/></svg>Renko</button>
       <span class="spacer"></span>
       ${pos >= 0 ? `<div class="srcchip" title="You are stepping through this list (↑ / ↓)"><span class="muted">From</span>
         <a href="${esc(list.back || "#/screens")}" title="Back to the list">${esc(list.label)}</a>
@@ -662,6 +663,7 @@ async function chartPage(alive, market, symbol, tf) {
         <button data-tab="wl" title="Watchlist"><svg viewBox="0 0 20 20"><path d="M7 5h10M7 10h10M7 15h10"/><circle cx="3.5" cy="5" r=".6"/><circle cx="3.5" cy="10" r=".6"/><circle cx="3.5" cy="15" r=".6"/></svg></button>
         <button data-tab="info" title="Symbol details — fundamentals, screener plan, decision history"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 9v5M10 6.2v.1"/></svg></button>
         <button data-tab="news" title="News & key events — headlines, filings, exchange announcements, earnings, dividends, splits"><svg viewBox="0 0 20 20"><path d="M4 4h10v12H5a1 1 0 0 1-1-1z"/><path d="M14 7h2v8a1 1 0 0 1-2 0"/><path d="M6.5 7h5M6.5 10h5M6.5 13h3"/></svg></button>
+        <button data-tab="snotes" title="My notes on this stock — dated, newest first; write one as you look at the chart"><svg viewBox="0 0 20 20"><path d="M5 3h7l3 3v11H5z"/><path d="M12 3v3h3"/><path d="M7.5 10h5M7.5 13h3.5"/><path d="M13.5 15.5l3-3"/></svg></button>
         ${pos >= 0 && !String(list.label).startsWith("Watchlist") ? `<button data-tab="list" title="${esc(list.label)}"><svg viewBox="0 0 20 20"><path d="M4 4h12v12H4z"/><path d="M7 8h6M7 12h6"/></svg></button>` : ""}
       </nav></div>`;
   const $ = (s) => $view.querySelector(s);
@@ -700,6 +702,7 @@ async function chartPage(alive, market, symbol, tf) {
 
   let sideReady = false;  // the panel renders once the symbol's context has loaded
   let symNotes = null;    // promise of this stock's notes, for the details panel
+  let chartNotes = null, noteEdit = null;   // the My notes panel: this stock's notes with bodies; the id being edited, or "new"
   // this stock's news & key events (marketdata/news.py); the server asks the queue for a fetch when
   // none is stored or it is a day old, and `pending` names that queue item until it lands
   let symNews = null, newsPoll = null;
@@ -971,6 +974,7 @@ async function chartPage(alive, market, symbol, tf) {
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn), claimTrades: (set) => { claimedTrades = set; },
     claimView: () => { viewClaimed = true; }, onFocusTrade: (fn) => focusHooks.push(fn),
+    runId: sel.value || null,   // the selected backtest run: its traded setups are judged on the bars it traded
     // a list pick frames its item: the price axis back on auto-scale (as the "auto" button does)
     fitPrice: (want) => {
       try { chart.panes().forEach((_, i) => chart.priceScale("right", i).applyOptions({ autoScale: true })); syncAuto(); } catch {}
@@ -983,7 +987,6 @@ async function chartPage(alive, market, symbol, tf) {
         syncAuto();
       } catch {} });
     },   // a study framed something itself: skip the opening view
-    runId: sel.value || null,   // the selected backtest run: its traded setups are judged on the bars it traded
     // the selected run's start date (its directory name begins with it), so a setups layer scans back that far
     runStart: (/^\d{4}-\d{2}-\d{2}/.exec(tradeRuns.find((r) => String(r.id) === String($("#trades").value))?.run || "") || [null])[0],
     onSetups: (feed) => { setupFeed = feed; if (prefs.tab === "setups") renderSide(); },
@@ -1104,6 +1107,7 @@ async function chartPage(alive, market, symbol, tf) {
     setLegend();
   });
   $("#fit").onclick = () => chart.timeScale().fitContent();
+  $("#renkobtn").onclick = () => openRenko(symbol, times, B.C);
 
   // ---- panning, TradingView style: press on the plot and drag to move the chart left/right and
   // up/down at once. Moving the price range by hand switches that pane's auto-scale off (as in
@@ -1588,6 +1592,84 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="sp-chips">${chips}</div></section>
       <div class="btrs">${rows || `<div class="muted small">${L.length ? "None of this kind." : "No zone found."}</div>`}</div>`;
   }
+  // ---- My notes: this stock's own notes (the Notes library, filtered to it), newest first, each with
+  // its date — written and edited right here beside the chart, in the same Rich / Markdown editor modes
+  // as the Notes page. A new note is stamped with the last close and its date, for the next review.
+  // (function declarations, and the state up with symNotes: the panel can render before this line runs)
+  function loadChartNotes(fresh) {
+    return (chartNotes = !fresh && chartNotes ? chartNotes
+      : api(`/api/notes?market=${market}&symbol=${encodeURIComponent(symbol)}&full=1`).then((r) => r.notes).catch(() => []));
+  }
+  function noteMode() { return store.get("notesEditor", "rich") === "markdown" ? "markdown" : "rich"; }
+  function composerHtml(n) { return `<div class="cn-edit" data-nid="${n ? n.id : "new"}">
+      <input class="cn-title" placeholder="Title (optional — defaults to the date)" value="${esc(n?.title || "")}" spellcheck="false">
+      <div class="cn-modes">${[["rich", "Rich"], ["markdown", "Markdown"]].map(([k, t]) => `<a data-mode="${k}" class="${noteMode() === k ? "on" : ""}">${t}</a>`).join("")}
+        <span class="muted small">${noteMode() === "rich" ? "⌘B bold · ⌘I italic · lists with “- ”" : "Markdown: **bold**, _italic_, - lists, > quotes"}</span></div>
+      <div class="cn-rich md" contenteditable="true" spellcheck="true" data-ph="What do you see on this chart? Levels, the setup, what would change your mind…" ${noteMode() === "rich" ? "" : "hidden"}></div>
+      <textarea class="cn-md" placeholder="What do you see on this chart?" ${noteMode() === "markdown" ? "" : "hidden"}></textarea>
+      <div class="cn-actions"><button class="primary" data-cnsave>${n ? "Save" : "Save note"}</button><button class="ghost" data-cncancel>Cancel</button>
+        ${n ? "" : `<span class="muted small">Saved with today's date and the last close</span>`}</div></div>`; }
+  function noteCard(n) { return noteEdit === n.id ? composerHtml(n) : `<article class="cn-card">
+      <div class="cn-head"><b>${esc(n.title || "Untitled")}</b><span class="spacer"></span>
+        <a class="small" data-cnedit="${n.id}">Edit</a><a class="small" href="#/notes/${n.id}" title="Open in Notes">Open</a><a class="small neg" data-cndel="${n.id}">Delete</a></div>
+      <div class="muted small">${esc(prettyDate(n.created_at.slice(0, 10)))}${n.updated_at.slice(0, 10) !== n.created_at.slice(0, 10) ? ` · edited ${esc(prettyDate(n.updated_at.slice(0, 10)))}` : ""}</div>
+      <div class="cn-body md">${n.body?.trim() ? marked.parse(n.body) : '<span class="muted small">(empty)</span>'}</div></article>`; }
+  function notesPanelHtml(ns) {
+    return `<section><div class="wld-nh"><h3>My notes · ${esc(bareSymbol(symbol))}</h3><span class="spacer"></span>
+        ${noteEdit === "new" ? "" : '<button class="primary" data-cnnew>+ New note</button>'}</div>
+        <div class="muted small">Your own notes on this stock, newest first — to pick up where you left off next time. They live in Library › Notes too.</div></section>
+      ${noteEdit === "new" ? composerHtml(null) : ""}
+      ${ns == null ? '<div class="muted small">Loading…</div>' : ns.length ? ns.map(noteCard).join("")
+        : noteEdit === "new" ? "" : '<div class="muted small">No notes on this stock yet.</div>'}`;
+  }
+  function wireNotes(host, ns) {
+    const reload = () => { symNotes = null; loadChartNotes(true); renderSide(); };
+    host.querySelector("[data-cnnew]")?.addEventListener("click", () => { noteEdit = "new"; renderSide(); });
+    host.querySelectorAll("[data-cnedit]").forEach((a) => a.onclick = () => { noteEdit = +a.dataset.cnedit; renderSide(); });
+    host.querySelectorAll("[data-cndel]").forEach((a) => a.onclick = async () => {
+      const n = ns.find((x) => x.id === +a.dataset.cndel);
+      if (!n || !confirm(`Delete the note "${n.title || "Untitled"}"?`)) return;
+      await api(`/api/notes/${n.id}`, { method: "DELETE" }).catch(() => null);
+      reload();
+    });
+    const ed = host.querySelector(".cn-edit");
+    if (!ed) return;
+    const n = ed.dataset.nid === "new" ? null : ns.find((x) => x.id === +ed.dataset.nid);
+    const $t = ed.querySelector(".cn-title"), $r = ed.querySelector(".cn-rich"), $m = ed.querySelector(".cn-md");
+    $m.value = n?.body || "";
+    $r.innerHTML = $m.value.trim() ? marked.parse($m.value) : "<p><br></p>";
+    const md = () => (noteMode() === "rich" ? htmlToMd($r) : $m.value).trim();
+    // keep the app's single-key chart shortcuts out of the editor; ⌘/Ctrl+Enter saves
+    [$t, $r, $m].forEach((el) => el.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); save(); }
+      e.stopPropagation();
+    }));
+    ed.querySelectorAll("[data-mode]").forEach((a) => a.onclick = () => {
+      const body = md();
+      store.set("notesEditor", a.dataset.mode);   // the same preference as the Notes page
+      $m.value = body;
+      ed.outerHTML = composerHtml(n); wireNotes(host, ns);
+      const ed2 = host.querySelector(".cn-edit");
+      ed2.querySelector(".cn-title").value = $t.value;
+      ed2.querySelector(".cn-md").value = body;
+      ed2.querySelector(".cn-rich").innerHTML = body ? marked.parse(body) : "<p><br></p>";
+    });
+    ed.querySelector("[data-cncancel]").onclick = () => { noteEdit = null; renderSide(); };
+    const save = async () => {
+      const body = md(), title = $t.value.trim() || `${bareSymbol(symbol)} · ${prettyDate(new Date().toISOString().slice(0, 10))}`;
+      if (!body && !n) { $r.focus(); return; }
+      if (n) await api(`/api/notes/${n.id}`, jsonReq("PUT", { title, body }));
+      else {
+        const q = pxQuote();   // the price the note was written against, kept in the note itself
+        const stamp = q ? `> Last close ${fmt(q.last)} on ${prettyDate(q.date)}\n\n` : "";
+        await api("/api/notes", jsonReq("POST", { title, body: stamp + body, symbols: [{ market, symbol }], kind: "note" }));
+      }
+      noteEdit = null;
+      reload();
+    };
+    ed.querySelector("[data-cnsave]").onclick = save;
+    (noteMode() === "rich" ? $r : $m).focus();
+  }
   function renderSide() {
     if (!sideReady || !prefs.tab) return;
     const body = $("#side .side-body");
@@ -1596,7 +1678,17 @@ async function chartPage(alive, market, symbol, tf) {
       : prefs.tab === "setups" ? `<div class="wlpanel">${setupsPanelHtml()}</div>`
       : prefs.tab === "patterns" ? `<div class="wlpanel">${patternsPanelHtml()}</div>`
       : prefs.tab === "zones" ? `<div class="wlpanel">${zonesPanelHtml()}</div>`
-      : prefs.tab === "news" ? `<div class="wlpanel nwpanel">${newsHtml(null)}</div>` : infoHtml();
+      : prefs.tab === "news" ? `<div class="wlpanel nwpanel">${newsHtml(null)}</div>`
+      : prefs.tab === "snotes" ? `<div class="wlpanel cnpanel">${notesPanelHtml(null)}</div>` : infoHtml();
+    if (prefs.tab === "snotes") {
+      loadChartNotes().then((ns) => {
+        const host = body.querySelector(".cnpanel"); if (!host || !alive()) return;
+        ns = [...ns].sort((a, b) => (a.created_at < b.created_at ? 1 : -1));   // by the day written, newest first
+        host.innerHTML = notesPanelHtml(ns);
+        wireNotes(host, ns);
+      });
+      return;
+    }
     if (prefs.tab === "news") {
       loadNews().then((d) => {
         const host = body.querySelector(".nwpanel"); if (!host || !alive()) return;
@@ -1800,6 +1892,62 @@ const DEC_RANK = (d) => (/^TRADE - HIGH/i.test(d) ? 0 : /^TRADE/i.test(d) ? 1 : 
 const bestPlan = (e) => [...e.strategies].sort((a, b) => DEC_RANK(a.decision) - DEC_RANK(b.decision))[0] || {};
 
 /** small text prompt in the app's own style (resolves to null on cancel); `suggestions` adds a datalist */
+/** Percentage Renko bricks from closes: a brick prints only when the close has moved `pct`% from the last
+ *  brick's close (up or down), so flat stretches and time drop out. Each brick: { open, close, up, date }
+ *  — `date` is the session that completed it. A big move prints several bricks on one session. */
+function renkoBricks(dates, closes, pct) {
+  const k = pct / 100, out = [];
+  let last = null;
+  for (let i = 0; i < closes.length; i++) {
+    const c = closes[i];
+    if (c == null || !(c > 0)) continue;
+    if (last == null) { last = c; continue; }
+    while (c >= last * (1 + k)) { const o = last; last = o * (1 + k); out.push({ open: o, close: last, up: true, date: dates[i] }); }
+    while (c <= last * (1 - k)) { const o = last; last = o * (1 - k); out.push({ open: o, close: last, up: false, date: dates[i] }); }
+  }
+  return out;
+}
+
+function openRenko(symbol, dates, closes) {
+  const m = el(`<div class="smodal"><div class="smodal-card renko-card"><div class="sm-head"><b>${esc(symbol.replace(/\.NS$/, ""))} — Renko</b>
+      <span class="muted small">bricks of a fixed % move; time is left out</span><span class="spacer"></span>
+      <label class="small muted">brick <select id="rkpct">${[2, 3, 5, 10].map((v) => `<option value="${v}">${v}%</option>`).join("")}</select></label>
+      <button class="ghost icon" data-a="close" title="Close">${ICON_X}</button></div>
+      <div id="rkinfo" class="small rk-info"></div><div id="rkchart" class="rk-chart"></div>
+      <p class="muted small">A green brick prints once the close is a full brick above the last brick, a red one once it is a brick below — the
+      percentage swing chart of the swing-trading guide. The dashed line is the highest close in the loaded history (an all-time high for a full
+      chart). Bricks are dated by the session that completed them.</p></div></div>`);
+  document.body.append(m);
+  const sel = m.querySelector("#rkpct");
+  sel.value = String(store.get("renkoPct", 5));
+  let rc = null;
+  const draw = () => {
+    const pct = +sel.value; store.set("renkoPct", pct);
+    const bricks = renkoBricks(dates, closes, pct);
+    rc?.remove();
+    const host = m.querySelector("#rkchart"); host.innerHTML = "";
+    if (!bricks.length) { m.querySelector("#rkinfo").textContent = "Not enough movement for a single brick at this size."; return; }
+    const T0 = 946684800, label = (t) => bricks[Math.round((t - T0) / 86400)]?.date || "";
+    rc = LC.createChart(host, { autoSize: true, ...chartTheme(), handleScroll: true, handleScale: true,
+      timeScale: { ...chartTheme().timeScale, tickMarkFormatter: (t) => prettyDate(label(t)) },
+      localization: { timeFormatter: (t) => prettyDate(label(t)) } });
+    const s = rc.addSeries(LC.CandlestickSeries, { upColor: "#26a69a", downColor: "#ef5350", borderVisible: false, wickVisible: false, priceLineVisible: false });
+    s.setData(bricks.map((b, i) => ({ time: T0 + i * 86400, open: b.open, close: b.close, high: Math.max(b.open, b.close), low: Math.min(b.open, b.close) })));
+    const ath = Math.max(...closes.filter((c) => c > 0));
+    s.createPriceLine({ price: ath, color: cssVar("--muted"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "highest close" });
+    rc.timeScale().setVisibleLogicalRange({ from: Math.max(0, bricks.length - 120), to: bricks.length + 3 });
+    let run = 1; const lastB = bricks[bricks.length - 1];
+    for (let i = bricks.length - 2; i >= 0 && bricks[i].up === lastB.up; i--) run++;
+    const lastClose = closes.filter((c) => c > 0).at(-1);
+    m.querySelector("#rkinfo").innerHTML = `${bricks.length} bricks · last: <b class="${lastB.up ? "pos" : "neg"}">${run} ${lastB.up ? "green" : "red"}</b> in a row,
+      completed ${prettyDate(lastB.date)} · close ${fmt(lastClose)} is <b>${((lastClose / ath - 1) * 100).toFixed(1)}%</b> from the highest close`;
+  };
+  sel.onchange = draw;
+  const close = () => { rc?.remove(); m.remove(); };
+  m.onclick = (e) => { if (e.target === m || e.target.closest("[data-a=close]")) close(); };
+  draw();
+}
+
 function askText(title, value = "", placeholder = "", suggestions = []) {
   return new Promise((resolve) => {
     const dlid = suggestions.length ? `askdl${Math.random().toString(36).slice(2)}` : "";
@@ -2638,7 +2786,8 @@ async function indicatorsSection(card, mkt, overlay = null) {
   const gaps = Object.entries(IND_GAPS[mkt] || {}).map(([cat, text]) => `<div class="muted small ind-gap">${esc(IND_CAT_LABEL[cat] || cat)} — ${esc(text)}</div>`).join("");
   const range = store.get("indRange", "10Y");
   card.innerHTML = tdHead(title, `${segmented(IND_RANGES.map(([k]) => [k, k]), range, "ind-range")}${info("<p>Inflation, growth, consumption, housing and credit indicators — sector-relevant ones (housing starts/mortgage rate, durable goods, the staples/discretionary retail split, vehicle sales) sit beside the economy-wide ones, each tagged with its category.</p><p>Shown as a year-on-year percent change where that reads better than the raw level — a rate or a spread (the mortgage rate, the credit spread) is shown as its own level instead, since it is not a growth figure. Source: FRED's free series, mostly weekly, monthly or quarterly, so these move far less often than a price.</p><p>Click a card's header to expand it.</p>")}`)
-    + `<div class="ind-cards">${ordered.map(indicatorCard).join("")}</div>${gaps}`;
+    + `<div class="ind-cards">${ordered.map(indicatorCard).join("")}</div>${gaps}`
+    + `<div class="td-foot"><a class="small" href="#/learn/macro-consumption-data">Consumption data sources, sector by sector →</a></div>`;
 
   // expanded cards (bigger chart, double width) persist per market, same spirit as the rates legend
   const expandedKey = `indExpanded_${mkt}`;
@@ -3086,6 +3235,13 @@ function themeDetail(mkt, d) {
         ${d.history.length ? '<div id="thist" class="gchart"></div>' : '<div class="empty small"><div class="muted">No history yet — the next daily sectors run rebuilds it (it is cleared when members change).</div></div>'}</section>
       <section class="sec-card"><h3>Thesis log</h3><div class="tform">${THEME_FIELDS.map(([k, label, ph]) => `<label><span>${label}</span><textarea data-k="${k}" rows="${k === "thesis" ? 2 : 3}" placeholder="${esc(ph)}">${esc(g[k] || "")}</textarea></label>`).join("")}</div>
         <div class="tform-act"><button class="primary sm" id="tsave">Save the log</button><span class="muted small">Industry groups: the members' groups are listed below.</span></div></section></div>
+    <section class="sec-card"><div class="sec-card-h"><h3>Members against the basket</h3>
+      <span class="muted small">equal-weight return since <input type="date" id="tsince" value="${esc(d.since?.since || "")}"> — basket
+      <b class="${pctCls(d.since?.basket)}">${pct1(d.since?.basket)}</b></span></div>
+      <table class="sect mini"><thead><tr><th>Member</th><th class="num">Return since</th><th class="num">vs basket</th></tr></thead><tbody>
+      ${Object.entries(d.since?.members || {}).sort((a, b) => b[1].ret - a[1].ret).map(([sy, v]) => `<tr><td><a href="#/chart/${mkt}/${encodeURIComponent(sy)}">${esc(sy.replace(/\.NS$/, ""))}</a></td>
+        <td class="num ${pctCls(v.ret)}">${pct1(v.ret)}</td><td class="num ${pctCls(v.vs)}">${v.vs >= 0 ? "+" : ""}${(v.vs * 100).toFixed(1)} pts</td></tr>`).join("")}</tbody></table>
+      <p class="muted small">Who is carrying the basket: a theme up a little on average with three members far ahead is a rally in a few stocks, not a broad one.</p></section>
     <section class="sec-card"><div class="sec-card-h"><h3>Members</h3><span class="muted small">strongest first · click a row for its chart</span><span class="spacer"></span>
       <input id="tadd" placeholder="Add symbols, comma-separated" spellcheck="false"><button class="sm" id="taddb">Add</button></div>
       <div id="gmem"></div>
@@ -3134,6 +3290,10 @@ function themeDetail(mkt, d) {
     d.members.map((m, i) => [i + 1, m.symbol, m.name || "", m.sub ? `${m.industry} · ${m.sub}` : m.industry, m.rs, p100(m["1M"]), p100(m["3M"]), p100(m["12M"]), p100(m.from_high), m.above50, m.last]),
     { name: "theme_members", sort: ["rank", 1], rowClick: (row, visible) => openChartFromList(mkt, row[1], visible.map((r) => r[1]), `${g.group} · members`, location.hash) });
 
+  $view.querySelector("#tsince").onchange = async (e) => {
+    const r = await api(`/api/sectors/group?market=${mkt}&level=theme&group=${encodeURIComponent(g.group)}&since=${e.target.value}`).catch(() => null);
+    if (r) themeDetail(mkt, r);
+  };
   $view.querySelector("#tstatus").onchange = async (e) => { if (await save({ status: e.target.value }, `Status: ${e.target.value}`)) route(); };
   $view.querySelector("#tsave").onclick = () => {
     const spec = {}; $view.querySelectorAll(".tform textarea").forEach((t) => { spec[t.dataset.k] = t.value; });
@@ -5239,6 +5399,7 @@ function renderResearchMd(host, markdown) {
   renderSeriesFigures(host);
   renderPayoffFigures(host);
   host.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
+  host.querySelectorAll('.md a[href^="http"]').forEach((a) => { a.target = "_blank"; a.rel = "noopener noreferrer"; });
   // Plain-language definitions on the first use of each glossary term. The
   // guides are entered from the hub in any order, so a term explained in one
   // cannot be assumed known in another — see static/glossary.js.
@@ -6781,26 +6942,26 @@ document.addEventListener("keydown", (e) => {
  *  (long-form reading, research/learn-*.md) and its patterns (every pattern drawn, learn.js), so a subject
  *  appears in the menu once. #/learn is the hub; #/learn/candles, /charts, /levels a topic's pattern grid;
  *  #/learn/<pattern> a pattern; #/learn/<guide> a guide. */
-const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield-curve", "learn-macro-inflation", "learn-macro-cycle", "learn-macro-currencies", "learn-macro-liquidity-credit", "learn-macro-commodities", "learn-macro-calendar",
+const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield-curve", "learn-macro-inflation", "learn-macro-cycle", "learn-macro-consumption-data", "learn-macro-currencies", "learn-macro-liquidity-credit", "learn-macro-commodities", "learn-macro-calendar",
   "learn-health-trend", "learn-health-breadth", "learn-health-volatility", "learn-health-distribution",
   "learn-sectors-groups",
   "learn-fund-earnings", "learn-fund-reading-results", "learn-fund-valuation", "learn-fund-quality",
   "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs", "learn-price-indicators", "learn-price-oscillators",
-  "learn-strat-overview", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-vol-scaled-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
+  "learn-strat-overview", "learn-strat-swing-trading", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-vol-scaled-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
   "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing", "learn-system-filters",
   "learn-test-backtesting",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-support-resistance", "learn-supply-demand", "learn-order-flow-smc"];
 /** the topic a guide belongs to; a guide not listed here goes under "More guides" */
-const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
+const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", "learn-macro-yield-curve": "macro", "learn-macro-inflation": "macro", "learn-macro-cycle": "macro", "learn-macro-consumption-data": "macro", "learn-macro-currencies": "macro", "learn-macro-liquidity-credit": "macro", "learn-macro-commodities": "macro", "learn-macro-calendar": "macro",
   "learn-health-trend": "health", "learn-health-breadth": "health", "learn-health-volatility": "health", "learn-health-distribution": "health",
   "learn-sectors-groups": "sectors",
   "learn-fund-earnings": "fundamentals", "learn-fund-reading-results": "fundamentals", "learn-fund-valuation": "fundamentals", "learn-fund-quality": "fundamentals",
   "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price", "learn-price-indicators": "price", "learn-price-oscillators": "price",
-  "learn-strat-overview": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-livermore": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-kullamagi": "strategies", "learn-strat-zanger": "strategies", "learn-strat-morales-kacher": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-vol-scaled-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
+  "learn-strat-overview": "strategies", "learn-strat-swing-trading": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-livermore": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-kullamagi": "strategies", "learn-strat-zanger": "strategies", "learn-strat-morales-kacher": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-vol-scaled-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
   "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno", "learn-system-filters": "system",
   "learn-test-backtesting": "system",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
@@ -6809,6 +6970,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
  *  (Strategies: "Trend following", "Breakouts from a base", ...). Guides without one sit under "Guides". */
 const GUIDE_GROUP = {
   "learn-strat-overview": "Start here",
+  "learn-strat-swing-trading": "Start here",
   "learn-strat-ma-trend": "Trend following",
   "learn-strat-channel-breakout": "Trend following",
   "learn-strat-stage-analysis": "Trend following",
@@ -6862,6 +7024,7 @@ const GUIDE_GROUP = {
 };
 const GUIDE_BLURB = {
   "learn-strat-overview": "The map of trading strategies: what a complete strategy is, the categories, and how to choose one that fits you.",
+  "learn-strat-swing-trading": "Swing trading: seven ways to define a move, trend alignment across timeframes, trailing exits, and what the signals are worth.",
   "learn-strat-ma-trend": "Own a stock or index while it is above a moving average and step aside below it — rules, parameters and whipsaws.",
   "learn-strat-channel-breakout": "Donchian and Turtle-style trend following: buy the new high, exit on the new low, size by volatility.",
   "learn-strat-stage-analysis": "Weinstein's method: buy the Stage 2 breakout above a rising 30-week line and hold until the stage turns.",
@@ -6917,6 +7080,7 @@ const GUIDE_BLURB = {
   "learn-macro-yield-curve": "Bond yields, the shape of the curve, inversions and recessions, and why the 10-year moves growth stocks.",
   "learn-macro-inflation": "CPI, core and India's food-heavy basket: how inflation reaches rates, margins and sector leadership.",
   "learn-macro-cycle": "Jobs, PMIs and GDP, the four phases of the cycle, and the ratios that show rotation as it happens.",
+  "learn-macro-consumption-data": "Where to find consumption data for every key sector, in India and the US: source, timing and access.",
   "learn-macro-currencies": "The dollar, the rupee and foreign flows: who wins and loses when currencies move.",
   "learn-macro-liquidity-credit": "QE and QT, credit spreads and volatility: the plumbing that warns before stocks do.",
   "learn-macro-commodities": "Oil, gold and copper as reads on inflation, fear and growth, and what they mean for India.",

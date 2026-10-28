@@ -448,6 +448,19 @@ Minervini's spec runs use their own market filter instead (`--market-filter`, MK
 `backtesting/spec.py`): no new buys while the benchmark is below its 200-day, or its 50-day is below its
 200-day.
 
+Options for swing-style runs, all off by default (`backtesting/backtest.py`, `spec.py`, `portfolio_sim.py`):
+
+| Flag | What it does |
+|---|---|
+| `--segment-filter DAYS` | The category filter: a buy is taken only while the stock's own cap segment is above its DAYS-day average. Segments are ranks by 50-day traded value that day (India: top 100 → Nifty 50, next 150 → Nifty Midcap 150, the rest → Nifty Smallcap 250; US: top 500 → SPY, next 400 → MDY, the rest → IWM; `SEGMENT_INDEX`) |
+| `--tf-align` | A buy is taken only while the stock is trend-aligned on daily, weekly and monthly bars (the screen field above) |
+| `--exit-mode trail_pct --trail-pct P` | Sell once the low trades P% under the highest high since entry (default 4); the trail never lowers the initial stop |
+| `--equal-alloc PCT` | Each position is PCT% of current equity at entry instead of risk-based sizing (with `--max-positions 5 --equal-alloc 20`: five 20% slots) |
+
+The ETF swing system (`etf_swing`, `backtesting/etf_swing.py`) is its own runner: a fixed basket of liquid ETFs
+per market (`ETF_UNIVERSE`), a close above the prior `ENTRY_DAYS`-day high to enter, ranked by `RANK_DAYS`-day
+return, `MAX_POSITIONS` slots of `ALLOC_PCT`% each, out at a close below the `TRAIL_EMA`-day EMA.
+
 How to read a run, and when to doubt one: [reading backtests](app-guide-backtests.md) and
 [backtesting honestly](learn-test-backtesting.md). Results are on each strategy's Backtests tab and in
 System → Reports archive.
