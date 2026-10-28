@@ -37,23 +37,20 @@ stored-data jobs, `FAST_JOBS` in `jobs/registry.py`): a new job runs in the
 main lane unless you add it to one of those sets on purpose — then run
 `PYTHONPATH=. .venv/bin/python -m tests.test_job_lanes`.
 
-## Sidebar: every thread lives in its module's section, numbered
+## Sidebar: threads are numbered so their position never moves
 
-The Code-tab sidebar has one section per top-level module thread (`01. Strategies Module`
-… `13. …`), each listing its threads A–Z, so a thread's position never moves. The app does
-not file new threads there by itself, so **on your first turn in a session, file yourself**
-(when the ccd sidebar/session tools are available; skip silently when they are not):
+The Code-tab sidebar groups threads by project, nests each thread under the thread that
+started it, and sorts every level A–Z. So a thread's title starts with its number at its own
+level: top-level modules `01.` … `13.`; under a module, `00. Orchestrator` then `01.`, `02.` …
+in creation order; a thread started by one of those carries its parent's number first —
+`00.01`, `00.02` under the orchestrator, `02.01` under `02.`. Do not use sidebar sections or
+groups for this: they replace the project grouping and duplicate the module names.
 
-1. `get_session("self")`. If `group` is already set and the title already starts with `NN. `,
-   stop; if only the group is set, skip to step 4.
-2. Walk `parentSessionId` up to the top-level thread (no parent); its `group` is the module's
-   section. If it has none, stop — don't create sections unasked.
-3. `move_sessions(["self"], group_id=<that group>)`.
-4. Rename yourself `NN. <title>`: one more than the highest `NN.` among that section's threads
-   (`list_sessions(group=…)`), `00.` reserved for the module's `00. Orchestrator`. Keep the rest of
-   the title.
-
-A session you start yourself files the same way on its own first turn; nothing to do for it.
+**On your first turn in a new session, number yourself** (when the ccd session tools are
+available; skip silently when they are not): if your title does not already start with a
+number, `get_session("self")` for your `parentSessionId`, read your siblings' titles
+(`list_sessions`, those with the same parent), and rename yourself `<parent's number>.<next NN>
+<title>` — or `NN. <title>` when your parent is the top-level module. Keep the rest of the title.
 
 ## Markets come from config
 
