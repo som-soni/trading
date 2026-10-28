@@ -279,6 +279,46 @@
     },
     "version": "1.0"
   },
+  "kullamagi": {
+    "family": "kullamagi",
+    "fingerprint": "03978cd5",
+    "params": {
+      "MAX_HOLD_BARS": 120,
+      "MAX_STOP_ADR": 1.0,
+      "MIN_STOP_PCT": 1.0,
+      "MKT_EMA": 20,
+      "MKT_FAST_EMA": 10,
+      "MOVERS_ADR_BARS": 20,
+      "MOVERS_HIGH_BARS": 20,
+      "MOVERS_LOW_BARS": 63,
+      "MOVERS_MIN_ADR_PCT": 4.0,
+      "MOVERS_MIN_MOVE_PCT": 30.0,
+      "NOMINAL_TARGET_R": 10,
+      "PARTIAL_AFTER_BARS": 3,
+      "PARTIAL_DIVISOR": 3,
+      "PRIOR_CLOSE_SMA": 10,
+      "REQUIRE_MARKET": 1,
+      "REST_BARS": 10,
+      "REST_LOW_MIN_PCT_OF_SMA": 97.0,
+      "REST_SMA": 20,
+      "TIGHT_MAX_PCT": 20.0,
+      "TRAIL_SMA": 10,
+      "_key": "kullamagi",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "ma_trend": {
     "family": "ma_trend",
     "fingerprint": "96972c5b",

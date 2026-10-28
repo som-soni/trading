@@ -83,6 +83,11 @@ FIELDS = [
     ("pct_below_high", "% below 52-week high", "Range", "pct", "How far the close is below the 52-week high (0 = at the high)."),
     ("pct_above_low", "% above 52-week low", "Range", "pct", "How far the close is above the 52-week low."),
     ("atr_pct", "ATR %", "Volatility", "pct", "Average true range (14 days) as a % of the close."),
+    ("adr_pct", "ADR %", "Volatility", "pct", f"Average daily range: the mean, over the last {crit.MOVERS_ADR_BARS} sessions, "
+                                              "of each session's high ÷ low − 1. How far the stock moves on a normal day."),
+    ("prior_move_pct", "Prior move %", "Performance", "pct", f"How far the highest high of the last {crit.MOVERS_HIGH_BARS} sessions "
+                                                            f"sits above the lowest low of the last {crit.MOVERS_LOW_BARS}: the size "
+                                                            "of the latest move."),
     ("adx14", "ADX 14", "Volatility", "num", "Trend strength (0–100); above ~25 is a strong trend."),
     ("rsi14", "RSI 14", "Momentum", "num", "Relative strength index (0–100)."),
     ("volume", "Volume", "Volume", "num", "The session's volume."),
@@ -222,6 +227,11 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench
     # the same formulas as the Stage 2 criteria (screens/criteria.py), so a condition on them is exact
     out["pct_below_high"] = (1 - close / hi) * 100 if hi and hi > 0 else None
     out["pct_above_low"] = (close / lo - 1) * 100 if lo and lo > 0 else None
+    # the big_movers screen's quantities, by the criteria's own functions
+    hist = enriched.iloc[max(0, i + 1 - max(crit.MOVERS_LOW_BARS, crit.MOVERS_HIGH_BARS, crit.MOVERS_ADR_BARS)): i + 1]
+    for k, fn in (("adr_pct", crit.adr_pct), ("prior_move_pct", crit.prior_move_pct)):
+        v = fn(hist)
+        out[k] = None if v != v else v
     # structure flags: the criteria functions themselves, on the history up to bar i
     ctx = SimpleNamespace(daily=enriched.iloc[: i + 1], weekly=ind.enrich_weekly(ind.resample_weekly(raw.iloc[: i + 1])),
                           last=row, close=close, extras={})

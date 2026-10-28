@@ -65,6 +65,7 @@ import pandas as pd
 from ..config.base import MarketConfig
 from ..core import indicators as ind
 from ..strategies import minervini_spec as _ms
+from ..strategies import kullamagi as _km
 from ..strategies import supertrend as _st
 
 logger = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | weekly_ma | donchian | supertrend | minervini
+    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | weekly_ma | donchian | supertrend | kullamagi | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
     trail_pct: float = 0.04      # for trail_pct: the stop sits this fraction below the highest HIGH since entry
@@ -111,6 +112,14 @@ class ExitPolicy:
     # after import).
     st_period: int = field(default_factory=lambda: _st.ATR_PERIOD)
     st_mult: float = field(default_factory=lambda: _st.MULTIPLIER)
+    # for kullamagi: the strategy's own management, read through a factory for the same reason. At the
+    # close of session `km_partial_bars` after the entry, if above the entry, 1/`km_partial_divisor` sells
+    # there and the stop moves to the entry; the rest sells at the first close below its `km_trail_sma`-day
+    # simple average, or at the close of session `km_max_bars`. See `_manage_kullamagi`.
+    km_partial_bars: int = field(default_factory=lambda: _km.PARTIAL_AFTER_BARS)
+    km_partial_divisor: int = field(default_factory=lambda: _km.PARTIAL_DIVISOR)
+    km_trail_sma: int = field(default_factory=lambda: _km.TRAIL_SMA)
+    km_max_bars: int = field(default_factory=lambda: _km.MAX_HOLD_BARS)
     # ---- minervini: the strategy's exit ladder. Defaults are minervini_spec's constants, so a
     # --spec run trades the strategy's documented numbers (1.8: the SEPA Learn guide's).
     #
@@ -176,6 +185,8 @@ class ExitPolicy:
             bits.append(f"{self.donchian_bars}d")
         elif self.mode == "supertrend":
             bits.append(f"{self.st_period}x{self.st_mult:g}")
+        elif self.mode == "kullamagi":
+            bits.append(f"p{self.km_partial_bars}d{self.km_partial_divisor}-sma{self.km_trail_sma}-max{self.km_max_bars}")
         bits.append("withTarget" if self.use_target else "noTarget")
         if self.be_r:
             bits.append(f"be{self.be_r:g}R")
@@ -363,6 +374,7 @@ _FLAT = Exposure()   # disabled: every entry risks the full risk_pct
 
 WEEKLY_LINE = "_weekly_line"   # the weekly_ma exit's level, added to each price frame by `simulate`
 ST_DIR = "_st_dir"             # the supertrend exit's direction (1 up, -1 down), added the same way
+KM_TRAIL = "_km_trail"         # the kullamagi exit's trailing simple average, added the same way
 
 
 def weekly_line(df: pd.DataFrame, weeks: int) -> pd.Series:
@@ -428,6 +440,9 @@ def simulate(
         prices = {s: df.assign(**{WEEKLY_LINE: weekly_line(df, policy.ma_weeks)}) for s, df in prices.items()}
     elif policy.mode == "supertrend":
         prices = {s: df.assign(**{ST_DIR: ind.supertrend(df, policy.st_period, policy.st_mult)["dir"]})
+                  for s, df in prices.items()}
+    elif policy.mode == "kullamagi":
+        prices = {s: df.assign(**{KM_TRAIL: ind.sma(df["close"].astype(float), policy.km_trail_sma)})
                   for s, df in prices.items()}
 
     # the calendar is the union of the dates of every symbol we might trade
@@ -560,6 +575,10 @@ def simulate(
                 _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg)
                 continue
 
+            if policy.mode == "kullamagi":
+                _manage_kullamagi(sym, pos, bar, today, policy, close_out, sell)
+                continue
+
             if policy.managed:
                 _manage_bracket(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg)
                 continue
@@ -615,6 +634,22 @@ def simulate(
                 skip("cancelled: market filter is risk-off", sym, today)
                 del pending[sym]
 
+        # A close order (meta["order"] == "close") buys at the close of its own signal session: the
+        # signal is the completed bar, so the price is known and nothing later is read. It joins
+        # today's fills here, so it ranks, sizes and takes a slot with them; one that cannot fill
+        # today is dropped. Its stop and exits are first tested tomorrow (step 1 has already run).
+        for s in by_date.get(today, []):
+            if s.meta.get("order") != "close" or s.symbol in positions or s.symbol in pending:
+                continue
+            if regime_ok is not None and not bool(regime_ok.asof(today)):
+                skip("cancelled: market filter is risk-off", s.symbol, today)
+                continue
+            pending[s.symbol] = {
+                "entry": s.entry, "stop": s.stop, "target": s.target,
+                "setup": s.setup, "decision": s.decision, "quality": s.quality,
+                "expires": today, "meta": s.meta,
+            }
+
         # Rank the ones that triggered today, because slots are scarce.
         triggered = []
         for sym, order in list(pending.items()):
@@ -623,6 +658,9 @@ def simulate(
                 continue
             bar = df.loc[today]
             meta = order["meta"]
+            if meta.get("order") == "close":
+                triggered.append((sym, order, bar))
+                continue
             if meta.get("order") == "open":
                 # EN-01: the next session's open, that day only
                 o = float(bar["open"])
@@ -666,12 +704,14 @@ def simulate(
             if len(positions) >= slots_today:
                 missed_slot += 1
                 missed_slot_at.append((sym, today))
-                if meta.get("order") == "open":
+                if meta.get("order") in ("open", "close"):
                     del pending[sym]
                 continue  # keep it resting; a slot may free up before it expires
 
             if meta.get("order") == "open":
                 raw_entry = float(bar["open"])
+            elif meta.get("order") == "close":
+                raw_entry = float(bar["close"])
             elif meta.get("confirm_close_above") is not None:
                 # the close is what confirmed it, so the close is what you can pay:
                 # filling at the intraday stop price would be buying on information
@@ -754,7 +794,7 @@ def simulate(
                     for p in positions.values())
                 if open_risk + risk_per_share * shares > max_open_risk_pct * equity_now:
                     skip("open-risk cap", sym, today)
-                    if meta.get("order") == "open":
+                    if meta.get("order") in ("open", "close"):
                         del pending[sym]
                     continue   # keep resting: risk frees up as stops rise or positions close
             # Scale down to what cash allows rather than declining outright.
@@ -805,6 +845,10 @@ def simulate(
 
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
+            if s.meta.get("order") == "close":
+                if s.symbol in positions and positions[s.symbol].entry_date != today:
+                    skip("already holding this symbol", s.symbol, today)
+                continue        # placed (and filled or dropped) in step 2
             if s.symbol in positions:
                 skip("already holding this symbol", s.symbol, today)
                 continue
@@ -1029,6 +1073,34 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
             pos.stop = max(pos.stop, pos.peak_close - policy.atr_mult * float(atr))
     elif policy.mode == "trail_pct":
         _trail_pct(pos, bar, policy)
+
+
+def _manage_kullamagi(sym, pos: PortfolioTrade, bar, today, policy: ExitPolicy, close_out, sell) -> None:
+    """One session of the kullamagi strategy's management, in this order:
+      1. the stop, at the stop or at the open if the stock gapped through it (STOP, or BREAKEVEN once moved);
+      2. a close below the `km_trail_sma`-day average sells everything left at that close (TREND_EXIT);
+      3. at the close of session `km_partial_bars`, if that close is above the entry, 1/`km_partial_divisor`
+         of the shares sells there and the stop moves up to the entry, from the next session;
+      4. at the close of session `km_max_bars`, whatever is left sells (TIME)."""
+    o, l, c = float(bar["open"]), float(bar["low"]), float(bar["close"])
+    pos.bars_held += 1
+    if l <= pos.stop:
+        reason = "BREAKEVEN" if pos.stop > pos.initial_stop else "STOP"
+        close_out(sym, pos, min(pos.stop, o), reason, today)
+        return
+    ma = bar.get(KM_TRAIL, float("nan"))
+    if ma == ma and c < float(ma):
+        close_out(sym, pos, c, "TREND_EXIT", today)
+        return
+    if (policy.km_partial_bars and pos.bars_held == policy.km_partial_bars and not pos.partial_shares
+            and c > pos.entry_price and policy.km_partial_divisor):
+        n = int(pos.shares // policy.km_partial_divisor)
+        if 0 < n < pos.held:
+            sell(pos, c, n, today)
+            pos.partial_shares = n
+            pos.stop = max(pos.stop, pos.entry_price)
+    if policy.km_max_bars and pos.bars_held >= policy.km_max_bars:
+        close_out(sym, pos, c, "TIME", today)
 
 
 def _trail_pct(pos: "PortfolioTrade", bar, policy: ExitPolicy) -> None:

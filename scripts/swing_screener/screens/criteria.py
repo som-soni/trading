@@ -45,6 +45,15 @@ NEAR_HIGHS_MIN_FRAC_OF_52W_HIGH = 1 - NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH / 100
 UPTREND_MAX_PCT_BELOW_52W_HIGH = 25.0
 UPTREND_MIN_FRAC_OF_52W_HIGH = 1 - UPTREND_MAX_PCT_BELOW_52W_HIGH / 100
 
+# ---- big movers (Kullamägi's universe): fast stocks that have just made a large move. ADR is the
+# average daily range, the mean of each session's high / low - 1; the prior move compares the
+# highest high of the last MOVERS_HIGH_BARS sessions with the lowest low of the last MOVERS_LOW_BARS.
+MOVERS_ADR_BARS = 20
+MOVERS_MIN_ADR_PCT = 4.0
+MOVERS_HIGH_BARS = 20
+MOVERS_LOW_BARS = 63
+MOVERS_MIN_MOVE_PCT = 30.0
+
 # ---- moving-average slope. "falling" means more than FALLING_PCT% below its value SLOPE_BARS ago.
 SMA200_FALLING_PCT = 0.5
 SMA200_SLOPE_BARS = 20
@@ -314,3 +323,49 @@ def trend_not_fading(ctx):
     if ret_3m < 0 and sma50_state(ctx) in ("flat", "falling"):
         return False, "3mo return negative and SMA50 flat/falling"
     return True, ""
+
+
+# ------------------------------------------------------------------ big movers (Kullamägi)
+# adr_pct and prior_move_pct are the quantities themselves, shared with the snapshot fields of the
+# same names (screens/snapshot.py) and the kullamagi strategy, so a condition on them is exact.
+
+def adr_pct(daily: pd.DataFrame) -> float:
+    """Average daily range over the last MOVERS_ADR_BARS sessions, in percent: the mean of
+    high / low - 1. NaN with fewer bars or a non-positive low."""
+    d = daily.iloc[-MOVERS_ADR_BARS:]
+    if len(d) < MOVERS_ADR_BARS:
+        return float("nan")
+    hi, lo = d["high"].to_numpy(float), d["low"].to_numpy(float)
+    if not (lo > 0).all():
+        return float("nan")
+    return float((hi / lo - 1).mean() * 100)
+
+
+def prior_move_pct(daily: pd.DataFrame) -> float:
+    """How far the highest high of the last MOVERS_HIGH_BARS sessions sits above the lowest low of
+    the last MOVERS_LOW_BARS, in percent. NaN with fewer bars or a non-positive low."""
+    if len(daily) < MOVERS_LOW_BARS:
+        return float("nan")
+    hi = float(daily["high"].iloc[-MOVERS_HIGH_BARS:].max())
+    lo = float(daily["low"].iloc[-MOVERS_LOW_BARS:].min())
+    if not lo > 0:
+        return float("nan")
+    return (hi / lo - 1) * 100
+
+
+def fast_mover(ctx):
+    v = adr_pct(ctx.daily)
+    if pd.isna(v):
+        return False, "insufficient history for the average daily range"
+    if v >= MOVERS_MIN_ADR_PCT:
+        return True, f"ADR {v:.1f}%"
+    return False, f"ADR {v:.1f}% under {MOVERS_MIN_ADR_PCT:g}%"
+
+
+def big_prior_move(ctx):
+    v = prior_move_pct(ctx.daily)
+    if pd.isna(v):
+        return False, "insufficient history for the prior move"
+    if v >= MOVERS_MIN_MOVE_PCT:
+        return True, f"prior move {v:.0f}%"
+    return False, f"prior move {v:.0f}% under {MOVERS_MIN_MOVE_PCT:g}%"

@@ -12,6 +12,7 @@ evaluated by a forward-return study.
     uptrend      Established uptrend: weekly + daily trend structure     -> Trend pullback
     near_highs   Above a rising 200-day, within 15% of the 52-week high  -> Breakout, Chart pattern
     above_200    Above the 200-day average (long-term trend only)        -> Donchian
+    big_movers   Fast stocks (high ADR) after a large recent move        -> Kullamägi breakout
 """
 
 from .base import Criterion, Screen, ScreenResult
@@ -75,6 +76,20 @@ _SCREENS = [
         thesis="The broadest trend filter: long-only systems that let their own entry signal define the trend (a channel "
                "breakout) still avoid buying under the 200-day.",
         criteria=(Criterion("A1", c.above_sma200, "Close above the 200-day moving average."),),
+    ),
+    Screen(
+        key="big_movers", name="Big movers",
+        description="Fast stocks, with a wide average daily range, that have just made a large move within about "
+                    "three months.",
+        thesis="Kullamägi's universe: the stocks that moved most, and that move several percent on a normal day. Only "
+               "they can give a winner of ten times the risk from a stop at the day's low; a slow stock rarely can.",
+        criteria=(
+            Criterion("M1", c.fast_mover, "Average daily range of {MOVERS_MIN_ADR_PCT:g}% or more: the mean, over the last "
+                                          "{MOVERS_ADR_BARS} sessions, of each session's high ÷ low − 1."),
+            Criterion("M2", c.big_prior_move, "A big prior move: the highest high of the last {MOVERS_HIGH_BARS} sessions at "
+                                              "least {MOVERS_MIN_MOVE_PCT:g}% above the lowest low of the last "
+                                              "{MOVERS_LOW_BARS}."),
+        ),
     ),
 ]
 SCREENS: dict[str, Screen] = {s.key: s for s in _SCREENS}

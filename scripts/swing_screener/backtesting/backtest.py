@@ -1702,11 +1702,13 @@ def main(argv: list[str] | None = None) -> dict | None:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "weekly_ma", "donchian", "supertrend", "minervini"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "weekly_ma", "donchian", "supertrend", "kullamagi", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
         "stop+target; the others test whether letting winners run beats capping them. "
         "'weekly_ma' sells at a week's last close when that week closes below the --ma-weeks average of weekly closes. "
         "'supertrend' sells at the close that turns the Supertrend down (the supertrend strategy's ATR_PERIOD and MULTIPLIER). "
+        "'kullamagi' is the kullamagi strategy's management: a partial sale and stop to entry after PARTIAL_AFTER_BARS "
+        "sessions in profit, the rest on a close below its TRAIL_SMA-day average or after MAX_HOLD_BARS sessions. "
         "'minervini' is the spec's EX-01..EX-07 (research/minervini-backtest-spec.md).",
     )
     parser.add_argument("--spec", action="store_true",

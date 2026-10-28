@@ -51,6 +51,7 @@ from .chart_pattern import ChartPatternCupStrategy, ChartPatternStrategy
 from .chart_pattern_spec import ChartPatternSpecStrategy
 from .donchian import DonchianStrategy
 from .earnings_gaps import EarningsGapStrategy
+from .kullamagi import KullamagiStrategy
 from .minervini_spec import MinerviniSpecStrategy
 from .rs_leaders import RsLeadersStrategy
 from .stage_analysis import StageAnalysisStrategy
@@ -74,6 +75,7 @@ register(MinerviniSpecStrategy())
 register(RsLeadersStrategy())
 register(StageAnalysisStrategy())
 register(SupertrendStrategy())
+register(KullamagiStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
 # idea as the `_spec` strategy above it, which is built to the written detection
@@ -169,7 +171,7 @@ __all__ = [
     "Decision", "PlanChoice", "Strategy", "StrategyResult", "TradePlan",
     "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy", "EarningsGapStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",
-    "MinerviniSpecStrategy", "StageAnalysisStrategy",
+    "MinerviniSpecStrategy", "StageAnalysisStrategy", "KullamagiStrategy",
     "portfolio_strategies", "all_specs",
     "register", "get_strategy", "list_strategies", "describe_strategies",
     "DEFAULT_STRATEGY",

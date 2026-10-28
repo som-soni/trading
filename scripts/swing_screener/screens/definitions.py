@@ -63,6 +63,11 @@ def builtin() -> dict[str, dict]:
             T,
             {"field": "close", "op": ">", "ref": "sma200"},
         ]},
+        "big_movers": {"name": "Big movers", "conditions": [
+            T,
+            {"field": "adr_pct", "op": ">=", "value": c.MOVERS_MIN_ADR_PCT},
+            {"field": "prior_move_pct", "op": ">=", "value": c.MOVERS_MIN_MOVE_PCT},
+        ]},
     }
 
 
