@@ -775,7 +775,8 @@ def _financials(ctx: Ctx) -> None:
 
 def _announcements(ctx: Ctx) -> None:
     """When each company published each quarter's results (financials.refresh_announcements), back to 2005:
-    what an event strategy ties a price reaction to. Only where the market's results source lists them
+    NSE's broadcast of each results filing and the board meeting that approved the results (usually the
+    earlier date) -- what an event strategy ties a price reaction to. Only where the market's results source lists them
     (`quarterly_source` 'nse'); every company in the universe, since a reaction can come from any of them.
     --symbols limits it."""
     from swing_screener.config import MARKETS

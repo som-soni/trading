@@ -136,9 +136,9 @@ CREATE TABLE IF NOT EXISTS nse_documents (
 );
 CREATE TABLE IF NOT EXISTS results_announcements (
     market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL, period_end DATE NOT NULL,
-    basis VARCHAR(16) NOT NULL,           -- consolidated | standalone
-    announced_at TIMESTAMP NOT NULL,      -- exchange local time the results were broadcast
-    source VARCHAR(24) NOT NULL,          -- nse_legacy | nse_integrated
+    basis VARCHAR(16) NOT NULL,           -- consolidated | standalone | board (a board meeting covers both)
+    announced_at TIMESTAMP NOT NULL,      -- exchange local time the results were broadcast; a board meeting's date at 00:00
+    source VARCHAR(24) NOT NULL,          -- nse_legacy | nse_integrated | nse_board_meeting
     fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (market, symbol, period_end, basis, announced_at)
 );
@@ -718,6 +718,44 @@ def nse_announcements(sym: str) -> list[dict]:
         if not data or seen >= int(js.get("totalCount") or 0) or page >= 10:
             break
         page += 1
+    return out + nse_results_meetings(sym)
+
+
+#: Words in a board meeting's description that mean the meeting did not happen on its date.
+MEETING_NOT_HELD = ("postpone", "cancel", "adjourn", "defer", "reschedul")
+
+
+def _quarter_before(d: dt.date) -> dt.date:
+    """The last calendar quarter end strictly before `d` -- the quarter a results meeting reports on."""
+    q_end_month = ((d.month - 1) // 3) * 3          # 0, 3, 6, 9
+    if q_end_month == 0:
+        return dt.date(d.year - 1, 12, 31)
+    return dt.date(d.year, q_end_month + 1, 1) - dt.timedelta(days=1)
+
+
+def nse_results_meetings(sym: str) -> list[dict]:
+    """The board meetings that approved each quarter's results: {end, at, source, basis}.
+
+    The filing feeds above record when NSE broadcast the results FILING, which in the older feed is mostly
+    later than the results themselves: on a sample of 80 companies over 2013-2021, 77% of stored broadcast
+    dates fall after the board meeting that approved the results, 27% by eight days or more (84-99% late
+    each year to 2018, about half since). Results are published on the meeting's day, so its date is the
+    announcement. Known in advance (the company intimates the meeting) and so point in time once it is past.
+    One request returns the company's whole history.
+    """
+    js = _nse.get(NSE + "/api/corporate-board-meetings", index="equities", symbol=sym,
+                  from_date="01-01-2005", to_date=(dt.date.today() + dt.timedelta(days=120)).strftime("%d-%m-%Y")).json()
+    rows = js if isinstance(js, list) else (js or {}).get("data", []) or []
+    out = []
+    for r in rows:
+        if "result" not in str(r.get("bm_purpose", "")).lower():
+            continue
+        if any(w in str(r.get("bm_desc", "")).lower() for w in MEETING_NOT_HELD):
+            continue
+        day = _nse_date(r.get("bm_date"), "%d-%b-%Y")
+        if day:
+            out.append({"end": _quarter_before(day), "at": dt.datetime(day.year, day.month, day.day),
+                        "source": "nse_board_meeting", "basis": "board"})
     return out
 
 
@@ -752,6 +790,10 @@ def refresh_announcements(market: str, symbols: list[str], progress=None) -> dic
 
 def announcements(market: str) -> dict:
     """{symbol: sorted announcement dates} -- when each company published each quarter's results.
+
+    Every source counts: the filings' broadcast times and the results board meetings (`nse_results_meetings`),
+    so a quarter's earliest record -- usually the meeting -- is among them. A meeting dated in the future is
+    returned too; a caller only ever asks about dates on or before the day it judges.
 
     Point in time: inside a backtest stage only announcements on or before its boundary are returned.
     Empty for a market with no announcement source, so a caller falls back to whatever else it has.

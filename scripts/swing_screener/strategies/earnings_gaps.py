@@ -31,7 +31,9 @@ carries a median error of 13 days and is not worth keying a rule on.
 Since 1.3, where an announcement IS recorded the guide's own rule is used instead: the reaction day
 must come within {ANNOUNCE_WINDOW_DAYS} calendar days after the company published results. India
 has these back to 2007 (`marketdata/financials.py`, `results_announcements`: NSE's broadcast time for
-every results filing, including the pre-2017 ones that carry no XBRL document). The bracket remains
+every results filing, including the pre-2017 ones that carry no XBRL document, and since 1.4 the date
+of the board meeting that approved the results, which in the older feed is usually days earlier than
+the filing's broadcast). The bracket remains
 for a company with no recorded announcements -- every US company, since SEC filing dates come after
 the announcement rather than at it.
 
@@ -98,8 +100,18 @@ EG01 = "S1"   # EG-01: the break of the reaction day's high
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.3"
+    version = "1.4"
     changelog = (
+        ("1.4", "2026-10-29",
+         "G3's India announcement dates include the board meeting that approved each quarter's results "
+         "(NSE's board-meeting feed, `financials.nse_results_meetings`), beside NSE's broadcast of the results "
+         "filing. The filing's broadcast was mostly late: on 80 sampled companies over 2013-2021, 77% of "
+         "stored broadcast dates came after the meeting and 27% by eight days or more (84-99% each year to "
+         "2018), so a reaction on the morning after the meeting failed G3 -- TNPETRO's board met on "
+         "2018-10-24, the stock rose 11.8% on the 25th, and the filing is dated the 26th. On those companies "
+         "the qualifying reaction days tied to results go from 57 to 114 of 807. The rule itself is "
+         "unchanged; a meeting counts once it is past, and it is intimated in advance, so this reads "
+         "nothing from the future. Bumped by hand: no constant moved."),
         ("1.3", "2026-10-27",
          "G3 uses the guide's own rule where a company's results announcements are recorded: the results "
          "must have been published at most {ANNOUNCE_WINDOW_DAYS} calendar days before the reaction day, or "
@@ -186,7 +198,8 @@ class EarningsGapStrategy(Strategy):
         "move, heavy volume and a close near the high. The exact tests are under Rules.",
         "Step 2 — the news link (G3). Where the company's results announcements are recorded, the "
         "results must have been published at most {ANNOUNCE_WINDOW_DAYS} days before that day, or on "
-        "it. Where they are not, the day must fall inside a window built from the stored quarter-end "
+        "it -- dated by the board meeting that approved them or by the exchange's broadcast of the "
+        "filing, whichever fits. Where they are not, the day must fall inside a window built from the stored quarter-end "
         "and filing dates.",
         "Step 3 — the stop and the order (G4, Entry, Stop). The reaction day's low must be close "
         "enough to carry. Then a buy-stop waits just above the reaction day's high.",
@@ -212,9 +225,10 @@ class EarningsGapStrategy(Strategy):
         "median — so a non-results spike that lands inside it is admitted. In the US the filing is "
         "the SEC filing, and for a fourth quarter that is the annual report, which can come weeks "
         "after the announcement, so the window is widest there.",
-        "India's announcements are refreshed weekly (the `announcements` job), so live, a reaction in "
-        "the days after a company publishes can be refused until the next refresh stores the "
-        "announcement. The backtest has every announcement and links it.",
+        "India's announcements are refreshed weekly (the `announcements` job). A results board meeting "
+        "is intimated days ahead, so live it is usually stored before the reaction; one called at short "
+        "notice, and a filing's broadcast, can be refused until the next refresh stores them. The "
+        "backtest has every announcement and links it.",
         "Live, G3 can refuse a fresh reaction that the backtest would link. A quarter enters the "
         "results table only once its filing is stored. The backtest sees each quarter's eventual "
         "filing date, so it links a reaction that came days before the filing. The live screen "
@@ -289,8 +303,10 @@ class EarningsGapStrategy(Strategy):
               "stored for the company:\n\n"
               "- **Recorded announcements (India, back to 2007):** results were published at most "
               "{ANNOUNCE_WINDOW_DAYS} calendar days before the reaction day, or on it. This is the "
-              "guide's own rule. The date is the exchange's broadcast time for the results filing, so "
-              "results published after the close tie to the next session's move.\n"
+              "guide's own rule. A quarter can carry several dates and any one qualifies: the day of "
+              "the board meeting that approved the results (the results come out that day, often "
+              "after the close, so they tie to the next session's move) and the exchange's broadcast "
+              "time for the results filing, which in older years is often days later.\n"
               "- **No recorded announcements (every US company, and any Indian one the exchange does "
               "not list):** the window below.\n\n"
               "The window: the reaction day falls at least {CATALYST_MIN_DAYS} days after a quarter "
