@@ -64,7 +64,12 @@ DOC = {
         "month-end."
     ),
     "status": (
-        "Built from a measured gap in the shelf rather than from a new signal. On a monthly blend "
+        "Built from a measured gap in the shelf rather than from a new signal. In-sample (optimise, "
+        "2013-2021) at v1.5, India half and half returns 21.30% CAGR, +6.60 points a year over its blended "
+        "benchmark, Sharpe 1.20 against 0.87, max drawdown -28.3% against the momentum sleeve's -50.5% alone. "
+        "It does not remove a down year: 2016 (-12.9%) and 2018 (-15.9%) stay, because dual momentum also lost "
+        "in both. The US half and half returns 8.48% with a -38.5% drawdown, behind the S&P 500. The figures "
+        "that follow are LEGACY full-window blends of older sleeve versions. On a monthly blend "
         "of the stored runs, half each in the two sleeves beat its own blended benchmark by about "
         "6 points a year over 2010-2026 in India with a shallower drawdown, and lost to the S&P "
         "500 in the US over the same span. Read the India result through its two known risks: "
@@ -128,8 +133,13 @@ class CombinationStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "momentum_dual_combo"
-    version = "1.4"
+    version = "1.5"
     changelog = (
+        ("1.5", "2026-10-29",
+         "The dual momentum sleeve is dual_momentum v1.1: India's Nasdaq 100 leg is priced at NAV (QQQ x "
+         "USD/INR) instead of MON100's exchange price, whose premium swings the rule had read as trends. "
+         "On 2013-2021 that sleeve alone goes from 9.56% to 16.05% CAGR and from -37.7% to -26.3% max "
+         "drawdown. The US is unchanged. No rule of the combination itself moved."),
         ("1.4", "2026-10-29",
          "The momentum sleeve is momentum_vol_scaled v1.8. The US $10 price floor reads the price the stock traded at that day: the stored close multiplied back by every later split Yahoo records (backtesting/spec.traded_close, the RS rating's fix in 1d16854). Stored closes are back-adjusted for every later split, so the floor had dropped the later multi-baggers from their early years -- NFLX's October 2009 close is stored as $0.72 against the ~$50 it traded at, NVDA read under $10 until mid-2020. On 2016-06-30 the US floor admits 2,092 stocks instead of 2,382: 47 that later split (NVDA, CMG, ANET, CPRT ...) come in, 337 that later reverse-split, and so really traded under $10, go out. India has no price floor and is unchanged. No rule of the combination itself moved."),
         ("1.3", "2026-10-26",

@@ -198,7 +198,7 @@
       "cost_bps": 10.0,
       "lookback_months": 12
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "earnings_gaps": {
     "family": "earnings_gaps",
@@ -557,7 +557,7 @@
       "_key": "momentum_dual_combo",
       "momentum_weight": 0.5
     },
-    "version": "1.4"
+    "version": "1.5"
   },
   "momentum_vol_scaled": {
     "family": "momentum_vol_scaled",

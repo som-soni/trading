@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 #: it is where the rule goes when nothing clears it.
 ASSETS = {
     "india": [("NIFTY50_TR", "Nifty 50 (total return)"), ("MIDCAP", "Nifty Midcap"),
-              ("GOLD", "Gold"), ("US_IN_INR", "US equities in rupees")],
+              ("GOLD", "Gold"), ("NDX_INR", "Nasdaq 100 in rupees")],
     "us": [("SP500_TR", "S&P 500 (total return)"), ("NASDAQ100", "Nasdaq 100"),
            ("INTL", "Developed ex-US"), ("GOLD", "Gold")],
 }
@@ -123,7 +123,12 @@ DM_DOC = {
                    "beat the safe asset's own return; otherwise hold the safe asset (a liquid fund in India, "
                    "7-10 year Treasuries in the US).",
     "status": (
-        "MEASURED, AND THE WINDOW DECIDES IT. From 2020 it beats both markets with less drawdown: India 23.94% "
+        "MEASURED, AND THE WINDOW DECIDES IT. "
+        "In-sample (optimise, 2013-2021) India at v1.1, with the Nasdaq 100 leg priced at NAV, returns 16.05% "
+        "CAGR with a -26.3% max drawdown; the same rules on MON100's exchange price (v1.0) returned 9.56% and "
+        "-37.7%, most of the gap from premium swings the rule read as trends (2018: -6.6% against -16.7%). "
+        "The India figures that follow are LEGACY v1.0 runs on MON100's price; the US figures are unaffected. "
+        "From 2020 it beats both markets with less drawdown: India 23.94% "
         "CAGR against the Nifty 500's 12.63% (+11.3), max drawdown -24.4% against -38.3%, Sharpe 1.06 against "
         "0.76; US 19.77% against SPY's 13.41% (+6.4), -32.6% against -34.1%, Sharpe 0.92 against 0.73. That is "
         "the only strategy here to beat BOTH indices on return and drawdown together. "
@@ -144,8 +149,9 @@ DM_DOC = {
         "answer with the whole account until the next month-end. It trades only when the answer changes. "
         "Entry and Exit give each test exactly.",
         "The menu, India: Nifty 50 total return (NIFTYBEES), Nifty Midcap 50 (price index), gold (GOLDBEES) "
-        "and the Nasdaq 100 in rupees (MON100). Safe asset: a liquid fund's growth NAV (Nippon India Liquid "
-        "Fund).",
+        "and the Nasdaq 100 in rupees at NAV -- QQQ's total-return close times USD/INR, both from the session "
+        "before, less the extra fees of an Indian Nasdaq 100 fund. Safe asset: a liquid fund's growth NAV "
+        "(Nippon India Liquid Fund).",
         "The menu, US: S&P 500 total return (the VFINX fund), Nasdaq 100 (QQQ), developed markets ex-US (EFA) "
         "and gold (GLD). Safe asset: 7-10 year Treasuries (IEF).",
         "One asset is held at a time, in full. Nothing is ranked within an asset, no stock is picked, and there "
@@ -169,8 +175,15 @@ DM_DOC = {
         "benchmark it is reported against (SPY, Nifty 500) is a stored close without dividends, so the "
         "measured excess is flattered by roughly the index's dividend yield, about 1-2 points a year.",
         "**Late series.** An asset joins the ranking only once it has {lookback_months} × 21 sessions of history: "
-        "on stored data India's Nasdaq-in-rupees series from about March 2012, so India runs from 2010 rank "
-        "three choices until then.",
+        "on stored data India's Nasdaq-in-rupees series from about March 2012 (it is counted on the sessions "
+        "of MON100, the Indian fund, which listed in March 2011), so India runs from 2010 rank three choices "
+        "until then.",
+        "**India's Nasdaq leg is priced at NAV, not at MON100's exchange price.** On stored data MON100's "
+        "traded price drifted far from its holdings -- a monthly gap of 4.8% at one standard deviation, up "
+        "to 17% in a month, reverting -- and the rule read those swings as trends: in 2018 MON100 returned "
+        "-9.8% while the Nasdaq 100 in rupees returned +7.0%, and the strategy held MON100 from March to "
+        "December. A holder buying the Nasdaq 100 fund of funds at NAV earned the index return, so that is "
+        "what is held here. Buying the ETF on the exchange would have cost or earned its premium on top.",
     ),
     "entry_rules": (
         "Trailing return. Close on the month-end session ÷ close {lookback_months} × 21 sessions earlier − 1, "
@@ -207,10 +220,19 @@ class DualMomentumStrategy(PortfolioStrategy):
     key = DM_DOC["key"]
     doc = DM_DOC
     family = "dual_momentum"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-17", "First version: relative plus absolute momentum over four stored asset "
+    version = "1.1"
+    changelog = (
+        ("1.1", "2026-10-29",
+         "India's Nasdaq 100 leg is priced at NAV (index_data NDX_INR: QQQ total return x USD/INR, both "
+         "from the prior session, less MON100's extra fees) instead of MON100's exchange price, whose "
+         "premium swung up to 17% in a month and reverted. The rule read those swings as momentum: in 2018 "
+         "MON100 returned -9.8% against +7.0% for the index in rupees, and the strategy held it from March "
+         "to December. Three stray USD/INR prints (2012-01-27, 2012-01-31, 2013-09-04) are despiked. The "
+         "US menu is unchanged."),
+        ("1.0", "2026-10-17", "First version: relative plus absolute momentum over four stored asset "
                                        "series per market, with a liquid fund (India) or Treasuries (US) as the "
-                                       "safe asset."),)
+                                       "safe asset."),
+    )
     name = DM_DOC["name"]
     description = DM_DOC["description"]
     status = DM_DOC["status"]

@@ -175,6 +175,63 @@ _INDIA = [
 
 REGISTRY: dict[str, Series] = {f"{s.market}:{s.key}": s for s in (*_US, *_INDIA)}
 
+# --- derived series: built on load from stored series, never fetched -----
+#
+# US_IN_INR is MON100's EXCHANGE price, and on stored data it wanders far from the fund's NAV:
+# over 2013-2021 its monthly return differs from the Nasdaq 100 in rupees by 4.8% (one standard
+# deviation), up to -17% and +15% in a single month, and it reverts. In 2018 MON100 returned
+# -9.8% while the Nasdaq 100 in rupees returned +9.0%. That is a thin ETF's premium swinging (and
+# some stale prints), not the market -- and a rule that ranks trailing returns reads it as a trend.
+# NDX_INR is what a holder at NAV earned instead (Motilal's Nasdaq 100 fund of funds buys at NAV):
+# QQQ's total-return close times USD/INR, both taken from the session BEFORE each date, because an
+# Indian fund's NAV on day t prices the US close of t-1 and that close is not known at India's close
+# on t. The gap between MON100's fees and QQQ's (already inside QQQ's adjusted close) is charged daily.
+DERIVED: dict[str, tuple[str, str, str]] = {
+    # key -> (US series, India FX series, the India fund whose fees an Indian holder pays)
+    "india:NDX_INR": ("NASDAQ100", "USDINR", "US_IN_INR"),
+}
+DERIVED_LABELS = {"india:NDX_INR": "Nasdaq 100 in rupees at NAV (QQQ × USD/INR, prior session)"}
+
+#: An FX bar this far from the last good bar, with the bar after back within FX_SPIKE_RETURN of
+#: that good bar, is a stray print: USD/INR stores 52.49 on 2012-01-27 and 01-31 between ~49.4-50
+#: closes, and 68.61 on 2013-09-04 between 66.5 and 66.3. `repair` is sized for splits (a 40% move)
+#: and lets a 5% one-day FX print through.
+FX_SPIKE = 0.03
+FX_SPIKE_RETURN = 0.015
+
+
+def _despike(s: pd.Series) -> pd.Series:
+    """Replace one-bar stray prints with the last good value. Sequential, so a good bar between two
+    bad ones is judged against the good bar before it, not against a bad neighbour."""
+    v = s.astype(float).values.copy()
+    stray = []
+    for t in range(1, len(v) - 1):
+        good = v[t - 1]   # already cleaned
+        if abs(v[t] / good - 1) > FX_SPIKE and abs(v[t + 1] / good - 1) < FX_SPIKE_RETURN:
+            stray.append(s.index[t])
+            v[t] = good
+    if stray:
+        logger.info("despiked %d stray FX print(s): %s", len(stray), ", ".join(str(d.date()) for d in stray))
+    return pd.Series(v, index=s.index, name=s.name)
+
+
+def _derived(market: str, key: str) -> pd.Series:
+    us_key, fx_key, fund_key = DERIVED[f"{market}:{key}"]
+    us, fx = load("us", us_key), _despike(load(market, fx_key))
+    # on the Indian fund's own NSE sessions: the calendar a rupee holder trades on, and the same
+    # sessions the rest of an India menu is counted in
+    cal = load(market, fund_key).index
+    days = us.index.union(fx.index).union(cal)
+    # the last value strictly before each date: ffill onto the joint calendar, then one step back
+    usd = us.reindex(days).ffill().shift(1)
+    rate = fx.reindex(days).ffill().shift(1)
+    inr = (usd * rate).loc[cal].dropna()
+    extra_fee = max(get(market, fund_key).expense_ratio - get("us", us_key).expense_ratio, 0.0)
+    r = inr.pct_change().fillna(0.0) - extra_fee / 252.0
+    out = (1.0 + r).cumprod() * float(inr.iloc[0])
+    out.name = key
+    return out
+
 
 def for_market(market: str) -> dict[str, Series]:
     return {s.key: s for s in REGISTRY.values() if s.market == market}
@@ -388,6 +445,8 @@ def save(series: Series, df: pd.DataFrame, replace: bool = False) -> int:
 def load(market: str, key: str) -> pd.Series:
     """Stored series as a float Series indexed by date. Raises if absent —
     a silently empty series would turn into a zero-return backtest."""
+    if f"{market}:{key}" in DERIVED:
+        return _derived(market, key)   # its parts honour the stage boundary below
     conn = db.get_connection()
     with conn.cursor() as cur:
         end = asof.end_date()   # a backtest stage's boundary
