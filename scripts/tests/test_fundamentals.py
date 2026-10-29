@@ -314,6 +314,34 @@ def test_nse_lines_bank():
     assert pl["sales"] == 900 and pl["expenses"] == 350 and pl["operating_profit"] == 100 and pl["pbt"] == 350
 
 
+def test_nse_profit_skips_zero_placeholder():
+    # Titan, standalone, Sep-2018: the owners-of-parent line is a 0 placeholder, the profit is in ProfitLossForPeriod
+    v = {"ProfitOrLossAttributableToOwnersOfParent": "0.00", "ProfitLossForPeriod": "3143800000.00"}
+    assert q._nse_profit(v) == 3143800000.0 and q._nse_pl(v, bank=False)["net_profit"] == 3143800000.0
+    assert q._nse_profit({"ProfitOrLossAttributableToOwnersOfParent": "-50", "ProfitLossForPeriod": "-60"}) == -50.0
+    assert q._nse_profit({"ProfitOrLossAttributableToOwnersOfParent": "0", "ProfitLossForPeriod": "0"}) == 0.0
+    assert q._nse_profit({}) is None
+
+
+def test_parse_nse_html():
+    # an NSE results page from before XBRL: figures in lakh, banks' interest earned as revenue, a 0 EPS left blank
+    page = """<table><tr><td>Period Ended</td><td>31-Dec-2013</td></tr>
+      <tr><td>Description</td><td>Amount(Rs. in lakhs)</td></tr>
+      <tr><td>(a) Net sales/income from operations (Net of excise duty)</td><td>10352081.00</td></tr>
+      <tr><td>Total income from operations (net) ( a + b)</td><td>10352081.00</td></tr>
+      <tr><td>Profit / (Loss) from ordinary activities before finance costs and exceptional items</td><td>778444.00</td></tr>
+      <tr><td>Profit / (Loss) from ordinary activities before tax</td><td>699246.00</td></tr>
+      <tr><td>Net Profit / (Loss) for the period</td><td>551083.00</td></tr>
+      <tr><td>Face Value (in Rs.)</td><td>10.00</td></tr><tr><td>Paid-up equity share capital</td><td>323125.00</td></tr>
+      <tr><td>(a) Basic</td><td>17.07</td></tr><tr><td>(b) Diluted</td><td>0.00</td></tr></table>"""
+    r = q.parse_nse_html(page)
+    assert str(r["period_end"]) == "2013-12-31" and r["revenue"] == 10352081e5 and r["pretax_income"] == 699246e5
+    assert r["net_income"] == 551083e5 and r["shares"] == 323125e5 / 10 and r["eps"] == 17.07, r
+    bank = q.parse_nse_html("<tr><td>Amount(Rs. in crores)</td></tr><tr><td>Interest Earned</td><td>1,239.5</td></tr>"
+                            "<tr><td>Net Profit (+) / Loss (-) for the period</td><td>(12.5)</td></tr>")
+    assert bank["revenue"] == 1239.5e7 and bank["net_income"] == -12.5e7
+
+
 def test_parse_shareholding():
     doc = b"""<x><s:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="ShareholdingOfPromoterAndPromoterGroup_ContextI">0.5048</s:ShareholdingAsAPercentageOfTotalNumberOfShares>
       <s:ShareholdingAsAPercentageOfTotalNumberOfShares contextRef="InstitutionsForeign_ContextI">0.172</s:ShareholdingAsAPercentageOfTotalNumberOfShares>

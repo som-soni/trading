@@ -594,9 +594,20 @@ def _nse_eps(vals: dict) -> float | None:
                 and not _num(vals.get("ProfitLossFromDiscontinuedOperationsAfterTax")):
             return cont
     return eps
+def _nse_profit(vals: dict) -> float | None:
+    """One period's net income: the first of NSE_TAGS["net_income"] that is not zero (0 only when all are).
+    Many documents -- standalone ones especially -- leave the owners-of-parent line at 0 as a blank and file the
+    profit in ProfitLossForPeriod (Titan, standalone, Sep-2018: 0 and 3,143.8 crore); taking the first figure
+    present read those quarters as zero profit."""
+    xs = [x for x in (_num(vals.get(t)) for t in NSE_TAGS["net_income"]) if x is not None]
+    return next((x for x in xs if x), xs[0] if xs else None)
+
+
 NSE_EQUITY = ("EquityAttributableToOwnersOfParent", "Equity", "TotalEquity")
 CONSOLIDATED_SHARE = 0.75     # consolidated when filed for at least this share of the recent quarters
-NSE_PARSER_VERSION = 7        # bump when parse_nse_xbrl changes: stored documents are then parsed again
+NSE_PARSER_VERSION = 8        # bump when parse_nse_xbrl changes: stored documents are then parsed again
+# 8: net income skips a zero placeholder (`_nse_profit`). A version-7 parse with no zero net income is exactly
+# what 8 would give, so it is carried forward without downloading the document again (`_carry_forward`).
 
 
 class _NseSession:
@@ -798,7 +809,7 @@ def _nse_pl(v: dict, bank: bool) -> dict:
     return _clean({"sales": sales, "expenses": expenses, "operating_profit": op, "other_income": n("OtherIncome"),
                    "interest": interest, "depreciation": dep, "exceptional": n("ExceptionalItemsBeforeTax", "ExceptionalItems"),
                    "pbt": n("ProfitBeforeTax", "ProfitLossFromOrdinaryActivitiesBeforeTax"), "tax": n("TaxExpense"),
-                   "net_profit": n(*NSE_TAGS["net_income"]), "eps": eps, "face_value": n("FaceValueOfEquityShareCapital")})
+                   "net_profit": _nse_profit(v), "eps": eps, "face_value": n("FaceValueOfEquityShareCapital")})
 
 
 def _nse_bs(v: dict, bank: bool) -> dict:
@@ -889,6 +900,7 @@ def parse_nse_xbrl(content: bytes) -> dict | None:
     out = {"period_start": min(s for _, s, e in quarter if e == q_end), "period_end": q_end}
     for f, names in NSE_TAGS.items():
         out[f] = pick(qv, names)
+    out["net_income"] = _nse_profit(qv)
     paid, face = _num(qv.get("PaidUpValueOfEquityShareCapital")), _num(qv.get("FaceValueOfEquityShareCapital"))
     out["shares"] = paid / face if paid and face else None
     # some documents carry 0 in the main EPS tag and the figure in another; failing all, net income / shares
@@ -896,7 +908,7 @@ def parse_nse_xbrl(content: bytes) -> dict | None:
     if eps is None and out["net_income"] is not None and out["shares"]:
         eps = out["net_income"] / out["shares"]
     out["eps"] = eps if eps is not None else out["eps"]
-    out["net_income_fy"] = pick(yv, NSE_TAGS["net_income"]) if yv else None
+    out["net_income_fy"] = _nse_profit(yv) if yv else None
     out["eps_fy"] = _nse_eps(yv) if yv else None
     out["equity"] = pick(iv, NSE_EQUITY)
     bank = "InterestEarned" in qv and "RevenueFromOperations" not in qv
@@ -926,10 +938,24 @@ def _cache_put(url: str, kind: str, parser: int, parsed: dict | None) -> None:
                     (url, kind, parser, json.dumps(parsed, default=str) if parsed is not None else None))
 
 
+def _carry_forward(url: str) -> dict | None:
+    """A version-7 parse that version 8 would reproduce (no net income of exactly 0 anywhere), re-stamped as 8."""
+    old = _cache_get(url, "results", 7)
+    if not old:
+        return None
+    lines = old.get("lines") or {}
+    if 0 in (old.get("net_income"), old.get("net_income_fy"), (lines.get("Q") or {}).get("net_profit"),
+             (lines.get("FY") or {}).get("net_profit")):
+        return None
+    with db.get_connection().cursor() as cur:
+        cur.execute("UPDATE nse_documents SET parser=%s WHERE url=%s AND kind='results' AND parser=7", (NSE_PARSER_VERSION, url))
+    return old
+
+
 def _nse_doc(url: str, reparse: bool) -> dict | None:
     """One results document, parsed — from the cache unless `reparse` (or it was parsed by an older parser)."""
     if not reparse:
-        hit = _cache_get(url, "results", NSE_PARSER_VERSION)
+        hit = _cache_get(url, "results", NSE_PARSER_VERSION) or _carry_forward(url)
         if hit is not None:
             return {**hit, "period_start": _d(hit.get("period_start")), "period_end": _d(hit.get("period_end"))}
     try:
@@ -1002,7 +1028,7 @@ def fetch_nse(symbol: str, reparse: bool = False) -> tuple[list[dict], dict]:
 # `fundamentals/growth.py`'s year-ago pairing, which corrects for splits.
 HISTORY_START = dt.date(2009, 1, 1)
 HISTORY_SAME_SHARES = 0.05    # a share count within this of the year-ago one: no split or bonus between them
-NSE_HTML_PARSER_VERSION = 2
+NSE_HTML_PARSER_VERSION = 3
 NSE_HTML_UNITS = {"lakh": 1e5, "lakhs": 1e5, "crore": 1e7, "crores": 1e7, "million": 1e6, "millions": 1e6,
                   "thousand": 1e3, "thousands": 1e3}
 # label patterns, in order of preference: the first pattern any line matches wins (labels lower-cased, a leading
@@ -1059,9 +1085,10 @@ def parse_nse_html(text: str) -> dict | None:
             if label and not _NUM.match(toks[i - 1]):
                 pairs.append((label, _html_num(toks[i])))
 
-    def pick(patterns, last=False, exact=("diluted", "basic")):
+    def pick(patterns, last=False, exact=("diluted", "basic"), nonzero=False):
         for pat in patterns:
-            hits = [v for lab, v in pairs if (lab == pat if pat in exact else lab.startswith(pat))]
+            hits = [v for lab, v in pairs if (lab == pat if pat in exact else lab.startswith(pat))
+                    and (v or not nonzero)]
             if hits:
                 return hits[-1] if last else hits[0]
         return None
@@ -1069,7 +1096,7 @@ def parse_nse_html(text: str) -> dict | None:
     rev = pick(NSE_HTML_REVENUE)
     pbt = next((v for lab, v in pairs if "before tax" in lab and "before finance" not in lab), None)
     ni = pick(NSE_HTML_NET)
-    eps = pick(NSE_HTML_EPS, last=True)
+    eps = pick(NSE_HTML_EPS, last=True, nonzero=True)      # a 0 diluted EPS beside a real basic one is a blank
     face = next((v for lab, v in pairs if lab.startswith("face value")), None)
     paid = next((v for lab, v in pairs if lab.startswith("paid-up equity share capital") or lab.startswith("paid up equity")), None)
     # an exact 0 profit or EPS is a blank the form filled with zero, not a figure
@@ -1567,8 +1594,9 @@ def _fix_eps_scale(rows: list[dict]) -> list[dict]:
 # lakh (IRCON Mar-2022, LIC Housing Dec-2021, PFC Dec-2023: revenue, profit and paid-up capital all 100x too small,
 # EPS right), a share count that is not one (Kaynes: trillions), and a net income taken from the wrong line (Maruti
 # Sep-2022, Zydus Mar-2024, Solar Industries Sep-2024: far from the company's usual profit and from its own EPS x
-# shares, EPS normal). Many more quarters carry a net income of exactly 0 beside a real EPS: the filing had no
-# figure, and 0 would read as a zero profit margin. Each is judged against the company's other quarters and
+# shares, EPS normal). Quarters can still carry a net income of exactly 0 beside a real EPS -- every profit tag
+# zero, or a row stored before parser 8 stopped taking the owners-of-parent line's 0 placeholder (`_nse_profit`) --
+# and 0 would read as a zero profit margin. Each is judged against the company's other quarters and
 # corrected on the way out: the unit slip scaled back (amounts and share count alike), the impossible share count,
 # the zero and the stray net income left blank rather than guessed. The reference share count is the one net income
 # / EPS implies (median over the quarters that have both), since the stored counts are what goes wrong.
