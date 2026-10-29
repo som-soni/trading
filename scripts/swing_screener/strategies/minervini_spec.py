@@ -390,10 +390,13 @@ def pivot_stop(tight_low: float, tick: float) -> float:
     return round_tick(float(tight_low) * (1 - STOP_BUFFER_PCT / 100), tick, "down")
 
 
-def vcp_measured_move(base_high, first_depth_pct) -> float:
-    """A VCP's measured move: the base high less its deepest low, which (VCP-06 forces each
-    contraction to shrink) is the first contraction's low. NaN when either is unknown."""
-    return float(base_high) * float(first_depth_pct) / 100 if base_high and first_depth_pct else float("nan")
+def vcp_measured_move(base_high, depth_pct) -> float:
+    """A VCP's measured move: the base high less its deepest low -- the BASE's depth (VCP-05), not its
+    first pullback's. Until 1.33 this took the first pullback, on the reasoning that VCP-06 forces each
+    contraction to shrink so the first is the deepest; the reset rule broke that (a deeper pullback
+    becomes the new reference), and TKO's 2019 base, 5% then 40% then 8%, projected 0.6R instead of
+    about 4.8R and was refused. NaN when either is unknown."""
+    return float(base_high) * float(depth_pct) / 100 if base_high and depth_pct else float("nan")
 
 
 def _rr(r_mult, ok: bool) -> str:
@@ -485,11 +488,12 @@ def base_notes(r: dict, g: dict) -> str:
     return " · ".join(parts)
 
 
-def cheat_measured_move(base_high, entry: float, first_depth_pct) -> float:
+def cheat_measured_move(base_high, entry: float, depth_pct) -> float:
     """A cheat's objective: it is bought below the old high, so the nearest objective is that high, and the
-    base's own measured move is projected from there (first_depth is absent when the base never reached
-    the contraction step, and then the old high alone is the objective). Shared by build_plans and the chart."""
-    return float(base_high) - entry + (float(base_high) * float(first_depth_pct) / 100 if first_depth_pct else 0.0)
+    base's own measured move (its depth, as `vcp_measured_move`) is projected from there. The depth is
+    passed only once the base has reached the contraction step; without it the old high alone is the
+    objective. Shared by build_plans and the chart."""
+    return float(base_high) - entry + (float(base_high) * float(depth_pct) / 100 if depth_pct else 0.0)
 
 
 def trend_template_row(cfg: MarketConfig, last) -> tuple[bool, str]:
@@ -693,11 +697,19 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.32"
-    # 1.31 changed only an exit and 1.32 only the market filter, which the scan never reads: 1.30's
-    # cached signals still hold.
-    signal_version = "1.30"
+    version = "1.33"
+    # signal_version is not pinned: 1.33 adds base_depth_pct to evaluate()'s extras, which build_plans
+    # reads, so 1.32's cached signal rows (without it) cannot be carried forward -- the next backtest
+    # rescans.
     changelog = (
+        ("1.33", "2026-10-30",
+         "The target's measured move is the BASE's depth -- its high less its lowest low -- not its first "
+         "pullback's. The first pullback stood in for the deepest on the reasoning that VCP-06 makes each "
+         "contraction shrink, but the reset rule (1.28) lets a later, deeper pullback become the reference, "
+         "and then the target was far too close: TKO's 2018-19 base (5%, 40%, 8%) projected 0.6R instead of "
+         "about 4.8R, and the 2:1 minimum refused it. Changes which trades pass that "
+         "minimum, for pivot buys and cheats alike. evaluate() now records base_depth_pct, so cached signals "
+         "are rescanned."),
         ("1.32", "2026-10-29",
          "The market filter can also require leadership: new 52-week highs outnumbering new lows "
          "(MKT_HIGHS_LOWS_DAYS, MKT_HIGHS_LOWS_RATIO), the way Minervini reads a market through its "
@@ -1148,12 +1160,12 @@ class MinerviniSpecStrategy(Strategy):
     extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days",
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
-                     "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio", "breakout_volume_ratio",
-                     "vcp_fail", "rs_score", "base_notes", "base_reference", "pivot_route", "pivot_pos",
+                     "first_depth_pct", "last_depth_pct", "base_depth_pct", "tightness_pct", "dryup_ratio",
+                     "breakout_volume_ratio", "vcp_fail", "rs_score", "base_notes", "base_reference", "pivot_route", "pivot_pos",
                      "dryup_quiet_days", "closes_below_200", "below_200_share_pct", "undercuts",
                      "undercuts_failed", "undercuts_pending", "bh_atr_pct", "atr_blocks_base")
     extra_numeric_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
-                             "first_depth_pct", "last_depth_pct", "tightness_pct", "dryup_ratio",
+                             "first_depth_pct", "last_depth_pct", "base_depth_pct", "tightness_pct", "dryup_ratio",
                              "breakout_volume_ratio", "rs_score", "pivot_pos", "dryup_quiet_days",
                              "closes_below_200", "below_200_share_pct", "undercuts", "undercuts_failed",
                              "undercuts_pending", "bh_atr_pct")
@@ -1291,7 +1303,8 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "IN-SAMPLE ONLY, not verified. v1.31 in the optimise stage (2013-2021, the years its rules "
+        "IN-SAMPLE ONLY, not verified. v1.33 (the target's measured move from the base's depth) is not "
+        "backtested yet; the figures below are v1.31's. v1.31 in the optimise stage (2013-2021, the years its rules "
         "were tuned on), under the live variant (CHEAT_BLOCK_VCP09=1, TREND_EXIT_NEEDS_VOLUME=1): "
         "India 199 trades, 34% won, +0.20R a trade, profit factor 1.18, CAGR +1.6%, worst drawdown "
         "-12.5%; US 490 trades, 35% won, -0.04R a trade, profit factor 0.83, CAGR -2.5%, worst "
@@ -1595,8 +1608,8 @@ class MinerviniSpecStrategy(Strategy):
         "price, and neither does this strategy: winners are sold by the rules under Exit. The target is "
         "used for one thing — deciding whether the trade is worth taking.",
         "How it is measured. From the chart, not from the risk.\n\n"
-        "- **Pivot buy (MV-01, MV-02):** the base's measured move — the depth of its first pullback, from "
-        "the base high down to that pullback's low — added to the price paid.\n"
+        "- **Pivot buy (MV-01, MV-02):** the base's measured move — its depth, from the base high down to "
+        "its lowest low — added to the price paid.\n"
         "- **Cheat (MV-03, MV-04):** bought below the old high, so the target is the base high plus that "
         "same measured move.\n"
         "- **Power play (MV-05):** no base, so the flag's tight area — pivot minus tight low — added to the "
@@ -2097,6 +2110,7 @@ class MinerviniSpecStrategy(Strategy):
             base_date=str(base["bh_date"].date()) if base["bh_date"] is not None else None,
             base_days=base["base_days"], contractions=len(depths),
             first_depth_pct=depths[0] if depths else None, last_depth_pct=depths[-1] if depths else None,
+            base_depth_pct=base.get("base_depth_pct"),
             tightness_pct=base["tight_range_pct"], dryup_ratio=base["dryup"],
             breakout_volume_ratio=vol_ratio if breakout else None,
             vcp_fail=base["fail"], breakout=breakout,
@@ -2179,9 +2193,10 @@ class MinerviniSpecStrategy(Strategy):
         # Reward has to come from the CHART, not from the risk. `entry + 3 * risk`
         # restates the formula and reports an R the setup does not offer -- the same
         # trap breakout.py documents. The measured move of a VCP is its own depth:
-        # the base high less its deepest low, which (because VCP-06 forces each
-        # contraction to shrink) is the first contraction's low.
+        # the base high less its deepest low (vcp_measured_move). It is taken only once
+        # the base reached the contraction step (first_depth_pct is set).
         bh, first_depth = e.get("base_high"), e.get("first_depth_pct")
+        depth = e.get("base_depth_pct") if first_depth is not None else None
         if flat:
             measured_move = float(fp) * float(fd) / 100 if fd is not None else float("nan")
         elif power:
@@ -2194,9 +2209,9 @@ class MinerviniSpecStrategy(Strategy):
             # high; the base's own measured move is projected from there. first_depth
             # is absent when the base never reached the contraction step, in which
             # case the old high alone is the objective.
-            measured_move = cheat_measured_move(bh, entry, first_depth)
+            measured_move = cheat_measured_move(bh, entry, depth)
         else:
-            measured_move = vcp_measured_move(bh, first_depth)
+            measured_move = vcp_measured_move(bh, depth)
         target = entry + measured_move if measured_move == measured_move else entry + risk
         # Overhead supply caps the move — but measured from the BASE HIGH, not from
         # entry. The pivot sits below the base high by construction (VCP-09 only
@@ -2707,7 +2722,7 @@ class MinerviniSpecStrategy(Strategy):
             pv, tl = float(r["pivot"]), float(r["tight_low"])
             buy, stop = pivot_buy_stop(pv, cfg.tick_size), pivot_stop(tl, cfg.tick_size)
             risk = buy - stop
-            mm = vcp_measured_move(bh, depths[0] if depths else None)
+            mm = vcp_measured_move(bh, r.get("base_depth_pct") if depths else None)
             target = buy + mm if mm == mm else None
             r_mult = (target - buy) / risk if target and risk > 0 else None
             risk_pct = risk / buy * 100
@@ -2745,7 +2760,7 @@ class MinerviniSpecStrategy(Strategy):
                                    f"breakout counts only on volume of at least {VOL_MULT:g}× the 50-day average. The stop "
                                    f"goes {STOP_BUFFER_PCT:g}% under the tight-area low, at {px(stop)}: a risk of "
                                    f"{risk_pct:.1f}% a share (the strategy skips anything over {MAX_STOP_PCT:g}%)."
-                                   + (f" The target is the base's measured move, its high less its first pullback's low, "
+                                   + (f" The target is the base's measured move, its high less its lowest low, "
                                       f"projected from the buy: {px(target)}, {_rr(r_mult, ok_r)} (it needs at least "
                                       f"{MIN_STRUCTURAL_R:g}R, before any overhead supply caps it)." if target else "")
                                    + f" Managing it: the stop moves to breakeven at +{BREAKEVEN_R:g}R; a third is sold "
@@ -2767,7 +2782,7 @@ class MinerviniSpecStrategy(Strategy):
             stop = pivot_stop(cp["cheat_low"], cfg.tick_size)
             risk = entry - stop
             cd = cp["depths"]
-            mm = cheat_measured_move(bh, entry, cd[0] if cd else None)
+            mm = cheat_measured_move(bh, entry, cp.get("base_depth_pct") if cd else None)
             target, r_mult = entry + mm, (mm / risk if risk > 0 else None)
             risk_pct = risk / entry * 100
             c_from, c_to = day(ci), day(min(len(daily) - 1, ci + TIME_STOP_DAYS))
