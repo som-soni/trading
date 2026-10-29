@@ -166,8 +166,8 @@ const Studies = (() => {
     return Math.max(years, back || 0);
   };
 
-  function setupLayer({ chart, times, p, col, ctx, id, keyRows, roles: extraRoles = {}, load }) {
-        let on = true, stage = [], setups = [], all = [], focus = null, hovered = null, pinned = null;
+  function setupLayer({ chart, main, times, p, col, ctx, id, keyRows, roles: extraRoles = {}, load }) {
+        let on = true, stage = [], setups = [], all = [], focus = null, hovered = null, pinned = null, axisLines = [];
         const DIM = "#5d6170", YOUNG = "#9ca3af", NUM = ["①", "②", "③", "④"];
         // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
         // (a listing too new for the template is neither: neutral grey, so it never reads as a failure)
@@ -353,7 +353,20 @@ const Studies = (() => {
           // (today's rules may no longer see it) keeps the run's own drawing, so no trade goes missing
           ctx.claimTrades?.(new Set(setups.map(tradeOf).filter(Boolean).map((t) => t.entry_date)));
           const c = (k) => { try { return col(k); } catch { return undefined; } };   // a layer may not declare every colour
-          ctx.annotate(id, on ? stage.concat(shapes) : [], { uptrend: c("uptrend"), base: c("base"), contraction: c("base"),
+          // The entry's buy, stop and target are named on the PRICE AXIS, as the Learn guide's charts do,
+          // not in tags over the candles: three or four of them stacked in a narrow entry zone hid the
+          // very bars they were about. The lines stay on the chart, unlabelled; the card gives the numbers.
+          const AXIS = { buy: "Buy", stop: "Stop", target: "Target" };
+          axisLines.forEach((l) => main?.removePriceLine(l));
+          axisLines = [];
+          const drawn = shapes.map((x) => {
+            if (x.shape !== "level" || !AXIS[x.role]) return x;
+            if (on && main && x.price != null)
+              axisLines.push(main.createPriceLine({ price: +x.price, color: c(x.role) || "#888", lineVisible: false, axisLabelVisible: true,
+                title: /^bought/i.test(x.label || "") ? "Bought" : AXIS[x.role] }));
+            return { ...x, label: "" };   // a copy: a traded setup's shapes are the run's own record
+          });
+          ctx.annotate(id, on ? stage.concat(drawn) : [], { uptrend: c("uptrend"), base: c("base"), contraction: c("base"),
             vcp: c("vcp"), cheat: c("cheat"), miss: c("miss"), flag: c("flag"), failpath: DIM, young: YOUNG, tight: c("tight"),
             pivot: c("pivot") || c("tight"), buy: c("buy"), stop: c("stop"), breakeven: DIM, target: c("target"), dim: DIM, ...extraRoles });
           renderCard();
@@ -1108,9 +1121,9 @@ const Studies = (() => {
           ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup. Its levels are the run's own record; every other setup here is what the rules would have set up on, not a trade."],
           ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
           ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
-          ["shade", col("base"), "② Base", "labelled with Minervini's footprint: weeks, deepest/final pullback in %, number of pullbacks (7W 11/3 2T). A VCP's pullbacks get smaller; ✗ marks the one that broke the rule."],
+          ["dot", col("base"), "② Base", "its caption carries Minervini's footprint: weeks, deepest/final pullback in %, number of pullbacks (7W 11/3 2T). Each pullback is marked at its low, T1, T2 … with its depth; a VCP's get smaller, and ✗ marks the one that broke the rule."],
           ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
-          ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted). An illustration of the rules."],
+          ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted), named on the price axis. An illustration of the rules."],
           ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],
           ["tint", col("stage1"), "Grey-blue band", "Stage 1, basing: after a decline, the price is back above the 150-day (30-week) line or the line has stopped falling. It ends on a breakout above the base, or a breakdown below it."],
           ["tint", col("pass"), "Green band", "Stage 2, advancing: a breakout with the price above a rising 150-day. It lasts until a lower swing low or the 150-day stops rising — not a dip under the 50-day. The Trend Template confirms it, often weeks later."],

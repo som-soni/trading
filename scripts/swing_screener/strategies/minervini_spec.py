@@ -2663,20 +2663,20 @@ class MinerviniSpecStrategy(Strategy):
             for k in range(1, len(depths)):
                 if depths[k - 1] > 0 and depths[k] > WIDEN_TOL * depths[k - 1]:
                     culprit = k
-        # The base carries ONE label, Minervini's footprint ("7W 11/3 2T": weeks, deepest/final
-        # pullback, count), as the zone's `tag` -- the chart writes it into the zone's caption, since a
-        # shaded box draws no text. Per-pullback depths and the tight area's range used to be written on
-        # the chart too, and on a base of four or five pullbacks they piled up over the candles; they are
-        # in the card's Base zone. The pullbacks keep their path, and the one a VCP-05 / VCP-06
-        # failure is about keeps its ✗ -- without it a failed base would not show where it failed.
-        base_shapes = [{"shape": "box", "from": bd, "to": at, "top": bh, "bottom": base_low, "role": "base", "shade": True,
-                        "label": ""}]
+        # Drawn the way the Learn guide draws a VCP: the candles stay clear. No shading over the base and
+        # no zig-zag joining the swings -- both covered the very bars a reader is judging. Each pullback is
+        # a marker at its low, named T1, T2 … with its depth (✗ on the one a VCP-05 / VCP-06 failure is
+        # about), and the base's footprint ("7W 11/3 2T": weeks, deepest/final pullback, count) is the
+        # zone's `tag`, which the chart writes into the zone's caption.
+        base_shapes = []
         if legs:
-            pts = []
-            for k, (hd, h, ld, low) in enumerate(legs):
-                pts += [{"at": iso(hd), "price": float(h), "label": ""},
-                        {"at": iso(ld), "price": float(low), "label": "✗" if k == culprit else ""}]
-            base_shapes.append({"shape": "path", "from": bd, "to": at, "points": pts, "role": "contraction", "label": ""})
+            many = len(depths) > MAX_CONTRACTIONS   # every label would pile up: keep the telling ones
+            keep = {0, len(depths) - 1, max(range(len(depths)), key=lambda k: depths[k])} if many and depths else None
+            base_shapes.append({"shape": "dots", "role": "contraction", "points": [
+                {"at": iso(ld), "price": float(low),
+                 "label": (f"T{k + 1} −{depths[k]:.0f}%{' ✗' if k == culprit else ''}"
+                           if k < len(depths) and (keep is None or k in keep) else "")}
+                for k, (hd, h, ld, low) in enumerate(legs)]})
         tight = ""
         if r["tight_from"] is not None and r["pivot"]:
             tf, pv, tl = iso(r["tight_from"]), float(r["pivot"]), float(r["tight_low"])
