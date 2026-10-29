@@ -5181,7 +5181,8 @@ async function strategySetups(host, alive, strat, mkt, runKey, doc = null) {
   // strategy, which is screening history rather than anything to act on today;
   // a run's own page is still reachable by URL (.../setups/<market>/<run>).
   const label = run ? `Run ${prettyDate(run.run)}${run.tradeable != null ? ` — ${run.tradeable} tradeable of ${run.rows}` : ""}` : "";
-  host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}${run ? `<span class="run-label">${esc(label)}</span>` : ""}<span class="spacer"></span>
+  // the edge grade for the market shown: is the list below drawn by rules that have earned trust here
+  host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}${run ? `<span class="run-label">${esc(label)}</span>` : ""}${edgeChip(strat, mkt)}<span class="spacer"></span>
       <button id="run1" title="Run this strategy on today's data (adds a run to the job queue)">Run this strategy…</button></div>
     <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div>`;
   host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => nav(b.dataset.v));
