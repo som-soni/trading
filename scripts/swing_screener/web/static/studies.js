@@ -1335,6 +1335,7 @@ const Studies = (() => {
       list = [];
       if (old.sma20 !== false) list.push(make("sma", { length: 20 }, { ma: "#f5a623" }));
       if (old.sma50 !== false) list.push(make("sma", { length: 50 }, { ma: "#2196f3" }));
+      list.push(make("sma", { length: 150 }, { ma: "#8bc34a" }));
       if (old.sma200 !== false) list.push(make("sma", { length: 200 }, { ma: "#e040fb" }));
       if (old.ema20) list.push(make("ema", { length: 20 }));
       if (old.volume !== false) list.push(make("vol"));
@@ -1348,6 +1349,19 @@ const Studies = (() => {
       if (s.type === "sr" && !s.srKeyDefault) { s.params.levels = "Key levels"; s.srKeyDefault = 1; srMoved = true; }
     }
     if (srMoved) store.set("chartStudies", list);
+    // the 150-day joined the defaults (2026-10-29): the Trend Template reads the 50, 150 and 200, and a
+    // chart without the 150 leaves two of its conditions to guesswork. Added ONCE, among the saved
+    // moving averages in length order, behind a marker, so removing it afterwards sticks
+    if (!store.get("sma150Added2026", false)) {
+      if (!list.some((s) => s.type === "sma" && Number(s.params.length) === 150)) {
+        const smas = list.map((s, i) => [s, i]).filter(([s]) => s.type === "sma");
+        const longer = smas.find(([s]) => Number(s.params.length) > 150);
+        const at = longer ? longer[1] : smas.length ? smas[smas.length - 1][1] + 1 : list.length;
+        list.splice(at, 0, make("sma", { length: 150 }, { ma: "#8bc34a" }));
+      }
+      store.set("sma150Added2026", true);
+      store.set("chartStudies", list);
+    }
     // the layer moved out of Indicators and was rekeyed by strategy (2026-10-17); carry the saved
     // instance across rather than silently dropping it, since load() discards unknown types
     let moved = false;
