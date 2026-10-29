@@ -15,6 +15,11 @@ A case is a BREAKOUT that became a big move:
 * and within `FWD_SESSIONS` sessions some close is at least `MIN_GAIN_PCT`% above it, the highest
   of them no sooner than `MIN_SESSIONS_TO_PEAK` sessions after the breakout.
 
+The breakout date only marks where the move became visible: it is often NOT a buy point (NKTR's
+29 Sep 2017 close cleared a 60-session range halfway up the right side of a seven-month base). The
+reviewer records the valid entry, if there was one, as `review_entry_date` and `review_pivot`, and the
+detector is judged on whether it signals within a few sessions of that entry.
+
 The peak is the highest close in that window; the next case for the same stock can start only
 after it, so one move is one case. Breakouts and peaks both fall inside `WINDOW`, the last five
 years of the optimise stage: the 2022+ verify years are never read, so tuning the detector on
@@ -23,7 +28,8 @@ these labels leaves the verify window clean (`backtesting/windows.py`).
 Run, from scripts/:
     PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.breakout_eval --build
     PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.breakout_eval --list
-    PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.breakout_eval --label ID LABEL [--notes ...]
+    PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.breakout_eval --label ID LABEL \
+        [--entry YYYY-MM-DD --pivot PRICE --footprint "32W 30/9 3T" --notes ...]
 """
 
 from __future__ import annotations
@@ -74,11 +80,15 @@ CREATE TABLE IF NOT EXISTS breakout_eval_cases (
     gain_pct DOUBLE PRECISION,
     sessions_to_peak INTEGER,
     review_label VARCHAR(16),
+    review_entry_date DATE,
+    review_pivot DOUBLE PRECISION,
     review_footprint VARCHAR(32),
     review_notes TEXT,
     reviewed_at TIMESTAMPTZ,
     UNIQUE (eval_set, market, symbol, breakout_date)
 );
+ALTER TABLE breakout_eval_cases ADD COLUMN IF NOT EXISTS review_entry_date DATE;
+ALTER TABLE breakout_eval_cases ADD COLUMN IF NOT EXISTS review_pivot DOUBLE PRECISION;
 """
 
 
@@ -174,13 +184,16 @@ def cases() -> pd.DataFrame:
         return pd.DataFrame(cur.fetchall(), columns=cols)
 
 
-def label(case_id: int, value: str, footprint: str | None = None, notes: str | None = None) -> None:
+def label(case_id: int, value: str, footprint: str | None = None, notes: str | None = None,
+          entry: str | None = None, pivot: float | None = None) -> None:
     if value not in LABELS:
         raise SystemExit(f"label must be one of {', '.join(LABELS)}")
+    init_schema()
     with db.get_connection().cursor() as cur:
         cur.execute("UPDATE breakout_eval_cases SET review_label=%s, review_footprint=COALESCE(%s, review_footprint), "
-                    "review_notes=COALESCE(%s, review_notes), reviewed_at=now() WHERE id=%s",
-                    (value, footprint, notes, case_id))
+                    "review_notes=COALESCE(%s, review_notes), review_entry_date=COALESCE(%s, review_entry_date), "
+                    "review_pivot=COALESCE(%s, review_pivot), reviewed_at=now() WHERE id=%s",
+                    (value, footprint, notes, entry, pivot, case_id))
 
 
 def main() -> None:
@@ -191,11 +204,13 @@ def main() -> None:
     ap.add_argument("--label", nargs=2, metavar=("ID", "LABEL"))
     ap.add_argument("--footprint")
     ap.add_argument("--notes")
+    ap.add_argument("--entry", help="the valid entry session, YYYY-MM-DD")
+    ap.add_argument("--pivot", type=float, help="the buy point that entry crossed")
     a = ap.parse_args()
     if a.build:
         print(f"{build()} cases in {EVAL_SET}")
     if a.label:
-        label(int(a.label[0]), a.label[1], a.footprint, a.notes)
+        label(int(a.label[0]), a.label[1], a.footprint, a.notes, a.entry, a.pivot)
     if a.list or not (a.build or a.label):
         df = cases()
         nm = names.load(MARKET)
