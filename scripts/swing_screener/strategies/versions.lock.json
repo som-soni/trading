@@ -364,7 +364,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "6bc0b6ff",
+    "fingerprint": "c1331245",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -382,7 +382,7 @@
       "DRYUP_RATIO": 0.8,
       "EARNINGS_BLACKOUT_DAYS": 14,
       "FAIL_DAYS": 0,
-      "FAIL_SMA20_DAYS": 10,
+      "FAIL_SMA20_DAYS": 0,
       "FINAL_REF_RATIO": 0.6,
       "FLAT_MAX_DAYS": 35,
       "FLAT_MAX_DEPTH_PCT": 15.0,
@@ -532,7 +532,7 @@
         "W5"
       ]
     },
-    "version": "1.30"
+    "version": "1.31"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

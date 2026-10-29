@@ -263,8 +263,11 @@ FAIL_DAYS = 0
 # this many sessions of the buy sells at the next open. Minervini judges a breakout by the 20-day,
 # not by the pivot: "the stock price should hold its 20-day moving average and in most cases should
 # not close below it", and a squat that closes below it "lowers the probability of success". He gives
-# a squat up to ten days to recover, which is the window. 0 = off (1.26).
-FAIL_SMA20_DAYS = 10
+# a squat up to ten days to recover, which is the window. 0 = off.
+# OFF since 1.31: at 10 sessions it sold 254 of 581 US and 112 of 225 Indian trades in the 2013-2021
+# optimise window for about -0.5R each, and cut the trend-exit winners those trades would have become
+# (India 71 -> 50): expectancy -0.10R against -0.04R off (US), +0.05R against +0.20R off (India).
+FAIL_SMA20_DAYS = 0
 # EX-04, selling into strength: a part of the position once the close is this far
 # above the 50-day average, at the next open. Replaces 1.7's "a third at 3R".
 STRENGTH_EXT_PCT = 25.0
@@ -663,8 +666,18 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.30"
+    version = "1.31"
+    # 1.31 changes only an exit, which the scan never reads: 1.30's cached signals still hold.
+    signal_version = "1.30"
     changelog = (
+        ("1.31", "2026-10-29",
+         "EX-02b, the 20-day failure exit added in 1.27, is switched off (FAIL_SMA20_DAYS 10 -> 0). "
+         "In the optimise window (2013-2021, in-sample) it sold 254 of 581 US and 112 of 225 Indian "
+         "trades at about -0.5R each; it halved the full stop-outs but sold more trades that would "
+         "have become trend-exit winners. Off, against on: US expectancy -0.04R vs -0.10R, profit "
+         "factor 0.83 vs 0.69, max drawdown -27.5% vs -34.5%; India +0.20R vs +0.05R, 1.18 vs 1.09, "
+         "-12.5% vs -15.3%. `--const FAIL_SMA20_DAYS=10` restores it. Exits only, so signal_version "
+         "stays 1.30."),
         ("1.30", "2026-10-29",
          "Backtest mechanics, no rule changed: the RS rating's price floor now reads the price a stock "
          "traded at on the day, not its split-adjusted close (backtesting/spec.rs_ratings, "
@@ -1200,8 +1213,8 @@ class MinerviniSpecStrategy(Strategy):
         "- **Exits:** a part sold {STRENGTH_EXT_PCT}% above the 50-day instead of a third at +3R (EX-04); "
         "a climax sells that part, not everything (EX-05); the 50-day exit needs no volume (EX-06); the "
         "time stop is on at {TIME_STOP_DAYS} sessions instead of off at 20 (EX-07); the failed-breakout "
-        "exit is off instead of on at 5 sessions (EX-02); a close below the 20-day within "
-        "{FAIL_SMA20_DAYS} sessions sells instead (EX-02b); the light-volume exit is added.\n"
+        "exit is off instead of on at 5 sessions (EX-02), and so is the 20-day failure exit added "
+        "beside it (EX-02b); the light-volume exit is added.\n"
         "- **Filters:** the Learn guide's market test instead of MKT-01; the results blackout is added; "
         "higher US turnover and price floors than U-01 and U-02.",
         "**Survivorship bias.** The universe is today's listed stocks; companies delisted since are missing, "
@@ -1509,7 +1522,7 @@ class MinerviniSpecStrategy(Strategy):
         "Up to {MAX_ENTRIES_PER_BASE} entries per base (EN-04), the failure reset. Once a base, or a "
         "power play's flag, has been bought that many times, it is never bought again.\n\n"
         "Only a SHAKEOUT reopens a base — the stop, the breakeven stop, or a failed 20-day "
-        "(EX-02b) — never a trend exit, "
+        "(EX-02b, when switched on) — never a trend exit, "
         "which says the move itself is over rather than that the trade was shaken out of it. The "
         "setup still has to re-fire on its own; this only stops the veto. Minervini keeps a stock "
         "that stopped him out on his list, because a failed pivot can reset within days and "
@@ -1597,12 +1610,15 @@ class MinerviniSpecStrategy(Strategy):
         "average volume.",
         "EX-07 — time stop. If the high has not reached +1R within {TIME_STOP_DAYS} sessions of the "
         "buy, the position is sold: it has tied up money without proving itself.",
-        "EX-02b — the breakout fails its 20-day average. A close below the 20-day average within "
-        "{FAIL_SMA20_DAYS} sessions of the buy sells everything at the next open. Minervini judges "
+        "EX-02b — the breakout fails its 20-day average: switched off (FAIL_SMA20_DAYS = 0). Set to a "
+        "number of sessions, a close below the 20-day average within that many sessions of the buy "
+        "sells everything at the next open. Minervini judges "
         "a breakout by the 20-day rather than the pivot: once out, it should hold the 20-day and "
         "in most cases not close below it, and a squat (a breakout that closes off its high and "
         "slips back into the base) gets up to about ten days to recover — unless it closes below "
-        "the 20-day, which lowers the odds. 0 turns it off.",
+        "the 20-day, which lowers the odds. On stored data it cost more than it saved: at ten "
+        "sessions it sold over 40% of trades for about -0.5R each, and cut more future trend-exit "
+        "winners than full stops, so expectancy fell in both markets (2013-2021, in-sample).",
         "EX-02 — failed breakout: switched off. A close back below the pivot soon after the buy "
         "would sell here, but Minervini lets a dip below the pivot run to the stop, and on stored "
         "data about two in three breakouts close back under the pivot within ten sessions. "

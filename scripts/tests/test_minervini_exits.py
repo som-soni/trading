@@ -206,20 +206,20 @@ def test_guide_breakout_that_closes_below_its_20_day_is_sold():
     df = _frame([(99, 101, 98, 100.5), (101, 102, 100, 101), (101, 101.5, 100.5, 101), (100.5, 101, 99, 99.5),
                  (99.4, 100, 98, 99)], sma50=90.0)
     df["sma20"] = 100.0
-    t = _guide_run(df, _signal(df))
+    t = simulate([_signal(df)], {"X": df}, CFG, df.index[0],
+                 exit_policy=dataclasses.replace(GUIDE, fail_sma20_days=10)).trades[0]
     assert t.exit_reason == "FAILED_SMA20" and t.exit_date == df.index[4] and t.exit_price == 99.4, \
         (t.exit_reason, t.exit_date, t.exit_price)
 
 
 def test_guide_20_day_rule_ends_after_its_window():
-    # the same close under the 20-day, but only after FAIL_SMA20_DAYS sessions: left to the other rules
-    from swing_screener.strategies import minervini_spec as ms
-    n = ms.FAIL_SMA20_DAYS
+    # the same close under the 20-day, but only after the window's sessions: left to the other rules
+    n = 10
     df = _frame([(99, 101, 98, 100.5), (101, 102, 100, 101)] + [(101, 103, 100.5, 102)] * n
                 + [(101, 101.5, 99, 99.5), (99.5, 100, 99, 99.6)], sma50=90.0)
     df["sma20"] = 100.0
     t = simulate([_signal(df)], {"X": df}, CFG, df.index[0],
-                 exit_policy=dataclasses.replace(GUIDE, time_stop_days=0)).trades[0]
+                 exit_policy=dataclasses.replace(GUIDE, time_stop_days=0, fail_sma20_days=n)).trades[0]
     assert t.exit_reason == "OPEN", t.exit_reason
 
 
