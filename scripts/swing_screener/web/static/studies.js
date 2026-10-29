@@ -321,6 +321,11 @@ const Studies = (() => {
             if (s !== focus) continue;
             const role = kindKey(s);
             const traded = tradeOf(s);
+            // ONE entry is the setup's: the run's trade, else the entry that passed, else the last one. Its
+            // levels are named on the price axis; another entry zone (a cheat beside a pivot buy) keeps
+            // faint, unnamed lines, so the axis never carries two buys, two stops and two targets
+            const entries = s.zones.filter(isEntry);
+            const primary = traded ? null : entries.find((z) => z.state === "pass") || entries.at(-1);
             // a traded setup says so on the frame itself: with the layer and a run both on, the one
             // thing you cannot read off the drawing is which of these the run actually bought
             shapes.push({ shape: "box", frame: true, dash: s.kind === "fail" || s.kind === "young", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom,
@@ -338,15 +343,17 @@ const Studies = (() => {
                 // numbers came from. Its levels come straight from the record (never recomputed);
                 // its base and shelf boxes and its note are dropped, because this frame and the
                 // card already say both, and saying them twice is what made the chart look doubled.
-                shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to,
+                shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to, axis: true,
                   price: +traded.entry_price, label: `bought ${(+traded.entry_price).toFixed(2)}` });
                 // the record's own stop and target only: every strategy's traded setup looks the same (its
                 // other levels -- resistance, swing lows -- vary by strategy and the zones already say them)
-                shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target")));
+                shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target"))
+                  .map((x) => ({ ...x, axis: true })));
                 return;
               }
               // a failed setup's contraction line takes its grey, so a real VCP stands out
-              shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" } : x)));
+              shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" }
+                : x.shape === "level" && isEntry(z) ? { ...x, ...(z === primary ? { axis: true } : { faint: true }) } : x)));
             });
           }
           // tell the chart which of the run's trades this layer draws: any trade no current setup covers
@@ -356,11 +363,11 @@ const Studies = (() => {
           // The entry's buy, stop and target are named on the PRICE AXIS, as the Learn guide's charts do,
           // not in tags over the candles: three or four of them stacked in a narrow entry zone hid the
           // very bars they were about. The lines stay on the chart, unlabelled; the card gives the numbers.
-          const AXIS = { buy: "Buy", stop: "Stop", target: "Target" };
+          const AXIS = { buy: "Buy", stop: "SL", target: "TP" };
           axisLines.forEach((l) => main?.removePriceLine(l));
           axisLines = [];
           const drawn = shapes.map((x) => {
-            if (x.shape !== "level" || !AXIS[x.role]) return x;
+            if (x.shape !== "level" || !AXIS[x.role] || !x.axis) return x;
             if (on && main && x.price != null)
               axisLines.push(main.createPriceLine({ price: +x.price, color: c(x.role) || "#888", lineVisible: false, axisLabelVisible: true,
                 title: /^bought/i.test(x.label || "") ? "Bought" : AXIS[x.role] }));
@@ -1123,7 +1130,7 @@ const Studies = (() => {
           ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
           ["dot", col("base"), "② Base", "its caption carries Minervini's footprint: weeks, deepest/final pullback in %, number of pullbacks (7W 11/3 2T). Each pullback is marked at its low, T1, T2 … with its depth; a VCP's get smaller, and ✗ marks the one that broke the rule."],
           ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
-          ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted), named on the price axis. An illustration of the rules."],
+          ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted), named on the price axis as Buy, SL and TP (a second entry in the same setup, such as a cheat, stays faint and unnamed). An illustration of the rules."],
           ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],
           ["tint", col("stage1"), "Grey-blue band", "Stage 1, basing: after a decline, the price is back above the 150-day (30-week) line or the line has stopped falling. It ends on a breakout above the base, or a breakdown below it."],
           ["tint", col("pass"), "Green band", "Stage 2, advancing: a breakout with the price above a rising 150-day. It lasts until a lower swing low or the 150-day stops rising — not a dip under the 50-day. The Trend Template confirms it, often weeks later."],
