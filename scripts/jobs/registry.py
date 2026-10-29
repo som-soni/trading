@@ -793,6 +793,28 @@ def _announcements(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _financials_history(ctx: Ctx) -> None:
+    """India: each company's quarterly results before its stored five-year window, back to 2009, from NSE's
+    older filings (financials.refresh_history) -- what a backtest over the optimise window reads its
+    fundamentals from. The companies the financials job covers; --symbols limits it. Old quarters do not
+    change, so it runs on demand; documents are cached, so a re-run downloads only what is new."""
+    from swing_screener.config import MARKETS
+    from swing_screener.marketdata import financials
+    if getattr(MARKETS[ctx.market], "quarterly_source", None) != "nse":
+        ctx.step.skip(f"{ctx.market}: history is read from NSE's filings only")
+        return
+    if ctx.opt("symbols"):
+        syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()]
+    else:
+        with financials.db.get_connection().cursor() as cur:
+            cur.execute("SELECT symbol FROM quarterly_fetch WHERE market=%s AND status='ok' ORDER BY symbol", (ctx.market,))
+            syms = [r[0] for r in cur.fetchall()]
+    r = financials.refresh_history(ctx.market, syms, progress=ctx.step.progress)
+    ctx.step.detail = (f"{r['companies']:,} companies · {r['with_history']:,} with history · "
+                       f"{r['quarters']:,} quarters · {r['errors']} error(s)")
+    ctx.step.stats = r
+
+
 def _fundamental_scores(ctx: Ctx) -> None:
     from fundamentals import growth
     syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()] if ctx.opt("symbols") else None
@@ -917,6 +939,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
     Job("financials", "data", "company financials: quarterly and annual results, balance sheet, cash flow, shareholding "
         "(SEC / NSE filings) for the Fundamentals page", "weekly", True, _financials, after=("screens",)),
+    Job("financials_history", "data", "company results before the stored window: India's quarterly results back to 2009 "
+        "from NSE's older filings, for backtests over the optimise window", "on demand", True, _financials_history,
+        after=("financials",)),
     Job("announcements", "data", "results announcements: when each company published each quarter's results (NSE, back "
         "to 2005) -- what an event strategy ties a price reaction to", "weekly", True, _announcements, after=("universe",)),
     Job("breadth", "analytics", "market breadth: advancers, highs/lows, % above averages", "daily", False, _breadth, after=("prices",)),

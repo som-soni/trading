@@ -49,6 +49,10 @@ to tie a price reaction to the news (`strategies/earnings_gaps.py`), and before 
 announcement history before 2020, so the 2013-2021 optimise window had almost nothing to tie a reaction to.
 The US has no equivalent: SEC filing dates land on or after the announcement, not at it.
 
+India before the stored window (`quarterly_results_history`, `refresh_history`, the `financials_history` job): each
+company's quarters back to 2009 from NSE's older filings -- XBRL from mid-2018, an HTML page of figures before --
+which `load` puts in front of the window. See the section of that name below.
+
 Backtests read these point in time: `load` and `load_lines` honour a stage's boundary (`asof`), and
 `backtesting/fundamental_filter.py`, `pead.py` and `quality_momentum.py` judge each date only on what
 was public by then.
@@ -137,6 +141,16 @@ CREATE TABLE IF NOT EXISTS results_announcements (
     source VARCHAR(24) NOT NULL,          -- nse_legacy | nse_integrated
     fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (market, symbol, period_end, basis, announced_at)
+);
+-- India before the stored window (refresh_history): both bases, each quarter as first filed
+CREATE TABLE IF NOT EXISTS quarterly_results_history (
+    market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL, period_end DATE NOT NULL,
+    period_start DATE, fiscal VARCHAR(16), source VARCHAR(16) NOT NULL, basis VARCHAR(16) NOT NULL,
+    filed DATE, derived BOOLEAN NOT NULL DEFAULT false,
+    {", ".join(f"{c} DOUBLE PRECISION" for f in FIELDS for c in (f, f + "_prior"))},
+    equity DOUBLE PRECISION, shares DOUBLE PRECISION, doc_url TEXT,
+    eps_fy DOUBLE PRECISION, net_income_fy DOUBLE PRECISION,
+    PRIMARY KEY (market, symbol, period_end, basis)
 );
 CREATE TABLE IF NOT EXISTS quarterly_fetch (
     market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL,
@@ -972,6 +986,240 @@ def fetch_nse(symbol: str, reparse: bool = False) -> tuple[list[dict], dict]:
                   **({"unreadable_documents": failed} if failed else {})}
 
 
+# ------------------------------------------------------------------ India before the window (history)
+#
+# `fetch_nse` keeps LOOKBACK_QUARTERS (five years), and NSE's XBRL documents start in mid-2018, so a backtest's
+# 2013-2021 optimise window had Indian results only from 2020. NSE still lists every older filing (back to 2005)
+# with an HTML page of its figures. `refresh_history` reads them -- the XBRL document where one exists (it is
+# outside the five-year window, not missing), else the HTML page -- into `quarterly_results_history`, a table of
+# its own: a refresh of the window deletes and rewrites `quarterly_results`, and the old quarters never change.
+#
+# Point in time: each quarter is kept AS FIRST FILED (the earliest filing of its basis), with that filing's date.
+# Both bases are stored, because until SEBI required quarterly consolidated results (FY2020) most groups filed
+# only standalone ones: `load` takes the company's own basis where it was filed and the other where it was not,
+# and every history row carries its year-ago revenue, net income and pre-tax profit from the SAME basis
+# (`*_prior`), so a growth rate never compares a consolidated quarter with a standalone one. EPS is left to
+# `fundamentals/growth.py`'s year-ago pairing, which corrects for splits.
+HISTORY_START = dt.date(2009, 1, 1)
+HISTORY_SAME_SHARES = 0.05    # a share count within this of the year-ago one: no split or bonus between them
+NSE_HTML_PARSER_VERSION = 2
+NSE_HTML_UNITS = {"lakh": 1e5, "lakhs": 1e5, "crore": 1e7, "crores": 1e7, "million": 1e6, "millions": 1e6,
+                  "thousand": 1e3, "thousands": 1e3}
+# label patterns, in order of preference: the first pattern any line matches wins (labels lower-cased, a leading
+# "(a)" / "(b)" dropped). Banks file interest earned where others file sales.
+NSE_HTML_REVENUE = ("total income from operations (net)", "total income from operations", "net sales/income from operations",
+                    "net sales/income from operation", "revenue from operations", "interest earned", "income from operations")
+NSE_HTML_NET = ("net profit / (loss) after taxes, minority interest", "net profit/(loss) after taxes, minority interest",
+                "consolidated net profit/loss for the period", "net profit / (loss) for the period",
+                "net profit (+) / loss (-) for the period", "net profit(+)/loss(-) for the period", "net profit/(loss) for the period")
+NSE_HTML_EPS = ("diluted eps after extraordinary", "diluted eps for continued and discontinued", "diluted eps for continuing",
+                "diluted", "basic eps after extraordinary", "basic eps for continued and discontinued",
+                "basic eps for continuing", "basic")
+_NUM = __import__("re").compile(r"^\(?-?[\d,]*\.?\d+\)?$")
+
+
+def _html_tokens(text: str) -> list[str]:
+    import html as _html
+    import re
+    text = re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>|<!--.*?-->", " ", text)
+    out = []
+    for t in re.split(r"<[^>]+>", text):
+        t = re.sub(r"\s+", " ", _html.unescape(t)).strip()
+        if t:
+            out.append(t)
+    return out
+
+
+def _html_num(t: str) -> float | None:
+    if not _NUM.match(t):
+        return None
+    neg = t.startswith("(") and t.endswith(")")
+    v = float(t.strip("()").replace(",", ""))
+    return -v if neg else v
+
+
+def parse_nse_html(text: str) -> dict | None:
+    """One NSE results page (the pre-XBRL HTML filing) -> {period_end, revenue, net_income, eps, pretax_income,
+    shares}, amounts in rupees. None when no figures can be read."""
+    import re
+    toks = _html_tokens(text)
+    unit = 1.0
+    m = re.search(r"Amount\s*\(\s*Rs\.?\s*in\s*([A-Za-z]+)", " ".join(toks[:200]))
+    if m:
+        unit = NSE_HTML_UNITS.get(m.group(1).lower(), 1.0)
+    end = None
+    for i, t in enumerate(toks[:-1]):
+        if t.lower() == "period ended":
+            end = _nse_date(toks[i + 1], "%d-%b-%Y")
+            break
+    pairs = []          # (label, value) in page order; a label followed by "-" has no figure
+    for i in range(1, len(toks)):
+        if toks[i] == "-" or _NUM.match(toks[i]):
+            label = re.sub(r"^\([a-z]\)\s*", "", toks[i - 1].lower()).strip()
+            if label and not _NUM.match(toks[i - 1]):
+                pairs.append((label, _html_num(toks[i])))
+
+    def pick(patterns, last=False, exact=("diluted", "basic")):
+        for pat in patterns:
+            hits = [v for lab, v in pairs if (lab == pat if pat in exact else lab.startswith(pat))]
+            if hits:
+                return hits[-1] if last else hits[0]
+        return None
+
+    rev = pick(NSE_HTML_REVENUE)
+    pbt = next((v for lab, v in pairs if "before tax" in lab and "before finance" not in lab), None)
+    ni = pick(NSE_HTML_NET)
+    eps = pick(NSE_HTML_EPS, last=True)
+    face = next((v for lab, v in pairs if lab.startswith("face value")), None)
+    paid = next((v for lab, v in pairs if lab.startswith("paid-up equity share capital") or lab.startswith("paid up equity")), None)
+    # an exact 0 profit or EPS is a blank the form filled with zero, not a figure
+    ni = ni if ni else None
+    eps = eps if eps else None
+    if rev is None and ni is None:
+        return None
+    amt = lambda v: v * unit if v is not None else None  # noqa: E731
+    return {"period_end": end, "revenue": amt(rev), "net_income": amt(ni), "pretax_income": amt(pbt), "eps": eps,
+            "shares": paid * unit / face if paid and face else None}
+
+
+def _nse_html_doc(url: str, reparse: bool = False) -> dict | None:
+    hit = None if reparse else _cache_get(url, "html", NSE_HTML_PARSER_VERSION)
+    if hit is not None:
+        return hit or None
+    try:
+        parsed = parse_nse_html(_nse.get(url).text)
+    except Exception as exc:  # noqa: BLE001 -- one unreadable page must not stop a company
+        logger.debug("%s unreadable: %s", url, exc)
+        parsed = None
+    _cache_put(url, "html", NSE_HTML_PARSER_VERSION, parsed or {})
+    return parsed
+
+
+def nse_history_filings(sym: str) -> list[dict]:
+    """Every quarterly filing NSE's legacy feed lists for one company, XBRL or not:
+    {end, start, basis, filed, xbrl, html}: per quarter and basis the earliest filing that links a document (as
+    first reported), dated by that filing -- an announcement filed without one is not data yet."""
+    legacy = _nse.get(NSE + "/api/corporates-financial-results", index="equities", symbol=sym, period="Quarterly").json() or []
+    first: dict = {}
+    for r in legacy:
+        if str(r.get("cumulative", "")).lower().startswith("cumulative"):
+            continue
+        end = _nse_date(r.get("toDate"), "%d-%b-%Y")
+        if not end:
+            continue
+        at = _nse_ts(r.get("broadCastDate")) or _nse_ts(r.get("filingDate"))
+        f = {"end": end, "start": _nse_date(r.get("fromDate"), "%d-%b-%Y"),
+             "basis": "consolidated" if r.get("consolidated") == "Consolidated" else "standalone",
+             "filed": at.date() if at else None,
+             "xbrl": r["xbrl"] if str(r.get("xbrl", "")).endswith(".xml") else None,
+             "html": r.get("resultDetailedDataLink") or None}
+        if not (f["xbrl"] or f["html"]):
+            continue
+        key = (end, f["basis"])
+        if key not in first or (f["filed"] or dt.date.max) < (first[key]["filed"] or dt.date.max):
+            first[key] = f
+    return list(first.values())
+
+
+def fetch_nse_history(symbol: str, before: dt.date | None, reparse: bool = False) -> list[dict]:
+    """History rows (both bases) for quarters from HISTORY_START up to, not including, `before`."""
+    rows = []
+    for f in nse_history_filings(_bare(symbol)):
+        if f["end"] < HISTORY_START or (before and f["end"] >= before):
+            continue
+        p, source = None, None
+        if f["xbrl"]:
+            p, source = _nse_doc(f["xbrl"], reparse), "nse"
+            if p and p.get("period_end") != f["end"]:
+                p = None          # the feed links another quarter's document (a restated re-filing)
+        if not p and f["html"]:
+            p, source = _nse_html_doc(f["html"], reparse), "nse_html"
+        if not p:
+            continue
+        rows.append(_row(**{k: p.get(k) for k in (*FIELDS, "equity", "shares", "eps_fy", "net_income_fy")},
+                         period_end=f["end"], period_start=p.get("period_start") or f["start"], source=source,
+                         basis=f["basis"], filed=f["filed"], doc_url=f["xbrl"] or f["html"]))
+    by_basis: dict = defaultdict(dict)
+    for r in rows:
+        by_basis[r["basis"]][r["period_end"]] = r
+    for quarters in by_basis.values():
+        for end, r in quarters.items():
+            ago = next((q for e, q in quarters.items() if YEAR_APART[0] <= (end - e).days <= YEAR_APART[1]), None)
+            if ago:
+                for k in ("revenue", "net_income", "pretax_income"):
+                    if r.get(f"{k}_prior") is None:
+                        r[f"{k}_prior"] = ago.get(k)
+                # EPS only on an unchanged share count: across a split or bonus growth.py's pairing corrects it
+                if r.get("eps_prior") is None and ago.get("eps") is not None and r.get("shares") and ago.get("shares") \
+                        and abs(r["shares"] / ago["shares"] - 1) <= HISTORY_SAME_SHARES:
+                    r["eps_prior"] = ago["eps"]
+    return rows
+
+
+def refresh_history(market: str, symbols: list[str], reparse: bool = False, progress=None) -> dict:
+    """Fetch and store each company's quarters before its stored window (`quarterly_results_history`).
+    Only where the results source is NSE. Parsed documents are cached, so a re-run downloads nothing new."""
+    if getattr(MARKETS[market], "quarterly_source", None) != "nse":
+        return {"companies": 0, "skipped": f"{market}: history is read from NSE's filings only"}
+    init_schema()
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT symbol, MIN(period_end) FROM quarterly_results WHERE market=%s GROUP BY symbol", (market,))
+        window = dict(cur.fetchall())
+    stats = {"companies": len(symbols), "with_history": 0, "quarters": 0, "errors": 0}
+    for i, sym in enumerate(symbols):
+        try:
+            rows = fetch_nse_history(sym, window.get(sym), reparse)
+        except Exception as exc:  # noqa: BLE001 -- one company's failure must not stop the backfill
+            stats["errors"] += 1
+            logger.warning("history %s: %s", sym, exc)
+            rows = None
+        if rows is not None:
+            with db.get_connection().cursor() as cur:
+                cur.execute("DELETE FROM quarterly_results_history WHERE market=%s AND symbol=%s", (market, sym))
+            if rows:
+                db.execute_values(f"INSERT INTO quarterly_results_history (market, symbol, {', '.join(COLUMNS)}) VALUES %s "
+                                  "ON CONFLICT DO NOTHING", [(market, sym, *[r[c] for c in COLUMNS]) for r in rows])
+                stats["with_history"] += 1
+                stats["quarters"] += len({r["period_end"] for r in rows})
+        logger.info("[%d/%d] %s history: %d rows", i + 1, len(symbols), sym, len(rows or []))
+        if progress:
+            progress(f"history {i + 1:,}/{len(symbols):,} companies ({stats['quarters']:,} quarters)",
+                     done=i + 1, total=len(symbols))
+    return stats
+
+
+def _with_history(market: str, out: dict, symbols: list[str] | None) -> None:
+    """Prepend each company's history quarters (before its stored window) to `out`, in place: per quarter the
+    company's own basis where it was filed, else the other."""
+    sql = f"SELECT symbol, {', '.join(COLUMNS)} FROM quarterly_results_history WHERE market=%s"
+    args: tuple = (market,)
+    if symbols is not None:
+        sql, args = sql + " AND symbol = ANY(%s)", args + (list(symbols),)
+    if asof.end_date():
+        sql, args = sql + " AND COALESCE(filed, period_end) <= %s", args + (asof.end_date(),)
+    try:
+        with db.get_connection().cursor() as cur:
+            cur.execute(sql + " ORDER BY symbol, period_end", args)
+            hist = cur.fetchall()
+            cur.execute("SELECT symbol, MIN(period_end), MODE() WITHIN GROUP (ORDER BY basis) FROM quarterly_results "
+                        "WHERE market=%s GROUP BY symbol", (market,))
+            window = {s: (e, b) for s, e, b in cur.fetchall()}
+    except Exception:  # noqa: BLE001 -- the table does not exist until the first history refresh
+        return
+    per: dict = defaultdict(lambda: defaultdict(dict))
+    for r in hist:
+        row = dict(zip(COLUMNS, r[1:]))
+        per[r[0]][row["period_end"]][row["basis"]] = row
+    for sym, quarters in per.items():
+        first, basis = window.get(sym, (None, None))
+        basis = basis or ("consolidated" if sum("consolidated" in q for q in quarters.values()) * 2 > len(quarters) else "standalone")
+        # per quarter: the basis whose own year-ago quarter is there (so growth compares like with like), the
+        # company's basis on a tie
+        rank = lambda r: (r.get("revenue_prior") is not None, r["basis"] == basis)  # noqa: E731
+        keep = [max(q.values(), key=rank) for e, q in sorted(quarters.items()) if first is None or e < first]
+        out[sym] = keep + out.get(sym, [])
+
+
 # ------------------------------------------------------------------ shareholding (India)
 
 SHP_PARSER_VERSION = 1
@@ -1408,6 +1656,7 @@ def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]
         cur.execute(sql + " ORDER BY symbol, period_end", args)
         for r in cur.fetchall():
             out[r[0]].append(dict(zip(COLUMNS, r[1:])))
+    _with_history(market, out, symbols)
     return {sym: _fix_eps_scale(_fix_nse(rows)) for sym, rows in out.items()}
 
 
@@ -1487,9 +1736,11 @@ def main() -> None:
     ap.add_argument("--market", required=True, choices=list(MARKETS))
     ap.add_argument("--symbols", required=True, help="comma separated (the scheduled job picks its own list)")
     ap.add_argument("--force", action="store_true", help="fetch even when stored results are fresh (parsed documents still come from the cache)")
+    ap.add_argument("--history", action="store_true", help="India: the quarters before the stored window (refresh_history)")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    print(run(a.market, [s.strip().upper() for s in a.symbols.split(",") if s.strip()], a.force))
+    syms = [s.strip().upper() for s in a.symbols.split(",") if s.strip()]
+    print(refresh_history(a.market, syms) if a.history else run(a.market, syms, a.force))
 
 
 if __name__ == "__main__":
