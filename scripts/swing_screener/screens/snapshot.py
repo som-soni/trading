@@ -94,7 +94,7 @@ FIELDS = [
     ("rvol", "Relative volume", "Volume", "num", "The session's volume ÷ its 50-day average."),
     ("value20", "Avg traded value (20d)", "Volume", "money", "20-day average of close × volume, in the market's currency."),
     ("bars", "Days of history", "Data", "num", "Sessions of price history stored."),
-    ("tradable", "Tradable", "Trend & structure", "bool", "Clears the market's floor: minimum price and 20-day traded value, a year of history, "
+    ("tradable", "Tradable", "Trend & structure", "bool", "Clears the market's floor: minimum price (on the price traded that day) and 20-day traded value, a year of history, "
                                                           "a valid ATR — the floor the built-in screens and the strategies use."),
     ("weekly_uptrend", "Weekly uptrend", "Trend & structure", "bool", "Weekly close above a rising 30-week EMA."),
     ("weekly_ma_aligned", "Weekly averages aligned", "Trend & structure", "bool", "Weekly 20-week average above the 50-week."),
@@ -207,9 +207,12 @@ def _rs_raw(close: pd.Series, i: int) -> float | None:
     return 2 * q1 + (q2 if q2 is not None else q4) + (q3 if q3 is not None else q4) + q4
 
 
-def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench: pd.Series | None = None) -> dict:
+def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench: pd.Series | None = None,
+         split: float = 1.0) -> dict:
     """Every price-derived field of one stock as of bar i (point in time: only bars up to i are read).
-    `bench`: the market benchmark's closes (DatetimeIndex), for the returns relative to it."""
+    `bench`: the market benchmark's closes (DatetimeIndex), for the returns relative to it. `split`: the
+    product of the splits after bar i (_split_factors) -- the stored close times it is the price traded
+    that day, which is what the price floor reads."""
     row = enriched.iloc[i]
     close = float(row["close"])
     c = enriched["close"]
@@ -246,10 +249,27 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench
         out[k] = out[rk] - b if b is not None else None
     w = c.iloc[max(0, i + 1 - MDD_BARS): i + 1].astype(float)
     out["mdd_2y"] = float((w / w.cummax() - 1).min() * 100) if len(w) >= MDD_BARS else None
-    out["tradable"] = bool(i + 1 >= MIN_BARS and Screen.tradable(cfg, row)[0])
+    floor_row = row
+    if split != 1.0:     # the floor reads the traded price: a back-adjusted close reads under it for years
+        floor_row = row.copy()
+        floor_row["close"] = close * split
+    out["tradable"] = bool(i + 1 >= MIN_BARS and Screen.tradable(cfg, floor_row)[0])
     out["stage2_days"] = _stage2_days(enriched, i)
     out.update(_base(enriched, i))
     return out
+
+
+def _split_factors(market: str, ds: list, symbols) -> pd.DataFrame:
+    """Per date (rows) and symbol, the product of the stored splits after it (backtesting/spec.py
+    split_factor_after); empty where the market has no price floor, since nothing reads it then."""
+    from ..backtesting.spec import split_factor_after
+    if not MARKETS[market].screener.min_price or not ds:
+        return pd.DataFrame()
+    return split_factor_after(market, pd.DatetimeIndex(sorted(pd.Timestamp(d) for d in ds)), list(symbols))
+
+
+def _split_at(k: pd.DataFrame, d, sym: str) -> float:
+    return float(k.at[pd.Timestamp(d), sym]) if sym in k.columns else 1.0
 
 
 def _bench_ret(bench: pd.Series | None, t0, t1) -> float | None:
@@ -527,12 +547,13 @@ def build(market: str, d=None) -> pd.DataFrame:
     d = pd.Timestamp(d or freshness.sessions(market)[-1])
     bars = _universe_bars(market, d - pd.Timedelta(days=LOOKBACK_DAYS))
     bench = _bench(market, d - pd.Timedelta(days=LOOKBACK_DAYS + 10))
+    k = _split_factors(market, [d], bars)
     rows = []
     for sym, raw in bars.items():
         raw = raw[raw.index <= d]
         if len(raw) < MIN_SNAPSHOT_BARS or raw.index[-1] != d:
             continue
-        rows.append(_row(cfg, sym, raw, ind.enrich_daily(raw), len(raw) - 1, bench))
+        rows.append(_row(cfg, sym, raw, ind.enrich_daily(raw), len(raw) - 1, bench, _split_at(k, d, sym)))
     df = _finish(market, rows, d, present=True)
     _save(market, df, d)
     df.attrs["date"] = d.date()
@@ -563,6 +584,7 @@ def backfill(market: str, years: float = 5, force: bool = False, refill: bool = 
     bars = _universe_bars(market, pd.Timestamp(todo[0]) - pd.Timedelta(days=LOOKBACK_DAYS))
     bench = _bench(market, pd.Timestamp(todo[0]) - pd.Timedelta(days=LOOKBACK_DAYS + 10))
     per_date: dict = {d: [] for d in todo}
+    k = _split_factors(market, todo, bars)
     for n, (sym, raw) in enumerate(bars.items(), 1):
         enriched = ind.enrich_daily(raw)
         idx = enriched.index
@@ -573,7 +595,7 @@ def backfill(market: str, years: float = 5, force: bool = False, refill: bool = 
             i = idx.get_loc(t)
             if i + 1 < MIN_SNAPSHOT_BARS:
                 continue
-            per_date[d].append(_row(cfg, sym, raw, enriched, i, bench))
+            per_date[d].append(_row(cfg, sym, raw, enriched, i, bench, _split_at(k, d, sym)))
         if n % 500 == 0:
             logger.info("  backfill %s: %d/%d symbols (%.0fs)", market, n, len(bars), time.time() - t0)
     for d, rows in per_date.items():
@@ -583,6 +605,41 @@ def backfill(market: str, years: float = 5, force: bool = False, refill: bool = 
         _save(market, df, d)
     logger.info("backfill %s: %d month-end snapshots in %.0fs", market, len(todo), time.time() - t0)
     return len(todo)
+
+
+def refloor(market: str) -> dict:
+    """Re-read `tradable` on every stored snapshot with the price floor on the traded price; {date: rows changed}.
+
+    For backfilled snapshots saved before the floor read the traded price: they read the back-adjusted close.
+    A snapshot built on its own day (it carries the present-only fields) is skipped -- its close was the
+    traded price, and today's stored close can be rescaled by a split `corporate_actions` has not recorded
+    yet. Exact without a rebuild: the floor's other tests read stored fields (bars, value20, atr_pct), and
+    the traded price is today's stored close times the splits after the date."""
+    cfg = MARKETS[market]
+    if not cfg.screener.min_price:
+        return {}
+    out = {}
+    for d in dates(market):
+        df = pd.read_parquet(_path(market, d))
+        if df.empty or ("sector" in df.columns and df["sector"].notna().any()):
+            continue
+        with db.get_connection().cursor() as cur:
+            cur.execute("SELECT symbol, close FROM prices WHERE market=%s AND date=%s AND symbol = ANY(%s)",
+                        (market, d, list(df["symbol"])))
+            px = dict(cur.fetchall())
+        k = _split_factors(market, [d], df["symbol"])
+        traded = pd.Series([float(px[s]) * _split_at(k, d, s) if px.get(s) else np.nan for s in df["symbol"]], index=df.index)
+        dv_ok = (df["value20"].astype(float) >= cfg.screener.min_dollar_volume) if cfg.screener.min_dollar_volume else True
+        atr = df["atr_pct"].astype(float)
+        new = ((df["bars"] >= MIN_BARS) & (traded >= cfg.screener.min_price) & dv_ok & atr.notna() & (atr != 0)).astype(bool)
+        changed = int((new != df["tradable"].astype(bool)).sum())
+        if not changed:
+            continue
+        df["tradable"] = new
+        _save(market, df, d)
+        out[d] = changed
+    logger.info("refloor %s: %d snapshots changed, %d rows", market, len(out), sum(out.values()))
+    return out
 
 
 def _refill(old: pd.DataFrame, new: pd.DataFrame) -> pd.DataFrame:
@@ -601,9 +658,12 @@ def main() -> None:
     ap.add_argument("--backfill", type=float, default=None, help="build month-end snapshots for this many years")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--refill", action="store_true", help="with --backfill: add the fields stored month-ends lack, keep the rest")
+    ap.add_argument("--refloor", action="store_true", help="re-read `tradable` on stored snapshots with the floor on the traded price")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    if a.backfill:
+    if a.refloor:
+        print(refloor(a.market))
+    elif a.backfill:
         print(backfill(a.market, a.backfill, a.force, a.refill))
     else:
         df = build(a.market)

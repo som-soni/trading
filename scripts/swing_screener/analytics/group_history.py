@@ -6,7 +6,8 @@ liquid members. Its daily table (`sector_daily`) only goes back to when it start
 module rebuilds the same rating for any past date from stored prices, using only prices up to that date:
 
   * members: the group's stocks that were liquid on that date (the Sectors page's MIN_VALUE / MIN_PRICE),
-    a group needing MIN_MEMBERS of them;
+    a group needing MIN_MEMBERS of them. MIN_PRICE is read on the price the stock traded at that day: the
+    stored close is back-adjusted for every later split (backtesting/spec.traded_close);
   * index: daily returns clipped at ±DAILY_CLIP, averaged across members, compounded;
   * rating: relative return at 63/126/189/252 sessions vs the equal-weight index of every liquid stock,
     weighted RS_WEIGHTS, ranked 1–99 across groups (the Sectors page's own `_rs_score` / `_rank`).
@@ -24,6 +25,7 @@ member was added, where there is no record and today's members stand in (hindsig
 `ensure_themes(market, dates)` fills them; editing a theme's members clears its stored history.
 
     PYTHONPATH=. python3 -m swing_screener.analytics.group_history --market us --check
+    PYTHONPATH=. python3 -m swing_screener.analytics.group_history --market us --rebuild   # after a rule change
 """
 
 import argparse
@@ -32,9 +34,11 @@ import time
 
 import numpy as np
 import pandas as pd
+import psycopg2.extras
 
 from ..marketdata import db, industries, subindustries
 from ..marketdata import asof
+from ..backtesting.spec import traded_close
 from . import sectors as sect
 from .breadth import eligible
 
@@ -95,6 +99,9 @@ def compute(market: str, dates: list, themes: list | None = None) -> dict:
     close = close[n >= 0.5 * n.rolling(20, min_periods=1).median()]
     dv = dv.reindex(close.index)
     rets = close.ffill(limit=3).pct_change(fill_method=None).clip(-sect.DAILY_CLIP, sect.DAILY_CLIP)
+    # The price floor reads the price traded that day. On the stored close, back-adjusted for every later
+    # split, NVDA read under $3 until 2016 and was left out of its group exactly while it led it.
+    traded = traded_close(market, close)
     logger.info("group history %s: %d sessions × %d stocks loaded (%.0fs)", market, len(close), close.shape[1], time.time() - t0)
 
     out = {}
@@ -104,7 +111,7 @@ def compute(market: str, dates: list, themes: list | None = None) -> dict:
         i = close.index.get_loc(d)
         if i < WINDOW:
             continue
-        c, v = close.iloc[i], dv.iloc[i]
+        c, v = traded.iloc[i], dv.iloc[i]
         liquid = c.index[(c >= sect.MIN_PRICE[market]) & (v.fillna(0) >= sect.MIN_VALUE[market])]
         win = rets.iloc[i - WINDOW: i + 1]
         mkt_idx = (1 + win[liquid].mean(axis=1).fillna(0)).cumprod()
@@ -182,6 +189,39 @@ def ensure_themes(market: str, dates: list) -> int:
     return len(rows)
 
 
+def rebuild(market: str) -> int:
+    """Recompute every stored date under the current rules and replace its rows; returns the rows written.
+
+    For a change to how the rating is computed: `ensure` treats a stored date as done, so without this the
+    old rows would stand. Themes are rebuilt only on the dates they were stored for. The rows are replaced
+    in one transaction, so a reader never sees a date half-rebuilt."""
+    from ..marketdata import themes as themes_mod
+    init_schema()
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT DISTINCT date, level = 'theme' FROM group_rs_history WHERE market=%s", (market,))
+        stored = cur.fetchall()
+    dates = sorted({d for d, _ in stored})
+    theme_dates = {d for d, is_theme in stored if is_theme}
+    if not dates:
+        return 0
+    themes = [t for t in themes_mod.load(market) if t["members"]]
+    new = compute(market, dates, themes or None)
+    rows = [(market, d, lvl, g, rs, n) for d, levels in new.items() for lvl, groups in levels.items()
+            if lvl != "theme" or d in theme_dates for g, (rs, n) in groups.items()]
+    with db.get_connection().cursor() as cur:     # the connection autocommits: one explicit transaction
+        cur.execute("BEGIN")
+        try:
+            cur.execute("DELETE FROM group_rs_history WHERE market=%s AND date = ANY(%s)", (market, list(new)))
+            psycopg2.extras.execute_values(cur, """INSERT INTO group_rs_history (market, date, level, grp, rs, n)
+                                                   VALUES %s""", rows)
+            cur.execute("COMMIT")
+        except Exception:
+            cur.execute("ROLLBACK")
+            raise
+    logger.info("group history %s: rebuilt %d dates, %d rows", market, len(new), len(rows))
+    return len(rows)
+
+
 def clear_theme(market: str, theme_id: int) -> None:
     """Forget a theme's stored ratings (its members changed); the next ensure_themes rebuilds them."""
     with db.get_connection().cursor() as cur:
@@ -216,8 +256,11 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--market", required=True, choices=["us", "india"])
     ap.add_argument("--check", action="store_true", help="compare the rebuilt rating with the Sectors page's on its latest day")
+    ap.add_argument("--rebuild", action="store_true", help="recompute every stored date under the current rules")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    if a.rebuild:
+        print(rebuild(a.market))
     if a.check:
         print(check(a.market))
 
