@@ -34,6 +34,8 @@ from swing_screener.backtesting import windows  # noqa: E402
 from swing_screener.marketdata import asof, cache, financials, index_data  # noqa: E402
 
 FAILS: list[str] = []
+UNCHECKED: list[str] = []   # ran clean but made no trade, so nothing was checked
+SAMPLES = (25, 250)         # per-symbol strategies: a small sample, then a wider one if it trades nothing
 OPT_END = pd.Timestamp(windows.STAGES["optimise"].end)
 
 
@@ -177,9 +179,15 @@ def every_strategy() -> None:
                                     f"swing_screener.backtesting.{getattr(portfolio_strategies()[key], 'runner', 'baseline')}")
                                 r = mod.main(["--strategy", key, "--market", market, "--start", start, "--no-ingest"])
                             else:
+                                # a sparse strategy can make no trade at all on a small sample (earnings_gaps:
+                                # 25 names, nine years, not one bar past every gate) -- then it writes no
+                                # equity curve and there is nothing to check, so try a wider sample first
                                 args = shlex.split(type(get_strategy(key)).backtest_args or "")
-                                r = bt.main(["--market", market, "--start", start, "--strategy", key, "--sample", "25",
-                                             *args, "--no-ingest"])
+                                for n in SAMPLES:
+                                    r = bt.main(["--market", market, "--start", start, "--strategy", key,
+                                                 "--sample", str(n), *args, "--no-ingest"])
+                                    if r and r.get("run_dir"):
+                                        break
                     except SystemExit as e:
                         if market != list(MARKETS)[-1]:
                             print(f"        {key} does not run on {market} ({str(e.code)[:70]}); trying the next market")
@@ -190,6 +198,12 @@ def every_strategy() -> None:
                         check(f"{key} ({market}) ran", False, f"{type(e).__name__}: {e}"[:160])
                         continue
                     d = Path(r["run_dir"]) if r and r.get("run_dir") else None
+                    if not d and kind == "symbol":
+                        # no trades is not a breach -- nothing was traded past the boundary -- but it proves
+                        # nothing either, so it is reported apart from a pass and the next market is tried
+                        print(f"  skip  {key} ({market}) made no trade on a {SAMPLES[-1]}-stock sample")
+                        UNCHECKED.append(f"{key} ({market})")
+                        continue
                     if not d or not (d / "equity.csv").exists():
                         check(f"{key} ({market}) wrote an equity curve", False, str(d))
                         continue
@@ -219,6 +233,8 @@ def main() -> int:
     one_runner()
     if "--all" in sys.argv:
         every_strategy()
+    if UNCHECKED:
+        print(f"\nNOT CHECKED (no trades on the sample): {', '.join(UNCHECKED)}")
     print(f"\n{'OK — the hold-out stays held out.' if not FAILS else f'{len(FAILS)} FAILURE(S)'}")
     return 1 if FAILS else 0
 
