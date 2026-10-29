@@ -4927,7 +4927,7 @@ async function strategyHoldings(host, alive, d, key) {
       return;
     }
     host.querySelector(".page-head.sub").insertAdjacentHTML("afterbegin",
-      `<span class="run-label">Ranked ${esc(prettyDate(r.as_of))} — ${r.rows.filter((x) => x.held).length} held of ${r.eligible} eligible</span>`);
+      `<span class="run-label">Ranked ${esc(prettyDate(r.as_of))} — ${r.rows.filter((x) => x.held).length} held of ${r.eligible} eligible</span>${edgeChip(key, mkt)}`);
     const nHeld = r.rows.filter((x) => x.held).length;
     // The strategy's market filter (backtesting/regime.py) is read on the same close as the ranking.
     // While it is off the strategy holds cash, so the page says so rather than showing an empty book.
