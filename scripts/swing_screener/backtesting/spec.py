@@ -23,7 +23,7 @@ import pandas as pd
 
 from ..config import MARKETS
 from ..core import indicators as ind
-from ..marketdata import cache, db
+from ..marketdata import asof, cache, db
 
 logger = logging.getLogger(__name__)
 
@@ -320,7 +320,20 @@ def breadth_pct50(market: str) -> pd.Series:
         rows = cur.fetchall()
     if not rows:
         return pd.Series(dtype=float)
-    return pd.Series([100.0 * a / n for _, n, a in rows], index=pd.DatetimeIndex([d for d, _, _ in rows]))
+    out = pd.Series([100.0 * a / n for _, n, a in rows], index=pd.DatetimeIndex([d for d, _, _ in rows]))
+    return out[out.index <= asof.end()] if asof.end() is not None else out
+
+
+def highs_lows(market: str) -> pd.DataFrame:
+    """Per date: new 52-week highs and lows among the market's most-traded stocks (`breadth_daily`,
+    analytics/breadth.py), columns `highs` and `lows`. Empty when nothing is stored."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT date, highs, lows FROM breadth_daily WHERE market=%s AND n > 0 "
+                    "AND highs IS NOT NULL AND lows IS NOT NULL ORDER BY date", (market,))
+        rows = cur.fetchall()
+    out = pd.DataFrame([(h, lo) for _, h, lo in rows], columns=["highs", "lows"],
+                       index=pd.DatetimeIndex([d for d, _, _ in rows]), dtype=float)
+    return out[out.index <= asof.end()] if asof.end() is not None else out
 
 
 def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Series:
@@ -330,8 +343,10 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
     The SEPA guide's test (`guide=True`, minervini_spec.MKT_GUIDE): the benchmark closes above its
     MKT_INDEX_SMA-day average AND that average is higher than MKT_SMA_RISING_DAYS sessions ago,
     AND breadth — the share of stocks above their 50-day — is above
-    MKT_BREADTH_MIN_PCT or higher than MKT_BREADTH_RISING_DAYS sessions earlier. A date with no
-    breadth stored (before its history starts) is judged on the benchmark alone.
+    MKT_BREADTH_MIN_PCT or higher than MKT_BREADTH_RISING_DAYS sessions earlier, AND, when
+    MKT_HIGHS_LOWS_DAYS is set, new 52-week highs outnumber MKT_HIGHS_LOWS_RATIO x new lows over
+    that many sessions. A date with no breadth stored (before its history starts) is judged on the
+    benchmark alone.
 
     With `confirm_days`, risk-on resumes only after the test has held that many sessions
     in a row. Risk-OFF still bites immediately — the delay is there so a benchmark
@@ -354,6 +369,15 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
             breadth_ok = (br > ms.MKT_BREADTH_MIN_PCT) | (br > br.shift(ms.MKT_BREADTH_RISING_DAYS))
             known = breadth_ok.reindex(c.index)          # NaN where breadth has no row that day
             ok = ok & known.fillna(True).astype(bool)
+        if ms.MKT_HIGHS_LOWS_DAYS:
+            # Leadership (1.32): over the last MKT_HIGHS_LOWS_DAYS sessions, more stocks made new
+            # 52-week highs than MKT_HIGHS_LOWS_RATIO x those making new lows.
+            hl = highs_lows(market)
+            if len(hl):
+                w = int(ms.MKT_HIGHS_LOWS_DAYS)
+                lead = hl["highs"].rolling(w).sum() > ms.MKT_HIGHS_LOWS_RATIO * hl["lows"].rolling(w).sum()
+                lead = lead.where(hl["highs"].rolling(w).count() == w)       # NaN until a full window
+                ok = ok & lead.reindex(c.index).fillna(True).astype(bool)
     else:
         s50, s200 = c.rolling(50).mean(), c.rolling(200).mean()
         ok = (c > s200) & (s50 > s200)

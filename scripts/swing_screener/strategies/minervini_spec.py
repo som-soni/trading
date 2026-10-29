@@ -312,6 +312,14 @@ MKT_BREADTH_RISING_DAYS = 5
 # sweepable parameter: `--const MKT_SMA_RISING_DAYS=0` turns the term off and restores the
 # above-the-average-only test.
 MKT_SMA_RISING_DAYS = 10
+# Leadership (1.32): Minervini reads the market through its leaders, not an index average -- in a
+# healthy market more stocks make new 52-week highs than new lows. With MKT_HIGHS_LOWS_DAYS set, the
+# filter also needs the new highs over that many sessions to exceed MKT_HIGHS_LOWS_RATIO x the new
+# lows (among the 1,000 most-traded stocks, breadth_daily). 0 = off. Off by default until measured:
+# applied to 1.31's trades it dropped 2-24 of 490 US trades averaging about 0R (the index and breadth
+# terms already block those days) and 17-23 of 199 Indian trades averaging about -0.2R.
+MKT_HIGHS_LOWS_DAYS = 0
+MKT_HIGHS_LOWS_RATIO = 1.0
 
 MAX_POSITIONS = 8               # PF-02
 MAX_OPEN_RISK_PCT = 6.0         # PF-04
@@ -666,10 +674,16 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.31"
-    # 1.31 changes only an exit, which the scan never reads: 1.30's cached signals still hold.
+    version = "1.32"
+    # 1.31 changed only an exit and 1.32 only the market filter, which the scan never reads: 1.30's
+    # cached signals still hold.
     signal_version = "1.30"
     changelog = (
+        ("1.32", "2026-10-29",
+         "The market filter can also require leadership: new 52-week highs outnumbering new lows "
+         "(MKT_HIGHS_LOWS_DAYS, MKT_HIGHS_LOWS_RATIO), the way Minervini reads a market through its "
+         "leaders rather than an index average. Off by default (MKT_HIGHS_LOWS_DAYS = 0) until a "
+         "backtest measures it, so no rule changed; `--const MKT_HIGHS_LOWS_DAYS=10` turns it on."),
         ("1.31", "2026-10-29",
          "EX-02b, the 20-day failure exit added in 1.27, is switched off (FAIL_SMA20_DAYS 10 -> 0). "
          "In the optimise window (2013-2021, in-sample) it sold 254 of 581 US and 112 of 225 Indian "
@@ -1139,7 +1153,7 @@ class MinerviniSpecStrategy(Strategy):
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
         "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
         "MKT_GUIDE", "MKT_INDEX_SMA", "MKT_BREADTH_MIN_PCT", "MKT_BREADTH_RISING_DAYS",
-        "MKT_SMA_RISING_DAYS", "MAX_POSITIONS", "MAX_OPEN_RISK_PCT", "MAX_ADV_PCT",
+        "MKT_SMA_RISING_DAYS", "MKT_HIGHS_LOWS_DAYS", "MKT_HIGHS_LOWS_RATIO", "MAX_POSITIONS", "MAX_OPEN_RISK_PCT", "MAX_ADV_PCT",
         # which bars are scanned (prefilter_row) and the live price floor -- not what a scan records
         "MIN_TURNOVER_INR_CR", "MIN_TURNOVER_USD_M", "LIVE_MIN_PRICE_INR", "LIVE_MIN_PRICE_USD",
         # the --fundamentals filter, applied to signals after the scan
@@ -1656,7 +1670,10 @@ class MinerviniSpecStrategy(Strategy):
         "- the benchmark index closes above its {MKT_INDEX_SMA}-day average;\n"
         "- that average is higher than {MKT_SMA_RISING_DAYS} sessions ago;\n"
         "- breadth — the share of the 1,000 most-traded stocks above their own 50-day average — is "
-        "above {MKT_BREADTH_MIN_PCT}%, or higher than {MKT_BREADTH_RISING_DAYS} sessions ago.\n\n"
+        "above {MKT_BREADTH_MIN_PCT}%, or higher than {MKT_BREADTH_RISING_DAYS} sessions ago;\n"
+        "- leadership, only when MKT_HIGHS_LOWS_DAYS is set (it is {MKT_HIGHS_LOWS_DAYS}, 0 = off): "
+        "over that many sessions, more of those stocks made new 52-week highs than "
+        "{MKT_HIGHS_LOWS_RATIO} times the number making new lows.\n\n"
         "When it fails, no new buy is taken and waiting buy-stops are cancelled; positions already "
         "held are kept and managed as usual. The live screen applies the same test.\n\n"
         "`--mkt01` swaps in an older test (the index above its 200-day, and its 50-day above its "
@@ -1788,6 +1805,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Index average rising over", "MKT_SMA_RISING_DAYS", "Sessions over which that average must have risen (0 = off)."),
         ("Breadth floor", "MKT_BREADTH_MIN_PCT", "% of stocks above their 50-day that counts as healthy."),
         ("Breadth rising over", "MKT_BREADTH_RISING_DAYS", "Sessions over which breadth may instead be rising."),
+        ("Leadership window", "MKT_HIGHS_LOWS_DAYS", "Sessions over which new highs must outnumber new lows (0 = off)."),
+        ("Leadership ratio", "MKT_HIGHS_LOWS_RATIO", "New highs must exceed this multiple of new lows."),
         ("EPS growth (guide level)", "FUND_EPS_GROWTH_MIN_PCT", "--fundamentals guide: quarterly EPS growth, %."),
         ("Sales growth (guide level)", "FUND_SALES_GROWTH_MIN_PCT", "--fundamentals guide: quarterly sales growth, %."),
         ("Margin slack (guide level)", "FUND_MARGIN_SLACK_PP", "--fundamentals guide: points the margin may fall."),

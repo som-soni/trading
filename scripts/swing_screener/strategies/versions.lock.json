@@ -364,7 +364,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "c1331245",
+    "fingerprint": "4dbd5c38",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -415,6 +415,8 @@
       "MKT_BREADTH_RISING_DAYS": 5,
       "MKT_CONFIRM_DAYS": 5,
       "MKT_GUIDE": 1,
+      "MKT_HIGHS_LOWS_DAYS": 0,
+      "MKT_HIGHS_LOWS_RATIO": 1.0,
       "MKT_INDEX_SMA": 50,
       "MKT_SMA_RISING_DAYS": 10,
       "NOMINAL_TARGET_R": 3.0,
@@ -532,7 +534,7 @@
         "W5"
       ]
     },
-    "version": "1.31"
+    "version": "1.32"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
