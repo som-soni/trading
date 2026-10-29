@@ -4981,7 +4981,14 @@ function strategyBacktests(host, d, key) {
   // covers more than one rule set — then the number alone does not identify the run.
   const vlabel = (v) => (v.ambiguous ? v.spec_id : "v" + v.version);
   let sel = store.get("btVer:" + key, null);
-  if (sel && !vers.some((v) => v.spec_id === sel)) sel = null;   // a filter from before a reload
+  const selOk = (x) => !x || (x.startsWith("v:") ? vers.some((v) => v.version === x.slice(2)) : vers.some((v) => v.spec_id === x));
+  if (!selOk(sel)) sel = null;   // a filter from before a reload
+  // "v:1.31" selects every rule set calling itself v1.31; a spec id selects one of them
+  const verMatch = (b) => !sel || (sel.startsWith("v:") ? b.version === sel.slice(2) : b.spec_id === sel);
+  // Runs: the strategy as configured, or the experiments on it (a --const, --bt ... change). Most of a
+  // strategy under development is experiments, and they are what buries the runs that answer "how
+  // does the strategy do".
+  let ksel = null;
 
   // Market, alongside Version. The page's market picker lives on "Setups today", which only a
   // screener has — so a benchmark strategy had no way to express market at all, and a screener's
@@ -5006,33 +5013,41 @@ function strategyBacktests(host, d, key) {
   // and choosing is how you say which market the Backtest button should queue
   const mkts = [...new Set([...d.backtests.map((b) => b.market), ...MKTS.map((m) => m.key)])].sort();
   if (msel && !mkts.includes(msel)) msel = null;
+
+  const live = (b) => !b.archived;
+  const cnt = (f) => d.backtests.filter((b) => live(b) && f(b)).length;
+  const seg = (label, attr, cur, items) => `<div class="bt-seg"><span class="muted small">${label}</span>${items.map(([v, t, n, tip]) =>
+      `<button class="chip ${(cur || "") === v ? "on" : ""}" data-${attr}="${esc(v)}"${tip ? ` title="${esc(tip)}"` : ""}>${t}${n != null ? ` <span class="n">${n}</span>` : ""}</button>`).join("")}</div>`;
+  const mchips = () => mkts.length <= 1 ? "" : seg("Market", "m", msel, [["", "All", cnt(() => true)],
+    ...mkts.map((m) => [m, `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}`, cnt((b) => b.market === m)])]);
+  const STAGE_ORDER = ["verify", "optimise", "full", "legacy"];
+  const schips = () => { const present = STAGE_ORDER.filter((x) => d.backtests.some((b) => b.stage === x && live(b)));
+    if (present.length <= 1 && !ssel) return "";
+    return seg("Stage", "s", ssel, [["", "All"], ...present.map((x) => { const i = stageInfo({ stage: x });
+      return [x, i.text, cnt((b) => b.stage === x), i.tip.split(".")[0]]; })]); };
+  const kchips = () => { const nExp = cnt((b) => b.variant);
+    if (!nExp && !ksel) return "";
+    return seg("Runs", "k", ksel, [["", "All"], ["plain", "As configured", cnt((b) => !b.variant), "The strategy's own rules and settings"],
+      ["exp", "Experiments", nExp, "Runs that changed a setting (--const, --bt ...)"]]); };
+  // Version: a dropdown, grouped by version number. One chip per rule set (version + fingerprint)
+  // ran to thirty-odd chips on minervini and buried the table.
+  const vselect = () => { if (vers.length <= 1) return "";
+    const byV = new Map();
+    for (const v of vers) { if (!byV.has(v.version)) byV.set(v.version, []); byV.get(v.version).push(v); }
+    const opts = [...byV].map(([ver, xs]) => { const cur = xs.some((x) => x.is_current), n = xs.reduce((a, x) => a + x.runs, 0);
+      const head = `<option value="v:${esc(ver)}" ${sel === "v:" + ver ? "selected" : ""}>v${esc(ver)}${cur ? " — current" : ""} · ${n} run${n === 1 ? "" : "s"}${xs.length > 1 ? ` · ${xs.length} rule sets` : ""}</option>`;
+      return xs.length > 1 ? head + xs.map((x) => `<option value="${esc(x.spec_id)}" ${sel === x.spec_id ? "selected" : ""}>&nbsp;&nbsp;&nbsp;${esc(x.spec_id)}${x.is_current ? " ●" : ""} · ${x.runs}</option>`).join("") : head; }).join("");
+    return `<label class="bt-seg"><span class="muted small">Version</span><select class="bt-vsel" data-vsel>
+      <option value="" ${sel ? "" : "selected"}>All versions · ${cnt(() => true)}</option>${opts}</select></label>`; };
   const achip = () => { const n = d.backtests.filter((b) => b.archived).length;
     if (!n && !showArchived) return "";
-    return `<button class="chip ${showArchived ? "on" : ""}" data-arch="1"
-      title="Archived runs are kept in full — report, figures and trades — and only hidden from this list">
-      Archived <span class="n">${n}</span></button>`; };
-
-  const mchips = () => mkts.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Market</span>
-    <button class="chip ${msel ? "" : "on"}" data-m="">All <span class="n">${d.backtests.filter((b) => !b.archived).length}</span></button>
-    ${mkts.map((m) => `<button class="chip ${msel === m ? "on" : ""}" data-m="${esc(m)}">${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}
-        <span class="n">${d.backtests.filter((b) => b.market === m && !b.archived).length}</span></button>`).join("")}${achip()}</div>`;
-
-  const STAGE_ORDER = ["verify", "optimise", "full", "legacy"];
-  const schips = () => { const present = STAGE_ORDER.filter((x) => d.backtests.some((b) => b.stage === x && !b.archived));
-    if (present.length <= 1 && !ssel) return "";
-    return `<div class="bt-vers"><span class="muted small">Stage</span>
-      <button class="chip ${ssel ? "" : "on"}" data-s="">All</button>
-      ${present.map((x) => { const i = stageInfo({ stage: x });
-        return `<button class="chip ${ssel === x ? "on" : ""}" data-s="${x}" title="${esc(i.tip.split(".")[0])}">${i.text}
-          <span class="n">${d.backtests.filter((b) => b.stage === x && !b.archived).length}</span></button>`; }).join("")}</div>`; };
-
-  const chips = () => vers.length <= 1 ? "" : `<div class="bt-vers"><span class="muted small">Version</span>
-    <button class="chip ${sel ? "" : "on"}" data-v="">All <span class="n">${d.backtests.filter((b) => !b.archived).length}</span></button>
-    ${vers.map((v) => `<button class="chip ${sel === v.spec_id ? "on" : ""}" data-v="${esc(v.spec_id)}" title="${esc(v.spec_id)}${v.is_current ? " — the rules as they stand now" : ""}">
-        ${esc(vlabel(v))}${v.is_current ? '<i class="cur" title="current">●</i>' : ""} <span class="n">${v.runs}</span></button>`).join("")}</div>`;
+    return `<button class="chip ${showArchived ? "on" : ""}" data-arch="1" title="Archived runs are kept in full — report, figures and trades — and only hidden from this list">${showArchived ? "Showing archived" : "Archived"} <span class="n">${n}</span></button>`; };
+  // kept for paint(): the old chip rows' names
+  const chips = () => vselect();
 
   const detail = () => {
-    const v = vers.find((x) => x.spec_id === sel);
+    const v = sel && sel.startsWith("v:") ? (vers.find((x) => x.version === sel.slice(2) && x.is_current) || vers.find((x) => x.version === sel.slice(2)))
+      : vers.find((x) => x.spec_id === sel);
     if (!v) return "";
     const since = v.since || [];
     return `<div class="bt-vdet">
@@ -5048,7 +5063,8 @@ function strategyBacktests(host, d, key) {
   };
 
   // computed per paint, not once: `sel` changes when a chip is clicked
-  const table = () => { const shown = d.backtests.filter((b) => (!sel || b.spec_id === sel) && (!msel || b.market === msel) && (!ssel || b.stage === ssel)
+  const table = () => { const shown = d.backtests.filter((b) => verMatch(b) && (!msel || b.market === msel) && (!ssel || b.stage === ssel)
+                                                                 && (!ksel || (ksel === "exp" ? b.variant : !b.variant))
                                                                  && (showArchived ? b.archived : !b.archived));
     // The options list runs to six items on a minervini run ("ranked by RS · spec rules · mktg ·
     // rb14 · progressive exposure (10 trades, pilot 0.5) · entries: high-confidence + on-trigger"),
@@ -5095,21 +5111,26 @@ function strategyBacktests(host, d, key) {
     // row and the Version row, splitting one group of filters in half with an unrelated action --
     // and because the button and an active chip share the accent fill, the three rows read as one
     // undifferentiated stack of orange controls rather than "two filters, one button".
-    host.innerHTML = `<div class="bt-bar"><div class="bt-filters">${mchips()}${d.backtests.length ? schips() + chips() : ""}</div>${runBtn()}</div>`
+    host.innerHTML = `<div class="bt-bar"><div class="bt-filters">${mchips()}${d.backtests.length ? schips() + kchips() + chips() + achip() : ""}</div>${runBtn()}</div>`
       + (d.backtests.length ? detail() + table()
       : `<div class="empty"><b>No backtests loaded for this strategy</b><div class="muted">${canRun ? "Queue one with the button above, or run" : "Run"} the command under Rules › Commands; reports load into the app automatically.</div></div>`);
-    host.querySelectorAll(".bt-vers .chip[data-v]").forEach((b) => b.onclick = () => {
-      sel = b.dataset.v || null;
+    host.querySelector("[data-vsel]")?.addEventListener("change", (e) => {
+      sel = e.target.value || null;
       store.set("btVer:" + key, sel);
       paint();
       wireBtRun();
     });
-    host.querySelectorAll(".bt-vers .chip[data-s]").forEach((b) => b.onclick = () => {
+    host.querySelectorAll(".bt-seg .chip[data-k]").forEach((b) => b.onclick = () => {
+      ksel = b.dataset.k || null;
+      paint();
+      wireBtRun();
+    });
+    host.querySelectorAll(".bt-seg .chip[data-s]").forEach((b) => b.onclick = () => {
       ssel = b.dataset.s || null;
       paint();
       wireBtRun();
     });
-    host.querySelectorAll(".bt-vers .chip[data-m]").forEach((b) => b.onclick = () => {
+    host.querySelectorAll(".bt-seg .chip[data-m]").forEach((b) => b.onclick = () => {
       msel = b.dataset.m || null;
       paint();
       wireBtRun();

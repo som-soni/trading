@@ -1830,3 +1830,17 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .edge-legend .el { white-space: nowrap; }
 .edge-sel { margin-left: 6px; display: inline-flex; align-items: center; }
 .crumbs .edge-chip, .co-sec h2 .edge-chip { margin: 0 8px; font-weight: normal; vertical-align: middle; }
+.crumbs .edge-chip, .co-sec h2 .edge-chip { margin: 0 8px; font-weight: normal; vertical-align: middle; }
+
+/* Backtests tab: the filters as one wrapping toolbar row (market · stage · runs · version · archived) */
+.bt-filters { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 18px; flex: 1 1 auto; }
+.bt-seg { display: inline-flex; align-items: center; gap: 4px; }
+.bt-seg > .muted { margin-right: 2px; }
+.bt-filters .chip { font-size: 12px; padding: 3px 10px; border-radius: 12px; border: 1px solid var(--line-2);
+  background: var(--panel); color: var(--text); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.bt-filters .chip:hover { background: var(--panel-2); color: var(--strong); }
+.bt-filters .chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bt-filters .chip .n { opacity: .7; font-variant-numeric: tabular-nums; }
+.bt-vsel { font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); max-width: 320px; }
+.bt-bar { align-items: center; }
+.bt-run { margin-left: auto; }
