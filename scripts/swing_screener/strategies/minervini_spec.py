@@ -396,6 +396,14 @@ def vcp_measured_move(base_high, first_depth_pct) -> float:
     return float(base_high) * float(first_depth_pct) / 100 if base_high and first_depth_pct else float("nan")
 
 
+def _rr(r_mult, ok: bool) -> str:
+    """An R multiple for the card: one decimal, or two when one would round a miss up to the limit
+    (1.98R printed as "2.0R" beside "at least 2R" read as a pass)."""
+    if not r_mult:
+        return "—"
+    return f"{r_mult:.2f}R" if not ok and round(r_mult, 1) >= MIN_STRUCTURAL_R else f"{r_mult:.1f}R"
+
+
 def footprint(base_days, depths) -> str:
     """Minervini's one-line summary of a base: weeks, deepest/final contraction in %, number of
     contractions -- "27W 27/7 3T" for Netflix's 2009 base. Weeks are sessions / 5; just "7W" when the
@@ -2655,13 +2663,14 @@ class MinerviniSpecStrategy(Strategy):
             for k in range(1, len(depths)):
                 if depths[k - 1] > 0 and depths[k] > WIDEN_TOL * depths[k - 1]:
                     culprit = k
-        # The base carries ONE label, Minervini's footprint ("7W 11/3 2T"): weeks, deepest/final
-        # pullback, count. Per-pullback depths and the tight area's range used to be written on the
-        # chart too, and on a base of four or five pullbacks they piled up over the candles; they are
+        # The base carries ONE label, Minervini's footprint ("7W 11/3 2T": weeks, deepest/final
+        # pullback, count), as the zone's `tag` -- the chart writes it into the zone's caption, since a
+        # shaded box draws no text. Per-pullback depths and the tight area's range used to be written on
+        # the chart too, and on a base of four or five pullbacks they piled up over the candles; they are
         # in the card's Base zone. The pullbacks keep their path, and the one a VCP-05 / VCP-06
         # failure is about keeps its ✗ -- without it a failed base would not show where it failed.
         base_shapes = [{"shape": "box", "from": bd, "to": at, "top": bh, "bottom": base_low, "role": "base", "shade": True,
-                        "label": footprint(r["base_days"], depths)}]
+                        "label": ""}]
         if legs:
             pts = []
             for k, (hd, h, ld, low) in enumerate(legs):
@@ -2682,7 +2691,8 @@ class MinerviniSpecStrategy(Strategy):
                  f"the last one that WIDENED — {MIN_FROM_REFERENCE} more, the last of them at most "
                  f"{FINAL_REF_RATIO:g}× that widening." if depths else "")
         verdict = "" if done or fail in (None, "VCP-03") else f" It failed here: {self._vcp_fail_why(r, daily, bh_i, rep)}."
-        zones.append({"key": "base", "title": "Base", "state": zstate("base"), "from": bd, "to": at,
+        zones.append({"key": "base", "title": "Base", "tag": footprint(r["base_days"], depths),
+                      "state": zstate("base"), "from": bd, "to": at,
                       "warn": any(c["code"] == "note" and c["state"] == "warn" for c in checks["base"]),
                       "line": f"{r['base_days']} days, {(1 - base_low / bh) * 100:.1f}% deep"
                               + (f", {len(depths)} pullbacks" if depths else ""),
@@ -2704,10 +2714,13 @@ class MinerviniSpecStrategy(Strategy):
             e_i = bo if bo is not None else rep
             entry_to = day(min(len(daily) - 1, e_i + TIME_STOP_DAYS))
             e_from = at
-            levels = [("buy", buy, f"Buy above {px(buy)}"), ("stop", stop, f"Stop {px(stop)} (−{risk_pct:.1f}%)"),
-                      ("breakeven", buy + BREAKEVEN_R * risk, f"+{BREAKEVEN_R:g}R {px(buy + BREAKEVEN_R * risk)} · stop to breakeven")]
+            # Short labels, and none on the +2R breakeven line: with a target near 2R the two lines sit on
+            # top of each other, and four labels stacked in a narrow entry zone could not be read. The
+            # risk, the R multiple and the breakeven rule are in the card's Entry zone.
+            levels = [("buy", buy, f"Buy {px(buy)}"), ("stop", stop, f"Stop {px(stop)}"),
+                      ("breakeven", buy + BREAKEVEN_R * risk, "")]
             if target:
-                levels.append(("target", target, f"Target {px(target)} · {r_mult:.1f}R"))
+                levels.append(("target", target, f"Target {px(target)}"))
             shapes = [{"shape": "level", "from": e_from, "to": entry_to, "price": v, "role": role, "label": lab,
                        "dash": role != "buy"} for role, v, lab in levels]
             if bo is not None:
@@ -2717,23 +2730,23 @@ class MinerviniSpecStrategy(Strategy):
             e_checks = [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
-                {"code": "R:R", "name": "Reward / risk", "value": f"{r_mult:.1f}R" if r_mult else "—",
+                {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
                  "limit": f"at least {MIN_STRUCTURAL_R:g}R", "state": "pass" if ok_r else "fail"},
             ]
             skip = [] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]
             if not ok_r:
-                skip.append(f"it projects {r_mult:.1f}R, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no measured move")
+                skip.append(f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no measured move")
             happened = (f" It broke out on {day(bo)}." if bo is not None else " It has not broken out yet.")
             zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": e_from, "to": entry_to,
                           "illustration": True,
-                          "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {r_mult:.1f}R" if r_mult else ""),
+                          "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult else ""),
                           "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
                                    f"not a backtest result. Buy with a buy-stop just above the pivot, at {px(buy)}; the "
                                    f"breakout counts only on volume of at least {VOL_MULT:g}× the 50-day average. The stop "
                                    f"goes {STOP_BUFFER_PCT:g}% under the tight-area low, at {px(stop)}: a risk of "
                                    f"{risk_pct:.1f}% a share (the strategy skips anything over {MAX_STOP_PCT:g}%)."
                                    + (f" The target is the base's measured move, its high less its first pullback's low, "
-                                      f"projected from the buy: {px(target)}, {r_mult:.1f}R (it needs at least "
+                                      f"projected from the buy: {px(target)}, {_rr(r_mult, ok_r)} (it needs at least "
                                       f"{MIN_STRUCTURAL_R:g}R, before any overhead supply caps it)." if target else "")
                                    + f" Managing it: the stop moves to breakeven at +{BREAKEVEN_R:g}R; a third is sold "
                                      f"once the close is {STRENGTH_EXT_PCT:g}% above the 50-day average; the rest goes on a "
@@ -2761,9 +2774,8 @@ class MinerviniSpecStrategy(Strategy):
             shapes = [{"shape": "box", "from": day(max(0, ci - CHEAT_SHELF_DAYS)), "to": day(ci - 1),
                        "top": float(cp["cheat_pivot"]), "bottom": float(cp["cheat_low"]), "role": "tight",
                        "label": ""}]   # the base carries the one label (its footprint); the shelf range is in the card
-            levels = [("buy", entry, f"Cheat buy {px(entry)}"), ("stop", stop, f"Stop {px(stop)} (−{risk_pct:.1f}%)"),
-                      ("breakeven", entry + BREAKEVEN_R * risk, f"+{BREAKEVEN_R:g}R {px(entry + BREAKEVEN_R * risk)} · stop to breakeven"),
-                      ("target", target, f"Target {px(target)} · {r_mult:.1f}R" if r_mult else f"Target {px(target)}")]
+            levels = [("buy", entry, f"Cheat buy {px(entry)}"), ("stop", stop, f"Stop {px(stop)}"),
+                      ("breakeven", entry + BREAKEVEN_R * risk, ""), ("target", target, f"Target {px(target)}")]
             shapes += [{"shape": "level", "from": c_from, "to": c_to, "price": v, "role": role, "label": lab,
                         "dash": role != "buy"} for role, v, lab in levels]
             ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
@@ -2779,14 +2791,14 @@ class MinerviniSpecStrategy(Strategy):
             ] if CHEAT_DRYUP else []) + [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
-                {"code": "R:R", "name": "Reward / risk", "value": f"{r_mult:.1f}R" if r_mult else "—",
+                {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
                  "limit": f"at least {MIN_STRUCTURAL_R:g}R", "state": "pass" if ok_r else "fail"},
             ]
             skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
-                   ([] if ok_r else [f"it projects {r_mult:.1f}R, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"])
+                   ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"])
             zones.append({"key": "cheat", "title": "Cheat entry", "state": "pass" if not skip else "fail",
                           "from": c_from, "to": c_to, "illustration": True,
-                          "line": f"{third} third · buy {px(entry)} · stop {px(stop)}" + (f" · {r_mult:.1f}R" if r_mult else ""),
+                          "line": f"{third} third · buy {px(entry)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult else ""),
                           "text": (f"Where this strategy's rules place a cheat entry: an illustration, not a recommendation "
                                    f"and not a backtest result. A cheat is bought while the base is still forming, before "
                                    f"the stock has recovered its old high, so its stop is close. On {c_from} the close "
@@ -2795,7 +2807,7 @@ class MinerviniSpecStrategy(Strategy):
                                    f"session's open, estimated here by that close, {px(entry)}. The stop goes {STOP_BUFFER_PCT:g}% under the shelf low, at {px(stop)}: "
                                    f"a risk of {risk_pct:.1f}% (the strategy skips anything over {MAX_STOP_PCT:g}%). The "
                                    f"objective is the old high, {px(bh)}, plus the base's measured move: {px(target)}"
-                                   + (f", {r_mult:.1f}R (it needs at least {MIN_STRUCTURAL_R:g}R, before any overhead "
+                                   + (f", {_rr(r_mult, ok_r)} (it needs at least {MIN_STRUCTURAL_R:g}R, before any overhead "
                                       f"supply caps it)." if r_mult else ".")
                                    + f" Managing it is the same as any entry: the stop moves to breakeven at "
                                      f"+{BREAKEVEN_R:g}R, a third is sold once the close is {STRENGTH_EXT_PCT:g}% above the "
@@ -2858,7 +2870,10 @@ class MinerviniSpecStrategy(Strategy):
         return {"from": up_from, "base_from": bd, "to": frame_to, "kind": kind, "complete": done, "fail": fail,
                 "breakout": day(bo) if bo is not None else None, "live": live, "as_of": at,
                 "title": title, "summary": summary,
-                "frame": {"from": up_from, "to": frame_to, "top": top, "bottom": bottom}, "zones": zones}
+                # headroom above the highest level: the zone captions sit just inside the frame's top
+                # edge, which was exactly the target's price, so "③ Entry" and "Target …" overprinted
+                "frame": {"from": up_from, "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
+                "zones": zones}
 
     @staticmethod
     def _vcp_fail_why(r: dict, daily: pd.DataFrame, bh_i: int, rep: int) -> str:

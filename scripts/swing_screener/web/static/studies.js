@@ -331,7 +331,7 @@ const Studies = (() => {
               const st = traded && isEntry(z) ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
               // captions just inside the frame's top edge: below it, the setup lane would cover them
               shapes.push({ shape: "text", at: z.from, price: f.top, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
-                label: `${NUM[n]} ${z.title} ${ICON[st]}` });
+                label: `${NUM[n]} ${z.title}${z.tag ? ` · ${z.tag}` : ""} ${ICON[st]}` });
               if (isEntry(z) && traded) {
                 // The run's own record, drawn HERE and in this indicator's vocabulary, so an
                 // illustrated setup and a traded one look the same and differ only in where the
