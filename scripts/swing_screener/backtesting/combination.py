@@ -64,6 +64,14 @@ DOC = {
         "month-end."
     ),
     "status": (
+        "INDIA VERIFY: TWO OF THREE TESTS MET. Out-of-sample (verify, 2022-01-01 to 2026-10-28) India half "
+        "and half at v1.5 returns 22.65% CAGR, "
+        "+12.82 points a year over its blended benchmark, Sharpe 1.16 against 0.66, max drawdown -23.5% "
+        "against the momentum sleeve's -32.1% alone over the same years. It met two of the three criteria set "
+        "before the run (excess above zero; a shallower drawdown than momentum alone) and missed the third: "
+        "its worst year, 2022 at -12.7%, is deeper than momentum alone's -9.9%, because dual momentum "
+        "switched ten times that year and lost on most of them. It had one down year to momentum alone's "
+        "two (2025: +24.5% against -7.9%). "
         "Built from a measured gap in the shelf rather than from a new signal. In-sample (optimise, "
         "2013-2021) at v1.5, India half and half returns 21.30% CAGR, +6.60 points a year over its blended "
         "benchmark, Sharpe 1.20 against 0.87, max drawdown -28.3% against the momentum sleeve's -50.5% alone. "
