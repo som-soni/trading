@@ -1108,7 +1108,7 @@ const Studies = (() => {
           ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup. Its levels are the run's own record; every other setup here is what the rules would have set up on, not a trade."],
           ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
           ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
-          ["shade", col("base"), "② Base", "the pullbacks, numbered, with their depths; a VCP's get smaller. ✗ marks the one that broke the rule."],
+          ["shade", col("base"), "② Base", "labelled with Minervini's footprint: weeks, deepest/final pullback in %, number of pullbacks (7W 11/3 2T). A VCP's pullbacks get smaller; ✗ marks the one that broke the rule."],
           ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],
           ["line", col("buy"), "Entry", "buy above the pivot (or at a cheat's close), stop (red), +2R and target (dotted). An illustration of the rules."],
           ["dot", col("flag"), "! Amber", "something the rules pass but worth a look, such as a deep dip inside the uptrend."],

@@ -396,6 +396,17 @@ def vcp_measured_move(base_high, first_depth_pct) -> float:
     return float(base_high) * float(first_depth_pct) / 100 if base_high and first_depth_pct else float("nan")
 
 
+def footprint(base_days, depths) -> str:
+    """Minervini's one-line summary of a base: weeks, deepest/final contraction in %, number of
+    contractions -- "27W 27/7 3T" for Netflix's 2009 base. Weeks are sessions / 5; just "7W" when the
+    base has no measured contractions yet. Shared by the chart and the breakout eval set."""
+    weeks = f"{max(1, round((base_days or 0) / 5))}W"
+    if not depths:
+        return weeks
+    pct = lambda x: max(1, round(float(x)))
+    return f"{weeks} {pct(max(depths))}/{pct(depths[-1])} {len(depths)}T"
+
+
 def cheat_cross(prev: dict, prev_close: float, close: float) -> str | None:
     """MV-03 / MV-04: today's close cleared YESTERDAY's cheat shelf (the shelf high is a max over a window
     that includes the current bar, so today's own shelf can never be crossed — MV-01 freezes the pivot
@@ -2644,28 +2655,24 @@ class MinerviniSpecStrategy(Strategy):
             for k in range(1, len(depths)):
                 if depths[k - 1] > 0 and depths[k] > WIDEN_TOL * depths[k - 1]:
                     culprit = k
-        # The base high is labelled because it is the level every other one is read against -- and
-        # without it the band's top was the one line on the chart with no price, while the tight
-        # area's top beside it was labelled "pivot": EW's 2019 base read as topping at the pivot
-        # (59.95), not at its real high (65.95), and a cheat bought 11% below that looked wrong.
+        # The base carries ONE label, Minervini's footprint ("7W 11/3 2T"): weeks, deepest/final
+        # pullback, count. Per-pullback depths and the tight area's range used to be written on the
+        # chart too, and on a base of four or five pullbacks they piled up over the candles; they are
+        # in the card's Base zone. The pullbacks keep their path, and the one a VCP-05 / VCP-06
+        # failure is about keeps its ✗ -- without it a failed base would not show where it failed.
         base_shapes = [{"shape": "box", "from": bd, "to": at, "top": bh, "bottom": base_low, "role": "base", "shade": True,
-                        "label": f"base high {px(bh)}"}]
+                        "label": footprint(r["base_days"], depths)}]
         if legs:
             pts = []
-            many = len(depths) > MAX_CONTRACTIONS   # every label would pile up: keep the telling ones
-            keep = {0, len(depths) - 1, max(range(len(depths)), key=lambda k: depths[k])} if many and depths else None
             for k, (hd, h, ld, low) in enumerate(legs):
-                mark = " ✗" if k == culprit else ""
                 pts += [{"at": iso(hd), "price": float(h), "label": ""},
-                        {"at": iso(ld), "price": float(low),
-                         # short, since lows sit close together: the number and depth, ✗ on the culprit
-                         "label": f"{k + 1}{mark} −{dep(depths[k])}" if k < len(depths) and (keep is None or k in keep) else ""}]
+                        {"at": iso(ld), "price": float(low), "label": "✗" if k == culprit else ""}]
             base_shapes.append({"shape": "path", "from": bd, "to": at, "points": pts, "role": "contraction", "label": ""})
         tight = ""
         if r["tight_from"] is not None and r["pivot"]:
             tf, pv, tl = iso(r["tight_from"]), float(r["pivot"]), float(r["tight_low"])
             base_shapes.append({"shape": "box", "from": tf, "to": at, "top": pv, "bottom": tl, "role": "tight",
-                                "label": f"tight {r['tight_range_pct']:.1f}%"})
+                                "label": ""})
             dry = (f", on volume {r['dryup']:.2f}× its 50-day average (at most {DRYUP_RATIO:g}×): sellers have dried up"
                    if r["dryup"] is not None else "")
             tight = (f" The last stretch is tight: {r['tight_range_pct']:.1f}% from {px(tl)} to {px(pv)} (at most "
@@ -2753,7 +2760,7 @@ class MinerviniSpecStrategy(Strategy):
             c_from, c_to = day(ci), day(min(len(daily) - 1, ci + TIME_STOP_DAYS))
             shapes = [{"shape": "box", "from": day(max(0, ci - CHEAT_SHELF_DAYS)), "to": day(ci - 1),
                        "top": float(cp["cheat_pivot"]), "bottom": float(cp["cheat_low"]), "role": "tight",
-                       "label": f"shelf {cp['cheat_range_pct']:.1f}%"}]
+                       "label": ""}]   # the base carries the one label (its footprint); the shelf range is in the card
             levels = [("buy", entry, f"Cheat buy {px(entry)}"), ("stop", stop, f"Stop {px(stop)} (−{risk_pct:.1f}%)"),
                       ("breakeven", entry + BREAKEVEN_R * risk, f"+{BREAKEVEN_R:g}R {px(entry + BREAKEVEN_R * risk)} · stop to breakeven"),
                       ("target", target, f"Target {px(target)} · {r_mult:.1f}R" if r_mult else f"Target {px(target)}")]
