@@ -52,7 +52,13 @@ MIN_PRICE = 5.0
 MIN_SESSIONS_TO_PEAK = 10  # a move that tops out inside two weeks is a news spike, not a trend
 HISTORY_DAYS = 400        # calendar days read before the window, for the range and the turnover average
 
-# What a reviewer can call a case, following the Learn guide on the VCP.
+# A review answers two separate questions. `review_label` is the SHAPE the move came out of; whether that
+# setup QUALIFIES as a SEPA entry under the Learn guide's rules is `review_qualifies` -- AXSM's January 2019
+# run and flag is power-play shaped, but its flag fell 29% against the guide's 20-25%, so it does not. The
+# detector is scored against the second: it should fire on "yes" and stay quiet on "no".
+QUALIFIES = ("yes", "no", "borderline")
+
+# What a reviewer can call a case's shape, following the Learn guide on the VCP.
 LABELS = {
     "vcp": "a VCP: pullbacks that shrink, volume drying up, a tight area near the top of the base",
     "base": "a base that is not a VCP: cup, flat base, double bottom … without shrinking pullbacks",
@@ -80,6 +86,7 @@ CREATE TABLE IF NOT EXISTS breakout_eval_cases (
     gain_pct DOUBLE PRECISION,
     sessions_to_peak INTEGER,
     review_label VARCHAR(16),
+    review_qualifies VARCHAR(12),
     review_entry_date DATE,
     review_pivot DOUBLE PRECISION,
     review_footprint VARCHAR(32),
@@ -89,6 +96,7 @@ CREATE TABLE IF NOT EXISTS breakout_eval_cases (
 );
 ALTER TABLE breakout_eval_cases ADD COLUMN IF NOT EXISTS review_entry_date DATE;
 ALTER TABLE breakout_eval_cases ADD COLUMN IF NOT EXISTS review_pivot DOUBLE PRECISION;
+ALTER TABLE breakout_eval_cases ADD COLUMN IF NOT EXISTS review_qualifies VARCHAR(12);
 """
 
 
@@ -185,15 +193,18 @@ def cases() -> pd.DataFrame:
 
 
 def label(case_id: int, value: str, footprint: str | None = None, notes: str | None = None,
-          entry: str | None = None, pivot: float | None = None) -> None:
+          entry: str | None = None, pivot: float | None = None, qualifies: str | None = None) -> None:
     if value not in LABELS:
         raise SystemExit(f"label must be one of {', '.join(LABELS)}")
+    if qualifies is not None and qualifies not in QUALIFIES:
+        raise SystemExit(f"qualifies must be one of {', '.join(QUALIFIES)}")
     init_schema()
     with db.get_connection().cursor() as cur:
         cur.execute("UPDATE breakout_eval_cases SET review_label=%s, review_footprint=COALESCE(%s, review_footprint), "
                     "review_notes=COALESCE(%s, review_notes), review_entry_date=COALESCE(%s, review_entry_date), "
-                    "review_pivot=COALESCE(%s, review_pivot), reviewed_at=now() WHERE id=%s",
-                    (value, footprint, notes, entry, pivot, case_id))
+                    "review_pivot=COALESCE(%s, review_pivot), review_qualifies=COALESCE(%s, review_qualifies), "
+                    "reviewed_at=now() WHERE id=%s",
+                    (value, footprint, notes, entry, pivot, qualifies, case_id))
 
 
 def main() -> None:
@@ -206,18 +217,19 @@ def main() -> None:
     ap.add_argument("--notes")
     ap.add_argument("--entry", help="the valid entry session, YYYY-MM-DD")
     ap.add_argument("--pivot", type=float, help="the buy point that entry crossed")
+    ap.add_argument("--qualifies", choices=QUALIFIES, help="does the setup qualify under the Learn guide's rules")
     a = ap.parse_args()
     if a.build:
         print(f"{build()} cases in {EVAL_SET}")
     if a.label:
-        label(int(a.label[0]), a.label[1], a.footprint, a.notes, a.entry, a.pivot)
+        label(int(a.label[0]), a.label[1], a.footprint, a.notes, a.entry, a.pivot, a.qualifies)
     if a.list or not (a.build or a.label):
         df = cases()
         nm = names.load(MARKET)
         df.insert(3, "name", [(names.lookup(nm, s) or "")[:28] for s in df["symbol"]])
         with pd.option_context("display.max_rows", None, "display.width", 200):
             print(df[["id", "symbol", "name", "breakout_date", "breakout_close", "peak_date",
-                      "gain_pct", "sessions_to_peak", "range_depth_pct", "review_label"]]
+                      "gain_pct", "sessions_to_peak", "range_depth_pct", "review_label", "review_qualifies"]]
                   .round(1).to_string(index=False))
 
 

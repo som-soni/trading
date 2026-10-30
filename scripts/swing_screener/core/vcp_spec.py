@@ -76,6 +76,18 @@ class VcpParams:
     # under `dryup_quiet_ratio` x it, the average taken the bar before the shelf). 0 = tightness only.
     # An int, not a bool, so a strategy's fingerprint sees it.
     cheat_dryup: int = 0
+    # The cheat's SEQUENCE (Minervini's 3C, and the low cheat is "the same, in the lower third"): the
+    # stock falls, makes a low, rallies, then pauses -- "do not try to buy the low of a downtrend".
+    # `cheat_rally_frac` > 0 requires the shelf to come after that turn: the base's low is set BEFORE
+    # the shelf, the shelf holds above it (a higher low), and between that low and the shelf the high
+    # won back at least this fraction of the decline from the base high. 0 = no sequence test.
+    cheat_rally_frac: float = 0.0
+    # The shelf's volume must CONTRACT, not merely be quiet against the 50-day average (which a decline
+    # on light volume passes from start to finish): its average at most `cheat_vol_contract` x the
+    # average of the sessions just before it -- the rally from the low, and at least
+    # `cheat_vol_lookback` sessions. 0 = no contraction test.
+    cheat_vol_contract: float = 0.0
+    cheat_vol_lookback: int = 10
     bh_break_pct: float = 2.0        # fallback when ATR is unavailable  [assumption]
     min_swing_pct: float = 2.0       # contractions shallower than this are wiggles  [assumption]
     zigzag_atr_mult: float = 1.5     # the zig-zag threshold is at least this many ATRs. A FIXED
@@ -318,6 +330,7 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
            "base_low": None, "cheat_ok": False, "cheat_pivot": None, "cheat_low": None,
            "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None,
            "cheat_dryup": None, "cheat_quiet_days": None, "cheat_fail_why": None,
+           "cheat_rally": None, "cheat_higher_low": None, "cheat_vol_vs_lead": None,
            "pivot_pos": None, "pivot_zone": None, "tight_days_actual": None,
            "base_closes_below_200": None, "fail_why": None, "base_depth_pct": None,
            "deep_base": None, "dryup_quiet_days": None, "wide_and_loose": None,
@@ -483,6 +496,30 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         out["cheat_fail_why"] = (f"the shelf's volume averaged {sh_dry:.2f}x its 50-day (needs <= "
                                  f"{p.dryup_ratio:g}) with {sh_quiet} session(s) at or under "
                                  f"{p.dryup_quiet_ratio:g}x (needs {p.dryup_quiet_days})")
+    # the turn before the shelf, and the shelf's volume against the run-up into it -- measured for any
+    # shelf, so the chart can show them; they refuse a cheat only when their parameter is on
+    sh0 = len(d) - len(sh)
+    lo_i = start_i + int(np.argmin(low[start_i:sh0])) if sh0 > start_i else None
+    if lo_i is not None:
+        pre_low = float(low[lo_i])
+        drop = float(high[bh_i]) - pre_low
+        rally = (float(high[lo_i:sh0].max()) - pre_low) / drop if drop > 0 else float("nan")
+        out["cheat_rally"], out["cheat_higher_low"] = rally, bool(sh_lo > pre_low)
+        lead = d["volume"].iloc[max(start_i, min(lo_i, sh0 - p.cheat_vol_lookback)):sh0]
+        lead_v = float(lead.mean()) if len(lead) else float("nan")
+        out["cheat_vol_vs_lead"] = float(sh["volume"].mean()) / lead_v if lead_v and lead_v == lead_v else float("nan")
+    if out["cheat_ok"] and p.cheat_rally_frac > 0 and not (
+            out["cheat_higher_low"] and (out["cheat_rally"] or 0) >= p.cheat_rally_frac):
+        out["cheat_ok"] = False
+        out["cheat_fail_why"] = ("no turn before the shelf: " + (
+            "it holds no higher low than the base's" if not out["cheat_higher_low"] else
+            f"the rally off the low won back {(out['cheat_rally'] or 0) * 100:.0f}% of the decline "
+            f"(needs {p.cheat_rally_frac * 100:.0f}%)"))
+    vr = out["cheat_vol_vs_lead"]
+    if out["cheat_ok"] and p.cheat_vol_contract > 0 and not (vr is not None and vr == vr and vr <= p.cheat_vol_contract):
+        out["cheat_ok"] = False
+        out["cheat_fail_why"] = (f"the shelf's volume did not contract: {vr:.2f}x the sessions before it "
+                                 f"(needs <= {p.cheat_vol_contract:g})")
 
     # ---- step 2: the contractions, segmented by zig-zag
     # A leg turns only after a `zigzag_pct` reversal in BOTH directions. Segmenting on swing

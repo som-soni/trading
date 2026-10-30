@@ -364,7 +364,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "bbff7424",
+    "fingerprint": "4fcebf65",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -372,8 +372,11 @@
       "BUY_RANGE_PCT": 5.0,
       "CHEAT_BLOCK_VCP09": 0,
       "CHEAT_DRYUP": 1,
+      "CHEAT_RALLY_FRAC": 0.33,
       "CHEAT_SHELF_DAYS": 7,
       "CHEAT_SHELF_PCT": 8.0,
+      "CHEAT_VOL_CONTRACT": 0.9,
+      "CHEAT_VOL_LOOKBACK": 10,
       "CLIMAX_IS_PARTIAL": 1,
       "COIL_PCT": 8.0,
       "DEEP_BASE_FLAG_PCT": 35.0,
@@ -470,8 +473,11 @@
       "VCP.bh_break_atr": 1.0,
       "VCP.bh_break_pct": 2.0,
       "VCP.cheat_dryup": 1,
+      "VCP.cheat_rally_frac": 0.33,
       "VCP.cheat_shelf_days": 7,
       "VCP.cheat_shelf_pct": 8.0,
+      "VCP.cheat_vol_contract": 0.9,
+      "VCP.cheat_vol_lookback": 10,
       "VCP.deep_base_flag_pct": 35.0,
       "VCP.deep_decline_resets": 1,
       "VCP.dryup_quiet_days": 2,
@@ -536,7 +542,7 @@
         "W5"
       ]
     },
-    "version": "1.34"
+    "version": "1.35"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
