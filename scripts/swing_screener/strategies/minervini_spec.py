@@ -117,6 +117,12 @@ PP_RUN_MULT = 2.0            # … during which price at least doubled, measured
 PP_FLAG_MIN_DAYS = 10        # the pause: about 2 …
 PP_FLAG_MAX_DAYS = 30        # … to 6 weeks
 PP_FLAG_MAX_DEPTH_PCT = 25.0
+# PP-05, the width of the flag's tight area (its last swing high to today). 1.36: held to the flag's own
+# depth limit instead of a VCP's TIGHT_PCT (10%). The Learn guide's power play is a flag "correcting no more
+# than 20-25%" with volume contracting before the breakout -- it sets no 10% tight area, and that test
+# refused the guide's own example (VKTX, January 2024: a 14% flag, its tight area 13.4%). The volume test
+# (PP-06) still applies.
+PP_TIGHT_PCT = 25.0
 # ---- S6, the flat base (1.28). "Not all consolidations have tight pivot points. When a flat base
 # occurs with no real pivot other than the high of the base, an investor can look to buy as the
 # stock moves above the highest price at the top of the base provided that the base corrects no
@@ -190,7 +196,7 @@ VCP_RULES = {
 POWER_PLAY = vcp_spec.PowerPlayParams(
     run_window=PP_RUN_WINDOW, run_mult=PP_RUN_MULT, flag_min_days=PP_FLAG_MIN_DAYS,
     flag_max_days=PP_FLAG_MAX_DAYS, flag_max_depth_pct=PP_FLAG_MAX_DEPTH_PCT,
-    tight_pct=TIGHT_PCT, tight_min_days=TIGHT_MIN_DAYS, swing_k=SWING_K,
+    tight_pct=PP_TIGHT_PCT, tight_min_days=TIGHT_MIN_DAYS, swing_k=SWING_K,
     dryup=PP_DRYUP, dryup_ratio=DRYUP_RATIO, dryup_quiet_days=DRYUP_QUIET_DAYS,
     dryup_quiet_ratio=DRYUP_QUIET_RATIO,
 )
@@ -737,7 +743,10 @@ class MinerviniSpecStrategy(Strategy):
          "A power play's target is the run into the flag (the flagpole, from the run's low to the flag's "
          "high) projected from the buy. It was the flag's tight range -- the same distance as the stop below "
          "it -- so a power play projected under 1R and the 2:1 minimum refused every one: MV-05 could fire "
-         "but never trade. evaluate() now records pp_flag_high, so cached signals are rescanned."),
+         "but never trade. And PP-05, the flag's tight area, is held to the flag's own 25% limit "
+         "(PP_TIGHT_PCT) instead of a VCP's 10%: the Learn guide sets no such test, and it refused the guide's "
+         "own example (VKTX, January 2024, a 13.4% tight area). evaluate() now records pp_flag_high, so cached "
+         "signals are rescanned."),
         ("1.35", "2026-10-30",
          "A high with a fall of more than MAX_BASE_DEPTH_PCT (50%) below it no longer anchors a base "
          "(DEEP_DECLINE_RESETS): that fall is a Stage 4 decline, and the base count starts again from the "
@@ -1857,6 +1866,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Power play, flag length", "PP_FLAG_MIN_DAYS", "MV-05: shortest pause that counts."),
         ("Power play, flag length max", "PP_FLAG_MAX_DAYS", "MV-05: longest pause that counts."),
         ("Power play, flag depth", "PP_FLAG_MAX_DEPTH_PCT", "MV-05: deepest the flag may fall."),
+        ("Power play, tight area", "PP_TIGHT_PCT", "MV-05: widest the flag's last stretch may be (PP-05); the "
+         "flag's own limit, not a VCP's {TIGHT_PCT}%."),
         ("Flat base, length", "FLAT_MIN_DAYS", "S6: shortest flat base, in sessions."),
         ("Flat base, length max", "FLAT_MAX_DAYS", "S6: longest flat base, in sessions."),
         ("Flat base, depth", "FLAT_MAX_DEPTH_PCT", "S6: deepest a flat base may be, high to low."),
