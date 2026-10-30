@@ -751,6 +751,13 @@ class PowerPlayParams:
     dryup_ratio: float = 0.80
     dryup_quiet_days: int = 2
     dryup_quiet_ratio: float = 0.5
+    # Where the buy point is. 1: the flag's high, as the Learn guide places it ("buy as the price clears the
+    # flag's high") and as PP-04 already ends the flag -- so the close that ends the flag IS the breakout.
+    # 0: the high of the flag's last tight stretch (until Minervini 1.37). The two can disagree: ENPH's
+    # August 2020 flag (high 76.75) had a later intraday poke to 78.53, so on 31 Aug a close of 77.23 ended
+    # the flag below the pivot and no breakout was ever recorded; TSLA's June 2020 close sat 3.2% past its
+    # flag high but 6.5% past the tight-area high, outside the buy range.
+    pivot_at_flag_high: int = 0
 
 
 def detect_power_play(d: pd.DataFrame, p: "PowerPlayParams | None" = None) -> dict:
@@ -816,7 +823,7 @@ def detect_power_play(d: pd.DataFrame, p: "PowerPlayParams | None" = None) -> di
     inner = [j for j in range(fh_i + 1, t + 1) if is_hi[j] and j + p.swing_k <= t]
     ta_i = max(inner, key=lambda j: high[j]) if inner else fh_i
     ta_i = min(ta_i, t - p.tight_min_days) if t - ta_i < p.tight_min_days else ta_i
-    pivot = float(high[ta_i:].max())
+    pivot = float(high[fh_i]) if p.pivot_at_flag_high else float(high[ta_i:].max())
     tl = float(low[ta_i:].min())
     rng = (pivot - tl) / pivot * 100 if pivot > 0 else float("nan")
     out.update(pivot=pivot, tight_low=tl, tight_range_pct=rng)

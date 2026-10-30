@@ -364,7 +364,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "fc3d8871",
+    "fingerprint": "3d83274d",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -438,6 +438,7 @@
       "POWER_PLAY.flag_max_days": 30,
       "POWER_PLAY.flag_max_depth_pct": 25.0,
       "POWER_PLAY.flag_min_days": 10,
+      "POWER_PLAY.pivot_at_flag_high": 1,
       "POWER_PLAY.run_mult": 2.0,
       "POWER_PLAY.run_window": 40,
       "POWER_PLAY.swing_k": 5,
@@ -448,6 +449,7 @@
       "PP_FLAG_MAX_DEPTH_PCT": 25.0,
       "PP_FLAG_MIN_DAYS": 10,
       "PP_MAX_STOP_PCT": 20.0,
+      "PP_PIVOT_FLAG_HIGH": 1,
       "PP_RUN_MULT": 2.0,
       "PP_RUN_WINDOW": 40,
       "PP_TIGHT_PCT": 25.0,
@@ -544,7 +546,7 @@
         "W5"
       ]
     },
-    "version": "1.36"
+    "version": "1.37"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

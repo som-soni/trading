@@ -124,6 +124,10 @@ PP_FLAG_MAX_DEPTH_PCT = 25.0
 # refused the guide's own example (VKTX, January 2024: a 14% flag, its tight area 13.4%). The volume test
 # (PP-06) still applies.
 PP_TIGHT_PCT = 25.0
+# 1.37: a power play's pivot is the flag's high (PowerPlayParams.pivot_at_flag_high), not the high of its last
+# tight stretch: the guide buys "as the price clears the flag's high", and the flag ends (PP-04) on that same
+# close. 0 = the tight-area high (1.36).
+PP_PIVOT_FLAG_HIGH = 1
 # ---- S6, the flat base (1.28). "Not all consolidations have tight pivot points. When a flat base
 # occurs with no real pivot other than the high of the base, an investor can look to buy as the
 # stock moves above the highest price at the top of the base provided that the base corrects no
@@ -200,6 +204,7 @@ POWER_PLAY = vcp_spec.PowerPlayParams(
     tight_pct=PP_TIGHT_PCT, tight_min_days=TIGHT_MIN_DAYS, swing_k=SWING_K,
     dryup=PP_DRYUP, dryup_ratio=DRYUP_RATIO, dryup_quiet_days=DRYUP_QUIET_DAYS,
     dryup_quiet_ratio=DRYUP_QUIET_RATIO,
+    pivot_at_flag_high=PP_PIVOT_FLAG_HIGH,
 )
 
 VCP = vcp_spec.VcpParams(
@@ -771,10 +776,17 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.36"
-    # signal_version is not pinned: 1.36 adds pp_flag_high to evaluate()'s extras, 1.35 changed which high
-    # anchors a base and 1.34 the cheat detector -- the next backtest rescans.
+    version = "1.37"
+    # signal_version is not pinned: 1.37 moves the power play's pivot (vcp_spec.detect_power_play), which
+    # evaluate() reads -- the next backtest rescans.
     changelog = (
+        ("1.37", "2026-10-30",
+         "A power play's pivot is the flag's high (PP_PIVOT_FLAG_HIGH), as the Learn guide buys it and as PP-04 "
+         "already ends the flag, instead of the high of the flag's last tight stretch. The two disagreed: ENPH's "
+         "August 2020 flag ended on a close above its high (76.75) that sat under the tight-area pivot (78.53), "
+         "so no breakout was ever judged; TSLA's June 2020 breakout was 3.2% past its flag high but 6.5% past "
+         "the tight-area high, outside the 5% buy range. Found by the breakout eval set. Changes which power "
+         "plays fire; cached signals are rescanned."),
         ("1.36", "2026-10-30",
          "A power play's target is the run into the flag (the flagpole, from the run's low to the flag's "
          "high) projected from the buy. It was the flag's tight range -- the same distance as the stop below "
@@ -1534,10 +1546,12 @@ class MinerviniSpecStrategy(Strategy):
               "{PP_RUN_WINDOW} sessions before it.\n"
               "- **Flag:** since the flag high, price has fallen no more than "
               "{PP_FLAG_MAX_DEPTH_PCT}% and has not closed above it.\n"
-              "- **Tight area and pivot:** from the highest confirmed swing high inside the flag (or "
+              "- **Tight area:** from the highest confirmed swing high inside the flag (or "
               "the flag high, if there is none) to yesterday, covering at least the last "
-              "{TIGHT_MIN_DAYS} sessions. Its range is at most {TIGHT_PCT}%; its high is the pivot "
-              "and its low the stop's reference.\n"
+              "{TIGHT_MIN_DAYS} sessions. Its range is at most {PP_TIGHT_PCT}% (the flag's own limit); "
+              "its low is the stop's reference.\n"
+              "- **Pivot:** the flag high (PP_PIVOT_FLAG_HIGH is {PP_PIVOT_FLAG_HIGH}; 0 uses the tight "
+              "area's high). The close that clears it both ends the flag and is the breakout.\n"
               "- **Volume dried up (PP-06):** the tight area passes VCP-10's test — average volume at "
               "most {DRYUP_RATIO} times the 50-day average, or at least {DRYUP_QUIET_DAYS} sessions at "
               "or under {DRYUP_QUIET_RATIO} times it. Only while PP_DRYUP is 1 (it is {PP_DRYUP}).\n"
@@ -1905,6 +1919,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Power play, flag length", "PP_FLAG_MIN_DAYS", "MV-05: shortest pause that counts."),
         ("Power play, flag length max", "PP_FLAG_MAX_DAYS", "MV-05: longest pause that counts."),
         ("Power play, flag depth", "PP_FLAG_MAX_DEPTH_PCT", "MV-05: deepest the flag may fall."),
+        ("Power play, pivot at the flag high", "PP_PIVOT_FLAG_HIGH", "1 = MV-05 buys through the flag's high, "
+         "where the flag also ends (PP-04); 0 = through the high of its last tight stretch."),
         ("Power play, tight area", "PP_TIGHT_PCT", "MV-05: widest the flag's last stretch may be (PP-05); the "
          "flag's own limit, not a VCP's {TIGHT_PCT}%."),
         ("Flat base, length", "FLAT_MIN_DAYS", "S6: shortest flat base, in sessions."),
