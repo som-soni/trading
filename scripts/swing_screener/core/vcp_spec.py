@@ -116,6 +116,9 @@ class VcpParams:
     # 1.38, see `_zigzag`: 1 = the first contraction cannot end on the base-high bar itself; 1 = the floor
     # after each contraction uses the ATR on that contraction's low, not on the base-high day; and the
     # shrinking threshold is capped at `zigzag_cap_pct` (0 = no cap). All off = 1.37.
+    # 1.38 prototype, see `_right_edge_tight_area`: 1 = find a final tight area the zig-zag missed at the
+    # right edge of the base. 0 = 1.37.
+    tight_area_route: int = 0
     zigzag_skip_bh_bar: int = 0
     zigzag_floor_now: int = 0
     zigzag_cap_pct: float = 0.0
@@ -330,6 +333,44 @@ def _major_contractions(legs: list, top_frac: float) -> list:
             out[-1] = (h, g[1], (h - g[1]) / h * 100 if h > 0 else float("nan"), hi_i, g[4])
         floor_ = min(floor_, g[1])
     return out
+
+
+def _right_edge_tight_area(legs: list, high: np.ndarray, low: np.ndarray, p: "VcpParams", start_i: int) -> list:
+    """1.38 prototype: the tight area at the right edge of the base, found directly rather than as the
+    last zig-zag swing.
+
+    Minervini's eye finds the final contraction where it is -- a short, shallow pause near the top of the
+    base -- however volatile the stock was earlier. The zig-zag finds it only if the pause clears a turn
+    threshold set by the base's earlier swings and volatility, so after a deep cup a 7% handle on a volatile
+    stock never registers (Radian, Dec 2012: 33% cup, 7% handle, threshold 11%). Lowering that threshold
+    everywhere splits the quiet final contractions it already reads (Netflix 2009's 8% became 5.6% + 6.2%).
+
+    So this touches only the case the zig-zag misses: the last contraction found is deeper than a tight
+    area, and the rally since its low has come back into the top of the base (`t_recovery`, the same test
+    that starts any contraction). Then the right side's highest high is a pivot, and the fall from it to the
+    lowest low since is the final contraction -- appended when it is a real pause (at least
+    `zigzag_floor_pct`) and no deeper than `tight_pct`. Every later rule (VCP-06's reset, VCP-08's age and
+    depth, VCP-09, VCP-10) then judges it like any other contraction."""
+    if not legs or legs[-1][2] <= p.tight_pct:
+        return legs
+    lo_i = legs[-1][4]
+    t = len(high) - 1
+    if lo_i >= t:
+        return legs
+    seg = high[lo_i + 1:]
+    h_i = lo_i + 1 + int(seg.argmax())
+    h = float(high[h_i])
+    ceil = max(g[0] for g in legs)
+    floor_ = min(g[1] for g in legs)
+    if not (ceil > floor_ and (h - floor_) / (ceil - floor_) >= p.t_recovery) or h_i >= t:
+        return legs
+    after = low[h_i + 1:]
+    l_i = h_i + 1 + int(after.argmin())
+    l = float(low[l_i])
+    depth = (h - l) / h * 100 if h > 0 else float("nan")
+    if not (p.zigzag_floor_pct <= depth <= p.tight_pct):
+        return legs
+    return legs + [(h, l, depth, h_i, l_i)]
 
 
 def _dryup(d: pd.DataFrame, start: int, vol: pd.Series, quiet_ratio: float) -> tuple[float, int]:
@@ -589,6 +630,8 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         out["fail"] = "VCP-04"
         return out
     legs = _major_contractions(legs, p.t_recovery)
+    if p.tight_area_route:
+        legs = _right_edge_tight_area(legs, high, low, p, start_i)
     # the zig-zag already requires a real move in both directions, so a surviving leg is not
     # a wiggle; the filter stays only for thresholds set above zigzag_pct
     # No wiggle filter: the zig-zag's reversal threshold already decided what counts as a
