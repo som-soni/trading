@@ -30,6 +30,12 @@ Run, from scripts/:
     PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.breakout_eval --list
     PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.breakout_eval --label ID LABEL \
         [--entry YYYY-MM-DD --pivot PRICE --footprint "32W 30/9 3T" --notes ...]
+    PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.breakout_eval --score [--set ...|--all]
+
+Scoring (`score`) reads only reviewed cases. One that qualifies (`yes` / `borderline`) is caught when the
+strategy gives a buy setup within `SCORE_BEFORE` sessions before or `SCORE_AFTER` after the reviewed entry; one
+that does not (`no`) is a false buy when a buy setup fires within `NO_BUY_BEFORE` sessions before the scan's
+breakout or `SCORE_AFTER` after it.
 """
 
 from __future__ import annotations
@@ -57,6 +63,9 @@ EVAL_SET = "us-2017-2021-x2"   # the default set
 # COVID-period cases in the first set reviewed one by one: established, liquid leaders, a test of how the rules
 # behave in a news-driven, heavy-volume market. The rest of that period is not reviewed case by case.
 COVID_SAMPLE = ("TSLA", "ENPH", "DOCU", "FVRR", "APPN", "SNAP", "AMBA", "CELH", "LAD", "TWST", "MSTR")
+SCORE_BEFORE, SCORE_AFTER = 5, 3   # sessions around the reviewed entry that count as the strategy's buy
+NO_BUY_BEFORE = 20                  # sessions before a `no` case's breakout in which a buy is a false buy
+BUY_SETUPS = (ms.MV01, ms.MV03, ms.MV04, ms.MV05, ms.FLAT)   # a buy: breakout, low cheat, cheat, power play, flat
 RANGE_SESSIONS = 60       # the breakout close clears the highest high of this many sessions before it
 MIN_PRICE = 5.0
 MIN_SESSIONS_TO_PEAK = 10  # a move that tops out inside two weeks is a news spike, not a trend
@@ -219,6 +228,75 @@ def label(case_id: int, value: str, footprint: str | None = None, notes: str | N
                     (value, footprint, notes, entry, pivot, qualifies, case_id))
 
 
+def buys_over(strategy, symbol: str, lo, hi, frames: dict, market: str = MARKET):
+    """`strategy.evaluate` on every stored session from `lo` to `hi`, each seeing only its own and earlier bars:
+    [(date, active setups, first hard fail, the detector's rejection)], or None when no prices are stored."""
+    from ..core import context as ctx_mod
+    if symbol not in frames:
+        raw = cache.load_cached(market, symbol)
+        if raw is None or raw.empty:
+            frames[symbol] = None
+        else:
+            raw.columns = [c.lower() for c in raw.columns]
+            frames[symbol] = (raw, ctx_mod.prepare_frames(raw))
+    if frames[symbol] is None:
+        return None
+    raw, f = frames[symbol]
+    days = f.daily.loc[lo:hi].index
+    if len(days) == 0:
+        return None
+    out = []
+    for day in days:
+        ctx = ctx_mod.build_context(symbol, raw, earnings_days_away=None, frames=f, as_of=day)
+        if ctx is None:
+            out.append((day, [], "history", None))
+            continue
+        r = strategy.evaluate(ctx)
+        out.append((day, r.active_setups, r.first_hard_fail, ctx.extras.get("vcp_fail")))
+    return out
+
+
+def score(eval_sets, verbose: bool = False) -> dict:
+    """The strategy against the reviewed cases: qualifying entries caught, and false buys on `no` cases."""
+    from ..strategies import get_strategy
+    st = get_strategy("minervini")
+    frames: dict = {}
+    tally = {"caught": 0, "missed": 0, "held": 0, "bought": 0}
+    for es in eval_sets:
+        df = cases(es)
+        df = df[df["review_qualifies"].notna()]
+        for _, c in df.iterrows():
+            q = c["review_qualifies"]
+            if q in ("yes", "borderline"):
+                if c["review_entry_date"] is None or pd.isna(c["review_entry_date"]):
+                    continue
+                anchor = pd.Timestamp(c["review_entry_date"])
+                before = SCORE_BEFORE
+            else:
+                anchor = pd.Timestamp(c["breakout_date"])
+                before = NO_BUY_BEFORE
+            rows = buys_over(st, c["symbol"], anchor - pd.Timedelta(days=int(before * 1.6) + 4),
+                             anchor + pd.Timedelta(days=int(SCORE_AFTER * 1.6) + 4), frames)
+            if rows is None:
+                continue
+            idx = [d for d, *_ in rows]
+            k = next((i for i, d in enumerate(idx) if d >= anchor), len(idx) - 1)
+            rows = rows[max(0, k - before): k + SCORE_AFTER + 1]
+            hits = [(d, [s for s in got if s in BUY_SETUPS]) for d, got, _, _ in rows if any(s in BUY_SETUPS for s in got)]
+            if q in ("yes", "borderline"):
+                key = "caught" if hits else "missed"
+            else:
+                key = "bought" if hits else "held"
+            tally[key] += 1
+            if verbose or key in ("missed", "bought"):
+                why = (f"{hits[0][0].date()} {','.join(hits[0][1])}" if hits else
+                       ", ".join(sorted({f"{g or '-'}/{v or '-'}" for _, _, g, v in rows}))[:80])
+                print(f"{key:<7} #{c['id']:<4} {c['symbol']:<5} {q:<10} {anchor.date()} {c['review_label']:<10} {why}")
+    print(f"qualifying entries caught {tally['caught']} of {tally['caught'] + tally['missed']}; "
+          f"'no' cases bought {tally['bought']} of {tally['bought'] + tally['held']}")
+    return tally
+
+
 def main() -> None:
     warnings.filterwarnings("ignore")
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -231,7 +309,13 @@ def main() -> None:
     ap.add_argument("--entry", help="the valid entry session, YYYY-MM-DD")
     ap.add_argument("--pivot", type=float, help="the buy point that entry crossed")
     ap.add_argument("--qualifies", choices=QUALIFIES, help="does the setup qualify under the Learn guide's rules")
+    ap.add_argument("--score", action="store_true", help="score the strategy against the reviewed cases")
+    ap.add_argument("--all", action="store_true", help="with --score: every set")
+    ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
+    if a.score:
+        score(list(SETS) if a.all else [a.set], a.verbose)
+        return
     if a.build:
         print(f"{build(a.set)} cases in {a.set}")
     if a.label:
