@@ -13,7 +13,7 @@ import time
 
 import pandas as pd
 
-from . import db, frozen, sessions
+from . import db, frozen, sessions, spac_history
 from . import asof
 
 from ..core import indicators as ind
@@ -107,6 +107,8 @@ def save_cached(market: str, symbol: str, df: pd.DataFrame) -> None:
             return
     # a bar on a date the market did not trade for most of its symbols (marketdata/sessions.py)
     df = sessions.drop_stray(market, symbol, df)
+    # a de-SPAC's trust bars, before its recorded history start: a re-fetch must not bring them back
+    df = spac_history.clip(market, symbol, df)
     if df.empty:
         return
     enriched = ind.enrich_daily(df)
