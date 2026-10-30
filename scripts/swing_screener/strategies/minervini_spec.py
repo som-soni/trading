@@ -509,6 +509,17 @@ def base_notes(r: dict, g: dict) -> str:
     return " · ".join(parts)
 
 
+def power_measured_move(flag_high, run_pct) -> float:
+    """A power play's objective: the size of the run into the flag -- the flagpole, from the run's low to the
+    flag's high -- projected from the buy, as a high tight flag's measured move is. Until 1.36 the objective was
+    the flag's tight range, the same distance the stop sits below it, so a power play could never project 2R
+    and the 2:1 minimum refused every one. NaN when either is unknown. Shared by build_plans and the chart."""
+    if not flag_high or not run_pct:
+        return float("nan")
+    run = float(run_pct) / 100
+    return float(flag_high) * run / (1 + run)
+
+
 def cheat_measured_move(base_high, entry: float, depth_pct) -> float:
     """A cheat's objective: it is bought below the old high, so the nearest objective is that high, and the
     base's own measured move (its depth, as `vcp_measured_move`) is projected from there. The depth is
@@ -718,10 +729,15 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.35"
-    # signal_version is not pinned: 1.35 changes which high anchors a base (vcp_spec.detect), and 1.34
-    # changed the cheat detector, both read by evaluate() -- the next backtest rescans.
+    version = "1.36"
+    # signal_version is not pinned: 1.36 adds pp_flag_high to evaluate()'s extras, 1.35 changed which high
+    # anchors a base and 1.34 the cheat detector -- the next backtest rescans.
     changelog = (
+        ("1.36", "2026-10-30",
+         "A power play's target is the run into the flag (the flagpole, from the run's low to the flag's "
+         "high) projected from the buy. It was the flag's tight range -- the same distance as the stop below "
+         "it -- so a power play projected under 1R and the 2:1 minimum refused every one: MV-05 could fire "
+         "but never trade. evaluate() now records pp_flag_high, so cached signals are rescanned."),
         ("1.35", "2026-10-30",
          "A high with a fall of more than MAX_BASE_DEPTH_PCT (50%) below it no longer anchors a base "
          "(DEEP_DECLINE_RESETS): that fall is a Stage 4 decline, and the base count starts again from the "
@@ -1194,7 +1210,7 @@ class MinerviniSpecStrategy(Strategy):
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     watch_codes = ("W1", "W2", "W3", "W4", "W5")
     setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT)
-    extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days",
+    extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days", "pp_flag_high",
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                      "first_depth_pct", "last_depth_pct", "base_depth_pct", "tightness_pct", "dryup_ratio",
@@ -1662,8 +1678,8 @@ class MinerviniSpecStrategy(Strategy):
         "its lowest low — added to the price paid.\n"
         "- **Cheat (MV-03, MV-04):** bought below the old high, so the target is the base high plus that "
         "same measured move.\n"
-        "- **Power play (MV-05):** no base, so the flag's tight area — pivot minus tight low — added to the "
-        "price paid.\n"
+        "- **Power play (MV-05):** no base, so the run into the flag — from its low to the flag's high, the "
+        "flagpole — added to the price paid.\n"
         "- **Flat base (S6):** the base's depth, high to low, added to the price paid. A base at most "
         "{FLAT_MAX_DEPTH_PCT}% deep projects at most that, so the 2:1 test below rejects most flat bases: "
         "on 60 random US stocks, 2013-2021, all 12 that broke out were refused at 0.3-1.5R.",
@@ -2111,7 +2127,7 @@ class MinerviniSpecStrategy(Strategy):
                               pp_flag_high_date=(str(pp_prev["flag_high_date"].date())
                                                  if pp_prev.get("flag_high_date") is not None else None),
                               pp_run_pct=round(pp_prev["run_pct"], 1) if pp_prev.get("run_pct") else None,
-                              pp_flag_days=pp_prev.get("flag_days"))
+                              pp_flag_days=pp_prev.get("flag_days"), pp_flag_high=pp_prev.get("flag_high"))
 
         for code in ("W1", "W2", "W3"):
             on = bool(breakout and confirmed[code])
@@ -2256,10 +2272,10 @@ class MinerviniSpecStrategy(Strategy):
         if flat:
             measured_move = float(fp) * float(fd) / 100 if fd is not None else float("nan")
         elif power:
-            # No base, so no base-depth measured move. The flag's own range is the only structure
-            # the setup offers; beyond that any number would be the risk formula wearing a chart's
-            # clothes, which is the trap the comment below describes.
-            measured_move = (pivot - tl) if (pivot and tl is not None) else float("nan")
+            # No base, so no base-depth measured move: the run into the flag is the structure, and its
+            # size projected from the buy is the objective (power_measured_move). The flag's tight range,
+            # used until 1.36, is the stop's own distance, so it could never clear 2R.
+            measured_move = power_measured_move(e.get("pp_flag_high"), e.get("pp_run_pct"))
         elif cheat and bh:
             # A cheat is bought below the old high, so the nearest objective is that
             # high; the base's own measured move is projected from there. first_depth
@@ -2684,7 +2700,7 @@ class MinerviniSpecStrategy(Strategy):
             pv, tl = float(r["pivot"]), float(r["tight_low"])
             buy, stop = pivot_buy_stop(pv, cfg.tick_size), pivot_stop(tl, cfg.tick_size)
             risk = buy - stop
-            target = buy + (pv - tl)                     # build_plans' MV-05 objective: the flag's tight range
+            target = buy + power_measured_move(fh, r["run_pct"])   # build_plans' MV-05 objective: the flagpole
             r_mult = (target - buy) / risk if risk > 0 else None
             risk_pct = risk / buy * 100
             ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
@@ -2703,8 +2719,8 @@ class MinerviniSpecStrategy(Strategy):
                           "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
                                    f"not a backtest result. Buy through the flag's pivot, {px(pv)}, on a close with volume "
                                    f"of at least {VOL_MULT:g}x the 50-day average; the stop goes {STOP_BUFFER_PCT:g}% under "
-                                   f"the tight low, at {px(stop)}: a risk of {risk_pct:.1f}%. The objective is the flag's "
-                                   f"tight range projected from the buy, {px(target)}, {_rr(r_mult, ok_r)}."
+                                   f"the tight low, at {px(stop)}: a risk of {risk_pct:.1f}%. The objective is the run "
+                                   f"into the flag projected from the buy, {px(target)}, {_rr(r_mult, ok_r)}."
                                    + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
                           "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {MAX_STOP_PCT:g}%", "pass" if ok_risk else "fail")),
                                      tick(("R:R", "Reward / risk", _rr(r_mult, ok_r), f"at least {MIN_STRUCTURAL_R:g}R", "pass" if ok_r else "fail"))],
