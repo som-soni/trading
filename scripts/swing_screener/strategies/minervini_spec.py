@@ -150,6 +150,21 @@ YOUNG_MIN_BARS = 60     # sessions listed before anything is judged: core.contex
 # volume could still be bought through its shelf. 0 = tightness only, as before.
 CHEAT_DRYUP = 1
 
+# MV-03/MV-04 (1.34): a cheat follows Minervini's 3C SEQUENCE -- a decline, a low, a first rally,
+# then the pause -- as the Learn guide teaches it ("do not try to buy the low of a downtrend"; the low
+# cheat is "the same, in the lower third"). The base's low must be set before the shelf, the shelf must
+# hold above it, and the rally between them must win back at least CHEAT_RALLY_FRAC of the decline
+# from the base high (the guide's "a third to a half", its lower end). Until 1.34 any tight spot in
+# the lower third counted, including the bottom of a slide: AXSM's 2026-09 "low cheat" was a 7-day
+# shelf 1% above a low set the session before it, and stopped out 8 sessions later. 0 = no test.
+CHEAT_RALLY_FRAC = 0.33
+# ...and the shelf's volume must CONTRACT: its average at most CHEAT_VOL_CONTRACT x the sessions just
+# before it (the rally from the low, at least CHEAT_VOL_LOOKBACK of them). CHEAT_DRYUP compares the
+# shelf with the 50-day average, which a decline on light volume passes throughout (AXSM's shelf ran
+# 0.64x the 50-day, no quieter than the week before it). [assumption: 0.9; 0 = no test]
+CHEAT_VOL_CONTRACT = 0.9
+CHEAT_VOL_LOOKBACK = 10
+
 # What each VCP failure code means TODAY, read from core/vcp_spec.detect. One table, used by the
 # chart's failed-base titles and by the Candidates tab's stage view. The chart's own copy had gone
 # stale -- VCP-05 still said "first pullback too deep" two versions after it became the depth of the
@@ -186,6 +201,7 @@ VCP = vcp_spec.VcpParams(
     tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
     cheat_dryup=CHEAT_DRYUP, young_listing=YOUNG_LISTING,
+    cheat_rally_frac=CHEAT_RALLY_FRAC, cheat_vol_contract=CHEAT_VOL_CONTRACT, cheat_vol_lookback=CHEAT_VOL_LOOKBACK,
 )
 
 # ---- section 6: setups
@@ -697,11 +713,19 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.33"
-    # signal_version is not pinned: 1.33 adds base_depth_pct to evaluate()'s extras, which build_plans
-    # reads, so 1.32's cached signal rows (without it) cannot be carried forward -- the next backtest
-    # rescans.
+    version = "1.34"
+    # signal_version is not pinned: 1.34 changes the cheat detector (vcp_spec.detect), which evaluate()
+    # runs, so cached signal rows would replay the old cheats -- the next backtest rescans.
     changelog = (
+        ("1.34", "2026-10-30",
+         "A cheat (MV-03 / MV-04) follows the 3C sequence the Learn guide teaches, and its shelf's volume "
+         "must contract. Two new detector tests: (1) a turn before the shelf -- the base's low set before "
+         "it, the shelf holding above that low, and a rally off the low that won back at least "
+         "CHEAT_RALLY_FRAC of the decline; (2) the shelf's average volume at most CHEAT_VOL_CONTRACT x the "
+         "sessions before it, not only quiet against the 50-day. Found on AXSM: a 2026-09 low cheat bought "
+         "a tight spot at the bottom of a slide, 1% above a low set the session before, on volume no "
+         "quieter than the week before; it was stopped out 8 sessions later. Changes which cheats are "
+         "taken; pivot buys, flat bases and power plays are untouched. Cached signals are rescanned."),
         ("1.33", "2026-10-30",
          "The target's measured move is the BASE's depth -- its high less its lowest low -- not its first "
          "pullback's. The first pullback stood in for the deepest on the reasoning that VCP-06 makes each "
@@ -1403,6 +1427,16 @@ class MinerviniSpecStrategy(Strategy):
               "or at least {DRYUP_QUIET_DAYS} of its sessions trade at or under {DRYUP_QUIET_RATIO} "
               "times it. Minervini wants a cheat area to contract in volume as well as in price. "
               "Only while CHEAT_DRYUP is 1 (it is {CHEAT_DRYUP}).\n"
+              "- **A turn first:** the shelf comes after the base has made its low, rallied and paused "
+              "— never at the bottom of a decline. The base's lowest low is set before the shelf, the "
+              "shelf's low holds above it, and the rally between them won back at least "
+              "{CHEAT_RALLY_FRAC} of the fall from the base high to that low. Off when CHEAT_RALLY_FRAC "
+              "is 0.\n"
+              "- **Volume contracts into the shelf:** the shelf's average volume is at most "
+              "{CHEAT_VOL_CONTRACT} times the average of the sessions before it (the rally from the "
+              "low, at least {CHEAT_VOL_LOOKBACK} sessions). Being quiet against the 50-day average is "
+              "not enough: a decline on light volume is quiet throughout. Off when CHEAT_VOL_CONTRACT "
+              "is 0.\n"
               "- **Trigger:** yesterday's close was at or below the shelf's high, and today's close "
               "is above it. There is no breakout-volume or close-position test.\n\n"
               "The stop goes under the shelf's low, much nearer than the base low — the reason to "
@@ -1803,6 +1837,9 @@ class MinerviniSpecStrategy(Strategy):
         ("Cheat shelf length", "CHEAT_SHELF_DAYS", "Sessions in the shelf a cheat is bought from (MV-03/MV-04)."),
         ("Cheat shelf tightness", "CHEAT_SHELF_PCT", "Widest shelf, high to low, that counts as a cheat."),
         ("Cheat shelf dry-up", "CHEAT_DRYUP", "MV-03/MV-04: 1 = the shelf must pass VCP-10's volume test, 0 = tightness only (1.26)."),
+        ("Cheat: rally before the shelf", "CHEAT_RALLY_FRAC", "MV-03/MV-04 (1.34): the share of the decline the rally off the base low must win back before the shelf, which must hold above that low. 0 = no sequence test (1.33)."),
+        ("Cheat: volume contraction", "CHEAT_VOL_CONTRACT", "MV-03/MV-04 (1.34): the shelf's average volume as a multiple of the sessions before it, at most. 0 = no contraction test (1.33)."),
+        ("Cheat: volume lead-in", "CHEAT_VOL_LOOKBACK", "Sessions before the shelf, at least, that its volume is compared with (the rally from the low when longer)."),
         ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused — "
                                                  "tested on the signal close and again on the fill."),
         ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
@@ -2500,10 +2537,45 @@ class MinerviniSpecStrategy(Strategy):
                 out.append(self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True))
                 out[-1]["anchored"] = True
                 continue
+            so = self._cheat_stop_out(daily, cfg, ch, bo) if ch else None
             now = key == live and bo is None   # still forming today: judge it as today's screen does
+            bought = None
+            if so is not None:
+                bought = self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True)
+                if not bought["title"].startswith("Cheat entry · stopped out"):
+                    bought = None   # a cheat the strategy would skip (risk, R) was never bought: nothing stopped out
+            if bought is not None:
+                # The cheat was bought and stopped out. That trade is its own setup, drawn as the base stood
+                # the bar before the cheat and ending at the stop-out -- not judged on today's bar, where the
+                # decline after the stop reads as a broken trend and a base far too deep, beside a cheat whose
+                # checks were all taken before it (AXSM, 2026-09). What the base did after is a second setup,
+                # only when there is one: EN-04 lets a shakeout re-open it (MAX_ENTRIES_PER_BASE), through a
+                # later cheat or the breakout, and a base still forming is judged today as usual.
+                out.append(bought)
+                again = None
+                for i in range(so + 1, len(daily)):
+                    p = dets[i - 1]
+                    z = cheat_cross(p, close[i - 1], close[i]) if p and p["bh_date"] == key else None
+                    if z:
+                        again = (i, z, p)
+                        break
+                if again is None and bo is None and not now:
+                    continue
+                ch = again
             rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
-            out.append(self._setup(daily, cfg, dets[rep], rep, bo, b["cheat"], now))
+            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now))
         return out
+
+    @staticmethod
+    def _cheat_stop_out(daily: pd.DataFrame, cfg: MarketConfig, cheat: tuple, bo: int | None) -> int | None:
+        """The bar a cheat entry's stop (under its shelf low, `pivot_stop`) was hit, if before the base broke
+        out (`bo`) or up to the last bar; None while it holds. Display only: the chart's drawing ends there."""
+        ci, _, cp = cheat
+        stop = pivot_stop(cp["cheat_low"], cfg.tick_size)
+        end = bo if bo is not None and bo > ci else len(daily)
+        low = daily["low"].to_numpy(float)
+        hit = next((j for j in range(ci + 1, end) if low[j] <= stop), None)
+        return hit
 
     # the VCP rules in the order the detector applies them, the zone of the setup each belongs to,
     # and the name the chart's checklist gives it
@@ -2785,7 +2857,8 @@ class MinerviniSpecStrategy(Strategy):
             mm = cheat_measured_move(bh, entry, cp.get("base_depth_pct") if cd else None)
             target, r_mult = entry + mm, (mm / risk if risk > 0 else None)
             risk_pct = risk / entry * 100
-            c_from, c_to = day(ci), day(min(len(daily) - 1, ci + TIME_STOP_DAYS))
+            stopped = self._cheat_stop_out(daily, cfg, cheat, bo)
+            c_from, c_to = day(ci), day(stopped if stopped is not None else min(len(daily) - 1, ci + TIME_STOP_DAYS))
             shapes = [{"shape": "box", "from": day(max(0, ci - CHEAT_SHELF_DAYS)), "to": day(ci - 1),
                        "top": float(cp["cheat_pivot"]), "bottom": float(cp["cheat_low"]), "role": "tight",
                        "label": ""}]   # the base carries the one label (its footprint); the shelf range is in the card
@@ -2803,7 +2876,17 @@ class MinerviniSpecStrategy(Strategy):
                            if cp.get("cheat_dryup") == cp.get("cheat_dryup") and cp.get("cheat_dryup") is not None else "—"),
                  "limit": f"at most {DRYUP_RATIO:g}x, or {DRYUP_QUIET_DAYS} sessions at or under {DRYUP_QUIET_RATIO:g}x",
                  "state": "pass"},
-            ] if CHEAT_DRYUP else []) + [
+            ] if CHEAT_DRYUP else []) + ([
+                {"code": cz, "name": "Turn before the shelf",
+                 "value": (f"rally won back {cp['cheat_rally'] * 100:.0f}%" + ("" if cp.get("cheat_higher_low") else ", no higher low")
+                           if cp.get("cheat_rally") is not None and cp["cheat_rally"] == cp["cheat_rally"] else "—"),
+                 "limit": f"a higher low, then a rally of at least {CHEAT_RALLY_FRAC * 100:.0f}% of the decline", "state": "pass"},
+            ] if CHEAT_RALLY_FRAC else []) + ([
+                {"code": cz, "name": "Volume contraction",
+                 "value": (f"{cp['cheat_vol_vs_lead']:.2f}x the sessions before"
+                           if cp.get("cheat_vol_vs_lead") is not None and cp["cheat_vol_vs_lead"] == cp["cheat_vol_vs_lead"] else "—"),
+                 "limit": f"at most {CHEAT_VOL_CONTRACT:g}x", "state": "pass"},
+            ] if CHEAT_VOL_CONTRACT else []) + [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
                 {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
@@ -2863,12 +2946,17 @@ class MinerviniSpecStrategy(Strategy):
             # cheat into "skipped" here would contradict that run's own trade beside it.
             withheld = ok and self._live_withholds(cheat[2])
             title = f"Cheat entry {'✓' if ok else '· trade skipped'}{' · the live screen withholds it' if withheld else ''}{today}"
-            short = f"{len(depths)} pullbacks" if fail == "VCP-04" else self._VCP_FAILED.get(fail, fail)
+            if ok and stopped is not None:
+                title = f"Cheat entry · stopped out {day(stopped)}"
+            short = f"{len(depths)} pullback{'' if len(depths) == 1 else 's'}" if fail == "VCP-04" else self._VCP_FAILED.get(fail, fail)
             summary = (("A complete VCP, bought early through its cheat: on" if done else f"Not a VCP ({short}), but on")
                        + f" {day(cheat[0])} it cleared a tight "
                        f"shelf in the {'lower' if cheat[1] == MV03 else 'middle'} third of the base: a cheat entry."
                        + (f" The daily screen's live variant ({type(self).live_variant['name']}) withholds a cheat on "
-                          f"a base that fails VCP-09, so it is not listed as a candidate." if withheld else ""))
+                          f"a base that fails VCP-09, so it is not listed as a candidate." if withheld else "")
+                       + (f" On {day(stopped)} the price came back through the stop: the trade was stopped out. The base "
+                          f"can be bought again only if a setup fires on it once more (EN-04: up to "
+                          f"{MAX_ENTRIES_PER_BASE} entries per base after a shakeout)." if ok and stopped is not None else ""))
         elif young:
             title = f"Too new to judge{today}"
             summary = f"Too new to judge: {young_why}."
