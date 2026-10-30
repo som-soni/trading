@@ -1,59 +1,37 @@
-"""Minervini's own VCP examples, pinned on stored prices.
+"""Minervini's own chart examples, scored against the `minervini` strategy.
 
-*Trade Like a Stock Market Wizard*, chapter 10, shows each setup on a real chart with the date he
-bought. These cases check that the `minervini` strategy gives the same signal on that date: the
-buy itself (S1, a close through the pivot) or the coil before it (S2, a buy-stop waiting above the
-pivot). A detector that catches none of the book's own examples is not a VCP detector, whatever
-its rules say; 1.27 caught 1 of them.
+The cases live in `tests/minervini_book_cases.py` (the permanent eval set: figure, symbol, dates,
+what the book shows). For each case the strategy's `evaluate` runs on every session in the case's
+window, on stored prices, each session seeing only itself and earlier bars:
 
-This checks the detector and the gates (`evaluate`), not the liquidity floor applied before them:
-several examples traded under MIN_TURNOVER_USD_M in their own year's dollars (CRUS, BBY, SYK, DKS,
-EDU), so a backtest would not have seen them.
+- a "buy" case is caught when some session gives one of its setups (S1 breakout, S3/S4 cheat,
+  S5 power play, S6 flat base; S2, the coil, only where a case asks for it);
+- a "no_buy" case passes when no session gives a buy setup;
+- a "sell" case (climax tops, for the exit rules) is listed, not scored yet.
 
-KNOWN_MISSES lists examples the current rules do not catch, and why. They are printed, not
-asserted, so a change that catches one shows up as an improvement rather than as a failure. Move a
-case into CASES once it is caught on purpose.
+This checks the detector and the gates, not the liquidity floor applied before them: several book
+examples traded under MIN_TURNOVER_USD_M in their own year's dollars, so a backtest would not have
+seen them.
 
-Skipped (not failed) for a symbol with no stored prices.
+Pinned cases are asserted (a miss fails the run); the rest are scored and printed, so a change that
+catches one shows as an improvement. A case whose symbol has no stored prices is listed as "no data".
 
-Run: `PYTHONPATH=. .venv/bin/python -m tests.test_vcp_book_examples`
+Run: `PYTHONPATH=. .venv/bin/python -m tests.test_vcp_book_examples` (add `-v` for each case's reason,
+`--only ID_SUBSTRING` to run some).
 """
 
 import sys
 import warnings
+from collections import Counter
 
 from swing_screener.core import context as ctx_mod
 from swing_screener.marketdata import cache
 from swing_screener.strategies import get_strategy
 
-# (symbol, session, setup the strategy must give, what the book shows)
-CASES = [
-    ("NFLX", "2009-10-15", "S1", "Fig 10.31: out of a 27-week base, footprint 27W 27/7 3T"),
-    ("LULU", "2010-11-05", "S1", "Fig 10.40: bought as it emerged from a double bottom"),
-    ("CRUS", "2010-03-29", "S2", "Fig 10.34: coiled the day before the 30 Mar 2010 buy at $8.09"),
-    ("BBY", "1997-12-01", "S1", "Fig 10.62: lowest volume the day before the breakout"),
-    ("SYK", "1995-01-05", "S1", "Fig 10.44: bought as it emerged from a VCP in January 1995"),
-    ("EDU", "2007-04-16", "S1", "Fig 10.32: footprint 8W 22/2 3T, seven months after listing"),
-    ("DKS", "2003-03-31", "S2", "Fig 10.64: coiled the day before the 1 Apr 2003 buy, six months after listing"),
-]
-
-# (symbol, around, what the book shows, why the rules miss it)
-KNOWN_MISSES = [
-    ("MGA", "2011-01-03", "Fig 10.15: the 'correct buy point' after a compressed right side",
-     "VCP-06: the final contraction is 0.71x the one before (3.9% after 5.5%), over the 0.6 limit"),
-    ("AMSC", "2003-12-29", "Fig 10.29: a classic VCP, up 60% in 17 days",
-     "the right side rallied 71% of the way back up the base before its handle, under the 75% that "
-     "starts a new contraction (t_recovery); counted, the handle is 15% deep, over VCP-08's 10%"),
-    ("AXON", "2004-01-09", "Fig 10.60: TASR's power play (the ticker is now AXON)",
-     "MV-05 is detected, but the breakout closed 5.6% above the pivot, over BUY_RANGE_PCT; he buys "
-     "intraday as it crosses the pivot"),
-    ("MELI", "2007-12-03", "Fig 10.28 / 10.55: a base reset after the IPO",
-     "the October 2007 primary base came under YOUNG_MIN_BARS sessions after listing; the December "
-     "reset's final contraction is 0.72x the reference, over the 0.6 limit"),
-]
+from tests.minervini_book_cases import BUY, CASES
 
 
-def _setups(strategy, sym: str, day: str, frames: dict) -> tuple[list, str | None]:
+def _frames(sym: str, frames: dict):
     if sym not in frames:
         raw = cache.load_cached("us", sym)
         if raw is None or raw.empty:
@@ -61,46 +39,86 @@ def _setups(strategy, sym: str, day: str, frames: dict) -> tuple[list, str | Non
         else:
             raw.columns = [c.lower() for c in raw.columns]
             frames[sym] = (raw, ctx_mod.prepare_frames(raw))
-    if frames[sym] is None:
-        return None, None
-    raw, fr = frames[sym]
-    as_of = fr.daily.loc[:day].index[-1]
-    ctx = ctx_mod.build_context(sym, raw, earnings_days_away=None, frames=fr, as_of=as_of)
-    if ctx is None:
-        return [], "not enough history"
-    r = strategy.evaluate(ctx)
-    return r.active_setups, r.first_hard_fail
+    return frames[sym]
+
+
+def _window(strategy, case: dict, frames: dict):
+    """Every session of the case's window: [(date, setups, first_hard_fail, vcp_fail)], or None (no data)."""
+    fr = _frames(case["symbol"], frames)
+    if fr is None:
+        return None
+    raw, f = fr
+    lo, hi = case["window"]
+    days = f.daily.loc[lo:hi].index
+    if len(days) == 0:                                       # the window sits outside the stored history
+        return None
+    out = []
+    for day in days:
+        ctx = ctx_mod.build_context(case["symbol"], raw, earnings_days_away=None, frames=f, as_of=day)
+        if ctx is None:
+            out.append((day, [], "history", None))
+            continue
+        r = strategy.evaluate(ctx)
+        out.append((day, r.active_setups, r.first_hard_fail, ctx.extras.get("vcp_fail")))
+    return out
+
+
+def _why(rows) -> str:
+    """The commonest refusal over a window: the gate, and the detector's rule when it rejected the base."""
+    c = Counter(f"{g or '-'}/{v or '-'}" for _, s, g, v in rows)
+    return ", ".join(f"{k} ×{n}" for k, n in c.most_common(2))
 
 
 def main() -> None:
     warnings.filterwarnings("ignore")
+    verbose = "-v" in sys.argv
+    only = sys.argv[sys.argv.index("--only") + 1] if "--only" in sys.argv else None
     st = get_strategy("minervini")
     frames: dict = {}
-    failures, ran = [], 0
-    for sym, day, want, what in CASES:
-        got, gate = _setups(st, sym, day, frames)
-        if got is None:
-            print(f"skip  {sym} {day} — no stored prices")
+    score = Counter()
+    failures, newly = [], []
+    for case in CASES:
+        if only and only not in case["id"]:
             continue
-        ran += 1
-        ok = want in got
-        print(f"{'ok  ' if ok else 'FAIL'}  {sym} {day} {want} — {what}"
-              + ("" if ok else f"   (got {got or 'nothing'}{f', gate {gate}' if gate else ''})"))
-        if not ok:
-            failures.append(sym)
-    caught = 0
-    for sym, day, what, why in KNOWN_MISSES:
-        got, _ = _setups(st, sym, day, frames)
-        if got:
-            caught += 1
-            print(f"NEW   {sym} {day} now gives {got} — {what}; move it to CASES")
-        else:
-            print(f"miss  {sym} {day} — {why}")
-    total = ran + len(KNOWN_MISSES)
-    print(f"\n{ran - len(failures)} of {total} book examples caught"
-          + (f", {caught} known miss(es) now caught" if caught else ""))
+        kind, cid = case["kind"], case["id"]
+        head = f"{cid:<26} {case['symbol']:<5} {case['window'][0]}"
+        if kind == "sell":
+            score["sell"] += 1
+            if verbose:
+                print(f"sell  {head} — {case['note']} (exit rules; not scored yet)")
+            continue
+        rows = _window(st, case, frames)
+        if rows is None:
+            score["no data"] += 1
+            print(f"----  {head} — no stored prices for this window")
+            continue
+        want = case.get("setups", BUY)
+        hits = [(d, [s for s in got if s in want]) for d, got, _, _ in rows if any(s in want for s in got)]
+        if kind == "buy":
+            ok = bool(hits)
+            tag = "ok  " if ok else ("FAIL" if case.get("pinned") else "miss")
+            score["buy caught" if ok else "buy missed"] += 1
+            detail = (f"{hits[0][0].date()} {','.join(hits[0][1])}" if ok else _why(rows))
+            if ok and not case.get("pinned"):
+                newly.append(cid)
+        else:                                                # no_buy
+            ok = not hits
+            tag = "ok  " if ok else ("FAIL" if case.get("pinned") else "BUY ")
+            score["no_buy held" if ok else "no_buy bought"] += 1
+            detail = "no buy" if ok else f"bought {hits[0][0].date()} {','.join(hits[0][1])}"
+        if not ok and case.get("pinned"):
+            failures.append(cid)
+        print(f"{tag}  {head} — {detail}")
+        if verbose:
+            print(f"      {case['note']}" + (f"\n      known: {case['why']}" if case.get("why") else ""))
+    b = score["buy caught"] + score["buy missed"]
+    n = score["no_buy held"] + score["no_buy bought"]
+    print(f"\nbuy points caught {score['buy caught']} of {b}; setups to avoid held {score['no_buy held']} of {n}; "
+          f"{score['no data']} without stored prices; {score['sell']} climax tops not scored yet")
+    if newly:
+        print(f"caught but not pinned: {', '.join(newly)}")
     if failures:
-        print(f"FAILED: {', '.join(failures)}")
+        print(f"FAILED (pinned): {', '.join(failures)}")
         sys.exit(1)
 
 
