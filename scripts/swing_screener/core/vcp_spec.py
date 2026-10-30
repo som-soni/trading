@@ -113,6 +113,12 @@ class VcpParams:
                                      # 0.75 first suggested (2.84% on MU, under its 3.79% ATR)
                                      # the shrinking threshold put the median leg count at 13
                                      # against VCP-04's limit of 6; at 1.5 it is back to 6.
+    # 1.38, see `_zigzag`: 1 = the first contraction cannot end on the base-high bar itself; 1 = the floor
+    # after each contraction uses the ATR on that contraction's low, not on the base-high day; and the
+    # shrinking threshold is capped at `zigzag_cap_pct` (0 = no cap). All off = 1.37.
+    zigzag_skip_bh_bar: int = 0
+    zigzag_floor_now: int = 0
+    zigzag_cap_pct: float = 0.0
     zigzag_pct: float = 3.0          # a leg turns only after a reversal this large, in BOTH
                                      # directions. Segmenting on swing highs alone split one
                                      # pullback into two whenever a 2-3 day bounce made a new
@@ -204,7 +210,8 @@ def _swings(series: pd.Series, k: int, how: str) -> np.ndarray:
 
 
 def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
-            floor_pct: float, ratio: float) -> list[tuple[int, float, str]]:
+            floor_pct: float, ratio: float, floor_now: np.ndarray | None = None,
+            cap_pct: float = 0.0, skip_first_low: bool = False) -> list[tuple[int, float, str]]:
     """Alternating (index, price, 'H'/'L') pivots, starting from a KNOWN high at bar 0,
     with a reversal threshold that shrinks as the contractions do.
 
@@ -223,18 +230,33 @@ def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
 
     Uses only bars up to the one being judged: a pivot is appended when the reversal
     confirms it, never retroactively from later data.
+
+    1.38, three options (all off by default):
+
+    * `skip_first_low`: the first low must come AFTER bar 0. Bar 0 is the base high; its own low is
+      not a contraction. A wide base-high bar (a gap day) otherwise read as a contraction that started
+      and ended on the same bar -- Cirrus Logic's 12 Jan 2010 gap, 8.13 high and 7.35 low, became a 10%
+      "T1" and the real 23% decline after it a widening.
+    * `floor_now`: the floor after each contraction, read on the bar that would confirm the next high (an
+      array of floors, in %, per bar) instead of the fixed `floor_pct` from the base-high day. A VCP is volatility
+      contracting, so the turn that counts should shrink with it.
+    * `cap_pct`: the shrinking threshold never exceeds this, though the floor may. After Radian's 33% cup
+      (Nov 2012), 0.35 x 33 = 11.4% hid its 7% handle; a handle is a contraction of at most `tight_pct`.
     """
     if not len(high):
         return []
     piv: list[tuple[int, float, str]] = [(0, float(high[0]), "H")]
     hi_i = lo_i = 0
+    if skip_first_low and len(low) > 1:
+        lo_i = 1
     direction, thr = -1, first_pct
+    now_ok = (lambda j: floor_now is not None and floor_now[j] == floor_now[j] and len(piv) > 1)
     for j in range(1, len(high)):
         if direction > 0 and high[j] >= high[hi_i]:
             hi_i = j
         if direction < 0 and low[j] <= low[lo_i]:
             lo_i = j
-        if direction > 0 and low[j] <= high[hi_i] * (1 - thr / 100):
+        if direction > 0 and low[j] <= high[hi_i] * (1 - (max(thr, floor_now[j]) if now_ok(j) else thr) / 100):
             piv.append((hi_i, float(high[hi_i]), "H"))
             direction, lo_i = -1, j
         elif direction < 0 and high[j] >= low[lo_i] * (1 + thr / 100):
@@ -242,7 +264,11 @@ def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
             prev_high = piv[-2][1]
             depth = (prev_high - low[lo_i]) / prev_high * 100 if prev_high > 0 else 0.0
             direction, hi_i = 1, j
-            thr = max(floor_pct, ratio * depth)
+            step = ratio * depth
+            if cap_pct:
+                step = min(step, cap_pct)
+            # with `floor_now` the floor is applied bar by bar, on the bar that would confirm the high
+            thr = step if floor_now is not None else max(floor_pct, step)
     return piv
 
 
@@ -539,8 +565,13 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         floor = max(floor, p.zigzag_floor_atr_mult * atr_pct)
     out["zigzag_pct_used"] = round(zz, 2)
     # seeded with BH as the first high, so no leading-L cleanup is needed
+    floor_now = None
+    if p.zigzag_floor_now and "atr14" in d:
+        a = d["atr14"].to_numpy(float)[start_i:] / np.where(close[start_i:] > 0, close[start_i:], np.nan) * 100
+        floor_now = np.maximum(p.zigzag_floor_pct, p.zigzag_floor_atr_mult * a)
     piv = [(i + start_i, v, k) for i, v, k in
-           _zigzag(high[start_i:], low[start_i:], zz, floor, p.zigzag_shrink_ratio)]
+           _zigzag(high[start_i:], low[start_i:], zz, floor, p.zigzag_shrink_ratio,
+                   floor_now=floor_now, cap_pct=p.zigzag_cap_pct, skip_first_low=bool(p.zigzag_skip_bh_bar))]
 
     legs, last_low_i = [], None
     for a, b in zip(piv, piv[1:]):
