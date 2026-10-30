@@ -337,24 +337,24 @@ const Studies = (() => {
               // captions just inside the frame's top edge: below it, the setup lane would cover them
               shapes.push({ shape: "text", at: z.from, price: f.top, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
                 label: `${NUM[n]} ${z.title}${z.tag ? ` · ${z.tag}` : ""} ${ICON[st]}` });
-              if (isEntry(z) && traded) {
-                // The run's own record, drawn HERE and in this indicator's vocabulary, so an
-                // illustrated setup and a traded one look the same and differ only in where the
-                // numbers came from. Its levels come straight from the record (never recomputed);
-                // its base and shelf boxes and its note are dropped, because this frame and the
-                // card already say both, and saying them twice is what made the chart look doubled.
-                shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to, axis: true,
-                  price: +traded.entry_price, label: `bought ${(+traded.entry_price).toFixed(2)}` });
-                // the record's own stop and target only: every strategy's traded setup looks the same (its
-                // other levels -- resistance, swing lows -- vary by strategy and the zones already say them)
-                shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target"))
-                  .map((x) => ({ ...x, axis: true })));
-                return;
-              }
+              if (isEntry(z) && traded) return;   // a traded setup's entry is the run's record, drawn once below
               // a failed setup's contraction line takes its grey, so a real VCP stands out
               shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" }
                 : x.shape === "level" && isEntry(z) ? { ...x, ...(z === primary ? { axis: true } : { faint: true }) } : x)));
             });
+            if (traded) {
+              // The run's own record, drawn ONCE per setup and in this indicator's vocabulary, so an
+              // illustrated setup and a traded one look the same and differ only in where the numbers
+              // came from. Its levels come straight from the record (never recomputed). Drawn per entry
+              // zone, a setup with a pivot entry and a cheat entry put every level on the axis twice; and
+              // a setup today's rules no longer see an entry in drew none of the run's trade at all.
+              shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to, axis: true,
+                price: +traded.entry_price, label: `bought ${(+traded.entry_price).toFixed(2)}` });
+              // the record's own stop and target only: every strategy's traded setup looks the same (its
+              // other levels -- resistance, swing lows -- vary by strategy and the zones already say them)
+              shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target"))
+                .map((x) => ({ ...x, axis: true })));
+            }
           }
           // tell the chart which of the run's trades this layer draws: any trade no current setup covers
           // (today's rules may no longer see it) keeps the run's own drawing, so no trade goes missing

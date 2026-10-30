@@ -1071,9 +1071,10 @@ async function chartPage(alive, market, symbol, tf) {
         const ep = +r[c("entry_price")], xp = +r[c("exit_price")];
         // pinned to the FILL price, not under the bar's low: a marker below the candle reads as a
         // fill below the trigger line when the trade actually bought through it
-        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", text: `Buy ${fmt(ep)}`,
+        // size 2: at the default size the run's buys and sells were lost among the candles and the setup's levels
+        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: `Buy ${fmt(ep)}`,
           ...(ep > 0 ? { position: "atPriceBottom", price: ep } : { position: "belowBar" }) });
-        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", text: `${r[c("exit_reason")]} ${res(rm)}`,
+        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", size: 2, text: `Sell · ${r[c("exit_reason")]} ${res(rm)}`,
           ...(xp > 0 ? { position: "atPriceTop", price: xp } : { position: "aboveBar" }) });
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));

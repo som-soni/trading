@@ -2636,6 +2636,29 @@ class MinerviniSpecStrategy(Strategy):
                     return True
             return False
         out = []
+        # A run's fill that today's rules see no entry for -- no cheat crossed the bar before it, no breakout
+        # just before it: a run of an older version bought what these rules no longer take. Drawn as the base
+        # stood on the signal bar, so the trade sits in the setup it was bought from rather than in the base
+        # as it looked months later (ANANDRATHI.NS, a 1.22 cheat bought 2025-12-26, drew inside a base judged
+        # in March 2026, its entry zone and shelf nowhere near the buy).
+        for f in fills:
+            j = int(daily.index.searchsorted(f)) - 1          # the signal bar: the session before the fill
+            if j < start or j >= len(daily):
+                continue
+            p, key = dets[j], dets[j]["bh_date"]
+            if key is None or key in signalled:
+                continue
+            bo = bases.get(key, {}).get("breakout")
+            if bo is not None and 0 <= j - bo <= 3:           # the breakout itself: drawn by the base below
+                continue
+            s_ = self._setup(daily, cfg, p, j, None, None, False)
+            s_["anchored"] = True
+            s_["summary"] = (f"Drawn as the base stood on {ts(j).date()}, the session before the selected run "
+                             f"bought it; today's rules: " + s_["summary"][0].lower() + s_["summary"][1:])
+            fill_to = str(ts(min(len(daily) - 1, j + 1 + TIME_STOP_DAYS)).date())
+            s_["to"] = max(s_["to"], fill_to)
+            s_["frame"]["to"] = max(s_["frame"]["to"], fill_to)
+            out.append(s_)
         for key, b in bases.items():
             bo = b["breakout"]
             ch = signalled.get(key) or b["cheat"]
