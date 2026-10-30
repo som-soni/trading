@@ -1000,7 +1000,9 @@ async function chartPage(alive, market, symbol, tf) {
   // In the backtest view, the viewer's other overlay layers stand down too.
   const runKey = tradeRuns.find((r) => String(r.id) === String(sel.value))?.strategy || null;
   const runLayerType = runKey && Studies.setupLayers().find((l) => l.strategy === runKey)?.type;
-  const btLayer = runLayerType && Studies.activeSetup() !== runLayerType ? runLayerType : null;
+  // the backtest view hides the viewer's own layers -- the saved one of this same strategy included -- so the
+  // run's own transient layer must draw then, or a traded setup shows only its entry and exit lines
+  const btLayer = runLayerType && (btView || Studies.activeSetup() !== runLayerType) ? runLayerType : null;
   const studies = Studies.render({ chart, times, bars: B,
     skip: (s, def) => (!!btView && isOverlayLayer(s, def)) || (!!btLayer && !!def.setupsFor),
     extra: btLayer ? [Studies.transient(btLayer, { tradedOnly: true })] : [],
