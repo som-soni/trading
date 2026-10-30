@@ -296,6 +296,17 @@ MIN_STRUCTURAL_R = 2.0
 # range, every retest of the pivot). `chart_pattern.overhead_cluster_atr` is the
 # same guard for the same reason.
 OVERHEAD_CLUSTER_ATR = 1.0
+# 1.38: how many years back overhead supply is counted when it caps the target. 0 = the shared levels
+# (`swings.overhead_levels`: weekly swing highs over 5 years and monthly ones over all history, 1.37). Old
+# peaks capped the measured move of Minervini's own buys -- Lululemon Nov 2010 under its 2008 high (6.1R ->
+# 1.4R at the pivot), Best Buy Dec 1997 under 1993 (2.7R -> 0.6R), Stryker Jan 1995 under 1992 -- supply
+# years old that he bought through. N keeps the daily swing highs of the last year and the weekly ones of
+# the last N years.
+OVERHEAD_YEARS = 2
+# 1.38: the price step a stop or buy-stop is rounded to is at most this % of the price. A split-adjusted
+# history prints a 1982 Wal-Mart at 0.117 and a 2009 Netflix at 0.72, where a one-cent tick moved the stop
+# by 1-2% of the price and read as risk the trade never had. 0 = the market's tick as it is (1.37).
+TICK_MAX_PCT = 0.2
 
 # ---- section 9: exits. ExitPolicy (backtesting/portfolio_sim.py) takes its defaults
 # from these, so a --spec run trades exactly these numbers.
@@ -438,14 +449,19 @@ def _without_liquidity_floor(cfg: MarketConfig) -> MarketConfig:
     return out
 
 
+def _tick(price: float, tick: float) -> float:
+    """The step to round a level at `price` to: the market's tick, no coarser than TICK_MAX_PCT of the price."""
+    return min(tick, float(price) * TICK_MAX_PCT / 100) if TICK_MAX_PCT and price > 0 else tick
+
+
 def pivot_buy_stop(pivot: float, tick: float) -> float:
     """MV-02's resting buy-stop: just above the pivot. Shared by build_plans and the chart."""
-    return round_tick(float(pivot) * 1.001, tick, "up")
+    return round_tick(float(pivot) * 1.001, _tick(pivot, tick), "up")
 
 
 def pivot_stop(tight_low: float, tick: float) -> float:
     """SL-01: the stop, STOP_BUFFER_PCT under the tight-area (or shelf) low. Shared by build_plans and the chart."""
-    return round_tick(float(tight_low) * (1 - STOP_BUFFER_PCT / 100), tick, "down")
+    return round_tick(float(tight_low) * (1 - STOP_BUFFER_PCT / 100), _tick(tight_low, tick), "down")
 
 
 def vcp_measured_move(base_high, depth_pct) -> float:
@@ -810,7 +826,10 @@ class MinerviniSpecStrategy(Strategy):
          "breakout volume alone is short, is bought like MV-01 as its own setup, so its trades are measured "
          "apart. The book set goes to 13 of 35 (MercadoLibre Dec 2007, Isis Dec 2013) with no pinned example "
          "lost and no setup-to-avoid bought; with NEAR_MISS and TIGHT_AREA_ROUTE at 0 every snapshot of the "
-         "golden harness matches 1.37."),
+         "golden harness matches 1.37. (3) The plan: overhead supply that caps the target counts only the last "
+         "OVERHEAD_YEARS years -- peaks from years before capped Minervini's own Lululemon (2010), Best Buy "
+         "(1997) and Stryker (1995) buys under 2R -- and a stop or buy-stop is rounded to a step no coarser than "
+         "TICK_MAX_PCT of the price, since a one-cent tick on a split-adjusted 0.12 price moved the stop by 1-2%."),
         ("1.37", "2026-10-30",
          "A power play's pivot is the flag's high (PP_PIVOT_FLAG_HIGH), as the Learn guide buys it and as PP-04 "
          "already ends the flag, instead of the high of the flag's last tight stretch. The two disagreed: ENPH's "
@@ -1320,7 +1339,7 @@ class MinerviniSpecStrategy(Strategy):
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
         "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
-        "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR",
+        "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR", "OVERHEAD_YEARS", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
@@ -1969,6 +1988,10 @@ class MinerviniSpecStrategy(Strategy):
          "where the flag also ends (PP-04); 0 = through the high of its last tight stretch."),
         ("Power play, tight area", "PP_TIGHT_PCT", "MV-05: widest the flag's last stretch may be (PP-05); the "
          "flag's own limit, not a VCP's {TIGHT_PCT}%."),
+        ("Overhead supply, years", "OVERHEAD_YEARS", "Years of swing highs that can cap the target; 0 = weekly "
+         "highs over 5 years and monthly ones over all history (1.37)."),
+        ("Tick, largest step", "TICK_MAX_PCT", "A stop or buy-stop is rounded to the market's tick, no coarser "
+         "than this % of the price (split-adjusted history); 0 = the tick as it is."),
         ("Near miss", "NEAR_MISS", "1 = S7 buys a breakout from a base that missed one rule narrowly; 0 = off."),
         ("Near miss, final ratio", "NEAR_FINAL_REF_RATIO", "S7: VCP-06's final / reference contraction, at most."),
         ("Near miss, tight-area age", "NEAR_TIGHT_MIN_DAYS", "S7: VCP-08's sessions in the final contraction, at least."),
@@ -2432,8 +2455,10 @@ class MinerviniSpecStrategy(Strategy):
         # OVERHEAD_CLUSTER_ATR above the base high can cap the move.
         ceiling_from = max(entry, float(bh)) if bh else entry
         cluster_edge = ceiling_from + OVERHEAD_CLUSTER_ATR * ctx.atr
-        nearest_above = sw.nearest_overhead_above(ceiling_from, ctx.overhead)  # reported, not binding
-        binding = min((lvl for lvl in ctx.overhead if lvl >= cluster_edge), default=None)
+        overhead = (sw.overhead_levels(ctx.daily, ctx.weekly, None, ctx.h_value, weekly_bars=52 * OVERHEAD_YEARS)
+                    if OVERHEAD_YEARS else ctx.overhead)
+        nearest_above = sw.nearest_overhead_above(ceiling_from, overhead)  # reported, not binding
+        binding = min((lvl for lvl in overhead if lvl >= cluster_edge), default=None)
         if binding is not None and binding < target:
             target = binding
         ctx.extras["overhead_caps_target"] = bool(binding is not None and binding < entry + measured_move) \

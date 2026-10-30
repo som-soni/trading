@@ -252,7 +252,7 @@ def buys_over(strategy, symbol: str, lo, hi, frames: dict, market: str = MARKET)
     for day in days:
         ctx = ctx_mod.build_context(symbol, raw, earnings_days_away=None, frames=f, as_of=day)
         if ctx is None:
-            out.append((day, [], "history", None))
+            out.append((day, [], "history", None, None))
             continue
         r = strategy.evaluate(ctx)
         tradable = None

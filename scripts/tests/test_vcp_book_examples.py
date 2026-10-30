@@ -24,15 +24,24 @@ import sys
 import warnings
 from collections import Counter
 
+import pandas as pd
+
 from swing_screener.backtesting.breakout_eval import buys_over
 from swing_screener.strategies import get_strategy
 
 from tests.minervini_book_cases import BUY, CASES
 
+COIL_BEFORE = 3   # sessions before a buy in which a tradable S2 plan counts as the buy: Minervini buys AT the pivot
 
 def _window(strategy, case: dict, frames: dict):
-    """Every session of the case's window (`buys_over`), or None (no stored prices there)."""
-    return buys_over(strategy, case["symbol"], case["window"][0], case["window"][1], frames)
+    """Every session of the case's window (`buys_over`), or None (no stored prices there), and the few
+    sessions before it, where a coil's resting buy-stop (S2) may already be placed: (window rows, before)."""
+    lo = pd.Timestamp(case["window"][0])
+    rows = buys_over(strategy, case["symbol"], lo - pd.Timedelta(days=7), case["window"][1], frames)
+    if rows is None:
+        return None, None
+    inside = [r for r in rows if r[0] >= lo]
+    return (inside or None), [r for r in rows if r[0] < lo][-COIL_BEFORE:]
 
 
 def _why(rows) -> str:
@@ -59,7 +68,7 @@ def main() -> None:
             if verbose:
                 print(f"sell  {head} — {case['note']} (exit rules; not scored yet)")
             continue
-        rows = _window(st, case, frames)
+        rows, before = _window(st, case, frames)
         if rows is None:
             score["no data"] += 1
             print(f"----  {head} — no stored prices for this window")
@@ -68,7 +77,11 @@ def main() -> None:
         hits = [(d, [s for s in got if s in want], t) for d, got, _, _, t in rows if any(s in want for s in got)]
         if kind == "buy":
             ok = bool(hits)
-            traded = any(t for *_, t in hits) or "S2" in want      # a coil is a resting order, not judged here
+            # traded: a hit whose plan clears the backtest's limits, or a tradable coil (S2, a buy-stop at the
+            # pivot) in the sessions just before the first hit or on a hit day
+            first = hits[0][0] if hits else None
+            coils = [r for r in (before or []) + rows if "S2" in r[1] and r[4] and (first is None or r[0] <= first)]
+            traded = any(t for *_, t in hits) or bool(coils)
             tag = ("ok  " if traded else "plan") if ok else ("FAIL" if case.get("pinned") else "miss")
             score["buy caught" if ok else "buy missed"] += 1
             score["buy traded"] += bool(ok and traded)

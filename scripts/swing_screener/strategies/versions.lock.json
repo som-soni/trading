@@ -364,7 +364,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "f30ae25e",
+    "fingerprint": "df59ef84",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -431,6 +431,7 @@
       "NEAR_VOL_MULT": 1.2,
       "NOMINAL_TARGET_R": 3.0,
       "OVERHEAD_CLUSTER_ATR": 1.0,
+      "OVERHEAD_YEARS": 2,
       "PARTIAL_R": 2.0,
       "PE_PILOT_FRAC": 0.5,
       "PE_PRESS_NET_R": 4.0,
@@ -469,6 +470,7 @@
       "STRENGTH_EXT_PCT": 25.0,
       "STRENGTH_FRAC": 0.33,
       "SWING_K": 5,
+      "TICK_MAX_PCT": 0.2,
       "TIGHT_AREA_ROUTE": 1,
       "TIGHT_MIN_DAYS": 5,
       "TIGHT_PCT": 10.0,
