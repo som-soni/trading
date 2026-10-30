@@ -270,7 +270,13 @@ class EarningsGapStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "Not yet measured. Built as the shelf's only event-driven per-symbol strategy, to test "
+        "INDIA: TOO FEW TRADES TO JUDGE. In-sample (optimise, 2013-2021) at v1.4, with board-meeting "
+        "dates linking results to their reaction day, India makes 9 trades from 41 signals across 452 "
+        "eligible stocks, against v1.3's 3 trades from 15: 0.35% CAGR at 5.8% exposure, max drawdown "
+        "-5.8%, one winner in nine. That winner (HINDALCO 2016, +9.1R) carries the profit factor of 1.54; "
+        "the other eight lost. Most bars stop at G2 -- a big, heavy-volume results-day move is rare -- "
+        "not at the results link, so more dates cannot make India a strategy on their own. "
+        "Otherwise not yet measured. Built as the shelf's only event-driven per-symbol strategy, to test "
         "whether keying on news rather than chart structure behaves differently from the "
         "structure family, which has no positive selection number on the 2013 cohort. Read its "
         "first run against the index held at the same exposure, not against its own CAGR: this "
