@@ -197,6 +197,19 @@ def _splits(ctx: Ctx) -> None:
     _correct_source_errors(ctx)
 
 
+def _spac_history(ctx: Ctx) -> None:
+    """A de-SPAC's history starts at its merger: the SPAC's flat $10 trust bars before it are recorded and
+    removed from prices (marketdata/spac_history.py), so no rule judges the company on the shell."""
+    from swing_screener.marketdata import spac_history
+    r = spac_history.refresh(ctx.market)
+    if r.get("skipped"):
+        ctx.step.skip(r["skipped"])
+        return
+    ctx.step.detail = (f"{r['found']} de-SPAC(s) found; {r['symbols_trimmed']} trimmed to their merger, "
+                       f"{r['bars_removed']:,} trust bar(s) removed (backed up)")
+    ctx.step.stats = r
+
+
 def _correct_source_errors(ctx: Ctx) -> None:
     """Errors in the source's own history a re-fetch cannot fix (splits.correct): an unadjusted split a stored
     split/bonus corroborates, and stray bars. Idempotent -- re-applied when a re-fetch brings one back."""
@@ -909,6 +922,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("splits", "data", "splits & bonus issues: re-fetch the full history of stocks that split after their last full fetch, "
         "and fix the source's own unadjusted splits and stray bars (marketdata/splits.py)",
         "weekly", True, _splits, after=("prices", "corporate_actions")),
+    Job("spac_history", "data", "de-SPACs: a merged SPAC's history starts at its merger -- the shell's flat $10 trust "
+        "bars before it are removed (backed up), so no rule judges the company on them (marketdata/spac_history.py)",
+        "weekly", True, _spac_history, after=("prices",)),
     Job("corporate_actions", "data", "corporate actions: dividends and splits (Yahoo), demergers and bonuses (NSE) — the "
         "special dividends and demergers backtests credit to a holder (marketdata/corporate_actions.py)",
         "weekly", True, _corporate_actions, after=("prices",)),
