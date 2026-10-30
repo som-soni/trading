@@ -364,7 +364,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "139b76bc",
+    "fingerprint": "fc3d8871",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -447,6 +447,7 @@
       "PP_FLAG_MAX_DAYS": 30,
       "PP_FLAG_MAX_DEPTH_PCT": 25.0,
       "PP_FLAG_MIN_DAYS": 10,
+      "PP_MAX_STOP_PCT": 20.0,
       "PP_RUN_MULT": 2.0,
       "PP_RUN_WINDOW": 40,
       "PP_TIGHT_PCT": 25.0,

@@ -243,6 +243,11 @@ CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpPar
 
 STOP_BUFFER_PCT = 0.5   # SL-01: stop this % under the tight low
 MAX_STOP_PCT = 10.0     # SL-03: skip a fill whose stop is further below it than this (the guide's limit)
+# SL-03 for a power play (1.36). Its stop goes under a flag of up to PP_FLAG_MAX_DEPTH_PCT, so 12-20% is
+# normal, and 10% refused nearly every one -- the Learn guide's own example (VKTX, 14%) says "trade it
+# smaller, or wait for a tighter entry". Positions are sized by their risk, so a wider stop is already a
+# smaller position.
+PP_MAX_STOP_PCT = 20.0
 # EN-04's limit: how many times one base may be bought. 1 = the shipped rule, a base is barred
 # for good after one entry. Minervini re-buys a leader that shook him out, and the ladder makes
 # that common here -- EX-03 moves the stop to breakeven at +{BREAKEVEN_R}R, so an ordinary
@@ -515,6 +520,11 @@ def base_notes(r: dict, g: dict) -> str:
     return " · ".join(parts)
 
 
+def max_stop_pct(setup: str | None) -> float:
+    """SL-03's limit for a setup: PP_MAX_STOP_PCT for a power play, MAX_STOP_PCT for the rest."""
+    return PP_MAX_STOP_PCT if setup == MV05 else MAX_STOP_PCT
+
+
 def power_measured_move(flag_high, run_pct) -> float:
     """A power play's objective: the size of the run into the flag -- the flagpole, from the run's low to the
     flag's high -- projected from the buy, as a high tight flag's measured move is. Until 1.36 the objective was
@@ -745,8 +755,10 @@ class MinerviniSpecStrategy(Strategy):
          "it -- so a power play projected under 1R and the 2:1 minimum refused every one: MV-05 could fire "
          "but never trade. And PP-05, the flag's tight area, is held to the flag's own 25% limit "
          "(PP_TIGHT_PCT) instead of a VCP's 10%: the Learn guide sets no such test, and it refused the guide's "
-         "own example (VKTX, January 2024, a 13.4% tight area). evaluate() now records pp_flag_high, so cached "
-         "signals are rescanned."),
+         "own example (VKTX, January 2024, a 13.4% tight area). A power play's stop may sit up to "
+         "PP_MAX_STOP_PCT (20%) below the buy instead of 10%, since it goes under a flag of up to 25% and "
+         "10% refused nearly every one; the position is sized by its risk. evaluate() now records "
+         "pp_flag_high, so cached signals are rescanned."),
         ("1.35", "2026-10-30",
          "A high with a fall of more than MAX_BASE_DEPTH_PCT (50%) below it no longer anchors a base "
          "(DEEP_DECLINE_RESETS): that fall is a Stage 4 decline, and the base count starts again from the "
@@ -1238,7 +1250,7 @@ class MinerviniSpecStrategy(Strategy):
     # CHEAT_BLOCK_VCP09) and the watch flags' are not here: a variant on one of them rescans.
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
-        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
+        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
         "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
@@ -1666,8 +1678,9 @@ class MinerviniSpecStrategy(Strategy):
         "risk, called 1R. Every result is counted in R: +2R is a gain of twice the risk taken, −1R a "
         "full stop-out.",
         "How far is too far (SL-03). If the stop is more than {MAX_STOP_PCT}% below the price paid, "
-        "the trade is skipped: the loss would be too large. On the live screen such a setup shows as "
-        "WATCH.",
+        "the trade is skipped: the loss would be too large. A power play allows {PP_MAX_STOP_PCT}%: its "
+        "stop sits under a flag of up to {PP_FLAG_MAX_DEPTH_PCT}%, and the position is sized by its risk, "
+        "so a wider stop buys fewer shares. On the live screen such a setup shows as WATCH.",
         "How it sells (EX-01). The stop is a standing sell order: it sells during the session the "
         "moment the low touches it. If the stock opens below the stop — after bad news overnight — "
         "it sells at that open, so a gap can cost more than 1R.\n\n"
@@ -1880,6 +1893,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Buy range", "BUY_RANGE_PCT", "MV-01b, and the most a fill may sit above the pivot."),
         ("Stop buffer", "STOP_BUFFER_PCT", "SL-01."),
         ("Maximum stop", "MAX_STOP_PCT", "SL-03, checked at the fill."),
+        ("Maximum stop, power play", "PP_MAX_STOP_PCT", "SL-03 for MV-05: its stop sits under a flag of up "
+         "to {PP_FLAG_MAX_DEPTH_PCT}%."),
         ("Cheat shelf length", "CHEAT_SHELF_DAYS", "Sessions in the shelf a cheat is bought from (MV-03/MV-04)."),
         ("Cheat shelf tightness", "CHEAT_SHELF_PCT", "Widest shelf, high to low, that counts as a cheat."),
         ("Cheat shelf dry-up", "CHEAT_DRYUP", "MV-03/MV-04: 1 = the shelf must pass VCP-10's volume test, 0 = tightness only (1.26)."),
@@ -2362,7 +2377,7 @@ class MinerviniSpecStrategy(Strategy):
         base_id = (e.get("pp_flag_high_date") if plan.setup == MV05
                    else e.get("flat_base_date") if plan.setup == FLAT else e.get("base_date"))
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
-                "max_risk_pct": MAX_STOP_PCT / 100, "base_id": base_id,
+                "max_risk_pct": max_stop_pct(plan.setup) / 100, "base_id": base_id,
                 "max_entries_per_base": MAX_ENTRIES_PER_BASE,
                 "min_structural_r": MIN_STRUCTURAL_R,
                 "tightness": e.get("tightness_pct")}
@@ -2408,9 +2423,9 @@ class MinerviniSpecStrategy(Strategy):
             label = "TRADE_ON_TRIGGER"
             reasons = [f"cheat: cleared a shelf in the {where} third of the base, "
                        f"stopped under the shelf low"]
-        if risk_pct > MAX_STOP_PCT:
+        if risk_pct > max_stop_pct(plan.setup):
             label = "WATCH_WAIT"
-            reasons.append(f"stop {risk_pct:.1f}% below entry exceeds the {MAX_STOP_PCT:g}% maximum")
+            reasons.append(f"stop {risk_pct:.1f}% below entry exceeds the {max_stop_pct(plan.setup):g}% maximum")
         if earnings_days_away is not None and 0 <= earnings_days_away <= EARNINGS_BLACKOUT_DAYS:
             label = "WATCH_WAIT"
             reasons.append(f"results due in {earnings_days_away} days: no new buy within {EARNINGS_BLACKOUT_DAYS}")
@@ -2714,7 +2729,7 @@ class MinerviniSpecStrategy(Strategy):
             target = buy + power_measured_move(fh, r["run_pct"])   # build_plans' MV-05 objective: the flagpole
             r_mult = (target - buy) / risk if risk > 0 else None
             risk_pct = risk / buy * 100
-            ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
+            ok_risk, ok_r = risk_pct <= PP_MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
             entry_to = day(min(len(daily) - 1, (bo if bo is not None else rep) + TIME_STOP_DAYS))
             levels = [("buy", buy, f"Buy {px(buy)}"), ("stop", stop, f"Stop {px(stop)}"),
                       ("breakeven", buy + BREAKEVEN_R * risk, ""), ("target", target, f"Target {px(target)}")]
@@ -2722,7 +2737,7 @@ class MinerviniSpecStrategy(Strategy):
                        "to": at, "top": pv, "bottom": tl, "role": "tight", "label": ""}]
             shapes += [{"shape": "level", "from": at, "to": entry_to, "price": v, "role": role, "label": lab,
                         "dash": role != "buy"} for role, v, lab in levels]
-            skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
+            skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {PP_MAX_STOP_PCT:g}% limit"]) + \
                    ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum"])
             zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": at,
                           "to": entry_to, "illustration": True,
@@ -2733,7 +2748,7 @@ class MinerviniSpecStrategy(Strategy):
                                    f"the tight low, at {px(stop)}: a risk of {risk_pct:.1f}%. The objective is the run "
                                    f"into the flag projected from the buy, {px(target)}, {_rr(r_mult, ok_r)}."
                                    + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
-                          "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {MAX_STOP_PCT:g}%", "pass" if ok_risk else "fail")),
+                          "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {PP_MAX_STOP_PCT:g}%", "pass" if ok_risk else "fail")),
                                      tick(("R:R", "Reward / risk", _rr(r_mult, ok_r), f"at least {MIN_STRUCTURAL_R:g}R", "pass" if ok_r else "fail"))],
                           "shapes": shapes})
             top, bottom, frame_to = max(top, target, buy + BREAKEVEN_R * risk), min(bottom, stop), entry_to
