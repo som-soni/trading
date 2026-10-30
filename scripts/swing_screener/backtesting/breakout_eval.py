@@ -12,7 +12,7 @@ A case is a BREAKOUT that became a big move:
 * a stock, not a fund or note (`_equities`),
 * the close is at least `MIN_PRICE` and the 50-day average turnover at least the Minervini
   strategy's liquidity floor, so the move was tradable,
-* and within `FWD_SESSIONS` sessions some close is at least `MIN_GAIN_PCT`% above it, the highest
+* and within the set's `fwd_sessions` sessions some close is at least its `gain_pct`% above it, the highest
   of them no sooner than `MIN_SESSIONS_TO_PEAK` sessions after the breakout.
 
 The breakout date only marks where the move became visible: it is often NOT a buy point (NKTR's
@@ -21,7 +21,7 @@ reviewer records the valid entry, if there was one, as `review_entry_date` and `
 detector is judged on whether it signals within a few sessions of that entry.
 
 The peak is the highest close in that window; the next case for the same stock can start only
-after it, so one move is one case. Breakouts and peaks both fall inside `WINDOW`, the last five
+after it, so one move is one case. Breakouts and peaks both fall inside the set's window (`SETS`), in the
 years of the optimise stage: the 2022+ verify years are never read, so tuning the detector on
 these labels leaves the verify window clean (`backtesting/windows.py`).
 
@@ -42,12 +42,22 @@ import pandas as pd
 from ..marketdata import asof, cache, db, names
 from ..strategies import minervini_spec as ms
 
-EVAL_SET = "us-2017-2021-x2"
 MARKET = "us"
-WINDOW = ("2017-01-01", "2021-12-31")   # the last five years of the optimise stage
+# Each set is a window of the optimise stage, so labels never touch the verify years. The first was the last
+# five years; most of it (97 of 118 moves) is the 2020-21 COVID market -- pandemic, SPAC, crypto and meme
+# squeezes, which mostly answer "no setup" -- so 2013-2016 adds the normal markets the strategy is built for.
+# Together with the first set's 2017-2019 cases, the two cover 2013-2019 without overlapping.
+# The bar for "a big move" is the set's own: doubling within three months found 118 moves in 2017-2021 but 6 in
+# 2013-2016, whose leaders climbed for months rather than weeks; +75% within six months finds 58 there.
+SETS = {
+    "us-2017-2021-x2": {"window": ("2017-01-01", "2021-12-31"), "gain_pct": 100.0, "fwd_sessions": 63},
+    "us-2013-2016-x75": {"window": ("2013-01-01", "2016-12-31"), "gain_pct": 75.0, "fwd_sessions": 126},
+}
+EVAL_SET = "us-2017-2021-x2"   # the default set
+# COVID-period cases in the first set reviewed one by one: established, liquid leaders, a test of how the rules
+# behave in a news-driven, heavy-volume market. The rest of that period is not reviewed case by case.
+COVID_SAMPLE = ("TSLA", "ENPH", "DOCU", "FVRR", "APPN", "SNAP", "AMBA", "CELH", "LAD", "TWST", "MSTR")
 RANGE_SESSIONS = 60       # the breakout close clears the highest high of this many sessions before it
-FWD_SESSIONS = 63         # about three months to …
-MIN_GAIN_PCT = 100.0      # … at least double
 MIN_PRICE = 5.0
 MIN_SESSIONS_TO_PEAK = 10  # a move that tops out inside two weeks is a news spike, not a trend
 HISTORY_DAYS = 400        # calendar days read before the window, for the range and the turnover average
@@ -105,8 +115,9 @@ def init_schema() -> None:
         cur.execute(SCHEMA)
 
 
-def scan(frames: dict[str, pd.DataFrame]) -> list[dict]:
-    start, end = pd.Timestamp(WINDOW[0]), pd.Timestamp(WINDOW[1])
+def scan(frames: dict[str, pd.DataFrame], eval_set: str = EVAL_SET) -> list[dict]:
+    cfg = SETS[eval_set]
+    (start, end), gain, fwd = (pd.Timestamp(x) for x in cfg["window"]), cfg["gain_pct"], cfg["fwd_sessions"]
     floor = ms.MIN_TURNOVER_USD_M * 1e6
     out = []
     for sym, d in frames.items():
@@ -121,9 +132,9 @@ def scan(frames: dict[str, pd.DataFrame]) -> list[dict]:
         while j < len(c) - 1:
             if (d.index[j] >= start and c[j] > prior_hi[j] and c[j] >= MIN_PRICE
                     and turn[j] >= floor):
-                seg = c[j + 1: j + 1 + FWD_SESSIONS]
+                seg = c[j + 1: j + 1 + fwd]
                 k = j + 1 + int(seg.argmax())
-                if seg.max() >= (1 + MIN_GAIN_PCT / 100) * c[j] and k - j >= MIN_SESSIONS_TO_PEAK:
+                if seg.max() >= (1 + gain / 100) * c[j] and k - j >= MIN_SESSIONS_TO_PEAK:
                     out.append(dict(
                         symbol=sym, breakout_date=d.index[j].date(), breakout_close=float(c[j]),
                         range_high=float(prior_hi[j]),
@@ -156,15 +167,16 @@ def _equities() -> set[str]:
         return {r[0] for r in cur.fetchall()}
 
 
-def build() -> int:
-    """Scan the window and upsert the cases. A rebuild keeps every review already made."""
+def build(eval_set: str = EVAL_SET) -> int:
+    """Scan the set's window and upsert the cases. A rebuild keeps every review already made."""
     init_schema()
-    since = pd.Timestamp(WINDOW[0]) - pd.Timedelta(days=HISTORY_DAYS)
+    window = SETS[eval_set]["window"]
+    since = pd.Timestamp(window[0]) - pd.Timedelta(days=HISTORY_DAYS)
     syms = sorted(cache.cached_symbols(MARKET) & _equities())
     cases = []
-    with asof.boundary(WINDOW[1]):
+    with asof.boundary(window[1]):
         for i in range(0, len(syms), 500):
-            cases += scan(cache.load_many_cached(MARKET, syms[i:i + 500], since=since))
+            cases += scan(cache.load_many_cached(MARKET, syms[i:i + 500], since=since), eval_set)
     cases = _dedupe(cases)
     cols = ["symbol", "breakout_date", "breakout_close", "range_high", "range_depth_pct",
             "turnover_m", "peak_date", "peak_close", "gain_pct", "sessions_to_peak"]
@@ -172,22 +184,22 @@ def build() -> int:
         f"INSERT INTO breakout_eval_cases (eval_set, market, {', '.join(cols)}) VALUES %s "
         "ON CONFLICT (eval_set, market, symbol, breakout_date) DO UPDATE SET "
         + ", ".join(f"{c} = EXCLUDED.{c}" for c in cols[2:]),
-        [(EVAL_SET, MARKET, *(c[k] for k in cols)) for c in cases])
+        [(eval_set, MARKET, *(c[k] for k in cols)) for c in cases])
     keep = [(c["symbol"], c["breakout_date"]) for c in cases]
     with db.get_connection().cursor() as cur:   # cases the definition no longer finds, unless reviewed
         cur.execute("SELECT id, symbol, breakout_date FROM breakout_eval_cases "
-                    "WHERE eval_set=%s AND review_label IS NULL", (EVAL_SET,))
+                    "WHERE eval_set=%s AND review_label IS NULL", (eval_set,))
         gone = [r[0] for r in cur.fetchall() if (r[1], r[2]) not in set(keep)]
         if gone:
             cur.execute("DELETE FROM breakout_eval_cases WHERE id = ANY(%s)", (gone,))
     return len(cases)
 
 
-def cases() -> pd.DataFrame:
+def cases(eval_set: str = EVAL_SET) -> pd.DataFrame:
     init_schema()
     with db.get_connection().cursor() as cur:
         cur.execute("SELECT * FROM breakout_eval_cases WHERE eval_set=%s ORDER BY breakout_date, symbol",
-                    (EVAL_SET,))
+                    (eval_set,))
         cols = [c.name for c in cur.description]
         return pd.DataFrame(cur.fetchall(), columns=cols)
 
@@ -210,6 +222,7 @@ def label(case_id: int, value: str, footprint: str | None = None, notes: str | N
 def main() -> None:
     warnings.filterwarnings("ignore")
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--set", default=EVAL_SET, choices=list(SETS))
     ap.add_argument("--build", action="store_true")
     ap.add_argument("--list", action="store_true")
     ap.add_argument("--label", nargs=2, metavar=("ID", "LABEL"))
@@ -220,11 +233,11 @@ def main() -> None:
     ap.add_argument("--qualifies", choices=QUALIFIES, help="does the setup qualify under the Learn guide's rules")
     a = ap.parse_args()
     if a.build:
-        print(f"{build()} cases in {EVAL_SET}")
+        print(f"{build(a.set)} cases in {a.set}")
     if a.label:
         label(int(a.label[0]), a.label[1], a.footprint, a.notes, a.entry, a.pivot, a.qualifies)
     if a.list or not (a.build or a.label):
-        df = cases()
+        df = cases(a.set)
         nm = names.load(MARKET)
         df.insert(3, "name", [(names.lookup(nm, s) or "")[:28] for s in df["symbol"]])
         with pd.option_context("display.max_rows", None, "display.width", 200):
