@@ -2190,7 +2190,7 @@ class MinerviniSpecStrategy(Strategy):
         near_break = bool(NEAR_MISS and prev.get("near_ok") and prev.get("pivot")
                           and prev_close <= prev["pivot"] < close)
         base = prev if (breakout or near_break) else today
-        miss, vol_ratio, upper = entry_misses(close, high, low, vol, v50, base["pivot"] if breakout else None)
+        miss, vol_ratio, upper = entry_misses(close, high, low, vol, v50, base["pivot"] if (breakout or near_break) else None)
         confirmed = {"W1": miss["W1"], "W2": breakout and miss["W2"], "W3": miss["W3"]}
         mv01 = breakout and not any(confirmed.values())
         near, near_why = False, None
