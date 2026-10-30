@@ -141,6 +141,14 @@ class VcpParams:
     # 1.28: a later, marginally higher swing high raises the base's ceiling but keeps its start
     # (see step 1 of `detect`). 0 = it restarts the base there (1.27).
     base_keeps_start: int = 1
+    # 1.34: a swing high anchors a base only if the base below it stays within `max_base_depth_pct`
+    # (VCP-05). A deeper fall is a Stage 4 decline, not a base; the high from before it is overhead
+    # supply, and the base count starts again from the highs AFTER the low. Without this an unbeaten
+    # high up to `base_max_days` old held every later bar inside one bottomless "base": TNDM crashed 90%
+    # from its March 2017 high (25.25), and its 2018 recovery bases -- March, and June before a
+    # 25-fold run -- were read as a 65-week, 90%-deep base failing VCP-03, so none was ever judged.
+    # 0 = the high anchors whatever lies below it (1.33).
+    deep_decline_resets: int = 0
     # 1.28: VCP-06's "no deeper than the one before" allows `widen_tol`, like the widening test.
     # 1 = strict, any deeper pullback fails (1.27).
     strict_shrink: int = 0
@@ -368,6 +376,9 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
                             p.bh_break_atr * atr[j + 1:])
             if bool(np.any(later > hj + marg)):
                 continue                  # a close resolved it: this high no longer caps a base
+        if p.deep_decline_resets and hj > 0 and \
+                (hj - float(low[j:].min())) / hj * 100 > p.max_base_depth_pct:
+            continue                      # a decline, not a base: this high cannot anchor one
         bh_i = j
         if start_i is None or not p.base_keeps_start:
             start_i = j

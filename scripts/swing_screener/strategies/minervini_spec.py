@@ -142,6 +142,11 @@ PP_DRYUP = 1
 # compares its return since listing with the market's over the same sessions
 # (backtesting/spec.rs_ratings). 0 = such a stock waits for a year of history, as in 1.27.
 YOUNG_LISTING = 1
+# 1.34: a fall deeper than MAX_BASE_DEPTH_PCT below a high is a Stage 4 decline, not a base, so that high
+# cannot anchor one and the base count starts again from the highs after the low (VcpParams.
+# deep_decline_resets). TNDM's 2018 recovery bases were held inside a 90%-deep "base" from its March 2017
+# high and never judged. 0 = an old unbeaten high anchors whatever lies below it (1.33).
+DEEP_DECLINE_RESETS = 1
 YOUNG_MIN_BARS = 60     # sessions listed before anything is judged: core.context's minimum, past the 50-day
 
 # MV-03/MV-04 (1.27): the cheat shelf must show VCP-10's volume dry-up as well as its tightness.
@@ -185,7 +190,7 @@ VCP = vcp_spec.VcpParams(
     undercut_recovery_days=UNDERCUT_RECOVERY_DAYS,
     tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
-    cheat_dryup=CHEAT_DRYUP, young_listing=YOUNG_LISTING,
+    cheat_dryup=CHEAT_DRYUP, young_listing=YOUNG_LISTING, deep_decline_resets=DEEP_DECLINE_RESETS,
 )
 
 # ---- section 6: setups
@@ -697,11 +702,19 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.33"
-    # signal_version is not pinned: 1.33 adds base_depth_pct to evaluate()'s extras, which build_plans
-    # reads, so 1.32's cached signal rows (without it) cannot be carried forward -- the next backtest
-    # rescans.
+    version = "1.34"
+    # signal_version is not pinned: 1.34 changes the base detector (which high anchors a base) and 1.33
+    # added base_depth_pct to evaluate()'s extras, so earlier cached signal rows cannot be carried
+    # forward -- the next backtest rescans.
     changelog = (
+        ("1.34", "2026-10-30",
+         "A high with a fall of more than MAX_BASE_DEPTH_PCT (50%) below it no longer anchors a base "
+         "(DEEP_DECLINE_RESETS): that fall is a Stage 4 decline, and the base count starts again from the "
+         "highs after its low. Before, an unbeaten high up to 65 weeks old held every later bar inside one "
+         "bottomless base that failed VCP-03, so a turnaround's new Stage 2 bases were never judged -- TNDM's "
+         "March and June 2018 bases, before a 25-fold run, sat inside a 90%-deep base from its March 2017 "
+         "high. Found by the breakout eval set (backtesting/breakout_eval.py). Changes which bases the scan "
+         "sees, so cached signals are rescanned."),
         ("1.33", "2026-10-30",
          "The target's measured move is the BASE's depth -- its high less its lowest low -- not its first "
          "pullback's. The first pullback stood in for the deepest on the reasoning that VCP-06 makes each "
@@ -1303,8 +1316,9 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "IN-SAMPLE ONLY, not verified. v1.33 (the target's measured move from the base's depth) is not "
-        "backtested yet; the figures below are v1.31's. v1.31 in the optimise stage (2013-2021, the years its rules "
+        "IN-SAMPLE ONLY, not verified. v1.34 (a deep decline resets the base) is not backtested yet; "
+        "v1.33 (the target's measured move from the base's depth) in India: 236 trades, +0.16R a trade, "
+        "profit factor 1.18, CAGR +1.9%, worst drawdown -14.6%. The figures below are v1.31's. v1.31 in the optimise stage (2013-2021, the years its rules "
         "were tuned on), under the live variant (CHEAT_BLOCK_VCP09=1, TREND_EXIT_NEEDS_VOLUME=1): "
         "India 199 trades, 34% won, +0.20R a trade, profit factor 1.18, CAGR +1.6%, worst drawdown "
         "-12.5%; US 490 trades, 35% won, -0.04R a trade, profit factor 0.83, CAGR -2.5%, worst "
@@ -1764,6 +1778,9 @@ class MinerviniSpecStrategy(Strategy):
         ("Pullback turn, floor in ATRs", "VCP.zigzag_floor_atr_mult", "… or this many ATRs."),
         ("Smallest pullback", "MIN_SWING_PCT", "VCP-04: finished pullbacks shallower than this % are dropped."),
         ("Base depth, deepest", "MAX_BASE_DEPTH_PCT", "Base high to base low, VCP-05."),
+        ("Deep decline resets the base", "DEEP_DECLINE_RESETS", "1 = a high with a fall of more than "
+         "{MAX_BASE_DEPTH_PCT}% below it cannot anchor a base: that is a Stage 4 decline, and the base count "
+         "starts again from the highs after its low."),
         ("Deep-base flag", "DEEP_BASE_FLAG_PCT", "Recorded, never a rejection (VCP-05)."),
         ("Volume dry-up, quiet days", "DRYUP_QUIET_DAYS", "The alternative route past VCP-10."),
         ("Volume dry-up, quiet level", "DRYUP_QUIET_RATIO", "A quiet session is at or under this × the 50-day."),
