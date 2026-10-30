@@ -172,8 +172,10 @@ const Studies = (() => {
         // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
         // (a listing too new for the template is neither: neutral grey, so it never reads as a failure)
         // (the generic layer's kinds — pass / watch / fail — share the same three colours)
-        const kindKey = (s) => ({ vcp: "vcp", pass: "vcp", cheat: "cheat", watch: "cheat", young: "young" })[s.kind] || "miss";
-        const kindCol = (s) => (s.kind === "young" ? YOUNG : col(kindKey(s)));
+        const kindKey = (s) => ({ vcp: "vcp", pass: "vcp", cheat: "cheat", watch: "cheat", young: "young", near: "near" })[s.kind] || "miss";
+        // a near miss (Minervini's S7): complete but for one rule missed narrowly -- amber, never the VCP's colour
+        const NEAR = "#d4a017";
+        const kindCol = (s) => (s.kind === "young" ? YOUNG : s.kind === "near" ? NEAR : col(kindKey(s)));
         const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
         let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
         const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -374,7 +376,7 @@ const Studies = (() => {
             return { ...x, label: "" };   // a copy: a traded setup's shapes are the run's own record
           });
           ctx.annotate(id, on ? stage.concat(drawn) : [], { uptrend: c("uptrend"), base: c("base"), contraction: c("base"),
-            vcp: c("vcp"), cheat: c("cheat"), miss: c("miss"), flag: c("flag"), failpath: DIM, young: YOUNG, tight: c("tight"),
+            vcp: c("vcp"), cheat: c("cheat"), miss: c("miss"), flag: c("flag"), near: NEAR, failpath: DIM, young: YOUNG, tight: c("tight"),
             pivot: c("pivot") || c("tight"), buy: c("buy"), stop: c("stop"), breakeven: DIM, target: c("target"), dim: DIM, ...extraRoles });
           renderCard();
           lane.mark();
@@ -1123,6 +1125,7 @@ const Studies = (() => {
         const keyRows = (YOUNG) => [
           ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],
           ["frame", col("cheat"), "Blue frame", "not a VCP, but it triggered a cheat entry: a close through a tight shelf low in the base."],
+          ["frame", "#d4a017", "Gold frame", "a near miss (S7): the base passed every rule but one, which it missed by a small margin; the header names the rule. The strategy buys its breakout as a setup of its own, so its results are measured apart from a full VCP's."],
           ["dashframe", YOUNG, "Grey dashed frame", "too new to judge (?): the stock lacks the history for a 200-day average."],
           ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],
           ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup. Its levels are the run's own record; every other setup here is what the rules would have set up on, not a trade."],

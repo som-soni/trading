@@ -65,7 +65,7 @@ EVAL_SET = "us-2017-2021-x2"   # the default set
 COVID_SAMPLE = ("TSLA", "ENPH", "DOCU", "FVRR", "APPN", "SNAP", "AMBA", "CELH", "LAD", "TWST", "MSTR")
 SCORE_BEFORE, SCORE_AFTER = 5, 3   # sessions around the reviewed entry that count as the strategy's buy
 NO_BUY_BEFORE = 20                  # sessions before a `no` case's breakout in which a buy is a false buy
-BUY_SETUPS = (ms.MV01, ms.MV03, ms.MV04, ms.MV05, ms.FLAT)   # a buy: breakout, low cheat, cheat, power play, flat
+BUY_SETUPS = (ms.MV01, ms.MV03, ms.MV04, ms.MV05, ms.FLAT, ms.NEAR)   # a buy: breakout, cheats, power play, flat, near miss
 RANGE_SESSIONS = 60       # the breakout close clears the highest high of this many sessions before it
 MIN_PRICE = 5.0
 MIN_SESSIONS_TO_PEAK = 10  # a move that tops out inside two weeks is a news spike, not a trend
@@ -230,7 +230,10 @@ def label(case_id: int, value: str, footprint: str | None = None, notes: str | N
 
 def buys_over(strategy, symbol: str, lo, hi, frames: dict, market: str = MARKET):
     """`strategy.evaluate` on every stored session from `lo` to `hi`, each seeing only its own and earlier bars:
-    [(date, active setups, first hard fail, the detector's rejection)], or None when no prices are stored."""
+    [(date, active setups, first hard fail, the detector's rejection, tradable)], or None when no prices are
+    stored. `tradable` (sessions with a setup only, else None): the gates pass and the plan clears the limits
+    the backtest applies at the fill -- risk within the setup's max_stop_pct, and at least MIN_STRUCTURAL_R --
+    measured on the signal close."""
     from ..core import context as ctx_mod
     if symbol not in frames:
         raw = cache.load_cached(market, symbol)
@@ -252,8 +255,20 @@ def buys_over(strategy, symbol: str, lo, hi, frames: dict, market: str = MARKET)
             out.append((day, [], "history", None))
             continue
         r = strategy.evaluate(ctx)
-        out.append((day, r.active_setups, r.first_hard_fail, ctx.extras.get("vcp_fail")))
+        tradable = None
+        if r.active_setups:
+            pc = strategy.build_plans(ctx, r, _cfg(market))
+            pl = pc.chosen if pc else None
+            tradable = bool(r.hard_gates_passed and pl is not None and pl.entry > 0
+                            and (pl.entry - pl.stop) / pl.entry <= ms.max_stop_pct(pl.setup) / 100
+                            and (pl.r_multiple or 0) >= ms.MIN_STRUCTURAL_R)
+        out.append((day, r.active_setups, r.first_hard_fail, ctx.extras.get("vcp_fail"), tradable))
     return out
+
+
+def _cfg(market: str):
+    from ..config import MARKETS
+    return MARKETS[market] if isinstance(MARKETS, dict) else next(m for m in MARKETS if m.name == market)
 
 
 def score(eval_sets, verbose: bool = False) -> dict:
@@ -261,7 +276,7 @@ def score(eval_sets, verbose: bool = False) -> dict:
     from ..strategies import get_strategy
     st = get_strategy("minervini")
     frames: dict = {}
-    tally = {"caught": 0, "missed": 0, "held": 0, "bought": 0}
+    tally = {"caught": 0, "setup only": 0, "missed": 0, "held": 0, "bought": 0}
     for es in eval_sets:
         df = cases(es)
         df = df[df["review_qualifies"].notna()]
@@ -282,17 +297,19 @@ def score(eval_sets, verbose: bool = False) -> dict:
             idx = [d for d, *_ in rows]
             k = next((i for i, d in enumerate(idx) if d >= anchor), len(idx) - 1)
             rows = rows[max(0, k - before): k + SCORE_AFTER + 1]
-            hits = [(d, [s for s in got if s in BUY_SETUPS]) for d, got, _, _ in rows if any(s in BUY_SETUPS for s in got)]
+            hits = [(d, [s for s in got if s in BUY_SETUPS], t) for d, got, _, _, t in rows
+                    if any(s in BUY_SETUPS for s in got)]
             if q in ("yes", "borderline"):
-                key = "caught" if hits else "missed"
+                key = "caught" if any(t for *_, t in hits) else "setup only" if hits else "missed"
             else:
                 key = "bought" if hits else "held"
             tally[key] += 1
-            if verbose or key in ("missed", "bought"):
+            if verbose or key in ("missed", "bought", "setup only"):
                 why = (f"{hits[0][0].date()} {','.join(hits[0][1])}" if hits else
-                       ", ".join(sorted({f"{g or '-'}/{v or '-'}" for _, _, g, v in rows}))[:80])
+                       ", ".join(sorted({f"{g or '-'}/{v or '-'}" for _, _, g, v, _ in rows}))[:80])
                 print(f"{key:<7} #{c['id']:<4} {c['symbol']:<5} {q:<10} {anchor.date()} {c['review_label']:<10} {why}")
-    print(f"qualifying entries caught {tally['caught']} of {tally['caught'] + tally['missed']}; "
+    print(f"qualifying entries traded {tally['caught']} of {tally['caught'] + tally['setup only'] + tally['missed']} "
+          f"({tally['setup only']} more with a setup the plan limits refuse); "
           f"'no' cases bought {tally['bought']} of {tally['bought'] + tally['held']}")
     return tally
 

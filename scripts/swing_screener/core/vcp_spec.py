@@ -116,6 +116,13 @@ class VcpParams:
     # 1.38, see `_zigzag`: 1 = the first contraction cannot end on the base-high bar itself; 1 = the floor
     # after each contraction uses the ATR on that contraction's low, not on the base-high day; and the
     # shrinking threshold is capped at `zigzag_cap_pct` (0 = no cap). All off = 1.37.
+    # 1.38, near misses (see `detect`): a base that fails exactly ONE of these graded rules, and by no more
+    # than its margin, is still measured to the end and returned as `near_ok` with `near` = the rule and why.
+    # `ok` and `fail` stay exactly what the strict rules say. 0 = off for that rule.
+    near_final_ref_ratio: float = 0.0   # VCP-06: final / reference contraction, at most this
+    near_tight_min_days: int = 0        # VCP-08: the final contraction at least this many sessions old
+    near_tight_pct: float = 0.0         # VCP-08: the final contraction and its range at most this deep
+    near_dryup_ratio: float = 0.0       # VCP-10: tight-area volume at most this x its 50-day (or the quiet days)
     # 1.38 prototype, see `_right_edge_tight_area`: 1 = find a final tight area the zig-zag missed at the
     # right edge of the base. 0 = 1.37.
     tight_area_route: int = 0
@@ -386,6 +393,34 @@ def _dryup(d: pd.DataFrame, start: int, vol: pd.Series, quiet_ratio: float) -> t
 
 
 def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
+    """The base in force on the last bar of `daily`, and whether its VCP is complete (`_detect`).
+
+    With the `near_*` margins set, a base that fails ONE graded rule (VCP-06's final ratio, VCP-08's age or
+    depth, VCP-10's dry-up) by no more than its margin is measured on past it: `near` is {"rule", "why"} for
+    that miss and `near_ok` says whether everything else then passed. `ok`, `fail` and `fail_why` are still
+    the strict verdict -- the first rule that failed -- so a caller that ignores `near` sees no change. The
+    fields measured after the miss (pivot, tight area, dry-up) are filled in for a near miss."""
+    r = _detect(daily, p)
+    nm = r.get("near")
+    r.setdefault("near", None)
+    r["near_ok"] = bool(nm and r["ok"])
+    if nm:
+        r["ok"] = False
+        r["fail"], r["fail_why"] = nm["rule"], nm["why"]
+    return r
+
+
+def _near(out: dict, rule: str, why: str, within: bool) -> bool:
+    """A graded rule failed. True when it is the base's first near miss and within its margin: recorded in
+    out["near"], and the caller carries on measuring. Otherwise the failure stands and the caller returns."""
+    if within and out.get("near") is None:
+        out["near"] = {"rule": rule, "why": why}
+        return True
+    out["fail"], out["fail_why"] = rule, why
+    return False
+
+
+def _detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     """The base in force on the last bar of `daily`, and whether its VCP is complete.
 
     Returns {"ok", "fail" (first failing rule id, or None), "bh", "bh_date", "base_days", "prior_advance_pct",
@@ -725,11 +760,12 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
                            f"side is widening, not contracting")
         return out
     if not (out["final_ref_ratio"] <= p.final_ref_ratio):
-        out["fail"] = "VCP-06"
-        out["fail_why"] = (f"final contraction {sizes[-1]:.1f}% is "
-                           f"{out['final_ref_ratio']:.2f}x the reference {sizes[ref]:.1f}% "
-                           f"(needs <= {p.final_ref_ratio})")
-        return out
+        why = (f"final contraction {sizes[-1]:.1f}% is "
+               f"{out['final_ref_ratio']:.2f}x the reference {sizes[ref]:.1f}% "
+               f"(needs <= {p.final_ref_ratio})")
+        if not _near(out, "VCP-06", why, bool(p.near_final_ref_ratio
+                                               and out["final_ref_ratio"] <= p.near_final_ref_ratio)):
+            return out
     if p.higher_lows and any(b[1] < a[1] for a, b in zip(legs, legs[1:])):
         out["fail"] = "VCP-07"
         return out
@@ -747,13 +783,18 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     rng = (pivot - tl) / pivot * 100 if pivot > 0 else float("nan")
     out.update(pivot=pivot, tight_low=tl, tight_range_pct=rng)
     if n - ta_start < p.tight_min_days:
-        out["fail"] = "VCP-08"
-        out["fail_why"] = (f"the final contraction is only {n - ta_start} session(s) old, "
-                           f"under the {p.tight_min_days} a tight area needs")
-        return out
+        why = (f"the final contraction is only {n - ta_start} session(s) old, "
+               f"under the {p.tight_min_days} a tight area needs")
+        if not _near(out, "VCP-08", why, bool(p.near_tight_min_days and n - ta_start >= p.near_tight_min_days)):
+            return out
     if not (legs[-1][2] <= p.tight_pct and rng <= p.tight_pct):
-        out["fail"] = "VCP-08"
-        return out
+        why = (f"the final contraction is {max(legs[-1][2], rng):.1f}% deep, over the "
+               f"{p.tight_pct:g}% a tight area allows")
+        if not _near(out, "VCP-08", why, bool(p.near_tight_pct and legs[-1][2] <= p.near_tight_pct
+                                               and rng <= p.near_tight_pct)):
+            if out["fail_why"] == why and not out.get("near"):
+                out["fail_why"] = None      # 1.37 gave no reason for this one; kept, so the strict output is unchanged
+            return out
 
     # VCP-09 (v2 §4.3): where the pivot sits INSIDE the base decides which setup applies, so the
     # gate for the standard pivot buy is "upper zone", not "within 10% of the base high". The old
@@ -781,11 +822,11 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # a single news day inside an otherwise silent contraction, which is the case the second test
     # is there to keep.
     if not (dry <= p.dryup_ratio or quiet >= p.dryup_quiet_days):
-        out["fail"] = "VCP-10"
-        out["fail_why"] = (f"volume averaged {dry:.2f}x its 50-day (needs <= {p.dryup_ratio:g}) "
-                           f"with {quiet} session(s) at or under {p.dryup_quiet_ratio:g}x "
-                           f"(needs {p.dryup_quiet_days})")
-        return out
+        why = (f"volume averaged {dry:.2f}x its 50-day (needs <= {p.dryup_ratio:g}) "
+               f"with {quiet} session(s) at or under {p.dryup_quiet_ratio:g}x "
+               f"(needs {p.dryup_quiet_days})")
+        if not _near(out, "VCP-10", why, bool(p.near_dryup_ratio and dry <= p.near_dryup_ratio)):
+            return out
     if p.atr_shrink and "atr14" in d:
         a_now, a_bh = float(d["atr14"].iloc[-1]) / close[-1], float(d["atr14"].iloc[bh_i]) / close[bh_i]
         if not (a_now <= p.atr_shrink * a_bh):
