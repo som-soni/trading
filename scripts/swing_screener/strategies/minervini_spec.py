@@ -2564,7 +2564,149 @@ class MinerviniSpecStrategy(Strategy):
                 ch = again
             rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
             out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now))
+        out += self._power_plays(daily, cfg)
+        return sorted(out, key=lambda x: x["base_from"] or x["from"])
+
+    def _power_plays(self, daily: pd.DataFrame, cfg: MarketConfig) -> list[dict]:
+        """MV-05 on the chart: every power-play shape the detector measured -- a run of at least
+        POWER_PLAY.run_mult x into a flag -- whether or not the flag then qualified. The base path
+        never sees one (the flag is shorter than a base, the run steeper than any prior advance), so
+        before these were drawn a power play the rules refused was simply invisible: AXSM's January
+        2019 run (+457%) into a flag that fell 29.3% against the 25% limit showed only failed bases.
+        Each is judged on its most developed bar: the bar before the breakout when it completed,
+        else its last bar."""
+        pp = POWER_PLAY
+        need = pp.run_window + pp.flag_max_days + pp.swing_k + 2
+        win = need + 60      # history each bar's detection reads (enough for the 50-day volume average)
+        close = daily["close"].to_numpy(float)
+        dets = [None] * len(daily)
+        groups: dict = {}
+        for i in range(need, len(daily)):
+            r = vcp_spec.detect_power_play(daily.iloc[max(0, i - win): i + 1], pp)
+            dets[i] = r
+            if r["fail"] in (None, "PP-03", "PP-05", "PP-06") and r.get("flag_high_date") is not None:
+                g = groups.setdefault(r["flag_high_date"], {"ok": [], "last": i, "breakout": None})
+                g["last"] = i
+                if r["fail"] is None:
+                    g["ok"].append(i)
+        for i in range(need + 1, len(daily)):
+            p = dets[i - 1]
+            if p and p["fail"] is None and p.get("pivot") and close[i - 1] <= p["pivot"] < close[i] \
+                    and groups.get(p["flag_high_date"], {}).get("breakout", 0) is None:
+                groups[p["flag_high_date"]]["breakout"] = i
+        last = len(daily) - 1
+        out = []
+        for g in groups.values():
+            bo = g["breakout"]
+            rep = bo - 1 if bo is not None else g["ok"][-1] if g["ok"] else g["last"]
+            # a "flag" far past the limit is a collapse, not a near miss: drawing it only clutters
+            if (dets[rep].get("flag_depth_pct") or 0) > self._PP_DRAW_DEPTH_X * pp.flag_max_depth_pct:
+                continue
+            out.append(self._power_setup(daily, cfg, dets[rep], rep, bo, rep == last))
         return out
+
+    def _power_setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
+                     live: bool) -> dict:
+        """One power play for the chart, in `_setup`'s shape: the run, the flag, and -- when the flag
+        qualified -- the entry its rules would place (an illustration, as for a VCP)."""
+        pp, idx = POWER_PLAY, daily.index
+        iso = lambda t: str(pd.Timestamp(t).date())   # noqa: E731
+        day = lambda i: iso(idx[i])                   # noqa: E731
+        px = lambda v: f"{v:,.2f}"                    # noqa: E731
+        fh_i = int(idx.get_loc(r["flag_high_date"]))
+        fh = float(r["flag_high"])
+        lows = daily["low"].to_numpy(float)
+        w0 = max(0, fh_i - pp.run_window)
+        rl_i = w0 + int(lows[w0:fh_i].argmin())
+        run_low = float(lows[rl_i])
+        seg = lows[fh_i: rep + 1]
+        fl_i = fh_i + int(seg.argmin())
+        flag_low = float(seg.min())
+        depth = (fh - flag_low) / fh * 100
+        flag_days = rep - fh_i
+        fail, at = r["fail"], day(rep)
+        ok = fail is None
+        tick = lambda c: {"code": c[0], "name": c[1], "value": c[2], "limit": c[3], "state": c[4]}  # noqa: E731
+        run_checks = [tick(("PP-02", "Run", f"+{r['run_pct']:.0f}% in {fh_i - rl_i} sessions",
+                            f"at least +{(pp.run_mult - 1) * 100:.0f}% within {pp.run_window}", "pass"))]
+        flag_checks = [
+            tick(("PP-01", "Flag length", f"{flag_days} sessions", f"{pp.flag_min_days}-{pp.flag_max_days}", "pass")),
+            tick(("PP-03", "Flag depth", f"{depth:.1f}%", f"at most {pp.flag_max_depth_pct:g}%",
+                  "fail" if fail == "PP-03" else "pass")),
+            tick(("PP-05", "Tight area", f"{r['tight_range_pct']:.1f}%" if r.get("tight_range_pct") is not None else "—",
+                  f"at most {pp.tight_pct:g}%", "fail" if fail == "PP-05" else "pass" if r.get("tight_range_pct") is not None else "skip")),
+            tick(("PP-06", "Volume dry-up",
+                  f"{r['dryup']:.2f}x avg, {r['dryup_quiet_days']} quiet" if r.get("dryup") is not None else "—",
+                  f"at most {pp.dryup_ratio:g}x, or {pp.dryup_quiet_days} sessions at or under {pp.dryup_quiet_ratio:g}x",
+                  "fail" if fail == "PP-06" else "pass" if r.get("dryup") is not None else "skip")),
+        ]
+        zones = [
+            {"key": "uptrend", "title": "Run", "state": "pass", "from": day(rl_i), "to": day(fh_i),
+             "line": f"+{r['run_pct']:.0f}% in {fh_i - rl_i} sessions",
+             "text": (f"The run: from {px(run_low)} on {day(rl_i)} to {px(fh)} on {day(fh_i)}, +{r['run_pct']:.0f}% in "
+                      f"{fh_i - rl_i} sessions. A power play needs the price at least "
+                      f"{pp.run_mult:g}x within {pp.run_window} sessions, measured at the flag's high."),
+             "checks": run_checks,
+             "shapes": [{"shape": "line", "from": day(rl_i), "to": day(fh_i), "p0": run_low, "p1": fh,
+                         "role": "uptrend", "arrow": True, "label": f"+{r['run_pct']:.0f}%"}]},
+            {"key": "base", "title": "Flag", "tag": f"{max(1, round(flag_days / 5))}W {depth:.0f}% flag",
+             "state": "fail" if fail else "pass", "from": day(fh_i), "to": at,
+             "line": f"{flag_days} sessions, {depth:.1f}% deep",
+             "text": (f"The flag: from the high of {px(fh)} on {day(fh_i)} down to {px(flag_low)}, {depth:.1f}% deep over "
+                      f"{flag_days} sessions. Minervini's flag goes sideways and corrects no more than "
+                      f"{pp.flag_max_depth_pct:g}%, for {pp.flag_min_days}-{pp.flag_max_days} sessions, with volume "
+                      f"contracting just before the breakout." + (f" It failed: {r['fail_why']}." if fail else "")),
+             "checks": flag_checks,
+             "shapes": [{"shape": "dots", "role": "contraction",
+                         "points": [{"at": day(fl_i), "price": flag_low, "label": f"−{depth:.0f}%{' ✗' if fail == 'PP-03' else ''}"}]}]},
+        ]
+        top, bottom, frame_to = fh, min(run_low, flag_low), at
+        if ok:
+            pv, tl = float(r["pivot"]), float(r["tight_low"])
+            buy, stop = pivot_buy_stop(pv, cfg.tick_size), pivot_stop(tl, cfg.tick_size)
+            risk = buy - stop
+            target = buy + (pv - tl)                     # build_plans' MV-05 objective: the flag's tight range
+            r_mult = (target - buy) / risk if risk > 0 else None
+            risk_pct = risk / buy * 100
+            ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
+            entry_to = day(min(len(daily) - 1, (bo if bo is not None else rep) + TIME_STOP_DAYS))
+            levels = [("buy", buy, f"Buy {px(buy)}"), ("stop", stop, f"Stop {px(stop)}"),
+                      ("breakeven", buy + BREAKEVEN_R * risk, ""), ("target", target, f"Target {px(target)}")]
+            shapes = [{"shape": "box", "from": day(int(idx.get_indexer([pd.Timestamp(at)])[0]) - pp.tight_min_days + 1),
+                       "to": at, "top": pv, "bottom": tl, "role": "tight", "label": ""}]
+            shapes += [{"shape": "level", "from": at, "to": entry_to, "price": v, "role": role, "label": lab,
+                        "dash": role != "buy"} for role, v, lab in levels]
+            skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
+                   ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum"])
+            zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": at,
+                          "to": entry_to, "illustration": True,
+                          "line": f"buy {px(buy)} · stop {px(stop)} · {_rr(r_mult, ok_r)}",
+                          "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
+                                   f"not a backtest result. Buy through the flag's pivot, {px(pv)}, on a close with volume "
+                                   f"of at least {VOL_MULT:g}x the 50-day average; the stop goes {STOP_BUFFER_PCT:g}% under "
+                                   f"the tight low, at {px(stop)}: a risk of {risk_pct:.1f}%. The objective is the flag's "
+                                   f"tight range projected from the buy, {px(target)}, {_rr(r_mult, ok_r)}."
+                                   + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
+                          "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {MAX_STOP_PCT:g}%", "pass" if ok_risk else "fail")),
+                                     tick(("R:R", "Reward / risk", _rr(r_mult, ok_r), f"at least {MIN_STRUCTURAL_R:g}R", "pass" if ok_r else "fail"))],
+                          "shapes": shapes})
+            top, bottom, frame_to = max(top, target, buy + BREAKEVEN_R * risk), min(bottom, stop), entry_to
+            title = "Power play ✓" + (" · trade skipped" if skip else "")
+            summary = (f"A power play: +{r['run_pct']:.0f}% into a {depth:.1f}% flag. "
+                       + (f"Broke out on {day(bo)}." if bo is not None else "Waiting for a close through the pivot."))
+        else:
+            short = {"PP-03": f"flag fell {depth:.0f}% (max {pp.flag_max_depth_pct:g}%)",
+                     "PP-05": "flag's tight area too wide", "PP-06": "no volume dry-up in the flag"}.get(fail, fail)
+            title = f"Power play ✗ · {short}"
+            summary = f"Power-play shaped, but it does not qualify: {r['fail_why']}."
+        if live:
+            title += " · today"
+            summary = f"Still forming — judged on today's bar, {at}. " + summary
+        return {"from": day(rl_i), "base_from": day(fh_i), "to": frame_to, "kind": "vcp" if ok else "fail",
+                "complete": ok, "fail": fail, "breakout": day(bo) if bo is not None else None, "live": live,
+                "as_of": at, "title": title, "summary": summary,
+                "frame": {"from": day(rl_i), "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
+                "zones": zones}
 
     @staticmethod
     def _cheat_stop_out(daily: pd.DataFrame, cfg: MarketConfig, cheat: tuple, bo: int | None) -> int | None:
@@ -2594,6 +2736,8 @@ class MinerviniSpecStrategy(Strategy):
     # a correction inside the uptrend deeper than this is flagged on the chart (display only: it decides
     # nothing, and the leading underscore keeps it out of the strategy's fingerprint)
     _UPTREND_FLAG_PCT = 10.0
+    # a failed power-play flag is drawn only up to this multiple of PP-03's limit (display only)
+    _PP_DRAW_DEPTH_X = 1.5
 
     def _live_withholds(self, p: dict | None) -> bool:
         """Would the screen's rules withhold a cheat whose base (as detected the bar before it) is `p`?
@@ -2961,10 +3105,11 @@ class MinerviniSpecStrategy(Strategy):
             title = f"Too new to judge{today}"
             summary = f"Too new to judge: {young_why}."
         else:
-            title = f"✗ {self._VCP_FAILED.get(fail, fail)}{today}"
+            # the shape first, then why it does not qualify: "Base ✗ · …" beside "Power play ✗ · …"
+            title = f"Base ✗ · {self._VCP_FAILED.get(fail, fail)}{today}"
             if fail == "VCP-04":   # the count says more than "wrong number"
                 n, grew = len(depths), sum(b > WIDEN_TOL * a for a, b in zip(depths, depths[1:]))
-                title = (f"✗ {n} pullback{'s' if n != 1 else ''}"
+                title = (f"Base ✗ · {n} pullback{'s' if n != 1 else ''}"
                          + (", growing" if n > MAX_CONTRACTIONS and grew * 2 > n - 1 else f" ({MIN_CONTRACTIONS}–{MAX_CONTRACTIONS} in a VCP)")
                          + today)
             summary = f"Not a VCP: {self._vcp_fail_why(r, daily, bh_i, rep)}."
