@@ -31,6 +31,7 @@ ranking by RS then tightness, the market filter, the base number, and the spec's
 
 import dataclasses
 
+import numpy as np
 import pandas as pd
 
 from ..marketdata import corporate_actions
@@ -518,6 +519,31 @@ def base_notes(r: dict, g: dict) -> str:
     if g["bh_atr_pct"] is not None:
         parts.append(f"ATR {g['bh_atr_pct']:.1f}% at the high" + (" — too volatile to complete" if g["atr_blocks_base"] else ""))
     return " · ".join(parts)
+
+
+def entry_misses(close: float, high: float, low: float, vol: float, v50: float, pivot: float | None) -> tuple:
+    """MV-01's conviction tests on a session that closed through `pivot`: W1 volume under VOL_MULT x its 50-day
+    average, W2 a close more than BUY_RANGE_PCT past the pivot, W3 a close under UPPER_HALF of the day's range.
+    Returns ({code: missed}, volume ratio, close position in the range). Shared by evaluate (MV-01, MV-05) and
+    the chart, so a breakout the chart marks is one the strategy would have bought."""
+    vol_ratio = vol / v50 if v50 and v50 == v50 else float("nan")
+    rng = high - low
+    upper = (close - low) / rng if rng > 0 else 1.0
+    return ({"W1": not (vol_ratio >= VOL_MULT),
+             "W2": bool(pivot) and close > pivot * (1 + BUY_RANGE_PCT / 100),
+             "W3": upper < UPPER_HALF}, vol_ratio, upper)
+
+
+def entry_misses_text(miss: dict, vol_ratio: float, upper: float, close: float, pivot: float) -> str:
+    """The failed MV-01 tests of `entry_misses`, in words."""
+    out = []
+    if miss["W1"]:
+        out.append(f"volume {vol_ratio:.2f}x its 50-day average (needs {VOL_MULT:g}x)")
+    if miss["W2"]:
+        out.append(f"closed {(close / pivot - 1) * 100:.1f}% past the pivot (at most {BUY_RANGE_PCT:g}%)")
+    if miss["W3"]:
+        out.append(f"closed at {upper * 100:.0f}% of the day's range (needs {UPPER_HALF * 100:.0f}%)")
+    return " and ".join(out)
 
 
 def max_stop_pct(setup: str | None) -> float:
@@ -2091,14 +2117,8 @@ class MinerviniSpecStrategy(Strategy):
 
         breakout = bool(prev["ok"] and prev_close <= prev["pivot"] < close)
         base = prev if breakout else today
-        vol_ratio = vol / v50 if v50 and v50 == v50 else float("nan")
-        rng = high - low
-        upper = (close - low) / rng if rng > 0 else 1.0
-        confirmed = {
-            "W1": not (vol_ratio >= VOL_MULT),
-            "W2": breakout and close > base["pivot"] * (1 + BUY_RANGE_PCT / 100),
-            "W3": upper < UPPER_HALF,
-        }
+        miss, vol_ratio, upper = entry_misses(close, high, low, vol, v50, base["pivot"] if breakout else None)
+        confirmed = {"W1": miss["W1"], "W2": breakout and miss["W2"], "W3": miss["W3"]}
         mv01 = breakout and not any(confirmed.values())
         mv02 = bool(not breakout and today["ok"] and today["pivot"] * (1 - COIL_PCT / 100) <= close <= today["pivot"])
         # The cheat entries. Minervini buys three points in a base -- the low cheat
@@ -2544,11 +2564,21 @@ class MinerviniSpecStrategy(Strategy):
         # MV-01's breakout: yesterday complete, and today's close through yesterday's frozen pivot.
         # The breakout bar itself may already sit in a new base (the decisive close resets BH), so
         # it is found from the bar before it.
+        #
+        # Only a crossing that passes MV-01's own tests (entry_misses) is the breakout; one that fails them
+        # is recorded as `crossed` with why, so the chart never marks "broke out" on a session the strategy
+        # would not have bought. TSLA's June 2020 power play was drawn as broken out on a close 6.5% past its
+        # pivot on 0.91x volume. The setup is still judged from the bar before the crossing.
+        hi_, lo_, vo_ = (daily[k].to_numpy(float) for k in ("high", "low", "volume"))
+        v50_ = daily["vol_sma50"].to_numpy(float) if "vol_sma50" in daily else np.full(len(daily), np.nan)
         for i in range(start + 1, len(daily)):
             p = dets[i - 1]
             if p and p["ok"] and close[i - 1] <= p["pivot"] < close[i] and p["bh_date"] in bases \
                     and bases[p["bh_date"]]["breakout"] is None:
+                miss, vr, up = entry_misses(close[i], hi_[i], lo_[i], vo_[i], v50_[i], p["pivot"])
                 bases[p["bh_date"]]["breakout"] = i
+                bases[p["bh_date"]]["missed"] = (entry_misses_text(miss, vr, up, close[i], p["pivot"])
+                                                 if any(miss.values()) else None)
         # MV-03 / MV-04: the FIRST cheat each base triggered, by the strategy's own test.
         #
         # First, not latest. A base often crosses a shelf more than once -- the shelf is re-measured
@@ -2624,7 +2654,7 @@ class MinerviniSpecStrategy(Strategy):
                     continue
                 ch = again
             rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
-            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now))
+            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed")))
         out += self._power_plays(daily, cfg)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
 
@@ -2650,11 +2680,16 @@ class MinerviniSpecStrategy(Strategy):
                 g["last"] = i
                 if r["fail"] is None:
                     g["ok"].append(i)
+        hi_, lo_, vo_ = (daily[k].to_numpy(float) for k in ("high", "low", "volume"))
+        v50_ = daily["vol_sma50"].to_numpy(float) if "vol_sma50" in daily else np.full(len(daily), np.nan)
         for i in range(need + 1, len(daily)):
             p = dets[i - 1]
             if p and p["fail"] is None and p.get("pivot") and close[i - 1] <= p["pivot"] < close[i] \
                     and groups.get(p["flag_high_date"], {}).get("breakout", 0) is None:
+                miss, vr, up = entry_misses(close[i], hi_[i], lo_[i], vo_[i], v50_[i], p["pivot"])
                 groups[p["flag_high_date"]]["breakout"] = i
+                groups[p["flag_high_date"]]["missed"] = (entry_misses_text(miss, vr, up, close[i], p["pivot"])
+                                                         if any(miss.values()) else None)
         last = len(daily) - 1
         out = []
         for g in groups.values():
@@ -2663,11 +2698,11 @@ class MinerviniSpecStrategy(Strategy):
             # a "flag" far past the limit is a collapse, not a near miss: drawing it only clutters
             if (dets[rep].get("flag_depth_pct") or 0) > self._PP_DRAW_DEPTH_X * pp.flag_max_depth_pct:
                 continue
-            out.append(self._power_setup(daily, cfg, dets[rep], rep, bo, rep == last))
+            out.append(self._power_setup(daily, cfg, dets[rep], rep, bo, rep == last, g.get("missed")))
         return out
 
     def _power_setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
-                     live: bool) -> dict:
+                     live: bool, missed: str | None = None) -> dict:
         """One power play for the chart, in `_setup`'s shape: the run, the flag, and -- when the flag
         qualified -- the entry its rules would place (an illustration, as for a VCP)."""
         pp, idx = POWER_PLAY, daily.index
@@ -2752,9 +2787,11 @@ class MinerviniSpecStrategy(Strategy):
                                      tick(("R:R", "Reward / risk", _rr(r_mult, ok_r), f"at least {MIN_STRUCTURAL_R:g}R", "pass" if ok_r else "fail"))],
                           "shapes": shapes})
             top, bottom, frame_to = max(top, target, buy + BREAKEVEN_R * risk), min(bottom, stop), entry_to
-            title = "Power play ✓" + (" · trade skipped" if skip else "")
+            title = "Power play ✓" + (" · trade skipped" if skip else " · no valid breakout" if missed else "")
             summary = (f"A power play: +{r['run_pct']:.0f}% into a {depth:.1f}% flag. "
-                       + (f"Broke out on {day(bo)}." if bo is not None else "Waiting for a close through the pivot."))
+                       + (f"It crossed the pivot on {day(bo)}, but the strategy would not have bought: {missed}."
+                          if bo is not None and missed
+                          else f"Broke out on {day(bo)}." if bo is not None else "Waiting for a close through the pivot."))
         else:
             short = {"PP-03": f"flag fell {depth:.0f}% (max {pp.flag_max_depth_pct:g}%)",
                      "PP-05": "flag's tight area too wide", "PP-06": "no volume dry-up in the flag"}.get(fail, fail)
@@ -2764,7 +2801,8 @@ class MinerviniSpecStrategy(Strategy):
             title += " · today"
             summary = f"Still forming — judged on today's bar, {at}. " + summary
         return {"from": day(rl_i), "base_from": day(fh_i), "to": frame_to, "kind": "vcp" if ok else "fail",
-                "complete": ok, "fail": fail, "breakout": day(bo) if bo is not None else None, "live": live,
+                "complete": ok, "fail": fail, "breakout": day(bo) if bo is not None and not missed else None,
+                "crossed": day(bo) if bo is not None and missed else None, "live": live,
                 "as_of": at, "title": title, "summary": summary,
                 "frame": {"from": day(rl_i), "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
                 "zones": zones}
@@ -2808,7 +2846,8 @@ class MinerviniSpecStrategy(Strategy):
         return bool((CHEAT_BLOCK_VCP09 or lv.get("CHEAT_BLOCK_VCP09")) and p and p.get("fail") == "VCP-09")
 
     def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
-               cheat: tuple | None = None, live: bool = False, traded_cheat: bool = False) -> dict:
+               cheat: tuple | None = None, live: bool = False, traded_cheat: bool = False,
+               missed: str | None = None) -> dict:
         """One setup for the chart: a frame around it, and its zones — the uptrend into the base, the
         base and its contractions, the pivot entry of a completed VCP, and the latest cheat entry
         (`cheat`: (bar, MV03 | MV04, yesterday's detection)) — each with its own shapes, its checklist
@@ -3017,7 +3056,9 @@ class MinerviniSpecStrategy(Strategy):
                        "dash": role != "buy"} for role, v, lab in levels]
             if bo is not None:
                 c = float(daily["close"].iloc[bo])
-                shapes.append({"shape": "dots", "points": [{"at": day(bo), "price": c, "label": "breakout"}], "role": "buy"})
+                shapes.append({"shape": "dots", "points": [{"at": day(bo), "price": c,
+                                                            "label": "crossed ✗" if missed else "breakout"}],
+                               "role": "stop" if missed else "buy"})
             ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
             e_checks = [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
@@ -3140,8 +3181,11 @@ class MinerviniSpecStrategy(Strategy):
             entries = [z for z in zones if z.get("illustration")]
             structure_ok = all(z["state"] == "pass" for z in zones if not z.get("illustration"))
             none_taken = bool(entries) and all(z["state"] == "fail" for z in entries)
-            title = ("VCP ✓ · trade skipped" if (none_taken or not structure_ok) else "VCP setup ✓") + today
-            summary = (f"A complete VCP. Broke out on {day(bo)}." if bo is not None
+            title = ("VCP ✓ · trade skipped" if (none_taken or not structure_ok)
+                     else "VCP ✓ · no valid breakout" if missed else "VCP setup ✓") + today
+            summary = (f"A complete VCP. It crossed the pivot on {day(bo)}, but the strategy would not have bought: "
+                       f"{missed}." if bo is not None and missed
+                       else f"A complete VCP. Broke out on {day(bo)}." if bo is not None
                        else "A complete VCP, waiting for a close through the pivot.")
         elif cheat:
             ok = zones[-1]["state"] == "pass"
@@ -3177,7 +3221,8 @@ class MinerviniSpecStrategy(Strategy):
         if live:
             summary = f"Still forming — judged on today's bar, {at}. " + summary
         return {"from": up_from, "base_from": bd, "to": frame_to, "kind": kind, "complete": done, "fail": fail,
-                "breakout": day(bo) if bo is not None else None, "live": live, "as_of": at,
+                "breakout": day(bo) if bo is not None and not missed else None,
+                "crossed": day(bo) if bo is not None and missed else None, "live": live, "as_of": at,
                 "title": title, "summary": summary,
                 # headroom above the highest level: the zone captions sit just inside the frame's top
                 # edge, which was exactly the target's price, so "③ Entry" and "Target …" overprinted
