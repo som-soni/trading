@@ -154,8 +154,13 @@ class CombinationStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "momentum_dual_combo"
-    version = "1.5"
+    version = "1.6"
     changelog = (
+        ("1.6", "2026-10-31",
+         "The momentum sleeve's trade rows count every resize (momentum_vol_scaled 1.9): they were built "
+         "from each holding's first fill alone, so the combined book's win rate, profit factor and "
+         "average R were wrong. Equity and every return figure are unchanged; stored runs' trade "
+         "statistics are stale."),
         ("1.5", "2026-10-29",
          "The dual momentum sleeve is dual_momentum v1.1: India's Nasdaq 100 leg is priced at NAV (QQQ x "
          "USD/INR) instead of MON100's exchange price, whose premium swings the rule had read as trends. "

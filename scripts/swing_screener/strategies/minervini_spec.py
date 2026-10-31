@@ -812,10 +812,21 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.39"
-    # 1.39 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    version = "1.40"
+    # 1.39 changed only the portfolio simulator and 1.40 only the backtest's post-scan signal filters
+    # (spec.results_blackout, spec.market_open), never the scan (CLAUDE.md, signal_version); 1.38 changed the
+    # detector and evaluate(), and rescanned.
     signal_version = "1.38"
     changelog = (
+        ("1.40", "2026-10-31",
+         "Two point-in-time clips in the backtest's signal filters (from the 25 Oct accuracy review, merged "
+         "now). The results blackout read filing dates past the stage's end, so a signal in the last "
+         "{EARNINGS_BLACKOUT_DAYS} days of an optimise run could be blocked by a filing the stage must not "
+         "see; it now reads filings up to the boundary only. And the market filter let a signal through on a "
+         "date before the benchmark's first stored session (NaN read as risk-on); that is now risk-off -- no "
+         "stored stage starts that early, so this one cannot move a result. Optimise runs are stale for "
+         "signals near the stage's end; nothing else moves. Both filters run after evaluate(), so "
+         "signal_version stays 1.38."),
         ("1.39", "2026-10-31",
          "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
          "fill now sees only what had happened by its own moment in the session. An exit frees its "

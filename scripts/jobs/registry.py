@@ -162,6 +162,7 @@ def _subindustries(ctx: Ctx) -> None:
 def _prices(ctx: Ctx) -> None:
     from swing_screener.marketdata import freshness
     from swing_screener.marketdata.refresh import refresh
+    freshness.ensure_day_counts()   # once: per-day row counts the web app reads instead of scanning prices
     # --symbols (with --days of history) fetches just those: how a newly tracked symbol -- an ETF added to
     # marketdata/instruments.py -- gets its history before the daily refresh keeps its tail current
     syms = [s.strip() for s in str(ctx.opt("symbols") or "").split(",") if s.strip()]
