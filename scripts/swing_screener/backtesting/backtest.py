@@ -1771,6 +1771,11 @@ def main(argv: list[str] | None = None) -> dict | None:
         help="drop the fixed profit target so winners can run (use with a trailing exit mode)",
     )
     parser.add_argument(
+        "--target", action="store_true",
+        help="sell at the plan's target even when --no-target is also given (it wins): an exit variant of a "
+             "strategy whose backtest_args drop the target, e.g. --bt '--exit-mode bracket --target'",
+    )
+    parser.add_argument(
         "--sample", type=int, default=None,
         help="simulate a seeded RANDOM subset of N candidates (unbiased, reproducible). "
         "Prefer this over --limit, which slices alphabetically.",
@@ -1991,6 +1996,8 @@ def main(argv: list[str] | None = None) -> dict | None:
                      "the minervini ladder has its own (--time-stop, --partial-r)")
     if args.partial_at_target is not None and not 0 < args.partial_at_target < 1:
         parser.error("--partial-at-target is a fraction between 0 and 1, e.g. 0.5")
+    if args.target:
+        args.no_target = False
     managed = args.exit_mode != "minervini"
     extra = {k: v for k, v in (("partial_r", args.partial_r), ("fail_days", args.fail_days),
                                ("breakeven_r" if not managed else "be_r", args.breakeven_r),
