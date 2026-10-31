@@ -24,48 +24,29 @@ import sys
 import warnings
 from collections import Counter
 
-from swing_screener.core import context as ctx_mod
-from swing_screener.marketdata import cache
+import pandas as pd
+
+from swing_screener.backtesting.breakout_eval import buys_over
 from swing_screener.strategies import get_strategy
 
 from tests.minervini_book_cases import BUY, CASES
 
-
-def _frames(sym: str, frames: dict):
-    if sym not in frames:
-        raw = cache.load_cached("us", sym)
-        if raw is None or raw.empty:
-            frames[sym] = None
-        else:
-            raw.columns = [c.lower() for c in raw.columns]
-            frames[sym] = (raw, ctx_mod.prepare_frames(raw))
-    return frames[sym]
-
+COIL_BEFORE = 3   # sessions before a buy in which a tradable S2 plan counts as the buy: Minervini buys AT the pivot
 
 def _window(strategy, case: dict, frames: dict):
-    """Every session of the case's window: [(date, setups, first_hard_fail, vcp_fail)], or None (no data)."""
-    fr = _frames(case["symbol"], frames)
-    if fr is None:
-        return None
-    raw, f = fr
-    lo, hi = case["window"]
-    days = f.daily.loc[lo:hi].index
-    if len(days) == 0:                                       # the window sits outside the stored history
-        return None
-    out = []
-    for day in days:
-        ctx = ctx_mod.build_context(case["symbol"], raw, earnings_days_away=None, frames=f, as_of=day)
-        if ctx is None:
-            out.append((day, [], "history", None))
-            continue
-        r = strategy.evaluate(ctx)
-        out.append((day, r.active_setups, r.first_hard_fail, ctx.extras.get("vcp_fail")))
-    return out
+    """Every session of the case's window (`buys_over`), or None (no stored prices there), and the few
+    sessions before it, where a coil's resting buy-stop (S2) may already be placed: (window rows, before)."""
+    lo = pd.Timestamp(case["window"][0])
+    rows = buys_over(strategy, case["symbol"], lo - pd.Timedelta(days=7), case["window"][1], frames)
+    if rows is None:
+        return None, None
+    inside = [r for r in rows if r[0] >= lo]
+    return (inside or None), [r for r in rows if r[0] < lo][-COIL_BEFORE:]
 
 
 def _why(rows) -> str:
     """The commonest refusal over a window: the gate, and the detector's rule when it rejected the base."""
-    c = Counter(f"{g or '-'}/{v or '-'}" for _, s, g, v in rows)
+    c = Counter(f"{g or '-'}/{v or '-'}" for _, s, g, v, _ in rows)
     return ", ".join(f"{k} ×{n}" for k, n in c.most_common(2))
 
 
@@ -87,18 +68,25 @@ def main() -> None:
             if verbose:
                 print(f"sell  {head} — {case['note']} (exit rules; not scored yet)")
             continue
-        rows = _window(st, case, frames)
+        rows, before = _window(st, case, frames)
         if rows is None:
             score["no data"] += 1
             print(f"----  {head} — no stored prices for this window")
             continue
         want = case.get("setups", BUY)
-        hits = [(d, [s for s in got if s in want]) for d, got, _, _ in rows if any(s in want for s in got)]
+        hits = [(d, [s for s in got if s in want], t) for d, got, _, _, t in rows if any(s in want for s in got)]
         if kind == "buy":
             ok = bool(hits)
-            tag = "ok  " if ok else ("FAIL" if case.get("pinned") else "miss")
+            # traded: a hit whose plan clears the backtest's limits, or a tradable coil (S2, a buy-stop at the
+            # pivot) in the sessions just before the first hit or on a hit day
+            first = hits[0][0] if hits else None
+            coils = [r for r in (before or []) + rows if "S2" in r[1] and r[4] and (first is None or r[0] <= first)]
+            traded = any(t for *_, t in hits) or bool(coils)
+            tag = ("ok  " if traded else "plan") if ok else ("FAIL" if case.get("pinned") else "miss")
             score["buy caught" if ok else "buy missed"] += 1
-            detail = (f"{hits[0][0].date()} {','.join(hits[0][1])}" if ok else _why(rows))
+            score["buy traded"] += bool(ok and traded)
+            detail = (f"{hits[0][0].date()} {','.join(hits[0][1])}"
+                      + ("" if traded else " (setup only: the plan's risk or R refuses it)") if ok else _why(rows))
             if ok and not case.get("pinned"):
                 newly.append(cid)
         else:                                                # no_buy
@@ -113,7 +101,8 @@ def main() -> None:
             print(f"      {case['note']}" + (f"\n      known: {case['why']}" if case.get("why") else ""))
     b = score["buy caught"] + score["buy missed"]
     n = score["no_buy held"] + score["no_buy bought"]
-    print(f"\nbuy points caught {score['buy caught']} of {b}; setups to avoid held {score['no_buy held']} of {n}; "
+    print(f"\nbuy points caught {score['buy caught']} of {b} ({score['buy traded']} the plan would trade); "
+          f"setups to avoid held {score['no_buy held']} of {n}; "
           f"{score['no data']} without stored prices; {score['sell']} climax tops not scored yet")
     if newly:
         print(f"caught but not pinned: {', '.join(newly)}")

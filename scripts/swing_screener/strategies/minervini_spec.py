@@ -71,6 +71,7 @@ MV03 = "S3"   # MV-03: low cheat, a shelf in the lower third of the base
 MV04 = "S4"   # MV-04: cheat / 3C, a shelf in the middle third of the base
 MV05 = "S5"   # MV-05: power play -- an explosive run, then a short tight flag
 FLAT = "S6"   # flat base: a shallow, sideways base with no pivot but its own high (1.28)
+NEAR = "S7"   # near miss (1.38): an MV-01 breakout of a base that missed ONE graded rule by a small margin
 
 # ---- section 5: base and VCP (core/vcp_spec.py)
 SWING_K = 5
@@ -90,6 +91,20 @@ DEEP_BASE_FLAG_PCT = 35.0
 WIDEN_TOL = 1.1              # a contraction more than this x the previous one is a widening
 MIN_FROM_REFERENCE = 2       # contractions from the most recent widening onward, inclusive
 FINAL_REF_RATIO = 0.6        # final contraction / reference contraction, at most
+# ---- 1.38, the near miss (S7). Minervini weighs a base's rules together; the strategy requires every one,
+# and most of his own book examples (tests/minervini_book_cases.py) miss one or two by a little. A base
+# that fails exactly ONE of these graded rules, by no more than its margin, and then breaks out with every
+# MV-01 test passed -- or a full VCP whose breakout volume alone falls short, by no more than its margin --
+# is bought as S7, a separate setup so its trades are read apart from S1's. 0 turns S7 off.
+NEAR_MISS = 1
+NEAR_FINAL_REF_RATIO = 0.75  # VCP-06: final / reference contraction (strict: FINAL_REF_RATIO)
+NEAR_TIGHT_MIN_DAYS = 2      # VCP-08: sessions in the final contraction (strict: TIGHT_MIN_DAYS)
+NEAR_TIGHT_PCT = 12.0        # VCP-08: depth of the final contraction and its range (strict: TIGHT_PCT)
+NEAR_DRYUP_RATIO = 1.0       # VCP-10: tight-area volume x its 50-day (strict: DRYUP_RATIO)
+NEAR_VOL_MULT = 1.2          # MV-01a: breakout volume x its 50-day (strict: VOL_MULT)
+# The final tight area found at the right edge of the base when the zig-zag missed it (vcp_spec
+# `_right_edge_tight_area`): RDN's Dec 2012 handle after a 33% cup. 0 = 1.37's reading.
+TIGHT_AREA_ROUTE = 1
 # Every contraction after the reference must also be smaller than the one before it. The final
 # ÷ reference ratio alone does not say that: 25, 10, 9, 9.5 has a final at 0.38x its reference
 # and a right side quietly getting looser. It also closes the hole the widening tolerance leaves,
@@ -219,6 +234,11 @@ VCP = vcp_spec.VcpParams(
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
     cheat_dryup=CHEAT_DRYUP, young_listing=YOUNG_LISTING, deep_decline_resets=DEEP_DECLINE_RESETS,
     cheat_rally_frac=CHEAT_RALLY_FRAC, cheat_vol_contract=CHEAT_VOL_CONTRACT, cheat_vol_lookback=CHEAT_VOL_LOOKBACK,
+    tight_area_route=TIGHT_AREA_ROUTE,
+    near_final_ref_ratio=NEAR_FINAL_REF_RATIO if NEAR_MISS else 0.0,
+    near_tight_min_days=NEAR_TIGHT_MIN_DAYS if NEAR_MISS else 0,
+    near_tight_pct=NEAR_TIGHT_PCT if NEAR_MISS else 0.0,
+    near_dryup_ratio=NEAR_DRYUP_RATIO if NEAR_MISS else 0.0,
 )
 
 # ---- section 6: setups
@@ -276,6 +296,17 @@ MIN_STRUCTURAL_R = 2.0
 # range, every retest of the pivot). `chart_pattern.overhead_cluster_atr` is the
 # same guard for the same reason.
 OVERHEAD_CLUSTER_ATR = 1.0
+# 1.38: how many years back overhead supply is counted when it caps the target. 0 = the shared levels
+# (`swings.overhead_levels`: weekly swing highs over 5 years and monthly ones over all history, 1.37). Old
+# peaks capped the measured move of Minervini's own buys -- Lululemon Nov 2010 under its 2008 high (6.1R ->
+# 1.4R at the pivot), Best Buy Dec 1997 under 1993 (2.7R -> 0.6R), Stryker Jan 1995 under 1992 -- supply
+# years old that he bought through. N keeps the daily swing highs of the last year and the weekly ones of
+# the last N years.
+OVERHEAD_YEARS = 2
+# 1.38: the price step a stop or buy-stop is rounded to is at most this % of the price. A split-adjusted
+# history prints a 1982 Wal-Mart at 0.117 and a 2009 Netflix at 0.72, where a one-cent tick moved the stop
+# by 1-2% of the price and read as risk the trade never had. 0 = the market's tick as it is (1.37).
+TICK_MAX_PCT = 0.2
 
 # ---- section 9: exits. ExitPolicy (backtesting/portfolio_sim.py) takes its defaults
 # from these, so a --spec run trades exactly these numbers.
@@ -418,14 +449,19 @@ def _without_liquidity_floor(cfg: MarketConfig) -> MarketConfig:
     return out
 
 
+def _tick(price: float, tick: float) -> float:
+    """The step to round a level at `price` to: the market's tick, no coarser than TICK_MAX_PCT of the price."""
+    return min(tick, float(price) * TICK_MAX_PCT / 100) if TICK_MAX_PCT and price > 0 else tick
+
+
 def pivot_buy_stop(pivot: float, tick: float) -> float:
     """MV-02's resting buy-stop: just above the pivot. Shared by build_plans and the chart."""
-    return round_tick(float(pivot) * 1.001, tick, "up")
+    return round_tick(float(pivot) * 1.001, _tick(pivot, tick), "up")
 
 
 def pivot_stop(tight_low: float, tick: float) -> float:
     """SL-01: the stop, STOP_BUFFER_PCT under the tight-area (or shelf) low. Shared by build_plans and the chart."""
-    return round_tick(float(tight_low) * (1 - STOP_BUFFER_PCT / 100), tick, "down")
+    return round_tick(float(tight_low) * (1 - STOP_BUFFER_PCT / 100), _tick(tight_low, tick), "down")
 
 
 def vcp_measured_move(base_high, depth_pct) -> float:
@@ -776,10 +812,24 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.37"
-    # signal_version is not pinned: 1.37 moves the power play's pivot (vcp_spec.detect_power_play), which
-    # evaluate() reads -- the next backtest rescans.
+    version = "1.38"
+    # signal_version is not pinned: 1.38 changes the detector (vcp_spec: the right-edge tight area and the
+    # near-miss margins) and evaluate() (S7) -- the next backtest rescans.
     changelog = (
+        ("1.38", "2026-10-30",
+         "Two changes from Minervini's own chart examples (tests/minervini_book_cases.py), where 1.37 caught 11 "
+         "of 35 buy points. (1) The final tight area is also looked for at the right edge of the base "
+         "(TIGHT_AREA_ROUTE): after a deep cup on a volatile stock the zig-zag's turn threshold hid a 7% handle "
+         "(Radian, Dec 2012), and lowering it everywhere split Netflix 2009's final 8% contraction in two. "
+         "(2) S7, the near miss: a base that fails exactly one graded rule -- the final/reference ratio, the "
+         "tight area's age or depth, its volume dry-up -- by no more than a NEAR_* margin, or a full VCP whose "
+         "breakout volume alone is short, is bought like MV-01 as its own setup, so its trades are measured "
+         "apart. The book set goes to 13 of 35 (MercadoLibre Dec 2007, Isis Dec 2013) with no pinned example "
+         "lost and no setup-to-avoid bought; with NEAR_MISS and TIGHT_AREA_ROUTE at 0 every snapshot of the "
+         "golden harness matches 1.37. (3) The plan: overhead supply that caps the target counts only the last "
+         "OVERHEAD_YEARS years -- peaks from years before capped Minervini's own Lululemon (2010), Best Buy "
+         "(1997) and Stryker (1995) buys under 2R -- and a stop or buy-stop is rounded to a step no coarser than "
+         "TICK_MAX_PCT of the price, since a one-cent tick on a split-adjusted 0.12 price moved the stop by 1-2%."),
         ("1.37", "2026-10-30",
          "A power play's pivot is the flag's high (PP_PIVOT_FLAG_HIGH), as the Learn guide buys it and as PP-04 "
          "already ends the flag, instead of the high of the flag's last tight stretch. The two disagreed: ENPH's "
@@ -1268,7 +1318,7 @@ class MinerviniSpecStrategy(Strategy):
 
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     watch_codes = ("W1", "W2", "W3", "W4", "W5")
-    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT)
+    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT, NEAR)
     extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days", "pp_flag_high",
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
@@ -1289,7 +1339,7 @@ class MinerviniSpecStrategy(Strategy):
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
         "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
-        "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR",
+        "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR", "OVERHEAD_YEARS", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
@@ -1561,6 +1611,21 @@ class MinerviniSpecStrategy(Strategy):
               "It is looked for separately from bases, because the base checks would reject it: the "
               "pause is usually too short to count as a base, and after so fast a run the long "
               "averages have not caught up.",
+        NEAR: "Near miss: the MV-01 breakout of a base that missed ONE rule, narrowly. Minervini weighs a "
+              "base's rules together, and most of his own published examples miss one or two of this "
+              "strategy's thresholds by a little; S7 buys those, as a separate setup so its results are read "
+              "apart from S1's.\n\n"
+              "- **One near miss, no more:** either the base failed exactly one of these and by no more than "
+              "the margin -- the final contraction at most {NEAR_FINAL_REF_RATIO} times the reference "
+              "(strict {FINAL_REF_RATIO}); the tight area at least {NEAR_TIGHT_MIN_DAYS} sessions old (strict "
+              "{TIGHT_MIN_DAYS}) and at most {NEAR_TIGHT_PCT}% deep (strict {TIGHT_PCT}%); its volume at most "
+              "{NEAR_DRYUP_RATIO} times the 50-day (strict {DRYUP_RATIO}) -- and passed every other rule; or "
+              "the base is a full VCP and only the breakout volume fell short, at least {NEAR_VOL_MULT} times "
+              "the 50-day (strict {VOL_MULT}).\n"
+              "- **The breakout:** otherwise exactly MV-01 -- a close through yesterday's pivot, within "
+              "{BUY_RANGE_PCT}% of it and in the upper part of the day's range, bought at the next open and "
+              "stopped under the tight area's low.\n\n"
+              "Off with NEAR_MISS = 0.",
         FLAT: "Flat base: a shallow, sideways base with no pivot of its own, bought through its high. "
               "Minervini: when a flat base has \"no real pivot other than the high of the base\", buy "
               "\"as the stock moves above the highest price at the top of the base\".\n\n"
@@ -1923,6 +1988,18 @@ class MinerviniSpecStrategy(Strategy):
          "where the flag also ends (PP-04); 0 = through the high of its last tight stretch."),
         ("Power play, tight area", "PP_TIGHT_PCT", "MV-05: widest the flag's last stretch may be (PP-05); the "
          "flag's own limit, not a VCP's {TIGHT_PCT}%."),
+        ("Overhead supply, years", "OVERHEAD_YEARS", "Years of swing highs that can cap the target; 0 = weekly "
+         "highs over 5 years and monthly ones over all history (1.37)."),
+        ("Tick, largest step", "TICK_MAX_PCT", "A stop or buy-stop is rounded to the market's tick, no coarser "
+         "than this % of the price (split-adjusted history); 0 = the tick as it is."),
+        ("Near miss", "NEAR_MISS", "1 = S7 buys a breakout from a base that missed one rule narrowly; 0 = off."),
+        ("Near miss, final ratio", "NEAR_FINAL_REF_RATIO", "S7: VCP-06's final / reference contraction, at most."),
+        ("Near miss, tight-area age", "NEAR_TIGHT_MIN_DAYS", "S7: VCP-08's sessions in the final contraction, at least."),
+        ("Near miss, tight-area depth", "NEAR_TIGHT_PCT", "S7: VCP-08's final contraction and range, at most this %."),
+        ("Near miss, dry-up", "NEAR_DRYUP_RATIO", "S7: VCP-10's tight-area volume x its 50-day, at most."),
+        ("Near miss, breakout volume", "NEAR_VOL_MULT", "S7: a full VCP's breakout volume x its 50-day, at least."),
+        ("Tight area at the right edge", "TIGHT_AREA_ROUTE", "1 = a final tight area the zig-zag missed is found at "
+         "the right edge of the base, once the right side is back in its top quarter; 0 = 1.37's reading."),
         ("Flat base, length", "FLAT_MIN_DAYS", "S6: shortest flat base, in sessions."),
         ("Flat base, length max", "FLAT_MAX_DAYS", "S6: longest flat base, in sessions."),
         ("Flat base, depth", "FLAT_MAX_DEPTH_PCT", "S6: deepest a flat base may be, high to low."),
@@ -2132,10 +2209,22 @@ class MinerviniSpecStrategy(Strategy):
         prev_close = float(d["close"].iloc[-2])
 
         breakout = bool(prev["ok"] and prev_close <= prev["pivot"] < close)
-        base = prev if breakout else today
-        miss, vol_ratio, upper = entry_misses(close, high, low, vol, v50, base["pivot"] if breakout else None)
+        # S7: a base that missed one graded rule narrowly (vcp_spec `near`), breaking out the same way
+        near_break = bool(NEAR_MISS and prev.get("near_ok") and prev.get("pivot")
+                          and prev_close <= prev["pivot"] < close)
+        base = prev if (breakout or near_break) else today
+        miss, vol_ratio, upper = entry_misses(close, high, low, vol, v50, base["pivot"] if (breakout or near_break) else None)
         confirmed = {"W1": miss["W1"], "W2": breakout and miss["W2"], "W3": miss["W3"]}
         mv01 = breakout and not any(confirmed.values())
+        near, near_why = False, None
+        if near_break and not any(miss.values()):
+            near, near_why = True, f"{prev['near']['rule']}: {prev['near']['why']}"
+        elif (NEAR_MISS and breakout and confirmed["W1"] and not confirmed["W2"] and not confirmed["W3"]
+              and vol_ratio >= NEAR_VOL_MULT):
+            near, near_why = True, (f"MV-01a: breakout volume {vol_ratio:.2f}x its 50-day average "
+                                    f"(needs {VOL_MULT:g}x)")
+        if near_why:
+            e["near_miss"] = near_why
         mv02 = bool(not breakout and today["ok"] and today["pivot"] * (1 - COIL_PCT / 100) <= close <= today["pivot"])
         # The cheat entries. Minervini buys three points in a base -- the low cheat
         # (lower third), the cheat/"3C" (middle third) and the pivot buy at the top
@@ -2165,6 +2254,7 @@ class MinerviniSpecStrategy(Strategy):
         result.setups[MV01], result.setups[MV02] = mv01, mv02
         result.setups[MV03], result.setups[MV04] = mv03, mv04
         result.setups[MV05] = mv05
+        result.setups[NEAR] = near
         # S6, the flat base: yesterday's base, if it never became a VCP, is shallow and four to seven
         # weeks long, and today closes through its high with the MV-01 conviction tests.
         flat = False
@@ -2262,7 +2352,7 @@ class MinerviniSpecStrategy(Strategy):
     def setup_quality(self, result: StrategyResult) -> float:
         if result.setups.get(MV01):
             return 2.0
-        if result.setups.get(MV02):
+        if result.setups.get(MV02) or result.setups.get(NEAR):
             return 1.0
         # a cheat is a lower-confidence entry than the pivot buy, and the low cheat
         # lower than the 3C -- he describes it as the riskiest of the three
@@ -2278,7 +2368,8 @@ class MinerviniSpecStrategy(Strategy):
         e = ctx.extras
         cheat = result.setups.get(MV03) or result.setups.get(MV04)
         power = result.setups.get(MV05)
-        flat = result.setups.get(FLAT) and not (result.setups.get(MV01) or result.setups.get(MV02))
+        flat = result.setups.get(FLAT) and not (result.setups.get(MV01) or result.setups.get(MV02)
+                                                 or result.setups.get(NEAR))
         if flat:
             # S6: the pivot is the base's own high, the stop under the low of the sessions before the
             # breakout, and the objective the base's depth added to the price paid
@@ -2317,9 +2408,10 @@ class MinerviniSpecStrategy(Strategy):
             entry = float(ctx.close)
             stop = pivot_stop(tl, cfg.tick_size)
         else:
-            setup = MV01 if result.setups.get(MV01) else MV02
-            # MV-01 fills at tomorrow's open, whose best estimate today is the close; MV-02 at the buy-stop
-            entry = float(ctx.close) if setup == MV01 else pivot_buy_stop(pivot, cfg.tick_size)
+            setup = MV01 if result.setups.get(MV01) else NEAR if result.setups.get(NEAR) else MV02
+            # MV-01 (and S7, the same breakout) fills at tomorrow's open, whose best estimate today is the
+            # close; MV-02 at the buy-stop
+            entry = float(ctx.close) if setup in (MV01, NEAR) else pivot_buy_stop(pivot, cfg.tick_size)
             stop = pivot_stop(tl, cfg.tick_size)
         if stop <= 0 or stop >= entry:
             return PlanChoice(None, None, "degenerate stop")
@@ -2363,8 +2455,10 @@ class MinerviniSpecStrategy(Strategy):
         # OVERHEAD_CLUSTER_ATR above the base high can cap the move.
         ceiling_from = max(entry, float(bh)) if bh else entry
         cluster_edge = ceiling_from + OVERHEAD_CLUSTER_ATR * ctx.atr
-        nearest_above = sw.nearest_overhead_above(ceiling_from, ctx.overhead)  # reported, not binding
-        binding = min((lvl for lvl in ctx.overhead if lvl >= cluster_edge), default=None)
+        overhead = (sw.overhead_levels(ctx.daily, ctx.weekly, None, ctx.h_value, weekly_bars=52 * OVERHEAD_YEARS)
+                    if OVERHEAD_YEARS else ctx.overhead)
+        nearest_above = sw.nearest_overhead_above(ceiling_from, overhead)  # reported, not binding
+        binding = min((lvl for lvl in overhead if lvl >= cluster_edge), default=None)
         if binding is not None and binding < target:
             target = binding
         ctx.extras["overhead_caps_target"] = bool(binding is not None and binding < entry + measured_move) \
@@ -2449,6 +2543,10 @@ class MinerviniSpecStrategy(Strategy):
         elif plan.setup == FLAT:
             label, reasons = "TRADE_ON_TRIGGER", ["flat base: closed through the base's high, buy at the "
                                                   "next open, stopped under the low of the sessions before"]
+        elif plan.setup == NEAR:
+            label, reasons = "TRADE_ON_TRIGGER", [f"near miss: a breakout like MV-01 out of a base that missed "
+                                                  f"one rule narrowly ({ctx.extras.get('near_miss')}); buy at "
+                                                  "the next open"]
         elif plan.setup == MV05:
             # not a cheat: no base, no shelf -- it closed through the flag's pivot, like MV-01
             label, reasons = "TRADE_ON_TRIGGER", ["power play: closed through the flag's pivot, buy at the "
@@ -2571,11 +2669,12 @@ class MinerviniSpecStrategy(Strategy):
             if r["bh_date"] is None or not (r["ok"] or r["fail"] in self._VCP_RANK):
                 continue
             b = bases.setdefault(r["bh_date"], {"best": i, "ok": [], "breakout": None, "cheat": None})
-            if r["ok"]:
+            done = r["ok"] or (NEAR_MISS and r.get("near_ok"))      # S7: a near miss is drawn as complete
+            if done:
                 b["ok"].append(i)
-            rank = 99 if r["ok"] else self._VCP_RANK[r["fail"]]
+            rank = 99 if done else self._VCP_RANK[r["fail"]]
             best = dets[b["best"]]
-            if rank >= (99 if best["ok"] else self._VCP_RANK[best["fail"]]):
+            if rank >= (99 if (best["ok"] or (NEAR_MISS and best.get("near_ok"))) else self._VCP_RANK[best["fail"]]):
                 b["best"] = i
         # MV-01's breakout: yesterday complete, and today's close through yesterday's frozen pivot.
         # The breakout bar itself may already sit in a new base (the decisive close resets BH), so
@@ -2589,12 +2688,24 @@ class MinerviniSpecStrategy(Strategy):
         v50_ = daily["vol_sma50"].to_numpy(float) if "vol_sma50" in daily else np.full(len(daily), np.nan)
         for i in range(start + 1, len(daily)):
             p = dets[i - 1]
-            if p and p["ok"] and close[i - 1] <= p["pivot"] < close[i] and p["bh_date"] in bases \
+            near_base = bool(p and NEAR_MISS and p.get("near_ok"))
+            if p and (p["ok"] or near_base) and close[i - 1] <= p["pivot"] < close[i] and p["bh_date"] in bases \
                     and bases[p["bh_date"]]["breakout"] is None:
                 miss, vr, up = entry_misses(close[i], hi_[i], lo_[i], vo_[i], v50_[i], p["pivot"])
                 bases[p["bh_date"]]["breakout"] = i
-                bases[p["bh_date"]]["missed"] = (entry_misses_text(miss, vr, up, close[i], p["pivot"])
-                                                 if any(miss.values()) else None)
+                # S7, as evaluate decides it: a near-miss base with every MV-01 test passed, or a full VCP
+                # whose breakout volume alone is short by no more than NEAR_VOL_MULT
+                vol_near = (NEAR_MISS and p["ok"] and miss["W1"] and not miss["W2"] and not miss["W3"]
+                            and vr >= NEAR_VOL_MULT)
+                if vol_near:
+                    bases[p["bh_date"]]["near"] = (f"MV-01a: breakout volume {vr:.2f}x its 50-day average "
+                                                   f"(needs {VOL_MULT:g}x)")
+                    bases[p["bh_date"]]["missed"] = None
+                else:
+                    if near_base:
+                        bases[p["bh_date"]]["near"] = f"{p['near']['rule']}: {p['near']['why']}"
+                    bases[p["bh_date"]]["missed"] = (entry_misses_text(miss, vr, up, close[i], p["pivot"])
+                                                     if any(miss.values()) else None)
         # MV-03 / MV-04: the FIRST cheat each base triggered, by the strategy's own test.
         #
         # First, not latest. A base often crosses a shelf more than once -- the shelf is re-measured
@@ -2693,7 +2804,7 @@ class MinerviniSpecStrategy(Strategy):
                     continue
                 ch = again
             rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
-            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed")))
+            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed"), near=b.get("near")))
         out += self._power_plays(daily, cfg)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
 
@@ -2886,7 +2997,7 @@ class MinerviniSpecStrategy(Strategy):
 
     def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
                cheat: tuple | None = None, live: bool = False, traded_cheat: bool = False,
-               missed: str | None = None) -> dict:
+               missed: str | None = None, near: str | None = None) -> dict:
         """One setup for the chart: a frame around it, and its zones — the uptrend into the base, the
         base and its contractions, the pivot entry of a completed VCP, and the latest cheat entry
         (`cheat`: (bar, MV03 | MV04, yesterday's detection)) — each with its own shapes, its checklist
@@ -2908,6 +3019,10 @@ class MinerviniSpecStrategy(Strategy):
         end = bo if bo is not None else rep
         base_low = float(daily["low"].iloc[bh_i: rep + 1].min())
         depths, legs, fail, done = r["depths"], r["legs"], r["fail"], bool(r["ok"])
+        # S7: a base that missed one rule narrowly is drawn as complete, in its own colour, naming the miss
+        if NEAR_MISS and not done and r.get("near_ok"):
+            done = True
+            near = near or f"{r['near']['rule']}: {r['near']['why']}"
         # A young listing fails VCP-03 only because its averages cannot be computed yet — not a broken
         # trend, and it must not read like one. `ready` is the first bar the template can be judged.
         young = fail == "VCP-03" and not r["base_tt"] and vcp_spec.template_miss(daily.iloc[bh_i]) == vcp_spec.NO_HISTORY
@@ -2927,12 +3042,12 @@ class MinerviniSpecStrategy(Strategy):
         # one decimal, or two where one would hide which side of its limit a value falls (6.88% against
         # a 6.888% limit reads "6.9", which looks like a failure)
         g = base_diagnostics(r, daily)
-        near = lambda v, lim: abs(v - lim) < 0.1
-        pct = lambda v, lim: f"{v:.2f}" if near(v, lim) else f"{v:.1f}"
-        fine = bool(depths) and any(near(b, FINAL_REF_RATIO * a) for a, b in zip(depths, depths[1:]))
+        close_to = lambda v, lim: abs(v - lim) < 0.1
+        pct = lambda v, lim: f"{v:.2f}" if close_to(v, lim) else f"{v:.1f}"
+        fine = bool(depths) and any(close_to(b, FINAL_REF_RATIO * a) for a, b in zip(depths, depths[1:]))
         dep = lambda x: f"{x:.2f}" if fine else f"{x:.1f}"
         values = {
-            "VCP-01": (f"+{pct(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) if near(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) else format(r['prior_advance_pct'], '.0f')}% in {up_days} days" if up_days is not None else "—",
+            "VCP-01": (f"+{pct(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) if close_to(r['prior_advance_pct'], PRIOR_ADVANCE_PCT) else format(r['prior_advance_pct'], '.0f')}% in {up_days} days" if up_days is not None else "—",
                        f"at least {PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} days"),
             "VCP-02": (f"{r['base_days']} days", f"{BASE_MIN_DAYS}–{BASE_MAX_DAYS} days"),
             "VCP-03": ((f"held · {g['closes_below_200']} closes under the 200-day ({g['below_200_share_pct']:g}% of the base)"
@@ -3204,8 +3319,21 @@ class MinerviniSpecStrategy(Strategy):
 
         # ---- the frame, its kind, title and verdict
         kind = "cheat" if traded_cheat and cheat else "vcp" if done else "cheat" if cheat else "young" if young else "fail"
+        if kind == "vcp" and near:
+            kind = "near"
         today = " · today" if live else ""
-        if kind == "vcp":
+        if kind == "near":
+            entries = [z for z in zones if z.get("illustration")]
+            none_taken = bool(entries) and all(z["state"] == "fail" for z in entries)
+            rule = near.split(":")[0]
+            title = (f"Near miss ✓ · {rule}" + (" · trade skipped" if none_taken else
+                                                 " · no valid breakout" if missed else "")) + today
+            summary = (f"Missed one rule narrowly ({near}) and passed the rest: S7 buys its breakout like a "
+                       f"VCP's, as a setup of its own." + (f" It crossed the pivot on {day(bo)}, but the strategy "
+                                                         f"would not have bought: {missed}." if bo is not None and missed
+                                                         else f" Broke out on {day(bo)}." if bo is not None
+                                                         else " Waiting for a close through the pivot."))
+        elif kind == "vcp":
             # "trade skipped" means the strategy takes NOTHING on this base -- so it is read off the
             # entry illustrations, and only when every one of them fails.
             #

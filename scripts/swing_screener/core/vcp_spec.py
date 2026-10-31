@@ -113,6 +113,22 @@ class VcpParams:
                                      # 0.75 first suggested (2.84% on MU, under its 3.79% ATR)
                                      # the shrinking threshold put the median leg count at 13
                                      # against VCP-04's limit of 6; at 1.5 it is back to 6.
+    # 1.38, see `_zigzag`: 1 = the first contraction cannot end on the base-high bar itself; 1 = the floor
+    # after each contraction uses the ATR on that contraction's low, not on the base-high day; and the
+    # shrinking threshold is capped at `zigzag_cap_pct` (0 = no cap). All off = 1.37.
+    # 1.38, near misses (see `detect`): a base that fails exactly ONE of these graded rules, and by no more
+    # than its margin, is still measured to the end and returned as `near_ok` with `near` = the rule and why.
+    # `ok` and `fail` stay exactly what the strict rules say. 0 = off for that rule.
+    near_final_ref_ratio: float = 0.0   # VCP-06: final / reference contraction, at most this
+    near_tight_min_days: int = 0        # VCP-08: the final contraction at least this many sessions old
+    near_tight_pct: float = 0.0         # VCP-08: the final contraction and its range at most this deep
+    near_dryup_ratio: float = 0.0       # VCP-10: tight-area volume at most this x its 50-day (or the quiet days)
+    # 1.38 prototype, see `_right_edge_tight_area`: 1 = find a final tight area the zig-zag missed at the
+    # right edge of the base. 0 = 1.37.
+    tight_area_route: int = 0
+    zigzag_skip_bh_bar: int = 0
+    zigzag_floor_now: int = 0
+    zigzag_cap_pct: float = 0.0
     zigzag_pct: float = 3.0          # a leg turns only after a reversal this large, in BOTH
                                      # directions. Segmenting on swing highs alone split one
                                      # pullback into two whenever a 2-3 day bounce made a new
@@ -204,7 +220,8 @@ def _swings(series: pd.Series, k: int, how: str) -> np.ndarray:
 
 
 def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
-            floor_pct: float, ratio: float) -> list[tuple[int, float, str]]:
+            floor_pct: float, ratio: float, floor_now: np.ndarray | None = None,
+            cap_pct: float = 0.0, skip_first_low: bool = False) -> list[tuple[int, float, str]]:
     """Alternating (index, price, 'H'/'L') pivots, starting from a KNOWN high at bar 0,
     with a reversal threshold that shrinks as the contractions do.
 
@@ -223,18 +240,33 @@ def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
 
     Uses only bars up to the one being judged: a pivot is appended when the reversal
     confirms it, never retroactively from later data.
+
+    1.38, three options (all off by default):
+
+    * `skip_first_low`: the first low must come AFTER bar 0. Bar 0 is the base high; its own low is
+      not a contraction. A wide base-high bar (a gap day) otherwise read as a contraction that started
+      and ended on the same bar -- Cirrus Logic's 12 Jan 2010 gap, 8.13 high and 7.35 low, became a 10%
+      "T1" and the real 23% decline after it a widening.
+    * `floor_now`: the floor after each contraction, read on the bar that would confirm the next high (an
+      array of floors, in %, per bar) instead of the fixed `floor_pct` from the base-high day. A VCP is volatility
+      contracting, so the turn that counts should shrink with it.
+    * `cap_pct`: the shrinking threshold never exceeds this, though the floor may. After Radian's 33% cup
+      (Nov 2012), 0.35 x 33 = 11.4% hid its 7% handle; a handle is a contraction of at most `tight_pct`.
     """
     if not len(high):
         return []
     piv: list[tuple[int, float, str]] = [(0, float(high[0]), "H")]
     hi_i = lo_i = 0
+    if skip_first_low and len(low) > 1:
+        lo_i = 1
     direction, thr = -1, first_pct
+    now_ok = (lambda j: floor_now is not None and floor_now[j] == floor_now[j] and len(piv) > 1)
     for j in range(1, len(high)):
         if direction > 0 and high[j] >= high[hi_i]:
             hi_i = j
         if direction < 0 and low[j] <= low[lo_i]:
             lo_i = j
-        if direction > 0 and low[j] <= high[hi_i] * (1 - thr / 100):
+        if direction > 0 and low[j] <= high[hi_i] * (1 - (max(thr, floor_now[j]) if now_ok(j) else thr) / 100):
             piv.append((hi_i, float(high[hi_i]), "H"))
             direction, lo_i = -1, j
         elif direction < 0 and high[j] >= low[lo_i] * (1 + thr / 100):
@@ -242,7 +274,11 @@ def _zigzag(high: np.ndarray, low: np.ndarray, first_pct: float,
             prev_high = piv[-2][1]
             depth = (prev_high - low[lo_i]) / prev_high * 100 if prev_high > 0 else 0.0
             direction, hi_i = 1, j
-            thr = max(floor_pct, ratio * depth)
+            step = ratio * depth
+            if cap_pct:
+                step = min(step, cap_pct)
+            # with `floor_now` the floor is applied bar by bar, on the bar that would confirm the high
+            thr = step if floor_now is not None else max(floor_pct, step)
     return piv
 
 
@@ -306,6 +342,44 @@ def _major_contractions(legs: list, top_frac: float) -> list:
     return out
 
 
+def _right_edge_tight_area(legs: list, high: np.ndarray, low: np.ndarray, p: "VcpParams", start_i: int) -> list:
+    """1.38 prototype: the tight area at the right edge of the base, found directly rather than as the
+    last zig-zag swing.
+
+    Minervini's eye finds the final contraction where it is -- a short, shallow pause near the top of the
+    base -- however volatile the stock was earlier. The zig-zag finds it only if the pause clears a turn
+    threshold set by the base's earlier swings and volatility, so after a deep cup a 7% handle on a volatile
+    stock never registers (Radian, Dec 2012: 33% cup, 7% handle, threshold 11%). Lowering that threshold
+    everywhere splits the quiet final contractions it already reads (Netflix 2009's 8% became 5.6% + 6.2%).
+
+    So this touches only the case the zig-zag misses: the last contraction found is deeper than a tight
+    area, and the rally since its low has come back into the top of the base (`t_recovery`, the same test
+    that starts any contraction). Then the right side's highest high is a pivot, and the fall from it to the
+    lowest low since is the final contraction -- appended when it is a real pause (at least
+    `zigzag_floor_pct`) and no deeper than `tight_pct`. Every later rule (VCP-06's reset, VCP-08's age and
+    depth, VCP-09, VCP-10) then judges it like any other contraction."""
+    if not legs or legs[-1][2] <= p.tight_pct:
+        return legs
+    lo_i = legs[-1][4]
+    t = len(high) - 1
+    if lo_i >= t:
+        return legs
+    seg = high[lo_i + 1:]
+    h_i = lo_i + 1 + int(seg.argmax())
+    h = float(high[h_i])
+    ceil = max(g[0] for g in legs)
+    floor_ = min(g[1] for g in legs)
+    if not (ceil > floor_ and (h - floor_) / (ceil - floor_) >= p.t_recovery) or h_i >= t:
+        return legs
+    after = low[h_i + 1:]
+    l_i = h_i + 1 + int(after.argmin())
+    l = float(low[l_i])
+    depth = (h - l) / h * 100 if h > 0 else float("nan")
+    if not (p.zigzag_floor_pct <= depth <= p.tight_pct):
+        return legs
+    return legs + [(h, l, depth, h_i, l_i)]
+
+
 def _dryup(d: pd.DataFrame, start: int, vol: pd.Series, quiet_ratio: float) -> tuple[float, int]:
     """VCP-10's two measures of a quiet stretch beginning at bar `start` of `d`: its average volume
     as a multiple of the 50-day average, and how many of its sessions traded at or under
@@ -319,6 +393,34 @@ def _dryup(d: pd.DataFrame, start: int, vol: pd.Series, quiet_ratio: float) -> t
 
 
 def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
+    """The base in force on the last bar of `daily`, and whether its VCP is complete (`_detect`).
+
+    With the `near_*` margins set, a base that fails ONE graded rule (VCP-06's final ratio, VCP-08's age or
+    depth, VCP-10's dry-up) by no more than its margin is measured on past it: `near` is {"rule", "why"} for
+    that miss and `near_ok` says whether everything else then passed. `ok`, `fail` and `fail_why` are still
+    the strict verdict -- the first rule that failed -- so a caller that ignores `near` sees no change. The
+    fields measured after the miss (pivot, tight area, dry-up) are filled in for a near miss."""
+    r = _detect(daily, p)
+    nm = r.get("near")
+    r.setdefault("near", None)
+    r["near_ok"] = bool(nm and r["ok"])
+    if nm:
+        r["ok"] = False
+        r["fail"], r["fail_why"] = nm["rule"], nm["why"]
+    return r
+
+
+def _near(out: dict, rule: str, why: str, within: bool) -> bool:
+    """A graded rule failed. True when it is the base's first near miss and within its margin: recorded in
+    out["near"], and the caller carries on measuring. Otherwise the failure stands and the caller returns."""
+    if within and out.get("near") is None:
+        out["near"] = {"rule": rule, "why": why}
+        return True
+    out["fail"], out["fail_why"] = rule, why
+    return False
+
+
+def _detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     """The base in force on the last bar of `daily`, and whether its VCP is complete.
 
     Returns {"ok", "fail" (first failing rule id, or None), "bh", "bh_date", "base_days", "prior_advance_pct",
@@ -539,8 +641,13 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         floor = max(floor, p.zigzag_floor_atr_mult * atr_pct)
     out["zigzag_pct_used"] = round(zz, 2)
     # seeded with BH as the first high, so no leading-L cleanup is needed
+    floor_now = None
+    if p.zigzag_floor_now and "atr14" in d:
+        a = d["atr14"].to_numpy(float)[start_i:] / np.where(close[start_i:] > 0, close[start_i:], np.nan) * 100
+        floor_now = np.maximum(p.zigzag_floor_pct, p.zigzag_floor_atr_mult * a)
     piv = [(i + start_i, v, k) for i, v, k in
-           _zigzag(high[start_i:], low[start_i:], zz, floor, p.zigzag_shrink_ratio)]
+           _zigzag(high[start_i:], low[start_i:], zz, floor, p.zigzag_shrink_ratio,
+                   floor_now=floor_now, cap_pct=p.zigzag_cap_pct, skip_first_low=bool(p.zigzag_skip_bh_bar))]
 
     legs, last_low_i = [], None
     for a, b in zip(piv, piv[1:]):
@@ -558,6 +665,8 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         out["fail"] = "VCP-04"
         return out
     legs = _major_contractions(legs, p.t_recovery)
+    if p.tight_area_route:
+        legs = _right_edge_tight_area(legs, high, low, p, start_i)
     # the zig-zag already requires a real move in both directions, so a surviving leg is not
     # a wiggle; the filter stays only for thresholds set above zigzag_pct
     # No wiggle filter: the zig-zag's reversal threshold already decided what counts as a
@@ -651,11 +760,12 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
                            f"side is widening, not contracting")
         return out
     if not (out["final_ref_ratio"] <= p.final_ref_ratio):
-        out["fail"] = "VCP-06"
-        out["fail_why"] = (f"final contraction {sizes[-1]:.1f}% is "
-                           f"{out['final_ref_ratio']:.2f}x the reference {sizes[ref]:.1f}% "
-                           f"(needs <= {p.final_ref_ratio})")
-        return out
+        why = (f"final contraction {sizes[-1]:.1f}% is "
+               f"{out['final_ref_ratio']:.2f}x the reference {sizes[ref]:.1f}% "
+               f"(needs <= {p.final_ref_ratio})")
+        if not _near(out, "VCP-06", why, bool(p.near_final_ref_ratio
+                                               and out["final_ref_ratio"] <= p.near_final_ref_ratio)):
+            return out
     if p.higher_lows and any(b[1] < a[1] for a, b in zip(legs, legs[1:])):
         out["fail"] = "VCP-07"
         return out
@@ -673,13 +783,18 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     rng = (pivot - tl) / pivot * 100 if pivot > 0 else float("nan")
     out.update(pivot=pivot, tight_low=tl, tight_range_pct=rng)
     if n - ta_start < p.tight_min_days:
-        out["fail"] = "VCP-08"
-        out["fail_why"] = (f"the final contraction is only {n - ta_start} session(s) old, "
-                           f"under the {p.tight_min_days} a tight area needs")
-        return out
+        why = (f"the final contraction is only {n - ta_start} session(s) old, "
+               f"under the {p.tight_min_days} a tight area needs")
+        if not _near(out, "VCP-08", why, bool(p.near_tight_min_days and n - ta_start >= p.near_tight_min_days)):
+            return out
     if not (legs[-1][2] <= p.tight_pct and rng <= p.tight_pct):
-        out["fail"] = "VCP-08"
-        return out
+        why = (f"the final contraction is {max(legs[-1][2], rng):.1f}% deep, over the "
+               f"{p.tight_pct:g}% a tight area allows")
+        if not _near(out, "VCP-08", why, bool(p.near_tight_pct and legs[-1][2] <= p.near_tight_pct
+                                               and rng <= p.near_tight_pct)):
+            if out["fail_why"] == why and not out.get("near"):
+                out["fail_why"] = None      # 1.37 gave no reason for this one; kept, so the strict output is unchanged
+            return out
 
     # VCP-09 (v2 §4.3): where the pivot sits INSIDE the base decides which setup applies, so the
     # gate for the standard pivot buy is "upper zone", not "within 10% of the base high". The old
@@ -707,11 +822,11 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # a single news day inside an otherwise silent contraction, which is the case the second test
     # is there to keep.
     if not (dry <= p.dryup_ratio or quiet >= p.dryup_quiet_days):
-        out["fail"] = "VCP-10"
-        out["fail_why"] = (f"volume averaged {dry:.2f}x its 50-day (needs <= {p.dryup_ratio:g}) "
-                           f"with {quiet} session(s) at or under {p.dryup_quiet_ratio:g}x "
-                           f"(needs {p.dryup_quiet_days})")
-        return out
+        why = (f"volume averaged {dry:.2f}x its 50-day (needs <= {p.dryup_ratio:g}) "
+               f"with {quiet} session(s) at or under {p.dryup_quiet_ratio:g}x "
+               f"(needs {p.dryup_quiet_days})")
+        if not _near(out, "VCP-10", why, bool(p.near_dryup_ratio and dry <= p.near_dryup_ratio)):
+            return out
     if p.atr_shrink and "atr14" in d:
         a_now, a_bh = float(d["atr14"].iloc[-1]) / close[-1], float(d["atr14"].iloc[bh_i]) / close[bh_i]
         if not (a_now <= p.atr_shrink * a_bh):

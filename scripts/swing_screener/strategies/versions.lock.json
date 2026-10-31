@@ -364,7 +364,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "3d83274d",
+    "fingerprint": "df59ef84",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -423,8 +423,15 @@
       "MKT_HIGHS_LOWS_RATIO": 1.0,
       "MKT_INDEX_SMA": 50,
       "MKT_SMA_RISING_DAYS": 10,
+      "NEAR_DRYUP_RATIO": 1.0,
+      "NEAR_FINAL_REF_RATIO": 0.75,
+      "NEAR_MISS": 1,
+      "NEAR_TIGHT_MIN_DAYS": 2,
+      "NEAR_TIGHT_PCT": 12.0,
+      "NEAR_VOL_MULT": 1.2,
       "NOMINAL_TARGET_R": 3.0,
       "OVERHEAD_CLUSTER_ATR": 1.0,
+      "OVERHEAD_YEARS": 2,
       "PARTIAL_R": 2.0,
       "PE_PILOT_FRAC": 0.5,
       "PE_PRESS_NET_R": 4.0,
@@ -463,6 +470,8 @@
       "STRENGTH_EXT_PCT": 25.0,
       "STRENGTH_FRAC": 0.33,
       "SWING_K": 5,
+      "TICK_MAX_PCT": 0.2,
+      "TIGHT_AREA_ROUTE": 1,
       "TIGHT_MIN_DAYS": 5,
       "TIGHT_PCT": 10.0,
       "TIME_STOP_DAYS": 15,
@@ -495,12 +504,17 @@
       "VCP.min_contractions": 2,
       "VCP.min_from_reference": 2,
       "VCP.min_swing_pct": 2.0,
+      "VCP.near_dryup_ratio": 1.0,
+      "VCP.near_final_ref_ratio": 0.75,
+      "VCP.near_tight_min_days": 2,
+      "VCP.near_tight_pct": 12.0,
       "VCP.pivot_near_high": 0.9,
       "VCP.prior_advance_pct": 30.0,
       "VCP.prior_window": 126,
       "VCP.strict_shrink": 0,
       "VCP.swing_k": 5,
       "VCP.t_recovery": 0.75,
+      "VCP.tight_area_route": 1,
       "VCP.tight_min_days": 5,
       "VCP.tight_pct": 10.0,
       "VCP.undercut_recovery_days": 5,
@@ -509,10 +523,13 @@
       "VCP.young_listing": 1,
       "VCP.young_min_prior": 10,
       "VCP.zigzag_atr_mult": 1.5,
+      "VCP.zigzag_cap_pct": 0.0,
       "VCP.zigzag_floor_atr_mult": 1.5,
+      "VCP.zigzag_floor_now": 0,
       "VCP.zigzag_floor_pct": 1.5,
       "VCP.zigzag_pct": 3.0,
       "VCP.zigzag_shrink_ratio": 0.35,
+      "VCP.zigzag_skip_bh_bar": 0,
       "VOL_MULT": 1.4,
       "WIDEN_TOL": 1.1,
       "YOUNG_LISTING": 1,
@@ -536,7 +553,8 @@
         "S3",
         "S4",
         "S5",
-        "S6"
+        "S6",
+        "S7"
       ],
       "watch_codes": [
         "W1",
@@ -546,7 +564,7 @@
         "W5"
       ]
     },
-    "version": "1.37"
+    "version": "1.38"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

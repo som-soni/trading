@@ -62,10 +62,11 @@ def overhead_levels(
     weekly: pd.DataFrame | None,
     monthly: pd.DataFrame | None,
     h_value: float,
+    weekly_bars: int = 260,
 ) -> list[float]:
     """Every daily swing high in the last 252 bars, weekly swing high in the
-    last 5 years, monthly swing high in all history, AND the current swing
-    high H (see DEFINITIONS)."""
+    last `weekly_bars` weeks (5 years), monthly swing high in all history (pass
+    `monthly=None` to leave them out), AND the current swing high H (see DEFINITIONS)."""
     levels: set[float] = {round(h_value, 4)}
 
     d_tail = daily.iloc[-252:]
@@ -73,7 +74,7 @@ def overhead_levels(
     levels.update(round(v, 4) for v in d_tail.loc[d_mask, "high"].tolist())
 
     if weekly is not None and not weekly.empty:
-        w_tail = weekly.iloc[-260:]  # ~5 years
+        w_tail = weekly.iloc[-weekly_bars:]
         w_mask = swing_high_mask(w_tail["high"], 3, 3)
         levels.update(round(v, 4) for v in w_tail.loc[w_mask, "high"].tolist())
 

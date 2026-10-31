@@ -25,7 +25,7 @@ store are split-adjusted, so they differ from the book's axis.
 Notes are in our own words: what the figure shows, never the book's text.
 """
 
-BUY = ("S1", "S3", "S4", "S5", "S6")     # a buy: breakout, low cheat, cheat/3-C, power play, flat base
+BUY = ("S1", "S3", "S4", "S5", "S6", "S7")   # a buy: breakout, low cheat, cheat/3-C, power play, flat base, near miss
 
 CASES = [
     # --- Trade Like a Stock Market Wizard, chapter 10 (pinned since 1.27–1.30) ---------------------------
