@@ -81,7 +81,11 @@ def main() -> int:
 
     # ---- MKT-01: a resting order must not fill into a risk-off session
     df2 = _bars([100, 100, 104, 108, 112, 116, 120, 124, 128, 132])
-    stop_sig = _sig(df2.index[0], "T", order="stop", entry=101.0)
+    # The buy-stop at 105 first triggers on session 2. Risk-off from session 1's CLOSE is known before
+    # session 2 opens, so the order is cancelled; a filter that turns only on the fill session's own
+    # close cannot cancel that fill (tests/test_sim_same_day.py).
+    stop_sig = Signal(date=df2.index[0], symbol="T", setup="MV-01", entry=105.0, stop=90.0, target=130.0,
+                      decision="TRADE - HIGH CONFIDENCE", quality=2.0, meta={"order": "stop"})
     on = pd.Series(True, index=df2.index)
     off = on.copy(); off.iloc[1:] = False          # risk-off from the session after the signal
     with_on = simulate([stop_sig], {"T": df2}, cfg, df2.index[0], exit_policy=ExitPolicy(mode="bracket", use_target=False), regime_ok=on)

@@ -470,6 +470,7 @@ def simulate(
     if not all_dates:
         raise ValueError("no trading dates in range")
 
+    regime_known = regime_ok.dropna() if regime_ok is not None else None
     by_date: dict[pd.Timestamp, list[Signal]] = {}
     for s in signals:
         by_date.setdefault(s.date, []).append(s)
@@ -688,7 +689,7 @@ def simulate(
         # so open positions above are untouched. The cancel acts before today's open, so it reads
         # the PREVIOUS session's state: today's filter is computed from today's close, which does not
         # exist yet when the order would fill (until 2026-10-31 it read today's).
-        if regime_ok is not None and not _risk_on(regime_ok, today - pd.Timedelta(1, "ns")):
+        if regime_ok is not None and not _risk_on(regime_known, today, before=True):
             for sym in list(pending):
                 skip("cancelled: market filter is risk-off", sym, today)
                 del pending[sym]
@@ -700,7 +701,7 @@ def simulate(
         for s in by_date.get(today, []):
             if s.meta.get("order") != "close" or s.symbol in positions or s.symbol in pending:
                 continue
-            if regime_ok is not None and not _risk_on(regime_ok, today):   # it buys today's close
+            if regime_ok is not None and not _risk_on(regime_known, today):   # it buys today's close
                 skip("cancelled: market filter is risk-off", s.symbol, today)
                 continue
             pending[s.symbol] = {
@@ -1185,11 +1186,12 @@ def _trail_pct(pos: "PortfolioTrade", bar, policy: ExitPolicy) -> None:
     pos.stop = max(pos.stop, peak * (1 - policy.trail_pct))
 
 
-def _risk_on(regime_ok: pd.Series, when) -> bool:
-    """The market filter's state as of `when`. No reading yet (before the benchmark starts) is risk-off:
-    `bool(NaN)` is True, which read a missing state as open."""
-    v = regime_ok.asof(when)
-    return v == v and bool(v)
+def _risk_on(known: pd.Series, today, before: bool = False) -> bool:
+    """The market filter's state on `today`'s close, or with `before` on the previous session's. `known`
+    is the filter with its missing readings dropped, so each day reads the last real one. No reading yet
+    (before the benchmark starts) is risk-off: `bool(NaN)` is True, which read a missing state as open."""
+    i = known.index.searchsorted(today, side="left" if before else "right")
+    return bool(known.iloc[i - 1]) if i else False
 
 
 def _last_close(pos: PortfolioTrade, prices: dict[str, pd.DataFrame], today: pd.Timestamp) -> float:
