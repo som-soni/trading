@@ -233,8 +233,21 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.16"
+    version = "1.17"
+    # 1.17 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "1.16"
     changelog = (
+        ("1.17", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a session that triggers the buy-stop and also trades down to the "
+         "stop sells at the stop, because the bar does not say which came first and the stop wins the "
+         "tie, as on every other session; before, such a buy was held overnight. signal_version stays "
+         "at 1.16: only the simulator changed, so the cached signal rows still describe this scan. "
+         "Results move, so stored runs of earlier versions are not comparable."),
         ("1.16", "2026-10-26",
          "A cup without a handle must be without one (CH-13, beyond the spec, CUPNH_NO_HANDLE): no low "
          "between the right lip C and today under C by more than the price tolerance. The handle-less "
@@ -487,7 +500,9 @@ class ChartPatternSpecStrategy(Strategy):
         "pattern is seen late, never early.\n"
         "- **The trigger** is set from bars up to the day before, so the breakout bar cannot move the level "
         "it breaks (the flat base is the exception; see Caveats).\n"
-        "- **The signal** is decided on a session's close; the order can fill from the next session.",
+        "- **The signal** is decided on a session's close; the order can fill from the next session.\n"
+        "- **The fill session** checks the stop only: a session that triggers the buy and also trades down to "
+        "the stop sells at the stop (the bar does not say which came first, so the stop wins the tie, as on every session).",
         "Rule ids. Each check opens with an id (CH-03, BO-01 …) that names the same rule in "
         "core/pattern_spec.py and in the written spec, and in a stock's first-failed-rule note.",
     )

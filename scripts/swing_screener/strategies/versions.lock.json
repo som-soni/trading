@@ -30,7 +30,7 @@
         "W3"
       ]
     },
-    "version": "1.5"
+    "version": "1.6"
   },
   "chart_pattern": {
     "family": "chart_pattern",
@@ -162,7 +162,7 @@
         "W3"
       ]
     },
-    "version": "1.16"
+    "version": "1.17"
   },
   "donchian": {
     "family": "donchian",
@@ -188,7 +188,7 @@
         "W2"
       ]
     },
-    "version": "1.4"
+    "version": "1.5"
   },
   "dual_momentum": {
     "family": "dual_momentum",
@@ -238,7 +238,7 @@
         "W2"
       ]
     },
-    "version": "1.5"
+    "version": "1.6"
   },
   "ema_pullback": {
     "family": "ema_pullback",
@@ -282,7 +282,7 @@
         "S1"
       ]
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "etf_swing": {
     "family": "etf_swing",
@@ -611,7 +611,7 @@
         "W5"
       ]
     },
-    "version": "1.38"
+    "version": "1.39"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
@@ -745,7 +745,7 @@
         "W3"
       ]
     },
-    "version": "1.3"
+    "version": "1.4"
   },
   "sector_rotation": {
     "family": "sector_rotation",
@@ -844,7 +844,7 @@
         "W3"
       ]
     },
-    "version": "2.6"
+    "version": "2.7"
   },
   "supertrend": {
     "family": "supertrend",
@@ -864,7 +864,7 @@
         "S1"
       ]
     },
-    "version": "1.0"
+    "version": "1.1"
   },
   "trend_pullback": {
     "family": "trend_pullback",
@@ -910,7 +910,7 @@
         "W9"
       ]
     },
-    "version": "1.3"
+    "version": "1.4"
   },
   "turtle_trend": {
     "family": "turtle_trend",

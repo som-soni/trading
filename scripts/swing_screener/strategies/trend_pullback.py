@@ -51,8 +51,21 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 class TrendPullbackStrategy(Strategy):
     selection = "time_series"
-    version = "1.3"
+    version = "1.4"
+    # 1.4 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "1.3"
     changelog = (
+        ("1.4", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a session that triggers the buy-stop and also trades down to the "
+         "stop sells at the stop, because the bar does not say which came first and the stop wins the "
+         "tie, as on every other session; before, such a buy was held overnight. signal_version stays "
+         "at 1.3: only the simulator changed, so the cached signal rows still describe this scan. "
+         "Results move, so stored runs of earlier versions are not comparable."),
         ("1.3", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited "
          "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
@@ -387,8 +400,8 @@ class TrendPullbackStrategy(Strategy):
         "**How it sells.** A standing sell-stop: the first session whose low touches it sells at the stop. "
         "If the stock opens below the stop it sells at that open, so a gap can lose more than 1R. If one "
         "session touches both the stop and the target, the stop is assumed to come first.",
-        "**Not on the fill day.** In the portfolio backtest the stop and the target are watched from the "
-        "session after the buy fills; a drop through the stop on the fill session itself is not sold that day.",
+        "**The fill day checks the stop only.** In the portfolio backtest a fill session whose low reaches the "
+        "stop sells at the stop that day (the bar does not say which came first, so the stop wins the tie, as on every session); the target is watched from the session after the buy fills.",
         "**It never moves.** No breakeven move and no trailing stop.",
     )
     target_rules = (
@@ -425,8 +438,8 @@ class TrendPullbackStrategy(Strategy):
         "All four values are in Parameters.",
         "**Too large.** If that leaves less than one share, the plan is WATCH - WAIT (\"too large for "
         "account\") and is not traded.",
-        "**Backtest size.** The same arithmetic on current equity (cash plus open positions at their last "
-        "close) and on the actual fill price including slippage, always at the normal risk rate. If cash is "
+        "**Backtest size.** The same arithmetic on equity at the fill (cash plus open positions at the previous "
+        "session's close; an exit later that session has not happened yet) and on the actual fill price including slippage, always at the normal risk rate. If cash is "
         "short it buys what cash allows rather than skipping.",
         "**Costs.** Slippage per side, in basis points, is built into every fill price; the commission per "
         "order is charged on the buy and on the sell (Parameters).",

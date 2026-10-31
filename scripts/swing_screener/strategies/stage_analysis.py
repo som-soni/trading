@@ -245,8 +245,21 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.6"
+    version = "2.7"
+    # 2.7 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "2.6"
     changelog = (
+        ("2.7", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a session that triggers the buy-stop and also trades down to the "
+         "stop sells at the stop, because the bar does not say which came first and the stop wins the "
+         "tie, as on every other session; before, such a buy was held overnight. signal_version stays "
+         "at 2.6: only the simulator changed, so the cached signal rows still describe this scan. "
+         "Results move, so stored runs of earlier versions are not comparable."),
         ("2.6", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited "
          "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
@@ -611,9 +624,9 @@ class StageAnalysisStrategy(Strategy):
         "stop is raised to {MAX_STOP_PCT}% below it and W3 is set — which also makes the decision WATCH, so the "
         "backtest does not take the trade.",
         "It defines the risk. The distance from the price paid to the stop is 1R.",
-        "How it sells. A standing sell order, checked every session after the buy: it sells the moment the low "
+        "How it sells. A standing sell order, checked from the session of the buy: it sells the moment the low "
         "touches it, at the stop price, or at the open if the stock opens below it — so a gap can lose more than "
-        "1R.",
+        "1R. On the buy's own session a low at the stop sells at the stop (the bar does not say which came first, so the stop wins the tie, as on every session).",
         "It never moves. The guide's trailing stop under each Stage 2 correction is not modelled.",
     )
     target_rules = (

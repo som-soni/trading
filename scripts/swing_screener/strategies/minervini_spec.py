@@ -812,10 +812,22 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.38"
-    # signal_version is not pinned: 1.38 changes the detector (vcp_spec: the right-edge tight area and the
-    # near-miss margins) and evaluate() (S7) -- the next backtest rescans.
+    version = "1.39"
+    # 1.39 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "1.38"
     changelog = (
+        ("1.39", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized, and the open-risk cap (PF-04) is measured, from the other positions' previous closes, "
+         "not from the fill session's close. Waiting buy-stops are cancelled on the previous session's "
+         "market filter, not on the fill session's own close, and a session with no filter reading yet "
+         "is risk-off (bool(NaN) had read it as open). The stop on an EN-01 fill's own session is "
+         "still not tested (the ladder runs only its close-based rules that session). signal_version "
+         "stays at 1.38: only the simulator changed, so the cached signal rows still describe this "
+         "scan. Results move, so stored runs of earlier versions are not comparable."),
         ("1.38", "2026-10-30",
          "Two changes from Minervini's own chart examples (tests/minervini_book_cases.py), where 1.37 caught 11 "
          "of 35 buy points. (1) The final tight area is also looked for at the right edge of the base "
@@ -1899,7 +1911,8 @@ class MinerviniSpecStrategy(Strategy):
         "- leadership, only when MKT_HIGHS_LOWS_DAYS is set (it is {MKT_HIGHS_LOWS_DAYS}, 0 = off): "
         "over that many sessions, more of those stocks made new 52-week highs than "
         "{MKT_HIGHS_LOWS_RATIO} times the number making new lows.\n\n"
-        "When it fails, no new buy is taken and waiting buy-stops are cancelled; positions already "
+        "When it fails, no new buy is taken and waiting buy-stops are cancelled before the next session "
+        "opens (the test reads a close, so it cannot cancel a buy that filled earlier that session); positions already "
         "held are kept and managed as usual. The live screen applies the same test.\n\n"
         "`--mkt01` swaps in an older test (the index above its 200-day, and its 50-day above its "
         "200-day); `--mkt-confirm N` makes a recovery wait N sessions before buying resumes.",
