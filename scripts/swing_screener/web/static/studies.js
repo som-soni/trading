@@ -176,6 +176,9 @@ const Studies = (() => {
         // a near miss (Minervini's S7): complete but for one rule missed narrowly -- amber, never the VCP's colour
         const NEAR = "#d4a017";
         const kindCol = (s) => (s.kind === "young" ? YOUNG : s.kind === "near" ? NEAR : col(kindKey(s)));
+        // a setup's reference, the same on its frame, its lane pill, the card and the side panel: its place in
+        // the list (oldest first), so "#40" names one box wherever you look
+        const ref = (s) => `#${setups.indexOf(s) + 1}`;
         const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
         let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
         const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -289,7 +292,7 @@ const Studies = (() => {
           if (!s) { card.innerHTML = `<div class="tt-h"><b>No setup in view</b><i>${open ? "▾" : "▸"}</i></div>${open ? keyHtml : ""}`; return; }
           const cls = s.kind === "fail" ? "no" : "ok", k = setups.indexOf(s);
           const tr = tradeOf(s);
-          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}">${esc(s.title)}</span>
+          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}">${ref(s)} · ${esc(s.title)}</span>
               ${tr ? `<span class="tt-traded" title="The selected backtest run bought this setup — these are its own levels, not an illustration">● traded${tr.r_multiple != null ? ` ${(+tr.r_multiple).toFixed(1)}R` : ""}</span>` : ""}
               <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
               <i>${open ? "▾" : "▸"}</i></div>`
@@ -331,7 +334,7 @@ const Studies = (() => {
             // a traded setup says so on the frame itself: with the layer and a run both on, the one
             // thing you cannot read off the drawing is which of these the run actually bought
             shapes.push({ shape: "box", frame: true, dash: s.kind === "fail" || s.kind === "young", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom,
-              label: traded ? `${s.title} · ● traded${traded.r_multiple != null ? ` ${(+traded.r_multiple).toFixed(1)}R` : ""}` : s.title });
+              label: `${ref(s)} · ` + (traded ? `${s.title} · ● traded${traded.r_multiple != null ? ` ${(+traded.r_multiple).toFixed(1)}R` : ""}` : s.title) });
             s.zones.forEach((z, n) => {
               if (n > 0)   // a faint divider where each zone starts
                 shapes.push({ shape: "line", from: z.from, to: z.from, p0: f.top, p1: f.bottom, role: "dim", dash: true });
@@ -439,7 +442,7 @@ const Studies = (() => {
               x0 = Math.max(0, x0); x1 = Math.min(w, Math.max(x1, x0 + 8));
               let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
               rows[r] = x1;
-              const sel = s === focus, txt = x1 - x0 > 46 ? s.title : "";
+              const sel = s === focus, txt = x1 - x0 > 46 ? `${ref(s)} ${s.title}` : x1 - x0 > 18 ? ref(s) : "";
               const tr = tradeOf(s);
               pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""} ${tr ? "traded" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}${tr ? ` · traded by the selected run${tr.r_multiple != null ? `, ${(+tr.r_multiple).toFixed(2)}R` : ""}` : ""}"
                 style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${tr ? "● " : ""}${esc(txt)}</button>`);
