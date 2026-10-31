@@ -10,14 +10,17 @@ dotenv load just makes `scripts/.env` the place you edit instead of your
 shell profile.
 """
 
+import functools
 import logging
 import re
+import threading
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from dotenv import load_dotenv
 
 from .. import paths
@@ -33,9 +36,82 @@ for _env in (paths.SCRIPTS_DIR / ".env", paths.REPO_ROOT / ".env"):
 
 _connection = None  # module-level singleton; this is a single-threaded batch script
 
+# The web server is not single-threaded: FastAPI runs each request on a threadpool thread, and one
+# shared connection made every request wait behind the slowest query. use_pool() switches
+# get_connection() to one pooled connection per thread, so callers keep writing
+# `with get_connection().cursor()`; release_connection() (or @releasing) hands it back.
+_pool = None
+_pool_slots = None  # ThreadedConnectionPool raises when exhausted; this makes a thread wait instead
+_local = threading.local()
+
+
+class _Held:
+    """A thread's pooled connection; goes back to the pool when the thread ends, if not released before."""
+
+    def __init__(self, conn):
+        self.conn = conn
+
+    def give_back(self) -> None:
+        conn, self.conn = self.conn, None
+        if conn is None:
+            return
+        try:
+            # a BEGIN left open by an error would otherwise leak into the next borrower's queries
+            broken = conn.closed or conn.info.transaction_status != psycopg2.extensions.TRANSACTION_STATUS_IDLE
+            _pool.putconn(conn, close=bool(broken))
+        except Exception:  # noqa: BLE001 — pool closed at shutdown
+            pass
+        finally:
+            _pool_slots.release()
+
+    def __del__(self):
+        self.give_back()
+
+
+def use_pool(maxconn: int = 10, idle: int = 4) -> None:
+    """Give each thread of this process its own connection from a pool of at most `maxconn` (web server).
+    The pool keeps `idle` connections open between requests and closes any more as they come back."""
+    global _pool, _pool_slots
+    if _pool is None:
+        _pool = psycopg2.pool.ThreadedConnectionPool(idle, maxconn)  # libpq env vars, as psycopg2.connect()
+        _pool_slots = threading.BoundedSemaphore(maxconn)
+
+
+def release_connection() -> None:
+    """Hand this thread's pooled connection back (no-op without a pool, or when it holds none)."""
+    held = getattr(_local, "held", None)
+    if held is not None:
+        _local.held = None
+        held.give_back()
+
+
+def releasing(fn):
+    """Run `fn`, then hand back whatever connection it drew from the pool on this thread."""
+    @functools.wraps(fn)
+    def run(*a, **kw):
+        try:
+            return fn(*a, **kw)
+        finally:
+            release_connection()
+    return run
+
 
 def get_connection():
     global _connection
+    if _pool is not None:
+        held = getattr(_local, "held", None)
+        if held is not None and held.conn is not None and not held.conn.closed:
+            return held.conn
+        release_connection()  # a connection the server closed goes back as broken
+        _pool_slots.acquire()
+        try:
+            conn = _pool.getconn()
+            conn.autocommit = True
+        except BaseException:
+            _pool_slots.release()
+            raise
+        _local.held = _Held(conn)
+        return conn
     if _connection is None or _connection.closed:
         _connection = psycopg2.connect()  # reads PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE
         _connection.autocommit = True
