@@ -202,13 +202,14 @@
   },
   "earnings_gaps": {
     "family": "earnings_gaps",
-    "fingerprint": "35fae3c1",
+    "fingerprint": "70ea3a5c",
     "params": {
       "ANNOUNCE_WINDOW_DAYS": 3,
       "CATALYST_FILED_GRACE": 5,
       "CATALYST_MIN_DAYS": 10,
       "ENTRY_BUFFER_PCT": 0.1,
       "ENTRY_EXPIRY_BDAYS": 5,
+      "MARKET_GATE": 0,
       "MAX_STOP_ATR": 1.5,
       "MAX_STOP_PCT": 12.0,
       "MIN_CLOSE_POS": 0.7,
@@ -219,12 +220,14 @@
       "NEGLECT_MAX_RUN_PCT": 30.0,
       "NOMINAL_TARGET_R": 3.0,
       "REACTION_WINDOW": 5,
+      "REQUIRE_GAP": 0,
       "_key": "earnings_gaps",
       "gate_codes": [
         "G1",
         "G2",
         "G3",
-        "G4"
+        "G4",
+        "G5"
       ],
       "min_bars": 260,
       "setup_codes": [
@@ -235,7 +238,51 @@
         "W2"
       ]
     },
-    "version": "1.4"
+    "version": "1.5"
+  },
+  "ema_pullback": {
+    "family": "ema_pullback",
+    "fingerprint": "cb17462f",
+    "params": {
+      "ADVANCE_HIGH_BARS": 20,
+      "ADVANCE_LOOKBACK": 10,
+      "DRYUP_BARS": 5,
+      "DRYUP_RATIO": 1.0,
+      "EARNINGS_DAYS": 10,
+      "FAST_EMA": 21,
+      "MAX_RISK_PCT": 8.0,
+      "MKT_SMA": 50,
+      "PULLBACK_LOOKBACK": 5,
+      "REQUIRE_MARKET": 1,
+      "RUN_LENGTH": 5,
+      "SMA200_FALLING_PCT": 0.5,
+      "SMA200_SLOPE_BARS": 20,
+      "SMA50_FALLING_PCT": 1.0,
+      "SMA50_SLOPE_BARS": 10,
+      "STACK_FAST_EMA": 10,
+      "STACK_RISE_BARS": 5,
+      "STACK_SLOW_EMA": 21,
+      "STACK_SMA": 50,
+      "STOP_BUFFER_ATR": 0.0,
+      "TARGET_R": 2.0,
+      "TOUCH_TOL_PCT": 0.5,
+      "TRIGGER_WINDOW": 3,
+      "_key": "ema_pullback",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7"
+      ],
+      "min_bars": 260,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
   },
   "etf_swing": {
     "family": "etf_swing",

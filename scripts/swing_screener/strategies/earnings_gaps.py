@@ -77,6 +77,8 @@ MIN_MOVE_PCT = 10.0        # close at least this far above the previous close
 MIN_GAP_PCT = 5.0          # ...or the open at least this far above it
 MIN_REL_VOLUME = 3.0       # volume against its 50-day average
 MIN_CLOSE_POS = 0.70       # (close - low) / (high - low): closed in the top of its range
+REQUIRE_GAP = 0            # 1 = the reaction day must OPEN at least MIN_GAP_PCT up; a close-only move
+                           # no longer qualifies. Research switch, off (1.5).
 NEGLECT_LOOKBACK = 60      # sessions over which "already extended" is measured
 NEGLECT_MAX_RUN_PCT = 30.0 # a stock up more than this into the news is noted, not refused
 
@@ -94,14 +96,29 @@ MAX_STOP_PCT = 12.0        # widest stop, as a share of the entry
 MAX_STOP_ATR = 1.5         # ...or this multiple of the 14-day ATR, whichever binds first
 NOMINAL_TARGET_R = 3.0     # for sizing and reporting only — the real exit is the trail
 
+# ---- the market (G5)
+MARKET_GATE = 0            # 1 = buy only while the market index closes above its 200-day average
+                           # (backtesting/regime.py index_sma). Research switch, off (1.5).
+#: The index G5 reads: the small-cap segment, where an India reaction's follow-through was measured
+#: to depend on it (2018: the Smallcap 250 fell 26.8% and four of five trades under it lost).
+MARKET_GATE_INDEX = {"india": "NIFTYSMLCAP250.NS", "us": "IWM"}
+
 EG01 = "S1"   # EG-01: the break of the reaction day's high
 
 
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.4"
+    version = "1.5"
     changelog = (
+        ("1.5", "2026-10-31",
+         "Two research switches, both OFF, so a default run trades exactly as 1.4: REQUIRE_GAP (G2 admits "
+         "only a reaction day that opened at least {MIN_GAP_PCT}% up) and MARKET_GATE (a new gate, G5: the "
+         "small-cap index above its 200-day, the shared index_sma rule). Both came from India's 35 "
+         "loosened-G2 trades over 2013-2021 -- close-only moves averaged -0.57R against +0.97R for gaps, "
+         "and trades under a falling Smallcap 250 -0.17R against +0.75R -- so they are tested on the US "
+         "optimise window, which those trades did not inform, before either is turned on. G5 is evaluated "
+         "last so G1-G4 keep their codes."),
         ("1.4", "2026-10-29",
          "G3's India announcement dates include the board meeting that approved each quarter's results "
          "(NSE's board-meeting feed, `financials.nse_results_meetings`), beside NSE's broadcast of the results "
@@ -157,12 +174,13 @@ class EarningsGapStrategy(Strategy):
     style = "event"
     screen_key = "above_200"
     screen_gates = {"G1": "A1"}
-    gate_codes = ("G1", "G2", "G3", "G4")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5")
     watch_codes = ("W1", "W2")
     setup_codes = (EG01,)
     setup_names = {EG01: "Results-gap breakout"}
     gate_titles = {"G1": "Above the 200-day", "G2": "A results-day reaction",
-                   "G3": "Linked to a results window", "G4": "Stop close enough to carry"}
+                   "G3": "Linked to a results window", "G4": "Stop close enough to carry",
+                   "G5": "Market above its 200-day"}
     nominal_target = True
     min_bars = 260
     needs_ctx_extras = True
@@ -296,7 +314,9 @@ class EarningsGapStrategy(Strategy):
               "would have passed G3 and it does not.\n"
               "- **Big move:** the close is at least {MIN_MOVE_PCT}% above the previous session's "
               "close, OR the open is at least {MIN_GAP_PCT}% above it. Either is enough; W2 marks a "
-              "day that qualified on the gap alone.\n"
+              "day that qualified on the gap alone. With the research switch REQUIRE_GAP at 1 "
+              "(it is {REQUIRE_GAP}), the open must be at least {MIN_GAP_PCT}% up and a close-only "
+              "move does not qualify.\n"
               "- **Heavy volume:** the day's volume is at least {MIN_REL_VOLUME} times its 50-day "
               "average. The average is the simple mean of the 50 sessions ending on that day, so it "
               "includes the reaction day's own volume.\n"
@@ -340,6 +360,16 @@ class EarningsGapStrategy(Strategy):
               "the signal session's, so it already includes the reaction day's own wide range.\n"
               "- **At the fill:** only the percent cap is tested again, on the price actually "
               "paid (see Entry).",
+        "G5": "The market index closes above its 200-day average -- a research switch, OFF unless "
+              "MARKET_GATE is 1 (it is {MARKET_GATE}). While off, G5 always passes.\n\n"
+              "- **Index:** the small-cap segment -- the Nifty Smallcap 250 in India, IWM (Russell "
+              "2000) in the US.\n"
+              "- **Test:** the index's close on the signal session (its last close on or before it) "
+              "is above its own 200-day simple average -- the shared index_sma regime rule, the "
+              "same one the monthly portfolio runners use. An index too short to judge counts as on.\n"
+              "- **Why it exists:** in India's 2013-2021 window, trades taken with the Smallcap 250 "
+              "below its 200-day averaged -0.17R against +0.75R above it. Found on those trades, so "
+              "it is tested on the US before it is adopted anywhere.",
     }
     watch_docs = {
         "W1": "Up more than {NEGLECT_MAX_RUN_PCT}% over {NEGLECT_LOOKBACK} sessions: noted, never "
@@ -482,6 +512,8 @@ class EarningsGapStrategy(Strategy):
         ("Minimum move", "MIN_MOVE_PCT", "G2: close-to-close rise, in %, that makes a session a reaction day."),
         ("Minimum gap", "MIN_GAP_PCT", "G2: opening gap over the previous close, in %, that qualifies instead."),
         ("Minimum relative volume", "MIN_REL_VOLUME", "G2: the day's volume ÷ its 50-day average volume."),
+        ("Require a gap", "REQUIRE_GAP", "G2, research switch: 1 = the open must be at least the minimum gap up; 0 = off."),
+        ("Market gate", "MARKET_GATE", "G5, research switch: 1 = buy only while the small-cap index is above its 200-day; 0 = off."),
         ("Minimum close position", "MIN_CLOSE_POS", "G2: (close − low) ÷ (high − low); 1 is a close on the high."),
         ("Reaction window", "REACTION_WINDOW", "G2: sessions, counting the signal session, in which a reaction day still offers its setup."),
         ("Catalyst: earliest", "CATALYST_MIN_DAYS", "G3: calendar days after a quarter end before a reaction can be linked to it."),
@@ -564,6 +596,28 @@ class EarningsGapStrategy(Strategy):
             return "inside a stored results window"
         return None
 
+    _market: dict = {}
+
+    @classmethod
+    def _market_on(cls, market_key: str, day: pd.Timestamp) -> bool:
+        """G5: is the market index above its 200-day on `day`? The shared index_sma rule
+        (backtesting/regime.py), read as of `day`. Cached per market AND stage boundary, like the
+        announcements; an index that is not stored, or too short to judge, counts as on."""
+        from ..backtesting import regime
+        from ..marketdata import asof, cache
+        key = (market_key, asof.end_date())
+        if key not in cls._market:
+            ticker = MARKET_GATE_INDEX.get(market_key)
+            px = cache.load_cached(market_key, ticker) if ticker else None
+            cls._market[key] = (None if px is None or px.empty else
+                                regime.regime_on("index_sma", px.index, bench_px=px["close"], px=None,
+                                                 sma200=None, dv=None, liq_floor=None))
+        on = cls._market[key]
+        if on is None:
+            return True
+        on = on[on.index <= day]
+        return bool(on.iloc[-1]) if len(on) else True
+
     @classmethod
     def _linked_to_results(cls, symbol: str, day: pd.Timestamp) -> bool:
         return cls._link(symbol, day) is not None
@@ -599,6 +653,8 @@ class EarningsGapStrategy(Strategy):
             gap = (o / prev_c - 1) * 100
             if move < MIN_MOVE_PCT and gap < MIN_GAP_PCT:
                 continue
+            if REQUIRE_GAP and gap < MIN_GAP_PCT:
+                continue
             rel_vol = float(d["volume"].iloc[i]) / float(v50)
             if rel_vol < MIN_REL_VOLUME:
                 continue
@@ -621,6 +677,7 @@ class EarningsGapStrategy(Strategy):
             result.fail("G2", f"no results-day reaction in the last {REACTION_WINDOW} sessions")
             result.ok("G3", "not reached")
             result.ok("G4", "not reached")
+            result.ok("G5", "not reached")
             result.recompute_first_fail()
             return result
 
@@ -656,6 +713,14 @@ class EarningsGapStrategy(Strategy):
             result.fail("G4", f"stop is {atr_mult:.1f} ATR below the entry (over {MAX_STOP_ATR:g})")
         else:
             result.ok("G4")
+
+        # G5 — the market (off unless MARKET_GATE)
+        if not MARKET_GATE:
+            result.ok("G5", "off")
+        elif self._market_on(_market_of(ctx.symbol), d.index[-1]):
+            result.ok("G5")
+        else:
+            result.fail("G5", f"{MARKET_GATE_INDEX.get(_market_of(ctx.symbol))} is not above its 200-day average")
 
         # W1 — already extended into the news (Bonde's neglect point)
         if len(d) > NEGLECT_LOOKBACK:
