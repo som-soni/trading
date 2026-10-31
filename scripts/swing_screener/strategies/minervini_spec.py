@@ -812,10 +812,19 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.38"
-    # signal_version is not pinned: 1.38 changes the detector (vcp_spec: the right-edge tight area and the
-    # near-miss margins) and evaluate() (S7) -- the next backtest rescans.
+    version = "1.39"
+    # signal_version is not pinned: 1.39 changes evaluate() (it now records the overhead levels the plan
+    # reads), so a 1.38 row lacks them -- the next backtest rescans.
     changelog = (
+        ("1.39", "2026-10-31",
+         "A fresh scan and a signal-cache hit built different plans. build_plans read the overhead supply that "
+         "caps the target from the price frames, and a cache hit rebuilds its context from 70 daily bars and no "
+         "weekly frame, so it saw almost none of it: SSNC 2017-04-18 was refused fresh at 0.85R and bought from "
+         "the cache at 2.03R (IONS 2017-07-07, LAZ 2017-07-21 and FRT 2021-09-09 likewise). evaluate() now "
+         "records the levels (plan_overhead) and build_plans reads only those, so both paths agree "
+         "(tests/check_minervini_cache_plans.py); OVERHEAD_YEARS leaves signal_exempt_consts, since the scan "
+         "reads it. No rule changed: a 1.38 run that rescanned every bar traded as 1.39 does, and a 1.38 run "
+         "served partly from the cache took setups the rules refuse."),
         ("1.38", "2026-10-30",
          "Two changes from Minervini's own chart examples (tests/minervini_book_cases.py), where 1.37 caught 11 "
          "of 35 buy points. (1) The final tight area is also looked for at the right edge of the base "
@@ -1339,7 +1348,7 @@ class MinerviniSpecStrategy(Strategy):
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
         "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
-        "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR", "OVERHEAD_YEARS", "TICK_MAX_PCT",
+        "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
@@ -1812,7 +1821,9 @@ class MinerviniSpecStrategy(Strategy):
         "on 60 random US stocks, 2013-2021, all 12 that broke out were refused at 0.3-1.5R.",
         "Overhead supply caps it. An older swing high above the base is where earlier buyers wait to sell, "
         "so the target is lowered to the nearest one. Only a level at least {OVERHEAD_CLUSTER_ATR} ATR above "
-        "the base high counts; anything closer is part of the base's own ceiling.",
+        "the base high counts; anything closer is part of the base's own ceiling. Only swing highs of the "
+        "last year (daily) and the last {OVERHEAD_YEARS} years (weekly) count: supply older than that is "
+        "what Minervini bought through.",
         "The {MIN_STRUCTURAL_R}:1 test. The reward (price paid to target) must be at least "
         "{MIN_STRUCTURAL_R} times the risk (price paid to stop). Example: buy at 100 with the stop at 94 "
         "risks 6. A target of 115 offers 15, which is 2.5 times 6: taken. A target of 110 offers 10, only "
@@ -2343,6 +2354,14 @@ class MinerviniSpecStrategy(Strategy):
         diag = base_diagnostics(base, d)
         e.update(diag, base_notes=base_notes(base, diag))
         result.recompute_first_fail()
+        # 1.39: the overhead supply that caps the target (build_plans) is read here, from the full daily and
+        # weekly frames, and stored with the signal. A signal-cache hit rebuilds the context from 70 daily bars
+        # and no weekly frame (backtest._cached_ctx), so reading the frames in build_plans gave a cache hit a
+        # different plan from a fresh scan -- SSNC 2017-04-18 refused fresh at 0.85R, bought from the cache at
+        # 2.03R. Only on a bar that reaches the plan, so the row stays small everywhere else.
+        if OVERHEAD_YEARS and result.hard_gates_passed and result.has_setup:
+            e["plan_overhead"] = sw.overhead_levels(d, ctx.weekly, None, ctx.h_value,
+                                                    weekly_bars=52 * OVERHEAD_YEARS)
         return result
 
     def entry_signal_fired(self, ctx: StockContext, result: StrategyResult) -> bool:
@@ -2455,8 +2474,10 @@ class MinerviniSpecStrategy(Strategy):
         # OVERHEAD_CLUSTER_ATR above the base high can cap the move.
         ceiling_from = max(entry, float(bh)) if bh else entry
         cluster_edge = ceiling_from + OVERHEAD_CLUSTER_ATR * ctx.atr
-        overhead = (sw.overhead_levels(ctx.daily, ctx.weekly, None, ctx.h_value, weekly_bars=52 * OVERHEAD_YEARS)
-                    if OVERHEAD_YEARS else ctx.overhead)
+        # the levels evaluate() stored (plan_overhead), never the frames: a cache hit has no weekly frame
+        overhead = e.get("plan_overhead") if OVERHEAD_YEARS else ctx.overhead
+        if overhead is None:
+            return PlanChoice(None, None, "missing overhead levels")
         nearest_above = sw.nearest_overhead_above(ceiling_from, overhead)  # reported, not binding
         binding = min((lvl for lvl in overhead if lvl >= cluster_edge), default=None)
         if binding is not None and binding < target:

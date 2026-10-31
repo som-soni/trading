@@ -409,7 +409,7 @@ function loadEdges() {
   }
   return EDGE_P;
 }
-const EDGE_SHORT = { verified: "Edge (verified)", failed: "Failed verify", in_sample: "In-sample only", none: "No edge", unmeasured: "Not measured" };
+const EDGE_SHORT = { verified: "Edge (verified)", failed: "Failed verify", unjudged: "Verify unjudged", in_sample: "In-sample only", none: "No edge", unmeasured: "Not measured" };
 /** a coloured dot for one strategy in one market; the tooltip carries the grade and the number behind it */
 function edgeDot(key, mkt, flag = false) {
   const e = EDGE?.strategies?.[key]?.[mkt];
