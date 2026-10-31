@@ -50,6 +50,20 @@ def main() -> int:
         rejected = True
     check("an unknown zone name is rejected", rejected)
 
+    # Mon 2 Nov 2026 onward: US open and India close fall due in the same minute (18:30 IST). The open routine
+    # has the bell as its deadline, so it must be claimed first: the queue runs priority DESC, then id.
+    by_name = {s["name"]: {**s, "id": i + 1, "enabled": True, "monthday": s.get("monthday")}
+               for i, s in enumerate(q.DEFAULT_SCHEDULES)}
+    india_close, us_open_s = by_name["Market close · India"], by_name["Market open · US"]
+    now = at(2026, 11, 2, 18, 31)
+    same = q.latest_slot(india_close, now) == q.latest_slot(us_open_s, now) == at(2026, 11, 2, 18, 30)
+    check("US open and India close share Monday's 18:30 IST slot", same)
+    order = sorted([india_close, us_open_s], key=lambda s: (-q.schedule_priority(s), s["id"]))
+    check("the open routine is claimed before the close routine due with it", order[0] is us_open_s,
+          " then ".join(s["name"] for s in order))
+    check("open routines outrank close routines, and both outrank on-demand work",
+          q.schedule_priority(us_open_s) > q.schedule_priority(india_close) > q.DATA_PRIORITY > 0)
+
     # the routines are pipelines of registered jobs, and the open routine only re-runs what is stale
     for name in ("close", "open"):
         check(f"pipeline '{name}' exists", name in PIPELINES)

@@ -112,6 +112,11 @@ _SCOLS = "id, name, targets, market, opts, days, monthday, at_time, enabled, las
 # web app (a stale snapshot, setups behind the prices, a breadth top-up) sit between the two: ahead of
 # research batches, behind the schedules that refresh everything anyway.
 SCHEDULE_PRIORITY = 10
+# An open routine has a deadline -- the bell -- and a close routine does not. They can fall due in the same
+# minute: while New York is on standard time, US open (08:00 New York) is 18:30 IST, India's close slot, and
+# FIFO would run India's close (lower schedule id) first and finish US open after the US bell. So an open
+# routine goes ahead of any other scheduled run due with it (it never stops one that is already running).
+OPEN_PRIORITY = SCHEDULE_PRIORITY + 1
 DATA_PRIORITY = 5
 _ACTIVE = ("queued", "running")
 
@@ -456,6 +461,11 @@ def set_enabled(sid: int, enabled: bool) -> None:
 
 def delete_schedule(sid: int) -> None:
     _q("DELETE FROM job_schedules WHERE id=%s", (sid,), fetch=None)
+
+
+def schedule_priority(s: dict) -> int:
+    """The queue priority of a schedule's run: OPEN_PRIORITY for an open routine, else SCHEDULE_PRIORITY."""
+    return OPEN_PRIORITY if "open" in (s.get("targets") or []) else SCHEDULE_PRIORITY
 
 
 def due_schedules(now: dt.datetime | None = None) -> list[tuple[dict, dt.datetime]]:
