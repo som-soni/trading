@@ -474,13 +474,13 @@ class StageAnalysisStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "NOT YET MEASURED. The stage model is validated against the guide's Trent narrative "
-        "(Stage 2 from August 2023 through October 2024, close 2,049 to 7,128; Stage 4 by March "
-        "2025) but no backtest result has been recorded here yet, so there is no result to report "
-        "and nothing here should be read as one. Expect it to resemble the other per-symbol swing strategies: all "
-        "six measured so far have NEGATIVE selection, between -0.38 and -4.48, which is worse than "
-        "a 10-month moving average with no edge at all (see `ma_trend`). The reason to measure this "
-        "one anyway is that it is the only WEEKLY strategy here, and weekly decisions are the one "
+        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v2.6); verify not run. US 8.09% CAGR, "
+        "excess -5.92 points a year over the benchmark, max drawdown -25.6%, Sharpe 0.71; India 1.37% CAGR, "
+        "excess -12.16, max drawdown -20.8%, Sharpe 0.24. It trails holding the index in both markets. The "
+        "closest variant, W1_RANKS_ONLY=1 with G7_BLOCK_STAGE=3 (optimise stage), still trails: excess -6.57 in "
+        "the US and -4.84 in India -- a variant, never the headline. The stage model itself is validated against "
+        "the guide's Trent narrative (Stage 2 from August 2023 through October 2024, close 2,049 to 7,128; "
+        "Stage 4 by March 2025). It is the only WEEKLY strategy here, and weekly decisions are the one "
         "structural difference none of the others test."
     )
     gate_docs = {

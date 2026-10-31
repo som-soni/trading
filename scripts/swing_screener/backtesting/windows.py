@@ -21,6 +21,10 @@ Two rules make the verify window worth anything, and both are enforced rather th
   options already has one (`verify_runs`). Run it again with `--again` and the repeat is recorded as
   a repeat: a verify result looked at twice and acted on is in-sample.
 
+A verify run's verdict is recorded too (`judge`: `passed` and the `criterion` it was judged against).
+Positive excess is not a pass: the criterion written before the run is, and the Strategies page grades
+an edge "verified" only from a recorded pass.
+
 Honest limit: every year up to October 2026 informed some decision made before this module existed,
 so strategies refined until then have no clean historical hold-out. The split protects decisions
 made from here on.
@@ -102,6 +106,10 @@ CREATE TABLE IF NOT EXISTS verify_runs (
     ran_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS verify_runs_key ON verify_runs (market, strategy, spec_id, signature);
+-- the verdict against the pass criterion written before the run (judge); NULL = not judged yet
+ALTER TABLE verify_runs ADD COLUMN IF NOT EXISTS passed BOOLEAN;
+ALTER TABLE verify_runs ADD COLUMN IF NOT EXISTS criterion TEXT;
+ALTER TABLE verify_runs ADD COLUMN IF NOT EXISTS judged_at TIMESTAMPTZ;
 """
 
 # options that only place the run in time or control the queue; everything else changes what is tested
@@ -173,6 +181,35 @@ def overrides(opts: dict, strategy_args: str | None = None) -> dict:
     return out
 
 
+def runner_defaults(main) -> str:
+    """A portfolio runner's argparse defaults as a command line ("--system 2 ..."), for `overrides()`'s
+    `strategy_args`: a queue item that restates a default (turtle_trend's `--bt '--system 2'`) tests the
+    strategy as configured, not a variant. Read by stopping `main` at its parse_args, so nothing runs."""
+    import argparse
+
+    class _Stop(Exception):
+        pass
+
+    def grab(self, *a, **k):
+        raise _Stop(self)
+
+    orig, argparse.ArgumentParser.parse_args = argparse.ArgumentParser.parse_args, grab
+    try:
+        main([])
+    except _Stop as stop:
+        parser = stop.args[0]
+    else:
+        return ""
+    finally:
+        argparse.ArgumentParser.parse_args = orig
+    out = []
+    for act in parser._actions:
+        longs = [o for o in act.option_strings if o.startswith("--")]
+        if longs and act.default not in (None, False, argparse.SUPPRESS) and act.nargs in (None, "?"):
+            out.append(f"{longs[0]} {act.default}")
+    return " ".join(out)
+
+
 def describe(over: dict) -> list[str]:
     """`overrides()` as the command-line pieces a reader recognises: ["--const X=1", "--min-turnover 1e8"]."""
     parts = []
@@ -225,3 +262,47 @@ def record(market: str, strategy: str, spec_id: str, opts: dict, repeat: bool, r
     with db.get_connection().cursor() as cur:
         cur.execute("INSERT INTO verify_runs (market, strategy, spec_id, signature, repeat, run_dir) "
                     "VALUES (%s, %s, %s, %s, %s, %s)", (market, strategy, spec_id, signature(opts), repeat, run_dir))
+
+
+def judge(run_dir: str, passed: bool, criterion: str) -> int:
+    """Record whether the verify run in `run_dir` (its directory, or just the directory's name) met the pass
+    criterion written before it ran. Returns the number of verify_runs rows updated (0 = no such run).
+
+    The verdict is the reader's, against the criterion -- not a number this module can work out: positive
+    excess with a deeper drawdown than the criterion allowed is a fail (momentum_vol_scaled 1.6, India)."""
+    if not (criterion or "").strip():
+        raise ValueError("a verdict needs the criterion it was judged against")
+    _init()
+    with db.get_connection().cursor() as cur:
+        cur.execute("UPDATE verify_runs SET passed=%s, criterion=%s, judged_at=now() "
+                    "WHERE run_dir=%s OR run_dir LIKE %s",
+                    (bool(passed), criterion.strip(), run_dir, "%/" + run_dir.rstrip("/").rsplit("/", 1)[-1]))
+        return cur.rowcount
+
+
+def verdicts() -> dict:
+    """{(market, strategy, spec_id, run directory name): passed (True / False / None = not judged)}."""
+    _init()
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT market, strategy, spec_id, run_dir, passed FROM verify_runs WHERE run_dir IS NOT NULL")
+        return {(m, k, sp, rd.rstrip("/").rsplit("/", 1)[-1]): p for m, k, sp, rd, p in cur.fetchall()}
+
+
+def main() -> None:
+    import argparse
+    ap = argparse.ArgumentParser(description="Record a verify run's verdict against its pass criterion.")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    j = sub.add_parser("judge", help="record whether a verify run met its pass criterion")
+    j.add_argument("run_dir", help="the run's directory, or its name")
+    v = j.add_mutually_exclusive_group(required=True)
+    v.add_argument("--passed", action="store_true")
+    v.add_argument("--failed", action="store_true")
+    j.add_argument("--criterion", required=True, help="the pass criterion, as written before the run")
+    a = ap.parse_args()
+    n = judge(a.run_dir, a.passed, a.criterion)
+    print(f"{n} verify run(s) recorded as {'passed' if a.passed else 'failed'}" if n
+          else f"no verify run recorded at {a.run_dir}")
+
+
+if __name__ == "__main__":
+    main()

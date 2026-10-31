@@ -603,7 +603,12 @@ def _backtest_steps(ctx: Ctx) -> list:
                 # an experiment shares the spec_id of the real thing and read as its headline result.
                 import json
                 from pathlib import Path
-                own = "" if key in portfolio_strategies() else (type(_get(key)).backtest_args or "")
+                if key in portfolio_strategies():
+                    import importlib
+                    mod = getattr(portfolio_strategies()[key], "runner", "baseline")
+                    own = windows.runner_defaults(importlib.import_module(f"swing_screener.backtesting.{mod}").main)
+                else:
+                    own = type(_get(key)).backtest_args or ""
                 over = windows.overrides(c.opts, own)
                 (Path(out) / "overrides.json").write_text(json.dumps(
                     {"overrides": over, "described": windows.describe(over), "stage": stage}, indent=1))

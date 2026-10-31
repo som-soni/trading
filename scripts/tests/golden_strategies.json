@@ -13023,7 +13023,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13056,7 +13058,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13089,7 +13093,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13122,7 +13128,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13155,7 +13163,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13176,7 +13186,7 @@
     "G4": false,
     "G5": false,
     "G6": false,
-    "G7": true,
+    "G7": false,
     "G8": false
    },
    "prefilter": [
@@ -13188,7 +13198,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13221,7 +13233,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13254,7 +13268,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13287,7 +13303,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13320,7 +13338,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13353,7 +13373,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13386,7 +13408,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13419,7 +13443,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13452,7 +13478,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13485,7 +13513,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13518,7 +13548,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13551,7 +13583,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13584,7 +13618,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13603,7 +13639,7 @@
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": true,
+    "G5": false,
     "G6": false,
     "G7": true,
     "G8": false
@@ -13617,7 +13653,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13626,7 +13664,7 @@
     "W2": false,
     "W3": false,
     "W4": false,
-    "W5": true
+    "W5": false
    }
   },
   "BALRAMCHIN.NS": {
@@ -13650,7 +13688,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13683,7 +13723,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13716,7 +13758,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13749,7 +13793,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13782,7 +13828,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13815,7 +13863,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13848,7 +13898,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13881,7 +13933,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13914,7 +13968,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13947,7 +14003,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -13980,7 +14038,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14013,7 +14073,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14046,7 +14108,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14079,7 +14143,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14112,7 +14178,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14145,7 +14213,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14167,7 +14237,7 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": true
    },
    "prefilter": [
     false,
@@ -14178,7 +14248,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14211,7 +14283,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14230,7 +14304,7 @@
     "G2": false,
     "G3": false,
     "G4": true,
-    "G5": true,
+    "G5": false,
     "G6": true,
     "G7": false,
     "G8": false
@@ -14244,7 +14318,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14253,7 +14329,7 @@
     "W2": false,
     "W3": false,
     "W4": false,
-    "W5": true
+    "W5": false
    }
   },
   "INDNIPPON.NS": {
@@ -14277,7 +14353,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14310,7 +14388,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14343,7 +14423,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14376,7 +14458,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14409,7 +14493,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14442,7 +14528,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14475,7 +14563,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14508,7 +14598,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14541,7 +14633,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14574,7 +14668,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14607,7 +14703,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14640,7 +14738,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14673,7 +14773,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14692,7 +14794,7 @@
     "G2": true,
     "G3": true,
     "G4": false,
-    "G5": true,
+    "G5": false,
     "G6": true,
     "G7": true,
     "G8": true
@@ -14706,7 +14808,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14715,7 +14819,7 @@
     "W2": false,
     "W3": false,
     "W4": false,
-    "W5": true
+    "W5": false
    }
   },
   "LGBBROSLTD.NS": {
@@ -14739,7 +14843,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14772,7 +14878,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14791,7 +14899,7 @@
     "G2": false,
     "G3": false,
     "G4": false,
-    "G5": false,
+    "G5": true,
     "G6": false,
     "G7": true,
     "G8": false
@@ -14805,7 +14913,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14818,12 +14928,12 @@
    }
   },
   "LXCHEM.NS": {
-   "first_hard_fail": "G5",
+   "first_hard_fail": "G4",
    "hard_gates": {
     "G1": true,
     "G2": true,
     "G3": true,
-    "G4": true,
+    "G4": false,
     "G5": false,
     "G6": true,
     "G7": true,
@@ -14831,14 +14941,16 @@
    },
    "prefilter": [
     false,
-    "200-day average not rising"
+    "moving averages not stacked 50 > 150 > 200"
    ],
    "setups": {
     "S1": false,
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14871,7 +14983,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14904,7 +15018,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14937,7 +15053,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -14970,7 +15088,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15003,7 +15123,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15036,7 +15158,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15049,6 +15173,11 @@
    }
   },
   "MBAPL.NS": {
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "near miss: a breakout like MV-01 out of a base that missed one rule narrowly (MV-01a: breakout volume 1.27x its 50-day average (needs 1.4x)); buy at the next open"
+   },
    "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
@@ -15060,6 +15189,15 @@
     "G7": true,
     "G8": true
    },
+   "plan": {
+    "entry": 170.630005,
+    "r": 2.66,
+    "reason": "S7: pivot 170.50, stop 5.0% below entry, projects 2.66R",
+    "setup": "S7",
+    "stop": 162.05,
+    "target": 193.410004,
+    "which": "MV"
+   },
    "prefilter": [
     true,
     "passed"
@@ -15069,9 +15207,11 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": true
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": true,
@@ -15102,7 +15242,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15135,7 +15277,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15168,7 +15312,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15201,7 +15347,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15214,6 +15362,11 @@
    }
   },
   "MWL.NS": {
+   "decision": {
+    "label": "TRADE ON TRIGGER",
+    "quality": 1.0,
+    "reason": "coiled below the pivot: buy-stop through it"
+   },
    "first_hard_fail": null,
    "hard_gates": {
     "G1": true,
@@ -15225,18 +15378,29 @@
     "G7": true,
     "G8": true
    },
+   "plan": {
+    "entry": 45.05,
+    "r": 3.65,
+    "reason": "S2: pivot 45.00, stop 8.2% below entry, projects 3.65R",
+    "setup": "S2",
+    "stop": 41.35,
+    "target": 58.55,
+    "which": "MV"
+   },
    "prefilter": [
     false,
     "price below 100"
    ],
    "setups": {
     "S1": false,
-    "S2": false,
+    "S2": true,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
-   "signal": false,
+   "signal": true,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
@@ -15267,7 +15431,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15300,7 +15466,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15333,7 +15501,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15366,7 +15536,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15388,7 +15560,7 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": true
    },
    "prefilter": [
     false,
@@ -15399,7 +15571,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15432,7 +15606,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15465,7 +15641,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15498,7 +15676,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15531,7 +15711,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15564,7 +15746,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15597,7 +15781,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15630,7 +15816,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15663,7 +15851,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15696,7 +15886,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15729,7 +15921,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15762,7 +15956,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15795,7 +15991,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15828,7 +16026,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15861,7 +16061,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15894,7 +16096,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15927,7 +16131,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15960,7 +16166,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -15993,7 +16201,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16026,7 +16236,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16059,7 +16271,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16092,7 +16306,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16125,7 +16341,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16158,7 +16376,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16191,7 +16411,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16224,7 +16446,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16257,7 +16481,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16266,7 +16492,7 @@
     "W2": false,
     "W3": false,
     "W4": false,
-    "W5": true
+    "W5": false
    }
   },
   "STANLEY.NS": {
@@ -16290,7 +16516,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16323,7 +16551,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16356,7 +16586,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16389,7 +16621,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16422,7 +16656,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16444,7 +16680,7 @@
     "G5": true,
     "G6": true,
     "G7": true,
-    "G8": false
+    "G8": true
    },
    "prefilter": [
     false,
@@ -16455,7 +16691,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16488,7 +16726,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16521,7 +16761,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16554,7 +16796,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16587,7 +16831,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16620,7 +16866,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16653,7 +16901,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16686,7 +16936,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16719,7 +16971,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16752,7 +17006,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16785,7 +17041,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16818,7 +17076,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16851,7 +17111,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16884,7 +17146,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16917,7 +17181,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -16950,7 +17216,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43663,7 +43931,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43696,7 +43966,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43729,7 +44001,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43762,7 +44036,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43795,7 +44071,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43828,7 +44106,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43861,7 +44141,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43894,7 +44176,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43927,7 +44211,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43960,7 +44246,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -43993,7 +44281,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44026,7 +44316,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44059,7 +44351,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44092,7 +44386,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44125,7 +44421,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44158,7 +44456,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44191,7 +44491,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44224,7 +44526,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44257,7 +44561,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44290,7 +44596,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44323,7 +44631,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44356,7 +44666,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44389,7 +44701,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44422,7 +44736,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44455,7 +44771,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44488,7 +44806,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44521,7 +44841,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44554,7 +44876,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44587,7 +44911,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44620,7 +44946,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44653,7 +44981,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44686,7 +45016,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44719,7 +45051,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44752,7 +45086,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44785,7 +45121,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44818,7 +45156,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44851,7 +45191,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44884,7 +45226,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44917,7 +45261,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44950,7 +45296,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -44983,7 +45331,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45016,7 +45366,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45049,7 +45401,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45082,7 +45436,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45115,7 +45471,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45148,7 +45506,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45181,7 +45541,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45214,7 +45576,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45247,7 +45611,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45280,7 +45646,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45313,7 +45681,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45346,7 +45716,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45379,7 +45751,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45412,7 +45786,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45445,7 +45821,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45478,7 +45856,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45511,7 +45891,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45544,7 +45926,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45577,7 +45961,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45610,7 +45996,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45643,7 +46031,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45676,7 +46066,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45709,7 +46101,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45742,7 +46136,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45775,7 +46171,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45808,7 +46206,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45841,7 +46241,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45874,7 +46276,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45907,7 +46311,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45940,7 +46346,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -45973,7 +46381,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46006,7 +46416,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46039,7 +46451,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46072,7 +46486,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46105,7 +46521,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46138,7 +46556,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46171,7 +46591,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46204,7 +46626,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46237,7 +46661,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46270,7 +46696,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46303,7 +46731,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46336,7 +46766,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46369,7 +46801,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46402,7 +46836,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46435,7 +46871,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46468,7 +46906,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46501,7 +46941,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46534,7 +46976,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46567,7 +47011,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46600,7 +47046,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46633,7 +47081,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46666,7 +47116,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46699,7 +47151,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46732,7 +47186,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46765,7 +47221,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46798,7 +47256,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46831,7 +47291,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46864,7 +47326,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46897,7 +47361,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46930,7 +47396,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46963,7 +47431,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -46996,7 +47466,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47026,12 +47498,14 @@
    ],
    "setups": {
     "S1": false,
-    "S2": true,
+    "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
-   "signal": true,
+   "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
    "watch_flags": {
     "W1": false,
@@ -47062,7 +47536,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47095,7 +47571,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47128,7 +47606,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47161,7 +47641,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47194,7 +47676,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47227,7 +47711,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47260,7 +47746,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47293,7 +47781,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47326,7 +47816,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47359,7 +47851,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47392,7 +47886,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47425,7 +47921,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47438,16 +47936,16 @@
    }
   },
   "WCT": {
-   "first_hard_fail": "G4",
+   "first_hard_fail": "G2",
    "hard_gates": {
     "G1": true,
-    "G2": true,
-    "G3": true,
+    "G2": false,
+    "G3": false,
     "G4": false,
     "G5": false,
     "G6": true,
     "G7": false,
-    "G8": true
+    "G8": false
    },
    "prefilter": [
     false,
@@ -47458,7 +47956,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47491,7 +47991,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47524,7 +48026,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47557,7 +48061,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",
@@ -47590,7 +48096,9 @@
     "S2": false,
     "S3": false,
     "S4": false,
-    "S5": false
+    "S5": false,
+    "S6": false,
+    "S7": false
    },
    "signal": false,
    "watch_cap": "TRADE_HIGH_CONFIDENCE",

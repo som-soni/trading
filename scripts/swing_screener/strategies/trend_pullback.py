@@ -185,10 +185,12 @@ class TrendPullbackStrategy(Strategy):
     # attributes (max_stop_*), not constants of this module, so most are written out as numbers.
     # Keep them in sync by hand; adding a module constant here would move the fingerprint.
     status = (
-        "No demonstrated edge: portfolio backtest from 2013 with bracket exits (v1.1, "
-        "measured 2026-10-13/14 after the cost fix) returned 1.75% CAGR in the US (SPY 12.8%, "
-        "max drawdown -46.5%) and 2.30% in India (index 11.7%, max drawdown -32.1%); seven "
-        "alternative exit policies did not rescue it."
+        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v1.3); verify not run. US 9.68% CAGR, "
+        "excess -4.33 points a year over the benchmark, max drawdown -18.2%, Sharpe 0.67; India 2.35% CAGR, "
+        "excess -11.18, max drawdown -16.8%, Sharpe 0.34 (bracket exits). LEGACY (v1.1, full period from 2013 "
+        "before stages, measured 2026-10-13/14): US 1.75% CAGR against SPY's 12.8% (max drawdown -46.5%), India "
+        "2.30% against the index's 11.7% (max drawdown -32.1%); seven alternative exit policies did not rescue "
+        "it."
     )
     gate_docs = {
         "G1": "Weekly close above a 30-week EMA that is itself rising.\n\n"

@@ -893,10 +893,14 @@ def strategies():
 # (no experiment, not archived), strongest evidence first: a verify run (out-of-sample, the verdict),
 # else an optimise run (in-sample: flattered by construction), else the newest run of an older version
 # or a pre-stage run, which says so. "Edge" means excess CAGR over the run's benchmark above zero --
-# the number the Strategies page already ranks on -- not a judgement made here.
+# the number the Strategies page already ranks on -- not a judgement made here. A verify run is graded
+# by its recorded verdict (windows.judge), never by its excess: momentum_vol_scaled 1.6 India made +3.37
+# excess and failed its pre-registered criterion. And only the current rules' verify run counts: a
+# hold-out of an older version says nothing about the rules that replaced it.
 EDGE_LEVELS = {
     "verified": "Edge out-of-sample",
     "failed": "Failed out-of-sample",
+    "unjudged": "Run out-of-sample — no recorded verdict",
     "in_sample": "Edge in-sample only — not verified",
     "none": "No edge",
     "unmeasured": "Not measured",
@@ -916,7 +920,9 @@ def strategy_edges() -> dict:
     import time
     if _EDGE_CACHE.get("at", 0) > time.time() - 120:
         return _EDGE_CACHE["data"]
+    from swing_screener.backtesting import windows
     strat_docs = _strategy_docs()
+    verdicts = windows.verdicts()
     rows = q("SELECT id, strategy, market, run_name, summary, spec_id, overrides FROM report_runs "
              "WHERE kind='backtest' AND archived_at IS NULL ORDER BY generated_at DESC NULLS LAST")
     by = {}
@@ -939,18 +945,22 @@ def strategy_edges() -> dict:
                 if pick:
                     break
             if not pick:
+                # never an older version's verify run: it judged other rules
                 current = False
-                pick = (next((x for x in plain if _stage(x[1])["stage"] == "verify"), None)
-                        or next((x for x in plain if _stage(x[1])["stage"] == "optimise"), None)
-                        or next((x for x in plain if not cur or x[3] != cur), None)
-                        or next(iter(mine or plain), None))
+                rest = [x for x in plain if _stage(x[1])["stage"] != "verify"]
+                pick = (next((x for x in rest if _stage(x[1])["stage"] == "optimise"), None)
+                        or next((x for x in rest if not cur or x[3] != cur), None)
+                        or next(iter(rest), None))
             if not pick:
                 ent[m] = {"level": "unmeasured", "label": EDGE_LEVELS["unmeasured"]}
                 continue
             i, r, s, sp = pick
             st, ex = _stage(r)["stage"], _excess(s)
-            level = (("verified" if ex > 0 else "failed") if st == "verify"
-                     else ("in_sample" if ex > 0 else "none"))
+            if st == "verify":
+                passed = verdicts.get((m, k, sp, r))
+                level = "verified" if passed is True else "failed" if passed is False else "unjudged"
+            else:
+                level = "in_sample" if ex > 0 else "none"
             ver = (sp or "").split("-")[0].lstrip("v")
             where = {"verify": "out-of-sample", "optimise": "in-sample", "full": "full period"}.get(st, "legacy run")
             label = f"{EDGE_LEVELS[level]}: excess {ex:+.2f}%/yr ({where}{'' if current else f', v{ver} — current rules not run yet'})"

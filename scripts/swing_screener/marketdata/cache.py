@@ -306,6 +306,16 @@ def _last_expected_session(now: pd.Timestamp | None = None) -> pd.Timestamp:
     return d
 
 
+def _expected_session(market: str) -> pd.Timestamp:
+    """The market's last session whose bars should exist: `freshness.expected_session` (the market's own time
+    zone and data cutoff). The fixed 22:00-local test it replaces kept India's evening run (19:26 IST) from
+    ever asking for that day's index, benchmark, VIX and ETF bars, so they stayed a session behind."""
+    from . import freshness
+    if market in freshness.MARKET_CLOSE:
+        return pd.Timestamp(freshness.expected_session(market))
+    return _last_expected_session()
+
+
 def get_many_bars(
     provider: DataProvider,
     market: str,
@@ -356,7 +366,7 @@ def get_many_bars(
     # every screener runs on old prices while reporting success.
     everything_stale = False
     if market_latest is not None:
-        expected = _last_expected_session()
+        expected = _expected_session(market)
         if pd.Timestamp(market_latest).normalize() < expected:
             everything_stale = True
             logger.info(

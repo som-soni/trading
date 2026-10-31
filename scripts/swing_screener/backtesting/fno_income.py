@@ -368,7 +368,8 @@ FNO_DOC = {
                    "call spread below a falling one. Take half the credit, stop at "
                    "{STOP_CREDIT_MULT}x it, or close {CLOSE_DAYS_BEFORE} days before expiry.",
     "status": (
-        "THE RESULT IS THE COST ASSUMPTION, AND THE DATA CANNOT SUPPLY IT. Swept 24 "
+        "THE RESULT IS THE COST ASSUMPTION, AND THE DATA CANNOT SUPPLY IT. LEGACY figures (before stages, a "
+        "sweep over the full period, which includes the verify years; context, never a verdict). Swept 24 "
         "configurations on NIFTY from 2012 -- 2 structures x 3 short deltas x 4 slippage "
         "assumptions -- and ALL 24 cross from positive to negative between 2 and 4 index points of "
         "assumed slippage per leg. Not most of them: all of them. A short-premium strategy's "

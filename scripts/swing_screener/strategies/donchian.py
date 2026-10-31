@@ -209,11 +209,14 @@ class DonchianStrategy(Strategy):
     # Numbers are `{NAME}` placeholders of the numeric class attributes (entry_channel, ...), which
     # render_doc fills with the live values. A literal is written where the code uses a literal.
     status = (
-        "No demonstrated edge: backtested from 2013 on the full universe with a 50-day "
-        "channel exit and no target (v1.1, measured 2026-10-13 after the cost fix), it "
-        "trailed the index in both markets: India 7.68% CAGR vs 11.7% (max drawdown "
-        "-44.2%), US 6.53% vs 12.8% (max drawdown -49.3%). Trade shape is sound (profit "
-        "factor ~1.2 in earlier runs) but signal selection among tied breakouts is arbitrary."
+        "IN-SAMPLE ONLY, India only. v1.4, optimise stage (2013-2021, in-sample): India 15.15% CAGR, excess "
+        "+1.62 points a year over its benchmark, max drawdown -34.3%, Sharpe 0.83; US -0.09% CAGR, excess "
+        "-14.10, max drawdown -51.8%. India's margin is small and in-sample; verify not run, and no pass "
+        "criterion has been written for it yet -- write one before any India verify run. Variant, optimise "
+        "stage: the market filter lifts India to excess +2.49 with a deeper drawdown, -44.6%. LEGACY (v1.1, "
+        "full period from 2013 before stages, measured 2026-10-13): India 7.68% CAGR against 11.7% (max "
+        "drawdown -44.2%), US 6.53% against 12.8% (max drawdown -49.3%). Signal selection among tied breakouts "
+        "is the weak point: the ranking variants move the result more than any exit."
     )
     gate_docs = {
         "G1": (

@@ -165,12 +165,15 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
-        "NOT YET MEASURED. Stage: optimise (2013-2021, in-sample); verify has not been run. Pass criterion, set "
-        "before any result: in the optimise stage, the base rules beat the market's benchmark CAGR AND make a "
-        "positive average R after costs, in at least one market; and that market's result does not rest on a "
-        "handful of trades (the top 10% of trades' share of P&L is reported beside it). Up-front variants, "
-        "measured beside the base and never chosen as a substitute for it: TIGHT_MAX_PCT=15 (a tighter rest) and "
-        "TRAIL_SMA=20 (the slower trailing average)."
+        "FAILS ITS PASS CRITERION in the optimise stage (2013-2021, in-sample, v1.0); verify not run. The base "
+        "rules trail the benchmark in both markets: US -0.65% CAGR, excess -14.66 points a year, max drawdown "
+        "-54.2%; India -4.48% CAGR, excess -18.02, max drawdown -44.6%. The criterion, set before any result: in "
+        "the optimise stage, the base rules beat the market's benchmark CAGR AND make a positive average R after "
+        "costs, in at least one market; and that market's result does not rest on a handful of trades (the top "
+        "10% of trades' share of P&L is reported beside it). It fails the first test in both. The up-front "
+        "variants, measured beside the base and never a substitute for it (optimise stage): TIGHT_MAX_PCT=15 (a "
+        "tighter rest) US 3.23% CAGR, excess -10.78, India -1.09%, excess -14.63; TRAIL_SMA=20 (the slower "
+        "trailing average) US -3.25%, excess -17.26, India -2.46%, excess -15.99."
     )
     gate_docs = {
         "G1": (
