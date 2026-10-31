@@ -332,7 +332,8 @@ PEAD_DOC = {
                    "accelerating, revenue up at least {MIN_REVENUE_GROWTH}%, in the top {SEASON_RANK_TOP}% of the season so far, and the market "
                    "agreeing over the first {REACTION_DAYS} sessions -- and hold for {HOLD_SESSIONS} sessions.",
     "status": (
-        "THE PUBLISHED PREDICTION IS CONFIRMED, AND THE STRATEGY STILL FAILS. The Learn guide states the "
+        "THE PUBLISHED PREDICTION IS CONFIRMED, AND THE STRATEGY STILL FAILS. LEGACY figures (before stages, "
+        "full periods that include the verify years; context, never a verdict). The Learn guide states the "
         "expected answer before any code existed: the drift has mostly disappeared in large US stocks since "
         "the 2000s, and was visible in India on a short sample. Both halves reproduce. "
         "US from 2010 (57,072 filings, 1,394 symbols): CAGR 3.73% against SPY's 12.04%, 1,548 trades, "

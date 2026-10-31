@@ -193,9 +193,9 @@ class BreakoutStrategy(Strategy):
     # Numbers are `{NAME}` placeholders of the module constants and `min_structural_r`; a literal is
     # written where the code uses a literal.
     status = (
-        "Not validated, no demonstrated edge: thresholds are untuned defaults. Full US backtest "
-        "from 2013 (v1.1, bracket exits, measured 2026-10-12 after the cost fix): 2.15% CAGR "
-        "against SPY's 12.8%, max drawdown -29.7%. India not yet run at full size."
+        "Not validated, no demonstrated edge: thresholds are untuned defaults. LEGACY (before stages, "
+        "never a verdict): full US backtest from 2013 (v1.1, bracket exits, measured 2026-10-12 after the "
+        "cost fix): 2.15% CAGR against SPY's 12.8%, max drawdown -29.7%. India not yet run at full size."
     )
     gate_docs = {
         "G1": "Close above the 200-day average (the Near-highs screen's H1).\n\n"

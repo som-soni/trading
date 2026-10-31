@@ -75,7 +75,8 @@ SR_DOC = {
     "description": "Each month-end hold the {top_n} sectors with the best {lookback_days}-session (about "
                    "six-month) return, equal-weighted.",
     "status": (
-        "MEASURED, and it lands where the guide said it would. India beats modestly and the US does not, on "
+        "MEASURED, and it lands where the guide said it would. LEGACY figures (before stages, both windows "
+        "include the verify years; context, never a verdict). India beats modestly and the US does not, on "
         "BOTH windows -- which is the useful part, because unlike dual momentum the answer does not depend on "
         "the window. From 2020: India 15.91% CAGR against the Nifty 500's 12.63% (+3.28), drawdown -29.1% "
         "against -38.3%, Sharpe 0.90 against 0.78; US 10.73% against SPY's 13.41% (-2.68), Sharpe 0.61 against "

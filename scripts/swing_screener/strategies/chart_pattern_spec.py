@@ -445,19 +445,16 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 260
 
     status = (
-        "Not yet measured since v1.5: v1.8 to v1.12 (graded cup rims, a cup's trigger lifted to its left rim, CH-12, fill-time checks, HS-09/HS-10, TR-05's near end, WG-04, TL-04 and the early breakout search) have no run. Last measured at v1.5, with no demonstrated edge: India, full "
-        "universe from 2013 (bracket exits, measured 2026-10-14): 3.61% CAGR against the index's "
-        "11.6%, max drawdown -27.8%; no US v1.5 run was recorded. v1.6 renamed codes only and "
-        "v1.7 admits stocks with {min_bars} bars of history instead of 320. (v1.2 stopped stale "
-        "cups-without-handle from trading, v1.3 moved "
-        "two buy rules to O'Neil's, v1.4 requires a triple bottom's lows to be level and v1.5 buys "
-        "only on the breakout bar, once per pattern.) The earlier v1.0 comparison, dominated by stale "
-        "cups and late and repeat entries: backtested 2026-10-09 it lost by less than its sibling: -0.93% "
-        "CAGR and -0.072R per trade over 253 trades (US, 2020-2026, 300-symbol "
-        "sample), against `chart_pattern_legacy`'s -5.60% and -0.309R on the same "
-        "run. The +0.234R difference has a Welch t of 1.16 and a 95% interval "
-        "of [-0.16, +0.62], so the spec's discipline is NOT demonstrated to "
-        "help; both lose 14-19 points of CAGR to the benchmark."
+        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v1.16); verify not run. US 5.28% CAGR, "
+        "excess -8.73 points a year over the benchmark, max drawdown -36.4%, Sharpe 0.44; India 2.87% CAGR, "
+        "excess -10.66, max drawdown -31.9%, Sharpe 0.33 (bracket exits). Variants, optimise stage, never the "
+        "headline: BO_VOL=0 (no breakout-volume test) US 13.07%, excess -0.94, India 4.97%, excess -8.57; "
+        "MAX_RISK_PCT=15 US 7.86%, excess -6.15, India 7.26%, excess -6.28. LEGACY (before stages): v1.5, India, "
+        "full universe from 2013 (measured 2026-10-14), 3.61% CAGR against the index's 11.6%, max drawdown "
+        "-27.8%; the v1.0 comparison (US, 2020-2026, 300-symbol sample, 2026-10-09) lost -0.93% CAGR and -0.072R "
+        "per trade over 253 trades against chart_pattern_legacy's -5.60% and -0.309R, a +0.234R difference with "
+        "a Welch t of 1.16 and a 95% interval of [-0.16, +0.62], so the spec's discipline is NOT demonstrated to "
+        "help."
     )
     thesis = (
         "If classical chart patterns carry information, a detector built to a "
