@@ -17,6 +17,14 @@ So a date is a STRAY SESSION when fewer than STRAY_MAX_SHARE of the symbols the 
 Diwali's Muhurat hour, a Saturday budget day — is priced for most of the market and is kept. Only dates followed
 by SETTLE_SESSIONS sessions are judged, so the newest day, part-way through a refresh, is never mistaken for one.
 
+A date is also a stray session when the source FILLED it: at least FILLER_MIN_SHARE of its bars are flat (open =
+high = low = close) with no volume, and no index has a real bar that day. India's source does
+this on exchange holidays -- 1 May 2026 (Maharashtra Day) carried a flat, zero-volume bar for 1,555 of 2,554
+symbols, more than STRAY_MAX_SHARE, so the count test kept it; in a base the bar read as a session that never
+happened and pulled the 50-day volume average down. The index guard keeps a real session the source merely failed to
+price: on 18 Mar 2025 the Nifty traded (22,662 to 22,834) while 2,136 of 2,275 stocks came back as filler -- a gap to
+re-fetch, not a holiday to delete.
+
 `repair` finds them, records each in `prices_stray_sessions` and re-saves every symbol with a bar on one;
 `cache.save_cached` drops a recorded date from every write (all writers pass a symbol's full history) and deletes
 it from storage, so a later re-fetch cannot bring it back. Removed rows are kept in `prices_stray_backup`.
@@ -38,6 +46,8 @@ logger = logging.getLogger(__name__)
 STRAY_MAX_SHARE = 0.5   # a date priced for fewer than this share of the usual symbol count is not a market session
 USUAL_WINDOW = 21       # sessions, centred on the date, whose median count is "usual"
 SETTLE_SESSIONS = 5     # a date is judged only once this many sessions follow it
+FILLER_MIN_SHARE = 0.9  # a date whose bars are at least this share flat and volume-free, with no index bar, is filler
+FILLER_MIN_SYMBOLS = 50  # … judged only with this many bars: early history prices a few flat index series and nothing else
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS prices_stray_sessions (
@@ -61,12 +71,16 @@ def _ensure_schema(cur) -> None:
         _schema_ready = True
 
 
-def find_stray(counts: pd.Series) -> pd.DataFrame:
-    """The stray sessions in `counts` (symbols priced per date): columns date, priced, usual."""
+def find_stray(counts: pd.Series, filler: pd.Series | None = None) -> pd.DataFrame:
+    """The stray sessions in `counts` (symbols priced per date): columns date, priced, usual. `filler`: per date,
+    the share of its bars that are flat and volume-free, NaN where the benchmark index traded (`stored_filler`)."""
     counts = counts.sort_index()
     usual = counts.rolling(USUAL_WINDOW, center=True, min_periods=1).median()
     judged = counts.index[:-SETTLE_SESSIONS] if SETTLE_SESSIONS else counts.index
     stray = counts.index.isin(judged) & (counts < STRAY_MAX_SHARE * usual)
+    if filler is not None:
+        stray |= (counts.index.isin(judged) & (counts >= FILLER_MIN_SYMBOLS).to_numpy()
+                  & (filler.reindex(counts.index) >= FILLER_MIN_SHARE).to_numpy())
     return pd.DataFrame({"date": counts.index[stray], "priced": counts[stray].astype(int).values,
                          "usual": usual[stray].round().astype(int).values})
 
@@ -77,6 +91,18 @@ def stored_counts(market: str) -> pd.Series:
         cur.execute("SELECT date, count(*) FROM prices WHERE market=%s GROUP BY date", (market,))
         rows = cur.fetchall()
     return pd.Series({pd.Timestamp(d): n for d, n in rows}, dtype=float)
+
+
+def stored_filler(market: str) -> pd.Series:
+    """Per date, the share of stored bars that are flat (open = high = low = close) with no volume -- NaN on a date
+    an index (a '^' symbol) has a real bar, which makes it a session whatever the stocks show."""
+    flat = "(coalesce(volume, 0) = 0 AND open = high AND high = low AND low = close)"
+    with db.get_connection().cursor() as cur:
+        cur.execute(f"""SELECT date, avg(({flat})::int),
+                               bool_or(symbol LIKE '^%%' AND NOT (open = high AND high = low AND low = close))
+                        FROM prices WHERE market=%s GROUP BY date""", (market,))
+        rows = cur.fetchall()
+    return pd.Series({pd.Timestamp(d): (float("nan") if traded else float(share)) for d, share, traded in rows}, dtype=float)
 
 
 def recorded(market: str) -> set[pd.Timestamp]:
@@ -109,7 +135,7 @@ def repair(market: str, apply: bool = False) -> dict:
     """Find the stray sessions in what is stored for `market`; with `apply`, record them and re-save every symbol
     with a bar on one through `save_cached`, which drops those bars, deletes them and recomputes the indicators."""
     from . import cache
-    found = find_stray(stored_counts(market))
+    found = find_stray(stored_counts(market), stored_filler(market))
     for r in found.itertuples():
         logger.info("%s %s (%s): %d symbols priced, %d usual", market, r.date.date(), r.date.day_name(), r.priced, r.usual)
     out = {"market": market, "stray_sessions": [str(d.date()) for d in found["date"]], "symbols": 0,
