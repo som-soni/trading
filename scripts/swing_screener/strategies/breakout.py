@@ -48,8 +48,21 @@ MAX_STOP_PCT = 8.0             # beyond this the plan is WATCH - WAIT
 
 class BreakoutStrategy(Strategy):
     selection = "time_series"
-    version = "1.5"
+    version = "1.6"
+    # 1.6 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "1.5"
     changelog = (
+        ("1.6", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a session that triggers the buy-stop and also trades down to the "
+         "stop sells at the stop, because the bar does not say which came first and the stop wins the "
+         "tie, as on every other session; before, such a buy was held overnight. signal_version stays "
+         "at 1.5: only the simulator changed, so the cached signal rows still describe this scan. "
+         "Results move, so stored runs of earlier versions are not comparable."),
         ("1.5", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited "
          "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
@@ -173,10 +186,9 @@ class BreakoutStrategy(Strategy):
         "**The reward test is not repeated at the fill.** A gap up at the next open raises the price "
         "paid without moving the stop or the target, so a trade can be bought at under 2R. It is "
         "skipped only when the fill is at or above the target.",
-        "**The fill session is never checked.** In the backtest the stop and target are first tested "
-        "on the session after the fill. A session that triggers the buy and then trades through the "
-        "stop is held overnight, and survives if the next session stays above the stop: kinder than "
-        "a real stop order.",
+        "**The fill session checks the stop only.** In the backtest a session that triggers the buy "
+        "and also trades down to the stop sells at the stop that session (the bar does not say which came first, so the stop wins the tie, as on every session). The target is first "
+        "tested on the session after the fill.",
         "**Ties go to the stronger stock.** Every signal the backtest accepts scores the same setup "
         "quality, 2, so when more trigger on one day than there is cash to buy them all, something else "
         "has to choose. Before 1.3 it was the order the market was scanned in -- alphabetical. Now the "
@@ -328,7 +340,8 @@ class BreakoutStrategy(Strategy):
         "a 25% cap, any stop closer than 4% below the price paid hits the cap, and the trade then "
         "risks less than 1%.",
         "Cash. When cash cannot buy the full size, the backtest buys what it can instead of skipping.",
-        "Backtest and live. The backtest sizes from current equity at the fill. The live screen sizes "
+        "Backtest and live. The backtest sizes from equity at the fill: cash plus the other positions at the "
+        "previous session's close (an exit later that session has not happened yet). The live screen sizes "
         "from the configured account size, at the lower high-volatility risk when the volatility "
         "index is above the market's threshold. A plan that cannot buy even one share is WATCH - WAIT.",
         "Slots. At most Max open positions at once. A triggered order with no free slot keeps resting "

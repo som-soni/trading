@@ -96,11 +96,21 @@ class RsLeadersStrategy(Strategy):
 
     selection = "time_series"
     family = "rs_leaders"
-    version = "1.3"
+    version = "1.4"
     # 1.3 changes only the RS filter applied to the collected signals, never the scan, so the cached
     # signal rows of 1.2 still describe this version's scan (CLAUDE.md, signal_version).
     signal_version = "1.2"
     changelog = (
+        ("1.4", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a buy at the open whose session then trades down to the stop "
+         "sells at the stop; before, it was held overnight. signal_version stays at 1.2: only the "
+         "simulator changed, so the cached signal rows still describe this scan. Results move, so "
+         "stored runs of earlier versions are not comparable."),
         ("1.3", "2026-10-29",
          "Backtest mechanics, no rule changed: the RS rating's price floor now reads the price a stock "
          "traded at on the day, not its split-adjusted close (backtesting/spec.rs_ratings, "
@@ -326,8 +336,8 @@ class RsLeadersStrategy(Strategy):
         "No reward-to-risk minimum. A trade is never refused for a low reward-to-risk ratio.",
     )
     exit_rules = (
-        "Each session after the buy, the stop is checked first (see Stop). The session of the buy itself is not "
-        "checked.",
+        "Each session after the buy, the stop is checked first (see Stop). On the session of the buy only the "
+        "stop is checked: the buy is at the open, so a low at or under the stop later that session sells at the stop.",
         "Trend exit. The first daily close below the 50-day simple average sells the whole position at that "
         "close.",
         "That is the only sell besides the stop. The guide's partial sale at +{PARTIAL_GAIN_PCT}%, its optional "

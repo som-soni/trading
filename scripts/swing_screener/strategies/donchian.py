@@ -55,8 +55,21 @@ DC02 = "S2"   # DC-02  # coiled just under the channel high
 
 class DonchianStrategy(Strategy):
     selection = "time_series"
-    version = "1.4"
+    version = "1.5"
+    # 1.5 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "1.4"
     changelog = (
+        ("1.5", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a session that triggers the buy-stop and also trades down to the "
+         "stop sells at the stop, because the bar does not say which came first and the stop wins the "
+         "tie, as on every other session; before, such a buy was held overnight. signal_version stays "
+         "at 1.4: only the simulator changed, so the cached signal rows still describe this scan. "
+         "Results move, so stored runs of earlier versions are not comparable."),
         ("1.4", "2026-10-25",
          "Backtest mechanics, no rule changed: special dividends and demergers are credited "
          "(marketdata/corporate_actions.py). On the ex-date a held position receives the cash and its "
@@ -183,10 +196,9 @@ class DonchianStrategy(Strategy):
         "**No price floor anywhere.** Version 1.1 removed `cfg.screener.min_price` from the "
         "point-in-time pre-filter. The daily screen calls that same pre-filter, so it applies no "
         "price floor either; only the Screens page's snapshot does.",
-        "**The fill session is never checked.** In the backtest the stop and the channel exit are "
-        "first tested on the session after the fill. A session that triggers the buy and then trades "
-        "through the stop is held overnight, and survives if the next session stays above the stop: "
-        "kinder than a real stop order.",
+        "**The fill session checks the stop only.** In the backtest a session that triggers the buy "
+        "and also trades down to the stop sells at the stop that session (the bar does not say which came first, so the stop wins the tie, as on every session). The channel exit is "
+        "first tested on the session after the fill.",
         "**Every new high signals.** S1 is not only the first break. Every close above the prior "
         "{entry_channel} sessions' high counts, so a stock in a run signals day after day, and after "
         "an exit the next such close can buy it again.",
@@ -327,7 +339,8 @@ class DonchianStrategy(Strategy):
         "a 25% cap, any stop closer than 4% below the price paid hits the cap, and the trade then "
         "risks less than 1%.",
         "Cash. When cash cannot buy the full size, the backtest buys what it can instead of skipping.",
-        "Backtest and live. The backtest sizes from current equity at the fill. The live screen sizes "
+        "Backtest and live. The backtest sizes from equity at the fill: cash plus the other positions at the "
+        "previous session's close (an exit later that session has not happened yet). The live screen sizes "
         "from the configured account size, at the lower high-volatility risk when the volatility "
         "index is above the market's threshold. A plan that cannot buy even one share is WATCH - WAIT.",
         "Slots. At most Position cap positions at once. A triggered order with no free slot keeps "

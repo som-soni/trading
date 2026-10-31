@@ -23,6 +23,14 @@ Signals that arrive with no slot free are simply missed, exactly as they
 would be in a real account. Sizing compounds off current equity rather
 than a fixed notional, so gains and losses feed forward.
 
+A fill sees only what had happened by its own moment in the session (`AT_OPEN`,
+`INTRADAY`, `AT_CLOSE`). An exit frees its slot and cash for a fill at or after
+the exit, never before it: a position sold at today's close cannot pay for an
+order that filled at today's open. Sizing reads the other positions at the
+previous session's close (today's close only for an order that buys the close),
+and resting orders are cancelled on the previous session's market filter. Until
+2026-10-31 all three read today's close, a same-day look-ahead.
+
 Costs are charged on both sides: slippage as basis points of notional
 (a stand-in for spread and market impact) plus any per-order commission,
 plus (optionally) `cost_bps` of notional for statutory charges and brokerage.
@@ -292,6 +300,11 @@ class PortfolioResult:
 
 
 PENDING_EXPIRY_BDAYS = 10
+
+# When in its session an exit or a fill happens, in order. A fill counts only the exits at or before
+# its own moment (step 2 of `simulate`). Two INTRADAY events keep the old convention: the exit counts,
+# because the bar does not say which came first.
+AT_OPEN, INTRADAY, AT_CLOSE = 0, 1, 2
 # A base reopens only after one of these: the trade was shaken out, not finished. A trend exit
 # (EX-06) says the move itself is over, so buying the same base again is chasing it.
 # The exits that say the trade was shaken out rather than that the move is over. FAILED_SMA20 (minervini
@@ -457,6 +470,7 @@ def simulate(
     if not all_dates:
         raise ValueError("no trading dates in range")
 
+    regime_known = regime_ok.dropna() if regime_ok is not None else None
     by_date: dict[pd.Timestamp, list[Signal]] = {}
     for s in signals:
         by_date.setdefault(s.date, []).append(s)
@@ -483,23 +497,58 @@ def simulate(
         skipped[reason] = skipped.get(reason, 0) + 1
         skipped_at.setdefault(reason, []).append((sym, day))
 
-    def sell(pos: PortfolioTrade, raw: float, n: int, today) -> float:
-        """Sell n shares at raw (before slippage). Cash receives the slipped fill less commission and
-        charges — the slippage is inside the fill, so it is not deducted again (it is still reported in
-        `costs`)."""
+    # today's sales so far, as (at, cash received, slot freed, position, shares, its stop then): step 2
+    # sizes a fill from the book as it stood at the fill's own moment, so a later sale is undone there
+    sold_today: list[tuple] = []
+    ex_today: dict[str, float] = {}     # payout per share of a position that went ex today
+
+    def prior_close(pos: PortfolioTrade, today) -> float:
+        """A share of `pos` as a fill during today's session knows it: the previous session's close,
+        less a payout it went ex today (already in cash). A position bought today is at its cost."""
+        df = prices.get(pos.symbol)
+        if pos.entry_date == today or df is None:
+            return pos.entry_price
+        i = df.index.searchsorted(today)
+        return float(df["close"].iloc[i - 1]) - ex_today.get(pos.symbol, 0.0) if i else pos.entry_price
+
+    def book_at(at: int, today) -> tuple[float, float]:
+        """(cash, equity) at moment `at` of today's session: the sales after `at` undone, and every
+        position held then -- those sold later included -- at the previous session's close. An order
+        that buys the close sees the whole session, at today's close."""
+        if at == AT_CLOSE:
+            return cash, cash + sum(_mark(p, prices, today) for p in positions.values())
+        late = [e for e in sold_today if e[0] > at]
+        c = cash - sum(e[1] for e in late)
+        return c, c + (sum(prior_close(p, today) * p.held for p in positions.values())
+                       + sum(prior_close(e[3], today) * e[4] for e in late))
+
+    def open_risk_at(at: int, today) -> float:
+        """Capital at risk at moment `at` (see the open-risk cap in step 2), priced as `book_at` does."""
+        def risk(p, n, stop):
+            px = _last_close(p, prices, today) if at == AT_CLOSE else prior_close(p, today)
+            return max(0.0, min(px, p.entry_price) - stop) * n
+        return (sum(risk(p, p.held, p.stop) for p in positions.values())
+                + sum(risk(e[3], e[4], e[5]) for e in sold_today if e[0] > at))
+
+    def sell(pos: PortfolioTrade, raw: float, n: int, today, *, at: int, slot: bool = False) -> float:
+        """Sell n shares at raw (before slippage), at moment `at` of the session. Cash receives the
+        slipped fill less commission and charges — the slippage is inside the fill, so it is not
+        deducted again (it is still reported in `costs`)."""
         nonlocal cash, costs_total
         fill = _slip(raw, pos.meta.get("slippage_bps", base_slip), "sell")
         cost = cfg.commission_per_order + (raw - fill) * n + fill * n * fee_rate
         pos.costs += cost
         pos.slippage += (raw - fill) * n
         costs_total += cost
-        cash += fill * n - cfg.commission_per_order - fill * n * fee_rate
+        got = fill * n - cfg.commission_per_order - fill * n * fee_rate
+        cash += got
+        sold_today.append((at, got, slot, pos, n, pos.stop))
         pos.sold_value += fill * n
         pos.open_shares = pos.held - n
         return fill
 
-    def close_out(sym: str, pos: PortfolioTrade, raw: float, reason: str, today) -> None:
-        fill = sell(pos, raw, pos.held, today)
+    def close_out(sym: str, pos: PortfolioTrade, raw: float, reason: str, today, *, at: int) -> None:
+        fill = sell(pos, raw, pos.held, today, at=at, slot=True)
         pos.exit_date, pos.exit_reason = today, reason
         if pos.meta.get("base_id") is not None:
             base_last_exit[(sym, pos.meta["base_id"])] = reason
@@ -512,11 +561,14 @@ def simulate(
     credit_after = all_dates[0] - pd.Timedelta(days=1)
 
     for today in all_dates:
+        sold_today.clear()
+        ex_today.clear()
         # ---- corporate actions: the payout of a special dividend or demerger, before the session
         if credits is not None:
             for sym, c in credits.on(today, credit_after, set(positions) | set(pending)).items():
                 if sym in positions:
                     cash += credit_action(positions[sym], c)
+                    ex_today[sym] = float(c)
                 if sym in pending:
                     skip("cancelled: the stock went ex a special dividend or demerger", sym, today)
                     del pending[sym]
@@ -617,24 +669,27 @@ def simulate(
                     _trail_pct(pos, bar, policy)
                 continue
 
+            o = float(bar["open"])
             if hit_stop:  # conservative: the stop wins a same-bar tie
-                raw = min(pos.stop, float(bar["open"]))  # gap-through fills at the open
-                reason = "STOP"
+                raw = min(pos.stop, o)  # gap-through fills at the open
+                reason, at = "STOP", AT_OPEN if o <= pos.stop else INTRADAY
             elif hit_target:
-                raw = max(pos.target, float(bar["open"]))
-                reason = "TARGET"
+                raw = max(pos.target, o)
+                reason, at = "TARGET", AT_OPEN if o >= pos.target else INTRADAY
             else:
                 raw = float(bar["close"])  # trend-failure exit, at the close
-                reason = "TREND_EXIT"
-            close_out(sym, pos, raw, reason, today)
+                reason, at = "TREND_EXIT", AT_CLOSE
+            close_out(sym, pos, raw, reason, today, at=at)
 
         # ---- 2. resting orders -------------------------------------------
         # PF-06 / MKT-01: in risk-off, nothing new is bought. Signals are already
         # filtered out before the simulation, but an order placed while the market
         # was open can still be resting when it closes, and filling it would buy a
         # breakout the regime rule says to refuse. The filter never forces an exit,
-        # so open positions above are untouched.
-        if regime_ok is not None and not bool(regime_ok.asof(today)):
+        # so open positions above are untouched. The cancel acts before today's open, so it reads
+        # the PREVIOUS session's state: today's filter is computed from today's close, which does not
+        # exist yet when the order would fill (until 2026-10-31 it read today's).
+        if regime_ok is not None and not _risk_on(regime_known, today, before=True):
             for sym in list(pending):
                 skip("cancelled: market filter is risk-off", sym, today)
                 del pending[sym]
@@ -646,7 +701,7 @@ def simulate(
         for s in by_date.get(today, []):
             if s.meta.get("order") != "close" or s.symbol in positions or s.symbol in pending:
                 continue
-            if regime_ok is not None and not bool(regime_ok.asof(today)):
+            if regime_ok is not None and not _risk_on(regime_known, today):   # it buys today's close
                 skip("cancelled: market filter is risk-off", s.symbol, today)
                 continue
             pending[s.symbol] = {
@@ -706,24 +761,30 @@ def simulate(
             if sym in positions:
                 del pending[sym]
                 continue
-            if len(positions) >= slots_today:
+
+            if meta.get("order") == "open":
+                raw_entry, at = float(bar["open"]), AT_OPEN
+            elif meta.get("order") == "close":
+                raw_entry, at = float(bar["close"]), AT_CLOSE
+            elif meta.get("confirm_close_above") is not None:
+                # the close is what confirmed it, so the close is what you can pay:
+                # filling at the intraday stop price would be buying on information
+                # (how the bar closed) that did not exist at the moment of the touch
+                raw_entry, at = max(order["entry"], float(bar["close"])), AT_CLOSE
+            else:
+                o = float(bar["open"])
+                raw_entry = max(order["entry"], o)  # gap fills worse
+                at = AT_OPEN if o >= order["entry"] else INTRADAY
+            # The book as it stood at the fill: a sale later in the session has not happened yet, so
+            # its slot is still taken (and its cash and shares still the position's, `book_at`).
+            slots_used = len(positions) + sum(1 for e in sold_today if e[2] and e[0] > at)
+            if slots_used >= slots_today:
                 missed_slot += 1
                 missed_slot_at.append((sym, today))
                 if meta.get("order") in ("open", "close"):
                     del pending[sym]
                 continue  # keep it resting; a slot may free up before it expires
 
-            if meta.get("order") == "open":
-                raw_entry = float(bar["open"])
-            elif meta.get("order") == "close":
-                raw_entry = float(bar["close"])
-            elif meta.get("confirm_close_above") is not None:
-                # the close is what confirmed it, so the close is what you can pay:
-                # filling at the intraday stop price would be buying on information
-                # (how the bar closed) that did not exist at the moment of the touch
-                raw_entry = max(order["entry"], float(bar["close"]))
-            else:
-                raw_entry = max(order["entry"], float(bar["open"]))  # gap fills worse
             if "max_fill" in meta:
                 if raw_entry > meta["max_fill"]:
                     skip("gapped above the buy range", sym, today)
@@ -767,9 +828,7 @@ def simulate(
                 del pending[sym]
                 continue
 
-            equity_now = cash + sum(
-                _mark(p, prices, today) for p in positions.values()
-            )
+            cash_at, equity_now = book_at(at, today)
             if equal_alloc_pct:
                 # equal allocation: every position is the same share of equity, whatever its stop
                 # (five slots at 20%); the stop still decides the exit, not the size
@@ -794,9 +853,7 @@ def simulate(
                 # because of it. Minervini frees risk budget by raising stops to
                 # breakeven, which only works if a stop at or above entry counts as
                 # zero risk -- which is what capping at the entry price does.
-                open_risk = sum(
-                    max(0.0, min(_last_close(p, prices, today), p.entry_price) - p.stop) * p.held
-                    for p in positions.values())
+                open_risk = open_risk_at(at, today)
                 if open_risk + risk_per_share * shares > max_open_risk_pct * equity_now:
                     skip("open-risk cap", sym, today)
                     if meta.get("order") in ("open", "close"):
@@ -813,7 +870,7 @@ def simulate(
                 shares = int(shares * pyramid_frac)
                 if shares < 1:
                     shares = full_shares          # too small to split meaningfully
-            affordable = int((cash - cfg.commission_per_order) // (entry * (1 + fee_rate)))
+            affordable = int((cash_at - cfg.commission_per_order) // (entry * (1 + fee_rate)))
             if affordable < shares:
                 shares = affordable
                 partial_fills += 1
@@ -847,6 +904,13 @@ def simulate(
                 # the entry bar's close counts for the close-based exits (EX-02, EX-06)
                 df = prices[sym]
                 _manage_minervini(sym, positions[sym], df, bar, today, policy, close_out, sell, fee_rate, cfg, entry_day=True)
+            elif at != AT_CLOSE and float(bar["low"]) <= order["stop"]:
+                # The fill bar reached the stop. After an open fill the rest of the bar came later, so
+                # the stop was hit; after an intraday buy-stop the bar does not say which came first,
+                # and the stop wins the tie, as in step 1. It fills at the stop: the price passed through
+                # it after the buy. Until 2026-10-31 the fill bar was never tested, so a buy that
+                # reversed through its stop that session survived to the next one.
+                close_out(sym, positions[sym], order["stop"], "STOP", today, at=INTRADAY)
 
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
@@ -911,13 +975,13 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
     o, h, l, c = float(bar["open"]), float(bar["high"]), float(bar["low"]), float(bar["close"])
     m = pos.meta
     if pos.queued_exit and not entry_day:
-        close_out(sym, pos, o, pos.queued_exit, today)
+        close_out(sym, pos, o, pos.queued_exit, today, at=AT_OPEN)
         return
     if m.pop("_queued_partial", False) and not entry_day and not pos.partial_shares:
         # a part queued on yesterday's close (selling into strength, or a climax), sold at this open
         n = int(pos.shares * policy.partial_frac)
         if 0 < n < pos.held:
-            sell(pos, o, n, today)
+            sell(pos, o, n, today, at=AT_OPEN)
             pos.partial_shares = n
     if not entry_day:
         pos.bars_held += 1
@@ -941,7 +1005,7 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
         # EX-01: the stop; the stop wins a tie with any profit level the same day
         if l <= pos.stop:
             reason = "STOP" if pos.stop <= pos.initial_stop else "BREAKEVEN_STOP"
-            close_out(sym, pos, min(pos.stop, o), reason, today)
+            close_out(sym, pos, min(pos.stop, o), reason, today, at=AT_OPEN if o <= pos.stop else INTRADAY)
             return
     # EX-02: failed breakout
     pivot = m.get("pivot")
@@ -961,7 +1025,8 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
         if policy.partial_r and not pos.partial_shares and h >= entry + policy.partial_r * r:
             n = int(pos.shares * policy.partial_frac)
             if 0 < n < pos.held:
-                sell(pos, max(o, entry + policy.partial_r * r), n, today)
+                lvl = entry + policy.partial_r * r
+                sell(pos, max(o, lvl), n, today, at=AT_OPEN if o >= lvl else INTRADAY)
                 pos.partial_shares = n
     ma = float(bar.get(policy.ma_col, float("nan")))
     # EX-04: sell into strength -- a part, once the close is far enough above the average
@@ -1039,7 +1104,7 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
             reason = "TRAIL_STOP"
         else:
             reason = "STOP"          # a trailing mode's own raised stop, labelled as it always was
-        close_out(sym, pos, min(pos.stop, o), reason, today)
+        close_out(sym, pos, min(pos.stop, o), reason, today, at=AT_OPEN if o <= pos.stop else INTRADAY)
         return
 
     target_live = not pos.partial_shares and (policy.use_target or policy.partial_at_target)
@@ -1047,9 +1112,9 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
         fill = max(pos.target, o)
         n = int(pos.shares * policy.partial_at_target) if policy.partial_at_target else 0
         if not 0 < n < pos.held:
-            close_out(sym, pos, fill, "TARGET", today)
+            close_out(sym, pos, fill, "TARGET", today, at=AT_OPEN if o >= pos.target else INTRADAY)
             return
-        sell(pos, fill, n, today)
+        sell(pos, fill, n, today, at=AT_OPEN if o >= pos.target else INTRADAY)
         pos.partial_shares = n
 
     if policy.mode in ("ma", "weekly_ma", "donchian", "supertrend"):
@@ -1063,13 +1128,13 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
             broke = (len(hist) > policy.donchian_bars
                      and c < float(hist.iloc[-(policy.donchian_bars + 1): -1].min()))
         if broke:
-            close_out(sym, pos, c, "TREND_EXIT", today)
+            close_out(sym, pos, c, "TREND_EXIT", today, at=AT_CLOSE)
             return
 
     if "_time_n" not in m:
         m["_time_n"] = _time_stop_bars(pos, df, policy)
     if m["_time_n"] and pos.bars_held >= m["_time_n"]:
-        close_out(sym, pos, c, "TIME", today)
+        close_out(sym, pos, c, "TIME", today, at=AT_CLOSE)
         return
 
     # ---- for tomorrow
@@ -1096,21 +1161,21 @@ def _manage_kullamagi(sym, pos: PortfolioTrade, bar, today, policy: ExitPolicy, 
     pos.bars_held += 1
     if l <= pos.stop:
         reason = "BREAKEVEN" if pos.stop > pos.initial_stop else "STOP"
-        close_out(sym, pos, min(pos.stop, o), reason, today)
+        close_out(sym, pos, min(pos.stop, o), reason, today, at=AT_OPEN if o <= pos.stop else INTRADAY)
         return
     ma = bar.get(KM_TRAIL, float("nan"))
     if ma == ma and c < float(ma):
-        close_out(sym, pos, c, "TREND_EXIT", today)
+        close_out(sym, pos, c, "TREND_EXIT", today, at=AT_CLOSE)
         return
     if (policy.km_partial_bars and pos.bars_held == policy.km_partial_bars and not pos.partial_shares
             and c > pos.entry_price and policy.km_partial_divisor):
         n = int(pos.shares // policy.km_partial_divisor)
         if 0 < n < pos.held:
-            sell(pos, c, n, today)
+            sell(pos, c, n, today, at=AT_CLOSE)
             pos.partial_shares = n
             pos.stop = max(pos.stop, pos.entry_price)
     if policy.km_max_bars and pos.bars_held >= policy.km_max_bars:
-        close_out(sym, pos, c, "TIME", today)
+        close_out(sym, pos, c, "TIME", today, at=AT_CLOSE)
 
 
 def _trail_pct(pos: "PortfolioTrade", bar, policy: ExitPolicy) -> None:
@@ -1119,6 +1184,14 @@ def _trail_pct(pos: "PortfolioTrade", bar, policy: ExitPolicy) -> None:
     peak = max(pos.meta.get("_peak_high", float("-inf")), float(bar["high"]))
     pos.meta["_peak_high"] = peak
     pos.stop = max(pos.stop, peak * (1 - policy.trail_pct))
+
+
+def _risk_on(known: pd.Series, today, before: bool = False) -> bool:
+    """The market filter's state on `today`'s close, or with `before` on the previous session's. `known`
+    is the filter with its missing readings dropped, so each day reads the last real one. No reading yet
+    (before the benchmark starts) is risk-off: `bool(NaN)` is True, which read a missing state as open."""
+    i = known.index.searchsorted(today, side="left" if before else "right")
+    return bool(known.iloc[i - 1]) if i else False
 
 
 def _last_close(pos: PortfolioTrade, prices: dict[str, pd.DataFrame], today: pd.Timestamp) -> float:

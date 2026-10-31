@@ -83,8 +83,20 @@ def supertrend_rows(symbol: str, daily: pd.DataFrame) -> list[tuple]:
 
 class SupertrendStrategy(Strategy):
     selection = "time_series"
-    version = "1.0"
+    version = "1.1"
+    # 1.1 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "1.0"
     changelog = (
+        ("1.1", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a buy at the open whose session then trades down to the stop "
+         "sells at the stop; before, it was held overnight. signal_version stays at 1.0: only the "
+         "simulator changed, so the cached signal rows still describe this scan. Results move, so "
+         "stored runs of earlier versions are not comparable."),
         ("1.0", "2026-10-26",
          "v1 baseline: buy the session after Supertrend({ATR_PERIOD}, {MULTIPLIER}) turns up above the "
          "200-day, sell at the close that turns it down."),
@@ -154,9 +166,10 @@ class SupertrendStrategy(Strategy):
         "one definition (SMA-seeded ATR, the same band ratchet and flip tests). Its default inputs, "
         "10 and 3, are this strategy's {ATR_PERIOD} and {MULTIPLIER}; a variant run with other "
         "constants matches the chart only when the study's inputs are set to the same numbers.",
-        "**The fill session is never checked.** In the backtest the stop and the flip exit are "
-        "first tested on the session after the fill. A line that turns down on the fill session "
-        "itself sells at the next session's close, if the line is still down then.",
+        "**The fill session checks the stop only.** The buy is at the open, so in the backtest a low "
+        "at or under the stop later that session sells at the stop. The flip exit is first tested on "
+        "the session after the fill: a line that turns down on the fill session itself sells at the "
+        "next session's close, if the line is still down then.",
         "**Long only.** A down-turn only ends a trade; it never opens a short.",
         corporate_actions.CAVEAT_TRADED,
     )

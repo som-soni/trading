@@ -109,8 +109,21 @@ EG01 = "S1"   # EG-01: the break of the reaction day's high
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.5"
+    version = "1.6"
+    # 1.6 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "1.5"
     changelog = (
+        ("1.6", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a session that triggers the buy-stop and also trades down to the "
+         "stop sells at the stop, because the bar does not say which came first and the stop wins the "
+         "tie, as on every other session; before, such a buy was held overnight. signal_version stays "
+         "at 1.5: only the simulator changed, so the cached signal rows still describe this scan. "
+         "Results move, so stored runs of earlier versions are not comparable."),
         ("1.5", "2026-10-31",
          "Two research switches, both OFF, so a default run trades exactly as 1.4: REQUIRE_GAP (G2 admits "
          "only a reaction day that opened at least {MIN_GAP_PCT}% up) and MARKET_GATE (a new gate, G5: the "
@@ -436,9 +449,9 @@ class EarningsGapStrategy(Strategy):
         "low reaches the stop, at the stop. If the stock opens below the stop — on news overnight, "
         "or at the next results a quarter later — it sells at that open, so a gap can lose more "
         "than 1R.",
-        "From the session after the fill. The backtest settles exits before fills, so the stop is "
-        "not checked on the day of the buy. A stock that falls through the stop that same day is "
-        "sold the next session, at the stop or at a lower open.",
+        "From the fill session. A session that triggers the buy-stop and also trades down to the stop "
+        "sells at the stop that session (the bar does not say which came first, so the stop wins the tie, as on every session). From the next session it sells at the stop or at a "
+        "lower open.",
         "It never moves. No break-even stop and no trailing stop: the 20-day exit does the "
         "trailing (see Exit).",
     )

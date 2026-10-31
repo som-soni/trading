@@ -87,8 +87,21 @@ def _sma(d: pd.DataFrame, n: int) -> pd.Series:
 
 class EmaPullbackStrategy(Strategy):
     selection = "time_series"
-    version = "1.0"
+    version = "1.1"
+    # 1.1 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    signal_version = "1.0"
     changelog = (
+        ("1.1", "2026-10-31",
+         "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
+         "fill now sees only what had happened by its own moment in the session. An exit frees its "
+         "slot and cash only for a fill at or after it, so a position sold at a session's close, or by "
+         "a stop during it, no longer pays for a buy that filled at that session's open. Fills are "
+         "sized from the other positions' previous closes, not from the fill session's close. The fill "
+         "session now tests the stop: a session that triggers the buy-stop and also trades down to the "
+         "stop sells at the stop, because the bar does not say which came first and the stop wins the "
+         "tie, as on every other session; before, such a buy was held overnight. signal_version stays "
+         "at 1.0: only the simulator changed, so the cached signal rows still describe this scan. "
+         "Results move, so stored runs of earlier versions are not comparable."),
         ("1.0", "2026-10-31",
          "v1: the Learn guide's pullback to a moving average, on the {FAST_EMA}-day EMA. A trend stack of "
          "EMA{STACK_FAST_EMA} > EMA{STACK_SLOW_EMA} > SMA{STACK_SMA}, all rising; a {ADVANCE_HIGH_BARS}-day closing "
@@ -273,6 +286,8 @@ class EmaPullbackStrategy(Strategy):
         "fixed-target variant runs the bracket and sells everything there.",
     )
     exit_rules = (
+        "On the fill session, the stop only: a session that triggers the buy-stop and also trades down to the "
+        "stop sells at the stop (the bar does not say which came first, so the stop wins the tie, as on every session).",
         "Each session after the fill, in this order (backtest, `--exit-mode ma --ma-col ema21`):",
         "1. The stop: sells at the stop, or at the open if the stock gapped through it.",
         "2. The trail: a close below that day's {FAST_EMA}-day EMA sells everything at that close.",
