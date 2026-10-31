@@ -52,6 +52,46 @@ def load_assets(market: str, keys: list[str]) -> pd.DataFrame:
     return pd.DataFrame(cols).sort_index().ffill()
 
 
+def pick(r: pd.Series, choices: list, safe_key: str):
+    """The rule, on one row of trailing returns: the best of `choices`, but only if it beats the safe
+    asset (absolute momentum); otherwise the safe asset. Shared by run() and current_pick(), so the
+    live view cannot disagree with the backtest."""
+    ranked = [c for c in choices if pd.notna(r.get(c))]
+    best = max(ranked, key=lambda c: r[c]) if ranked else None
+    safe_r = r.get(safe_key, 0.0)
+    return best if (best is not None and pd.notna(safe_r) and r[best] > safe_r) else safe_key
+
+
+def current_pick(market: str, lookback_months: int = 12) -> dict:
+    """What the rule holds if it rebalanced on the latest stored session: each choice's trailing
+    return, the safe asset's, and the pick. A reading as of the last bar, not a rebalance."""
+    choices = [k for k, _ in ASSETS[market]]
+    labels = dict(ASSETS[market]) | {SAFE[market][0]: SAFE[market][1]}
+    safe_key = SAFE[market][0]
+    px = load_assets(market, [*choices, safe_key])
+    choices = [c for c in choices if c in px.columns]
+    look = int(lookback_months * 21)
+    ret = px / px.shift(look) - 1.0
+    today = ret.index[-1]
+    r = ret.loc[today]
+    target = pick(r, choices, safe_key)
+    def priced_by(k):
+        """What the backtest prices the choice on -- the instrument to hold it through, or the index
+        a fund must track. NDX_INR is priced on QQQ x USD/INR and held as MON100."""
+        if f"{market}:{k}" in index_data.DERIVED:
+            return f"{index_data.get(market, index_data.DERIVED[f'{market}:{k}'][2]).label}; priced on QQQ × USD/INR"
+        try:
+            return index_data.get(market, k).label
+        except Exception:   # noqa: BLE001 -- a label, never a reason to fail the view
+            return None
+    rows = [{"key": k, "label": labels.get(k, k), "safe": k == safe_key, "priced_by": priced_by(k),
+             "return_pct": (round(float(r[k]) * 100, 2) if pd.notna(r.get(k)) else None),
+             "close": round(float(px.loc[today, k]), 4) if pd.notna(px.loc[today, k]) else None,
+             "held": k == target} for k in [*choices, safe_key]]
+    return {"as_of": str(today.date()), "market": market, "lookback_months": lookback_months,
+            "pick": target, "pick_label": labels.get(target, target), "rows": rows}
+
+
 def run(market: str, start: str, lookback_months: int = 12, rebalance: str = "ME",
         cost_bps: float = 10.0, assets: list | None = None):
     """Walk month-ends, hold one asset, and record every switch as a trade."""
@@ -77,12 +117,8 @@ def run(market: str, start: str, lookback_months: int = 12, rebalance: str = "ME
     costs_total = 0.0
     for d in px.index[px.index >= start_ts]:
         if d in rebal:
-            r = ret.loc[d]
-            ranked = [c for c in choices if pd.notna(r.get(c))]
-            best = max(ranked, key=lambda c: r[c]) if ranked else None
-            safe_r = r.get(safe_key, 0.0)
             # ABSOLUTE momentum: the winner must beat the safe asset, or the rule holds the safe one
-            target = best if (best is not None and pd.notna(safe_r) and r[best] > safe_r) else safe_key
+            target = pick(ret.loc[d], choices, safe_key)
             if target != held:
                 if held is not None:
                     gross = units * float(px.loc[d, held])

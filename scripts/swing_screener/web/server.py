@@ -1354,6 +1354,20 @@ def portfolio_selection(strategy: str, market: str, limit: int | None = None):
     return baseline.current_selection(market, strategy, limit=limit)
 
 
+@app.get("/api/combo-orders/{market}")
+def combo_orders(market: str, capital: float | None = None):
+    """The momentum + dual momentum combination's book on the latest stored bar, per sleeve and in
+    money for `capital` -- each sleeve's own live selection scaled to the combination's split
+    (`combination.current_orders`). The strategy trades only at the month-end close."""
+    from ..backtesting import combination
+
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    if capital is not None and capital <= 0:
+        raise HTTPException(400, "capital must be positive")
+    return combination.current_orders(market, capital)
+
+
 _generic_cache: dict = {}   # (strategy, spec, market, symbol, last bar, years) -> response
 
 

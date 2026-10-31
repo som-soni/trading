@@ -4665,7 +4665,9 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   // the last complete session, which the page itself says is "not a rebalance" and "not a buy
   // list". "Candidates" is true of both and promises neither freshness nor a decision.
   const tabs = [["rules", "How it works"],
-    ...(trades ? [["setups", "Candidates"]] : []), ...(holds ? [["holdings", "Candidates"]] : []),
+    ...(trades ? [["setups", "Candidates"]] : []),
+    // The combination holds two sleeves, not one ranking: its tab is the month's book in money.
+    ...(holds ? [["holdings", key === COMBO_KEY ? "Orders" : "Candidates"]] : []),
     // The tab's count is what the tab SHOWS. Counting archived runs here put "Backtests 47" above
     // a table of 4, which is the same mismatch the chips had.
     ["backtests", (() => { const n = d.backtests.filter((b) => !b.archived).length;
@@ -4682,7 +4684,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
   const host = root.querySelector("#stab");
   if (tab === "setups") return strategySetups(host, alive, key, mkt, runKey, d);
-  if (tab === "holdings") return strategyHoldings(host, alive, d, key);
+  if (tab === "holdings") return key === COMBO_KEY ? strategyOrders(host, alive, key) : strategyHoldings(host, alive, d, key);
   if (tab === "backtests") return strategyBacktests(host, d, key);
   strategyRules(host, d, key);
 }
@@ -4981,6 +4983,77 @@ async function strategyHoldings(host, alive, d, key) {
       mkt = b.dataset.v; store.set("setupMkt:" + key, mkt); paint();
     });
     host.querySelector("#run1").onclick = () => paint();
+  };
+  paint();
+}
+
+
+/** The momentum + dual momentum combination's book on the latest stored close, in money.
+ *
+ * Each sleeve comes from its own live selection (/api/combo-orders -> combination.current_orders,
+ * which calls the functions the backtests use), so the page cannot drift from the measured rules.
+ * It is what the rules point at now, labelled as such: the strategy trades only at the month-end close.
+ */
+const COMBO_KEY = "momentum_dual_combo";
+
+async function strategyOrders(host, alive, key) {
+  let mkt = store.get("setupMkt:" + key, null) || pageMarket();
+  let seq = 0;
+  const paint = async () => {
+    const my = ++seq;
+    const cur = mktInfo(mkt).currency || "";
+    const cap = store.get("ordersCap:" + mkt, null);
+    host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}<span class="spacer"></span>
+        <label class="small muted">Account ${esc(cur)} <input id="cap" type="number" min="0" step="any" style="width:9em"
+          value="${cap ?? ""}" placeholder="amount"></label>
+        <button id="run1" title="Re-read both sleeves on the latest stored prices">Refresh</button></div>
+      <div id="ohead"></div><div id="dual"></div><h3>Book</h3><div id="tbl">${LOADING}</div>`;
+    wireHead();
+    const q = cap ? `?capital=${encodeURIComponent(cap)}` : "";
+    const r = await api(`/api/combo-orders/${mkt}${q}`).catch(() => null);
+    if (!alive() || my !== seq) return;
+    const tbl = host.querySelector("#tbl");
+    if (!r || !r.orders?.length) {
+      tbl.innerHTML = `<div class="empty"><b>No book in ${esc(mktInfo(mkt).name)}</b><div class="muted">The sleeves could not be read on the latest stored prices.</div></div>`;
+      return;
+    }
+    const month = new Date(r.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
+    const ms = r.sleeves.momentum_vol_scaled, ds = r.sleeves.dual_momentum;
+    host.querySelector("#ohead").innerHTML = `<div class="muted small sd-intro">
+      <b>As of the ${esc(prettyDate(r.as_of))} close.</b> This strategy trades only at the close of the last session of each month:
+      ${r.is_month_end ? `<b>this is ${esc(month)}'s last session</b>, so this is the rebalance book.`
+        : `this is not a rebalance day — the next is the last session of ${esc(month)}, and the book may change before then.`}
+      It shows what the rules point at — ${Math.round(r.momentum_weight * 100)}% in the momentum sleeve's
+      ${r.orders.filter((o) => o.sleeve === "momentum_vol_scaled").length} stocks, the rest in dual momentum's one holding —
+      an illustration of the rules, not a recommendation. Rules: combination ${esc(r.spec_id)}, momentum ${esc(ms.spec_id || "")},
+      dual ${esc(ds.spec_id)}. ${r.capital ? `Shares are rounded down, so a little cash is left over.` : `Enter an account size for amounts and shares.`}</div>`;
+    const pick = ds.rows.find((x) => x.held);
+    host.querySelector("#dual").innerHTML = `<h3>Dual momentum: ${esc(pick ? pick.label : "—")}</h3>
+      <div class="muted small">Holds the best ${ds.lookback_months}-month return, if it beats the safe asset's; otherwise the safe asset.
+        Held through: ${esc(pick?.priced_by || "—")}.</div>
+      <table class="data compact"><thead><tr><th>Choice</th><th>Priced by</th><th class="num">${ds.lookback_months}-month return</th><th></th></tr></thead><tbody>
+      ${ds.rows.map((x) => `<tr><td>${esc(x.label)}${x.safe ? ` <span class="muted small">(safe asset)</span>` : ""}</td>
+        <td class="muted small">${esc(x.priced_by || "")}</td>
+        <td class="num">${x.return_pct == null ? "—" : `${x.return_pct >= 0 ? "+" : ""}${x.return_pct.toFixed(2)}%`}</td>
+        <td>${x.held ? `<span class="tag pos">held</span>` : ""}</td></tr>`).join("")}</tbody></table>`;
+    const cols = ["sleeve", "symbol", "account_pct", ...(r.capital ? ["amount", "price", "shares"] : ["price"])];
+    const rows = r.orders.map((o) => [o.sleeve === "momentum_vol_scaled" ? "Momentum" : "Dual momentum",
+      o.label || o.symbol, o.account_pct, ...(r.capital ? [o.amount, o.price, o.shares] : [o.price])]);
+    dataTable(tbl, cols, rows, {
+      name: `orders_${key}`, sort: ["account_pct", -1], noStack: true,
+      rowHint: "Click a stock to open its chart",
+      rowClick: (row) => { if (row[0] === "Momentum") go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`); },
+    });
+  };
+  const wireHead = () => {
+    host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {
+      mkt = b.dataset.v; store.set("setupMkt:" + key, mkt); paint();
+    });
+    host.querySelector("#run1").onclick = () => paint();
+    host.querySelector("#cap").onchange = (e) => {
+      const v = parseFloat(e.target.value);
+      store.set("ordersCap:" + mkt, v > 0 ? v : null); paint();
+    };
   };
   paint();
 }

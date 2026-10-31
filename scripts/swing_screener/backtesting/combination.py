@@ -211,6 +211,51 @@ def _close(market: str, ticker: str) -> pd.Series | None:
     return raw["close"].astype(float) if raw is not None and not raw.empty else None
 
 
+def current_orders(market: str, capital: float | None = None,
+                   momentum_weight: float = CombinationStrategy.momentum_weight) -> dict:
+    """The book this combination would hold if it rebalanced on the latest stored session: each
+    sleeve's own live selection (`baseline.current_selection`, `dm.current_pick` -- the functions
+    their backtests use), scaled to the combination's split, and to `capital` when one is given.
+
+    A reading as of the last bar, not a rebalance and not a recommendation: the strategy trades only
+    at the month-end close, so this says what the rules point at now.
+    """
+    from ..strategies import portfolio_strategies
+    dms = portfolio_strategies()[DUAL_SLEEVE]
+    mom = baseline.current_selection(market, MOMENTUM_SLEEVE)
+    dual = dm.current_pick(market, dms.lookback_months)
+    w_mom, w_dual = momentum_weight, 1.0 - momentum_weight
+
+    def money(share):
+        return round(capital * share, 2) if capital else None
+
+    held = [r for r in mom.get("rows", []) if r.get("held") and r.get("weight_pct") is not None]
+    # the sleeve's weights arrive rounded to 0.01%; normalise so the sleeve gets exactly its share
+    tot = sum(r["weight_pct"] for r in held) or 1.0
+    orders = []
+    for r in held:
+        share = w_mom * r["weight_pct"] / tot
+        amount = money(share)
+        orders.append({"sleeve": MOMENTUM_SLEEVE, "symbol": r["symbol"], "label": None,
+                       "account_pct": round(share * 100, 2), "amount": amount, "price": r["close"],
+                       "shares": int(amount // r["close"]) if amount and r["close"] else None})
+    pick = next((r for r in dual["rows"] if r["held"]), None)
+    if pick:
+        orders.append({"sleeve": DUAL_SLEEVE, "symbol": pick["key"], "label": pick["label"],
+                       "priced_by": pick["priced_by"], "account_pct": round(w_dual * 100, 2),
+                       "amount": money(w_dual), "price": None, "shares": None})
+    as_of = pd.Timestamp(mom.get("as_of") or dual["as_of"])
+    # the strategy trades at the LAST session of each month; a weekday check (holidays aside)
+    is_month_end = as_of == as_of + pd.offsets.BMonthEnd(0)
+    return {"market": market, "capital": capital, "momentum_weight": w_mom,
+            "spec_id": CombinationStrategy.spec_id(),
+            "sleeves": {MOMENTUM_SLEEVE: {"as_of": mom.get("as_of"), "spec_id": mom.get("spec_id"),
+                                          "eligible": mom.get("eligible"), "regime": mom.get("regime")},
+                        DUAL_SLEEVE: {"as_of": dual["as_of"], "spec_id": dms.spec_id(),
+                                      "lookback_months": dual["lookback_months"], "rows": dual["rows"]}},
+            "as_of": str(as_of.date()), "is_month_end": bool(is_month_end), "orders": orders}
+
+
 def _blended_benchmark(market: str, idx: pd.DatetimeIndex, weight: float, rebalance: str):
     """Each sleeve's declared index at the sleeve's weight, rebalanced like the account.
 
