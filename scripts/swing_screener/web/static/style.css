@@ -217,7 +217,10 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .srow .sbtns button:hover { color: var(--strong); background: var(--line-2); }
 .srow .sbtns svg { width: 15px; height: 15px; }
 .srow .sbtns button[data-a="x"]:hover { color: var(--down); }
-.tools { display: flex; flex-direction: column; gap: 2px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 0; align-self: start; position: relative; }
+.tools { display: flex; flex-direction: column; gap: 2px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 0; align-self: start; position: relative;
+  overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }   /* capped at the chart's height (app.js sizeChart): scrolls in a short window */
+.tools::-webkit-scrollbar { display: none; }
+.tools > * { flex: 0 0 auto; }
 .tools button { height: 32px; padding: 0; justify-content: center; background: transparent; border: 0; border-radius: 4px; color: var(--muted); }
 .tools button:hover { color: var(--strong); background: var(--line); }
 .tools button.on { color: var(--accent-text); background: transparent; }
@@ -232,7 +235,7 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .tgroup:hover .tmore, .tgroup.open .tmore { opacity: 1; }
 .tgroup .tmore:hover { background: var(--line-2); }
 .tgroup.open .tmain { background: var(--line); }
-.tfly { position: absolute; left: calc(100% + 6px); z-index: 45; min-width: 250px; background: var(--panel-2); border: 1px solid var(--line-2);
+.tfly { position: fixed;   /* placed beside its button by drawings.js, so the scrolling toolbar cannot clip it */ z-index: 45; min-width: 250px; background: var(--panel-2); border: 1px solid var(--line-2);
   border-radius: var(--radius); padding: 4px; box-shadow: 0 12px 30px var(--shadow-c); display: grid; }
 .tfly[hidden] { display: none; }
 .tfly-h { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; padding: 6px 10px 4px; }
@@ -261,6 +264,11 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .side-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .side-body > section { flex: none; }
 .side-grip { position: absolute; left: -6px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 3; }
+/* the side panel's close button, top right over whatever panel is open */
+.side-x { position: absolute; top: 6px; right: 6px; z-index: 4; width: 24px; height: 24px; padding: 0; justify-content: center;
+  font-size: 18px; line-height: 1; color: var(--muted); border-radius: 4px; }
+.side-x:hover { color: var(--strong); background: var(--line); }
+#side .side-body > section:first-of-type, #side .side-body > div > section:first-of-type, #side .wl-head { padding-right: 38px; }   /* the top header clears the close button */
 .side-grip:hover, .side-grip:active { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
 /* TradingView's right icon bar */
 .rbar { display: flex; flex-direction: column; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);

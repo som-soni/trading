@@ -672,9 +672,16 @@ const Drawings = (() => {
       const g = GROUPS.find((x) => x[0] === gEl.dataset.g);
       fly.innerHTML = `<div class="tfly-h">${g[1]}</div>` + g[2].map((t) =>
         `<button data-t="${t}" class="${dr.tool === t ? "on" : ""}">${svg(t)}<span>${TOOLS[t].label}</span><kbd>${TOOLS[t].key || ""}</kbd></button>`).join("");
-      fly.style.top = gEl.offsetTop + "px";
       fly.hidden = false; gEl.classList.add("open");
       fly.dataset.g = g[0];
+      placeFly(gEl);
+    }
+    // the flyout is position: fixed (the toolbar scrolls in a short window and would clip it): beside its
+    // button, nudged up when it would run off the bottom of the window
+    function placeFly(anchor) {
+      const a = anchor.getBoundingClientRect(), h = host.getBoundingClientRect();
+      fly.style.left = `${h.right + 6}px`;
+      fly.style.top = `${Math.max(8, Math.min(a.top, window.innerHeight - fly.offsetHeight - 8))}px`;
     }
     host.onclick = (e) => {
       const more = e.target.closest(".tmore");
@@ -707,11 +714,14 @@ const Drawings = (() => {
           <button data-rm="drawings" ${nd ? "" : "disabled"}>${svg("trash")}<span>Remove ${plural(nd, "drawing")}</span></button>
           ${indicators ? `<button data-rm="indicators" ${ni ? "" : "disabled"}>${svg("trash")}<span>Remove ${plural(ni, "indicator")}</span></button>
           <button data-rm="all" ${nd + ni ? "" : "disabled"}>${svg("trash")}<span>Remove drawings &amp; indicators</span></button>` : ""}`;
-        fly.style.top = trash.offsetTop + "px"; fly.dataset.g = "trash"; fly.hidden = false;
+        fly.dataset.g = "trash"; fly.hidden = false; placeFly(trash);
       }
     };
     const outside = (e) => { if (!host.contains(e.target)) closeFly(); };
     document.addEventListener("mousedown", outside);
+    // a fixed-position flyout would drift from its button when the page or the toolbar scrolls: close it
+    host.addEventListener("scroll", closeFly);
+    window.addEventListener("scroll", closeFly, { passive: true });
     dr.onChange(() => {
       const t = dr.tool;
       // a tool chosen by hotkey becomes its family's face, as in TradingView
@@ -726,7 +736,7 @@ const Drawings = (() => {
       host.querySelectorAll(".ttog").forEach((b) => b.classList.toggle("on", !!dr.opts[b.dataset.o]));
       host.querySelector(".ttrash").title = "Remove drawings / indicators";
     });
-    return () => document.removeEventListener("mousedown", outside);
+    return () => { document.removeEventListener("mousedown", outside); window.removeEventListener("scroll", closeFly); };
   }
 
   return { create, mountToolbar, TOOLS };

@@ -617,6 +617,7 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
   };
   let raf = 0;
   const place = () => {
+    tip.hidden = true;
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => {
       const ts = chart.timeScale(), pane = chart.panes()[0];
@@ -642,13 +643,20 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
   strip.addEventListener("mouseover", (e) => { const b = e.target.closest(".ev-ic"); if (b) show(b); });
   strip.addEventListener("mouseout", (e) => { if (e.target.closest(".ev-ic") && !e.relatedTarget?.closest?.(".ev-ic")) tip.hidden = true; });
   strip.addEventListener("click", (e) => { if (e.target.closest(".ev-ic")) { tip.hidden = true; onOpen?.(); } });
+  // the card follows the mouse, never outlives it: opening a panel resizes the chart and moves the markers
+  // out from under the pointer without a mouseout, so it also hides on leaving the chart, on any press
+  // elsewhere, and whenever the markers are re-placed
+  const hideTip = () => { tip.hidden = true; };
+  chartEl.addEventListener("mouseleave", hideTip);
+  const onDocDown = (e) => { if (!e.target.closest?.(".ev-strip")) hideTip(); };
+  document.addEventListener("mousedown", onDocDown, true);
   strip.addEventListener("mousedown", (e) => e.stopPropagation());   // not a chart drag
   chart.timeScale().subscribeVisibleLogicalRangeChange(place);
   chart.timeScale().subscribeSizeChange(place);
   const ro = new ResizeObserver(place); ro.observe(chartEl);
   return {
     set,
-    destroy() { cancelAnimationFrame(raf); ro.disconnect(); try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(place); chart.timeScale().unsubscribeSizeChange(place); } catch {} strip.remove(); tip.remove(); },
+    destroy() { cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener("mousedown", onDocDown, true); try { chart.timeScale().unsubscribeVisibleLogicalRangeChange(place); chart.timeScale().unsubscribeSizeChange(place); } catch {} strip.remove(); tip.remove(); },
   };
 }
 
@@ -686,7 +694,7 @@ async function chartPage(alive, market, symbol, tf) {
     <div class="quote" id="quote"><b class="q-sym">${esc(symbol)}</b><span class="mkt">${MKT_BADGE[market] || market}</span></div>
     <div class="chart-layout"><div class="tools" id="tools"></div>
       <div id="chart">${LOADING}</div>
-      <aside class="side" id="side"><div class="side-grip" title="Drag to resize"></div><div class="side-body"></div></aside>
+      <aside class="side" id="side"><div class="side-grip" title="Drag to resize"></div><button class="side-x ghost icon" title="Close this panel (or click its icon again)" aria-label="Close panel">×</button><div class="side-body"></div></aside>
       <nav class="rbar" id="rbar">
         <button data-tab="wl" title="Watchlist"><svg viewBox="0 0 20 20"><path d="M7 5h10M7 10h10M7 15h10"/><circle cx="3.5" cy="5" r=".6"/><circle cx="3.5" cy="10" r=".6"/><circle cx="3.5" cy="15" r=".6"/></svg></button>
         <button data-tab="info" title="Symbol details — fundamentals, screener plan, decision history"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M10 9v5M10 6.2v.1"/></svg></button>
@@ -707,6 +715,8 @@ async function chartPage(alive, market, symbol, tf) {
     $view.querySelectorAll("#rbar [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === prefs.tab));
   };
   syncPanel();
+  // the panel's own close button: the same as clicking its icon in the rail again
+  $(".side-x").onclick = () => { prefs.tab = null; prefs.panel = false; store.set("chartPrefs", prefs); syncPanel(); };
   $("#rbar").onclick = (e) => {
     const b = e.target.closest("[data-tab]"); if (!b) return;
     prefs.tab = prefs.tab === b.dataset.tab ? null : b.dataset.tab;
@@ -906,6 +916,10 @@ async function chartPage(alive, market, symbol, tf) {
     const top = chartEl.getBoundingClientRect().top + window.scrollY;
     const vh = Math.max(window.innerHeight, document.documentElement.clientHeight);   // innerHeight can read 0 mid-layout
     chartEl.style.height = Math.max(440, vh - top - 14) + "px";
+    // the drawing toolbar never runs past the chart: in a short window it scrolls instead, so the
+    // magnet / lock / hide / trash buttons at its foot stay reachable
+    // (nor past the window's foot when the chart's 440px floor is taller than the space left)
+    const tl = $("#tools"); if (tl) tl.style.maxHeight = Math.max(160, Math.min(parseFloat(chartEl.style.height), vh - top - 14)) + "px";
   };
   sizeChart();
   addEventListener("resize", sizeChart);
@@ -1233,6 +1247,7 @@ async function chartPage(alive, market, symbol, tf) {
     <span class="q-range" title="52-week range"><span class="muted">52w</span> ${fmt(lo52)}
       <span class="bar52"><i style="left:${rangePos.toFixed(1)}%"></i></span>${fmt(hi52)}
       <span class="${fromHi >= -0.5 ? "pos" : "muted"}">${fromHi >= -0.5 ? "at high" : signed(fromHi, 1) + "% from high"}</span></span>`;
+  sizeChart();   // the quote strip just filled in and may have pushed the chart down: re-fit it (and the toolbar)
 
   // watchlist star (TradingView): toggles this symbol in the active list; right-click to pick any list
   const starTarget = () => (wlCur && !wlCur.builtin ? wlCur : wlAll.find((l) => !l.builtin));
@@ -1562,7 +1577,7 @@ async function chartPage(alive, market, symbol, tf) {
     // entry fails (a skipped trade) is refused, while a cheat entry on a base that is no VCP would trade
     const entryOf = (s) => s.zones.find((z) => z.key === "entry" || z.key === "cheat");
     const kindOf = (s) => s.kind === "young" ? "young" : s.kind === "watch" ? "trigger" : s.kind === "pass" ? "trade"
-      : ["vcp", "cheat"].includes(s.kind) && entryOf(s)?.state === "pass" ? "trade" : "refused";
+      : ["vcp", "cheat", "near"].includes(s.kind) && entryOf(s)?.state === "pass" ? "trade" : "refused";
     const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, refused: 0 };
     setupFeed.list.forEach((s) => { const k = kindOf(s); if (k in counts) counts[k]++; });
     const chips = [["all", "All"], ["trade", "Would trade"], ["trigger", "On trigger"], ["refused", "Refused"]]
@@ -1570,7 +1585,7 @@ async function chartPage(alive, market, symbol, tf) {
     const rows = setupFeed.list.map((s, i) => ({ s, i })).reverse()
       .filter(({ s }) => setupFilter === "all" || kindOf(s) === setupFilter)
       .map(({ s, i }) => `<div class="btr sp-row sp-${kindOf(s)} ${i === setupFeed.focus ? "cur" : ""}" data-si="${i}">
-        <div class="btr-h"><b>${prettyDate(s.base_from)}</b><span class="muted small">${s.live ? "today" : prettyDate(s.to)}</span></div>
+        <div class="btr-h"><b>#${i + 1} · ${prettyDate(s.base_from)}</b><span class="muted small">${s.live ? "today" : prettyDate(s.to)}</span></div>
         <div class="small sp-title">${esc(s.title)}</div>
         <div class="muted small">${esc(s.summary)}</div></div>`).join("");
     return `<section><h3>${esc(name)} · setups</h3>
