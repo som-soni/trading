@@ -75,7 +75,9 @@ SR_DOC = {
     "description": "Each month-end hold the {top_n} sectors with the best {lookback_days}-session (about "
                    "six-month) return, equal-weighted.",
     "status": (
-        "MEASURED, and it lands where the guide said it would. India beats modestly and the US does not, on "
+        "MEASURED, and it lands where the guide said it would. Every figure below is LEGACY: runs from 2010 "
+        "and 2020 to date, made before backtests ran in stages, so neither optimise nor verify (v1.1 leaves "
+        "equity alone; its exposure and trade statistics are stale). India beats modestly and the US does not, on "
         "BOTH windows -- which is the useful part, because unlike dual momentum the answer does not depend on "
         "the window. From 2020: India 15.91% CAGR against the Nifty 500's 12.63% (+3.28), drawdown -29.1% "
         "against -38.3%, Sharpe 0.90 against 0.78; US 10.73% against SPY's 13.41% (-2.68), Sharpe 0.61 against "
@@ -143,7 +145,8 @@ SR_DOC = {
         "Sold in full at a month-end close, less {cost_bps}bps, when the sector is no longer in the top "
         "{top_n} -- or, with `--market-filter` on, when the benchmark closes below its 200-day average.",
         "Resized at each month-end to the equal weight while it stays in the top {top_n}, so a winner is trimmed "
-        "and a laggard topped up.",
+        "and a laggard topped up. A trade is the whole holding period: its P&L counts every resize, with "
+        "costs, and its entry price is the average paid.",
         "Nothing else sells it: no stop, no target, and no trade between month-ends. Whatever is held at the end "
         "of a test is valued at the final close, with no exit cost.",
     ),
@@ -156,8 +159,9 @@ class SectorRotationStrategy(PortfolioStrategy):
     key = SR_DOC["key"]
     doc = SR_DOC
     family = "sector_rotation"
-    version = "1.0"
-    changelog = (("1.0", "2026-10-17", "First version: rank the market's sector indices by 6-month return each "
+    version = "1.1"
+    changelog = (("1.1", "2026-10-25", "rotation.simulate, the engine it runs on, had two accounting errors. Its positions series was the final holding count repeated for every session, so exposure read 100% through every stretch in cash; it is now the count per session. And trade rows were built from each holding's first fill, ignoring the month-end resizes; a row is now the whole holding period -- every buy, trim and sale with costs, the entry price the average paid. Equity, CAGR and drawdown are unchanged; stored runs' exposure and trade statistics are stale."),
+                 ("1.0", "2026-10-17", "First version: rank the market's sector indices by 6-month return each "
                                        "month-end and hold the top 3, equal-weighted."),)
     name = SR_DOC["name"]
     description = SR_DOC["description"]

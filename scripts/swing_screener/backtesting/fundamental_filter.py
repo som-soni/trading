@@ -30,6 +30,10 @@ from dataclasses import replace
 
 import pandas as pd
 
+# when a quarter without a recorded filing date became public: one answer, shared with the stage
+# boundary in financials.load (and re-exported here, where quality_momentum reads it)
+from ..marketdata.financials import FILING_LAG_DAYS
+
 logger = logging.getLogger(__name__)
 
 LEVELS = ("covered", "acceptable", "leader", "guide")
@@ -48,7 +52,6 @@ def guide_verdict(m: dict) -> str:
           and sg[0] >= ms.FUND_SALES_GROWTH_MIN_PCT / 100
           and mg is not None and mp is not None and mg >= mp - ms.FUND_MARGIN_SLACK_PP / 100)
     return "GUIDE PASS" if ok else "GUIDE FAIL"
-FILING_LAG_DAYS = 60     # a quarter without a recorded filing date is treated as public this long after it ended
 
 
 def _available(row: dict) -> dt.date:

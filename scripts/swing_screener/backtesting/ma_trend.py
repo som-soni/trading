@@ -322,7 +322,8 @@ MA_DOC = {
         "it in cash, so the book is invested in steps of one sleeve. Stocks mode: equal weights — the "
         "whole book (cash plus holdings at that close) is split equally among the names to hold, "
         "and holdings already owned are topped up or trimmed back to that weight. A change smaller "
-        "than 0.01% of the book is skipped.",
+        "than 0.01% of the book is skipped. A trade is the whole holding period: its P&L counts every "
+        "top-up and trim, with costs, and its entry price is the average paid.",
         "Fill and cost. Every trade fills at the month-end close — the close the decision was made "
         "on, not the next open. Each buy and each sell pays {cost_bps} basis points of the value "
         "traded. A stock with no price that day trades at its last stored close.",
@@ -400,8 +401,10 @@ class MaTrendStrategy(PortfolioStrategy):
     key = MA_DOC["key"]
     doc = MA_DOC
     family = "ma_trend"
-    version = "2.3"
+    version = "2.4"
     changelog = (
+        ("2.4", "2026-10-31",
+         "Stocks mode only (index mode has its own loop and is unchanged): rotation.simulate, the engine it runs on, had two accounting errors. Its positions series was the final holding count repeated for every session, so exposure read 100% invested through every stretch in cash; it is now the count per session. And trade rows were built from each holding's first fill, ignoring the month-end resizes; a row is now the whole holding period -- every buy, trim and sale with costs, the entry price the average paid. Equity, CAGR and drawdown are unchanged; stored runs' exposure and trade statistics are stale."),
         ("2.3", "2026-10-29",
          "Stocks mode. The US $10 price floor reads the price the stock traded at that day: the stored close multiplied back by every later split Yahoo records (backtesting/spec.traded_close, the RS rating's fix in 1d16854). Stored closes are back-adjusted for every later split, so the floor had dropped the later multi-baggers from their early years -- NFLX's October 2009 close is stored as $0.72 against the ~$50 it traded at, NVDA read under $10 until mid-2020. On 2016-06-30 the US floor admits 2,092 stocks instead of 2,382: 47 that later split (NVDA, CMG, ANET, CPRT ...) come in, 337 that later reverse-split, and so really traded under $10, go out. India has no price floor and is unchanged. Index mode is unchanged."),
         ("2.2", "2026-10-26",

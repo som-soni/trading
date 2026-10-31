@@ -304,6 +304,11 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
         for c in todays:
             if len(open_pos) >= max_positions:
                 break
+            if c["symbol"] in open_pos:
+                # two filings by one company resolving to the same entry session (an amended
+                # or duplicate filing): the stronger, sorted first, is bought; the other would
+                # overwrite that live position, spending its cash twice and dropping it from equity
+                continue
             book = cash + sum(p["units"] * px_on(s, d) for s, p in open_pos.items())
             spend = min(book * position_pct / 100, cash)
             if spend <= 0:
@@ -332,7 +337,10 @@ PEAD_DOC = {
                    "accelerating, revenue up at least {MIN_REVENUE_GROWTH}%, in the top {SEASON_RANK_TOP}% of the season so far, and the market "
                    "agreeing over the first {REACTION_DAYS} sessions -- and hold for {HOLD_SESSIONS} sessions.",
     "status": (
-        "THE PUBLISHED PREDICTION IS CONFIRMED, AND THE STRATEGY STILL FAILS. The Learn guide states the "
+        "THE PUBLISHED PREDICTION IS CONFIRMED, AND THE STRATEGY STILL FAILS. Every figure below is LEGACY: "
+        "runs from 2010 (US) and 2022 (India) to date, made before backtests ran in stages, so neither "
+        "optimise nor verify -- and v1.4 (one position per company) can move all of them; an optimise run "
+        "is due. The Learn guide states the "
         "expected answer before any code existed: the drift has mostly disappeared in large US stocks since "
         "the 2000s, and was visible in India on a short sample. Both halves reproduce. "
         "US from 2010 (57,072 filings, 1,394 symbols): CAGR 3.73% against SPY's 12.04%, 1,548 trades, "
@@ -426,7 +434,9 @@ PEAD_DOC = {
         "at most 10% with no stop. Differs: this mixes the two — equal weights, and a stop as well.",
         "Positions and ties. At most {MAX_POSITIONS} positions, one per company. When more filings "
         "qualify on a session than there are free slots, the largest standardised surprise (SUE) is "
-        "bought first, then the highest growth; the rest are dropped, not kept for later.\n\n"
+        "bought first, then the highest growth; the rest are dropped, not kept for later. Two filings "
+        "by one company reaching their buy on the same session (an amended or duplicate filing) buy once, "
+        "the first in that order.\n\n"
         "- **SUE:** the change in EPS against the same quarter a year earlier, divided by the standard "
         "deviation of that change over the previous {MIN_QUARTERS} quarters (at least 4 needed; with "
         "fewer it counts as 0). It only ranks; it is not a filter.\n\n"
@@ -503,8 +513,14 @@ class PeadStrategy(PortfolioStrategy):
     key = PEAD_DOC["key"]
     doc = PEAD_DOC
     family = "pead"
-    version = "1.3"
+    version = "1.4"
     changelog = (
+        ("1.4", "2026-10-31",
+         "One position per company, as the entry rules already said. Two filings by one company "
+         "that reached their buy on the same session (an amended or duplicate filing; 129 such "
+         "same-day pairs are stored) both bought: the second overwrote the first, so its cash "
+         "was spent twice and the first position vanished from equity. The second is now "
+         "skipped. Stored runs are stale: equity, trades and every figure can move."),
         ("1.3", "2026-10-29",
          "The price floor on the buy day reads the price traded then. The US $10 price floor reads the price the stock traded at that day: the stored close multiplied back by every later split Yahoo records (backtesting/spec.traded_close, the RS rating's fix in 1d16854). Stored closes are back-adjusted for every later split, so the floor had dropped the later multi-baggers from their early years -- NFLX's October 2009 close is stored as $0.72 against the ~$50 it traded at, NVDA read under $10 until mid-2020. On 2016-06-30 the US floor admits 2,092 stocks instead of 2,382: 47 that later split (NVDA, CMG, ANET, CPRT ...) come in, 337 that later reverse-split, and so really traded under $10, go out. India has no price floor and is unchanged."),
         ("1.2", "2026-10-26",

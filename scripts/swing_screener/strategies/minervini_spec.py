@@ -812,10 +812,20 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.38"
-    # signal_version is not pinned: 1.38 changes the detector (vcp_spec: the right-edge tight area and the
-    # near-miss margins) and evaluate() (S7) -- the next backtest rescans.
+    version = "1.39"
+    # 1.39 moves only the backtest's post-scan signal filters (spec.results_blackout, spec.market_open), so
+    # it keeps 1.38's signal rows. 1.38 changed the detector and evaluate(), and rescanned.
+    signal_version = "1.38"
     changelog = (
+        ("1.39", "2026-10-31",
+         "Two point-in-time clips in the backtest's signal filters (from the 25 Oct accuracy review, merged "
+         "now). The results blackout read filing dates past the stage's end, so a signal in the last "
+         "{EARNINGS_BLACKOUT_DAYS} days of an optimise run could be blocked by a filing the stage must not "
+         "see; it now reads filings up to the boundary only. And the market filter let a signal through on a "
+         "date before the benchmark's first stored session (NaN read as risk-on); that is now risk-off -- no "
+         "stored stage starts that early, so this one cannot move a result. Optimise runs are stale for "
+         "signals near the stage's end; nothing else moves. Both filters run after evaluate(), so "
+         "signal_version stays 1.38."),
         ("1.38", "2026-10-30",
          "Two changes from Minervini's own chart examples (tests/minervini_book_cases.py), where 1.37 caught 11 "
          "of 35 buy points. (1) The final tight area is also looked for at the right edge of the base "

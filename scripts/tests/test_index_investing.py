@@ -141,6 +141,37 @@ def test_no_lookahead() -> None:
                   f"— it would trade on a price it has already seen")
 
 
+def test_sma_overlay_lags_one_month() -> None:
+    """A day in month k acts on month k-1's month-end decision -- not k-2's.
+
+    The lookahead test above cannot see an EXTRA lag (a late signal leaks
+    nothing), so this pins the timing on a step series whose right answer is
+    known: price jumps mid-March, so March's month-end close is the first
+    above its 10-month average and every day of April -- from the first --
+    must be invested; then it collapses mid-August, so September is out.
+    """
+    idx = pd.bdate_range("2000-01-03", "2001-12-31")
+    px = pd.Series(100.0, index=idx)
+    px[idx >= "2001-03-15"] = 200.0
+    px[idx >= "2001-08-15"] = 50.0
+    on = sig.sma_overlay(px, 10)
+
+    def first(month: str) -> bool:
+        return bool(on[on.index.to_period("M") == month].iloc[0])
+
+    def last(month: str) -> bool:
+        return bool(on[on.index.to_period("M") == month].iloc[-1])
+
+    check(not last("2001-03"), "sma_overlay invested in March on March's own close")
+    check(first("2001-04"), "sma_overlay not invested on April's first day after "
+          "March closed above its average -- the overlay lags more than a month")
+    check(bool(on[on.index.to_period("M") == "2001-04"].all()),
+          "sma_overlay not invested for all of April")
+    check(last("2001-08"), "sma_overlay left in August on August's own close")
+    check(not first("2001-09"), "sma_overlay still invested on September's first "
+          "day after August closed below its average")
+
+
 def test_seasonal_is_calendar_only() -> None:
     idx = bdays(800)
     on = sig.seasonal(idx, (11, 12, 1, 2, 3, 4))
@@ -355,6 +386,7 @@ def main() -> None:
     tests = [
         test_repair,
         test_no_lookahead,
+        test_sma_overlay_lags_one_month,
         test_seasonal_is_calendar_only,
         test_fifo_tax_split,
         test_costs_and_accrual,

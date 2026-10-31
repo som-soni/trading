@@ -412,14 +412,19 @@ def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]
 
     The fix is data, not arithmetic: real announcement dates are being stored from 2025-10, so
     runs over later periods can use them. Until then the leak stands, and D2-sensitive trades
-    should be read with it in mind."""
+    should be read with it in mind.
+
+    Inside a backtest stage only filings up to the stage's end are read (`asof`): a filing after
+    it is data the stage must not see, even when it would only block a signal near the end."""
     syms = sorted({s.symbol for s in signals})
     if not syms or not days:
         return signals, {"days": days, "blocked": 0, "kept": len(signals), "dropped_signals": {"blocked": []}}
+    sql, args = ("""SELECT DISTINCT symbol, filed FROM quarterly_results
+                    WHERE market=%s AND symbol = ANY(%s) AND filed IS NOT NULL""", (market, syms))
+    if asof.end_date():
+        sql, args = sql + " AND filed <= %s", args + (asof.end_date(),)
     with db.get_connection().cursor() as cur:
-        cur.execute("""SELECT DISTINCT symbol, filed FROM quarterly_results
-                       WHERE market=%s AND symbol = ANY(%s) AND filed IS NOT NULL ORDER BY symbol, filed""",
-                    (market, syms))
+        cur.execute(sql + " ORDER BY symbol, filed", args)
         rows = cur.fetchall()
     filed: dict[str, list] = {}
     for sym, f in rows:
@@ -439,11 +444,18 @@ def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]
                   "covered_symbols": len(filed), "of_symbols": len(syms), "dropped_signals": gone}
 
 
+def market_open(ok: pd.Series, date) -> bool:
+    """`market_ok` read on `date`. A date before the benchmark's first stored session is risk-OFF:
+    `asof` returns NaN there, and `bool(NaN)` is True, which let every such signal through."""
+    v = ok.asof(pd.Timestamp(date))
+    return bool(v) if pd.notna(v) else False
+
+
 def market_filter(signals: list, market: str, confirm_days: int = 0, guide: bool = False) -> tuple[list, dict]:
     ok = market_ok(market, confirm_days, guide)
     kept, gone = [], {"blocked": []}
     for s in signals:
-        (kept if bool(ok.asof(pd.Timestamp(s.date))) else gone["blocked"]).append(s)
+        (kept if market_open(ok, s.date) else gone["blocked"]).append(s)
     logger.info("Market filter: kept %d of %d signals", len(kept), len(signals))
     return kept, {"kept": len(kept), "blocked": len(signals) - len(kept), "confirm_days": int(confirm_days or 0),
                   "dropped_signals": gone,

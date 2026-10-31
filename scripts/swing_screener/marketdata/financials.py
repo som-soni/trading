@@ -92,6 +92,7 @@ MAX_AGE_DAYS = 30             # re-check every company at least this often
 RECHECK_DAYS = 3              # ... and this often while a new quarter's results are due
 RESULTS_GRACE_DAYS = 10       # a new quarter is "due" from the next quarter end + this many days
 NOT_FOUND_RETRY_DAYS = 30     # nothing at the source (fund, ETF, unlisted filer): look again after this
+FILING_LAG_DAYS = 60          # a quarter with no recorded filing date (yfinance) is public this long after it ended
 LINES_FILING_LAG_DAYS = 90    # a statement line has no filing date: treat it as public this long after its period
                               # ended (10-K / NSE annual results come within 60-90 days of the year end)
 SEC_PAUSE = 0.15              # SEC allows 10 requests/s
@@ -1719,8 +1720,13 @@ def load(market: str, symbols: list[str] | None = None) -> dict[str, list[dict]]
         sql, args = sql + " AND symbol = ANY(%s)", (market, list(symbols))
     if asof.end_date():
         # a backtest stage's boundary: a quarter exists from the day it was FILED, so a period
-        # that ended inside the window but was filed after it is not yet known
-        sql, args = (sql + " AND COALESCE(filed, period_end) <= %s", args + (asof.end_date(),))
+        # that ended inside the window but was filed after it is not yet known. A quarter with no
+        # filing date (yfinance) counts from FILING_LAG_DAYS after it ended -- never from the
+        # period end itself, which no company reports on. `filed` stays NULL in the table rather
+        # than holding that estimate: PEAD, the results blackout and earnings gaps read it as the
+        # day the results came out, and an estimate there would become an event that never happened.
+        sql, args = (sql + " AND COALESCE(filed, period_end + %s) <= %s",
+                     args + (FILING_LAG_DAYS, asof.end_date()))
     out: dict = defaultdict(list)
     with db.get_connection().cursor() as cur:
         cur.execute(sql + " ORDER BY symbol, period_end", args)
