@@ -50,6 +50,13 @@ Read `CLAUDE.md` first. Its rules are the review standard for every dimension.
    scripts | tar -x -C <scratch dir>`. Symlink `data/` into the export, copy `scripts/.env` with
    `command cp -f` (plain `cp` prompts here), and copy in the current baseline JSON. Then run the
    check there. Delete the export afterwards, because it holds the database password.
+6. **Coverage.** List what exists today: every package under `scripts/` and
+   `scripts/swing_screener/`, every job in `jobs/registry.py` `JOBS`, every route in
+   `web/server.py`, every registered strategy (`strategies.all_specs()` and
+   `portfolio_strategies()`), every `research/learn-*.md` and every `## ` section of `CLAUDE.md`.
+   Map each one to a review dimension with the coverage map below. Anything new since the last
+   review gets named in its dimension's brief. Anything the map cannot place gets a reviewer of
+   its own, with the ground rules and a brief written from reading that code.
 
 ## Phase 2: parallel review dimensions
 
@@ -59,34 +66,36 @@ Ask each reviewer for at most about 15 findings, ranked.
 1. **This week's diff.** Correctness of every commit and uncommitted change since the last review.
    Check field names end to end (loader, server, JavaScript), empty and fresh-database paths, and
    every `CLAUDE.md` rule the change touches.
-2. **Backtest engines.** Look-ahead (deciding and filling on the same close), stage-boundary
+2. **Backtest engines** (`backtesting/`, `core/`). Look-ahead (deciding and filling on the same close), stage-boundary
    reads past `asof.end()`, survivorship, off-by-one on signal and fill days, sizing, costs, P&L
    on resizes and partial exits, NaN handling in rankings and filters.
-3. **Strategies.** Docs match behaviour (`gate_docs`, `setup_docs`, `exit_rules`, `status`
+3. **Strategies** (`strategies/`). Docs match behaviour (`gate_docs`, `setup_docs`, `exit_rules`, `status`
    naming its stage), version and changelog bumps, `signal_exempt_consts`, `signal_version`
    pins. Look for setups that can never fire or never pass their own rules: run a setup's plan
    path on real symbols where it fires.
-4. **Screens and the stock analysis framework.** Predicates restated instead of reused, bare
+4. **Screens, screening and the stock analysis framework** (`screens/`, `screening/`,
+   `analysis/`). Predicates restated instead of reused, bare
    thresholds, point-in-time correctness of snapshot fields, screen-study biases, check
    thresholds as `{NAME}` placeholders, framework `VERSION` bumps.
-5. **Jobs and the queue.** Layer violations (downloads outside `marketdata/`), queue tables
+5. **Jobs and the queue** (`jobs/`). Layer violations (downloads outside `marketdata/`), queue tables
    touched outside `jobs/queue.py`, missing `after` dependencies, lanes, failures swallowed or
    recorded as success, non-atomic delete-then-insert, schedules that can overlap, secrets
    logged or written.
-6. **Data layer and loaders.** Freshness, holiday and stray rows, splits and corporate actions,
+6. **Data layer, providers and analytics** (`marketdata/`, `providers/`, `analytics/`,
+   `config/`, the top-level `swing_screener` modules). Freshness, holiday and stray rows, splits and corporate actions,
    timezone handling between markets, caches not keyed by asof or constants, silent
    `except Exception`.
-7. **Web server.** 500s on bad input (probe with `curl` GETs only), hard-coded markets, slow
+7. **Web server** (`web/server.py`, `web/status.py`, `web/ingest.py`). 500s on bad input (probe with `curl` GETs only), hard-coded markets, slow
    endpoints (time the cold path), work on the request thread, connection handling, unbounded
    scans, GETs with side effects, write endpoints without `_require_local`.
-8. **Web client code.** Stale-async races (`alive()` after `await`), unhandled rejections,
+8. **Web client code** (`web/static/`). Stale-async races (`alive()` after `await`), unhandled rejections,
    cleanup chains, XSS (`esc()`), hard-coded markets and currencies, duplicated helpers, the
    longest functions and the natural file seams.
 9. **UI walk-through in the browser.** Start the `trading-web` preview. Visit every top-level
    page and its sub-tabs at desktop size and at 375 px wide. For each page note time to first
    content, console errors, failed requests, horizontal overflow, colour-only signals, controls
    with no keyboard path and empty or confusing states. Take screenshots of the problems.
-10. **Fundamentals, estimates and the company page.** Sources, point-in-time use of filings,
+10. **Fundamentals, estimates and the company page** (`fundamentals/`). Sources, point-in-time use of filings,
     analyst estimate handling, the page's numbers against the stored data for a few stocks in
     each market.
 11. **Learn guides and the app manual.** Registration in the three `app.js` maps and `learn.js`,
@@ -94,7 +103,7 @@ Ask each reviewer for at most about 15 findings, ranked.
     stored data can check, and app-guide pages that no longer match the app.
 12. **Security and operations.** Secrets in files, logs or plists. The server's bind address.
     File permissions on `.env`. Disk use of the signal cache and logs. Backups of Postgres.
-13. **Test gaps.** For each `CLAUDE.md` rule, is there a test that fails when it is broken? List
+13. **Test gaps** (`tests/`). For each `CLAUDE.md` rule, is there a test that fails when it is broken? List
     rules with no test, tests that can pass while proving nothing (empty samples, unexercised
     branches) and the cheapest test that would close each gap.
 14. **Evals: does the research answer what it claims?** Which strategies have no verify run, no
@@ -104,6 +113,39 @@ Ask each reviewer for at most about 15 findings, ranked.
 15. **Functionality gaps.** From `TODO.md`, the review's open items and a trader's daily
     workflow (Today → Market → Screens → Strategies → Chart → Watchlists), what is missing or
     awkward. Rank by how directly it feeds a trading decision.
+
+## Coverage map
+
+Where each part of the repo is reviewed. `tests.test_review_coverage` fails when a package under
+`scripts/` or a `## ` section of `CLAUDE.md` is missing from this table, when a row names one
+that no longer exists, or when a row points at a dimension that does not exist. So a new
+package or rule section cannot land without a line here. Dimensions are the numbers in Phase 2;
+`none` needs a reason.
+
+| Area | Dimensions |
+|---|---|
+| `analysis/` | 4 |
+| `fundamentals/` | 10 |
+| `jobs/` | 5 |
+| `swing_screener/` | 6 |
+| `tests/` | 13 |
+| `swing_screener/analytics/` | 6 |
+| `swing_screener/backtesting/` | 2, 14 |
+| `swing_screener/config/` | 6, 7 |
+| `swing_screener/core/` | 2, 3 |
+| `swing_screener/marketdata/` | 6 |
+| `swing_screener/providers/` | 6 |
+| `swing_screener/screening/` | 4 |
+| `swing_screener/screens/` | 4 |
+| `swing_screener/strategies/` | 3 |
+| `swing_screener/web/` | 7, 8, 9 |
+| Sidebar: threads are marked by rank | none — session housekeeping, not code |
+| Markets come from config | 7, 8 |
+| Screens vs strategies | 3, 4 |
+| Rule: every strategy change updates its Strategy page in the same change | 3 |
+| Stock analysis framework | 4 |
+| Rule: backtests run in stages — tune in one window, verify in another | 2, 14 |
+| Rule: a Learn guide is registered in two files, and stands on its own | 11 |
 
 ## Phase 3: verify each finding
 
@@ -124,6 +166,11 @@ Write `REVIEW-<today's ISO date>.md` in the repo root. Keep it skimmable:
 6. **Gaps:** missing tests, missing evals, and missing functionality, as three short lists, each
    item with its cheapest next step.
 7. **Suggested order:** the next five pieces of work, each sized (minutes, an afternoon, a sprint).
+8. **Coverage:** what the coverage step found new this week, and anything it could not place.
+9. **Skill updates:** the exact edits this skill needs, as old and new text. Include every new
+   area the map could not place, every review dimension that came back empty or off-target, and
+   every trap the run hit (a command that behaves differently here, a check that misleads).
+   Apply them only if the user approves, then run `tests.test_review_coverage`.
 
 Every item gets `file:line` and its CONFIRMED or PLAUSIBLE mark. Do not commit the report.
 
