@@ -5719,6 +5719,7 @@ function renderResearchMd(host, markdown) {
   });
   renderSeriesFigures(host);
   renderPayoffFigures(host);
+  renderDataCharts(host);
   host.querySelectorAll(".md table").forEach((t) => t.outerHTML = `<div class="md-table">${t.outerHTML}</div>`);
   host.querySelectorAll('.md a[href^="http"]').forEach((a) => { a.target = "_blank"; a.rel = "noopener noreferrer"; });
   // Plain-language definitions on the first use of each glossary term. The
@@ -5793,7 +5794,7 @@ function parseSeriesSpec(text) {
 /** one stored series' daily values -> [[date, value, volume?]], then its @transform if any */
 async function seriesDaily(ref) {
   if (!seriesCache.has(ref)) {
-    const [base, mod] = ref.split("@"), [market, symbol] = base.split(":");
+    const [base, mod] = ref.split("@"), cut = base.indexOf(":"), market = base.slice(0, cut), symbol = base.slice(cut + 1);   // a symbol may hold a colon (NSE:NIFTY_INDIA_DEFENCE)
     const grs = symbol.match(/^grs\.(industry|sub)\.(.+)$/);
     const raw = symbol.startsWith("breadth.")
       ? api(`/api/breadth-series?market=${encodeURIComponent(market)}&field=${encodeURIComponent(symbol.slice(8))}`).then((r) => r.line.map((c) => [c.time, c.value]))
@@ -5975,6 +5976,112 @@ function renderPayoffFigures(host) {
         ${spec.caption ? `<figcaption>${esc(spec.caption)}</figcaption>` : ""}`;
     } catch (e) {
       fig.innerHTML = `<div class="muted small">Payoff diagram unavailable: ${esc(e.message)}</div>`;
+    }
+    c.parentElement.replaceWith(fig);
+  });
+}
+
+/** ```chart fences: a small bar or line chart of figures written into the fence — for numbers that are not stored
+ *  series (an industry's size, a budget, a forecast), each one cited in the caption. One `key: value` per line:
+ *    title:    the figure's heading
+ *    kind:     bar (default; grouped when there are several series) | line
+ *    labels:   <x1> | <x2> | …   the categories along the bottom (years, fiscal years, markets)
+ *    series:   <name> | <v1> | <v2> | …   one value per label, blank for none (repeat; up to five, one axis)
+ *    unit:     what the values are in, e.g. "₹ lakh crore" or "US$ bn"
+ *    estimate: <label>   that label and every one after it are estimates or forecasts: drawn lighter (dashed lines)
+ *    years:    <n>   the span in years from the first to the last actual value: adds each series' CAGR to the legend
+ *    caption:  the source and what to look at */
+function parseChartSpec(text) {
+  const s = { kind: "bar", series: [] };
+  for (const raw of text.split("\n")) {
+    const m = raw.match(/^\s*([a-z]+)\s*:\s*(.*)$/); if (!m) continue;
+    const [, k, v] = m, cells = v.split("|").map((x) => x.trim());
+    if (k === "labels") s.labels = cells;
+    else if (k === "series") s.series.push({ name: cells[0], vals: cells.slice(1).map((x) => (x === "" ? null : +x.replace(/[,\s]/g, ""))) });
+    else if (k === "years") s.years = +v;
+    else s[k] = v.trim();
+  }
+  if (!s.labels?.length) throw new Error("no labels: in the fence");
+  if (!s.series.length) throw new Error("no series: in the fence");
+  if (s.series.length > SERIES_COLORS.length) throw new Error(`at most ${SERIES_COLORS.length} series on one chart`);
+  s.series.forEach((x) => { if (x.vals.some((v) => v != null && !Number.isFinite(v))) throw new Error(`"${x.name}": a value is not a number`); });
+  return s;
+}
+function renderDataCharts(host) {
+  host.querySelectorAll(".md pre > code.language-chart").forEach((c) => {
+    const fig = document.createElement("figure");
+    fig.className = "lp-md lps lpo";
+    try {
+      const s = parseChartSpec(c.textContent), n = s.labels.length;
+      const est = s.estimate ? s.labels.indexOf(s.estimate) : -1, isEst = (i) => est >= 0 && i >= est;
+      const all = s.series.flatMap((x) => x.vals).filter((v) => v != null);
+      // round tick steps (1, 2, 2.5 or 5 × a power of ten) with headroom above the tallest value for its label
+      const raw = (Math.max(0, ...all) * 1.12 - Math.min(0, ...all)) / 4 || 1, p10 = 10 ** Math.floor(Math.log10(raw));
+      const step = [1, 2, 2.5, 5, 10].map((m) => m * p10).find((x) => x >= raw);
+      const ymin = Math.floor(Math.min(0, ...all) / step) * step, ymax = Math.ceil(Math.max(0, ...all) * 1.12 / step) * step;
+      // category names wrap onto up to three lines under their slot, so long ones never run into each other
+      const W = 720, L = 64, R = 16, T = 14, cw = (W - L - R) / n, perLine = Math.max(4, Math.floor(cw / 6.4));
+      const wrap = (t) => { const lines = [""]; for (const w of String(t).split(/\s+/)) {
+        if (lines[lines.length - 1] && (lines[lines.length - 1] + " " + w).length > perLine) lines.push(w);
+        else lines[lines.length - 1] = (lines[lines.length - 1] + " " + w).trim(); }
+        return lines.length > 3 ? [...lines.slice(0, 2), lines.slice(2).join(" ").slice(0, perLine - 1) + "…"] : lines; };
+      // a word wider than its slot cannot wrap (many companies, one name each): then every name is drawn at an angle
+      const xl = s.labels.map(wrap), slant = xl.some((ls) => ls.some((t) => t.length > perLine));
+      const nl = Math.max(...xl.map((x) => x.length)), drop = slant ? Math.min(110, 6 + 5.6 * Math.max(...s.labels.map((l) => String(l).length)) * 0.64) : 13 * nl;
+      const B = 20 + drop, H = 286 + drop;
+      const X = (i) => L + cw * (i + 0.5), Y = (v) => T + (ymax - v) / (ymax - ymin) * (H - T - B);
+      const fmtN = (v) => (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("en-IN") : (+v.toPrecision(3)).toLocaleString("en-IN"));
+      const yt = Array.from({ length: Math.round((ymax - ymin) / step) + 1 }, (_, i) => ymin + step * i);
+      const color = (j) => cssVar(SERIES_COLORS[j]);
+      const tip = (x, i) => `${s.labels[i]} · ${x.name}: ${fmtN(x.vals[i])}${s.unit ? " " + s.unit : ""}${isEst(i) ? " (estimate)" : ""}`;
+      let marks = "";
+      if (s.kind === "line") {
+        s.series.forEach((x, j) => {
+          const pts = x.vals.map((v, i) => (v == null ? null : [X(i), Y(v), i])).filter(Boolean);
+          const seg = (keep) => pts.filter(([, , i]) => keep(i)).map(([px, py], k) => `${k ? "L" : "M"}${px.toFixed(1)},${py.toFixed(1)}`).join("");
+          // the estimate segment starts at the last actual point, so the line stays joined
+          marks += `<path d="${seg((i) => !isEst(i))}" fill="none" stroke="${color(j)}" stroke-width="2"/>`
+            + (est >= 0 ? `<path d="${seg((i) => i >= est - 1)}" fill="none" stroke="${color(j)}" stroke-width="2" stroke-dasharray="5 4"/>` : "")
+            + pts.map(([px, py, i]) => `<circle cx="${px}" cy="${py}" r="4" fill="${color(j)}" stroke="var(--panel)" stroke-width="2"${isEst(i) ? ' fill-opacity=".5"' : ""}><title>${esc(tip(x, i))}</title></circle>`).join("");
+        });
+      } else {
+        const k = s.series.length, gap = 2, bw = Math.min(42, (cw * 0.72 - gap * (k - 1)) / k);
+        s.barTops = [];   // where each series' last bar ends, for its value label
+        s.series.forEach((x, j) => x.vals.forEach((v, i) => {
+          if (v == null) return;
+          const bx = X(i) - (k * bw + (k - 1) * gap) / 2 + j * (bw + gap), y0 = Y(0), y1 = Y(v), h = Math.abs(y0 - y1), r = Math.min(4, h, bw / 2);
+          // rounded at the data end, square on the baseline
+          const top = Math.min(y0, y1), d = v >= 0
+            ? `M${bx},${y0}V${top + r}Q${bx},${top} ${bx + r},${top}H${bx + bw - r}Q${bx + bw},${top} ${bx + bw},${top + r}V${y0}Z`
+            : `M${bx},${y0}V${y1 - r}Q${bx},${y1} ${bx + r},${y1}H${bx + bw - r}Q${bx + bw},${y1} ${bx + bw},${y1 - r}V${y0}Z`;
+          s.barTops[j] = { x: bx + bw / 2, y: v >= 0 ? top - 6 : y1 + 14, v };   // a negative bar's value sits under it
+          marks += `<path d="${d}" fill="${color(j)}" style="stroke:none"${isEst(i) ? ' fill-opacity=".45"' : ""}><title>${esc(tip(x, i))}</title></path>`;
+        }));
+      }
+      // direct labels on the last value of each series (one per series, never every point)
+      const lastLbl = s.series.length > 2 ? "" : s.barTops
+        ? s.barTops.map((b) => (b ? `<text class="lpo-t" x="${b.x}" y="${b.y}" text-anchor="middle">${fmtN(b.v)}</text>` : "")).join("")
+        : s.series.map((x) => { const i = x.vals.map((v) => v != null).lastIndexOf(true);
+          return i < 0 ? "" : `<text class="lpo-t" x="${X(i)}" y="${Y(x.vals[i]) - 7}" text-anchor="middle">${fmtN(x.vals[i])}</text>`; }).join("");
+      const svg = `<svg class="lpo-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(s.title || "chart")}">
+        ${yt.map((v) => `<line class="lpo-grid" x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}"/><text class="lpo-t" x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${fmtN(v)}</text>`).join("")}
+        ${est >= 0 ? `<rect x="${L + cw * est}" y="${T}" width="${W - R - L - cw * est}" height="${H - T - B}" fill="var(--panel-2)" stroke="none" opacity=".5"/>` : ""}
+        ${slant ? s.labels.map((l, i) => `<text class="lpo-t" x="${X(i)}" y="${H - B + 14}" text-anchor="end" transform="rotate(-40 ${X(i)} ${H - B + 14})">${esc(l)}</text>`).join("")
+          : xl.map((ls, i) => `<text class="lpo-t" x="${X(i)}" y="${H - B + 16}" text-anchor="middle">${ls.map((t, k) => `<tspan x="${X(i)}" dy="${k ? 13 : 0}">${esc(t)}</tspan>`).join("")}</text>`).join("")}
+        <line class="lpo-zero" x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}"/>
+        ${marks}${lastLbl}
+      </svg>`;
+      const cagr = (x) => { if (!s.years) return "";
+        const act = x.vals.map((v, i) => [v, i]).filter(([v, i]) => v != null && !isEst(i));
+        if (act.length < 2 || act[0][0] <= 0 || act[act.length - 1][0] <= 0) return "";
+        return ` · ${((Math.pow(act[act.length - 1][0] / act[0][0], 1 / s.years) - 1) * 100).toFixed(1)}% a year, ${s.labels[act[0][1]]}–${s.labels[act[act.length - 1][1]]}`; };
+      const legend = s.series.length > 1 || s.years
+        ? s.series.map((x, j) => `<span><i style="background:${color(j)}"></i>${esc(x.name)}${cagr(x)}</span>`).join("") : "";
+      fig.innerHTML = `${s.title ? `<div class="lps-t">${esc(s.title)}</div>` : ""}
+        <div class="lps-leg small">${legend}${s.unit ? `<span class="muted">${esc(s.unit)}</span>` : ""}${est >= 0 ? `<span class="muted">shaded, lighter: estimates from ${esc(s.estimate)}</span>` : ""}</div>${svg}
+        ${s.caption ? `<figcaption>${esc(s.caption)}</figcaption>` : ""}`;
+    } catch (e) {
+      fig.innerHTML = `<div class="muted small">Chart unavailable: ${esc(e.message)}</div>`;
     }
     c.parentElement.replaceWith(fig);
   });

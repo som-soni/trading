@@ -408,6 +408,11 @@ date and age, and marks it **review due** once it is older than `REVIEW_AFTER_DA
 live doc** goes to the shared doc it was exported from, the place to extend it; then store the new
 version with `python -m swing_screener.sector_research --import <file.md> --slug <key> --sector <name>
 --as-of <YYYY-MM-DD> --source <doc link> --note "<what changed>"` (`--list` shows every version).
+Its charts are fenced blocks in the Markdown: a ```` ```series ```` block draws stored data (prices,
+index series, company fundamentals), and a ```` ```chart ```` block draws cited figures written into it
+(`labels:`, one `series:` line per series, `estimate:` to draw forecasts lighter, `years:` to show the
+growth rate per year) — the grammar is in the comments above `parseSeriesSpec` and `parseChartSpec`
+in `app.js`.
 **Learn** holds the learning guides, the pattern catalogue and the glossary.
 
 ## 9. System
