@@ -3,6 +3,9 @@
 * **Your lists** (`watchlists` / `watchlist_items`) — as many named lists as you
   like ("My watchlist", "Breakouts to watch", ...), each mixing US and Indian
   symbols, managed from the web UI or this CLI. A screener run never touches them.
+* **Groups** (`watchlist_groups`) — an optional folder above your lists
+  ("Themes" holding "Data Center", "Defence", ...). A list sits in at most one
+  group; deleting a group keeps its lists, ungrouped.
 * **Screener picks** — the built-in list described below, kept up to date by
   every full pipeline run.
 
@@ -69,6 +72,12 @@ CREATE TABLE IF NOT EXISTS watchlist_items (
     added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (list_id, market, symbol)
 );
+CREATE TABLE IF NOT EXISTS watchlist_groups (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE watchlists ADD COLUMN IF NOT EXISTS group_id INT REFERENCES watchlist_groups(id) ON DELETE SET NULL;
 """
 DEFAULT_LIST = "My watchlist"
 
@@ -160,9 +169,10 @@ def sync_latest() -> dict:
 def lists() -> list[dict]:
     init_schema()
     with db.get_connection().cursor() as cur:
-        cur.execute("""SELECT w.id, w.name, count(i.symbol) FROM watchlists w LEFT JOIN watchlist_items i ON i.list_id=w.id
-                       GROUP BY w.id ORDER BY w.created_at, w.id""")
-        return [{"id": i, "name": n, "count": c} for i, n, c in cur.fetchall()]
+        cur.execute("""SELECT w.id, w.name, count(i.symbol), g.id, g.name FROM watchlists w
+                       LEFT JOIN watchlist_items i ON i.list_id=w.id LEFT JOIN watchlist_groups g ON g.id=w.group_id
+                       GROUP BY w.id, g.id ORDER BY w.created_at, w.id""")
+        return [{"id": i, "name": n, "count": c, "group_id": gid, "group": gname} for i, n, c, gid, gname in cur.fetchall()]
 
 
 def list_id(name: str, create: bool = False) -> int | None:
@@ -201,6 +211,62 @@ def rename_list(lid: int, name: str) -> None:
 def delete_list(lid: int) -> None:
     with db.get_connection().cursor() as cur:
         cur.execute("DELETE FROM watchlists WHERE id=%s", (lid,))
+
+
+def set_list_group(lid: int, gid: int | None) -> None:
+    """Put a list in a group, or take it out (gid None)."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("UPDATE watchlists SET group_id=%s WHERE id=%s", (gid, lid))
+
+
+# ---------------------------------------------------------------- groups of lists
+
+def groups() -> list[dict]:
+    """Every group, empty ones included, with how many lists it holds."""
+    init_schema()
+    with db.get_connection().cursor() as cur:
+        cur.execute("""SELECT g.id, g.name, count(w.id) FROM watchlist_groups g LEFT JOIN watchlists w ON w.group_id=g.id
+                       GROUP BY g.id ORDER BY g.created_at, g.id""")
+        return [{"id": i, "name": n, "lists": c} for i, n, c in cur.fetchall()]
+
+
+def group_id(name: str, create: bool = False) -> int | None:
+    init_schema()
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT id FROM watchlist_groups WHERE name=%s", (name,))
+        row = cur.fetchone()
+        if row:
+            return row[0]
+        if not create:
+            return None
+        cur.execute("INSERT INTO watchlist_groups (name) VALUES (%s) RETURNING id", (name,))
+        return cur.fetchone()[0]
+
+
+def create_group(name: str) -> int:
+    name = name.strip()
+    if not name:
+        raise ValueError("a group needs a name")
+    if group_id(name) is not None:
+        raise ValueError(f"a group called “{name}” already exists")
+    return group_id(name, create=True)
+
+
+def rename_group(gid: int, name: str) -> None:
+    name = name.strip()
+    if not name:
+        raise ValueError("a group needs a name")
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT id FROM watchlist_groups WHERE name=%s AND id<>%s", (name, gid))
+        if cur.fetchone():
+            raise ValueError(f"a group called “{name}” already exists")
+        cur.execute("UPDATE watchlist_groups SET name=%s WHERE id=%s", (name, gid))
+
+
+def delete_group(gid: int) -> None:
+    """Delete the group only; its lists stay, ungrouped (ON DELETE SET NULL)."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("DELETE FROM watchlist_groups WHERE id=%s", (gid,))
 
 
 def items(lid: int) -> list[dict]:
@@ -297,7 +363,7 @@ def main() -> None:
         remove(a.market, a.remove.upper(), a.list)
     if a.show or not (a.add or a.remove or a.sync_latest):
         for lst in lists():
-            print(f"\n{lst['name']} ({lst['count']})")
+            print(f"\n{lst['group'] + ' › ' if lst['group'] else ''}{lst['name']} ({lst['count']})")
             for e in items(lst["id"]):
                 print(f"  {e['market']:6s} {e['symbol']:14s} {e['note'] or ''}")
         print("\nScreener picks")

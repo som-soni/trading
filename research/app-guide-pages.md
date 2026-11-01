@@ -377,6 +377,14 @@ run: every stock a strategy marks tradeable or on watch. Its columns are strateg
 entry %** (how far the price is from the entry), stop, target R, peer group and group RS. Removing a pick
 hides it until it drops off the screen and is flagged again. Its **CAN SLIM** column is the Fundamentals page's CAN SLIM verdict for each pick (QUALIFIES / EARNINGS PASS / WEAK / NO DATA; blank where no fundamentals are stored); for EARNINGS PASS it adds the letters still failing — "wait: M" means the earnings qualify and the market does not.
 
+**Groups** put your lists under a heading, so a set of related lists reads as one, for example a
+**Themes** group holding *Data Center Beneficiaries*, *Defence* and so on. **+ New group** makes one. A
+list's ⋯ menu has **Move to a group…**, where typing a new name creates that group and leaving it empty
+takes the list out. A group heading folds its lists away (the app remembers this), except the one you
+have open. Its ⋯ or right-click menu makes a new list inside it, renames it, or deletes it. Deleting a
+group keeps its lists, ungrouped. On the chart, list menus show a grouped list as *Themes › Data Center
+Beneficiaries*.
+
 Watchlists hold symbols, notes and the planned levels. They do not hold positions.
 
 ## 8. Library

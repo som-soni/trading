@@ -603,6 +603,19 @@ table.b30 td { font-size: 12px; }
 .wl-lists a:hover { background: var(--panel-2); }
 .wl-lists a.cur { background: var(--accent-soft); color: var(--strong); font-weight: 600; }
 .wl-lists button { margin-top: 4px; justify-content: flex-start; }
+/* groups: a heading that folds its lists, which sit indented under it */
+.wl-group { display: grid; gap: 2px; }
+.wl-lists .wl-ghead { margin-top: 0; display: flex; align-items: center; gap: 4px; width: 100%; padding: 6px 6px 6px 4px; border: 0; border-radius: 4px;
+  background: transparent; color: var(--muted); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; cursor: pointer; }
+.wl-ghead:hover { background: var(--panel-2); color: var(--text); }
+.wl-ghead span:nth-of-type(1) { flex: 1; text-align: left; }
+.wl-ghead svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; transition: transform .15s; }
+.wl-ghead svg.shut { transform: rotate(-90deg); }
+.wl-gmenu { padding: 0 4px; border-radius: 3px; visibility: hidden; }
+.wl-ghead:hover .wl-gmenu, .wl-ghead:focus-visible .wl-gmenu { visibility: visible; }
+.wl-gmenu:hover { background: var(--line-2); }
+.wl-lists a.in-group { padding-left: 24px; }
+.wl-gempty { padding: 2px 10px 6px 24px; }
 .wl-main { min-width: 0; }
 .wl-title { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .wl-title h2 { margin: 0; font-size: 16px; }

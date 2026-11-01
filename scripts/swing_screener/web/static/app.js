@@ -1275,7 +1275,7 @@ async function chartPage(alive, market, symbol, tf) {
   $("#star").oncontextmenu = (ev) => {
     ev.preventDefault();
     contextMenu(ev.clientX, ev.clientY, "Add to watchlist", [
-      ...wlAll.filter((l) => !l.builtin).map((l) => ({ label: `${member.has(String(l.id)) ? "✓ " : "\u2003"}${l.name}`, fn: () => toggleIn(l, member.has(String(l.id))) })),
+      ...wlAll.filter((l) => !l.builtin).map((l) => ({ label: `${member.has(String(l.id)) ? "✓ " : "\u2003"}${WL.label(l)}`, fn: () => toggleIn(l, member.has(String(l.id))) })),
       { sep: true },
       { label: "Create new list…", fn: async () => { const id = await wlNew(); if (id == null) return; await WL.add(id, symbol, market); WL.setActive(id); await loadWl(); syncStar(); renderSide(); } },
     ]);
@@ -1794,7 +1794,7 @@ async function chartPage(alive, market, symbol, tf) {
     body.querySelector("#wlname").onclick = (e) => {
       const r = e.currentTarget.getBoundingClientRect();
       contextMenu(r.left, r.bottom + 4, null, [
-        ...wlAll.map((l) => ({ label: `${l === wlCur ? "✓ " : " "}${l.name}${l.count != null ? `  ·  ${l.count}` : ""}`, fn: () => { WL.setActive(l.id); redraw(); } })),
+        ...wlAll.map((l) => ({ label: `${l === wlCur ? "✓ " : " "}${WL.label(l)}${l.count != null ? `  ·  ${l.count}` : ""}`, fn: () => { WL.setActive(l.id); redraw(); } })),
         { sep: true },
         { label: "Create new list…", fn: async () => { const id = await wlNew(); if (id != null) { WL.setActive(id); redraw(); } } },
       ]);
@@ -1836,7 +1836,7 @@ async function chartPage(alive, market, symbol, tf) {
         const others = wlAll.filter((l) => !l.builtin && l !== wlCur);
         contextMenu(ev.clientX, ev.clientY, e.symbol, [
           { label: "Open chart", fn: () => open(e) },
-          ...others.map((l) => ({ label: `Add to “${l.name}”`, fn: async () => {
+          ...others.map((l) => ({ label: `Add to “${WL.label(l)}”`, fn: async () => {
             try { await WL.add(l.id, e.symbol, e.market); toast(`${e.symbol} added to “${l.name}”`, "ok"); await redraw(); } catch (err) { toast(err.message, "err"); }
           } })),
           ...(!wlCur.builtin ? [{ label: "Edit note…", fn: async () => {
@@ -1878,7 +1878,15 @@ const jsonReq = (method, body) => ({ method, headers: { "content-type": "applica
 const WL = {
   lists: () => api("/api/watchlists"),
   items: (id) => api(`/api/watchlists/${id}/items`),
-  create: (name) => api("/api/watchlists", jsonReq("POST", { name })),
+  create: (name, groupId = null) => api("/api/watchlists", jsonReq("POST", { name, group_id: groupId })),
+  // groups: an optional folder above the lists ("Themes" › "Data Center")
+  groups: () => api("/api/watchlists/groups"),
+  createGroup: (name) => api("/api/watchlists/groups", jsonReq("POST", { name })),
+  renameGroup: (gid, name) => api(`/api/watchlists/groups/${gid}`, jsonReq("PUT", { name })),
+  delGroup: (gid) => api(`/api/watchlists/groups/${gid}`, { method: "DELETE" }),
+  setGroup: (id, gid) => api(`/api/watchlists/${id}/group`, jsonReq("PUT", { group_id: gid })),
+  /** a list's name with its group, for flat menus: "Themes › Data Center" */
+  label: (l) => (l.group ? `${l.group} › ${l.name}` : l.name),
   rename: (id, name) => api(`/api/watchlists/${id}`, jsonReq("PUT", { name })),
   del: (id) => api(`/api/watchlists/${id}`, { method: "DELETE" }),
   add: (id, symbol, market, note) => api(`/api/watchlists/${id}/items`, jsonReq("POST", { symbol, market: market || null, note: note || null })),
@@ -1894,11 +1902,46 @@ const WL = {
 };
 
 /** watchlist ⋯ menu actions shared by the chart panel and the Watchlist page; resolve to the list to show next */
-async function wlNew() {
-  const name = await askText("New watchlist", "", "e.g. Breakouts, Long-term, Banks");
+async function wlNew(group = null) {
+  const name = await askText(group ? `New watchlist in “${group.name}”` : "New watchlist", "", "e.g. Breakouts, Long-term, Banks");
   if (!name?.trim()) return null;
-  try { const r = await WL.create(name.trim()); toast(`Created “${r.name}”`, "ok"); return r.id; }
+  try { const r = await WL.create(name.trim(), group?.id ?? null); toast(`Created “${r.name}”`, "ok"); return r.id; }
   catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); return null; }
+}
+async function wlNewGroup() {
+  const name = await askText("New group of watchlists", "", "e.g. Themes, Sectors, Long-term");
+  if (!name?.trim()) return null;
+  try { const r = await WL.createGroup(name.trim()); toast(`Created group “${r.name}”`, "ok"); return r.id; }
+  catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); return null; }
+}
+/** move a list into a group (typing a new name creates it) or out of one (empty) */
+async function wlMoveToGroup(l) {
+  const gs = await WL.groups();
+  const name = await askText(`Group for “${l.name}”`, l.group || "", "Group name — leave empty for no group", gs.map((g) => g.name));
+  if (name === null || name.trim() === (l.group || "")) return false;
+  try {
+    let g = gs.find((x) => x.name === name.trim());
+    if (name.trim() && !g) g = { id: (await WL.createGroup(name.trim())).id };
+    await WL.setGroup(l.id, g ? g.id : null);
+    toast(name.trim() ? `Moved to “${name.trim()}”` : "Removed from its group", "ok"); return true;
+  } catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); return false; }
+}
+async function wlRenameGroup(g) {
+  const name = await askText("Rename group", g.name);
+  if (!name?.trim() || name.trim() === g.name) return false;
+  try { await WL.renameGroup(g.id, name.trim()); toast("Renamed", "ok"); return true; }
+  catch (err) { toast(err.message.replace(/^\d+ /, ""), "err"); return false; }
+}
+function wlGroupMenuItems(g, after) {
+  return [
+    { label: "New list in this group…", fn: async () => { const id = await wlNew(g); if (id != null) { WL.setActive(id); after(id); } } },
+    { label: "Rename group…", fn: async () => { if (await wlRenameGroup(g)) route(); } },
+    { sep: true },
+    { label: "Delete group (keeps its lists)", danger: true, fn: async () => {
+      if (!confirm(`Delete the group “${g.name}”? Its ${g.lists} list${g.lists === 1 ? "" : "s"} stay, ungrouped.`)) return;
+      await WL.delGroup(g.id); toast(`Deleted group “${g.name}”`, "ok"); route();
+    } },
+  ];
 }
 async function wlRename(l) {
   const name = await askText("Rename watchlist", l.name);
@@ -1915,6 +1958,7 @@ function wlMenuItems(l, after) {
     { label: "Create new list…", fn: async () => { const id = await wlNew(); if (id != null) { WL.setActive(id); after(id); } } },
     ...(l && !l.builtin ? [
       { label: "Rename…", fn: async () => { if ((await wlRename(l)) != null) after(l.id); } },
+      { label: l.group ? "Move to another group…" : "Move to a group…", fn: async () => { if (await wlMoveToGroup(l)) after(l.id); } },
       { sep: true },
       { label: "Delete list", danger: true, fn: async () => { if (await wlDelete(l)) { store.set("wlActive", null); after(null); } } },
     ] : []),
@@ -2018,10 +2062,27 @@ function askText(title, value = "", placeholder = "", suggestions = []) {
 const ICON_X = '<svg viewBox="0 0 20 20"><path d="M5 5l10 10M15 5L5 15"/></svg>';
 const ICON_NOTE = '<svg viewBox="0 0 20 20"><path d="M3 17l1.2-4.2L13 4l3 3-8.8 8.8z"/><path d="M11.5 5.5l3 3"/></svg>';
 
+/** The Watchlists sidebar: ungrouped lists, then each group as a heading over its lists (folded
+ *  unless it holds the open list), then the built-in Screener picks. */
+function wlSidebar(lists, groups, cur) {
+  const link = (l, inGroup) => `<a href="#/watchlist/${l.id}" class="${l === cur ? "cur" : ""}${inGroup ? " in-group" : ""}">
+      <span>${l.builtin ? "⚡ " : ""}${esc(l.name)}</span><span class="muted">${l.count ?? ""}</span></a>`;
+  const own = lists.filter((l) => !l.builtin), shut = new Set(store.get("wlShut", []).map(String));
+  const grouped = groups.map((g) => {
+    const ls = own.filter((l) => l.group_id === g.id), open = !shut.has(String(g.id)) || ls.includes(cur);
+    return `<div class="wl-group"><button class="wl-ghead" data-g="${g.id}" title="${open ? "Fold" : "Unfold"} — right-click for the group menu">
+        <svg viewBox="0 0 20 20" class="${open ? "" : "shut"}"><path d="M6 8l4 4 4-4"/></svg><span>${esc(g.name)}</span>
+        <span class="muted">${ls.length}</span><span class="wl-gmenu" title="Group menu">⋯</span></button>
+      ${open ? ls.map((l) => link(l, true)).join("") || '<span class="muted small wl-gempty">No lists yet — ⋯ › New list in this group</span>' : ""}</div>`;
+  });
+  return [...own.filter((l) => l.group_id == null).map((l) => link(l)), ...grouped, ...lists.filter((l) => l.builtin).map((l) => link(l))].join("");
+}
+
 async function watchlistPage(alive, lid) {
   document.title = "Watchlist · Trading";
   $view.innerHTML = LOADING;
-  const lists = await WL.lists();
+  // groups are optional: a server from before them answers 405, and the page shows the lists ungrouped
+  const [lists, groups] = await Promise.all([WL.lists(), WL.groups().catch(() => [])]);
   if (lid && lists.some((l) => String(l.id) === String(lid))) WL.setActive(lid);
   const cur = WL.active(lists);
   const [items] = await Promise.all([cur ? WL.items(cur.id) : [], loadEdges()]);
@@ -2032,9 +2093,8 @@ async function watchlistPage(alive, lid) {
         <div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="wls" placeholder="Add symbol — any market" spellcheck="false"><ul hidden></ul></div>
         <input id="wln" placeholder="Note (optional)"><button class="primary" type="submit">Add</button></form>` : ""}</div>
     <div class="wl-layout">
-      <aside class="wl-lists">${lists.map((l) => `<a href="#/watchlist/${l.id}" class="${l === cur ? "cur" : ""}">
-          <span>${l.builtin ? "⚡ " : ""}${esc(l.name)}</span><span class="muted">${l.count ?? ""}</span></a>`).join("")}
-        <button class="ghost" id="wlnew">+ New list</button></aside>
+      <aside class="wl-lists">${wlSidebar(lists, groups, cur)}
+        <button class="ghost" id="wlnew">+ New list</button><button class="ghost" id="wlnewg">+ New group</button></aside>
       <div class="wl-main">
         ${cur ? `<div class="wl-title"><h2>${esc(cur.name)}</h2>${screener ? "" : '<button class="ibtn" id="wlmenu" title="List menu">⋯</button>'}</div>` : ""}
         ${screener ? `<p class="sd-lead">Filled automatically after each strategy run: every stock a strategy marked <b>tradeable or on watch</b>, kept until you hide it.
@@ -2046,6 +2106,19 @@ async function watchlistPage(alive, lid) {
       </div></div>`;
   const after = (id) => go(`#/watchlist/${id ?? ""}`);
   $view.querySelector("#wlnew").onclick = async () => { const id = await wlNew(); if (id != null) { WL.setActive(id); after(id); } };
+  $view.querySelector("#wlnewg").onclick = async () => { if ((await wlNewGroup()) != null) route(); };
+  // a group heading folds its lists away (remembered); ⋯ or right-click opens the group's menu
+  $view.querySelectorAll(".wl-ghead").forEach((h) => {
+    const g = groups.find((x) => String(x.id) === h.dataset.g);
+    const menu = (x, y) => contextMenu(x, y, g.name, wlGroupMenuItems(g, after));
+    h.onclick = (e) => {
+      if (e.target.closest(".wl-gmenu")) { const r = e.target.getBoundingClientRect(); menu(r.left, r.bottom + 4); return; }
+      const shut = new Set(store.get("wlShut", []).map(String));
+      shut.has(h.dataset.g) ? shut.delete(h.dataset.g) : shut.add(h.dataset.g);
+      store.set("wlShut", [...shut]); route();
+    };
+    h.oncontextmenu = (e) => { e.preventDefault(); menu(e.clientX, e.clientY); };
+  });
   $view.querySelector("#wlmenu")?.addEventListener("click", (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     contextMenu(r.left, r.bottom + 4, null, wlMenuItems(cur, after));

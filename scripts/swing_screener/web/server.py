@@ -3509,11 +3509,49 @@ def watchlists():
 
 
 @app.post("/api/watchlists")
-def watchlist_create(name: str = Body(..., embed=True)):
+def watchlist_create(name: str = Body(..., embed=True), group_id: int | None = Body(None, embed=True)):
     try:
-        return {"id": wl.create_list(name), "name": name.strip()}
+        lid = wl.create_list(name)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+    if group_id is not None:
+        wl.set_list_group(lid, group_id)
+    return {"id": lid, "name": name.strip()}
+
+
+# groups: an optional folder above the lists ("Themes" › "Data Center")
+@app.get("/api/watchlists/groups")
+def watchlist_groups():
+    return wl.groups()
+
+
+@app.post("/api/watchlists/groups")
+def watchlist_group_create(name: str = Body(..., embed=True)):
+    try:
+        return {"id": wl.create_group(name), "name": name.strip()}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@app.put("/api/watchlists/groups/{gid}")
+def watchlist_group_rename(gid: int, name: str = Body(..., embed=True)):
+    try:
+        wl.rename_group(gid, name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    return {"ok": True}
+
+
+@app.delete("/api/watchlists/groups/{gid}")
+def watchlist_group_delete(gid: int):
+    wl.delete_group(gid)   # its lists stay, ungrouped
+    return {"ok": True}
+
+
+@app.put("/api/watchlists/{lid}/group")
+def watchlist_set_group(lid: int, group_id: int | None = Body(None, embed=True)):
+    wl.set_list_group(lid, group_id)
+    return {"ok": True}
 
 
 @app.put("/api/watchlists/{lid}")
