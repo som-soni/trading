@@ -861,7 +861,9 @@ async function chartPage(alive, market, symbol, tf) {
 
   const sel = $("#trades");
   // the stage leads each option: trades drawn from an in-sample run are trades on years that chose the rules
-  tradeRuns.forEach((r) => sel.insertAdjacentHTML("beforeend", `<option value="${r.id}" title="${esc(stageInfo(r).tip)}">[${esc(stageInfo(r).text)}] ${esc(r.strategy)} · ${esc(r.run)} — ${r.trades} trade${r.trades > 1 ? "s" : ""}</option>`));
+  // a pre-stage run is listed without a [Legacy] prefix: it is read like any other run
+  tradeRuns.forEach((r) => { const st = r.stage === "legacy" ? null : stageInfo(r);
+    sel.insertAdjacentHTML("beforeend", `<option value="${r.id}"${st ? ` title="${esc(st.tip)}"` : ""}>${st ? `[${esc(st.text)}] ` : ""}${esc(r.strategy)} · ${esc(r.run)} — ${r.trades} trade${r.trades > 1 ? "s" : ""}</option>`); });
   $("#trades-field").hidden = !tradeRuns.length;
   // a remembered run may no longer exist (or not trade this symbol): fall back to no overlay
   const want = store.get("tradeRun:" + market, "") + "";
@@ -1564,7 +1566,7 @@ async function chartPage(alive, market, symbol, tf) {
         ${t.setup_name ? `<div class="small">Pattern: <b>${esc(t.setup_name)}</b></div>` : ""}
         <div class="muted small">${esc([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · "))}</div>
         ${t.note ? `<div class="btr-note small">${esc(t.note)}</div>` : ""}</div>`).join("");
-    return `<section><h3>Backtest trades</h3><div class="muted small">${run ? `${run.stage ? stageChip(run) + " " : ""}${esc(`${run.strategy} · ${run.run}`)}` : ""}</div>
+    return `<section><h3>Backtest trades</h3><div class="muted small">${run ? `${run.stage && run.stage !== "legacy" ? stageChip(run) + " " : ""}${esc(`${run.strategy} · ${run.run}`)}` : ""}</div>
       <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div></section>
       <div class="btrs">${rows || '<div class="muted small">This run has no trades in this symbol.</div>'}</div>`;
   }
@@ -5989,7 +5991,7 @@ async function reportPage(alive, id, tab) {
   $view.innerHTML = `<div class="crumbs"><a href="#/reports">Reports</a> / <span>${KIND_LABEL[r.kind] || r.kind}</span> / <span>${esc(r.market === "all" ? "" : r.market.toUpperCase() + " · ")}<a href="#/strategies/${encodeURIComponent(r.strategy)}" title="About this strategy">${esc(EDGE?.strategies?.[r.strategy]?.name || r.strategy)}</a></span>
       ${r.market !== "all" ? edgeChip(r.strategy, r.market) : ""}</div>
     <div class="page-head"><h1>${esc(r.run)}</h1>${tiles ? `<div class="tiles">${tiles}</div>` : ""}</div>
-    ${r.kind === "backtest" ? `<p class="stage-note">${stageChip(r)} ${esc(stageInfo(r).tip)}</p>` : ""}
+    ${r.kind === "backtest" && r.stage !== "legacy" ? `<p class="stage-note">${stageChip(r)} ${esc(stageInfo(r).tip)}</p>` : ""}
     <div class="tabs">${tabs.map((t) => `<a href="#/reports/${id}/${t[0]}" class="${t[0] === tab ? "on" : ""}">${t[1]}</a>`).join("")}</div><div id="body"></div>`;
   const body = $view.querySelector("#body");
   const tableOpts = (t, name) => {
