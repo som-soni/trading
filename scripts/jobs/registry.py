@@ -268,6 +268,23 @@ def _fno_bhav(ctx: Ctx) -> None:
     ctx.step.stats = out
 
 
+def _delivery(ctx: Ctx) -> None:
+    """NSE's security-wise delivery position (marketdata/delivery.py): per stock and session, the quantity
+    traded, the quantity taken into delivery and the delivery %. For a market whose official daily file is
+    NSE's; scheduled runs look back `recent_days`, a one-off `--start` backfills (from 2012-12 by default)."""
+    from swing_screener.config import MARKETS
+    from swing_screener.marketdata import delivery
+    if not delivery.covers(MARKETS[ctx.market]):
+        ctx.step.skip(f"{ctx.market}: delivery data comes from NSE")
+        return
+    start = (dt.date.fromisoformat(str(ctx.opt("start"))) if ctx.opt("start") else
+             dt.date.today() - dt.timedelta(days=int(ctx.opt("recent_days"))) if ctx.opt("recent_days") else None)
+    out = delivery.ingest(ctx.market, start=start, progress=getattr(ctx.step, "progress", None))
+    ctx.step.detail = (f"{out['rows']:,} stock rows from {out['days']} sessions ({out['from']} → {out['to']})"
+                       + (f" · {out['no_file']} days had no file" if out["no_file"] else ""))
+    ctx.step.stats = out
+
+
 def _indexes(ctx: Ctx) -> None:
     from swing_screener.analytics import breadth
     from swing_screener.marketdata import index_data, macro
@@ -954,6 +971,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("earnings", "data", "earnings dates: next report date for screened and watchlisted stocks", "weekly", True, _earnings),
     Job("fno_bhav", "data", "F&O bhavcopy: NSE index futures and options, settle and open interest (India)",
         "daily", True, _fno_bhav),
+    Job("delivery", "data", "delivery: NSE's security-wise delivery position — traded and delivered quantity, delivery % per stock",
+        "daily", True, _delivery, after=("prices",)),
     Job("news", "data", "news & key events: headlines, filings, exchange announcements, earnings, dividends, splits "
         "for watchlisted and picked stocks (marketdata/news.py)", "daily", True, _news),
     Job("estimates", "data", "analyst estimates: EPS and revenue consensus, its 7–90 day trend and revisions, and the "
@@ -1002,7 +1021,7 @@ JOBS: dict[str, Job] = {j.name: j for j in [
 PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
-              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), "breadth", "sectors",
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "sectors",
                        "screens", "postmarket", "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
@@ -1015,7 +1034,7 @@ PIPELINES: dict[str, dict] = {
              "defaults": {"strategies": ["all"]}},
     "daily": {"summary": "after each market's close — data only: prices, indexes, rates, fund NAVs, breadth, sectors, the screens' snapshot, "
                          "post-market analysis",
-              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), "breadth", "sectors", "screens",
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "sectors", "screens",
                        "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},

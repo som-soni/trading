@@ -164,6 +164,39 @@
     },
     "version": "1.17"
   },
+  "delivery_breakout": {
+    "family": "delivery_breakout",
+    "fingerprint": "16050f0b",
+    "params": {
+      "DELIV_AVG_SESSIONS": 20,
+      "DELIV_MIN_HISTORY": 15,
+      "ENTRY_BUFFER_PCT": 0.1,
+      "ENTRY_EXPIRY_BDAYS": 5,
+      "HIGH_LOOKBACK": 252,
+      "MAX_CHASE_PCT": 1.0,
+      "MAX_STOP_ATR": 2.0,
+      "MAX_STOP_PCT": 8.0,
+      "MIN_DELIV_PCT": 50.0,
+      "MIN_DELIV_RATIO": 1.5,
+      "MIN_REL_VOLUME": 2.0,
+      "MIN_TARGET_R": 1.5,
+      "MIN_UP_MOVE_PCT": 0.0,
+      "SIGNAL_WINDOW": 5,
+      "TARGET_R": 2.0,
+      "_key": "delivery_breakout",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ],
+      "min_bars": 260,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "donchian": {
     "family": "donchian",
     "fingerprint": "de67ca74",

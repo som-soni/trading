@@ -84,6 +84,8 @@ def loaders() -> None:
     from swing_screener.backtesting import pead
     probes["group_history.load"] = lambda: max(pd.Timestamp(d) for d in group_history.load("us").keys())
     probes["pead.load_events"] = lambda: pead.load_events("us")["filed"].max()
+    from swing_screener.marketdata import delivery
+    probes["delivery.load"] = lambda: delivery.load("india", ["RELIANCE.NS"])["date"].max()
     with cache.offline():
         for name, probe in probes.items():
             free = probe()
