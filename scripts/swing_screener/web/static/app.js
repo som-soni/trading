@@ -5187,7 +5187,8 @@ function strategyBacktests(host, d, key) {
   const STAGE_ORDER = ["verify", "optimise", "full", "legacy"];
   const schips = () => { const present = STAGE_ORDER.filter((x) => d.backtests.some((b) => b.stage === x && live(b)));
     if (present.length <= 1 && !ssel) return "";
-    return seg("Stage", "s", ssel, [["", "All"], ...present.map((x) => { const i = stageInfo({ stage: x });
+    // no Legacy button: pre-stage runs are read like any other, and stay under All
+    return seg("Stage", "s", ssel, [["", "All"], ...present.filter((x) => x !== "legacy").map((x) => { const i = stageInfo({ stage: x });
       return [x, i.text, cnt((b) => b.stage === x), i.tip.split(".")[0]]; })]); };
   const kchips = () => { const nExp = cnt((b) => b.variant);
     if (!nExp && !ksel) return "";
@@ -5235,8 +5236,10 @@ function strategyBacktests(host, d, key) {
     // which is a paragraph per row in a table meant to be scanned down. Two, then a count; the
     // whole list is in the cell's tooltip beside the run's full name.
     const OPTS_SHOWN = 2;
+    // a pre-stage run carries no Legacy chip here; its start date (and the run name) say what it covers
+    const tabChip = (b) => (b.stage === "legacy" ? "" : stageChip(b) + " ");
     const runCell = (b) => { const rp = runParts(b.run);
-      if (!rp) return `<td>${stageChip(b)} ${esc(b.run)}</td>`;
+      if (!rp) return `<td>${tabChip(b)}${esc(b.run)}</td>`;
       const o = rp.options, more = o.length - OPTS_SHOWN;
       const opts = o.length
         ? `<div class="muted small">${esc(o.slice(0, OPTS_SHOWN).join(" · "))}${more > 0 ? ` <span class="bt-more">+${more}</span>` : ""}</div>`
@@ -5246,7 +5249,7 @@ function strategyBacktests(host, d, key) {
       const exp = b.variant
         ? `<div class="small"><span class="tag neutral" title="${esc("Changed the strategy's settings, so the Measured outcome panel leaves it out:\n" + (b.overrides || []).join("\n"))}">experiment</span> <span class="muted">${esc((b.overrides || []).join(" · "))}</span></div>`
         : "";
-      return `<td title="${esc(tip)}">${stageChip(b)} ${prettyDate(rp.start)} · ${esc(rp.exit)}${opts}${exp}</td>`; };
+      return `<td title="${esc(tip)}">${tabChip(b)}${prettyDate(rp.start)} · ${esc(rp.exit)}${opts}${exp}</td>`; };
     return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th><th></th></tr></thead><tbody>${
       shown.map((b) => { const s = b.summary || {};
         const v = vers.find((x) => x.spec_id === b.spec_id);
