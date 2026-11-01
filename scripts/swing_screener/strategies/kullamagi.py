@@ -173,7 +173,9 @@ class KullamagiStrategy(Strategy):
         "10% of trades' share of P&L is reported beside it). It fails the first test in both. The up-front "
         "variants, measured beside the base and never a substitute for it (optimise stage): TIGHT_MAX_PCT=15 (a "
         "tighter rest) US 3.23% CAGR, excess -10.78, India -1.09%, excess -14.63; TRAIL_SMA=20 (the slower "
-        "trailing average) US -3.25%, excess -17.26, India -2.46%, excess -15.99."
+        "trailing average) US -3.25%, excess -17.26, India -2.46%, excess -15.99. Per trade (base, optimise): US "
+        "1,493 trades, win rate 37.4%, +0.05R a trade; India 558 trades, 35.5%, -0.11R. In both markets the best "
+        "10% of trades made more than the whole book: every gain came from them, and the rest lost it back."
     )
     gate_docs = {
         "G1": (
