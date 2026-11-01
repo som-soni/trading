@@ -4814,10 +4814,9 @@ function perfGlance(d, key) {
   // it has one, and its in-sample run) and the BEST version (the highest excess CAGR among every
   // version's newest run in the SAME window), so a reader can pick the rule set worth keeping.
   //
-  // "Best" is ranked only within one stage and one window: an optimise run and a legacy run from 2020
-  // cover different years, and ranking them together would crown whichever had the kinder market.
-  // In-sample (optimise) runs are the pool -- choosing between versions is what that window is for;
-  // while fewer than two versions have run there, legacy runs sharing one window are ranked as well.
+  // "Best" is one row, ranked within one window: runs over different years are never ranked against
+  // each other, because that would crown whichever had the kinder market. In-sample and pre-stage
+  // runs share the pool; the stage chip on the row still says which kind it is.
   // A tag names which row is which: "latest" (the current rules -- "—" where they have no run yet)
   // and "best". Verify runs
   // never rank: the best of several hold-out results is selection on the hold-out, which is the one
@@ -4848,13 +4847,13 @@ function perfGlance(d, key) {
   // A configuration is a version plus any experiment settings: v1.2 with a $100m turnover floor is a
   // different candidate from plain v1.2, and either may be the one worth keeping.
   const cfgOf = (b) => `${b.spec_id}|${(b.overrides || []).join(" ")}`;
-  const bestOf = (mine, stage, prefer) => {
+  const bestOf = (mine, stages, prefer) => {
     // Legacy runs each chose their own window, so they rank only against runs sharing one: the
     // latest version's window when two or more versions ran in it (so "best" is never worse than
     // "latest" beside it), else the window holding the most versions (newer on a tie).
     const groups = new Map();
     for (const b of mine) {
-      if (b.stage !== stage || !b.spec_id || pct(b.summary.excess_cagr) === null) continue;
+      if (!stages.has(b.stage) || !b.spec_id || pct(b.summary.excess_cagr) === null) continue;
       const w = winOf(b);
       if (!groups.has(w)) groups.set(w, new Map());
       const g = groups.get(w);
@@ -4890,22 +4889,20 @@ function perfGlance(d, key) {
       const nx = all.filter((b) => b.market === m && b.spec_id === cur).length;
       out.push(naRow(m, true, "", nx ? `no plain run yet — ${nx} experiment${nx === 1 ? "" : "s"} on Backtests` : "no run yet"));
     }
-    // Best, per stage: every configuration (versions AND experiments) ranked within one window. The
-    // in-sample best is the one to carry forward; the legacy best is shown too, beside its window,
-    // because a lead found there is worth re-testing in-sample -- but a legacy window reaching past the
-    // optimise end includes hold-out years, so it is never the verdict.
+    // ONE best per market: every configuration (versions AND experiments, in-sample or pre-stage)
+    // competes in a single pool, ranked within one window -- the latest row's when two or more
+    // configurations ran in it, else the window holding the most. Splitting it into "best" and
+    // "best legacy" told a reader two answers to one question. Verify runs still never rank: the
+    // best of several hold-out results is selection on the hold-out.
     const pool = all.filter((b) => b.market === m);
-    for (const stage of ["optimise", "legacy"]) {
-      const ref = stage === "optimise" ? ins : leg;
-      const { best, n } = bestOf(pool, stage, ref ? winOf(ref) : null);
-      if (!best) continue;
-      if (ref && best.id === ref.id) {
-        if (n > 1) { anyBest = true; out.push(gap(m, false, stageChip(best), `the latest version is also the best of ${n} configurations run in this window`)); }
-        continue;
-      }
+    const ref = ins || leg;
+    const { best, n } = bestOf(pool, new Set(["optimise", "legacy"]), ref ? winOf(ref) : null);
+    if (best && ref && best.id === ref.id) {
+      if (n > 1) { anyBest = true; out.push(gap(m, false, stageChip(best), `the latest version is also the best of ${n} configurations run in this window`)); }
+    } else if (best) {
       anyBest = true;
-      if (stage === "legacy") anyLegacy = true;
-      out.push(row(best, m, false, stage === "legacy" ? "best legacy" : "best", stage === "legacy" && (!ref || winOf(ref) !== winOf(best))));
+      if (best.stage === "legacy") anyLegacy = true;
+      out.push(row(best, m, false, "best", !ref || winOf(ref) !== winOf(best)));
     }
     return out.join("");
   }).join("");
@@ -4923,8 +4920,7 @@ function perfGlance(d, key) {
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
       the gap between the two is the measure of how much.
       ${anyLegacy ? "<b>Legacy</b> runs predate stages and mix both windows — reference only. " : ""}
-      ${anyBest ? `<b>Best</b> is the configuration — a version, or a version with experiment settings (shown as <i>+ …</i>) — with the highest excess CAGR in the same window, in-sample, where choosing belongs; verify the one you pick, once.
-        <b>Best legacy</b> ranks the pre-stage runs the same way, beside their window: a window running past ${esc((st.optimise || {}).end || "")} includes hold-out years, so treat it as a lead to re-test in-sample, not a result. ` : ""}
+      ${anyBest ? `<b>Best</b> is the configuration — a version, or a version with experiment settings (shown as <i>+ …</i>) — with the highest excess CAGR among runs over the same window; when that window differs from the latest row's it is shown beneath the stage. Verify the one you pick, once. ` : ""}
       ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}${nVariant ? `${nVariant} experiment${nVariant === 1 ? "" : "s"} (changed settings) left out of the latest rows; they compete for best. ` : ""}Click a row for the report, or see
       <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.</p></section>`;
 }
