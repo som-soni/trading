@@ -4816,7 +4816,7 @@ function perfGlance(d, key) {
   //
   // "Best" is one row, ranked within one window: runs over different years are never ranked against
   // each other, because that would crown whichever had the kinder market. In-sample and pre-stage
-  // runs share the pool, and the best row carries no Legacy chip -- only its window, when it differs.
+  // runs share the pool, and no row is labelled Legacy -- a pre-stage run shows its years instead.
   // A tag names which row is which: "latest" (the current rules -- "—" where they have no run yet)
   // and "best". Verify runs
   // never rank: the best of several hold-out results is selection on the hold-out, which is the one
@@ -4830,14 +4830,17 @@ function perfGlance(d, key) {
     return `<td><span title="${esc(tip || b.spec_id || "")}">${verOf(b) ? `v${esc(verOf(b))}` : "—"}</span>
       ${tag ? `<span class="tag ${tag.startsWith("best") ? "pos" : "neutral"} small">${tag}</span>` : ""}
       ${b.variant && (b.overrides || []).length ? `<div class="muted small" title="an experiment: these settings differ from the strategy as configured">+ ${esc(b.overrides.join(" "))}</div>` : ""}</td>`; };
-  // The best row carries no Legacy chip: it answers "which rule set is best", and a pre-stage run
-  // competes for that on the same terms as an in-sample one. Its window still shows when it differs.
-  const chipFor = (b, tag) => (tag === "best" && b.stage === "legacy" ? "" : stageChip(b));
+  // No row carries a Legacy chip: a pre-stage run is read on the same terms as any other. Its Stage
+  // cell shows the years it covers instead, since that -- not its age -- is what a reader needs to
+  // compare it with the rows around it.
+  const chipFor = (b) => (b.stage === "legacy"
+    ? `<span class="muted small" title="the years this run covers">${esc(b.window_start || "?")} → ${esc(b.window_end || "latest")}</span>`
+    : stageChip(b));
   const row = (b, m, first, tag, showWin) => { const s = b.summary, mi = mktInfo(m);
     return `<tr data-href="#/reports/${b.id}" title="Open this run">
       <td>${first ? `${mi.flag || ""} ${esc(mi.name || m.toUpperCase())}` : ""}</td>
       ${label(b, tag)}
-      <td>${chipFor(b, tag)}${showWin ? `<div class="muted small" title="a different window from the latest row above: not directly comparable">${esc(b.window_start || "?")} → ${esc(b.window_end || "latest")}</div>` : ""}</td>
+      <td>${chipFor(b)}${showWin && b.stage !== "legacy" ? `<div class="muted small" title="a different window from the latest row above: not directly comparable">${esc(b.window_start || "?")} → ${esc(b.window_end || "latest")}</div>` : ""}</td>
       <td class="num">${esc(s.cagr || "")}</td>
       <td class="num ${sign(s.excess_cagr)}"><b>${esc(s.excess_cagr || "")}</b>${stale(b.spec_id)}</td>
       <td class="num">${esc(s.max_drawdown || "")}</td>
@@ -4869,7 +4872,7 @@ function perfGlance(d, key) {
   };
   // `d.backtests` arrives newest-first, so the first match is the latest
   const mkts = [...new Set(all.map((b) => b.market))].sort();
-  let anyLegacy = false, anyBest = false;
+  let anyBest = false;
   // A row with no run behind it: the version and stage it would be, and "—" for every figure, so the
   // latest version always has its row -- even before its runs land -- instead of an older one standing in.
   const naRow = (m, first, stageHtml, why) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
@@ -4887,7 +4890,7 @@ function perfGlance(d, key) {
     if (oos) out.push(row(oos, m, true, "latest"));
     else if (ins) out.push(naRow(m, true, oosChip, "not verified yet"));
     if (ins) out.push(row(ins, m, !out.length, "latest"));
-    if (leg) { anyLegacy = anyLegacy || leg.stage === "legacy"; out.push(row(leg, m, !out.length, "latest")); }
+    if (leg) out.push(row(leg, m, !out.length, "latest"));
     if (!curRuns.length) {
       const nx = all.filter((b) => b.market === m && b.spec_id === cur).length;
       out.push(naRow(m, true, "", nx ? `no plain run yet — ${nx} experiment${nx === 1 ? "" : "s"} on Backtests` : "no run yet"));
@@ -4901,7 +4904,7 @@ function perfGlance(d, key) {
     const ref = ins || leg;
     const { best, n } = bestOf(pool, new Set(["optimise", "legacy"]), ref ? winOf(ref) : null);
     if (best && ref && best.id === ref.id) {
-      if (n > 1) { anyBest = true; out.push(gap(m, false, chipFor(best, "best"), `the latest version is also the best of ${n} configurations run in this window`)); }
+      if (n > 1) { anyBest = true; out.push(gap(m, false, chipFor(best), `the latest version is also the best of ${n} configurations run in this window`)); }
     } else if (best) {
       anyBest = true;
       out.push(row(best, m, false, "best", !ref || winOf(ref) !== winOf(best)));
@@ -4921,7 +4924,6 @@ function perfGlance(d, key) {
     <p class="muted small"><b>Out-of-sample</b> is the number to believe: years ${esc(ver.start || "")} onward, which the rules were never tuned on.
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
       the gap between the two is the measure of how much.
-      ${anyLegacy ? "<b>Legacy</b> runs predate stages and mix both windows — reference only. " : ""}
       ${anyBest ? `<b>Best</b> is the configuration — a version, or a version with experiment settings (shown as <i>+ …</i>) — with the highest excess CAGR among runs over the same window; when that window differs from the latest row's it is shown beneath the stage. Verify the one you pick, once. ` : ""}
       ${anyStale ? "▲ marks a run produced by rules that have since changed. " : ""}${nVariant ? `${nVariant} experiment${nVariant === 1 ? "" : "s"} (changed settings) left out of the latest rows; they compete for best. ` : ""}Click a row for the report, or see
       <a href="#/strategies/${esc(key)}/backtests">Backtests</a> for every run.</p></section>`;
