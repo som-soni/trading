@@ -37,22 +37,43 @@ stored-data jobs, `FAST_JOBS` in `jobs/registry.py`): a new job runs in the
 main lane unless you add it to one of those sets on purpose — then run
 `PYTHONPATH=. .venv/bin/python -m tests.test_job_lanes`.
 
-## Sidebar: threads are marked so their position never moves
+## Sidebar: threads are marked by rank
 
-The Code-tab sidebar groups threads by project, nests each thread under the thread that
-started it, and sorts every level A–Z. So a thread's title starts with its marker at its own
-level, in creation order: top-level modules `01.` … `13.`; a module's threads `A.`, `B.` … (its
-`00. Orchestrator`, if any, keeps `00.` so it sorts first); a thread started by one of those
-`a.`, `b.` …; deeper still `i.`, `ii.` …. The nesting already shows the parent, so a marker never
-repeats its parent's. Do not use sidebar sections or groups for this: they replace the project
-grouping and duplicate the module names.
+The Code-tab sidebar groups threads by project and nests each thread under the thread that
+started it. With its sort set to A–Z, every level sorts by title **as text** (`1.10` before `1.2`),
+and a thread is always drawn directly after the thread that started it — at the same indent as
+its siblings, so the list under a module reads as one flat column. Top-level modules use outline numbers, `<band>.<position>` (`1.1`, `1.2`, `2.1` …):
+bands are themes ranked by how directly they feed a trading decision, and a new module takes
+the next number in its band, so nothing else is renumbered. Keep a band to nine modules —
+`1.10` would sort before `1.2`. Catch-all stays the last band; a new theme goes before it and
+Catch-all moves down one.
+
+| Band | Theme | Modules |
+|---|---|---|
+| `1.` | Trading core | 1.1 Strategies, 1.2 Today, 1.3 Market, 1.4 Screening, 1.5 Stock analysis, 1.6 Chart |
+| `2.` | Learning & certification | 2.1 Library, 2.2 Daily knowledge test, 2.3 Investment Advisor (SEBI exam) |
+| `3.` | Long-term investing | 3.1 Long-term investment themes |
+| `4.` | Upkeep | 4.1 System, 4.2 Sunday Fixes, 4.3 Public module publishing |
+| `5.` | Catch-all | 5.1 General Q&A, 5.2 Catch-all |
+
+Below the top level, naming is **flat**: one capital letter per thread, `A.`, `B.` … `Z.`, a
+single sequence per module that reads top to bottom in the order the sidebar draws it. Start
+every new thread **from the module's main thread** (not from an Orchestrator or another thread),
+so it sits directly under the module and takes the next free letter at the end — nothing else is
+renamed. A thread that another thread started is pinned under that thread whatever its title, so
+its letter has to follow the position it is drawn in: the threads an Orchestrator started take the
+letters right after it, and later threads shift down. That is why the module's `Orchestrator`, if
+any, is `A.` but Minervini is `J.` under 1.1 Strategies — eight Orchestrator threads sit between
+them. No digits, no depth markers, no module prefix (the module's own row names it). Keep letters
+contiguous (no gaps); at 26 a module is full — split it. Do not use sidebar sections or groups for
+this: they replace the project grouping and duplicate the module names.
 
 **On your first turn in a new session, mark yourself** (when the ccd session tools are
 available; skip silently when they are not): if your title does not already start with a
-marker, `get_session("self")` for your `parentSessionId`, read your siblings' titles
-(`list_sessions`, those with the same parent), and rename yourself with the next marker at your
-level — `A.` under a top-level module, `a.` one level below, `i.` below that. Keep the rest of
-the title.
+marker, follow `parentSessionId` (`get_session`) up to your top-level module, read the titles
+of every thread under that module at any depth (`list_sessions`; `startedBy` can be missing, so
+check `parentSessionId` of any unmarked or top-level-looking row), and rename yourself with the
+module's next free letter. Keep the rest of the title.
 
 ## Markets come from config
 
