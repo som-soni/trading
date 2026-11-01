@@ -248,15 +248,20 @@ them: [reading backtests](app-guide-backtests.md) and [backtesting honestly](lea
 
 ## 6. Chart, Fundamentals and News
 
-**Chart.** Candles with daily, weekly or monthly bars. **Indicators** opens a searchable picker of 35
+**Chart.** Daily, weekly or monthly bars. The **chart type** menu beside the timeframes (TradingView's) picks how
+price is drawn, remembered across symbols: Bars, Candles (the default), Hollow candles, Heikin Ashi, High-low,
+Line, Line with markers, Step line, Area, Baseline, Columns and Renko. A close-only series (an index level) has no
+bars, so it offers the line types and Renko. Heikin Ashi and Renko rebuild the bars, and — as on TradingView —
+indicators then read the rebuilt bars; the quote above the chart always reads the stored prices. **Renko** draws
+bricks on the main chart with a **Box** picker beside the menu: ATR (14) — TradingView's default, a fixed brick
+the size of the last 14-bar average range — or 2, 3, 5 or 10% of the last brick. A green brick prints once the
+close is a full brick above the last one, a red one a brick below, so time and flat stretches drop out. Bricks
+completed on one session take the following calendar days on the time axis; the legend shows each brick's real
+completion date. Bricks have no volume. **Indicators** opens a searchable picker of 35
 studies, computed in the browser from the bars on screen; your list is saved and applies to every symbol.
 On first use the chart shows the 20-, 50- and 200-day SMA, Volume and RSI. Two studies are not
 indicators: **Screener levels** draws a strategy's entry, stop and target, and **Chart patterns (live
-detection)** runs the chart-pattern detectors on stored prices. **Renko** (toolbar, beside Fit) opens the bars on screen as Renko bricks of a fixed percentage (2, 3, 5 or 10%, remembered;
-5% by default): a green brick prints once the close is a full brick above the last one, a red one a brick below,
-and time drops out, so long flat stretches shrink and a break to a new high stands out. The dashed line is the
-highest close loaded; the line above the chart gives the current run of same-colour bricks and the distance from
-that high. Bricks are built from closes in the browser. **Support & Resistance (zones)** is computed
+detection)** runs the chart-pattern detectors on stored prices. **Support & Resistance (zones)** is computed
 on the server (`core/sr_levels.py`, `/api/sr-levels`): weekly zones first, then daily (monthly then weekly on a
 weekly chart); turning points that drew a clear reaction, clustered (reactions spread over more than 1 ATR are
 separate levels) into zones drawn from the structure — wick extremes to the body cluster, never stretched or

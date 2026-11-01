@@ -54,6 +54,7 @@ from .earnings_gaps import EarningsGapStrategy
 from .ema_pullback import EmaPullbackStrategy
 from .kullamagi import KullamagiStrategy
 from .minervini_spec import MinerviniSpecStrategy
+from .momentum_burst import MomentumBurstStrategy
 from .rs_leaders import RsLeadersStrategy
 from .stage_analysis import StageAnalysisStrategy
 from .supertrend import SupertrendStrategy
@@ -77,6 +78,7 @@ register(RsLeadersStrategy())
 register(StageAnalysisStrategy())
 register(SupertrendStrategy())
 register(KullamagiStrategy())
+register(MomentumBurstStrategy())
 register(EmaPullbackStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
@@ -174,6 +176,7 @@ __all__ = [
     "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy", "EarningsGapStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",
     "MinerviniSpecStrategy", "StageAnalysisStrategy", "KullamagiStrategy", "EmaPullbackStrategy",
+    "MomentumBurstStrategy",
     "portfolio_strategies", "all_specs",
     "register", "get_strategy", "list_strategies", "describe_strategies",
     "DEFAULT_STRATEGY",

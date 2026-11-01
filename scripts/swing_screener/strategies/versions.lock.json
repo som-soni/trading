@@ -627,6 +627,45 @@
     },
     "version": "1.4"
   },
+  "momentum_burst": {
+    "family": "momentum_burst",
+    "fingerprint": "e8ce18ba",
+    "params": {
+      "BURST_MIN_PCT": 4.0,
+      "BURST_VOL_VS_PRIOR": 1.0,
+      "CLOSE_MIN_RANGE_POS": 0.7,
+      "HOLD_BARS": 5,
+      "MIN_STOP_PCT": 1.0,
+      "MKT_EMA": 20,
+      "MKT_FAST_EMA": 10,
+      "NEAR_HIGHS_MAX_PCT_BELOW_52W_HIGH": 15.0,
+      "NOMINAL_TARGET_R": 3,
+      "PRIOR_MAX_GAIN_PCT": 2.0,
+      "QUIET_BARS": 3,
+      "QUIET_MAX_RANGE_FRAC": 1.0,
+      "QUIET_REF_BARS": 20,
+      "REQUIRE_MARKET": 1,
+      "SMA200_FALLING_PCT": 0.5,
+      "SMA200_SLOPE_BARS": 20,
+      "_key": "momentum_burst",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6"
+      ],
+      "min_bars": 210,
+      "setup_codes": [
+        "S1"
+      ],
+      "watch_codes": [
+        "W1"
+      ]
+    },
+    "version": "1.0"
+  },
   "momentum_dual_combo": {
     "family": "momentum_dual_combo",
     "fingerprint": "a22c5cbf",

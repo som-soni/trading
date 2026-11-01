@@ -1,6 +1,6 @@
 # Does group strength help? — leaders in leading groups
 
-*Generated 2026-10-08 by `python -m swing_screener.screens.group_research`; re-run it to refresh.*
+*Generated 2026-11-01 by `python -m swing_screener.screens.group_research`; re-run it to refresh.*
 
 **Question.** Are stocks in strong peer groups (sub-industry, else industry group, rated RS 80+ on the Sectors page's scale) better buys than the same kind of stock in a weak group (RS below 50)? Does being one of the top 3 in the group add to that?
 
@@ -12,34 +12,34 @@
 
 | Set | Stocks per month-end | Excess 1M | Excess 3M | Excess 6M | Hit rate 6M | Months won 6M |
 |---|---:|---:|---:|---:|---:|---:|
-| All tradable | 1755 | +0.00% | +0.00% | +0.00% | 50% | 0% |
-| Tradable · strong group | 301 | +0.48% | +1.04% | +3.13% | 52% | 79% |
-| Tradable · middling group | 555 | +0.15% | +0.46% | -0.02% | 50% | 46% |
-| Tradable · weak group | 889 | -0.19% | -0.45% | -0.73% | 49% | 34% |
-| Stage 2 | 336 | +0.46% | +0.63% | +2.53% | 53% | 75% |
-| Stage 2 · strong group | 118 | +0.79% | +1.18% | +5.02% | 54% | 75% |
-| Stage 2 · weak group | 86 | +0.33% | -0.15% | +1.43% | 54% | 68% |
-| Stage 2 · top 3 in group | 206 | +0.54% | +0.64% | +2.75% | 53% | 68% |
-| Stage 2 · not top 3 | 124 | +0.22% | +0.52% | +1.80% | 54% | 73% |
-| Strong stocks in leading groups | 160 | +0.59% | +0.80% | +3.94% | 52% | 77% |
-| Uptrend | 320 | +0.37% | +0.62% | +2.01% | 54% | 79% |
-| Uptrend · strong group | 97 | +0.49% | +0.57% | +3.76% | 53% | 71% |
-| Uptrend · weak group | 97 | +0.60% | +0.65% | +2.09% | 55% | 66% |
-| Tradable · strong industry group | 342 | +0.52% | +1.45% | +4.16% | 54% | 80% |
-| Sub-industry peers · strong sub-industry | 75 | +1.57% | +4.52% | +10.00% | 57% | 82% |
-| Sub-industry peers · strong industry group | 116 | +1.58% | +4.98% | +11.45% | 60% | 84% |
+| All tradable | 1724 | +0.00% | +0.00% | +0.00% | 50% | 0% |
+| Tradable · strong group | 280 | +0.28% | +0.52% | +2.60% | 51% | 70% |
+| Tradable · middling group | 551 | +0.17% | +0.50% | +0.23% | 51% | 55% |
+| Tradable · weak group | 879 | -0.15% | -0.35% | -0.66% | 49% | 34% |
+| Stage 2 | 336 | +0.27% | +0.21% | +1.90% | 53% | 70% |
+| Stage 2 · strong group | 113 | +0.37% | +0.21% | +3.75% | 53% | 62% |
+| Stage 2 · weak group | 86 | +0.15% | -0.27% | +1.17% | 54% | 66% |
+| Stage 2 · top 3 in group | 209 | +0.29% | +0.13% | +1.99% | 52% | 66% |
+| Stage 2 · not top 3 | 119 | +0.33% | +0.53% | +1.55% | 54% | 70% |
+| Strong stocks in leading groups | 153 | +0.21% | +0.15% | +3.03% | 51% | 64% |
+| Uptrend | 320 | +0.15% | +0.14% | +1.28% | 53% | 75% |
+| Uptrend · strong group | 94 | +0.11% | -0.24% | +2.51% | 52% | 61% |
+| Uptrend · weak group | 99 | +0.26% | +0.11% | +1.25% | 54% | 68% |
+| Tradable · strong industry group | 355 | +0.42% | +1.25% | +3.57% | 52% | 70% |
+| Sub-industry peers · strong sub-industry | 89 | +1.28% | +3.36% | +8.06% | 55% | 75% |
+| Sub-industry peers · strong industry group | 164 | +1.10% | +3.52% | +7.98% | 56% | 75% |
 
 ### Head to head
 
 | Comparison | A | B | Months | A − B, 1M | t (1M) | A won (1M) | A − B, 3M | A − B, 6M |
 |---|---|---|---:|---:|---:|---:|---:|---:|
-| Group strength alone | Tradable · strong group | Tradable · weak group | 61 | +0.67% | 1.5 | 49% | +1.49% | +3.86% |
-| Within Stage 2: strong vs weak group | Stage 2 · strong group | Stage 2 · weak group | 61 | +0.46% | 0.9 | 44% | +1.33% | +3.59% |
-| Within Stage 2: requiring a strong group | Stage 2 · strong group | Stage 2 | 61 | +0.33% | 1.2 | 49% | +0.55% | +2.48% |
-| Within Stage 2: leader of its group or not | Stage 2 · top 3 in group | Stage 2 · not top 3 | 61 | +0.32% | 0.8 | 54% | +0.13% | +0.95% |
-| The preset vs Stage 2 | Strong stocks in leading groups | Stage 2 | 61 | +0.13% | 0.5 | 49% | +0.17% | +1.41% |
-| Within the established uptrend: strong vs weak group | Uptrend · strong group | Uptrend · weak group | 61 | -0.11% | -0.2 | 43% | -0.08% | +1.66% |
-| Sub-industry vs industry group (same stocks) | Sub-industry peers · strong sub-industry | Sub-industry peers · strong industry group | 61 | -0.01% | -0.0 | 54% | -0.46% | -1.45% |
+| Group strength alone | Tradable · strong group | Tradable · weak group | 61 | +0.43% | 0.9 | 49% | +0.87% | +3.27% |
+| Within Stage 2: strong vs weak group | Stage 2 · strong group | Stage 2 · weak group | 61 | +0.22% | 0.4 | 56% | +0.48% | +2.58% |
+| Within Stage 2: requiring a strong group | Stage 2 · strong group | Stage 2 | 61 | +0.10% | 0.4 | 54% | +0.01% | +1.85% |
+| Within Stage 2: leader of its group or not | Stage 2 · top 3 in group | Stage 2 · not top 3 | 61 | -0.04% | -0.1 | 56% | -0.40% | +0.44% |
+| The preset vs Stage 2 | Strong stocks in leading groups | Stage 2 | 61 | -0.05% | -0.2 | 48% | -0.06% | +1.13% |
+| Within the established uptrend: strong vs weak group | Uptrend · strong group | Uptrend · weak group | 60 | +0.03% | 0.0 | 50% | -0.35% | +1.24% |
+| Sub-industry vs industry group (same stocks) | Sub-industry peers · strong sub-industry | Sub-industry peers · strong industry group | 61 | +0.18% | 0.5 | 51% | -0.16% | +0.09% |
 
 ## India
 
@@ -48,33 +48,33 @@
 | Set | Stocks per month-end | Excess 1M | Excess 3M | Excess 6M | Hit rate 6M | Months won 6M |
 |---|---:|---:|---:|---:|---:|---:|
 | All tradable | 303 | +0.00% | +0.00% | +0.00% | 50% | 0% |
-| Tradable · strong group | 68 | +0.85% | +1.50% | +2.53% | 51% | 54% |
-| Tradable · middling group | 93 | +0.24% | +0.52% | +0.67% | 51% | 61% |
-| Tradable · weak group | 126 | -0.51% | -1.09% | -1.65% | 48% | 43% |
+| Tradable · strong group | 69 | +0.88% | +1.65% | +2.75% | 52% | 54% |
+| Tradable · middling group | 92 | +0.22% | +0.39% | +0.32% | 51% | 61% |
+| Tradable · weak group | 125 | -0.51% | -1.05% | -1.46% | 49% | 39% |
 | Stage 2 | 71 | +0.93% | +1.84% | +2.67% | 52% | 62% |
-| Stage 2 · strong group | 31 | +1.39% | +2.17% | +2.88% | 51% | 46% |
-| Stage 2 · weak group | 12 | -0.04% | +0.52% | +1.96% | 50% | 54% |
+| Stage 2 · strong group | 31 | +1.39% | +2.17% | +2.87% | 51% | 46% |
+| Stage 2 · weak group | 12 | +0.15% | +0.78% | +2.25% | 50% | 54% |
 | Stage 2 · top 3 in group | 49 | +1.32% | +1.94% | +2.97% | 51% | 62% |
 | Stage 2 · not top 3 | 10 | +0.85% | +2.07% | +3.62% | 53% | 50% |
-| Strong stocks in leading groups | 39 | +1.20% | +2.57% | +3.63% | 51% | 48% |
+| Strong stocks in leading groups | 39 | +1.26% | +2.71% | +3.83% | 51% | 50% |
 | Uptrend | 77 | +0.42% | +0.80% | +1.38% | 53% | 61% |
-| Uptrend · strong group | 27 | +1.11% | +1.54% | +1.55% | 53% | 46% |
-| Uptrend · weak group | 21 | +0.89% | +0.07% | +0.90% | 51% | 50% |
-| Tradable · strong industry group | 63 | +0.63% | +1.47% | +1.78% | 50% | 48% |
-| Sub-industry peers · strong sub-industry | 31 | +0.72% | +0.51% | +2.71% | 49% | 48% |
-| Sub-industry peers · strong industry group | 28 | +0.24% | +0.40% | +2.91% | 45% | 37% |
+| Uptrend · strong group | 27 | +1.15% | +1.63% | +1.50% | 53% | 46% |
+| Uptrend · weak group | 22 | +0.84% | +0.27% | +1.16% | 52% | 51% |
+| Tradable · strong industry group | 64 | +0.75% | +1.60% | +1.88% | 50% | 50% |
+| Sub-industry peers · strong sub-industry | 31 | +0.67% | +0.60% | +2.86% | 50% | 50% |
+| Sub-industry peers · strong industry group | 27 | +0.37% | +0.27% | +2.44% | 45% | 36% |
 
 ### Head to head
 
 | Comparison | A | B | Months | A − B, 1M | t (1M) | A won (1M) | A − B, 3M | A − B, 6M |
 |---|---|---|---:|---:|---:|---:|---:|---:|
-| Group strength alone | Tradable · strong group | Tradable · weak group | 61 | +1.36% | 2.9 | 62% | +2.58% | +4.18% |
-| Within Stage 2: strong vs weak group | Stage 2 · strong group | Stage 2 · weak group | 57 | +1.16% | 1.7 | 63% | +0.62% | -0.40% |
-| Within Stage 2: requiring a strong group | Stage 2 · strong group | Stage 2 | 61 | +0.46% | 1.6 | 57% | +0.34% | +0.21% |
+| Group strength alone | Tradable · strong group | Tradable · weak group | 61 | +1.39% | 3.0 | 64% | +2.70% | +4.22% |
+| Within Stage 2: strong vs weak group | Stage 2 · strong group | Stage 2 · weak group | 58 | +1.23% | 1.8 | 64% | +0.87% | -0.04% |
+| Within Stage 2: requiring a strong group | Stage 2 · strong group | Stage 2 | 61 | +0.46% | 1.5 | 59% | +0.34% | +0.20% |
 | Within Stage 2: leader of its group or not | Stage 2 · top 3 in group | Stage 2 · not top 3 | 37 | +0.17% | 0.2 | 51% | -0.30% | -0.41% |
-| The preset vs Stage 2 | Strong stocks in leading groups | Stage 2 | 61 | +0.27% | 0.8 | 54% | +0.73% | +0.95% |
-| Within the established uptrend: strong vs weak group | Uptrend · strong group | Uptrend · weak group | 56 | +1.25% | 1.8 | 59% | +2.14% | +1.86% |
-| Sub-industry vs industry group (same stocks) | Sub-industry peers · strong sub-industry | Sub-industry peers · strong industry group | 57 | +0.27% | 0.5 | 53% | +0.66% | +0.77% |
+| The preset vs Stage 2 | Strong stocks in leading groups | Stage 2 | 61 | +0.33% | 0.9 | 56% | +0.87% | +1.15% |
+| Within the established uptrend: strong vs weak group | Uptrend · strong group | Uptrend · weak group | 56 | +1.28% | 1.9 | 62% | +2.16% | +1.55% |
+| Sub-industry vs industry group (same stocks) | Sub-industry peers · strong sub-industry | Sub-industry peers · strong industry group | 58 | +0.43% | 0.8 | 53% | +0.77% | +1.09% |
 
 ## How to read it
 

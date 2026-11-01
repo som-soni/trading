@@ -1234,6 +1234,7 @@ table.subtab tr.open td { background: var(--warn-soft); }
 .lp .lp-mt { fill: var(--strong); } .lp .lp-ml { stroke: var(--muted); stroke-width: 1; }
 .lp .lp-zone.dem { fill: var(--up); opacity: .14; } .lp .lp-zone.sup { fill: var(--down); opacity: .14; }
 .lp .lp-zonel { font-weight: 600; font-size: 11px; } .lp .lp-zonel.dem { fill: var(--up-text); } .lp .lp-zonel.sup { fill: var(--down-text); }
+.lp .lp-zone.tight { fill: var(--warn); opacity: .16; } .lp .lp-zonel.tight { fill: var(--warn-text); }
 .lp .lp-sep { stroke: var(--line); } .lp .lp-vl { fill: var(--muted); font-size: 11px; }
 .lp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 6px; } .lp-head h2 { margin: 0; font-size: 22px; }
 .lp-sum { font-size: 15px; line-height: 1.55; max-width: 900px; margin: 0 0 14px; color: var(--text); }
@@ -1829,11 +1830,9 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
   .an-chips { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* Chart → Renko view */
-.renko-card { width: min(980px, 94vw); }
-.renko-card .sm-head { display: flex; gap: 10px; align-items: center; }
-.rk-chart { height: min(460px, 60vh); margin: 6px 0; }
-.rk-info { margin: 4px 0 2px; }
+/* Chart → chart type menu (TradingView's): the type's icon and a caret */
+#ctype { display: inline-flex; align-items: center; gap: 0; padding: 4px 6px; }
+#ctype svg { width: 18px; height: 18px; } #ctype svg.caret { width: 12px; height: 12px; opacity: .6; }
 
 /* Edge grades (server.strategy_edges): one dot per strategy per market, the same colours on every page */
 .edge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; flex-shrink: 0; font-style: normal; }
@@ -1854,7 +1853,6 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .nav-legend { padding: 4px 12px 8px; }
 .edge-legend .el { white-space: nowrap; }
 .edge-sel { margin-left: 6px; display: inline-flex; align-items: center; }
-.crumbs .edge-chip, .co-sec h2 .edge-chip { margin: 0 8px; font-weight: normal; vertical-align: middle; }
 .crumbs .edge-chip, .co-sec h2 .edge-chip { margin: 0 8px; font-weight: normal; vertical-align: middle; }
 
 /* Backtests tab: the filters as one wrapping toolbar row (market · stage · runs · version · archived) */

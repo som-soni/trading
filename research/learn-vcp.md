@@ -26,18 +26,24 @@ Lam Research, a maker of chip-making equipment, peaked at 53.31 (split-adjusted)
 In the five sessions before 15 May, volume was well below its 50-day average. On 15 May 2023 it closed at 55.23. That was above the high of 20 April 2023, 53.65.
 
 ```series
-title: Lam Research — contractions of 10%, 8%, 5% and 4%, then a breakout
-from: 2023-02-15
-to: 2023-08-31
+title: Lam Research — the anatomy of a VCP, March–May 2023
+from: 2023-03-15
+to: 2023-06-30
 tf: D
-line: us:LRCX | Lam Research (split-adjusted) | log
+line: us:LRCX | Lam Research (split-adjusted)
 line: us:LRCX@sma50 | 50-day average
 line: us:LRCX@vol | Volume | pane2 bars
-mark: 2023-04-06 | pullback 9.9%
-mark: 2023-04-27 | pullback 8.0%
-mark: 2023-05-09 | pullback 3.7%
-mark: 2023-05-15 | breakout
-caption: Each pullback was smaller than the one before, and volume faded into the last two. The pivot was the 20 April high, 53.65.
+mark: 2023-03-31 | Base high
+mark: 2023-04-06 | T1 | below
+mark: 2023-04-27 | T2 | below
+mark: 2023-05-04 | T3 | below
+mark: 2023-05-09 | T4 | below
+mark: 2023-05-15 | Breakout
+band: 2023-05-08 2023-05-12 | Tight area
+level: 53.31 | Base high | 2023-03-31 2023-05-15
+level: 53.65 | Pivot | 2023-04-20 2023-06-15 | pivot
+level: 51.21 | Tight low | 2023-05-08 2023-06-15 | stop
+caption: The line is the daily close; the levels are intraday highs and lows. T1 to T4 are the four contractions, 9.9%, 8.0%, 4.6% and 3.7%: each smaller than the one before, with volume fading into the tight area. The tight area topped at 53.35. The pivot used here is the base's highest high, 53.65 on 20 April, just above it, because a buy below that high would still have had sellers overhead.
 ```
 
 That is a VCP. A stock in a strong uptrend pauses. The first pullback is the biggest, because that is when the most holders take profits and the most nervous holders sell. Buyers step in and the price rallies. Then sellers return, but **fewer of them**, so the next pullback is smaller.

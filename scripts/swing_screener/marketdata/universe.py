@@ -156,6 +156,39 @@ def non_stock_symbols(market: str) -> set[str]:
             if s not in has_industry and any(k in n.upper() for k in _NON_STOCK_NAME_KEYWORDS)}
 
 
+#: The first month-end a backtest can rank on: the optimise stage's start (backtesting/windows.py).
+LIQUID_EVER_SINCE = "2013-01-01"
+LIQUID_EVER_CHUNK = 400          # symbols per price query: bounds memory on a 5,000-name universe
+
+
+def liquid_ever(market: str, floor: float, since: str = LIQUID_EVER_SINCE) -> list[str]:
+    """Every stock whose 20-session average turnover (close x volume) reached `floor` on some month-end
+    since `since` -- the stocks a backtest could have ranked on SOME past rebalance, not only today's.
+
+    Company data fetched for today's liquid names alone is a look-ahead: a stock that was a momentum
+    leader in 2020 and is illiquid now has no filings stored, so a backtest that requires them can never
+    buy it and never books its fall. Fetching for this set instead closes that gap. It reads stored
+    prices only, the same `non_stock_symbols` exclusion the portfolio backtests apply, and each stock's
+    own last bar of a month as its month-end.
+    """
+    from . import cache
+    skip = non_stock_symbols(market)
+    tickers = [t for t in load_universe(market) if t not in skip]
+    start = pd.Timestamp(since) - pd.Timedelta(days=45)    # the 20-session average needs a month of lead-in
+    out = []
+    for i in range(0, len(tickers), LIQUID_EVER_CHUNK):
+        bars = cache.load_many_cached(market, tickers[i:i + LIQUID_EVER_CHUNK], since=start)
+        for sym, d in bars.items():
+            if d is None or d.empty:
+                continue
+            dv = (d["close"] * d["volume"]).rolling(20, min_periods=20).mean()
+            me = dv.groupby([dv.index.year, dv.index.month]).last()
+            me = me[[pd.Timestamp(y, m, 1) >= pd.Timestamp(since).replace(day=1) for y, m in me.index]]
+            if (me >= floor).any():
+                out.append(sym)
+    return sorted(out)
+
+
 def fetch_india_universe_from_yfinance_screener() -> Path:
     """One-time/occasional refresh of the NSE ticker universe via
     yfinance's screener wrapper (`yf.screen`), which proxies Yahoo

@@ -414,9 +414,10 @@ const Learn = (() => {
       summary: "Minervini's generalization: what matters is not the shape's name but that each pullback is shallower than the last, on drying-up volume, ending in a tight shelf near the highs.",
       path: [[0, 70], [6, 82], [11, 100], [16, 90], [20, 75], [24, 84], [28, 93], [31, 98.5], [34, 93], [37, 87], [40, 92], [43, 97.5], [45, 95], [47, 92.6], [49, 95], [51, 98], [52, 96.6], [53, 95.3], [54, 96.4], [55, 97.4], [56, 102.5], [58, 105.5]],
       nz: [[0, 1.2], [11, 1.4], [28, 1], [43, 0.7], [51, 0.4], [55, 0.25], [56, 1.1], [58, 1]], vol: [[0, 1.3], [11, 1.6], [20, 1.3], [31, 0.9], [43, 0.7], [51, 0.5], [55, 0.35], [56, 2.5], [58, 1.5]], seed: 2,
-      lines: [{ y: { high: [50, 55] }, cls: "pivot", label: "Pivot", from: 41 }, { y: { low: [52, 55] }, cls: "stop", label: "Stop = last low", from: 50 }],
-      marks: [{ i: 20, at: "low", text: "−25%", side: "below" }, { i: 37, at: "low", text: "−12%", side: "below" }, { i: 47, at: "low", text: "−5%", side: "below" },
-        { i: 53, at: "low", text: "−3%", side: "below" }, { i: 56, at: "high", text: "Breakout", side: "above" }],
+      lines: [{ y: { high: [50, 55] }, cls: "pivot", label: "Pivot = tight high", from: 41 }, { y: { low: [52, 55] }, cls: "stop", label: "Stop = tight low", from: 50 }],
+      zones: [{ y0: { low: [50, 55] }, y1: { high: [50, 55] }, from: 50, to: 55, cls: "tight", label: "Tight area" }],
+      marks: [{ i: 11, at: "high", text: "Base high", side: "above" }, { i: 20, at: "low", text: "T1 −25%", side: "below" }, { i: 37, at: "low", text: "T2 −12%", side: "below" },
+        { i: 47, at: "low", text: "T3 −5%", side: "below" }, { i: 53, at: "low", text: "T4 −3%", side: "below" }, { i: 56, at: "high", text: "Breakout", side: "above" }],
       sections: [
         ["Rules here", ["Each contraction ≤ 0.8× the prior one; the final one ≤ 12%.", "Volume dries up into the right side; the breakout comes on expansion."]],
         ["Why traders like it", ["The stop is **close** — the final contraction's low — so even a modest move pays a high reward:risk."]],

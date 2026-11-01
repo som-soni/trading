@@ -679,12 +679,14 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg>
         <input id="sym" value="${esc(symbol)}" autocomplete="off" spellcheck="false" title="Search symbols — or just start typing"><ul hidden></ul></div>
       ${segmented([["D", "1D"], ["W", "1W"], ["M", "1M"]], tf, "tfs")}
+      <button class="ghost ctype" id="ctype" title="Chart type — ${esc(chartTypeOf(store.get("chartType", "candles")).label)}"><svg viewBox="0 0 20 20">${chartTypeOf(store.get("chartType", "candles")).icon}</svg><svg class="caret" viewBox="0 0 20 20"><path d="M6 8l4 4 4-4"/></svg></button>
+      ${store.get("chartType", "candles") === "renko" ? `<label class="field" title="Renko box size: the ATR (TradingView's default) or a percentage of the last brick"><span>Box</span>
+        <select id="rkbox">${RENKO_BOXES.map((b) => `<option ${store.get("renkoBox", "ATR (14)") === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>` : ""}
       <button class="ghost" id="ind" title="Add indicators"><svg viewBox="0 0 20 20"><path d="M3 15l4-5 3 3 7-8"/><path d="M13 5h4v4"/></svg>Indicators</button>
       <button class="ghost" id="setupbtn" title="Draw one strategy's trade setups over the whole history — what its rules would set up on, run on demand. Not trades: pick a backtest run to see what was actually bought."><svg viewBox="0 0 20 20"><path d="M3 13l4-4 3 2 4-6"/><rect x="11" y="11" width="6" height="5" rx="1"/></svg>Trade setups</button>
       <label class="field" id="trades-field" title="Mark the buys and exits a backtest run made in this symbol"><span>Backtest trades</span>
         <select id="trades"><option value="">None</option></select></label>
       <button class="ghost icon" id="fit" title="Show full history"><svg viewBox="0 0 20 20"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"/></svg></button>
-      <button class="ghost" id="renkobtn" title="Renko view: price-only bricks of a fixed % move, so time and sideways stretches drop out and breakouts to new highs stand out"><svg viewBox="0 0 20 20"><rect x="3" y="11" width="4" height="5"/><rect x="8" y="7" width="4" height="5"/><rect x="13" y="3" width="4" height="5"/></svg>Renko</button>
       <span class="spacer"></span>
       ${pos >= 0 ? `<div class="srcchip" title="You are stepping through this list (↑ / ↓)"><span class="muted">From</span>
         <a href="${esc(list.back || "#/screens")}" title="Back to the list">${esc(list.label)}</a>
@@ -933,24 +935,25 @@ async function chartPage(alive, market, symbol, tf) {
   const prevCleanup = cleanup;
   cleanup = () => { prevCleanup(); dr && dr.destroy(); chart.remove(); };
   let main, times;
-  const rows = px.ohlc ? px.candles : px.line;
-  if (px.ohlc) {
-    // the current-price tag in a neutral blue, not the day's red / green: it must not look like a
-    // resistance or support tag beside it (the day's change is in the header)
-    main = chart.addSeries(LC.CandlestickSeries, { upColor: "#26a69a", downColor: "#ef5350", borderVisible: false, wickUpColor: "#26a69a", wickDownColor: "#ef5350",
-      priceLineColor: "#2962ff" }, 0);
-    main.setData(px.candles);
-  } else {
-    main = chart.addSeries(LC.AreaSeries, { lineColor: cssVar("--series"), topColor: alpha(cssVar("--series"), .2), bottomColor: alpha(cssVar("--series"), 0), lineWidth: 2 }, 0);
-    main.setData(px.line);
+  // the stored bars (the quote strip always reads these) and the bars drawn: a chart type may rebuild
+  // them (Heikin Ashi, Renko), and indicators then read what is drawn, as on TradingView
+  const real = px.ohlc ? px.candles : px.line.map((d) => ({ time: d.time, open: d.value, high: d.value, low: d.value, close: d.value }));
+  let ctype = chartTypeOf(store.get("chartType", "candles")).k;
+  if (!px.ohlc && chartTypeOf(ctype).ohlc) {   // a close-only series has no bars to draw: the button says what is drawn
+    ctype = "area";
+    const btn = $("#ctype");
+    if (btn) { btn.title = `Chart type — ${chartTypeOf(ctype).label}`; btn.firstElementChild.innerHTML = chartTypeOf(ctype).icon; }
   }
+  const rows = ctype === "heikin" ? heikinAshi(real) : ctype === "renko" ? renkoRows(real, store.get("renkoBox", "ATR (14)")) : real;
+  const ohlcView = px.ohlc || ctype === "renko";
+  main = addMainSeries(chart, ctype, rows.length ? rows : real);
   times = rows.map((c) => c.time);
 
   // indicators
   const B = { O: [], H: [], L: [], C: [], V: [] };
-  rows.forEach((d, i) => {
-    if (px.ohlc) { B.O.push(d.open); B.H.push(d.high); B.L.push(d.low); B.C.push(d.close); B.V.push(px.volume[i].value); }
-    else { B.O.push(d.value); B.H.push(d.value); B.L.push(d.value); B.C.push(d.value); B.V.push(0); }
+  rows.forEach((d, i) => {   // (Renko bricks have no volume: they are not sessions)
+    B.O.push(d.open); B.H.push(d.high); B.L.push(d.low); B.C.push(d.close);
+    B.V.push(px.ohlc && ctype !== "renko" ? px.volume[i].value : 0);
   });
   const benchMap = bpx ? new Map((bpx.line || bpx.candles).map((d) => [d.time, d.value ?? d.close])) : null;
   // Shapes in the Strategy.chart_anatomy schema (strategies/base.py) -> annotation items. Used by the
@@ -1160,7 +1163,14 @@ async function chartPage(alive, market, symbol, tf) {
     setLegend();
   });
   $("#fit").onclick = () => chart.timeScale().fitContent();
-  $("#renkobtn").onclick = () => openRenko(symbol, times, B.C);
+  // chart type: TradingView's menu — a change redraws the chart (Renko changes the time axis, so the view resets)
+  $("#ctype").onclick = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    contextMenu(r.left, r.bottom + 4, "Chart type", CHART_TYPES.map((t) => ({
+      label: `${t.k === ctype ? "✓ " : "\u2003"}${t.label}`, disabled: t.ohlc && !px.ohlc,
+      fn: () => { store.set("chartType", t.k); if (t.k === "renko" || ctype === "renko") route(); else rerender(); } })));
+  };
+  $("#rkbox")?.addEventListener("change", (e) => { store.set("renkoBox", e.target.value); route(); });
 
   // ---- panning, TradingView style: press on the plot and drag to move the chart left/right and
   // up/down at once. Moving the price range by hand switches that pane's auto-scale off (as in
@@ -1232,10 +1242,10 @@ async function chartPage(alive, market, symbol, tf) {
     document.removeEventListener("keydown", onResetKey); prev(); }; }
 
   // quote strip: last price, change, 52-week range
-  const last = rows.at(-1), lastClose = px.ohlc ? last.close : last.value;
-  const prevClose = rows.length > 1 ? (px.ohlc ? rows.at(-2).close : rows.at(-2).value) : lastClose;
+  const last = real.at(-1), lastClose = last.close;   // the stored bars, whatever the chart type draws
+  const prevClose = real.length > 1 ? real.at(-2).close : lastClose;
   const yearAgo = new Date(Date.parse(last.time) - 365 * 864e5).toISOString().slice(0, 10);
-  const yr = rows.filter((r) => r.time >= yearAgo);
+  const yr = real.filter((r) => r.time >= yearAgo);
   // from the server's daily bars when it sent them (px.range52): a weekly or monthly bar straddling the
   // year boundary would otherwise pull in a high or low from before it
   const hi52 = px.range52?.hi ?? Math.max(...yr.map((r) => (px.ohlc ? r.high : r.value))),
@@ -1245,7 +1255,7 @@ async function chartPage(alive, market, symbol, tf) {
   $("#quote").innerHTML = `<b class="q-sym">${esc(symbol)}</b>${ctx.name ? `<span class="q-name" title="${esc(ctx.name)}">${esc(ctx.name)}</span>` : ""}<span class="mkt">${MKT_BADGE[market] || market}</span><button class="star" id="star"></button>${sector ? `<span class="muted">${esc(sector)}</span>` : ""}
     <span class="q-px">${fmt(lastClose)}</span><span class="${chg >= 0 ? "pos" : "neg"}">${signed(chg)}%</span>
     <span class="muted">${tf === "D" ? "1 day" : tf === "W" ? "1 week" : "1 month"} · ${prettyDate(last.time)}</span>
-    ${rows[0].time > "2011-01-01" ? `<span class="hist-note" title="The database holds this symbol from ${prettyDate(rows[0].time)} only — a recent listing, or history that was never backfilled. To fetch up to 16 years, run from scripts/:\npython3 -m swing_screener.marketdata.backfill --market ${market} --years 16 --only-short">history from ${prettyDate(rows[0].time)} ⓘ</span>` : ""}
+    ${real[0].time > "2011-01-01" ? `<span class="hist-note" title="The database holds this symbol from ${prettyDate(real[0].time)} only — a recent listing, or history that was never backfilled. To fetch up to 16 years, run from scripts/:\npython3 -m swing_screener.marketdata.backfill --market ${market} --years 16 --only-short">history from ${prettyDate(real[0].time)} ⓘ</span>` : ""}
     <span class="q-range" title="52-week range"><span class="muted">52w</span> ${fmt(lo52)}
       <span class="bar52"><i style="left:${rangePos.toFixed(1)}%"></i></span>${fmt(hi52)}
       <span class="${fromHi >= -0.5 ? "pos" : "muted"}">${fromHi >= -0.5 ? "at high" : signed(fromHi, 1) + "% from high"}</span></span>`;
@@ -1297,11 +1307,12 @@ async function chartPage(alive, market, symbol, tf) {
   const setLegend = (t) => {
     const i = t != null && byTime.has(t) ? byTime.get(t) : rows.length - 1, d = rows[i];
     lastI = i;
-    if (px.ohlc) {
+    if (!d) return;
+    if (ohlcView) {
       const p = rows[i - 1], c = p ? (d.close / p.close - 1) * 100 : 0, cls = d.close >= d.open ? "pos" : "neg";
-      ohlcEl.innerHTML = `<span class="muted">${prettyDate(d.time)}</span> O <span class="${cls}">${fmt(d.open)}</span> H <span class="${cls}">${fmt(d.high)}</span>
+      ohlcEl.innerHTML = `<span class="muted">${prettyDate(d.real || d.time)}${d.real ? " · brick" : ctype === "heikin" ? " · Heikin Ashi" : ""}</span> O <span class="${cls}">${fmt(d.open)}</span> H <span class="${cls}">${fmt(d.high)}</span>
         L <span class="${cls}">${fmt(d.low)}</span> C <span class="${cls}">${fmt(d.close)}</span> <span class="${c >= 0 ? "pos" : "neg"}">${signed(c)}%</span>`;
-    } else ohlcEl.innerHTML = `<span class="muted">${prettyDate(d.time)}</span> ${fmt(d.value)}`;
+    } else ohlcEl.innerHTML = `<span class="muted">${prettyDate(d.time)}</span> ${fmt(d.close)}`;
     rowEls.forEach(({ e, vals }) => { if (vals) vals.innerHTML = Studies.legendValues(e, i); });
     let top = 0;
     const panes = chart.panes();   // empty once the chart is removed, which a late event can still reach
@@ -1402,7 +1413,7 @@ async function chartPage(alive, market, symbol, tf) {
 
   // drawing tools (TradingView-style left toolbar). Drawings live on the server per symbol
   // (chart_drawings table) so they survive browsers; localStorage stays as the offline fallback.
-  const ohlcBars = px.ohlc ? px.candles : px.line.map((d) => ({ open: d.value, high: d.value, low: d.value, close: d.value }));
+  const ohlcBars = rows;   // the magnet snaps to what is drawn
   const drawUrl = `/api/drawings/${market}/${encodeURIComponent(symbol)}`;
   const remote = await api(drawUrl).then((r) => {
     let t = null, pending = null, failed = false;
@@ -2006,44 +2017,117 @@ function renkoBricks(dates, closes, pct) {
   return out;
 }
 
-function openRenko(symbol, dates, closes) {
-  const m = el(`<div class="smodal"><div class="smodal-card renko-card"><div class="sm-head"><b>${esc(symbol.replace(/\.NS$/, ""))} — Renko</b>
-      <span class="muted small">bricks of a fixed % move; time is left out</span><span class="spacer"></span>
-      <label class="small muted">brick <select id="rkpct">${[2, 3, 5, 10].map((v) => `<option value="${v}">${v}%</option>`).join("")}</select></label>
-      <button class="ghost icon" data-a="close" title="Close">${ICON_X}</button></div>
-      <div id="rkinfo" class="small rk-info"></div><div id="rkchart" class="rk-chart"></div>
-      <p class="muted small">A green brick prints once the close is a full brick above the last brick, a red one once it is a brick below — the
-      percentage swing chart of the swing-trading guide. The dashed line is the highest close in the loaded history (an all-time high for a full
-      chart). Bricks are dated by the session that completed them.</p></div></div>`);
-  document.body.append(m);
-  const sel = m.querySelector("#rkpct");
-  sel.value = String(store.get("renkoPct", 5));
-  let rc = null;
-  const draw = () => {
-    const pct = +sel.value; store.set("renkoPct", pct);
-    const bricks = renkoBricks(dates, closes, pct);
-    rc?.remove();
-    const host = m.querySelector("#rkchart"); host.innerHTML = "";
-    if (!bricks.length) { m.querySelector("#rkinfo").textContent = "Not enough movement for a single brick at this size."; return; }
-    const T0 = 946684800, label = (t) => bricks[Math.round((t - T0) / 86400)]?.date || "";
-    rc = LC.createChart(host, { autoSize: true, ...chartTheme(), handleScroll: true, handleScale: true,
-      timeScale: { ...chartTheme().timeScale, tickMarkFormatter: (t) => prettyDate(label(t)) },
-      localization: { timeFormatter: (t) => prettyDate(label(t)) } });
-    const s = rc.addSeries(LC.CandlestickSeries, { upColor: "#26a69a", downColor: "#ef5350", borderVisible: false, wickVisible: false, priceLineVisible: false });
-    s.setData(bricks.map((b, i) => ({ time: T0 + i * 86400, open: b.open, close: b.close, high: Math.max(b.open, b.close), low: Math.min(b.open, b.close) })));
-    const ath = Math.max(...closes.filter((c) => c > 0));
-    s.createPriceLine({ price: ath, color: cssVar("--muted"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "highest close" });
-    rc.timeScale().setVisibleLogicalRange({ from: Math.max(0, bricks.length - 120), to: bricks.length + 3 });
-    let run = 1; const lastB = bricks[bricks.length - 1];
-    for (let i = bricks.length - 2; i >= 0 && bricks[i].up === lastB.up; i--) run++;
-    const lastClose = closes.filter((c) => c > 0).at(-1);
-    m.querySelector("#rkinfo").innerHTML = `${bricks.length} bricks · last: <b class="${lastB.up ? "pos" : "neg"}">${run} ${lastB.up ? "green" : "red"}</b> in a row,
-      completed ${prettyDate(lastB.date)} · close ${fmt(lastClose)} is <b>${((lastClose / ath - 1) * 100).toFixed(1)}%</b> from the highest close`;
-  };
-  sel.onchange = draw;
-  const close = () => { rc?.remove(); m.remove(); };
-  m.onclick = (e) => { if (e.target === m || e.target.closest("[data-a=close]")) close(); };
-  draw();
+/** TradingView's chart types: how the main series draws the price, picked from the menu beside the
+ *  timeframes (Candles by default, remembered). `ohlc`: needs open / high / low / close, so a close-only
+ *  series (an index level) offers the rest. Heikin Ashi and Renko rebuild the bars, and — as on
+ *  TradingView — indicators then read the rebuilt bars. */
+const CHART_TYPES = [
+  { k: "bars", label: "Bars", ohlc: true, icon: '<path d="M6 3v14M3.5 6H6M6 13h2.5M14 5v12M11.5 8H14M14 14h2.5"/>' },
+  { k: "candles", label: "Candles", ohlc: true, icon: '<path d="M6 2v3M6 15v3M14 4v3M14 14v3"/><rect x="4" y="5" width="4" height="10" fill="currentColor"/><rect x="12" y="7" width="4" height="7"/>' },
+  { k: "hollow", label: "Hollow candles", ohlc: true, icon: '<path d="M6 2v3M6 15v3M14 4v3M14 14v3"/><rect x="4" y="5" width="4" height="10"/><rect x="12" y="7" width="4" height="7"/>' },
+  { k: "heikin", label: "Heikin Ashi", ohlc: true, icon: '<path d="M6 3v2M6 14v3M14 5v2M14 13v3"/><rect x="4" y="5" width="4" height="9" fill="currentColor"/><rect x="12" y="7" width="4" height="6" fill="currentColor"/>' },
+  { k: "highlow", label: "High-low", ohlc: true, icon: '<rect x="4" y="4" width="3" height="9" fill="currentColor"/><rect x="9" y="7" width="3" height="9" fill="currentColor"/><rect x="14" y="3" width="3" height="8" fill="currentColor"/>' },
+  { k: "line", label: "Line", icon: '<path d="M2 15l5-6 4 3 7-8"/>' },
+  { k: "markers", label: "Line with markers", icon: '<path d="M2 15l5-6 4 3 7-8"/><circle cx="7" cy="9" r="1.6" fill="currentColor"/><circle cx="11" cy="12" r="1.6" fill="currentColor"/>' },
+  { k: "step", label: "Step line", icon: '<path d="M2 15h4v-5h4v3h4V5h4"/>' },
+  { k: "area", label: "Area", icon: '<path d="M2 15l5-6 4 3 7-8v14H2z" fill="currentColor" fill-opacity=".25"/><path d="M2 15l5-6 4 3 7-8"/>' },
+  { k: "baseline", label: "Baseline", icon: '<path d="M2 10h16" stroke-dasharray="2 2"/><path d="M2 13l4-6 4 6 4-8 4 6"/>' },
+  { k: "columns", label: "Columns", icon: '<path d="M4 17V9M8 17V6M12 17v-5M16 17V4" stroke-width="2.5"/>' },
+  { k: "renko", label: "Renko", icon: '<rect x="3" y="11" width="4" height="5"/><rect x="8" y="7" width="4" height="5"/><rect x="13" y="3" width="4" height="5"/>' },
+];
+const RENKO_BOXES = ["ATR (14)", "2%", "3%", "5%", "10%"];   // TradingView's default box is the ATR; the % boxes suit long histories
+const chartTypeOf = (k) => CHART_TYPES.find((t) => t.k === k) || CHART_TYPES[1];
+
+/** Heikin Ashi bars: close = the bar's average price, open = the midpoint of the previous HA bar's body —
+ *  smoothed bars on the same dates. */
+function heikinAshi(rows) {
+  const out = [];
+  rows.forEach((d, i) => {
+    const c = (d.open + d.high + d.low + d.close) / 4, p = out[i - 1];
+    const o = p ? (p.open + p.close) / 2 : (d.open + d.close) / 2;
+    out.push({ time: d.time, open: o, close: c, high: Math.max(d.high, o, c), low: Math.min(d.low, o, c) });
+  });
+  return out;
+}
+
+/** Renko bars on the main chart: bricks from the closes (a `box` of "ATR (14)" — a fixed size, the last
+ *  14-bar average true range — or a percentage of the last brick), each dated by the session that completed it.
+ *  Several bricks completed on one session take the following calendar days, so every brick has its own
+ *  time; `real` keeps the true completion date for the legend. */
+function renkoRows(rows, box) {
+  const dates = rows.map((d) => d.time), closes = rows.map((d) => d.close);
+  let bricks;
+  if (String(box).endsWith("%")) bricks = renkoBricks(dates, closes, parseFloat(box));
+  else {
+    const tr = rows.map((d, i) => (i ? Math.max(d.high, rows[i - 1].close) - Math.min(d.low, rows[i - 1].close) : d.high - d.low)).slice(-14);
+    const size = tr.reduce((a, b) => a + b, 0) / (tr.length || 1);
+    bricks = [];
+    let last = null;
+    if (size > 0) for (let i = 0; i < closes.length; i++) {
+      const c = closes[i]; if (c == null) continue;
+      if (last == null) { last = c; continue; }
+      while (c >= last + size) { bricks.push({ open: last, close: last + size, up: true, date: dates[i] }); last += size; }
+      while (c <= last - size) { bricks.push({ open: last, close: last - size, up: false, date: dates[i] }); last -= size; }
+    }
+  }
+  const nextDay = (t) => new Date(Date.parse(t + "T00:00:00Z") + 864e5).toISOString().slice(0, 10);
+  let prev = null;
+  return bricks.map((b) => {
+    const time = prev && b.date <= prev ? nextDay(prev) : b.date;
+    prev = time;
+    return { time, open: b.open, close: b.close, high: Math.max(b.open, b.close), low: Math.min(b.open, b.close), real: b.date };
+  });
+}
+
+/** The main price series for a chart type, on rows of {time, open, high, low, close}. The current-price tag
+ *  is a neutral blue in every type, so it never reads as a support or resistance tag. */
+function addMainSeries(chart, type, rows) {
+  const UP = "#26a69a", DN = "#ef5350", TAG = "#2962ff", LINE = cssVar("--series");
+  const ohlcData = rows.map(({ time, open, high, low, close }) => ({ time, open, high, low, close }));
+  const close = rows.map((d) => ({ time: d.time, value: d.close }));
+  const candle = { upColor: UP, downColor: DN, borderVisible: false, wickUpColor: UP, wickDownColor: DN, priceLineColor: TAG };
+  let sr;
+  switch (type) {
+    case "bars": sr = chart.addSeries(LC.BarSeries, { upColor: UP, downColor: DN, priceLineColor: TAG }, 0); sr.setData(ohlcData); break;
+    case "hollow":
+      sr = chart.addSeries(LC.CandlestickSeries, { ...candle, borderVisible: true, borderUpColor: UP, borderDownColor: DN }, 0);
+      sr.setData(ohlcData.map((d) => (d.close >= d.open ? { ...d, color: "rgba(0,0,0,0)" } : d))); break;
+    case "highlow":   // the bar's range only: no open, no close
+      sr = chart.addSeries(LC.CandlestickSeries, { upColor: TAG, downColor: TAG, borderVisible: false, wickVisible: false, priceLineColor: TAG }, 0);
+      sr.setData(rows.map((d) => ({ time: d.time, open: d.low, close: d.high, high: d.high, low: d.low }))); break;
+    case "renko":
+      sr = chart.addSeries(LC.CandlestickSeries, { ...candle, wickVisible: false }, 0); sr.setData(ohlcData); break;
+    case "line": case "markers": case "step":
+      sr = chart.addSeries(LC.LineSeries, { color: LINE, lineWidth: 2, priceLineColor: TAG,
+        ...(type === "markers" ? { pointMarkersVisible: true, pointMarkersRadius: 2.5 } : {}),
+        ...(type === "step" ? { lineType: LC.LineType.WithSteps } : {}) }, 0);
+      sr.setData(close); break;
+    case "area":
+      sr = chart.addSeries(LC.AreaSeries, { lineColor: LINE, topColor: alpha(LINE, .2), bottomColor: alpha(LINE, 0), lineWidth: 2, priceLineColor: TAG }, 0);
+      sr.setData(close); break;
+    case "baseline": {   // green above, red below the close at the start of the opening view
+      const base = rows[Math.max(0, rows.length - 130)]?.close ?? 0;
+      sr = chart.addSeries(LC.BaselineSeries, { baseValue: { type: "price", price: base }, topLineColor: UP, bottomLineColor: DN,
+        topFillColor1: alpha(UP, .28), topFillColor2: alpha(UP, .04), bottomFillColor1: alpha(DN, .04), bottomFillColor2: alpha(DN, .28), lineWidth: 2, priceLineColor: TAG }, 0);
+      sr.setData(close); break;
+    }
+    case "columns": {
+      // scaled to the visible prices, as on TradingView: the columns run off the bottom of the pane rather
+      // than squashing the scale down to zero
+      const scale = () => {
+        const r = chart.timeScale().getVisibleLogicalRange();
+        const vis = rows.slice(Math.max(0, Math.floor(r?.from ?? 0)), Math.ceil(r?.to ?? rows.length) + 1).map((d) => d.close);
+        if (!vis.length) return null;
+        const lo = Math.min(...vis), hi = Math.max(...vis), pad = (hi - lo) * 0.05 || hi * 0.01;
+        return { priceRange: { minValue: lo - pad, maxValue: hi + pad } };
+      };
+      sr = chart.addSeries(LC.HistogramSeries, { priceLineColor: TAG, base: 0, autoscaleInfoProvider: scale }, 0);
+      sr.setData(rows.map((d, i) => ({ time: d.time, value: d.close, color: alpha(i && d.close < rows[i - 1].close ? DN : UP, .8) }))); break;
+    }
+    default:   // candles, Heikin Ashi
+      sr = chart.addSeries(LC.CandlestickSeries, candle, 0); sr.setData(ohlcData);
+  }
+  return sr;
 }
 
 function askText(title, value = "", placeholder = "", suggestions = []) {
@@ -5685,19 +5769,23 @@ function renderResearchMd(host, markdown) {
  *            itself so a guide draws exactly what the Chart page does: @stoch.k, @kc.upper, @squeeze.mom, with
  *            optional settings @distma(unit=ATR).d — needs a stock or ETF (daily open/high/low), not an index series
  *    band:   <from> <to> | <label>   a shaded period (repeat)
- *    mark:   <date> | <label>         an arrow on the first line (repeat)
+ *    mark:   <date> | <label> | below an arrow on the first line, above it unless `below` (repeat)
+ *    level:  <price> | <label> | <from> <to> | pivot|stop   a dashed horizontal line on the first line's
+ *            scale over that date range (default: the whole chart), its label on the price axis — for a
+ *            pattern's named prices (base high, pivot, stop). pivot draws it green, stop red, else grey (repeat)
  *    caption: what to look at
  *  The data's actual first and last dates are printed under the chart. */
 const SERIES_COLORS = ["--series", "--accent", "--info", "--mkt-in", "--up"];
 const seriesCache = new Map();
 function parseSeriesSpec(text) {
-  const s = { lines: [], bands: [], marks: [] };
+  const s = { lines: [], bands: [], marks: [], levels: [] };
   for (const raw of text.split("\n")) {
     const m = raw.match(/^\s*([a-z]+)\s*:\s*(.*)$/); if (!m) continue;
     const [, k, v] = m, parts = v.split("|").map((x) => x.trim());
     if (k === "line") s.lines.push({ expr: parts[0], label: parts[1] || parts[0], flags: new Set((parts[2] || "").split(/\s+/).filter(Boolean)) });
     else if (k === "band") { const [a, b] = parts[0].split(/\s+/); s.bands.push({ from: a, to: b, label: parts[1] || "" }); }
-    else if (k === "mark") s.marks.push({ date: parts[0], label: parts[1] || "" });
+    else if (k === "mark") s.marks.push({ date: parts[0], label: parts[1] || "", below: parts[2] === "below" });
+    else if (k === "level") { const [a, b] = (parts[2] || "").split(/\s+/).filter(Boolean); s.levels.push({ price: +parts[0], label: parts[1] || "", from: a, to: b, kind: parts[3] || "" }); }
     else s[k] = v.trim();
   }
   return s;
@@ -5951,10 +6039,21 @@ async function drawSeriesFigure(fig, spec) {
       h.setData(pts.map((t) => ({ time: t, value: 1 })));
     }
   }
+  // named prices: a dashed segment on the first line's scale, labelled on the price axis
+  for (const lv of spec.levels) {
+    const lo = lv.from ? periodKey(lv.from, tf) : times[0], hi = lv.to ? periodKey(lv.to, tf) : times[times.length - 1];
+    const pts = times.filter((t) => t >= lo && t <= hi);
+    if (!pts.length || !Number.isFinite(lv.price)) continue;
+    const color = cssVar({ pivot: "--up", stop: "--down" }[lv.kind] || "--line-3");
+    const s = chart.addSeries(LC.LineSeries, { color, lineWidth: 1, lineStyle: 2, priceScaleId: series[0].lps.scale, priceLineVisible: false,
+      lastValueVisible: true, title: lv.label, crosshairMarkerVisible: false }, 0);
+    s.setData(pts.map((t) => ({ time: t, value: lv.price })));
+  }
   if (spec.marks.length) {
     const ts = [...data[0].keys()].sort();
     LC.createSeriesMarkers(series[0], spec.marks.map((m) => ({ time: ts.find((t) => t >= periodKey(m.date, tf)) || ts[ts.length - 1],
-      position: "aboveBar", shape: "arrowDown", color: cssVar("--accent"), text: m.label })).sort((a, b) => (a.time < b.time ? -1 : 1)));
+      position: m.below ? "belowBar" : "aboveBar", shape: m.below ? "arrowUp" : "arrowDown", color: cssVar("--accent"), text: m.label }))
+      .sort((a, b) => (a.time < b.time ? -1 : 1)));
   }
   chart.timeScale().fitContent();
   // fit again whenever the plot's width changes: a chart drawn while its page is hidden starts at zero width,
@@ -7208,7 +7307,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-price-stages", "learn-price-volume", "learn-price-rs",
   "learn-ind-map", "learn-price-indicators", "learn-price-oscillators", "learn-ind-moving-averages", "learn-ind-bands-channels", "learn-ind-trend",
   "learn-ind-momentum-range", "learn-ind-momentum-rate", "learn-ind-volatility", "learn-ind-volume", "learn-ind-levels",
-  "learn-strat-overview", "learn-strat-swing-trading", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-vol-scaled-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
+  "learn-strat-overview", "learn-strat-swing-trading", "learn-strat-ma-trend", "learn-strat-channel-breakout", "learn-strat-stage-analysis", "learn-strat-livermore", "learn-strat-canslim-breakout", "learn-strat-vcp-sepa", "learn-strat-kullamagi", "learn-strat-momentum-burst", "learn-strat-zanger", "learn-strat-morales-kacher", "learn-strat-darvas", "learn-strat-flags", "learn-strat-pullback-ma", "learn-strat-pullback-support", "learn-strat-retracements", "learn-strat-xs-momentum", "learn-strat-vol-scaled-momentum", "learn-strat-dual-momentum", "learn-strat-sector-rotation", "learn-strat-rs-leaders", "learn-strat-earnings-gaps", "learn-strat-pead", "learn-strat-index-news-events", "learn-strat-rsi2", "learn-strat-bollinger-reversion", "learn-strat-gap-fills", "learn-strat-failed-breakouts", "learn-strat-stage4-shorts", "learn-strat-squeezes-bear-rallies", "learn-strat-orb", "learn-strat-vwap", "learn-strat-intraday-momentum", "learn-strat-spec", "learn-strat-combining", "learn-strat-regime-filters",
   "learn-fno-overview", "learn-fno-futures-basics", "learn-fno-futures-basis", "learn-fno-futures-trading", "learn-fno-options-basics", "learn-fno-pricing-greeks", "learn-fno-volatility", "learn-fno-option-chain", "learn-fno-expiry", "learn-fno-directional", "learn-fno-income", "learn-fno-vol-strategies", "learn-fno-hedging", "learn-fno-event-trades", "learn-fno-india-rules", "learn-fno-risk-sizing", "learn-system-filters",
   "learn-test-backtesting",
   "learn-candlestick-patterns", "learn-chart-patterns", "learn-bases", "learn-vcp", "learn-support-resistance", "learn-supply-demand", "learn-order-flow-smc"];
@@ -7223,7 +7322,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-ind-map": "indicators", "learn-price-indicators": "indicators", "learn-price-oscillators": "indicators", "learn-ind-moving-averages": "indicators",
   "learn-ind-bands-channels": "indicators", "learn-ind-trend": "indicators", "learn-ind-momentum-range": "indicators", "learn-ind-momentum-rate": "indicators",
   "learn-ind-volatility": "indicators", "learn-ind-volume": "indicators", "learn-ind-levels": "indicators",
-  "learn-strat-overview": "strategies", "learn-strat-swing-trading": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-livermore": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-kullamagi": "strategies", "learn-strat-zanger": "strategies", "learn-strat-morales-kacher": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-vol-scaled-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
+  "learn-strat-overview": "strategies", "learn-strat-swing-trading": "strategies", "learn-strat-ma-trend": "strategies", "learn-strat-channel-breakout": "strategies", "learn-strat-stage-analysis": "strategies", "learn-strat-livermore": "strategies", "learn-strat-canslim-breakout": "strategies", "learn-strat-vcp-sepa": "strategies", "learn-strat-kullamagi": "strategies", "learn-strat-momentum-burst": "strategies", "learn-strat-zanger": "strategies", "learn-strat-morales-kacher": "strategies", "learn-strat-darvas": "strategies", "learn-strat-flags": "strategies", "learn-strat-pullback-ma": "strategies", "learn-strat-pullback-support": "strategies", "learn-strat-retracements": "strategies", "learn-strat-xs-momentum": "strategies", "learn-strat-vol-scaled-momentum": "strategies", "learn-strat-dual-momentum": "strategies", "learn-strat-sector-rotation": "strategies", "learn-strat-rs-leaders": "strategies", "learn-strat-earnings-gaps": "strategies", "learn-strat-pead": "strategies", "learn-strat-index-news-events": "strategies", "learn-strat-rsi2": "strategies", "learn-strat-bollinger-reversion": "strategies", "learn-strat-gap-fills": "strategies", "learn-strat-failed-breakouts": "strategies", "learn-strat-stage4-shorts": "strategies", "learn-strat-squeezes-bear-rallies": "strategies", "learn-strat-orb": "strategies", "learn-strat-vwap": "strategies", "learn-strat-intraday-momentum": "strategies", "learn-strat-spec": "strategies", "learn-strat-combining": "strategies", "learn-strat-regime-filters": "strategies",
   "learn-fno-overview": "fno", "learn-fno-futures-basics": "fno", "learn-fno-futures-basis": "fno", "learn-fno-futures-trading": "fno", "learn-fno-options-basics": "fno", "learn-fno-pricing-greeks": "fno", "learn-fno-volatility": "fno", "learn-fno-option-chain": "fno", "learn-fno-expiry": "fno", "learn-fno-directional": "fno", "learn-fno-income": "fno", "learn-fno-vol-strategies": "fno", "learn-fno-hedging": "fno", "learn-fno-event-trades": "fno", "learn-fno-india-rules": "fno", "learn-fno-risk-sizing": "fno", "learn-system-filters": "system",
   "learn-test-backtesting": "system",
    "learn-candlestick-patterns": "candles", "learn-chart-patterns": "charts", "learn-bases": "charts",
@@ -7244,6 +7343,7 @@ const GUIDE_GROUP = {
   "learn-strat-canslim-breakout": "Breakouts from a base",
   "learn-strat-vcp-sepa": "Breakouts from a base",
   "learn-strat-kullamagi": "Breakouts from a base",
+  "learn-strat-momentum-burst": "Breakouts from a base",
   "learn-strat-zanger": "Breakouts from a base",
   "learn-strat-morales-kacher": "Breakouts from a base",
   "learn-strat-darvas": "Breakouts from a base",
@@ -7298,6 +7398,7 @@ const GUIDE_BLURB = {
   "learn-strat-livermore": "Livermore's pivotal points: buying new high ground, pyramiding into a winner, sister stocks, and sitting tight.",
   "learn-strat-vcp-sepa": "Minervini's SEPA: the Trend Template, the volatility contraction, the pivot, and how he manages a trade.",
   "learn-strat-kullamagi": "Kullamägi's momentum breakouts: the fastest stocks, a tight rest, an opening-range entry, and selling in stages.",
+  "learn-strat-momentum-burst": "Bonde's momentum bursts: a quiet stock in an uptrend, one 4% up day on rising volume, and a hold of a few days.",
   "learn-strat-zanger": "Zanger's chart breakouts: trendlines and flat tops in liquid leaders, heavy volume, quick exits and selling the climax.",
   "learn-strat-morales-kacher": "Morales and Kacher: pocket pivots inside a base, buyable gap-ups on news, and the 7-week rule for selling.",
   "learn-strat-darvas": "Darvas boxes: buying a breakout from a tight range at new highs and trailing the stop box by box.",
