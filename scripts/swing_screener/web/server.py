@@ -3288,6 +3288,24 @@ def notes_attachment_get(nid: int, filename: str):
     return Response(a["data"], media_type=a["content_type"], headers={"Cache-Control": "max-age=31536000, immutable"})
 
 
+# ------------------------------------------------------------- sector research (dated versions)
+
+from .. import sector_research as secres_mod
+
+
+@app.get("/api/sector-research")
+def sector_research_list():
+    return {"items": secres_mod.list_all(), "review_after_days": secres_mod.REVIEW_AFTER_DAYS}
+
+
+@app.get("/api/sector-research/{slug}")
+def sector_research_get(slug: str, version: int | None = None):
+    r = secres_mod.get(slug, version)
+    if not r:
+        raise HTTPException(404, "sector research not found")
+    return r
+
+
 # ------------------------------------------------------------- TODO list
 
 TODO_PATH = paths.REPO_ROOT / "TODO.md"

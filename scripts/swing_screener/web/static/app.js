@@ -7073,6 +7073,7 @@ const SECTIONS = [
   // Library is reading material; the data-maintenance tools (TODO, sub-industry labels) live under System
   { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"],
     ["research", "Research", "The research notes: findings, studies, specifications and the sector playbook"],
+    ["sector-research", "Sector research", "Long-term sector analyses, dated so you can revisit and extend them"],
     ["learn", "Learn", "Learning material: candlesticks, chart patterns, bases and the VCP"]] },
   { key: "system", label: "System", pages: [["status", "Status", "Is the data current? And the job queue"], ["runs", "Runs", "Every run, its steps and log"],
     ["schedules", "Schedules", "When each pipeline runs — and run one now"], ["reports", "Reports archive", "Every backtest and screening report the scripts wrote"],
@@ -7576,10 +7577,17 @@ async function researchPage(alive, slug) {
 async function learnGuide(alive, guide) {
   const r = await api(`/api/reports/${guide.id}`).catch((e) => ({ error: e.message }));
   if (!alive()) return;
-  const body = $view.querySelector("#lpg-body"), toc = $view.querySelector(".lp-toc");
+  const body = $view.querySelector("#lpg-body");
   if (r.error) { body.innerHTML = `<div class="empty"><b>Guide not found</b><div class="muted">Reload the documents from the Reports archive (Load reports).</div></div>`; return; }
-  const art = renderResearchMd(body, r.markdown);
+  const art = showGuideMd(r.markdown);
   if (String(guide.run).startsWith("learn-")) linkPatternMentions(art);
+  window.scrollTo(0, 0);
+}
+
+/** Render Markdown into the guide layout's #lpg-body, with an "On this page" list of its sections in .lp-toc. */
+function showGuideMd(markdown) {
+  const body = $view.querySelector("#lpg-body"), toc = $view.querySelector(".lp-toc");
+  const art = renderResearchMd(body, markdown);
   // anchors for every section, so the contents can jump to them (and a section can be linked)
   const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const heads = [...art.querySelectorAll("h2, h3")];
@@ -7601,7 +7609,49 @@ async function learnGuide(alive, guide) {
     }, { rootMargin: "-60px 0px -70% 0px" });
     heads.forEach((h) => obs.observe(h));
   }
-  window.scrollTo(0, 0);
+  return art;
+}
+
+const fmtDay = (iso) => new Date(iso + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const ageText = (days) => (days < 1 ? "today" : days < 45 ? `${days} d ago` : days < 540 ? `${Math.round(days / 30.4)} mo ago` : `${(days / 365).toFixed(1)} y ago`);
+
+/** Library → Sector research: the long-form sector analyses, each kept as dated versions (sector_research.py).
+ *  The sidebar shows every analysis with the age of its latest version and flags the ones due for review; the
+ *  page shows one version — the latest, or any earlier one picked by date — so you can reread what the research
+ *  said then and extend it from its live doc. */
+async function sectorResearchPage(alive, slug, vid) {
+  $view.innerHTML = LOADING;
+  const list = await api("/api/sector-research").catch(() => null);
+  if (!alive()) return;
+  const items = list?.items || [];
+  if (!items.length) {
+    $view.innerHTML = `<div class="empty"><b>No sector research stored yet</b><div class="muted">Store a Markdown version with <code>python -m swing_screener.sector_research --import</code>.</div></div>`;
+    return;
+  }
+  const cur = items.find((x) => x.slug === slug) || items[0];
+  const d = await api(`/api/sector-research/${encodeURIComponent(cur.slug)}${vid ? `?version=${encodeURIComponent(vid)}` : ""}`).catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  if (d.error) { $view.innerHTML = `<div class="empty"><b>Version not found</b><div class="muted"><a href="#/sector-research/${esc(cur.slug)}">Open the latest version</a></div></div>`; return; }
+  const v = d.version, due = items.filter((x) => x.review_due).length;
+  document.title = `${d.sector} · Sector research · Trading`;
+  const dueTag = (x) => (x.review_due ? `<span class="tag neg" title="Older than ${list.review_after_days} days — reread and update it">review due</span>` : "");
+  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">
+      <div class="nav-h">Sector research (${items.length})${due ? ` · <span class="neg">${due} due</span>` : ""}</div>
+      ${items.map((x) => `<a class="nav-item ${x.slug === d.slug ? "active" : ""}" href="#/sector-research/${esc(x.slug)}" title="${esc(x.title)}">
+        <span><b class="sn">${esc(x.sector)}</b> ${dueTag(x)}<span class="sr-age">as of ${fmtDay(x.as_of)} · ${ageText(x.age_days)}${x.versions.length > 1 ? ` · ${x.versions.length} versions` : ""}</span></span></a>`).join("")}
+      <div class="nav-empty muted small">Each analysis is stored again every time it is updated, so earlier versions stay readable. One is due for review ${list.review_after_days} days after its data date.</div>
+    </aside><section class="scr-main lp-main">
+      <div class="sr-head">
+        <label class="small muted">Version <select id="srver">${d.versions.map((x) => `<option value="${x.id}" ${x.id === v.id ? "selected" : ""}>${fmtDay(x.as_of)}${x.note ? " — " + esc(x.note) : ""}</option>`).join("")}</select></label>
+        <span class="muted small">data as of <b>${fmtDay(v.as_of)}</b> (${ageText(v.age_days)}) · ${v.latest ? (v.review_due ? `<span class="neg">review due since ${fmtDay(v.review_by)}</span>` : `review by ${fmtDay(v.review_by)}`) : `<span class="neg">an earlier version</span> — <a href="#/sector-research/${esc(d.slug)}">open the latest</a>`}</span>
+        ${d.markets.length ? `<span class="muted small">· ${d.markets.map((m) => esc(m.toUpperCase())).join(", ")}</span>` : ""}
+        <span class="spacer"></span>
+        ${v.source_url ? `<a class="btn" href="${esc(v.source_url)}" target="_blank" rel="noopener" title="The shared doc this version was exported from — edit or extend it there, then store a new version">Open the live doc ↗</a>` : ""}
+      </div>
+      <div class="lp-guide"><div id="lpg-body"></div><nav class="lp-toc" hidden></nav></div></section></div>`;
+  $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
+  $view.querySelector("#srver").onchange = (e) => go(`#/sector-research/${encodeURIComponent(d.slug)}/${e.target.value}`);
+  showGuideMd(v.body);
 }
 
 
@@ -7734,6 +7784,7 @@ async function route() {
     else if (page === "reports") await (parts[1] ? reportPage(alive, parts[1], parts[2]) : reportsPage(alive));
     else if (page === "playbook") go("#/research/sector-analysis-playbook");   // its own tab, before Research listed every note
     else if (page === "research") await researchPage(alive, parts[1]);
+    else if (page === "sector-research") await sectorResearchPage(alive, parts[1], parts[2]);
     else if (page === "learn") await learnPage(alive, parts[1], parts[2]);
     else if (page === "status") await statusPage(alive, parts[1]);
     else if (page === "schedules") await schedulesPage(alive);

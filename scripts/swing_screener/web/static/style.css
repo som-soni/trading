@@ -1348,6 +1348,9 @@ table.fin.peers tbody th a { color: var(--link); }
    instead of the lines getting ever longer */
 .lp-guide { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; align-items: start; }
 .lp-guide .md { max-width: none; }
+/* Sector research: version picker, data date and review state above the analysis */
+.lp-nav .sr-age { display: block; font-size: 12px; color: var(--muted); }
+.sr-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 /* guide tables are prose in cells: let them wrap to the column instead of scrolling sideways */
 .lp-guide .md td { white-space: normal; min-width: 90px; vertical-align: top; }
 /* a ```series chart lays itself out as a table: keep the prose-table rules above off it, or a 90px floor

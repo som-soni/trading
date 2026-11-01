@@ -395,8 +395,15 @@ body, tags and linked stocks; tags show as filter buttons. The Chart's Symbol de
 linked to the stock. **Copy as Markdown** exports one note;
 `python -m swing_screener.notes --export <dir>` exports all.
 
-**Research** lists the research notes and these app guides. **Learn** holds the learning guides, the
-pattern catalogue and the glossary.
+**Research** lists the research notes and these app guides. **Sector research** holds the long-term
+sector analyses (Defence, Semiconductors, Banks & financials…), each kept as **dated versions** in
+Postgres (`sector_research.py`): updating one stores the whole document again under its data date, so
+earlier versions stay readable from the **Version** picker. The sidebar shows each analysis's data
+date and age, and marks it **review due** once it is older than `REVIEW_AFTER_DAYS` (90). **Open the
+live doc** goes to the shared doc it was exported from, the place to extend it; then store the new
+version with `python -m swing_screener.sector_research --import <file.md> --slug <key> --sector <name>
+--as-of <YYYY-MM-DD> --source <doc link> --note "<what changed>"` (`--list` shows every version).
+**Learn** holds the learning guides, the pattern catalogue and the glossary.
 
 ## 9. System
 
