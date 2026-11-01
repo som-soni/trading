@@ -4816,7 +4816,7 @@ function perfGlance(d, key) {
   //
   // "Best" is one row, ranked within one window: runs over different years are never ranked against
   // each other, because that would crown whichever had the kinder market. In-sample and pre-stage
-  // runs share the pool; the stage chip on the row still says which kind it is.
+  // runs share the pool, and the best row carries no Legacy chip -- only its window, when it differs.
   // A tag names which row is which: "latest" (the current rules -- "—" where they have no run yet)
   // and "best". Verify runs
   // never rank: the best of several hold-out results is selection on the hold-out, which is the one
@@ -4830,11 +4830,14 @@ function perfGlance(d, key) {
     return `<td><span title="${esc(tip || b.spec_id || "")}">${verOf(b) ? `v${esc(verOf(b))}` : "—"}</span>
       ${tag ? `<span class="tag ${tag.startsWith("best") ? "pos" : "neutral"} small">${tag}</span>` : ""}
       ${b.variant && (b.overrides || []).length ? `<div class="muted small" title="an experiment: these settings differ from the strategy as configured">+ ${esc(b.overrides.join(" "))}</div>` : ""}</td>`; };
+  // The best row carries no Legacy chip: it answers "which rule set is best", and a pre-stage run
+  // competes for that on the same terms as an in-sample one. Its window still shows when it differs.
+  const chipFor = (b, tag) => (tag === "best" && b.stage === "legacy" ? "" : stageChip(b));
   const row = (b, m, first, tag, showWin) => { const s = b.summary, mi = mktInfo(m);
     return `<tr data-href="#/reports/${b.id}" title="Open this run">
       <td>${first ? `${mi.flag || ""} ${esc(mi.name || m.toUpperCase())}` : ""}</td>
       ${label(b, tag)}
-      <td>${stageChip(b)}${showWin ? `<div class="muted small" title="a different window from the latest row above: not directly comparable">${esc(b.window_start || "?")} → ${esc(b.window_end || "latest")}</div>` : ""}</td>
+      <td>${chipFor(b, tag)}${showWin ? `<div class="muted small" title="a different window from the latest row above: not directly comparable">${esc(b.window_start || "?")} → ${esc(b.window_end || "latest")}</div>` : ""}</td>
       <td class="num">${esc(s.cagr || "")}</td>
       <td class="num ${sign(s.excess_cagr)}"><b>${esc(s.excess_cagr || "")}</b>${stale(b.spec_id)}</td>
       <td class="num">${esc(s.max_drawdown || "")}</td>
@@ -4898,10 +4901,9 @@ function perfGlance(d, key) {
     const ref = ins || leg;
     const { best, n } = bestOf(pool, new Set(["optimise", "legacy"]), ref ? winOf(ref) : null);
     if (best && ref && best.id === ref.id) {
-      if (n > 1) { anyBest = true; out.push(gap(m, false, stageChip(best), `the latest version is also the best of ${n} configurations run in this window`)); }
+      if (n > 1) { anyBest = true; out.push(gap(m, false, chipFor(best, "best"), `the latest version is also the best of ${n} configurations run in this window`)); }
     } else if (best) {
       anyBest = true;
-      if (best.stage === "legacy") anyLegacy = true;
       out.push(row(best, m, false, "best", !ref || winOf(ref) !== winOf(best)));
     }
     return out.join("");
