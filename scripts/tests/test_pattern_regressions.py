@@ -44,6 +44,13 @@ CASES = [
 ]
 
 
+# (market, symbol, setup, date, (low, high) the measured height H must fall in, why)
+HEIGHTS = [
+    ("india", "AEROFLEX.NS", "SYMM", "2026-10-01", (165.0, 175.0),
+     "v1.19 HEIGHT_FROM_PRICES: 584.20 - 413.60 from the prices, not 243 from a line extrapolated to S"),
+]
+
+
 def main() -> None:
     failures, ran = [], 0
     frames: dict = {}
@@ -67,6 +74,19 @@ def main() -> None:
               + ("" if ok else f"  [{detail}]"))
         if not ok:
             failures.append(f"{sym} {code} {date}")
+    for market, sym, code, date, (lo, hi), why in HEIGHTS:
+        raw = cache.load_cached(market, sym)
+        if raw is None or raw.empty:
+            print(f"skip  {sym} {code} {date} — no stored prices")
+            continue
+        ran += 1
+        r = m.BULLISH[code][1](ind.enrich_daily(raw).loc[:date])
+        h = r["levels"].height if r.get("levels") else None
+        ok = h is not None and lo <= h <= hi
+        print(f"{'ok  ' if ok else 'FAIL'}  {sym} {code} {date} height {h if h is None else round(h, 2)} "
+              f"in [{lo}, {hi}] — {why}")
+        if not ok:
+            failures.append(f"{sym} {code} {date} height")
     if failures:
         print(f"\n{len(failures)} regression(s): {', '.join(failures)}")
         sys.exit(1)

@@ -91,6 +91,7 @@ WEDGE_MIN_CONVERGE = 1.5  # WG-04, beyond the spec: a wedge's steep line falls/r
 CONTAIN_BREAKOUT_SIDE = 1  # TL-04, beyond the spec: no earlier close through the breakout-side line (1 = on)
 BOUND_LINES = 1           # TL-06, beyond the spec: boundary lines bound the closes, not fitted through them (1 = on)
 BOUNDARY_LIFE = 1         # beyond the spec: a boundary pattern lives out §3 from its breakout bar (1 = on)
+HEIGHT_FROM_PRICES = 1    # beyond the spec: a triangle's/wedge's height is its highest high - lowest low (1 = on)
 TR_MIN_TOUCHES = 4        # TR-02: total touches a triangle, wedge or rectangle needs (2 per side still holds)
 def _build_params() -> ps.PatternParams:
     return ps.PatternParams(
@@ -103,7 +104,7 @@ def _build_params() -> ps.PatternParams:
     cup_under_rim=bool(CUP_UNDER_RIM), cup_nh_no_handle=bool(CUPNH_NO_HANDLE), hs_origin=bool(HS_ORIGIN), hs_max_neck_change=HS_MAX_NECK_CHANGE,
     early_breakout=bool(EARLY_BREAKOUT), oneil_first_low=bool(W_FIRST_LOW), wg_min_converge=WEDGE_MIN_CONVERGE,
     contain_breakout_side=bool(CONTAIN_BREAKOUT_SIDE), bound_lines=bool(BOUND_LINES),
-    boundary_life=bool(BOUNDARY_LIFE), tr_min_touches=TR_MIN_TOUCHES,
+    boundary_life=bool(BOUNDARY_LIFE), height_from_prices=bool(HEIGHT_FROM_PRICES), tr_min_touches=TR_MIN_TOUCHES,
 )
 
 
@@ -111,7 +112,7 @@ _PARAM_CONSTANTS = ("K_MINOR", "K_MAJOR", "MIN_SWING_PCT", "ATR_MULT", "TOL_PCT"
                     "BO_VOL", "MAX_WAIT", "FAIL_DAYS", "HORIZON", "W_UNDERCUT_MAX", "W_MIN_DEPTH", "W_MAX_DEPTH",
                     "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM", "CUPNH_NO_HANDLE",
                     "HS_ORIGIN", "HS_MAX_NECK_CHANGE", "EARLY_BREAKOUT", "WEDGE_MIN_CONVERGE", "W_FIRST_LOW",
-                    "CONTAIN_BREAKOUT_SIDE", "BOUND_LINES", "BOUNDARY_LIFE", "TR_MIN_TOUCHES")
+                    "CONTAIN_BREAKOUT_SIDE", "BOUND_LINES", "BOUNDARY_LIFE", "HEIGHT_FROM_PRICES", "TR_MIN_TOUCHES")
 PARAMS = _build_params()
 _PARAMS_KEY: tuple = tuple(globals()[k] for k in _PARAM_CONSTANTS)
 
@@ -238,8 +239,19 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.18"
+    version = "1.19"
     changelog = (
+        ("1.19", "2026-11-03",
+         "Triangle and wedge height from the prices (HEIGHT_FROM_PRICES, beyond the spec): H is the "
+         "highest high minus the lowest low inside the pattern, Bulkowski's measure, instead of "
+         "upper(S) - lower(S). When the pattern starts at a low and its upper line's first touch comes "
+         "later, upper(S) is the line extrapolated back over bars it never bounded: AEROFLEX.NS's 2026 "
+         "symmetrical triangle began at the 413.60 low of 2026-08-10, its first high 584.20 on 2026-09-08, "
+         "and upper(S) read 657 -- 73 above any price in the pattern -- for H = 243 and a 772 target; from "
+         "the prices H = 171 and the target ~699. H also feeds TR-07's minimum height and MIN_R's "
+         "projected reward. Also: TR-05 no longer voids the bar that breaks out at 80% of the way to the "
+         "apex (the spec's X is reaching 80% WITHOUT a breakout), and each line is drawn from its own "
+         "first touch rather than from S."),
         ("1.18", "2026-11-01",
          "Two research switches from Peter Brandt's method, both OFF, so a default run trades exactly as "
          "1.17: COMPRESSION_ADX_MAX (a new gate, G6: the 14-day ADX on the session before the breakout "
@@ -850,7 +862,8 @@ class ChartPatternSpecStrategy(Strategy):
                  "shallower one; nearer parallel is a channel.",
         "TR-06": "Triangle/wedge — volume declines: a straight line fitted to log(volume) from S through "
                  "today slopes down.",
-        "TR-07": "Triangle/wedge — big enough: the height at S, upper − lower, is at least "
+        "TR-07": "Triangle/wedge — big enough: the height H (the highest high − the lowest low from S to "
+                 "the breakout, or upper − lower at S with HEIGHT_FROM_PRICES = 0) is at least "
                  "{PARAMS.tr_min_height}% of today's close.",
         # ---- flat base (FBASE)
         "FB-02": "Flat base window: the longest run of N bars ending today, N from {PARAMS.fb_days[0]} to "
@@ -971,7 +984,8 @@ class ChartPatternSpecStrategy(Strategy):
               "- **Checks:** TR-01, TL-06, TL-05, TL-03, TL-04, TR-02 to TR-07 above.\n"
               "- **Trigger T:** the upper line today.\n"
               "- **Invalidation X:** the lower line today.\n"
-              "- **Height H:** upper − lower at the start S.",
+              "- **Height H:** the highest high − the lowest low inside the pattern (HEIGHT_FROM_PRICES "
+              "= {HEIGHT_FROM_PRICES}; off, upper − lower at the start S).",
         SYMM: "Symmetrical triangle: a falling upper and a rising lower line converging at similar "
               "rates, bought on a close above the upper line.\n\n"
               "- **Checks and levels:** as ATRI.\n"
@@ -1175,6 +1189,10 @@ class ChartPatternSpecStrategy(Strategy):
          "{BO_BUFFER}%), preferring the pair the most swings touch -- a boundary, not a regression "
          "through the middle of the swings. With no such pair, the least-squares fit stands and "
          "TL-03's containment judges it."),
+        ("Triangle height", "HEIGHT_FROM_PRICES",
+         "Beyond the spec ({HEIGHT_FROM_PRICES} = on): a triangle's or wedge's height H is its highest "
+         "high minus its lowest low (Bulkowski), not upper(S) - lower(S), which extrapolates a line that "
+         "starts later back over bars it never touched."),
         ("Boundary pattern life", "BOUNDARY_LIFE",
          "Beyond the spec ({BOUNDARY_LIFE} = on): a triangle, wedge or rectangle lives out §3 from its "
          "breakout bar like any other pattern, instead of existing only while today's close breaks its "

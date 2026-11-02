@@ -34,7 +34,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "8dc2ad6d",
+    "fingerprint": "4c8e91c3",
     "params": {
       "ATR_MULT": 1.5,
       "BOUNDARY_LIFE": 1,
@@ -52,6 +52,7 @@
       "EARLY_BREAKOUT": 1,
       "EARNINGS_DAYS": 10,
       "FAIL_DAYS": 10,
+      "HEIGHT_FROM_PRICES": 1,
       "HORIZON": 60,
       "HS_MAX_NECK_CHANGE": 5.0,
       "HS_ORIGIN": 1,
@@ -166,7 +167,7 @@
         "W3"
       ]
     },
-    "version": "1.18"
+    "version": "1.19"
   },
   "delivery_breakout": {
     "family": "delivery_breakout",

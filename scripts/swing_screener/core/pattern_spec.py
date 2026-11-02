@@ -217,6 +217,13 @@ class PatternParams:
     # touch (before it, TL-04 judges), on BO-02's volume when bullish; BO-05's close back through the
     # frozen line within fail_days marks it FAILED. False reproduces the spec.
     boundary_life: bool = False
+    # Beyond the spec: a triangle's or wedge's height H is the highest high minus the lowest low inside
+    # the pattern (Bulkowski's measure), not upper(S) - lower(S). With S a low and the upper line's first
+    # touch a month later, upper(S) is the falling line extrapolated back over bars it never touched:
+    # AEROFLEX.NS's 2026 symmetrical triangle (S = the 413.60 low of 2026-08-10, first high 584.20 on
+    # 2026-09-08) measured upper(S) = 657 -- 73 above any price in the pattern -- for a height of 243 and
+    # a 772 target, against 171 and ~699 from the prices themselves. False reproduces the spec.
+    height_from_prices: bool = False
     # Beyond the spec (TL-04): TL-03's containment allows a close up to `tol` (3%+) beyond a line, but
     # on the BREAKOUT side a close beyond the line by more than bo_buffer is a breakout (BO-01). If the
     # line was touched again after such a close, price broke out and came back: the line was never the
@@ -400,8 +407,12 @@ def _mark_touches(res: dict, upper: Line, lower: Line, pts: list[Swing], lo: int
     for name, line, kind in (("upper", upper, "H"), ("lower", lower, "L")):
         seg = (res.get("lines") or {}).get(name)
         if seg is not None:
-            seg["touches"] = [{"date": idx[q.pos], "price": q.price} for q in touching(
-                line, [q for q in pts if q.kind == kind and lo <= q.pos <= hi], t)]
+            hits = touching(line, [q for q in pts if q.kind == kind and lo <= q.pos <= hi], t)
+            seg["touches"] = [{"date": idx[q.pos], "price": q.price} for q in hits]
+            # a line is drawn from its own first touch: before it, the line is an extrapolation over
+            # bars it never bounded (a falling upper line hangs far above the low the pattern began at)
+            if hits and hits[0].pos > lo:
+                seg["from"], seg["p0"] = idx[hits[0].pos], line.at(hits[0].pos)
 
 
 def contained(
@@ -1579,6 +1590,10 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
         return out
 
     height0 = upper.at(s_pos) - lower.at(s_pos)
+    if p.height_from_prices and not rect:
+        hi_, lo_ = d["high"].to_numpy(float), d["low"].to_numpy(float)
+        height0 = float(hi_[s_pos: eff_t + 1].max() - lo_[s_pos: eff_t + 1].min())
+        out["metrics"]["height_at_S"] = round(float(upper.at(s_pos) - lower.at(s_pos)), 4)
     out["metrics"]["height_pct"] = height0 / close[t_pos] * 100 if close[t_pos] else float("nan")
 
     if rect:
@@ -1610,7 +1625,13 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
     # TR-05: how far through the triangle price has travelled (to its breakout, if it broke out)
     progress = (eff_t - s_pos) / (x - s_pos) if x > s_pos else float("nan")
     out["metrics"]["apex_progress"] = progress
-    if not (progress == progress) or progress > p.tr_apex_zone[1]:
+    # X is "80% of the way WITHOUT a breakout": a close through the trigger on that very bar is
+    # the breakout, judged by the state below, not a void
+    up_line = lower if kind in (RISING_WEDGE, DESCENDING) else upper
+    breaking = bo_pos is None and (
+        close[t_pos] < up_line.at(t_pos) * (1 - p.bo_buffer) if kind in (RISING_WEDGE, DESCENDING)
+        else close[t_pos] > up_line.at(t_pos) * (1 + p.bo_buffer))
+    if not (progress == progress) or (progress > p.tr_apex_zone[1] and not breaking):
         out["fail"] = "TR-05"          # X: 80% of the way with no breakout
         return out
     # ...and the zone's near end: the spec's breakout happens from 50% of the way. Before that the
