@@ -44,6 +44,7 @@ import pandas as pd
 
 from ..marketdata import corporate_actions
 from ..config.base import MarketConfig
+from ..core import indicators as ind
 from ..core import pattern_spec as ps
 from ..core.context import StockContext
 from .base import (
@@ -139,6 +140,10 @@ MIN_STOP_PCT = 1.5       # ...nor tighter than this
 MAX_RISK_PCT = 8.0       # beyond this the plan is WATCH, not a trade
 MIN_R = 2.0              # BO-06's measured move must project at least this
 OVERBOUGHT_RSI = 80.0    # XS3
+# Peter Brandt's two filters (research/video-strategy-notes.md §1), research switches, both OFF (1.18):
+COMPRESSION_ADX_MAX = 0.0  # G6: >0 = the 14-day ADX on the session before the breakout must be under this
+BUFFER_ATR = 0.0           # >0 = the buy-stop sits at T + this x the BUFFER_ATR_BARS-day ATR, not T x (1 + BO_BUFFER%)
+BUFFER_ATR_BARS = 30       # ...the ATR's length
 
 # setup codes: one per bullish pattern the spec defines
 CUP, CUPNH, DBOT, TBOT = "CUP", "CUPNH", "DBOT", "TBOT"
@@ -233,10 +238,16 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.17"
-    # 1.17 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
-    signal_version = "1.16"
+    version = "1.18"
     changelog = (
+        ("1.18", "2026-11-01",
+         "Two research switches from Peter Brandt's method, both OFF, so a default run trades exactly as "
+         "1.17: COMPRESSION_ADX_MAX (a new gate, G6: the 14-day ADX on the session before the breakout "
+         "under the threshold -- Brandt's sign that the pattern compressed; he uses 12) and BUFFER_ATR "
+         "(the buy-stop at T + that many {BUFFER_ATR_BARS}-day ATRs instead of {BO_BUFFER}% over T -- "
+         "Brandt's 0.5 ATR, which keeps a quiet stock's buffer small and a wild one's wide). G6 is "
+         "evaluated last so G1-G5 keep their codes. signal_version is no longer pinned: evaluate() gained "
+         "G6, so cached rows are rescanned."),
         ("1.17", "2026-10-31",
          "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
          "fill now sees only what had happened by its own moment in the session. An exit frees its "
@@ -432,7 +443,7 @@ class ChartPatternSpecStrategy(Strategy):
     # 52-week high above a rising 200-day mostly excludes them.
     screen_key = "near_highs"
 
-    gate_codes = ("G1", "G2", "G3", "G4", "G5")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6")
     watch_codes = ("W1", "W2", "W3")
     setup_codes = tuple(BULLISH)
     needs_ctx_extras = True
@@ -488,7 +499,7 @@ class ChartPatternSpecStrategy(Strategy):
         "Step 3, choose one pattern (Rules, G1): of the bullish patterns that are complete or broke out on "
         "this bar, the first in a fixed priority order is the trade's setup. Its trigger, invalidation "
         "level and height drive everything after.",
-        "Step 4, gates and flags (Rules): five hard gates (G1–G5) and three watch flags (W1–W3) decide the "
+        "Step 4, gates and flags (Rules): six hard gates (G1–G6, G6 off by default) and three watch flags (W1–W3) decide the "
         "label, from TRADE - HIGH CONFIDENCE down to AVOID (Decisions).",
         "Step 5, the trade (Entry, Stop, Target, Exit): a buy-stop at the breakout close, a stop at the "
         "pattern's invalidation level held within an ATR band, and a sell order at the measured move.",
@@ -642,6 +653,14 @@ class ChartPatternSpecStrategy(Strategy):
               "- **More than {MAX_CHASE_PCT}% above:** the breakout happened without you.\n"
               "- **More than {MAX_BELOW_TRIGGER_PCT}% below:** not actionable — e.g. a double bottom whose "
               "middle peak sits far overhead.",
+        "G6": "The 14-day ADX on the session before the breakout is under {COMPRESSION_ADX_MAX} -- a "
+              "research switch from Peter Brandt, OFF while COMPRESSION_ADX_MAX is 0 (it is "
+              "{COMPRESSION_ADX_MAX}). While off, G6 always passes.\n\n"
+              "- **Session:** the one before the breakout bar; for a complete pattern not yet broken out, "
+              "the signal session.\n"
+              "- **Why:** a low ADX means no trend inside the pattern -- the range has compressed, which "
+              "Brandt reads as the pattern being real rather than a pause in a move. He uses 12.\n"
+              "- **Missing ADX:** fails while the switch is on.",
     }
     watch_docs = {
         "W1": "A topping pattern on the chart is complete but has not broken down.\n\n"
@@ -992,6 +1011,9 @@ class ChartPatternSpecStrategy(Strategy):
         "A buy-stop at the breakout close.\n\n"
         "- **Price:** max(T × (1 + {BO_BUFFER}%), the signal close), rounded up to the tick. On a breakout "
         "bar the close is already above T × (1 + {BO_BUFFER}%), so it is the close.\n"
+        "- **Brandt's buffer (research switch, BUFFER_ATR = {BUFFER_ATR}):** when above 0, T + BUFFER_ATR "
+        "× the {BUFFER_ATR_BARS}-day ATR (Wilder) replaces T × (1 + {BO_BUFFER}%), so a breakout bar that "
+        "closed under that level waits for it.\n"
         "- **Fills:** the first later session whose high reaches it, at that price — or at the open if the "
         "stock opens above it.\n"
         "- **Waits:** up to 10 business days, the backtest's limit for a resting order.\n"
@@ -1066,7 +1088,7 @@ class ChartPatternSpecStrategy(Strategy):
         "Market regime: on the live screen a risk-off market downgrades every decision one tier. A backtest "
         "applies no downgrade; `--market-filter` instead drops new signals and cancels resting orders while "
         "the market filter is risk-off.",
-        "Signal-bar tests: a backtest buys only TRADE - HIGH CONFIDENCE, so any failed gate (G1–G5) or "
+        "Signal-bar tests: a backtest buys only TRADE - HIGH CONFIDENCE, so any failed gate (G1–G6) or "
         "raised watch flag (W1–W3) on the breakout bar means no trade.",
     )
     decision_docs = {
@@ -1113,6 +1135,10 @@ class ChartPatternSpecStrategy(Strategy):
         ("Breakout buffer", "BO_BUFFER",
          "BO-01: a close must clear the trigger by this percentage "
          "({BO_BUFFER}%)."),
+        ("ADX compression", "COMPRESSION_ADX_MAX",
+         "G6, research switch (Brandt): the 14-day ADX before the breakout must be under this; 0 = off."),
+        ("ATR breakout buffer", "BUFFER_ATR",
+         "Research switch (Brandt): the buy-stop at T + this x the {BUFFER_ATR_BARS}-day ATR; 0 = off."),
         ("Breakout volume", "BO_VOL",
          "BO-02: and do it on {BO_VOL}x the 50-bar average volume before the pattern."),
         ("Breakout expiry", "MAX_WAIT",
@@ -1318,6 +1344,18 @@ class ChartPatternSpecStrategy(Strategy):
         else:
             result.ok("G5")
 
+        # G6: compression before the breakout (Brandt; off unless COMPRESSION_ADX_MAX)
+        if not COMPRESSION_ADX_MAX:
+            result.ok("G6", "off")
+        else:
+            age = ctx.extras.get("bars_since_breakout")
+            i = -(int(age) + 2) if age is not None else -1
+            adx = d["adx14"].iloc[i] if len(d) >= abs(i) else float("nan")
+            if pd.notna(adx) and adx < COMPRESSION_ADX_MAX:
+                result.ok("G6", f"ADX14 {adx:.1f} before the breakout")
+            else:
+                result.fail("G6", f"ADX14 {adx:.1f} before the breakout (not under {COMPRESSION_ADX_MAX:g})")
+
         result.recompute_first_fail()
         self._watch_flags(ctx, result, top_name, top_res, atr14)
         return result
@@ -1405,6 +1443,10 @@ class ChartPatternSpecStrategy(Strategy):
         trigger, invalid, height = float(trigger), float(invalid), float(height or 0.0)
 
         level = trigger * (1 + BO_BUFFER / 100)
+        if BUFFER_ATR:
+            atr_n = ind.atr(ctx.daily.iloc[-(BUFFER_ATR_BARS * 4):], BUFFER_ATR_BARS).iloc[-1]
+            if pd.notna(atr_n) and atr_n:
+                level = trigger + BUFFER_ATR * float(atr_n)
         entry = round_tick(max(level, ctx.close), cfg.tick_size, "up")
         structural = max(invalid, entry - MAX_STOP_ATR * atr14)
         floor = min(entry - MIN_STOP_ATR * atr14, entry * (1 - MIN_STOP_PCT / 100))
@@ -1516,7 +1558,8 @@ class ChartPatternSpecStrategy(Strategy):
     setup_names = PATTERN_NAMES
     # short names for the chart's checklist; the rules themselves are gate_docs
     gate_titles = {"G1": "Pattern complete or breaking out", "G2": "No confirmed top on the chart",
-                   "G3": "No earnings within {EARNINGS_DAYS} days", "G4": "Volatility sane", "G5": "Close near the trigger"}
+                   "G3": "No earnings within {EARNINGS_DAYS} days", "G4": "Volatility sane", "G5": "Close near the trigger",
+                   "G6": "Compressed before the breakout"}
 
     def cached_signal_ok(self, extras: dict) -> bool:
         """A pattern row saved before its geometry (and each line's touches) was recorded is

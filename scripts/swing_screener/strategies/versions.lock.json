@@ -34,7 +34,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "cd2096ea",
+    "fingerprint": "8dc2ad6d",
     "params": {
       "ATR_MULT": 1.5,
       "BOUNDARY_LIFE": 1,
@@ -42,6 +42,9 @@
       "BO_BUFFER": 0.5,
       "BO_VOL": 1.4,
       "BREAKOUT_MAX_AGE": 0,
+      "BUFFER_ATR": 0.0,
+      "BUFFER_ATR_BARS": 30,
+      "COMPRESSION_ADX_MAX": 0.0,
       "CONTAIN_BREAKOUT_SIDE": 1,
       "CUPNH_NO_HANDLE": 1,
       "CUP_RIGHT_LEFT_MIN": 0.5,
@@ -139,7 +142,8 @@
         "G2",
         "G3",
         "G4",
-        "G5"
+        "G5",
+        "G6"
       ],
       "min_bars": 260,
       "setup_codes": [
@@ -162,7 +166,7 @@
         "W3"
       ]
     },
-    "version": "1.17"
+    "version": "1.18"
   },
   "delivery_breakout": {
     "family": "delivery_breakout",
