@@ -5754,7 +5754,8 @@ function renderResearchMd(host, markdown) {
  *    from:   / to:   the date range (YYYY-MM-DD; `to` defaults to the latest stored day)
  *    tf:     D | W | M — bar size (default: by span — monthly past 12 years, weekly past 2)
  *    rebase: 100 — every line restated as 100 at `from`, on one scale (compare growth, not levels)
- *    line:   <expr> | <label> | <flags>   (repeat; flags: right, pane2, log, zero, bars — columns, e.g. volume)
+ *    line:   <expr> | <label> | <flags>   (repeat; flags: right, pane2, log, zero, bars — columns, e.g. volume;
+ *            candles — a stock or ETF drawn as candlesticks from its stored open/high/low/close, a plain ref only)
  *            expr = a ref, or two joined by " - " (a spread) or " / " (a ratio). A ref is market:SERIES
  *            (index_series or prices) or market:breadth.FIELD (breadth_daily: pct50, pct5, highs, lows, hl,
  *            adv, dec, ad, adline, up4, dn4, up25m, dn25m) or market:grs.LEVEL.Group_Name (a peer group's 1–99 RS
@@ -5774,12 +5775,15 @@ function renderResearchMd(host, markdown) {
  *    level:  <price> | <label> | <from> <to> | pivot|stop   a dashed horizontal line on the first line's
  *            scale over that date range (default: the whole chart), its label on the price axis — for a
  *            pattern's named prices (base high, pivot, stop). pivot draws it green, stop red, else grey (repeat)
+ *    zone:   <low> <high> | <label> | <from> <to> | support|resistance   a shaded price band over that date
+ *            range (default: the whole chart), its label on the price axis at the band's top — support green,
+ *            resistance red, anything else amber (repeat)
  *    caption: what to look at
  *  The data's actual first and last dates are printed under the chart. */
 const SERIES_COLORS = ["--series", "--accent", "--info", "--mkt-in", "--up"];
 const seriesCache = new Map();
 function parseSeriesSpec(text) {
-  const s = { lines: [], bands: [], marks: [], levels: [] };
+  const s = { lines: [], bands: [], marks: [], levels: [], zones: [] };
   for (const raw of text.split("\n")) {
     const m = raw.match(/^\s*([a-z]+)\s*:\s*(.*)$/); if (!m) continue;
     const [, k, v] = m, parts = v.split("|").map((x) => x.trim());
@@ -5787,6 +5791,10 @@ function parseSeriesSpec(text) {
     else if (k === "band") { const [a, b] = parts[0].split(/\s+/); s.bands.push({ from: a, to: b, label: parts[1] || "" }); }
     else if (k === "mark") s.marks.push({ date: parts[0], label: parts[1] || "", below: parts[2] === "below" });
     else if (k === "level") { const [a, b] = (parts[2] || "").split(/\s+/).filter(Boolean); s.levels.push({ price: +parts[0], label: parts[1] || "", from: a, to: b, kind: parts[3] || "" }); }
+    else if (k === "zone") {
+      const [lo, hi] = parts[0].split(/\s+/).map(Number), [a, b] = (parts[2] || "").split(/\s+/).filter(Boolean);
+      s.zones.push({ lo: Math.min(lo, hi), hi: Math.max(lo, hi), label: parts[1] || "", from: a, to: b, kind: parts[3] || "" });
+    }
     else s[k] = v.trim();
   }
   return s;
@@ -6112,11 +6120,32 @@ async function drawSeriesFigure(fig, spec) {
     leftPriceScale: { visible: spec.lines.some((l) => !l.flags.has("right") && !l.flags.has("pane2")) && spec.lines.some((l) => l.flags.has("right")), borderColor: cssVar("--line-2") } });
   { const prev = cleanup; cleanup = () => { chart.remove(); prev(); }; }
   const times = [...new Set(data.flatMap((d) => [...d.keys()]))].sort();
+  // candlestick lines: the stored daily bars, one candle per period (first open, highest high, lowest low, last close)
+  const ohlc = await Promise.all(spec.lines.map(async (l) => {
+    if (!l.flags.has("candles")) return null;
+    if (/[@\s]/.test(l.expr)) throw new Error(`${l.expr}: candles need a plain stock or ETF, not a transform or spread`);
+    const rows = new Map();
+    for (const [d, c, , h, lo, o] of await seriesDaily(l.expr)) {
+      if (d < from || d > to || c == null) continue;
+      if (h == null) throw new Error(`${l.expr}: candles need daily highs and lows (a stock or ETF, not an index series)`);
+      const k = periodKey(d, tf), r = rows.get(k);
+      if (!r) rows.set(k, { time: k, open: o ?? c, high: h, low: lo, close: c });
+      else { r.high = Math.max(r.high, h); r.low = Math.min(r.low, lo); r.close = c; }
+    }
+    return [...rows.values()];
+  }));
   const series = spec.lines.map((l, i) => {
     let pts = [...data[i]].sort((a, b) => (a[0] < b[0] ? -1 : 1));
     if (spec.rebase) { const base = pts[0][1]; pts = pts.map(([t, v]) => [t, (v / base) * +spec.rebase]); }
     const pane = l.flags.has("pane2") ? 1 : 0;
     const scale = pane ? "right" : spec.lines.some((x) => x.flags.has("right")) && !l.flags.has("right") ? "left" : "right";
+    if (ohlc[i]) {
+      const c = chart.addSeries(LC.CandlestickSeries, { upColor: "#26a69a", downColor: "#ef5350", borderVisible: false, wickUpColor: "#26a69a",
+        wickDownColor: "#ef5350", priceScaleId: scale, priceLineVisible: false, lastValueVisible: true }, pane);
+      c.setData(ohlc[i]);
+      c.lps = { scale, pane };
+      return c;
+    }
     const s = l.flags.has("bars")
       ? chart.addSeries(LC.HistogramSeries, { color: cssVar(SERIES_COLORS[i % SERIES_COLORS.length]), priceScaleId: scale, priceLineVisible: false, lastValueVisible: false,
         priceFormat: { type: "custom", minMove: 1, formatter: (v) => Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 }).format(v) } }, pane)
@@ -6146,6 +6175,20 @@ async function drawSeriesFigure(fig, spec) {
       h.setData(pts.map((t) => ({ time: t, value: 1 })));
     }
   }
+  // price zones: a translucent band between two prices (a baseline series filled from the low to the high)
+  for (const z of spec.zones) {
+    const lo = z.from ? periodKey(z.from, tf) : times[0], hi = z.to ? periodKey(z.to, tf) : times[times.length - 1];
+    const pts = times.filter((t) => t >= lo && t <= hi);
+    if (!pts.length || !Number.isFinite(z.lo) || !Number.isFinite(z.hi)) continue;
+    const col = cssVar({ support: "--up", resistance: "--down" }[z.kind] || "--warn"), none = "rgba(0,0,0,0)";
+    const s = chart.addSeries(LC.BaselineSeries, { baseValue: { type: "price", price: z.lo }, lineWidth: 1, topLineColor: alpha(col, 0.6),
+      topFillColor1: alpha(col, 0.16), topFillColor2: alpha(col, 0.16), bottomLineColor: none, bottomFillColor1: none, bottomFillColor2: none,
+      priceScaleId: series[0].lps.scale, priceLineVisible: false, lastValueVisible: !!z.label, title: z.label, crosshairMarkerVisible: false }, 0);
+    s.setData(pts.map((t) => ({ time: t, value: z.hi })));
+    const edge = chart.addSeries(LC.LineSeries, { color: alpha(col, 0.6), lineWidth: 1, priceScaleId: series[0].lps.scale, priceLineVisible: false,
+      lastValueVisible: false, crosshairMarkerVisible: false }, 0);   // the band's lower edge, over the same dates
+    edge.setData(pts.map((t) => ({ time: t, value: z.lo })));
+  }
   // named prices: a dashed segment on the first line's scale, labelled on the price axis
   for (const lv of spec.levels) {
     const lo = lv.from ? periodKey(lv.from, tf) : times[0], hi = lv.to ? periodKey(lv.to, tf) : times[times.length - 1];
@@ -6171,10 +6214,10 @@ async function drawSeriesFigure(fig, spec) {
   chart.timeScale().subscribeSizeChange(refit);
   { const prev = cleanup; cleanup = () => { chart.timeScale().unsubscribeSizeChange(refit); prev(); }; }
   const fmtD = (d) => new Date(d + "T00:00:00Z").toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
-  fig.querySelector(".lps-leg").innerHTML = spec.lines.map((l, i) => `<span><i style="background:${cssVar(SERIES_COLORS[i % SERIES_COLORS.length])}"></i>${esc(l.label)}${l.flags.has("right") && !l.flags.has("pane2") ? " (right axis)" : ""}${l.flags.has("log") ? " · log scale" : ""}</span>`).join("")
+  fig.querySelector(".lps-leg").innerHTML = spec.lines.map((l, i) => `<span><i style="background:${l.flags.has("candles") ? "#26a69a" : cssVar(SERIES_COLORS[i % SERIES_COLORS.length])}"></i>${esc(l.label)}${l.flags.has("right") && !l.flags.has("pane2") ? " (right axis)" : ""}${l.flags.has("log") ? " · log scale" : ""}</span>`).join("")
     + [...new Set(spec.bands.map((b) => b.label).filter(Boolean))].map((x) => `<span><i class="band"></i>${esc(x)}</span>`).join("");
   const first = data.map((d) => d.first).sort()[0], last = data.map((d) => d.last).sort().pop();
-  fig.querySelector(".lps-src").textContent = `Stored data, ${fmtD(first)} – ${fmtD(last)}, ${{ D: "daily", W: "weekly", M: "monthly" }[tf]} closes${spec.rebase ? `, rebased to ${spec.rebase}` : ""}.`;
+  fig.querySelector(".lps-src").textContent = `Stored data, ${fmtD(first)} – ${fmtD(last)}, ${{ D: "daily", W: "weekly", M: "monthly" }[tf]} ${spec.lines.some((l) => l.flags.has("candles")) ? "bars" : "closes"}${spec.rebase ? `, rebased to ${spec.rebase}` : ""}.`;
 }
 
 async function reportPage(alive, id, tab) {

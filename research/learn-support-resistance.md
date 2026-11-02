@@ -19,20 +19,24 @@ In June and July 2025, ICICI Bank dipped to about ₹1,404 and then ₹1,408, an
 The old floor had become a ceiling. The stock finally closed above it in July 2026, but fell back below in early September.
 
 ```series
-title: ICICI Bank — one zone, support then resistance, 2025 to 2026
+title: ICICI Bank, weekly — one zone, support then resistance, 2025 to 2026
 from: 2025-04-01
 to: 2026-10-15
-tf: D
-line: india:ICICIBANK.NS | ICICI Bank
+tf: W
+line: india:ICICIBANK.NS | ICICI Bank, weekly candles | candles
 line: india:ICICIBANK.NS@sma200 | 200-day average
-mark: 2025-07-18 | buyers step in near ₹1,408
-mark: 2025-09-24 | closes below the zone
-mark: 2025-10-24 | rally stops at ₹1,445
-mark: 2026-01-16 | and again at ₹1,444
-mark: 2026-04-24 | and at ₹1,393
-mark: 2026-07-20 | closes above at last
+zone: 1393 1445 | | 2025-04-01 2025-09-19 | support
+zone: 1393 1445 | | 2025-09-22 2026-07-17 | resistance
+zone: 1393 1445 | | 2026-07-20 2026-09-04 | support
+zone: 1393 1445 | Zone ₹1,393–1,445 | 2026-09-07 2026-10-15 | resistance
+mark: 2025-07-18 | buyers step in | below
+mark: 2025-09-24 | breaks below
+mark: 2025-10-24 | rally stops
+mark: 2026-01-16 | again
+mark: 2026-04-24 | again
+mark: 2026-07-20 | closes above
 mark: 2026-09-09 | falls back below
-caption: The same band, about ₹1,393 to ₹1,445, stopped declines in 2025 and rallies in 2026.
+caption: The same band, about ₹1,393 to ₹1,445, stopped declines in 2025 and rallies in 2026. It is shaded green while it acted as support (price above it) and red while it acted as resistance (price below it).
 ```
 
 Notice that no two turns happened at the same price. They landed somewhere inside a band about 4% wide. That band is the level.
@@ -81,6 +85,19 @@ The usual compromise uses both:
 - **One edge goes where the candle bodies cluster.** For support, that is where the bottoms of the bodies bunch together. For resistance, the tops.
 - **The other edge goes where the wicks reach.** For support, the lower wicks; for resistance, the upper ones.
 - **Ignore a single wick that sticks out alone.** It was probably a spike, and including it makes the zone too wide to use.
+
+```series
+title: ICICI Bank, June–July 2025 — a support zone from the wicks to the bodies
+from: 2025-05-26
+to: 2025-08-08
+tf: D
+line: india:ICICIBANK.NS | ICICI Bank, daily candles | candles
+zone: 1404 1416 | Support ₹1,404–1,416 | 2025-06-12 2025-08-08 | support
+mark: 2025-06-13 | turn | below
+mark: 2025-06-19 | turn | below
+mark: 2025-07-18 | turn | below
+caption: Price turned up here twice in June and again in mid-July. The wicks of the turning bars reached ₹1,403.6–1,409.5, and the candle bodies bottomed between ₹1,408 and ₹1,419. So the zone runs from where the wicks reached, about ₹1,404, to where the bodies bunched, about ₹1,416. It is ₹12 tall, about 0.6 of the daily ATR at the time (₹18–23): inside the usual range.
+```
 
 **How tall should a zone be?** There is no fixed height, and certainly not a fixed share of the price. A zone is as tall as the reactions that made it, and no taller. Suppose a stock near ₹1,000 turned three times with wicks reaching ₹980 and bodies settling near ₹1,000. The zone runs from ₹980 to ₹1,000 because that is where price reacted. That it happens to be 2% of the price is beside the point.
 
@@ -147,6 +164,23 @@ See [Indicators](learn-price-indicators.md) for moving averages and pivot points
 
 **A range.** Price swings between a clear ceiling and a clear floor. Draw a resistance zone across the swing highs and a support zone across the swing lows. In a wide range also mark the midpoint, where price often pauses. Each extra test weakens the edges.
 
+```series
+title: VeriSign, 2024 — a range, its midpoint and the breakout
+from: 2024-03-01
+to: 2025-01-10
+tf: D
+line: us:VRSN | VeriSign, daily candles | candles
+zone: 189.8 193 | Resistance $189.8–193 | 2024-03-20 2024-12-06 | resistance
+zone: 167 169.6 | Support $167–169.6 | 2024-05-02 2024-12-06 | support
+level: 180 | Midpoint | 2024-05-02 2024-12-06
+mark: 2024-05-02 | floor | below
+mark: 2024-05-30 | floor again | below
+mark: 2024-07-29 | ceiling
+mark: 2024-10-25 | ceiling again
+mark: 2024-12-09 | breakout
+caption: From March to November 2024 the ceiling stopped seven rallies, with bodies bunched near $190 and wicks reaching $193. The floor held twice in May, at $167.05 and $168.79. Price paused around the $180 midpoint in June and September. The range ended on 9 December, with a close of $200.46, well clear of the ceiling.
+```
+
 **An uptrend.** Higher highs and higher lows. Broken swing highs matter most, because they tend to become support on pullbacks. Mark the most recent higher low clearly: a close below it is the first warning that the trend may be ending.
 
 **A downtrend.** The mirror image. Broken swing lows become resistance, and a break above the most recent lower high is the first sign of a reversal.
@@ -160,6 +194,21 @@ See [Indicators](learn-price-indicators.md) for moving averages and pivot points
 
 **A false breakout.** Price pushes through, triggers stops and breakout buyers, then reverses back inside. Warning signs are a long wick through the level with a close back inside, and thin volume on the break. A false breakout does not cancel the level; it often confirms that the level matters. Many traders widen the zone to include the new wick. See [Failed breakouts and bull traps](learn-strat-failed-breakouts.md).
 
+```series
+title: Moody's, 2025 to 2026 — a false breakout above resistance
+from: 2025-06-01
+to: 2026-02-27
+tf: D
+line: us:MCO | Moody's, daily candles | candles
+line: us:MCO@vol | Volume | pane2 bars
+zone: 519.5 532 | Resistance $519.5–532 | 2025-08-01 2026-02-27 | resistance
+mark: 2025-08-07 | top
+mark: 2025-09-11 | top
+mark: 2026-01-07 | wick to $540
+mark: 2026-01-20 | back below | below
+caption: Rallies stopped in this zone in August and September 2025. From 6 to 16 January 2026 price hovered at the top, with a wick to $540 and closes at most 1.4% above the zone. Volume on those days was below its 50-day average. On 20 January price closed back below, at $517.30, on heavier volume. By 11 February it was at $412.23.
+```
+
 **Price inside a zone.** A zone is support only while price is above it, and resistance only while price is below it. When price sits inside, call it a pivot. It acts as support while price holds above it and as resistance once price closes below it. Labelling it by its past role invites a mistake: a "resistance" level below today's price, for instance.
 
 The same goes for a zone a few cents away. A support a fraction of a day's range under the price says nothing useful; price is effectively sitting on it.
@@ -168,9 +217,50 @@ The same goes for a zone a few cents away. A support a fraction of a day's range
 
 **A retest after a breakout.** Price often returns to the broken level before going on. A successful retest touches the zone, prints a rejection bar such as a long lower wick, and moves away. A close back through the zone means the breakout failed. The trade built on this is [Pullback to support](learn-strat-pullback-support.md).
 
+```series
+title: Power Finance Corporation, 2023 — a breakout and a retest
+from: 2023-06-15
+to: 2023-10-31
+tf: D
+line: india:PFC.NS | Power Finance Corporation, daily candles | candles
+line: india:PFC.NS@vol | Volume | pane2 bars
+zone: 216 221.8 | | 2023-08-01 2023-09-07 | resistance
+zone: 216 221.8 | Zone ₹216–221.8 | 2023-09-08 2023-10-31 | support
+mark: 2023-08-22 | tops
+mark: 2023-09-08 | breakout
+mark: 2023-09-14 | retest holds | below
+caption: Three August rallies stopped at ₹216–221.8. On 8 September price closed at ₹244.08 on almost four times its average volume, a break that met every test in the breakout list above. Four sessions later price came back, with lows down to ₹219.84, but every close stayed above the zone. By the end of September it was at ₹251.9.
+```
+
 **At an all-time high.** There is no history above, so there is no resistance to draw. Use the old all-time high as support, and round numbers above as likely pauses. Do not invent resistance where none exists: strong trends at new highs can run much further than seems reasonable.
 
+```series
+title: Seagate Technology, 2026 — the old all-time high becomes support
+from: 2025-12-01
+to: 2026-04-15
+tf: D
+line: us:STX | Seagate Technology, daily candles | candles
+level: 350.05 | Old high | 2026-01-22 2026-04-15 | pivot
+mark: 2026-01-26 | new high
+mark: 2026-03-09 | dip | below
+mark: 2026-03-30 | holds | below
+caption: The high of 22 January 2026, $350.05, was the highest price on record, so there was nothing above it to draw. Price closed above it on 26 January and jumped to $442.93 two days later. In March it came back twice: a dip to $342 that closed at $374.33, then a low of $351.42. Each time the old high held. By June the stock was above $1,000.
+```
+
 **A gap.** After a gap up, the top of the bar before the gap becomes potential support; after a gap down, its bottom becomes potential resistance. Small gaps in liquid stocks often fill within days. Large gaps on earnings may stay open for months.
+
+```series
+title: FormFactor, 2025 — a gap up and the support it left
+from: 2025-09-15
+to: 2026-01-30
+tf: D
+line: us:FORM | FormFactor, daily candles | candles
+line: us:FORM@vol | Volume | pane2 bars
+zone: 48 53 | The gap $48–53 | 2025-10-30 2026-01-30 | support
+mark: 2025-10-30 | gap up
+mark: 2025-11-21 | holds | below
+caption: On 29 October 2025 the high was $48.00. Next day the stock opened at $54.35, never traded below $53 and closed at $59.25, on five times its average volume. The gap left $48–53 empty. In November price came back twice, with lows of $47.83 and $47.33, a fraction below the old high. Both days closed above $48, and on 22 January the stock touched $85.
+```
 
 **Earnings ahead.** A report often carries price straight through the levels nearest to it. If price sits in a tight band with results a few days away, the levels outside the band are the more useful reference.
 
