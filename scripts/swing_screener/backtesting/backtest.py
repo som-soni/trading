@@ -2015,6 +2015,17 @@ def main(argv: list[str] | None = None) -> dict | None:
     )
     workers = args.workers if args.workers is not None else default_workers()
     logger.info("Scan workers: %d%s", workers, "" if args.workers is not None else " (default_workers)")
+    # Before the scan, not hours into it: the simulator checks again on the real frames, but by then
+    # the signals have been collected. The frames are enrich_daily output, so one stored series says
+    # which averages exist.
+    from .portfolio_sim import MA_COL_MODES, check_ma_col
+    if policy.mode in MA_COL_MODES:
+        _probe = cache.load_cached(args.market, MARKETS[args.market].benchmark_ticker)
+        if _probe is not None and len(_probe):
+            try:
+                check_ma_col(policy, {"probe": ind.enrich_daily(_probe.tail(400))})
+            except ValueError as exc:
+                parser.error(str(exc))
     try:
         tdf, perf, result = run_portfolio_backtest(
             args.market, args.start, args.limit, args.deep_lookback_days,

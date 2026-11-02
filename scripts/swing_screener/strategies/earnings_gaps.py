@@ -82,6 +82,21 @@ REQUIRE_GAP = 0            # 1 = the reaction day must OPEN at least MIN_GAP_PCT
 NEGLECT_LOOKBACK = 60      # sessions over which "already extended" is measured
 NEGLECT_MAX_RUN_PCT = 30.0 # a stock up more than this into the news is noted, not refused
 
+# ---- Kullamägi's own version (1.7): research switches, all OFF, so a default run trades as 1.6.
+# His definition (qullamaggie.com, "How to master a setup: Episodic Pivots", 2021): a gap of 10%+ on
+# massive volume, bought on the opening-range high of day ONE, stopped at the low of the day; best
+# after 3-6+ months sideways; for an earnings EP, ideally big earnings and sales growth.
+ENTRY_AT_CLOSE = 0         # 1 = buy the reaction day's own close, stopped at its low: his day-one entry
+                           # as closely as daily bars allow (the default waits for day TWO to break the
+                           # whole day's high, which also widens the stop to the full day's range)
+MIN_GROWTH_PCT = 0.0       # G6: above 0 = the announced quarter's sales OR EPS up at least this much on
+                           # the same quarter a year earlier; 0 = off
+NEGLECT_GATE = 0           # 1 = G7: refuse a stock already up more than NEGLECT_MAX_RUN_PCT over the
+                           # NEGLECT_LOOKBACK sessions BEFORE the reaction day (W1 only notes it)
+SCREEN_GATE = 1            # G1, the Above-the-200-day screen: 1 = enforced (as shipped); 0 = off. He
+                           # buys neglected stocks, which often sit below the 200-day: G1 refused 60%
+                           # of the US 10%+ gaps of 2014-2021 before any other rule looked at them
+
 # ---- the catalyst bracket (see the module docstring)
 CATALYST_MIN_DAYS = 10     # a reaction day sits at least this far after the quarter end
 CATALYST_FILED_GRACE = 5   # ...and no later than this many days after that quarter's filing
@@ -109,10 +124,25 @@ EG01 = "S1"   # EG-01: the break of the reaction day's high
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.6"
-    # 1.6 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
-    signal_version = "1.5"
+    version = "1.7"
+    # 1.7 adds gates to evaluate(), so signal_version is NOT pinned: a pin across a scan change would
+    # replay old detections (CLAUDE.md). It defaults to `version`, which rescans.
     changelog = (
+        ("1.7", "2026-11-02",
+         "Kullamägi's own version, as four research switches, each defaulting to the shipped "
+         "behaviour, so a default run trades "
+         "exactly as 1.6. His definition differs from the guide's in three ways that daily bars can "
+         "express: he buys on the reaction day itself (ENTRY_AT_CLOSE buys its close, stopped at its "
+         "low, where 1.6 waits for the next session to break the whole day's high -- later, higher, and "
+         "with a stop as wide as the day's range, which the {MAX_STOP_ATR} ATR cap then refuses); he "
+         "wants earnings and sales growth (G6, MIN_GROWTH_PCT: the announced quarter's sales or EPS up "
+         "that much on a year earlier, from fundamentals/growth.growth_series); and the best EPs come "
+         "after months sideways (G7, NEGLECT_GATE: W1's test as a gate, measured up to the session "
+         "BEFORE the reaction so the gap itself does not count); and he buys neglected stocks, which "
+         "often sit below the 200-day (SCREEN_GATE=0 turns off G1, which refused 60% of the US 10%+ "
+         "gaps of 2014-2021 before any other rule saw them). His 10% gap is REQUIRE_GAP=1 with "
+         "MIN_GAP_PCT=10. His opening-range entry and non-earnings catalysts need intraday prices "
+         "and a news history, neither of which is stored."),
         ("1.6", "2026-10-31",
          "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
          "fill now sees only what had happened by its own moment in the session. An exit frees its "
@@ -187,13 +217,14 @@ class EarningsGapStrategy(Strategy):
     style = "event"
     screen_key = "above_200"
     screen_gates = {"G1": "A1"}
-    gate_codes = ("G1", "G2", "G3", "G4", "G5")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
     watch_codes = ("W1", "W2")
     setup_codes = (EG01,)
     setup_names = {EG01: "Results-gap breakout"}
     gate_titles = {"G1": "Above the 200-day", "G2": "A results-day reaction",
                    "G3": "Linked to a results window", "G4": "Stop close enough to carry",
-                   "G5": "Market above its 200-day"}
+                   "G5": "Market above its 200-day", "G6": "Growth in the quarter announced",
+                   "G7": "Not already extended into the news"}
     nominal_target = True
     min_bars = 260
     needs_ctx_extras = True
@@ -319,7 +350,9 @@ class EarningsGapStrategy(Strategy):
               "- **Test:** the signal session's close is strictly above the 200-day simple average "
               "of closes.\n"
               "- **When:** on every signal session, not only on the reaction day.\n"
-              "- **Effect:** a turnaround still below its 200-day is never bought.",
+              "- **Effect:** a turnaround still below its 200-day is never bought.\n"
+              "- **Switch:** SCREEN_GATE (it is {SCREEN_GATE}) at 0 turns G1 off, for the Kullamägi "
+              "variant: he buys neglected stocks, which often sit below the 200-day.",
         "G2": "A results-day reaction in the last {REACTION_WINDOW} sessions: a big move on heavy "
               "volume that closed near the day's high.\n\n"
               "- **Window:** the signal session and the sessions just before it, {REACTION_WINDOW} "
@@ -383,6 +416,26 @@ class EarningsGapStrategy(Strategy):
               "- **Why it exists:** in India's 2013-2021 window, trades taken with the Smallcap 250 "
               "below its 200-day averaged -0.17R against +0.75R above it. Found on those trades, so "
               "it is tested on the US before it is adopted anywhere.",
+        "G6": "The quarter the reaction announced grew -- a research switch, OFF unless MIN_GROWTH_PCT "
+              "is above 0 (it is {MIN_GROWTH_PCT}). While off, G6 always passes.\n\n"
+              "- **Test:** that quarter's sales OR its EPS is up at least {MIN_GROWTH_PCT}% on the same "
+              "quarter a year earlier. Either is enough: Kullamägi notes that fast-growing companies "
+              "with no earnings yet have worked as well as profitable ones.\n"
+              "- **Which quarter:** the latest that ended at least {CATALYST_MIN_DAYS} days before the "
+              "reaction day -- the one the results announced. Its figures are the news itself, so "
+              "reading them on the reaction day is not look-ahead.\n"
+              "- **Growth from a loss** is not measurable, so a turnaround passes only on sales.\n"
+              "- **Figures** come from the shared growth measure the Fundamentals page uses: the filed "
+              "year-earlier comparatives where a filing carries them (the US), the year-earlier "
+              "quarter matched where it does not (India), and EPS on one share basis across splits.",
+        "G7": "Not already extended going into the news -- a research switch, OFF unless NEGLECT_GATE "
+              "is 1 (it is {NEGLECT_GATE}). While off, G7 always passes.\n\n"
+              "- **Test:** the close on the session BEFORE the reaction day is no more than "
+              "{NEGLECT_MAX_RUN_PCT}% above the close {NEGLECT_LOOKBACK} sessions before that.\n"
+              "- **Why before the reaction:** W1 ends its span on the signal session, so the gap itself "
+              "counts toward it; a neglected stock that gaps 35% would read as extended. This gate "
+              "measures the run INTO the news, which is what Kullamägi means by a stock that has gone "
+              "sideways for months.",
     }
     watch_docs = {
         "W1": "Up more than {NEGLECT_MAX_RUN_PCT}% over {NEGLECT_LOOKBACK} sessions: noted, never "
@@ -418,7 +471,9 @@ class EarningsGapStrategy(Strategy):
         "The signal. Any session on which G1 to G4 pass is a signal; the first is normally the "
         "reaction day's own close. It places a buy-stop order at the reaction high + "
         "{ENTRY_BUFFER_PCT}% (rounded up to the tick), live from the next session. Nothing is "
-        "bought at the signal close.",
+        "bought at the signal close -- unless the research switch ENTRY_AT_CLOSE is 1 (it is "
+        "{ENTRY_AT_CLOSE}), which buys the reaction day's own close instead, stopped at its low, and "
+        "only on the reaction day itself.",
         "How it fills. A buy-stop, not a buy at the next open: it fills on the first session whose "
         "high reaches the trigger, at the trigger. If the stock opens above the trigger, it fills "
         "at that open, and the backtest counts that worse price. No close above the "
@@ -527,6 +582,10 @@ class EarningsGapStrategy(Strategy):
         ("Minimum relative volume", "MIN_REL_VOLUME", "G2: the day's volume ÷ its 50-day average volume."),
         ("Require a gap", "REQUIRE_GAP", "G2, research switch: 1 = the open must be at least the minimum gap up; 0 = off."),
         ("Market gate", "MARKET_GATE", "G5, research switch: 1 = buy only while the small-cap index is above its 200-day; 0 = off."),
+        ("Entry at the close", "ENTRY_AT_CLOSE", "Research switch: 1 = buy the reaction day's own close, stopped at its low; 0 = a buy-stop above its high from the next session."),
+        ("Minimum growth", "MIN_GROWTH_PCT", "G6, research switch: the announced quarter's sales or EPS up at least this % on a year earlier; 0 = off."),
+        ("Screen gate", "SCREEN_GATE", "G1, research switch: 1 = the stock must close above its 200-day (as shipped); 0 = off."),
+        ("Neglect gate", "NEGLECT_GATE", "G7, research switch: 1 = refuse a stock up more than the neglect threshold in the sessions before the news; 0 = off."),
         ("Minimum close position", "MIN_CLOSE_POS", "G2: (close − low) ÷ (high − low); 1 is a close on the high."),
         ("Reaction window", "REACTION_WINDOW", "G2: sessions, counting the signal session, in which a reaction day still offers its setup."),
         ("Catalyst: earliest", "CATALYST_MIN_DAYS", "G3: calendar days after a quarter end before a reaction can be linked to it."),
@@ -635,6 +694,33 @@ class EarningsGapStrategy(Strategy):
     def _linked_to_results(cls, symbol: str, day: pd.Timestamp) -> bool:
         return cls._link(symbol, day) is not None
 
+    _quarters_fin: dict = {}
+
+    @classmethod
+    def _announced_quarter(cls, symbol: str, day: pd.Timestamp) -> dict | None:
+        """G6: the quarter a reaction announced, with its year-on-year growth -- or None.
+
+        Read through the shared measures rather than restated: marketdata.financials.load (one row
+        per quarter, oldest first, cut at the backtest stage's boundary) and
+        fundamentals.growth.growth_series (the filed year-earlier comparatives where a filing carries
+        them, the year-earlier quarter matched where it does not, EPS on one share basis). The quarter
+        is the latest that ended at least CATALYST_MIN_DAYS before the reaction. Cached per market
+        AND stage boundary, like the announcements.
+        """
+        from ..marketdata import asof, financials
+        from fundamentals import growth
+        market = _market_of(symbol)
+        key = (market, asof.end_date())
+        if key not in cls._quarters_fin:
+            cls._quarters_fin[key] = {"rows": financials.load(market), "series": {}}
+        c = cls._quarters_fin[key]
+        if symbol not in c["series"]:
+            rows = c["rows"].get(symbol)
+            c["series"][symbol] = growth.growth_series(rows) if rows else []
+        cutoff = (day - pd.Timedelta(days=CATALYST_MIN_DAYS)).date()
+        q = [x for x in c["series"][symbol] if x["end"] <= cutoff]
+        return q[-1] if q else None
+
     # ---------- screening ----------
 
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
@@ -675,7 +761,7 @@ class EarningsGapStrategy(Strategy):
             pos = (c - l) / rng if rng > 0 else 1.0
             if pos < MIN_CLOSE_POS:
                 continue
-            return {"i": i, "date": d.index[i], "high": h, "low": l,
+            return {"i": i, "date": d.index[i], "high": h, "low": l, "close": c,
                     "move_pct": move, "gap_pct": gap, "rel_volume": rel_vol, "close_pos": pos}
         return None
 
@@ -683,14 +769,25 @@ class EarningsGapStrategy(Strategy):
         d = ctx.daily
         result = StrategyResult(entry_setup_codes=self.setup_codes)
         e = ctx.extras
-        self.apply_screen(ctx, result)   # G1, from the Above-the-200-day screen
+        if SCREEN_GATE:
+            self.apply_screen(ctx, result)   # G1, from the Above-the-200-day screen
+        else:
+            result.ok("G1", "off")
 
         r = self._reaction_day(d)
         if r is None:
             result.fail("G2", f"no results-day reaction in the last {REACTION_WINDOW} sessions")
-            result.ok("G3", "not reached")
-            result.ok("G4", "not reached")
-            result.ok("G5", "not reached")
+            for g in ("G3", "G4", "G5", "G6", "G7"):
+                result.ok(g, "not reached")
+            result.recompute_first_fail()
+            return result
+        if ENTRY_AT_CLOSE and r["i"] != len(d) - 1:
+            # a close order buys the close of its own signal session, so only the reaction day can
+            # place it; a reaction from an earlier session has no close left to buy
+            result.fail("G2", f"the reaction was {len(d) - 1 - r['i']} session(s) ago; a close entry "
+                              f"buys only on the reaction day itself")
+            for g in ("G3", "G4", "G5", "G6", "G7"):
+                result.ok(g, "not reached")
             result.recompute_first_fail()
             return result
 
@@ -699,6 +796,7 @@ class EarningsGapStrategy(Strategy):
         e["reaction_date"] = str(r["date"].date())
         e["reaction_high"] = r["high"]
         e["reaction_low"] = r["low"]
+        e["reaction_close"] = r["close"]
         e["reaction_move_pct"] = round(r["move_pct"], 2)
         e["reaction_rel_volume"] = round(r["rel_volume"], 2)
         e["reaction_close_pos"] = round(r["close_pos"], 3)
@@ -712,8 +810,8 @@ class EarningsGapStrategy(Strategy):
         else:
             result.fail("G3", "the move is not inside a stored results window")
 
-        # G4 — is the reaction low a stop we can carry?
-        entry = r["high"] * (1 + ENTRY_BUFFER_PCT / 100)
+        # G4 — is the reaction low a stop we can carry? Measured from the entry this run will use.
+        entry = r["close"] if ENTRY_AT_CLOSE else r["high"] * (1 + ENTRY_BUFFER_PCT / 100)
         risk = entry - r["low"]
         atr14 = ctx.atr
         risk_pct = risk / entry * 100 if entry else float("inf")
@@ -734,6 +832,40 @@ class EarningsGapStrategy(Strategy):
             result.ok("G5")
         else:
             result.fail("G5", f"{MARKET_GATE_INDEX.get(_market_of(ctx.symbol))} is not above its 200-day average")
+
+        # G6 — growth in the quarter the reaction announced (off unless MIN_GROWTH_PCT)
+        if MIN_GROWTH_PCT <= 0:
+            result.ok("G6", "off")
+        else:
+            q = self._announced_quarter(ctx.symbol, r["date"])
+            got = {k: q.get(k) for k in ("rev_g", "eps_g")} if q else {}
+            best = max((v for v in got.values() if v is not None), default=None)
+            seen = ", ".join(f"{'sales' if k == 'rev_g' else 'EPS'} {v * 100:+.0f}%"
+                             for k, v in got.items() if v is not None)
+            if q is None:
+                result.fail("G6", "no stored quarter before the reaction")
+            elif best is None:
+                result.fail("G6", f"growth not measurable for the quarter ended {q['end']}")
+            elif best * 100 >= MIN_GROWTH_PCT:
+                result.ok("G6", f"quarter ended {q['end']}: {seen}")
+            else:
+                result.fail("G6", f"quarter ended {q['end']}: {seen}, under {MIN_GROWTH_PCT:g}%")
+
+        # G7 — not already extended INTO the news (off unless NEGLECT_GATE)
+        if not NEGLECT_GATE:
+            result.ok("G7", "off")
+        else:
+            i, j = r["i"] - 1, r["i"] - 1 - NEGLECT_LOOKBACK
+            if j < 0:
+                result.ok("G7", "too little history to judge")
+            else:
+                before, then = float(d["close"].iloc[i]), float(d["close"].iloc[j])
+                run_in = (before / then - 1) * 100 if then else 0.0
+                if run_in > NEGLECT_MAX_RUN_PCT:
+                    result.fail("G7", f"up {run_in:.0f}% in the {NEGLECT_LOOKBACK} sessions before the news "
+                                      f"(over {NEGLECT_MAX_RUN_PCT:g}%)")
+                else:
+                    result.ok("G7", f"{run_in:+.0f}% in the {NEGLECT_LOOKBACK} sessions before the news")
 
         # W1 — already extended into the news (Bonde's neglect point)
         if len(d) > NEGLECT_LOOKBACK:
@@ -777,7 +909,10 @@ class EarningsGapStrategy(Strategy):
         hi, lo = e.get("reaction_high"), e.get("reaction_low")
         if hi is None or lo is None:
             return PlanChoice(None, None, "missing reaction day")
-        entry = round_tick(float(hi) * (1 + ENTRY_BUFFER_PCT / 100), cfg.tick_size, "up")
+        if ENTRY_AT_CLOSE:
+            entry = float(e.get("reaction_close") or ctx.close)   # bought at that close, as it printed
+        else:
+            entry = round_tick(float(hi) * (1 + ENTRY_BUFFER_PCT / 100), cfg.tick_size, "up")
         stop = round_tick(float(lo), cfg.tick_size, "down")
         if stop <= 0 or stop >= entry:
             return PlanChoice(None, None, "degenerate stop")
@@ -788,7 +923,8 @@ class EarningsGapStrategy(Strategy):
             risk_per_share=risk, reward_per_share=target - entry,
             r_multiple=NOMINAL_TARGET_R, nearest_overhead_above_entry=None,
         )
-        return PlanChoice(plan, None, f"buy-stop above the {e['reaction_date']} reaction high")
+        how = ("buy the {d} reaction close" if ENTRY_AT_CLOSE else "buy-stop above the {d} reaction high")
+        return PlanChoice(plan, None, how.format(d=e["reaction_date"]))
 
     def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
         """A resting buy-stop, one per event, cancelled after {ENTRY_EXPIRY_BDAYS} sessions.
@@ -797,6 +933,11 @@ class EarningsGapStrategy(Strategy):
         the open and that the worse price should be counted. The stop-width cap at the fill is
         what refuses the cases where that gap made the trade unsizeable.
         """
+        if ENTRY_AT_CLOSE:
+            # the simulator's close order: filled at the close of its own signal session, which is
+            # a completed bar, so nothing later is read; one that cannot fill that day is dropped
+            return {"order": "close", "base_id": ctx.extras.get("reaction_date"),
+                    "max_risk_pct": MAX_STOP_PCT / 100}
         return {
             "order": "stop",
             "base_id": ctx.extras.get("reaction_date"),
@@ -827,7 +968,8 @@ class EarningsGapStrategy(Strategy):
             # The entry is a resting buy-stop that has not been hit yet, which is exactly what
             # TRADE_ON_TRIGGER means. There is no higher tier for this strategy by construction.
             label = "TRADE_ON_TRIGGER"
-            reasons.append(f"buy-stop above the {ctx.extras.get('reaction_date')} reaction high")
+            reasons.append(f"buy the {ctx.extras.get('reaction_date')} reaction close" if ENTRY_AT_CLOSE
+                           else f"buy-stop above the {ctx.extras.get('reaction_date')} reaction high")
             for code in ("W1", "W2"):
                 if result.watch_flags.get(code):
                     reasons.append(result.watch_notes.get(code, code))

@@ -93,6 +93,29 @@ class Signal:
     meta: dict = field(default_factory=dict)   # spec-mode order details (module docstring)
 
 
+# Exit modes that read `ExitPolicy.ma_col` off each day's bar.
+MA_COL_MODES = frozenset({"ma", "ma_low", "minervini"})
+
+
+def check_ma_col(policy: "ExitPolicy", frames: dict) -> None:
+    """Refuse an exit that reads a moving average the price frames do not carry.
+
+    `bar.get(missing)` is NaN, every comparison with NaN is False, and the exit then never fires --
+    silently. `--ma-col sma10` (no daily 10-day average is computed; `sma10` exists only on the
+    MONTHLY frame) ran a whole earnings_gaps backtest as buy-and-hold-until-stopped: zero trend
+    exits, one position held 3,262 days, filed as the 10-day trail and reported as the best variant.
+    """
+    if policy.mode not in MA_COL_MODES or not frames:
+        return
+    missing = [s for s, df in frames.items() if policy.ma_col not in df.columns]
+    if missing:
+        cols = next(iter(frames.values())).columns
+        have = sorted(c for c in cols if c.startswith(("sma", "ema")) and c[3:].isdigit())
+        raise ValueError(
+            f"exit mode {policy.mode!r} reads {policy.ma_col!r}, which the daily price frames do not carry "
+            f"({len(missing)} of {len(frames)} symbols); the averages available are: {', '.join(have)}")
+
+
 @dataclass
 class ExitPolicy:
     """How an open position is managed.
@@ -465,6 +488,8 @@ def simulate(
 
     # the calendar is the union of the dates of every symbol we might trade
     all_dates = sorted({d for df in prices.values() for d in df.index if d >= start})
+    check_ma_col(policy, prices)   # every caller, not only the command line
+
     if end is not None:
         all_dates = [d for d in all_dates if d <= end]
     if not all_dates:
