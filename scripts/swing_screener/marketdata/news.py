@@ -52,6 +52,7 @@ MAX_AGE_HOURS = 12       # a symbol fetched more recently than this is skipped u
 MAX_HEADLINES = 40       # per symbol per fetch
 GOOGLE_PAUSE = 1.0       # seconds between Google News requests — a polite rate, not a quota
 SEC_PAUSE = 0.15         # SEC asks for at most 10 requests a second
+REPORT_SLACK_DAYS = 7    # an expected earnings date this close to a filed results release is that release
 _UA = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                      "(KHTML, like Gecko) Chrome/126 Safari/537.36"}
 
@@ -173,7 +174,8 @@ def sec_events(symbol: str, next_earnings: dt.date | None = None) -> list[dict]:
     it for mid-quarter updates (AbbVie's charges pre-announced early each quarter), so a 2.02 is the
     earnings release (`results`, an E marker on the chart) only when it is the last one filed between
     a quarter's end and that quarter's 10-Q / 10-K. After the latest 10-Q / 10-K, the newest 2.02
-    counts unless `next_earnings` (Yahoo's expected date) is still ahead of it. Any other 2.02 is a
+    counts unless `next_earnings` (Yahoo's expected date) is still more than REPORT_SLACK_DAYS ahead of it
+    (Yahoo often dates an after-the-close report on the next session). Any other 2.02 is a
     `filing` titled "Results update"."""
     from . import financials as fin
     cik = fin._sec_cik(symbol)
@@ -205,7 +207,7 @@ def sec_events(symbol: str, next_earnings: dt.date | None = None) -> list[dict]:
             releases.add(id(hit))
     last_filed = periodic[0][1] if periodic else dt.date.min
     trailing = next((e for e in results if e["date"] > last_filed), None)
-    if trailing and not (next_earnings and next_earnings > trailing["date"]):
+    if trailing and not (next_earnings and (next_earnings - trailing["date"]).days > REPORT_SLACK_DAYS):
         releases.add(id(trailing))
     for e in out:
         if id(e) in releases:
@@ -336,6 +338,18 @@ def yf_events(symbol: str, with_actions: bool, with_ratings: bool) -> list[dict]
 
 # ------------------------------------------------------------------ store
 
+def superseded(events: list[dict]) -> list[dict]:
+    """`events` without any expected earnings date that a filed results release within REPORT_SLACK_DAYS
+    already answers. The expected row is stored while its date is ahead and is never replaced once that date
+    has passed, so without this one report shows twice: the filing and Yahoo's (often a session later) date."""
+    def day(e):
+        d = e["date"]
+        return d if isinstance(d, dt.date) else dt.date.fromisoformat(str(d)[:10])
+    filed = [day(e) for e in events if e["kind"] == "results"]
+    return [e for e in events if not (e["kind"] == "earnings" and
+                                      any(abs((day(e) - f).days) <= REPORT_SLACK_DAYS for f in filed))]
+
+
 def _store(market: str, symbol: str, news: list[dict], events: list[dict], note: str,
            refetched: list[str] = ()) -> None:
     with db.get_connection().cursor() as cur:
@@ -359,6 +373,11 @@ def _store(market: str, symbol: str, news: list[dict], events: list[dict], note:
                              detail=EXCLUDED.detail, url=EXCLUDED.url, source=EXCLUDED.source, fetched_at=now()""",
                         (market, symbol, e["date"], e["kind"], e["title"][:300], json.dumps(e.get("detail"), default=str),
                          e.get("url"), e.get("source")))
+        # an expected date (stored earlier, or just now) that a filed release answers is the same report: drop the stale row
+        cur.execute("""DELETE FROM stock_events e WHERE e.market=%s AND e.symbol=%s AND e.kind='earnings'
+                         AND EXISTS (SELECT 1 FROM stock_events r WHERE r.market=e.market AND r.symbol=e.symbol
+                                     AND r.kind='results' AND abs(r.date - e.date) <= %s)""",
+                    (market, symbol, REPORT_SLACK_DAYS))
         cur.execute("DELETE FROM stock_news WHERE market=%s AND symbol=%s AND published_at < now() - %s * interval '1 day'",
                     (market, symbol, KEEP_NEWS_DAYS))
         cur.execute("""INSERT INTO stock_news_status (market, symbol, fetched_at, note) VALUES (%s,%s,now(),%s)
@@ -408,7 +427,7 @@ def fetch_symbol(market: str, symbol: str, name: str | None = None) -> dict:
     # fetch_symbol records a failure in its own status table rather than raising, so read its note
     got = estimates.fetch_symbol(market, symbol)
     notes.append("Yahoo estimates " + ("failed" if got["note"].startswith("failed") else "ok"))
-    _store(market, symbol, news, events, " · ".join(notes), refetched)
+    _store(market, symbol, news, superseded(events), " · ".join(notes), refetched)
     return {"news": len(news), "events": len(events), "note": " · ".join(notes)}
 
 

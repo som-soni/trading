@@ -751,6 +751,7 @@ def stock_news(market: str, symbol: str, refresh: bool = False):
     events = [{"date": d.isoformat(), "kind": k, "title": t, "detail": dtl, "url": u, "source": s}
               for d, k, t, dtl, u, s in q("""SELECT date, kind, title, detail, url, source FROM stock_events
                                            WHERE market=%s AND symbol=%s ORDER BY date DESC""", (market, symbol))]
+    events = news_mod.superseded(events)   # rows stored before the release was filed
     # analyst consensus (marketdata/estimates.py): each past report gets the surprise of the quarter it covered,
     # the upcoming one the quarter's consensus and its trend — for the chart's earnings badges
     from ..marketdata import estimates as est_mod
