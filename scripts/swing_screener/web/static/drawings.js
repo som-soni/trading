@@ -123,8 +123,18 @@ const Drawings = (() => {
       const i = Math.floor(l);
       return T[i] + (T[i + 1] - T[i]) * (l - i);
     };
+    /** logical index -> x. The chart library converts whole bar indices only: a fractional one comes back
+     *  as 0, the left edge (a corner past the last bar, where weekly bars are not exactly 7 days apart, or a
+     *  drawing made on another timeframe, landed there — a rectangle collapsed to nothing on release). So
+     *  the two whole bars either side are converted and the point placed between them. */
+    const xAt = (l) => {
+      const i = Math.floor(l), x0 = ts.logicalToCoordinate(i);
+      if (x0 == null || l === i) return x0;
+      const x1 = ts.logicalToCoordinate(i + 1);
+      return x1 == null ? x0 : x0 + (x1 - x0) * (l - i);
+    };
     const toPx = (pt) => {
-      const x = ts.logicalToCoordinate(msToLogical(pt.t)), y = series.priceToCoordinate(pt.p);
+      const x = xAt(msToLogical(pt.t)), y = series.priceToCoordinate(pt.p);
       return x == null || y == null ? null : { x, y };
     };
     /** pixel -> point, snapped to the bar; with the magnet on, also to that bar's nearest O/H/L/C */
@@ -202,7 +212,7 @@ const Drawings = (() => {
       // a point may carry `f` (fraction of the pane height, 0 = top) instead of a price `p`:
       // annotations use it to pin a callout's text box to the top strip, clear of the bars,
       // while its anchor (pts[0]) stays glued to the bar and price it explains
-      const fracPx = (pt) => { const x = ts.logicalToCoordinate(msToLogical(pt.t)); return x == null ? null : { x, y: h * pt.f }; };
+      const fracPx = (pt) => { const x = xAt(msToLogical(pt.t)); return x == null ? null : { x, y: h * pt.f }; };
       const b = it.pts[1] ? (it.pts[1].f != null ? fracPx(it.pts[1]) : toPx(it.pts[1])) : a; if (!b) return;
       // dash: true = dashed, "dot" = dotted (an annotation's timeframe), false = solid
       ctx.strokeStyle = it.color; ctx.lineWidth = it.width || 2; ctx.setLineDash(it.dash === "dot" ? [1.5, 3] : it.dash ? [5, 4] : []);
