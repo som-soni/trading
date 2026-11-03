@@ -753,20 +753,25 @@ _stage_swing_bars = 10
 # Stage 4 ends for Stage 1 only when the close has held above the 150-day this many bars (or the line
 # stops falling): one close above the line in a decline is a bounce, and it used to flip the stage
 _stage_hold_bars = 10
-# The base count (spec section 5, "Base count"): an advance ends when TT-01 to TT-04 fail this many sessions
-# in a row [assumption, the spec's], and a base from the fourth on is late-stage (the Learn guide's "4th+").
-# A base counts once a close clears its high -- the stock broke out of it, bought or not -- and only when its
-# high is at least `_base_step_pct` above the last base counted, so a shelf a little above the last base (or
-# the detector re-measuring one base from a nearby high) is not a new stage [assumption]. The spec counts
-# MV-01 signals instead, which undercounts: few breakouts pass MV-01's volume and close tests, and NVDA's
-# 2015-2018 advance read as "1st base" for all twelve of its setups. Two more rules from the usual practice
-# (O'Neil's, which Minervini follows here): a base counts only when it lasted `_base_min_days` sessions from its
-# high to the close that cleared it -- a shorter pause is part of the advance -- and a base whose low undercuts
-# the last counted base's low starts the count again [assumption]. Chart only for now, so lowercase.
-_base_reset_days = 20
-_late_base = 4
-_base_step_pct = 10.0
-_base_min_days = 25
+# The base count (spec section 5, "Base count"), a rule since 1.44. Minervini buys the early bases of a Stage 2
+# advance: by the fourth the trend is old and most who want the stock own it (the Learn guide's "4th+"). One
+# function counts (`base_number`), on the price alone, as of the session it is asked about, so the backtest, the
+# daily screen and the chart number a base the same way:
+# - an advance lasts until TT-01 to TT-04 fail BASE_COUNT_RESET_DAYS sessions in a row (the spec's rule);
+# - a base is a pullback of at least BASE_COUNT_MIN_DEPTH_PCT from a high, cleared by a close above that high at
+#   least BASE_COUNT_MIN_DAYS sessions later -- the stock broke out of it, bought or not (a shorter or shallower
+#   pause is part of the advance);
+# - it counts only if its high is at least BASE_COUNT_STEP_PCT above the last base counted (a shelf just above
+#   the last base is the same stage), and a base whose low undercuts the last counted base's low starts the
+#   count again (O'Neil's practice, which Minervini follows here) [assumption: all four numbers].
+# The spec counts MV-01 signals instead, which undercounts: few breakouts pass MV-01's volume and close tests,
+# and NVDA's 2015-2018 advance read as "1st base" for all twelve of its setups.
+BASE_COUNT_RESET_DAYS = 20
+BASE_COUNT_MIN_DEPTH_PCT = 10.0
+BASE_COUNT_MIN_DAYS = 25
+BASE_COUNT_STEP_PCT = 10.0
+# The rule: a base past this number of its advance is refused (build_plans). 0 = recorded, never refused (1.43).
+MAX_BASE_COUNT = 3
 
 
 def advances(daily: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
@@ -774,7 +779,7 @@ def advances(daily: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
 
     An advance starts on the first bar where TT-01 to TT-04 hold (the close above the 150- and 200-day, the
     150-day above the 200-day, the 200-day rising for a month, the 50-day above both) and lasts until they
-    have failed `_base_reset_days` sessions in a row; a shorter lapse -- a deep pullback inside a base --
+    have failed BASE_COUNT_RESET_DAYS sessions in a row; a shorter lapse -- a deep pullback inside a base --
     does not end it. `origin` is where the run of failures before it began (0 at the start of the data):
     the advance's low is the lowest low from there, the bottom it rose from."""
     c, s50, s150, s200 = (daily[k].to_numpy(float) for k in ("close", "sma50", "sma150", "sma200"))
@@ -791,11 +796,41 @@ def advances(daily: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
             run_from = None
         else:
             run_from = i if run_from is None else run_from
-            if cur is not None and i - run_from + 1 >= _base_reset_days:
+            if cur is not None and i - run_from + 1 >= BASE_COUNT_RESET_DAYS:
                 cur = None
         if cur is not None:
             start[i], origin[i] = cur, origin_from
     return start, origin
+
+
+def base_number(daily: pd.DataFrame, bh_i: int, adv: tuple | None = None) -> dict:
+    """The base count (see BASE_COUNT_*) of the base whose high is bar `bh_i`, from `daily` up to that bar only:
+    {"n": its number in the advance (None outside one), "start": the advance's first bar, "low_i": the advance's
+    low, "earlier": the dates of the closes that cleared the earlier bases counted}. `adv`: `advances(daily)`, if
+    already computed (it is causal, so the full-frame arrays are the same up to `bh_i`)."""
+    start, origin = adv if adv is not None else advances(daily.iloc[: bh_i + 1])
+    s = int(start[bh_i])
+    if s < 0:
+        return {"n": None}
+    hi, lo, cl = (daily[k].to_numpy(float) for k in ("high", "low", "close"))
+    counted: list = []                 # (high, low, the bar whose close cleared it) since the count last restarted
+    peak, peak_i, trough = hi[s], s, lo[s]
+    for j in range(s + 1, bh_i + 1):
+        deep = (peak - trough) / peak * 100 >= BASE_COUNT_MIN_DEPTH_PCT    # a base has formed under `peak`
+        if deep and cl[j] > peak:
+            if j - peak_i >= BASE_COUNT_MIN_DAYS:
+                if counted and trough < counted[-1][1]:
+                    counted = []       # it undercut the last base counted: the count starts again
+                if not counted or peak >= counted[-1][0] * (1 + BASE_COUNT_STEP_PCT / 100):
+                    counted.append((peak, trough, j))
+            peak, peak_i, trough = hi[j], j, lo[j]
+        elif hi[j] > peak and not deep:
+            peak, peak_i, trough = hi[j], j, lo[j]     # still advancing: a new high, not a base yet
+        else:
+            trough = min(trough, lo[j])      # inside a base, an intraday poke above its high does not end it
+    o = int(origin[bh_i])
+    return {"n": len(counted) + 1, "start": s, "low_i": o + int(lo[o: bh_i + 1].argmin()),
+            "earlier": [str(daily.index[j].date()) for _, _, j in counted]}
 
 
 def _ordinal(n: int) -> str:
@@ -909,10 +944,18 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.43"
-    # 1.43 changes only build_plans (no target gate), so it reads 1.42's cached signal rows.
-    signal_version = "1.42"
+    version = "1.44"
+    # signal_version is not pinned: 1.44's evaluate() records each base's number (base_number), so it rescans.
     changelog = (
+        ("1.44", "2026-11-04",
+         "The base count is a rule (MAX_BASE_COUNT = 3). Minervini buys the early bases of a Stage 2 advance: by "
+         "the fourth the trend is old and most who want the stock own it. evaluate() records each setup's base "
+         "number in its advance (base_number, BASE_COUNT_*: an advance lasts until TT-01 to TT-04 fail 20 sessions "
+         "in a row; a base is a pullback of 10%+ cleared by a close above its high 25+ sessions later, counted "
+         "when its high is 10%+ above the last base counted; an undercut of that base's low restarts the count), "
+         "and build_plans refuses a base past the third. The spec's own count (MV-01 signals) numbered all twelve "
+         "of NVDA's 2015-2018 setups the first. `--const MAX_BASE_COUNT=0` records the number but refuses nothing. "
+         "The chart numbers bases with the same function."),
         ("1.43", "2026-11-04",
          "No projected price target (MEASURED_MOVE_RR = 0). Minervini sets none: his reward-to-risk is a "
          "property of results -- average gain against average loss, kept at 2:1 or better by a stop of at most "
@@ -1470,12 +1513,12 @@ class MinerviniSpecStrategy(Strategy):
                      "first_depth_pct", "last_depth_pct", "base_depth_pct", "tightness_pct", "dryup_ratio",
                      "breakout_volume_ratio", "vcp_fail", "rs_score", "base_notes", "base_reference", "pivot_route", "pivot_pos",
                      "dryup_quiet_days", "closes_below_200", "below_200_share_pct", "undercuts",
-                     "undercuts_failed", "undercuts_pending", "bh_atr_pct", "atr_blocks_base")
+                     "undercuts_failed", "undercuts_pending", "bh_atr_pct", "atr_blocks_base", "base_number")
     extra_numeric_columns = ("pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
                              "first_depth_pct", "last_depth_pct", "base_depth_pct", "tightness_pct", "dryup_ratio",
                              "breakout_volume_ratio", "rs_score", "pivot_pos", "dryup_quiet_days",
                              "closes_below_200", "below_200_share_pct", "undercuts", "undercuts_failed",
-                             "undercuts_pending", "bh_atr_pct")
+                             "undercuts_pending", "bh_atr_pct", "base_number")
     needs_ctx_extras = True
     # Read after the scan, never by evaluate(): a `--const` variant moving only these reuses the
     # shipped run's signal rows (base.Strategy.signal_exempt_consts). The detector's constants,
@@ -1484,7 +1527,7 @@ class MinerviniSpecStrategy(Strategy):
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
         "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
-        "MIN_STRUCTURAL_R", "MEASURED_MOVE_RR", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
+        "MIN_STRUCTURAL_R", "MEASURED_MOVE_RR", "MAX_BASE_COUNT", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
@@ -1885,6 +1928,15 @@ class MinerviniSpecStrategy(Strategy):
     entry_rules = (
         "Every buy starts from a signal on a session's close and fills in a later session, so the signal "
         "price and the price paid are never the same. The setups are described under Rules.",
+        "Early bases only (1.44, MAX_BASE_COUNT). A Stage 2 advance builds a series of bases, and Minervini "
+        "buys the early ones: by the fourth the trend is old and most who want the stock already own it. Each "
+        "setup's base is numbered in its advance, and a base numbered past {MAX_BASE_COUNT} is refused -- "
+        "whatever the setup. How it is counted, as of the signal session: the advance lasts until TT-01 to TT-04 "
+        "have failed {BASE_COUNT_RESET_DAYS} sessions in a row; an earlier base counts once a close cleared its "
+        "high, at least {BASE_COUNT_MIN_DAYS} sessions after it and after a pullback of at least "
+        "{BASE_COUNT_MIN_DEPTH_PCT}%, when its high is at least {BASE_COUNT_STEP_PCT}% above the last base "
+        "counted; a base that undercuts the last counted base's low starts the count again. A power play has no "
+        "base and is not numbered.",
         "Pivot breakout (MV-01, EN-01). Bought at the next session's open. Skipped if that open is "
         "more than {BUY_RANGE_PCT}% above the pivot (too extended to buy) or at or below the tight "
         "low (the setup has already failed).",
@@ -2154,6 +2206,11 @@ class MinerviniSpecStrategy(Strategy):
         ("Cheat: volume contraction", "CHEAT_VOL_CONTRACT", "MV-03/MV-04 (1.34): the shelf's average volume as a multiple of the sessions before it, at most. 0 = no contraction test (1.33)."),
         ("Cheat: volume lead-in", "CHEAT_VOL_LOOKBACK", "Sessions before the shelf, at least, that its volume is compared with (the rally from the low when longer)."),
         ("Skip dead sessions", "SKIP_DEAD_BARS", "1.42: 1 = the base and power-play detectors leave out a session with no volume and no range (a data hole filled with the previous price) instead of counting it as a quiet day. 0 = it counts (1.41)."),
+        ("Latest base bought", "MAX_BASE_COUNT", "1.44: a base numbered past this in its Stage 2 advance is refused. 0 = numbered, never refused (1.43)."),
+        ("Base count: reset", "BASE_COUNT_RESET_DAYS", "Sessions in a row TT-01 to TT-04 must fail to end an advance and restart the count."),
+        ("Base count: depth", "BASE_COUNT_MIN_DEPTH_PCT", "Smallest pullback from a high that counts as a base."),
+        ("Base count: length", "BASE_COUNT_MIN_DAYS", "Fewest sessions from a base's high to the close that clears it."),
+        ("Base count: step", "BASE_COUNT_STEP_PCT", "How far above the last counted base a base's high must be to count as a new one."),
         ("Measured-move target", "MEASURED_MOVE_RR", "1.43: 0 = no projected target and no reward-to-risk test, as "
          "Minervini trades (the stop and the sell rules keep gains larger than losses); 1 = the measured move, capped "
          "by overhead supply, must project MIN_STRUCTURAL_R (1.42)."),
@@ -2488,6 +2545,13 @@ class MinerviniSpecStrategy(Strategy):
         if OVERHEAD_YEARS and result.hard_gates_passed and result.has_setup:
             e["plan_overhead"] = sw.overhead_levels(d, ctx.weekly, None, ctx.h_value,
                                                     weekly_bars=52 * OVERHEAD_YEARS)
+        # 1.44, the base count (base_number), as of this session, on the bars that reach the plan: the base's
+        # number in its Stage 2 advance, for the VCP base and the flat base. Here, not in build_plans, for the
+        # reason plan_overhead is: a signal-cache hit rebuilds the context from 70 bars, too few to see the advance.
+        if result.hard_gates_passed and result.has_setup:
+            for k, col in (("base_date", "base_number"), ("flat_base_date", "flat_base_number")):
+                if e.get(k) and pd.Timestamp(e[k]) in d.index:
+                    e[col] = base_number(d, int(d.index.get_loc(pd.Timestamp(e[k]))))["n"]
         return result
 
     def entry_signal_fired(self, ctx: StockContext, result: StrategyResult) -> bool:
@@ -2560,6 +2624,11 @@ class MinerviniSpecStrategy(Strategy):
             stop = pivot_stop(tl, cfg.tick_size)
         if stop <= 0 or stop >= entry:
             return PlanChoice(None, None, "degenerate stop")
+        # the base count (1.44): a late-stage base is refused. A power play has no base, so no number.
+        n = None if power else e.get("flat_base_number") if flat else e.get("base_number")
+        if MAX_BASE_COUNT and n and n > MAX_BASE_COUNT:
+            return PlanChoice(None, None, f"late-stage base: the {_ordinal(n)} of its advance "
+                                          f"(at most the {_ordinal(MAX_BASE_COUNT)})")
         risk = entry - stop
         # Reward has to come from the CHART, not from the risk. `entry + 3 * risk`
         # restates the formula and reports an R the setup does not offer -- the same
@@ -2917,44 +2986,11 @@ class MinerviniSpecStrategy(Strategy):
                 if ts(ch[0]) < f <= ts(ch[0]) + pd.Timedelta(days=21) and not (bo is not None and ts(ch[0]) < ts(bo) < f):
                     return True
             return False
-        # The base count (see `_base_step_pct`): within one Stage 2 advance (`advances`), a base's number is one
-        # more than the earlier bases of that advance the stock broke out of before its high. A base whose high
-        # is outside an advance has no number.
-        adv_start, adv_origin = advances(daily)
-        lows, highs = daily["low"].to_numpy(float), daily["high"].to_numpy(float)
-
-        def cleared(bh_i: int) -> int | None:
-            """The first close above the high of the base whose high is bar `bh_i`."""
-            above = np.flatnonzero(close[bh_i + 1:] > highs[bh_i])
-            return bh_i + 1 + int(above[0]) if len(above) else None
-        by_adv: dict = {}   # advance start -> [(base high bar, the close that cleared it, base low)], counted
-        resets: dict = {}   # advance start -> [base high bar of each base that undercut the last one counted]
-        for bh_i in sorted(int(daily.index.get_loc(k)) for k in bases):
-            adv_i, out_i = int(adv_start[bh_i]), cleared(bh_i)
-            if adv_i < 0 or out_i is None or out_i - bh_i < _base_min_days:
-                continue
-            got = by_adv.setdefault(adv_i, [])
-            prev_b = got[-1] if got and not (resets.get(adv_i) and resets[adv_i][-1] > got[-1][0]) else None
-            b_low = float(lows[bh_i: out_i].min())
-            if prev_b is not None and b_low < prev_b[2]:
-                resets.setdefault(adv_i, []).append(bh_i)       # undercut: this base starts the count again
-                prev_b = None
-            if prev_b is None or highs[bh_i] >= highs[prev_b[0]] * (1 + _base_step_pct / 100):
-                got.append((bh_i, out_i, b_low))
+        # The base count, as the strategy counts it (`base_number`, as of each base's high)
+        adv = advances(daily)
 
         def count_of(key) -> dict | None:
-            if key is None:
-                return None
-            bh_i = int(daily.index.get_loc(key))
-            if adv_start[bh_i] < 0:
-                return {"n": None}
-            o = int(adv_origin[bh_i])
-            adv_i = int(adv_start[bh_i])
-            since = max([r_ for r_ in resets.get(adv_i, []) if r_ < bh_i], default=-1)   # the count restarted there
-            earlier = [str(ts(out_i).date()) for b_i, out_i, _ in by_adv.get(adv_i, [])
-                       if since <= b_i < bh_i and out_i <= bh_i]
-            return {"n": len(earlier) + 1, "start": int(adv_start[bh_i]),
-                    "low_i": o + int(lows[o: bh_i + 1].argmin()), "earlier": earlier}
+            return None if key is None else base_number(daily, int(daily.index.get_loc(key)), adv)
 
         out = []
         # A run's fill that today's rules see no entry for -- no cheat crossed the bar before it, no breakout
@@ -3373,30 +3409,31 @@ class MinerviniSpecStrategy(Strategy):
                           "arrow": True, "label": f"+{gain:.0f}%" + (f" · {nth}" if cnt else "")}]
             up_checks, flag, warn = list(checks["uptrend"]), "", False
             line = (f"+{gain:.0f}% since {a_day} · {nth}" if cnt else f"+{r['prior_advance_pct']:.0f}% in {up_days} days")
-            late = bool(cnt and cnt["n"] >= _late_base)
+            late = bool(cnt and MAX_BASE_COUNT and cnt["n"] > MAX_BASE_COUNT)
             if cnt:
                 e_ = cnt["earlier"]
                 up_checks.append({"code": "note", "name": "Base count",
                                   "value": f"{nth} of the advance since {day(cnt['start'])}"
                                            + (f" (earlier breakouts {', '.join(e_)})" if e_ else ""),
-                                  "limit": f"late-stage from the {_ordinal(_late_base)}; the count restarts once "
-                                           f"TT-01–TT-04 fail {_base_reset_days} sessions in a row",
-                                  "state": "warn" if late else "pass"})
+                                  "limit": (f"at most the {_ordinal(MAX_BASE_COUNT)}" if MAX_BASE_COUNT else "recorded")
+                                           + f"; the count restarts once TT-01–TT-04 fail {BASE_COUNT_RESET_DAYS} sessions in a row",
+                                  "state": "fail" if late else "pass"})
                 warn = late
                 advance = (f"The Stage 2 advance: from {px(a_low)} on {a_day} to the base high, {px(bh)} on {bd}, "
                            f"+{gain:.0f}%. This is its {nth}"
                            + (f": {len(e_)} earlier base{'s' if len(e_) != 1 else ''} of it broke out ({', '.join(e_)})."
                               if e_ else ": no earlier base of it has broken out.")
-                           + f" Minervini favours the first and second bases of an advance; from the "
-                             f"{_ordinal(_late_base)} on a base is late-stage -- the trend is old, and most who want "
-                             f"the stock already own it. " )
+                           + f" Minervini favours the first and second bases of an advance; later ones are "
+                             f"late-stage -- the trend is old, and most who want the stock already own it"
+                           + (f". The strategy buys at most the {_ordinal(MAX_BASE_COUNT)} base"
+                              + (": this one is refused. " if late else ". ") if MAX_BASE_COUNT else ". "))
             elif count is not None:
                 up_checks.append({"code": "note", "name": "Base count", "value": "outside a Stage 2 advance",
-                                  "limit": f"TT-01–TT-04 failed {_base_reset_days}+ sessions in a row at the high",
+                                  "limit": f"TT-01–TT-04 failed {BASE_COUNT_RESET_DAYS}+ sessions in a row at the high",
                                   "state": "warn"})
                 warn = True
                 advance = (f"The base high is outside a Stage 2 advance: the trend structure (TT-01–TT-04) had "
-                           f"failed {_base_reset_days} sessions in a row, so the base count has restarted. ")
+                           f"failed {BASE_COUNT_RESET_DAYS} sessions in a row, so the base count has restarted. ")
             else:
                 advance = ""
             # VCP-01 measures from the window's lowest low, so a deep correction INSIDE the advance passes
@@ -3528,6 +3565,8 @@ class MinerviniSpecStrategy(Strategy):
             ] + (self._target_checks(px, target, uncapped, capped, r_mult, ok_r) if MEASURED_MOVE_RR
                  else self._measured_move_note(px, uncapped, cap if capped else None, risk, buy))
             skip = [] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]
+            if cnt and MAX_BASE_COUNT and cnt["n"] > MAX_BASE_COUNT:
+                skip.append(f"it is the {_ordinal(cnt['n'])} base of its advance (at most the {_ordinal(MAX_BASE_COUNT)})")
             if not ok_r:
                 skip.append(f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no measured move")
             happened = (f" It broke out on {day(bo)}." if bo is not None else " It has not broken out yet."
@@ -3612,7 +3651,9 @@ class MinerviniSpecStrategy(Strategy):
             ] + (self._target_checks(px, target, c_uncapped, c_capped, r_mult, ok_r) if MEASURED_MOVE_RR
                  else self._measured_move_note(px, c_uncapped, c_cap if c_capped else None, risk, entry))
             skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
-                   ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"])
+                   ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"]) + \
+                   ([f"it is the {_ordinal(cnt['n'])} base of its advance (at most the {_ordinal(MAX_BASE_COUNT)})"]
+                    if cnt and MAX_BASE_COUNT and cnt["n"] > MAX_BASE_COUNT else [])
             zones.append({"key": "cheat", "title": "Cheat entry", "state": "pass" if not skip else "fail",
                           "from": c_from, "to": c_to, "illustration": True,
                           "line": f"{third} third · buy {px(entry)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult and MEASURED_MOVE_RR else ""),
@@ -3712,7 +3753,7 @@ class MinerviniSpecStrategy(Strategy):
             summary = f"Not a VCP: {self._vcp_fail_why(r, daily, bh_i, rep)}."
         # the base count on the title of a base the strategy could buy from (a failed base has no setup to number)
         if cnt and kind in ("vcp", "near", "cheat"):
-            tag = f" · {_ordinal(cnt['n'])} base" + (" (late)" if cnt["n"] >= _late_base else "")
+            tag = f" · {_ordinal(cnt['n'])} base" + (" (late)" if MAX_BASE_COUNT and cnt["n"] > MAX_BASE_COUNT else "")
             title = title[: -len(today)] + tag + today if today and title.endswith(today) else title + tag
         if live:
             summary = f"Still forming — judged on today's bar, {at}. " + summary

@@ -491,8 +491,12 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "6300e233",
+    "fingerprint": "2b706abb",
     "params": {
+      "BASE_COUNT_MIN_DAYS": 25,
+      "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
+      "BASE_COUNT_RESET_DAYS": 20,
+      "BASE_COUNT_STEP_PCT": 10.0,
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
       "BREAKEVEN_R": 2.0,
@@ -527,6 +531,7 @@
       "LIVE_MIN_PRICE_USD": 15,
       "LOW_CHEAT_ENABLED": 1,
       "MAX_ADV_PCT": 5.0,
+      "MAX_BASE_COUNT": 3,
       "MAX_BASE_DEPTH_PCT": 50.0,
       "MAX_CLOSES_BELOW_200": 10,
       "MAX_CONTRACTIONS": 6,
@@ -695,7 +700,7 @@
         "W5"
       ]
     },
-    "version": "1.43"
+    "version": "1.44"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
