@@ -753,6 +753,53 @@ _stage_swing_bars = 10
 # Stage 4 ends for Stage 1 only when the close has held above the 150-day this many bars (or the line
 # stops falling): one close above the line in a decline is a bounce, and it used to flip the stage
 _stage_hold_bars = 10
+# The base count (spec section 5, "Base count"): an advance ends when TT-01 to TT-04 fail this many sessions
+# in a row [assumption, the spec's], and a base from the fourth on is late-stage (the Learn guide's "4th+").
+# A base counts once a close clears its high -- the stock broke out of it, bought or not -- and only when its
+# high is at least `_base_step_pct` above the last base counted, so a shelf a little above the last base (or
+# the detector re-measuring one base from a nearby high) is not a new stage [assumption]. The spec counts
+# MV-01 signals instead, which undercounts: few breakouts pass MV-01's volume and close tests, and NVDA's
+# 2015-2018 advance read as "1st base" for all twelve of its setups. Two more rules from the usual practice
+# (O'Neil's, which Minervini follows here): a base counts only when it lasted `_base_min_days` sessions from its
+# high to the close that cleared it -- a shorter pause is part of the advance -- and a base whose low undercuts
+# the last counted base's low starts the count again [assumption]. Chart only for now, so lowercase.
+_base_reset_days = 20
+_late_base = 4
+_base_step_pct = 10.0
+_base_min_days = 25
+
+
+def advances(daily: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """The Stage 2 advance each bar belongs to, for the base count: (start, origin) per bar, -1 outside one.
+
+    An advance starts on the first bar where TT-01 to TT-04 hold (the close above the 150- and 200-day, the
+    150-day above the 200-day, the 200-day rising for a month, the 50-day above both) and lasts until they
+    have failed `_base_reset_days` sessions in a row; a shorter lapse -- a deep pullback inside a base --
+    does not end it. `origin` is where the run of failures before it began (0 at the start of the data):
+    the advance's low is the lowest low from there, the bottom it rose from."""
+    c, s50, s150, s200 = (daily[k].to_numpy(float) for k in ("close", "sma50", "sma150", "sma200"))
+    s200p = daily["sma200_21d_ago"].to_numpy(float)
+    with np.errstate(invalid="ignore"):
+        ok = (c > s150) & (c > s200) & (s150 > s200) & (s200 > s200p) & (s50 > s150) & (s50 > s200)
+    start, origin = np.full(len(c), -1), np.full(len(c), -1)
+    cur = run_from = None          # the advance in force; where the current run of failing bars began
+    origin_from = 0
+    for i in range(len(c)):
+        if ok[i]:
+            if cur is None:
+                cur, origin_from = i, (run_from if run_from is not None else 0)
+            run_from = None
+        else:
+            run_from = i if run_from is None else run_from
+            if cur is not None and i - run_from + 1 >= _base_reset_days:
+                cur = None
+        if cur is not None:
+            start[i], origin[i] = cur, origin_from
+    return start, origin
+
+
+def _ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
 
 
 def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = None) -> list[dict]:
@@ -2870,6 +2917,45 @@ class MinerviniSpecStrategy(Strategy):
                 if ts(ch[0]) < f <= ts(ch[0]) + pd.Timedelta(days=21) and not (bo is not None and ts(ch[0]) < ts(bo) < f):
                     return True
             return False
+        # The base count (see `_base_step_pct`): within one Stage 2 advance (`advances`), a base's number is one
+        # more than the earlier bases of that advance the stock broke out of before its high. A base whose high
+        # is outside an advance has no number.
+        adv_start, adv_origin = advances(daily)
+        lows, highs = daily["low"].to_numpy(float), daily["high"].to_numpy(float)
+
+        def cleared(bh_i: int) -> int | None:
+            """The first close above the high of the base whose high is bar `bh_i`."""
+            above = np.flatnonzero(close[bh_i + 1:] > highs[bh_i])
+            return bh_i + 1 + int(above[0]) if len(above) else None
+        by_adv: dict = {}   # advance start -> [(base high bar, the close that cleared it, base low)], counted
+        resets: dict = {}   # advance start -> [base high bar of each base that undercut the last one counted]
+        for bh_i in sorted(int(daily.index.get_loc(k)) for k in bases):
+            adv_i, out_i = int(adv_start[bh_i]), cleared(bh_i)
+            if adv_i < 0 or out_i is None or out_i - bh_i < _base_min_days:
+                continue
+            got = by_adv.setdefault(adv_i, [])
+            prev_b = got[-1] if got and not (resets.get(adv_i) and resets[adv_i][-1] > got[-1][0]) else None
+            b_low = float(lows[bh_i: out_i].min())
+            if prev_b is not None and b_low < prev_b[2]:
+                resets.setdefault(adv_i, []).append(bh_i)       # undercut: this base starts the count again
+                prev_b = None
+            if prev_b is None or highs[bh_i] >= highs[prev_b[0]] * (1 + _base_step_pct / 100):
+                got.append((bh_i, out_i, b_low))
+
+        def count_of(key) -> dict | None:
+            if key is None:
+                return None
+            bh_i = int(daily.index.get_loc(key))
+            if adv_start[bh_i] < 0:
+                return {"n": None}
+            o = int(adv_origin[bh_i])
+            adv_i = int(adv_start[bh_i])
+            since = max([r_ for r_ in resets.get(adv_i, []) if r_ < bh_i], default=-1)   # the count restarted there
+            earlier = [str(ts(out_i).date()) for b_i, out_i, _ in by_adv.get(adv_i, [])
+                       if since <= b_i < bh_i and out_i <= bh_i]
+            return {"n": len(earlier) + 1, "start": int(adv_start[bh_i]),
+                    "low_i": o + int(lows[o: bh_i + 1].argmin()), "earlier": earlier}
+
         out = []
         # A run's fill that today's rules see no entry for -- no cheat crossed the bar before it, no breakout
         # just before it: a run of an older version bought what these rules no longer take. Drawn as the base
@@ -2886,7 +2972,7 @@ class MinerviniSpecStrategy(Strategy):
             bo = bases.get(key, {}).get("breakout")
             if bo is not None and 0 <= j - bo <= 3:           # the breakout itself: drawn by the base below
                 continue
-            s_ = self._setup(daily, cfg, p, j, None, None, False, ov=ov)
+            s_ = self._setup(daily, cfg, p, j, None, None, False, ov=ov, count=count_of(key))
             s_["anchored"] = True
             s_["summary"] = (f"Drawn as the base stood on {ts(j).date()}, the session before the selected run "
                              f"bought it; today's rules: " + s_["summary"][0].lower() + s_["summary"][1:])
@@ -2899,14 +2985,16 @@ class MinerviniSpecStrategy(Strategy):
             ch = signalled.get(key) or b["cheat"]
             if ch and fills and (key in signalled or traded_cheat(ch, bo)):
                 # the run bought the cheat: draw that trade, from the base as it stood the bar before the cross
-                out.append(self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True, ov=ov))
+                out.append(self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True, ov=ov,
+                                       count=count_of(key)))
                 out[-1]["anchored"] = True
                 continue
             so = self._cheat_stop_out(daily, cfg, ch, bo) if ch else None
             now = key == live and bo is None   # still forming today: judge it as today's screen does
             bought = None
             if so is not None:
-                bought = self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True, ov=ov)
+                bought = self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True, ov=ov,
+                                     count=count_of(key))
                 if not bought["title"].startswith("Cheat entry · stopped out"):
                     bought = None   # a cheat the strategy would skip (risk, R) was never bought: nothing stopped out
             if bought is not None:
@@ -2928,7 +3016,8 @@ class MinerviniSpecStrategy(Strategy):
                     continue
                 ch = again
             rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
-            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed"), near=b.get("near"), ov=ov))
+            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed"), near=b.get("near"), ov=ov,
+                                   count=count_of(key)))
         out += self._power_plays(daily, cfg)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
 
@@ -3159,7 +3248,7 @@ class MinerviniSpecStrategy(Strategy):
 
     def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
                cheat: tuple | None = None, live: bool = False, traded_cheat: bool = False,
-               missed: str | None = None, near: str | None = None, ov=None) -> dict:
+               missed: str | None = None, near: str | None = None, ov=None, count: dict | None = None) -> dict:
         """One setup for the chart: a frame around it, and its zones — the uptrend into the base, the
         base and its contractions, the pivot entry of a completed VCP, and the latest cheat entry
         (`cheat`: (bar, MV03 | MV04, yesterday's detection)) — each with its own shapes, its checklist
@@ -3263,15 +3352,52 @@ class MinerviniSpecStrategy(Strategy):
         zones = []
 
         # ---- zone 1: the uptrend into the base
+        cnt = count if count and count.get("n") else None
         if r["prior_low"]:
             pl, pd_ = float(r["prior_low"]), iso(r["prior_low_date"])
             up_from = pd_
             trend = ("The trend template held on the high's bar, and the 150/200-day structure held through the base."
                      if fail != "VCP-03" else f"But it is too new to judge the trend: {young_why}." if young
                      else f"But the trend was not intact: {self._vcp_fail_why(r, daily, bh_i, rep)}.")
-            up_shapes = [{"shape": "line", "from": pd_, "to": bd, "p0": pl, "p1": bh, "role": "uptrend",
-                          "arrow": True, "label": f"+{r['prior_advance_pct']:.0f}%"}]
-            up_checks, flag, warn, line = list(checks["uptrend"]), "", False, f"+{r['prior_advance_pct']:.0f}% in {up_days} days"
+            # The whole Stage 2 advance the base sits in (`advances`), from its low to the base high, numbered by
+            # the base count -- not just VCP-01's leg (the lowest low of the last {prior_window} sessions), which
+            # starts somewhere different for every base of one advance and read as a new uptrend each time.
+            # VCP-01's own measure stays the zone's first check row.
+            a_i = cnt["low_i"] if cnt else None
+            a_low, a_day = (float(daily["low"].iloc[a_i]), day(a_i)) if cnt else (pl, pd_)
+            gain = (bh / a_low - 1) * 100 if a_low > 0 else 0.0
+            up_from = min(a_day, pd_)
+            nth = f"{_ordinal(cnt['n'])} base" if cnt else ""
+            up_shapes = [{"shape": "line", "from": a_day, "to": bd, "p0": a_low, "p1": bh, "role": "uptrend",
+                          "arrow": True, "label": f"+{gain:.0f}%" + (f" · {nth}" if cnt else "")}]
+            up_checks, flag, warn = list(checks["uptrend"]), "", False
+            line = (f"+{gain:.0f}% since {a_day} · {nth}" if cnt else f"+{r['prior_advance_pct']:.0f}% in {up_days} days")
+            late = bool(cnt and cnt["n"] >= _late_base)
+            if cnt:
+                e_ = cnt["earlier"]
+                up_checks.append({"code": "note", "name": "Base count",
+                                  "value": f"{nth} of the advance since {day(cnt['start'])}"
+                                           + (f" (earlier breakouts {', '.join(e_)})" if e_ else ""),
+                                  "limit": f"late-stage from the {_ordinal(_late_base)}; the count restarts once "
+                                           f"TT-01–TT-04 fail {_base_reset_days} sessions in a row",
+                                  "state": "warn" if late else "pass"})
+                warn = late
+                advance = (f"The Stage 2 advance: from {px(a_low)} on {a_day} to the base high, {px(bh)} on {bd}, "
+                           f"+{gain:.0f}%. This is its {nth}"
+                           + (f": {len(e_)} earlier base{'s' if len(e_) != 1 else ''} of it broke out ({', '.join(e_)})."
+                              if e_ else ": no earlier base of it has broken out.")
+                           + f" Minervini favours the first and second bases of an advance; from the "
+                             f"{_ordinal(_late_base)} on a base is late-stage -- the trend is old, and most who want "
+                             f"the stock already own it. " )
+            elif count is not None:
+                up_checks.append({"code": "note", "name": "Base count", "value": "outside a Stage 2 advance",
+                                  "limit": f"TT-01–TT-04 failed {_base_reset_days}+ sessions in a row at the high",
+                                  "state": "warn"})
+                warn = True
+                advance = (f"The base high is outside a Stage 2 advance: the trend structure (TT-01–TT-04) had "
+                           f"failed {_base_reset_days} sessions in a row, so the base count has restarted. ")
+            else:
+                advance = ""
             # VCP-01 measures from the window's lowest low, so a deep correction INSIDE the advance passes
             # unseen: the arrow would draw straight through it. Flag it, and say what the run from it was.
             seg = daily.iloc[daily.index.get_loc(r["prior_low_date"]): bh_i + 1]
@@ -3292,11 +3418,12 @@ class MinerviniSpecStrategy(Strategy):
                                   "points": [{"at": iso(c_day), "price": c_low, "label": f"−{dd.max():.0f}% dip"}]})
                 up_checks.append({"code": "note", "name": "Dip inside", "value": f"{dd.max():.1f}%, then +{since:.1f}%",
                                   "limit": f"flagged above {self._UPTREND_FLAG_PCT:g}%", "state": "warn"})
-            zones.append({"key": "uptrend", "title": "Uptrend", "state": zstate("uptrend"), "warn": warn, "from": pd_, "to": bd,
+            zones.append({"key": "uptrend", "title": "Uptrend", "state": zstate("uptrend"), "warn": warn, "from": up_from, "to": bd,
                           "line": line,
-                          "text": (f"The stock rose {r['prior_advance_pct']:.0f}%, from {px(pl)} on {pd_} to {px(bh)} on {bd}, "
-                                   f"in {up_days} sessions. A base only matters after a strong advance: at least "
-                                   f"{PRIOR_ADVANCE_PCT:g}% within {VCP.prior_window} sessions. {trend}{flag}"),
+                          "text": (advance + f"The base rule (VCP-01) measures the move into the base: "
+                                   f"+{r['prior_advance_pct']:.0f}%, from {px(pl)} on {pd_}, in {up_days} sessions. A "
+                                   f"base only matters after a strong advance: at least {PRIOR_ADVANCE_PCT:g}% within "
+                                   f"{VCP.prior_window} sessions. {trend}{flag}"),
                           "checks": up_checks, "shapes": up_shapes})
         else:
             up_from = bd
@@ -3582,9 +3709,14 @@ class MinerviniSpecStrategy(Strategy):
                          + (", growing" if n > MAX_CONTRACTIONS and grew * 2 > n - 1 else f" ({MIN_CONTRACTIONS}–{MAX_CONTRACTIONS} in a VCP)")
                          + today)
             summary = f"Not a VCP: {self._vcp_fail_why(r, daily, bh_i, rep)}."
+        # the base count on the title of a base the strategy could buy from (a failed base has no setup to number)
+        if cnt and kind in ("vcp", "near", "cheat"):
+            tag = f" · {_ordinal(cnt['n'])} base" + (" (late)" if cnt["n"] >= _late_base else "")
+            title = title[: -len(today)] + tag + today if today and title.endswith(today) else title + tag
         if live:
             summary = f"Still forming — judged on today's bar, {at}. " + summary
         return {"from": up_from, "base_from": bd, "to": frame_to, "kind": kind, "complete": done, "fail": fail,
+                "base_number": cnt["n"] if cnt else None,
                 "breakout": day(bo) if bo is not None and not missed else None,
                 "crossed": day(bo) if bo is not None and missed else None, "live": live, "as_of": at,
                 "title": title, "summary": summary,
