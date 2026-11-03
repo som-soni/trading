@@ -1869,14 +1869,7 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .bt-bar { align-items: center; }
 .bt-run { margin-left: auto; }
 
-/* ---------- Strategies sidebar: wider, can be hidden, groups fold */
-.strats-layout { grid-template-columns: 300px 1fr; }
-.strats-layout.nav-hidden { grid-template-columns: 40px 1fr; }
-.strats-layout.nav-hidden .strats-nav > :not(.nav-hide) { display: none; }
-.strats-layout.nav-hidden .strats-nav { padding: 6px 4px; }
-.strats-nav .nav-hide { justify-self: end; height: 26px; min-width: 28px; padding: 0 8px; font-size: 15px; line-height: 1; color: var(--muted); }
-.strats-layout.nav-hidden .strats-nav .nav-hide { justify-self: center; }
-.strats-nav .nav-hide:hover { color: var(--strong); }
+/* ---------- Strategies sidebar: groups fold */
 .strats-nav .nav-grp { border-top: 1px solid var(--line-2); padding-top: 4px; margin-top: 6px; }
 .strats-nav .nav-grp-h { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; padding: 8px 8px 6px;
   font-size: 14px; font-weight: 700; color: var(--strong); letter-spacing: 0; text-transform: none; }
@@ -1889,4 +1882,18 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .strats-nav .nav-sub-h { padding: 8px 8px 3px 18px; font-size: 12px; font-weight: 600; color: var(--text); text-transform: uppercase; letter-spacing: .05em; }
 .strats-nav .nav-grp > .nav-item { margin-left: 8px; }
 .strats-nav .nav-grp > .nav-item.sub { margin-left: 24px; }
-@media (max-width: 860px) { .strats-layout, .strats-layout.nav-hidden { grid-template-columns: 1fr; } }
+
+/* ---------- every left panel: one width, one hide button (app.js fitSidePanels) */
+:root { --sidenav-w: 300px; }
+.has-sidenav > aside > .nav-hide { display: none; }
+@media (min-width: 901px) {
+  .rep-layout, .wl-layout, .notes { grid-template-columns: var(--sidenav-w) minmax(0, 1fr); }
+  .has-sidenav.nav-hidden { grid-template-columns: 40px minmax(0, 1fr); }
+  .has-sidenav.nav-hidden > aside > :not(.nav-hide) { display: none !important; }
+  .has-sidenav.nav-hidden > aside { padding: 6px 4px; }
+  .has-sidenav > aside > .nav-hide { display: inline-flex; align-items: center; justify-content: center; justify-self: end; align-self: flex-end;
+    height: 26px; min-width: 28px; padding: 0 8px; font-size: 15px; line-height: 1; color: var(--muted); }
+  .has-sidenav.nav-hidden > aside > .nav-hide { justify-self: center; align-self: center; }
+  .has-sidenav > aside > .nav-hide:hover { color: var(--strong); }
+  .notes-list > .nav-hide { margin: 6px 6px 0 0; }
+}

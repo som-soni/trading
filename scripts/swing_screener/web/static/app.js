@@ -5,6 +5,35 @@ const store = {
   get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
+
+// Every page with a left panel behaves the same: one width (style.css --sidenav-w) and one « button that
+// folds the panel to a thin rail. Hidden or shown is one setting for the whole app, so moving between
+// pages never flips it. Pages render their layout however they like; this watches #view and fits the
+// button to any panel that lacks one, including a panel re-rendered in place.
+const SIDE_PANELS = [[".rep-layout", ".rep-nav"], [".wl-layout", ".wl-lists"], [".notes", ".notes-list"]];
+function fitSidePanels() {
+  const hidden = store.get("sideNavHidden", false);
+  for (const [lay, pan] of SIDE_PANELS) {
+    $view.querySelectorAll(`${lay} > ${pan}`).forEach((panel) => {
+      const layout = panel.parentElement;
+      layout.classList.add("has-sidenav");
+      layout.classList.toggle("nav-hidden", hidden);
+      let b = panel.querySelector(":scope > .nav-hide");
+      if (!b) {
+        b = document.createElement("button");
+        b.className = "nav-hide ghost";
+        b.setAttribute("aria-label", "Show or hide this panel");
+        b.onclick = () => { store.set("sideNavHidden", !store.get("sideNavHidden", false)); fitSidePanels(); };
+        panel.prepend(b);
+      }
+      b.textContent = hidden ? "»" : "«";
+      b.title = hidden ? "Show the panel" : "Hide the panel";
+    });
+  }
+}
+new MutationObserver(() => {
+  if (SIDE_PANELS.some(([lay, pan]) => [...$view.querySelectorAll(`${lay} > ${pan}`)].some((x) => !x.querySelector(":scope > .nav-hide")))) fitSidePanels();
+}).observe($view, { childList: true, subtree: true });
 const _fetchJson = async (url, init) => {
   const r = await fetch(url, init);
   if (!r.ok) throw new Error(`${r.status} ${(await r.json().catch(() => ({}))).detail || r.statusText}`);
@@ -4751,9 +4780,7 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const ungrouped = list.filter((x) => !x[`${groupBy}_label`]);
   const rest = ungrouped.length ? group(`${groupBy}:other`, "Other", ungrouped.length,
     ungrouped.map((x) => item(x)).join(""), ungrouped.some((x) => x.key === key)) : "";
-  const navHidden = store.get("stratNavHidden", false);
-  $view.innerHTML = `<div class="rep-layout strats-layout${navHidden ? " nav-hidden" : ""}"><aside class="rep-nav strat-nav strats-nav">
-      <button class="nav-hide ghost" title="${navHidden ? "Show the strategy list" : "Hide the strategy list"}" aria-label="Toggle the strategy list">${navHidden ? "»" : "«"}</button>
+  $view.innerHTML = `<div class="rep-layout strats-layout"><aside class="rep-nav strat-nav strats-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
       <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div></div>
       <div class="nav-groupby"><span class="muted small">Group by</span>${segmented([["behaviour", "Behaviour"], ["horizon", "Holding period"]], groupBy, "sgroup")}</div>
@@ -4768,14 +4795,6 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
     d.open ? now.delete(d.dataset.g) : now.add(d.dataset.g);
     store.set("stratGroupsClosed", [...now]);
   }));
-  $view.querySelector(".nav-hide").onclick = (e) => {
-    const lay = $view.querySelector(".strats-layout");
-    const hide = !lay.classList.contains("nav-hidden");
-    lay.classList.toggle("nav-hidden", hide);
-    e.currentTarget.textContent = hide ? "»" : "«";
-    e.currentTarget.title = hide ? "Show the strategy list" : "Hide the strategy list";
-    store.set("stratNavHidden", hide);
-  };
   const main = $view.querySelector("#stmain");
   if (!key) return setupsPage(alive, main);
   if (key === "quality" && !tab) tab = "rules";
