@@ -86,6 +86,8 @@ FIELDS = ("revenue", "net_income", "eps", "gross_profit", "operating_income", "p
 SEC_LOOKBACK_QUARTERS = 68    # ~17 years: XBRL was phased in over 2009-2011, so this is the practical floor
 LOOKBACK_QUARTERS = 20        # NSE: five years of quarters; the 3-year annual test needs 16
 ANNUAL_YEARS_BACK = 10        # annual P&L / balance sheet / cash flow kept for this many fiscal years
+SEC_ANNUAL_YEARS_BACK = 17    # ... from EDGAR, which returns them all in one response: back to the 2009 XBRL
+                              # phase-in, so a backtest from 2013 has the statements its fundamentals test reads
 SHP_DETAIL_QUARTERS = 4       # India: the detailed shareholding filing (FII / DII split, ~0.5 MB each) for this many
                               # quarters at the first fetch; one new quarter at a time after that
 MAX_AGE_DAYS = 30             # re-check every company at least this often
@@ -518,7 +520,7 @@ def sec_lines(facts_json: dict, rows: list[dict]) -> tuple[list[tuple], str]:
         out += [("Q", e, k, v) for k, v in _clean(vals).items()]
     # fiscal years
     fy = {line: _sec_fy(gaap, names, _unit_for(line), first=line in ("eps", "dividend_ps")) for line, names in {**SEC_PL, **SEC_CF}.items()}
-    fy_ends = sorted({e for line in ("sales", "net_profit") for e in fy[line]})[-ANNUAL_YEARS_BACK:]
+    fy_ends = sorted({e for line in ("sales", "net_profit") for e in fy[line]})[-SEC_ANNUAL_YEARS_BACK:]
     for e in fy_ends:
         vals = {line: fy[line].get(e) for line in fy}
         if vals["sales"] is not None and vals["operating_profit"] is not None:

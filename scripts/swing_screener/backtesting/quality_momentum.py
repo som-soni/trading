@@ -173,6 +173,9 @@ class QualityFilter:
         meta = financials.load_meta(market)
         self.financial = {s: ((m.get("profile") or {}).get("sector") in FIN_SECTORS or m.get("layout") == "bank")
                           for s, m in meta.items()}
+        # the hindsight meter: a ranked name the filings source was never asked about is "missing" only
+        # because nobody fetched it (backtesting/fundamentals_universe.py; the financials_backfill job)
+        self.asked = set(meta)
         self._lines: dict = {}
         self.rows: list[dict] = []
 
@@ -185,6 +188,7 @@ class QualityFilter:
     def __call__(self, today, scores: dict) -> dict:
         d = pd.Timestamp(today).date()
         kept, covered = {}, 0
+        unasked = sum(1 for s in scores if s not in self.asked)
         for s, v in scores.items():
             fin = self.financial.get(s, False)
             m = measure(self.quarters.get(s, []), self.lines(s), d, fin)
@@ -192,24 +196,27 @@ class QualityFilter:
             covered += c
             if ok:
                 kept[s] = v
-        self.rows.append({"date": d, "ranked": len(scores), "covered": covered, "passed": len(kept)})
+        self.rows.append({"date": d, "ranked": len(scores), "covered": covered, "passed": len(kept),
+                          "never_fetched": unasked})
         return kept
 
     def coverage(self) -> pd.DataFrame:
-        return pd.DataFrame(self.rows, columns=["date", "ranked", "covered", "passed"])
+        return pd.DataFrame(self.rows, columns=["date", "ranked", "covered", "passed", "never_fetched"])
 
     def notes(self) -> list[str]:
         c = self.coverage()
         if c.empty:
             return []
         first = c[c["passed"] > 0]["date"].min() if (c["passed"] > 0).any() else None
-        by_year = c.assign(y=pd.to_datetime(c["date"]).dt.year).groupby("y")[["ranked", "covered", "passed"]].median()
-        yrs = "; ".join(f"{y}: {int(r.covered)}/{int(r.ranked)} covered, {int(r.passed)} pass"
+        by_year = c.assign(y=pd.to_datetime(c["date"]).dt.year).groupby("y")[["ranked", "covered", "passed", "never_fetched"]].median()
+        yrs = "; ".join(f"{y}: {int(r.covered)}/{int(r.ranked)} covered, {int(r.passed)} pass, "
+                        f"{int(r.never_fetched)} never fetched"
                         for y, r in by_year.iterrows())
         return [
             f"QUALITY FILTER ({self.variant}): each month-end the ranked pool keeps only companies whose "
             f"filings public on that date pass {', '.join(self.limits)}; missing data is not eligible.",
-            f"Fundamentals coverage, median per rebalance by year (covered of ranked, passing): {yrs}.",
+            f"Fundamentals coverage, median per rebalance by year (covered of ranked, passing, never "
+            f"fetched -- missing only because nobody asked, the look-ahead the financials_backfill job closes): {yrs}.",
             ("First rebalance with any passing name: " + str(first) + ". Before it the book holds cash."
              if first is not None else "No rebalance had a passing name: the book held cash throughout."),
         ]

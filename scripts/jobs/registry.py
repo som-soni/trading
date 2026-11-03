@@ -852,6 +852,31 @@ def _financials_history(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _financials_backfill(ctx: Ctx) -> None:
+    """Company financials for every stock a backtest could have ranked (backtesting/fundamentals_universe.py):
+    each one liquid at some month-end since the optimise stage began, not only today's liquid and Stage-2
+    stocks -- without them a fundamentals-filtered backtest never sees the leaders that later collapsed. Then,
+    where the source has one (NSE), each company's older results (financials.refresh_history). Only companies
+    due a fetch are fetched (financials.due); --force refetches all (after deepening what a fetch keeps)."""
+    from swing_screener.backtesting import fundamentals_universe
+    from swing_screener.config import MARKETS
+    from swing_screener.marketdata import financials
+    financials.init_schema()
+    syms = fundamentals_universe.symbols(ctx.market)
+    missing = len(fundamentals_universe.never_fetched(ctx.market, syms))
+    r = financials.run(ctx.market, syms, force=bool(ctx.opt("force")))
+    detail = (f"{len(syms):,} companies ever liquid ({missing:,} never fetched before) · "
+              + ", ".join(f"{k.replace('_', ' ')} {v:,}" for k, v in r.items()))
+    if getattr(MARKETS[ctx.market], "quarterly_source", None) == "nse":
+        meta = financials.load_meta(ctx.market)
+        ok = [s for s in syms if (meta.get(s) or {}).get("status") == "ok"]
+        h = financials.refresh_history(ctx.market, ok, progress=ctx.step.progress)
+        r = {**r, **{f"history_{k}": v for k, v in h.items()}}
+        detail += f" · history {h['with_history']:,} companies, {h['quarters']:,} quarters, {h['errors']} error(s)"
+    ctx.step.detail = detail
+    ctx.step.stats = {**r, "companies": len(syms), "never_fetched": missing}
+
+
 def _fundamental_scores(ctx: Ctx) -> None:
     from fundamentals import growth
     syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()] if ctx.opt("symbols") else None
@@ -983,6 +1008,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "(SEC / NSE filings) for the Fundamentals page", "weekly", True, _financials, after=("screens",)),
     Job("financials_history", "data", "company results before the stored window: India's quarterly results back to 2009 "
         "from NSE's older filings, for backtests over the optimise window", "on demand", True, _financials_history,
+        after=("financials",)),
+    Job("financials_backfill", "data", "company financials for every stock liquid at some month-end since 2013 (not "
+        "only today's), so a fundamentals-filtered backtest is not looking ahead", "monthly", True, _financials_backfill,
         after=("financials",)),
     Job("announcements", "data", "results announcements: when each company published each quarter's results (NSE, back "
         "to 2005) -- what an event strategy ties a price reaction to", "weekly", True, _announcements, after=("universe",)),
