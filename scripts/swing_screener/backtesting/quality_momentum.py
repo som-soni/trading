@@ -47,7 +47,7 @@ import logging
 
 import pandas as pd
 
-from fundamentals.growth import STALE_RESULTS_DAYS
+from fundamentals.growth import ROE_EQUITY_MAX_AGE_DAYS, STALE_RESULTS_DAYS
 from ..marketdata import corporate_actions
 from ..marketdata.financials import LINES_FILING_LAG_DAYS
 from ..strategies.base import PortfolioStrategy
@@ -283,7 +283,10 @@ DOC = {
         "{STALE_RESULTS_DAYS} days old, or whose latest fiscal year or "
         "balance sheet is over {QM_STATEMENT_STALE_DAYS} days old, has no data.",
         "ROE. Net income of the last four quarters over average equity (latest and about a year before), "
-        "at least {QM_ROE_MIN_PCT}%. Needs four quarters spanning about nine months and a positive equity.",
+        "at least {QM_ROE_MIN_PCT}%. Needs four quarters spanning about nine months and a positive equity, the "
+        "latest filed at most {ROE_EQUITY_MAX_AGE_DAYS} days before the latest quarter's end -- so an Indian "
+        "year-end equity from the annual results (the only one filed before FY2022) serves the three quarters "
+        "after it.",
         "Sales. Revenue of the last four consecutive quarters over the same quarters' year-ago revenue as "
         "first published, minus one, at least {QM_SALES_GROWTH_MIN_PCT}%.",
         "Debt (not banks or insurers). (Borrowings - cash) / equity on the latest public balance sheet, at "
@@ -336,8 +339,14 @@ class QualityMomentumStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "quality_momentum"
-    version = "1.4"
+    version = "1.5"
     changelog = (
+        ("1.5", "2026-11-03",
+         "ROE accepts a year-end equity for the three quarters after it (growth.ROE_EQUITY_MAX_AGE_DAYS, was a "
+         "fixed 200 days). Before FY2022 Indian companies state equity only in their annual results -- now read "
+         "from paid-up capital plus reserves (NSE parser 9) -- so under 200 days every Indian ROE went missing "
+         "from February to mid-May and the stock dropped out of the pool for those months. US filings state "
+         "equity every quarter and are unaffected."),
         ("1.4", "2026-10-31",
          "The loop it shares with momentum_baseline (1.4): Trade rows count every resize. Each month-end re-weights the book, topping a laggard up and trimming a winner, but a trade row was built from the first fill alone, so win rate, profit factor, average R and turnover were wrong while the equity curve (read from cash) was right. A row is now the whole holding period: P&L is every buy, trim and sale with costs, the entry price the average paid, the notional the total paid -- and a holding resized to nothing (a slot below one whole share) now gets its row instead of vanishing. Equity, CAGR and drawdown are unchanged; stored runs' trade statistics are stale."),
         ("1.3", "2026-10-29",

@@ -37,6 +37,9 @@ logger = logging.getLogger(__name__)
 
 ANNUAL_YEARS = 3              # annual EPS growth is measured over this many fiscal years
 STALE_RESULTS_DAYS = 200      # latest results older than this are flagged stale (the company stopped filing?)
+ROE_EQUITY_MAX_AGE_DAYS = 300  # ROE's latest equity may be this many days older than the latest quarter: enough for one
+                               # year-end figure to serve the three quarters after it (Indian results before FY2022 state
+                               # equity once a year, in the annual results), not enough to reach a second year back
 GROWTH_READINGS = 8           # quarterly growth readings kept per company
 SERIES_QUARTERS = 12          # quarters kept for the page's charts
 SURPRISE_MATCH_DAYS = 45      # an earnings-history row belongs to the latest quarter when this close to its end
@@ -83,8 +86,10 @@ DOC = {
         "Each quarter is compared with the same quarter a year earlier, so seasonality cancels.",
         _fmt("Annual EPS growth is a yearly rate over the last {ANNUAL_YEARS} fiscal years (the Q4 filing's full-year EPS), "
              "or over trailing-twelve-month EPS where fiscal years are missing."),
-        "Return on equity is trailing-twelve-month net income over average equity from the filings, else the Quality page's "
-        "annual average. The earnings surprise is the latest quarter's EPS against Yahoo's consensus estimate.",
+        _fmt("Return on equity is trailing-twelve-month net income over average equity from the filings (the latest equity "
+             "filed up to {ROE_EQUITY_MAX_AGE_DAYS} days before the latest quarter's end, and the one about a year before it), "
+             "else the Quality page's annual average. The earnings surprise is the latest quarter's EPS against Yahoo's "
+             "consensus estimate."),
         "The technical side (Trend Template, RS rank) comes from the day's stock snapshot.",
         "Strategy sections (Minervini SEPA) judge these same numbers by their own rules.",
     ),
@@ -356,7 +361,7 @@ def roe(rows: list[dict], fallback: float | None = None) -> tuple[float | None, 
     ni4 = [r.get("net_income") for r in rows[-4:]]
     if len(rows) >= 4 and all(x is not None for x in ni4) and 270 <= (rows[-1]["period_end"] - rows[-4]["period_end"]).days <= 290:
         eq = [(r["period_end"], r["equity"]) for r in rows if r.get("equity")]
-        if eq and (rows[-1]["period_end"] - eq[-1][0]).days <= 200:
+        if eq and (rows[-1]["period_end"] - eq[-1][0]).days <= ROE_EQUITY_MAX_AGE_DAYS:
             year_ago = next((e for d, e in reversed(eq) if 300 <= (eq[-1][0] - d).days <= 430), None)
             avg = (eq[-1][1] + year_ago) / 2 if year_ago else eq[-1][1]
             if avg > 0:
