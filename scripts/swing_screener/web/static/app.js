@@ -4732,6 +4732,11 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const ax = AXES[groupBy];
   const all = list.filter((x) => x[`${groupBy}_label`]);
   const untried = ax.groups.filter((b) => !all.some((x) => x[groupBy] === b.key));
+  // Each group folds open and shut, remembered per browser; the group holding the open strategy stays open.
+  const closed = new Set(store.get("stratGroupsClosed", []));
+  const group = (gid, label, n, body, hasActive) =>
+    `<details class="nav-grp" data-g="${esc(gid)}"${hasActive || !closed.has(gid) ? " open" : ""}>
+      <summary class="nav-grp-h"><span>${esc(label)}</span><span class="n">${n}</span></summary>${body}</details>`;
   const stratNav = ax.groups.map((b) => {
     const mine = all.filter((x) => x[groupBy] === b.key);
     if (!mine.length) return "";
@@ -4740,11 +4745,15 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
     const body = subs.map(([slabel]) => (subs.length > 1 ? `<div class="nav-sub-h">${esc(slabel)}</div>` : "") +
       mine.filter((x) => x[lab] === slabel && (x.kind !== "screener" || topLevel(x)))
           .map((x) => (x.kind === "screener" ? withVariants(x) : item(x))).join("")).join("");
-    return `<div class="nav-h">${esc(b.label)}</div>${body}`;
+    const n = mine.filter((x) => x.kind !== "screener" || topLevel(x)).length;
+    return group(`${groupBy}:${b.key}`, b.label, n, body, mine.some((x) => x.key === key));
   }).join("");
   const ungrouped = list.filter((x) => !x[`${groupBy}_label`]);
-  const rest = ungrouped.length ? `<div class="nav-h">Other</div>${ungrouped.map((x) => item(x)).join("")}` : "";
-  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">
+  const rest = ungrouped.length ? group(`${groupBy}:other`, "Other", ungrouped.length,
+    ungrouped.map((x) => item(x)).join(""), ungrouped.some((x) => x.key === key)) : "";
+  const navHidden = store.get("stratNavHidden", false);
+  $view.innerHTML = `<div class="rep-layout strats-layout${navHidden ? " nav-hidden" : ""}"><aside class="rep-nav strat-nav strats-nav">
+      <button class="nav-hide ghost" title="${navHidden ? "Show the strategy list" : "Hide the strategy list"}" aria-label="Toggle the strategy list">${navHidden ? "»" : "«"}</button>
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
       <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div></div>
       <div class="nav-groupby"><span class="muted small">Group by</span>${segmented([["behaviour", "Behaviour"], ["horizon", "Holding period"]], groupBy, "sgroup")}</div>
@@ -4754,6 +4763,19 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
     </aside><section id="stmain" class="scr-main">${LOADING}</section></div>`;
   $view.querySelectorAll(".sgroup button").forEach((b) => b.onclick = () => {
     if (b.dataset.v !== groupBy) { store.set("stratGroupBy", b.dataset.v); route(); } });
+  $view.querySelectorAll(".nav-grp").forEach((d) => d.addEventListener("toggle", () => {
+    const now = new Set(store.get("stratGroupsClosed", []));
+    d.open ? now.delete(d.dataset.g) : now.add(d.dataset.g);
+    store.set("stratGroupsClosed", [...now]);
+  }));
+  $view.querySelector(".nav-hide").onclick = (e) => {
+    const lay = $view.querySelector(".strats-layout");
+    const hide = !lay.classList.contains("nav-hidden");
+    lay.classList.toggle("nav-hidden", hide);
+    e.currentTarget.textContent = hide ? "»" : "«";
+    e.currentTarget.title = hide ? "Show the strategy list" : "Hide the strategy list";
+    store.set("stratNavHidden", hide);
+  };
   const main = $view.querySelector("#stmain");
   if (!key) return setupsPage(alive, main);
   if (key === "quality" && !tab) tab = "rules";

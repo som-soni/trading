@@ -1868,3 +1868,25 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .bt-vsel { font-size: 12px; padding: 3px 6px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--panel); color: var(--text); max-width: 320px; }
 .bt-bar { align-items: center; }
 .bt-run { margin-left: auto; }
+
+/* ---------- Strategies sidebar: wider, can be hidden, groups fold */
+.strats-layout { grid-template-columns: 300px 1fr; }
+.strats-layout.nav-hidden { grid-template-columns: 40px 1fr; }
+.strats-layout.nav-hidden .strats-nav > :not(.nav-hide) { display: none; }
+.strats-layout.nav-hidden .strats-nav { padding: 6px 4px; }
+.strats-nav .nav-hide { justify-self: end; height: 26px; min-width: 28px; padding: 0 8px; font-size: 15px; line-height: 1; color: var(--muted); }
+.strats-layout.nav-hidden .strats-nav .nav-hide { justify-self: center; }
+.strats-nav .nav-hide:hover { color: var(--strong); }
+.strats-nav .nav-grp { border-top: 1px solid var(--line-2); padding-top: 4px; margin-top: 6px; }
+.strats-nav .nav-grp-h { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; padding: 8px 8px 6px;
+  font-size: 14px; font-weight: 700; color: var(--strong); letter-spacing: 0; text-transform: none; }
+.strats-nav .nav-grp-h::-webkit-details-marker { display: none; }
+.strats-nav .nav-grp-h::before { content: "›"; color: var(--muted); font-size: 18px; line-height: 1; width: 12px; text-align: center; transition: transform .12s; }
+.strats-nav .nav-grp[open] > .nav-grp-h::before { transform: rotate(90deg); }
+.strats-nav .nav-grp-h > span:first-of-type { flex: 1; }
+.strats-nav .nav-grp-h .n { font-size: 12px; font-weight: 500; color: var(--muted); background: var(--panel-2); border-radius: 9px; padding: 0 7px; font-variant-numeric: tabular-nums; }
+.strats-nav .nav-grp-h:hover { background: var(--panel-2); border-radius: 5px; }
+.strats-nav .nav-sub-h { padding: 8px 8px 3px 18px; font-size: 12px; font-weight: 600; color: var(--text); text-transform: uppercase; letter-spacing: .05em; }
+.strats-nav .nav-grp > .nav-item { margin-left: 8px; }
+.strats-nav .nav-grp > .nav-item.sub { margin-left: 24px; }
+@media (max-width: 860px) { .strats-layout, .strats-layout.nav-hidden { grid-template-columns: 1fr; } }
