@@ -137,8 +137,10 @@ def _headline(markdown: str) -> dict:
 
 
 # Runs whose "Costs paid" is not a per-side trading cost on stock notional -- short books add borrow,
-# the options book charges index points per leg -- so rescaling it to a per-side standard means nothing.
-NOT_RESTATED = {"parabolic_short", "stage4_shorts", "fno_income"}
+# the options book charges index points per leg, and the combo's covers only moves between its sleeves
+# (each sleeve's own costs are already inside its equity) -- so rescaling it to a per-side standard
+# means nothing, or counts the sleeves' costs twice.
+NOT_RESTATED = {"parabolic_short", "stage4_shorts", "fno_income", "momentum_dual_combo"}
 
 
 def standard_cost_bps(market: str) -> float:
