@@ -82,6 +82,11 @@ RIM_OK_PCT = 8.0          # ...within this: "acceptable"; beyond it (inside CH-0
 RIM_IDEAL_BONUS = 0.2     # setup quality added for ideal rims (it ranks signals for the position slots)
 RIM_LOOSE_PENALTY = 0.3   # ...and taken off for loose ones
 TRADE_CUPNH = 1           # 1 trades a cup WITHOUT a handle (CUPNH); 0 detects and draws it but never buys it
+# Research switches, one per pattern the event study found trailing the index (1.20): 0 never buys it
+TRADE_FWDG = 1            # falling wedge
+TRADE_DBOT = 1            # double bottom
+TRADE_TBOT = 1            # triple bottom
+TRADE_IHS = 1             # inverse head and shoulders
 CUPNH_NO_HANDLE = 1       # CH-13, beyond the spec: a handle-less cup may not have a dip below its rim (1 = on)
 CUP_UNDER_RIM = 1         # CH-12, beyond the spec: no high between a cup's lips above its rim (1 = on)
 HS_ORIGIN = 1             # HS-09, beyond the spec: the left shoulder belongs to the trend being reversed (1 = on)
@@ -239,8 +244,17 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.19"
+    version = "1.20"
     changelog = (
+        ("1.20", "2026-11-03",
+         "Four research switches, all ON, so a default run trades exactly as 1.19: TRADE_FWDG, "
+         "TRADE_DBOT, TRADE_TBOT and TRADE_IHS (0 = that pattern is never bought, as TRADE_CUPNH does "
+         "for the cup without a handle). An event study over the optimise window (2013-2021, every "
+         "gate-passing bar of v1.18, 60-session alpha against the index, month-clustered intervals) "
+         "found the falling wedge's confirmed close trailing the index by 4.9% in India and 1.2% in the "
+         "US (significant in India only), and the reversal family -- double bottom, triple bottom, "
+         "inverse head and shoulders -- trailing in both markets, several significantly in the US. The "
+         "switches let an optimise variant drop them; they decide nothing until one is verified."),
         ("1.19", "2026-11-03",
          "Triangle and wedge height from the prices (HEIGHT_FROM_PRICES, beyond the spec): H is the "
          "highest high minus the lowest low inside the pattern, Bulkowski's measure, instead of "
@@ -637,6 +651,9 @@ class ChartPatternSpecStrategy(Strategy):
               "reporting a breakout for {HORIZON} bars; from the next bar on it fails here, so a pullback "
               "into an old pivot is never bought.\n"
               "- **CUPNH:** counts only while TRADE_CUPNH is 1 (now {TRADE_CUPNH}).\n"
+              "- **Research switches:** FWDG, DBOT, TBOT and IHS count only while TRADE_FWDG "
+              "({TRADE_FWDG}), TRADE_DBOT ({TRADE_DBOT}), TRADE_TBOT ({TRADE_TBOT}) and TRADE_IHS "
+              "({TRADE_IHS}) are 1.\n"
               "- **Which pattern:** when several pass, the first in the priority order CUP, HTF, IHS, CUPNH, "
               "TBOT, ATRI, FLAG, DBOT, SYMM, RECT, FWDG, FBASE — rarest on random walks first.\n"
               "- **When none passes:** the note names the first failed rule as CODE:RULE (e.g. CUP:CH-05), "
@@ -1163,6 +1180,14 @@ class ChartPatternSpecStrategy(Strategy):
          "entry ({BREAKOUT_MAX_AGE}: the breakout bar only)."),
         ("Cup without handle", "TRADE_CUPNH",
          "1 trades CUPNH; 0 detects and draws it but never buys it."),
+        ("Falling wedge switch", "TRADE_FWDG",
+         "Research switch: 1 trades FWDG; 0 never buys it (now {TRADE_FWDG})."),
+        ("Double bottom switch", "TRADE_DBOT",
+         "Research switch: 1 trades DBOT; 0 never buys it (now {TRADE_DBOT})."),
+        ("Triple bottom switch", "TRADE_TBOT",
+         "Research switch: 1 trades TBOT; 0 never buys it (now {TRADE_TBOT})."),
+        ("Inverse head and shoulders switch", "TRADE_IHS",
+         "Research switch: 1 trades IHS; 0 never buys it (now {TRADE_IHS})."),
         ("Rim alignment", "RIM_IDEAL_PCT",
          "A cup's rims are graded, not judged: the right rim within {RIM_IDEAL_PCT}% of the left is "
          "ideal (+{RIM_IDEAL_BONUS} setup quality), within {RIM_OK_PCT}% acceptable (no change), beyond "
@@ -1274,8 +1299,8 @@ class ChartPatternSpecStrategy(Strategy):
         best: tuple[str, dict] | None = None
         first_fail: str | None = None
         for code, (_section, detect) in BULLISH.items():
-            if code == CUPNH and not TRADE_CUPNH:
-                result.setups[code] = False   # switched off: its resting order would block the handle's
+            if not _traded(code):
+                result.setups[code] = False   # switched off (CUPNH: its resting order would block the handle's)
                 continue
             try:
                 res = detect(d)
@@ -1882,6 +1907,13 @@ _ORDER = (CUP, HTF, IHS, CUPNH, TBOT, ATRI, FLAG, DBOT, SYMM, RECT, FWDG, FBASE)
 
 def _priority(code: str) -> int:
     return _ORDER.index(code) if code in _ORDER else len(_ORDER)
+
+
+def _traded(code: str) -> bool:
+    """False for a pattern its switch turns off (read per call, so --const reaches it)."""
+    switch = {CUPNH: TRADE_CUPNH, FWDG: TRADE_FWDG, DBOT: TRADE_DBOT,
+              TBOT: TRADE_TBOT, IHS: TRADE_IHS}.get(code, 1)
+    return bool(switch)
 
 
 def _note(res: dict) -> str:

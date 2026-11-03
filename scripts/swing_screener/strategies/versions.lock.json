@@ -34,7 +34,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "4c8e91c3",
+    "fingerprint": "f15d06e4",
     "params": {
       "ATR_MULT": 1.5,
       "BOUNDARY_LIFE": 1,
@@ -129,6 +129,10 @@
       "TOL_ATR_MULT": 0.75,
       "TOL_PCT": 3.0,
       "TRADE_CUPNH": 1,
+      "TRADE_DBOT": 1,
+      "TRADE_FWDG": 1,
+      "TRADE_IHS": 1,
+      "TRADE_TBOT": 1,
       "TRIPLE_MAX_DRIFT": 1.5,
       "TR_MIN_TOUCHES": 4,
       "WEDGE_MIN_CONVERGE": 1.5,
@@ -167,7 +171,7 @@
         "W3"
       ]
     },
-    "version": "1.19"
+    "version": "1.20"
   },
   "delivery_breakout": {
     "family": "delivery_breakout",
