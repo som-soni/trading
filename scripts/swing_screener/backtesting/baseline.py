@@ -1402,6 +1402,13 @@ VS_DOC = {
         "{cost_bps}bps and +1.82 at 100bps; in the US -0.01, -2.96 and -8.94. {cost_bps}bps is the defensible "
         "assumption for monthly rebalancing of small caps and is the default here; turnover runs about 4.6x "
         "the book a year, and a flat per-trade figure is still a simplification of a real spread.",
+        "**Trading the next morning costs nothing measurable.** The backtest trades on the month-end close it "
+        "decides on, which nobody can do. Re-run at v1.9 with fill=next_open (decide on that close, trade at the "
+        "next session's open), India's 2013-2021 optimise window gave 25.94% a year against 25.89%, excess "
+        "+10.50 against +10.45, max drawdown -49.7% against -50.5%, Sharpe 1.21 for both; single years "
+        "differed by -2.3 to +1.1 points and netted to zero. The ranking skips the last month, so one session "
+        "barely changes the picks. In-sample only, India only; the open of a thin small cap is still best "
+        "met with a limit order near it.",
         "**A stock with no bar on a real session loses its 200-day average for 200 sessions.** The average needs "
         "a price on each of the last 200 sessions of the whole market. A stock the source did not price on a "
         "session most of the market traded — a Diwali Muhurat hour, a Saturday budget day — fails the trend "
