@@ -125,14 +125,22 @@ def _title(markdown: str, fallback: str) -> str:
     return m.group(1).strip() if m else fallback
 
 
+# the benchmark column too, for these: a verify run is judged on risk beside return, and a drawdown
+# means nothing without the index's over the same dates
+_BENCH = {"max_drawdown": "bench_max_drawdown", "sharpe": "bench_sharpe"}
+
+
 def _headline(markdown: str) -> dict:
-    """Pull the strategy column out of the Headline table, best effort —
-    report layouts differ between backtest kinds, so a miss is just empty."""
+    """Pull the strategy column (and, for drawdown and Sharpe, the benchmark's) out of the Headline
+    table, best effort — report layouts differ between backtest kinds, so a miss is just empty."""
     out = {}
     for key, label in _HEADLINE.items():
-        m = re.search(rf"^\|\s*(?:\*\*)?{label}(?:\*\*)?\s*\|\s*([^|]+?)\s*\|", markdown, re.M)
+        m = re.search(rf"^\|\s*(?:\*\*)?{label}(?:\*\*)?\s*\|\s*([^|]+?)\s*\|(?:\s*([^|]+?)\s*\|)?", markdown, re.M)
         if m:
             out[key] = m.group(1).replace("*", "").strip()
+            bench = (m.group(2) or "").replace("*", "").strip()
+            if key in _BENCH and _pct(bench) is not None:
+                out[_BENCH[key]] = bench
     return out
 
 
@@ -208,15 +216,17 @@ def _summary(markdown: str, strategy: str, market: str, kind: str, files: list[P
 
 
 def restate_costs() -> int:
-    """Recompute the cost view of every stored backtest in place, from its markdown and equity table --
-    for runs loaded before the view existed, without re-reading their files."""
+    """Recompute every stored backtest's summary in place -- headline (with the benchmark's drawdown and
+    Sharpe) and cost view -- from its markdown and equity table, for runs loaded before either existed,
+    without re-reading their files."""
     n = 0
     with get_connection().cursor() as cur:
         cur.execute("""SELECT r.id, r.strategy, r.market, r.markdown, r.summary, t.columns, t.rows
                        FROM report_runs r LEFT JOIN report_tables t ON t.run_id = r.id AND t.name = 'equity'
                        WHERE r.kind = 'backtest'""")
         for rid, strategy, market, md, summary, cols, rows in cur.fetchall():
-            head = {k: v for k, v in (summary or {}).items()
+            head = {**(summary or {}), **_headline(md)}
+            head = {k: v for k, v in head.items()
                     if k not in ("turnover", "cost_bps", "std_cost_bps", "cagr_std_cost", "excess_std_cost")}
             head.update(cost_view(md, strategy, market, _equity(cols, rows) if cols else None, head))
             if head != (summary or {}):

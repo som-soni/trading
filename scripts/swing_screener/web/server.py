@@ -908,6 +908,9 @@ def strategies():
 # hold-out of an older version says nothing about the rules that replaced it.
 EDGE_LEVELS = {
     "verified": "Edge out-of-sample",
+    # positive excess out-of-sample, but the criterion written before the run was not passed -- usually on
+    # risk (a deeper drawdown than allowed). The return edge is real; the label names what fell short.
+    "edge_oos": "Return edge out-of-sample — pre-set test not passed",
     "failed": "Failed out-of-sample",
     "unjudged": "Run out-of-sample — no recorded verdict",
     "in_sample": "Edge in-sample only — not verified",
@@ -924,6 +927,20 @@ def _excess(summary) -> float | None:
         return None
 
 
+def _risk(summary) -> dict | None:
+    """Drawdown and Sharpe against the benchmark's over the same dates -- the risk half of a result, shown
+    beside the return half instead of folded into one pass/fail."""
+    f = lambda k: _excess({"excess_cagr": (summary or {}).get(k)})
+    dd, bdd, sh, bsh = f("max_drawdown"), f("bench_max_drawdown"), f("sharpe"), f("bench_sharpe")
+    if dd is None or bdd is None:
+        return None
+    parts = [f"drawdown {dd:.1f}% vs index {bdd:.1f}% ({'shallower' if dd > bdd else 'deeper'})"]
+    if sh is not None and bsh is not None:
+        parts.append(f"Sharpe {sh:.2f} vs {bsh:.2f}")
+    return {"max_drawdown": dd, "bench_max_drawdown": bdd, "sharpe": sh, "bench_sharpe": bsh,
+            "deeper": dd < bdd, "text": ", ".join(parts)}
+
+
 def strategy_edges() -> dict:
     """{strategy key: {"name", market: {"level", "label", "excess", "stage", "version", "current", "run_id"}}}."""
     import time
@@ -931,7 +948,7 @@ def strategy_edges() -> dict:
         return _EDGE_CACHE["data"]
     from swing_screener.backtesting import windows
     strat_docs = _strategy_docs()
-    verdicts = windows.verdicts()
+    verdicts = windows.verdict_details()
     rows = q("SELECT id, strategy, market, run_name, summary, spec_id, overrides FROM report_runs "
              "WHERE kind='backtest' AND archived_at IS NULL ORDER BY generated_at DESC NULLS LAST")
     by = {}
@@ -965,16 +982,25 @@ def strategy_edges() -> dict:
                 continue
             i, r, s, sp = pick
             st, ex = _stage(r)["stage"], _excess(s)
+            test = None
             if st == "verify":
-                passed = verdicts.get((m, k, sp, r))
-                level = "verified" if passed is True else "failed" if passed is False else "unjudged"
+                test = verdicts.get((m, k, sp, r)) or {"passed": None, "criterion": None}
+                passed = test["passed"]
+                level = ("verified" if passed is True else "edge_oos" if ex > 0
+                         else "failed" if passed is False else "unjudged")
             else:
                 level = "in_sample" if ex > 0 else "none"
             ver = (sp or "").split("-")[0].lstrip("v")
             where = {"verify": "out-of-sample", "optimise": "in-sample", "full": "full period"}.get(st, "legacy run")
-            label = f"{EDGE_LEVELS[level]}: excess {ex:+.2f}%/yr ({where}{'' if current else f', v{ver} — current rules not run yet'})"
+            risk = _risk(s)
+            label = (f"{EDGE_LEVELS[level]}: excess {ex:+.2f}%/yr ({where}"
+                     f"{'' if current else f', v{ver} — current rules not run yet'})"
+                     + (f"; {risk['text']}" if risk else "")
+                     + (f"; pre-set test {'passed' if test['passed'] else 'failed' if test['passed'] is False else 'not judged'}"
+                        + (f": {test['criterion']}" if test.get("criterion") else "") if test else ""))
             ent[m] = {"level": level, "label": label, "excess": ex, "stage": st, "version": ver,
-                      "current": current, "run_id": i}
+                      "current": current, "run_id": i, "risk": risk,
+                      "test": test and {"passed": test["passed"], "criterion": test.get("criterion")}}
         out[k] = ent
     _EDGE_CACHE.update(at=time.time(), data=out)
     return out

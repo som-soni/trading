@@ -445,7 +445,7 @@ function loadEdges() {
   }
   return EDGE_P;
 }
-const EDGE_SHORT = { verified: "Edge (verified)", failed: "Failed verify", unjudged: "Verify unjudged", in_sample: "In-sample only", none: "No edge", unmeasured: "Not measured" };
+const EDGE_SHORT = { verified: "Edge (verified)", edge_oos: "Return edge out-of-sample", failed: "Failed verify", unjudged: "Verify unjudged", in_sample: "In-sample only", none: "No edge", unmeasured: "Not measured" };
 /** a coloured dot for one strategy in one market; the tooltip carries the grade and the number behind it */
 function edgeDot(key, mkt, flag = false) {
   const e = EDGE?.strategies?.[key]?.[mkt];
@@ -456,11 +456,15 @@ function edgeDot(key, mkt, flag = false) {
 function edgeChip(key, mkt) {
   const e = EDGE?.strategies?.[key]?.[mkt];
   if (!e) return "";
-  return `<span class="edge-chip e-${e.level}" title="${esc(e.label)}"><i class="edge e-${e.level}"></i>${esc(mktInfo(mkt).flag || mktInfo(mkt).name)} ${esc(EDGE_SHORT[e.level] || e.level)}${e.excess != null ? ` <b>${e.excess > 0 ? "+" : ""}${e.excess.toFixed(1)}%</b>` : ""}</span>`;
+  // a verify run shows its risk beside its return, so "beat the index" and "fell further than it" are
+  // two facts on the chip rather than one pass/fail; the pre-set test's verdict is in the tooltip
+  const r = e.stage === "verify" && e.risk;
+  const risk = r ? ` <span class="risk">· DD ${r.max_drawdown.toFixed(0)}% vs ${r.bench_max_drawdown.toFixed(0)}%${r.deeper ? " (deeper)" : ""}</span>` : "";
+  return `<span class="edge-chip e-${e.level}" title="${esc(e.label)}"><i class="edge e-${e.level}"></i>${esc(mktInfo(mkt).flag || mktInfo(mkt).name)} ${esc(EDGE_SHORT[e.level] || e.level)}${e.excess != null ? ` <b>${e.excess > 0 ? "+" : ""}${e.excess.toFixed(1)}%</b>` : ""}${risk}</span>`;
 }
 /** strategy key for a display name (tables carry the name) */
 const edgeKeyOf = (name) => Object.entries(EDGE?.strategies || {}).find(([, v]) => v.name === name)?.[0];
-const edgeLegend = () => `<span class="edge-legend muted small">${["verified", "in_sample", "none", "failed"].map((l) => `<span class="el"><i class="edge e-${l}"></i>${EDGE_SHORT[l]}</span>`).join("")}</span>`;
+const edgeLegend = () => `<span class="edge-legend muted small">${["verified", "edge_oos", "in_sample", "none", "failed"].map((l) => `<span class="el"><i class="edge e-${l}"></i>${EDGE_SHORT[l]}</span>`).join("")}</span>`;
 function freshBadgeInner(m, flag = false) {
   const p = FRESH?.[m]?.items?.find((i) => i.key === "prices");
   if (!p || !p.date) return "";

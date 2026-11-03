@@ -23,7 +23,9 @@ Two rules make the verify window worth anything, and both are enforced rather th
 
 A verify run's verdict is recorded too (`judge`: `passed` and the `criterion` it was judged against).
 Positive excess is not a pass: the criterion written before the run is, and the Strategies page grades
-an edge "verified" only from a recorded pass.
+an edge "verified" only from a recorded pass. A verify run with positive excess that did not pass (a
+deeper drawdown than its criterion allowed, say) is shown as a return edge with its risk beside it and
+the criterion's verdict named -- not as "no edge", and not as verified.
 
 Honest limit: every year up to October 2026 informed some decision made before this module existed,
 so strategies refined until then have no clean historical hold-out. The split protects decisions
@@ -278,6 +280,17 @@ def judge(run_dir: str, passed: bool, criterion: str) -> int:
                     "WHERE run_dir=%s OR run_dir LIKE %s",
                     (bool(passed), criterion.strip(), run_dir, "%/" + run_dir.rstrip("/").rsplit("/", 1)[-1]))
         return cur.rowcount
+
+
+def verdict_details() -> dict:
+    """{(market, strategy, spec_id, run directory name): {"passed", "criterion"}} -- what the page shows
+    beside a verify run's return and risk."""
+    _init()
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT market, strategy, spec_id, run_dir, passed, criterion FROM verify_runs "
+                    "WHERE run_dir IS NOT NULL")
+        return {(m, k, sp, rd.rstrip("/").rsplit("/", 1)[-1]): {"passed": p, "criterion": c}
+                for m, k, sp, rd, p, c in cur.fetchall()}
 
 
 def verdicts() -> dict:
