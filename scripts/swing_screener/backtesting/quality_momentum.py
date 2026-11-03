@@ -407,12 +407,13 @@ def main(argv: list[str] | None = None) -> dict | None:
     from pathlib import Path
     pre = argparse.ArgumentParser(add_help=False)
     pre.add_argument("--variant", default="quality", choices=VARIANTS)
-    pre.add_argument("--market", required=True)
+    pre.add_argument("--market")   # required by baseline.main's parser, which windows.runner_defaults reads
     known, rest = pre.parse_known_args(argv)
-    rest = ["--market", known.market, *rest]
+    if known.market:
+        rest = ["--market", known.market, *rest]
     if "--strategy" not in rest:
         rest = ["--strategy", QualityMomentumStrategy.key, *rest]
-    filt = QualityFilter(known.market, known.variant)
+    filt = QualityFilter(known.market, known.variant) if known.market else None
     r = baseline.main(rest, universe_filter=filt,
                       run_suffix="" if known.variant == "quality" else f"_{known.variant}",
                       reproduce_extra=() if known.variant == "quality" else (f"--variant {known.variant}",))
