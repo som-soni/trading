@@ -7320,7 +7320,8 @@ function queuePanel(s) {
   const worker = w.alive
     ? `<span class="wk ok"><i></i>Worker running</span><span class="muted small">pid ${w.pid} · since ${clock(w.started_at)}</span>
        ${fast ? `<span class="wk ${fast.alive ? "ok" : "off"}" title="The fast lane runs short jobs on stored data — screens, breadth, setups, reports — beside the other lanes, so they never wait behind a backtest"><i></i>Fast lane ${fast.alive ? "running" : "stopped"}</span>` : ""}
-       ${s.lanes?.backtest ? `<span class="wk ${s.lanes.backtest.alive ? "ok" : "off"}" title="The backtest lane runs backtests and other long research, so the market routines in the main lane never wait behind them"><i></i>Backtest lane ${s.lanes.backtest.alive ? "running" : "stopped"}</span>` : ""}`
+       ${s.lanes?.backtest ? `<span class="wk ${s.lanes.backtest.alive ? "ok" : "off"}" title="The backtest lane runs backtests and other long research, so the market routines in the main lane never wait behind them"><i></i>Backtest lane ${s.lanes.backtest.alive ? "running" : "stopped"}</span>` : ""}
+       ${s.lanes?.long ? `<span class="wk ${s.lanes.long.alive ? "ok" : "off"}" title="The long lane runs the backtests whose scan takes hours (chart patterns), so other backtests run beside them instead of waiting"><i></i>Long lane ${s.lanes.long.alive ? "running" : "stopped"}</span>` : ""}`
     : `<span class="wk off"><i></i>Worker stopped</span><span class="muted small">queued runs and schedules wait until it runs.</span>
        <button class="primary sm" id="wkstart">Start worker</button><span class="muted small">To keep it running across restarts: <code>${esc(s.worker_command)}</code></span>`;
   return `<section class="sec-card qpanel"><div class="sec-card-h"><h3>Job queue</h3>${worker}</div>

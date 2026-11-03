@@ -1098,6 +1098,12 @@ RESEARCH_JOBS = frozenset({"backtest", "screen_history", "group_research"})
 # screens rebuild the page promised "within moments". A request mixing both kinds (`--strategies a,b`,
 # `all`) is one run — its steps in order, one ingest — so it stays whole and runs in the backtest lane.
 PORTFOLIO_JOBS = frozenset({"backtest"})
+# The long lane runs backtests of these strategies only: per-symbol scans that take five hours and more
+# (chart_pattern runs a dozen pattern detectors on every bar), so the other backtests -- and a quick
+# variant of another strategy -- run in the backtest lane beside one instead of waiting behind it. A
+# request naming any other strategy too stays whole in the backtest lane, as with portfolio backtests.
+# Two scans then share the CPU (each uses most of the cores), so each runs somewhat slower than alone.
+LONG_STRATEGIES = frozenset({"chart_pattern"})
 # short, idempotent publishing steps that may run in two lanes at once: they do not count as a clash, or a
 # close routine ending in `ingest` would wait hours for a backtest that also ends in one
 CLASH_EXEMPT = frozenset({"ingest", "report"})
@@ -1148,6 +1154,15 @@ def portfolio_item(item: dict) -> bool:
     return bool(keys) and keys <= set(portfolio_strategies())
 
 
+def long_item(item: dict) -> bool:
+    """A long-lane item: backtests (publishing steps aside) of LONG_STRATEGIES and nothing else."""
+    jobs = [j for j in item_jobs(item["targets"]) if j not in CLASH_EXEMPT]
+    if not jobs or not all(j == "backtest" for j in jobs):
+        return False
+    keys = item_strategies(item)
+    return bool(keys) and keys <= LONG_STRATEGIES
+
+
 def _markets_overlap(a: str | None, b: str | None) -> bool:
     return (a or "all") == "all" or (b or "all") == "all" or a == b
 
@@ -1176,31 +1191,37 @@ def clashes(item: dict, running: list) -> bool:
 def choose_for(lane: str):
     """The claim policy of a lane, for queue.claim_next.
 
-    main      the queue in order, leaving research items to the backtest lane and portfolio backtests to
-              the portfolio lane while those lanes are alive; it WAITS when its next item clashes rather
-              than skip ahead (skipping could start a multi-hour job in front of a routine that only had
-              to wait a minute)
+    main      the queue in order, leaving research items to the backtest lane, portfolio backtests to
+              the portfolio lane and long backtests to the long lane while those lanes are alive; it WAITS
+              when its next item clashes rather than skip ahead (skipping could start a multi-hour job in
+              front of a routine that only had to wait a minute)
     backtest  the first research item that does not clash, leaving portfolio backtests to a live
-              portfolio lane
+              portfolio lane and long backtests to a live long lane
     portfolio the first portfolio backtest that does not clash
+    long      the first long backtest (LONG_STRATEGIES) that does not clash
     fast      the first fast item that does not clash"""
     from . import queue
 
     def main(queued, running):
         bt_alive, pf_alive = queue.worker_status("backtest")["alive"], queue.worker_status("portfolio")["alive"]
-        mine = [x for x in queued if not ((bt_alive and research_item(x)) or (pf_alive and portfolio_item(x)))]
+        lg_alive = queue.worker_status("long")["alive"]
+        mine = [x for x in queued if not ((bt_alive and research_item(x)) or (pf_alive and portfolio_item(x))
+                                          or (lg_alive and long_item(x)))]
         if not mine:
             return None
         return None if clashes(mine[0], running) else mine[0]
 
     def backtest(queued, running):
-        pf_alive = queue.worker_status("portfolio")["alive"]
+        pf_alive, lg_alive = queue.worker_status("portfolio")["alive"], queue.worker_status("long")["alive"]
         return next((x for x in queued if research_item(x) and not (pf_alive and portfolio_item(x))
-                     and not clashes(x, running)), None)
+                     and not (lg_alive and long_item(x)) and not clashes(x, running)), None)
 
     def portfolio(queued, running):
         return next((x for x in queued if portfolio_item(x) and not clashes(x, running)), None)
 
+    def long(queued, running):
+        return next((x for x in queued if long_item(x) and not clashes(x, running)), None)
+
     def fast(queued, running):
         return next((x for x in queued if fast_item(x) and not clashes(x, running)), None)
-    return {"main": main, "fast": fast, "backtest": backtest, "portfolio": portfolio}[lane]
+    return {"main": main, "fast": fast, "backtest": backtest, "portfolio": portfolio, "long": long}[lane]

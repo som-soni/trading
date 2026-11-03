@@ -128,13 +128,15 @@ def main() -> None:
     w.add_argument("--launchd", action="store_true", help="print a macOS launchd agent that keeps the worker running")
     w.add_argument("--install", action="store_true", help="write that agent to ~/Library/LaunchAgents and load it")
     w.add_argument("--uninstall", action="store_true", help="unload and remove the agent")
-    w.add_argument("--lane", choices=["main", "fast", "backtest", "portfolio"], default="main",
-                   help="which lane to run (default main, which also keeps the fast, backtest and portfolio lanes running)")
+    w.add_argument("--lane", choices=["main", "fast", "backtest", "portfolio", "long"], default="main",
+                   help="which lane to run (default main, which also keeps the fast, backtest, portfolio and long lanes running)")
     w.add_argument("--no-fast", action="store_true", help="main lane: do not start the fast lane beside it")
     w.add_argument("--no-backtest-lane", action="store_true",
                    help="main lane: do not start the backtest lane (the main lane then runs backtests itself)")
     w.add_argument("--no-portfolio-lane", action="store_true",
                    help="main lane: do not start the portfolio lane (the backtest lane then runs portfolio backtests)")
+    w.add_argument("--no-long-lane", action="store_true",
+                   help="main lane: do not start the long lane (the backtest lane then runs chart_pattern and the other long backtests)")
     for name, helptext in (("run", "run jobs and/or pipelines now, in this terminal"), ("enqueue", "add jobs and/or pipelines to the queue")):
         _run_args(sub.add_parser(name, help=helptext))
     a = ap.parse_args()
@@ -198,7 +200,7 @@ def cmd_worker(a) -> None:
         print(f"Removed {p}")
         return
     sys.exit(worker.run_forever(a.lane, fast_child=not a.no_fast, backtest_child=not a.no_backtest_lane,
-                                portfolio_child=not a.no_portfolio_lane))
+                                portfolio_child=not a.no_portfolio_lane, long_child=not a.no_long_lane))
 
 
 def _run_args(r) -> None:
