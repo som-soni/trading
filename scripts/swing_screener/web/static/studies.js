@@ -1277,6 +1277,16 @@ const Studies = (() => {
       calc: (b, p) => ({ atr: rma(trueRange(b.H, b.L, b.C), p.length) }) },
     atrp: { name: "ATR % of price", short: "ATR%", cat: "Volatility", params: { length: 14 }, plots: [{ k: "atrp", c: "#f23645" }],
       calc: (b, p) => ({ atrp: zip((a, c) => (100 * a) / c, rma(trueRange(b.H, b.L, b.C), p.length), b.C) }) },
+    // how far the close sits above its 20-day average, in ATRs: the Learn guide's extension rule (about 2.5
+    // ATR is stretched, more than 4 often a reason to pass). The same average and ATR as ATR Bands, so a bar
+    // here crosses its line exactly when the close crosses that multiplier's upper band.
+    atrext: { name: "ATR extension above the 20-day", short: "ATR ext", cat: "Volatility",
+      params: { length: 20, atrLength: 14, stretched: 2.5, pass: 4 }, levels: (p) => [p.pass, p.stretched, 0],
+      plots: [{ k: "ext", t: "ATRs above the average", c: "#9598a1", s: "hist" }],
+      calc: (b, p) => {
+        const ext = zip((c, m, a) => (m == null || !a ? null : (c - m) / a), b.C, sma(b.C, p.length), rma(trueRange(b.H, b.L, b.C), p.atrLength));
+        return { ext, _colors: { ext: ext.map((v) => (v == null ? null : v > p.pass ? "#f23645" : v > p.stretched ? "#ff9800" : "#9598a1")) } };
+      } },
     bbw: { name: "Bollinger BandWidth", short: "BBW", cat: "Volatility", params: { length: 20, mult: 2 }, plots: [{ k: "bbw", c: "#2962ff" }],
       calc: (b, p) => { const m = sma(b.C, p.length), sd = stdev(b.C, p.length); return { bbw: zip((x, d) => (x ? (2 * p.mult * d) / x : null), m, sd) }; } },
     stdev: { name: "Standard Deviation", short: "StDev", cat: "Volatility", params: { length: 20 }, plots: [{ k: "sd", c: "#2962ff" }],
@@ -1343,7 +1353,8 @@ const Studies = (() => {
     lipsShift: "Lips offset", unit: "Measure in", middle: "Middle length", long: "Long length", short: "Short length", streakLength: "Streak RSI length",
     rankLength: "Percent-rank length", first: "First smoothing", second: "Second smoothing", periods: "Bars per year", sum: "Sum length",
     bbMult: "Bollinger multiplier", kcMult: "Keltner multiplier", deviation: "Reversal %", divisor: "Volume divisor",
-    minBars: "Label stretches of at least (bars)", label: "Label", gaps: "Label gaps" };
+    minBars: "Label stretches of at least (bars)", label: "Label", gaps: "Label gaps",
+    stretched: "Stretched above (ATRs)", pass: "Pass above (ATRs)" };
   const CATS = ["Screener", "Moving averages", "Bands & channels", "Support & resistance", "Trend", "Momentum", "Volatility", "Volume"];
   const MA_COLORS = ["#f5a623", "#2196f3", "#e040fb", "#ffeb3b", "#00bcd4", "#ff5252", "#8bc34a"];
 
