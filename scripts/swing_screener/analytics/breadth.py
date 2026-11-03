@@ -9,7 +9,9 @@ market per day in `breadth_daily`:
   advancers / decliners, big movers (±4% on the day), new 52-week highs and
   lows (today's high/low is the 252-bar extreme, with at least ~a year of
   history), % above the 5- and 50-day averages, and stocks up/down 25% / 50%
-  over the last month (21 bars).
+  over the last month (21 bars), and the day's turnover -- the sum of those stocks' 20-day average
+  close x volume, in the market's currency, the size of the market a liquidity floor scales with
+  (minervini_spec's turnover floor).
 
 Only common stocks count. The US universe file already excludes ETFs; the
 India one does not, so India symbols are classified once (yfinance quoteType,
@@ -59,6 +61,7 @@ CREATE TABLE IF NOT EXISTS breadth_daily (
     up25m INT, dn25m INT, up50m INT, dn50m INT,   -- up/down 25% and 50% over the last month
     PRIMARY KEY (market, date)
 );
+ALTER TABLE breadth_daily ADD COLUMN IF NOT EXISTS turnover DOUBLE PRECISION;   -- sum of 20-day avg close x volume
 CREATE TABLE IF NOT EXISTS symbol_kind (
     market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL,
     kind VARCHAR(24) NOT NULL,          -- yfinance quoteType: EQUITY, ETF, MUTUALFUND, ...
@@ -180,7 +183,8 @@ SELECT date, count(*),
   count(*) FILTER (WHERE bars >= %(minbars)s AND high >= hi252), count(*) FILTER (WHERE bars >= %(minbars)s AND low <= lo252),
   count(*) FILTER (WHERE close > sma5), count(*) FILTER (WHERE sma50 IS NOT NULL AND close > sma50),
   count(*) FILTER (WHERE month_ago > 0 AND close / month_ago - 1 >= 0.25), count(*) FILTER (WHERE month_ago > 0 AND close / month_ago - 1 <= -0.25),
-  count(*) FILTER (WHERE month_ago > 0 AND close / month_ago - 1 >= 0.50), count(*) FILTER (WHERE month_ago > 0 AND close / month_ago - 1 <= -0.50)
+  count(*) FILTER (WHERE month_ago > 0 AND close / month_ago - 1 >= 0.50), count(*) FILTER (WHERE month_ago > 0 AND close / month_ago - 1 <= -0.50),
+  sum(dollar_vol_sma20)
 FROM ranked WHERE rnk <= %(n)s
 GROUP BY date ORDER BY date
 """
@@ -193,7 +197,12 @@ def compute(market: str, start: str | None = None) -> int:
         with db.get_connection().cursor() as cur:
             cur.execute("SELECT max(date) FROM breadth_daily WHERE market=%s", (market,))
             last = cur.fetchone()[0]
+            # a column added later (turnover, 2026-11) is filled in by the next run, from the first day without it
+            cur.execute("SELECT min(date) FROM breadth_daily WHERE market=%s AND turnover IS NULL", (market,))
+            hole = cur.fetchone()[0]
         start = (pd.Timestamp(last) - pd.Timedelta(days=7)).date().isoformat() if last else HISTORY_START
+        if hole is not None:
+            start = min(start, pd.Timestamp(hole).date().isoformat())
     lookback = (pd.Timestamp(start) - pd.Timedelta(days=420)).date().isoformat()  # room for the 252-bar windows
     params = {"market": market, "symbols": eligible(market), "start": start, "lookback": lookback, "month": MONTH_BARS,
               "big": BIG_MOVE, "minbars": MIN_HISTORY_BARS, "n": BREADTH_N}
@@ -205,10 +214,11 @@ def compute(market: str, start: str | None = None) -> int:
     # ...and on a real session most stocks move: a holiday whose stray rows all repeat the previous close
     # shows ~no advancers or decliners
     rows = [r for r in rows if r[1] >= BREADTH_N * 0.5 and (r[2] or 0) + (r[3] or 0) >= 0.5 * r[1]]
-    db.execute_values("""INSERT INTO breadth_daily (market, date, n, adv, dec, up4, dn4, highs, lows, above5, above50, up25m, dn25m, up50m, dn50m)
+    db.execute_values("""INSERT INTO breadth_daily (market, date, n, adv, dec, up4, dn4, highs, lows, above5, above50, up25m, dn25m, up50m, dn50m, turnover)
                          VALUES %s ON CONFLICT (market, date) DO UPDATE SET n=EXCLUDED.n, adv=EXCLUDED.adv, dec=EXCLUDED.dec,
                          up4=EXCLUDED.up4, dn4=EXCLUDED.dn4, highs=EXCLUDED.highs, lows=EXCLUDED.lows, above5=EXCLUDED.above5,
-                         above50=EXCLUDED.above50, up25m=EXCLUDED.up25m, dn25m=EXCLUDED.dn25m, up50m=EXCLUDED.up50m, dn50m=EXCLUDED.dn50m""",
+                         above50=EXCLUDED.above50, up25m=EXCLUDED.up25m, dn25m=EXCLUDED.dn25m, up50m=EXCLUDED.up50m, dn50m=EXCLUDED.dn50m,
+                         turnover=EXCLUDED.turnover""",
                       [(market, *r) for r in rows])
     logger.info("breadth %s: %d days from %s in %.1fs", market, len(rows), start, time.time() - t0)
     return len(rows)

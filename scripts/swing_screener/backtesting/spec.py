@@ -324,6 +324,17 @@ def breadth_pct50(market: str) -> pd.Series:
     return out[out.index <= asof.end()] if asof.end() is not None else out
 
 
+def market_turnover(market: str) -> pd.Series:
+    """Per date: the market's turnover -- the sum of the 20-day average close x volume of its most-traded stocks
+    (`breadth_daily.turnover`, analytics/breadth.py), in the market's currency. What a liquidity floor that
+    scales with the market (minervini_spec's turnover floor) is a share of. Empty when nothing is stored."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT date, turnover FROM breadth_daily WHERE market=%s AND turnover > 0 ORDER BY date", (market,))
+        rows = cur.fetchall()
+    out = pd.Series([float(v) for _, v in rows], index=pd.DatetimeIndex([d for d, _ in rows]), dtype=float)
+    return out[out.index <= asof.end()] if asof.end() is not None else out
+
+
 def highs_lows(market: str) -> pd.DataFrame:
     """Per date: new 52-week highs and lows among the market's most-traded stocks (`breadth_daily`,
     analytics/breadth.py), columns `highs` and `lows`. Empty when nothing is stored."""

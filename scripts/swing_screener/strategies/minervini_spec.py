@@ -423,6 +423,16 @@ EARNINGS_BLACKOUT_DAYS = 14
 # (the reason 1.2 dropped the market's own price floor from backtests).
 MIN_TURNOVER_INR_CR = 10           # ₹ crore a day
 MIN_TURNOVER_USD_M = 20            # $ million a day
+# 1.45: the floor scales with the market. A fixed ₹10 crore is a 2026 number: in 2010 the whole Indian market traded
+# a tenth of today's turnover, and the floor shut out most of its leaders -- BAJFINANCE.NS's 2010-07-05 breakout,
+# ₹4.1 crore a day, among them. Now the floor is a share of the day's market turnover (breadth_daily.turnover: the
+# 1,000 most-traded stocks' 20-day average close x volume), in basis points, set so it equals the fixed floor in
+# late 2026 (₹1.05 lakh crore and $631 billion a day): ₹10 crore and $20 million then, about ₹1 crore in 2010 and
+# $3.8 million in 2013. Before the series starts the first stored day's turnover is used; with none stored, the
+# fixed floors above. 0 = the fixed floors (1.44).
+SCALE_TURNOVER_FLOOR = 1
+TURNOVER_FLOOR_BP_INR = 1.0
+TURNOVER_FLOOR_BP_USD = 0.32
 LIVE_MIN_PRICE_INR = 100
 LIVE_MIN_PRICE_USD = 15
 
@@ -435,8 +445,39 @@ FUND_SALES_GROWTH_MIN_PCT = 15.0
 FUND_MARGIN_SLACK_PP = 1.0
 
 
-def _min_turnover(cfg: MarketConfig) -> float:
-    return MIN_TURNOVER_INR_CR * 1e7 if cfg.currency_code == "INR" else MIN_TURNOVER_USD_M * 1e6
+_TURNOVER: dict = {}   # (market, the stage's end) -> (dates as int64, turnover): the series the floor scales with
+
+
+def _market_turnover(cfg: MarketConfig):
+    """The market's turnover series (backtesting/spec.market_turnover), as arrays, cached per market and stage
+    boundary -- it is read once per session of every symbol a backtest screens."""
+    from ..config import MARKETS
+    from ..marketdata import asof
+    mkt = next((k for k, c in MARKETS.items() if c.name == cfg.name), None)
+    key = (mkt, asof.end())
+    if key not in _TURNOVER:
+        try:
+            from ..backtesting import spec as spec_mod
+            s = spec_mod.market_turnover(mkt) if mkt else pd.Series(dtype=float)
+        except Exception:      # no table yet: the fixed floor
+            s = pd.Series(dtype=float)
+        _TURNOVER[key] = (s.index.to_numpy("datetime64[ns]").astype("int64"), s.to_numpy(float)) if len(s) else None
+    return _TURNOVER[key]
+
+
+def _min_turnover(cfg: MarketConfig, date=None) -> float:
+    """The turnover floor on `date`: TURNOVER_FLOOR_BP_* of that day's market turnover (SCALE_TURNOVER_FLOOR), else
+    the fixed MIN_TURNOVER_INR_CR / MIN_TURNOVER_USD_M."""
+    inr = cfg.currency_code == "INR"
+    fixed = MIN_TURNOVER_INR_CR * 1e7 if inr else MIN_TURNOVER_USD_M * 1e6
+    if not SCALE_TURNOVER_FLOOR or not hasattr(date, "year"):     # a row without a date: the fixed floor
+        return fixed
+    got = _market_turnover(cfg)
+    if got is None:
+        return fixed
+    t, v = got
+    i = max(0, int(np.searchsorted(t, pd.Timestamp(date).value, side="right")) - 1)
+    return (TURNOVER_FLOOR_BP_INR if inr else TURNOVER_FLOOR_BP_USD) / 1e4 * float(v[i])
 
 
 def _live_min_price(cfg: MarketConfig) -> float:
@@ -944,9 +985,17 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.44"
-    # signal_version is not pinned: 1.44's evaluate() records each base's number (base_number), so it rescans.
+    version = "1.45"
+    # signal_version is not pinned: the turnover floor is part of the screen every scanned session passes.
     changelog = (
+        ("1.45", "2026-11-04",
+         "The turnover floor scales with the market (SCALE_TURNOVER_FLOOR). A fixed ₹10 crore / $20 million a day "
+         "is a 2026 number: in 2010 the Indian market traded a tenth of today's turnover, and the floor shut out most "
+         "of its leaders (BAJFINANCE.NS's 2010-07-05 breakout traded ₹4.1 crore a day). The floor is now "
+         "TURNOVER_FLOOR_BP_INR / _USD basis points of the day's market turnover (breadth_daily.turnover, the "
+         "1,000 most-traded stocks' 20-day average close x volume), set to equal the fixed floor in late 2026: "
+         "about ₹1 crore in 2010, $3.8 million in 2013. Point in time: each session's floor reads that session's "
+         "market turnover only. `--const SCALE_TURNOVER_FLOOR=0` restores 1.44."),
         ("1.44", "2026-11-04",
          "The base count is a rule (MAX_BASE_COUNT = 3). Minervini buys the early bases of a Stage 2 advance: by "
          "the fourth the trend is old and most who want the stock own it. evaluate() records each setup's base "
@@ -2096,8 +2145,11 @@ class MinerviniSpecStrategy(Strategy):
         "days: a results-day gap can jump straight past the stop. Live, the date comes from the "
         "earnings calendar; in a backtest it is estimated from the company's past announcement "
         "timing, and the stored filing date is checked as well.",
-        "The stock is too thin. It must trade at least ₹{MIN_TURNOVER_INR_CR} crore or "
-        "${MIN_TURNOVER_USD_M} million a day (50-day average of volume × close). The live screen "
+        "The stock is too thin. It must trade at least {TURNOVER_FLOOR_BP_INR} basis points (India) or "
+        "{TURNOVER_FLOOR_BP_USD} (US) of the whole market's daily turnover (50-day average of volume × close). "
+        "The floor grows with the market: set to ₹{MIN_TURNOVER_INR_CR} crore and ${MIN_TURNOVER_USD_M} million "
+        "a day in late 2026, it was about ₹1 crore in 2010 and $3.8 million in 2013, when the whole market "
+        "traded a fraction of today's turnover (since 1.45; a fixed floor shut out most early leaders). The live screen "
         "also wants a price of at least ₹{LIVE_MIN_PRICE_INR} or ${LIVE_MIN_PRICE_USD}.\n\n"
         "The price floor applies to the live screen only: a backtest reads split-adjusted prices, "
         "where a winner's early price is divided by every later split.",
@@ -2239,8 +2291,11 @@ class MinerviniSpecStrategy(Strategy):
         ("Results blackout", "EARNINGS_BLACKOUT_DAYS", "Days before results with no new buy."),
         ("Preferred uptrend", "SMA200_RISING_PREF_BARS", "W5: sessions over which the 200-day should have risen."),
         ("Preferred uptrend required", "SMA200_PREF_REQUIRED", "1 = W5 holds the plan at WATCH (no new buy); 0 = noted only."),
-        ("Turnover floor, India", "MIN_TURNOVER_INR_CR", "₹ crore a day, 50-day average volume × close."),
-        ("Turnover floor, US", "MIN_TURNOVER_USD_M", "$ million a day, 50-day average volume × close."),
+        ("Turnover floor scales", "SCALE_TURNOVER_FLOOR", "1.45: 1 = the floor is a share of the day's market turnover (the 1,000 most-traded stocks); 0 = the fixed floors below (1.44)."),
+        ("Turnover floor, India", "TURNOVER_FLOOR_BP_INR", "Basis points of India's daily market turnover a stock must trade (50-day average volume × close)."),
+        ("Turnover floor, US", "TURNOVER_FLOOR_BP_USD", "Basis points of the US daily market turnover a stock must trade."),
+        ("Fixed floor, India", "MIN_TURNOVER_INR_CR", "₹ crore a day: the floor with SCALE_TURNOVER_FLOOR = 0, or no market turnover stored; the scaled floor's late-2026 value."),
+        ("Fixed floor, US", "MIN_TURNOVER_USD_M", "$ million a day: as the India row."),
         ("Price floor, India (live)", "LIVE_MIN_PRICE_INR", "₹; the live screen only."),
         ("Price floor, US (live)", "LIVE_MIN_PRICE_USD", "$; the live screen only."),
         ("Market filter", "MKT_GUIDE", "1 = the guide's test, 0 = MKT-01 (1.7)."),
@@ -2289,10 +2344,10 @@ class MinerviniSpecStrategy(Strategy):
     def prefilter_row(self, cfg: MarketConfig, last) -> tuple[bool, str]:
         """The guide's turnover floor, then the Trend Template (shared with `minervini`), as of one row.
 
-        The floor replaces the market's own: 50-day average volume x the close, against
-        MIN_TURNOVER_INR_CR / MIN_TURNOVER_USD_M. Both factors are split-adjusted the same way, so
-        the product is the turnover actually traded on that date."""
-        floor = _min_turnover(cfg)
+        The floor replaces the market's own: 50-day average volume x the close, against the floor on the row's
+        date (`_min_turnover`: a share of that day's market turnover). Both factors are split-adjusted the same
+        way, so the product is the turnover actually traded on that date."""
+        floor = _min_turnover(cfg, getattr(last, "name", None))
         v50, close = last.get("vol_sma50"), last.get("close")
         if pd.isna(v50) or pd.isna(close) or float(v50) * float(close) < floor:
             return False, f"turnover below {floor:,.0f} a day"
@@ -2322,13 +2377,13 @@ class MinerviniSpecStrategy(Strategy):
         if not YOUNG_LISTING or d is None or d.empty:
             return m
         lo, hi = d["low"].cummin(), d["high"].cummax()
-        floor, ycfg = _min_turnover(cfg), _without_liquidity_floor(cfg)
+        ycfg = _without_liquidity_floor(cfg)
         for i in range(YOUNG_MIN_BARS - 1, min(len(d), 260)):
             row = d.iloc[i]
             if m.iloc[i] or not is_young_row(row, i + 1):
                 continue
             v50, close = row.get("vol_sma50"), row.get("close")
-            if pd.isna(v50) or pd.isna(close) or float(v50) * float(close) < floor:
+            if pd.isna(v50) or pd.isna(close) or float(v50) * float(close) < _min_turnover(cfg, row.name):
                 continue
             m.iloc[i] = young_template_row(ycfg, row, float(lo.iloc[i]), float(hi.iloc[i]))[0]
         return m
@@ -3101,7 +3156,7 @@ class MinerviniSpecStrategy(Strategy):
             return None
         if why.startswith("turnover below"):
             # the liquidity floor, not the trend: say so, with the turnover the stock actually had
-            floor, traded = _min_turnover(cfg), float(row["vol_sma50"]) * float(row["close"])
+            floor, traded = _min_turnover(cfg, row.name), float(row["vol_sma50"]) * float(row["close"])
             unit, div = ("crore", 1e7) if cfg.currency_code == "INR" else ("million", 1e6)
             return (f"too illiquid: {cfg.currency_symbol}{traded / div:,.1f} "
                     f"{unit} a day traded (50-day average), under the {cfg.currency_symbol}{floor / div:,.0f} {unit} floor")

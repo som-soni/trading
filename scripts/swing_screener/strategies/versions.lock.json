@@ -491,7 +491,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "2b706abb",
+    "fingerprint": "736dd7ac",
     "params": {
       "BASE_COUNT_MIN_DAYS": 25,
       "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
@@ -597,6 +597,7 @@
       "PRIOR_ADVANCE_PCT": 30.0,
       "RS_MIN_RANK": 70,
       "RS_MIN_SCORE": 0.5,
+      "SCALE_TURNOVER_FLOOR": 1,
       "SKIP_DEAD_BARS": 1,
       "SMA200_PREF_REQUIRED": 0,
       "SMA200_RISING_BARS": 21,
@@ -611,6 +612,8 @@
       "TIGHT_PCT": 10.0,
       "TIME_STOP_DAYS": 15,
       "TREND_EXIT_NEEDS_VOLUME": 0,
+      "TURNOVER_FLOOR_BP_INR": 1.0,
+      "TURNOVER_FLOOR_BP_USD": 0.32,
       "UNDERCUT_RECOVERY_DAYS": 5,
       "UPPER_HALF": 0.5,
       "UPPER_ZONE": 0.67,
@@ -700,7 +703,7 @@
         "W5"
       ]
     },
-    "version": "1.44"
+    "version": "1.45"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
