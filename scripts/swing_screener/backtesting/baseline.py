@@ -1409,6 +1409,15 @@ VS_DOC = {
         "differed by -2.3 to +1.1 points and netted to zero. The ranking skips the last month, so one session "
         "barely changes the picks. In-sample only, India only; the open of a thin small cap is still best "
         "met with a limit order near it.",
+        "**Why India and not the US: the US edge faded around 2000.** Measured on the ranking itself, gross, "
+        "top 20 against the rest of the eligible pool each month, years up to 2021 only (in-sample). India: "
+        "+1.03% a month in 2013-2021 (t 2.6), and +0.94% in 2003-2008, so it has held for two decades. US: "
+        "+0.90% a month in 1986-1999 (t 2.3; early years hold only today's survivors), then about zero in every "
+        "later period (+0.12%, t 0.2, in 2013-2021). The US picks are a beta-1.4 bet on the pool with -4% "
+        "alpha a year; dropping the most volatile fifth before ranking removes the negative alpha but finds no "
+        "edge beneath it. Ranking a smaller, more liquid US pool changed nothing, and neither did momentum "
+        "crashes. India's edge is largest when stocks diverge most (+1.53% a month against +0.54%) and turns "
+        "negative after a year in which the market fell (-0.51% a month, 20 months).",
         "**A stock with no bar on a real session loses its 200-day average for 200 sessions.** The average needs "
         "a price on each of the last 200 sessions of the whole market. A stock the source did not price on a "
         "session most of the market traded — a Diwali Muhurat hour, a Saturday budget day — fails the trend "
