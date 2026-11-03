@@ -75,6 +75,8 @@ from ..core import indicators as ind
 from ..strategies import minervini_spec as _ms
 from ..strategies import kullamagi as _km
 from ..strategies import supertrend as _st
+from ..strategies import darvas as _dv
+from ..core import darvas as darvas_boxes
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +153,15 @@ class ExitPolicy:
     km_partial_divisor: int = field(default_factory=lambda: _km.PARTIAL_DIVISOR)
     km_trail_sma: int = field(default_factory=lambda: _km.TRAIL_SMA)
     km_max_bars: int = field(default_factory=lambda: _km.MAX_HOLD_BARS)
+    # for darvas: the stop trails by Darvas boxes (core/darvas.py), found with the darvas strategy's own
+    # constants through a factory, as above. A box completed today whose top is above the last box's
+    # raises the stop to one tick under its bottom, from tomorrow; never lowered. The optional time stop
+    # sells at the close of session `dv_time_stop_bars` if no higher box has formed and the close is
+    # under the entry (0 = off). See `_manage_darvas`. The generic trade management below is not used.
+    dv_lookback: int = field(default_factory=lambda: _dv.NEW_HIGH_LOOKBACK)
+    dv_top_confirm: int = field(default_factory=lambda: _dv.TOP_CONFIRM)
+    dv_bottom_confirm: int = field(default_factory=lambda: _dv.BOTTOM_CONFIRM)
+    dv_time_stop_bars: int = field(default_factory=lambda: _dv.TIME_STOP_BARS)
     # ---- minervini: the strategy's exit ladder. Defaults are minervini_spec's constants, so a
     # --spec run trades the strategy's documented numbers (1.8: the SEPA Learn guide's).
     #
@@ -189,7 +200,7 @@ class ExitPolicy:
     @property
     def managed(self) -> bool:
         """Whether any of the opt-in trade-management rules is on (non-minervini modes)."""
-        return self.mode != "minervini" and bool(
+        return self.mode not in ("minervini", "darvas") and bool(
             self.be_r or self.time_stop_bars or self.time_stop_mult or self.partial_at_target)
 
     def label(self) -> str:
@@ -221,6 +232,9 @@ class ExitPolicy:
             bits.append(f"{self.st_period}x{self.st_mult:g}")
         elif self.mode == "kullamagi":
             bits.append(f"p{self.km_partial_bars}d{self.km_partial_divisor}-sma{self.km_trail_sma}-max{self.km_max_bars}")
+        elif self.mode == "darvas":
+            bits.append(f"h{self.dv_lookback}t{self.dv_top_confirm}b{self.dv_bottom_confirm}"
+                        + (f"-time{self.dv_time_stop_bars}" if self.dv_time_stop_bars else ""))
         bits.append("withTarget" if self.use_target else "noTarget")
         if self.be_r:
             bits.append(f"be{self.be_r:g}R")
@@ -485,6 +499,8 @@ def simulate(
     elif policy.mode == "kullamagi":
         prices = {s: df.assign(**{KM_TRAIL: ind.sma(df["close"].astype(float), policy.km_trail_sma)})
                   for s, df in prices.items()}
+    elif policy.mode == "darvas":
+        prices = {s: df.assign(**darvas_levels(df, policy)) for s, df in prices.items()}
 
     # the calendar is the union of the dates of every symbol we might trade
     all_dates = sorted({d for df in prices.values() for d in df.index if d >= start})
@@ -659,6 +675,10 @@ def simulate(
 
             if policy.mode == "kullamagi":
                 _manage_kullamagi(sym, pos, bar, today, policy, close_out, sell)
+                continue
+
+            if policy.mode == "darvas":
+                _manage_darvas(sym, pos, bar, today, policy, close_out, cfg)
                 continue
 
             if policy.managed:
@@ -936,6 +956,11 @@ def simulate(
                 # it after the buy. Until 2026-10-31 the fill bar was never tested, so a buy that
                 # reversed through its stop that session survived to the next one.
                 close_out(sym, positions[sym], order["stop"], "STOP", today, at=INTRADAY)
+            elif policy.mode == "darvas" and meta.get("min_breakout_vol"):
+                # a light-volume breakout session: sold at the next open (the darvas strategy's switch)
+                v50 = float(bar.get("vol_sma50", float("nan")))
+                if v50 == v50 and v50 > 0 and float(bar.get("volume", 0) or 0) < meta["min_breakout_vol"] * v50:
+                    positions[sym].queued_exit = "LIGHT_VOLUME_BREAKOUT"
 
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
@@ -1201,6 +1226,56 @@ def _manage_kullamagi(sym, pos: PortfolioTrade, bar, today, policy: ExitPolicy, 
             pos.stop = max(pos.stop, pos.entry_price)
     if policy.km_max_bars and pos.bars_held >= policy.km_max_bars:
         close_out(sym, pos, c, "TIME", today, at=AT_CLOSE)
+
+
+DV_TOP = "_dv_top"             # the darvas exit's boxes: top and bottom on the session that completes each
+DV_BOTTOM = "_dv_bottom"       #   box, NaN on every other session
+
+
+def darvas_levels(df: pd.DataFrame, policy: ExitPolicy) -> dict:
+    """The darvas exit's boxes as two columns: on the session that confirms a box's bottom, its top and
+    bottom; NaN elsewhere. One causal scan (core/darvas.py) per symbol: a box is written on the bar that
+    completed it, from bars up to that bar only, so reading a session's row is reading the boxes found
+    on the bars up to that session (tests/test_darvas_exit.py checks the two agree)."""
+    top = pd.Series(float("nan"), index=df.index)
+    bottom = top.copy()
+    if len(df):
+        for b in darvas_boxes.boxes(df["high"], df["low"], policy.dv_lookback, policy.dv_top_confirm,
+                                    policy.dv_bottom_confirm):
+            top.iat[b.done_i], bottom.iat[b.done_i] = b.top, b.bottom
+    return {DV_TOP: top, DV_BOTTOM: bottom}
+
+
+def _manage_darvas(sym, pos: "PortfolioTrade", bar, today, policy: ExitPolicy, close_out, cfg: MarketConfig) -> None:
+    """One session of the darvas exit, in this order:
+      1. a light-volume fill queued on the entry session sells at this open (LIGHT_VOLUME_BREAKOUT);
+      2. the stop, at the stop or at the open if the stock gapped through it (STOP, or TRAIL_STOP once
+         a box has raised it);
+      3. the time stop, when on: at the close of session `dv_time_stop_bars`, if no higher box has
+         formed and the close is below the entry (TIME);
+      4. for tomorrow: a box completed today whose top is above the last box's -- the bought box's
+         (meta["box_top"]) at first -- raises the stop to one tick under its bottom
+         (darvas.stop_below). Never lowered. Today's high and low are known by then: the box is
+         complete at today's close, so the raised stop acts from the next session."""
+    o, l, c = float(bar["open"]), float(bar["low"]), float(bar["close"])
+    m = pos.meta
+    if pos.queued_exit:
+        close_out(sym, pos, o, pos.queued_exit, today, at=AT_OPEN)
+        return
+    pos.bars_held += 1
+    if l <= pos.stop:
+        reason = "STOP" if pos.stop <= pos.initial_stop else "TRAIL_STOP"
+        close_out(sym, pos, min(pos.stop, o), reason, today, at=AT_OPEN if o <= pos.stop else INTRADAY)
+        return
+    if (policy.dv_time_stop_bars and pos.bars_held == policy.dv_time_stop_bars
+            and not m.get("_dv_boxes") and c < pos.entry_price):
+        close_out(sym, pos, c, "TIME", today, at=AT_CLOSE)
+        return
+    top = bar.get(DV_TOP, float("nan"))
+    if top == top and top > m.get("_dv_last_top", m.get("box_top", -math.inf)):
+        m["_dv_last_top"] = float(top)
+        m["_dv_boxes"] = m.get("_dv_boxes", 0) + 1
+        pos.stop = max(pos.stop, _dv.stop_below(float(bar[DV_BOTTOM]), cfg.tick_size))
 
 
 def _trail_pct(pos: "PortfolioTrade", bar, policy: ExitPolicy) -> None:

@@ -173,6 +173,38 @@
     },
     "version": "1.20"
   },
+  "darvas": {
+    "family": "darvas",
+    "fingerprint": "97e389ad",
+    "params": {
+      "BOTTOM_CONFIRM": 3,
+      "BREAKOUT_VOL_MULT": 1.4,
+      "ENTRY_BUFFER_PCT": 0.1,
+      "MARKET_SMA": 50,
+      "MAX_BOX_DEPTH_PCT": 15.0,
+      "MIN_EPS_GROWTH_PCT": 20.0,
+      "NEW_HIGH_LOOKBACK": 250,
+      "NOMINAL_TARGET_R": 10.0,
+      "REQUIRE_BREAKOUT_VOLUME": 0,
+      "REQUIRE_EPS_GROWTH": 0,
+      "REQUIRE_MARKET_UPTREND": 0,
+      "TIME_STOP_BARS": 0,
+      "TOP_CONFIRM": 3,
+      "_SCAN_CACHE_SIZE": 8,
+      "_key": "darvas",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4"
+      ],
+      "min_bars": 260,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "delivery_breakout": {
     "family": "delivery_breakout",
     "fingerprint": "16050f0b",

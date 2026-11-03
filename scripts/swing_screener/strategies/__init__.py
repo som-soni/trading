@@ -50,6 +50,7 @@ from .base import (
 from .breakout import BreakoutStrategy
 from .chart_pattern import ChartPatternCupStrategy, ChartPatternStrategy
 from .chart_pattern_spec import ChartPatternSpecStrategy
+from .darvas import DarvasStrategy
 from .delivery_breakout import DeliveryBreakoutStrategy
 from .donchian import DonchianStrategy
 from .earnings_gaps import EarningsGapStrategy
@@ -72,6 +73,7 @@ def register(strategy: Strategy) -> Strategy:
 
 register(TrendPullbackStrategy())
 register(DonchianStrategy())
+register(DarvasStrategy())
 register(EarningsGapStrategy())
 register(BreakoutStrategy())
 register(ChartPatternSpecStrategy())
