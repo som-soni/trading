@@ -491,7 +491,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "df59ef84",
+    "fingerprint": "ee98e6b5",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -575,6 +575,7 @@
       "POWER_PLAY.pivot_at_flag_high": 1,
       "POWER_PLAY.run_mult": 2.0,
       "POWER_PLAY.run_window": 40,
+      "POWER_PLAY.skip_dead_bars": 1,
       "POWER_PLAY.swing_k": 5,
       "POWER_PLAY.tight_min_days": 5,
       "POWER_PLAY.tight_pct": 25.0,
@@ -590,6 +591,7 @@
       "PRIOR_ADVANCE_PCT": 30.0,
       "RS_MIN_RANK": 70,
       "RS_MIN_SCORE": 0.5,
+      "SKIP_DEAD_BARS": 1,
       "SMA200_PREF_REQUIRED": 0,
       "SMA200_RISING_BARS": 21,
       "SMA200_RISING_PREF_BARS": 100,
@@ -638,6 +640,7 @@
       "VCP.pivot_near_high": 0.9,
       "VCP.prior_advance_pct": 30.0,
       "VCP.prior_window": 126,
+      "VCP.skip_dead_bars": 1,
       "VCP.strict_shrink": 0,
       "VCP.swing_k": 5,
       "VCP.t_recovery": 0.75,
@@ -691,7 +694,7 @@
         "W5"
       ]
     },
-    "version": "1.41"
+    "version": "1.42"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

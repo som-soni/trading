@@ -210,6 +210,9 @@ class VcpParams:
     dryup_quiet_ratio: float = 0.5   # … each at or under this x the 50-day average
     dryup_ratio: float = 0.80        # VCP-10: tight-area volume ≤ this × its 50-day average
     atr_shrink: float = 0.0          # VCP-11 (optional, 0 = off): ATR/close now ≤ this × ATR/close on BH's bar
+    # 1 = a session with no range and no volume (see `without_dead_bars`) is a gap in the data and is left
+    # out before anything is measured. 0 = it counts as a session (until Minervini 1.42).
+    skip_dead_bars: int = 0
     lookback: int = 460              # bars examined (base max + prior window + swing confirmation)
 
 
@@ -392,6 +395,16 @@ def _dryup(d: pd.DataFrame, start: int, vol: pd.Series, quiet_ratio: float) -> t
     return float(vol.mean()) / v50, int((vol <= quiet_ratio * v50).sum())
 
 
+def without_dead_bars(d: pd.DataFrame) -> pd.DataFrame:
+    """`d` without its dead sessions: no volume and no range (high = low). Such a bar is a hole the data
+    source filled with the previous price, not a quiet day -- ADANIPORTS.NS on 2015-08-12 reads open = high =
+    low = close = 331.80 on 0 shares, a normal NSE session. Counted, it ages the final contraction by a
+    session it never traded and halves the tight area's volume: that bar alone made the base's VCP-08
+    (five sessions old) and VCP-10 (dry-up) pass."""
+    dead = (d["volume"] == 0) & (d["high"] == d["low"])
+    return d[~dead] if dead.any() else d
+
+
 def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     """The base in force on the last bar of `daily`, and whether its VCP is complete (`_detect`).
 
@@ -399,7 +412,11 @@ def detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     depth, VCP-10's dry-up) by no more than its margin is measured on past it: `near` is {"rule", "why"} for
     that miss and `near_ok` says whether everything else then passed. `ok`, `fail` and `fail_why` are still
     the strict verdict -- the first rule that failed -- so a caller that ignores `near` sees no change. The
-    fields measured after the miss (pivot, tight area, dry-up) are filled in for a near miss."""
+    fields measured after the miss (pivot, tight area, dry-up) are filled in for a near miss.
+
+    `p.skip_dead_bars`: dead sessions are dropped first, so a dead last bar is judged as the session before."""
+    if p.skip_dead_bars:
+        daily = without_dead_bars(daily)
     r = _detect(daily, p)
     nm = r.get("near")
     r.setdefault("near", None)
@@ -873,6 +890,7 @@ class PowerPlayParams:
     # the flag below the pivot and no breakout was ever recorded; TSLA's June 2020 close sat 3.2% past its
     # flag high but 6.5% past the tight-area high, outside the buy range.
     pivot_at_flag_high: int = 0
+    skip_dead_bars: int = 0       # as VcpParams.skip_dead_bars
 
 
 def detect_power_play(d: pd.DataFrame, p: "PowerPlayParams | None" = None) -> dict:
@@ -882,6 +900,8 @@ def detect_power_play(d: pd.DataFrame, p: "PowerPlayParams | None" = None) -> di
     measured value is recorded whether it passed or not.
     """
     p = p or PowerPlayParams()
+    if p.skip_dead_bars:
+        d = without_dead_bars(d)
     out = {"fail": None, "fail_why": None, "run_pct": None, "flag_high": None, "flag_high_date": None,
            "flag_days": None, "flag_depth_pct": None, "pivot": None, "tight_low": None,
            "tight_range_pct": None, "dryup": None, "dryup_quiet_days": None}

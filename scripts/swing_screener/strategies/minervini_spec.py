@@ -196,6 +196,12 @@ CHEAT_RALLY_FRAC = 0.33
 CHEAT_VOL_CONTRACT = 0.9
 CHEAT_VOL_LOOKBACK = 10
 
+# 1.42: a session with no volume and no range (open = high = low = close, 0 shares) is a hole the data
+# source filled with the previous price. The detectors leave it out (vcp_spec.without_dead_bars) instead of
+# counting it as a quiet day: ADANIPORTS.NS's 2015-08-12 bar alone aged its final contraction to the five
+# sessions VCP-08 needs and pulled the tight area's volume under VCP-10's limit. 0 = it counts (1.41).
+SKIP_DEAD_BARS = 1
+
 # What each VCP failure code means TODAY, read from core/vcp_spec.detect. One table, used by the
 # chart's failed-base titles and by the Candidates tab's stage view. The chart's own copy had gone
 # stale -- VCP-05 still said "first pullback too deep" two versions after it became the depth of the
@@ -219,7 +225,7 @@ POWER_PLAY = vcp_spec.PowerPlayParams(
     tight_pct=PP_TIGHT_PCT, tight_min_days=TIGHT_MIN_DAYS, swing_k=SWING_K,
     dryup=PP_DRYUP, dryup_ratio=DRYUP_RATIO, dryup_quiet_days=DRYUP_QUIET_DAYS,
     dryup_quiet_ratio=DRYUP_QUIET_RATIO,
-    pivot_at_flag_high=PP_PIVOT_FLAG_HIGH,
+    pivot_at_flag_high=PP_PIVOT_FLAG_HIGH, skip_dead_bars=SKIP_DEAD_BARS,
 )
 
 VCP = vcp_spec.VcpParams(
@@ -234,7 +240,7 @@ VCP = vcp_spec.VcpParams(
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
     cheat_dryup=CHEAT_DRYUP, young_listing=YOUNG_LISTING, deep_decline_resets=DEEP_DECLINE_RESETS,
     cheat_rally_frac=CHEAT_RALLY_FRAC, cheat_vol_contract=CHEAT_VOL_CONTRACT, cheat_vol_lookback=CHEAT_VOL_LOOKBACK,
-    tight_area_route=TIGHT_AREA_ROUTE,
+    tight_area_route=TIGHT_AREA_ROUTE, skip_dead_bars=SKIP_DEAD_BARS,
     near_final_ref_ratio=NEAR_FINAL_REF_RATIO if NEAR_MISS else 0.0,
     near_tight_min_days=NEAR_TIGHT_MIN_DAYS if NEAR_MISS else 0,
     near_tight_pct=NEAR_TIGHT_PCT if NEAR_MISS else 0.0,
@@ -812,10 +818,16 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.41"
-    # signal_version is not pinned: 1.41 changes evaluate() (it now records the overhead levels the plan reads),
-    # so a row cached before it lacks them -- the next backtest rescans. (1.39 and 1.40 were post-scan only.)
+    version = "1.42"
+    # signal_version is not pinned: 1.42 changes the detectors evaluate() reads, so the next backtest rescans.
     changelog = (
+        ("1.42", "2026-11-03",
+         "The detectors leave out dead sessions -- no volume and no range, a hole the data source filled with "
+         "the previous price (SKIP_DEAD_BARS). Counted, such a bar aged a final contraction by a session it never "
+         "traded and lowered the tight area's volume: ADANIPORTS.NS's 2015-08-12 bar (331.80 four times, 0 "
+         "shares) alone made its base pass VCP-08 and VCP-10. `--vcp skip_dead_bars=0` restores 1.41. The chart "
+         "now also judges every close through a pivot as evaluate does -- a refused crossing no longer hides a "
+         "later one -- and refuses a crossing on a session that fails the Trend Template, naming why."),
         ("1.41", "2026-10-31",
          "A fresh scan and a signal-cache hit built different plans. build_plans read the overhead supply that "
          "caps the target from the price frames, and a cache hit rebuilds its context from 70 daily bars and no "
@@ -1425,6 +1437,10 @@ class MinerviniSpecStrategy(Strategy):
         "code departs from that spec is listed once, under Known caveats.",
     )
     caveats = (
+        "**Dead sessions are left out** (1.42, SKIP_DEAD_BARS). A stored session with no volume and no range "
+        "is a hole in the price data, not a quiet day, so the base and power-play detectors drop it before "
+        "measuring. The averages and the 50-day volume baseline still include it, so a stock with many such "
+        "holes reads slightly quieter than it traded.",
         "**Where the code departs from the written spec.** It follows the spec's revision (v2), the "
         "Learn guide \"SEPA and the VCP\" and, since 1.27, Minervini's own book instead in these "
         "places:\n\n"
@@ -2047,6 +2063,7 @@ class MinerviniSpecStrategy(Strategy):
         ("Cheat: rally before the shelf", "CHEAT_RALLY_FRAC", "MV-03/MV-04 (1.34): the share of the decline the rally off the base low must win back before the shelf, which must hold above that low. 0 = no sequence test (1.33)."),
         ("Cheat: volume contraction", "CHEAT_VOL_CONTRACT", "MV-03/MV-04 (1.34): the shelf's average volume as a multiple of the sessions before it, at most. 0 = no contraction test (1.33)."),
         ("Cheat: volume lead-in", "CHEAT_VOL_LOOKBACK", "Sessions before the shelf, at least, that its volume is compared with (the rally from the low when longer)."),
+        ("Skip dead sessions", "SKIP_DEAD_BARS", "1.42: 1 = the base and power-play detectors leave out a session with no volume and no range (a data hole filled with the previous price) instead of counting it as a quiet day. 0 = it counts (1.41)."),
         ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused — "
                                                  "tested on the signal close and again on the fill."),
         ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
@@ -2705,6 +2722,13 @@ class MinerviniSpecStrategy(Strategy):
             r = dets[i]
             if r["bh_date"] is None or not (r["ok"] or r["fail"] in self._VCP_RANK):
                 continue
+            # A base whose pivot is already under the close is not one a breakout can still come from: the
+            # price went through while the detector measured an older base, and the breakout's high is not
+            # a confirmed swing yet. ADANIPORTS.NS closed 4.4% through its pivot on 2015-08-14, read against
+            # the base from 2015-01-09; for the next three sessions the detector measured the same pivot
+            # from a 2015-05-22 high, and that base was drawn as a VCP still waiting for it.
+            if r.get("pivot") and close[i] > r["pivot"]:
+                continue
             b = bases.setdefault(r["bh_date"], {"best": i, "ok": [], "breakout": None, "cheat": None})
             done = r["ok"] or (NEAR_MISS and r.get("near_ok"))      # S7: a near miss is drawn as complete
             if done:
@@ -2721,15 +2745,28 @@ class MinerviniSpecStrategy(Strategy):
         # is recorded as `crossed` with why, so the chart never marks "broke out" on a session the strategy
         # would not have bought. TSLA's June 2020 power play was drawn as broken out on a close 6.5% past its
         # pivot on 0.91x volume. The setup is still judged from the bar before the crossing.
+        #
+        # A refused crossing does not use the base up: evaluate judges every close through the pivot afresh,
+        # so a later one may still be bought, and only a crossing the strategy would buy ends the search.
+        # ADANIPORTS.NS's January 2015 base crossed on 2015-02-27 on 1.13x volume (refused) and again on
+        # 2015-08-14, which was never judged. And MV-01 is decided only on a bar that passes the screen --
+        # the Trend Template, as the strategy's prefilter applies it on the signal bar -- so a crossing on a
+        # bar that fails it is refused, naming why (that 2015-08-14 close: 50-day under the 150-day).
         hi_, lo_, vo_ = (daily[k].to_numpy(float) for k in ("high", "low", "volume"))
         v50_ = daily["vol_sma50"].to_numpy(float) if "vol_sma50" in daily else np.full(len(daily), np.nan)
         for i in range(start + 1, len(daily)):
             p = dets[i - 1]
             near_base = bool(p and NEAR_MISS and p.get("near_ok"))
-            if p and (p["ok"] or near_base) and close[i - 1] <= p["pivot"] < close[i] and p["bh_date"] in bases \
-                    and bases[p["bh_date"]]["breakout"] is None:
+            b = bases.get(p["bh_date"]) if p else None
+            if b is not None and (p["ok"] or near_base) and close[i - 1] <= p["pivot"] < close[i] \
+                    and (b["breakout"] is None or b.get("missed")):
                 miss, vr, up = entry_misses(close[i], hi_[i], lo_[i], vo_[i], v50_[i], p["pivot"])
-                bases[p["bh_date"]]["breakout"] = i
+                screen = self._screen_miss(cfg, daily, i)
+                b["breakout"], b["screen"] = i, screen
+                b.pop("near", None)
+                if screen:
+                    b["missed"] = f"the Trend Template failed that session ({screen})"
+                    continue
                 # S7, as evaluate decides it: a near-miss base with every MV-01 test passed, or a full VCP
                 # whose breakout volume alone is short by no more than NEAR_VOL_MULT
                 vol_near = (NEAR_MISS and p["ok"] and miss["W1"] and not miss["W2"] and not miss["W3"]
@@ -2844,6 +2881,16 @@ class MinerviniSpecStrategy(Strategy):
             out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed"), near=b.get("near")))
         out += self._power_plays(daily, cfg)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
+
+    def _screen_miss(self, cfg: MarketConfig, daily: pd.DataFrame, i: int) -> str | None:
+        """Why bar `i` fails the strategy's screen (prefilter_row: the turnover floor, then the Trend
+        Template), or None when it passes. A young listing is judged by its own gates, not the template, so
+        it is never refused here."""
+        row = daily.iloc[i]
+        if is_young_row(row, i + 1):
+            return None
+        ok, why = self.prefilter_row(cfg, row)
+        return None if ok else why
 
     def _power_plays(self, daily: pd.DataFrame, cfg: MarketConfig) -> list[dict]:
         """MV-05 on the chart: every power-play shape the detector measured -- a run of at least
@@ -3225,6 +3272,7 @@ class MinerviniSpecStrategy(Strategy):
         # ---- zone 3: the entry — illustrated from the strategy's own rules, for a completed VCP only
         top, bottom = bh, min(base_low, float(r["prior_low"]) if r["prior_low"] else base_low)
         entry_to = at
+        screen = None
         if done and not traded_cheat:
             pv, tl = float(r["pivot"]), float(r["tight_low"])
             buy, stop = pivot_buy_stop(pv, cfg.tick_size), pivot_stop(tl, cfg.tick_size)
@@ -3251,7 +3299,13 @@ class MinerviniSpecStrategy(Strategy):
                                                             "label": "crossed ✗" if missed else "breakout"}],
                                "role": "stop" if missed else "buy"})
             ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
+            # the screen on the breakout bar (or, still waiting, on this one): MV-01 is bought only on a bar
+            # that passes it, so a VCP outside the Trend Template is no setup yet whatever its shape
+            screen = self._screen_miss(cfg, daily, e_i)
             e_checks = [
+                {"code": "TT", "name": "Trend Template", "value": f"fails on {day(e_i)}: {screen}" if screen
+                 else f"held on {day(e_i)}", "limit": "passes on the breakout session",
+                 "state": "fail" if screen and bo is not None else "warn" if screen else "pass"},
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
                 {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
@@ -3260,7 +3314,9 @@ class MinerviniSpecStrategy(Strategy):
             skip = [] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]
             if not ok_r:
                 skip.append(f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no measured move")
-            happened = (f" It broke out on {day(bo)}." if bo is not None else " It has not broken out yet.")
+            happened = (f" It broke out on {day(bo)}." if bo is not None else " It has not broken out yet."
+                        + (f" The Trend Template fails on {day(e_i)} ({screen}), and the strategy buys a breakout "
+                           f"only on a session that passes it." if screen else ""))
             zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": e_from, "to": entry_to,
                           "illustration": True,
                           "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult else ""),
@@ -3386,10 +3442,13 @@ class MinerviniSpecStrategy(Strategy):
             structure_ok = all(z["state"] == "pass" for z in zones if not z.get("illustration"))
             none_taken = bool(entries) and all(z["state"] == "fail" for z in entries)
             title = ("VCP ✓ · trade skipped" if (none_taken or not structure_ok)
-                     else "VCP ✓ · no valid breakout" if missed else "VCP setup ✓") + today
+                     else "VCP ✓ · no valid breakout" if missed
+                     else "VCP ✓ · outside the Trend Template" if screen and bo is None else "VCP setup ✓") + today
             summary = (f"A complete VCP. It crossed the pivot on {day(bo)}, but the strategy would not have bought: "
                        f"{missed}." if bo is not None and missed
                        else f"A complete VCP. Broke out on {day(bo)}." if bo is not None
+                       else f"A complete VCP, but the Trend Template fails on {at} ({screen}): no buy until it "
+                            f"passes on the breakout session." if screen
                        else "A complete VCP, waiting for a close through the pivot.")
         elif cheat:
             ok = zones[-1]["state"] == "pass"
