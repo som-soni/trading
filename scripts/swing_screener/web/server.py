@@ -66,6 +66,8 @@ def _startup() -> None:
     growth_mod.init_schema()
     from analysis import store as analysis_store
     analysis_store.init_schema()
+    from ..backtesting import rebalance as rebalance_mod
+    rebalance_mod.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
     threading.Thread(target=_background_refresh, daemon=True).start()  # what the Today page needs, computed ahead
     threading.Thread(target=db_mod.releasing(_prewarm_sectors), daemon=True).start()
@@ -1397,6 +1399,46 @@ def portfolio_selection(strategy: str, market: str, limit: int | None = None):
     if strategy not in portfolio_strategies():
         raise HTTPException(404, f"{strategy} is not a portfolio strategy")
     return baseline.current_selection(market, strategy, limit=limit)
+
+
+@app.get("/api/positions/{strategy}/{market}")
+def get_book_positions(strategy: str, market: str):
+    """The positions and cash you hold under a ranking strategy -- what its rebalance orders start from."""
+    from ..backtesting import rebalance
+    from ..strategies import portfolio_strategies
+
+    if market not in MARKETS or strategy not in portfolio_strategies():
+        raise HTTPException(404, "unknown strategy or market")
+    return rebalance.get_positions(strategy, market)
+
+
+@app.put("/api/positions/{strategy}/{market}")
+def put_book_positions(strategy: str, market: str, body: dict):
+    """Replace the account: {positions: {symbol: shares}, cash}. Stored in Postgres (book_positions)."""
+    from ..backtesting import rebalance
+    from ..strategies import portfolio_strategies
+
+    if market not in MARKETS or strategy not in portfolio_strategies():
+        raise HTTPException(404, "unknown strategy or market")
+    try:
+        return rebalance.set_positions(strategy, market, dict(body.get("positions") or {}),
+                                       float(body.get("cash") or 0))
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/rebalance/{strategy}/{market}")
+def rebalance_orders(strategy: str, market: str):
+    """SELL / BUY / ADD / TRIM / HOLD per stock: your stored positions against the strategy's book on the
+    latest close (`rebalance.orders`, which reads the book through `baseline.current_selection`)."""
+    from ..backtesting import rebalance
+    from ..strategies import portfolio_strategies
+
+    if market not in MARKETS or strategy not in portfolio_strategies():
+        raise HTTPException(404, "unknown strategy or market")
+    if not hasattr(portfolio_strategies()[strategy], "lookback"):
+        raise HTTPException(400, f"{strategy} does not rank stocks")
+    return rebalance.orders(strategy, market)
 
 
 @app.get("/api/combo-orders/{market}")

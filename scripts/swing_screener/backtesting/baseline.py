@@ -173,6 +173,22 @@ def load_prices(market: str, min_bars: int) -> tuple:
     return px, dv, sma200, tr
 
 
+def load_opens(market: str, symbols: list, index: pd.DatetimeIndex) -> pd.DataFrame:
+    """Opening prices for `symbols` on `index`, for fill=next_open. One query rather than a per-symbol
+    read, and it stops at the backtest stage's boundary (asof) like every other loader."""
+    from ..marketdata import asof, db
+    end = asof.end_date()
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT symbol, date, open FROM prices WHERE market=%s AND symbol = ANY(%s)"
+                    + (" AND date <= %s" if end else ""),
+                    (market, list(symbols), end) if end else (market, list(symbols)))
+        rows = cur.fetchall()
+    df = pd.DataFrame(rows, columns=["symbol", "date", "open"])
+    df["date"] = pd.to_datetime(df["date"])
+    return (df.pivot_table(index="date", columns="symbol", values="open", aggfunc="last")
+            .astype(float).reindex(index=index, columns=symbols))
+
+
 def eligible_scores(symbols, price_row, dv_row, sma200_row, score_row, *,
                     floor_price: float, liq_floor: float | None, trend_filter: bool,
                     liquidity_rank_top: int | None, trend_row=None, floor_row=None) -> dict:
@@ -478,6 +494,7 @@ def run(
     preloaded: tuple | None = None,
     universe_filter=None,
     credit_actions: bool = True,
+    fill: str = "close",
 ):
     """Hold the top `top_n` by `rank`, rebalanced on `rebalance`.
 
@@ -498,6 +515,10 @@ def run(
                   `notes()` method on it, if present, adds lines to the report's caveats.
     `credit_actions`  credit a held position the cash of a special dividend or a demerger on its
                   ex-date (marketdata/corporate_actions.py), where the stored close only falls
+    `fill`        close = trade at the rebalance session's close, the session the book is decided on
+                  (the default, and every measured result); next_open = decide on that close, trade at
+                  the NEXT session's open -- what an account can actually do when the close is only
+                  known after the market shuts. Research option: it changes no strategy rule
     """
     cfg = MARKETS[market]
     start_ts = pd.Timestamp(start)
@@ -561,6 +582,10 @@ def run(
     # Valuation uses the last known price, not today's cell: a holding that did
     # not print today is still worth its last trade, not nothing.
     marks = px.ffill()
+    if fill not in ("close", "next_open"):
+        raise ValueError(f"fill must be close or next_open, not {fill!r}")
+    opens = load_opens(market, list(px.columns), px.index) if fill == "next_open" else None
+    pending = None   # next_open: (target, weights, gross) decided on the last close, traded at this open
     # The price floor reads the price traded on the day, not the stored close: that is back-adjusted
     # for every later split, so a $10 floor on it dropped the later multi-baggers from their early
     # years (NFLX until 2013). Fills and valuation keep the adjusted close.
@@ -599,6 +624,84 @@ def run(
     trades: list[dict] = []
     entry_info: dict[str, dict] = {}   # symbol -> its holding period's cash flows (_new_holding)
 
+    def execute(today, row, mark, target, weights, gross):
+        """Trade the book to `target` at the prices in `row`: sell what left it, then size each name to
+        its weight of equity valued at `mark`. The rebalance close for fill=close, the next session's
+        open (valued at that open) for fill=next_open."""
+        nonlocal cash, costs_total, turnover_notional
+        # sell anything not in the new target
+        for s in list(holdings):
+            if s in target:
+                continue
+            price = float(row[s]) if s in row.index and pd.notna(row[s]) else None
+            if price is None:
+                continue
+            fill = price * (1 - cost_bps / 10_000)
+            proceeds = fill * holdings[s]
+            cost = (price - fill) * holdings[s]
+            cash += proceeds
+            costs_total += cost
+            turnover_notional += price * holdings[s]
+            trades.append(_holding_row(s, entry_info.pop(s, None), today, fill,
+                                       holdings[s], cost, "REBALANCE_OUT", credited.pop(s, 0.0)))
+            del holdings[s]
+
+        # size the target across current equity
+        equity = cash + sum(
+            sh * float(mark[s]) for s, sh in holdings.items()
+            if s in mark.index and pd.notna(mark[s])
+        )
+        if target:
+            for s in target:
+                price = float(row[s]) if s in row.index and pd.notna(row[s]) else float("nan")
+                if not price > 0:
+                    continue   # no price at this fill (next_open: no open printed); stays unbought
+                alloc = equity * weights[s] * gross
+                # Integer share counts silently drop any stock priced above
+                # its own allocation. SNDK ranked #1 by momentum on 138 of
+                # 138 rankable days and never traded, because at ~$950 per
+                # name a $2,274 share floors to zero. Fractional investing
+                # (available for US stocks through several brokers) removes
+                # the granularity entirely.
+                want_shares = (alloc / price) if fractional else int(alloc // price)
+                have = holdings.get(s, 0)
+                if want_shares > have:
+                    buy = want_shares - have
+                    fill = price * (1 + cost_bps / 10_000)
+                    need = fill * buy
+                    if need > cash:
+                        buy = int(cash // fill)
+                        need = fill * buy
+                    if buy < (1e-6 if fractional else 1):
+                        continue
+                    cash -= need
+                    costs_total += (fill - price) * buy
+                    turnover_notional += price * buy
+                    holdings[s] = have + buy
+                    e = entry_info.setdefault(s, _new_holding(today))
+                    e["paid"] += need
+                    e["bought"] += buy
+                    e["costs"] += (fill - price) * buy
+                elif want_shares < have:
+                    sell = have - want_shares
+                    fill = price * (1 - cost_bps / 10_000)
+                    cash += fill * sell
+                    costs_total += (price - fill) * sell
+                    turnover_notional += price * sell
+                    holdings[s] = have - sell
+                    if holdings[s] == 0:
+                        # sized to nothing (a slot below one whole share): the holding
+                        # ends here, so it is a trade like any other exit
+                        del holdings[s]
+                        trades.append(_holding_row(s, entry_info.pop(s, None), today, fill,
+                                                   sell, (price - fill) * sell, "REBALANCE_OUT",
+                                                   credited.pop(s, 0.0)))
+                    else:
+                        e = entry_info.setdefault(s, _new_holding(today))
+                        e["got"] += fill * sell
+                        e["costs"] += (price - fill) * sell
+
+
     for today in dates:
         row = px.loc[today]       # today's actual prices — used for trading
         mark = marks.loc[today]   # last known prices — used for valuation
@@ -614,6 +717,13 @@ def run(
                 credited[s] = credited.get(s, 0.0) + c * holdings[s]
                 credited_total += c * holdings[s]
             credit_after = today
+
+        if pending is not None:
+            # fill=next_open: the book decided on the last rebalance close, traded at this open and
+            # sized on the account valued at this open (a name with no open keeps its last close)
+            op = opens.loc[today] if today in opens.index else pd.Series(dtype=float)
+            execute(today, op, op.reindex(mark.index).where(lambda x: x.notna(), mark), *pending)
+            pending = None
 
         held_value = sum(
             sh * float(mark[s]) for s, sh in holdings.items()
@@ -642,28 +752,8 @@ def run(
                 if in_regime_cash:
                     target = []   # market regime off: hold cash until a rebalance finds it on
 
-            # sell anything not in the new target
-            for s in list(holdings):
-                if s in target:
-                    continue
-                price = float(row[s]) if s in row.index and pd.notna(row[s]) else None
-                if price is None:
-                    continue
-                fill = price * (1 - cost_bps / 10_000)
-                proceeds = fill * holdings[s]
-                cost = (price - fill) * holdings[s]
-                cash += proceeds
-                costs_total += cost
-                turnover_notional += price * holdings[s]
-                trades.append(_holding_row(s, entry_info.pop(s, None), today, fill,
-                                           holdings[s], cost, "REBALANCE_OUT", credited.pop(s, 0.0)))
-                del holdings[s]
-
-            # equal-weight the target across current equity
-            equity = cash + sum(
-                sh * float(mark[s]) for s, sh in holdings.items()
-                if s in mark.index and pd.notna(mark[s])
-            )
+            # --- weights, read on the signal close (they do not depend on what is sold) ---
+            weights, gross = {}, 1.0
             if target:
                 # --- position weights ---
                 if weighting == "inverse_vol" and vols is not None:
@@ -699,52 +789,10 @@ def run(
                         if port_vol and port_vol == port_vol:
                             gross = min(1.0, vol_target / port_vol)
 
-                for s in target:
-                    price = float(row[s])
-                    alloc = equity * weights[s] * gross
-                    # Integer share counts silently drop any stock priced above
-                    # its own allocation. SNDK ranked #1 by momentum on 138 of
-                    # 138 rankable days and never traded, because at ~$950 per
-                    # name a $2,274 share floors to zero. Fractional investing
-                    # (available for US stocks through several brokers) removes
-                    # the granularity entirely.
-                    want_shares = (alloc / price) if fractional else int(alloc // price)
-                    have = holdings.get(s, 0)
-                    if want_shares > have:
-                        buy = want_shares - have
-                        fill = price * (1 + cost_bps / 10_000)
-                        need = fill * buy
-                        if need > cash:
-                            buy = int(cash // fill)
-                            need = fill * buy
-                        if buy < (1e-6 if fractional else 1):
-                            continue
-                        cash -= need
-                        costs_total += (fill - price) * buy
-                        turnover_notional += price * buy
-                        holdings[s] = have + buy
-                        e = entry_info.setdefault(s, _new_holding(today))
-                        e["paid"] += need
-                        e["bought"] += buy
-                        e["costs"] += (fill - price) * buy
-                    elif want_shares < have:
-                        sell = have - want_shares
-                        fill = price * (1 - cost_bps / 10_000)
-                        cash += fill * sell
-                        costs_total += (price - fill) * sell
-                        turnover_notional += price * sell
-                        holdings[s] = have - sell
-                        if holdings[s] == 0:
-                            # sized to nothing (a slot below one whole share): the holding
-                            # ends here, so it is a trade like any other exit
-                            del holdings[s]
-                            trades.append(_holding_row(s, entry_info.pop(s, None), today, fill,
-                                                       sell, (price - fill) * sell, "REBALANCE_OUT",
-                                                       credited.pop(s, 0.0)))
-                        else:
-                            e = entry_info.setdefault(s, _new_holding(today))
-                            e["got"] += fill * sell
-                            e["costs"] += (price - fill) * sell
+            if fill == "close":
+                execute(today, row, mark, target, weights, gross)
+            else:
+                pending = (target, weights, gross)   # traded at the next session's open
 
         held_value = sum(
             sh * float(mark[s]) for s, sh in holdings.items()
@@ -792,6 +840,10 @@ def run(
         "'r_multiple' here is notional-relative (no stop exists), so it is NOT "
         "comparable to the gated strategy's stop-relative R.",
     ]
+    if fill == "next_open":
+        notes.append("Fills: decided on each rebalance close, traded at the NEXT session's open (fill=next_open), "
+                     "valued at that open; a target with no open that day is left unbought until the next "
+                     "rebalance. Costs are charged on the open price.")
     if regime:
         notes.append(
             f"Regime filter '{regime}' (index close > its {regime_mod.INDEX_SMA_DAYS}-day average"
@@ -993,6 +1045,11 @@ def build_parser() -> argparse.ArgumentParser:
         "the floors (0 = no cutoff). "
         "Guards against the rank filling with speculative microcaps.",
     )
+    ap.add_argument("--fill", default="close", choices=["close", "next_open"],
+                    help="when a rebalance trades: close = at the rebalance session's close, the one the "
+                         "book is decided on (the default, and every measured result); next_open = at the "
+                         "next session's open, which is when an account can act on a close it only sees "
+                         "after the market shuts")
     ap.add_argument("--no-ingest", action="store_true",
                     help="skip updating the viewer database after the run")
     return ap
@@ -1096,6 +1153,7 @@ def run_args(args: argparse.Namespace, universe_filter=None):
         regime=None if args.regime == "off" else args.regime,
         regime_index=args.regime_index if args.regime != "off" else None,
         hold_rank=args.hold_rank, universe_filter=universe_filter,
+        fill=getattr(args, "fill", "close"),
     )
 
 
@@ -1122,6 +1180,7 @@ def main(argv: list[str] | None = None, universe_filter=None, run_suffix: str = 
                 + (f"_{args.weighting}" if args.weighting != "equal" else "")
                 + (f"_vt{args.vol_target:g}" if args.vol_target else "")
                 + ("_overlay" if args.index_overlay else "")
+                + ("_fill-next-open" if getattr(args, "fill", "close") == "next_open" else "")
                 + (f"_regime-{args.regime}" if args.regime else "")   # "off" -> _regime-off, the control
                 + (f"-on-{args.regime_index}" if args.regime_index and args.regime and args.regime != "off" else "")
                 + (f"_hold{args.hold_rank}" if args.hold_rank and args.hold_rank > args.top_n else "")

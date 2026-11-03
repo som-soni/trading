@@ -5149,7 +5149,7 @@ async function strategyHoldings(host, alive, d, key) {
     const my = ++seq;
     host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}<span class="spacer"></span>
         <button id="run1" title="Re-rank this strategy on the latest stored prices">Re-rank…</button></div>
-      <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div>`;
+      <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div><div id="acct"></div>`;
     wireHead();
     const r = await api(`/api/portfolio-selection/${encodeURIComponent(key)}/${mkt}?limit=200`).catch(() => null);
     if (!alive() || my !== seq) return;   // a newer paint owns the page
@@ -5190,6 +5190,7 @@ async function strategyHoldings(host, alive, d, key) {
       });
     };
     draw();
+    bookOrders(host.querySelector("#acct"), alive, () => my === seq, key, mkt);
   };
   const wireHead = () => {
     host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {
@@ -5198,6 +5199,72 @@ async function strategyHoldings(host, alive, d, key) {
     host.querySelector("#run1").onclick = () => paint();
   };
   paint();
+}
+
+/** Your account under a ranking strategy, and the trades that turn it into the strategy's book.
+ *
+ * The positions and cash are stored in Postgres (/api/positions); the orders come from
+ * /api/rebalance -> rebalance.orders, which reads the book through the same selection the
+ * Holdings table shows, sized in whole shares as the backtest sizes it.
+ */
+async function bookOrders(box, alive, current, key, mkt) {
+  const cur = mktInfo(mkt).currency || "";
+  const sfx = mktInfo(mkt).suffix || "";
+  const money = (v) => v == null ? "—" : `${cur}${Math.round(v).toLocaleString("en-IN")}`;
+  const acct = await api(`/api/positions/${encodeURIComponent(key)}/${mkt}`).catch(() => null);
+  if (!alive() || !current() || !acct) return;
+  const lines = Object.entries(acct.positions).map(([s, n]) => `${s.endsWith(sfx) && sfx ? s.slice(0, -sfx.length) : s} ${n}`).join("\n");
+  box.innerHTML = `<h3>Your account</h3>
+    <div class="muted small">What you hold under this strategy now — one stock per line, <code>SYMBOL shares</code> — and your
+      cash for it. Stored in the database; the orders below start from it.${acct.updated_at ? ` Last saved ${esc(prettyDate(acct.updated_at.slice(0, 10)))}.` : ""}</div>
+    <div class="acct-form" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin:8px 0">
+      <textarea id="pos" rows="8" style="min-width:16em;font-family:var(--mono, monospace)" placeholder="LAURUSLABS 34\nSBC 1038">${esc(lines)}</textarea>
+      <div><label class="small muted">Cash ${esc(cur)} <input id="cash" type="number" min="0" step="any" style="width:10em" value="${acct.cash || ""}"></label>
+        <div style="margin-top:8px"><button id="savepos" class="primary sm">Save and compute orders</button></div>
+        <div id="poserr" class="small" style="color:var(--neg, #e5484d)"></div></div></div>
+    <div id="orders"></div>`;
+  const ordersBox = box.querySelector("#orders");
+  const showOrders = async () => {
+    ordersBox.innerHTML = LOADING;
+    const o = await api(`/api/rebalance/${encodeURIComponent(key)}/${mkt}`).catch(() => null);
+    if (!alive() || !current()) return;
+    if (!o) { ordersBox.innerHTML = `<div class="empty"><b>The orders could not be computed.</b></div>`; return; }
+    if (!o.account_value) { ordersBox.innerHTML = `<div class="muted small">Enter your holdings and cash to see the orders.</div>`; return; }
+    const month = new Date(o.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
+    ordersBox.innerHTML = `<h3>Rebalance orders</h3>
+      <div class="muted small sd-intro"><b>As of the ${esc(prettyDate(o.as_of))} close.</b>
+        ${o.is_month_end ? `This is <b>${esc(month)}'s last session</b>: these are the rebalance orders.`
+          : `Not a rebalance day — the strategy trades at the close of the last session of ${esc(month)}, and the book can change before then.`}
+        Account ${money(o.account_value)} at the latest closes (cash ${money(o.cash)}). Sells ${money(o.sells)}, buys ${money(o.buys)},
+        cash after ${money(o.cash_after)}; costs at the strategy's ${o.cost_bps} bps a side ≈ ${money(o.est_costs)}.
+        Whole shares, sized as the backtest sizes them. What the rules point at, not a recommendation.
+        ${o.unpriced.length ? `<br><b>No stored price for ${esc(o.unpriced.join(", "))}</b> — left out of the account value; check the symbol.` : ""}</div>
+      <div id="otbl"></div>`;
+    const cols = ["action", "symbol", "held", "target", "change", "price", "amount", "weight_pct"];
+    dataTable(ordersBox.querySelector("#otbl"), cols,
+      o.rows.map((x) => [x.action, x.symbol, x.held, x.target, x.change, x.price, x.amount, x.weight_pct]), {
+        name: `rebalance_${key}`, noStack: true, rowHint: "Click a row to open its chart",
+        rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`),
+      });
+  };
+  box.querySelector("#savepos").onclick = async () => {
+    const err = box.querySelector("#poserr");
+    err.textContent = "";
+    const positions = {};
+    for (const raw of box.querySelector("#pos").value.split("\n")) {
+      const line = raw.trim();
+      if (!line) continue;
+      const m = line.match(/^([A-Za-z0-9&._-]+)[\s,:=]+([0-9]+(?:\.[0-9]+)?)$/);
+      if (!m) { err.textContent = `Not "SYMBOL shares": ${line}`; return; }
+      positions[m[1]] = (positions[m[1]] || 0) + parseFloat(m[2]);
+    }
+    const cash = parseFloat(box.querySelector("#cash").value) || 0;
+    const ok = await api(`/api/positions/${encodeURIComponent(key)}/${mkt}`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positions, cash }) })
+      .catch((e) => { err.textContent = String(e.message || e); return null; });
+    if (ok) showOrders();
+  };
+  showOrders();
 }
 
 
