@@ -222,7 +222,7 @@ DOC = {
                    "rebalance date show ROE of at least {QM_ROE_MIN_PCT}%, modest net debt, positive free "
                    "cash flow and no shrinking sales; top {top_n}, rebalanced every month-end.",
     "status": (
-        "FAILS IN THE OPTIMISE STAGE (US); UNTESTABLE THERE (India). Optimise only (2013-01-01 to "
+        "FAILS IN THE OPTIMISE STAGE (US; India on ROE and sales only). Optimise only (2013-01-01 to "
         "2021-12-31); not verified. "
         "The clean control is the covered variant, not momentum_baseline: the stored fundamentals are "
         "fetched for TODAY's liquid and Stage-2 stocks, so requiring them drops the momentum names that "
@@ -237,8 +237,14 @@ DOC = {
         "no better (14.61%, -47.3%). Its +5.69 over the baseline is the look-ahead, not the test. "
         "US, 2013 to 2021, ROE and sales only (filings_only): 14.51%, -42.1%, against momentum_baseline's "
         "-2.11%, -79.9% and SPY's 14.01%; its coverage control (filings_covered) decides what that means. "
-        "India: stored filings begin in 2021, so no rebalance in the window had a covered name and the book "
-        "held cash -- no evidence either way. "
+        "India, 2019-04-01 to 2021-12-31, ROE and sales only (filings_only; from FY2018 the stored results "
+        "carry a year-end equity, NSE parser 9, but no balance sheet or cash flow before 2022, so the full "
+        "test cannot run in this window): this strategy 23.59% CAGR, max drawdown -32.0%; its "
+        "filings_covered control 28.69%, -37.0%; momentum_baseline 29.56%, -41.9%; Nifty 500 17.15%, -38.3% "
+        "(excess +6.44); momentum_vol_scaled 38.34%, -36.6% (on its own Smallcap 250 benchmark). Against "
+        "the control the test costs 5.1 points a year for 5.0 points less drawdown -- the US pattern again. "
+        "Coverage is thin: at the median rebalance 55 of 98 ranked names had filings and 19 passed (as few "
+        "as 5), so some months hold fewer than {top_n}. "
         "PASS CRITERION FOR A FUTURE VERIFY RUN, fixed before it is run (2022-01-01 to today, once, variant "
         "`quality` and its covered control, defaults unchanged): in EACH market, CAGR at least 2 points a "
         "year above the covered control in the same window AND max drawdown no deeper than the covered "
@@ -312,9 +318,11 @@ DOC = {
         "control did not had no filings fetched at all. That lifts every variant above momentum_baseline "
         "for reasons a trader could not have known. Judge the test against the covered control, which "
         "carries the same bias; a comparison with the baseline overstates it.",
-        "**India has no stored filings before 2021.** The optimise window therefore contains no India test "
-        "at all: the book is in cash until the first covered rebalance. The verify window (2022 on) is the "
-        "first and only look, so its pass criterion is written in Status before it is run.",
+        "**India's filings are thin before 2022.** Quarterly results with a year-end equity reach back to "
+        "FY2018, so ROE and sales growth can be judged from 2019; balance sheets and cash flows start in "
+        "2022, so the full test has no India evidence in the optimise window and the book is in cash until "
+        "the first covered rebalance. The verify window (2022 on) is its first and only look, so its pass "
+        "criterion is written in Status before it is run.",
         "**US statement lines start in 2016.** Quarterly results reach back to 2011, but balance sheets and "
         "cash flows only to fiscal 2016. Before early 2017 the only companies the full test can judge are "
         "banks and insurers, which skip the debt and cash tests -- so a run from 2013 holds a book of banks "
