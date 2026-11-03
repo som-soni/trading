@@ -606,7 +606,10 @@ def _nse_profit(vals: dict) -> float | None:
 
 NSE_EQUITY = ("EquityAttributableToOwnersOfParent", "Equity", "TotalEquity")
 CONSOLIDATED_SHARE = 0.75     # consolidated when filed for at least this share of the recent quarters
-NSE_PARSER_VERSION = 8        # bump when parse_nse_xbrl changes: stored documents are then parsed again
+NSE_PARSER_VERSION = 9        # bump when parse_nse_xbrl changes: stored documents are then parsed again
+# 9: a full-year (Q4) document filed before the balance-sheet taxonomy (FY2018-FY2021) gets its year-end equity
+# from paid-up capital + reserves excluding revaluation reserves (`_nse_legacy_equity`). Only such documents can
+# parse differently, so every other version-8 parse is carried forward (`_carry_forward`).
 # 8: net income skips a zero placeholder (`_nse_profit`). A version-7 parse with no zero net income is exactly
 # what 8 would give, so it is carried forward without downloading the document again (`_carry_forward`).
 
@@ -893,6 +896,21 @@ def _nse_cf(v: dict) -> dict:
                    "dividends_paid": n("DividendsPaidClassifiedAsFinancingActivities")})
 
 
+def _nse_legacy_equity(qv: dict, yv: dict) -> float | None:
+    """Year-end equity from a full-year document that carries no balance sheet: paid-up equity capital plus
+    reserves excluding revaluation reserves, both stated in the annual results before FY2022's balance-sheet
+    taxonomy. Checked on FY2023 documents that carry both: the sum equals the balance sheet's equity attributable
+    to owners in 8 of 9 companies and is within 5% in the ninth. A reserves figure of exactly 0 is the form's
+    blank (it was 0 beside a real balance-sheet equity in every such case), so it gives no equity."""
+    res = _num(yv.get("ReserveExcludingRevaluationReserves"))
+    if res is None:
+        res = _num(qv.get("ReserveExcludingRevaluationReserves"))
+    paid = _num(qv.get("PaidUpValueOfEquityShareCapital"))
+    if paid is None:
+        paid = _num(yv.get("PaidUpValueOfEquityShareCapital"))
+    return paid + res if res and paid else None
+
+
 def parse_nse_xbrl(content: bytes) -> dict | None:
     """One NSE results document -> the quarter's figures ({period_start, period_end, revenue, ...}), or None."""
     from lxml import etree
@@ -954,6 +972,8 @@ def parse_nse_xbrl(content: bytes) -> dict | None:
     out["net_income_fy"] = _nse_profit(yv) if yv else None
     out["eps_fy"] = _nse_eps(yv) if yv else None
     out["equity"] = pick(iv, NSE_EQUITY)
+    if out["equity"] is None and yv:
+        out["equity"] = _nse_legacy_equity(qv, yv)
     bank = "InterestEarned" in qv and "RevenueFromOperations" not in qv
     out["layout"] = "bank" if bank else "industrial"
     bs = _nse_bs(iv, bank)
@@ -982,16 +1002,25 @@ def _cache_put(url: str, kind: str, parser: int, parsed: dict | None) -> None:
 
 
 def _carry_forward(url: str) -> dict | None:
-    """A version-7 parse that version 8 would reproduce (no net income of exactly 0 anywhere), re-stamped as 8."""
-    old = _cache_get(url, "results", 7)
-    if not old:
+    """An older parse the current parser would reproduce, re-stamped with NSE_PARSER_VERSION.
+
+    Version 8 changed only documents with a net income of exactly 0 (a version-7 parse with none is what 8
+    gives); version 9 only full-year documents with no equity (`_nse_legacy_equity`). Anything else carries."""
+    for ver in (8, 7):
+        old = _cache_get(url, "results", ver)
+        if old:
+            break
+    else:
         return None
     lines = old.get("lines") or {}
-    if 0 in (old.get("net_income"), old.get("net_income_fy"), (lines.get("Q") or {}).get("net_profit"),
-             (lines.get("FY") or {}).get("net_profit")):
+    if ver == 7 and 0 in (old.get("net_income"), old.get("net_income_fy"), (lines.get("Q") or {}).get("net_profit"),
+                          (lines.get("FY") or {}).get("net_profit")):
+        return None
+    if lines.get("FY") and old.get("equity") is None:
         return None
     with db.get_connection().cursor() as cur:
-        cur.execute("UPDATE nse_documents SET parser=%s WHERE url=%s AND kind='results' AND parser=7", (NSE_PARSER_VERSION, url))
+        cur.execute("UPDATE nse_documents SET parser=%s WHERE url=%s AND kind='results' AND parser=%s",
+                    (NSE_PARSER_VERSION, url, ver))
     return old
 
 

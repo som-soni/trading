@@ -323,6 +323,15 @@ def test_nse_profit_skips_zero_placeholder():
     assert q._nse_profit({}) is None
 
 
+def test_nse_legacy_equity():
+    # FY2021 annual results filed before the balance-sheet taxonomy: paid-up capital (the quarter's context) plus
+    # reserves excluding revaluation reserves (the year's) is the year-end equity; a 0 reserves figure is a blank
+    qv, yv = {"PaidUpValueOfEquityShareCapital": "1059406000.00"}, {"ReserveExcludingRevaluationReserves": "25085944000.00"}
+    assert q._nse_legacy_equity(qv, yv) == 26145350000.0
+    assert q._nse_legacy_equity(qv, {"ReserveExcludingRevaluationReserves": "0.00"}) is None
+    assert q._nse_legacy_equity({}, yv) is None
+
+
 def test_parse_nse_html():
     # an NSE results page from before XBRL: figures in lakh, banks' interest earned as revenue, a 0 EPS left blank
     page = """<table><tr><td>Period Ended</td><td>31-Dec-2013</td></tr>
