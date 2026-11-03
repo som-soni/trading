@@ -1421,6 +1421,13 @@ const Studies = (() => {
       }
       store.set("stageBandsHidden2026", true);
     }
+    // Failed bases became hidden by default (2026-11-04, "Setups"), the same way: once, behind a marker
+    if (!store.get("failedBasesHidden2026", false)) {
+      for (const s of list) if (s.type === "setups_minervini" && s.params?.bases === "All bases") {
+        s.params.bases = "Setups"; moved = true;
+      }
+      store.set("failedBasesHidden2026", true);
+    }
     if (moved) save(list);
     return list.filter((s) => CATALOG[s.type]);
   }
