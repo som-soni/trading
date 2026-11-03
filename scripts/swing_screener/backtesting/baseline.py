@@ -1268,6 +1268,14 @@ VS_DOC = {
     "description": "Rank liquid stocks by 12-1 momentum divided by realised volatility, hold the top {top_n} "
                    "weighted inverse to volatility, rebalance at every month-end.",
     "status": (
+        "VERIFY v1.9, INDIA (2022-01-03 to 2026-11-02, 50bps a side): 22.49% CAGR against the Smallcap 250's "
+        "11.68%, +10.81 excess, Sharpe 1.00 against 0.70 -- but max drawdown -30.77% against the index's "
+        "-26.88%. The criterion, written before the run, asked for positive excess AND a drawdown no deeper "
+        "than the benchmark's; it met the first and missed the second by 3.9 points, so it is recorded as "
+        "FAILED. The return edge held out-of-sample; the deeper drawdown is the price of it, and changing a "
+        "rule to shrink it would be tuning on these years -- a new version with its own verify run. "
+        "These years had been seen once before, through v1.6's filter-off control (+11.06), so this run "
+        "re-confirmed rather than discovered them. "
         "EARNS ITS EDGE IN INDIA, NOT IN THE US. Out-of-sample (verify, 2022-01-01 to 2026-10-26) India "
         "returns 22.21% CAGR, +11.06 excess over the Smallcap 250, max drawdown -32.1%, with NO market filter, "
         "which is how it runs from v1.7. The India market filter adopted in v1.5 and moved to the Smallcap 250 "
