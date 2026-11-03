@@ -76,6 +76,7 @@ from ..strategies import minervini_spec as _ms
 from ..strategies import kullamagi as _km
 from ..strategies import supertrend as _st
 from ..strategies import darvas as _dv
+from ..strategies import stage_analysis as _sa
 from ..core import darvas as darvas_boxes
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,14 @@ class ExitPolicy:
     ma_col: str = "sma50"        # for ma, and minervini's EX-06
     ma_weeks: int = 30           # for weekly_ma: a completed week closing below the simple average of
                                  #   this many weekly closes sells at that close (Weinstein's 30-week line)
+    # for weekly_ma: stage analysis's sells on an EARLIER warning that Stage 2 is failing (2.8) -- Stage 3,
+    # distribution weeks, a lower high -- read from its own constants through factories, for the reason
+    # given under `minervini` (`--const` patches them after import). All 0 is Weinstein's exit alone, and
+    # the simulator then adds nothing. The rules live in `stage_analysis.deterioration`.
+    wk_stage3: int = field(default_factory=lambda: int(_sa.EXIT_ON_STAGE3))
+    wk_dist_weeks: int = field(default_factory=lambda: int(_sa.EXIT_DIST_WEEKS))
+    wk_dist_window: int = field(default_factory=lambda: int(_sa.DIST_WINDOW_WEEKS))
+    wk_lower_high: int = field(default_factory=lambda: int(_sa.EXIT_ON_LOWER_HIGH))
     donchian_bars: int = 50      # for donchian
     # for supertrend: a close that turns the Supertrend down sells at that close. The strategy's own
     # constants, through a factory for the reason given under `minervini` below (`--const` patches them
@@ -449,6 +458,26 @@ def weekly_line(df: pd.DataFrame, weeks: int) -> pd.Series:
     return out
 
 
+def _weekly_early_exit(pos, df: pd.DataFrame, today, bar, policy: "ExitPolicy") -> str | None:
+    """Stage analysis's earlier sells (policy.wk_*), read off `stage_analysis.deterioration`'s columns on a
+    completed week after the entry. The reason, or None. Sold at that week's close, like the weekly_ma
+    exit itself, so the three differ from it only in WHEN, never in how they fill."""
+    if today <= pos.entry_date:
+        return None
+    if policy.wk_stage3 and bool(bar.get(_sa.DET_STAGE3, False)):
+        return "STAGE3_EXIT"
+    if policy.wk_dist_weeks and bool(bar.get(_sa.DET_DIST, False)):
+        lo = max(pos.entry_date, today - pd.Timedelta(weeks=policy.wk_dist_window))
+        n = int(df.loc[(df.index > lo) & (df.index <= today), _sa.DET_DIST].sum())
+        if n >= policy.wk_dist_weeks:
+            return "DISTRIBUTION_EXIT"
+    if policy.wk_lower_high:
+        swing = bar.get(_sa.DET_LH, pd.NaT)
+        if pd.notna(swing) and pd.Timestamp(swing) >= pos.entry_date:
+            return "LOWER_HIGH_EXIT"
+    return None
+
+
 def simulate(
     signals: list[Signal],
     prices: dict[str, pd.DataFrame],
@@ -492,7 +521,10 @@ def simulate(
     base_slip = cfg.slippage_bps if slippage_bps is None else slippage_bps
     fee_rate = cost_bps / 10_000.0
     if policy.mode == "weekly_ma":
-        prices = {s: df.assign(**{WEEKLY_LINE: weekly_line(df, policy.ma_weeks)}) for s, df in prices.items()}
+        early = policy.wk_stage3 or policy.wk_dist_weeks or policy.wk_lower_high
+        prices = {s: df.assign(**{WEEKLY_LINE: weekly_line(df, policy.ma_weeks)},
+                               **(dict(_sa.deterioration(df).items()) if early else {}))
+                  for s, df in prices.items()}
     elif policy.mode == "supertrend":
         prices = {s: df.assign(**{ST_DIR: ind.supertrend(df, policy.st_period, policy.st_mult)["dir"]})
                   for s, df in prices.items()}
@@ -702,7 +734,10 @@ def simulate(
                         floor_ = float(hist.iloc[-(policy.donchian_bars + 1) : -1].min())
                         trend_break = float(bar["close"]) < floor_
 
-            if not (hit_stop or hit_target or trend_break):
+            early = (_weekly_early_exit(pos, df, today, bar, policy)
+                     if policy.mode == "weekly_ma" and not (hit_stop or hit_target or trend_break) else None)
+
+            if not (hit_stop or hit_target or trend_break or early):
                 # nothing exited: ratchet the trailing stop upward for tomorrow
                 c = float(bar["close"])
                 pos.peak_close = c if pos.peak_close != pos.peak_close else max(pos.peak_close, c)
@@ -723,7 +758,7 @@ def simulate(
                 reason, at = "TARGET", AT_OPEN if o >= pos.target else INTRADAY
             else:
                 raw = float(bar["close"])  # trend-failure exit, at the close
-                reason, at = "TREND_EXIT", AT_CLOSE
+                reason, at = early or "TREND_EXIT", AT_CLOSE
             close_out(sym, pos, raw, reason, today, at=at)
 
         # ---- 2. resting orders -------------------------------------------

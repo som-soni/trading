@@ -956,13 +956,18 @@
   },
   "stage_analysis": {
     "family": "stage_analysis",
-    "fingerprint": "6514891e",
+    "fingerprint": "f1aa5af2",
     "params": {
       "BASE_MAX_DEPTH_PCT": 30.0,
       "BASE_MAX_WEEKS": 104,
       "BASE_MIN_WEEKS": 12,
       "BASE_TARGET_MULT": 1.0,
       "CONFIRM_WEEKS": 3,
+      "DIST_VOL_WEEKS": 10,
+      "DIST_WINDOW_WEEKS": 8,
+      "EXIT_DIST_WEEKS": 0,
+      "EXIT_ON_LOWER_HIGH": 0,
+      "EXIT_ON_STAGE3": 0,
       "FLAT_BAND_PCT": 0.5,
       "G7_BLOCK_STAGE": 4,
       "MANSFIELD_RISE_WEEKS": 4,
@@ -971,6 +976,7 @@
       "MA_WEEKS": 30,
       "SLOPE_WEEKS": 4,
       "STAGE1_MIN_WEEKS": 6,
+      "SWING_WEEKS": 2,
       "VOL_MULT": 2.0,
       "VOL_WEEKS": 4,
       "W1_RANKS_ONLY": 0,
@@ -997,7 +1003,7 @@
         "W3"
       ]
     },
-    "version": "2.7"
+    "version": "2.8"
   },
   "supertrend": {
     "family": "supertrend",

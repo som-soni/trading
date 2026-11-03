@@ -87,6 +87,25 @@ W1_RANK_QUALITY = 0.5         # the setup score a low-volume breakout ranks at u
 #: entries made in market Stage 3 lost (India 10 trades, 0 wins). 3 tests aiming G7 there instead.
 G7_BLOCK_STAGE = 4
 
+# ---- exits on deterioration (2.8), OFF by default. Weinstein's sell is a week that closes below the
+# line; these sell on an EARLIER warning that Stage 2 is failing (the stages guide's Stage 3 column).
+# The portfolio simulator reads them for the weekly_ma exit through `deterioration`; evaluate() never
+# does, so they are signal-exempt and a variant reuses the shipped scan.
+#: 1 sells at the close of the first completed week the stage machine reads Stage 3 -- the line has
+#: stopped rising, or the close has held below it -- rather than waiting for a close below the line.
+EXIT_ON_STAGE3 = 0
+#: >0 sells once this many DISTRIBUTION weeks have closed after the entry within the last
+#: DIST_WINDOW_WEEKS: a week that closes lower than the one before on volume above its own
+#: DIST_VOL_WEEKS-week average -- heavy selling into the advance.
+EXIT_DIST_WEEKS = 0
+DIST_WINDOW_WEEKS = 8
+DIST_VOL_WEEKS = 10
+#: 1 sells when a weekly swing high made after the entry is confirmed LOWER than the swing high before
+#: it -- the first lower high. A swing high is the highest high of SWING_WEEKS weeks either side, so it
+#: is known SWING_WEEKS weeks after it, and that is the week it can sell.
+EXIT_ON_LOWER_HIGH = 0
+SWING_WEEKS = 2
+
 
 def _market_of(symbol: str) -> str:
     """Which market a symbol belongs to, from the configured ticker suffixes.
@@ -235,6 +254,61 @@ def stage_of(weekly: pd.DataFrame) -> int:
     return int(s.iloc[-1]) if len(s) else 0
 
 
+DET_STAGE3, DET_DIST, DET_LH = "_det_stage3", "_det_dist", "_det_lh_swing"
+
+
+def deterioration(daily: pd.DataFrame) -> pd.DataFrame:
+    """The weekly warning signs of a failing Stage 2, on each daily bar, for the simulator's exits.
+
+    Set only on the LAST session of a completed week -- the week it becomes known -- and False / NaT on
+    every other session, so an exit acts at a week's close, as the weekly_ma exit does:
+
+      DET_STAGE3  the stage machine reads Stage 3 for that week
+      DET_DIST    that week closed lower than the one before on volume above its DIST_VOL_WEEKS-week
+                  average (the weeks BEFORE it, so the week does not dilute its own test)
+      DET_LH      the date of a weekly swing high confirmed that week that is lower than the swing high
+                  before it. The simulator sells only when that swing came after the entry: a lower
+                  high inside the base is the base, not a failing advance.
+
+    Point in time throughout: the stage machine runs forward, the averages look back, and a swing high
+    -- found with a centred window, which sees the weeks after it -- is dated to the week those weeks
+    have closed, never the week it was made. Weeks are `ind.resample_weekly`, the strategy's own bars.
+    """
+    from ..core import indicators as ind
+    from ..core import swings as sw
+    out = pd.DataFrame({DET_STAGE3: False, DET_DIST: False, DET_LH: pd.NaT}, index=daily.index)
+    if len(daily) < 2:
+        return out
+    wk = ind.resample_weekly(daily)
+    # the last session of each COMPLETED week, mapped to that week's Friday label (weekly_line's rule)
+    week = pd.Series(daily.index.to_period("W-FRI"), index=daily.index)
+    last = week != week.shift(-1)
+    last.iloc[-1] = daily.index[-1].weekday() == 4
+    label = week[last].map(lambda p: p.end_time.normalize())
+
+    st = stage_series(wk)
+    vol, close = wk["volume"].astype(float), wk["close"].astype(float)
+    avg = vol.shift(1).rolling(DIST_VOL_WEEKS, min_periods=DIST_VOL_WEEKS).mean()
+    dist = (close < close.shift(1)) & (vol > avg)
+
+    lh = pd.Series(pd.NaT, index=wk.index, dtype="datetime64[ns]")
+    is_hi = sw.swing_high_mask(wk["high"].astype(float), SWING_WEEKS, SWING_WEEKS).to_numpy()
+    prev = None
+    for j in range(len(wk) - SWING_WEEKS):
+        if not is_hi[j]:
+            continue
+        h = float(wk["high"].iloc[j])
+        if prev is not None and h < prev:
+            lh.iloc[j + SWING_WEEKS] = wk.index[j]        # known only once SWING_WEEKS more weeks closed
+        prev = h
+
+    at = label.values
+    out.loc[last, DET_STAGE3] = (st.reindex(at).to_numpy() == 3)
+    out.loc[last, DET_DIST] = dist.reindex(at).fillna(False).to_numpy(dtype=bool)
+    out.loc[last, DET_LH] = lh.reindex(at).to_numpy()
+    return out
+
+
 class StageAnalysisStrategy(Strategy):
     """Weinstein's Stage 2 breakout, bought on the weekly bar and held above the 30-week line."""
 
@@ -245,10 +319,22 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.7"
-    # 2.7 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    version = "2.8"
+    # 2.7 and 2.8 change only what happens after evaluate() -- the simulator, and exits -- never the
+    # scan, so the cached signal rows carry forward (CLAUDE.md, signal_version).
     signal_version = "2.6"
     changelog = (
+        ("2.8", "2026-11-03",
+         "Three exits on an EARLIER warning that Stage 2 is failing, all OFF by default, so this version "
+         "trades exactly as 2.7. Weinstein sells on a week that closes below the line; measured on the "
+         "2013-21 optimise run, a trend exit gave back a median 1.1-1.3R from the trade's peak close, and "
+         "a fifth to a third of trades that reached +1R still closed at a loss. EXIT_ON_STAGE3 sells when "
+         "the stage machine reads Stage 3; EXIT_DIST_WEEKS after that many distribution weeks (down on "
+         "above-average volume) since the entry; EXIT_ON_LOWER_HIGH on the first weekly lower high made "
+         "after the entry. They come from the method's own Stage 3 signs -- the stages guide's table -- "
+         "not from slicing a run, and the give-back is only their ceiling: selling earlier also cuts the "
+         "runs that recover, which is what the A/B is for. Exits only, so signal_version stays 2.6 and a "
+         "variant reuses the scan; the new constants are signal-exempt."),
         ("2.7", "2026-10-31",
          "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
          "fill now sees only what had happened by its own moment in the session. An exit frees its "
@@ -414,7 +500,9 @@ class StageAnalysisStrategy(Strategy):
     # Read after the scan, never by evaluate(): a `--const` variant moving only these starts from the
     # shipped run's signal rows (base.Strategy.signal_exempt_consts) — the stop limit and the target (build_plans, classify), and
     # W1_RANKS_ONLY's ranking (classify, setup_quality).
-    signal_exempt_consts = ("MAX_STOP_PCT", "BASE_TARGET_MULT", "W1_RANKS_ONLY", "W1_RANK_QUALITY")
+    signal_exempt_consts = ("MAX_STOP_PCT", "BASE_TARGET_MULT", "W1_RANKS_ONLY", "W1_RANK_QUALITY",
+                            "EXIT_ON_STAGE3", "EXIT_DIST_WEEKS", "DIST_WINDOW_WEEKS", "DIST_VOL_WEEKS",
+                            "EXIT_ON_LOWER_HIGH", "SWING_WEEKS")
     extra_columns = ("stage", "line_slope_pct", "resistance", "base_weeks", "base_depth_pct",
                      "vol_ratio", "ma30", "mansfield_pct")
     #: `broke_out` is carried in extras but is a BOOL, so it is not a numeric column.
@@ -642,7 +730,9 @@ class StageAnalysisStrategy(Strategy):
         "week's own close. A close below the line mid-week does nothing; only the week's close counts "
         "(`--exit-mode weekly_ma --ma-weeks {MA_WEEKS}`).",
         "Or the stop (see Stop), checked first each session.",
-        "Nothing else. No target, no time stop, no Stage 3 sale.",
+        "Nothing else. No target, no time stop, no Stage 3 sale. Three experiment switches, off by "
+        "default, can sell earlier on a warning that Stage 2 is failing -- Stage 3, distribution weeks, "
+        "a lower high -- see the parameters.",
     )
     sizing_rules = (
         "Risk per trade. Shares = the risk budget ÷ (price paid − stop). The budget is the market config's risk "
@@ -695,6 +785,16 @@ class StageAnalysisStrategy(Strategy):
         ("Demote W1 to a rank", "W1_RANKS_ONLY", "Experiment, off by default: 1 trades a low-volume breakout "
                                                  "instead of holding it at WATCH, ranked behind confirmed ones."),
         ("Low-volume rank", "W1_RANK_QUALITY", "The setup score such a breakout ranks at when the above is on."),
+        ("Sell on Stage 3", "EXIT_ON_STAGE3", "Experiment, off by default: 1 sells at the close of the "
+                                              "first week the stage machine reads Stage 3."),
+        ("Sell on distribution", "EXIT_DIST_WEEKS", "Experiment, off by default: sell once this many "
+                                                    "distribution weeks close after the entry within the window."),
+        ("Distribution window", "DIST_WINDOW_WEEKS", "Weeks back those distribution weeks are counted over."),
+        ("Distribution volume", "DIST_VOL_WEEKS", "A distribution week's volume beats its average over this "
+                                                  "many weeks before it."),
+        ("Sell on a lower high", "EXIT_ON_LOWER_HIGH", "Experiment, off by default: 1 sells when a swing high "
+                                                       "made after the entry is confirmed below the one before."),
+        ("Swing width", "SWING_WEEKS", "Weeks either side a weekly swing high must top; it is known this late."),
         ("G7's blocked market stage", "G7_BLOCK_STAGE", "Experiment: 4 is the shipped rule; 3 refuses entries "
                                                         "while the market tops instead of after it has fallen."),
     )
