@@ -353,13 +353,21 @@ DOC = {
         "or after {TIME_STOP} sessions. US only; its own short simulator, run at several borrow fees."
     ),
     "status": (
-        "NOT YET RUN. PASS CRITERION, fixed before any result (2026-11-02), judged on the optimise stage "
-        "(in-sample, 2013-2021), US, the base rules at the base borrow fee ({BORROW_PCT}% a year): (1) at "
-        "least {PASS_MIN_TRADES} closed trades; (2) an average of at least +{PASS_MIN_AVG_R}R a trade after "
-        "costs, borrow and dividends; (3) a positive CAGR; and (4) at the punitive borrow fee "
-        "({PASS_PUNITIVE_BORROW}% a year) a positive average R. All four or it fails. Its use as a hedge "
-        "beside the long book (correlation with momentum_dual_combo, return in the index's worst months) is "
-        "reported, not judged. Only a version that passes goes to verify, once."
+        "FAILS its pre-set criterion. In-sample (optimise, 2013-2021), US, v1.0, runs of 2026-11-03. "
+        "At the base borrow fee ({BORROW_PCT}% a year): 398 trades, win rate 42.3%, -0.095R a trade, "
+        "CAGR -1.55%, max drawdown -18.5%; a long index position at the book's own average exposure "
+        "(4.1% of equity) made +1.50% a year with a -3.8% drawdown. Borrow sensitivity: at 0% a year "
+        "-0.067R and -0.94% CAGR; at {PASS_PUNITIVE_BORROW}% a year -0.273R and -4.97% CAGR, -38.0% "
+        "drawdown. Against the criterion, fixed before any result (2026-11-02): (1) at least "
+        "{PASS_MIN_TRADES} trades -- passes (398); (2) at least +{PASS_MIN_AVG_R}R a trade -- fails "
+        "(-0.095R); (3) a positive CAGR -- fails (-1.55%); (4) a positive average R at "
+        "{PASS_PUNITIVE_BORROW}% borrow -- fails (-0.273R). The tiers split hard: the larger-stock tier "
+        "(run of {MIN_RUN_PCT_LARGE}%+) lost (293 trades, -0.25R, median -1.05R), the smaller-stock tier "
+        "(run of {MIN_RUN_PCT_SMALL}%+) made money (104 trades, win 56%, +0.34R) -- an in-sample "
+        "observation, not a verified edge; acting on it is a new version, tuned here and verified once. "
+        "Hedge view (reported, not judged): in the index's {WORST_MONTHS} worst months the book averaged "
+        "-0.27% a month (index -6.17%); monthly correlation with the index -0.02, with "
+        "momentum_dual_combo -0.06. Not sent to verify."
     ),
     "thesis": (
         "A stock that has gone vertical in days is held by buyers who chased it, and the first day it "
