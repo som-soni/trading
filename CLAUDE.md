@@ -13,6 +13,14 @@ trade decision (entry, stop, sizing), and it never stands in for a run's record:
 what a backtest traded is drawn from that run's stored signals (`trade-anatomy`),
 because current code may detect differently from the code that ran.
 
+A second exception: the rebalance account may be *read* from the market's broker
+(`MarketConfig.broker`; `broker/kite.py`, Zerodha Kite Connect). It is read-only by
+construction — login exchange plus GETs of holdings, positions and margins, no order
+endpoint (`tests.test_kite_sync` fails if one appears) — and fills the account form as a
+draft the user edits and saves. Keys live in `scripts/.env`; the user logs in on the
+broker's own page. Order placement would be a separate, explicit change, not an
+extension of this module.
+
 An indicator may *illustrate* where a strategy's rules would place a trade — the
 Minervini trend template indicator draws a completed VCP's buy, stop, +2R and target
 (`MinerviniSpecStrategy.bases_live`). The levels come from the strategy's own

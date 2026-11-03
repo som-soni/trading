@@ -15,7 +15,7 @@ INDIA_CONFIG = MarketConfig(
     name="India",
     currency_symbol="₹",
     currency_code="INR",
-    exchange="NSE", badge="NSE", flag="🇮🇳", symbol_suffix=".NS", fx_to_usd="USDINR",
+    exchange="NSE", badge="NSE", flag="🇮🇳", symbol_suffix=".NS", fx_to_usd="USDINR", broker="kite",
     quarterly_source="nse", eod_file="nse_cm",
     news_locale="hl=en-IN&gl=IN&ceid=IN:en", news_term="share",
     money_unit="₹ Cr", money_divisor=1e7,

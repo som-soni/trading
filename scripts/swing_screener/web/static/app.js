@@ -5231,7 +5231,9 @@ async function bookOrders(box, alive, current, key, mkt) {
       <div><label class="small muted">Cash ${esc(cur)} <input id="cash" type="number" min="0" step="any" style="width:10em" value="${acct.cash || ""}"></label>
         <div style="margin-top:8px"><button id="savepos" class="primary sm">Save and compute orders</button></div>
         <div id="poserr" class="small" style="color:var(--neg, #e5484d)"></div></div></div>
+    <div id="brk" class="small"></div>
     <div id="orders"></div>`;
+  brokerSync(box.querySelector("#brk"), box, mkt, sfx, alive, current);
   const ordersBox = box.querySelector("#orders");
   const showOrders = async () => {
     ordersBox.innerHTML = LOADING;
@@ -5274,6 +5276,53 @@ async function bookOrders(box, alive, current, key, mkt) {
     if (ok) showOrders();
   };
   showOrders();
+}
+
+
+/** Fill the account form from the market's broker (config `broker`; /api/broker -> broker/kite.py).
+ *
+ * READ-ONLY: it fills the textarea and cash as a draft and saves nothing -- your broker account may hold
+ * stocks that are not part of this strategy, and taking them out is yours to do before "Save". Login is
+ * the broker's own page; the password never reaches this app.
+ */
+async function brokerSync(host, box, mkt, sfx, alive, current) {
+  const st = await api(`/api/broker/${mkt}/status?next=${encodeURIComponent(location.hash)}`).catch(() => null);
+  if (!alive() || !current() || !st) return;   // no broker for this market
+  const name = { kite: "Kite" }[st.broker] || st.broker;
+  if (!st.configured) {
+    host.innerHTML = `<div class="muted">${esc(name)} is not set up: add <code>KITE_API_KEY</code> and <code>KITE_API_SECRET</code>
+      to <code>scripts/.env</code> and restart the server to fill this form from your account.</div>`;
+    return;
+  }
+  if (!st.logged_in) {
+    host.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <a class="btn ghost sm" href="${esc(st.login_url)}">Log in to ${esc(name)}</a>
+      <span class="muted">to fill this form from your holdings. Zerodha's own login page; the session lasts until 06:00 IST.</span></div>`;
+    return;
+  }
+  host.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="ghost sm" id="bfill">Fill from ${esc(name)}</button>
+      <span class="muted">${esc(name)}: ${esc(st.user_name || st.user_id || "")} · read-only</span>
+      <button class="ghost sm" id="bout">Log out</button></div><div id="bmsg" style="margin-top:6px"></div>`;
+  const msg = host.querySelector("#bmsg");
+  host.querySelector("#bout").onclick = async () => {
+    await api(`/api/broker/${mkt}/logout`, { method: "POST" }).catch(() => null);
+    brokerSync(host, box, mkt, sfx, alive, current);
+  };
+  host.querySelector("#bfill").onclick = async () => {
+    msg.innerHTML = LOADING;
+    let a;
+    try { a = await api(`/api/broker/${mkt}/account`); }
+    catch (e) { msg.innerHTML = `<span style="color:var(--neg, #e5484d)">${esc(String(e.message || e))}</span>`; return; }
+    if (!alive() || !current()) return;
+    box.querySelector("#pos").value = Object.entries(a.positions)
+      .map(([s, n]) => `${sfx && s.endsWith(sfx) ? s.slice(0, -sfx.length) : s} ${n}`).join("\n");
+    box.querySelector("#cash").value = Math.floor(a.cash);
+    msg.innerHTML = `<div class="sd-intro"><b>Filled from ${esc(name)}, not saved.</b> ${Object.keys(a.positions).length} holdings and
+      ${esc(mktInfo(mkt).currency || "")}${Math.floor(a.cash).toLocaleString("en-IN")} cash (${esc(a.cash_note)})
+      Remove any stock that is not part of this strategy and set the cash you run it with, then <b>Save and compute orders</b>.
+      ${(a.warnings || []).map((w) => `<div style="color:var(--warn, #b7791f)">⚠ ${esc(w)}</div>`).join("")}</div>`;
+  };
 }
 
 

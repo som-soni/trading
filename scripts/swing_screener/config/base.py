@@ -68,6 +68,9 @@ class MarketConfig:
     money_unit: str = ""         # "$ M", "₹ Cr"
     money_divisor: float = 1.0   # 1e6, 1e7
     currency_code: str = ""      # ISO code of the share prices ("USD", "INR"): a company whose statements are in another is not valued
+    # the broker whose account the rebalance view can read (broker/): "kite" = Zerodha Kite Connect.
+    # Empty: holdings are typed in by hand.
+    broker: str = ""
     # market-cap classes for the earnings-season scoreboard (fundamentals/earnings_season.py), by today's
     # market cap: ("rank", large, mid) = the top `large` companies are large caps, the next to `mid` are mid caps
     # (SEBI's rule); ("cap", large, mid) = at least `large` / `mid` in the market's currency. `cap_note` says whose rule it is.

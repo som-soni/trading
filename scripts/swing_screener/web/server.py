@@ -68,6 +68,8 @@ def _startup() -> None:
     analysis_store.init_schema()
     from ..backtesting import rebalance as rebalance_mod
     rebalance_mod.init_schema()
+    from ..broker import kite as kite_mod
+    kite_mod.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
     threading.Thread(target=_background_refresh, daemon=True).start()  # what the Today page needs, computed ahead
     threading.Thread(target=db_mod.releasing(_prewarm_sectors), daemon=True).start()
@@ -1425,6 +1427,63 @@ def put_book_positions(strategy: str, market: str, body: dict):
                                        float(body.get("cash") or 0))
     except (TypeError, ValueError) as e:
         raise HTTPException(400, str(e))
+
+
+def _broker(market: str):
+    """The market's broker module (config `broker`), or 404 when it names none."""
+    if market not in MARKETS or not MARKETS[market].broker:
+        raise HTTPException(404, f"no broker is configured for {market}")
+    from ..broker import kite
+    return {"kite": kite}[MARKETS[market].broker]
+
+
+@app.get("/api/broker/{market}/status")
+def broker_status(market: str, next: str = ""):
+    """Whether the market's broker is set up and logged in, and the broker's own login page.
+    Read-only: the broker module has no order endpoint."""
+    b = _broker(market)
+    out = {"broker": MARKETS[market].broker, "configured": b.configured(), "logged_in": False}
+    if out["configured"]:
+        s = b.session()
+        out.update(logged_in=bool(s), user_name=s and s["user_name"], user_id=s and s["user_id"],
+                   login_url=b.login_url(next if next.startswith("#/") else ""))
+    return out
+
+
+@app.get("/api/broker/kite/callback")
+def kite_callback(request_token: str = "", status: str = "", next: str = ""):
+    """Zerodha redirects here after its login page; the request token becomes a stored session."""
+    from fastapi.responses import RedirectResponse
+    from ..broker import kite
+
+    back = next if next.startswith("#/") else "#/"   # only ever back into this portal
+    if status != "success" or not request_token:
+        return RedirectResponse(f"/{back}")
+    try:
+        kite.complete_login(request_token)
+    except kite.KiteError as e:
+        raise HTTPException(502, str(e))
+    return RedirectResponse(f"/{back}")
+
+
+@app.get("/api/broker/{market}/account")
+def broker_account(market: str):
+    """Your broker holdings and cash as a draft for the rebalance account form -- not saved."""
+    import requests
+
+    b = _broker(market)
+    try:
+        return b.account(MARKETS[market].symbol_suffix)
+    except b.KiteError as e:
+        raise HTTPException(409, str(e))
+    except requests.RequestException as e:
+        raise HTTPException(502, f"could not reach the broker: {e}")
+
+
+@app.post("/api/broker/{market}/logout")
+def broker_logout(market: str):
+    _broker(market).logout()
+    return {"logged_in": False}
 
 
 @app.get("/api/rebalance/{strategy}/{market}")
