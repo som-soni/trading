@@ -37,7 +37,9 @@ import pandas as pd
 from ..marketdata import corporate_actions
 from ..config.base import MarketConfig
 from ..core import vcp_spec
+from ..core import indicators as ind
 from ..core import swings as sw
+from ..core.context import _periods_as_of
 from ..core.context import StockContext
 from ..screens.criteria import (  # noqa: F401 (doc placeholders)
     MAX_PCT_BELOW_52W_HIGH, MIN_PCT_ABOVE_52W_LOW, RS_MIN_SCORE, RS_MIN_RANK, SMA200_RISING_BARS,
@@ -477,6 +479,33 @@ def vcp_measured_move(base_high, depth_pct) -> float:
     becomes the new reference), and TKO's 2019 base, 5% then 40% then 8%, projected 0.6R instead of
     about 4.8R and was refused. NaN when either is unknown."""
     return float(base_high) * float(depth_pct) / 100 if base_high and depth_pct else float("nan")
+
+
+def overhead_binding(entry: float, base_high, atr: float, overhead) -> float | None:
+    """The overhead level that caps a target (build_plans), or None: the lowest of `overhead` at least
+    OVERHEAD_CLUSTER_ATR ATRs above the base high (or the entry, when higher) -- closer levels are the base's
+    own ceiling. The target is lowered to it when it sits below. Shared by build_plans and the chart."""
+    ceiling_from = max(entry, float(base_high)) if base_high else entry
+    edge = ceiling_from + OVERHEAD_CLUSTER_ATR * atr
+    return min((lvl for lvl in overhead if lvl >= edge), default=None)
+
+
+def overhead_at(daily: pd.DataFrame):
+    """For the chart: a function of a bar index giving the overhead levels evaluate() records on that bar
+    (`plan_overhead`; with OVERHEAD_YEARS = 0 the context's own levels) -- from `daily` up to the bar and the
+    weeks (and months) resampled as of it, as build_context resamples them. Cached per bar."""
+    raw = daily[["open", "high", "low", "close", "volume"]]
+    wk, mo, cache = ind.resample_weekly(raw), ind.resample_monthly(raw), {}
+
+    def at(i: int) -> list[float]:
+        if i not in cache:
+            d, ts = daily.iloc[: i + 1], daily.index[i]
+            h, _ = sw.current_swing_high(d)
+            w = _periods_as_of(raw, wk, ts)
+            cache[i] = (sw.overhead_levels(d, w, None, h, weekly_bars=52 * OVERHEAD_YEARS) if OVERHEAD_YEARS
+                        else sw.overhead_levels(d, w, _periods_as_of(raw, mo, ts), h))
+        return cache[i]
+    return at
 
 
 def _rr(r_mult, ok: bool) -> str:
@@ -2506,13 +2535,12 @@ class MinerviniSpecStrategy(Strategy):
         # artefact of the base's own definition. Only supply at least
         # OVERHEAD_CLUSTER_ATR above the base high can cap the move.
         ceiling_from = max(entry, float(bh)) if bh else entry
-        cluster_edge = ceiling_from + OVERHEAD_CLUSTER_ATR * ctx.atr
         # the levels evaluate() stored (plan_overhead), never the frames: a cache hit has no weekly frame
         overhead = e.get("plan_overhead") if OVERHEAD_YEARS else ctx.overhead
         if overhead is None:
             return PlanChoice(None, None, "missing overhead levels")
         nearest_above = sw.nearest_overhead_above(ceiling_from, overhead)  # reported, not binding
-        binding = min((lvl for lvl in overhead if lvl >= cluster_edge), default=None)
+        binding = overhead_binding(entry, bh, ctx.atr, overhead)
         if binding is not None and binding < target:
             target = binding
         ctx.extras["overhead_caps_target"] = bool(binding is not None and binding < entry + measured_move) \
@@ -2713,6 +2741,7 @@ class MinerviniSpecStrategy(Strategy):
         cheat when it is the closest of its events before the fill, within 21 days -- is drawn as that cheat, judged on the base as it stood the bar before,
         not as a later breakout the run never took."""
         start = 2 * VCP.swing_k + VCP.prior_window
+        ov = overhead_at(daily)
         dets = [None] * len(daily)
         for i in range(start, len(daily)):
             dets[i] = vcp_spec.detect(daily.iloc[: i + 1], VCP)
@@ -2836,7 +2865,7 @@ class MinerviniSpecStrategy(Strategy):
             bo = bases.get(key, {}).get("breakout")
             if bo is not None and 0 <= j - bo <= 3:           # the breakout itself: drawn by the base below
                 continue
-            s_ = self._setup(daily, cfg, p, j, None, None, False)
+            s_ = self._setup(daily, cfg, p, j, None, None, False, ov=ov)
             s_["anchored"] = True
             s_["summary"] = (f"Drawn as the base stood on {ts(j).date()}, the session before the selected run "
                              f"bought it; today's rules: " + s_["summary"][0].lower() + s_["summary"][1:])
@@ -2849,14 +2878,14 @@ class MinerviniSpecStrategy(Strategy):
             ch = signalled.get(key) or b["cheat"]
             if ch and fills and (key in signalled or traded_cheat(ch, bo)):
                 # the run bought the cheat: draw that trade, from the base as it stood the bar before the cross
-                out.append(self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True))
+                out.append(self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True, ov=ov))
                 out[-1]["anchored"] = True
                 continue
             so = self._cheat_stop_out(daily, cfg, ch, bo) if ch else None
             now = key == live and bo is None   # still forming today: judge it as today's screen does
             bought = None
             if so is not None:
-                bought = self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True)
+                bought = self._setup(daily, cfg, dets[ch[0] - 1], ch[0] - 1, None, ch, False, traded_cheat=True, ov=ov)
                 if not bought["title"].startswith("Cheat entry · stopped out"):
                     bought = None   # a cheat the strategy would skip (risk, R) was never bought: nothing stopped out
             if bought is not None:
@@ -2878,7 +2907,7 @@ class MinerviniSpecStrategy(Strategy):
                     continue
                 ch = again
             rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
-            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed"), near=b.get("near")))
+            out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed"), near=b.get("near"), ov=ov))
         out += self._power_plays(daily, cfg)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
 
@@ -3081,14 +3110,15 @@ class MinerviniSpecStrategy(Strategy):
 
     def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
                cheat: tuple | None = None, live: bool = False, traded_cheat: bool = False,
-               missed: str | None = None, near: str | None = None) -> dict:
+               missed: str | None = None, near: str | None = None, ov=None) -> dict:
         """One setup for the chart: a frame around it, and its zones — the uptrend into the base, the
         base and its contractions, the pivot entry of a completed VCP, and the latest cheat entry
         (`cheat`: (bar, MV03 | MV04, yesterday's detection)) — each with its own shapes, its checklist
         rows and a writeup. The entry zones ILLUSTRATE where this strategy's own rules place the trade
         (pivot_buy_stop, pivot_stop, vcp_measured_move, cheat_measured_move, the exit constants); they
         are not backtest results, and the chart replaces them with a run's stored trade when one is
-        selected. `live`: the base is still forming, judged on the last bar. `traded_cheat`: a run bought
+        selected. The targets are capped by overhead supply as build_plans caps them (`overhead_binding`, on
+        the levels `ov` -- `overhead_at` -- gives for the signal bar). `live`: the base is still forming, judged on the last bar. `traded_cheat`: a run bought
         `cheat` -- drawn as that cheat even when the base was already a complete VCP, without the pivot
         entry the run never took (EN-04: one entry per base).
 
@@ -3279,9 +3309,17 @@ class MinerviniSpecStrategy(Strategy):
             risk = buy - stop
             mm = vcp_measured_move(bh, r.get("base_depth_pct") if depths else None)
             target = buy + mm if mm == mm else None
+            e_i = bo if bo is not None else rep
+            # overhead supply, as build_plans caps it on the signal bar (the breakout, or this bar while waiting),
+            # from build_plans' own entry: the breakout's close (MV-01, bought at the next open), else the buy-stop
+            # (MV-02). From the drawn buy instead, ADANIPORTS.NS's 2015-08-14 breakout was capped by its own high.
+            ov = ov or overhead_at(daily)
+            plan_entry = float(daily["close"].iloc[bo]) if bo is not None else buy
+            cap = overhead_binding(plan_entry, bh, float(daily["atr14"].iloc[e_i]), ov(e_i)) if target else None
+            capped = cap is not None and cap < target
+            uncapped, target = target, (cap if capped else target)
             r_mult = (target - buy) / risk if target and risk > 0 else None
             risk_pct = risk / buy * 100
-            e_i = bo if bo is not None else rep
             entry_to = day(min(len(daily) - 1, e_i + TIME_STOP_DAYS))
             e_from = at
             # Short labels, and none on the +2R breakeven line: with a target near 2R the two lines sit on
@@ -3308,6 +3346,9 @@ class MinerviniSpecStrategy(Strategy):
                  "state": "fail" if screen and bo is not None else "warn" if screen else "pass"},
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
+                {"code": "OH", "name": "Overhead supply", "value": (f"caps the target at {px(target)} (measured move to {px(uncapped)})"
+                                                                      if capped else "none in the way") if target else "—",
+                 "limit": f"swing highs at least {OVERHEAD_CLUSTER_ATR:g} ATR above the base high", "state": "warn" if capped else "pass"},
                 {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
                  "limit": f"at least {MIN_STRUCTURAL_R:g}R", "state": "pass" if ok_r else "fail"},
             ]
@@ -3326,8 +3367,12 @@ class MinerviniSpecStrategy(Strategy):
                                    f"goes {STOP_BUFFER_PCT:g}% under the tight-area low, at {px(stop)}: a risk of "
                                    f"{risk_pct:.1f}% a share (the strategy skips anything over {MAX_STOP_PCT:g}%)."
                                    + (f" The target is the base's measured move, its high less its lowest low, "
-                                      f"projected from the buy: {px(target)}, {_rr(r_mult, ok_r)} (it needs at least "
-                                      f"{MIN_STRUCTURAL_R:g}R, before any overhead supply caps it)." if target else "")
+                                      f"projected from the buy" + (
+                                          f" -- {px(uncapped)} -- capped by overhead supply: an older swing high at "
+                                          f"{px(target)}, at least {OVERHEAD_CLUSTER_ATR:g} ATR above the base high, "
+                                          f"where earlier buyers wait to sell. Target {px(target)}" if capped else
+                                          f": {px(target)}, with no older swing high in the way")
+                                      + f", {_rr(r_mult, ok_r)} (it needs at least {MIN_STRUCTURAL_R:g}R)." if target else "")
                                    + f" Managing it: the stop moves to breakeven at +{BREAKEVEN_R:g}R; a third is sold "
                                      f"once the close is {STRENGTH_EXT_PCT:g}% above the 50-day average; the rest goes on a "
                                      f"close below the 50-day; and it is sold after {TIME_STOP_DAYS} sessions if it never "
@@ -3348,7 +3393,11 @@ class MinerviniSpecStrategy(Strategy):
             risk = entry - stop
             cd = cp["depths"]
             mm = cheat_measured_move(bh, entry, cp.get("base_depth_pct") if cd else None)
-            target, r_mult = entry + mm, (mm / risk if risk > 0 else None)
+            ov = ov or overhead_at(daily)
+            c_cap = overhead_binding(entry, bh, float(daily["atr14"].iloc[ci]), ov(ci))
+            c_capped = c_cap is not None and c_cap < entry + mm
+            c_uncapped, target = entry + mm, (c_cap if c_capped else entry + mm)
+            r_mult = (target - entry) / risk if risk > 0 else None
             risk_pct = risk / entry * 100
             stopped = self._cheat_stop_out(daily, cfg, cheat, bo)
             c_from, c_to = day(ci), day(stopped if stopped is not None else min(len(daily) - 1, ci + TIME_STOP_DAYS))
@@ -3382,6 +3431,9 @@ class MinerviniSpecStrategy(Strategy):
             ] if CHEAT_VOL_CONTRACT else []) + [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
+                {"code": "OH", "name": "Overhead supply", "value": (f"caps the target at {px(target)} (measured move to {px(c_uncapped)})"
+                                                                      if c_capped else "none in the way"),
+                 "limit": f"swing highs at least {OVERHEAD_CLUSTER_ATR:g} ATR above the base high", "state": "warn" if c_capped else "pass"},
                 {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
                  "limit": f"at least {MIN_STRUCTURAL_R:g}R", "state": "pass" if ok_r else "fail"},
             ]
@@ -3397,9 +3449,11 @@ class MinerviniSpecStrategy(Strategy):
                                    f"at most {CHEAT_SHELF_PCT:g}%) in the {third} third of the base. The buy is at the next "
                                    f"session's open, estimated here by that close, {px(entry)}. The stop goes {STOP_BUFFER_PCT:g}% under the shelf low, at {px(stop)}: "
                                    f"a risk of {risk_pct:.1f}% (the strategy skips anything over {MAX_STOP_PCT:g}%). The "
-                                   f"objective is the old high, {px(bh)}, plus the base's measured move: {px(target)}"
-                                   + (f", {_rr(r_mult, ok_r)} (it needs at least {MIN_STRUCTURAL_R:g}R, before any overhead "
-                                      f"supply caps it)." if r_mult else ".")
+                                   f"objective is the old high, {px(bh)}, plus the base's measured move"
+                                   + (f" -- {px(c_uncapped)} -- capped by an older swing high at {px(target)}, at least "
+                                      f"{OVERHEAD_CLUSTER_ATR:g} ATR above the base high: {px(target)}" if c_capped
+                                      else f": {px(target)}")
+                                   + (f", {_rr(r_mult, ok_r)} (it needs at least {MIN_STRUCTURAL_R:g}R)." if r_mult else ".")
                                    + f" Managing it is the same as any entry: the stop moves to breakeven at "
                                      f"+{BREAKEVEN_R:g}R, a third is sold once the close is {STRENGTH_EXT_PCT:g}% above the "
                                      f"50-day average, the rest on a close below the 50-day, and it is sold after "
