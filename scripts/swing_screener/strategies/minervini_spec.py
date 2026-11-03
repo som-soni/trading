@@ -3353,9 +3353,10 @@ class MinerviniSpecStrategy(Strategy):
 
         # ---- zone 1: the uptrend into the base
         cnt = count if count and count.get("n") else None
+        focus_from, adv_low = bd, None      # where a click zooms to (the move into the base), the advance's low
         if r["prior_low"]:
             pl, pd_ = float(r["prior_low"]), iso(r["prior_low_date"])
-            up_from = pd_
+            up_from = focus_from = pd_
             trend = ("The trend template held on the high's bar, and the 150/200-day structure held through the base."
                      if fail != "VCP-03" else f"But it is too new to judge the trend: {young_why}." if young
                      else f"But the trend was not intact: {self._vcp_fail_why(r, daily, bh_i, rep)}.")
@@ -3366,7 +3367,7 @@ class MinerviniSpecStrategy(Strategy):
             a_i = cnt["low_i"] if cnt else None
             a_low, a_day = (float(daily["low"].iloc[a_i]), day(a_i)) if cnt else (pl, pd_)
             gain = (bh / a_low - 1) * 100 if a_low > 0 else 0.0
-            up_from = min(a_day, pd_)
+            up_from, adv_low = min(a_day, pd_), a_low
             nth = f"{_ordinal(cnt['n'])} base" if cnt else ""
             up_shapes = [{"shape": "line", "from": a_day, "to": bd, "p0": a_low, "p1": bh, "role": "uptrend",
                           "arrow": True, "label": f"+{gain:.0f}%" + (f" · {nth}" if cnt else "")}]
@@ -3722,7 +3723,12 @@ class MinerviniSpecStrategy(Strategy):
                 "title": title, "summary": summary,
                 # headroom above the highest level: the zone captions sit just inside the frame's top
                 # edge, which was exactly the target's price, so "③ Entry" and "Target …" overprinted
-                "frame": {"from": up_from, "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
+                "frame": {"from": up_from, "to": frame_to, "top": top + (top - bottom) * 0.08,
+                          "bottom": min(bottom, adv_low) if adv_low else bottom},
+                # What a click zooms to: the base and the move into it (VCP-01's leg), not the whole advance -- a
+                # late base of a long advance would otherwise sit squeezed at the right of years of chart. The
+                # frame and the Uptrend arrow still run from the advance's low.
+                "focus": {"from": focus_from, "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
                 "zones": zones}
 
     @staticmethod

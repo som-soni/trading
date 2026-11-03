@@ -409,7 +409,9 @@ const Studies = (() => {
         });
         // frame a setup stepped to from the card in the left ~60% of the chart, so the card (which goes to
         // the roomier side) sits clear of it on the right
-        const reveal = (s) => frameDates(chart, times, ctx, s.from, s.to, { fill: 0.58, lead: 0.04, price: s.frame });
+        // a click zooms to a setup's `focus` (the base and the move into it) when it has one: its frame may run back
+        // to the start of a long advance
+        const reveal = (s) => frameDates(chart, times, ctx, (s.focus || s).from, s.to, { fill: 0.58, lead: 0.04, price: s.focus || s.frame });
 
         // ---- the setup lane: one pill per setup along the bottom of the price pane, stacked where they overlap
         const lane = (() => {
@@ -477,7 +479,7 @@ const Studies = (() => {
           const s = t ? [...ownerMap()].find(([, x]) => x.entry_date === t.entry_date)?.[0] : null;
           if (s || !t) { pinned = s || null; hovered = null; paint(); }
           // go to it: the setup's frame through the trade's exit, the price axis back on auto
-          if (s) frameDates(chart, times, ctx, s.from, t.exit_date && t.exit_date > s.to ? t.exit_date : s.to, { fill: 0.7, lead: 0.05, price: s.frame });
+          if (s) frameDates(chart, times, ctx, (s.focus || s).from, t.exit_date && t.exit_date > s.to ? t.exit_date : s.to, { fill: 0.7, lead: 0.05, price: s.focus || s.frame });
         });
         (async () => {
           setNote(id, "testing each bar…");
