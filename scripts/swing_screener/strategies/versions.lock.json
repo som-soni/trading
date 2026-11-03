@@ -491,7 +491,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "ee98e6b5",
+    "fingerprint": "6300e233",
     "params": {
       "BASE_MAX_DAYS": 325,
       "BASE_MIN_DAYS": 15,
@@ -535,6 +535,7 @@
       "MAX_PCT_BELOW_52W_HIGH": 25.0,
       "MAX_POSITIONS": 8,
       "MAX_STOP_PCT": 10.0,
+      "MEASURED_MOVE_RR": 0,
       "MIN_CONTRACTIONS": 2,
       "MIN_FROM_REFERENCE": 2,
       "MIN_PCT_ABOVE_52W_LOW": 30.0,
@@ -694,7 +695,7 @@
         "W5"
       ]
     },
-    "version": "1.42"
+    "version": "1.43"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

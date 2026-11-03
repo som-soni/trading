@@ -297,6 +297,16 @@ NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a
 # books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
 # a target floor: a setup projecting less is skipped, not padded.
 MIN_STRUCTURAL_R = 2.0
+# 1.43: whether that 2:1 is tested against a projected price target at all. Minervini sets no price
+# target: his reward-to-risk is a property of his RESULTS -- average gain against average loss, kept at
+# 2:1 or better by cutting losses short (the stop, at most MAX_STOP_PCT) and riding winners on sell rules
+# (into strength, then a close below the 50-day). The measured move -- the base's depth projected from the
+# buy, capped by overhead supply -- is a classical chart-pattern convention this code added (the written
+# spec has no target either), and as a gate it refused most pivot buys, whose projection is the one part
+# of the base left above the buy. 0 = no projected target and no 2:1 test: the plan's target is the
+# +PARTIAL_R mark where the stop goes to breakeven and a third is sold, a reference nothing sells at.
+# 1 = the measured move, capped, must project MIN_STRUCTURAL_R (1.42).
+MEASURED_MOVE_RR = 0
 # How far above the BASE HIGH a swing high has to sit before it counts as
 # external supply rather than part of the base's own ceiling. A base's ceiling
 # is not a single line: `swings.overhead_levels` collects every swing high, and
@@ -488,6 +498,11 @@ def overhead_binding(entry: float, base_high, atr: float, overhead) -> float | N
     ceiling_from = max(entry, float(base_high)) if base_high else entry
     edge = ceiling_from + OVERHEAD_CLUSTER_ATR * atr
     return min((lvl for lvl in overhead if lvl >= edge), default=None)
+
+
+# The chart's entry zones under MEASURED_MOVE_RR = 0, where no target is drawn.
+_NO_TARGET = (" There is no price target: Minervini sets none. His reward-to-risk is kept in the results -- "
+              "losses cut at the stop, winners held until a sell rule fires -- not projected from the chart.")
 
 
 def overhead_at(daily: pd.DataFrame):
@@ -847,9 +862,20 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.42"
-    # signal_version is not pinned: 1.42 changes the detectors evaluate() reads, so the next backtest rescans.
+    version = "1.43"
+    # 1.43 changes only build_plans (no target gate), so it reads 1.42's cached signal rows.
+    signal_version = "1.42"
     changelog = (
+        ("1.43", "2026-11-04",
+         "No projected price target (MEASURED_MOVE_RR = 0). Minervini sets none: his reward-to-risk is a "
+         "property of results -- average gain against average loss, kept at 2:1 or better by a stop of at most "
+         "MAX_STOP_PCT and sell rules that let winners run -- not a level projected from the chart. Until 1.43 the "
+         "base's measured move, capped by overhead supply, had to project MIN_STRUCTURAL_R, at the signal and "
+         "again at the fill: a classical chart-pattern convention the written spec does not have, which refused "
+         "most pivot buys (their measured move is the one part of the base left above the buy). The plan's "
+         "target is now the +PARTIAL_R mark, where the stop goes to breakeven and a third is sold; no exit sells "
+         "at it, and none ever did. The measured move is still recorded. `--const MEASURED_MOVE_RR=1` restores "
+         "1.42. signal_version stays 1.42: evaluate() is unchanged."),
         ("1.42", "2026-11-03",
          "The detectors leave out dead sessions -- no volume and no range, a hole the data source filled with "
          "the previous price (SKIP_DEAD_BARS). Counted, such a bar aged a final contraction by a session it never "
@@ -1411,7 +1437,7 @@ class MinerviniSpecStrategy(Strategy):
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
         "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
-        "MIN_STRUCTURAL_R", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
+        "MIN_STRUCTURAL_R", "MEASURED_MOVE_RR", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
@@ -1456,7 +1482,7 @@ class MinerviniSpecStrategy(Strategy):
         "- **Find the base** (VCP-01 to VCP-10): the base checks.\n"
         "- **Pick the setup** (S1–S6): a breakout, a coil under the pivot, two early \"cheat\" buys, "
         "a power play, or a flat base.\n"
-        "- **Buy** (Entry), **protect** (Stop), **check the reward** (Target) and **manage** (Exit).\n"
+        "- **Buy** (Entry), **protect** (Stop), **no price target** (Target) and **manage** (Exit).\n"
         "- **Size** the position, and skip new buys in the cases under \"When no new trade is taken\".",
         "**Timing.** Every rule is judged on a session's close, using only data up to that close. An "
         "order fills in a later session — at the next open, or on a buy-stop — never on the bar that "
@@ -1492,7 +1518,8 @@ class MinerviniSpecStrategy(Strategy):
         "- **Stop and size:** a {MAX_STOP_PCT}% maximum stop instead of 8% (SL-03); half size until the "
         "record pays (PE) is added; open risk is measured from the lower of the last close and the price "
         "paid, not from the last close (PF-04).\n"
-        "- **Target:** the spec has none; the {MIN_STRUCTURAL_R}:1 test and the overhead cap are added.\n"
+        "- **Target:** none, as in the spec and in Minervini (since 1.43). Until 1.42 a measured-move target "
+        "had to project {MIN_STRUCTURAL_R}:1 (MEASURED_MOVE_RR).\n"
         "- **Exits:** a part sold {STRENGTH_EXT_PCT}% above the 50-day instead of a third at +3R (EX-04); "
         "a climax sells that part, not everything (EX-05); the 50-day exit needs no volume (EX-06); the "
         "time stop is on at {TIME_STOP_DAYS} sessions instead of off at 20 (EX-07); the failed-breakout "
@@ -1866,31 +1893,18 @@ class MinerviniSpecStrategy(Strategy):
         "The stop is never lowered.",
     )
     target_rules = (
-        "There is no sell order at the target. Minervini does not sell a whole position at a fixed "
-        "price, and neither does this strategy: winners are sold by the rules under Exit. The target is "
-        "used for one thing — deciding whether the trade is worth taking.",
-        "How it is measured. From the chart, not from the risk.\n\n"
-        "- **Pivot buy (MV-01, MV-02):** the base's measured move — its depth, from the base high down to "
-        "its lowest low — added to the price paid.\n"
-        "- **Cheat (MV-03, MV-04):** bought below the old high, so the target is the base high plus that "
-        "same measured move.\n"
-        "- **Power play (MV-05):** no base, so the run into the flag — from its low to the flag's high, the "
-        "flagpole — added to the price paid.\n"
-        "- **Flat base (S6):** the base's depth, high to low, added to the price paid. A base at most "
-        "{FLAT_MAX_DEPTH_PCT}% deep projects at most that, so the 2:1 test below rejects most flat bases: "
-        "on 60 random US stocks, 2013-2021, all 12 that broke out were refused at 0.3-1.5R.",
-        "Overhead supply caps it. An older swing high above the base is where earlier buyers wait to sell, "
-        "so the target is lowered to the nearest one. Only a level at least {OVERHEAD_CLUSTER_ATR} ATR above "
-        "the base high counts; anything closer is part of the base's own ceiling. Only swing highs of the "
-        "last year (daily) and the last {OVERHEAD_YEARS} years (weekly) count: supply older than that is "
-        "what Minervini bought through.",
-        "The {MIN_STRUCTURAL_R}:1 test. The reward (price paid to target) must be at least "
-        "{MIN_STRUCTURAL_R} times the risk (price paid to stop). Example: buy at 100 with the stop at 94 "
-        "risks 6. A target of 115 offers 15, which is 2.5 times 6: taken. A target of 110 offers 10, only "
-        "1.7 times: skipped. A setup that falls short is skipped, never padded up.\n\n"
-        "It is tested twice: on the signal session's close, and again on the price actually paid. A gap "
-        "up raises the price paid without moving the stop or the target, so a setup that passed on the "
-        "close can fail at the open.",
+        "There is no price target. Minervini sets none: he does not project how far a stock will go. His "
+        "reward-to-risk is a property of his results -- the average gain against the average loss, kept at 2:1 "
+        "or better by two things the rules do: a loss is cut at the stop, at most {MAX_STOP_PCT}% below the buy, "
+        "and a winner is held until a sell rule under Exit fires. Winners are never sold at a fixed price.",
+        "The first managed step stands in for a target in the trade record: +{PARTIAL_R}R, where the stop "
+        "moves to breakeven and a third is sold. Nothing else reads it.",
+        "The base's measured move -- its depth, high to low, projected from the buy -- is still measured and "
+        "shown, for study. Until 1.42 it was a rule (MEASURED_MOVE_RR = 1): capped by the nearest older swing "
+        "high at least {OVERHEAD_CLUSTER_ATR} ATR above the base high, it had to project at least "
+        "{MIN_STRUCTURAL_R} times the risk, at the signal and again on the price paid. That is a classical "
+        "chart-pattern convention, not Minervini's, and it refused most pivot buys: the measured move is the one "
+        "part of the base left above a buy at the top of it.",
     )
     exit_rules = (
         "Each session an open position is checked against these rules, in this order, and the first that "
@@ -2005,7 +2019,7 @@ class MinerviniSpecStrategy(Strategy):
                       "{SMA200_RISING_PREF_BARS} sessions while SMA200_PREF_REQUIRED is 1, or the market filter "
                       "allows no new buys (see the note below). Worth watching, not buying.",
         "AVOID": "A Trend Template gate failed, or there is no valid entry plan — no breakout, coil or cheat setup, "
-                 "or a plan that fails its checks (such as projecting under {MIN_STRUCTURAL_R}:1).",
+                 "or a plan that fails its checks (such as a stop more than {MAX_STOP_PCT}% below the buy).",
     }
     regime_note = (
         "When this strategy's own market filter is risk-off (the guide's test above — not the shared market "
@@ -2060,7 +2074,7 @@ class MinerviniSpecStrategy(Strategy):
          "where the flag also ends (PP-04); 0 = through the high of its last tight stretch."),
         ("Power play, tight area", "PP_TIGHT_PCT", "MV-05: widest the flag's last stretch may be (PP-05); the "
          "flag's own limit, not a VCP's {TIGHT_PCT}%."),
-        ("Overhead supply, years", "OVERHEAD_YEARS", "Years of swing highs that can cap the target; 0 = weekly "
+        ("Overhead supply, years", "OVERHEAD_YEARS", "Years of swing highs that can cap the target (MEASURED_MOVE_RR = 1 only); 0 = weekly "
          "highs over 5 years and monthly ones over all history (1.37)."),
         ("Tick, largest step", "TICK_MAX_PCT", "A stop or buy-stop is rounded to the market's tick, no coarser "
          "than this % of the price (split-adjusted history); 0 = the tick as it is."),
@@ -2093,11 +2107,14 @@ class MinerviniSpecStrategy(Strategy):
         ("Cheat: volume contraction", "CHEAT_VOL_CONTRACT", "MV-03/MV-04 (1.34): the shelf's average volume as a multiple of the sessions before it, at most. 0 = no contraction test (1.33)."),
         ("Cheat: volume lead-in", "CHEAT_VOL_LOOKBACK", "Sessions before the shelf, at least, that its volume is compared with (the rally from the low when longer)."),
         ("Skip dead sessions", "SKIP_DEAD_BARS", "1.42: 1 = the base and power-play detectors leave out a session with no volume and no range (a data hole filled with the previous price) instead of counting it as a quiet day. 0 = it counts (1.41)."),
-        ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Setups whose measured move projects less are refused — "
+        ("Measured-move target", "MEASURED_MOVE_RR", "1.43: 0 = no projected target and no reward-to-risk test, as "
+         "Minervini trades (the stop and the sell rules keep gains larger than losses); 1 = the measured move, capped "
+         "by overhead supply, must project MIN_STRUCTURAL_R (1.42)."),
+        ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Only with MEASURED_MOVE_RR = 1: setups whose measured move projects less are refused — "
                                                  "tested on the signal close and again on the fill."),
         ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
                                                               "when the base's own pivot is below the upper zone."),
-        ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target."),
+        ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target (MEASURED_MOVE_RR = 1 only)."),
         ("Risk per trade", "cfg.risk_pct", "SL-04: share of equity risked per trade (0.01 = 1%)."),
         ("Largest position", "cfg.max_position_pct", "SL-05: share of equity one position may hold."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
@@ -2538,7 +2555,9 @@ class MinerviniSpecStrategy(Strategy):
         # the levels evaluate() stored (plan_overhead), never the frames: a cache hit has no weekly frame
         overhead = e.get("plan_overhead") if OVERHEAD_YEARS else ctx.overhead
         if overhead is None:
-            return PlanChoice(None, None, "missing overhead levels")
+            if MEASURED_MOVE_RR:
+                return PlanChoice(None, None, "missing overhead levels")
+            overhead = []
         nearest_above = sw.nearest_overhead_above(ceiling_from, overhead)  # reported, not binding
         binding = overhead_binding(entry, bh, ctx.atr, overhead)
         if binding is not None and binding < target:
@@ -2549,23 +2568,25 @@ class MinerviniSpecStrategy(Strategy):
         ctx.extras["structural_r"] = round(structural_r, 2) if structural_r == structural_r else None
         ctx.extras["measured_move"] = round(measured_move, 2) if measured_move == measured_move else None
 
-        # Minervini's stated hard rule: a minimum reward-to-risk of 2:1, ideally 3:1.
-        # "If the stock's realistic upside isn't at least twice the distance to your
-        # stop, the trade isn't worth taking even if everything else lines up."
-        # Rejected here rather than padded up to look acceptable.
-        if not (structural_r >= MIN_STRUCTURAL_R):
+        # MEASURED_MOVE_RR = 1 (1.42): the measured move, capped by overhead supply, must project at least
+        # MIN_STRUCTURAL_R -- a setup projecting less is skipped, never padded up. 0 (Minervini): no projected
+        # target; the measured move is still recorded (extras) for study, but decides nothing.
+        if MEASURED_MOVE_RR and not (structural_r >= MIN_STRUCTURAL_R):
             return PlanChoice(
                 None, None,
                 f"projects only {structural_r:.2f}R against the {MIN_STRUCTURAL_R:g}:1 minimum",
             )
+        if not MEASURED_MOVE_RR:
+            target = entry + PARTIAL_R * risk     # the first managed step (EX-03/EX-04), not a sell order
 
         plan = TradePlan(plan="MV", setup=setup, entry=entry, stop=stop, target=target,
                          risk_per_share=risk, reward_per_share=target - entry,
-                         r_multiple=round(structural_r, 2),
+                         r_multiple=round((target - entry) / risk, 2),
                          nearest_overhead_above_entry=nearest_above)
         return PlanChoice(plan, None,
                           f"{setup}: pivot {pivot:.2f}, stop {(entry - stop) / entry * 100:.1f}% "
-                          f"below entry, projects {structural_r:.2f}R")
+                          f"below entry, " + (f"projects {structural_r:.2f}R" if MEASURED_MOVE_RR else
+                                              f"measured move {structural_r:.2f}R (not a gate)"))
 
     def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
         """How the portfolio simulator should place and manage this order (portfolio_sim docstring)."""
@@ -2591,7 +2612,7 @@ class MinerviniSpecStrategy(Strategy):
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": max_stop_pct(plan.setup) / 100, "base_id": base_id,
                 "max_entries_per_base": MAX_ENTRIES_PER_BASE,
-                "min_structural_r": MIN_STRUCTURAL_R,
+                "min_structural_r": MIN_STRUCTURAL_R if MEASURED_MOVE_RR else None,
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:
             meta.update(order="open", min_open=tl)
@@ -2911,6 +2932,30 @@ class MinerviniSpecStrategy(Strategy):
         out += self._power_plays(daily, cfg)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
 
+    @staticmethod
+    def _target_checks(px, target, uncapped, capped: bool, r_mult, ok_r: bool) -> list[dict]:
+        """MEASURED_MOVE_RR = 1: the entry zone's overhead and reward-to-risk rows, as build_plans tests them."""
+        return [
+            {"code": "OH", "name": "Overhead supply",
+             "value": (f"caps the target at {px(target)} (measured move to {px(uncapped)})" if capped
+                       else "none in the way") if target else "—",
+             "limit": f"swing highs at least {OVERHEAD_CLUSTER_ATR:g} ATR above the base high",
+             "state": "warn" if capped else "pass"},
+            {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
+             "limit": f"at least {MIN_STRUCTURAL_R:g}R", "state": "pass" if ok_r else "fail"},
+        ]
+
+    @staticmethod
+    def _measured_move_note(px, uncapped, cap, risk: float, entry: float) -> list[dict]:
+        """MEASURED_MOVE_RR = 0: the measured move as a note -- recorded for study, deciding nothing."""
+        if not uncapped or uncapped != uncapped or risk <= 0:
+            return []
+        to = cap if cap is not None else uncapped
+        return [{"code": "note", "name": "Measured move",
+                 "value": f"{px(uncapped)}, {(uncapped - entry) / risk:.1f}R"
+                          + (f" · an older swing high at {px(cap)} ({(to - entry) / risk:.1f}R)" if cap is not None else ""),
+                 "limit": "not a rule: Minervini sets no price target", "state": "pass"}]
+
     def _screen_miss(self, cfg: MarketConfig, daily: pd.DataFrame, i: int) -> str | None:
         """Why bar `i` fails the strategy's screen (prefilter_row: the turnover floor, then the Trend
         Template), or None when it passes. A young listing is judged by its own gates, not the template, so
@@ -3027,10 +3072,12 @@ class MinerviniSpecStrategy(Strategy):
             target = buy + power_measured_move(fh, r["run_pct"])   # build_plans' MV-05 objective: the flagpole
             r_mult = (target - buy) / risk if risk > 0 else None
             risk_pct = risk / buy * 100
-            ok_risk, ok_r = risk_pct <= PP_MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
+            ok_risk, ok_r = risk_pct <= PP_MAX_STOP_PCT, (not MEASURED_MOVE_RR) or (r_mult or 0) >= MIN_STRUCTURAL_R
             entry_to = day(min(len(daily) - 1, (bo if bo is not None else rep) + TIME_STOP_DAYS))
             levels = [("buy", buy, f"Buy {px(buy)}"), ("stop", stop, f"Stop {px(stop)}"),
-                      ("breakeven", buy + BREAKEVEN_R * risk, ""), ("target", target, f"Target {px(target)}")]
+                      ("breakeven", buy + BREAKEVEN_R * risk, "" if MEASURED_MOVE_RR else f"+{BREAKEVEN_R:g}R")]
+            if MEASURED_MOVE_RR:
+                levels.append(("target", target, f"Target {px(target)}"))
             shapes = [{"shape": "box", "from": day(int(idx.get_indexer([pd.Timestamp(at)])[0]) - pp.tight_min_days + 1),
                        "to": at, "top": pv, "bottom": tl, "role": "tight", "label": ""}]
             shapes += [{"shape": "level", "from": at, "to": entry_to, "price": v, "role": role, "label": lab,
@@ -3039,17 +3086,19 @@ class MinerviniSpecStrategy(Strategy):
                    ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum"])
             zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": at,
                           "to": entry_to, "illustration": True,
-                          "line": f"buy {px(buy)} · stop {px(stop)} · {_rr(r_mult, ok_r)}",
+                          "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if MEASURED_MOVE_RR else ""),
                           "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
                                    f"not a backtest result. Buy through the flag's pivot, {px(pv)}, on a close with volume "
                                    f"of at least {VOL_MULT:g}x the 50-day average; the stop goes {STOP_BUFFER_PCT:g}% under "
-                                   f"the tight low, at {px(stop)}: a risk of {risk_pct:.1f}%. The objective is the run "
-                                   f"into the flag projected from the buy, {px(target)}, {_rr(r_mult, ok_r)}."
+                                   f"the tight low, at {px(stop)}: a risk of {risk_pct:.1f}%."
+                                   + (f" The objective is the run into the flag projected from the buy, {px(target)}, "
+                                      f"{_rr(r_mult, ok_r)}." if MEASURED_MOVE_RR else _NO_TARGET)
                                    + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
-                          "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {PP_MAX_STOP_PCT:g}%", "pass" if ok_risk else "fail")),
-                                     tick(("R:R", "Reward / risk", _rr(r_mult, ok_r), f"at least {MIN_STRUCTURAL_R:g}R", "pass" if ok_r else "fail"))],
+                          "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {PP_MAX_STOP_PCT:g}%", "pass" if ok_risk else "fail"))]
+                                    + ([tick(("R:R", "Reward / risk", _rr(r_mult, ok_r), f"at least {MIN_STRUCTURAL_R:g}R", "pass" if ok_r else "fail"))]
+                                       if MEASURED_MOVE_RR else self._measured_move_note(px, target, None, risk, buy)),
                           "shapes": shapes})
-            top, bottom, frame_to = max(top, target, buy + BREAKEVEN_R * risk), min(bottom, stop), entry_to
+            top, bottom, frame_to = max(top, target if MEASURED_MOVE_RR else top, buy + BREAKEVEN_R * risk), min(bottom, stop), entry_to
             title = "Power play ✓" + (" · trade skipped" if skip else " · no valid breakout" if missed else "")
             summary = (f"A power play: +{r['run_pct']:.0f}% into a {depth:.1f}% flag. "
                        + (f"It crossed the pivot on {day(bo)}, but the strategy would not have bought: {missed}."
@@ -3325,9 +3374,11 @@ class MinerviniSpecStrategy(Strategy):
             # Short labels, and none on the +2R breakeven line: with a target near 2R the two lines sit on
             # top of each other, and four labels stacked in a narrow entry zone could not be read. The
             # risk, the R multiple and the breakeven rule are in the card's Entry zone.
+            # MEASURED_MOVE_RR = 0 (Minervini): no target line; the +BREAKEVEN_R line, where the stop moves up
+            # and a third is sold, is the first managed step and carries the label instead
             levels = [("buy", buy, f"Buy {px(buy)}"), ("stop", stop, f"Stop {px(stop)}"),
-                      ("breakeven", buy + BREAKEVEN_R * risk, "")]
-            if target:
+                      ("breakeven", buy + BREAKEVEN_R * risk, "" if MEASURED_MOVE_RR else f"+{BREAKEVEN_R:g}R")]
+            if target and MEASURED_MOVE_RR:
                 levels.append(("target", target, f"Target {px(target)}"))
             shapes = [{"shape": "level", "from": e_from, "to": entry_to, "price": v, "role": role, "label": lab,
                        "dash": role != "buy"} for role, v, lab in levels]
@@ -3336,7 +3387,7 @@ class MinerviniSpecStrategy(Strategy):
                 shapes.append({"shape": "dots", "points": [{"at": day(bo), "price": c,
                                                             "label": "crossed ✗" if missed else "breakout"}],
                                "role": "stop" if missed else "buy"})
-            ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
+            ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (not MEASURED_MOVE_RR) or (r_mult or 0) >= MIN_STRUCTURAL_R
             # the screen on the breakout bar (or, still waiting, on this one): MV-01 is bought only on a bar
             # that passes it, so a VCP outside the Trend Template is no setup yet whatever its shape
             screen = self._screen_miss(cfg, daily, e_i)
@@ -3346,12 +3397,8 @@ class MinerviniSpecStrategy(Strategy):
                  "state": "fail" if screen and bo is not None else "warn" if screen else "pass"},
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
-                {"code": "OH", "name": "Overhead supply", "value": (f"caps the target at {px(target)} (measured move to {px(uncapped)})"
-                                                                      if capped else "none in the way") if target else "—",
-                 "limit": f"swing highs at least {OVERHEAD_CLUSTER_ATR:g} ATR above the base high", "state": "warn" if capped else "pass"},
-                {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
-                 "limit": f"at least {MIN_STRUCTURAL_R:g}R", "state": "pass" if ok_r else "fail"},
-            ]
+            ] + (self._target_checks(px, target, uncapped, capped, r_mult, ok_r) if MEASURED_MOVE_RR
+                 else self._measured_move_note(px, uncapped, cap if capped else None, risk, buy))
             skip = [] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]
             if not ok_r:
                 skip.append(f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no measured move")
@@ -3360,26 +3407,27 @@ class MinerviniSpecStrategy(Strategy):
                            f"only on a session that passes it." if screen else ""))
             zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": e_from, "to": entry_to,
                           "illustration": True,
-                          "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult else ""),
+                          "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult and MEASURED_MOVE_RR else ""),
                           "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
                                    f"not a backtest result. Buy with a buy-stop just above the pivot, at {px(buy)}; the "
                                    f"breakout counts only on volume of at least {VOL_MULT:g}× the 50-day average. The stop "
                                    f"goes {STOP_BUFFER_PCT:g}% under the tight-area low, at {px(stop)}: a risk of "
                                    f"{risk_pct:.1f}% a share (the strategy skips anything over {MAX_STOP_PCT:g}%)."
+                                   + ("" if MEASURED_MOVE_RR else _NO_TARGET)
                                    + (f" The target is the base's measured move, its high less its lowest low, "
                                       f"projected from the buy" + (
                                           f" -- {px(uncapped)} -- capped by overhead supply: an older swing high at "
                                           f"{px(target)}, at least {OVERHEAD_CLUSTER_ATR:g} ATR above the base high, "
                                           f"where earlier buyers wait to sell. Target {px(target)}" if capped else
                                           f": {px(target)}, with no older swing high in the way")
-                                      + f", {_rr(r_mult, ok_r)} (it needs at least {MIN_STRUCTURAL_R:g}R)." if target else "")
+                                      + f", {_rr(r_mult, ok_r)} (it needs at least {MIN_STRUCTURAL_R:g}R)." if target and MEASURED_MOVE_RR else "")
                                    + f" Managing it: the stop moves to breakeven at +{BREAKEVEN_R:g}R; a third is sold "
-                                     f"once the close is {STRENGTH_EXT_PCT:g}% above the 50-day average; the rest goes on a "
-                                     f"close below the 50-day; and it is sold after {TIME_STOP_DAYS} sessions if it never "
+                                     f"at +{PARTIAL_R:g}R or once the close is {STRENGTH_EXT_PCT:g}% above the 50-day average, "
+                                     f"whichever comes first; the rest goes on a close below the 50-day; and it is sold after {TIME_STOP_DAYS} sessions if it never "
                                      f"reached +1R." + happened
                                    + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
                           "checks": e_checks, "shapes": shapes})
-            top = max(top, target or top, buy + BREAKEVEN_R * risk)
+            top = max(top, (target or top) if MEASURED_MOVE_RR else top, buy + BREAKEVEN_R * risk)
             bottom = min(bottom, stop)
 
         # ---- the cheat entry (MV-03 / MV-04): bought on a close through a tight shelf while the base is
@@ -3405,10 +3453,12 @@ class MinerviniSpecStrategy(Strategy):
                        "top": float(cp["cheat_pivot"]), "bottom": float(cp["cheat_low"]), "role": "tight",
                        "label": ""}]   # the base carries the one label (its footprint); the shelf range is in the card
             levels = [("buy", entry, f"Cheat buy {px(entry)}"), ("stop", stop, f"Stop {px(stop)}"),
-                      ("breakeven", entry + BREAKEVEN_R * risk, ""), ("target", target, f"Target {px(target)}")]
+                      ("breakeven", entry + BREAKEVEN_R * risk, "" if MEASURED_MOVE_RR else f"+{BREAKEVEN_R:g}R")]
+            if MEASURED_MOVE_RR:
+                levels.append(("target", target, f"Target {px(target)}"))
             shapes += [{"shape": "level", "from": c_from, "to": c_to, "price": v, "role": role, "label": lab,
                         "dash": role != "buy"} for role, v, lab in levels]
-            ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (r_mult or 0) >= MIN_STRUCTURAL_R
+            ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (not MEASURED_MOVE_RR) or (r_mult or 0) >= MIN_STRUCTURAL_R
             c_checks = [
                 {"code": cz, "name": "Shelf", "value": f"{cp['cheat_range_pct']:.1f}%, {third} third",
                  "limit": f"at most {CHEAT_SHELF_PCT:g}% over {CHEAT_SHELF_DAYS} days, below the high", "state": "pass"},
@@ -3431,36 +3481,33 @@ class MinerviniSpecStrategy(Strategy):
             ] if CHEAT_VOL_CONTRACT else []) + [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
-                {"code": "OH", "name": "Overhead supply", "value": (f"caps the target at {px(target)} (measured move to {px(c_uncapped)})"
-                                                                      if c_capped else "none in the way"),
-                 "limit": f"swing highs at least {OVERHEAD_CLUSTER_ATR:g} ATR above the base high", "state": "warn" if c_capped else "pass"},
-                {"code": "R:R", "name": "Reward / risk", "value": _rr(r_mult, ok_r),
-                 "limit": f"at least {MIN_STRUCTURAL_R:g}R", "state": "pass" if ok_r else "fail"},
-            ]
+            ] + (self._target_checks(px, target, c_uncapped, c_capped, r_mult, ok_r) if MEASURED_MOVE_RR
+                 else self._measured_move_note(px, c_uncapped, c_cap if c_capped else None, risk, entry))
             skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
                    ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"])
             zones.append({"key": "cheat", "title": "Cheat entry", "state": "pass" if not skip else "fail",
                           "from": c_from, "to": c_to, "illustration": True,
-                          "line": f"{third} third · buy {px(entry)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult else ""),
+                          "line": f"{third} third · buy {px(entry)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult and MEASURED_MOVE_RR else ""),
                           "text": (f"Where this strategy's rules place a cheat entry: an illustration, not a recommendation "
                                    f"and not a backtest result. A cheat is bought while the base is still forming, before "
                                    f"the stock has recovered its old high, so its stop is close. On {c_from} the close "
                                    f"cleared a tight shelf ({cp['cheat_range_pct']:.1f}% over {CHEAT_SHELF_DAYS} sessions, "
                                    f"at most {CHEAT_SHELF_PCT:g}%) in the {third} third of the base. The buy is at the next "
                                    f"session's open, estimated here by that close, {px(entry)}. The stop goes {STOP_BUFFER_PCT:g}% under the shelf low, at {px(stop)}: "
-                                   f"a risk of {risk_pct:.1f}% (the strategy skips anything over {MAX_STOP_PCT:g}%). The "
-                                   f"objective is the old high, {px(bh)}, plus the base's measured move"
-                                   + (f" -- {px(c_uncapped)} -- capped by an older swing high at {px(target)}, at least "
-                                      f"{OVERHEAD_CLUSTER_ATR:g} ATR above the base high: {px(target)}" if c_capped
-                                      else f": {px(target)}")
-                                   + (f", {_rr(r_mult, ok_r)} (it needs at least {MIN_STRUCTURAL_R:g}R)." if r_mult else ".")
+                                   f"a risk of {risk_pct:.1f}% (the strategy skips anything over {MAX_STOP_PCT:g}%)."
+                                   + ((f" The objective is the old high, {px(bh)}, plus the base's measured move"
+                                       + (f" -- {px(c_uncapped)} -- capped by an older swing high at {px(target)}, at least "
+                                          f"{OVERHEAD_CLUSTER_ATR:g} ATR above the base high: {px(target)}" if c_capped
+                                          else f": {px(target)}")
+                                       + (f", {_rr(r_mult, ok_r)} (it needs at least {MIN_STRUCTURAL_R:g}R)." if r_mult else "."))
+                                      if MEASURED_MOVE_RR else _NO_TARGET)
                                    + f" Managing it is the same as any entry: the stop moves to breakeven at "
-                                     f"+{BREAKEVEN_R:g}R, a third is sold once the close is {STRENGTH_EXT_PCT:g}% above the "
-                                     f"50-day average, the rest on a close below the 50-day, and it is sold after "
+                                     f"+{BREAKEVEN_R:g}R, a third is sold at +{PARTIAL_R:g}R or once the close is "
+                                     f"{STRENGTH_EXT_PCT:g}% above the 50-day average, the rest on a close below the 50-day, and it is sold after "
                                      f"{TIME_STOP_DAYS} sessions if it never reached +1R."
                                    + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
                           "checks": c_checks, "shapes": shapes})
-            top = max(top, target, entry + BREAKEVEN_R * risk, float(cp["cheat_pivot"]))
+            top = max(top, target if MEASURED_MOVE_RR else top, entry + BREAKEVEN_R * risk, float(cp["cheat_pivot"]))
             bottom = min(bottom, stop)
             frame_to = max(frame_to, c_to)
 

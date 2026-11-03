@@ -232,7 +232,7 @@ def buys_over(strategy, symbol: str, lo, hi, frames: dict, market: str = MARKET)
     """`strategy.evaluate` on every stored session from `lo` to `hi`, each seeing only its own and earlier bars:
     [(date, active setups, first hard fail, the detector's rejection, tradable)], or None when no prices are
     stored. `tradable` (sessions with a setup only, else None): the gates pass and the plan clears the limits
-    the backtest applies at the fill -- risk within the setup's max_stop_pct, and at least MIN_STRUCTURAL_R --
+    the backtest applies at the fill -- risk within the setup's max_stop_pct, and at least MIN_STRUCTURAL_R when MEASURED_MOVE_RR is on --
     measured on the signal close."""
     from ..core import context as ctx_mod
     if symbol not in frames:
@@ -261,7 +261,7 @@ def buys_over(strategy, symbol: str, lo, hi, frames: dict, market: str = MARKET)
             pl = pc.chosen if pc else None
             tradable = bool(r.hard_gates_passed and pl is not None and pl.entry > 0
                             and (pl.entry - pl.stop) / pl.entry <= ms.max_stop_pct(pl.setup) / 100
-                            and (pl.r_multiple or 0) >= ms.MIN_STRUCTURAL_R)
+                            and (not ms.MEASURED_MOVE_RR or (pl.r_multiple or 0) >= ms.MIN_STRUCTURAL_R))
         out.append((day, r.active_setups, r.first_hard_fail, ctx.extras.get("vcp_fail"), tradable))
     return out
 
