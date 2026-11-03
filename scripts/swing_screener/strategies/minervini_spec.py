@@ -1345,6 +1345,7 @@ class MinerviniSpecStrategy(Strategy):
         "capped loss and a managed exit."
     )
     style = "breakout"
+    horizon = "swing"
 
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     watch_codes = ("W1", "W2", "W3", "W4", "W5")

@@ -81,6 +81,7 @@ class ChartPatternStrategy(Strategy):
         "base, bull flag, ascending triangle, or VCP."
     )
     style = "breakout"
+    horizon = "swing"
     gate_codes = ("P1", "P2", "P3", "P4", "P5", "P6", "P7")
     screen_key = "near_highs"
     screen_gates = {"P1": "H1", "P2": "H2", "P3": "H3"}

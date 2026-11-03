@@ -84,6 +84,7 @@ class KullamagiStrategy(Strategy):
         "above the range with the stop at that day's low."
     )
     style = "breakout"
+    horizon = "swing"
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6")
     screen_key = "big_movers"
     screen_gates = {"G1": "M1", "G2": "M2"}

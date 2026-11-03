@@ -551,6 +551,7 @@ class PeadStrategy(PortfolioStrategy):
     #: pool is one season's filings rather than the whole tape on a date.
     selection = "cross_sectional"
     style = "breakout"
+    horizon = "swing"
     runner = "pead"
 
     hold_sessions = HOLD_SESSIONS

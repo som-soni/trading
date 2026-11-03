@@ -38,6 +38,7 @@ from .base import (
     DOWNGRADE_MAP,
     LABELS,
     BEHAVIOURS,
+    HORIZONS,
     SELECTION,
     STYLES,
     Decision,
@@ -175,7 +176,7 @@ def describe_strategies() -> str:
 
 
 __all__ = [
-    "CAP_ORDER", "DOWNGRADE_MAP", "BEHAVIOURS", "LABELS", "SELECTION", "STYLES",
+    "CAP_ORDER", "DOWNGRADE_MAP", "BEHAVIOURS", "HORIZONS", "LABELS", "SELECTION", "STYLES",
     "Decision", "PlanChoice", "Strategy", "StrategyResult", "TradePlan",
     "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy", "EarningsGapStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",

@@ -108,6 +108,7 @@ class SupertrendStrategy(Strategy):
         "turns it down."
     )
     style = "trend"
+    horizon = "positional"
     gate_codes = ("G1",)
     screen_key = "above_200"
     screen_gates = {"G1": "A1"}

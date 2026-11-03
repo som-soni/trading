@@ -443,6 +443,7 @@ class TurtleTrendStrategy(PortfolioStrategy):
     behaviour = "trend_momentum"
     selection = "time_series"
     style = "trend"
+    horizon = "swing"
     runner = "turtle_trend"
 
     n_assets = len(ASSETS)

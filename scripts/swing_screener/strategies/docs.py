@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .. import paths
 from ..config import MARKETS
-from . import _REGISTRY, BEHAVIOURS, LABELS, SELECTION, STYLES
+from . import _REGISTRY, BEHAVIOURS, HORIZONS, LABELS, SELECTION, STYLES
 
 # The optional finer split of entry/exit (strategies/base.py): Stop, Target, Position size, filters.
 RULE_GROUPS = ("stop_rules", "target_rules", "sizing_rules", "filter_rules")
@@ -120,6 +120,7 @@ def strategy_doc(key: str) -> dict:
         "behaviour_rank": (list(BEHAVIOURS).index(cls.behaviour)
                            if cls.behaviour in BEHAVIOURS else len(BEHAVIOURS)),
         "style_rank": list(STYLES).index(cls.style) if cls.style in STYLES else len(STYLES),
+        **_horizon(cls.horizon),
         "variant_of": ({"key": cls.variant_of, "name": type(_REGISTRY[cls.variant_of]).name}
                        if cls.variant_of in _REGISTRY else None),
         "family": cls.family_name(),
@@ -155,6 +156,12 @@ def strategy_doc(key: str) -> dict:
         },
         "source": _source_info(cls),
     }
+
+
+def _horizon(h: str) -> dict:
+    """The holding-period fields every strategy's doc carries (strategies/base.py HORIZONS)."""
+    return {"horizon": h, "horizon_label": HORIZONS.get(h, ""),
+            "horizon_rank": list(HORIZONS).index(h) if h in HORIZONS else len(HORIZONS)}
 
 
 def _screen_ref(cls) -> dict | None:
@@ -217,6 +224,7 @@ def baseline_doc(key: str) -> dict:
         # strategy genuinely has none -- it ranks and rebalances; entry and exit it does have.
         "style": _MB.style, "style_label": STYLES.get(_MB.style, ""),
         "style_rank": list(STYLES).index(_MB.style) if _MB.style in STYLES else 99,
+        **_horizon(_MB.horizon),
         "gates": [], "watch": [], "setups": [],
         "entry_rules": [_MB.render_doc(x) for x in d.get("entry_rules", ())],
         "exit_rules": [_MB.render_doc(x) for x in d.get("exit_rules", ())],
@@ -248,6 +256,7 @@ def quality_doc() -> dict:
         "selection_rank": list(SELECTION).index("fundamental"),
         "behaviour": "quality_value", "behaviour_label": BEHAVIOURS["quality_value"],
         "behaviour_rank": list(BEHAVIOURS).index("quality_value"),
+        **_horizon("investment"),
         "thesis": c["thesis"], "how_it_works": list(c["how_it_works"]), "caveats": list(c["caveats"]),
         "gates": [{"code": f"{t['points']} pts", "text": t["text"]} for t in c["quality_tests"]], "watch": [], "setups": [],
         "entry_rules": list(c["price_rules"]), "exit_rules": [], "params": params, "decisions": [], "regime_note": "",
@@ -279,6 +288,9 @@ def check() -> list[str]:
         if cls.style not in STYLES:
             problems.append(f"{where}: style {cls.style!r} is not one of {sorted(STYLES)} — every strategy "
                             "declares its trading-style family (strategies/base.py STYLES)")
+        if cls.horizon not in HORIZONS:
+            problems.append(f"{where}: horizon {cls.horizon!r} is not one of {sorted(HORIZONS)} — every strategy "
+                            "declares its holding period (strategies/base.py HORIZONS)")
         if cls.variant_of:
             if cls.variant_of == key:
                 problems.append(f"{where}: variant_of points at itself")
@@ -362,6 +374,9 @@ def check() -> list[str]:
                     problems.append(f"{sk}: doc['{k}'] is empty")
             if doc.get("key") != sk:
                 problems.append(f"{sk}: doc['key'] is {doc.get('key')!r}, which will not resolve")
+            if cls.horizon not in HORIZONS:
+                problems.append(f"{sk}: horizon {cls.horizon!r} is not one of {sorted(HORIZONS)} — every strategy "
+                                "declares its holding period (strategies/base.py HORIZONS)")
     except Exception as exc:  # noqa: BLE001
         problems.append(f"portfolio strategies: cannot load docs ({exc})")
     return problems

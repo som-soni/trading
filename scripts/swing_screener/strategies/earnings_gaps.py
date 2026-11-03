@@ -215,6 +215,7 @@ class EarningsGapStrategy(Strategy):
         "near the high — on a break of that day's high, stopped under its low."
     )
     style = "event"
+    horizon = "swing"
     screen_key = "above_200"
     screen_gates = {"G1": "A1"}
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7")

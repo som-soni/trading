@@ -85,6 +85,20 @@ SELECTION = {
     "fundamental": "Fundamental screen",
 }
 
+# How long a strategy holds a position — the trader's first cut (intraday, swing, positional,
+# investment), and the one that sets the chart timeframe, the stop width, the time a trade takes
+# and, in India, how a gain is taxed. A second sidebar grouping beside BEHAVIOURS. Declared on the
+# class by the TYPICAL hold its rules produce (the median of its backtest trades, calendar days),
+# not by its winners: a trend strategy whose losers are stopped out in a week and whose winners
+# run for months is positional if its median trade is. Bands with nothing in them yet are listed,
+# like BEHAVIOURS, so the page shows what is untried.
+HORIZONS = {
+    "intraday": "Intraday (flat by the close)",
+    "swing": "Swing (days to a few weeks)",
+    "positional": "Positional (one to several months)",
+    "investment": "Investment (a year or more)",
+}
+
 
 class _DocFields:
     """A settings dataclass seen from a doc placeholder: `{VCP.tight_pct}` renders like a module
@@ -218,6 +232,7 @@ class SpecMeta:
     style: str = ""
     selection: str = "time_series"
     behaviour: str = "trend_momentum"
+    horizon: str = ""
 
     @classmethod
     def family_name(cls) -> str:

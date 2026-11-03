@@ -879,6 +879,10 @@ def strategies():
                     "selection_rank": d.get("selection_rank", 99),
                     "variant_of": (d.get("variant_of") or {}).get("key"),
                     # family / version, so the page can group successive
+                    # how long it holds a position — the sidebar's other grouping
+                    "horizon": d.get("horizon") or "",
+                    "horizon_label": d.get("horizon_label") or "",
+                    "horizon_rank": d.get("horizon_rank", 99),
                     # versions of one strategy instead of listing them flat
                     "family": d.get("family") or k,
                     "version": d.get("version") or "1.0",
@@ -980,11 +984,12 @@ def strategy_edges_api():
 @app.get("/api/taxonomy")
 def taxonomy():
     """The full set of groups, including those with no strategies yet."""
-    from ..strategies import BEHAVIOURS, SELECTION
+    from ..strategies import BEHAVIOURS, HORIZONS, SELECTION
 
     return {"behaviours": [{"key": k, "label": v} for k, v in BEHAVIOURS.items()],
             "selection": [{"key": k, "label": v} for k, v in SELECTION.items()]}
 
+            "horizons": [{"key": k, "label": v} for k, v in HORIZONS.items()],
 
 def _vtuple(v: str) -> tuple:
     try:

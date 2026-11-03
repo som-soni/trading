@@ -1517,6 +1517,7 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
         key = cls.regime_index_by_market.get(market)
         return MARKETS[market].broad_index_symbols.get(key) if key else None
 
+    horizon = "positional"
     param_docs = (
         ("Ranking", "rank", "vol_scaled: 12-1 return divided by realised volatility."),
         ("Holdings", "top_n", "Names held at a time; 20 beat 50 on excess, 50 on drawdown."),
@@ -1601,3 +1602,4 @@ class MomentumBaselineStrategy(PortfolioStrategy):
          "spec. Defaults unchanged: top 10, 12-1 momentum, monthly rebalance, "
          "5bps a side, 200-day trend filter on."),
     )
+    horizon = "positional"

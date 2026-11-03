@@ -116,6 +116,7 @@ class EmaPullbackStrategy(Strategy):
         "the touching day's high, stop under the dip, sell on a close below the EMA."
     )
     style = "pullback"
+    horizon = "swing"
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
     screen_key = "uptrend"
     screen_gates = {"G1": "U3", "G2": "U4"}

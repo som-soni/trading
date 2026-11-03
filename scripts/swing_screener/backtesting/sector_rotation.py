@@ -173,6 +173,7 @@ class SectorRotationStrategy(PortfolioStrategy):
     behaviour = "trend_momentum"
     selection = "cross_sectional"
     style = "trend"
+    horizon = "positional"
     runner = "sector_rotation"
 
     top_n = 3

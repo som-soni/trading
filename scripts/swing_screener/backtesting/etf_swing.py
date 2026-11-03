@@ -203,6 +203,7 @@ class EtfSwingStrategy(PortfolioStrategy):
     behaviour = "trend_momentum"
     selection = "time_series"
     style = "trend"
+    horizon = "swing"
     runner = "etf_swing"
 
     param_docs = (

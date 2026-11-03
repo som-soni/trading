@@ -450,6 +450,7 @@ class MaTrendStrategy(PortfolioStrategy):
     behaviour = "trend_momentum"
     selection = "time_series"
     style = "trend"
+    horizon = "positional"
     runner = "ma_trend"
 
     mode = "index"

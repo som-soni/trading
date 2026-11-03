@@ -119,6 +119,7 @@ class DonchianStrategy(Strategy):
         "stop at a volatility multiple, and filter almost nothing."
     )
     style = "trend"
+    horizon = "positional"
     gate_codes = ("G1", "G2")
     screen_key = "above_200"
     screen_gates = {"G1": "A1"}

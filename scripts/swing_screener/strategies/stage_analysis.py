@@ -383,6 +383,7 @@ class StageAnalysisStrategy(Strategy):
                   "bases rather than completed breakouts."),)
 
     style = "breakout"
+    horizon = "positional"
     behaviour = "trend_momentum"
     selection = "time_series"
 

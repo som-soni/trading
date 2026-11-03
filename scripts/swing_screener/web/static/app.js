@@ -4717,30 +4717,43 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   // beaten an index. Benchmark and long-term entries join the same grouping
   // rather than sitting in separate trailing sections, so momentum_baseline
   // appears next to what it should be compared with.
-  const all = list.filter((x) => x.behaviour_label);
-  // Group by market behaviour, then by selection within it. Behaviours with no strategy yet are still
-  // listed — every strategy here is a trend/momentum bet, and hiding the blanks would imply the space has
-  // been explored when one idea has been tried several ways — but folded into one "not yet explored"
-  // entry, so they map what is untested without taking the sidebar's room.
-  const untried = (tax.behaviours || []).filter((b) => !all.some((x) => x.behaviour === b.key));
-  const stratNav = (tax.behaviours || []).map((b) => {
-    const mine = all.filter((x) => x.behaviour === b.key);
+  // Two ways to group, picked in the sidebar and remembered: by market behaviour (then by selection
+  // within it), or by holding period (then by behaviour within it) — swing, positional, investment
+  // (strategies/base.py HORIZONS). Groups with no strategy yet are still listed — every strategy here is
+  // a trend/momentum bet, and hiding the blanks would imply the space has been explored when one idea
+  // has been tried several ways — but folded into one "not yet explored" entry, so they map what is
+  // untested without taking the sidebar's room.
+  const AXES = {
+    behaviour: { groups: tax.behaviours || [], sub: "selection", none: "Kinds of market behaviour no strategy here trades yet" },
+    horizon: { groups: tax.horizons || [], sub: "behaviour", none: "Holding periods no strategy here trades yet" },
+  };
+  let groupBy = store.get("stratGroupBy", "behaviour");
+  if (!AXES[groupBy]) groupBy = "behaviour";
+  const ax = AXES[groupBy];
+  const all = list.filter((x) => x[`${groupBy}_label`]);
+  const untried = ax.groups.filter((b) => !all.some((x) => x[groupBy] === b.key));
+  const stratNav = ax.groups.map((b) => {
+    const mine = all.filter((x) => x[groupBy] === b.key);
     if (!mine.length) return "";
-    const subs = [...new Map(mine.map((x) => [x.selection_label, x.selection_rank ?? 99]))].sort((a, b2) => a[1] - b2[1]);
+    const lab = `${ax.sub}_label`;
+    const subs = [...new Map(mine.map((x) => [x[lab], x[`${ax.sub}_rank`] ?? 99]))].sort((a, b2) => a[1] - b2[1]);
     const body = subs.map(([slabel]) => (subs.length > 1 ? `<div class="nav-sub-h">${esc(slabel)}</div>` : "") +
-      mine.filter((x) => x.selection_label === slabel && (x.kind !== "screener" || topLevel(x)))
+      mine.filter((x) => x[lab] === slabel && (x.kind !== "screener" || topLevel(x)))
           .map((x) => (x.kind === "screener" ? withVariants(x) : item(x))).join("")).join("");
     return `<div class="nav-h">${esc(b.label)}</div>${body}`;
   }).join("");
-  const ungrouped = list.filter((x) => !x.behaviour_label);
+  const ungrouped = list.filter((x) => !x[`${groupBy}_label`]);
   const rest = ungrouped.length ? `<div class="nav-h">Other</div>${ungrouped.map((x) => item(x)).join("")}` : "";
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
       <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div></div>
+      <div class="nav-groupby"><span class="muted small">Group by</span>${segmented([["behaviour", "Behaviour"], ["horizon", "Holding period"]], groupBy, "sgroup")}</div>
       ${stratNav}${rest}
       ${untried.length ? `<details class="nav-untried"><summary class="nav-h">Not yet explored (${untried.length})</summary>
-        <div class="nav-empty muted small">Kinds of market behaviour no strategy here trades yet: ${untried.map((b) => esc(b.label)).join(" · ")}.</div></details>` : ""}
+        <div class="nav-empty muted small">${ax.none}: ${untried.map((b) => esc(b.label)).join(" · ")}.</div></details>` : ""}
     </aside><section id="stmain" class="scr-main">${LOADING}</section></div>`;
+  $view.querySelectorAll(".sgroup button").forEach((b) => b.onclick = () => {
+    if (b.dataset.v !== groupBy) { store.set("stratGroupBy", b.dataset.v); route(); } });
   const main = $view.querySelector("#stmain");
   if (!key) return setupsPage(alive, main);
   if (key === "quality" && !tab) tab = "rules";

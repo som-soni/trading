@@ -368,6 +368,7 @@ class QualityMomentumStrategy(PortfolioStrategy):
     behaviour = "trend_momentum"
     selection = "cross_sectional"
     style = "trend"
+    horizon = "positional"
     runner = "quality_momentum"
     live_selection = False       # baseline.current_selection would show the ranking without the filter
 

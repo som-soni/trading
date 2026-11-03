@@ -107,6 +107,7 @@ class TrendPullbackStrategy(Strategy):
         "established uptrend, entered on a resumption signal above resistance."
     )
     style = "pullback"
+    horizon = "swing"
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10", "G11", "G12", "G13", "G14")
     screen_key = "uptrend"
     screen_gates = {"G1": "U1", "G2": "U2", "G3": "U3", "G4": "U4", "G5": "U5", "G6": "U6", "G7": "U7", "G8": "U8"}

@@ -695,6 +695,7 @@ class Stage4ShortsStrategy(PortfolioStrategy):
     behaviour = "trend_momentum"
     selection = "time_series"
     style = "trend"
+    horizon = "swing"
     runner = "stage4_shorts"
 
     param_docs = (

@@ -88,6 +88,7 @@ class DeliveryBreakoutStrategy(Strategy):
         "own recent days, stopped under that day's low, with a 1.5–2R target."
     )
     style = "event"
+    horizon = "swing"
     screen_key = "above_200"
     screen_gates = {"G1": "A1"}
     gate_codes = ("G1", "G2", "G3", "G4")

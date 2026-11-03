@@ -116,6 +116,7 @@ class BreakoutStrategy(Strategy):
         "confirmed by expanding volume."
     )
     style = "breakout"
+    horizon = "swing"
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
     screen_key = "near_highs"
     screen_gates = {"G1": "H1", "G2": "H2"}

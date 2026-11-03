@@ -81,6 +81,7 @@ class MomentumBurstStrategy(Strategy):
         "close with the stop at the day's low and hold a few sessions."
     )
     style = "breakout"
+    horizon = "swing"
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6")
     screen_key = "near_highs"
     screen_gates = {"G1": "H1", "G2": "H2", "G3": "H3"}

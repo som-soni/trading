@@ -460,6 +460,7 @@ class ChartPatternSpecStrategy(Strategy):
         "and measured move."
     )
     style = "breakout"
+    horizon = "swing"
     # The same screen as `chart_pattern`, deliberately: the question this
     # strategy exists to answer is whether the spec's detection beats the
     # ad-hoc one, and running the two over different candidate sets would

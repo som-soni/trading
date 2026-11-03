@@ -504,6 +504,7 @@ class ParabolicShortStrategy(PortfolioStrategy):
     behaviour = "mean_reversion"
     selection = "time_series"
     style = "pullback"
+    horizon = "swing"
     runner = "parabolic_short"
 
     param_docs = (
