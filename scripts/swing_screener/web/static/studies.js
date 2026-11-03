@@ -1084,7 +1084,9 @@ const Studies = (() => {
       // whose subject is the SETUPS they are the loudest thing on it and compete with the frames,
       // levels and labels the study exists to show. Still one click away in the study's settings.
       params: { stages: { type: "select", def: "Hide", options: ["All four", "Stage 2 only", "Hide"] },
-        bases: { type: "select", def: "All bases", options: ["All bases", "Completed VCPs", "None"] },
+        // "Setups" by default: the bases a setup could come from. A failed base (✗) is the detector's working --
+        // why something is not a VCP -- and on a long history it outnumbers the setups and buries them in the lane.
+        bases: { type: "select", def: "Setups", options: ["Setups", "All bases", "Completed VCPs", "None"] },
         card: { type: "select", def: "Show", options: ["Show", "Hide"] },
         gaps: { type: "select", def: "None", options: ["None", "After long stretches", "All"] }, minBars: 10 },
       // uptrend is purple, not green: green is already Stage 2, and the two must never be mistaken
@@ -1124,8 +1126,12 @@ const Studies = (() => {
             shape: "dots", role: "broke", points: [{ at: x.from, price: x.low,
               label: `${x.began.replace("Stage 2 ended: ", "Stage 2 ended — ")} · after ${prev.bars} sessions, ${prev.gain_pct >= 0 ? "+" : ""}${prev.gain_pct}%` }] })));
           const all = r.bases || [];
-          return { background: stage, setups: p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete) : all,
-            note: `${r.note} · ${all.length} setups, ${all.filter((b) => b.complete).length} VCPs · pick one from the lane at the bottom` };
+          const setups = p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete)
+            : p.bases === "Setups" ? all.filter((b) => b.kind !== "fail" && b.kind !== "young") : all;
+          const hidden = all.length - setups.length;
+          return { background: stage, setups,
+            note: `${r.note} · ${setups.length} setups, ${all.filter((b) => b.complete).length} VCPs`
+              + (hidden && p.bases === "Setups" ? ` · ${hidden} failed bases hidden (settings: All bases)` : "") + " · pick one from the lane at the bottom" };
         };
         const keyRows = (YOUNG) => [
           ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],

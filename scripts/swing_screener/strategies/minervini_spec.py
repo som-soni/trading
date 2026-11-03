@@ -2931,7 +2931,7 @@ class MinerviniSpecStrategy(Strategy):
                 b["breakout"], b["screen"] = i, screen
                 b.pop("near", None)
                 if screen:
-                    b["missed"] = f"the Trend Template failed that session ({screen})"
+                    b["missed"] = f"the stock failed the strategy's screen that session -- {screen}"
                     continue
                 # S7, as evaluate decides it: a near-miss base with every MV-01 test passed, or a full VCP
                 # whose breakout volume alone is short by no more than NEAR_VOL_MULT
@@ -3081,6 +3081,14 @@ class MinerviniSpecStrategy(Strategy):
                           + (f" · an older swing high at {px(cap)} ({(to - entry) / risk:.1f}R)" if cap is not None else ""),
                  "limit": "not a rule: Minervini sets no price target", "state": "pass"}]
 
+    @staticmethod
+    def _refusal(missed: str) -> str:
+        """A crossing the strategy would not buy, in a title: a breakout that failed MV-01's own tests is no valid
+        breakout; one refused because the stock failed the screen that day still broke out."""
+        if "screen" not in missed:
+            return "no valid breakout"
+        return "broke out, too illiquid" if "illiquid" in missed else "broke out outside the Trend Template"
+
     def _screen_miss(self, cfg: MarketConfig, daily: pd.DataFrame, i: int) -> str | None:
         """Why bar `i` fails the strategy's screen (prefilter_row: the turnover floor, then the Trend
         Template), or None when it passes. A young listing is judged by its own gates, not the template, so
@@ -3089,7 +3097,15 @@ class MinerviniSpecStrategy(Strategy):
         if is_young_row(row, i + 1):
             return None
         ok, why = self.prefilter_row(cfg, row)
-        return None if ok else why
+        if ok:
+            return None
+        if why.startswith("turnover below"):
+            # the liquidity floor, not the trend: say so, with the turnover the stock actually had
+            floor, traded = _min_turnover(cfg), float(row["vol_sma50"]) * float(row["close"])
+            unit, div = ("crore", 1e7) if cfg.currency_code == "INR" else ("million", 1e6)
+            return (f"too illiquid: {cfg.currency_symbol}{traded / div:,.1f} "
+                    f"{unit} a day traded (50-day average), under the {cfg.currency_symbol}{floor / div:,.0f} {unit} floor")
+        return f"outside the Trend Template: {why}"
 
     def _power_plays(self, daily: pd.DataFrame, cfg: MarketConfig) -> list[dict]:
         """MV-05 on the chart: every power-play shape the detector measured -- a run of at least
@@ -3389,7 +3405,7 @@ class MinerviniSpecStrategy(Strategy):
 
         # ---- zone 1: the uptrend into the base
         cnt = count if count and count.get("n") else None
-        focus_from, adv_low = bd, None      # where a click zooms to (the move into the base), the advance's low
+        focus_from = bd      # where the setup's frame starts: the move into the base (VCP-01's leg)
         if r["prior_low"]:
             pl, pd_ = float(r["prior_low"]), iso(r["prior_low_date"])
             up_from = focus_from = pd_
@@ -3403,7 +3419,7 @@ class MinerviniSpecStrategy(Strategy):
             a_i = cnt["low_i"] if cnt else None
             a_low, a_day = (float(daily["low"].iloc[a_i]), day(a_i)) if cnt else (pl, pd_)
             gain = (bh / a_low - 1) * 100 if a_low > 0 else 0.0
-            up_from, adv_low = min(a_day, pd_), a_low
+            up_from = min(a_day, pd_)
             nth = f"{_ordinal(cnt['n'])} base" if cnt else ""
             up_shapes = [{"shape": "line", "from": a_day, "to": bd, "p0": a_low, "p1": bh, "role": "uptrend",
                           "arrow": True, "label": f"+{gain:.0f}%" + (f" · {nth}" if cnt else "")}]
@@ -3456,7 +3472,7 @@ class MinerviniSpecStrategy(Strategy):
                                   "points": [{"at": iso(c_day), "price": c_low, "label": f"−{dd.max():.0f}% dip"}]})
                 up_checks.append({"code": "note", "name": "Dip inside", "value": f"{dd.max():.1f}%, then +{since:.1f}%",
                                   "limit": f"flagged above {self._UPTREND_FLAG_PCT:g}%", "state": "warn"})
-            zones.append({"key": "uptrend", "title": "Uptrend", "state": zstate("uptrend"), "warn": warn, "from": up_from, "to": bd,
+            zones.append({"key": "uptrend", "title": "Uptrend", "state": zstate("uptrend"), "warn": warn, "from": focus_from, "to": bd,
                           "line": line,
                           "text": (advance + f"The base rule (VCP-01) measures the move into the base: "
                                    f"+{r['prior_advance_pct']:.0f}%, from {px(pl)} on {pd_}, in {up_days} sessions. A "
@@ -3557,7 +3573,7 @@ class MinerviniSpecStrategy(Strategy):
             # that passes it, so a VCP outside the Trend Template is no setup yet whatever its shape
             screen = self._screen_miss(cfg, daily, e_i)
             e_checks = [
-                {"code": "TT", "name": "Trend Template", "value": f"fails on {day(e_i)}: {screen}" if screen
+                {"code": "TT", "name": "Screen", "value": f"fails on {day(e_i)}: {screen}" if screen
                  else f"held on {day(e_i)}", "limit": "passes on the breakout session",
                  "state": "fail" if screen and bo is not None else "warn" if screen else "pass"},
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
@@ -3570,8 +3586,8 @@ class MinerviniSpecStrategy(Strategy):
             if not ok_r:
                 skip.append(f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no measured move")
             happened = (f" It broke out on {day(bo)}." if bo is not None else " It has not broken out yet."
-                        + (f" The Trend Template fails on {day(e_i)} ({screen}), and the strategy buys a breakout "
-                           f"only on a session that passes it." if screen else ""))
+                        + (f" The stock fails the strategy's screen on {day(e_i)} -- {screen} -- and the strategy buys "
+                           f"a breakout only on a session that passes it." if screen else ""))
             zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": e_from, "to": entry_to,
                           "illustration": True,
                           "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult and MEASURED_MOVE_RR else ""),
@@ -3690,7 +3706,7 @@ class MinerviniSpecStrategy(Strategy):
             none_taken = bool(entries) and all(z["state"] == "fail" for z in entries)
             rule = near.split(":")[0]
             title = (f"Near miss ✓ · {rule}" + (" · trade skipped" if none_taken else
-                                                 " · no valid breakout" if missed else "")) + today
+                                                 f" · {self._refusal(missed)}" if missed else "")) + today
             summary = (f"Missed one rule narrowly ({near}) and passed the rest: S7 buys its breakout like a "
                        f"VCP's, as a setup of its own." + (f" It crossed the pivot on {day(bo)}, but the strategy "
                                                          f"would not have bought: {missed}." if bo is not None and missed
@@ -3712,13 +3728,14 @@ class MinerviniSpecStrategy(Strategy):
             structure_ok = all(z["state"] == "pass" for z in zones if not z.get("illustration"))
             none_taken = bool(entries) and all(z["state"] == "fail" for z in entries)
             title = ("VCP ✓ · trade skipped" if (none_taken or not structure_ok)
-                     else "VCP ✓ · no valid breakout" if missed
-                     else "VCP ✓ · outside the Trend Template" if screen and bo is None else "VCP setup ✓") + today
+                     else f"VCP ✓ · {self._refusal(missed)}" if missed
+                     else f"VCP ✓ · {'too illiquid' if 'illiquid' in screen else 'outside the Trend Template'}"
+                     if screen and bo is None else "VCP setup ✓") + today
             summary = (f"A complete VCP. It crossed the pivot on {day(bo)}, but the strategy would not have bought: "
                        f"{missed}." if bo is not None and missed
                        else f"A complete VCP. Broke out on {day(bo)}." if bo is not None
-                       else f"A complete VCP, but the Trend Template fails on {at} ({screen}): no buy until it "
-                            f"passes on the breakout session." if screen
+                       else f"A complete VCP, but the stock fails the strategy's screen on {at} -- {screen}: no buy "
+                            f"until it passes on the breakout session." if screen
                        else "A complete VCP, waiting for a close through the pivot.")
         elif cheat:
             ok = zones[-1]["state"] == "pass"
@@ -3757,19 +3774,18 @@ class MinerviniSpecStrategy(Strategy):
             title = title[: -len(today)] + tag + today if today and title.endswith(today) else title + tag
         if live:
             summary = f"Still forming — judged on today's bar, {at}. " + summary
-        return {"from": up_from, "base_from": bd, "to": frame_to, "kind": kind, "complete": done, "fail": fail,
+        # The setup -- its frame, its lane pill, a click's zoom -- spans the base and the move into it (VCP-01's
+        # leg). Only the Uptrend arrow runs back to the advance's low: framing the whole advance drew a box and a
+        # lane bar over years of chart for every late base, and with many bases the lanes were unreadable.
+        return {"from": focus_from, "base_from": bd, "to": frame_to, "kind": kind, "complete": done, "fail": fail,
                 "base_number": cnt["n"] if cnt else None,
                 "breakout": day(bo) if bo is not None and not missed else None,
                 "crossed": day(bo) if bo is not None and missed else None, "live": live, "as_of": at,
                 "title": title, "summary": summary,
                 # headroom above the highest level: the zone captions sit just inside the frame's top
                 # edge, which was exactly the target's price, so "③ Entry" and "Target …" overprinted
-                "frame": {"from": up_from, "to": frame_to, "top": top + (top - bottom) * 0.08,
-                          "bottom": min(bottom, adv_low) if adv_low else bottom},
-                # What a click zooms to: the base and the move into it (VCP-01's leg), not the whole advance -- a
-                # late base of a long advance would otherwise sit squeezed at the right of years of chart. The
-                # frame and the Uptrend arrow still run from the advance's low.
-                "focus": {"from": focus_from, "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
+                "frame": {"from": focus_from, "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
+                "advance_from": up_from,
                 "zones": zones}
 
     @staticmethod
