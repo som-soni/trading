@@ -14,20 +14,22 @@ This guide explains what supply and demand mean on a chart, how to find and scor
 
 ## 1. How prices move
 
-In February 2022 Salesforce broke below about $210, a price where buyers had stepped in twice in the previous nine months. Within seven weeks it bounced back to $221. That was just above the old floor, and there it stopped. By May it had fallen to $164.
+In July 2018 State Street fell through about $90–92. Buyers had stepped in at that band six times in the previous year. In September the price rallied back to $90.20, inside the old floor, and closed below it. That was as high as it got. By December it was under $60.
 
 ```series
-title: Salesforce — an old floor that became a ceiling, 2022
-from: 2021-03-01
-to: 2022-06-30
-tf: D
-line: us:CRM | Salesforce
-line: us:CRM@sma50 | 50-day average
-mark: 2021-05-12 | buyers step in near 210
-mark: 2022-01-26 | and again near 211
-mark: 2022-02-11 | closes below the floor
-mark: 2022-03-29 | bounce stops at 221
-caption: The level where buyers had absorbed all the selling twice became the level where sellers met the bounce.
+title: State Street — an old floor that became a ceiling, 2017 to 2018
+from: 2017-06-01
+to: 2018-12-31
+tf: W
+line: us:STT | State Street, weekly candles | candles
+zone: 89.7 91.6 | | 2017-07-14 2018-07-19 | support
+zone: 89.7 91.6 | Zone $89.7–91.6 | 2018-07-20 2018-12-31 | resistance
+mark: 2017-09-07 | buyers | below
+mark: 2017-11-08 | buyers | below
+mark: 2018-07-06 | buyers | below
+mark: 2018-07-20 | breaks below
+mark: 2018-09-20 | rally stops
+caption: Green while the band held as a floor, red once price was below it. The July 2018 break came on a gap, on about five times the usual volume. No close after it got back above $89.57, and the September rally stopped inside the band.
 ```
 
 Price does not move because of opinions. It moves because, at the current price, one side runs out of people to trade with. In a rally, buyers keep paying the sellers' asking price until no one is left offering stock cheaply. The rally stops where enough sellers appear to fill all the buy orders.
@@ -62,13 +64,15 @@ title: ICICI Bank — a demand zone and its retests, 2019
 from: 2019-03-15
 to: 2019-10-31
 tf: D
-line: india:ICICIBANK.NS | ICICI Bank
+line: india:ICICIBANK.NS | ICICI Bank, daily candles | candles
 line: india:ICICIBANK.NS@vol | Volume | pane2 bars
-mark: 2019-05-14 | the base, ₹376–387
-mark: 2019-05-20 | the rally leaves the zone
-mark: 2019-08-23 | first retest holds
-mark: 2019-09-19 | second retest holds
-caption: A short, tight pause, then a fast move away on heavy volume. When the price returned months later, buyers were still there.
+zone: 375.8 382.5 | Body to wick | 2019-05-14 2019-10-31 | support
+level: 386.8 | Full range | 2019-05-13 2019-10-31
+mark: 2019-05-14 | the pause | below
+mark: 2019-05-20 | the rally leaves
+mark: 2019-08-23 | retest | below
+mark: 2019-09-19 | retest | below
+caption: A short, tight pause, then a fast move away on heavy volume. The green box uses the highest body and lowest wick of the last three sessions; the dashed line is the top of the full four-session range. Both retests, at ₹385.80 and ₹384.35, came down between the two, so whether they count as a retest depends on the rule.
 ```
 
 That band is a **demand zone**: the starting point of a strong move up. It is the pause where a decline stopped and buyers took everything that was for sale. The rally that followed shows that buying outran selling once the pause ended.
@@ -110,6 +114,25 @@ This is the mirror image: the **starting point of a strong move down**. It is a 
 
 The steps mirror the demand zone. Zone traders call it a *rally-base-drop* when an advance came before it, and a *drop-base-drop* inside a decline. For a supply zone the proximal edge is the bottom of the box and the distal edge the top. The same tests apply: a strong move away, little time spent in the zone, a fresh zone, and a location in a downtrend or under a failed high.
 
+Manappuram Finance shows one. In early December 2021 it rallied from about ₹163 to ₹179. It then paused for three sessions, between ₹168 and ₹175.60. On 17 and 20 December it dropped to ₹156: a rally-base-drop. With the highest wick and lowest body as edges, the zone runs from ₹170.30 to ₹175.60.
+
+In mid-January the price came back into it, reaching ₹173, but no close got above ₹170.30. On 18 January it turned down on about four times its usual volume. By late February it was at ₹110.
+
+```series
+title: Manappuram Finance — a supply zone and its retest, 2021 to 2022
+from: 2021-11-24
+to: 2022-02-08
+tf: D
+line: india:MANAPPURAM.NS | Manappuram Finance, daily candles | candles
+line: india:MANAPPURAM.NS@vol | Volume | pane2 bars
+zone: 170.3 175.6 | Supply ₹170.3–175.6 | 2021-12-14 2022-02-08 | resistance
+mark: 2021-12-14 | the pause
+mark: 2021-12-20 | the drop | below
+mark: 2022-01-10 | retest
+mark: 2022-01-18 | turns down
+caption: A rally, three tight sessions, then a fast drop. The January retests pushed wicks into the zone but closed below it, and the selling resumed.
+```
+
 This is what William O'Neil calls **overhead supply**. It is the reason his rules prefer stocks near 52-week highs: a stock at new highs has *no one trapped above it*. No sellers are waiting there to get back what they paid. Each base left behind and each old swing high on the way up is a level where sellers may be waiting.
 
 A rally that approaches one of these levels on fading volume is likely to meet selling. What uses up a supply zone is a push **through** it on rising volume. The trapped sellers have sold, and short sellers are forced to buy back their shares. The level has done its job, and it often changes sides.
@@ -142,13 +165,47 @@ Decide what kills a zone before the price comes back. Otherwise it is too easy t
 
 A supply zone is the mirror image: a close above its distal edge is the failure. There are three common conventions. A trade beyond the edge during the day kills the zone; or only a close beyond it does; or a close beyond it by a buffer, such as a fraction of the ATR. Swing traders usually use a daily close. None is universally right; using the same one every time is what counts.
 
+Adani Green Energy shows all three rows. In July 2024 a one-day pause at ₹1,711–1,748 launched a rally on five times the usual volume. On 6 August the price came back into the zone and closed just above it. On 12 August a wick reached ₹1,667.50, below the far edge, but the close was back above at ₹1,798.30.
+
+In October the price sagged back again. On 21 October it closed at ₹1,710.80, 50 paise under the far edge. Under a strict close rule the zone failed that day. Under a rule with a small buffer it failed the next day, on a close of ₹1,684.45. By 26 November the stock was under ₹900.
+
+```series
+title: Adani Green Energy — a demand zone that held, then failed, 2024
+from: 2024-07-01
+to: 2024-10-31
+tf: D
+line: india:ADANIGREEN.NS | Adani Green Energy, daily candles | candles
+line: india:ADANIGREEN.NS@vol | Volume | pane2 bars
+zone: 1711.3 1748 | Demand ₹1,711–1,748 | 2024-07-24 2024-10-22 | support
+mark: 2024-07-25 | rally leaves
+mark: 2024-08-06 | enters | below
+mark: 2024-08-12 | wick below, closes back | below
+mark: 2024-10-22 | closes below
+caption: The zone is drawn until the close-based failure. The August wick through the far edge was a rejection, not a failure; the October closes below it were the failure.
+```
+
 A failed zone is not the same as a trade stop. A stop also has to allow for volatility, slippage and position size. It may sit at the zone's edge or some way beyond it, depending on the method (see [Stops and exits](learn-risk-stops-exits.md)).
 
 The timeframe matters too. A zone on a weekly chart and a zone on a daily chart are different things. Label each zone with its timeframe and the date it formed.
 
 ## 6. Role reversal — levels change sides
 
-Salesforce in section 1 showed one direction: an old floor became a ceiling. The other direction is just as common. State Bank of India broke above about ₹614 in December 2023. In January 2024 it dipped under that level during the day, closed back above it, and then ran to about ₹725 (see [Pullback to support](learn-strat-pullback-support.md)).
+State Street in section 1 showed one direction: an old floor became a ceiling. The other direction is just as common. State Bank of India closed above about ₹614 in December 2023. On 23 January 2024 it fell back to close at ₹605, just under the level. The next day it closed back above, at ₹618, and within three weeks it had run to about ₹725 (see [Pullback to support](learn-strat-pullback-support.md)).
+
+```series
+title: State Bank of India — an old ceiling that became a floor, 2023 to 2024
+from: 2023-08-15
+to: 2024-02-29
+tf: D
+line: india:SBIN.NS | State Bank of India, daily candles | candles
+level: 614 | Old ceiling ₹614 | 2023-09-01 2024-02-29 | pivot
+mark: 2023-09-18 | stalls
+mark: 2023-10-03 | stalls
+mark: 2023-12-08 | closes above
+mark: 2024-01-23 | one close below | below
+mark: 2024-02-09 | ₹725
+caption: Rallies stalled just under ₹614 in September and October. Once price closed above it in December, the level became the floor in January. One close slipped under it and was reversed the next day: why many traders want a second close, or a buffer, before calling a break failed.
+```
 
 ```pattern
 role-reversal

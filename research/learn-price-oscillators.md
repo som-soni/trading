@@ -70,19 +70,96 @@ Some traders also smooth RSI with a 14-day average to reduce its day-to-day nois
 
 ## 2. MACD — the gap between a fast and a slow average
 
-### 2.1 What it computes
+### 2.1 Two averages and the gap between them
 
-Take a stock whose fast and slow averages have drifted apart:
+Start with two moving averages of one stock. A 12-day EMA follows the price closely. A 26-day EMA follows it more slowly. An EMA (exponential moving average) gives recent days more weight; see [Moving averages](learn-ind-moving-averages.md).
 
-> 12-day EMA 105 − 26-day EMA 100 = MACD 5; MACD 5 − signal line 4 = histogram +1
+When the stock rises, the fast average climbs first and pulls away above the slow one. When the rise slows, the fast average stops pulling away. When the stock falls, the fast average drops back through the slow one.
 
-The histogram is positive. The gap between the averages is wider than its own recent average, so it has been widening.
+**MACD is the size of that gap, drawn as one line.** The name stands for moving average convergence divergence: the two averages diverge (pull apart) and converge (come back together).
 
-The **MACD line** is the 12-day EMA minus the 26-day EMA. When the short average is above the long one, the line is positive: recent prices are above older ones. The **signal line** is a 9-day EMA of the MACD line. The **histogram** is the MACD line minus the signal line.
+> MACD line = 12-day EMA − 26-day EMA
 
-A MACD "buy" is the MACD line crossing above the signal line; a "sell" is crossing below. MACD is in price units, like ATR. A MACD of 5 means something different on a $50 stock and a $500 stock.
+```series
+title: Apple, late 2024 — two averages, and the MACD line as the gap between them
+from: 2024-10-15
+to: 2025-02-28
+line: us:AAPL | Apple, daily candles | candles
+line: us:AAPL@ema12 | 12-day EMA
+line: us:AAPL@ema26 | 26-day EMA
+line: us:AAPL@macd | MACD line (12-day − 26-day) | pane2 zero
+mark: 2024-12-26 | widest gap
+mark: 2025-01-13 | averages cross | below
+caption: The lower pane is the distance between the two averages in the upper pane. It was widest on 26 December, when the 12-day stood $6.29 above the 26-day. It crossed zero on 13 January, the day the 12-day fell below the 26-day.
+```
 
-### 2.2 Lag, and crossings in a falling stock
+Read the MACD line in two ways:
+
+- **Above or below zero.** Above zero, the fast average is above the slow one, so recent prices are higher than older ones. This is a trend reading, the same as a crossing of two averages.
+- **Rising or falling.** A rising line means the gap is widening: the move is gaining speed. A line that falls while still above zero means the rise is losing speed. The stock itself may still be going up.
+
+MACD is in price units, like ATR. A MACD of 5 means something different on a $50 stock and on a $500 stock. To compare stocks, divide it by the price; that version is called PPO (see [Momentum II — how fast the price is changing](learn-ind-momentum-rate.md)).
+
+### 2.2 The signal line and the histogram
+
+The MACD line is jumpy, so it gets an average of its own. The **signal line** is a 9-day EMA of the MACD line. The **histogram** is the gap between the two, drawn as bars.
+
+> Histogram = MACD line − signal line
+
+The histogram answers a narrower question: is the MACD line rising or falling compared with its recent average? Positive bars mean it is above its own average, so it has been rising. Shrinking positive bars mean it is still rising, but more slowly. The histogram crosses zero on the day the MACD line crosses its signal line.
+
+Here are Apple's numbers on four days around its December 2024 top.
+
+| Date | Close | 12-day EMA | 26-day EMA | MACD line | Signal line | Histogram |
+|---|---|---|---|---|---|---|
+| 4 Dec 2024 | $243.01 | 235.56 | 232.14 | 3.42 | 1.76 | +1.66 |
+| 26 Dec | $259.02 | 251.78 | 245.49 | 6.29 | 5.55 | +0.74 |
+| 30 Dec | $252.20 | 252.34 | 246.68 | 5.66 | 5.67 | −0.01 |
+| 13 Jan 2025 | $234.40 | 243.81 | 244.35 | −0.54 | 2.10 | −2.64 |
+
+Each row is two subtractions. Take 26 December. The MACD line is 251.78 − 245.49 = 6.29. The histogram is that minus the signal line: 6.29 − 5.55 = 0.74.
+
+The usual settings are 12, 26 and 9. Gerald Appel, who created MACD in the late 1970s, chose them. They are a convention, not a discovery: faster settings turn sooner and give more false alarms, slower ones the reverse.
+
+### 2.3 Early or reliable — the order MACD turns at a top
+
+The three parts do not turn together. Near a top they usually turn in order: the histogram first, then the MACD line, then the crossing of the signal line, and the zero line last. Each later reading is slower, and less often fooled by a pause.
+
+```series
+title: Apple, late 2024 — the order MACD's readings turned
+from: 2024-10-15
+to: 2025-02-28
+line: us:AAPL | Apple, daily candles | candles
+line: us:AAPL@macdhist | Histogram | pane2 bars zero
+line: us:AAPL@macd | MACD line | pane2
+line: us:AAPL@macdsig | Signal line (9) | pane2
+mark: 2024-12-04 | 1. histogram peaks
+mark: 2024-12-26 | 2. MACD line peaks
+mark: 2024-12-30 | 3. crosses signal | below
+mark: 2025-01-13 | 4. crosses zero | below
+caption: The histogram peaked three weeks before the price did. The MACD line peaked on the top day, and crossed its signal line two sessions later. It crossed zero only after the stock had fallen 9.5%.
+```
+
+| Reading | Date | Close | Against the $259.02 top |
+|---|---|---|---|
+| 1. Histogram peaks | 4 Dec 2024 | $243.01 | The price rose another 6.6% |
+| 2. MACD line peaks | 26 Dec | $259.02 | Known only the next day, when it fell |
+| 3. MACD crosses below its signal line | 30 Dec | $252.20 | −2.6% |
+| 4. MACD crosses below zero | 13 Jan 2025 | $234.40 | −9.5% |
+
+The earliest warning was three weeks early. A trader who sold on it missed the last 6.6% of the rise. The zero line was the latest, and gave back 9.5% from the top. The signal-line crossing, the one most traders use, sits in between.
+
+This time all four were right: by 8 April 2025 the stock was at $172.42. But the histogram shrinks many times during any uptrend, at every pause, and most of those pauses are not tops.
+
+### 2.4 Divergence
+
+Apple's close on 26 December was higher than on 4 December. Its histogram was smaller. The price was still rising, but with less speed behind it.
+
+That disagreement is called a **divergence**. A higher high in price with a lower high in MACD or its histogram is a bearish divergence. A lower low in price with a higher low in MACD is a bullish one.
+
+Treat a divergence as a description, not a forecast. In a strong trend, MACD often makes lower highs for months while the price keeps rising, because each leg is slower than the first burst. A divergence says the move is slowing. It does not say when, or whether, it will turn.
+
+### 2.5 Lag, and crossings in a falling stock
 
 ```series
 title: Meta and its MACD, July 2021 – February 2022
@@ -99,11 +176,41 @@ Here the first sell came quickly. The cost came afterwards: four buy signals in 
 
 MACD is built from averages of averages, so it is late by design. It is also crossed often when a stock moves sideways or falls in steps.
 
-### 2.3 What it adds and what it repeats
+### 2.6 Do crossings predict the next month?
+
+Apple's top was a good case for MACD. Meta's fall was a bad one. To see what happens on average, we looked at every crossing in hundreds of stocks.
+
+> **Method note.** 300 US and 149 Indian stocks chosen as in section 5, June 2015 to October 2026. A crossing is the first day the MACD line closes on the other side of its signal line, or of zero. Returns over the next 21 sessions, from overlapping windows, pooled across stocks. No costs; stocks listed today only.
+
+| Next 21 sessions | US: mean return | US: share of rises | India: mean return | India: share of rises |
+|---|---|---|---|---|
+| All days | +1.2% | 54.2% | +1.5% | 54.7% |
+| Crosses above signal, MACD above zero | +0.9% | 53.8% | +1.5% | 54.0% |
+| Crosses above signal, MACD below zero | +1.5% | 54.9% | +1.7% | 55.4% |
+| Crosses below signal, MACD above zero | +0.7% | 52.8% | +1.3% | 54.0% |
+| Crosses below signal, MACD below zero | +1.7% | 54.8% | +1.6% | 56.1% |
+| MACD crosses above zero | +1.4% | 55.4% | +1.7% | 55.5% |
+| MACD crosses below zero | +1.1% | 54.0% | +0.7% | 51.8% |
+
+Each crossing row holds at least 13,000 cases in the US and 4,700 in India.
+
+What it shows:
+
+- **Crossings are frequent.** The typical stock crossed above its signal line about 10 times a year, and below it as often. That is a signal roughly every two and a half weeks.
+- **No crossing was followed by a clearly different month.** Every row is within about one percentage point of an ordinary day. Several point the "wrong" way: a sell crossing below zero was followed by a slightly better month than average.
+- **The largest gap was a MACD crossing below zero in India**: +0.7% against +1.5% on all days. The same crossing in the US showed almost nothing, so it is not a rule.
+
+### 2.7 What it adds and what it repeats
 
 The MACD line is close to "how far is the price above its recent average". In section 5 its correlation with the distance from the 50-day is 0.94. The histogram is close to "how much did the price change in the last two or three weeks" (0.77 with the 14-day % change).
 
-**MACD repeats the moving averages.** It adds a single number for "the short-term trend is speeding up or slowing down".
+**MACD repeats the moving averages.** What it adds is one picture of whether the short-term trend is speeding up or slowing down. Used that way, as a description, it is a fair chart aid:
+
+- **Above zero and rising:** an uptrend gaining speed.
+- **Above zero and falling:** an uptrend losing speed. This is often a pullback or a base forming, not a top.
+- **Below zero:** the fast average is under the slow one, so the short-term trend is down.
+
+Take entries and exits from price itself: a pivot, a recent high, a stop under a pullback low. A MACD crossing on its own was not a better than average moment to buy or sell.
 
 ## 3. Bollinger Bands — volatility envelopes and the squeeze
 
@@ -208,7 +315,7 @@ caption: Two indicators, one story. In 2024 the two lines had a correlation of 0
 - **Robust: moving-average trend filters reduce the deepest drawdowns** on indices, by keeping you out during long bear markets. They usually do not raise returns after whipsaws and costs. This is shown for the index in [the trend guide](learn-health-trend.md).
 - **Robust: medium-term momentum** (the past 3–12 months' return, ranked across stocks) has predicted the next months' return in many markets and decades (Jegadeesh and Titman, 1993, and many studies since). That is a **cross-sectional** comparison between stocks. It is what an RS rank and 12-1 momentum measure. It is not RSI.
 - **Mixed: rules based on a single indicator.** Brock, Lakonishok and LeBaron (1992) found that simple moving-average and range-breakout rules on the Dow had predictive power in data up to 1986. Sullivan, Timmermann and White (1999) showed that, once you allow for how many rules had been tried, the best rule's results did not hold in the following years. Park and Irwin's survey (2007) found many positive studies, and also widespread problems: testing many rules on the same data, ignoring costs, and choosing rules after the fact.
-- **Folklore: "overbought means sell"** and **"a squeeze means a big move is coming"**. On the stored prices measured here, neither held on average (sections 1.2 and 3.2).
+- **Folklore: "overbought means sell"**, **"a MACD crossing is a buy or sell signal"** and **"a squeeze means a big move is coming"**. On the stored prices measured here, none held on average (sections 1.2, 2.6 and 3.2).
 - **Built in: lag.** Every indicator here uses past bars. Smoothing reduces false signals and adds delay. You cannot have both fewer false signals and less delay from the same data.
 - **Measured here: overlap.** Most momentum indicators are close to the same number (section 5). Adding more of them adds confidence without adding information.
 - **Limits:** the studies here use today's listed stocks, overlapping windows and no costs.
