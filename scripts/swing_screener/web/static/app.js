@@ -148,6 +148,13 @@ const LABELS = {
 const label = (c) => LABELS[c] ?? String(c).replace(/_/g, " ").replace(/^\w/, (x) => x.toUpperCase());
 // columns where the sign is the story: colour them green / red
 const SIGNED_COL = /pnl|return|r_multiple|^r$|cagr|excess|sharpe|xirr|change|^chg|^rs_|pct_vs/i;
+// Every runner charges its own cost (5, 10, 27, 50bps a side), so headline CAGRs are net of different
+// costs. Ingest restates each run at one standard per market (web/ingest.cost_view); this explains it.
+const stdCostTip = (s) => s && s.cagr_std_cost
+  ? `Restated at ${s.std_cost_bps}bps a side, the same for every strategy in this market (spec C-01 charges + C-02 slippage). `
+    + `This run was charged about ${s.cost_bps}bps a side at ${s.turnover} turnover a year; its own CAGR is ${s.cagr}, ${s.cagr_std_cost} at the standard. `
+    + "An estimate from turnover, not a re-run: within about a point of a real re-run at a different cost."
+  : "No restatement: this run prints no turnover or costs, or its costs are not per-side trading costs (shorts, options).";
 
 function toast(msg, kind = "", action = null) {
   const t = el(`<div class="toast ${kind}"><span>${esc(msg)}</span>${action ? `<button class="ghost">${esc(action.label)}</button>` : ""}</div>`);
@@ -4983,11 +4990,12 @@ function perfGlance(d, key) {
       <td>${chipFor(b)}${showWin && b.stage !== "legacy" ? `<div class="muted small" title="a different window from the latest row above: not directly comparable">${esc(b.window_start || "?")} → ${esc(b.window_end || "latest")}</div>` : ""}</td>
       <td class="num">${esc(s.cagr || "")}</td>
       <td class="num ${sign(s.excess_cagr)}"><b>${esc(s.excess_cagr || "")}</b>${stale(b.spec_id)}</td>
+      <td class="num ${sign(s.excess_std_cost)}" title="${esc(stdCostTip(s))}">${esc(s.excess_std_cost || "—")}</td>
       <td class="num">${esc(s.max_drawdown || "")}</td>
       <td class="num">${esc(s.sharpe || "")}</td>
       <td class="muted small">${prettyDate(b.generated_at)}</td></tr>`; };
   const gap = (m, first, stageHtml, text) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
-      <td></td><td>${stageHtml}</td><td colspan="5" class="small">${text}</td></tr>`;
+      <td></td><td>${stageHtml}</td><td colspan="6" class="small">${text}</td></tr>`;
   // the best version in one market: each version's newest run within the pool, ranked by excess CAGR
   const winOf = (b) => `${b.window_start}|${b.window_end}`;
   // A configuration is a version plus any experiment settings: v1.2 with a $100m turnover floor is a
@@ -5059,6 +5067,7 @@ function perfGlance(d, key) {
     <table class="dtab click"><thead><tr><th>Market</th><th>Version</th><th>Stage</th>
       <th class="num">CAGR</th>
       <th class="num" title="The strategy's CAGR minus its benchmark's. Positive means it beat buying and holding the index.">Excess CAGR</th>
+      <th class="num" title="Excess CAGR restated at one standard cost per side for every strategy in the market, so strategies compare like for like. Hover a cell for the run's own cost and turnover.">Excess at std cost</th>
       <th class="num">Max DD</th><th class="num">Sharpe</th><th>Run</th></tr></thead>
     <tbody>${rows}</tbody></table>
     <p class="muted small"><b>Out-of-sample</b> is the number to believe: years ${esc(ver.start || "")} onward, which the rules were never tuned on.
@@ -5457,7 +5466,7 @@ function strategyBacktests(host, d, key) {
         ? `<div class="small"><span class="tag neutral" title="${esc("Changed the strategy's settings, so the Measured outcome panel leaves it out:\n" + (b.overrides || []).join("\n"))}">experiment</span> <span class="muted">${esc((b.overrides || []).join(" · "))}</span></div>`
         : "";
       return `<td title="${esc(tip)}">${tabChip(b)}${prettyDate(rp.start)} · ${esc(rp.exit)}${opts}${exp}</td>`; };
-    return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th><th></th></tr></thead><tbody>${
+    return shown.length ? `<table class="dtab click"><thead><tr><th>Market</th><th title="Start date and exit policy; options below. Hover for the run's full name.">Run</th><th>Version</th><th class="num">CAGR</th><th class="num">Excess CAGR</th><th class="num" title="Excess CAGR restated at one standard cost per side for every strategy in the market. Hover a cell for the run's own cost and turnover.">At std cost</th><th class="num">Max DD</th><th class="num">Sharpe</th><th>Generated</th><th></th></tr></thead><tbody>${
       shown.map((b) => { const s = b.summary || {};
         const v = vers.find((x) => x.spec_id === b.spec_id);
         const vcell = b.spec_id
@@ -5468,11 +5477,12 @@ function strategyBacktests(host, d, key) {
         // the candidates stopped.
         if (!s.cagr) {
           return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td>${runCell(b)}${vcell}
-            <td class="num muted" colspan="4">no trades — open for the funnel</td>
+            <td class="num muted" colspan="5">no trades — open for the funnel</td>
             <td class="muted">${prettyDate(b.generated_at)}</td><td class="bt-arch"><button class="ghost sm" data-arch-id="${b.id}" data-arch-to="${b.archived ? "0" : "1"}" title="${b.archived ? "Restore this run to the list" : "Archive: keep the run, hide it from this list"}">${b.archived ? "Restore" : "Archive"}</button></td></tr>`;
         }
         return `<tr data-href="#/reports/${b.id}"><td>${b.market.toUpperCase()}</td>${runCell(b)}${vcell}<td class="num">${esc(pv(s.cagr))}</td>
-          <td class="num ${/^-/.test(s.excess_cagr || "") ? "neg" : s.excess_cagr ? "pos" : ""}">${esc(pv(s.excess_cagr))}</td><td class="num">${esc(pv(s.max_drawdown))}</td>
+          <td class="num ${/^-/.test(s.excess_cagr || "") ? "neg" : s.excess_cagr ? "pos" : ""}">${esc(pv(s.excess_cagr))}</td>
+          <td class="num ${/^-/.test(s.excess_std_cost || "") ? "neg" : s.excess_std_cost ? "pos" : ""}" title="${esc(stdCostTip(s))}">${esc(s.excess_std_cost || "—")}</td><td class="num">${esc(pv(s.max_drawdown))}</td>
           <td class="num">${esc(pv(s.sharpe))}</td><td class="muted">${prettyDate(b.generated_at)}</td><td class="bt-arch"><button class="ghost sm" data-arch-id="${b.id}" data-arch-to="${b.archived ? "0" : "1"}" title="${b.archived ? "Restore this run to the list" : "Archive: keep the run, hide it from this list"}">${b.archived ? "Restore" : "Archive"}</button></td></tr>`; }).join("")}</tbody></table>
       <p class="muted small">A backtest runs the whole strategy — screen, setups, entry, stop, exits, costs and position sizing — day by day. The command is under Rules › Commands.
       Each run is stamped with the spec id of the rules that produced it, so a result always maps to a version.</p>`
@@ -5737,12 +5747,12 @@ async function reportsPage(alive) {
     const rows = ofKind.filter((r) => st.strategy === "all" || r.strategy === st.strategy);
     const isBt = st.kind === "backtest";
     const cols = ["id", "market", "strategy", ...(isBt ? ["from", "exit", "options", "version", "run"] : ["run"]),
-      ...(isBt ? ["cagr %", "excess cagr %", "max dd %", "sharpe"] : ["title"]), "generated"];
+      ...(isBt ? ["cagr %", "excess cagr %", "excess at std cost %", "cost bps", "turnover", "max dd %", "sharpe"] : ["title"]), "generated"];
     const data = rows.map((r) => {
       const s = r.summary || {}, rp = isBt ? runParts(r.run) : null;
       return [r.id, r.market === "all" ? "—" : r.market.toUpperCase(), r.strategy,
         ...(isBt ? (rp ? [prettyDate(rp.start), rp.exit, rp.options.join(" · "), rp.version] : ["", "", "", ""]) : []), r.run,
-        ...(isBt ? [pct(s.cagr), pct(s.excess_cagr), pct(s.max_drawdown), pct(s.sharpe)] : [r.title]), r.generated_at || ""];
+        ...(isBt ? [pct(s.cagr), pct(s.excess_cagr), pct(s.excess_std_cost), pct(s.cost_bps), pct(s.turnover), pct(s.max_drawdown), pct(s.sharpe)] : [r.title]), r.generated_at || ""];
     });
     const best = isBt ? rows.reduce((b, r) => (pct(r.summary?.excess_cagr) > pct(b?.summary?.excess_cagr ?? "-1e9") ? r : b), null) : null;
     main.innerHTML = `<div class="page-head"><h1>${KIND_LABEL[st.kind]}</h1><span class="muted">${st.market === "all" ? "Both markets" : st.market.toUpperCase()}${st.strategy === "all" ? "" : " · " + esc(st.strategy)} · ${rows.length} report${rows.length === 1 ? "" : "s"}</span>
@@ -6356,8 +6366,8 @@ async function reportPage(alive, id, tab) {
     ...(r.tables.length ? [["tables", `Data (${r.tables.length})`]] : [])];
   tab = tabs.some((t) => t[0] === tab) ? tab : "report";
   const s = r.summary || {};
-  const tiles = [["CAGR", s.cagr], ["Excess CAGR", s.excess_cagr], ["Max drawdown", s.max_drawdown], ["Sharpe", s.sharpe], ["Total return", s.total_return]]
-    .filter(([, v]) => v).map(([k, v]) => `<div class="tile"><span>${k}</span><b class="${/^-/.test(v) ? "neg" : k === "Max drawdown" ? "" : "pos"}">${esc(v)}</b></div>`).join("");
+  const tiles = [["CAGR", s.cagr], ["Excess CAGR", s.excess_cagr], [`Excess at ${s.std_cost_bps}bps`, s.excess_std_cost], ["Max drawdown", s.max_drawdown], ["Sharpe", s.sharpe], ["Total return", s.total_return]]
+    .filter(([, v]) => v).map(([k, v]) => `<div class="tile"${k.startsWith("Excess at") ? ` title="${esc(stdCostTip(s))}"` : ""}><span>${k}</span><b class="${/^-/.test(v) ? "neg" : k === "Max drawdown" ? "" : "pos"}">${esc(v)}</b></div>`).join("");
   $view.innerHTML = `<div class="crumbs"><a href="#/reports">Reports</a> / <span>${KIND_LABEL[r.kind] || r.kind}</span> / <span>${esc(r.market === "all" ? "" : r.market.toUpperCase() + " · ")}<a href="#/strategies/${encodeURIComponent(r.strategy)}" title="About this strategy">${esc(EDGE?.strategies?.[r.strategy]?.name || r.strategy)}</a></span>
       ${r.market !== "all" ? edgeChip(r.strategy, r.market) : ""}</div>
     <div class="page-head"><h1>${esc(r.run)}</h1>${tiles ? `<div class="tiles">${tiles}</div>` : ""}</div>

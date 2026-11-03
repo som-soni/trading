@@ -136,6 +136,93 @@ def _headline(markdown: str) -> dict:
     return out
 
 
+# Runs whose "Costs paid" is not a per-side trading cost on stock notional -- short books add borrow,
+# the options book charges index points per leg -- so rescaling it to a per-side standard means nothing.
+NOT_RESTATED = {"parabolic_short", "stage4_shorts", "fno_income"}
+
+
+def standard_cost_bps(market: str) -> float:
+    """One per-side cost for every strategy in a market: the spec's charges plus liquid-stock slippage
+    (C-01 + C-02, backtesting/spec.py). Each runner charges its own assumption -- 5bps, 10bps, 27bps,
+    50bps a side -- so their CAGRs are net of different costs and do not compare until restated."""
+    from ..backtesting import spec
+    return spec.COST_BPS[market] + spec.SLIPPAGE_BPS[market]
+
+
+def cost_view(markdown: str, strategy: str, market: str, equity: pd.Series | None, headline: dict) -> dict:
+    """The run's CAGR and excess CAGR restated at `standard_cost_bps`, from its own turnover and costs.
+
+    Costs paid per year as a share of average equity is the drag the run carried; at the standard it
+    would carry 2 x turnover x standard (turnover counts the buy side, so a round trip is two sides).
+    The restatement swaps one drag for the other in each year's growth. An estimate, not a re-run:
+    it holds the trades fixed, and a trade that only paid off at the lower cost is still counted.
+    Empty when the report prints no turnover or costs (index studies, most non-portfolio runs).
+    """
+    t = re.search(r"Turnover ([\d.]+)×", markdown)
+    c = re.search(r"Costs paid [^\d-]*([\d,]+(?:\.\d+)?)", markdown)
+    cagr = _pct(headline.get("cagr"))
+    if (strategy in NOT_RESTATED or market not in ("india", "us") or not (t and c) or cagr is None
+            or equity is None or len(equity) < 2):
+        return {}
+    years = (equity.index[-1] - equity.index[0]).days / 365.25
+    turnover, paid = float(t.group(1)), float(c.group(1).replace(",", ""))
+    if years <= 0 or turnover <= 0 or equity.mean() <= 0:
+        return {}
+    drag_now = paid / (years * float(equity.mean()))
+    std = standard_cost_bps(market)
+    drag_std = 2 * turnover * std / 1e4
+    restated = ((1 + cagr / 100) / (1 - drag_now) * (1 - drag_std) - 1) * 100
+    out = {"turnover": f"{turnover:g}×", "cost_bps": f"{drag_now / (2 * turnover) * 1e4:.0f}",
+           "std_cost_bps": f"{std:g}", "cagr_std_cost": f"{restated:.2f}%"}
+    excess = _pct(headline.get("excess_cagr"))
+    if excess is not None:
+        out["excess_std_cost"] = f"{restated - (cagr - excess):.2f}%"
+    return out
+
+
+def _pct(x) -> float | None:
+    try:
+        return float(str(x).replace("%", "").replace("+", "").replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _equity(cols: list, rows: list) -> pd.Series | None:
+    """The equity column of a stored equity table, dated."""
+    if "equity" not in cols or not rows:
+        return None
+    j = cols.index("equity")
+    s = pd.Series([r[j] for r in rows], index=pd.to_datetime([r[0] for r in rows]), dtype=float).dropna()
+    return s if len(s) else None
+
+
+def _summary(markdown: str, strategy: str, market: str, kind: str, files: list[Path]) -> dict:
+    head = _headline(markdown)
+    if kind == "backtest":
+        eq = next((f for f in files if f.name == "equity.csv"), None)
+        payload = _csv_payload(eq) if eq else None
+        head.update(cost_view(markdown, strategy, market, _equity(*payload) if payload else None, head))
+    return head
+
+
+def restate_costs() -> int:
+    """Recompute the cost view of every stored backtest in place, from its markdown and equity table --
+    for runs loaded before the view existed, without re-reading their files."""
+    n = 0
+    with get_connection().cursor() as cur:
+        cur.execute("""SELECT r.id, r.strategy, r.market, r.markdown, r.summary, t.columns, t.rows
+                       FROM report_runs r LEFT JOIN report_tables t ON t.run_id = r.id AND t.name = 'equity'
+                       WHERE r.kind = 'backtest'""")
+        for rid, strategy, market, md, summary, cols, rows in cur.fetchall():
+            head = {k: v for k, v in (summary or {}).items()
+                    if k not in ("turnover", "cost_bps", "std_cost_bps", "cagr_std_cost", "excess_std_cost")}
+            head.update(cost_view(md, strategy, market, _equity(cols, rows) if cols else None, head))
+            if head != (summary or {}):
+                cur.execute("UPDATE report_runs SET summary=%s WHERE id=%s", (json.dumps(head), rid))
+                n += 1
+    return n
+
+
 def _csv_payload(path: Path) -> tuple[list, list] | None:
     try:
         df = pd.read_csv(path)
@@ -198,7 +285,7 @@ def _store(cur, source: str, meta: tuple, markdown: str, files: list[Path]) -> N
              overrides=EXCLUDED.overrides, loaded_at=now()
            RETURNING id""",
         (source, kind, market, strategy, run, _title(markdown, run), markdown,
-         json.dumps(_headline(markdown)), sig, files[0].stat().st_mtime, spec_id_of(run), stage_of(run)["stage"],
+         json.dumps(_summary(markdown, strategy, market, kind, files)), sig, files[0].stat().st_mtime, spec_id_of(run), stage_of(run)["stage"],
          _overrides(files[0].parent)),
     )
     run_id = cur.fetchone()[0]
@@ -257,7 +344,12 @@ def _count(cur) -> int:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--force", action="store_true", help="reload every run")
+    ap.add_argument("--restate-costs", action="store_true",
+                    help="recompute every backtest's standard-cost CAGR in place, then stop")
     args = ap.parse_args()
+    if args.restate_costs:
+        print({"restated": restate_costs()})
+        return
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     from .. import runlog
     with runlog.track("ingest", label="Load reports into the web viewer") as st:
