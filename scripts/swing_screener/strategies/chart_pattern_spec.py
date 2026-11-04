@@ -87,6 +87,14 @@ TRADE_FWDG = 1            # falling wedge
 TRADE_DBOT = 1            # double bottom
 TRADE_TBOT = 1            # triple bottom
 TRADE_IHS = 1             # inverse head and shoulders
+# ...and one per remaining pattern (1.21), so a variant can trade one pattern alone (ATRI has none: it is
+# the one the per-pattern tables found carrying the strategy, so "only ATRI" switches off the rest)
+TRADE_CUP = 1             # cup with handle
+TRADE_HTF = 1             # high tight flag
+TRADE_FLAG = 1            # flag / pennant
+TRADE_SYMM = 1            # symmetrical triangle
+TRADE_RECT = 1            # rectangle
+TRADE_FBASE = 1           # flat base
 CUPNH_NO_HANDLE = 1       # CH-13, beyond the spec: a handle-less cup may not have a dip below its rim (1 = on)
 CUP_UNDER_RIM = 1         # CH-12, beyond the spec: no high between a cup's lips above its rim (1 = on)
 HS_ORIGIN = 1             # HS-09, beyond the spec: the left shoulder belongs to the trend being reversed (1 = on)
@@ -244,8 +252,15 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.20"
+    version = "1.21"
     changelog = (
+        ("1.21", "2026-11-04",
+         "Six more research switches, all ON, so a default run trades exactly as 1.20: TRADE_CUP, "
+         "TRADE_HTF, TRADE_FLAG, TRADE_SYMM, TRADE_RECT and TRADE_FBASE. Every pattern but the ascending "
+         "triangle now has one, so an optimise variant can trade ATRI alone: in the 1.20 optimise runs it "
+         "was 249 of 504 US trades and +129R of +184R (profit factor 1.68), and 82 of 253 India trades, "
+         "+43R of +81R (1.73). The 1.20 drops of the falling wedge and the reversal family moved excess "
+         "return by under one point in either market, inside the noise."),
         ("1.20", "2026-11-03",
          "Four research switches, all ON, so a default run trades exactly as 1.19: TRADE_FWDG, "
          "TRADE_DBOT, TRADE_TBOT and TRADE_IHS (0 = that pattern is never bought, as TRADE_CUPNH does "
@@ -652,9 +667,11 @@ class ChartPatternSpecStrategy(Strategy):
               "reporting a breakout for {HORIZON} bars; from the next bar on it fails here, so a pullback "
               "into an old pivot is never bought.\n"
               "- **CUPNH:** counts only while TRADE_CUPNH is 1 (now {TRADE_CUPNH}).\n"
-              "- **Research switches:** FWDG, DBOT, TBOT and IHS count only while TRADE_FWDG "
-              "({TRADE_FWDG}), TRADE_DBOT ({TRADE_DBOT}), TRADE_TBOT ({TRADE_TBOT}) and TRADE_IHS "
-              "({TRADE_IHS}) are 1.\n"
+              "- **Research switches:** every pattern but ATRI counts only while its switch is 1: "
+              "TRADE_CUP ({TRADE_CUP}), TRADE_HTF ({TRADE_HTF}), TRADE_IHS ({TRADE_IHS}), TRADE_TBOT "
+              "({TRADE_TBOT}), TRADE_FLAG ({TRADE_FLAG}), TRADE_DBOT ({TRADE_DBOT}), TRADE_SYMM "
+              "({TRADE_SYMM}), TRADE_RECT ({TRADE_RECT}), TRADE_FWDG ({TRADE_FWDG}), TRADE_FBASE "
+              "({TRADE_FBASE}).\n"
               "- **Which pattern:** when several pass, the first in the priority order CUP, HTF, IHS, CUPNH, "
               "TBOT, ATRI, FLAG, DBOT, SYMM, RECT, FWDG, FBASE — rarest on random walks first.\n"
               "- **When none passes:** the note names the first failed rule as CODE:RULE (e.g. CUP:CH-05), "
@@ -1189,6 +1206,18 @@ class ChartPatternSpecStrategy(Strategy):
          "Research switch: 1 trades TBOT; 0 never buys it (now {TRADE_TBOT})."),
         ("Inverse head and shoulders switch", "TRADE_IHS",
          "Research switch: 1 trades IHS; 0 never buys it (now {TRADE_IHS})."),
+        ("Cup with handle switch", "TRADE_CUP",
+         "Research switch: 1 trades CUP; 0 never buys it (now {TRADE_CUP})."),
+        ("High tight flag switch", "TRADE_HTF",
+         "Research switch: 1 trades HTF; 0 never buys it (now {TRADE_HTF})."),
+        ("Flag switch", "TRADE_FLAG",
+         "Research switch: 1 trades FLAG; 0 never buys it (now {TRADE_FLAG})."),
+        ("Symmetrical triangle switch", "TRADE_SYMM",
+         "Research switch: 1 trades SYMM; 0 never buys it (now {TRADE_SYMM})."),
+        ("Rectangle switch", "TRADE_RECT",
+         "Research switch: 1 trades RECT; 0 never buys it (now {TRADE_RECT})."),
+        ("Flat base switch", "TRADE_FBASE",
+         "Research switch: 1 trades FBASE; 0 never buys it (now {TRADE_FBASE})."),
         ("Rim alignment", "RIM_IDEAL_PCT",
          "A cup's rims are graded, not judged: the right rim within {RIM_IDEAL_PCT}% of the left is "
          "ideal (+{RIM_IDEAL_BONUS} setup quality), within {RIM_OK_PCT}% acceptable (no change), beyond "
@@ -1912,8 +1941,9 @@ def _priority(code: str) -> int:
 
 def _traded(code: str) -> bool:
     """False for a pattern its switch turns off (read per call, so --const reaches it)."""
-    switch = {CUPNH: TRADE_CUPNH, FWDG: TRADE_FWDG, DBOT: TRADE_DBOT,
-              TBOT: TRADE_TBOT, IHS: TRADE_IHS}.get(code, 1)
+    switch = {CUPNH: TRADE_CUPNH, FWDG: TRADE_FWDG, DBOT: TRADE_DBOT, TBOT: TRADE_TBOT, IHS: TRADE_IHS,
+              CUP: TRADE_CUP, HTF: TRADE_HTF, FLAG: TRADE_FLAG, SYMM: TRADE_SYMM, RECT: TRADE_RECT,
+              FBASE: TRADE_FBASE}.get(code, 1)
     return bool(switch)
 
 

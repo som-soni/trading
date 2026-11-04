@@ -34,7 +34,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "f15d06e4",
+    "fingerprint": "11415136",
     "params": {
       "ATR_MULT": 1.5,
       "BOUNDARY_LIFE": 1,
@@ -128,10 +128,16 @@
       "RIM_OK_PCT": 8.0,
       "TOL_ATR_MULT": 0.75,
       "TOL_PCT": 3.0,
+      "TRADE_CUP": 1,
       "TRADE_CUPNH": 1,
       "TRADE_DBOT": 1,
+      "TRADE_FBASE": 1,
+      "TRADE_FLAG": 1,
       "TRADE_FWDG": 1,
+      "TRADE_HTF": 1,
       "TRADE_IHS": 1,
+      "TRADE_RECT": 1,
+      "TRADE_SYMM": 1,
       "TRADE_TBOT": 1,
       "TRIPLE_MAX_DRIFT": 1.5,
       "TR_MIN_TOUCHES": 4,
@@ -171,7 +177,7 @@
         "W3"
       ]
     },
-    "version": "1.20"
+    "version": "1.21"
   },
   "darvas": {
     "family": "darvas",
