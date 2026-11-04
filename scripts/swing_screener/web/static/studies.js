@@ -608,6 +608,35 @@ const Studies = (() => {
       plots: [{ k: "basis", t: "Basis", c: "#ff9800" }, { k: "upper", t: "Upper", c: "#2962ff" }, { k: "lower", t: "Lower", c: "#2962ff" }],
       calc: (b, p) => { const m = sma(b.C, p.length), a = rma(trueRange(b.H, b.L, b.C), p.atrLength);
         return { basis: m, upper: zip((x, r) => x + p.mult * r, m, a), lower: zip((x, r) => x - p.mult * r, m, a) }; } },
+    // Anchored VWAP: the volume-weighted average price of every share traded since one event -- what the
+    // average buyer since then paid. Above it, those buyers are in profit and have less reason to sell. The
+    // anchor is a bar of the loaded history: its highest high (the all-time high, as far back as it reaches),
+    // the 52-week high or low, the largest gap-up of the last year (usually a results day), or N bars ago.
+    avwap: { name: "Anchored VWAP", short: "AVWAP", cat: "Volume", overlay: true, needsVolume: true,
+      params: { anchor: { type: "select", def: "All-time high",
+                          options: ["All-time high", "52-week high", "52-week low", "Largest gap-up (1 year)", "Bars ago"] },
+                barsAgo: 60 },
+      label: (p) => `AVWAP ${p.anchor === "Bars ago" ? `${p.barsAgo} bars ago` : p.anchor}`,
+      plots: [{ k: "avwap", t: "Anchored VWAP", c: "#ff6d00" }],
+      calc: (b, p) => {
+        const n = b.C.length, out = new Array(n).fill(null);
+        if (!n) return { avwap: out };
+        const year = Math.max(0, n - 252);
+        const argmax = (a, from) => { let k = from; for (let i = from; i < n; i++) if (a[i] > a[k]) k = i; return k; };
+        const argmin = (a, from) => { let k = from; for (let i = from; i < n; i++) if (a[i] < a[k]) k = i; return k; };
+        let at = 0;
+        if (p.anchor === "All-time high") at = argmax(b.H, 0);
+        else if (p.anchor === "52-week high") at = argmax(b.H, year);
+        else if (p.anchor === "52-week low") at = argmin(b.L, year);
+        else if (p.anchor === "Largest gap-up (1 year)") {
+          let best = -Infinity;
+          for (let i = Math.max(1, year); i < n; i++) { const g = b.O[i] / b.C[i - 1] - 1; if (g > best) { best = g; at = i; } }
+        } else at = Math.max(0, n - 1 - Math.round(p.barsAgo || 0));
+        const tp = source(b, "hlc3");
+        let pv = 0, vv = 0;
+        for (let i = at; i < n; i++) { pv += tp[i] * (b.V[i] || 0); vv += b.V[i] || 0; out[i] = vv ? pv / vv : null; }
+        return { avwap: out };
+      } },
     vwap: { name: "Rolling VWAP", short: "VWAP", cat: "Volume", overlay: true, needsVolume: true, params: { length: 20 }, plots: [{ k: "vwap", c: "#e040fb" }],
       calc: (b, p) => { const tp = source(b, "hlc3"); return { vwap: zip((x, y) => (y ? x / y : null), sum(zip((t, v) => t * v, tp, b.V), p.length), sum(b.V, p.length)) }; } },
     sar: { name: "Parabolic SAR", short: "SAR", cat: "Trend", overlay: true, params: { start: 0.02, increment: 0.02, maximum: 0.2 }, plots: [{ k: "sar", c: "#2962ff", s: "dots" }],
