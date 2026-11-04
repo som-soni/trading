@@ -153,9 +153,13 @@ PP_PIVOT_FLAG_HIGH = 1
 FLAT_MIN_DAYS = 20          # about four weeks …
 FLAT_MAX_DAYS = 35          # … to seven
 FLAT_MAX_DEPTH_PCT = 15.0   # base high to base low, at most
-FLAT_PIVOT_DAYS = 10        # the sessions before the breakout: their low is the stop's reference, and
-                            # their volume must pass VCP-10's dry-up test ("every correct pivot point
-                            # will develop with a contraction in volume")
+FLAT_PIVOT_DAYS = 10        # the sessions before the breakout: their volume must pass VCP-10's dry-up
+                            # test ("every correct pivot point will develop with a contraction in volume")
+# 1.47: the stop goes under the low of the last FLAT_STOP_DAYS sessions before the breakout -- the tight
+# pivot area -- not all FLAT_PIVOT_DAYS. Ten sessions reached back into the base's last pullback: NTPC's
+# 3 Sep 2007 breakout (pivot 147.17) took its stop under the 22 Aug low (130.08), 16.2% under the buy,
+# where the tight week before it (136-141) puts it 12.3% under (8.1% at the pivot).
+FLAT_STOP_DAYS = 5
 
 # PP-06 (1.27): the flag's tight area must show VCP-10's volume dry-up. Minervini's third power-play
 # condition -- "within the base (usually just days before a breakout), volume will contract
@@ -1010,10 +1014,15 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.46"
-    # 1.46 adds post-scan research switches only (market filter, sizing, exits), so 1.45's signal rows carry.
-    signal_version = "1.45"
+    version = "1.47"
+    # signal_version is not pinned: the turnover floor is part of the screen every scanned session passes.
     changelog = (
+        ("1.47", "2026-11-04",
+         "The flat base (S6) takes its stop under the low of the last FLAT_STOP_DAYS sessions before the "
+         "breakout, the tight pivot area, instead of all FLAT_PIVOT_DAYS (which still judge the volume dry-up). "
+         "Ten sessions reached back into the base's last pullback: NTPC's 3 Sep 2007 breakout set its stop "
+         "16.2% under the buy, under a low from twelve days before; the tight week before the breakout puts it "
+         "12.3% under. Changes evaluate()'s flat_low, so cached signals are rescanned."),
         ("1.46", "2026-11-04",
          "Three research switches, all off, so no rule changed: a run with them at 0 trades exactly as 1.45. "
          "From Minervini's bear-market webinar (research/creator-mark-minervini.md): MKT_PILOT makes the market "
@@ -1909,7 +1918,8 @@ class MinerviniSpecStrategy(Strategy):
               "- **Trigger:** yesterday's close at or below the base high, today's close above it on "
               "at least {VOL_MULT} times average volume, at least {UPPER_HALF} of the way up the day's "
               "range, and no more than {BUY_RANGE_PCT}% above the high.\n\n"
-              "The stop goes under the low of those {FLAT_PIVOT_DAYS} sessions; the objective is the "
+              "The stop goes under the low of the last {FLAT_STOP_DAYS} of those sessions, the tight "
+              "pivot area; the objective is the "
               "base's depth added to the price paid. A base that is also a complete VCP is bought as "
               "S1 instead.",
     }
@@ -2037,7 +2047,7 @@ class MinerviniSpecStrategy(Strategy):
         "Power play (MV-05). Bought at the next session's open. Skipped if that open is more than "
         "{BUY_RANGE_PCT}% above the flag's pivot, or at or below the flag's tight low.",
         "Flat base (S6). Bought at the next session's open. Skipped if that open is more than "
-        "{BUY_RANGE_PCT}% above the base high, or at or below the low of the {FLAT_PIVOT_DAYS} "
+        "{BUY_RANGE_PCT}% above the base high, or at or below the low of the {FLAT_STOP_DAYS} "
         "sessions before the breakout.",
         "Up to {MAX_ENTRIES_PER_BASE} entries per base (EN-04), the failure reset. Once a base, or a "
         "power play's flag, has been bought that many times, it is never bought again.\n\n"
@@ -2277,7 +2287,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Flat base, length max", "FLAT_MAX_DAYS", "S6: longest flat base, in sessions."),
         ("Flat base, depth", "FLAT_MAX_DEPTH_PCT", "S6: deepest a flat base may be, high to low."),
         ("Flat base, pivot area", "FLAT_PIVOT_DAYS", "S6: sessions before the breakout whose volume must dry "
-                                                   "up and whose low sets the stop."),
+                                                   "up."),
+        ("Flat base, stop area", "FLAT_STOP_DAYS", "S6: sessions before the breakout whose low sets the stop."),
         ("Young listings", "YOUNG_LISTING", "1 = a stock listed under a year is judged on its history so far "
                                             "(averages that do not exist yet are waived); 0 = it waits a year (1.27)."),
         ("Young listing, first session", "YOUNG_MIN_BARS", "Sessions listed before a young listing is judged."),
@@ -2560,7 +2571,7 @@ class MinerviniSpecStrategy(Strategy):
             area = d.iloc[-1 - FLAT_PIVOT_DAYS:-1]
             dry, quiet = vcp_spec._dryup(d.iloc[:-1], len(d) - 1 - FLAT_PIVOT_DAYS, area["volume"],
                                          DRYUP_QUIET_RATIO)
-            e.update(flat_pivot=fh, flat_low=float(area["low"].min()),
+            e.update(flat_pivot=fh, flat_low=float(d["low"].iloc[-1 - FLAT_STOP_DAYS:-1].min()),
                      flat_depth_pct=float(prev["base_depth_pct"]), flat_dryup=float(dry), flat_quiet_days=int(quiet),
                      flat_base_date=str(prev["bh_date"].date()))
             flat = bool(prev_close <= fh < close and vol_ratio >= VOL_MULT and upper >= UPPER_HALF

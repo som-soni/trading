@@ -505,7 +505,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "961900a3",
+    "fingerprint": "10087817",
     "params": {
       "BASE_COUNT_MIN_DAYS": 25,
       "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
@@ -537,6 +537,7 @@
       "FLAT_MAX_DEPTH_PCT": 15.0,
       "FLAT_MIN_DAYS": 20,
       "FLAT_PIVOT_DAYS": 10,
+      "FLAT_STOP_DAYS": 5,
       "FUND_EPS_GROWTH_MIN_PCT": 20.0,
       "FUND_MARGIN_SLACK_PP": 1.0,
       "FUND_SALES_GROWTH_MIN_PCT": 15.0,
@@ -724,7 +725,7 @@
         "W5"
       ]
     },
-    "version": "1.46"
+    "version": "1.47"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",
