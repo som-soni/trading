@@ -554,10 +554,18 @@ function chartTheme() {
   };
 }
 let keepView = null;
-// how many setups each strategy's layer found on a stock, remembered for this visit as each layer reports in,
-// so the setups panel's strategy picker can show a count beside every strategy already scanned. Keyed
-// market:symbol; never fetched for -- a count appears only once that strategy's scan has run.
-const SETUP_COUNTS = {};
+// how many setups each strategy's layer found on a stock, remembered (in this browser, across reloads) as each
+// layer reports in, so the setups panel's strategy picker can show a count beside every strategy already
+// scanned. Keyed market:symbol, each count stamped with the chart's last bar; never fetched for -- a count
+// appears only once that strategy's scan has run. The most recently scanned SETUP_COUNTS_KEEP stocks are kept.
+const SETUP_COUNTS = store.get("setupCounts", {}), SETUP_COUNTS_KEEP = 300;
+function noteSetupCount(key, strategy, count) {
+  const e = { ...(SETUP_COUNTS[key] || {}), [strategy]: count };
+  delete SETUP_COUNTS[key]; SETUP_COUNTS[key] = e;   // re-inserted: key order is recency
+  const keys = Object.keys(SETUP_COUNTS);
+  keys.slice(0, Math.max(0, keys.length - SETUP_COUNTS_KEEP)).forEach((k) => delete SETUP_COUNTS[k]);
+  store.set("setupCounts", SETUP_COUNTS);
+}
 const ALL_BARS = 100000;  // i.e. everything in the database: the chart shows the full stored history
 // strategy keys for the "Screener levels" indicator's setting (fetched once; the page still works without it)
 // Fetched once and kept as a promise: a setups layer is NAMED for its strategy, and the chart can
@@ -1094,7 +1102,8 @@ async function chartPage(alive, market, symbol, tf) {
     onSetups: (feed) => {
       setupFeed = feed;
       const strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
-      if (strat) (SETUP_COUNTS[`${market}:${symbol}`] ??= {})[strat] = { n: feed.list.length, trade: feed.list.filter((s) => setupKind(s) === "trade").length };
+      if (strat) noteSetupCount(`${market}:${symbol}`, strat,
+        { n: feed.list.length, trade: feed.list.filter((s) => setupKind(s) === "trade").length, at: pxQuote()?.date || null });
       if (prefs.tab === "setups") renderSide();
     },
     onPatterns: (feed) => { patternFeed = feed; if (prefs.tab === "patterns") renderSide(); },
@@ -1675,14 +1684,14 @@ async function chartPage(alive, market, symbol, tf) {
   /** The strategy picker at the top of the Trade setups panel: every strategy with a setups layer, one at a
    *  time as the Trade setups button's picker does. A dot marks a strategy whose latest screening run has
    *  the stock today (filled: on trigger / would trade; hollow: on watch); a count appears once that
-   *  strategy's scan has run this visit -- each scan takes seconds, so only the picked one runs. */
+   *  strategy's scan has run (remembered across reloads) -- each scan takes seconds, so only the picked one runs. */
   function setupPickerHtml() {
     const cur = Studies.activeSetup(), seen = SETUP_COUNTS[`${market}:${symbol}`] || {};
     const today = Object.fromEntries(todaySetups.map((x) => [x.strategy, x]));
     return `<div class="sp-strats">${Studies.setupLayers().map((l) => {
       const t = today[l.strategy], c = seen[l.strategy];
       const tip = [t ? `Today: ${t.tradeable ? (/TRIGGER/i.test(t.decision || "") ? "on trigger" : "would trade") : "on watch"} (screened ${prettyDate(t.as_of)})` : "",
-        c ? `${c.n} setup${c.n === 1 ? "" : "s"} on this chart, ${c.trade} would trade` : "",
+        c ? `${c.n} setup${c.n === 1 ? "" : "s"} on this chart, ${c.trade} would trade${c.at ? ` (counted on bars to ${prettyDate(c.at)})` : ""}` : "",
         l.type === cur ? "Click to take it off the chart" : "Click to draw its setups"].filter(Boolean).join("\n");
       return `<a class="sp-strat${l.type === cur ? " on" : ""}" data-layer="${l.type}" title="${esc(tip)}">${t ? `<i class="${t.tradeable ? "trade" : ""}"></i>` : ""}${esc(l.name)}${c ? ` <span>${c.n}</span>` : ""}</a>`;
     }).join("")}</div>`;
