@@ -1874,6 +1874,9 @@ def main(argv: list[str] | None = None) -> dict | None:
                              "Repeatable. Changes the spec fingerprint, so the variant gets its own "
                              "signal cache and run directory and cannot be confused with the "
                              "shipped rules.")
+    parser.add_argument("--pp", action="append", default=None, metavar="KEY=VALUE",
+                        help="override a PowerPlayParams field for this run, e.g. --pp tight_pct=10 -- the "
+                             "power-play twin of --vcp, with the same fingerprint contract.")
     parser.add_argument("--rank-by", default="setup", choices=list(RANK_MODES) + ["rs"],
                         help="how to rank signals competing for a slot. 'setup' "
                              "(default) keeps the strategy's own score; 'momentum' "
@@ -1911,6 +1914,26 @@ def main(argv: list[str] | None = None) -> dict | None:
             kw[k] = type(cur)(float(v)) if isinstance(cur, (int, float)) else v
         mod.VCP = _dc.replace(mod.VCP, **kw)
         logger.info("VCP override %s -> spec %s", kw, get_strategy(args.strategy).spec_id())
+    if args.pp:
+        # --vcp's twin for the power play's own dataclass (POWER_PLAY = PowerPlayParams(...)), whose fields
+        # spec_params fingerprints the same way; a module constant baked into it (PP_TIGHT_PCT) cannot be
+        # moved by --const, which refuses it.
+        import dataclasses as _dc
+        import importlib
+
+        mod = importlib.import_module(type(get_strategy(args.strategy)).__module__)
+        if not hasattr(mod, "POWER_PLAY"):
+            parser.error(f"--pp: {args.strategy} has no power-play parameters to override")
+        kw = {}
+        for item in args.pp:
+            k, _, v = item.partition("=")
+            k = k.strip()
+            if not hasattr(mod.POWER_PLAY, k):
+                parser.error(f"--pp: unknown PowerPlayParams field {k!r}")
+            cur = getattr(mod.POWER_PLAY, k)
+            kw[k] = type(cur)(float(v)) if isinstance(cur, (int, float)) else v
+        mod.POWER_PLAY = _dc.replace(mod.POWER_PLAY, **kw)
+        logger.info("power-play override %s -> spec %s", kw, get_strategy(args.strategy).spec_id())
     if args.const:
         # Same contract as --vcp, for the tunables that are module constants rather
         # than VcpParams fields (MIN_STRUCTURAL_R, MAX_STOP_PCT, VOL_MULT ...).
@@ -1939,7 +1962,7 @@ def main(argv: list[str] | None = None) -> dict | None:
     # would claim a version whose rules no longer match, so refuse instead.
     # `--vcp` is the deliberate exception: an override is an experiment that
     # carries its own fingerprint into the run name and cache key.
-    if not args.vcp and not args.const:
+    if not args.vcp and not args.const and not args.pp:
         from ..strategies import versions as _versions
         _stale = _versions.verify(args.strategy)
         if _stale:
