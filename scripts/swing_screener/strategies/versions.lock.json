@@ -505,7 +505,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "10087817",
+    "fingerprint": "60403375",
     "params": {
       "BASE_COUNT_MIN_DAYS": 25,
       "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
@@ -533,6 +533,7 @@
       "FAIL_DAYS": 0,
       "FAIL_SMA20_DAYS": 0,
       "FINAL_REF_RATIO": 0.6,
+      "FLAT_COIL_ON": 1,
       "FLAT_MAX_DAYS": 35,
       "FLAT_MAX_DEPTH_PCT": 15.0,
       "FLAT_MIN_DAYS": 20,
@@ -715,7 +716,8 @@
         "S4",
         "S5",
         "S6",
-        "S7"
+        "S7",
+        "S8"
       ],
       "watch_codes": [
         "W1",
@@ -725,7 +727,7 @@
         "W5"
       ]
     },
-    "version": "1.47"
+    "version": "1.48"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

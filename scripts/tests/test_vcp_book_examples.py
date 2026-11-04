@@ -80,7 +80,8 @@ def main() -> None:
             # traded: a hit whose plan clears the backtest's limits, or a tradable coil (S2, a buy-stop at the
             # pivot) in the sessions just before the first hit or on a hit day
             first = hits[0][0] if hits else None
-            coils = [r for r in (before or []) + rows if "S2" in r[1] and r[4] and (first is None or r[0] <= first)]
+            coils = [r for r in (before or []) + rows
+                     if ("S2" in r[1] or "S8" in r[1]) and r[4] and (first is None or r[0] <= first)]
             traded = any(t for *_, t in hits) or bool(coils)
             tag = ("ok  " if traded else "plan") if ok else ("FAIL" if case.get("pinned") else "miss")
             score["buy caught" if ok else "buy missed"] += 1

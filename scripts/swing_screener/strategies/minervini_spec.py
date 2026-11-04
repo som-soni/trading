@@ -74,6 +74,7 @@ MV04 = "S4"   # MV-04: cheat / 3C, a shelf in the middle third of the base
 MV05 = "S5"   # MV-05: power play -- an explosive run, then a short tight flag
 FLAT = "S6"   # flat base: a shallow, sideways base with no pivot but its own high (1.28)
 NEAR = "S7"   # near miss (1.38): an MV-01 breakout of a base that missed ONE graded rule by a small margin
+FLAT_COIL = "S8"  # flat base coiled (1.48): a resting buy-stop at a flat base's high, as MV-02 is for a VCP
 
 # ---- section 5: base and VCP (core/vcp_spec.py)
 SWING_K = 5
@@ -160,6 +161,13 @@ FLAT_PIVOT_DAYS = 10        # the sessions before the breakout: their volume mus
 # 3 Sep 2007 breakout (pivot 147.17) took its stop under the 22 Aug low (130.08), 16.2% under the buy,
 # where the tight week before it (136-141) puts it 12.3% under (8.1% at the pivot).
 FLAT_STOP_DAYS = 5
+# 1.48: S8, the flat base's buy-stop. S6 waits for a close through the base's high and buys the next open, so a
+# strong breakout day is paid for at its close: NTPC closed 4.95% past its pivot on 3 Sep 2007, which with the
+# stop under the tight week made the risk 12.3%, over MAX_STOP_PCT -- at the pivot it is 8.1%. Minervini buys
+# AT the pivot. S8 places that order the way MV-02 does for a VCP: on a session when today's base qualifies as a
+# flat base and the close sits within COIL_PCT below its high, a buy-stop just above the high, stopped under
+# the low of the last FLAT_STOP_DAYS sessions. 0 = off (1.47).
+FLAT_COIL_ON = 1
 
 # PP-06 (1.27): the flag's tight area must show VCP-10's volume dry-up. Minervini's third power-play
 # condition -- "within the base (usually just days before a breakout), volume will contract
@@ -1014,9 +1022,15 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.47"
+    version = "1.48"
     # signal_version is not pinned: the turnover floor is part of the screen every scanned session passes.
     changelog = (
+        ("1.48", "2026-11-04",
+         "S8, the flat base's buy-stop (FLAT_COIL_ON): when today's base passes S6's base tests and the close sits "
+         "within COIL_PCT below its high, a resting buy-stop goes just above the high -- MV-02 for a flat base -- "
+         "stopped under the last FLAT_STOP_DAYS sessions' low. S6 pays the breakout day's close: NTPC's 3 Sep 2007 "
+         "breakout closed 4.95% past its pivot and the risk came to 12.3%, over MAX_STOP_PCT; bought at the pivot "
+         "it is 8.1%. Adds a setup to evaluate(), so cached signals are rescanned."),
         ("1.47", "2026-11-04",
          "The flat base (S6) takes its stop under the low of the last FLAT_STOP_DAYS sessions before the "
          "breakout, the tight pivot area, instead of all FLAT_PIVOT_DAYS (which still judge the volume dry-up). "
@@ -1599,7 +1613,7 @@ class MinerviniSpecStrategy(Strategy):
 
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     watch_codes = ("W1", "W2", "W3", "W4", "W5")
-    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT, NEAR)
+    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT, NEAR, FLAT_COIL)
     extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days", "pp_flag_high",
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
@@ -1906,6 +1920,15 @@ class MinerviniSpecStrategy(Strategy):
               "{BUY_RANGE_PCT}% of it and in the upper part of the day's range, bought at the next open and "
               "stopped under the tight area's low.\n\n"
               "Off with NEAR_MISS = 0.",
+        FLAT_COIL: "Flat base coiled: the flat base (S6) bought AT its high with a resting buy-stop, as MV-02 "
+                   "is for a VCP, instead of after a close through it. Today's base passes S6's base tests "
+                   "({FLAT_MIN_DAYS}–{FLAT_MAX_DAYS} sessions, at most {FLAT_MAX_DEPTH_PCT}% deep, the last "
+                   "{FLAT_PIVOT_DAYS} sessions quiet) and the close sits within {COIL_PCT}% below the base's high. "
+                   "The buy-stop goes just above the high; the stop under the low of the last {FLAT_STOP_DAYS} "
+                   "sessions. Unlike MV-02 it fills during the day, at the buy-stop (or the open, on a gap "
+                   "through it), so it pays the pivot rather than the breakout day's close; a fill on less than "
+                   "{VOL_MULT} times average volume is sold at the next open, and the order is cancelled on a "
+                   "close under the stop's reference. Off with FLAT_COIL_ON = 0.",
         FLAT: "Flat base: a shallow, sideways base with no pivot of its own, bought through its high. "
               "Minervini: when a flat base has \"no real pivot other than the high of the base\", buy "
               "\"as the stock moves above the highest price at the top of the base\".\n\n"
@@ -2046,6 +2069,10 @@ class MinerviniSpecStrategy(Strategy):
         "{BUY_RANGE_PCT}% above the shelf's high, or at or below the shelf's low.",
         "Power play (MV-05). Bought at the next session's open. Skipped if that open is more than "
         "{BUY_RANGE_PCT}% above the flag's pivot, or at or below the flag's tight low.",
+        "Flat base coiled (S8). A buy-stop 0.1% above the base's high, kept for up to 10 sessions. It "
+        "fills during the day at the buy-stop, or at the open if the stock gaps through it -- not at the "
+        "close, as MV-02 does -- and is sold at the next open if that day's volume is under {VOL_MULT} times "
+        "average. Cancelled by a close below the low of the last {FLAT_STOP_DAYS} sessions.",
         "Flat base (S6). Bought at the next session's open. Skipped if that open is more than "
         "{BUY_RANGE_PCT}% above the base high, or at or below the low of the {FLAT_STOP_DAYS} "
         "sessions before the breakout.",
@@ -2288,7 +2315,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Flat base, depth", "FLAT_MAX_DEPTH_PCT", "S6: deepest a flat base may be, high to low."),
         ("Flat base, pivot area", "FLAT_PIVOT_DAYS", "S6: sessions before the breakout whose volume must dry "
                                                    "up."),
-        ("Flat base, stop area", "FLAT_STOP_DAYS", "S6: sessions before the breakout whose low sets the stop."),
+        ("Flat base, stop area", "FLAT_STOP_DAYS", "S6/S8: sessions before the breakout whose low sets the stop."),
+        ("Flat base buy-stop", "FLAT_COIL_ON", "1 = S8 rests a buy-stop at a coiled flat base's high; 0 = off."),
         ("Young listings", "YOUNG_LISTING", "1 = a stock listed under a year is judged on its history so far "
                                             "(averages that do not exist yet are waived); 0 = it waits a year (1.27)."),
         ("Young listing, first session", "YOUNG_MIN_BARS", "Sessions listed before a young listing is judged."),
@@ -2578,6 +2606,23 @@ class MinerviniSpecStrategy(Strategy):
                         and close <= fh * (1 + BUY_RANGE_PCT / 100)
                         and (dry <= DRYUP_RATIO or quiet >= DRYUP_QUIET_DAYS))
         result.setups[FLAT] = flat
+        # S8: today's base qualifies as a flat base (the S6 tests, on today's bar instead of yesterday's) and the
+        # close sits within COIL_PCT below its high: a buy-stop above the high, as MV-02 rests above a VCP's pivot
+        flat_coil = False
+        if (FLAT_COIL_ON and not flat and not mv01 and not mv02 and not today["ok"] and today.get("bh")
+                and today["fail"] not in ("VCP-01", "VCP-02", "VCP-03", "VCP-05")
+                and today.get("base_days") is not None and FLAT_MIN_DAYS <= today["base_days"] <= FLAT_MAX_DAYS
+                and today.get("base_depth_pct") is not None and today["base_depth_pct"] <= FLAT_MAX_DEPTH_PCT):
+            fh = float(today["bh"])
+            if fh * (1 - COIL_PCT / 100) <= close <= fh:
+                area = d.iloc[-FLAT_PIVOT_DAYS:]
+                dry, quiet = vcp_spec._dryup(d, len(d) - FLAT_PIVOT_DAYS, area["volume"], DRYUP_QUIET_RATIO)
+                if dry <= DRYUP_RATIO or quiet >= DRYUP_QUIET_DAYS:
+                    flat_coil = True
+                    e.update(flat_pivot=fh, flat_low=float(d["low"].iloc[-FLAT_STOP_DAYS:].min()),
+                             flat_depth_pct=float(today["base_depth_pct"]), flat_dryup=float(dry),
+                             flat_quiet_days=int(quiet), flat_base_date=str(today["bh_date"].date()))
+        result.setups[FLAT_COIL] = flat_coil
         if pp_ok:
             ctx.extras.update(pp_pivot=pp_prev["pivot"], pp_tight_low=pp_prev["tight_low"],
                               # a STRING, like base_date above: ctx.extras is serialised to JSON
@@ -2677,7 +2722,7 @@ class MinerviniSpecStrategy(Strategy):
             return 1.0
         # a cheat is a lower-confidence entry than the pivot buy, and the low cheat
         # lower than the 3C -- he describes it as the riskiest of the three
-        if result.setups.get(FLAT):
+        if result.setups.get(FLAT) or result.setups.get(FLAT_COIL):
             return 1.0
         return 0.8 if result.setups.get(MV04) else (0.6 if result.setups.get(MV03) else 0.0)
 
@@ -2689,8 +2734,8 @@ class MinerviniSpecStrategy(Strategy):
         e = ctx.extras
         cheat = result.setups.get(MV03) or result.setups.get(MV04)
         power = result.setups.get(MV05)
-        flat = result.setups.get(FLAT) and not (result.setups.get(MV01) or result.setups.get(MV02)
-                                                 or result.setups.get(NEAR))
+        flat = (result.setups.get(FLAT) or result.setups.get(FLAT_COIL)) and not (
+            result.setups.get(MV01) or result.setups.get(MV02) or result.setups.get(NEAR))
         if flat:
             # S6: the pivot is the base's own high, the stop under the low of the sessions before the
             # breakout, and the objective the base's depth added to the price paid
@@ -2708,8 +2753,9 @@ class MinerviniSpecStrategy(Strategy):
         if not cheat and not flat and (not pivot or tl is None or pd.isna(tl)):
             return PlanChoice(None, None, "missing pivot / tight low")
         if flat:
-            setup, pivot = FLAT, float(fp)
-            entry = float(ctx.close)              # confirmed by the close, bought at the next open
+            setup, pivot = (FLAT, float(fp)) if result.setups.get(FLAT) else (FLAT_COIL, float(fp))
+            # S6 is confirmed by the close and bought at the next open; S8 rests a buy-stop at the high
+            entry = float(ctx.close) if setup == FLAT else pivot_buy_stop(pivot, cfg.tick_size)
             stop = pivot_stop(fl, cfg.tick_size)
         elif cheat and not power:
             # A cheat is bought at its shelf, not the base's pivot, and stopped under
@@ -2827,7 +2873,7 @@ class MinerviniSpecStrategy(Strategy):
             pivot, tl = float(e["cheat_pivot"]), float(e["cheat_low"])
         elif plan.setup == MV05:
             pivot, tl = float(e["pp_pivot"]), float(e["pp_tight_low"])
-        elif plan.setup == FLAT:
+        elif plan.setup in (FLAT, FLAT_COIL):
             pivot, tl = float(e["flat_pivot"]), float(e["flat_low"])
         else:
             pivot, tl = float(e["pivot"]), float(e["tight_low"])
@@ -2836,7 +2882,7 @@ class MinerviniSpecStrategy(Strategy):
         # structure after a stop-out, which is exactly what EN-04 exists to stop. The flag high's
         # date identifies the flag the way the base start identifies a base.
         base_id = (e.get("pp_flag_high_date") if plan.setup == MV05
-                   else e.get("flat_base_date") if plan.setup == FLAT else e.get("base_date"))
+                   else e.get("flat_base_date") if plan.setup in (FLAT, FLAT_COIL) else e.get("base_date"))
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": max_stop_pct(plan.setup) / 100, "base_id": base_id,
                 "max_entries_per_base": MAX_ENTRIES_PER_BASE,
@@ -2844,6 +2890,14 @@ class MinerviniSpecStrategy(Strategy):
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:
             meta.update(order="open", min_open=tl)
+        elif plan.setup == FLAT_COIL:
+            # S8 fills INTRADAY at the buy-stop (or the open, on a gap through it): buying at the pivot is its
+            # whole point. MV-02 waits for the close instead because a poke-through that closes back under the
+            # pivot was a fast loser (India, 9 of 14); S8 is a setup of its own so the two can be compared, and
+            # a fill on light breakout volume is still sold at the next open.
+            meta.update(order="stop", cancel_close_below=tl)
+            if LIGHT_VOLUME_EXIT:
+                meta["min_breakout_vol"] = VOL_MULT
         elif plan.setup == MV02:
             meta.update(order="stop", cancel_close_below=tl, confirm_close_above=pivot)
             if LIGHT_VOLUME_EXIT:
@@ -2874,6 +2928,9 @@ class MinerviniSpecStrategy(Strategy):
         elif plan.setup == FLAT:
             label, reasons = "TRADE_ON_TRIGGER", ["flat base: closed through the base's high, buy at the "
                                                   "next open, stopped under the low of the sessions before"]
+        elif plan.setup == FLAT_COIL:
+            label, reasons = "TRADE_ON_TRIGGER", ["flat base coiled under its high: buy-stop through it, "
+                                                  "stopped under the low of the last sessions"]
         elif plan.setup == NEAR:
             label, reasons = "TRADE_ON_TRIGGER", [f"near miss: a breakout like MV-01 out of a base that missed "
                                                   f"one rule narrowly ({ctx.extras.get('near_miss')}); buy at "
