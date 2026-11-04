@@ -58,6 +58,9 @@ MARKET = "us"
 SETS = {
     "us-2017-2021-x2": {"window": ("2017-01-01", "2021-12-31"), "gain_pct": 100.0, "fwd_sessions": 63},
     "us-2013-2016-x75": {"window": ("2013-01-01", "2016-12-31"), "gain_pct": 75.0, "fwd_sessions": 126},
+    # Hand-picked, not scanned: India setups found while reading charts, added one at a time (`add`, --add). Any
+    # year before the verify stage may be added -- the 2007 bull market is outside both stages -- never 2022 on.
+    "india-reviewed": {"market": "india", "manual": True, "fwd_sessions": 126},
 }
 EVAL_SET = "us-2017-2021-x2"   # the default set
 # COVID-period cases in the first set reviewed one by one: established, liquid leaders, a test of how the rules
@@ -176,8 +179,47 @@ def _equities() -> set[str]:
         return {r[0] for r in cur.fetchall()}
 
 
+def set_market(eval_set: str) -> str:
+    return SETS[eval_set].get("market", MARKET)
+
+
+def add(eval_set: str, symbol: str, breakout_date: str) -> int:
+    """A hand-picked case for a manual set: the breakout session and the move after it, from stored prices.
+    Refuses a date in the verify stage, so labelling a case can never tune on the hold-out years."""
+    from .windows import STAGES
+    cfg = SETS[eval_set]
+    if not cfg.get("manual"):
+        raise SystemExit(f"{eval_set} is scanned (--build), not hand-picked")
+    day = pd.Timestamp(breakout_date)
+    if day >= pd.Timestamp(STAGES["verify"].start):
+        raise SystemExit(f"{breakout_date} is in the verify stage ({STAGES['verify'].start} on): not an eval case")
+    market = set_market(eval_set)
+    df = cache.load_cached(market, symbol)
+    if df is None or df.empty or day not in df.index:
+        raise SystemExit(f"no stored bar for {symbol} on {breakout_date}")
+    i = df.index.get_loc(day)
+    fwd = df["close"].iloc[i + 1: i + 1 + cfg["fwd_sessions"]]
+    k = int(fwd.to_numpy().argmax()) if len(fwd) else None
+    c0 = float(df["close"].iloc[i])
+    row = {"symbol": symbol, "breakout_date": day.date(), "breakout_close": c0,
+           "peak_date": fwd.index[k].date() if k is not None else None,
+           "peak_close": float(fwd.iloc[k]) if k is not None else None,
+           "gain_pct": (float(fwd.iloc[k]) / c0 - 1) * 100 if k is not None else None,
+           "sessions_to_peak": k + 1 if k is not None else None}
+    init_schema()
+    with db.get_connection().cursor() as cur:
+        cur.execute(f"INSERT INTO breakout_eval_cases (eval_set, market, {', '.join(row)}) "
+                    f"VALUES (%s, %s, {', '.join(['%s'] * len(row))}) "
+                    "ON CONFLICT (eval_set, market, symbol, breakout_date) DO UPDATE SET "
+                    "peak_date = EXCLUDED.peak_date, peak_close = EXCLUDED.peak_close, gain_pct = EXCLUDED.gain_pct "
+                    "RETURNING id", (eval_set, market, *row.values()))
+        return cur.fetchone()[0]
+
+
 def build(eval_set: str = EVAL_SET) -> int:
     """Scan the set's window and upsert the cases. A rebuild keeps every review already made."""
+    if SETS[eval_set].get("manual"):
+        raise SystemExit(f"{eval_set} is hand-picked: add cases with --add SYMBOL DATE")
     init_schema()
     window = SETS[eval_set]["window"]
     since = pd.Timestamp(window[0]) - pd.Timedelta(days=HISTORY_DAYS)
@@ -291,7 +333,7 @@ def score(eval_sets, verbose: bool = False) -> dict:
                 anchor = pd.Timestamp(c["breakout_date"])
                 before = NO_BUY_BEFORE
             rows = buys_over(st, c["symbol"], anchor - pd.Timedelta(days=int(before * 1.6) + 4),
-                             anchor + pd.Timedelta(days=int(SCORE_AFTER * 1.6) + 4), frames)
+                             anchor + pd.Timedelta(days=int(SCORE_AFTER * 1.6) + 4), frames, market=c["market"])
             if rows is None:
                 continue
             idx = [d for d, *_ in rows]
@@ -326,6 +368,7 @@ def main() -> None:
     ap.add_argument("--entry", help="the valid entry session, YYYY-MM-DD")
     ap.add_argument("--pivot", type=float, help="the buy point that entry crossed")
     ap.add_argument("--qualifies", choices=QUALIFIES, help="does the setup qualify under the Learn guide's rules")
+    ap.add_argument("--add", nargs=2, metavar=("SYMBOL", "DATE"), help="add a hand-picked case to a manual set")
     ap.add_argument("--score", action="store_true", help="score the strategy against the reviewed cases")
     ap.add_argument("--all", action="store_true", help="with --score: every set")
     ap.add_argument("-v", "--verbose", action="store_true")
@@ -333,13 +376,18 @@ def main() -> None:
     if a.score:
         score(list(SETS) if a.all else [a.set], a.verbose)
         return
+    if a.add:
+        cid = add(a.set, a.add[0], a.add[1])
+        print(f"case #{cid} in {a.set}")
+        if a.label:
+            a.label[0] = str(cid) if a.label[0] in ("-", "new") else a.label[0]
     if a.build:
         print(f"{build(a.set)} cases in {a.set}")
     if a.label:
         label(int(a.label[0]), a.label[1], a.footprint, a.notes, a.entry, a.pivot, a.qualifies)
-    if a.list or not (a.build or a.label):
+    if a.list or not (a.build or a.label or a.add):
         df = cases(a.set)
-        nm = names.load(MARKET)
+        nm = names.load(set_market(a.set))
         df.insert(3, "name", [(names.lookup(nm, s) or "")[:28] for s in df["symbol"]])
         with pd.option_context("display.max_rows", None, "display.width", 200):
             print(df[["id", "symbol", "name", "breakout_date", "breakout_close", "peak_date",
