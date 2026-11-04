@@ -3012,12 +3012,19 @@ class MinerviniSpecStrategy(Strategy):
         # 2024-05-21 (shelf high 595.50, close 599.80, 1.82R), and the drawing showed the second,
         # which fails the 2R test and so was labelled "trade skipped" beside a trade that was
         # taken.
+        #
+        # And first on a session that passes the screen: evaluate never sees a session the prefilter drops,
+        # so a cross there is refused without spending the base's entry, and a later cross may be bought.
+        # The refused one is kept only while no other turns up, so the card can say why it was skipped.
         for i in range(start + 1, len(daily)):
             p = dets[i - 1]
-            if p and p["bh_date"] in bases and bases[p["bh_date"]].get("cheat") is None:
+            b = bases.get(p["bh_date"]) if p else None
+            if b is not None and (b.get("cheat") is None or b.get("cheat_refused")):
                 z = cheat_cross(p, close[i - 1], close[i])
                 if z:
-                    bases[p["bh_date"]]["cheat"] = (i, z, p)
+                    refused = self._screen_miss(cfg, daily, i) is not None
+                    if b.get("cheat") is None or not refused:
+                        b["cheat"], b["cheat_refused"] = (i, z, p), refused
         last = len(daily) - 1
         live = dets[last]["bh_date"] if last >= start and dets[last]["bh_date"] in bases else None
         fills = [pd.Timestamp(a["entry"]) for a in (anchors or []) if a.get("entry")]
@@ -3171,8 +3178,11 @@ class MinerviniSpecStrategy(Strategy):
             # the liquidity floor, not the trend: say so, with the turnover the stock actually had
             floor, traded = _min_turnover(cfg, row.name), float(row["vol_sma50"]) * float(row["close"])
             unit, div = ("crore", 1e7) if cfg.currency_code == "INR" else ("million", 1e6)
-            return (f"too illiquid: {cfg.currency_symbol}{traded / div:,.1f} "
-                    f"{unit} a day traded (50-day average), under the {cfg.currency_symbol}{floor / div:,.0f} {unit} floor")
+            # a scaled floor is no round number: one more decimal until the two figures read apart
+            # (SOLARINDS.NS 2013-01-29 read "₹1.0 crore ... under the ₹1 crore floor")
+            nd = next((k for k in (1, 2, 3) if round(traded / div, k) < round(floor / div, k)), 3)
+            return (f"too illiquid: {cfg.currency_symbol}{traded / div:,.{nd}f} "
+                    f"{unit} a day traded (50-day average), under the {cfg.currency_symbol}{floor / div:,.{nd}f} {unit} floor")
         return f"outside the Trend Template: {why}"
 
     def _power_plays(self, daily: pd.DataFrame, cfg: MarketConfig) -> list[dict]:
@@ -3650,7 +3660,9 @@ class MinerviniSpecStrategy(Strategy):
                  "state": "pass" if ok_risk else "fail"},
             ] + (self._target_checks(px, target, uncapped, capped, r_mult, ok_r) if MEASURED_MOVE_RR
                  else self._measured_move_note(px, uncapped, cap if capped else None, risk, buy))
-            skip = [] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]
+            skip = [f"the stock failed the strategy's screen on the breakout, {day(bo)} -- {screen}"] if screen and bo is not None else []
+            if not ok_risk:
+                skip.append(f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit")
             if cnt and MAX_BASE_COUNT and cnt["n"] > MAX_BASE_COUNT:
                 skip.append(f"it is the {_ordinal(cnt['n'])} base of its advance (at most the {_ordinal(MAX_BASE_COUNT)})")
             if not ok_r:
@@ -3712,7 +3724,11 @@ class MinerviniSpecStrategy(Strategy):
             shapes += [{"shape": "level", "from": c_from, "to": c_to, "price": v, "role": role, "label": lab,
                         "dash": role != "buy"} for role, v, lab in levels]
             ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (not MEASURED_MOVE_RR) or (r_mult or 0) >= MIN_STRUCTURAL_R
+            c_screen = self._screen_miss(cfg, daily, ci)   # the cheat is bought only on a session that passes it
             c_checks = [
+                {"code": "TT", "name": "Screen", "value": f"fails on {c_from}: {c_screen}" if c_screen
+                 else f"held on {c_from}", "limit": "passes on the cheat's session",
+                 "state": "fail" if c_screen else "pass"},
                 {"code": cz, "name": "Shelf", "value": f"{cp['cheat_range_pct']:.1f}%, {third} third",
                  "limit": f"at most {CHEAT_SHELF_PCT:g}% over {CHEAT_SHELF_DAYS} days, below the high", "state": "pass"},
             ] + ([
@@ -3736,7 +3752,8 @@ class MinerviniSpecStrategy(Strategy):
                  "state": "pass" if ok_risk else "fail"},
             ] + (self._target_checks(px, target, c_uncapped, c_capped, r_mult, ok_r) if MEASURED_MOVE_RR
                  else self._measured_move_note(px, c_uncapped, c_cap if c_capped else None, risk, entry))
-            skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
+            skip = ([f"the stock fails the strategy's screen on {c_from} -- {c_screen}"] if c_screen else []) + \
+                   ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
                    ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"]) + \
                    ([f"it is the {_ordinal(cnt['n'])} base of its advance (at most the {_ordinal(MAX_BASE_COUNT)})"]
                     if cnt and MAX_BASE_COUNT and cnt["n"] > MAX_BASE_COUNT else [])
@@ -3775,7 +3792,9 @@ class MinerviniSpecStrategy(Strategy):
             entries = [z for z in zones if z.get("illustration")]
             none_taken = bool(entries) and all(z["state"] == "fail" for z in entries)
             rule = near.split(":")[0]
-            title = (f"Near miss ✓ · {rule}" + (" · trade skipped" if none_taken else
+            screened = bool(missed) and "screen" in missed and all(
+                "screen" in s for z in entries for s in z.get("skip") or [])
+            title = (f"Near miss ✓ · {rule}" + (f" · {self._refusal(missed)}" if screened else " · trade skipped" if none_taken else
                                                  f" · {self._refusal(missed)}" if missed else "")) + today
             summary = (f"Missed one rule narrowly ({near}) and passed the rest: S7 buys its breakout like a "
                        f"VCP's, as a setup of its own." + (f" It crossed the pivot on {day(bo)}, but the strategy "
@@ -3799,7 +3818,10 @@ class MinerviniSpecStrategy(Strategy):
             entries = [z for z in zones if z.get("illustration")]
             structure_ok = all(z["state"] == "pass" for z in zones if not z.get("illustration"))
             none_taken = bool(entries) and all(z["state"] == "fail" for z in entries)
-            title = ("VCP ✓ · trade skipped" if (none_taken or not structure_ok)
+            screened = bool(missed) and "screen" in missed and structure_ok and all(
+                "screen" in s for z in entries for s in z.get("skip") or [])
+            title = (f"VCP ✓ · {self._refusal(missed)}" if screened
+                     else "VCP ✓ · trade skipped" if (none_taken or not structure_ok)
                      else f"VCP ✓ · {self._refusal(missed)}" if missed
                      else f"VCP ✓ · {'too illiquid' if 'illiquid' in screen else 'outside the Trend Template'}"
                      if screen and bo is None else "VCP setup ✓") + today
