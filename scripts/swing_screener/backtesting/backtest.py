@@ -1737,6 +1737,8 @@ def main(argv: list[str] | None = None) -> dict | None:
                              "(default: the strategy's STRENGTH_EXT_PCT; 0 = off)")
     parser.add_argument("--climax-full", action="store_true",
                         help="minervini exits: a climax run sells the whole position (1.7) rather than a part")
+    parser.add_argument("--climax-second", action="store_true",
+                        help="minervini exits: once the strength part is sold, a climax sells a second part too")
     parser.add_argument("--trend-volume", action="store_true",
                         help="minervini exits: the 50-day trend exit needs above-average volume (1.7)")
     parser.add_argument("--fail-days", type=int, default=None,
@@ -2030,6 +2032,7 @@ def main(argv: list[str] | None = None) -> dict | None:
                                ("partial_at_target", args.partial_at_target),
                                ("strength_ext", args.strength_ext / 100 if args.strength_ext is not None else None),
                                ("climax_partial", False if args.climax_full else None),
+                               ("climax_second", True if args.climax_second else None),
                                ("trend_volume", True if args.trend_volume else (False if args.no_trend_volume else None)),
                                ("climax", False if args.no_climax else None),
                                ("time_stop_days", args.time_stop)) if v is not None}
@@ -2202,6 +2205,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (f" --atr-mult {args.atr_mult:g}" if args.partial_at_target is not None and args.atr_mult != 3.0 else "")
             + (f" --strength-ext {args.strength_ext:g}" if args.strength_ext is not None else "")
             + (" --climax-full" if args.climax_full else "")
+            + (" --climax-second" if args.climax_second else "")
             + (" --trend-volume" if args.trend_volume else "")
         )
         spec_md = None

@@ -189,6 +189,8 @@ class ExitPolicy:
                                                 #   this far above `ma_col` (0 = off)
     climax: bool = True          # EX-05
     climax_partial: bool = field(default_factory=lambda: bool(_ms.CLIMAX_IS_PARTIAL))  # a climax sells `partial_frac` (if not yet sold), not everything
+    climax_second: bool = False  #   … and, once that part is sold, a climax sells a SECOND `partial_frac` of the position
+                                 #   (once): Minervini sells more into the exhaustion day itself (--climax-second)
     climax_gain: float = 0.25    #   only once the position is up this much
     climax_up_days: int = 8      #   … at least this many up closes in the last 10
     climax_ext_200: float = 0.70 #   … close this far above SMA200
@@ -218,6 +220,8 @@ class ExitPolicy:
             bits.append(self.ma_col)
             if self.partial_r:
                 bits.append(f"partial{self.partial_r:g}R")
+            if self.climax_second:
+                bits.append("climax2nd")
             if self.strength_ext != _ms.STRENGTH_EXT_PCT / 100:
                 bits.append(f"strength{self.strength_ext * 100:g}" if self.strength_ext else "noStrength")
             if self.fail_days != _ms.FAIL_DAYS:
@@ -1068,6 +1072,13 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
         if 0 < n < pos.held:
             sell(pos, o, n, today, at=AT_OPEN)
             pos.partial_shares = n
+    if m.pop("_queued_second", False) and not entry_day and pos.partial_shares and not m.get("_second_sold"):
+        # the second part a climax sells (climax_second), once the strength part is already gone
+        n = int(pos.shares * policy.partial_frac)
+        if 0 < n < pos.held:
+            sell(pos, o, n, today, at=AT_OPEN)
+            pos.partial_shares += n
+            m["_second_sold"] = True
     if not entry_day:
         pos.bars_held += 1
     entry, r = pos.entry_price, pos.entry_price - pos.initial_stop
@@ -1131,6 +1142,8 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
         if climax and policy.climax_partial:
             if not pos.partial_shares:
                 m["_queued_partial"] = True     # the strength part; the rest waits for EX-06
+            elif policy.climax_second and not m.get("_second_sold"):
+                m["_queued_second"] = True      # a second part into the climax itself
         elif climax:
             pos.queued_exit = "CLIMAX"
             return
