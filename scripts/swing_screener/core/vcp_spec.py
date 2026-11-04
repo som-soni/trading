@@ -157,6 +157,13 @@ class VcpParams:
     # 12%, 6% that follow are what the base is judged on.
     undercut_recovery_days: int = 5  # sessions an undercut has to close back above the old low
     widen_tol: float = 1.1           # a contraction > this x the previous one is a WIDENING
+    # 1.49: a pullback no deeper than this is noise inside a tight area, not a contraction to compare. It can
+    # neither be a widening nor break VCP-06's "each smaller than the last". Laurus Labs, April 2026: after
+    # 19% and 15%, three dips of 3.3, 4.7 and 5.0% inside one 1,080-1,145 shelf read as a widening (4.7 >
+    # 1.1 x 3.3), the count restarted at 4.7% and the base failed VCP-06 the day before a 2.8x-volume breakout.
+    # The final contraction is still judged against the reference (VCP-06's ratio) and by VCP-08 and VCP-10.
+    # 0 = off (1.48).
+    tight_noise_pct: float = 0.0
     # 1.28, what counts as a contraction (a "T"). A new one starts only at a rally that reaches at
     # least this fraction of the way from the base's lowest low so far back up to its high; a
     # smaller bounce belongs to the contraction in progress (see `_major_contractions`). Minervini
@@ -729,8 +736,9 @@ def _detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # deeper pullback resets the count rather than invalidating the base.
     sizes = [g[2] for g in legs]
     ref = 0
+    noise = (lambda x: bool(p.tight_noise_pct and x <= p.tight_noise_pct))
     for k in range(1, len(sizes)):
-        if sizes[k - 1] > 0 and sizes[k] > p.widen_tol * sizes[k - 1]:
+        if sizes[k - 1] > 0 and sizes[k] > p.widen_tol * sizes[k - 1] and not noise(sizes[k]):
             ref = k
     out["reference_i"], out["reference_pct"] = ref, sizes[ref]
     out["from_reference"] = len(sizes) - ref
@@ -767,8 +775,8 @@ def _detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # (25, 10, 6, 9) still fails.
     after = sizes[ref:]
     tol = 1.0 if p.strict_shrink else p.widen_tol
-    bad = next((k for k in range(1, len(after)) if after[k] > tol * after[k - 1]), None)
-    if bad is None and len(after) > 2 and after[-1] > tol * min(after[:-1]):
+    bad = next((k for k in range(1, len(after)) if after[k] > tol * after[k - 1] and not noise(after[k])), None)
+    if bad is None and len(after) > 2 and after[-1] > tol * min(after[:-1]) and not noise(after[-1]):
         bad = len(after) - 1
     if bad is not None:
         out["fail"] = "VCP-06"

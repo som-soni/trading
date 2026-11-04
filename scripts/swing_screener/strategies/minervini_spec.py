@@ -92,6 +92,7 @@ DEEP_BASE_FLAG_PCT = 35.0
 # smaller than the one before it and so rejected a base for a single deeper pullback early on --
 # the case Minervini describes as resetting the count, not failing the base.
 WIDEN_TOL = 1.1              # a contraction more than this x the previous one is a widening
+TIGHT_NOISE_PCT = 6.0        # 1.49: a pullback this shallow is noise in a tight area, never a widening (vcp_spec)
 MIN_FROM_REFERENCE = 2       # contractions from the most recent widening onward, inclusive
 FINAL_REF_RATIO = 0.6        # final contraction / reference contraction, at most
 # ---- 1.38, the near miss (S7). Minervini weighs a base's rules together; the strategy requires every one,
@@ -249,6 +250,7 @@ VCP = vcp_spec.VcpParams(
     deep_base_flag_pct=DEEP_BASE_FLAG_PCT,
     dryup_quiet_days=DRYUP_QUIET_DAYS, dryup_quiet_ratio=DRYUP_QUIET_RATIO,
     widen_tol=WIDEN_TOL, min_from_reference=MIN_FROM_REFERENCE, final_ref_ratio=FINAL_REF_RATIO,
+    tight_noise_pct=TIGHT_NOISE_PCT,
     undercut_recovery_days=UNDERCUT_RECOVERY_DAYS,
     tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
@@ -1022,9 +1024,16 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.48"
+    version = "1.49"
     # signal_version is not pinned: the turnover floor is part of the screen every scanned session passes.
     changelog = (
+        ("1.49", "2026-11-04",
+         "VCP-06: a pullback no deeper than TIGHT_NOISE_PCT is noise inside a tight area -- it can neither be a "
+         "widening nor break 'each smaller than the last'. Laurus Labs, April 2026: after 19% and 15%, dips of 3.3, "
+         "4.7 and 5.0% inside one shelf read as a widening (4.7 > 1.1 x 3.3) and the base failed the day before a "
+         "2.8x-volume breakout; it now reads 19/15/5 and is judged by the dry-up test (it fails, at 1.10x). A "
+         "loosening right side such as 25, 10, 6, 9 still fails. Changes the detector, so cached signals are "
+         "rescanned."),
         ("1.48", "2026-11-04",
          "S8, the flat base's buy-stop (FLAT_COIL_ON): when today's base passes S6's base tests and the close sits "
          "within COIL_PCT below its high, a resting buy-stop goes just above the high -- MV-02 for a flat base -- "
@@ -2302,6 +2311,8 @@ class MinerviniSpecStrategy(Strategy):
          "highs over 5 years and monthly ones over all history (1.37)."),
         ("Tick, largest step", "TICK_MAX_PCT", "A stop or buy-stop is rounded to the market's tick, no coarser "
          "than this % of the price (split-adjusted history); 0 = the tick as it is."),
+        ("Tight-area noise", "TIGHT_NOISE_PCT", "VCP-06: a pullback this shallow is noise inside a tight area; it "
+         "can neither widen the base nor fail the shrink test. 0 = every pullback counts (1.48)."),
         ("Near miss", "NEAR_MISS", "1 = S7 buys a breakout from a base that missed one rule narrowly; 0 = off."),
         ("Near miss, final ratio", "NEAR_FINAL_REF_RATIO", "S7: VCP-06's final / reference contraction, at most."),
         ("Near miss, tight-area age", "NEAR_TIGHT_MIN_DAYS", "S7: VCP-08's sessions in the final contraction, at least."),
