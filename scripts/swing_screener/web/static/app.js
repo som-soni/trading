@@ -1638,7 +1638,7 @@ async function chartPage(alive, market, symbol, tf) {
     const rows = setupFeed.list.map((s, i) => ({ s, i })).reverse()
       .filter(({ s }) => setupFilter === "all" || kindOf(s) === setupFilter)
       .map(({ s, i }) => `<div class="btr sp-row sp-${kindOf(s)} ${i === setupFeed.focus ? "cur" : ""}" data-si="${i}">
-        <div class="btr-h"><b>#${i + 1} · ${prettyDate(s.base_from)}</b><span class="muted small">${s.live ? "today" : prettyDate(s.to)}</span></div>
+        <div class="btr-h"><b>#${s.ref || i + 1} · ${prettyDate(s.base_from)}</b><span class="muted small">${s.live ? "today" : prettyDate(s.to)}</span></div>
         <div class="small sp-title">${esc(s.title)}</div>
         <div class="muted small">${esc(s.summary)}</div></div>`).join("");
     return `<section><h3>${esc(name)} · setups</h3>

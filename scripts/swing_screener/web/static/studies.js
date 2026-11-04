@@ -178,7 +178,22 @@ const Studies = (() => {
         const kindCol = (s) => (s.kind === "young" ? YOUNG : s.kind === "near" ? NEAR : col(kindKey(s)));
         // a setup's reference, the same on its frame, its lane pill, the card and the side panel: its place in
         // the list (oldest first), so "#40" names one box wherever you look
-        const ref = (s) => `#${setups.indexOf(s) + 1}`;
+        // A setup's reference: its base's start date, "#15Jan10", with a letter when more than one setup shares
+        // that base ("#7Jan26b", ordered by end date). A count would shift whenever a longer window loads older
+        // setups in front; the base's date does not, so a reference quoted from one view finds the same box in
+        // any other.
+        const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const tagRefs = (list) => {
+          const seen = {};
+          [...list].sort((x, y) => (x.to || "").localeCompare(y.to || "") || (x.from || "").localeCompare(y.from || ""))
+            .forEach((s) => {
+              const d = s.base_from || s.from; if (!d) return;
+              const [yy, mm, dd] = d.split("-"), code = `${+dd}${MON[+mm - 1]}${yy.slice(2)}`;
+              const k = (seen[code] = (seen[code] || 0) + 1);
+              s.ref = k > 1 ? code + String.fromCharCode(96 + k) : code;
+            });
+        };
+        const ref = (s) => `#${s.ref || setups.indexOf(s) + 1}`;
         const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
         let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
         const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -444,7 +459,7 @@ const Studies = (() => {
               x0 = Math.max(0, x0); x1 = Math.min(w, Math.max(x1, x0 + 8));
               let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
               rows[r] = x1;
-              const sel = s === focus, txt = x1 - x0 > 46 ? `${ref(s)} ${s.title}` : x1 - x0 > 18 ? ref(s) : "";
+              const sel = s === focus, txt = x1 - x0 > 60 ? `${ref(s)} ${s.title}` : x1 - x0 > 40 ? ref(s) : "";
               const tr = tradeOf(s);
               pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""} ${tr ? "traded" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}${tr ? ` · traded by the selected run${tr.r_multiple != null ? `, ${(+tr.r_multiple).toFixed(2)}R` : ""}` : ""}"
                 style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${tr ? "● " : ""}${esc(txt)}</button>`);
@@ -487,6 +502,7 @@ const Studies = (() => {
           if (!r || r.error) { setups = []; publish(); return setNote(id, r?.error || "could not load the setups"); }
           stage = r.background || [];
           all = r.setups || [];
+          tagRefs(all);
           refresh();
           setNote(id, p.tradedOnly ? `the selected run's trades, drawn as ${r.note.split(":")[0].toLowerCase()} — backtest view` : r.note);
           paint(); lane.render();
