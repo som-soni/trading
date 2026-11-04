@@ -259,6 +259,11 @@ close is a full brick above the last one, a red one a brick below, so time and f
 completed on one session take the following calendar days on the time axis; the legend shows each brick's real
 completion date. Bricks have no volume. **Indicators** opens a searchable picker of 35
 studies, computed in the browser from the bars on screen; your list is saved and applies to every symbol.
+**Relative Volume** shows each session's volume as a multiple of its 50-day average on a fixed 0–3× scale, so a
+50% drop is the 0.5 line however tall the spikes around it. Its lines are the Minervini strategy's own volume rules,
+read from its constants: breakout volume (`VOL_MULT`), the tight area's average dry-up (`DRYUP_RATIO`) and a quiet
+session (`DRYUP_QUIET_RATIO`). Bars at breakout volume take the candle's colour, quiet and dry sessions two blues;
+the orange line averages the last 5 sessions, because the dry-up rule judges an area's average, not one bar.
 On first use the chart shows the 20-, 50- and 200-day SMA, Volume and RSI. Two studies are not
 indicators: **Screener levels** draws a strategy's entry, stop and target, and **Chart patterns (live
 detection)** runs the chart-pattern detectors on stored prices. **Support & Resistance (zones)** is computed

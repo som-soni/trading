@@ -1641,9 +1641,9 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .tt-card .tt-h { cursor: grab; } .tt-card .tt-sub a { color: var(--accent); cursor: pointer; text-decoration: underline; }
 /* the setup lane: one pill per VCP setup, along the bottom of the price pane */
 .tt-lane { position: absolute; inset: 0; pointer-events: none; z-index: 12; }
-.tt-pill { position: absolute; height: 14px; padding: 0 4px; pointer-events: auto; cursor: pointer; overflow: hidden; white-space: nowrap;
+.tt-pill { position: absolute; height: 14px; padding: 0 4px; pointer-events: auto; cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
   font-size: 10px; line-height: 12px; text-align: left; border-radius: 3px; border: 1px solid var(--c);
-  background: color-mix(in srgb, var(--c) 14%, var(--panel)); color: var(--strong); opacity: .75; }
+  background: color-mix(in srgb, var(--c) 14%, var(--panel)); color: var(--strong); opacity: .9; }   /* near-opaque: the lane sits over the volume bars */
 .tt-pill.no { border-style: dashed; } .tt-pill:hover { opacity: 1; }
 /* a setup the selected backtest run actually bought: the one thing the drawing cannot otherwise
    say when the setups layer and a run are both on */
@@ -1669,6 +1669,15 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .sp-row.sp-trade { border-left-color: #22c55e; } .sp-row.sp-trigger { border-left-color: #38bdf8; }
 .sp-row.sp-refused { border-left-color: #f43f5e; } .sp-row.sp-young { border-left-color: #9ca3af; }
 .sp-row .sp-title { margin: 2px 0; color: var(--strong); }
+.sp-row .btr-h { align-items: center; gap: 6px; } .sp-row .sp-to { margin-left: auto; }
+.sp-pill { font-size: 10.5px; font-weight: 600; padding: 0 6px; border-radius: 9px; line-height: 16px; white-space: nowrap;
+  color: var(--pc, var(--muted)); background: color-mix(in srgb, var(--pc, var(--muted)) 16%, transparent); }
+.sp-row.sp-trade { --pc: #22c55e; } .sp-row.sp-trigger { --pc: #38bdf8; } .sp-row.sp-refused { --pc: #f43f5e; } .sp-row.sp-young { --pc: #9ca3af; }
+.sp-lab { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 8px 0 2px; }
+.sp-lab + .sp-strats, .sp-lab + .sp-chips { margin-top: 2px; }
+.sp-note { margin: 2px 0 6px; color: var(--text); }
+/* a study's note in the legend stays one line; the full text is its tooltip (and, for a setups layer, the side panel) */
+.srow .snote { display: inline-block; max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .sp-row + .sp-row { margin-top: 0; } .btrs a[data-plive], section a[data-plive] { cursor: pointer; color: var(--accent); text-decoration: underline; }
 
 /* The measured outcome at the head of a strategy's Rules tab: the first thing on the landing

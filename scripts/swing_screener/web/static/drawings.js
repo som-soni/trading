@@ -200,12 +200,39 @@ const Drawings = (() => {
       }
       return out;
     }
+    // A strategy's annotations name many things in one place (a frame, its zones, the levels), so their labels
+    // are laid out rather than stamped: each is kept inside the pane and, when it would land on a label
+    // already drawn this frame, stepped clear of it. `placed` is reset per paint; a user's own drawings
+    // are never moved (they go where they were put).
+    const placed = [];
+    let placing = null;   // { w, h } of the pane while annotations paint, else null
+    const hits = (r) => placed.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h);
+    function place(x, y, w, h) {
+      if (!placing) return { x, y };
+      x = Math.max(2, Math.min(x, placing.w - w - 2));
+      y = Math.max(2, Math.min(y, placing.h - h - 2));
+      // try the spot, then alternately below and above it, a label-height at a time
+      let r = { x, y, w, h };
+      for (let k = 1; hits(r) && k <= 12; k++) {
+        const dy = Math.ceil(k / 2) * (h + 2) * (k % 2 ? 1 : -1);
+        const ny = y + dy;
+        if (ny < 2 || ny > placing.h - h - 2) continue;
+        r = { x, y: ny, w, h };
+      }
+      placed.push(r);
+      return r;
+    }
     function label(ctx, text, x, y, bg, align = "center") {
       ctx.font = "11px -apple-system, Segoe UI, sans-serif";
-      const w = ctx.measureText(text).width + 10, h = 17;
-      const left = align === "right" ? x - w : align === "left" ? x : x - w / 2;
-      ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(left, y - h / 2, w, h, 3); ctx.fill();
-      ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText(text, left + 5, y + 0.5);
+      const h = 17, maxW = placing ? placing.w - 4 : Infinity;
+      let w = ctx.measureText(text).width + 10;
+      if (w > maxW) {   // wider than the pane: end it with an ellipsis rather than lose it off the edge
+        while (text.length > 1 && ctx.measureText(text + "…").width + 10 > maxW) text = text.slice(0, -1);
+        text += "…"; w = ctx.measureText(text).width + 10;
+      }
+      const r = place(align === "right" ? x - w : align === "left" ? x : x - w / 2, y - h / 2, w, h);
+      ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(r.x, r.y, w, h, 3); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText(text, r.x + 5, r.y + h / 2 + 0.5);
     }
     function paintItem(ctx, it, w, h, isSel) {
       const a = toPx(it.pts[0]); if (!a) return;
@@ -297,8 +324,10 @@ const Drawings = (() => {
           ctx.fillStyle = it.color;
           const lines = wrapText(ctx, it.text);
           let tw = 0;
-          lines.forEach((l, i) => { ctx.fillText(l, a.x, a.y + i * lh); tw = Math.max(tw, ctx.measureText(l).width); });
+          lines.forEach((l) => { tw = Math.max(tw, ctx.measureText(l).width); });
           const th = (lines.length - 1) * lh + size + 4;
+          const at = place(a.x, a.y, tw, th);   // an annotation's point label steps clear of the others
+          lines.forEach((l, i) => ctx.fillText(l, at.x, at.y + i * lh));
           bboxes.set(it.id, { x: a.x, y: a.y, w: tw, h: th });
           if (isSel) { ctx.strokeStyle = it.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(a.x - 3, a.y - 3, tw + 6, th + 6); ctx.setLineDash([]); }
           break;
@@ -376,7 +405,9 @@ const Drawings = (() => {
             const { w, h } = area();
             ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
             // strategy annotations first, so a user's own drawing always sits on top
+            placed.length = 0; placing = { w, h };
             auto.forEach((it) => paintItem(ctx, it, w, h, false));
+            placing = null;
             if (!opts.hide) items.forEach((it) => paintItem(ctx, it, w, h, it.id === selected));
             if (draft && draft.type !== "measure") paintItem(ctx, { ...draft, color, width: 2 }, w, h, false);
             const m = measure || (draft && draft.type === "measure" ? draft : null);

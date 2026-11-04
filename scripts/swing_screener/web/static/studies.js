@@ -136,6 +136,17 @@ const Studies = (() => {
     calc: (b, p) => { const f = maOf(p.type), s = source(b, p.source);
       return { m1: f(s, p.length1), m2: f(s, p.length2), m3: f(s, p.length3), m4: f(s, p.length4) }; },
   });
+  // the volume thresholds the Minervini strategy judges a VCP by, read from its own constants (the
+  // Strategies page's parameter table, per market) -- never restated here. Without them Relative Volume
+  // still draws, just without the rule lines and colours.
+  const VOL_RULE_KEYS = ["VOL_MULT", "DRYUP_RATIO", "DRYUP_QUIET_RATIO"];
+  let volRules = null;
+  const loadVolRules = () => (volRules ??= fetch("/api/strategies/minervini").then((r) => (r.ok ? r.json() : null))
+    .then((d) => Object.fromEntries((d?.params || []).filter((x) => VOL_RULE_KEYS.includes(x.source)).map((x) => [x.source, x.values])))
+    .catch(() => ({})));
+  let VOL_RULES = {};
+  loadVolRules().then((r) => { VOL_RULES = r; });
+  const volRule = (k, market) => { const v = VOL_RULES[k]; const x = v && +(v[market] ?? Object.values(v)[0]); return x > 0 ? x : null; };
   // strategy keys for the "Screener levels" indicator, set by the app once it knows them
   const STRATEGY_CHOICES = ["All"];
   const SHORT = { trend_pullback: "TP", chart_pattern: "CP", chart_pattern_cup: "CUP", breakout: "BO", donchian: "DC", minervini: "MV" };
@@ -167,7 +178,7 @@ const Studies = (() => {
   };
 
   function setupLayer({ chart, main, times, p, col, ctx, id, keyRows, roles: extraRoles = {}, load }) {
-        let on = true, stage = [], setups = [], all = [], focus = null, hovered = null, pinned = null, axisLines = [];
+        let on = true, stage = [], setups = [], all = [], focus = null, hovered = null, pinned = null, axisLines = [], summary = "";
         const DIM = "#5d6170", YOUNG = "#9ca3af", NUM = ["①", "②", "③", "④"];
         // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
         // (a listing too new for the template is neither: neutral grey, so it never reads as a failure)
@@ -224,7 +235,15 @@ const Studies = (() => {
         // Where the card goes: wherever the viewer dragged it (remembered), else the side of the setup with
         // more room, so it covers as little of the setup as it can.
         let moved = null; try { moved = JSON.parse(store("ttCardPos") || "null"); } catch {}
-        const place = (s) => {
+        // the legend (OHLC, the studies' values) is read on every bar: a card dragged over it, or placed
+        // where the legend has grown since, drops to just below it
+        const clearLegend = () => {
+          const lg = ctx.chartEl.querySelector(".legend"); if (!lg || card.hidden) return;
+          const a = card.getBoundingClientRect(), b = lg.getBoundingClientRect(), o = ctx.chartEl.getBoundingClientRect();
+          if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) card.style.top = `${b.bottom - o.top + 8}px`;
+        };
+        const place = (s) => { placeAt(s); clearLegend(); };
+        const placeAt = (s) => {
           const el = ctx.chartEl, W = el.clientWidth, H = el.clientHeight;
           if (moved) {
             card.style.right = ""; card.style.left = `${Math.max(0, Math.min(W - card.offsetWidth, moved.x * W))}px`;
@@ -401,7 +420,7 @@ const Studies = (() => {
           publish();
         };
         // the side panel's Trade setups tab (app.js) lists these: hand it the list, the selection, and a way to pick one
-        const publish = () => ctx.onSetups?.({ list: setups, focus: setups.indexOf(focus),
+        const publish = () => ctx.onSetups?.({ list: setups, focus: setups.indexOf(focus), note: summary,
           select: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; reveal(pinned); paint(); } });
         let timer = null, raf = 0;
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
@@ -459,7 +478,9 @@ const Studies = (() => {
               x0 = Math.max(0, x0); x1 = Math.min(w, Math.max(x1, x0 + 8));
               let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
               rows[r] = x1;
-              const sel = s === focus, txt = x1 - x0 > 60 ? `${ref(s)} ${s.title}` : x1 - x0 > 40 ? ref(s) : "";
+              // the reference and title when they fit, the reference alone when that fits, else nothing (the tooltip names it)
+              const fits = (t) => t.length * 5.6 + 10 <= x1 - x0;
+              const sel = s === focus, txt = fits(`${ref(s)} ${s.title}`) ? `${ref(s)} ${s.title}` : fits(ref(s)) ? ref(s) : "";
               const tr = tradeOf(s);
               pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""} ${tr ? "traded" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}${tr ? ` · traded by the selected run${tr.r_multiple != null ? `, ${(+tr.r_multiple).toFixed(2)}R` : ""}` : ""}"
                 style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${tr ? "● " : ""}${esc(txt)}</button>`);
@@ -504,7 +525,8 @@ const Studies = (() => {
           all = r.setups || [];
           tagRefs(all);
           refresh();
-          setNote(id, p.tradedOnly ? `the selected run's trades, drawn as ${r.note.split(":")[0].toLowerCase()} — backtest view` : r.note);
+          summary = p.tradedOnly ? `the selected run's trades, drawn as ${r.note.split(":")[0].toLowerCase()} — backtest view` : r.note;
+          setNote(id, summary);
           paint(); lane.render();
         })();
         return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); lane.render(); } };
@@ -537,7 +559,7 @@ const Studies = (() => {
           const r = await x.json();
           const all = r.bases || [];
           return { background: [], setups: p.show === "None" ? [] : p.show === "Traded or on trigger" ? all.filter((b) => b.kind !== "fail") : all,
-            note: `${r.note} · pick one from the lane at the bottom` };
+            note: r.note };
         };
         const keyRows = () => [
           ["frame", col("vcp"), "Green frame", "the strategy would trade this setup: every gate passed, a valid plan, decided TRADE - HIGH CONFIDENCE, and the entry fired."],
@@ -1176,7 +1198,7 @@ const Studies = (() => {
           const hidden = all.length - setups.length;
           return { background: stage, setups,
             note: `${r.note} · ${setups.length} setups, ${all.filter((b) => b.complete).length} VCPs`
-              + (hidden && p.bases === "Setups" ? ` · ${hidden} failed bases hidden (settings: All bases)` : "") + " · pick one from the lane at the bottom" };
+              + (hidden && p.bases === "Setups" ? ` · ${hidden} failed bases hidden (settings: All bases)` : "") };
         };
         const keyRows = (YOUNG) => [
           ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],
@@ -1217,6 +1239,29 @@ const Studies = (() => {
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },
+    // each session's volume as a multiple of its 50-day average (core/indicators' vol_sma50, today included),
+    // on a fixed scale, so "half of normal" is the 0.5 line whatever spikes are on screen. The rule lines are
+    // the Minervini strategy's: breakout volume (VOL_MULT), the tight area's average dry-up (DRYUP_RATIO) and
+    // a quiet session (DRYUP_QUIET_RATIO). The line is the average of the last `smooth` sessions -- the
+    // dry-up rule judges the tight area's AVERAGE, so one quiet bar is not a dry-up.
+    rvol: { name: "Relative Volume (× 50-day average)", short: "RVOL", cat: "Volume", needsVolume: true, params: { length: 50, smooth: 5 },
+      levels: async (p, ctx) => {
+        await loadVolRules();
+        const r = (k) => volRule(k, ctx.market);
+        return [[r("VOL_MULT"), "breakout", "#26a69a"], [1, "avg", "#787b86"], [r("DRYUP_RATIO"), "dry-up", "#2196f3"],
+                [r("DRYUP_QUIET_RATIO"), "quiet", "#7e57c2"]]
+          .filter(([v]) => v != null).map(([price, title, color]) => ({ price, title, color }));
+      },
+      range: [0, 3],   // a fixed scale: a 6× spike is clipped (the legend still reads it) rather than squashing the lines below 1×
+      plots: [{ k: "rv", t: "Volume ÷ average", c: "#9598a1", s: "hist" }, { k: "avg", t: "Average of the last N", c: "#ff9800" }],
+      calc: (b, p, ctx) => {
+        const base = sma(b.V, p.length), rv = b.V.map((v, i) => (base[i] > 0 ? v / base[i] : null));
+        const brk = volRule("VOL_MULT", ctx.market), dry = volRule("DRYUP_RATIO", ctx.market), quiet = volRule("DRYUP_QUIET_RATIO", ctx.market);
+        // breakout-grade volume by the candle's direction; quiet and dry sessions in two blues; the rest grey
+        const colors = rv.map((v, i) => (v == null ? null : brk && v >= brk ? (b.C[i] >= b.O[i] ? "#26a69a" : "#ef5350")
+          : quiet && v <= quiet ? "#5c6bc0" : dry && v <= dry ? "rgba(33,150,243,.55)" : "rgba(149,152,161,.5)"));
+        return { rv, avg: sma(rv.map((v) => v ?? 0), p.smooth).map((v, i) => (rv[i] == null ? null : v)), _colors: { rv: colors } };
+      } },
     rsi: { name: "Relative Strength Index", short: "RSI", cat: "Momentum", params: { length: 14, source: SRC }, levels: [70, 50, 30], plots: [{ k: "rsi", c: "#7e57c2" }],
       calc: (b, p) => ({ rsi: rsi(source(b, p.source), p.length) }) },
     macd: { name: "MACD", short: "MACD", cat: "Momentum", params: { fast: 12, slow: 26, signal: 9, source: SRC }, levels: [0],
@@ -1395,7 +1440,7 @@ const Studies = (() => {
         return { rs, ma: sma(rs, p.maLength) };
       } },
   };
-  const PARAM_LABELS = { length: "Length", source: "Source", mult: "StdDev / multiplier", atrLength: "ATR length", maLength: "MA length",
+  const PARAM_LABELS = { smooth: "Average of last N sessions", length: "Length", source: "Source", mult: "StdDev / multiplier", atrLength: "ATR length", maLength: "MA length",
     fast: "Fast length", slow: "Slow length", signal: "Signal smoothing", kLength: "%K length", kSmoothing: "%K smoothing", dSmoothing: "%D smoothing",
     rsiLength: "RSI length", stochLength: "Stochastic length", k: "K smoothing", d: "D smoothing", factor: "Factor", start: "Start", increment: "Increment",
     maximum: "Maximum", left: "Left bars", right: "Right bars", labels: "Labels", zigzag: "Zig-zag line", timeframe: "Pivots timeframe",
@@ -1523,10 +1568,15 @@ const Studies = (() => {
             ...(def.volume ? { priceScaleId: "vol", lastValueVisible: false } : {}),
             ...(def.volumeFormat ? { priceFormat: { type: "volume" } } : {}) }, p);
         }
+        if (def.range) ser.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: def.range[0], maxValue: def.range[1] } }) });
         const cols = vals._colors && vals._colors[pl.k];
         const arr = vals[pl.k] || [];
         ser.setData(times.map((t, i) => (arr[i] == null ? { time: t } : cols && cols[i] ? { time: t, value: arr[i], color: cols[i] } : { time: t, value: arr[i] })));
-        if (j === 0 && def.levels) def.levels.forEach((lv) => ser.createPriceLine({ price: lv, color: "#4a4f5e", lineStyle: 2, lineWidth: 1, axisLabelVisible: false }));
+        // levels: numbers, or (for a study whose lines come from the server) a function resolving to { price, title, color }
+        if (j === 0 && def.levels) Promise.resolve(typeof def.levels === "function" ? def.levels(s.params, ctx) : def.levels).then((lvs) => lvs.forEach((lv) => {
+          try { ser.createPriceLine(typeof lv === "number" ? { price: lv, color: "#4a4f5e", lineStyle: 2, lineWidth: 1, axisLabelVisible: false }
+            : { price: lv.price, color: lv.color, title: lv.title, lineStyle: 2, lineWidth: 1, axisLabelVisible: true }); } catch {}   // the chart may be gone by then
+        }));
         series.push(ser);
       });
       if (def.volume) chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
@@ -1568,7 +1618,7 @@ const Studies = (() => {
   function legendRow(e) {
     const { s, def } = e;
     const note = e.skipped ? `<span class="muted">${def.needsBench ? "no index data" : "no volume data"}</span>`
-      : e.note ? `<span class="muted snote">${esc(e.note)}</span>` : "";
+      : e.note ? `<span class="muted snote" title="${esc(e.note)}">${esc(e.note)}</span>` : "";
     return `<div class="srow ${s.hidden || e.skipped ? "off" : ""}" data-id="${s.id}"><span class="sname" title="Click to select, double-click for settings">${esc(label(s))}</span>${note}<span class="svals"></span>${s.transient ? "" : btns(s)}</div>`;
   }
   function legendValues(e, i) {

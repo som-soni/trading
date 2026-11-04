@@ -1699,22 +1699,28 @@ async function chartPage(alive, market, symbol, tf) {
   function setupsPanelHtml() {
     const name = Studies.setupName();
     if (!name) return `<section><h3>Trade setups</h3>${setupPickerHtml()}
-      <div class="muted small">Pick a strategy to scan this chart's history for its setups — what its rules would set up on, not trades. A dot marks a strategy that has the stock on trigger (filled) or on watch (hollow) today.</div></section>`;
+      <div class="muted small">Pick a strategy above to scan this chart's history for its setups — what its rules would set up on, not trades. A dot marks a strategy that has the stock on trigger (filled) or on watch (hollow) today.</div></section>`;
     if (!setupFeed) return `<section><h3>${esc(name)}</h3>${setupPickerHtml()}<div class="muted small">Finding the setups…</div></section>`;
     const kindOf = setupKind;
     const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, refused: 0 };
     setupFeed.list.forEach((s) => { const k = kindOf(s); if (k in counts) counts[k]++; });
     const chips = [["all", "All"], ["trade", "Would trade"], ["trigger", "On trigger"], ["refused", "Refused"]]
       .map(([k, t]) => `<a class="sp-chip ${setupFilter === k ? "on" : ""}" data-f="${k}">${t} <span>${counts[k]}</span></a>`).join("");
+    // the verdict as a pill in the card's own border colour, so a column of cards scans without reading
+    const PILL = { trade: "would trade", trigger: "on trigger", refused: "refused", young: "too young" };
     const rows = setupFeed.list.map((s, i) => ({ s, i })).reverse()
       .filter(({ s }) => setupFilter === "all" || kindOf(s) === setupFilter)
       .map(({ s, i }) => `<div class="btr sp-row sp-${kindOf(s)} ${i === setupFeed.focus ? "cur" : ""}" data-si="${i}">
-        <div class="btr-h"><b>#${s.ref || i + 1} · ${prettyDate(s.base_from)}</b><span class="muted small">${s.live ? "today" : prettyDate(s.to)}</span></div>
+        <div class="btr-h"><b title="Base from ${esc(prettyDate(s.base_from))}">#${s.ref || `${i + 1} · ${prettyDate(s.base_from)}`}</b>
+          <span class="sp-pill">${PILL[kindOf(s)] || ""}</span>
+          <span class="muted small sp-to" title="The setup's last bar">${s.live ? "live today" : `to ${prettyDate(s.to)}`}</span></div>
         <div class="small sp-title">${esc(s.title)}</div>
         <div class="muted small">${esc(s.summary)}</div></div>`).join("");
-    return `<section><h3>${esc(name)} · setups</h3>${setupPickerHtml()}
-      <div class="muted small">What the strategy's rules would set up on — not trades. Click one to go to it on the chart.</div>
-      <div class="sp-chips">${chips}</div></section>
+    return `<section><h3>${esc(name)} · setups</h3>
+      <div class="sp-lab">Strategy</div>${setupPickerHtml()}
+      ${setupFeed.note ? `<div class="small sp-note">${esc(setupFeed.note)}</div>` : ""}
+      <div class="muted small">What the strategy's rules would set up on — not trades. Click one here or in the lane along the chart's foot to go to it.</div>
+      <div class="sp-lab">Show</div><div class="sp-chips">${chips}</div></section>
       <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;
   }
   /** The Chart patterns panel: every pattern the strategy's detectors found over five years, newest
@@ -7161,7 +7167,7 @@ async function refreshStatusDot() {
     if (stalled) a.className = "dstatus st-warn";
     // compact: a dot and the current market's price date; words only when something is happening
     const m = store.get("market", MKTS[0].key), pd = s.freshness[m]?.items.find((i) => i.key === "prices")?.date;
-    a.querySelector(".ds-l").textContent = stalled ? `Worker stopped · ${waiting} waiting` : s.running.length ? `Updating…${waiting ? ` +${waiting}` : ""}`
+    a.querySelector(".ds-l").textContent = stalled ? `Worker stopped · ${waiting} waiting` : s.running.length ? `Updating…${waiting ? ` · ${waiting} queued` : ""}`
       : pd ? prettyDate(pd).replace(/ \d{4}$/, "") : "No data";
     const line = (m) => { const f = s.freshness[m]; const p = f.items.find((i) => i.key === "prices"); return `${f.name}: prices ${p.date ? prettyDate(p.date) : "none"} (${ST_TEXT[p.status]})`; };
     a.title = `${word[st] || "Data status"} — ${MKTS.filter((x) => s.freshness[x.key]).map((x) => line(x.key)).join(" · ")}${s.latest_daily ? ` · last daily run ${clock(s.latest_daily.started_at)}: ${ST_TEXT[s.latest_daily.status]}` : ""} · checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Click for details.`;
