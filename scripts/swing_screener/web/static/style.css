@@ -1909,3 +1909,11 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
   .has-sidenav > aside > .nav-hide:hover { color: var(--strong); }
   .notes-list > .nav-hide { margin: 6px 6px 0 0; }
 }
+/* the Trade setups panel's strategy picker: one strategy at a time; dot = in today's screening (filled: would trade) */
+.sp-strats { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 8px; }
+.sp-strat { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 8px; border: 1px solid var(--line-2); border-radius: 10px; cursor: pointer; color: var(--text); }
+.sp-strat:hover { background: var(--hover); }
+.sp-strat span { color: var(--muted); }
+.sp-strat.on { background: var(--accent-soft); border-color: var(--accent-line); }
+.sp-strat i { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--warn); box-sizing: border-box; }
+.sp-strat i.trade { background: var(--up); border-color: var(--up); }

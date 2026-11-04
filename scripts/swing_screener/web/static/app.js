@@ -554,6 +554,10 @@ function chartTheme() {
   };
 }
 let keepView = null;
+// how many setups each strategy's layer found on a stock, remembered for this visit as each layer reports in,
+// so the setups panel's strategy picker can show a count beside every strategy already scanned. Keyed
+// market:symbol; never fetched for -- a count appears only once that strategy's scan has run.
+const SETUP_COUNTS = {};
 const ALL_BARS = 100000;  // i.e. everything in the database: the chart shows the full stored history
 // strategy keys for the "Screener levels" indicator's setting (fetched once; the page still works without it)
 // Fetched once and kept as a promise: a setups layer is NAMED for its strategy, and the chart can
@@ -794,6 +798,8 @@ async function chartPage(alive, market, symbol, tf) {
   let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1, runStrategy = null, viewClaimed = false;
   // the active Trade setups layer's list, as it published it (studies.js setupLayer): { list, focus, select }
   let setupFeed = null, setupFilter = store.get("setupFilter", "all");
+  // "Setups today" (/api/chart-setups): the strategies whose latest screening run has this stock on trigger or watch
+  let todaySetups = [];
   // the Chart patterns indicator's history, as it published it (studies.js patterns): { list, focus, select, clear }
   let patternFeed = null, patternFilter = store.get("patternFilter", "all");
   // the Supply & demand zones indicator's zones, as it published them (studies.js sdz): { list, focus, checks, select, clear }
@@ -933,9 +939,10 @@ async function chartPage(alive, market, symbol, tf) {
     $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="trades" title="Backtest trades — click one to zoom to it and see the structure the strategy traded on">
       <svg viewBox="0 0 20 20"><path d="M3 17V3M3 17h14"/><path d="M5 13l3.5-5 3 3L16 5"/></svg></button>`);
   } else if (prefs.tab === "trades") prefs.tab = "wl";
-  // a Trade setups layer is on: offer its setups as a side panel (click one -> the chart goes to it)
-  if (Studies.activeSetup() && !btView) {
-    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="setups" title="Trade setups — every setup of ${esc(Studies.setupName() || "the layer")}; click one to go to it">
+  // the Trade setups panel: the strategy picker, and the active layer's setups (click one -> the chart goes to it).
+  // Offered with no layer on too, so a strategy's history is one click from the chart.
+  if (Studies.setupLayers().length && !btView) {
+    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="setups" title="Trade setups — ${Studies.setupName() ? `every setup of ${esc(Studies.setupName())}; click one to go to it` : "pick a strategy to see its setups"}">
       <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M6 12l2.5-3 2 2L14 7"/></svg></button>`);
   } else if (prefs.tab === "setups") prefs.tab = "wl";
   // the Chart patterns indicator is on: offer every pattern its detectors saw as a side panel
@@ -1084,7 +1091,12 @@ async function chartPage(alive, market, symbol, tf) {
     },   // a study framed something itself: skip the opening view
     // the selected run's start date (its directory name begins with it), so a setups layer scans back that far
     runStart: (/^\d{4}-\d{2}-\d{2}/.exec(tradeRuns.find((r) => String(r.id) === String($("#trades").value))?.run || "") || [null])[0],
-    onSetups: (feed) => { setupFeed = feed; if (prefs.tab === "setups") renderSide(); },
+    onSetups: (feed) => {
+      setupFeed = feed;
+      const strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
+      if (strat) (SETUP_COUNTS[`${market}:${symbol}`] ??= {})[strat] = { n: feed.list.length, trade: feed.list.filter((s) => setupKind(s) === "trade").length };
+      if (prefs.tab === "setups") renderSide();
+    },
     onPatterns: (feed) => { patternFeed = feed; if (prefs.tab === "patterns") renderSide(); },
     onZones: (feed) => { zoneFeed = feed; if (prefs.tab === "zones") renderSide(); } } });
   // read at paint time, not captured: hiding the indicator from the legend restores the stored layer
@@ -1308,6 +1320,8 @@ async function chartPage(alive, market, symbol, tf) {
   Promise.all([api(`/api/chart-setups?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => []), STRATEGIES])
     .then(([xs, strats]) => {
       if (!alive() || !xs.length) return;
+      todaySetups = xs;
+      if (prefs.tab === "setups") renderSide();
       const names = Object.fromEntries(strats.map((x) => [x.key, x.name]));
       const layerOf = Object.fromEntries(Studies.setupLayers().map((l) => [l.strategy, l.type]));
       const cur = Studies.activeSetup();
@@ -1651,14 +1665,34 @@ async function chartPage(alive, market, symbol, tf) {
   }
   /** The Trade setups panel: every setup the active layer found, newest first, filterable by verdict —
    *  the backtest-trades panel's shape, so finding a setup is a click rather than a scroll. */
+  // a setup by what the rules would DO, judged on the ENTRY zone, not the frame's colour: a complete VCP whose
+  // entry fails (a skipped trade) is refused, while a cheat entry on a base that is no VCP would trade
+  function setupKind(s) {
+    const entry = s.zones.find((z) => z.key === "entry" || z.key === "cheat");
+    return s.kind === "young" ? "young" : s.kind === "watch" ? "trigger" : s.kind === "pass" ? "trade"
+      : ["vcp", "cheat", "near"].includes(s.kind) && entry?.state === "pass" ? "trade" : "refused";
+  }
+  /** The strategy picker at the top of the Trade setups panel: every strategy with a setups layer, one at a
+   *  time as the Trade setups button's picker does. A dot marks a strategy whose latest screening run has
+   *  the stock today (filled: on trigger / would trade; hollow: on watch); a count appears once that
+   *  strategy's scan has run this visit -- each scan takes seconds, so only the picked one runs. */
+  function setupPickerHtml() {
+    const cur = Studies.activeSetup(), seen = SETUP_COUNTS[`${market}:${symbol}`] || {};
+    const today = Object.fromEntries(todaySetups.map((x) => [x.strategy, x]));
+    return `<div class="sp-strats">${Studies.setupLayers().map((l) => {
+      const t = today[l.strategy], c = seen[l.strategy];
+      const tip = [t ? `Today: ${t.tradeable ? (/TRIGGER/i.test(t.decision || "") ? "on trigger" : "would trade") : "on watch"} (screened ${prettyDate(t.as_of)})` : "",
+        c ? `${c.n} setup${c.n === 1 ? "" : "s"} on this chart, ${c.trade} would trade` : "",
+        l.type === cur ? "Click to take it off the chart" : "Click to draw its setups"].filter(Boolean).join("\n");
+      return `<a class="sp-strat${l.type === cur ? " on" : ""}" data-layer="${l.type}" title="${esc(tip)}">${t ? `<i class="${t.tradeable ? "trade" : ""}"></i>` : ""}${esc(l.name)}${c ? ` <span>${c.n}</span>` : ""}</a>`;
+    }).join("")}</div>`;
+  }
   function setupsPanelHtml() {
-    const name = Studies.setupName() || "Trade setups";
-    if (!setupFeed) return `<section><h3>${esc(name)}</h3><div class="muted small">Finding the setups…</div></section>`;
-    // by what the rules would DO, judged on the ENTRY zone, not the frame's colour: a complete VCP whose
-    // entry fails (a skipped trade) is refused, while a cheat entry on a base that is no VCP would trade
-    const entryOf = (s) => s.zones.find((z) => z.key === "entry" || z.key === "cheat");
-    const kindOf = (s) => s.kind === "young" ? "young" : s.kind === "watch" ? "trigger" : s.kind === "pass" ? "trade"
-      : ["vcp", "cheat", "near"].includes(s.kind) && entryOf(s)?.state === "pass" ? "trade" : "refused";
+    const name = Studies.setupName();
+    if (!name) return `<section><h3>Trade setups</h3>${setupPickerHtml()}
+      <div class="muted small">Pick a strategy to scan this chart's history for its setups — what its rules would set up on, not trades. A dot marks a strategy that has the stock on trigger (filled) or on watch (hollow) today.</div></section>`;
+    if (!setupFeed) return `<section><h3>${esc(name)}</h3>${setupPickerHtml()}<div class="muted small">Finding the setups…</div></section>`;
+    const kindOf = setupKind;
     const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, refused: 0 };
     setupFeed.list.forEach((s) => { const k = kindOf(s); if (k in counts) counts[k]++; });
     const chips = [["all", "All"], ["trade", "Would trade"], ["trigger", "On trigger"], ["refused", "Refused"]]
@@ -1669,7 +1703,7 @@ async function chartPage(alive, market, symbol, tf) {
         <div class="btr-h"><b>#${s.ref || i + 1} · ${prettyDate(s.base_from)}</b><span class="muted small">${s.live ? "today" : prettyDate(s.to)}</span></div>
         <div class="small sp-title">${esc(s.title)}</div>
         <div class="muted small">${esc(s.summary)}</div></div>`).join("");
-    return `<section><h3>${esc(name)} · setups</h3>
+    return `<section><h3>${esc(name)} · setups</h3>${setupPickerHtml()}
       <div class="muted small">What the strategy's rules would set up on — not trades. Click one to go to it on the chart.</div>
       <div class="sp-chips">${chips}</div></section>
       <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;
@@ -1854,6 +1888,10 @@ async function chartPage(alive, market, symbol, tf) {
       return;
     }
     if (prefs.tab === "setups") {
+      body.querySelectorAll(".sp-strat").forEach((el) => el.onclick = () => {
+        Studies.setSetup(el.dataset.layer === Studies.activeSetup() ? null : el.dataset.layer);
+        leaveBtView(); markSetup(); rerender();
+      });
       body.querySelectorAll(".sp-chip").forEach((el) => el.onclick = () => { setupFilter = el.dataset.f; store.set("setupFilter", setupFilter); renderSide(); });
       body.querySelectorAll(".sp-row").forEach((el) => el.onclick = () => setupFeed?.select(+el.dataset.si));
       body.querySelector(".sp-row.cur")?.scrollIntoView({ block: "nearest" });
