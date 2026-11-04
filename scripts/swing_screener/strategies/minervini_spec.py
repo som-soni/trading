@@ -3137,6 +3137,19 @@ class MinerviniSpecStrategy(Strategy):
                  "limit": "not a rule: Minervini sets no price target", "state": "pass"}]
 
     @staticmethod
+    def _skip_why(zones: list[dict]) -> str:
+        """Why a base that broke out is still "trade skipped", for its summary: each entry illustration's own skip
+        reasons (named by entry when there are several), else the structure zones that failed."""
+        entries = [z for z in zones if z.get("illustration") and z.get("skip")]
+        if entries:
+            same = all(z["skip"] == entries[0]["skip"] for z in entries)   # one reason for every entry: said once
+            parts = [("" if same else f"the {z['title'].lower()}: ") + " and ".join(z["skip"])
+                     for z in (entries[:1] if same else entries)]
+            return "the strategy would skip it: " + "; ".join(parts)
+        failed = [z["title"].lower() for z in zones if not z.get("illustration") and z.get("state") == "fail"]
+        return "the strategy would skip it: " + (", ".join(failed) + " failed" if failed else "no entry passes")
+
+    @staticmethod
     def _refusal(missed: str) -> str:
         """A crossing the strategy would not buy, in a title: a breakout that failed MV-01's own tests is no valid
         breakout; one refused because the stock failed the screen that day still broke out."""
@@ -3281,7 +3294,7 @@ class MinerviniSpecStrategy(Strategy):
             skip = ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {PP_MAX_STOP_PCT:g}% limit"]) + \
                    ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum"])
             zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": at,
-                          "to": entry_to, "illustration": True,
+                          "to": entry_to, "illustration": True, "skip": skip,
                           "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if MEASURED_MOVE_RR else ""),
                           "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
                                    f"not a backtest result. Buy through the flag's pivot, {px(pv)}, on a close with volume "
@@ -3299,6 +3312,8 @@ class MinerviniSpecStrategy(Strategy):
             summary = (f"A power play: +{r['run_pct']:.0f}% into a {depth:.1f}% flag. "
                        + (f"It crossed the pivot on {day(bo)}, but the strategy would not have bought: {missed}."
                           if bo is not None and missed
+                          else f"Broke out on {day(bo)}, but the strategy would skip it: {' and '.join(skip)}."
+                          if bo is not None and skip
                           else f"Broke out on {day(bo)}." if bo is not None else "Waiting for a close through the pivot."))
         else:
             short = {"PP-03": f"flag fell {depth:.0f}% (max {pp.flag_max_depth_pct:g}%)",
@@ -3644,7 +3659,7 @@ class MinerviniSpecStrategy(Strategy):
                         + (f" The stock fails the strategy's screen on {day(e_i)} -- {screen} -- and the strategy buys "
                            f"a breakout only on a session that passes it." if screen else ""))
             zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": e_from, "to": entry_to,
-                          "illustration": True,
+                          "illustration": True, "skip": skip,
                           "line": f"buy {px(buy)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult and MEASURED_MOVE_RR else ""),
                           "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
                                    f"not a backtest result. Buy with a buy-stop just above the pivot, at {px(buy)}; the "
@@ -3726,7 +3741,7 @@ class MinerviniSpecStrategy(Strategy):
                    ([f"it is the {_ordinal(cnt['n'])} base of its advance (at most the {_ordinal(MAX_BASE_COUNT)})"]
                     if cnt and MAX_BASE_COUNT and cnt["n"] > MAX_BASE_COUNT else [])
             zones.append({"key": "cheat", "title": "Cheat entry", "state": "pass" if not skip else "fail",
-                          "from": c_from, "to": c_to, "illustration": True,
+                          "from": c_from, "to": c_to, "illustration": True, "skip": skip,
                           "line": f"{third} third · buy {px(entry)} · stop {px(stop)}" + (f" · {_rr(r_mult, ok_r)}" if r_mult and MEASURED_MOVE_RR else ""),
                           "text": (f"Where this strategy's rules place a cheat entry: an illustration, not a recommendation "
                                    f"and not a backtest result. A cheat is bought while the base is still forming, before "
@@ -3765,6 +3780,8 @@ class MinerviniSpecStrategy(Strategy):
             summary = (f"Missed one rule narrowly ({near}) and passed the rest: S7 buys its breakout like a "
                        f"VCP's, as a setup of its own." + (f" It crossed the pivot on {day(bo)}, but the strategy "
                                                          f"would not have bought: {missed}." if bo is not None and missed
+                                                         else f" Broke out on {day(bo)}, but {self._skip_why(zones)}."
+                                                         if bo is not None and none_taken
                                                          else f" Broke out on {day(bo)}." if bo is not None
                                                          else " Waiting for a close through the pivot."))
         elif kind == "vcp":
@@ -3788,6 +3805,8 @@ class MinerviniSpecStrategy(Strategy):
                      if screen and bo is None else "VCP setup ✓") + today
             summary = (f"A complete VCP. It crossed the pivot on {day(bo)}, but the strategy would not have bought: "
                        f"{missed}." if bo is not None and missed
+                       else f"A complete VCP. Broke out on {day(bo)}, but {self._skip_why(zones)}."
+                       if bo is not None and (none_taken or not structure_ok)
                        else f"A complete VCP. Broke out on {day(bo)}." if bo is not None
                        else f"A complete VCP, but the stock fails the strategy's screen on {at} -- {screen}: no buy "
                             f"until it passes on the breakout session." if screen
