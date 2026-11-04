@@ -310,6 +310,28 @@ def symbol_context(market: str, symbol: str):
     return {"latest": latest, "history": history, "name": _name(market, symbol), "classification": _classification(market, symbol)}
 
 
+@app.get("/api/chart-setups")
+def chart_setups(market: str, symbol: str):
+    """The chart's "Setups today" chips: every registered strategy whose LATEST screening run marks this
+    symbol tradeable or on watch, read from the stored runs (universe_history) -- nothing is run here.
+    A strategy whose latest run did not list the symbol, or listed it as nothing, is left out."""
+    from ..strategies import _REGISTRY
+    rows = q("""SELECT u.strategy, u.run_id, u.decision, u.full_row FROM universe_history u
+                JOIN (SELECT strategy, max(run_id) AS r FROM universe_history WHERE market=%s GROUP BY strategy) m
+                  ON u.strategy = m.strategy AND u.run_id = m.r
+                WHERE u.market=%s AND u.symbol=%s""", (market, market, symbol))
+    out = []
+    for strategy, run, decision, fr in rows:
+        fr = fr or {}
+        trade, watch = fr.get("tradeable") is True, fr.get("watchlist_candidate") is True
+        if strategy not in _REGISTRY or not (trade or watch):
+            continue
+        out.append({"strategy": strategy, "run": run, "as_of": str(run)[:10], "decision": decision,
+                    "tradeable": trade, "setup": fr.get("strategy_setup") or "",
+                    "entry": fr.get("entry"), "stop": fr.get("stop")})
+    return sorted(out, key=lambda x: (not x["tradeable"], x["strategy"]))
+
+
 _class_cache: dict[str, tuple[float, dict, dict]] = {}
 
 

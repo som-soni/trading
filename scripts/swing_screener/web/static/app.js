@@ -1301,6 +1301,34 @@ async function chartPage(alive, market, symbol, tf) {
       <span class="${fromHi >= -0.5 ? "pos" : "muted"}">${fromHi >= -0.5 ? "at high" : signed(fromHi, 1) + "% from high"}</span></span>`;
   sizeChart();   // the quote strip just filled in and may have pushed the chart down: re-fit it (and the toolbar)
 
+  // "Setups today": every strategy whose latest screening run marks this stock tradeable (filled dot) or on
+  // watch (hollow), read from the stored runs -- nothing is run for it. A chip puts that strategy's Trade
+  // setups layer on the chart (one at a time, as the picker does); clicking the chip already on takes it off.
+  const setChips = $("#quote").appendChild(Object.assign(document.createElement("span"), { className: "q-setups" }));
+  Promise.all([api(`/api/chart-setups?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => []), STRATEGIES])
+    .then(([xs, strats]) => {
+      if (!alive() || !xs.length) return;
+      const names = Object.fromEntries(strats.map((x) => [x.key, x.name]));
+      const layerOf = Object.fromEntries(Studies.setupLayers().map((l) => [l.strategy, l.type]));
+      const cur = Studies.activeSetup();
+      setChips.innerHTML = `<span class="muted">Setups today</span>` + xs.map((x) => {
+        const type = layerOf[x.strategy];
+        const state = !x.tradeable ? "on watch" : /TRIGGER/i.test(x.decision || "") ? "on trigger" : "would trade";
+        const tip = [`${names[x.strategy] || x.strategy}: ${x.decision} (screened ${prettyDate(x.as_of)})`, x.setup,
+          x.entry != null ? `entry ${fmt(+x.entry)}${x.stop != null ? ` · stop ${fmt(+x.stop)}` : ""}` : "",
+          type ? (type === cur ? "Click to take its setups off the chart" : "Click to draw its setups on the chart")
+            : "This strategy has no setups layer to draw"].filter(Boolean).join("\n");
+        return `<button class="sc${x.tradeable ? " trade" : ""}${type === cur ? " on" : ""}" ${type ? `data-layer="${type}"` : "disabled"} title="${esc(tip)}">
+          <i></i>${esc(names[x.strategy] || x.strategy)} · ${state}${x.entry != null ? ` · buy ${fmt(+x.entry)}` : ""}</button>`;
+      }).join("");
+      setChips.onclick = (e) => {
+        const b = e.target.closest("[data-layer]"); if (!b) return;
+        Studies.setSetup(b.dataset.layer === Studies.activeSetup() ? null : b.dataset.layer);
+        leaveBtView(); markSetup(); rerender();
+      };
+      sizeChart();
+    });
+
   // watchlist star (TradingView): toggles this symbol in the active list; right-click to pick any list
   const starTarget = () => (wlCur && !wlCur.builtin ? wlCur : wlAll.find((l) => !l.builtin));
   const syncStar = () => {
