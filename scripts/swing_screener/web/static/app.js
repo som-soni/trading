@@ -835,10 +835,15 @@ async function chartPage(alive, market, symbol, tf) {
     if (!dr) return;
     // a trade the setups layer could not place keeps the run's record, drawn lean -- buy, stop, target --
     // the same three levels every traded setup shows, never the older boxes and callouts
-    const run = runDrawnByStudy() ? tradeItems((t) => !claimedTrades.has(t.entry_date), true) : [...vcpAnnotations, ...tradeItems()];
+    // "Trade only" (the Backtest trades panel's switch): every trade drawn lean, and nothing else of the run
+    const run = tradeOnlyOn() ? tradeItems(() => true, true)
+      : runDrawnByStudy() ? tradeItems((t) => !claimedTrades.has(t.entry_date), true) : [...vcpAnnotations, ...tradeItems()];
     dr.annotate([...run, ...studyItems()]);
   };
   let zoomToTrade = () => {};
+  // "Trade only": with a backtest run on, its trades as entry, stop, target and the buy/sell markers alone -- no
+  // setups layer, no frames, zones or lane -- for reading where a trade was bought and sold
+  const tradeOnlyOn = () => !!prefs.tradeOnly && !!($("#trades") || {}).value;
   const viewKey = `${market}:${symbol}:${tf}`;
   let chart = null;
   // rebuild the chart (for an indicator change) without losing the user's zoom / scroll
@@ -1077,9 +1082,10 @@ async function chartPage(alive, market, symbol, tf) {
   // the backtest view hides the viewer's own layers -- the saved one of this same strategy included -- so the
   // run's own transient layer must draw then, or a traded setup shows only its entry and exit lines
   const btLayer = runLayerType && (btView || Studies.activeSetup() !== runLayerType) ? runLayerType : null;
+  const tradeOnly = tradeOnlyOn();
   const studies = Studies.render({ chart, times, bars: B,
-    skip: (s, def) => (!!btView && isOverlayLayer(s, def)) || (!!btLayer && !!def.setupsFor),
-    extra: btLayer ? [Studies.transient(btLayer, { tradedOnly: true })] : [],
+    skip: (s, def) => (!!btView && isOverlayLayer(s, def)) || (!!btLayer && !!def.setupsFor) || (tradeOnly && !!def.setupsFor),
+    extra: btLayer && !tradeOnly ? [Studies.transient(btLayer, { tradedOnly: true })] : [],
     ctx: { bench: benchMap, main, tf, plans: px.ohlc ? ctx.latest : [],
     market, symbol, chartEl, annotate: px.ohlc ? annotate : null,
     trades: () => anatomy, onTrades: (fn) => tradeHooks.push(fn), claimTrades: (set) => { claimedTrades = set; },
@@ -1669,7 +1675,8 @@ async function chartPage(alive, market, symbol, tf) {
         <div class="muted small">${esc([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · "))}</div>
         ${t.note ? `<div class="btr-note small">${esc(t.note)}</div>` : ""}</div>`).join("");
     return `<section><h3>Backtest trades</h3><div class="muted small">${run ? `${run.stage && run.stage !== "legacy" ? stageChip(run) + " " : ""}${esc(`${run.strategy} · ${run.run}`)}` : ""}</div>
-      <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div></section>
+      <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div>
+      <label class="small bt-only"><input type="checkbox" id="tradeonly" ${prefs.tradeOnly ? "checked" : ""}> Trade only — just the buy, stop, target and sell, without the setup drawing</label></section>
       <div class="btrs">${rows || '<div class="muted small">This run has no trades in this symbol.</div>'}</div>`;
   }
   /** The Trade setups panel: every setup the active layer found, newest first, filterable by verdict —
@@ -1913,6 +1920,8 @@ async function chartPage(alive, market, symbol, tf) {
       return;
     }
     if (prefs.tab === "trades") {
+      const only = body.querySelector("#tradeonly");
+      if (only) only.onchange = () => { prefs.tradeOnly = only.checked; store.set("chartPrefs", prefs); rerender(); };
       body.querySelectorAll(".btr").forEach((el) => el.onclick = () => {
         const i = +el.dataset.i;
         selTrade = selTrade === i ? -1 : i;
