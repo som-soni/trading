@@ -320,7 +320,7 @@ under any other precedence.
   set `min_breakout_vol` alone: their buy-stops fill intraday, before the session's volume is known, so
   they are unchanged.
 
-  As built (minervini 1.52, on the `minervini-next` branch), the check is behind
+  As built (minervini 1.51, on the `minervini-next` branch), the check is behind
   `S2_FILL_NEEDS_VOLUME = 1`, and fix 2 is behind `RESULTS_BY_ANNOUNCEMENT = 1`. Both are signal-exempt,
   so a variant with either set to 0 reuses the scan.
 - **Losers it would have excluded (305 S2 light-volume exits;** 268 of them have no other flag): every row
