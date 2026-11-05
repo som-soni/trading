@@ -43,8 +43,9 @@ STG01 = "S1"   # the Stage 1 -> Stage 2 breakout
 MA_WEEKS = 30                 # Weinstein's 30-week simple average of weekly closes
 SLOPE_WEEKS = 4               # the line is compared with its own value this many weeks ago
 #: The flat band: the line is "rising" when it is more than this far above its value SLOPE_WEEKS ago,
-#: "falling" when more than this far below, "flat" between -- the Learn guide's own rule (0.5% over
-#: about a month), and the same reading the daily stage cycle uses. v2.0 sized the band to the
+#: "falling" when more than this far below, "flat" between. 0.5% is the stages guide's band for a falling
+#: 200-day (0.5% over 20 sessions) carried to the weekly line, and the same reading the daily stage cycle
+#: uses. It is NOT the "Stage analysis" guide's figure: that guide says +-1% over 4 weeks. v2.0 sized the band to the
 #: stock's WEEKLY-RETURN volatility instead, which was the wrong quantity: a 30-week average moves
 #: far less in 4 weeks than the closes do in 1, so the band swallowed real slopes (see the changelog).
 FLAT_BAND_PCT = 0.5
@@ -66,10 +67,16 @@ BASE_MAX_WEEKS = 104          # stop looking back beyond this
 MANSFIELD_WEEKS = 52          # the stock/index ratio against its own average: the RS zero line
 MANSFIELD_RISE_WEEKS = 4      # "improving from negative" is judged over this many weeks
 VOL_MULT = 2.0                # breakout week's volume against the previous weeks' average
-VOL_WEEKS = 4                 # the guide compares the breakout week with the previous four
+VOL_WEEKS = 4                 # this strategy's choice; the "Stage analysis" guide averages the previous 10
 
 # ---- the trade
 MAX_STOP_PCT = 15.0           # skip or shrink if the structural stop is further than this
+#: How far below the structural level (the higher of the line and the base low) the stop sits, in percent.
+#: 0 puts it ON the level, as every version before 2.9 did. The guide's pseudocode puts it 1% below
+#: (`* 0.99`; "just below" in its prose). Off by default until an A/B measures it: in the 2013-21 optimise
+#: runs, 46 of 111 losing stop-outs had a stop-day low within 1% of the stop
+#: (research/audit-stage-analysis-losers.md).
+STOP_BUFFER_PCT = 0.0
 BASE_TARGET_MULT = 1.0        # nominal target: the base's own height above the breakout
 
 # ---- experiments, OFF by default (2.4). Each was found by slicing the v2.3 run that will now judge
@@ -319,11 +326,22 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.8"
-    # 2.7 and 2.8 change only what happens after evaluate() -- the simulator, and exits -- never the
+    version = "2.9"
+    # 2.7 to 2.9 change only what happens after evaluate() -- the simulator, and exits -- never the
     # scan, so the cached signal rows carry forward (CLAUDE.md, signal_version).
     signal_version = "2.6"
     changelog = (
+        ("2.9", "2026-11-06",
+         "STOP_BUFFER_PCT, off by default, so this version trades exactly as 2.8: the stop can sit that far "
+         "below the higher of the line and the base low instead of on it, as the guide's own pseudocode "
+         "places it (1% below). An audit of the losing trades of the 2013-21 optimise runs "
+         "(research/audit-stage-analysis-losers.md) found no stage-detection error worth a rule -- every "
+         "Weinstein entry check it tried removed winners as fast as losers -- but found the stop on the line "
+         "with no buffer, and 46 of 111 losing stop-outs whose stop-day low was within 1% of it. The buffer "
+         "also widens 1R, so every position is smaller; only the A/B can say which way it nets. Read in "
+         "build_plans, after evaluate(), so signal_version stays 2.6 and the constant is signal-exempt. "
+         "The docs now say what the setup mostly catches -- a new high in a running Stage 2, the base "
+         "stretched to its depth limit -- and where the parameters depart from the Learn guide."),
         ("2.8", "2026-11-03",
          "Three exits on an EARLIER warning that Stage 2 is failing, all OFF by default, so this version "
          "trades exactly as 2.7. Weinstein sells on a week that closes below the line; measured on the "
@@ -500,7 +518,7 @@ class StageAnalysisStrategy(Strategy):
     # Read after the scan, never by evaluate(): a `--const` variant moving only these starts from the
     # shipped run's signal rows (base.Strategy.signal_exempt_consts) — the stop limit and the target (build_plans, classify), and
     # W1_RANKS_ONLY's ranking (classify, setup_quality).
-    signal_exempt_consts = ("MAX_STOP_PCT", "BASE_TARGET_MULT", "W1_RANKS_ONLY", "W1_RANK_QUALITY",
+    signal_exempt_consts = ("MAX_STOP_PCT", "STOP_BUFFER_PCT", "BASE_TARGET_MULT", "W1_RANKS_ONLY", "W1_RANK_QUALITY",
                             "EXIT_ON_STAGE3", "EXIT_DIST_WEEKS", "DIST_WINDOW_WEEKS", "DIST_VOL_WEEKS",
                             "EXIT_ON_LOWER_HIGH", "SWING_WEEKS")
     extra_columns = ("stage", "line_slope_pct", "resistance", "base_weeks", "base_depth_pct",
@@ -518,7 +536,9 @@ class StageAnalysisStrategy(Strategy):
     how_it_works = (
         "The idea. Stan Weinstein's method: buy the breakout from a Stage 1 base into Stage 2, the advance, and "
         "stay out of anything in Stage 4, the decline. The rules come from the Learn guide \"Stage analysis\"; it "
-        "has no numbered spec.",
+        "has no numbered spec, and three parameters depart from it on purpose: the flat band is {FLAT_BAND_PCT}% "
+        "(the guide: 1%), breakout volume is judged against {VOL_WEEKS} weeks (the guide: 10), and resistance is the "
+        "base's own high rather than a 26-week high.",
         "Weekly bars. A week is its sessions' high, low, last close and total volume. The strategy is evaluated "
         "every session, so mid-week \"this week\" is the week so far. The one line is the {MA_WEEKS}-week simple "
         "average of weekly closes.",
@@ -529,9 +549,11 @@ class StageAnalysisStrategy(Strategy):
         "close above a line that is not falling, relative strength positive or improving, and none of market, "
         "sector or stock in Stage 4.",
         "Step 3, the setup (S1). A base of at least {BASE_MIN_WEEKS} weeks no deeper than {BASE_MAX_DEPTH_PCT}%, and "
-        "a weekly close above its high on {VOL_MULT}x volume (W1).",
-        "Step 4, the trade. Bought by a buy-stop at the signal close (Entry); stopped at the higher of the line and "
-        "the base low, at most {MAX_STOP_PCT}% away (Stop); no target order (Target); sold when a week closes "
+        "a weekly close above its high on {VOL_MULT}x volume (W1). The base is the LONGEST such window, re-measured "
+        "every week, so inside an advance it stretches to the depth limit and takes in the advance itself: most "
+        "trades are a new high in a Stage 2 already months old, not the first breakout out of a Stage 1 base.",
+        "Step 4, the trade. Bought by a buy-stop at the signal close (Entry); stopped {STOP_BUFFER_PCT}% below the "
+        "higher of the line and the base low, at most {MAX_STOP_PCT}% away (Stop); no target order (Target); sold when a week closes "
         "below the {MA_WEEKS}-week line (Exit).",
     )
     caveats = (
@@ -563,11 +585,15 @@ class StageAnalysisStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v2.6); verify not run. US 8.09% CAGR, "
-        "excess -5.92 points a year over the benchmark, max drawdown -25.6%, Sharpe 0.71; India 1.37% CAGR, "
-        "excess -12.16, max drawdown -20.8%, Sharpe 0.24. It trails holding the index in both markets. The "
-        "closest variant, W1_RANKS_ONLY=1 with G7_BLOCK_STAGE=3 (optimise stage), still trails: excess -6.57 in "
-        "the US and -4.84 in India -- a variant, never the headline. The stage model itself is validated against "
+        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v2.8); verify not run. US 8.04% CAGR, "
+        "excess -5.97 points a year over the benchmark, max drawdown -24.1%, Sharpe 0.75; India 1.31% CAGR, "
+        "excess -12.23, max drawdown -20.7%, Sharpe 0.23. It trails holding the index in both markets. The "
+        "closest India variant, W1_RANKS_ONLY=1 with G7_BLOCK_STAGE=3, still trails (excess -3.86, max drawdown "
+        "-27.1%), and most of its gain came from 44 trades bought while the market index read Stage 4, which that "
+        "setting admits -- the opposite of Weinstein's market rule; in the US the same variant is worse (excess "
+        "-9.36). None of the v2.8 exits beats the trend exit on return. An audit of the losing trades "
+        "(research/audit-stage-analysis-losers.md) found no stage-detection error worth a rule: entries that pass "
+        "every Weinstein check did worse than the ones that fail some. The stage model itself is validated against "
         "the guide's Trent narrative (Stage 2 from August 2023 through October 2024, close 2,049 to 7,128; "
         "Stage 4 by March 2025). It is the only WEEKLY strategy here, and weekly decisions are the one "
         "structural difference none of the others test."
@@ -601,7 +627,8 @@ class StageAnalysisStrategy(Strategy):
               "{MANSFIELD_WEEKS} + {MANSFIELD_RISE_WEEKS} weeks of ratio.",
         "G7": "The market index is not in Stage 4.\n\n"
               "- **Test:** the stage machine (Stage and base checks), run on the market's benchmark index, reads "
-              "anything but Stage 4 for the latest completed week. Unknown passes.\n"
+              "anything but Stage {G7_BLOCK_STAGE} for the latest completed week. Unknown passes. Only that one "
+              "stage is refused: with G7_BLOCK_STAGE at 3, a market in Stage 4 passes.\n"
               "- **Not checked (passes with a note):** no index stored.",
         "G8": "The stock's sector index is not in Stage 4.\n\n"
               "- **Sector index:** the index or fund mapped to the stock's sector in the market config, from "
@@ -660,7 +687,10 @@ class StageAnalysisStrategy(Strategy):
                 "the history available) down to {BASE_MIN_WEEKS} is tried, longest first.\n"
                 "- **Test:** (highest weekly high − lowest weekly low) ÷ highest high × 100 ≤ "
                 "{BASE_MAX_DEPTH_PCT}. The first window that passes is the base.\n"
-                "- **No base:** no window of at least {BASE_MIN_WEEKS} weeks passes, and there is no setup.",
+                "- **No base:** no window of at least {BASE_MIN_WEEKS} weeks passes, and there is no setup.\n"
+                "- **Not a sideways test:** longest-first means the window grows until the range reaches "
+                "{BASE_MAX_DEPTH_PCT}%, so in an advance it includes the advance. Nothing asks for a pause before "
+                "the high is cleared.",
         "Resistance": "The base's own highest weekly high: the level the breakout week must close above.",
     }
     watch_docs = {
@@ -672,8 +702,8 @@ class StageAnalysisStrategy(Strategy):
               "- **Test:** the stage machine on the stock's completed weeks reads Stage 3.\n"
               "- **Effect:** the decision drops to WATCH, so the backtest does not buy it.",
         "W3": "The structural stop is more than {MAX_STOP_PCT}% below the entry.\n\n"
-              "- **Test:** the higher of the {MA_WEEKS}-week line and the base low < entry × (1 − "
-              "{MAX_STOP_PCT}%).\n"
+              "- **Test:** the higher of the {MA_WEEKS}-week line and the base low, less {STOP_BUFFER_PCT}%, "
+              "< entry × (1 − {MAX_STOP_PCT}%).\n"
               "- **Effect:** the plan's stop is moved up to {MAX_STOP_PCT}% below the entry, and the decision "
               "drops to WATCH, so the backtest does not buy it.",
     }
@@ -685,8 +715,15 @@ class StageAnalysisStrategy(Strategy):
                "- **Breakout:** last week's close ≤ resistance < this week's close so far.\n"
                "- **Armed (live only):** the same base and line, but this week's close still at or below "
                "resistance. The plan is then a buy-stop one tick above resistance (TRADE ON TRIGGER).\n\n"
-               "\"Into\", not \"in\": the stage machine ratifies Stage 2 only after {CONFIRM_WEEKS} weeks, so at "
-               "entry the stock's stage band usually still reads Stage 1, and a failed breakout never turns it.",
+               "**What it mostly catches.** The base and its resistance are re-measured every week, so a stock "
+               "already in Stage 2 qualifies again each week it closes above the high of its longest "
+               "{BASE_MAX_DEPTH_PCT}%-deep window -- a new high, often only weeks after the last one. In the "
+               "2013-21 optimise runs about 95% of entries were made with the stock's band already at Stage 2 "
+               "(a median 14-25 weeks into it), and the base sat at the depth limit (median 29%). The first "
+               "breakout out of a Stage 1 base, the method's own setup, is the minority.\n\n"
+               "\"Into\", not \"in\": when it IS that first breakout, the stage machine ratifies Stage 2 only "
+               "after {CONFIRM_WEEKS} weeks, so at entry the band still reads Stage 1, and a failed breakout never "
+               "turns it.",
     }
     entry_rules = (
         "Signal. Every gate passes, the setup is a completed breakout, and no watch flag is set: a HIGH "
@@ -708,7 +745,8 @@ class StageAnalysisStrategy(Strategy):
     )
     stop_rules = (
         "Where it goes. At the higher of the {MA_WEEKS}-week line (this week's value) and the lowest weekly low of "
-        "the base, rounded down to the price tick. No extra buffer below it.",
+        "the base, less {STOP_BUFFER_PCT}% (0 = on the level; the guide's pseudocode uses 1%), rounded down to the "
+        "price tick.",
         "Never more than {MAX_STOP_PCT}% away. If that level is more than {MAX_STOP_PCT}% below the entry, the "
         "stop is raised to {MAX_STOP_PCT}% below it and W3 is set — which also makes the decision WATCH, so the "
         "backtest does not take the trade.",
@@ -781,6 +819,8 @@ class StageAnalysisStrategy(Strategy):
         ("Volume", "VOL_MULT", "Breakout week's volume against the previous weeks' average; below it is W1."),
         ("Volume window", "VOL_WEEKS", "Completed weeks in that average."),
         ("Maximum stop", "MAX_STOP_PCT", "Widest stop; beyond it the stop is moved up and the setup is WATCH (W3)."),
+        ("Stop buffer", "STOP_BUFFER_PCT", "Experiment, off by default: percent below the higher of the line and the "
+                                           "base low the stop sits. The guide's pseudocode uses 1."),
         ("Target multiple", "BASE_TARGET_MULT", "Base heights added to the entry for the reported target."),
         ("Demote W1 to a rank", "W1_RANKS_ONLY", "Experiment, off by default: 1 trades a low-volume breakout "
                                                  "instead of holding it at WATCH, ranked behind confirmed ones."),
@@ -796,7 +836,9 @@ class StageAnalysisStrategy(Strategy):
                                                        "made after the entry is confirmed below the one before."),
         ("Swing width", "SWING_WEEKS", "Weeks either side a weekly swing high must top; it is known this late."),
         ("G7's blocked market stage", "G7_BLOCK_STAGE", "Experiment: 4 is the shipped rule; 3 refuses entries "
-                                                        "while the market tops instead of after it has fallen."),
+                                                        "while the market tops instead of after it has fallen. "
+                                                        "Only that stage is refused, so at 3 a Stage 4 market "
+                                                        "passes."),
     )
     backtest_args = f"--exit-mode weekly_ma --ma-weeks {MA_WEEKS} --no-target --rank-by setup_momentum"
 
@@ -1126,7 +1168,7 @@ class StageAnalysisStrategy(Strategy):
         base_low = float(e["base_low"])
         # "Just below the HIGHER of the line and the base's low" -- the higher, because a stop under
         # the base low when the line sits above it gives away far more than the method intends.
-        structural = max(float(line), base_low)
+        structural = max(float(line), base_low) * (1 - STOP_BUFFER_PCT / 100)
         floor_ = entry * (1 - MAX_STOP_PCT / 100)
         result.watch_flags["W3"] = bool(structural < floor_)
         stop = round_tick(max(structural, floor_), cfg.tick_size, "down")

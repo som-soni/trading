@@ -989,7 +989,7 @@
   },
   "stage_analysis": {
     "family": "stage_analysis",
-    "fingerprint": "f1aa5af2",
+    "fingerprint": "a4252fef",
     "params": {
       "BASE_MAX_DEPTH_PCT": 30.0,
       "BASE_MAX_WEEKS": 104,
@@ -1009,6 +1009,7 @@
       "MA_WEEKS": 30,
       "SLOPE_WEEKS": 4,
       "STAGE1_MIN_WEEKS": 6,
+      "STOP_BUFFER_PCT": 0.0,
       "SWING_WEEKS": 2,
       "VOL_MULT": 2.0,
       "VOL_WEEKS": 4,
@@ -1036,7 +1037,7 @@
         "W3"
       ]
     },
-    "version": "2.8"
+    "version": "2.9"
   },
   "supertrend": {
     "family": "supertrend",
