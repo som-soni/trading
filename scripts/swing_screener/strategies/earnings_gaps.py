@@ -76,6 +76,10 @@ from .trend_pullback import round_tick
 MIN_MOVE_PCT = 10.0        # close at least this far above the previous close
 MIN_GAP_PCT = 5.0          # ...or the open at least this far above it
 MIN_REL_VOLUME = 3.0       # volume against its 50-day average
+# 1.8: the 50-day average the reaction day is measured against ends the session BEFORE it. Ending on the day
+# itself put the spike in its own yardstick: SPOT's 22 Oct 2026 results gap traded 3.10x the 50 sessions before
+# it but 2.97x an average that included it, and failed the 3x test. 0 = the average includes the day (1.7).
+REL_VOL_PRIOR = 1
 MIN_CLOSE_POS = 0.70       # (close - low) / (high - low): closed in the top of its range
 REQUIRE_GAP = 0            # 1 = the reaction day must OPEN at least MIN_GAP_PCT up; a close-only move
                            # no longer qualifies. Research switch, off (1.5).
@@ -100,6 +104,10 @@ SCREEN_GATE = 1            # G1, the Above-the-200-day screen: 1 = enforced (as 
 # ---- the catalyst bracket (see the module docstring)
 CATALYST_MIN_DAYS = 10     # a reaction day sits at least this far after the quarter end
 CATALYST_FILED_GRACE = 5   # ...and no later than this many days after that quarter's filing
+# 1.8: a quarter stored without a filing date -- a foreign issuer, filing 6-K/20-F rather than 10-Q (187 US
+# symbols, SPOT among them) -- links a reaction up to this many days after its quarter end. Without it they
+# could never trade. 0 = such quarters link nothing (1.7).
+CATALYST_UNFILED_DAYS = 50
 ANNOUNCE_WINDOW_DAYS = 3   # with recorded announcements: results published at most this many calendar
                            # days before the reaction day, or on it -- the guide's own rule
 
@@ -109,6 +117,18 @@ ENTRY_EXPIRY_BDAYS = 5     # how long the buy-stop waits before it is cancelled
 REACTION_WINDOW = 5        # sessions a reaction day keeps offering its setup
 MAX_STOP_PCT = 12.0        # widest stop, as a share of the entry
 MAX_STOP_ATR = 1.5         # ...or this multiple of the 14-day ATR, whichever binds first
+# 1.8, S2: the flag after the gap -- the second buy of a results-gap trader, after the gap day's own breakout
+# has passed (Venu's "PEG, then flags/bases"). From the session after the reaction window to FLAG_WINDOW
+# sessions after the reaction day, the stock rests: its range since the reaction day is at most
+# FLAG_MAX_RANGE_PCT, no close has filled the gap (fallen back to the close before the reaction), it has
+# rested at least FLAG_MIN_DAYS sessions, and today's close is within FLAG_COIL_PCT under the flag's high.
+# A buy-stop goes above the flag's high, stopped under its low; only MAX_STOP_PCT caps that stop (the ATR
+# cap is about the gap day's own range). FLAG_ON = 0 turns S2 off.
+FLAG_ON = 1
+FLAG_WINDOW = 25
+FLAG_MIN_DAYS = 5
+FLAG_MAX_RANGE_PCT = 12.0
+FLAG_COIL_PCT = 8.0
 NOMINAL_TARGET_R = 3.0     # for sizing and reporting only — the real exit is the trail
 
 # ---- the market (G5)
@@ -119,15 +139,24 @@ MARKET_GATE = 0            # 1 = buy only while the market index closes above it
 MARKET_GATE_INDEX = {"india": "NIFTYSMLCAP250.NS", "us": "IWM"}
 
 EG01 = "S1"   # EG-01: the break of the reaction day's high
+EG02 = "S2"   # 1.8: the break of the flag that follows the reaction (FLAG_*)
 
 
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.7"
+    version = "1.8"
     # 1.7 adds gates to evaluate(), so signal_version is NOT pinned: a pin across a scan change would
     # replay old detections (CLAUDE.md). It defaults to `version`, which rescans.
     changelog = (
+        ("1.8", "2026-11-04",
+         "Two changes from Spotify's October 2026 results gap, which a PEG trader bought and 1.7 refused. (1) The "
+         "reaction day's volume is measured against the 50 sessions BEFORE it (REL_VOL_PRIOR): an average ending "
+         "on the day includes its own spike -- SPOT traded 3.10x the sessions before but 2.97x that average, and "
+         "failed MIN_REL_VOLUME. (2) S2, the flag after the gap (FLAG_*): once the gap day's own window has passed, "
+         "a tight rest of at least FLAG_MIN_DAYS sessions that has not filled the gap, coiled under its high, "
+         "places a buy-stop above that high, stopped under the flag's low. Changes evaluate(); cached signals are "
+         "rescanned. (3) A quarter stored without a filing date -- a foreign issuer such as Spotify, 187 US symbols -- links a reaction up to CATALYST_UNFILED_DAYS after its quarter end; they could never trade before."),
         ("1.7", "2026-11-02",
          "Kullamägi's own version, as four research switches, each defaulting to the shipped "
          "behaviour, so a default run trades "
@@ -220,8 +249,8 @@ class EarningsGapStrategy(Strategy):
     screen_gates = {"G1": "A1"}
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
     watch_codes = ("W1", "W2")
-    setup_codes = (EG01,)
-    setup_names = {EG01: "Results-gap breakout"}
+    setup_codes = (EG01, EG02)
+    setup_names = {EG01: "Results-gap breakout", EG02: "Flag after a results gap"}
     gate_titles = {"G1": "Above the 200-day", "G2": "A results-day reaction",
                    "G3": "Linked to a results window", "G4": "Stop close enough to carry",
                    "G5": "Market above its 200-day", "G6": "Growth in the quarter announced",
@@ -365,8 +394,10 @@ class EarningsGapStrategy(Strategy):
               "(it is {REQUIRE_GAP}), the open must be at least {MIN_GAP_PCT}% up and a close-only "
               "move does not qualify.\n"
               "- **Heavy volume:** the day's volume is at least {MIN_REL_VOLUME} times its 50-day "
-              "average. The average is the simple mean of the 50 sessions ending on that day, so it "
-              "includes the reaction day's own volume.\n"
+              "average: the simple mean of the 50 sessions ending the session BEFORE it, so the "
+              "spike is not part of its own yardstick (REL_VOL_PRIOR, {REL_VOL_PRIOR}).\n"
+              "- **For S2, the flag:** the reaction may be up to {FLAG_WINDOW} sessions old, if a "
+              "flag has followed it (see S2).\n"
               "- **Close near the high:** (close − low) ÷ (high − low) is at least "
               "{MIN_CLOSE_POS}, where 0 is a close on the low and 1 a close on the high. A day with "
               "no range counts as 1.\n"
@@ -392,6 +423,9 @@ class EarningsGapStrategy(Strategy):
               "to the filing date + {CATALYST_FILED_GRACE} calendar days, both ends included. The "
               "reaction day must lie inside the window of at least one stored quarter of that "
               "company.\n"
+              "- **No filing date:** a quarter stored without one (a foreign issuer filing 6-K or "
+              "20-F reports, not 10-Q) runs to the quarter end + {CATALYST_UNFILED_DAYS} calendar "
+              "days instead.\n"
               "- **Why it holds:** a company announces after its quarter closes and files on or "
               "after the day it announces, so the announcement lies inside the window (unless it "
               "came within {CATALYST_MIN_DAYS} days of the quarter end).\n"
@@ -406,7 +440,9 @@ class EarningsGapStrategy(Strategy):
               "- **ATR cap:** the distance ÷ the 14-day ATR is at most {MAX_STOP_ATR}. The ATR is "
               "the signal session's, so it already includes the reaction day's own wide range.\n"
               "- **At the fill:** only the percent cap is tested again, on the price actually "
-              "paid (see Entry).",
+              "paid (see Entry).\n"
+              "- **For S2, the flag:** the distance is from the flag's buy-stop to the flag's low, and "
+              "only the percent cap applies.",
         "G5": "The market index closes above its 200-day average -- a research switch, OFF unless "
               "MARKET_GATE is 1 (it is {MARKET_GATE}). While off, G5 always passes.\n\n"
               "- **Index:** the small-cap segment -- the Nifty Smallcap 250 in India, IWM (Russell "
@@ -467,6 +503,18 @@ class EarningsGapStrategy(Strategy):
               "condition.\n\n"
               "Nothing is bought on the signal session itself. The decision is TRADE ON TRIGGER "
               "and the order waits for the price (see Entry).",
+        EG02: "Flag after a results gap: the second buy, once the gap day's own window has passed. A "
+              "trader who missed the gap -- or was stopped -- buys the first tight rest above it.\n\n"
+              "- **When:** more than {REACTION_WINDOW} and at most {FLAG_WINDOW} sessions after a "
+              "reaction day that passes G2.\n"
+              "- **The flag:** every session since the reaction day, at least {FLAG_MIN_DAYS} of them; "
+              "from its highest high to its lowest low at most {FLAG_MAX_RANGE_PCT}%; no close back to "
+              "the close before the reaction (the gap is not filled); today's close within "
+              "{FLAG_COIL_PCT}% under the flag's high.\n"
+              "- **Trigger:** the flag's high + {ENTRY_BUFFER_PCT}%; **stop:** the flag's low. G4's "
+              "percent cap applies, its ATR cap does not.\n"
+              "- **Its own entry:** a flag can be bought after the gap-day buy was stopped out.\n\n"
+              "Off with FLAG_ON = 0.",
     }
     entry_rules = (
         "The signal. Any session on which G1 to G4 pass is a signal; the first is normally the "
@@ -593,8 +641,16 @@ class EarningsGapStrategy(Strategy):
         ("Announcement window", "ANNOUNCE_WINDOW_DAYS", "G3, with recorded announcements: calendar days "
                                                         "before the reaction day the results may have come out."),
         ("Catalyst: latest", "CATALYST_FILED_GRACE", "G3: calendar days after that quarter's filing after which it cannot."),
+        ("Catalyst: no filing date", "CATALYST_UNFILED_DAYS", "G3: for a quarter stored without a filing date (a "
+         "foreign issuer), calendar days after the quarter end up to which a reaction links; 0 = never."),
         ("Maximum stop", "MAX_STOP_PCT", "G4 and at the fill: widest stop, in % below the trigger or the price paid."),
-        ("Maximum stop (ATR)", "MAX_STOP_ATR", "G4: widest stop as a multiple of the 14-day ATR."),
+        ("Maximum stop (ATR)", "MAX_STOP_ATR", "G4: widest stop as a multiple of the 14-day ATR (not for S2)."),
+        ("Volume yardstick", "REL_VOL_PRIOR", "G2: 1 = the 50-day average ends the session before the reaction; 0 = it includes the day (1.7)."),
+        ("Flag entry", "FLAG_ON", "S2: 1 = buy the flag after a results gap; 0 = off."),
+        ("Flag window", "FLAG_WINDOW", "S2: sessions after the reaction day in which its flag can still be bought."),
+        ("Flag length", "FLAG_MIN_DAYS", "S2: sessions the flag must have rested."),
+        ("Flag depth", "FLAG_MAX_RANGE_PCT", "S2: the flag's high to its low, at most this %."),
+        ("Flag coil", "FLAG_COIL_PCT", "S2: today's close within this % under the flag's high."),
         ("Entry buffer", "ENTRY_BUFFER_PCT", "How far above the reaction high, in %, the buy-stop sits."),
         ("Entry window", "ENTRY_EXPIRY_BDAYS", "Weekdays after the signal day before an unfilled buy-stop is cancelled."),
         ("Neglect threshold", "NEGLECT_MAX_RUN_PCT", "W1: rise, in %, over {NEGLECT_LOOKBACK} sessions above which W1 is noted."),
@@ -624,11 +680,14 @@ class EarningsGapStrategy(Strategy):
             with db.get_connection().cursor() as cur:
                 cur.execute(
                     """SELECT symbol, period_end, filed FROM quarterly_results
-                       WHERE market=%s AND period_end IS NOT NULL AND filed IS NOT NULL""",
+                       WHERE market=%s AND period_end IS NOT NULL""",
                     (market_key,))
                 for sym, pe, filed in cur.fetchall():
+                    if filed is None and not CATALYST_UNFILED_DAYS:
+                        continue
                     lo = pd.Timestamp(pe) + pd.Timedelta(days=CATALYST_MIN_DAYS)
-                    hi = pd.Timestamp(filed) + pd.Timedelta(days=CATALYST_FILED_GRACE)
+                    hi = (pd.Timestamp(filed) + pd.Timedelta(days=CATALYST_FILED_GRACE) if filed is not None
+                          else pd.Timestamp(pe) + pd.Timedelta(days=CATALYST_UNFILED_DAYS))
                     if hi >= lo:
                         out.setdefault(sym, []).append((lo, hi))
         except Exception:   # noqa: BLE001 — no results table is "nothing can be linked", not a crash
@@ -734,19 +793,19 @@ class EarningsGapStrategy(Strategy):
 
     # ---------- gates ----------
 
-    def _reaction_day(self, d: pd.DataFrame) -> dict | None:
-        """The most recent qualifying reaction day within the window, or None.
+    def _reaction_day(self, d: pd.DataFrame, window: int = REACTION_WINDOW) -> dict | None:
+        """The most recent qualifying reaction day within the last `window` sessions, or None.
 
         Walks backwards so the NEWEST event wins: a second results gap inside five sessions is a
         new event with a new high and a new stop, not a continuation of the first.
         """
         n = len(d)
-        first = max(1, n - REACTION_WINDOW)
+        first = max(1, n - window)
         for i in range(n - 1, first - 1, -1):
             o, h, l, c = (float(d["open"].iloc[i]), float(d["high"].iloc[i]),
                           float(d["low"].iloc[i]), float(d["close"].iloc[i]))
             prev_c = float(d["close"].iloc[i - 1])
-            v50 = d["vol_sma50"].iloc[i]
+            v50 = d["vol_sma50"].iloc[i - 1] if REL_VOL_PRIOR else d["vol_sma50"].iloc[i]
             if not prev_c or pd.isna(v50) or not v50:
                 continue
             move = (c / prev_c - 1) * 100
@@ -762,7 +821,7 @@ class EarningsGapStrategy(Strategy):
             pos = (c - l) / rng if rng > 0 else 1.0
             if pos < MIN_CLOSE_POS:
                 continue
-            return {"i": i, "date": d.index[i], "high": h, "low": l, "close": c,
+            return {"i": i, "date": d.index[i], "high": h, "low": l, "close": c, "prev_close": prev_c,
                     "move_pct": move, "gap_pct": gap, "rel_volume": rel_vol, "close_pos": pos}
         return None
 
@@ -776,8 +835,16 @@ class EarningsGapStrategy(Strategy):
             result.ok("G1", "off")
 
         r = self._reaction_day(d)
+        flag = None
+        if r is None and FLAG_ON and not ENTRY_AT_CLOSE:
+            # S2: a reaction older than the gap day's own window, followed by a tight flag
+            r = self._reaction_day(d, FLAG_WINDOW)
+            flag = self._flag(d, r) if r is not None else None
+            if flag is None:
+                r = None
         if r is None:
-            result.fail("G2", f"no results-day reaction in the last {REACTION_WINDOW} sessions")
+            result.fail("G2", f"no results-day reaction in the last {REACTION_WINDOW} sessions"
+                              + (f", nor a flag after one in the last {FLAG_WINDOW}" if FLAG_ON else ""))
             for g in ("G3", "G4", "G5", "G6", "G7"):
                 result.ok(g, "not reached")
             result.recompute_first_fail()
@@ -801,6 +868,9 @@ class EarningsGapStrategy(Strategy):
         e["reaction_move_pct"] = round(r["move_pct"], 2)
         e["reaction_rel_volume"] = round(r["rel_volume"], 2)
         e["reaction_close_pos"] = round(r["close_pos"], 3)
+        if flag:
+            e.update(flag_high=flag["high"], flag_low=flag["low"], flag_days=flag["days"],
+                     flag_range_pct=round(flag["range_pct"], 2))
 
         # G3 — the news link
         how = self._link(ctx.symbol, r["date"])
@@ -812,8 +882,12 @@ class EarningsGapStrategy(Strategy):
             result.fail("G3", "the move is not inside a stored results window")
 
         # G4 — is the reaction low a stop we can carry? Measured from the entry this run will use.
-        entry = r["close"] if ENTRY_AT_CLOSE else r["high"] * (1 + ENTRY_BUFFER_PCT / 100)
-        risk = entry - r["low"]
+        if flag:
+            entry = flag["high"] * (1 + ENTRY_BUFFER_PCT / 100)
+            risk = entry - flag["low"]
+        else:
+            entry = r["close"] if ENTRY_AT_CLOSE else r["high"] * (1 + ENTRY_BUFFER_PCT / 100)
+            risk = entry - r["low"]
         atr14 = ctx.atr
         risk_pct = risk / entry * 100 if entry else float("inf")
         atr_mult = risk / atr14 if atr14 and atr14 == atr14 else float("inf")
@@ -821,7 +895,7 @@ class EarningsGapStrategy(Strategy):
             result.fail("G4", "the reaction day's low is not below the trigger")
         elif risk_pct > MAX_STOP_PCT:
             result.fail("G4", f"stop is {risk_pct:.1f}% below the entry (over {MAX_STOP_PCT:g}%)")
-        elif atr_mult > MAX_STOP_ATR:
+        elif atr_mult > MAX_STOP_ATR and not flag:
             result.fail("G4", f"stop is {atr_mult:.1f} ATR below the entry (over {MAX_STOP_ATR:g})")
         else:
             result.ok("G4")
@@ -884,9 +958,29 @@ class EarningsGapStrategy(Strategy):
             result.watch_notes["W2"] = (f"gapped {r['gap_pct']:+.1f}% but closed "
                                         f"{r['move_pct']:+.1f}%")
 
-        result.setups[EG01] = bool(result.hard_gates_passed)
+        result.setups[EG01] = bool(result.hard_gates_passed) and not flag
+        result.setups[EG02] = bool(result.hard_gates_passed) and bool(flag)
         result.recompute_first_fail()
         return result
+
+    @staticmethod
+    def _flag(d: pd.DataFrame, r: dict) -> dict | None:
+        """S2's flag after reaction `r`, as of the last bar, or None: past the reaction window, at least
+        FLAG_MIN_DAYS sessions old, at most FLAG_MAX_RANGE_PCT from its high to its low, no close back to the
+        pre-reaction close (the gap unfilled), and the last close within FLAG_COIL_PCT under the flag's high."""
+        n = len(d)
+        days = n - 1 - r["i"]
+        if days < max(FLAG_MIN_DAYS, REACTION_WINDOW) or days > FLAG_WINDOW:
+            return None
+        seg = d.iloc[r["i"] + 1:]
+        hi, lo = float(seg["high"].max()), float(seg["low"].min())
+        if not hi or (hi - lo) / hi * 100 > FLAG_MAX_RANGE_PCT:
+            return None
+        if float(seg["close"].min()) <= r["prev_close"]:
+            return None
+        if float(d["close"].iloc[-1]) < hi * (1 - FLAG_COIL_PCT / 100):
+            return None
+        return {"high": hi, "low": lo, "days": days, "range_pct": (hi - lo) / hi * 100}
 
     # ---------- entry ----------
 
@@ -907,10 +1001,11 @@ class EarningsGapStrategy(Strategy):
         if not result.has_setup:
             return PlanChoice(None, None, "no active setup")
         e = ctx.extras
-        hi, lo = e.get("reaction_high"), e.get("reaction_low")
+        flag = bool(result.setups.get(EG02))
+        hi, lo = (e.get("flag_high"), e.get("flag_low")) if flag else (e.get("reaction_high"), e.get("reaction_low"))
         if hi is None or lo is None:
             return PlanChoice(None, None, "missing reaction day")
-        if ENTRY_AT_CLOSE:
+        if ENTRY_AT_CLOSE and not flag:
             entry = float(e.get("reaction_close") or ctx.close)   # bought at that close, as it printed
         else:
             entry = round_tick(float(hi) * (1 + ENTRY_BUFFER_PCT / 100), cfg.tick_size, "up")
@@ -920,11 +1015,12 @@ class EarningsGapStrategy(Strategy):
         risk = entry - stop
         target = entry + NOMINAL_TARGET_R * risk
         plan = TradePlan(
-            plan="EG", setup=EG01, entry=entry, stop=stop, target=target,
+            plan="EG", setup=EG02 if flag else EG01, entry=entry, stop=stop, target=target,
             risk_per_share=risk, reward_per_share=target - entry,
             r_multiple=NOMINAL_TARGET_R, nearest_overhead_above_entry=None,
         )
-        how = ("buy the {d} reaction close" if ENTRY_AT_CLOSE else "buy-stop above the {d} reaction high")
+        how = ("buy-stop above the flag after the {d} reaction" if flag else
+               "buy the {d} reaction close" if ENTRY_AT_CLOSE else "buy-stop above the {d} reaction high")
         return PlanChoice(plan, None, how.format(d=e["reaction_date"]))
 
     def signal_meta(self, ctx: StockContext, result: StrategyResult, plan: TradePlan) -> dict:
@@ -939,9 +1035,11 @@ class EarningsGapStrategy(Strategy):
             # a completed bar, so nothing later is read; one that cannot fill that day is dropped
             return {"order": "close", "base_id": ctx.extras.get("reaction_date"),
                     "max_risk_pct": MAX_STOP_PCT / 100}
+        # a flag is its own entry: it may follow a gap-day buy that was stopped out
+        flag = plan.setup == EG02
         return {
             "order": "stop",
-            "base_id": ctx.extras.get("reaction_date"),
+            "base_id": f"{ctx.extras.get('reaction_date')}-flag" if flag else ctx.extras.get("reaction_date"),
             "max_risk_pct": MAX_STOP_PCT / 100,
             "expiry_bdays": ENTRY_EXPIRY_BDAYS,
         }
@@ -969,7 +1067,9 @@ class EarningsGapStrategy(Strategy):
             # The entry is a resting buy-stop that has not been hit yet, which is exactly what
             # TRADE_ON_TRIGGER means. There is no higher tier for this strategy by construction.
             label = "TRADE_ON_TRIGGER"
-            reasons.append(f"buy the {ctx.extras.get('reaction_date')} reaction close" if ENTRY_AT_CLOSE
+            reasons.append(f"buy-stop above the flag after the {ctx.extras.get('reaction_date')} reaction"
+                           if plan.setup == EG02 else
+                           f"buy the {ctx.extras.get('reaction_date')} reaction close" if ENTRY_AT_CLOSE
                            else f"buy-stop above the {ctx.extras.get('reaction_date')} reaction high")
             for code in ("W1", "W2"):
                 if result.watch_flags.get(code):

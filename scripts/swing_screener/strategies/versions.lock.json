@@ -282,14 +282,20 @@
   },
   "earnings_gaps": {
     "family": "earnings_gaps",
-    "fingerprint": "ccd0454e",
+    "fingerprint": "7a923344",
     "params": {
       "ANNOUNCE_WINDOW_DAYS": 3,
       "CATALYST_FILED_GRACE": 5,
       "CATALYST_MIN_DAYS": 10,
+      "CATALYST_UNFILED_DAYS": 50,
       "ENTRY_AT_CLOSE": 0,
       "ENTRY_BUFFER_PCT": 0.1,
       "ENTRY_EXPIRY_BDAYS": 5,
+      "FLAG_COIL_PCT": 8.0,
+      "FLAG_MAX_RANGE_PCT": 12.0,
+      "FLAG_MIN_DAYS": 5,
+      "FLAG_ON": 1,
+      "FLAG_WINDOW": 25,
       "MARKET_GATE": 0,
       "MAX_STOP_ATR": 1.5,
       "MAX_STOP_PCT": 12.0,
@@ -303,6 +309,7 @@
       "NEGLECT_MAX_RUN_PCT": 30.0,
       "NOMINAL_TARGET_R": 3.0,
       "REACTION_WINDOW": 5,
+      "REL_VOL_PRIOR": 1,
       "REQUIRE_GAP": 0,
       "SCREEN_GATE": 1,
       "_key": "earnings_gaps",
@@ -317,14 +324,15 @@
       ],
       "min_bars": 260,
       "setup_codes": [
-        "S1"
+        "S1",
+        "S2"
       ],
       "watch_codes": [
         "W1",
         "W2"
       ]
     },
-    "version": "1.7"
+    "version": "1.8"
   },
   "ema_pullback": {
     "family": "ema_pullback",
