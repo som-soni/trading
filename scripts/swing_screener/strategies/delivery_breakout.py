@@ -481,6 +481,29 @@ class DeliveryBreakoutStrategy(Strategy):
         return Decision(LABELS[before], LABELS[label], "; ".join(reasons),
                         risk_pct, plan.r_multiple, self.setup_quality(result))
 
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The delivery day (boxed, with how much was delivered against its normal), the buy-stop
+        {ENTRY_BUFFER_PCT}% over its high, its low as the stop, and the 52-week high that caps the target --
+        all from the signal's own record, so a backtest trade draws what the run saw."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        if not e.get("signal_date") or not e.get("signal_high"):
+            return super().chart_anatomy(sig)
+        sd, hi, lo = str(e["signal_date"]), float(e["signal_high"]), float(e["signal_low"])
+        what = (f"{e.get('signal_deliv_pct') or 0:.0f}% delivered ({e.get('signal_deliv_ratio') or 0:.1f}× its normal) "
+                f"on {e.get('signal_rel_volume') or 0:.1f}× volume")
+        out = [{"shape": "box", "from": sd, "to": sd, "top": hi, "bottom": lo, "role": "base", "label": f"delivery day · {what}"},
+               {"shape": "level", "from": sd, "to": d, "price": hi * (1 + ENTRY_BUFFER_PCT / 100), "role": "pivot",
+                "label": f"buy-stop {ENTRY_BUFFER_PCT:g}% over the delivery day's high"},
+               {"shape": "level", "from": sd, "to": d, "price": lo, "role": "support", "label": "the delivery day's low — the stop"}]
+        if e.get("high_52w"):
+            out.append({"shape": "level", "bars": 60, "to": d, "price": float(e["high_52w"]), "role": "tight",
+                        "label": f"52-week high {float(e['high_52w']):,.2f} — the target stays under it"})
+        out.append({"shape": "note", "at": sd, "price": hi,
+                    "text": f"Delivery day {sd}: {what}. Buy the break of its high within {SIGNAL_WINDOW} sessions, "
+                            f"stop under its low."})
+        return out
+
     def report_extras(self, ctx: StockContext, result: StrategyResult,
                       plan: TradePlan | None) -> dict:
         e = ctx.extras

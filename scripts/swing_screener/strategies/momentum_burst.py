@@ -455,6 +455,31 @@ class MomentumBurstStrategy(Strategy):
         r = lambda v: round(float(v), 3) if v is not None and v == v else None
         return {k: r(e.get(k)) for k in self.extra_columns}
 
+    def setup_shapes(self, ctx: StockContext, result: StrategyResult, sig: dict) -> list[dict]:
+        """For the chart's Trade setups layer: the {QUIET_BARS} quiet sessions G5 measured (boxed), the burst
+        day itself, and the line {BURST_MIN_PCT}% over yesterday's close that S1's close had to clear -- the bars
+        evaluate() reads. The plan's buy (the close) and stop (the day's low) are drawn by the layer."""
+        d = ctx.daily
+        if len(d) < QUIET_BARS + 2:
+            return self.chart_anatomy(sig)
+        day = lambda ts: str(pd.Timestamp(ts).date())
+        e = ctx.extras
+        quiet, last = d.iloc[-QUIET_BARS - 1:-1], d.iloc[-1]
+        prev_c = float(d["close"].iloc[-2])
+        frac = e.get("quiet_range_frac")
+        out = [{"shape": "box", "from": day(quiet.index[0]), "to": day(quiet.index[-1]),
+                "top": float(quiet["high"].max()), "bottom": float(quiet["low"].min()), "role": "base",
+                "label": f"quiet: {QUIET_BARS} sessions" + (f", ranges {frac:.2f}× the {QUIET_REF_BARS}-session mean"
+                                                          if frac is not None and frac == frac else "")},
+               {"shape": "level", "from": day(quiet.index[0]), "to": day(d.index[-1]), "price": prev_c * (1 + BURST_MIN_PCT / 100),
+                "role": "pivot", "label": f"+{BURST_MIN_PCT:g}% over yesterday's close, {prev_c * (1 + BURST_MIN_PCT / 100):,.2f}"},
+               {"shape": "box", "from": day(d.index[-1]), "to": day(d.index[-1]), "top": float(last["high"]),
+                "bottom": float(last["low"]), "role": "tight",
+                "label": (f"burst {e['burst_pct']:+.1f}% on {e.get('vol_vs_prior') or 0:.1f}× yesterday's volume, "
+                          f"closing at {(e.get('close_pos') or 0) * 100:.0f}% of its range")
+                         if e.get("burst_pct") is not None else "burst day"}]
+        return out + [s for s in self.chart_anatomy(sig) if s.get("shape") == "note"]
+
     def chart_anatomy(self, sig: dict) -> list[dict]:
         """The burst day and its stop."""
         e = sig.get("extras") or {}

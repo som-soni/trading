@@ -878,6 +878,8 @@ class EarningsGapStrategy(Strategy):
         e["reaction_move_pct"] = round(r["move_pct"], 2)
         e["reaction_rel_volume"] = round(r["rel_volume"], 2)
         e["reaction_close_pos"] = round(r["close_pos"], 3)
+        e["reaction_prev_close"] = r["prev_close"]   # for the drawing: the close before the news, the gap's floor
+        e["reaction_gap_pct"] = round(r["gap_pct"], 2)
         if flag:
             e.update(flag_high=flag["high"], flag_low=flag["low"], flag_days=flag["days"],
                      flag_range_pct=round(flag["range_pct"], 2))
@@ -1091,6 +1093,34 @@ class EarningsGapStrategy(Strategy):
             reasons.append("market-regime downgrade applied")
         return Decision(LABELS[before], LABELS[label], "; ".join(reasons),
                         risk_pct, plan.r_multiple, self.setup_quality(result))
+
+    def chart_anatomy(self, sig: dict) -> list[dict]:
+        """The results-day reaction (boxed, with its move and volume), the close before the news -- the
+        gap a flag must not fill -- the flag when S2 is the setup, and the buy-stop {ENTRY_BUFFER_PCT}% over the
+        high being broken, from the signal's own record."""
+        e = sig.get("extras") or {}
+        d = str(sig["date"])
+        if not e.get("reaction_date") or not e.get("reaction_high"):
+            return super().chart_anatomy(sig)
+        rd, hi, lo = str(e["reaction_date"]), float(e["reaction_high"]), float(e["reaction_low"])
+        what = (f"{e.get('reaction_move_pct') or 0:+.1f}% on {e.get('reaction_rel_volume') or 0:.1f}× volume, "
+                f"closing at {(e.get('reaction_close_pos') or 0) * 100:.0f}% of its range")
+        out = [{"shape": "box", "from": rd, "to": rd, "top": hi, "bottom": lo, "role": "base", "label": f"results-day reaction · {what}"}]
+        if e.get("reaction_prev_close"):
+            gap = e.get("reaction_gap_pct")
+            out.append({"shape": "level", "bars": 10, "to": d, "price": float(e["reaction_prev_close"]), "role": "support",
+                        "label": "the close before the news" + (f" · gapped {gap:+.1f}%" if gap is not None else "")})
+        flag = e.get("flag_high") is not None
+        if flag:
+            out.append({"shape": "box", "from": rd, "to": d, "top": float(e["flag_high"]), "bottom": float(e["flag_low"]),
+                        "role": "tight", "label": f"flag · {e.get('flag_days')} sessions, {e.get('flag_range_pct') or 0:.1f}% deep"})
+        top = float(e["flag_high"]) if flag else hi
+        out.append({"shape": "level", "from": rd, "to": d, "price": top * (1 + ENTRY_BUFFER_PCT / 100), "role": "pivot",
+                    "label": f"buy-stop over the {'flag' if flag else 'reaction day'}'s high"})
+        out.append({"shape": "note", "at": rd, "price": hi,
+                    "text": f"Results reaction {rd}: {what}. " + ("A flag followed; buy its break." if flag
+                            else f"Buy the break of its high within {REACTION_WINDOW} sessions, stop under its low.")})
+        return out
 
     def report_extras(self, ctx: StockContext, result: StrategyResult,
                       plan: TradePlan | None) -> dict:
