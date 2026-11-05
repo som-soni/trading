@@ -33,9 +33,10 @@ must come within {ANNOUNCE_WINDOW_DAYS} calendar days after the company publishe
 has these back to 2007 (`marketdata/financials.py`, `results_announcements`: NSE's broadcast time for
 every results filing, including the pre-2017 ones that carry no XBRL document, and since 1.4 the date
 of the board meeting that approved the results, which in the older feed is usually days earlier than
-the filing's broadcast). The bracket remains
-for a company with no recorded announcements -- every US company, since SEC filing dates come after
-the announcement rather than at it.
+the filing's broadcast). Since 1.9 the US has them too, back to 2005:
+each 8-K with Item 2.02, which a company files the day it releases results. The bracket remains for a
+company with no recorded announcements -- a foreign issuer filing 6-Ks, or an Indian company the exchange
+does not list.
 
 Honest limits
 -------------
@@ -145,10 +146,17 @@ EG02 = "S2"   # 1.8: the break of the flag that follows the reaction (FLAG_*)
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.8"
+    version = "1.9"
     # 1.7 adds gates to evaluate(), so signal_version is NOT pinned: a pin across a scan change would
     # replay old detections (CLAUDE.md). It defaults to `version`, which rescans.
     changelog = (
+        ("1.9", "2026-11-05",
+         "US reactions are tied to recorded results announcements, as India's are: each 8-K with Item 2.02, "
+         "back to 2005 (the `announcements` job, `financials.sec_announcements`). Until now every US company "
+         "used the quarter-end-to-filing bracket, about five weeks wide and widest after a fourth quarter, "
+         "whose 10-K lands weeks after the results, so a US run admitted non-results spikes India refused. "
+         "A company with no 8-K 2.02 recorded keeps the bracket. Bumped by hand: no constant moved, the data "
+         "did."),
         ("1.8", "2026-11-04",
          "Two changes from Spotify's October 2026 results gap, which a PEG trader bought and 1.7 refused. (1) The "
          "reaction day's volume is measured against the 50 sessions BEFORE it (REL_VOL_PRIOR): an average ending "
@@ -306,18 +314,18 @@ class EarningsGapStrategy(Strategy):
         "had stored, dated quarters in October 2026. When the strategy was built, an alphabetical "
         "sample of 300 symbols a side had 113 US and 50 Indian ones covered; among those, the "
         "window linked 65% of US reaction days and 32% of Indian ones.",
-        "India and the US tie a reaction to results differently. India uses the exchange's recorded "
-        "announcement times, back to 2007, which is the guide's rule and is tight -- a few days. The "
-        "US has no announcement history, so it uses the quarter-end-to-filing window, about five weeks "
-        "wide. A US run therefore admits more non-results spikes, and the two markets' results are not "
-        "a like-for-like comparison of the same rule. (Before 1.3, India used the window too, and its "
-        "quarters began in March 2020, so the 2013-2021 window had three Indian trades.)",
+        "Both markets tie a reaction to recorded announcements, the guide's rule: India the exchange's "
+        "broadcast times and results board meetings, back to 2007; the US (since 1.9) each 8-K with Item "
+        "2.02, back to 2005. An 8-K 2.02 also covers a mid-quarter update or pre-announcement, so a US "
+        "reaction to one of those links too. A company with none recorded -- a foreign issuer filing 6-Ks, "
+        "a symbol with no SEC CIK -- falls back to the quarter-end-to-filing window, about five weeks wide. "
+        "(Before 1.3, India used the window too; before 1.9 every US company did.)",
         "The results link is a window, not a calendar. It runs from {CATALYST_MIN_DAYS} days after "
         "the quarter end to {CATALYST_FILED_GRACE} days after the filing — about five weeks at the "
         "median — so a non-results spike that lands inside it is admitted. In the US the filing is "
         "the SEC filing, and for a fourth quarter that is the annual report, which can come weeks "
         "after the announcement, so the window is widest there.",
-        "India's announcements are refreshed weekly (the `announcements` job). A results board meeting "
+        "Announcements are refreshed weekly in both markets (the `announcements` job). A results board meeting "
         "is intimated days ahead, so live it is usually stored before the reaction; one called at short "
         "notice, and a filing's broadcast, can be refused until the next refresh stores them. The "
         "backtest has every announcement and links it.",
@@ -346,7 +354,8 @@ class EarningsGapStrategy(Strategy):
         "session in the {REACTION_WINDOW}-session window can be the reaction day, and G3 links it to "
         "results afterwards.\n"
         "- **G3, the news link:** the guide wants results announced from 3 days before the session to "
-        "the session; with no announcement calendar stored, the window here is about five weeks wide.\n"
+        "the session; here up to {ANNOUNCE_WINDOW_DAYS} days before, and about five weeks for a company "
+        "with no recorded announcements.\n"
         "- **Universe:** the guide asks for $5 million or ₹5 crore of daily traded value and a $5 or "
         "₹50 price; here the market's liquidity floor applies and there is no price floor.\n"
         "- **W1, neglect:** the guide's optional filter is only a note here, because it is untested.\n"
@@ -405,14 +414,15 @@ class EarningsGapStrategy(Strategy):
               "reaction day; G3 makes the link to results afterwards.",
         "G3": "The reaction day is tied to a results announcement. Two ways, depending on what is "
               "stored for the company:\n\n"
-              "- **Recorded announcements (India, back to 2007):** results were published at most "
+              "- **Recorded announcements (India back to 2007, the US back to 2005):** results were published at most "
               "{ANNOUNCE_WINDOW_DAYS} calendar days before the reaction day, or on it. This is the "
               "guide's own rule. A quarter can carry several dates and any one qualifies: the day of "
               "the board meeting that approved the results (the results come out that day, often "
               "after the close, so they tie to the next session's move) and the exchange's broadcast "
-              "time for the results filing, which in older years is often days later.\n"
-              "- **No recorded announcements (every US company, and any Indian one the exchange does "
-              "not list):** the window below.\n\n"
+              "time for the results filing, which in older years is often days later. In the US, "
+              "the day of the 8-K with Item 2.02 the company filed with its results release.\n"
+              "- **No recorded announcements (a US company with no 8-K 2.02 on file, such as a "
+              "foreign issuer, and any Indian one the exchange does not list):** the window below.\n\n"
               "The window: the reaction day falls at least {CATALYST_MIN_DAYS} days after a quarter "
               "end and at most {CATALYST_FILED_GRACE} days after that quarter's filing.\n\n"
               "- **Data:** the stored quarterly results — each quarter's end date and filing date. "

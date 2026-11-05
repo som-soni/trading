@@ -811,13 +811,13 @@ def _financials(ctx: Ctx) -> None:
 
 def _announcements(ctx: Ctx) -> None:
     """When each company published each quarter's results (financials.refresh_announcements), back to 2005:
-    NSE's broadcast of each results filing and the board meeting that approved the results (usually the
-    earlier date) -- what an event strategy ties a price reaction to. Only where the market's results source lists them
-    (`quarterly_source` 'nse'); every company in the universe, since a reaction can come from any of them.
-    --symbols limits it."""
+    India, NSE's broadcast of each results filing and the board meeting that approved the results (usually the
+    earlier date); the US, each 8-K with Item 2.02 -- what an event strategy ties a price reaction to, and what
+    a results blackout keys on. Only where the market's results source lists them (`quarterly_source` 'nse' or
+    'sec_edgar'); every company in the universe, since a reaction can come from any of them. --symbols limits it."""
     from swing_screener.config import MARKETS
     from swing_screener.marketdata import financials, universe
-    if getattr(MARKETS[ctx.market], "quarterly_source", None) != "nse":
+    if getattr(MARKETS[ctx.market], "quarterly_source", None) not in ("nse", "sec_edgar"):
         ctx.step.skip(f"{ctx.market}: its results source lists no announcement times")
         return
     if ctx.opt("symbols"):
@@ -1012,8 +1012,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("financials_backfill", "data", "company financials for every stock liquid at some month-end since 2013 (not "
         "only today's), so a fundamentals-filtered backtest is not looking ahead", "monthly", True, _financials_backfill,
         after=("financials",)),
-    Job("announcements", "data", "results announcements: when each company published each quarter's results (NSE, back "
-        "to 2005) -- what an event strategy ties a price reaction to", "weekly", True, _announcements, after=("universe",)),
+    Job("announcements", "data", "results announcements: when each company published each quarter's results (NSE; SEC "
+        "8-K Item 2.02; back to 2005) -- what an event strategy ties a price reaction to", "weekly", True, _announcements, after=("universe",)),
     Job("breadth", "analytics", "market breadth: advancers, highs/lows, % above averages", "daily", False, _breadth, after=("prices",)),
     Job("sectors", "analytics", "sector ranking: RS ratings, rotation, breadth per group (kept daily)", "daily", False, _sectors,
         after=("prices", "industries")),

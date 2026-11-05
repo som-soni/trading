@@ -41,13 +41,16 @@ Re-fetching is cheap: a company is re-checked when a new quarter's results could
     PYTHONPATH=. python3 -m swing_screener.marketdata.financials --market us --symbols NVDA,AAPL
     PYTHONPATH=. python3 -m swing_screener.marketdata.financials --market india --symbols RELIANCE.NS --force
 
-Results ANNOUNCEMENTS (`results_announcements`), India only: the moment NSE published each quarter's
+Results ANNOUNCEMENTS (`results_announcements`): the moment NSE published each quarter's
 results, from both feeds, back to 2005. The quarter rows above start where NSE's XBRL documents do (about
 2017, and LOOKBACK_QUARTERS keeps five years), but NSE lists every older filing too -- with no XBRL document,
 only a link to an HTML page of figures, and its broadcast time. That time is all an event strategy needs
 to tie a price reaction to the news (`strategies/earnings_gaps.py`), and before it was stored India had no
 announcement history before 2020, so the 2013-2021 optimise window had almost nothing to tie a reaction to.
-The US has no equivalent: SEC filing dates land on or after the announcement, not at it.
+The US 10-Q / 10-K filing dates land weeks after the announcement, not at it -- 35 days after a Q1-Q3
+quarter end on average, 53 after Q4, while the results are out at about 30 -- so the US announcements are
+the 8-K filings with Item 2.02, "results of operations and financial condition", which a company files the
+day it releases results (`sec_announcements`), back to 2005.
 
 India before the stored window (`quarterly_results_history`, `refresh_history`, the `financials_history` job): each
 company's quarters back to 2009 from NSE's older filings -- XBRL from mid-2018, an HTML page of figures before --
@@ -139,9 +142,9 @@ CREATE TABLE IF NOT EXISTS nse_documents (
 );
 CREATE TABLE IF NOT EXISTS results_announcements (
     market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL, period_end DATE NOT NULL,
-    basis VARCHAR(16) NOT NULL,           -- consolidated | standalone | board (a board meeting covers both)
+    basis VARCHAR(16) NOT NULL,           -- consolidated | standalone | board (a board meeting covers both) | 8-K
     announced_at TIMESTAMP NOT NULL,      -- exchange local time the results were broadcast; a board meeting's date at 00:00
-    source VARCHAR(24) NOT NULL,          -- nse_legacy | nse_integrated | nse_board_meeting
+    source VARCHAR(24) NOT NULL,          -- nse_legacy | nse_integrated | nse_board_meeting | sec_8k_202
     fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (market, symbol, period_end, basis, announced_at)
 );
@@ -765,19 +768,81 @@ def nse_results_meetings(sym: str) -> list[dict]:
     return out
 
 
+SEC_ANNOUNCE_SINCE = "2005-01-01"   # Item 2.02 exists from August 2004
+
+
+def _quarter_end_before(d: dt.date) -> dt.date:
+    """The last calendar quarter end before `d` -- the period an announcement on `d` most likely reports. A
+    company with an off-calendar fiscal year reports a different period; the date of the announcement, which
+    is what the table is read for, does not depend on it."""
+    q = (d.month - 1) // 3 * 3 + 1          # first month of d's quarter
+    return dt.date(d.year, q, 1) - dt.timedelta(days=1)
+
+
+def sec_announcements(symbol: str, recent_only: bool = False) -> list[dict]:
+    """Every results announcement a US company filed with the SEC since SEC_ANNOUNCE_SINCE: {end, basis, at, source}.
+
+    An announcement is an 8-K (not an amendment) listing Item 2.02, dated by its filing date: the release goes
+    out with the filing, and the filing's report date is the EARLIEST event it covers -- Morgan Stanley's April
+    2014 results 8-K also reported a 5.02 dated three days before. Item 2.02 also covers a mid-quarter update or a pre-announcement
+    (AbbVie files one early each quarter); those are results news too and are kept. `recent_only` reads just
+    the submissions file's recent block (about the last thousand filings), enough for a weekly top-up; the
+    first fetch also reads the older pages it lists. A company with no CIK (a foreign issuer filing 6-Ks, a
+    fund) stores nothing."""
+    cik = _sec_cik(symbol)
+    if cik is None:
+        return []
+    r = requests.get(f"https://data.sec.gov/submissions/CIK{cik:010d}.json", headers=_sec_headers(), timeout=30)
+    time.sleep(SEC_PAUSE)
+    if r.status_code == 404:
+        return []
+    r.raise_for_status()
+    js = r.json().get("filings", {})
+    blocks = [js.get("recent", {})]
+    if not recent_only:
+        for f in js.get("files", []):
+            if f.get("filingTo", "") >= SEC_ANNOUNCE_SINCE:
+                p = requests.get(f"https://data.sec.gov/submissions/{f['name']}", headers=_sec_headers(), timeout=30)
+                time.sleep(SEC_PAUSE)
+                p.raise_for_status()
+                blocks.append(p.json())
+    out = {}
+    for b in blocks:
+        forms = b.get("form", [])
+        for i, form in enumerate(forms):
+            if form != "8-K" or "2.02" not in [x.strip() for x in (b["items"][i] or "").split(",")]:
+                continue
+            day = b["filingDate"][i]
+            if day < SEC_ANNOUNCE_SINCE:
+                continue
+            d = dt.date.fromisoformat(day)
+            out[d] = {"end": _quarter_end_before(d), "basis": "8-K", "at": dt.datetime(d.year, d.month, d.day),
+                      "source": "sec_8k_202"}
+    return [out[d] for d in sorted(out)]
+
+
 def refresh_announcements(market: str, symbols: list[str], progress=None) -> dict:
     """Fetch and store every results announcement for these companies (`results_announcements`).
 
-    Only where the market's results source lists announcements (`MarketConfig.quarterly_source` 'nse').
-    A company NSE does not know (an ETF, a delisted name) simply stores nothing.
+    Only where the market's results source lists announcements (`MarketConfig.quarterly_source` 'nse', or
+    'sec_edgar' through the 8-K Item 2.02 filings). A company the source does not know (an ETF, a delisted
+    name, a foreign issuer) simply stores nothing. On the SEC a company already stored is topped up from its
+    recent filings only.
     """
-    if getattr(MARKETS[market], "quarterly_source", None) != "nse":
+    source = getattr(MARKETS[market], "quarterly_source", None)
+    if source not in ("nse", "sec_edgar"):
         return {"companies": 0, "skipped": f"{market}: its results source lists no announcement times"}
     init_schema()
+    have: set = set()
+    if source == "sec_edgar":
+        with db.get_connection().cursor() as cur:
+            cur.execute("SELECT DISTINCT symbol FROM results_announcements WHERE market=%s AND source='sec_8k_202'", (market,))
+            have = {r[0] for r in cur.fetchall()}
     stored = companies_with = errors = 0
     for i, sym in enumerate(symbols):
         try:
-            rows = nse_announcements(_bare(sym, market))
+            rows = (nse_announcements(_bare(sym, market)) if source == "nse"
+                    else sec_announcements(sym, recent_only=sym in have))
         except Exception as exc:   # noqa: BLE001 -- one company's failure must not stop the backfill
             errors += 1
             logger.warning("announcements %s: %s", sym, exc)
@@ -789,7 +854,7 @@ def refresh_announcements(market: str, symbols: list[str], progress=None) -> dic
             stored += len(rows)
             companies_with += 1
         if progress:
-            progress(f"announcements {i + 1:,}/{len(symbols):,} companies ({companies_with:,} listed by NSE)",
+            progress(f"announcements {i + 1:,}/{len(symbols):,} companies ({companies_with:,} with announcements)",
                      done=i + 1, total=len(symbols))
     return {"companies": len(symbols), "with_announcements": companies_with, "announcements": stored, "errors": errors}
 
