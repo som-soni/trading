@@ -148,6 +148,9 @@ class ExitPolicy:
     wk_dist_weeks: int = field(default_factory=lambda: int(_sa.EXIT_DIST_WEEKS))
     wk_dist_window: int = field(default_factory=lambda: int(_sa.DIST_WINDOW_WEEKS))
     wk_lower_high: int = field(default_factory=lambda: int(_sa.EXIT_ON_LOWER_HIGH))
+    # for weekly_ma: a decisive break (stage analysis 2.10) -- the week's close must be more than this percent
+    # below the line to sell; 0 sells on any close below it, Weinstein's rule as the guide states it
+    wk_below_pct: float = field(default_factory=lambda: float(_sa.TREND_EXIT_BELOW_PCT))
     donchian_bars: int = 50      # for donchian
     # for supertrend: a close that turns the Supertrend down sells at that close. The strategy's own
     # constants, through a factory for the reason given under `minervini` below (`--const` patches them
@@ -449,6 +452,12 @@ ST_DIR = "_st_dir"             # the supertrend exit's direction (1 up, -1 down)
 KM_TRAIL = "_km_trail"         # the kullamagi exit's trailing simple average, added the same way
 
 
+def _below(policy: ExitPolicy) -> float:
+    """The fraction of the line a close must fall under to break it: 1, except for weekly_ma with
+    `wk_below_pct` set (a decisive break)."""
+    return 1 - policy.wk_below_pct / 100 if policy.mode == "weekly_ma" else 1.0
+
+
 def weekly_line(df: pd.DataFrame, weeks: int) -> pd.Series:
     """The weekly_ma exit's level on each daily bar: on the LAST session of a week, the simple average of
     the last `weeks` weekly closes, that week's included; NaN on every other session, so the exit is read
@@ -735,7 +744,7 @@ def simulate(
                     trend_break = bar.get(ST_DIR, 0) == -1
                 elif policy.mode in ("ma", "weekly_ma"):
                     ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
-                    trend_break = ma == ma and float(bar["close"]) < float(ma)
+                    trend_break = ma == ma and float(bar["close"]) < float(ma) * _below(policy)
                 else:
                     hist = df.loc[:today, "low"]
                     if len(hist) > policy.donchian_bars:
@@ -1233,7 +1242,7 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
             broke = bar.get(ST_DIR, 0) == -1
         elif policy.mode in ("ma", "weekly_ma"):
             ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
-            broke = ma == ma and c < float(ma)
+            broke = ma == ma and c < float(ma) * _below(policy)
         else:
             hist = df.loc[:today, "low"]
             broke = (len(hist) > policy.donchian_bars

@@ -112,6 +112,12 @@ DIST_VOL_WEEKS = 10
 #: is known SWING_WEEKS weeks after it, and that is the week it can sell.
 EXIT_ON_LOWER_HIGH = 0
 SWING_WEEKS = 2
+#: >0 asks for a DECISIVE break (2.10): the trend exit sells only on a week that closes more than this percent
+#: below the line, not on any close below it. Off by default. The canonical investor holds through a shallow
+#: dip under a rising line; the guide sells on any close below. In the 2013-21 optimise runs 88-96% of trend
+#: exits came on a close a median 1.1-1.6% below a line still rising, and a per-trade replay of a 3% rule
+#: disagreed between the two US runs (research/audit-stage-analysis-exits.md) -- hence an A/B, not a rule.
+TREND_EXIT_BELOW_PCT = 0.0
 
 
 def _market_of(symbol: str) -> str:
@@ -326,11 +332,22 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.9"
-    # 2.7 to 2.9 change only what happens after evaluate() -- the simulator, and exits -- never the
+    version = "2.10"
+    # 2.7 to 2.10 change only what happens after evaluate() -- the simulator, and exits -- never the
     # scan, so the cached signal rows carry forward (CLAUDE.md, signal_version).
     signal_version = "2.6"
     changelog = (
+        ("2.10", "2026-11-06",
+         "TREND_EXIT_BELOW_PCT, off by default, so this version trades exactly as 2.9: the weekly trend exit can "
+         "ask for a decisive break -- a week closing more than that percent below the 30-week line -- instead of "
+         "any close below it. An audit of the winners' exits (research/audit-stage-analysis-exits.md) found the "
+         "coded exit faithful to Weinstein (no target, every winner sold in Stage 2, none held into Stage 4) and "
+         "the guide's own extra exits -- a trailing stop under each swing low, a half sale when the line flattens "
+         "-- worse than it in all four runs. What it found instead: 88-96% of trend exits fire on one shallow "
+         "close under a line still rising, where the canonical investor would hold. A per-trade replay of a 3% "
+         "rule was mixed (+11R and -11R on the two US runs, +16R on the Indian variant), so it ships as a switch "
+         "to be judged by a portfolio A/B. Simulator side: ExitPolicy.wk_below_pct reads it. Exits only, so "
+         "signal_version stays 2.6 and the constant is signal-exempt."),
         ("2.9", "2026-11-06",
          "STOP_BUFFER_PCT, off by default, so this version trades exactly as 2.8: the stop can sit that far "
          "below the higher of the line and the base low instead of on it, as the guide's own pseudocode "
@@ -520,7 +537,7 @@ class StageAnalysisStrategy(Strategy):
     # W1_RANKS_ONLY's ranking (classify, setup_quality).
     signal_exempt_consts = ("MAX_STOP_PCT", "STOP_BUFFER_PCT", "BASE_TARGET_MULT", "W1_RANKS_ONLY", "W1_RANK_QUALITY",
                             "EXIT_ON_STAGE3", "EXIT_DIST_WEEKS", "DIST_WINDOW_WEEKS", "DIST_VOL_WEEKS",
-                            "EXIT_ON_LOWER_HIGH", "SWING_WEEKS")
+                            "EXIT_ON_LOWER_HIGH", "SWING_WEEKS", "TREND_EXIT_BELOW_PCT")
     extra_columns = ("stage", "line_slope_pct", "resistance", "base_weeks", "base_depth_pct",
                      "vol_ratio", "ma30", "mansfield_pct")
     #: `broke_out` is carried in extras but is a BOOL, so it is not a numeric column.
@@ -770,7 +787,9 @@ class StageAnalysisStrategy(Strategy):
         "Or the stop (see Stop), checked first each session.",
         "Nothing else. No target, no time stop, no Stage 3 sale. Three experiment switches, off by "
         "default, can sell earlier on a warning that Stage 2 is failing -- Stage 3, distribution weeks, "
-        "a lower high -- see the parameters.",
+        "a lower high -- and a fourth can sell LATER, holding through a close less than "
+        "TREND_EXIT_BELOW_PCT below the line ({TREND_EXIT_BELOW_PCT}% today; 0 = any close below) -- see the "
+        "parameters.",
     )
     sizing_rules = (
         "Risk per trade. Shares = the risk budget ÷ (price paid − stop). The budget is the market config's risk "
@@ -834,6 +853,8 @@ class StageAnalysisStrategy(Strategy):
                                                   "many weeks before it."),
         ("Sell on a lower high", "EXIT_ON_LOWER_HIGH", "Experiment, off by default: 1 sells when a swing high "
                                                        "made after the entry is confirmed below the one before."),
+        ("Decisive break", "TREND_EXIT_BELOW_PCT", "Experiment, off by default: the trend exit sells only on a "
+                                                   "week that closes more than this percent below the line."),
         ("Swing width", "SWING_WEEKS", "Weeks either side a weekly swing high must top; it is known this late."),
         ("G7's blocked market stage", "G7_BLOCK_STAGE", "Experiment: 4 is the shipped rule; 3 refuses entries "
                                                         "while the market tops instead of after it has fallen. "
