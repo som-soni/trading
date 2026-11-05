@@ -363,6 +363,13 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
     in a row. Risk-OFF still bites immediately — the delay is there so a benchmark
     oscillating around its average does not turn the gate on and off every other day,
     not to keep buying into a market that has just rolled over.
+
+    Two research switches of the guide's test (minervini_spec, both off by default):
+    MKT_FILTER=0 opens every session (the control, "no market filter"); MKT_PILOT turns the gate
+    three-state — while the test above fails, a bottoming signal (`pilot_signal`) opens it at pilot
+    size. The series is then FLOAT, 1.0 risk-on / PE_PILOT_FRAC pilot / 0.0 risk-off, which every
+    reader that takes it as a yes/no still reads correctly (0.0 is the only falsy value) and the
+    simulator reads as the size of a new entry. With MKT_PILOT=0 it is the bool series it always was.
     """
     b = cache.load_cached(market, MARKETS[market].benchmark_ticker)
     c = b["close"].astype(float)
@@ -394,7 +401,61 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
         ok = (c > s200) & (s50 > s200)
     if confirm_days and confirm_days > 1:
         ok = ok & (ok.rolling(int(confirm_days)).sum() >= int(confirm_days))
+    if guide:
+        if not ms.MKT_FILTER:
+            return pd.Series(True, index=c.index)
+        if ms.MKT_PILOT:
+            pilot = pilot_signal(market, b, ok)
+            return ok.astype(float).where(ok, pilot.astype(float) * float(ms.PE_PILOT_FRAC))
     return ok
+
+
+def follow_through(close: pd.Series, volume: pd.Series, full: pd.Series) -> pd.Series:
+    """Per date: is an O'Neil follow-through day in force (minervini_spec MKT_PILOT = 1)?
+
+    The attempt's low is the lowest close of the last MKT_FTD_LOW_DAYS sessions; day 1 is the first
+    close above the session before it after that low (research/learn-health-distribution.md §4). A
+    follow-through is day MKT_FTD_MIN_DAY or later closing at least MKT_FTD_MIN_GAIN_PCT% up on volume
+    above the previous session's; where either session's volume is not stored (0 -- India's benchmark
+    for much of 2020-21) the price test alone decides. It stays in force until a close below the
+    attempt's low (the attempt failed) or until `full` (the gate's own risk-on test) holds: a market
+    that turns risk-off again needs a new follow-through."""
+    from ..strategies import minervini_spec as ms
+    n, w = len(close), int(ms.MKT_FTD_LOW_DAYS)
+    c, v, f = close.to_numpy(float), volume.to_numpy(float), full.reindex(close.index).fillna(False).to_numpy(bool)
+    out = [False] * n
+    live_low = None            # the attempt low of a follow-through in force; a close below it ends it
+    for i in range(1, n):
+        lo = max(0, i - w + 1)
+        j = i - int(c[lo:i + 1][::-1].argmin())    # the latest session at the window's lowest close
+        up = next((k for k in range(j + 1, i + 1) if c[k] > c[k - 1]), None)
+        day = i - up + 1 if up is not None else 0   # day 1 = the first up close after the low
+        if live_low is not None and (f[i] or c[i] < live_low):
+            live_low = None
+        if (not f[i] and day >= ms.MKT_FTD_MIN_DAY
+                and c[i] >= c[i - 1] * (1 + ms.MKT_FTD_MIN_GAIN_PCT / 100)
+                and (v[i] > v[i - 1] if v[i] > 0 and v[i - 1] > 0 else True)):
+            live_low = c[j]
+        out[i] = live_low is not None
+    return pd.Series(out, index=close.index)
+
+
+def pilot_signal(market: str, bench: pd.DataFrame, full: pd.Series) -> pd.Series:
+    """Per date: does minervini_spec's bottoming signal (MKT_PILOT) allow pilot-size entries while the
+    full test fails? 1 = a follow-through day in force (`follow_through`); 2 = breadth turning up, the
+    share of the most-traded stocks above their 50-day higher than MKT_PILOT_BREADTH_DAYS sessions
+    earlier (no breadth stored that day: no pilot). Read only where `full` is False."""
+    from ..strategies import minervini_spec as ms
+    c = bench["close"].astype(float)
+    if int(ms.MKT_PILOT) == 1:
+        return follow_through(c, bench["volume"].astype(float).fillna(0.0), full)
+    if int(ms.MKT_PILOT) == 2:
+        br = breadth_pct50(market)
+        if not len(br):
+            return pd.Series(False, index=c.index)
+        up = br > br.shift(int(ms.MKT_PILOT_BREADTH_DAYS))
+        return up.reindex(c.index).fillna(False).astype(bool)
+    raise ValueError(f"MKT_PILOT must be 0, 1 or 2, not {ms.MKT_PILOT}")
 
 
 def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]:
@@ -470,7 +531,7 @@ def market_filter(signals: list, market: str, confirm_days: int = 0, guide: bool
     logger.info("Market filter: kept %d of %d signals", len(kept), len(signals))
     return kept, {"kept": len(kept), "blocked": len(signals) - len(kept), "confirm_days": int(confirm_days or 0),
                   "dropped_signals": gone,
-                  "days_open_pct": round(float(ok[ok.index >= min(s.date for s in signals)].mean()) * 100, 1) if signals else None}
+                  "days_open_pct": round(float((ok[ok.index >= min(s.date for s in signals)] > 0).mean()) * 100, 1) if signals else None}
 
 
 # ---------------------------------------------------------------- category (segment) filter

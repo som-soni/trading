@@ -185,6 +185,8 @@ class ExitPolicy:
     breakeven_r: float = field(default_factory=lambda: _ms.BREAKEVEN_R)        # EX-03: stop to entry + round-trip costs once the high reaches entry + this × R (0 = off)
     partial_r: float = field(default_factory=lambda: _ms.PARTIAL_R)            # EX-04: sell `partial_frac` at entry + this × R (0 = off)
     partial_frac: float = field(default_factory=lambda: _ms.STRENGTH_FRAC)
+    partial_by_sepa: int = field(default_factory=lambda: int(_ms.PARTIAL_BY_SEPA))   # EX-04 by trade type: 0 every trade;
+                                                #   1 skip it for an ACCEPTABLE / LEADER company (meta["sepa"]); 2 also NO DATA
     strength_ext: float = field(default_factory=lambda: _ms.STRENGTH_EXT_PCT / 100)   # EX-04: sell `partial_frac` at the next open once the close is
                                                 #   this far above `ma_col` (0 = off)
     climax: bool = True          # EX-05
@@ -220,6 +222,8 @@ class ExitPolicy:
             bits.append(self.ma_col)
             if self.partial_r:
                 bits.append(f"partial{self.partial_r:g}R")
+                if self.partial_by_sepa:
+                    bits.append(f"bySepa{self.partial_by_sepa}")
             if self.climax_second:
                 bits.append("climax2nd")
             if self.strength_ext != _ms.STRENGTH_EXT_PCT / 100:
@@ -919,6 +923,14 @@ def simulate(
                 shares = int(equity_now * equal_alloc_pct // entry)
             else:
                 risk_budget = equity_now * risk_pct_today
+                if regime_ok is not None and regime_ok.dtype == float:
+                    # the bottoming pilot (minervini_spec MKT_PILOT): pilot size while the gate is open only
+                    # on a bottoming signal, read as the order is: a close order on today's close, any
+                    # other on the previous session's (the cancel above reads the same)
+                    size = _regime_size(regime_known, today, before=at != AT_CLOSE)
+                    if 0 < size < 1:
+                        risk_budget = equity_now * cfg.risk_pct * min(risk_mult, size)
+                        meta = {**meta, "mkt_pilot": True}
                 shares = int(risk_budget // risk_per_share)
                 max_notional = equity_now * cfg.max_position_pct
                 if shares * entry > max_notional:
@@ -1118,7 +1130,8 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
         if policy.breakeven_r and h >= entry + policy.breakeven_r * r:
             pos.stop = max(pos.stop, _breakeven(pos, fee_rate, cfg))
         # EX-04 (1.7's version): a part off at a fixed R, first time only
-        if policy.partial_r and not pos.partial_shares and h >= entry + policy.partial_r * r:
+        if (policy.partial_r and not pos.partial_shares and h >= entry + policy.partial_r * r
+                and not _holds_for_trend(pos, policy)):
             n = int(pos.shares * policy.partial_frac)
             if 0 < n < pos.held:
                 lvl = entry + policy.partial_r * r
@@ -1334,6 +1347,22 @@ def _trail_pct(pos: "PortfolioTrade", bar, policy: ExitPolicy) -> None:
     pos.stop = max(pos.stop, peak * (1 - policy.trail_pct))
 
 
+_SEPA_HOLD = {1: {"ACCEPTABLE", "LEADER"}, 2: {"ACCEPTABLE", "LEADER", "NO DATA"}}
+
+
+def _holds_for_trend(pos: PortfolioTrade, policy: ExitPolicy) -> bool:
+    """EX-04 by trade type (minervini_spec PARTIAL_BY_SEPA): a company whose results on the trade's own
+    date pass the growth tests skips the +PARTIAL_R part and holds to the trend exit."""
+    return bool(policy.partial_by_sepa) and (pos.meta or {}).get("sepa") in _SEPA_HOLD.get(policy.partial_by_sepa, ())
+
+
+def _regime_size(known: pd.Series, today, before: bool = False) -> float:
+    """The market filter's size for a new entry: 1.0, or minervini_spec's pilot fraction while its
+    bottoming pilot (MKT_PILOT) holds the gate open in a risk-off market. Read like `_risk_on`."""
+    i = known.index.searchsorted(today, side="left" if before else "right")
+    return float(known.iloc[i - 1]) if i else 0.0
+
+
 def _risk_on(known: pd.Series, today, before: bool = False) -> bool:
     """The market filter's state on `today`'s close, or with `before` on the previous session's. `known`
     is the filter with its missing readings dropped, so each day reads the last real one. No reading yet
@@ -1374,6 +1403,7 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
             "holding_days": t.holding_days, "credited": round(t.credited, 2),
             **({"partial_shares": t.partial_shares, "pivot": t.meta.get("pivot"), "base_id": t.meta.get("base_id"),
                 "base_no": t.meta.get("base_no"), "rs": t.meta.get("rs"), "sepa": t.meta.get("sepa")} if t.meta else {}),
+            **({"mkt_pilot": 1} if t.meta and t.meta.get("mkt_pilot") else {}),
         }
         for t in trades
     ]
@@ -1385,4 +1415,6 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
     ]
     if any(t.meta for t in trades):
         cols += ["partial_shares", "pivot", "base_id", "base_no", "rs", "sepa"]
+    if any(t.meta and t.meta.get("mkt_pilot") for t in trades):
+        cols += ["mkt_pilot"]           # bought at pilot size on the market filter's bottoming signal
     return pd.DataFrame(rows, columns=cols)

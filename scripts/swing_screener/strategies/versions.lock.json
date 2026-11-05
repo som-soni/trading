@@ -505,7 +505,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "736dd7ac",
+    "fingerprint": "961900a3",
     "params": {
       "BASE_COUNT_MIN_DAYS": 25,
       "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
@@ -565,10 +565,16 @@
       "MKT_BREADTH_MIN_PCT": 50.0,
       "MKT_BREADTH_RISING_DAYS": 5,
       "MKT_CONFIRM_DAYS": 5,
+      "MKT_FILTER": 1,
+      "MKT_FTD_LOW_DAYS": 50,
+      "MKT_FTD_MIN_DAY": 4,
+      "MKT_FTD_MIN_GAIN_PCT": 1.0,
       "MKT_GUIDE": 1,
       "MKT_HIGHS_LOWS_DAYS": 0,
       "MKT_HIGHS_LOWS_RATIO": 1.0,
       "MKT_INDEX_SMA": 50,
+      "MKT_PILOT": 0,
+      "MKT_PILOT_BREADTH_DAYS": 10,
       "MKT_SMA_RISING_DAYS": 10,
       "NEAR_DRYUP_RATIO": 1.0,
       "NEAR_FINAL_REF_RATIO": 0.75,
@@ -579,6 +585,7 @@
       "NOMINAL_TARGET_R": 3.0,
       "OVERHEAD_CLUSTER_ATR": 1.0,
       "OVERHEAD_YEARS": 2,
+      "PARTIAL_BY_SEPA": 0,
       "PARTIAL_R": 2.0,
       "PE_PILOT_FRAC": 0.5,
       "PE_PRESS_NET_R": 4.0,
@@ -717,7 +724,7 @@
         "W5"
       ]
     },
-    "version": "1.45"
+    "version": "1.46"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

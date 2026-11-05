@@ -341,6 +341,13 @@ BREAKEVEN_R = 2.0
 # of the US's 114 ended at a median -0.03R and -0.01R. Banking {STRENGTH_FRAC} at the same
 # +2R the stop moves on is the guide's own sequence, so the two fire on one bar.
 PARTIAL_R = 2.0
+# EX-04 by trade type (1.46, research switch; 0 = every trade, 1.45). Minervini's webinar (§7) sells
+# part of a trade into strength when it is a trade, and holds a true leader for the trend. With it set,
+# the +PARTIAL_R part is taken only from a company whose results on the trade's own date (the SEPA
+# verdict every trade records, backtesting/fundamental_filter.py) fail the growth tests; an ACCEPTABLE
+# or LEADER company skips it and holds to the trend exit. 1 = a company with no scorable results takes
+# the partial (unknown is not a leader); 2 = it skips it too, so only WEAK takes the partial.
+PARTIAL_BY_SEPA = 0
 # EX-02, the failed-breakout exit (a close back below the pivot within N sessions).
 # OFF: the guide leaves a dip below the pivot to the stop, and dips are normal --
 # on stored data about two in three breakouts close back below the pivot within ten
@@ -407,6 +414,24 @@ MKT_SMA_RISING_DAYS = 10
 # terms already block those days) and 17-23 of 199 Indian trades averaging about -0.2R.
 MKT_HIGHS_LOWS_DAYS = 0
 MKT_HIGHS_LOWS_RATIO = 1.0
+# The bottoming pilot (1.46, research switches; 0 = the binary gate of 1.45). Minervini's bear-market
+# webinar (research/creator-mark-minervini.md §2.1-2.3, §6): the best setups come at and just before the
+# market low, so probe small there rather than wait out the whole recovery. With MKT_PILOT set, a
+# session the gate calls risk-off still takes new buys, at PE_PILOT_FRAC of the risk budget, once a
+# bottoming signal is present; full size returns only when the test above holds.
+#   1 = an O'Neil follow-through day on the benchmark: day MKT_FTD_MIN_DAY or later of a rally from the
+#       lowest close of the last MKT_FTD_LOW_DAYS sessions, up MKT_FTD_MIN_GAIN_PCT% or more on volume
+#       above the previous session's; in force until a close below that low or until the gate turns on.
+#   2 = breadth turning up: the share of the most-traded stocks above their 50-day average higher than
+#       MKT_PILOT_BREADTH_DAYS sessions earlier.
+MKT_PILOT = 0
+MKT_FTD_LOW_DAYS = 50
+MKT_FTD_MIN_DAY = 4
+MKT_FTD_MIN_GAIN_PCT = 1.0
+MKT_PILOT_BREADTH_DAYS = 10
+# The control for the pilot (1.46): 0 opens the gate on every session, i.e. no market filter at all,
+# so a variant can be compared with the filter off without leaving the job queue. 1 = the filter.
+MKT_FILTER = 1
 
 MAX_POSITIONS = 8               # PF-02
 MAX_OPEN_RISK_PCT = 6.0         # PF-04
@@ -985,9 +1010,19 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.45"
-    # signal_version is not pinned: the turnover floor is part of the screen every scanned session passes.
+    version = "1.46"
+    # 1.46 adds post-scan research switches only (market filter, sizing, exits), so 1.45's signal rows carry.
+    signal_version = "1.45"
     changelog = (
+        ("1.46", "2026-11-04",
+         "Three research switches, all off, so no rule changed: a run with them at 0 trades exactly as 1.45. "
+         "From Minervini's bear-market webinar (research/creator-mark-minervini.md): MKT_PILOT makes the market "
+         "filter three-state -- while it is risk-off, new buys at PE_PILOT_FRAC of the risk budget on a bottoming "
+         "signal (1 = an O'Neil follow-through day on the benchmark, 2 = breadth turning up), full size only once "
+         "the filter's own test holds; PARTIAL_BY_SEPA takes the +{PARTIAL_R}R part only from companies whose "
+         "results on the trade's date fail SEPA's growth tests, so a leader holds to the trend exit; MKT_FILTER = 0 "
+         "turns the filter off, the control the comparison needs. Measured in research/minervini-bottoming-gate.md. "
+         "signal_version stays 1.45: nothing evaluate() reads changed."),
         ("1.45", "2026-11-04",
          "The turnover floor scales with the market (SCALE_TURNOVER_FLOOR). A fixed ₹10 crore / $20 million a day "
          "is a 2026 number: in 2010 the Indian market traded a tenth of today's turnover, and the floor shut out most "
@@ -1578,12 +1613,13 @@ class MinerviniSpecStrategy(Strategy):
         "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
         "MIN_STRUCTURAL_R", "MEASURED_MOVE_RR", "MAX_BASE_COUNT", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
-        "BREAKEVEN_R", "PARTIAL_R", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
+        "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
         "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
         "MKT_GUIDE", "MKT_INDEX_SMA", "MKT_BREADTH_MIN_PCT", "MKT_BREADTH_RISING_DAYS",
-        "MKT_SMA_RISING_DAYS", "MKT_HIGHS_LOWS_DAYS", "MKT_HIGHS_LOWS_RATIO", "MAX_POSITIONS", "MAX_OPEN_RISK_PCT", "MAX_ADV_PCT",
+        "MKT_SMA_RISING_DAYS", "MKT_HIGHS_LOWS_DAYS", "MKT_HIGHS_LOWS_RATIO", "MKT_PILOT", "MKT_FTD_LOW_DAYS",
+        "MKT_FTD_MIN_DAY", "MKT_FTD_MIN_GAIN_PCT", "MKT_PILOT_BREADTH_DAYS", "MKT_FILTER", "MAX_POSITIONS", "MAX_OPEN_RISK_PCT", "MAX_ADV_PCT",
         # which bars are scanned (prefilter_row) and the live price floor -- not what a scan records
         "MIN_TURNOVER_INR_CR", "MIN_TURNOVER_USD_M", "LIVE_MIN_PRICE_INR", "LIVE_MIN_PRICE_USD",
         # the --fundamentals filter, applied to signals after the scan
@@ -2279,6 +2315,9 @@ class MinerviniSpecStrategy(Strategy):
                                                       "Above 1, only a stop, breakeven stop or failed 20-day reopens it."),
         ("Part-sale trigger", "PARTIAL_R", "EX-04: R gained before about a third is sold. Pairs with the "
                                            "breakeven trigger, so the gain is banked as the stop moves up."),
+        ("Part-sale by trade type", "PARTIAL_BY_SEPA", "EX-04, research switch (0 = every trade): the +R part only from a "
+                                                       "company failing SEPA's growth tests on the trade's date; 1 = "
+                                                       "ACCEPTABLE / LEADER hold to the trend exit, 2 = NO DATA holds too."),
         ("Failed-breakout window", "FAIL_DAYS", "EX-02: sessions after entry in which a close below the pivot sells (0 = off)."),
         ("20-day failure window", "FAIL_SMA20_DAYS", "EX-02b: sessions after entry in which a close below the 20-day average sells (0 = off)."),
         ("Sell into strength", "STRENGTH_EXT_PCT", "EX-04: % above the 50-day at which a part is sold."),
@@ -2305,6 +2344,13 @@ class MinerviniSpecStrategy(Strategy):
         ("Breadth rising over", "MKT_BREADTH_RISING_DAYS", "Sessions over which breadth may instead be rising."),
         ("Leadership window", "MKT_HIGHS_LOWS_DAYS", "Sessions over which new highs must outnumber new lows (0 = off)."),
         ("Leadership ratio", "MKT_HIGHS_LOWS_RATIO", "New highs must exceed this multiple of new lows."),
+        ("Bottoming pilot", "MKT_PILOT", "Research switch (0 = off): while risk-off, buy at the pilot fraction on a "
+                                         "bottoming signal; 1 = a follow-through day, 2 = breadth turning up."),
+        ("Follow-through: low window", "MKT_FTD_LOW_DAYS", "MKT_PILOT 1: sessions whose lowest close starts a rally attempt."),
+        ("Follow-through: earliest day", "MKT_FTD_MIN_DAY", "MKT_PILOT 1: first day of the attempt that can follow through."),
+        ("Follow-through: gain", "MKT_FTD_MIN_GAIN_PCT", "MKT_PILOT 1: % the benchmark must close up, on volume above the day before."),
+        ("Breadth turning up over", "MKT_PILOT_BREADTH_DAYS", "MKT_PILOT 2: sessions over which breadth must have risen."),
+        ("Market filter on", "MKT_FILTER", "Research control: 0 opens every session (no market filter), 1 = the filter."),
         ("EPS growth (guide level)", "FUND_EPS_GROWTH_MIN_PCT", "--fundamentals guide: quarterly EPS growth, %."),
         ("Sales growth (guide level)", "FUND_SALES_GROWTH_MIN_PCT", "--fundamentals guide: quarterly sales growth, %."),
         ("Margin slack (guide level)", "FUND_MARGIN_SLACK_PP", "--fundamentals guide: points the margin may fall."),
