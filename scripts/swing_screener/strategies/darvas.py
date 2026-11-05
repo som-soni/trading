@@ -92,7 +92,7 @@ class DarvasStrategy(Strategy):
     )
     style = "breakout"
     behaviour = "trend_momentum"
-    horizon = "positional"
+    horizon = "swing"
     gate_codes = ("G1", "G2", "G3", "G4")
     screen_key = "near_highs"
     screen_gates = {"G1": "H3"}
@@ -160,9 +160,17 @@ class DarvasStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "NOT YET BACKTESTED. v1.0 built 2026-11-03; optimise-stage runs (2013-2021, in-sample) queued "
-        "for US and India. Pass criterion written before reading them: excess CAGR over the market's "
-        "benchmark above 0 in-sample, on more than 50 trades. Verify not run."
+        "FAILS ITS IN-SAMPLE CRITERION in both markets. Pass criterion, written before the runs: excess "
+        "CAGR over the market's benchmark above 0 in-sample, on more than 50 trades. v1.0, optimise stage "
+        "(2013-2021, in-sample), as configured (every switch off), measured 2026-11-05: US 6.76% CAGR, "
+        "excess -7.25 points a year, Sharpe 0.49 (benchmark 0.88), max drawdown -38.2% (benchmark -34.1%), "
+        "848 trades, 39% won, average +0.16R, median hold 27 days; India 8.07% CAGR, excess -5.46 (-7.94 "
+        "at the standard cost), Sharpe 0.63 (0.86), max drawdown -27.5% (-38.3%), 527 trades, 37% won, "
+        "average +0.21R, median hold 24 days. The box trail sells most trades early (three in four exits "
+        "are a trailed stop, median R -0.28 US, -0.40 India), so the few long runs (about one trade in "
+        "twenty reaches 3R) do not pay for the rest. Same stage, for comparison: Donchian v1.5 excess "
+        "-10.40 US, -1.69 India; Chart patterns excess -9.22 US (v1.18), -6.13 India (v1.19). Verify not "
+        "run, and not to be run on this version: it failed before verify."
     )
     gate_docs = {
         "G1": (
