@@ -217,12 +217,16 @@ const Studies = (() => {
           const ts = ctx.trades?.() || [];
           if (ownersOf === ts && owners.size) return owners;
           owners = new Map(); ownersOf = ts;
-          for (const t of ts) {
-            const cover = all.filter((s) => t.entry_date >= s.base_from && t.entry_date <= s.to);
-            // the setup judged on the bar the run traded (anchored by the selected run) wins over any other
-            // that happens to span the fill
-            const best = cover.find((s) => s.anchored) || cover.filter((s) => s.kind !== "fail").at(-1) || cover.at(-1);
-            if (best && !owners.has(best)) owners.set(best, t);
+          const taken = new Set();
+          for (const t of [...ts].sort((a, b) => (a.entry_date || "").localeCompare(b.entry_date || ""))) {
+            // matched on the setup's own span (`_to`: before the backtest view clipped it to an exit), and never
+            // to a setup an earlier trade already owns -- a base bought in 2016 whose drawing ran on to 2022
+            // claimed a 2021 trade, which then lost its own setup and was drawn inside the old one
+            const cover = all.filter((s) => !taken.has(s) && t.entry_date >= s.base_from && t.entry_date <= (s._to || s.to));
+            // the setup judged on the bar the run traded (anchored by the selected run) wins, the latest base
+            // first; then the latest that passed; then the latest of any
+            const best = cover.filter((s) => s.anchored).at(-1) || cover.filter((s) => s.kind !== "fail").at(-1) || cover.at(-1);
+            if (best) { owners.set(best, t); taken.add(best); }
           }
           return owners;
         };
@@ -499,6 +503,16 @@ const Studies = (() => {
         let arrived = false;
         const refresh = () => {
           ownersOf = null;
+          // the backtest view ends a traded setup at the trade's exit: its drawing may run on for years (a cheat
+          // "stopped out" is judged on its stop alone), and a frame from 2015 to 2022 around a 2016 trade drowned
+          // the chart. Restored first, so ownership is judged on the setup's own span.
+          for (const s of all) if (s._to) { s.to = s._to; s.frame = { ...s.frame, to: s._to }; delete s._to; }
+          if (p.tradedOnly) {
+            for (const s of all) {
+              const t = tradeOf(s);
+              if (t?.exit_date && t.exit_date < s.to) { s._to = s.to; s.to = t.exit_date; s.frame = { ...s.frame, to: t.exit_date }; }
+            }
+          }
           setups = p.tradedOnly ? all.filter(tradeOf) : all;
           if (!setups.includes(pinned)) pinned = null;
           // the backtest view opens on the run's latest trade here, not on today's bars
@@ -514,8 +528,10 @@ const Studies = (() => {
         ctx.onFocusTrade?.((t) => {
           const s = t ? [...ownerMap()].find(([, x]) => x.entry_date === t.entry_date)?.[0] : null;
           if (s || !t) { pinned = s || null; hovered = null; paint(); }
-          // go to it: the setup's frame through the trade's exit, the price axis back on auto
-          if (s) frameDates(chart, times, ctx, (s.focus || s).from, t.exit_date && t.exit_date > s.to ? t.exit_date : s.to, { fill: 0.7, lead: 0.05, price: s.focus || s.frame });
+          // go to it: from the base's start (not the whole advance into it) through the trade's exit, the price
+          // axis back on auto -- the entry, the stop and the exit are what a trade review reads
+          if (s) frameDates(chart, times, ctx, s.base_from || (s.focus || s).from, t.exit_date && t.exit_date > s.to ? t.exit_date : s.to,
+                            { fill: 0.7, lead: 0.08, price: s.frame });
         });
         (async () => {
           setNote(id, "testing each bar…");
