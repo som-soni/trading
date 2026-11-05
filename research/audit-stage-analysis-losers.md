@@ -336,3 +336,20 @@ that the strategy has an edge: every report trails its index in this in-sample w
 
 The two things worth an A/B are the stop buffer and, separately, how the market layer reads Stage 4. The second is
 a decision, not a bug fix, because the canonical rule and the measured result point opposite ways.
+
+## Result of candidate 1 (2026-11-06): mixed, `STOP_BUFFER_PCT` stays off
+
+v2.10, optimise stage (2013-01-01 → 2021-12-31). No pass criteria were written before this run, so it reads as
+exploration, not a verdict.
+
+| Market | Buffer | CAGR | Excess | Max DD | Trades | PF | Avg R |
+|---|---|---|---|---|---|---|---|
+| US vs SPY | off | 8.04% | −5.97 | −24.1% | 155 | 1.93 | +0.49 |
+| US vs SPY | 1% | 7.19% | −6.82 | −21.3% | 149 | 1.94 | +0.46 |
+| India vs ^CRSLDX | off | 1.31% | −12.23 | −20.7% | 85 | 0.97 | +0.01 |
+| India vs ^CRSLDX | 1% | 1.89% | −11.64 | −17.8% | 72 | 1.09 | +0.06 |
+
+The buffer lowers drawdown in both markets (2.8 and 2.9 points). Return moves in opposite directions: +0.58
+points in India, −0.85 in the US. Fewer trades in both, probably because a wider stop makes more setups fail the
+`MAX_STOP_PCT` limit (W3). PF is flat in the US. Nothing here earns a verify run. If the buffer is pursued, write
+the criteria first. Lower drawdown at about equal return is the only claim these runs leave open.

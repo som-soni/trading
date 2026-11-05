@@ -288,3 +288,22 @@ mechanically, give back more than they save.
 The exit is not where these strategies lose to their index. A strategy that buys a median 14–25 weeks into Stage 2
 can only ride what is left of it. The lever is the entry, the same conclusion the losers audit reached from the
 other side.
+
+### Result (2026-11-06): fails, the switch stays off
+
+v2.10, optimise stage (2013-01-01 → 2021-12-31), India vs ^CRSLDX:
+
+| Configuration | Switch | CAGR | Excess | Max DD | Trades | PF | Avg R |
+|---|---|---|---|---|---|---|---|
+| Baseline | off | 1.31% | −12.23 | −20.7% | 85 | 0.97 | +0.01 |
+| Baseline | 3 | 1.22% | −12.32 | −23.4% | 80 | 0.92 | −0.02 |
+| W1 + G7 | off | 9.67% | −3.86 | −27.1% | 163 | 1.54 | +0.30 |
+| W1 + G7 | 3 | 11.56% | −1.97 | −25.4% | 127 | 1.99 | +0.58 |
+
+The W1 + G7 configuration passes all three tests (+1.89 CAGR points, drawdown 1.7 points better, PF higher). The
+baseline fails all three (−0.09 points, drawdown 2.7 points worse, PF lower). The criteria ask for both, so the
+switch stays off and earns no verify run. The split is the replay's mixed sign again: a looser exit helps where the
+entries ride V-recoveries out of a Stage 4 market and hurts where they do not. Re-tuning the threshold on these
+same years to rescue the baseline would be the fishing this section was written to prevent.
+
+The off runs reproduce reports 1889 and 1892 exactly, so 2.10 with its switches off trades as 2.8 did.
