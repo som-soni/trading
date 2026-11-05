@@ -252,6 +252,20 @@ float(bar["close"]) < float(ma) * (1 - TREND_EXIT_BELOW_PCT / 100)
 ```
 Test it in India first, with the pass criteria decided before the run.
 
+### The A/B and its pass criteria (decided 2026-11-06, before any run)
+
+Shipped in 2.10 as `TREND_EXIT_BELOW_PCT` (0 = off). India only, optimise stage, four runs: the baseline and
+`W1_RANKS_ONLY=1 G7_BLOCK_STAGE=3`, each with the switch off and at 3.
+
+**It passes only if, in both India configurations, the run at 3 beats its own off twin on all three:**
+- CAGR higher by at least 1.0 point;
+- max drawdown no worse by more than 2.0 points;
+- profit factor not lower.
+
+Anything less leaves it off. A pass earns a verify run, once, at the same value. It is not a change to the shipped
+rule. The US is not tested: its two runs disagree in sign on the per-trade replay, so a US run now would be a
+second fishing trip on the same years.
+
 ### Already expressible, nothing to change
 
 Weekly closes are true weekly bars (`weekly_line`). The stage machine exists as `EXIT_ON_STAGE3`. That switch never
