@@ -505,7 +505,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "b11d0fed",
+    "fingerprint": "a830fdb7",
     "params": {
       "BASE_COUNT_MIN_DAYS": 25,
       "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
@@ -618,8 +618,10 @@
       "PP_RUN_WINDOW": 40,
       "PP_TIGHT_PCT": 25.0,
       "PRIOR_ADVANCE_PCT": 30.0,
+      "RESULTS_BY_ANNOUNCEMENT": 1,
       "RS_MIN_RANK": 70,
       "RS_MIN_SCORE": 0.5,
+      "S2_FILL_NEEDS_VOLUME": 1,
       "SCALE_TURNOVER_FLOOR": 1,
       "SHAKEOUT_LOOKBACK_LEGS": 3,
       "SHAKEOUT_ON": 1,
@@ -736,7 +738,7 @@
         "W5"
       ]
     },
-    "version": "1.50"
+    "version": "1.51"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

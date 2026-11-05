@@ -458,39 +458,32 @@ def pilot_signal(market: str, bench: pd.DataFrame, full: pd.Series) -> pd.Series
     raise ValueError(f"MKT_PILOT must be 0, 1 or 2, not {ms.MKT_PILOT}")
 
 
-def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]:
-    """Drop a signal whose company files results within `days` calendar days AFTER the signal date.
+def results_blackout(signals: list, market: str, days: int, by_announcement: bool = True) -> tuple[list, dict]:
+    """Drop a signal whose company announces results within `days` calendar days AFTER the signal date.
 
-    Results dates are the filing dates stored in `quarterly_results` (NSE results for India, from
-    late 2020; SEC filings for the US, from 2009). A company with no stored filing near the signal
-    is kept: no date, no blackout. Earnings dates are published weeks ahead, so knowing the next
-    one on the signal date is not look-ahead.
+    The dates are the results ANNOUNCEMENTS (`financials.announcements`, the `results_announcements` table):
+    India, NSE's broadcast of each results filing and the board meeting that approved them, back to 2005; the
+    US, each 8-K with Item 2.02, filed the day results go out, back to 2005. Announcement dates are published
+    weeks ahead, so knowing the next one on the signal date is not look-ahead. A company with no recorded
+    announcement falls back to its 10-Q / 10-K or NSE filing dates (`quarterly_results.filed`), and one with
+    neither is kept: no date, no blackout.
 
-    The filing is NOT the announcement, and the announcement is what gaps the stock. US filings
-    land a mean 35 days after a Q1-Q3 period end but 53 after Q4, while announcements land ~30-37
-    days out every quarter. So the rule leaks: on the stored US run it blocked 422 signals and
-    still let 56 trades be bought into a report, AKAM on 2013-01-28 among them -- filed
-    2013-03-01, announced 2013-02-06, gapped 18.7% through its stop the next morning.
+    Before minervini 1.51 every company used the filing date, and the filing is NOT the announcement. US filings land a
+    mean 35 days after a Q1-Q3 period end and 53 after Q4, while announcements land at ~30-37, so the rule
+    leaked: on the 1.46 US optimise run (#2077) 110 trades were bought within 14 days before a recorded 8-K
+    2.02 -- Morgan Stanley on 2014-01-15, results on the 17th, its 10-K on 2014-02-25 -- and they averaged
+    -0.08R against -0.02R for the rest. An announcement INFERRED from the heaviest-volume bar of each quarter
+    was tried earlier and rejected (a median error of 13 days against a 14-day window); the 8-K date is the
+    record itself.
 
-    Keying on an INFERRED announcement date instead was tried and rejected, so it is not worth
-    trying again without new data. No announcement calendar is stored before 2025-10
-    (`stock_events`), so the date has to be reconstructed from the heaviest-volume bar of each
-    quarter, and that detector is too blunt: over 220 US symbols its implied reporting lag has an
-    IQR of 27-65 days, and predicting the next announcement from a company's own prior quarters
-    carries a median absolute error of 13 days -- against a 14-day window. Scored over the US
-    book, it blocked 75 trades to catch 16 of 44 leaks, i.e. ~4 innocent trades per leak caught
-    while still missing two thirds. Shifting the filing date earlier by its mean lateness fares
-    no better (60 blocked for 11 of 43; 112 for 15 of 43).
-
-    The fix is data, not arithmetic: real announcement dates are being stored from 2025-10, so
-    runs over later periods can use them. Until then the leak stands, and D2-sensitive trades
-    should be read with it in mind.
-
-    Inside a backtest stage only filings up to the stage's end are read (`asof`): a filing after
-    it is data the stage must not see, even when it would only block a signal near the end."""
+    Inside a backtest stage only dates up to the stage's end are read (`asof`): a date after it is data the
+    stage must not see, even when it would only block a signal near the end. `by_announcement=False` keys every
+    company on its filing dates, as before minervini 1.51 (a research control)."""
+    from ..marketdata import financials
     syms = sorted({s.symbol for s in signals})
     if not syms or not days:
         return signals, {"days": days, "blocked": 0, "kept": len(signals), "dropped_signals": {"blocked": []}}
+    announced = financials.announcements(market) if by_announcement else {}
     sql, args = ("""SELECT DISTINCT symbol, filed FROM quarterly_results
                     WHERE market=%s AND symbol = ANY(%s) AND filed IS NOT NULL""", (market, syms))
     if asof.end_date():
@@ -498,22 +491,28 @@ def results_blackout(signals: list, market: str, days: int) -> tuple[list, dict]
     with db.get_connection().cursor() as cur:
         cur.execute(sql + " ORDER BY symbol, filed", args)
         rows = cur.fetchall()
-    filed: dict[str, list] = {}
+    dates: dict[str, list] = {}
     for sym, f in rows:
-        filed.setdefault(sym, []).append(pd.Timestamp(f))
+        dates.setdefault(sym, []).append(pd.Timestamp(f))
+    by_announcement = 0
+    for sym in syms:
+        if announced.get(sym):
+            dates[sym] = [pd.Timestamp(d) for d in announced[sym]]
+            by_announcement += 1
     kept, blocked = [], 0
     gone = {"blocked": []}
     for s in signals:
         d = pd.Timestamp(s.date)
-        nxt = next((f for f in filed.get(s.symbol, []) if f > d), None)
+        nxt = next((f for f in dates.get(s.symbol, []) if f > d), None)
         if nxt is not None and (nxt - d).days <= days:
             blocked += 1
             gone["blocked"].append(s)
         else:
             kept.append(s)
-    logger.info("Results blackout (%d days): kept %d of %d signals", days, len(kept), len(signals))
-    return kept, {"days": days, "blocked": blocked, "kept": len(kept),
-                  "covered_symbols": len(filed), "of_symbols": len(syms), "dropped_signals": gone}
+    logger.info("Results blackout (%d days): kept %d of %d signals (%d of %d symbols on announcement dates)",
+                days, len(kept), len(signals), by_announcement, len(syms))
+    return kept, {"days": days, "blocked": blocked, "kept": len(kept), "covered_symbols": len(dates),
+                  "announced_symbols": by_announcement, "of_symbols": len(syms), "dropped_signals": gone}
 
 
 def market_open(ok: pd.Series, date) -> bool:

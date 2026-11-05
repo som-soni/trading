@@ -1311,6 +1311,7 @@ def run_portfolio_backtest(
     mkt_confirm: int = 0,
     market_guide: bool = False,
     results_blackout_days: int | None = None,
+    results_by_announcement: bool = True,
     segment_filter_days: int | None = None,
     tf_align: bool = False,
     equal_alloc_pct: float | None = None,
@@ -1460,12 +1461,14 @@ def run_portfolio_backtest(
         spec_notes.append(f"Timeframe alignment: {ta['misaligned']} signals skipped whose stock was not in an uptrend on the "
                           "daily, weekly and monthly charts at once that day (screens/criteria.py trend_alignment).")
     if results_blackout_days and all_signals:
-        all_signals, rb = spec_mod.results_blackout(all_signals, market_key, results_blackout_days)
+        all_signals, rb = spec_mod.results_blackout(all_signals, market_key, results_blackout_days,
+                                                    by_announcement=results_by_announcement)
         fn.dropped_each("accepted", f"results due within {results_blackout_days} days", rb["dropped_signals"]["blocked"])
         spec_notes.append(
-            f"Results blackout: {rb['blocked']} signals skipped with results filed within {results_blackout_days} days "
-            f"after the signal; results dates known for {rb['covered_symbols']} of {rb['of_symbols']} signalled stocks "
-            "(the rest are never blocked).")
+            f"Results blackout: {rb['blocked']} signals skipped with results due within {results_blackout_days} days "
+            f"after the signal; results dates known for {rb['covered_symbols']} of {rb['of_symbols']} signalled stocks, "
+            f"{rb['announced_symbols']} of them by recorded announcements and the rest by filing dates "
+            "(stocks with neither are never blocked).")
     if fundamentals and all_signals:
         from . import fundamental_filter
         all_signals, f = fundamental_filter.filter_signals(all_signals, market_key, fundamentals)
@@ -2069,6 +2072,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct,
             use_market_filter=args.market_filter, mkt_confirm=args.mkt_confirm,
             market_guide=market_guide, results_blackout_days=args.results_blackout or None,
+            results_by_announcement=bool(ms.RESULTS_BY_ANNOUNCEMENT) if args.spec else True,
             segment_filter_days=args.segment_filter, tf_align=args.tf_align,
             equal_alloc_pct=args.equal_alloc / 100 if args.equal_alloc else None,
             top_dollar_volume=args.top_dollar_volume,

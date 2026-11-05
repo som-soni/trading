@@ -407,6 +407,10 @@ TIME_STOP_DAYS = 15
 # EN-02 fills on the close through the pivot; a fill on volume under VOL_MULT x the
 # 50-day average is not a valid breakout and is sold at the next open.
 LIGHT_VOLUME_EXIT = 1
+# 1.51: MV-02 fills AT the close through the pivot, so that close's volume is known when it fills: under
+# VOL_MULT x the 50-day it does not fill and the order keeps resting (1). 0 = fill it and let
+# LIGHT_VOLUME_EXIT sell it at the next open, as before -- 517 of 574 S2 fills in the 1.46 US run did that.
+S2_FILL_NEEDS_VOLUME = 1
 
 # ---- section 10 / backtest (backtesting/backtest.py --spec)
 # PE-01..PE-04 (progressive exposure), on by default since 1.8 (`--pe` in backtest_args).
@@ -468,10 +472,13 @@ MAX_POSITIONS = 8               # PF-02
 MAX_OPEN_RISK_PCT = 6.0         # PF-04
 MAX_ADV_PCT = 5.0               # SL-06
 # No new buy with results due within this many calendar days: live from the earnings
-# calendar, in a backtest from an ESTIMATED announcement date unioned with the stored
-# filing date (spec.results_blackout -- the gap happens on the announcement, and the
-# filing runs weeks behind it).
+# calendar, in a backtest from the recorded results ANNOUNCEMENTS (spec.results_blackout:
+# NSE broadcasts and board meetings, SEC 8-K Item 2.02), a company with none falling back
+# to its filing dates -- the gap happens on the announcement, and the filing runs weeks behind it.
 EARNINGS_BLACKOUT_DAYS = 14
+# 1.51: 1 = the backtest's blackout keys on recorded announcements (filing dates only where a company
+# has none); 0 = filing dates for every company, as before (a research control). Read after the scan.
+RESULTS_BY_ANNOUNCEMENT = 1
 
 # The guide's liquidity floor. Turnover is the 50-day average volume x the close, which is
 # split-invariant, so it applies in backtests too. The price floor is LIVE ONLY: a backtest
@@ -1068,9 +1075,20 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.50"
+    version = "1.51"
     # signal_version is not pinned: the turnover floor is part of the screen every scanned session passes.
     changelog = (
+        ("1.51", "2026-11-05",
+         "Two execution fixes from the audit of the 1.46 US optimise run's 870 losing trades "
+         "(research/audit-minervini-run2077.md), both after the scan. (1) The results blackout keys on the "
+         "recorded results ANNOUNCEMENTS -- the US from each 8-K with Item 2.02, India from NSE's broadcasts "
+         "and board meetings -- instead of the 10-Q / 10-K filing, which lands weeks after the release; 110 "
+         "trades of that run were bought within 14 days before a recorded announcement and averaged -0.08R "
+         "(RESULTS_BY_ANNOUNCEMENT). The text that said the blackout used an estimated announcement date was "
+         "wrong: the estimate had been tried and dropped, and the code keyed on filings alone. (2) An MV-02 "
+         "buy-stop no longer fills on a close through the pivot whose volume is under VOL_MULT: the fill is at "
+         "that close, so its volume is known, and 517 of 574 S2 fills were sold at the next open for it "
+         "(S2_FILL_NEEDS_VOLUME). Both switches are signal-exempt, so their variants reuse the scan."),
         ("1.50", "2026-11-05",
          "S9, the shakeout (SHAKEOUT_*): a base whose recent lows are undercut in one sharp drop on heavy volume, "
          "won back within days, then closed through on MV-01's tests is bought, without the VCP's dry-up and tight "
@@ -1697,6 +1715,7 @@ class MinerviniSpecStrategy(Strategy):
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
+        "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
         "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
         "MKT_GUIDE", "MKT_INDEX_SMA", "MKT_BREADTH_MIN_PCT", "MKT_BREADTH_RISING_DAYS",
@@ -1800,15 +1819,15 @@ class MinerviniSpecStrategy(Strategy):
         "Fundamentals page's stricter SEPA tests. Each uses the quarterly results public on the signal date "
         "(backtesting/fundamental_filter.py). Stored results start in late 2020 for India and 2009 for the US "
         "and cover part of the universe, so compare against `covered` (any scorable company), not the full run.",
-        "**The results blackout** in a backtest blocks on an ESTIMATED announcement date -- the quarter end "
-        "plus the company's own median reporting lag, taken from quarters already announced by the signal -- "
-        "unioned with the stored filing date it used to key on alone. The gap that breaks a stop happens on the "
-        "announcement, and the filing runs weeks behind it: keyed on filings alone, {EARNINGS_BLACKOUT_DAYS}-day "
-        "cover let 56 US trades be bought into a report. The estimate is NOT precise -- scored against the "
-        "announcements recorded from 2025-10 it is within a week of the real date 55% of the time -- so it is a "
-        "union rather than a replacement, which can only add blocks and never leak more than before; the price is "
-        "some blocks on the wrong day. Stored quarters start in late 2020 for India and 2009 for the US and cover "
-        "part of the universe; a stock with no stored quarter is never blocked, so early Indian years run without it.",
+        "**The results blackout** in a backtest blocks on the recorded results ANNOUNCEMENTS (1.51): in the US "
+        "each 8-K with Item 2.02, filed the day results go out; in India NSE's broadcast of each results filing "
+        "and the board meeting that approved them; both back to 2005. A company with none recorded falls back to "
+        "its 10-Q / 10-K or NSE filing date, which lands weeks after the announcement (a mean 35 days after a "
+        "Q1-Q3 quarter end in the US, 53 after Q4), so the blackout still leaks for those companies -- a foreign "
+        "issuer filing 6-Ks, a symbol with no SEC CIK. Before 1.51 every company keyed on filings, and in the "
+        "1.46 US optimise run 110 trades were bought within {EARNINGS_BLACKOUT_DAYS} days before a recorded 8-K "
+        "2.02 (Morgan Stanley on 2014-01-15, results on the 17th). An 8-K 2.02 also covers a mid-quarter update "
+        "or pre-announcement, which blocks a buy too. A stock with neither date is never blocked.",
         "**The price floor is live only.** A backtest reads split-adjusted history, where a winner's early price "
         "is divided by every later split, so a price floor there would delete the stocks that rose most.",
         "**The low cheat (MV-03) is on because the guide lists it**, but it lost heavily when measured in 1.5 "
@@ -2132,9 +2151,10 @@ class MinerviniSpecStrategy(Strategy):
         "low (the setup has already failed).",
         "Coiled below the pivot (MV-02, EN-02). A buy-stop order is placed 0.1% above the pivot and "
         "kept for up to 10 sessions.\n\n"
-        "- **Fills** only on a session that CLOSES at or above the pivot, at that close. A session "
-        "that pokes through during the day and closes back under it does not fill; the order keeps "
-        "waiting.\n"
+        "- **Fills** only on a session that CLOSES at or above the pivot on at least {VOL_MULT} times "
+        "its 50-day average volume, at that close (the volume half while S2_FILL_NEEDS_VOLUME is "
+        "{S2_FILL_NEEDS_VOLUME}). A session that pokes through during the day and closes back under it, "
+        "or closes above it on lighter volume, does not fill; the order keeps waiting.\n"
         "- **Skipped** if the fill would be more than {BUY_RANGE_PCT}% above the pivot.\n"
         "- **Cancelled** by a close below the tight low.",
         "Cheats (MV-03, MV-04). Bought at the next session's open. Skipped if that open is more than "
@@ -2208,8 +2228,8 @@ class MinerviniSpecStrategy(Strategy):
         "Unconfirmed breakout (MV-02 buys only). If the session that filled the buy-stop traded less "
         "than {VOL_MULT} times its 50-day average volume, the breakout was not confirmed: the whole "
         "position is sold.\n\n"
-        "This is decided on the close of the session that filled, after the fill — the fill itself "
-        "never depends on that session's volume.",
+        "Since 1.51 the fill itself needs that volume (S2_FILL_NEEDS_VOLUME), so this exit acts only "
+        "when that switch is 0, which fills the light close and sells it at the next open as before.",
         "EX-04 — sell part into strength. {STRENGTH_FRAC} of the position (about a third) is sold "
         "the first time EITHER trigger fires, once only, and the rest is held for the trend:\n\n"
         "- the trade's high reaches +{PARTIAL_R}R — the same point EX-03 moves the stop to "
@@ -2290,8 +2310,8 @@ class MinerviniSpecStrategy(Strategy):
         "and the longer rise as a preference, so this stays off until a backtest shows it helps.",
         "Results are due. No new buy with quarterly results due within {EARNINGS_BLACKOUT_DAYS} "
         "days: a results-day gap can jump straight past the stop. Live, the date comes from the "
-        "earnings calendar; in a backtest it is estimated from the company's past announcement "
-        "timing, and the stored filing date is checked as well.",
+        "earnings calendar; in a backtest from the recorded results announcements (RESULTS_BY_ANNOUNCEMENT "
+        "is {RESULTS_BY_ANNOUNCEMENT}), or the filing date for a company with none recorded.",
         "The stock is too thin. It must trade at least {TURNOVER_FLOOR_BP_INR} basis points (India) or "
         "{TURNOVER_FLOOR_BP_USD} (US) of the whole market's daily turnover (50-day average of volume × close). "
         "The floor grows with the market: set to ₹{MIN_TURNOVER_INR_CR} crore and ${MIN_TURNOVER_USD_M} million "
@@ -2447,8 +2467,10 @@ class MinerviniSpecStrategy(Strategy):
         ("Trend exit needs volume", "TREND_EXIT_NEEDS_VOLUME", "EX-06: 1 = only on above-average volume (1.7)."),
         ("Time stop", "TIME_STOP_DAYS", "EX-07: sessions to reach +1R (0 = off)."),
         ("Light-volume fill exit", "LIGHT_VOLUME_EXIT", "EN-02: sell a buy-stop fill on under-average breakout volume (1 = on)."),
+        ("S2 fill needs volume", "S2_FILL_NEEDS_VOLUME", "1.51: an MV-02 close through the pivot on under VOL_MULT x volume does not fill (1); 0 = fill and sell at the next open."),
         ("Low cheat", "LOW_CHEAT_ENABLED", "MV-03 on (1) or off (0)."),
         ("Results blackout", "EARNINGS_BLACKOUT_DAYS", "Days before results with no new buy."),
+        ("Blackout on announcements", "RESULTS_BY_ANNOUNCEMENT", "1.51: the backtest's blackout keys on recorded results announcements (1) or on filing dates only (0)."),
         ("Preferred uptrend", "SMA200_RISING_PREF_BARS", "W5: sessions over which the 200-day should have risen."),
         ("Preferred uptrend required", "SMA200_PREF_REQUIRED", "1 = W5 holds the plan at WATCH (no new buy); 0 = noted only."),
         ("Turnover floor scales", "SCALE_TURNOVER_FLOOR", "1.45: 1 = the floor is a share of the day's market turnover (the 1,000 most-traded stocks); 0 = the fixed floors below (1.44)."),
@@ -3016,6 +3038,8 @@ class MinerviniSpecStrategy(Strategy):
                 # the guide's buy-stop is valid only if the breakout day's volume reaches
                 # VOL_MULT x the 50-day average by the close (portfolio_sim, entry day)
                 meta["min_breakout_vol"] = VOL_MULT
+                # 1.51: the fill IS that close, so a light one does not fill and the order keeps resting
+                meta["fill_needs_volume"] = S2_FILL_NEEDS_VOLUME
         else:
             # the shelf was cleared on today's close, so the fill is the next open,
             # as MV-01 does; cancel if it closes back under the shelf low
