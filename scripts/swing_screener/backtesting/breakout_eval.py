@@ -61,6 +61,8 @@ SETS = {
     # Hand-picked, not scanned: India setups found while reading charts, added one at a time (`add`, --add). Any
     # year before the verify stage may be added -- the 2007 bull market is outside both stages -- never 2022 on.
     "india-reviewed": {"market": "india", "manual": True, "fwd_sessions": 126},
+    # the US twin: cases found while reading charts that the scans' big-move bar does not reach
+    "us-reviewed": {"market": "us", "manual": True, "fwd_sessions": 126},
 }
 EVAL_SET = "us-2017-2021-x2"   # the default set
 # COVID-period cases in the first set reviewed one by one: established, liquid leaders, a test of how the rules
@@ -69,7 +71,7 @@ COVID_SAMPLE = ("TSLA", "ENPH", "DOCU", "FVRR", "APPN", "SNAP", "AMBA", "CELH", 
 SCORE_BEFORE, SCORE_AFTER = 5, 3   # sessions around the reviewed entry that count as the strategy's buy
 NO_BUY_BEFORE = 20                  # sessions before a `no` case's breakout in which a buy is a false buy
 # a buy: breakout, cheats, power play, flat base, near miss, and the flat base's buy-stop (S8, an order at the pivot)
-BUY_SETUPS = (ms.MV01, ms.MV03, ms.MV04, ms.MV05, ms.FLAT, ms.NEAR, ms.FLAT_COIL)
+BUY_SETUPS = (ms.MV01, ms.MV03, ms.MV04, ms.MV05, ms.FLAT, ms.NEAR, ms.FLAT_COIL, ms.SHAKE)
 RANGE_SESSIONS = 60       # the breakout close clears the highest high of this many sessions before it
 MIN_PRICE = 5.0
 MIN_SESSIONS_TO_PEAK = 10  # a move that tops out inside two weeks is a news spike, not a trend

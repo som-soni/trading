@@ -505,7 +505,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "f98fe602",
+    "fingerprint": "b11d0fed",
     "params": {
       "BASE_COUNT_MIN_DAYS": 25,
       "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
@@ -621,6 +621,12 @@
       "RS_MIN_RANK": 70,
       "RS_MIN_SCORE": 0.5,
       "SCALE_TURNOVER_FLOOR": 1,
+      "SHAKEOUT_LOOKBACK_LEGS": 3,
+      "SHAKEOUT_ON": 1,
+      "SHAKEOUT_PRIOR_LEGS": 2,
+      "SHAKEOUT_RECOVER_DAYS": 5,
+      "SHAKEOUT_VOL": 1.5,
+      "SHAKEOUT_WINDOW": 15,
       "SKIP_DEAD_BARS": 1,
       "SMA200_PREF_REQUIRED": 0,
       "SMA200_RISING_BARS": 21,
@@ -719,7 +725,8 @@
         "S5",
         "S6",
         "S7",
-        "S8"
+        "S8",
+        "S9"
       ],
       "watch_codes": [
         "W1",
@@ -729,7 +736,7 @@
         "W5"
       ]
     },
-    "version": "1.49"
+    "version": "1.50"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

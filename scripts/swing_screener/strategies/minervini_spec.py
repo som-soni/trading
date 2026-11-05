@@ -75,6 +75,7 @@ MV05 = "S5"   # MV-05: power play -- an explosive run, then a short tight flag
 FLAT = "S6"   # flat base: a shallow, sideways base with no pivot but its own high (1.28)
 NEAR = "S7"   # near miss (1.38): an MV-01 breakout of a base that missed ONE graded rule by a small margin
 FLAT_COIL = "S8"  # flat base coiled (1.48): a resting buy-stop at a flat base's high, as MV-02 is for a VCP
+SHAKE = "S9"  # shakeout (1.50): a base's recent lows undercut on volume and reclaimed, then a close through its high
 
 # ---- section 5: base and VCP (core/vcp_spec.py)
 SWING_K = 5
@@ -169,6 +170,22 @@ FLAT_STOP_DAYS = 5
 # flat base and the close sits within COIL_PCT below its high, a buy-stop just above the high, stopped under
 # the low of the last FLAT_STOP_DAYS sessions. 0 = off (1.47).
 FLAT_COIL_ON = 1
+# 1.50, S9: the shakeout. A base that sheds its weak holders in one sharp drop under its recent lows, on heavy
+# volume, recovers them within days, and then closes through its high is one Minervini buys -- the flush IS the
+# supply leaving, so the quiet tight area a VCP needs (VCP-08, VCP-10) is not asked of it. Papa John's, Feb-Mar
+# 2013: its Jan-Feb tight area failed the dry-up (1.17x) into the results, the results gap (27 Feb) cut 13% to
+# 24.94 under the area's lows on 7.8x volume, 4 Mar recovered them and 5 Mar closed 29.24 through the base's
+# 28.66 high on 3.1x -- every VCP rule refused it (VCP-06 'widened', then VCP-08 'one session old').
+# The shakeout: one of the last SHAKEOUT_LOOKBACK_LEGS contractions whose low undercuts the lows of the
+# SHAKEOUT_PRIOR_LEGS before it, on at least SHAKEOUT_VOL x the 50-day volume, with a close back above those
+# lows within SHAKEOUT_RECOVER_DAYS, at most SHAKEOUT_WINDOW sessions before the breakout. The breakout: MV-01's
+# tests through the base's highest high; the stop under the breakout session's low. 0 = off.
+SHAKEOUT_ON = 1
+SHAKEOUT_LOOKBACK_LEGS = 3
+SHAKEOUT_PRIOR_LEGS = 2
+SHAKEOUT_VOL = 1.5
+SHAKEOUT_RECOVER_DAYS = 5
+SHAKEOUT_WINDOW = 15
 
 # PP-06 (1.27): the flag's tight area must show VCP-10's volume dry-up. Minervini's third power-play
 # condition -- "within the base (usually just days before a breakout), volume will contract
@@ -634,6 +651,33 @@ def cheat_cross(prev: dict, prev_close: float, close: float) -> str | None:
     return MV04 if prev["cheat_zone"] == "mid" else None
 
 
+def shakeout(base: dict, daily: pd.DataFrame) -> dict | None:
+    """S9's shakeout in `base` (a `vcp_spec.detect` result on the last bar of `daily`), or None: among the last
+    SHAKEOUT_LOOKBACK_LEGS contractions, the latest whose low undercuts the lows of the SHAKEOUT_PRIOR_LEGS before
+    it, on at least SHAKEOUT_VOL x the 50-day volume (the session before as its baseline), with a close back above
+    those lows within SHAKEOUT_RECOVER_DAYS sessions, its low at most SHAKEOUT_WINDOW sessions before the last bar.
+    Shared by evaluate and the chart."""
+    legs = base.get("legs") or []
+    n = len(daily)
+    for k in range(len(legs) - 1, max(SHAKEOUT_PRIOR_LEGS, len(legs) - SHAKEOUT_LOOKBACK_LEGS) - 1, -1):
+        prior_low = min(float(g[3]) for g in legs[k - SHAKEOUT_PRIOR_LEGS:k])
+        lo_date, lo = legs[k][2], float(legs[k][3])
+        if lo >= prior_low or lo_date not in daily.index:
+            continue
+        i = daily.index.get_loc(lo_date)
+        if n - 1 - i > SHAKEOUT_WINDOW or i < 1:
+            continue
+        v50 = float(daily["vol_sma50"].iloc[i - 1]) if "vol_sma50" in daily else float("nan")
+        if not (v50 == v50 and v50 > 0 and float(daily["volume"].iloc[i]) >= SHAKEOUT_VOL * v50):
+            continue
+        rec = daily["close"].iloc[i + 1: i + 1 + SHAKEOUT_RECOVER_DAYS]
+        if not bool((rec > prior_low).any()):
+            continue
+        return {"low": lo, "date": lo_date, "prior_low": prior_low,
+                "vol_ratio": float(daily["volume"].iloc[i]) / v50}
+    return None
+
+
 def base_diagnostics(r: dict, daily: pd.DataFrame) -> dict:
     """What a pass/fail hides about a base, from one `vcp_spec.detect` result: how it contracted, which
     route its pivot passed by, how its volume dried up, its undercuts, its trend through the base and the
@@ -1024,9 +1068,15 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.49"
+    version = "1.50"
     # signal_version is not pinned: the turnover floor is part of the screen every scanned session passes.
     changelog = (
+        ("1.50", "2026-11-05",
+         "S9, the shakeout (SHAKEOUT_*): a base whose recent lows are undercut in one sharp drop on heavy volume, "
+         "won back within days, then closed through on MV-01's tests is bought, without the VCP's dry-up and tight "
+         "area. Papa John's, March 2013: the results gap cut under its Jan-Feb lows on 7.8x volume, the stock won "
+         "them back in three sessions and closed through its 28.66 high on 3.1x on 5 Mar; the VCP rules read it as "
+         "widened, then too young. Adds a setup to evaluate(); cached signals are rescanned."),
         ("1.49", "2026-11-04",
          "VCP-06: a pullback no deeper than TIGHT_NOISE_PCT is noise inside a tight area -- it can neither be a "
          "widening nor break 'each smaller than the last'. Laurus Labs, April 2026: after 19% and 15%, dips of 3.3, "
@@ -1622,7 +1672,7 @@ class MinerviniSpecStrategy(Strategy):
 
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     watch_codes = ("W1", "W2", "W3", "W4", "W5")
-    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT, NEAR, FLAT_COIL)
+    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT, NEAR, FLAT_COIL, SHAKE)
     extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days", "pp_flag_high",
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
@@ -1929,6 +1979,19 @@ class MinerviniSpecStrategy(Strategy):
               "{BUY_RANGE_PCT}% of it and in the upper part of the day's range, bought at the next open and "
               "stopped under the tight area's low.\n\n"
               "Off with NEAR_MISS = 0.",
+        SHAKE: "Shakeout: a base that flushes its weak holders in one sharp drop under its recent lows, on heavy "
+               "volume, wins those lows back within days and closes through its high. The flush is the supply "
+               "leaving, so the quiet tight area a VCP needs is not asked of it.\n\n"
+               "- **The base:** passes VCP-01, VCP-02, VCP-03 and VCP-05 (an advance into it, a legal age, the trend "
+               "held, not too deep).\n"
+               "- **The shakeout:** one of its last {SHAKEOUT_LOOKBACK_LEGS} pullbacks ends under the lows of the "
+               "{SHAKEOUT_PRIOR_LEGS} pullbacks before it, on at least {SHAKEOUT_VOL} times the 50-day average "
+               "volume; a close back above those lows comes within {SHAKEOUT_RECOVER_DAYS} sessions; the shakeout's "
+               "low is at most {SHAKEOUT_WINDOW} sessions before the breakout.\n"
+               "- **The breakout:** today closes through the base's highest high with MV-01's tests (at least "
+               "{VOL_MULT} times average volume, in the upper part of the day's range, at most {BUY_RANGE_PCT}% past "
+               "it). Bought at the next open, stopped under today's low.\n\n"
+               "Off with SHAKEOUT_ON = 0.",
         FLAT_COIL: "Flat base coiled: the flat base (S6) bought AT its high with a resting buy-stop, as MV-02 "
                    "is for a VCP, instead of after a close through it. Today's base passes S6's base tests "
                    "({FLAT_MIN_DAYS}–{FLAT_MAX_DAYS} sessions, at most {FLAT_MAX_DEPTH_PCT}% deep, the last "
@@ -2078,6 +2141,8 @@ class MinerviniSpecStrategy(Strategy):
         "{BUY_RANGE_PCT}% above the shelf's high, or at or below the shelf's low.",
         "Power play (MV-05). Bought at the next session's open. Skipped if that open is more than "
         "{BUY_RANGE_PCT}% above the flag's pivot, or at or below the flag's tight low.",
+        "Shakeout (S9). Bought at the next session's open after the close through the base's high. Skipped if "
+        "that open is more than {BUY_RANGE_PCT}% above the high, or at or below the breakout session's low.",
         "Flat base coiled (S8). A buy-stop 0.1% above the base's high, kept for up to 10 sessions. It "
         "fills during the day at the buy-stop, or at the open if the stock gaps through it -- not at the "
         "close, as MV-02 does -- and is sold at the next open if that day's volume is under {VOL_MULT} times "
@@ -2328,6 +2393,12 @@ class MinerviniSpecStrategy(Strategy):
                                                    "up."),
         ("Flat base, stop area", "FLAT_STOP_DAYS", "S6/S8: sessions before the breakout whose low sets the stop."),
         ("Flat base buy-stop", "FLAT_COIL_ON", "1 = S8 rests a buy-stop at a coiled flat base's high; 0 = off."),
+        ("Shakeout", "SHAKEOUT_ON", "1 = S9 buys a base's breakout after a shakeout; 0 = off."),
+        ("Shakeout, pullbacks looked at", "SHAKEOUT_LOOKBACK_LEGS", "S9: the last this many pullbacks may hold the shakeout."),
+        ("Shakeout, lows undercut", "SHAKEOUT_PRIOR_LEGS", "S9: the shakeout's low is under the lows of this many pullbacks before it."),
+        ("Shakeout, volume", "SHAKEOUT_VOL", "S9: the shakeout's volume, at least this x the 50-day average."),
+        ("Shakeout, recovery", "SHAKEOUT_RECOVER_DAYS", "S9: sessions within which a close wins those lows back."),
+        ("Shakeout, window", "SHAKEOUT_WINDOW", "S9: sessions from the shakeout's low to the breakout, at most."),
         ("Young listings", "YOUNG_LISTING", "1 = a stock listed under a year is judged on its history so far "
                                             "(averages that do not exist yet are waived); 0 = it waits a year (1.27)."),
         ("Young listing, first session", "YOUNG_MIN_BARS", "Sessions listed before a young listing is judged."),
@@ -2634,6 +2705,22 @@ class MinerviniSpecStrategy(Strategy):
                              flat_depth_pct=float(today["base_depth_pct"]), flat_dryup=float(dry),
                              flat_quiet_days=int(quiet), flat_base_date=str(today["bh_date"].date()))
         result.setups[FLAT_COIL] = flat_coil
+        # S9: yesterday's base had a shakeout (undercut on volume, reclaimed), and today closes through the base's
+        # highest high with MV-01's tests -- the dry-up and tight area of a VCP are not asked of it
+        shake = False
+        if (SHAKEOUT_ON and not (mv01 or near or flat) and prev.get("bh") and prev.get("bh_date") is not None
+                and prev["fail"] not in ("VCP-01", "VCP-02", "VCP-03", "VCP-05")):
+            so = shakeout(prev, d.iloc[:-1])
+            if so is not None and prev["bh_date"] in d.index:
+                b0 = d.index.get_loc(prev["bh_date"])
+                sp = float(d["high"].iloc[b0:-1].max())     # the base's highest high, through yesterday
+                m, _, _ = entry_misses(close, high, low, vol, v50, sp)
+                if prev_close <= sp < close and not any(m.values()):
+                    shake = True
+                    e.update(shake_pivot=sp, shake_low=low, shake_base_date=str(prev["bh_date"].date()),
+                             shake_date=str(so["date"].date()), shake_undercut_low=so["low"],
+                             shake_vol_ratio=round(so["vol_ratio"], 2))
+        result.setups[SHAKE] = shake
         if pp_ok:
             ctx.extras.update(pp_pivot=pp_prev["pivot"], pp_tight_low=pp_prev["tight_low"],
                               # a STRING, like base_date above: ctx.extras is serialised to JSON
@@ -2717,7 +2804,8 @@ class MinerviniSpecStrategy(Strategy):
         # number in its Stage 2 advance, for the VCP base and the flat base. Here, not in build_plans, for the
         # reason plan_overhead is: a signal-cache hit rebuilds the context from 70 bars, too few to see the advance.
         if result.hard_gates_passed and result.has_setup:
-            for k, col in (("base_date", "base_number"), ("flat_base_date", "flat_base_number")):
+            for k, col in (("base_date", "base_number"), ("flat_base_date", "flat_base_number"),
+                           ("shake_base_date", "shake_base_number")):
                 if e.get(k) and pd.Timestamp(e[k]) in d.index:
                     e[col] = base_number(d, int(d.index.get_loc(pd.Timestamp(e[k]))))["n"]
         return result
@@ -2733,7 +2821,7 @@ class MinerviniSpecStrategy(Strategy):
             return 1.0
         # a cheat is a lower-confidence entry than the pivot buy, and the low cheat
         # lower than the 3C -- he describes it as the riskiest of the three
-        if result.setups.get(FLAT) or result.setups.get(FLAT_COIL):
+        if result.setups.get(FLAT) or result.setups.get(FLAT_COIL) or result.setups.get(SHAKE):
             return 1.0
         return 0.8 if result.setups.get(MV04) else (0.6 if result.setups.get(MV03) else 0.0)
 
@@ -2754,6 +2842,10 @@ class MinerviniSpecStrategy(Strategy):
             if not fp or fl is None or pd.isna(fl):
                 return PlanChoice(None, None, "missing flat-base pivot")
             cheat = power = False
+        shake = bool(result.setups.get(SHAKE)) and not (flat or result.setups.get(MV01) or result.setups.get(MV02)
+                                                         or result.setups.get(NEAR))
+        if shake:
+            cheat = power = False
         # A power play has no base, so its pivot and stop come from the FLAG, not from
         # e["pivot"]/e["tight_low"] -- which are None for it, since the base path rejected it.
         pivot, tl = ((e.get("pp_pivot"), e.get("pp_tight_low")) if power
@@ -2761,13 +2853,19 @@ class MinerviniSpecStrategy(Strategy):
         # Only the pivot buy needs the FINAL tight area. A cheat is taken while the
         # base is still forming, so that area does not exist yet -- requiring it here
         # rejected 122 of 133 cheats before they reached their own branch.
-        if not cheat and not flat and (not pivot or tl is None or pd.isna(tl)):
+        if not cheat and not flat and not shake and (not pivot or tl is None or pd.isna(tl)):
             return PlanChoice(None, None, "missing pivot / tight low")
         if flat:
             setup, pivot = (FLAT, float(fp)) if result.setups.get(FLAT) else (FLAT_COIL, float(fp))
             # S6 is confirmed by the close and bought at the next open; S8 rests a buy-stop at the high
             entry = float(ctx.close) if setup == FLAT else pivot_buy_stop(pivot, cfg.tick_size)
             stop = pivot_stop(fl, cfg.tick_size)
+        elif shake:
+            # S9: the base's highest high is the pivot; bought at the next open after the close through it, and
+            # stopped under the breakout session's low (the shakeout's own low is far below the buy)
+            setup, pivot = SHAKE, float(e["shake_pivot"])
+            entry = float(ctx.close)
+            stop = pivot_stop(e["shake_low"], cfg.tick_size)
         elif cheat and not power:
             # A cheat is bought at its shelf, not the base's pivot, and stopped under
             # the SHELF low. That nearby stop is the entire point of the entry: the
@@ -2794,7 +2892,8 @@ class MinerviniSpecStrategy(Strategy):
         if stop <= 0 or stop >= entry:
             return PlanChoice(None, None, "degenerate stop")
         # the base count (1.44): a late-stage base is refused. A power play has no base, so no number.
-        n = None if power else e.get("flat_base_number") if flat else e.get("base_number")
+        n = (None if power else e.get("flat_base_number") if flat else e.get("shake_base_number") if shake
+             else e.get("base_number"))
         if MAX_BASE_COUNT and n and n > MAX_BASE_COUNT:
             return PlanChoice(None, None, f"late-stage base: the {_ordinal(n)} of its advance "
                                           f"(at most the {_ordinal(MAX_BASE_COUNT)})")
@@ -2886,6 +2985,8 @@ class MinerviniSpecStrategy(Strategy):
             pivot, tl = float(e["pp_pivot"]), float(e["pp_tight_low"])
         elif plan.setup in (FLAT, FLAT_COIL):
             pivot, tl = float(e["flat_pivot"]), float(e["flat_low"])
+        elif plan.setup == SHAKE:
+            pivot, tl = float(e["shake_pivot"]), float(e["shake_low"])
         else:
             pivot, tl = float(e["pivot"]), float(e["tight_low"])
         # EN-04 ("one entry per base") keys on `base_id`, and a power play has no base -- so
@@ -2893,7 +2994,7 @@ class MinerviniSpecStrategy(Strategy):
         # structure after a stop-out, which is exactly what EN-04 exists to stop. The flag high's
         # date identifies the flag the way the base start identifies a base.
         base_id = (e.get("pp_flag_high_date") if plan.setup == MV05
-                   else e.get("flat_base_date") if plan.setup in (FLAT, FLAT_COIL) else e.get("base_date"))
+                   else e.get("flat_base_date") if plan.setup in (FLAT, FLAT_COIL) else e.get("shake_base_date") if plan.setup == SHAKE else e.get("base_date"))
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": max_stop_pct(plan.setup) / 100, "base_id": base_id,
                 "max_entries_per_base": MAX_ENTRIES_PER_BASE,
@@ -2942,6 +3043,10 @@ class MinerviniSpecStrategy(Strategy):
         elif plan.setup == FLAT_COIL:
             label, reasons = "TRADE_ON_TRIGGER", ["flat base coiled under its high: buy-stop through it, "
                                                   "stopped under the low of the last sessions"]
+        elif plan.setup == SHAKE:
+            label, reasons = "TRADE_ON_TRIGGER", [f"shakeout: undercut on {ctx.extras.get('shake_date')} and reclaimed, "
+                                                  "closed through the base's high; buy at the next open, stopped "
+                                                  "under today's low"]
         elif plan.setup == NEAR:
             label, reasons = "TRADE_ON_TRIGGER", [f"near miss: a breakout like MV-01 out of a base that missed "
                                                   f"one rule narrowly ({ctx.extras.get('near_miss')}); buy at "
