@@ -541,7 +541,9 @@ const Studies = (() => {
           all = r.setups || [];
           tagRefs(all);
           refresh();
-          summary = p.tradedOnly ? `the selected run's trades, drawn as ${r.note.split(":")[0].toLowerCase()} — backtest view` : r.note;
+          // the backtest view's legend names what is drawn, not the layer's own note: Minervini's note leads with
+          // TODAY's stage ("Stage 4 (declining) since 2026-09-04 · 25 setups"), which reads as the 2013 trade's
+          summary = p.tradedOnly ? "the selected run's trades — backtest view" : r.note;
           setNote(id, summary);
           paint(); lane.render();
         })();

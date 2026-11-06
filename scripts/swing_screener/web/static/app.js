@@ -1152,15 +1152,19 @@ async function chartPage(alive, market, symbol, tf) {
       const noStop = !t.columns.includes("stop") && !t.columns.includes("initial_stop");
       const res = (rm) => (rm == null ? "" : noStop ? `${rm > 0 ? "+" : ""}${(rm * 100).toFixed(1)}%` : `${rm > 0 ? "+" : ""}${rm}R`);
       const marks = [];
+      // a setups layer drawing this run's trades labels the buy and stop levels and heads the trade with its
+      // result, so the arrows carry no text of their own: on a trade a few bars long the two marker texts
+      // landed on the layer's labels and on each other (ULTRACEMCO.NS, January 2013). Trade only keeps them.
+      const layerLabels = !tradeOnly && !!runLayerType && (!!btLayer || Studies.activeSetup() === runLayerType);
       t.rows.forEach((r) => {
         const a = snap(r[c("entry_date")]), b = snap(r[c("exit_date")]), pnl = r[c("pnl")], rm = r[c("r_multiple")];
         const ep = +r[c("entry_price")], xp = +r[c("exit_price")];
         // pinned to the FILL price, not under the bar's low: a marker below the candle reads as a
         // fill below the trigger line when the trade actually bought through it
         // size 2: at the default size the run's buys and sells were lost among the candles and the setup's levels
-        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: `Buy ${fmt(ep)}`,
+        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: layerLabels ? "" : `Buy ${fmt(ep)}`,
           ...(ep > 0 ? { position: "atPriceBottom", price: ep } : { position: "belowBar" }) });
-        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", size: 2, text: `Sell · ${r[c("exit_reason")]} ${res(rm)}`,
+        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", size: 2, text: layerLabels ? "" : `Sell · ${r[c("exit_reason")]} ${res(rm)}`,
           ...(xp > 0 ? { position: "atPriceTop", price: xp } : { position: "aboveBar" }) });
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
