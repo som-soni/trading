@@ -7,7 +7,10 @@ and the disk filled -- every queued job then failed at start writing its log.
 
 `prune` keeps, per strategy, the rows of its CURRENT version and the one BEFORE it (KEEP_VERSIONS),
 every spec id of those versions included -- `--const` variants and the cached rows a `signal_version`
-pin carries forward. The version before is kept because the next run of a post-scan-only bump copies
+pin carries forward. A pin can point further back than that (rs_leaders 1.4 reads 1.2's signals): when an
+older spec id holds a market's only copy of a strategy's current signal id, it is kept too
+(`pinned_sources`). So is an older spec id with a backtest run whose CAGR beats every kept one in the same
+strategy, market and stage (`better_runs`) -- a rule set worth returning to. The version before is kept because the next run of a post-scan-only bump copies
 from it (backtest.seed_signal_cache). Rows of an older version, or of a strategy no longer registered,
 are deleted. What that costs: the trade-anatomy chart of a run made on a pruned version can no longer
 draw the structure the strategy saw (its trades, P&L and report are untouched), and a backtest of a
@@ -50,13 +53,59 @@ def _version_of(spec_id: str) -> str:
     return spec_id.split("-")[0].lstrip("v")
 
 
+def pinned_sources(stored: set[tuple[str, str]], kept: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """Spec ids outside the kept versions that hold the only stored copy, in some market, of a strategy's
+    CURRENT signal id -- the rows a `signal_version` pin to an older version reads (backtest._signal_peers).
+    Deleting them would make the next backtest of the current rules rescan. The newest such peer is kept."""
+    from ..strategies import get_strategy, list_strategies
+    out = set()
+    with db.get_connection().cursor() as cur:
+        for key in list_strategies():
+            cur.execute("SELECT market, spec_id FROM backtest_signal_specs WHERE strategy=%s AND signal_id=%s "
+                        "ORDER BY seen_at DESC", (key, get_strategy(key).signal_id()))
+            by_market: dict[str, list[str]] = {}
+            for m, sp in cur.fetchall():
+                if (key, sp) in stored:
+                    by_market.setdefault(m, []).append(sp)
+            for peers in by_market.values():
+                if not any((key, sp) in kept for sp in peers):
+                    out.add((key, peers[0]))
+    return out
+
+
+def _cagr(summary) -> float | None:
+    try:
+        return float(str((summary or {}).get("cagr")).replace("%", "").replace(",", ""))
+    except ValueError:
+        return None
+
+
+def better_runs(stored: set[tuple[str, str]], kept: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """Spec ids outside the kept versions with a backtest run (report_runs) whose CAGR beats every kept
+    spec id's in the same strategy, market and stage -- a rule set worth going back to, so its rows stay."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT strategy, market, coalesce(stage, 'legacy'), spec_id, summary FROM report_runs "
+                    "WHERE kind='backtest' AND spec_id IS NOT NULL")
+        runs = [(s, m, st, sp, _cagr(summ)) for s, m, st, sp, summ in cur.fetchall()]
+    best_kept: dict[tuple, float] = {}
+    for s, m, st, sp, c in runs:
+        if c is not None and (s, sp) in kept:
+            best_kept[(s, m, st)] = max(c, best_kept.get((s, m, st), c))
+    return {(s, sp) for s, m, st, sp, c in runs
+            if c is not None and (s, sp) in stored and (s, sp) not in kept
+            and c > best_kept.get((s, m, st), float("-inf"))}
+
+
 def plan() -> list[tuple[str, str, bool]]:
     """(strategy, spec_id, keep) for every spec id stored, from its distinct keys -- not a table scan."""
     keep = kept_versions()
     with db.get_connection().cursor() as cur:
         cur.execute("SELECT DISTINCT strategy, spec_id FROM backtest_signals")
         rows = cur.fetchall()
-    return [(s, sp, s in keep and _version_of(sp or "") in keep[s]) for s, sp in rows]
+    kept = {(s, sp) for s, sp in rows if s in keep and _version_of(sp or "") in keep[s]}
+    kept |= pinned_sources(set(rows), kept)
+    kept |= better_runs(set(rows), kept)
+    return [(s, sp, (s, sp) in kept) for s, sp in rows]
 
 
 def prune(apply: bool = False) -> dict:

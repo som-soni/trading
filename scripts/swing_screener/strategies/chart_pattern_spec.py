@@ -511,10 +511,15 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 260
 
     status = (
-        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v1.16); verify not run. US 5.28% CAGR, "
-        "excess -8.73 points a year over the benchmark, max drawdown -36.4%, Sharpe 0.44; India 2.87% CAGR, "
-        "excess -10.66, max drawdown -31.9%, Sharpe 0.33 (bracket exits). Variants, optimise stage, never the "
-        "headline: BO_VOL=0 (no breakout-volume test) US 13.07%, excess -0.94, India 4.97%, excess -8.57; "
+        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v1.18, measured 2026-11-02); verify "
+        "not run. US 4.79% CAGR, excess -9.22 points a year over the benchmark, max drawdown -29.6%, Sharpe 0.40, "
+        "497 trades at +0.07R, profit factor 1.15; India 2.43% CAGR, excess -11.10, max drawdown -31.5%, Sharpe "
+        "0.29, 202 trades at +0.21R, profit factor 1.16 (bracket exits). Variants, optimise stage, never the "
+        "headline: Brandt's breakout buffer BUFFER_ATR=0.5 US 7.99%, excess -6.02, drawdown -24.7%, 522 trades at "
+        "+0.21R, profit factor 1.24; India 2.78%, excess -10.76, 209 trades at +0.20R, profit factor 1.18 (no "
+        "change). Brandt's compression gate COMPRESSION_ADX_MAX=12 US 2.85%, excess -11.16, 162 trades at +0.17R, "
+        "profit factor 1.24; India 19 trades, too few to judge. Earlier variants (v1.16): BO_VOL=0 (no "
+        "breakout-volume test) US 13.07%, excess -0.94, India 4.97%, excess -8.57; "
         "MAX_RISK_PCT=15 US 7.86%, excess -6.15, India 7.26%, excess -6.28. LEGACY (before stages): v1.5, India, "
         "full universe from 2013 (measured 2026-10-14), 3.61% CAGR against the index's 11.6%, max drawdown "
         "-27.8%; the v1.0 comparison (US, 2020-2026, 300-symbol sample, 2026-10-09) lost -0.93% CAGR and -0.072R "

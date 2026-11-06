@@ -24,6 +24,7 @@ from . import db
 
 logger = logging.getLogger(__name__)
 
+MARKET = "india"   # the only market NSE's FII/DII feed describes
 NSE_FII_DII = "https://www.nseindia.com/api/fiidiiTradeReact"
 TIMEOUT = 30
 
@@ -52,9 +53,9 @@ def fetch() -> dict[str, tuple[dt.date, float, float, float]]:
     return out
 
 
-def refresh(market: str = "india") -> dict:
+def refresh(market: str = MARKET) -> dict:
     """Fetch and store today's FII/DII net flow. -> {"written": {key: rows}, "failed": {key: error}}."""
-    if market != "india":
+    if market != MARKET:
         return {"written": {}, "failed": {}}
     from . import index_data
     index_data.init_schema()
@@ -70,7 +71,7 @@ def refresh(market: str = "india") -> dict:
     for key, (d, _buy, _sell, net) in got.items():
         db.execute_values("INSERT INTO index_series (market, series, date, close) VALUES %s "
                           "ON CONFLICT (market, series, date) DO UPDATE SET close = EXCLUDED.close",
-                          [("india", key, d, round(net, 2))])
+                          [(MARKET, key, d, round(net, 2))])
         written[key] = 1
     for key in SERIES.values():
         if key not in got and key not in failed:
@@ -81,7 +82,7 @@ def refresh(market: str = "india") -> dict:
 def history(key: str) -> pd.Series:
     """A stored flow's full history (net ₹cr)."""
     with db.get_connection().cursor() as cur:
-        cur.execute("SELECT date, close FROM index_series WHERE market='india' AND series=%s ORDER BY date", (key,))
+        cur.execute("SELECT date, close FROM index_series WHERE market=%s AND series=%s ORDER BY date", (MARKET, key))
         got = cur.fetchall()
     return pd.Series([float(c) for _, c in got], index=pd.to_datetime([d for d, _ in got]), dtype=float)
 
