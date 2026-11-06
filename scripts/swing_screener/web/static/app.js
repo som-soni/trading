@@ -133,7 +133,7 @@ function prettyDate(s) {
   return `${+m[3]} ${MONTHS[+m[2] - 1]} ${m[1]}${m[4] ? ` · ${m[4]}:${m[5]}` : ""}`;
 }
 const LABELS = {
-  symbol: "Symbol", sector: "Sector", decision: "Decision", price: "Price", entry: "Entry", stop: "Stop",
+  symbol: "Symbol", sector: "Sector", decision: "Decision", return_3m: "3M", return_1m: "1M", above_50_day: "Above 50-day", new_52w: "52w high / low, 2 wks", price: "Price", entry: "Entry", stop: "Stop",
   risk_pct: "Risk %", target_r: "Target R", setup_quality: "Quality", strategy_setup: "Setup", pattern: "Pattern",
   rs_vs_benchmark: "RS vs index", rank: "#", rs: "RS", sepa: "SEPA", rs_vs_sector: "RS vs sector", rsi: "RSI", adx: "ADX", earnings_in: "Earnings in (d)",
   wait_for: "Wait for", reason: "Reason", entry_date: "Entry date", entry_price: "Entry price", exit_date: "Exit date",
@@ -144,6 +144,7 @@ const LABELS = {
   "op margin": "Op margin", "fcf conv": "FCF conv", "net debt/ebitda": "Net debt/EBITDA", "p/e": "P/E", "p/e vs own": "P/E vs own", "fcf yield": "FCF yield",
   peg: "PEG", "off 52w high": "Off 52w high", "vs 200d": "vs 200D", value: "Value", zone: "Zone", "buy below": "Buy below", signals: "Signals", name: "Company", source: "Source", "to entry %": "To entry %", note: "Note", added: "Added", "target R": "Target R",
   peer_group: "Peer group", group_rs: "Group RS", peer_rs: "Group RS", peer_rank: "Rank in group",
+  ltp: "LTP", "prev close": "Prev close", "ltp chg %": "LTP vs prev %",
 };
 const label = (c) => LABELS[c] ?? String(c).replace(/_/g, " ").replace(/^\w/, (x) => x.toUpperCase());
 // columns where the sign is the story: colour them green / red
@@ -347,7 +348,7 @@ function dataTable(host, columns, rows, opts = {}) {
     tbody.innerHTML = visible.slice(0, limit).map((row, ri) => `<tr class="${opts.rowClick ? "click" : ""} ${opts.rowClass ? opts.rowClass(row) : ""}" data-r="${ri}">` +
       cols.map((i) => {
         const v = row[i];
-        if (i === decCol && v) return `<td>${decisionTag(v)}</td>`;
+        if (i === decCol && v && !opts.html?.decision) return `<td>${decisionTag(v)}</td>`;   // a page may draw it itself (Today)
         if (isSetup(columns[i]) && v) return `<td title="${esc(v)}">${esc(setupFmt(v))}</td>`;
         if (stack && i === cols[0]) return `<td class="symcell"><div title="${esc(row[1] || "")}"><b>${esc(fmtFor[i](v, row))}</b>${row[1] ? `<span>${esc(row[1])}</span>` : ""}</div></td>`;
         if (opts.tags && opts.tags[columns[i]] && v) return `<td><span class="tag ${opts.tags[columns[i]](v)}"${isGrpRs(columns[i]) ? ` title="Group RS ${esc(v)} — ${esc(RS_WORDS(v))}"` : ""}>${esc(v)}</span></td>`;
@@ -2348,6 +2349,11 @@ function wlSidebar(lists, groups, cur) {
   return [...own.filter((l) => l.group_id == null).map((l) => link(l)), ...grouped, ...lists.filter((l) => l.builtin).map((l) => link(l))].join("");
 }
 
+// "Pull LTP" on a watchlist: the broker's last traded price against the previous session's close
+// (/api/broker/{market}/quotes -> broker/kite.py quotes), per list id, kept until the page reloads. A
+// snapshot when you ask, never stored and never read by a screen or a strategy.
+const WL_LTP = new Map();
+
 async function watchlistPage(alive, lid) {
   document.title = "Watchlist · Trading";
   $view.innerHTML = LOADING;
@@ -2358,6 +2364,9 @@ async function watchlistPage(alive, lid) {
   const [items] = await Promise.all([cur ? WL.items(cur.id) : [], loadEdges()]);
   if (!alive()) return;
   const screener = !!cur?.builtin;
+  // markets on this list whose broker can quote (config `broker`); index series have no broker quote
+  const ltpMkts = [...new Set(items.map((e) => e.market))].filter((m) => mktInfo(m).broker);
+  const ltp = cur ? WL_LTP.get(String(cur.id)) : null;
   $view.innerHTML = `<div class="page-head"><h1>Watchlists</h1>${freshBadges()}<span class="spacer"></span>
       ${cur && !screener ? `<form class="wl-add" autocomplete="off">
         <div class="search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="wls" placeholder="Add symbol — any market" spellcheck="false"><ul hidden></ul></div>
@@ -2366,7 +2375,9 @@ async function watchlistPage(alive, lid) {
       <aside class="wl-lists">${wlSidebar(lists, groups, cur)}
         <button class="ghost" id="wlnew">+ New list</button><button class="ghost" id="wlnewg">+ New group</button></aside>
       <div class="wl-main">
-        ${cur ? `<div class="wl-title"><h2>${esc(cur.name)}</h2>${screener ? "" : '<button class="ibtn" id="wlmenu" title="List menu">⋯</button>'}</div>` : ""}
+        ${cur ? `<div class="wl-title"><h2>${esc(cur.name)}</h2>${screener ? "" : '<button class="ibtn" id="wlmenu" title="List menu">⋯</button>'}
+          ${ltpMkts.length ? `<span class="spacer"></span>${ltp ? `<span class="muted small">LTP at ${esc(ltp.at.slice(11, 16))} IST · read from your broker, not stored</span>` : ""}
+            <button class="ghost sm" id="wlltp" title="Read the last traded price and the previous close from your broker for this list's ${esc(ltpMkts.map((m) => mktInfo(m).badge || m).join(" / "))} stocks — once, now">${ltp ? "Refresh LTP" : "Pull LTP"}</button>` : ""}</div>` : ""}
         ${screener ? `<p class="sd-lead">Filled automatically after each strategy run: every stock a strategy marked <b>tradeable or on watch</b>, kept until you hide it.
           Today's verdicts are in <a href="#/strategies">Today's setups</a>; the lists they are drawn from are the <a href="#/screens">Screens</a>.</p>` : ""}
         <div id="wlt"></div>
@@ -2416,6 +2427,30 @@ async function watchlistPage(alive, lid) {
     };
   }
 
+  $view.querySelector("#wlltp")?.addEventListener("click", async (ev) => {
+    const btn = ev.currentTarget;
+    btn.disabled = true; btn.textContent = "Pulling…";
+    const quotes = {}; let at = null;
+    for (const m of ltpMkts) {
+      const st = await api(`/api/broker/${m}/status?next=${encodeURIComponent(location.hash)}`).catch(() => null);
+      const name = { kite: "Kite" }[st?.broker] || st?.broker || "the broker";
+      if (!st?.configured) { toast(`${name} is not set up: add its key and secret to scripts/.env and restart the server`, "err"); continue; }
+      if (!st.logged_in) { toast(`Log in to ${name} to pull prices`, "", { label: "Log in", fn: () => { location.href = st.login_url; } }); continue; }
+      const sfx = mktInfo(m).suffix || "";
+      const syms = items.filter((e) => e.market === m && (!sfx || e.symbol.endsWith(sfx))).map((e) => e.symbol);
+      if (!syms.length) continue;
+      try {
+        const r = await api(`/api/broker/${m}/quotes?symbols=${encodeURIComponent(syms.join(","))}`);
+        Object.entries(r.quotes).forEach(([s, q]) => (quotes[`${m}|${s}`] = q));
+        at = r.fetched_at;
+        if (r.missing.length) toast(`${name} returned no quote for ${r.missing.join(", ")}`);
+      } catch (e) { toast(String(e.message || e).replace(/^\d+ /, ""), "err"); }
+    }
+    if (!alive()) return;
+    if (at) { WL_LTP.set(String(cur.id), { quotes, at }); route(); }
+    else { btn.disabled = false; btn.textContent = ltp ? "Refresh LTP" : "Pull LTP"; }
+  });
+
   const host = $view.querySelector("#wlt");
   if (!cur) { host.innerHTML = `<div class="empty"><b>No watchlists</b><div class="muted">Create one with “+ New list”.</div></div>`; return; }
   if (!items.length) {
@@ -2424,11 +2459,14 @@ async function watchlistPage(alive, lid) {
       ${screener ? '<a class="btn" href="#/strategies">See today\'s setups →</a>' : ""}</div>`;
     return;
   }
+  const ltpCols = ltp ? ["ltp", "prev close", "ltp chg %"] : [];
   const cols = screener
-    ? ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", "strategies", "decision", "can slim", "entry", "to entry %", "stop", "target R", "added"]
-    : ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", "note", "added"];
+    ? ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", ...ltpCols, "strategies", "decision", "can slim", "entry", "to entry %", "stop", "target R", "added"]
+    : ["symbol", "name", "market", "peer_group", "group_rs", "last", "chg %", ...ltpCols, "note", "added"];
   const rows = items.map((e) => {
-    const base = [e.symbol, e.name || "", MKT_BADGE[e.market] || e.market, e.peer_group || e.sector || "", e.peer_rs ?? null, e.last, e.change_pct];
+    const lq = ltp && ltp.quotes[`${e.market}|${e.symbol}`];
+    const base = [e.symbol, e.name || "", MKT_BADGE[e.market] || e.market, e.peer_group || e.sector || "", e.peer_rs ?? null, e.last, e.change_pct,
+      ...(ltp ? [lq?.ltp ?? null, lq?.prev_close ?? null, lq?.change_pct ?? null] : [])];
     if (!screener) return [...base, e.note || "", e.added_at];
     const p = bestPlan(e);
     // CAN SLIM (fundamentals/canslim.py, judged by the server): the verdict, and for EARNINGS PASS the letters
@@ -2440,12 +2478,12 @@ async function watchlistPage(alive, lid) {
   const find = (row) => items.find((x) => x.symbol === row[0] && (MKT_BADGE[x.market] || x.market) === row[2]);
   dataTable(host, cols, rows, {
     name: screener ? "watchlist_screener" : "watchlist_list", sort: ["added", -1],
-    tags: { "can slim": (v) => sepaClass(String(v).split(" · ")[0]) },
+    tags: { "can slim": (v) => sepaClass(String(v).split(" · ")[0]) }, signed: ["ltp chg %"],
     // each strategy that picked the stock, with its edge dot in the stock's market
     html: { strategies: (v, row) => { const m = (MKTS.find((x) => x.badge === row[2]) || {}).key;
       return String(v || "").split(" · ").filter(Boolean).map((k) => `${edgeDot(k, m)}${esc(k)}`).join(" · "); } },
     // lists mix markets, so every price carries its currency
-    format: { added: prettyDate, ...Object.fromEntries(["last", "entry", "stop"].map((c) => [c, (v, row) => v == null ? "" : `${(MKTS.find((m) => m.badge === row[2]) || {}).currency || ""}${fmt(v)}`])) },
+    format: { added: prettyDate, ...Object.fromEntries(["last", "ltp", "prev close", "entry", "stop"].map((c) => [c, (v, row) => v == null ? "" : `${(MKTS.find((m) => m.badge === row[2]) || {}).currency || ""}${fmt(v)}`])) },
     rowClick: (row, visible) => {
       const e = find(row);
       openChartFromList(e.market, e.symbol, visible.map(find).filter(Boolean), `Watchlist · ${cur.name}`, location.hash);
@@ -2906,7 +2944,7 @@ function macroTiles(series) {
   return series.map((x) => `<div class="mtile" title="${esc(x.label)} — ${esc(x.why)} Last close ${esc(x.date)}.">
       <div class="mt-l">${esc(x.short)}</div>
       <div class="mt-v">${val(x)}</div>
-      <div class="mt-c"><span class="muted">1D</span> ${chg(x.d1, x.change_unit)} <span class="muted">1M</span> ${chg(x.m1, x.change_unit)}</div>
+      <div class="mt-c"><span class="mt-p"><span class="muted">1D</span> ${chg(x.d1, x.change_unit)}</span><span class="mt-p"><span class="muted">1M</span> ${chg(x.m1, x.change_unit)}</span></div>
       ${sparkSvg(x.spark, 120, 24)}</div>`).join("");
 }
 
@@ -2931,6 +2969,7 @@ async function macroSection(card, tiles, mkt) {
     + `<ul class="td-sig">${sig}</ul>`
     + (hist ? `<div class="td-sub">Levels, against history since 2015</div><ul class="td-rates">${hist}</ul>` : "")
     + `<div class="td-foot"><a class="small" href="#/learn/macro-rates">Macro guides →</a></div>`;
+  return a;
 }
 
 /** An overlay index/ETF plotted beside a rate or indicator (very different units and scale) only makes
@@ -3000,6 +3039,57 @@ function valueAsOf(points, time) {
  *  table of each rate's latest value, its 1-month / 1-year / 5-year change and when a set rate last moved. */
 const RATE_COLORS = ["#f59e0b", "#a855f7", "#64748b", "#14b8a6", "#3b82f6", "#ec4899", "#ef4444"];
 const RATE_RANGES = [["1Y", 1], ["5Y", 5], ["10Y", 10], ["20Y", 20], ["Max", 0]];
+/** Today's market readings (/api/market-snapshot): each review index against its averages, its distance below
+ *  the 52-week high and its distribution days; then the market-wide readings and the cap- vs broad-index ratios.
+ *  Readings only — no rule is applied here. Each heading's tooltip is the field's own doc. */
+const READING_COLS = [["chg_pct", "Day"], ["vs_ema9_pct", "9 EMA"], ["vs_ema21_pct", "21 EMA"], ["vs_sma50_pct", "50-day"],
+  ["vs_sma200_pct", "200-day"], ["vs_wema50_pct", "Weekly 50 EMA"], ["below_high_pct", "Off 52w high"], ["dist_days", "Dist. days"]];
+async function readingsSection(card, mkt) {
+  const d = await api(`/api/market-snapshot?market=${mkt}`).catch(() => null);
+  if (!card.isConnected) return;
+  const title = `Market readings · ${esc(mktInfo(mkt).name)}`;
+  if (!d?.date) { card.innerHTML = tdHead(title) + `<div class="muted small">${d ? "No readings stored yet — they load with the close routine's <code>market_snapshot</code> job." : "Could not load the readings."}</div>`; return; }
+  const F = Object.fromEntries(d.fields.map((f) => [f.key, f]));
+  const pct = (v, cls = true) => {
+    if (v == null) return `<span class="muted">—</span>`;
+    const r = Math.abs(v) < 0.05 ? 0 : v;
+    return `<span class="${cls ? pctCls(r || null) : ""}">${signed(r, 1)}%</span>`;
+  };
+  const cell = (k, v) => {
+    if (v == null) return `<span class="muted">—</span>`;
+    if (k === "below_high_pct") return `<span class="${v >= 10 ? "neg" : ""}">${v < 0.05 ? "at high" : `${v.toFixed(1)}%`}</span>`;
+    if (k === "dist_days") return String(Math.round(v));
+    return pct(v);
+  };
+  const s = d.subjects;
+  const rows = Object.keys(d.instruments).filter((k) => s[k]).map((k) => `<tr>
+    <td><a href="#/chart/${mkt}/${encodeURIComponent(d.instruments[k])}">${esc(d.names?.[k] || k)}</a>${k === d.benchmark ? '<span class="td-bench">benchmark</span>' : ""}</td>
+    <td class="num">${fmt(s[k].close)}</td>${READING_COLS.map(([f]) => `<td class="num">${cell(f, s[k][f])}</td>`).join("")}</tr>`).join("");
+  const m = s.market || {};
+  const stat = (label, value, f, sub = "") => `<div class="td-stat"${f ? ` title="${esc(F[f].doc)}"` : ""}><div class="td-stat-l">${esc(label)}</div><div class="td-stat-v">${value}</div>${sub ? `<div class="td-stat-s">${sub}</div>` : ""}</div>`;
+  const share = (v) => (v == null ? "—" : `${Math.round(v)}%`);
+  const gate = gateLabel(m.gate);
+  const name = (p) => p.split("/").map((x) => d.names?.[x] || x).join(" ÷ ");   // stat() escapes its label
+  const stats = [
+    stat("Advancers", share(m.adv_pct), "adv_pct"),
+    stat("Above their 50-day", share(m.above50_pct), "above50_pct"),
+    stat("New highs / lows", m.highs == null ? "—" : `${m.highs} / ${m.lows}`, "highs"),
+    stat("Volatility index", m.vol_index == null ? "—" : m.vol_index.toFixed(1), "vol_index_over",
+      m.vol_index_over == null ? "" : `${m.vol_index_over >= 0 ? "above" : "below"} its threshold of ${(m.vol_index - m.vol_index_over).toFixed(0)}`),
+    stat("Strategies' market gate", gate, "gate"),
+    stat("Follow-through day", m.ftd == null ? "—" : m.ftd ? "In force" : "None", "ftd"),
+    ...d.pairs.filter((p) => s[p]).map((p) => stat(name(p), pct(s[p].ratio_chg_pct), "ratio_chg_pct", "ratio, 1-month change")),
+  ].join("");
+  card.innerHTML = tdHead(title, `<span class="muted small">as of ${prettyDate(d.date)} · readings only, no rule applied</span>`)
+    + `<div class="td-sub">Each index — % from each average, hover a heading for how it is measured</div>
+    <div class="tablewrap td-read-wrap"><table class="data td-read-tbl"><thead><tr><th>Index</th><th class="num">Close</th>${READING_COLS.map(([f, l]) => `<th class="num" title="${esc(F[f].doc)}">${esc(l)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="td-sub">The market</div>
+    <div class="td-stats">${stats}</div>`;
+  return m.gate;
+}
+/** the strategies' market gate as words: on (1), a pilot fraction, or off (0) */
+const gateLabel = (g) => (g == null ? "—" : g >= 1 ? '<span class="pos">Risk on</span>' : g > 0 ? `Pilot (${g})` : '<span class="neg">Risk off</span>');
+
 async function ratesSection(card, mkt, overlay = null) {
   const d = await api(`/api/rates?market=${mkt}`).catch(() => null);
   if (!card.isConnected) return;
@@ -3011,6 +3101,10 @@ async function ratesSection(card, mkt, overlay = null) {
   const shown = new Set(store.get(`ratesShown_${mkt}`, null) || rs.filter((x) => x.show).map((x) => x.key));
   const range = store.get("ratesRange", "10Y");
   const sources = [...new Set(rs.map((x) => x.source))].join(" · ");
+  // a dash means the series is not old enough for that change yet (India's T-bills and most G-secs are stored from
+  // their first daily read) — said once under the table rather than only on hover
+  const young = rs.filter((x) => x.y1 == null);
+  const shortNote = young.length ? `<div class="muted small rt-note">— = not enough history yet: ${esc(young.map((x) => x.short).join(", "))} ${young.length > 1 ? "are" : "is"} stored from ${prettyDate(young.map((x) => x.first).sort()[0])}.</div>` : "";
   const rows = rs.map((x) => {
     const noHist = (span) => `History starts ${prettyDate(x.first)} — not old enough yet for a ${span} change.`;
     return `<tr data-k="${esc(x.key)}" class="${shown.has(x.key) ? "" : "off"}" title="${esc(x.label)} — ${esc(x.source)}, stored from ${prettyDate(x.first)}. Click to show/hide its line; hover to highlight it.">
@@ -3024,7 +3118,7 @@ async function ratesSection(card, mkt, overlay = null) {
           ${segmented(RATE_RANGES.map(([k]) => [k, k]), range, "rt-range")}</div>
         <div class="rt-readout muted small">Hover the chart for each line's value on a date.</div>
         <div class="rt-chart"></div></div>
-      <table class="rt-tbl"><thead><tr><th>Rate</th><th class="num">Latest</th><th class="num">1M</th><th class="num">1Y</th><th class="num">5Y</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      <div><table class="rt-tbl"><thead><tr><th>Rate</th><th class="num">Latest</th><th class="num">1M</th><th class="num">1Y</th><th class="num">5Y</th></tr></thead><tbody>${rows}</tbody></table>${shortNote}</div></div>`;
 
   const el_ = card.querySelector(".rt-chart");
   const last = rs.map((x) => x.date).sort().at(-1);
@@ -3118,6 +3212,21 @@ async function ratesSection(card, mkt, overlay = null) {
   });
 
   { const prev = cleanup; cleanup = () => { stopWatch(); chart?.remove(); prev(); }; }
+}
+
+/** Breadth › Sectors: one sector's stocks as a small table — strongest over 3 months first, with the 1-month
+ *  move, whether each is above its 50-day and any new 52-week high or low in the last two weeks; ten rows,
+ *  sortable, a row opens the chart (↑/↓ then step through the sector). */
+function sectorMembers(host, mkt, sec) {
+  const pct = (v) => (v == null ? "" : `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`);
+  const rows = sec.members.map((m) => [m.symbol, m.name || "", m.r3m, m.r1m, m.above50, m.high ? "high" : m.low ? "low" : ""]);
+  dataTable(host, ["symbol", "name", "return_3m", "return_1m", "above_50_day", "new_52w"], rows, {
+    name: "breadth_sector_members", limit: 10,
+    format: { return_3m: pct, return_1m: pct },
+    html: { above_50_day: (v) => (v == null ? '<span class="muted">—</span>' : v ? '<span class="pos">✓</span>' : '<span class="neg">✗</span>'),
+            new_52w: (v) => (v === "high" ? '<span class="tag trade">52w high</span>' : v === "low" ? '<span class="tag avoid">52w low</span>' : "") },
+    rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((r) => r[0]), `${sec.sector} stocks`, location.hash),
+  });
 }
 
 /** a sparkline of a group's RS line (values relative to its first point) */
@@ -3837,8 +3946,9 @@ async function breadthPage(alive, mkt) {
   const sx = b.sectors;
   const secRows = (sx.sectors || []).map((x, i) => `<tr class="sec" data-i="${i}"><td>▸ ${esc(x.sector)}</td><td class="num">${x.stocks}</td>
       <td class="num ${x.r3m_vs >= 0 ? "pos" : "neg"}">${pc(x.r3m_vs)}</td><td class="num ${x.r1m_vs >= 0 ? "pos" : "neg"}">${pc(x.r1m_vs)}</td>
-      <td class="num ${x.above50 >= 0.5 ? "s-good" : x.above50 < 0.2 ? "s-bad" : ""}">${(x.above50 * 100).toFixed(0)}%</td><td class="num">${x.highs}</td><td class="num">${x.lows}</td></tr>
-    <tr class="members" data-for="${i}" hidden><td colspan="7"><div class="wl">${x.members.map((m) => `<a href="#/chart/${mkt}/${encodeURIComponent(m.symbol)}" title="3M ${pc(m.r3m)} · 1M ${pc(m.r1m)}">${esc(m.symbol)} <span class="${m.r3m >= 0 ? "pos" : "neg"}">${pc(m.r3m, 0)}</span></a>`).join("")}</div></td></tr>`).join("");
+      <td class="num ${x.above50 >= 0.5 ? "s-good" : x.above50 < 0.2 ? "s-bad" : ""}">${(x.above50 * 100).toFixed(0)}%</td><td class="num">${x.highs}</td><td class="num">${x.lows}</td>
+      <td class="num bsec-rs" data-sec="${esc(x.sector)}"><span class="muted">…</span></td><td class="bsec-q" data-sec="${esc(x.sector)}"><span class="muted">…</span></td></tr>
+    <tr class="members" data-for="${i}" hidden><td colspan="9"><div class="sec-mem"></div></td></tr>`).join("");
 
   $view.innerHTML = head + `<div class="bsub">Today · ${idxLine} · ${info("<p>Each reading is ranked against every trading day since 2015 and compared with a week, a month and three months ago.</p><p>Slow changes matter most: markets rarely turn in a day.</p>", "How to read this page")}</div>
     <div class="mstrip" id="mstrip"></div>
@@ -3851,10 +3961,13 @@ async function breadthPage(alive, mkt) {
       <div class="bchart"><div class="bct">Stocks above their 50-day average <span class="muted">· 30% washout, 70% strong</span></div><div class="bc" id="bc-50"></div></div>
       <div class="bchart"><div class="bct">Rising minus falling stocks <span class="muted">· 10-day average</span></div><div class="bc" id="bc-ad"></div></div>
     </div>
-    <h2>Sectors: where the strength is?</h2>
+    <h2>Sectors over the last 3 months</h2>
     ${sx.sectors?.length ? `<div class="tablewrap"><table class="data bsec"><thead><tr><th>Sector</th><th class="num">Stocks</th><th class="num">3M vs avg stock</th><th class="num">1M vs avg stock</th>
-      <th class="num">Above 50 DMA</th><th class="num">52w highs, 2 wks</th><th class="num">52w lows, 2 wks</th></tr></thead><tbody>${secRows}</tbody></table></div>
-      <p class="muted small">Click a sector for its stocks, strongest over 3 months first. Sector known for ${sx.covered} of the ${sx.total} stocks.</p>` : `<p class="muted">Sector data not available yet.</p>`}
+      <th class="num">Above 50 DMA</th><th class="num">52w highs, 2 wks</th><th class="num">52w lows, 2 wks</th>
+      <th class="num" title="The Sectors page's RS rating (1–99): relative strength over 3, 6, 9 and 12 months with the latest quarter counting double — and its change over the last month">RS · 1M change</th>
+      <th title="The Sectors page's rotation quadrant, from the last ~10 weeks of relative strength: Leading, Weakening, Lagging or Improving">Rotation now</th></tr></thead><tbody>${secRows}</tbody></table></div>
+      <p class="muted small">Sorted by the last 3 months only, so a sector that led for months and has just turned down still sorts high — read its 1M and 50-day columns, and <b>Rotation now</b>, for where it is heading.
+        RS and Rotation are the <a href="#/sectors/${mkt}/sector">Sectors page</a>'s own figures (all liquid stocks; this table uses the ${sx.total.toLocaleString()} most traded). Click a sector for its stocks, strongest over 3 months first. Sector known for ${sx.covered} of the ${sx.total} stocks.</p>` : `<p class="muted">Sector data not available yet.</p>`}
     <h2>The last 30 days</h2>${t30}
     <p class="muted small">Shading marks an unusual day for that reading: green for its strongest fifth since 2015, red for its weakest fifth.</p>
     <details class="qhow"><summary>How this page works</summary><div class="md qmd">
@@ -3869,10 +3982,22 @@ async function breadthPage(alive, mkt) {
       <p class="muted small">Computed from your own daily prices by <code>python3 -m jobs run breadth --market ${mkt}</code>; the page tops it up automatically when newer prices arrive. No intraday updates and no event calendar.</p>
     </div></details>`;
   $view.querySelectorAll(".mk button").forEach((x) => x.onclick = () => go(`#/breadth/${x.dataset.v}`));
+  // RS rating and rotation quadrant from the Sectors page's own data (its own request: the page never waits on it)
+  if (sx.sectors?.length) api(`/api/sectors?market=${mkt}&level=sector`).catch(() => null).then((d) => {
+    const by = Object.fromEntries((d?.groups || []).map((g) => [g.group, g]));
+    $view.querySelectorAll(".bsec td.bsec-rs").forEach((td) => {
+      const g = by[td.dataset.sec], q_ = $view.querySelector(`.bsec td.bsec-q[data-sec="${CSS.escape(td.dataset.sec)}"]`);
+      if (!g) { td.innerHTML = q_.innerHTML = '<span class="muted">—</span>'; return; }
+      const ch = g.rs != null && g.rs_prev != null ? g.rs - g.rs_prev : null;
+      td.innerHTML = `${rsBadge(g.rs, "Sector RS")}${ch ? ` <span class="${ch > 0 ? "pos" : "neg"} small">${ch > 0 ? "▲" : "▼"}${Math.abs(ch)}</span>` : ""}`;
+      q_.innerHTML = g.quadrant ? `<span class="qtag ${QUAD_CLS[g.quadrant] || ""}">${esc(g.quadrant)}</span>` : '<span class="muted">—</span>';
+    });
+  });
   $view.querySelector(".bsec")?.addEventListener("click", (e) => {
     const tr = e.target.closest("tr.sec"); if (!tr) return;
     const m = $view.querySelector(`tr.members[data-for="${tr.dataset.i}"]`); m.hidden = !m.hidden;
     tr.firstElementChild.textContent = (m.hidden ? "▸ " : "▾ ") + tr.firstElementChild.textContent.slice(2);
+    if (!m.hidden && !m.dataset.built) { m.dataset.built = "1"; sectorMembers(m.querySelector(".sec-mem"), mkt, sx.sectors[+tr.dataset.i]); }
   });
 
   // charts
@@ -6129,12 +6254,15 @@ function renderResearchMd(host, markdown) {
  *    zone:   <low> <high> | <label> | <from> <to> | support|resistance   a shaded price band over that date
  *            range (default: the whole chart), its label on the price axis at the band's top — support green,
  *            resistance red, anything else amber (repeat)
+ *    trend:  <date> <price> <date> <price> | <label> | pivot|stop | <until>   a straight dashed line through two
+ *            points (a sloping trendline, a neckline, a flag's channel), drawn on to <until> if given; coloured
+ *            like level (repeat)
  *    caption: what to look at
  *  The data's actual first and last dates are printed under the chart. */
 const SERIES_COLORS = ["--series", "--accent", "--info", "--mkt-in", "--up"];
 const seriesCache = new Map();
 function parseSeriesSpec(text) {
-  const s = { lines: [], bands: [], marks: [], levels: [], zones: [] };
+  const s = { lines: [], bands: [], marks: [], levels: [], zones: [], trends: [] };
   for (const raw of text.split("\n")) {
     const m = raw.match(/^\s*([a-z]+)\s*:\s*(.*)$/); if (!m) continue;
     const [, k, v] = m, parts = v.split("|").map((x) => x.trim());
@@ -6142,6 +6270,10 @@ function parseSeriesSpec(text) {
     else if (k === "band") { const [a, b] = parts[0].split(/\s+/); s.bands.push({ from: a, to: b, label: parts[1] || "" }); }
     else if (k === "mark") s.marks.push({ date: parts[0], label: parts[1] || "", below: parts[2] === "below" });
     else if (k === "level") { const [a, b] = (parts[2] || "").split(/\s+/).filter(Boolean); s.levels.push({ price: +parts[0], label: parts[1] || "", from: a, to: b, kind: parts[3] || "" }); }
+    else if (k === "trend") {
+      const [d0, p0, d1, p1] = parts[0].split(/\s+/);
+      s.trends.push({ d0, p0: +p0, d1, p1: +p1, label: parts[1] || "", kind: parts[2] || "", until: parts[3] || "" });
+    }
     else if (k === "zone") {
       const [lo, hi] = parts[0].split(/\s+/).map(Number), [a, b] = (parts[2] || "").split(/\s+/).filter(Boolean);
       s.zones.push({ lo: Math.min(lo, hi), hi: Math.max(lo, hi), label: parts[1] || "", from: a, to: b, kind: parts[3] || "" });
@@ -6549,6 +6681,17 @@ async function drawSeriesFigure(fig, spec) {
     const s = chart.addSeries(LC.LineSeries, { color, lineWidth: 1, lineStyle: 2, priceScaleId: series[0].lps.scale, priceLineVisible: false,
       lastValueVisible: true, title: lv.label, crosshairMarkerVisible: false }, 0);
     s.setData(pts.map((t) => ({ time: t, value: lv.price })));
+  }
+  // trendlines: straight in bar space (the time axis spaces bars evenly), so interpolate by bar index
+  for (const tl of spec.trends) {
+    const i0 = times.findIndex((t) => t >= periodKey(tl.d0, tf)), i1 = times.findIndex((t) => t >= periodKey(tl.d1, tf));
+    if (i0 < 0 || i1 <= i0 || !Number.isFinite(tl.p0) || !Number.isFinite(tl.p1)) continue;
+    let iEnd = i1;
+    if (tl.until) { const u = times.findIndex((t) => t > periodKey(tl.until, tf)); iEnd = u < 0 ? times.length - 1 : Math.max(i1, u - 1); }
+    const slope = (tl.p1 - tl.p0) / (i1 - i0);
+    const s = chart.addSeries(LC.LineSeries, { color: cssVar({ pivot: "--up", stop: "--down" }[tl.kind] || "--line-3"), lineWidth: 1, lineStyle: 2,
+      priceScaleId: series[0].lps.scale, priceLineVisible: false, lastValueVisible: !!tl.label, title: tl.label, crosshairMarkerVisible: false }, 0);
+    s.setData(times.slice(i0, iEnd + 1).map((t, k) => ({ time: t, value: tl.p0 + slope * k })));
   }
   if (spec.marks.length) {
     const ts = [...data[0].keys()].sort();
@@ -7664,12 +7807,13 @@ async function runsPage(alive, runId) {
 /** Top-level sections in the order of a review — market, ideas, the stock, what I track, does it work —
  *  each with its pages (shown inline in the header, next to the open section, when there is more than one). */
 const SECTIONS = [
-  { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, the macro backdrop, today's setups, new picks and data health"]] },
+  { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, the macro backdrop and flows, and a summary of today's setups and new picks"]] },
   { key: "markets", label: "Markets", pages: [["postmarket", "Post-market", "The day's recap after the close"], ["breadth", "Breadth", "How healthy is the market — risk, not direction"],
     ["sectors", "Sectors", "Leading sectors, industry groups and their leaders"], ["movers", "Movers", "Top gainers and losers"],
     ["earnings", "Earnings", "Earnings season: how many companies have reported, and revenue and profit growth summed by size class"],
     ["macro", "Macro", "Key macro indicators: rates, inflation, growth, consumption and market stress — current value and history"]] },
-  { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"]] },
+  { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"],
+    ["picks", "Screener picks", "Every stock a strategy's latest run marks as a trade or on watch — filter by new, decision and strategy"]] },
   { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"]] },
   { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"],
     ["company", "Fundamentals", "The company's financials: quarterly results, profit & loss, balance sheet, cash flows, ratios, shareholding, peers"],
@@ -8160,23 +8304,78 @@ function linkPatternMentions(root) {
 
 /** Library → Research: every research note (research/*.md, except the learn-* guides) in a sidebar, the
  *  chosen one beside its "On this page" contents. Opens on the sector playbook. */
+/* Research notes by kind, placed by file name: the prefixes place new notes, older ones are named.
+   A note no rule places lands in "Other", so a missing entry shows rather than hides. */
+const RESEARCH_GROUPS = [
+  ["system", "My trading system", /^(system-|sector-analysis-playbook$)/],
+  ["creators", "Creators & videos", /^(creator-|video-strategy-notes$|swing-trading-video-series$)/],
+  ["studies", "Studies & findings", /^(README|momentum-trend-research|index-investing-research|daily-review-rule-tests|group-strength-study|crwd-gap-studies|selection-vs-drag|minervini-spec-sensitivity-.*)$/],
+  ["cases", "Case studies", /^app-guide-breakouts/],
+  ["specs", "Specs & proposals", /(-spec|^fno-scope|^sector-taxonomy|^snapshot-freshness)$/],
+  ["manual", "Using the app", /^app-guide-/],
+];
+// listed first in their group, in this order; the rest follow by title
+const RESEARCH_FIRST = ["system-overview", "system-daily-market-review", "system-swing-longs", "system-shorts",
+  "system-risk-exposure", "system-tools", "sector-analysis-playbook", "README", "momentum-trend-research"];
+
 async function researchPage(alive, slug) {
   $view.innerHTML = LOADING;
-  const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => !x.run.startsWith("learn-"))
-    .sort((a, b) => String(a.title || a.run).localeCompare(String(b.title || b.run)));
+  const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => !x.run.startsWith("learn-"));
   if (!alive()) return;
   if (!runs.length) { $view.innerHTML = `<div class="empty"><b>No research notes loaded</b><div class="muted">Load them from System → Reports archive (Load reports).</div></div>`; return; }
   const doc = runs.find((x) => x.run === slug) || runs.find((x) => x.run === "sector-analysis-playbook") || runs[0];
   const title = (x) => (x.title || x.run).replace(/ — a field guide$/, "");
-  // the menu shows the short name (before the "—"), unless two notes would then read the same
+  // the menu shows the short name (before the "—"), unless two notes would then read the same; a page of a
+  // multi-page note shows only its part ("US (1 of 5)"), and the app manual drops its "Using the app —"
   const head = (x) => title(x).split(" — ")[0];
-  const short = (x) => (runs.filter((y) => head(y) === head(x)).length > 1 ? title(x) : head(x));
+  const tail = (x) => { const t = title(x).split(" — ").slice(1).join(" — "); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const parentOf = (x) => runs.find((y) => y !== x && x.run.startsWith(y.run + "-"));
+  const short = (x) => parentOf(x) && title(x).includes(" — ") ? tail(x)
+    : head(x) === "Using the app" ? tail(x)
+    : runs.filter((y) => head(y) === head(x)).length > 1 ? title(x) : head(x);
+  const groupOf = (x) => (RESEARCH_GROUPS.find(([, , re]) => re.test(x.run)) || ["other"])[0];
+  const rank = (x) => { const i = RESEARCH_FIRST.indexOf(x.run); return i < 0 ? RESEARCH_FIRST.length : i; };
+  const byOrder = (a, b) => rank(a) - rank(b) || String(title(a)).localeCompare(String(title(b)));
+  const groups = [...RESEARCH_GROUPS, ["other", "Other", null]].map(([key, label]) => [key, label, runs.filter((x) => groupOf(x) === key)])
+    .filter(([, , list]) => list.length);
+  const openKey = groupOf(doc), openFamily = parentOf(doc) || doc;
+  const item = (x, sub) => `<a class="nav-item ${sub ? "sub" : ""} ${x.id === doc.id ? "active" : ""}" href="#/research/${esc(x.run)}" title="${esc(title(x))}"
+      data-k="${esc(title(x).toLowerCase())}" ${sub ? `data-parent="${esc(sub.run)}" ${openFamily === sub ? "" : "hidden"}` : ""}><span><b class="sn">${esc(short(x))}</b></span></a>`;
+  const items = (list) => list.filter((x) => !parentOf(x)).sort(byOrder)
+    .map((x) => item(x) + runs.filter((y) => parentOf(y) === x).sort(byOrder).map((y) => item(y, x)).join("")).join("");
   document.title = `${title(doc)} · Research · Trading`;
   $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">
       <div class="nav-h">Research notes (${runs.length})</div>
-      ${runs.map((x) => `<a class="nav-item ${x.id === doc.id ? "active" : ""}" href="#/research/${esc(x.run)}" title="${esc(title(x))}"><span><b class="sn">${esc(short(x))}</b></span></a>`).join("")}
+      <label class="filter lp-search"><svg viewBox="0 0 20 20"><circle cx="9" cy="9" r="5.5"/><path d="M13 13l4 4"/></svg><input id="rsf" placeholder="Find a note" spellcheck="false"></label>
+      ${groups.map(([key, label, list]) => `<details class="lp-sec" data-sec="${key}" ${key === openKey ? "open" : ""}>
+        <summary><span>${esc(label)}</span><span class="n">${list.length}</span></summary><div class="lp-sub">${items(list)}</div></details>`).join("")}
+      <div class="nav-empty muted small lp-none" hidden></div>
       <div class="nav-empty muted small">Learning guides are under <a href="#/learn">Learn</a>; backtest and screening reports under System → <a href="#/reports">Reports archive</a>.</div>
     </aside><section class="scr-main lp-main"><div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div></section></div>`;
+
+  // search across every group: matching groups open while you type and close again when you clear it;
+  // a page of a multi-page note shows when it matches, otherwise only beside its open parent
+  const f = $view.querySelector("#rsf"), secs = [...$view.querySelectorAll(".lp-nav .lp-sec")];
+  const wasOpen = new Map(secs.map((d) => [d, d.open]));
+  secs.forEach((d) => d.addEventListener("toggle", () => { if (!f.value.trim()) wasOpen.set(d, d.open); }));
+  f.oninput = () => {
+    const q = f.value.trim().toLowerCase();
+    let total = 0;
+    for (const d of secs) {
+      let n = 0;
+      d.querySelectorAll(".nav-item[data-k]").forEach((a) => {
+        const hit = q ? a.dataset.k.includes(q) : !a.dataset.parent || a.dataset.parent === openFamily.run;
+        a.hidden = !hit; if (hit && q) n++;
+      });
+      d.hidden = !!q && !n;
+      d.open = q ? n > 0 : wasOpen.get(d);
+      total += n;
+    }
+    const none = $view.querySelector(".lp-nav .lp-none");
+    none.hidden = !q || total > 0;
+    none.textContent = `No note matches “${f.value.trim()}”.`;
+  };
+  f.onkeydown = (e) => { if (e.key === "Enter") { const a = [...$view.querySelectorAll(".lp-nav .lp-sec .nav-item[data-k]")].find((x) => !x.hidden); if (a) go(a.getAttribute("href")); } };
   $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
   await learnGuide(alive, doc);
 }
@@ -8265,6 +8464,97 @@ async function sectorResearchPage(alive, slug, vid) {
 
 // ------------------------------------------------------------ Today: the daily starting point
 
+/** Today's screener picks: the screener list for this market as a filterable table — New (joined in the latest run)
+ *  or All, Trade or Watch, and one strategy — with every strategy that flags each stock, its best decision and when
+ *  it joined. A strategy whose last run is more than PICK_STALE_DAYS older than the newest is greyed, with its date. */
+const PICK_STALE_DAYS = 3;
+function picksTable(host, mkt, mine, fresh, limit = 15) {
+  if (!mine.length) { host.innerHTML = '<div class="muted small">Nothing on the list yet — it fills after each strategy run.</div>'; return; }
+  mine = mine.map((x) => ({ ...x, strategies: x.strategies || [] }));
+  const isNew = new Set(fresh.map((x) => x.symbol));
+  const runDay = (s) => (s.run_id || "").slice(0, 10);
+  const newestRun = mine.flatMap((x) => (x.strategies || []).map(runDay)).sort().at(-1) || "";
+  const stale = (s) => runDay(s) && (Date.parse(newestRun) - Date.parse(runDay(s))) / 864e5 > PICK_STALE_DAYS;
+  const sName = (k) => EDGE?.strategies?.[k]?.name || k;
+  const best = (x) => [...(x.strategies || [])].sort((a, b) => DEC_RANK(a.decision) - DEC_RANK(b.decision))[0] || {};
+  const st = { scope: store.get("picksScope", "new"), dec: "all", strat: null };
+  if (st.scope === "new" && !fresh.length) st.scope = "all";
+  const pass = (x, skip) => (skip === "scope" || st.scope === "all" || isNew.has(x.symbol))
+    && (skip === "dec" || st.dec === "all" || (st.dec === "trade" ? /^TRADE/i.test(best(x).decision) : /^WATCH/i.test(best(x).decision)))
+    && (skip === "strat" || !st.strat || (x.strategies || []).some((s) => s.strategy === st.strat));
+  const draw = () => {
+    // each control counts what it would show with the other filters applied
+    const n = (skip, f) => mine.filter((x) => pass(x, skip) && f(x)).length;
+    const strats = [...new Set(mine.flatMap((x) => (x.strategies || []).map((s) => s.strategy)))]
+      .map((k) => ({ k, n: n("strat", (x) => x.strategies.some((s) => s.strategy === k)), run: runDay(mine.flatMap((x) => x.strategies).find((s) => s.strategy === k) || {}),
+                     old: mine.some((x) => x.strategies.some((s) => s.strategy === k && stale(s))) }))
+      .sort((a, b) => a.old - b.old || b.n - a.n);
+    host.innerHTML = `<div class="td-pick-bar">
+        ${segmented([["new", `New <b>${n("scope", (x) => isNew.has(x.symbol))}</b>`], ["all", `All <b>${n("scope", () => true)}</b>`]], st.scope, "td-pscope")}
+        ${segmented([["all", "Any decision"], ["trade", `Trade <b>${n("dec", (x) => /^TRADE/i.test(best(x).decision))}</b>`], ["watch", `Watch <b>${n("dec", (x) => /^WATCH/i.test(best(x).decision))}</b>`]], st.dec, "td-pdec")}</div>
+      <div class="scr-top td-runs td-pstrat">${strats.map((x) => `<button class="chip-s${x.n ? "" : " zero"}${st.strat === x.k ? " on" : ""}${x.old ? " old" : ""}" data-k="${esc(x.k)}"
+          title="${esc(sName(x.k))}: last run ${esc(x.run || "?")}${x.old ? " — older than the other strategies' runs; its picks may be stale" : ""}. Click to show only its picks.">${edgeDot(x.k, mkt)}${esc(sName(x.k))} <b>${x.n}</b>${x.old ? ` <span class="muted">· ${prettyDate(x.run)}</span>` : ""}</button>`).join("")}</div>
+      <div class="td-pick-tbl"></div>`;
+    host.querySelectorAll(".td-pscope button").forEach((b) => b.onclick = () => { st.scope = b.dataset.v; store.set("picksScope", st.scope); draw(); });
+    host.querySelectorAll(".td-pdec button").forEach((b) => b.onclick = () => { st.dec = b.dataset.v; draw(); });
+    host.querySelectorAll(".td-pstrat button").forEach((b) => b.onclick = () => { st.strat = st.strat === b.dataset.k ? null : b.dataset.k; draw(); });
+    const rows = mine.filter((x) => pass(x))
+      .sort((a, b) => isNew.has(b.symbol) - isNew.has(a.symbol) || DEC_RANK(best(a).decision) - DEC_RANK(best(b).decision) || String(b.added_at).localeCompare(String(a.added_at)));
+    const strCell = (x) => x.strategies.map((s) => `<span class="${stale(s) ? "muted" : ""}" title="${esc(sName(s.strategy))}: ${esc(s.decision)} — run ${esc(runDay(s))}${s.setup ? ` · ${esc(s.setup)}` : ""}">${edgeDot(s.strategy, mkt)}${esc(sName(s.strategy))}</span>`).join("<br>");
+    const byS = Object.fromEntries(rows.map((x) => [x.symbol, x]));
+    dataTable(host.querySelector(".td-pick-tbl"), ["symbol", "name", "peer_group", "group_rs", "strategies", "decision", "on_list_since", "last", "change_pct"],
+      rows.map((x) => [x.symbol, x.name || "", x.peer_group || "", x.peer_rs ?? null, x.strategies.map((s) => sName(s.strategy)).join(", "), best(x).decision || "",
+                       (x.added_at || "").slice(0, 10), x.last ?? null, x.change_pct ?? null]), {
+      name: "screener_picks", limit,
+      html: { strategies: (v, row) => strCell(byS[row[0]]),
+              decision: (v) => (v ? `<span class="tag td-dec ${decisionClass(v)}" title="${esc(v)} — ${esc(decisionHelp(v))}">${esc(v.charAt(0) + v.slice(1).toLowerCase())}</span>` : ""),
+              on_list_since: (v, row) => `${prettyDate(v)}${isNew.has(row[0]) ? ' <span class="tag watch">new</span>' : ""}` },
+      rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((r) => r[0]), "Screener picks", location.hash),
+    });
+  };
+  draw();
+}
+
+/** the market's screener picks, and those that joined in the latest run (within 20 hours of the newest) */
+function picksSplit(picks, mkt) {
+  const mine = (picks || []).filter((x) => x.market === mkt);
+  const newest = mine.length ? mine.map((x) => x.added_at).sort().at(-1) : null;
+  return { mine, fresh: newest ? mine.filter((x) => new Date(newest) - new Date(x.added_at) < 20 * 3600e3) : [] };
+}
+const tdNum = (n, label) => `<div class="td-num"><b>${n.toLocaleString()}</b><span>${label}</span></div>`;
+/** Today's picks summary: the counts, and which strategies the new picks came from (stale strategies said so) */
+function picksSummary(mkt, mine, fresh) {
+  if (!mine.length) return '<div class="muted small">Nothing on the list yet — it fills after each strategy run.</div>';
+  const best = (x) => [...(x.strategies || [])].sort((a, b) => DEC_RANK(a.decision) - DEC_RANK(b.decision))[0] || {};
+  const runDay = (s) => (s.run_id || "").slice(0, 10);
+  const all = mine.flatMap((x) => x.strategies || []);
+  const newestRun = all.map(runDay).sort().at(-1) || "";
+  const staleK = [...new Set(all.filter((s) => runDay(s) && (Date.parse(newestRun) - Date.parse(runDay(s))) / 864e5 > PICK_STALE_DAYS).map((s) => s.strategy))];
+  const by = {};
+  for (const x of fresh) for (const s of x.strategies || []) by[s.strategy] = (by[s.strategy] || 0) + 1;
+  const name = (k) => EDGE?.strategies?.[k]?.name || k;
+  return `<div class="td-nums">${tdNum(fresh.length, "new in the latest run")}${tdNum(mine.length, "on the list")}${tdNum(fresh.filter((x) => /^TRADE/i.test(best(x).decision)).length, "new trades")}${tdNum(fresh.filter((x) => /^WATCH/i.test(best(x).decision)).length, "new on watch")}</div>
+    <div class="td-sub">New picks, by strategy</div>
+    <div class="scr-top td-runs">${Object.entries(by).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<a class="chip-s" href="#/picks/${mkt}">${edgeDot(k, mkt)}${esc(name(k))} <b>${n}</b></a>`).join("") || '<span class="muted small">Nothing new in the latest run.</span>'}</div>
+    ${staleK.length ? `<div class="muted small td-warn">${staleK.length} strateg${staleK.length > 1 ? "ies" : "y"} on the list last ran more than ${PICK_STALE_DAYS} days before the rest (${esc(staleK.map(name).join(", "))}) — their picks may be stale.</div>` : ""}`;
+}
+
+/** Screener picks (Screens): the screener list for one market as a filterable table — see picksTable. */
+async function picksPage(alive, mkt) {
+  mkt = pageMarket(mkt);
+  document.title = "Screener picks · Trading";
+  $view.innerHTML = LOADING;
+  const [picks] = await Promise.all([api("/api/watchlists/screener/items").catch(() => null), loadEdges()]);
+  if (!alive()) return;
+  const { mine, fresh } = picksSplit(picks, mkt);
+  $view.innerHTML = pageHead("Screener picks", { extra: marketSeg(mkt),
+      context: `<span class="muted small">${mine.length} on the list${fresh.length ? ` · ${fresh.length} new in the latest run` : ""}</span>${info("<p>The screener list: every stock a strategy's latest run marks as a trade or on watch, one row per stock with every strategy that flags it.</p><p>A stock stays while its strategy keeps flagging it and drops off when it stops. One you dismiss (on the Watchlists page) stays hidden until it is flagged afresh.</p><p>Unlike Today's setups on the Strategies page, it keeps watch names and remembers when each stock joined.</p>")}`,
+      actions: `<a class="btn" href="#/watchlist/screener">Manage on Watchlists →</a>` })
+    + `<div class="sec-card"><div class="muted small td-explain">Every stock a strategy's <b>latest run</b> marks as a trade or on watch. It stays while its strategy keeps flagging it and drops off when it stops; one you dismiss stays hidden until it is flagged afresh. <b>New</b> = joined in the latest run.</div><div id="pk"></div></div>`;
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/picks/${b.dataset.v}`); });
+  picksTable($view.querySelector("#pk"), mkt, mine, fresh, 50);
+}
+
 /** Today's cards share one shape: a header (title left; date, counts and links right), a verdict line, ✓/✗
  *  signals with the number behind each, then "against history" notes and links at the foot. */
 const tdHead = (title, right = "") => `<div class="td-hh"><h3>${title}</h3><span class="spacer"></span>${right}</div>`;
@@ -8328,37 +8618,56 @@ async function todayPage(alive, mkt) {
   const rows = setups?.rows || [];
   const trade = rows.filter((x) => x.tradeable).sort((a, b) => (/HIGH/.test(b.decision) - /HIGH/.test(a.decision)) || ((b.quality ?? 0) - (a.quality ?? 0)));
   const watchN = rows.length - trade.length;
-  const runChips = (setups?.runs || []).map((x) => `<a class="chip-s" href="#/strategies/${x.strategy}/setups/${mkt}" title="${esc(x.name)}: ${x.tradeable} tradeable, ${x.watch} on watch — run ${prettyDate(x.run)}">${edgeDot(x.strategy, mkt)}${esc(x.name)} <b>${x.tradeable}</b></a>`).join("");
+  const runChips = (setups?.runs || []).map((x) => `<a class="chip-s${x.tradeable ? "" : " zero"}" href="#/strategies/${x.strategy}/setups/${mkt}" title="${esc(x.name)}: ${x.tradeable} tradeable, ${x.watch} on watch — run ${prettyDate(x.run)}">${edgeDot(x.strategy, mkt)}${esc(x.name)} <b>${x.tradeable}</b></a>`).join("");
+
+  // ---- the day in one line, under the health banner: the market's tone, the macro read, the strategies' market
+  // gate and the setups count, each as its own section says it. Macro and the gate arrive with their sections.
+  const tone = pm?.payload?.tone;
+  const vItem = (label, value, id = "") => `<div class="td-v"${id ? ` id="${id}"` : ""}><span class="td-v-l">${label}</span><span class="td-v-v">${value}</span></div>`;
+  const verdict = `<div class="td-verdict">
+      ${vItem("Market", tone ? `<span class="td-tl tl ${TONE_CLS[tone.label] || ""}"></span>${esc(tone.label)}` : "—")}
+      ${vItem("Macro", '<span class="muted">…</span>', "tdv-macro")}
+      ${vItem("Strategies' market gate", '<span class="muted">…</span>', "tdv-gate")}
+      ${vItem("Setups", `${trade.length} tradeable <span class="muted">· ${watchN} on watch</span>`)}
+      <div class="td-v" id="tdv-flows" hidden><span class="td-v-l">FII / DII net, ₹ cr</span><span class="td-v-v"></span></div></div>`;
 
   // ---- 4. screener picks: what is new on the list since the last session
-  const mine = (picks || []).filter((x) => x.market === mkt);
-  const newest = mine.length ? mine.map((x) => x.added_at).sort().at(-1) : null;
-  const fresh = newest ? mine.filter((x) => new Date(newest) - new Date(x.added_at) < 20 * 3600e3) : [];
-  const pickChip = (x) => `<a class="chip-s" href="#/chart/${x.market}/${encodeURIComponent(x.symbol)}" title="${esc(x.name || "")} — ${esc((x.strategies || []).map((s) => `${s.strategy}: ${s.decision}`).join(" · "))}">${(x.strategies || []).map((s) => edgeDot(s.strategy, x.market)).join("")}${esc(bareSymbol(x.symbol))}</a>`;
+  const { mine, fresh } = picksSplit(picks, mkt);
 
   $view.innerHTML = pageHead("Today", { extra: marketSeg(mkt),
       context: `<span class="muted small">${new Date().toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" })}</span>${info("<p>Your starting point each day: how each market closed, whether the data behind everything is current, the macro backdrop, what can be traded today, and what is new on the screener list. Each part opens its full page.</p><p>The market toggle chooses the market for the whole page.</p>")}` })
-    + `${health}<div class="td-grid">${marketCard(mktInfo(mkt))}
+    + `${health}${verdict}<div class="td-grid">${marketCard(mktInfo(mkt))}
       <div class="sec-card td-card" id="td-macro">${tdHead(`Macro · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div></div>
     <div class="mstrip td-tiles" id="td-tiles"></div>
+    <div class="sec-card td-readings" id="td-readings">${tdHead(`Market readings · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div>
     <div class="sec-card td-rates-card" id="td-rates">${tdHead(`Rates & yields · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div>
-    <div class="sec-card td-setups">${tdHead(`Today's setups · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${trade.length} tradeable · ${watchN} on watch</span>${edgeLegend()}<a class="small" href="#/strategies">All setups →</a>`)}
-      ${setups?.behind ? `<div class="muted small td-warn">Newer prices have loaded since these runs — the decisions below were made on older bars.</div>` : ""}
-      <div class="scr-top td-runs">${runChips || '<span class="muted small">No strategy runs yet for this market.</span>'}</div>
-      <div id="td-tbl"></div></div>
-    <div class="sec-card td-picks">${tdHead(`Screener picks · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${mine.length} on the list${fresh.length ? ` · ${fresh.length} added in the latest run` : ""}</span><a class="small" href="#/watchlist/screener">Open the list →</a>`)}
-      ${fresh.length ? `<div class="muted small">New:</div><div class="scr-top">${fresh.slice(0, 40).map(pickChip).join("")}</div>`
-        : `<div class="muted small">${mine.length ? "Nothing new in the latest run." : "Stocks a strategy marks tradeable or on watch collect here after each run."}</div>`}</div>`;
+    <div class="td-grid">
+      <div class="sec-card td-card">${tdHead(`Today's setups · ${esc(mktInfo(mkt).name)}`)}
+        <div class="muted small td-explain">Each strategy's verdict on today's data: the trades it would take, with entry, stop and target.</div>
+        <div class="td-nums">${tdNum(trade.length, "tradeable")}${tdNum(trade.filter((x) => /HIGH/i.test(x.decision)).length, "high confidence")}${tdNum(watchN, "on watch")}</div>
+        ${setups?.behind ? `<div class="muted small td-warn">Newer prices have loaded since these runs — the decisions were made on older bars.</div>` : ""}
+        <div class="td-sub">Tradeable, by strategy</div>
+        <div class="scr-top td-runs">${runChips || '<span class="muted small">No strategy runs yet for this market.</span>'}</div>
+        <div class="td-legend">${edgeLegend()}</div>
+        <div class="td-foot"><a class="small" href="#/strategies">All setups, with entry, stop and target →</a></div></div>
+      <div class="sec-card td-card">${tdHead(`Screener picks · ${esc(mktInfo(mkt).name)}`)}
+        <div class="muted small td-explain">Every stock a strategy's latest run marks as a trade or on watch, kept while it stays flagged — so it also remembers when each stock joined.</div>
+        ${picksSummary(mkt, mine, fresh)}
+        <div class="td-foot"><a class="small" href="#/picks/${mkt}">Screener picks, with filters →</a></div></div></div>`;
   $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/today/${b.dataset.v}`); });
-  macroSection($view.querySelector("#td-macro"), $view.querySelector("#td-tiles"), mkt);   // its own request: the page never waits on it
+  // each section is its own request: the page never waits on them; the verdict line fills in as they land
+  const fill = (id, html) => { const el_ = $view.querySelector(`#${id} .td-v-v`); if (el_) el_.innerHTML = html; };
+  macroSection($view.querySelector("#td-macro"), $view.querySelector("#td-tiles"), mkt)
+    .then((a) => fill("tdv-macro", a ? `<span class="td-tl tl ${MACRO_CLS[a.label] || ""}"></span>${esc(a.label)}` : "—"));
   ratesSection($view.querySelector("#td-rates"), mkt);
-  const host = $view.querySelector("#td-tbl");
-  if (!trade.length) { host.innerHTML = `<div class="muted small">${rows.length ? "No tradeable setups today — the names above are on watch." : ""}</div>`; return; }
-  const cols = ["symbol", "name", "peer_group", "group_rs", "strategy", "decision", "setup", "price", "entry", "stop", "risk_pct", "target_r"];
-  dataTable(host, cols, trade.map((x) => [x.symbol, x.name || "", x.peer_group || "", x.peer_rs ?? null, x.strategy_name, x.decision, x.setup, x.price, x.entry, x.stop, x.risk_pct, x.target_r]), {
-    name: "today_setups", limit: 15,
-    html: { strategy: (v) => `${edgeDot(edgeKeyOf(v), mkt)}${esc(v ?? "")}` },
-    rowClick: (row, visible) => openChartFromList(mkt, row[0], visible.map((x) => x[0]), "Today's setups", location.hash),
+  readingsSection($view.querySelector("#td-readings"), mkt).then((g) => fill("tdv-gate", gateLabel(g)));
+  api("/api/flows").catch(() => null).then((d) => {
+    const el_ = $view.querySelector("#tdv-flows");
+    if (!el_ || d?.market !== mkt || !d.flows?.length) return;
+    const n = (v) => `<span class="${v >= 0 ? "pos" : "neg"}">${v >= 0 ? "+" : "−"}${Math.abs(Math.round(v)).toLocaleString()}</span>`;
+    el_.title = d.flows.map((x) => `${x.label}: ${Math.round(x.value).toLocaleString()} on ${x.date} · 5-day ${Math.round(x.sum5).toLocaleString()} · 20-day ${Math.round(x.sum20).toLocaleString()} — ${x.why}`).join("\n\n");
+    el_.querySelector(".td-v-v").innerHTML = d.flows.map((x) => `<a href="#/macro/${mkt}" class="td-flow"><span class="muted">${esc(x.label.split(" ")[0])}</span> ${n(x.value)}</a>`).join("");
+    el_.hidden = false;
   });
 }
 
@@ -8376,6 +8685,7 @@ async function route() {
     else if (page === "chart") await chartPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "screening") go(`#/strategies/${encodeURIComponent(parts[2] || "trend_pullback")}/setups/${parts[1] || ""}`);
     else if (page === "screens") await screensPage(alive, parts[1], parts[2], parts[3], parts[4]);
+    else if (page === "picks") await picksPage(alive, parts[1]);
     else if (page === "watchlist") await watchlistPage(alive, parts[1]);
     else if (page === "strategies") await strategiesPage(alive, parts[1], parts[2], parts[3], parts[4]);
     else if (page === "quality") await qualityPage(alive, parts[1]);

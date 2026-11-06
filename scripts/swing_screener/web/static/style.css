@@ -579,6 +579,7 @@ td.acts button.starred svg { fill: var(--star); }
 .bc { height: 220px; }
 td.s-good { background: var(--up-soft) !important; } td.s-bad { background: var(--down-soft) !important; }
 table.bsec tr.sec { cursor: pointer; } table.bsec tr.members td { white-space: normal; background: var(--bg); }
+table.bsec tr.members > td { padding: 8px 12px 12px; } table.bsec .sec-mem { max-width: 920px; }
 table.b30 td { font-size: 12px; }
 
 /* ---------- market badge, context menus, multi-list watchlists (TradingView style) */
@@ -1392,7 +1393,7 @@ table.fin.peers tbody th a { color: var(--link); }
 .mtile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--panel); cursor: help; min-width: 0; }
 .mtile .mt-l { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mtile .mt-v { font-size: 17px; font-weight: 600; color: var(--strong); margin: 2px 0; }
-.mtile .mt-c { white-space: nowrap; font-size: 12px; } .mtile .spark { display: block; margin-top: 4px; width: 100%; }
+.mtile .mt-c { white-space: nowrap; font-size: 12px; } .mtile .mt-p + .mt-p { margin-left: 10px; } .mtile .mt-p .muted { margin-right: 2px; } .mtile .spark { display: block; margin-top: 4px; width: 100%; }
 /* chart side panel: News & events */
 .nwpanel section { margin-bottom: 12px; }
 .nw-ev { display: grid; grid-template-columns: auto auto 1fr; gap: 6px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
@@ -1442,6 +1443,17 @@ table.fin.peers tbody th a { color: var(--link); }
 .td-tl { display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: var(--tc, var(--line-2)); }
 .td-note { margin-bottom: 4px; }
 .td-sig, .td-rates, .td-issues { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; font-size: 12.5px; }
+.td-readings .td-sub { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 10px 0 6px; }
+.td-read-wrap { max-height: none; }
+.td-read-tbl th { cursor: help; }
+.td-read-tbl th:first-child { cursor: default; }
+.td-bench { margin-left: 8px; font-size: 10.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.td-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 760px) { .td-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.td-stat { border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; background: var(--panel-2); cursor: help; }
+.td-stat-l { font-size: 11.5px; color: var(--muted); }
+.td-stat-v { font-size: 16px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.td-stat-s { font-size: 11px; color: var(--muted); margin-top: 1px; }
 .td-sig li { display: flex; justify-content: space-between; gap: 12px; }
 .td-sig li > .muted { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .td-sig li[title] { cursor: help; }
@@ -1457,6 +1469,33 @@ table.fin.peers tbody th a { color: var(--link); }
 .td-tiles:empty { display: none; }
 .td-runs { margin: 0 0 10px; }
 .td-runs .chip-s b { margin-left: 3px; color: var(--strong); }
+.td-runs .chip-s.zero { opacity: .4; }
+.td-runs .chip-s.zero:hover { opacity: .8; }
+/* the day in one line: four readings, the gate as prominent as the rest */
+.td-verdict { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.td-v { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.td-v-l { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+.td-v-v { display: flex; align-items: center; gap: 7px; font-size: 16px; font-weight: 600; color: var(--strong); }
+.td-v-v .muted { font-weight: 400; font-size: 13px; }
+/* section titles one step above the sub-headings inside a card */
+.td-hh h3 { font-size: 13px; color: var(--text); }
+.tag.td-dec { text-transform: none; letter-spacing: 0; }
+.td-dist { display: block; font-size: 11px; color: var(--muted); }
+.rt-note { margin-top: 6px; }
+.td-explain { margin: 0 0 10px; max-width: 980px; line-height: 1.5; }
+.td-legend { font-size: 11.5px; margin-top: 2px; }
+.td-nums { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 2px 0 4px; }
+.td-num { display: flex; flex-direction: column; }
+.td-num b { font-size: 20px; font-weight: 600; color: var(--strong); font-variant-numeric: tabular-nums; line-height: 1.2; }
+.td-num span { font-size: 11.5px; color: var(--muted); }
+.td-v-v .td-flow { color: inherit; text-decoration: none; font-variant-numeric: tabular-nums; }
+.td-v-v .td-flow + .td-flow { margin-left: 10px; }
+.td-v-v .td-flow .muted { font-size: 12px; margin-right: 2px; }
+.td-pick-bar { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.td-pick-bar .seg b { margin-left: 4px; color: var(--strong); }
+.td-pstrat button.chip-s { cursor: pointer; font: inherit; }
+.td-pstrat .chip-s.on { outline: 1.5px solid var(--strong); outline-offset: 1px; }
+.td-pstrat .chip-s.old { font-style: italic; }
 .td-warn { margin-bottom: 6px; color: var(--warn); }
 .td-setups, .td-picks { margin-bottom: 12px; }
 .td-rates-card { margin-bottom: 12px; }

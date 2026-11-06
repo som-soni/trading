@@ -83,6 +83,13 @@ class MarketConfig:
     # silently fail to match their index and get skipped from regime/RS
     sector_alias_map: dict = field(default_factory=dict)
 
+    # the daily market review's instruments (analytics/market_snapshot.py), label -> ticker: broad_index_symbols
+    # plus these extras (an equal-weight index, say). `breadth_pairs` names (cap-weighted, broader) label pairs
+    # whose ratio line the snapshot keeps -- where the selling is, in a few giants or in the average stock.
+    review_symbols: dict = field(default_factory=dict)
+    breadth_pairs: tuple = ()
+    review_names: dict = field(default_factory=dict)   # label -> short display name ("Nifty 50"); the label otherwise
+
     @property
     def benchmark_ticker(self) -> str:
         """`benchmark_symbol` may be a LABEL (India uses 'NIFTY500') rather

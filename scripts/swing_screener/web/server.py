@@ -156,7 +156,7 @@ def markets_api():
     idx = _benchmark_indices()
     return [{"key": k, "name": c.name, "exchange": c.exchange, "badge": c.badge or c.name, "flag": c.flag,
              "currency": c.currency_symbol, "suffix": c.symbol_suffix, "tz": c.tz,
-             "benchmark": c.benchmark_symbol, "indices": idx.get(k, [])} for k, c in MARKETS.items()]
+             "benchmark": c.benchmark_symbol, "indices": idx.get(k, []), "broker": c.broker} for k, c in MARKETS.items()]
 
 
 _liq_cache: dict = {}
@@ -921,12 +921,12 @@ def strategies():
                     "selection": d.get("selection") or "",
                     "selection_label": d.get("selection_label") or "",
                     "selection_rank": d.get("selection_rank", 99),
-                    "variant_of": (d.get("variant_of") or {}).get("key"),
-                    # family / version, so the page can group successive
                     # how long it holds a position — the sidebar's other grouping
                     "horizon": d.get("horizon") or "",
                     "horizon_label": d.get("horizon_label") or "",
                     "horizon_rank": d.get("horizon_rank", 99),
+                    "variant_of": (d.get("variant_of") or {}).get("key"),
+                    # family / version, so the page can group successive
                     # versions of one strategy instead of listing them flat
                     "family": d.get("family") or k,
                     "version": d.get("version") or "1.0",
@@ -1273,13 +1273,15 @@ def _sectors_compute(market: str, last) -> dict:
     med3, med1 = p.r3m.median(), p.r1m.median()
     s = p[p.sector.notna() & (p.sector.astype(str).str.strip() != "") & (p.sector != "Unknown")]
     out, uptrend = [], {"now": 0, "1w": 0, "1m": 0, "3m": 0}
+    names = _names(market)
     for name, g in s.groupby("sector"):
         share = {k: g[col].mean() for k, col in (("now", "a0"), ("1w", "a1w"), ("1m", "a1m"), ("3m", "a3m"))}
         for k, v in share.items():
             uptrend[k] += bool(v > 0.5)
         out.append({"sector": name, "stocks": len(g), "r3m_vs": g.r3m.median() - med3, "r1m_vs": g.r1m.median() - med1,
                     "above50": share["now"], "highs": int(g.highs.sum()), "lows": int(g.lows.sum()),
-                    "members": [{"symbol": r.symbol, "r3m": r.r3m, "r1m": r.r1m, "above50": r.a0}
+                    "members": [{"symbol": r.symbol, "name": names.get(r.symbol), "r3m": r.r3m, "r1m": r.r1m, "above50": r.a0,
+                                 "high": bool(r.highs), "low": bool(r.lows)}
                                 for r in g.sort_values("r3m", ascending=False).itertuples()]})
     out.sort(key=lambda x: -x["r3m_vs"])
     return {"sectors": out, "uptrend": uptrend, "n_sectors": len(out), "covered": int(len(s)), "total": int(len(p))}
@@ -1539,6 +1541,24 @@ def broker_account(market: str):
     b = _broker(market)
     try:
         return b.account(MARKETS[market].symbol_suffix)
+    except b.KiteError as e:
+        raise HTTPException(409, str(e))
+    except requests.RequestException as e:
+        raise HTTPException(502, f"could not reach the broker: {e}")
+
+
+@app.get("/api/broker/{market}/quotes")
+def broker_quotes(market: str, symbols: str):
+    """Last traded price against the previous session's close for a comma-separated list of the market's
+    symbols (a watchlist's "Pull LTP"): one read-only quote call when asked, nothing stored."""
+    import requests
+
+    b = _broker(market)
+    syms = [x.strip().upper() for x in symbols.split(",") if x.strip()]
+    if not syms:
+        raise HTTPException(400, "no symbols")
+    try:
+        return b.quotes(syms, MARKETS[market].symbol_suffix, MARKETS[market].exchange)
     except b.KiteError as e:
         raise HTTPException(409, str(e))
     except requests.RequestException as e:
@@ -1879,7 +1899,7 @@ def flows_summary():
     """The Macro tab's FII/DII flows card (marketdata/flows.py): each flow's last net value, running
     5-day/20-day sums, and full history for a chart. India only — NSE publishes no US equivalent."""
     from ..marketdata import flows
-    return {"flows": flows.summary()}
+    return {"market": flows.MARKET, "flows": flows.summary()}
 
 
 @app.get("/api/fpi-sectors")
@@ -1917,6 +1937,34 @@ BREADTH_FIELDS = {
     "pct50": "above50 * 100.0 / n", "pct5": "above5 * 100.0 / n", "highs": "highs", "lows": "lows", "hl": "highs - lows",
     "adv": "adv", "dec": "dec", "ad": "adv - dec", "up4": "up4", "dn4": "dn4", "up25m": "up25m", "dn25m": "dn25m",
 }
+
+
+@app.get("/api/market-snapshot")
+def market_snapshot(market: str, date: str | None = None):
+    """The daily review's readings for one session (analytics/market_snapshot.py): every subject's fields, the
+    field catalog with its docs, and the instruments and pairs in the market's config order."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..analytics import market_snapshot as ms
+    out = ms.read(market, date)
+    out["fields"] = [{"key": f.key, "label": f.label, "scope": f.scope, "unit": f.unit, "doc": f.doc} for f in ms.FIELDS]
+    out["instruments"] = ms.instruments(market)          # label -> ticker, in config order
+    out["pairs"] = [f"{a}/{b}" for a, b in MARKETS[market].breadth_pairs]
+    out["names"] = {k: MARKETS[market].review_names.get(k, k) for k in out["instruments"]}
+    out["benchmark"] = MARKETS[market].benchmark_symbol
+    return out
+
+
+@app.get("/api/market-snapshot/series")
+def market_snapshot_series(market: str, subject: str, field: str):
+    """One reading over time, for a chart."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..analytics import market_snapshot as ms
+    if field not in ms.FIELD_KEYS:
+        raise HTTPException(400, f"unknown field {field}")
+    return {"market": market, "subject": subject, "field": field,
+            "line": [{"time": d.strftime("%Y-%m-%d"), "value": round(float(v), 4)} for d, v in ms.series(market, subject, field)]}
 
 
 @app.get("/api/breadth-series")
@@ -2768,7 +2816,7 @@ def _screen_def(key: str) -> dict:
         p = definitions.presets()[key]
         return {"key": key, "builtin": True, "preset": True, "name": p["name"], "description": p["description"], "thesis": p["thesis"],
                 "criteria": None, "used_by": [], "conditions": p["conditions"], "sort_by": p.get("sort_by", "rs_rank"),
-                "columns": p.get("columns", [])}
+                "columns": p.get("columns", []), "markets": p.get("markets")}
     if key.startswith("u") and key[1:].isdigit():
         u = definitions.get_user(int(key[1:]))
         if u:
@@ -2876,8 +2924,9 @@ def screens_api(market: str = "us"):
     df = _snap(market)
     items = [{"key": k, "builtin": True, **{x: v for x, v in _screen_def(k).items() if x in ("name", "description", "used_by")},
               "conditions": v["conditions"]} for k, v in definitions.builtin().items()]
+    # a preset may name the markets it was shown to work in (`markets`); elsewhere it is not offered
     items += [{"key": k, "builtin": True, "preset": True, "name": v["name"], "description": v["description"], "used_by": [],
-               "conditions": v["conditions"]} for k, v in definitions.presets().items()]
+               "conditions": v["conditions"]} for k, v in definitions.presets().items() if market in v.get("markets", MARKETS)]
     items += [{"key": f"u{u['id']}", "id": u["id"], "builtin": False, "name": u["name"], "description": u["description"],
                "conditions": u["conditions"], "sort_by": u["sort_by"], "columns": u["columns"], "used_by": []}
               for u in definitions.list_user()]

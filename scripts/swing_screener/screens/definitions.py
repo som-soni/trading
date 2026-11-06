@@ -22,7 +22,7 @@ import pandas as pd
 
 from ..marketdata import db
 from . import criteria as c
-from .snapshot import BASE_MAX_DAYS, MDD_BARS, R2Y_BARS, STAGE2_DAYS_WINDOW
+from .snapshot import BASE_MAX_DAYS, LEAD_HIGH_BARS, MDD_BARS, PIVOT_BARS, R2Y_BARS, STAGE2_DAYS_WINDOW
 
 OPS = (">", ">=", "<", "<=", "=", "!=", "is", "in")
 
@@ -99,6 +99,16 @@ BEAR_LEADER_MIN_SALES_GROWTH = 15.0  # latest quarter's sales vs a year earlier,
 GROWTH_VERDICTS = ["LEADER", "ACCEPTABLE"]   # fundamentals/sepa.py verdicts that count as growing
 RECOVERY_MIN_IMPROVING_QUARTERS = 2  # EPS above the year-ago quarter for at least this many quarters running
 RECOVERY_MIN_SALES_GROWTH = 10.0     # latest quarter's sales vs a year earlier, %: the profit is not cost cuts alone
+
+
+# Breakout watch: the rule the breakout anticipation study froze on 2017-2021 and checked once on 2022-2026
+# (research/breakout-anticipation-study.md, analytics/breakout_study.py). Change a number here and the study's
+# figures no longer describe the screen: re-run the study, not just the screen.
+BREAKOUT_WATCH_MAX_PCT_BELOW_PIVOT = 5.0    # the close at most this far under the 55-session pivot (and not above it)
+BREAKOUT_WATCH_MIN_FRAC_OF_52W_HIGH = 0.90  # the close within 10% of the 52-week high
+BREAKOUT_WATCH_MIN_GROUP_RS = 70            # the industry group's RS rating
+# Only where it held out of sample: in India the same rule scored a lift of ~1.0 on 2022-2026.
+BREAKOUT_WATCH_MARKETS = ("us",)
 
 
 def presets() -> dict[str, dict]:
@@ -226,6 +236,37 @@ def presets() -> dict[str, dict]:
                 {"field": "close", "op": ">", "ref": "sma200"},
             ],
             "columns": ["eps_improving_q", "sales_growth_q", "sales_accelerating"], "sort_by": "sales_growth_q"},
+        "breakout_watch": {
+            "name": "Breakout watch — RS and OBV leading",
+            "markets": list(BREAKOUT_WATCH_MARKETS),
+            "description": f"Stocks in a base just under resistance (within {BREAKOUT_WATCH_MAX_PCT_BELOW_PIVOT:g}% of the "
+                           f"{PIVOT_BARS}-session pivot, above a rising 200-day) whose RS line and on-balance volume are already "
+                           f"at new {LEAD_HIGH_BARS}-session highs, in an industry group rated {BREAKOUT_WATCH_MIN_GROUP_RS}+. "
+                           "US only. A watchlist, not a buy signal: about 1 in 7 became a real breakout within four weeks.",
+            "thesis": ("A stock that is about to break out often shows it first in what price has not done yet: it is already "
+                       "beating the market (its RS line makes a new high before the price clears its pivot), volume is "
+                       "flowing in on its up days (on-balance volume at a new high), and its group is strong. The breakout "
+                       "anticipation study tested 29 such pre-breakout signals against a control set of failed breakouts and "
+                       "bases that never broke. These three held up; volatility contraction, volume dry-up, shallow bases and "
+                       "moving-average compression did not. On weekly samples 2022-2026, a rule fixed on 2017-2021, 13.9% of "
+                       "these stocks broke out above the pivot on 1.5x volume and followed through (a close 2 ATR higher "
+                       "before one half an ATR under the pivot) within four weeks, against 8.5% of all stocks in the same "
+                       "position. It raises the "
+                       "odds that a breakout happens, not that it works: follow-through stayed at about 36-40%. In India it "
+                       "added nothing out of sample, so the screen is not offered there. Alerts are logged each session "
+                       "(the breakout_watch job) and scored forward by the study."),
+            "conditions": [
+                {"field": "tradable", "op": "is", "value": True},
+                {"field": "close", "op": ">", "ref": "sma200"},
+                {"field": "sma200_not_falling", "op": "is", "value": True},
+                {"field": "close", "op": "<", "ref": "pivot_55"},
+                {"field": "close", "op": ">=", "ref": "pivot_55", "mult": 1 - BREAKOUT_WATCH_MAX_PCT_BELOW_PIVOT / 100},
+                {"field": "close", "op": ">=", "ref": "high_252", "mult": BREAKOUT_WATCH_MIN_FRAC_OF_52W_HIGH},
+                {"field": "rs_line_high", "op": "is", "value": True},
+                {"field": "obv_high", "op": "is", "value": True},
+                {"field": "group_rs", "op": ">=", "value": BREAKOUT_WATCH_MIN_GROUP_RS},
+            ],
+            "columns": ["pivot_55", "group_rs", "rs_rank"], "sort_by": "group_rs"},
         "leaders": {
             "name": "Strong stocks in leading groups",
             "description": f"Strong stocks (RS {LEADER_MIN_RS}+) in the strongest peer groups (group RS {LEADER_GROUP_RS}+), in an uptrend.",

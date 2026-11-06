@@ -41,6 +41,9 @@ INDIA_CONFIG = MarketConfig(
         "NIFTYSMALLCAP250": "NIFTYSMLCAP250.NS",   # verified 2026-10-17: 4,379 bars from 2009-01-02
     },
     benchmark_symbol="NIFTY500",
+    breadth_pairs=(("NIFTY50", "NIFTY500"), ("NIFTY50", "NIFTYMIDCAP150")),
+    review_names={"NIFTY50": "Nifty 50", "NIFTY500": "Nifty 500", "NIFTYMIDCAP150": "Nifty Midcap 150",
+                  "NIFTYSMALLCAP250": "Nifty Smallcap 250"},
     # SECTOR INDEX MAP — NSE sectoral indices. Same caveat as above: test
     # each symbol, these are best-effort guesses at Yahoo's naming.
     # Sector proxies, each verified to return usable history — not assumed.

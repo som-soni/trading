@@ -451,6 +451,13 @@ def _fundamentals(ctx: Ctx) -> None:
 
 # ------------------------------------------------------------------ analytics
 
+def _market_snapshot(ctx: Ctx) -> None:
+    """The daily review's readings per market (analytics/market_snapshot.py); `--full` rewrites all history."""
+    from swing_screener.analytics import market_snapshot
+    r = market_snapshot.run(ctx.market, full=bool(ctx.opt("full")))
+    ctx.step.detail = f"{r['values']} value(s) written · latest {r['latest']}"
+
+
 def _breadth(ctx: Ctx) -> None:
     from swing_screener.analytics import breadth
     from swing_screener.marketdata import db
@@ -571,10 +578,27 @@ def _screens(ctx: Ctx) -> None:
     """The day's stock snapshot (screens/snapshot.py): every field the screens filter on; screens query it live."""
     from swing_screener.screens import definitions, snapshot
     df = snapshot.build(ctx.market)
-    counts = {k: int(definitions.mask(df, v["conditions"]).sum()) for k, v in {**definitions.builtin(), **definitions.presets()}.items()}
+    counts = {k: int(definitions.mask(df, v["conditions"]).sum()) for k, v in {**definitions.builtin(), **definitions.presets()}.items()
+              if ctx.market in v.get("markets", [ctx.market])}
     ctx.step.detail = (f"snapshot of {len(df):,} stocks ({int(df['tradable'].sum()):,} tradable) for {df.attrs.get('date', '')} · "
                        + " · ".join(f"{k} {v}" for k, v in counts.items()))
     ctx.step.stats = {"stocks": len(df), "tradable": int(df["tradable"].sum()), **counts}
+
+
+def _breakout_watch(ctx: Ctx) -> None:
+    """Record the day's members of the screens being validated forward (screens/alerts.py FORWARD_SCREENS):
+    the Breakout watch screen, scored later by analytics/breakout_study.py --forward."""
+    from swing_screener.screens import alerts, snapshot
+    if not any(ctx.market in alerts.markets(k) for k in alerts.FORWARD_SCREENS):
+        ctx.step.skip(f"no forward-tracked screen is offered in {ctx.market}")
+        return
+    df = snapshot.load(ctx.market)
+    if df.empty:
+        ctx.step.skip("no snapshot yet: run the screens job first")
+        return
+    got = alerts.record(ctx.market, df)
+    ctx.step.detail = f"{df.attrs['date']}: " + " · ".join(f"{k} {n} stocks" for k, n in got.items())
+    ctx.step.stats = got
 
 
 def _screen_history(ctx: Ctx) -> None:
@@ -1040,10 +1064,15 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("announcements", "data", "results announcements: when each company published each quarter's results (NSE; SEC "
         "8-K Item 2.02; back to 2005) -- what an event strategy ties a price reaction to", "weekly", True, _announcements, after=("universe",)),
     Job("breadth", "analytics", "market breadth: advancers, highs/lows, % above averages", "daily", False, _breadth, after=("prices",)),
+    Job("market_snapshot", "analytics", "market snapshot: the daily review's readings -- each index against its "
+        "averages, distribution days, breadth, volatility, the strategies' market gate", "daily", False, _market_snapshot,
+        after=("prices", "indexes", "breadth")),
     Job("sectors", "analytics", "sector ranking: RS ratings, rotation, breadth per group (kept daily)", "daily", False, _sectors,
         after=("prices", "industries")),
     Job("screens", "screening", "screens: the day's stock snapshot (~45 fields per stock) every screen queries", "daily", False, _screens,
         after=("prices",)),
+    Job("breakout_watch", "screening", "breakout watch: the day's Breakout watch members, kept as the screen's forward record "
+        "(screens/alerts.py)", "daily", False, _breakout_watch, after=("screens",)),
     Job("screen_history", "screening", "screen history: month-end stock snapshots the screen study reads (fills gaps)", "monthly",
         False, _screen_history, after=("prices",)),
     Job("strategies", "screening", "strategies: today's setups — entry, stop, target and decision per strategy", "on demand", False,
@@ -1074,8 +1103,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
 PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
-              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "sectors",
-                       "screens", "postmarket", "strategies", "report", "ingest"],
+              "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "market_snapshot", "sectors",
+                       "screens", "breakout_watch", "postmarket", "strategies", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
                         "re-run only the strategies left stale, then check everything is ready",
@@ -1088,7 +1117,7 @@ PIPELINES: dict[str, dict] = {
     "daily": {"summary": "after each market's close — data only: prices, indexes, rates, fund NAVs, breadth, sectors, the screens' snapshot, "
                          "post-market analysis",
               "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "sectors", "screens",
-                       "postmarket"]},
+                       "breakout_watch", "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
@@ -1111,7 +1140,7 @@ PIPELINES: dict[str, dict] = {
 # The fast lane runs only these: short jobs that read stored data (seconds to a few minutes), so a
 # page's screens rebuild or a setups refresh does not wait hours behind a backtest in the main lane.
 # Anything not listed — backtests, downloads, month-end history, research — stays in the main lane.
-FAST_JOBS = frozenset({"breadth", "sectors", "screens", "strategies", "postmarket", "report", "ingest", "readiness"})
+FAST_JOBS = frozenset({"breadth", "market_snapshot", "sectors", "screens", "breakout_watch", "strategies", "postmarket", "report", "ingest", "readiness"})
 # The backtest lane runs these: long jobs on stored data (minutes to many hours, no downloads), so a
 # scheduled market routine in the main lane never waits behind one. Downloads stay in the main lane, so
 # two lanes never hit the data sources at once.

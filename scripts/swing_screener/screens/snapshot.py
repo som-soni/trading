@@ -47,6 +47,8 @@ BASE_CONTRACTION_LOOKBACK = 120  # range_contracting reads the pullbacks of this
 R2Y_BARS = 504                 # r2y / rel_r2y: two years of sessions
 R3Y_BARS = 756                 # r3y / rel_r3y: three years
 MDD_BARS = 504                 # mdd_2y: the window the deepest fall is measured over
+PIVOT_BARS = 55                # pivot_55: the breakout strategy's pivot (BREAKOUT_LOOKBACK), the highest high of this many sessions before today
+LEAD_HIGH_BARS = 55            # rs_line_high / obv_high: a new high over this many sessions before today, while price is still under its pivot
 PEER_MIN = 3                    # a sub-industry is a stock's peer group only with this many tradable stocks (else its industry group)
 
 # The field catalog: key, label, group, kind (price | pct | num | money | bool | text), description.
@@ -82,6 +84,12 @@ FIELDS = [
     ("low_252", "52-week low", "Range", "price", "Lowest low of the last 252 sessions."),
     ("pct_below_high", "% below 52-week high", "Range", "pct", "How far the close is below the 52-week high (0 = at the high)."),
     ("pct_above_low", "% above 52-week low", "Range", "pct", "How far the close is above the 52-week low."),
+    ("pivot_55", "55-session pivot", "Range", "price", f"The highest high of the {PIVOT_BARS} sessions before today (today excluded): "
+                                                      "the level a breakout closes above."),
+    ("rs_line_high", "RS line at a new high", "Performance", "bool", f"The RS line (close ÷ the market benchmark, S&P 500 / Nifty 500) "
+                                                                     f"at or above its highest of the {LEAD_HIGH_BARS} sessions before today."),
+    ("obv_high", "OBV at a new high", "Volume", "bool", f"On-balance volume (volume added on up closes, subtracted on down closes) at "
+                                                        f"or above its highest of the {LEAD_HIGH_BARS} sessions before today."),
     ("atr_pct", "ATR %", "Volatility", "pct", "Average true range (14 days) as a % of the close."),
     ("adr_pct", "ADR %", "Volatility", "pct", f"Average daily range: the mean, over the last {crit.MOVERS_ADR_BARS} sessions, "
                                               "of each session's high ÷ low − 1. How far the stock moves on a normal day."),
@@ -249,6 +257,7 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench
         out[k] = out[rk] - b if b is not None else None
     w = c.iloc[max(0, i + 1 - MDD_BARS): i + 1].astype(float)
     out["mdd_2y"] = float((w / w.cummax() - 1).min() * 100) if len(w) >= MDD_BARS else None
+    out.update(_leads(enriched, i, bench))
     floor_row = row
     if split != 1.0:     # the floor reads the traded price: a back-adjusted close reads under it for years
         floor_row = row.copy()
@@ -256,6 +265,23 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench
     out["tradable"] = bool(i + 1 >= MIN_BARS and Screen.tradable(cfg, floor_row)[0])
     out["stage2_days"] = _stage2_days(enriched, i)
     out.update(_base(enriched, i))
+    return out
+
+
+def _leads(enriched: pd.DataFrame, i: int, bench: pd.Series | None) -> dict:
+    """pivot_55, rs_line_high and obv_high as of bar i, by core/indicators' prior_high / at_prior_high / obv
+    (the same functions the breakout anticipation study measured, analytics/breakout_study.py). Two bars more
+    than the window: the first one's change is unknown, and OBV is only compared against itself."""
+    w = enriched.iloc[max(0, i + 1 - max(PIVOT_BARS, LEAD_HIGH_BARS) - 2): i + 1]
+    pv = ind.prior_high(w["high"], PIVOT_BARS).iloc[-1]
+    out = {"pivot_55": float(pv) if pd.notna(pv) else None,
+           "obv_high": bool(ind.at_prior_high(ind.obv(w["close"], w["volume"]).iloc[1:], LEAD_HIGH_BARS).iloc[-1])
+           if len(w) >= LEAD_HIGH_BARS + 2 else None,
+           "rs_line_high": None}
+    if bench is not None and not bench.empty and len(w) >= LEAD_HIGH_BARS + 1:
+        b = bench.reindex(w.index, method="ffill")
+        if b.notna().all():
+            out["rs_line_high"] = bool(ind.at_prior_high(w["close"] / b, LEAD_HIGH_BARS).iloc[-1])
     return out
 
 
