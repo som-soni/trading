@@ -4,7 +4,8 @@
 
 - The menu has eight sections: **Today**, **Markets**, **Screens**, **Strategies**, **Chart**,
   **Watchlists**, **Library** and **System**. Alt+1 … Alt+8 jumps to each; ⌘K searches pages and symbols.
-- The app screens and backtests. It never places an order, and it does not know your positions or P&L.
+- The app screens and backtests. It never places an order. It knows your positions only through each
+  book's trade ledger — see [your books](app-guide-books.md).
 - Read it in menu order after the close: Today → Post-market → Breadth → Sectors → Strategies → Chart →
   Watchlists → Notes. That takes 30–45 minutes for one market.
 - Every page answers one question. The Learn guide linked beside each page explains the idea behind it.
@@ -29,7 +30,7 @@ config, so a page always shows the market you picked last.
 | **Today** | Today | Is the data current, how did the market close, and what can I trade? | [Trading plan](learn-process-plan.md) |
 | **Markets** | Post-market · Breadth · Sectors · Movers | How healthy is the market, and where is the strength? | [Breadth](learn-health-breadth.md), [sectors](learn-sectors-groups.md) |
 | **Screens** | Screens (and Quality companies) · Screener picks | Which stocks qualify, and which did the strategies pick? | [Stages](learn-price-stages.md), [system filters](learn-system-filters.md) |
-| **Strategies** | Today's setups · one page per strategy | Is there a trade, at what price, with what stop? | [Strategies overview](learn-strat-overview.md) |
+| **Strategies** | Today's setups · one page per strategy · Paper books | Is there a trade, at what price, with what stop? How has each strategy done forward? | [Strategies overview](learn-strat-overview.md) |
 | **Chart** | Chart · Fundamentals · Analysis · News | What does this one stock look like — and what do I make of it? | [Indicators](learn-price-indicators.md), [earnings](learn-fund-earnings.md) |
 | **Watchlists** | Watchlists | What am I following, and what did the screener pick? | [Journal](learn-process-journal.md) |
 | **Library** | Notes · Research · Learn | My notes and journal; reference reading | [Journal](learn-process-journal.md) |
@@ -46,6 +47,7 @@ Today is the starting page. It summarises the day for the market chosen in the h
 | **Macro** card and tiles | A rule-based read of rates, the dollar, oil, credit, growth and fear: each signal supportive or a headwind, and a label from Supportive to Hostile | Background, not a trade signal. See [rates](learn-macro-rates.md), [currencies](learn-macro-currencies.md), [credit](learn-macro-liquidity-credit.md) |
 | **Market readings** card | The daily review's readings from the market snapshot (`analytics/market_snapshot.py`, job `market_snapshot`): each review index against its 9- and 21-day EMA, 50- and 200-day, weekly 50 EMA, distance below its 52-week high and distribution days; then breadth, the volatility index against its threshold, the strategies' market gate, a follow-through flag and the cap- vs broad-index ratios | Readings only, no rule applied; hover a heading for how it is measured. As of the latest session with the benchmark's close. The [daily market review](system-daily-market-review.md) says how to read them |
 | **Rates & yields** card | Each market's policy rate and its bill and bond yields (`marketdata/rates.py`, job `rates`), charted over up to decades, with each rate's latest value and 1-month / 1-year / 5-year change | A dash means the series is not old enough yet for that change (India's T-bills and most G-secs are stored from 15 Oct 2026) |
+| **Open positions** | Each open signal trade in a book: entry, shares, initial stop, the stop for the next session, distance to it, R so far and a status (hold, stop raised, sell-stop armed, exit at the next open, stop reached). **Take a setup…** records a setup you bought | The stop and status come from the strategy's own exit replayed on stored bars after each close. See [your books](app-guide-books.md) |
 | **Today's setups** (summary) | How many setups are tradeable, how many of those are high confidence, how many are on watch, and a chip per strategy with its tradeable count | A summary only — the setups themselves, with entry, stop and target, are on **Strategies → Today's setups**. A warning appears if newer prices loaded after the setups ran |
 | **Screener picks** (summary) | How many stocks joined the screener list in the latest run, how many are on it, how many new ones are trades and how many on watch, and which strategies the new ones came from | New names to look at, not trades. The full list, filterable, is **Screens → Screener picks** (§4). A strategy whose last run is more than 3 days older than the rest is named, since its picks may be stale |
 
@@ -490,11 +492,11 @@ missing before the open.
 | Caps a day's tradeable picks at three per sector | Cap what you **hold** per sector and group |
 | Lists earnings in the next 10 days; most strategies gate setups on them | Decide what to do with stocks you already hold |
 | — | Place, change and cancel orders with your broker |
-| — | Track positions, stops, open risk and P&L |
+| Tracks each book from its ledger; manages open signal trades' stops by the strategy's exit | Record your fills; move the stops on Kite |
 | — | Watch macro dates ([calendar](learn-macro-calendar.md)) |
 
-There is no order entry, no position table, no price alert and no record of real trades. The *Daily
-journal* template has a *Positions* table you fill in by hand. See [portfolio risk](learn-risk-portfolio.md).
+There is no order entry and no price alert. Real trades are recorded in each book's ledger, from the
+account form, a Kite comparison or a taken setup ([your books](app-guide-books.md)). See [portfolio risk](learn-risk-portfolio.md).
 
 ## 11. The daily routine, page by page
 
@@ -510,8 +512,9 @@ current.**
 | 5 | **Strategies → Today's setups** | Only your strategies and labels; the downgrade; Risk % within your limit | 5–10 |
 | 6 | **Chart**, each candidate | The base and its tight area; stop under structure; overhead supply; the results date; Fundamentals if your plan uses it | 2–3 each |
 | 7 | **Watchlists** | Screener picks: entry, to entry %, stop, target R; move the ones you want to your own list with a note | 5 |
-| 8 | Outside the app | Size each order; place buy-stops and stops with the broker; update positions | 5–10 |
-| 9 | **Library → Notes** | A *Daily journal* note | 3 |
+| 8 | Outside the app | Size each order; place buy-stops and stops with the broker; move stops Open positions raised | 5–10 |
+| 9 | **Today → Open positions** | Record each fill with **Take a setup…**; read the statuses before the next open | 2 |
+| 10 | **Library → Notes** | A *Daily journal* note | 3 |
 
 **Before the open**, once the open routine has run: did readiness pass, is there news on an order or a
 holding, has a results date moved inside ten days? The morning may cancel or shrink a trade. It never adds
