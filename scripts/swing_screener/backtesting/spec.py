@@ -458,7 +458,8 @@ def pilot_signal(market: str, bench: pd.DataFrame, full: pd.Series) -> pd.Series
     raise ValueError(f"MKT_PILOT must be 0, 1 or 2, not {ms.MKT_PILOT}")
 
 
-def results_blackout(signals: list, market: str, days: int, by_announcement: bool = True) -> tuple[list, dict]:
+def results_blackout(signals: list, market: str, days: int, by_announcement: bool = True,
+                     first_per_quarter: bool = True) -> tuple[list, dict]:
     """Drop a signal whose company announces results within `days` calendar days AFTER the signal date.
 
     The dates are the results ANNOUNCEMENTS (`financials.announcements`, the `results_announcements` table):
@@ -478,12 +479,17 @@ def results_blackout(signals: list, market: str, days: int, by_announcement: boo
 
     Inside a backtest stage only dates up to the stage's end are read (`asof`): a date after it is data the
     stage must not see, even when it would only block a signal near the end. `by_announcement=False` keys every
-    company on its filing dates, as before minervini 1.51 (a research control)."""
+    company on its filing dates, as before minervini 1.51 (a research control).
+
+    A quarter blocks once, before its earliest record (`first_per_quarter`, `financials.announcements`): NSE's
+    XBRL broadcast of results already out at the board meeting arrives weeks later, and until minervini 1.52 it
+    counted as an announcement of its own, so India's blackout also blocked the fortnight just after results.
+    On the 1.51 India optimise run that removed 17 trades with nothing due; `first_per_quarter=False` restores it."""
     from ..marketdata import financials
     syms = sorted({s.symbol for s in signals})
     if not syms or not days:
         return signals, {"days": days, "blocked": 0, "kept": len(signals), "dropped_signals": {"blocked": []}}
-    announced = financials.announcements(market) if by_announcement else {}
+    announced = financials.announcements(market, first_per_quarter=first_per_quarter) if by_announcement else {}
     sql, args = ("""SELECT DISTINCT symbol, filed FROM quarterly_results
                     WHERE market=%s AND symbol = ANY(%s) AND filed IS NOT NULL""", (market, syms))
     if asof.end_date():

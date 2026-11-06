@@ -1312,6 +1312,7 @@ def run_portfolio_backtest(
     market_guide: bool = False,
     results_blackout_days: int | None = None,
     results_by_announcement: bool = True,
+    results_first_per_quarter: bool = True,
     segment_filter_days: int | None = None,
     tf_align: bool = False,
     equal_alloc_pct: float | None = None,
@@ -1462,7 +1463,8 @@ def run_portfolio_backtest(
                           "daily, weekly and monthly charts at once that day (screens/criteria.py trend_alignment).")
     if results_blackout_days and all_signals:
         all_signals, rb = spec_mod.results_blackout(all_signals, market_key, results_blackout_days,
-                                                    by_announcement=results_by_announcement)
+                                                    by_announcement=results_by_announcement,
+                                                    first_per_quarter=results_first_per_quarter)
         fn.dropped_each("accepted", f"results due within {results_blackout_days} days", rb["dropped_signals"]["blocked"])
         spec_notes.append(
             f"Results blackout: {rb['blocked']} signals skipped with results due within {results_blackout_days} days "
@@ -2073,6 +2075,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             use_market_filter=args.market_filter, mkt_confirm=args.mkt_confirm,
             market_guide=market_guide, results_blackout_days=args.results_blackout or None,
             results_by_announcement=bool(ms.RESULTS_BY_ANNOUNCEMENT) if args.spec else True,
+            results_first_per_quarter=bool(ms.RESULTS_FIRST_PER_QUARTER) if args.spec else True,
             segment_filter_days=args.segment_filter, tf_align=args.tf_align,
             equal_alloc_pct=args.equal_alloc / 100 if args.equal_alloc else None,
             top_dollar_volume=args.top_dollar_volume,

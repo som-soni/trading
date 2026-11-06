@@ -859,19 +859,29 @@ def refresh_announcements(market: str, symbols: list[str], progress=None) -> dic
     return {"companies": len(symbols), "with_announcements": companies_with, "announcements": stored, "errors": errors}
 
 
-def announcements(market: str) -> dict:
+def announcements(market: str, first_per_quarter: bool = True) -> dict:
     """{symbol: sorted announcement dates} -- when each company published each quarter's results.
 
-    Every source counts: the filings' broadcast times and the results board meetings (`nse_results_meetings`),
-    so a quarter's earliest record -- usually the meeting -- is among them. A meeting dated in the future is
-    returned too; a caller only ever asks about dates on or before the day it judges.
+    Every source is read: the filings' broadcast times and the results board meetings (`nse_results_meetings`).
+    A quarter is announced ONCE, on its earliest record (`first_per_quarter`): the results go out at the
+    board meeting, and NSE's XBRL broadcast of the same quarter often lands weeks later -- SIL.NS's March 2018
+    results were approved on 2018-05-29 and broadcast on 2018-06-27. Counted as a date of its own, that later
+    record is an announcement that never happened: India read about 7 dates per company-year, and a results
+    blackout keyed on them blocked the fortnight just AFTER results. Each filing also restates the prior year's
+    quarter, so a 2017 broadcast carries a 2016 period end; its earliest record is the 2016 announcement.
+    `first_per_quarter=False` returns every record, as minervini 1.51 and earnings_gaps 1.9 read them.
 
-    Point in time: inside a backtest stage only announcements on or before its boundary are returned.
-    Empty for a market with no announcement source, so a caller falls back to whatever else it has.
+    A meeting dated in the future is returned too; a caller only ever asks about dates on or before the day it
+    judges. Point in time: inside a backtest stage only announcements on or before its boundary are returned
+    (the earliest is taken among those). Empty for a market with no announcement source, so a caller falls back
+    to whatever else it has.
     """
-    sql, args = "SELECT symbol, announced_at FROM results_announcements WHERE market=%s", (market,)
+    sql, args = ("SELECT symbol, " + ("MIN(announced_at)" if first_per_quarter else "announced_at")
+                 + " FROM results_announcements WHERE market=%s"), (market,)
     if asof.end_date():
         sql, args = sql + " AND announced_at::date <= %s", args + (asof.end_date(),)
+    if first_per_quarter:
+        sql += " GROUP BY symbol, period_end"
     try:
         with db.get_connection().cursor() as cur:
             cur.execute(sql, args)

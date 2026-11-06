@@ -479,6 +479,10 @@ EARNINGS_BLACKOUT_DAYS = 14
 # 1.51: 1 = the backtest's blackout keys on recorded announcements (filing dates only where a company
 # has none); 0 = filing dates for every company, as before (a research control). Read after the scan.
 RESULTS_BY_ANNOUNCEMENT = 1
+# 1.52: 1 = a quarter is announced once, on its earliest record -- NSE's XBRL broadcast of results already
+# out at the board meeting lands weeks later and is not a second announcement; 0 = every record counts, as
+# in 1.51 (India then read ~7 dates per company-year). Read after the scan.
+RESULTS_FIRST_PER_QUARTER = 1
 
 # The guide's liquidity floor. Turnover is the 50-day average volume x the close, which is
 # split-invariant, so it applies in backtests too. The price floor is LIVE ONLY: a backtest
@@ -1075,9 +1079,17 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.51"
-    # signal_version is not pinned: the turnover floor is part of the screen every scanned session passes.
+    version = "1.52"
+    # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
+    signal_version = "1.51"
     changelog = (
+        ("1.52", "2026-11-06",
+         "The results blackout counts a quarter once, on its earliest record (RESULTS_FIRST_PER_QUARTER). An Indian "
+         "company publishes results at its board meeting, and NSE's XBRL broadcast of the same quarter often lands "
+         "weeks later -- SIL.NS approved its March 2018 results on 2018-05-29, broadcast 2018-06-27 -- so 1.51 read "
+         "about 7 announcements per company-year in India and blocked the fortnight just after results as if they "
+         "were due: 17 trades of the 1.51 India optimise run. India now reads 3.9 per company-year, the US 3.8 "
+         "(a second 8-K 2.02 in a quarter is the same results). After the scan, so signal_version stays 1.51."),
         ("1.51", "2026-11-05",
          "Two execution fixes from the audit of the 1.46 US optimise run's 870 losing trades "
          "(research/audit-minervini-run2077.md), both after the scan. (1) The results blackout keys on the "
@@ -1715,7 +1727,7 @@ class MinerviniSpecStrategy(Strategy):
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
-        "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT",
+        "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT", "RESULTS_FIRST_PER_QUARTER",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
         "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
         "MKT_GUIDE", "MKT_INDEX_SMA", "MKT_BREADTH_MIN_PCT", "MKT_BREADTH_RISING_DAYS",
@@ -2311,7 +2323,9 @@ class MinerviniSpecStrategy(Strategy):
         "Results are due. No new buy with quarterly results due within {EARNINGS_BLACKOUT_DAYS} "
         "days: a results-day gap can jump straight past the stop. Live, the date comes from the "
         "earnings calendar; in a backtest from the recorded results announcements (RESULTS_BY_ANNOUNCEMENT "
-        "is {RESULTS_BY_ANNOUNCEMENT}), or the filing date for a company with none recorded.",
+        "is {RESULTS_BY_ANNOUNCEMENT}), or the filing date for a company with none recorded. A quarter counts "
+        "once, on its earliest record (RESULTS_FIRST_PER_QUARTER is {RESULTS_FIRST_PER_QUARTER}): a filing "
+        "broadcast weeks after the board meeting is not a second announcement.",
         "The stock is too thin. It must trade at least {TURNOVER_FLOOR_BP_INR} basis points (India) or "
         "{TURNOVER_FLOOR_BP_USD} (US) of the whole market's daily turnover (50-day average of volume × close). "
         "The floor grows with the market: set to ₹{MIN_TURNOVER_INR_CR} crore and ${MIN_TURNOVER_USD_M} million "
@@ -2471,6 +2485,7 @@ class MinerviniSpecStrategy(Strategy):
         ("Low cheat", "LOW_CHEAT_ENABLED", "MV-03 on (1) or off (0)."),
         ("Results blackout", "EARNINGS_BLACKOUT_DAYS", "Days before results with no new buy."),
         ("Blackout on announcements", "RESULTS_BY_ANNOUNCEMENT", "1.51: the backtest's blackout keys on recorded results announcements (1) or on filing dates only (0)."),
+        ("One announcement per quarter", "RESULTS_FIRST_PER_QUARTER", "1.52: a quarter's earliest record is its announcement (1); 0 = every record counts, as in 1.51."),
         ("Preferred uptrend", "SMA200_RISING_PREF_BARS", "W5: sessions over which the 200-day should have risen."),
         ("Preferred uptrend required", "SMA200_PREF_REQUIRED", "1 = W5 holds the plan at WATCH (no new buy); 0 = noted only."),
         ("Turnover floor scales", "SCALE_TURNOVER_FLOOR", "1.45: 1 = the floor is a share of the day's market turnover (the 1,000 most-traded stocks); 0 = the fixed floors below (1.44)."),

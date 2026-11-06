@@ -715,7 +715,9 @@ class EarningsGapStrategy(Strategy):
         from ..marketdata import asof, financials
         key = (market_key, asof.end_date())
         if key not in cls._announced:
-            cls._announced[key] = financials.announcements(market_key)
+            # every record, not just each quarter's first: G3 lets any of a quarter's dates link (the meeting,
+            # a later broadcast, a US mid-quarter 8-K 2.02), as its doc says
+            cls._announced[key] = financials.announcements(market_key, first_per_quarter=False)
         return cls._announced[key]
 
     @classmethod
