@@ -1653,18 +1653,86 @@ def rebalance_orders(strategy: str, market: str):
     return rebalance.orders(strategy, market)
 
 
+@app.get("/api/dual-pick/{market}")
+def dual_pick(market: str):
+    """Dual momentum's holding on the latest stored session (`dual_momentum.current_pick`, the rule its
+    backtest runs), with the dual momentum book's account from its ledger. It holds one asset, through a
+    fund you choose, so its order is an amount: the whole book in the pick."""
+    from ..backtesting import dual_momentum as dm, ledger, rebalance
+    from ..strategies import portfolio_strategies
+
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    cls = portfolio_strategies()["dual_momentum"]
+    out = dm.current_pick(market, cls.lookback_months)
+    acct = ledger.holdings_of("dual_momentum", market)
+    px = rebalance._last_closes(market, list(acct["positions"]), None)
+    out.update(spec_id=cls.spec_id(), cash=acct["cash"],
+               account_value=round(acct["cash"] + sum(n * px.get(s, 0.0) for s, n in acct["positions"].items()), 2))
+    as_of = pd.Timestamp(out["as_of"])
+    out["is_month_end"] = bool(as_of == as_of + pd.offsets.BMonthEnd(0))
+    return out
+
+
+@app.post("/api/rebalance/{strategy}/{market}/confirm")
+def rebalance_confirm(strategy: str, market: str):
+    """Store this rebalance as computed now (book_rebalances: targets and orders), so the fills you record
+    next carry its id. Nothing is traded: the orders are placed by hand at the broker."""
+    from ..backtesting import rebalance
+    from ..strategies import portfolio_strategies
+
+    if market not in MARKETS or strategy not in portfolio_strategies():
+        raise HTTPException(404, "unknown strategy or market")
+    if not hasattr(portfolio_strategies()[strategy], "lookback"):
+        raise HTTPException(400, f"{strategy} does not rank stocks")
+    return rebalance.confirm(strategy, market)
+
+
+def _combo(market: str, capital: float | None):
+    """The combination's orders from its book's ledger: the momentum sleeve starts from what the book
+    holds, and the account defaults to the book's value at the latest closes."""
+    from ..backtesting import combination, ledger, rebalance
+
+    acct = ledger.holdings_of(combination.CombinationStrategy.key, market)
+    held = acct["positions"]
+    px = rebalance._last_closes(market, list(held), None)
+    value = acct["cash"] + sum(n * px.get(s, 0.0) for s, n in held.items())
+    use = capital if capital is not None else (round(value, 2) if value > 0 else None)
+    out = combination.current_orders(market, use, holdings=held if acct["trades"] else None)
+    out.update(account_value=round(value, 2), cash=acct["cash"], account_trades=acct["trades"],
+               capital_from="you" if capital is not None else ("the book" if use else None))
+    return out
+
+
 @app.get("/api/combo-orders/{market}")
 def combo_orders(market: str, capital: float | None = None):
     """The momentum + dual momentum combination's book on the latest stored bar, per sleeve and in
-    money for `capital` -- each sleeve's own live selection scaled to the combination's split
-    (`combination.current_orders`). The strategy trades only at the month-end close."""
-    from ..backtesting import combination
-
+    money -- each sleeve's own live selection scaled to the combination's split
+    (`combination.current_orders`). The momentum sleeve starts from what the combination's book holds
+    (its ledger), and the money defaults to that book's value; `capital` overrides it. The strategy
+    trades only at the month-end close."""
     if market not in MARKETS:
         raise HTTPException(400, f"unknown market {market}")
     if capital is not None and capital <= 0:
         raise HTTPException(400, "capital must be positive")
-    return combination.current_orders(market, capital)
+    return _combo(market, capital)
+
+
+@app.post("/api/combo-orders/{market}/confirm")
+def combo_confirm(market: str):
+    """Store the combination's rebalance as computed now, against its book's value."""
+    from ..backtesting import combination, ledger
+
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    o = _combo(market, None)
+    if not o.get("capital"):
+        raise HTTPException(400, "the combination's book holds nothing yet: record its cash first")
+    targets = [{"symbol": x["symbol"], "label": x.get("label"), "sleeve": x["sleeve"], "weight_pct": x["account_pct"],
+                "shares": x.get("shares"), "amount": x.get("amount"), "price": x.get("price")} for x in o["orders"]]
+    rid = ledger.save_rebalance(combination.CombinationStrategy.key, market, o["as_of"], o["spec_id"], targets,
+                                o["orders"] + [{"other": x} for x in o["other"]])
+    return {"id": rid, "orders": o}
 
 
 _generic_cache: dict = {}   # (strategy, spec, market, symbol, last bar, years) -> response

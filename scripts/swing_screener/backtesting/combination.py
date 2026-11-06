@@ -218,17 +218,24 @@ def _close(market: str, ticker: str) -> pd.Series | None:
 
 
 def current_orders(market: str, capital: float | None = None,
-                   momentum_weight: float = CombinationStrategy.momentum_weight) -> dict:
+                   momentum_weight: float = CombinationStrategy.momentum_weight,
+                   holdings: dict | None = None) -> dict:
     """The book this combination would hold if it rebalanced on the latest stored session: each
     sleeve's own live selection (`baseline.current_selection`, `dm.current_pick` -- the functions
     their backtests use), scaled to the combination's split, and to `capital` when one is given.
 
     A reading as of the last bar, not a rebalance and not a recommendation: the strategy trades only
     at the month-end close, so this says what the rules point at now.
+
+    `holdings` (symbol -> shares, the combination book's ledger) is what you actually hold: the momentum
+    sleeve's decision starts from it (`current_selection(held_now=...)`, which matters under a rank
+    buffer), each stock order says how many shares you hold and the change, and the replayed model
+    sleeve comes back beside it as `drift`. A holding that is not one of the sleeve's stocks is listed
+    as `other` -- the dual sleeve's fund, or something to sell.
     """
     from ..strategies import portfolio_strategies
     dms = portfolio_strategies()[DUAL_SLEEVE]
-    mom = baseline.current_selection(market, MOMENTUM_SLEEVE)
+    mom = baseline.current_selection(market, MOMENTUM_SLEEVE, held_now=set(holdings) if holdings is not None else None)
     dual = dm.current_pick(market, dms.lookback_months)
     w_mom, w_dual = momentum_weight, 1.0 - momentum_weight
 
@@ -242,9 +249,13 @@ def current_orders(market: str, capital: float | None = None,
     for r in held:
         share = w_mom * r["weight_pct"] / tot
         amount = money(share)
+        shares = int(amount // r["close"]) if amount and r["close"] else None
+        have = (holdings or {}).get(r["symbol"], 0.0)
         orders.append({"sleeve": MOMENTUM_SLEEVE, "symbol": r["symbol"], "label": None,
                        "account_pct": round(share * 100, 2), "amount": amount, "price": r["close"],
-                       "shares": int(amount // r["close"]) if amount and r["close"] else None})
+                       "shares": shares, "rank": r["rank"], "in_model": r.get("in_model"),
+                       "held": have if holdings is not None else None,
+                       "change": (shares - have) if holdings is not None and shares is not None else None})
     pick = next((r for r in dual["rows"] if r["held"]), None)
     if pick:
         orders.append({"sleeve": DUAL_SLEEVE, "symbol": pick["key"], "label": pick["label"],
@@ -253,10 +264,17 @@ def current_orders(market: str, capital: float | None = None,
     as_of = pd.Timestamp(mom.get("as_of") or dual["as_of"])
     # the strategy trades at the LAST session of each month; a weekday check (holidays aside)
     is_month_end = as_of == as_of + pd.offsets.BMonthEnd(0)
+    stock_targets = {o["symbol"] for o in orders if o["sleeve"] == MOMENTUM_SLEEVE}
+    other = [{"symbol": s_, "shares": n} for s_, n in sorted((holdings or {}).items()) if s_ not in stock_targets]
+    from .rebalance import drift
+    sleeve_held = {s_ for s_ in (holdings or {}) if s_ in set(mom.get("model_held") or []) | stock_targets}
     return {"market": market, "capital": capital, "momentum_weight": w_mom,
+            "from_holdings": holdings is not None, "other": other,
+            "drift": drift(sleeve_held, set(mom.get("model_held") or [])) if holdings is not None else None,
             "spec_id": CombinationStrategy.spec_id(),
             "sleeves": {MOMENTUM_SLEEVE: {"as_of": mom.get("as_of"), "spec_id": mom.get("spec_id"),
-                                          "eligible": mom.get("eligible"), "regime": mom.get("regime")},
+                                          "eligible": mom.get("eligible"), "regime": mom.get("regime"),
+                                          "replayed_rebalances": mom.get("replayed_rebalances")},
                         DUAL_SLEEVE: {"as_of": dual["as_of"], "spec_id": dms.spec_id(),
                                       "lookback_months": dual["lookback_months"], "rows": dual["rows"]}},
             "as_of": str(as_of.date()), "is_month_end": bool(is_month_end), "orders": orders}

@@ -130,11 +130,15 @@ def orders(book: str, market: str) -> dict:
     from . import baseline
 
     cls = portfolio_strategies()[book]
-    sel = baseline.current_selection(market, book)
     acct = get_positions(book, market)
     held = acct["positions"]
+    # the decision starts from what you actually hold (with a rank buffer, a held stock ranked between
+    # top_n and hold_rank is kept); the replayed model book comes back beside it as `model_held`
+    sel = baseline.current_selection(market, book, held_now=set(held))
     target_rows = [r for r in sel.get("rows", []) if r.get("held") and r.get("weight_pct") is not None]
     price = {r["symbol"]: r["close"] for r in sel.get("rows", [])}
+    rank = {r["symbol"]: r["rank"] for r in sel.get("rows", [])}
+    model = set(sel.get("model_held") or [])
     missing = [s for s in held if s not in price]
     price.update(_last_closes(market, missing, sel.get("as_of")))
 
@@ -155,6 +159,7 @@ def orders(book: str, market: str) -> dict:
             rows.append({"symbol": s, "weight_pct": 0.0, "price": price.get(s), "held": sh, "target": 0})
     cost = float(getattr(cls, "cost_bps", 0.0)) / 10_000
     for r in rows:
+        r["rank"], r["in_model"] = rank.get(r["symbol"]), r["symbol"] in model
         d = r["target"] - r["held"]
         r["change"] = d
         r["action"] = ("SELL ALL" if r["target"] == 0 and r["held"] > 0 else
@@ -174,5 +179,23 @@ def orders(book: str, market: str) -> dict:
         "sells": round(sells, 2), "buys": round(buys, 2),
         "cash_after": round(acct["cash"] + sells - buys, 2),
         "est_costs": round((sells + buys) * cost, 2), "cost_bps": float(getattr(cls, "cost_bps", 0.0)),
+        "hold_rank": sel.get("hold_rank"), "replayed_rebalances": sel.get("replayed_rebalances"),
+        "drift": drift(set(held), model),
         "rows": rows,
     }
+
+
+def drift(held: set, model: set) -> dict:
+    """Where your holdings and the model book (the strategy replayed from an empty book) part."""
+    return {"model_only": sorted(model - held), "held_only": sorted(held - model)}
+
+
+def confirm(book: str, market: str) -> dict:
+    """Store the rebalance as computed now -- its targets and orders -- so the trades that execute it
+    can be linked to it (`book_trades.rebalance_id`) and read against it later."""
+    from . import ledger
+    o = orders(book, market)
+    targets = [{"symbol": r["symbol"], "weight_pct": r["weight_pct"], "shares": r["target"], "price": r["price"]}
+               for r in o["rows"] if r["target"] > 0]
+    rid = ledger.save_rebalance(book, market, o["as_of"], o["spec_id"], targets, o["rows"])
+    return {"id": rid, "orders": o}

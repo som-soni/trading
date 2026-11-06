@@ -5443,6 +5443,7 @@ function strategyRules(host, d, key) {
  *  strategy only acts on its rebalance date, which the note says so nobody reads it as a buy list.
  */
 async function strategyHoldings(host, alive, d, key) {
+  if (key === "dual_momentum") return dualHoldings(host, alive, key);
   let mkt = store.get("setupMkt:" + key, null) || pageMarket();
   let show = store.get("selShow:" + key, "held");
   // A paint takes ~18s (it ranks the whole universe), so switching market starts a second one
@@ -5505,6 +5506,39 @@ async function strategyHoldings(host, alive, d, key) {
   };
   paint();
 }
+
+/** Dual momentum's Holdings tab: the one asset it holds now (/api/dual-pick -> dual_momentum.current_pick,
+ * the rule its backtest runs), and the book's account. It holds an index through a fund you choose, so the
+ * order is "the whole book in the pick" -- record the fund you buy with the account form. */
+async function dualHoldings(host, alive, key) {
+  let mkt = store.get("setupMkt:" + key, null) || pageMarket();
+  let seq = 0;
+  const paint = async () => {
+    const my = ++seq;
+    host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}<span class="spacer"></span><button id="run1">Refresh</button></div>
+      <div id="dhead">${LOADING}</div><div id="acctbox"></div>`;
+    host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { mkt = b.dataset.v; store.set("setupMkt:" + key, mkt); paint(); });
+    host.querySelector("#run1").onclick = () => paint();
+    const r = await api(`/api/dual-pick/${mkt}`).catch(() => null);
+    if (!alive() || my !== seq) return;
+    const box = host.querySelector("#dhead");
+    if (!r) { box.innerHTML = `<div class="empty"><b>The pick could not be read on the stored prices.</b></div>`; return; }
+    const pick = r.rows.find((x) => x.held);
+    const month = new Date(r.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
+    box.innerHTML = `<div class="muted small sd-intro"><b>As of the ${esc(prettyDate(r.as_of))} close: ${esc(pick ? pick.label : "—")}.</b>
+        ${r.is_month_end ? `This is <b>${esc(month)}'s last session</b>: the rebalance is to hold it.` : `Not a rebalance day — the strategy acts at the close of the last session of ${esc(month)}.`}
+        The whole book (${bookMoney(mkt, r.account_value)} at the latest closes) goes in the pick, held through ${esc(pick?.priced_by || "a fund tracking it")}.
+        Rules ${esc(r.spec_id)}. What the rules point at, not a recommendation.</div>
+      <table class="data compact"><thead><tr><th>Choice</th><th>Priced by</th><th class="num">${r.lookback_months}-month return</th><th></th></tr></thead><tbody>
+      ${r.rows.map((x) => `<tr><td>${esc(x.label)}${x.safe ? ` <span class="muted small">(safe asset)</span>` : ""}</td>
+        <td class="muted small">${esc(x.priced_by || "")}</td>
+        <td class="num">${x.return_pct == null ? "—" : `${x.return_pct >= 0 ? "+" : ""}${x.return_pct.toFixed(2)}%`}</td>
+        <td>${x.held ? `<span class="tag pos">held</span>` : ""}</td></tr>`).join("")}</tbody></table>`;
+    bookAccount(host.querySelector("#acctbox"), alive, () => my === seq, key, mkt, paint);
+  };
+  paint();
+}
+
 
 /** Your account under a ranking strategy, and the trades that turn it into the strategy's book.
  *
@@ -5677,7 +5711,8 @@ async function brokerSync(host, prop, key, mkt, alive, current, onDone) {
 }
 
 
-/** The rebalance orders against your holdings. `o` is /api/rebalance -> rebalance.orders. */
+/** The rebalance orders against your holdings, the model book beside them, and "Confirm rebalance".
+ * `o` is /api/rebalance -> rebalance.orders. */
 function rebalancePanel(host, o, key, mkt, onRecorded) {
   const money = (v) => bookMoney(mkt, v);
   const month = new Date(o.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
@@ -5689,13 +5724,43 @@ function rebalancePanel(host, o, key, mkt, onRecorded) {
       cash after ${money(o.cash_after)}; costs at the strategy's ${o.cost_bps} bps a side ≈ ${money(o.est_costs)}.
       Whole shares, sized as the backtest sizes them. What the rules point at, not a recommendation.
       ${o.unpriced.length ? `<br><b>No stored price for ${esc(o.unpriced.join(", "))}</b> — left out of the account value; check the symbol.` : ""}</div>
-    <div id="otbl"></div>`;
-  const cols = ["action", "symbol", "held", "target", "change", "price", "amount", "weight_pct"];
+    <div id="drift"></div><div id="otbl"></div>
+    <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
+      <button class="sm" id="confirmreb" title="Store these targets and orders as computed now, then record the fills that execute them">Confirm rebalance…</button>
+      <span class="muted small">Stores the targets and orders as computed now, then lets you record the fills against them.</span></div>
+    <div id="rebfills"></div>`;
+  driftNote(host.querySelector("#drift"), o.drift, o.hold_rank, o.replayed_rebalances, mkt);
+  const cols = ["action", "symbol", "held", "target", "change", "price", "amount", "weight_pct", "rank", "model"];
   dataTable(host.querySelector("#otbl"), cols,
-    o.rows.map((x) => [x.action, x.symbol, x.held, x.target, x.change, x.price, x.amount, x.weight_pct]), {
+    o.rows.map((x) => [x.action, x.symbol, x.held, x.target, x.change, x.price, x.amount, x.weight_pct, x.rank ?? null, x.in_model ? "yes" : ""]), {
       name: `rebalance_${key}`, noStack: true, rowHint: "Click a row to open its chart",
       rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`),
     });
+  host.querySelector("#confirmreb").onclick = async () => {
+    const box = host.querySelector("#rebfills");
+    box.innerHTML = LOADING;
+    let r;
+    try { r = await api(`/api/rebalance/${encodeURIComponent(key)}/${mkt}/confirm`, { method: "POST" }); }
+    catch (e) { box.innerHTML = `<span style="color:var(--neg, #e5484d)">${esc(String(e.message || e))}</span>`; return; }
+    const fills = r.orders.rows.filter((x) => x.change).map((x) => ({ side: x.change > 0 ? "BUY" : "SELL", symbol: x.symbol,
+      shares: Math.abs(x.change), price: x.price, costs: Math.round(Math.abs(x.change) * x.price * r.orders.cost_bps / 100) / 100,
+      price_from: "close", note: `rebalance #${r.id}: ${x.action}` }));
+    proposedFills(box, key, mkt, fills, { source: "manual", rebalanceId: r.id, onDone: onRecorded,
+      intro: `<b>Rebalance #${r.id} stored</b> (targets and orders as of the ${esc(prettyDate(r.orders.as_of))} close). Record the fills as they
+        happen: correct each price and cost to the contract note; untick what you did not trade. Costs are estimated at the strategy's
+        ${r.orders.cost_bps} bps a side.` });
+  };
+}
+
+/** Where your holdings and the model book part: the model is the strategy replayed from an empty book; the
+ * orders start from what you hold. */
+function driftNote(host, d, holdRank, replayed, mkt) {
+  if (!d || (!d.model_only.length && !d.held_only.length)) { host.innerHTML = ""; return; }
+  host.innerHTML = `<div class="sd-intro small"><b>Drift from the model book.</b>
+    The orders start from what you hold${holdRank ? `: a held stock stays while it ranks within ${holdRank}` : ""}. The model book — the strategy
+    ${replayed ? `replayed from an empty book over ${replayed} month-ends` : "on the latest close"} — differs:
+    ${d.model_only.length ? `<br>The model holds, you don't: ${d.model_only.map((s) => esc(bookSym(mkt, s))).join(", ")}.` : ""}
+    ${d.held_only.length ? `<br>You hold, the model doesn't: ${d.held_only.map((s) => esc(bookSym(mkt, s))).join(", ")}.` : ""}</div>`;
 }
 
 
@@ -5713,12 +5778,13 @@ async function strategyOrders(host, alive, key) {
   const paint = async () => {
     const my = ++seq;
     const cur = mktInfo(mkt).currency || "";
-    const cap = store.get("ordersCap:" + mkt, null);
+    const cap = store.get("ordersCap:" + mkt, null);   // an account size you typed; empty = this book's own value
     host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}<span class="spacer"></span>
         <label class="small muted">Account ${esc(cur)} <input id="cap" type="number" min="0" step="any" style="width:9em"
           value="${cap ?? ""}" placeholder="amount"></label>
         <button id="run1" title="Re-read both sleeves on the latest stored prices">Refresh</button></div>
-      <div id="ohead"></div><div id="dual"></div><h3>Book</h3><div id="tbl">${LOADING}</div>`;
+      <div id="ohead"></div><div id="dual"></div><h3>Book</h3><div id="odrift"></div><div id="tbl">${LOADING}</div><div id="oother"></div>
+      <div id="oconfirm"></div><div id="acctbox"></div>`;
     wireHead();
     const q = cap ? `?capital=${encodeURIComponent(cap)}` : "";
     const r = await api(`/api/combo-orders/${mkt}${q}`).catch(() => null);
@@ -5737,7 +5803,8 @@ async function strategyOrders(host, alive, key) {
       It shows what the rules point at — ${Math.round(r.momentum_weight * 100)}% in the momentum sleeve's
       ${r.orders.filter((o) => o.sleeve === "momentum_vol_scaled").length} stocks, the rest in dual momentum's one holding —
       an illustration of the rules, not a recommendation. Rules: combination ${esc(r.spec_id)}, momentum ${esc(ms.spec_id || "")},
-      dual ${esc(ds.spec_id)}. ${r.capital ? `Shares are rounded down, so a little cash is left over.` : `Enter an account size for amounts and shares.`}</div>`;
+      dual ${esc(ds.spec_id)}. ${r.capital ? `Sized on ${r.capital_from === "the book" ? `this book's value, ${bookMoney(mkt, r.capital)} at the latest closes` : "the account size you entered"}; shares are rounded down, so a little cash is left over.` : `Enter an account size, or record this book's holdings below, for amounts and shares.`}
+      ${r.from_holdings ? `The momentum sleeve starts from what this book holds.` : ""}</div>`;
     const pick = ds.rows.find((x) => x.held);
     host.querySelector("#dual").innerHTML = `<h3>Dual momentum: ${esc(pick ? pick.label : "—")}</h3>
       <div class="muted small">Holds the best ${ds.lookback_months}-month return, if it beats the safe asset's; otherwise the safe asset.
@@ -5747,9 +5814,35 @@ async function strategyOrders(host, alive, key) {
         <td class="muted small">${esc(x.priced_by || "")}</td>
         <td class="num">${x.return_pct == null ? "—" : `${x.return_pct >= 0 ? "+" : ""}${x.return_pct.toFixed(2)}%`}</td>
         <td>${x.held ? `<span class="tag pos">held</span>` : ""}</td></tr>`).join("")}</tbody></table>`;
-    const cols = ["sleeve", "symbol", "account_pct", ...(r.capital ? ["amount", "price", "shares"] : ["price"])];
+    const own = r.from_holdings;
+    const cols = ["sleeve", "symbol", "account_pct", ...(r.capital ? ["amount", "price", "shares"] : ["price"]), ...(own ? ["held", "change"] : [])];
     const rows = r.orders.map((o) => [o.sleeve === "momentum_vol_scaled" ? "Momentum" : "Dual momentum",
-      o.label || o.symbol, o.account_pct, ...(r.capital ? [o.amount, o.price, o.shares] : [o.price])]);
+      o.label || o.symbol, o.account_pct, ...(r.capital ? [o.amount, o.price, o.shares] : [o.price]), ...(own ? [o.held, o.change] : [])]);
+    driftNote(host.querySelector("#odrift"), r.drift, null, ms.replayed_rebalances, mkt);
+    if (own && r.other.length) host.querySelector("#oother").innerHTML = `<div class="muted small sd-intro"><b>Other holdings in this book:</b>
+      ${r.other.map((x) => `${esc(bookSym(mkt, x.symbol))} ${x.shares}`).join(", ")} — the dual sleeve's fund, or a stock the momentum sleeve no longer holds (sell it).</div>`;
+    if (r.capital && r.capital_from === "the book") {
+      const box = host.querySelector("#oconfirm");
+      box.innerHTML = `<div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
+        <button class="sm" id="confirmreb">Confirm rebalance…</button>
+        <span class="muted small">Stores these targets and orders as computed now, then lets you record the fills against them.</span></div><div id="rebfills"></div>`;
+      box.querySelector("#confirmreb").onclick = async () => {
+        const fb = box.querySelector("#rebfills");
+        fb.innerHTML = LOADING;
+        let c;
+        try { c = await api(`/api/combo-orders/${mkt}/confirm`, { method: "POST" }); }
+        catch (e) { fb.innerHTML = `<span style="color:var(--neg, #e5484d)">${esc(String(e.message || e))}</span>`; return; }
+        const fills = c.orders.orders.filter((o) => o.change).map((o) => ({ side: o.change > 0 ? "BUY" : "SELL", symbol: o.symbol,
+          shares: Math.abs(o.change), price: o.price, costs: 0, price_from: "close", note: `rebalance #${c.id}` }))
+          .concat(c.orders.other.filter((x) => !c.orders.orders.some((o) => o.symbol === x.symbol))
+            .map((x) => ({ side: "SELL", symbol: x.symbol, shares: x.shares, price: null, costs: 0, note: `rebalance #${c.id}: not in the momentum sleeve — untick the dual sleeve's fund` })));
+        proposedFills(fb, key, mkt, fills, { source: "manual", rebalanceId: c.id, onDone: paint, checked: (f) => f.price != null,
+          intro: `<b>Rebalance #${c.id} stored.</b> The momentum sleeve's changes at the latest close — correct each price and cost to the contract note.
+            The dual sleeve's move (to ${esc(pick ? pick.label : "—")}, ${bookMoney(mkt, (1 - c.orders.momentum_weight) * c.orders.capital)}) is made in the fund you
+            hold it through: record that fund's trade with the account form below.` });
+      };
+    }
+    bookAccount(host.querySelector("#acctbox"), alive, () => my === seq, key, mkt, paint);
     dataTable(tbl, cols, rows, {
       name: `orders_${key}`, sort: ["account_pct", -1], noStack: true,
       rowHint: "Click a stock to open its chart",

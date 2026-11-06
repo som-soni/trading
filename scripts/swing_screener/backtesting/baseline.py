@@ -281,7 +281,7 @@ _SELECTION_CACHE: dict = {}
 
 
 def current_selection(market: str, strategy_key: str, limit: int | None = None,
-                      replay_months: int = 36) -> dict:
+                      replay_months: int = 36, held_now=None) -> dict:
     """What the strategy would hold if it rebalanced on the latest stored bar.
 
     The portfolio equivalent of a screener's "setups today", and computed by the SAME selection the
@@ -290,6 +290,12 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
 
     It is a ranking as of the last bar, not a rebalance: the strategy only acts on its rebalance
     date, so this answers "what does the rule point at now", not "what should I buy today".
+
+    `held_now` is the set of symbols you actually hold (a book's ledger). With a rank buffer the
+    decision depends on what is held going in, so given it the book is `buffered_target(ranking,
+    held_now)` -- your holdings, not the model's -- and the replayed model book is returned beside
+    it as `model_held`, to show where the two have drifted apart. Without a buffer the two agree by
+    construction (the plain top N).
     """
     from ..strategies import portfolio_strategies
 
@@ -347,9 +353,19 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     if not full.any():
         return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
     today = px.index[full][-1]
-    key = (market, strategy_key, str(today.date()), cls.spec_id())
-    if key in _SELECTION_CACHE:
-        return _SELECTION_CACHE[key]
+    key = (market, strategy_key, str(today.date()), cls.spec_id(), replay_months)
+    if key not in _SELECTION_CACHE:
+        if len(_SELECTION_CACHE) > 8:
+            _SELECTION_CACHE.clear()
+        _SELECTION_CACHE[key] = _selection_state(market, cls, today, px, dv, tr, sma200, buffered, hold_rank,
+                                                 rank, weighting, vol_window)
+    return _selection_rows(_SELECTION_CACHE[key], market, strategy_key, cls, limit, held_now)
+
+
+def _selection_state(market, cls, today, px, dv, tr, sma200, buffered, hold_rank, rank, weighting,
+                     vol_window) -> dict:
+    """The part of `current_selection` that reads the whole universe (cached): the eligible ranking
+    on `today`, the model book replayed into it, and the market regime."""
 
     cfg = MARKETS[market]
     bench = cache.load_cached(market, cfg.benchmark_ticker)
@@ -393,6 +409,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
             replayed += 1
         held = buffered_target(full, book, cls.top_n, hold_rank)
     else:
+        book = []
         held = full[: cls.top_n]
     # The market-regime switch, read on the same close as the ranking with the same rule run() uses:
     # while it is off the strategy holds nothing, so the page must not list a book it would not hold.
@@ -407,6 +424,29 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
         regime_state = {"kind": kind, "on": on}
         if not on:
             held = []
+    vol_today = None
+    if weighting == "inverse_vol":
+        vols = realised_vol(tr, vol_window)
+        vol_today = vols.loc[today] if today in vols.index else None
+    return {"today": today, "mom": mom, "full": full, "rank_of": rank_of, "model_held": held,
+            "replay_book": book, "replayed": replayed, "regime": regime_state, "buffered": buffered,
+            "hold_rank": hold_rank, "weighting": weighting, "vol_today": vol_today,
+            "close": px.loc[today], "turnover": dv.loc[today] if today in dv.index else None}
+
+
+def _selection_rows(st: dict, market: str, strategy_key: str, cls, limit, held_now) -> dict:
+    """The rows `current_selection` returns, from the cached state: the model's book, or -- given
+    `held_now` -- the book the rule keeps starting from what you actually hold."""
+    today, mom, full, rank_of = st["today"], st["mom"], st["full"], st["rank_of"]
+    model_held = st["model_held"]
+    if held_now is None:
+        held = model_held
+    elif st["regime"] is not None and not st["regime"]["on"]:
+        held = []
+    elif st["buffered"]:
+        held = buffered_target(full, set(held_now), cls.top_n, st["hold_rank"])
+    else:
+        held = full[: cls.top_n]
     # what the page lists: the top of the ranking, plus any held name the buffer kept below it
     ranked = full[: (limit or cls.top_n)]
     ranked += [sym for sym in held if sym not in set(ranked)]
@@ -414,32 +454,30 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     # it points at; the weight says where the money goes, and the two differ enough to matter --
     # the liquid-ETF defect v1.1 fixed was invisible in the ranking and obvious in the weights.
     weights = {}
-    if weighting == "inverse_vol":
-        vols = realised_vol(tr, vol_window)
+    if st["weighting"] == "inverse_vol":
+        vt = st["vol_today"]
         inv = {}
         for sym in held:
-            v = vols.loc[today, sym] if sym in vols.columns and today in vols.index else float("nan")
+            v = vt[sym] if vt is not None and sym in vt.index else float("nan")
             inv[sym] = 1.0 / float(v) if pd.notna(v) and v > 0 else 0.0
         tot = sum(inv.values())
         weights = {k: v / tot for k, v in inv.items()} if tot > 0 else {}
     else:
         weights = {sym: 1.0 / len(held) for sym in held} if held else {}
+    close, dv_t = st["close"], st["turnover"]
     rows = [{
         "rank": rank_of[sym], "symbol": sym, "score": round(float(mom[sym]), 4),
-        "close": round(float(px.loc[today, sym]), 2),
-        "turnover": (round(float(dv.loc[today, sym])) if today in dv.index and sym in dv.columns
-                     and pd.notna(dv.loc[today, sym]) else None),
+        "close": round(float(close[sym]), 2),
+        "turnover": (round(float(dv_t[sym])) if dv_t is not None and sym in dv_t.index
+                     and pd.notna(dv_t[sym]) else None),
         "weight_pct": (round(weights[sym] * 100, 2) if sym in weights else None),
-        "held": sym in set(held),
+        "held": sym in set(held), "in_model": sym in set(model_held),
     } for sym in ranked]
-    out = {"as_of": str(today.date()), "strategy": strategy_key, "market": market,
-           "spec_id": cls.spec_id(), "eligible": len(mom), "top_n": cls.top_n, "rows": rows,
-           "hold_rank": hold_rank if buffered else None, "replayed_rebalances": replayed,
-           "regime": regime_state}
-    if len(_SELECTION_CACHE) > 8:
-        _SELECTION_CACHE.clear()
-    _SELECTION_CACHE[key] = out
-    return out
+    return {"as_of": str(today.date()), "strategy": strategy_key, "market": market,
+            "spec_id": cls.spec_id(), "eligible": len(mom), "top_n": cls.top_n, "rows": rows,
+            "hold_rank": st["hold_rank"] if st["buffered"] else None, "replayed_rebalances": st["replayed"],
+            "regime": st["regime"], "held": list(held), "model_held": list(model_held),
+            "from_holdings": held_now is not None}
 
 
 def _new_holding(today) -> dict:
