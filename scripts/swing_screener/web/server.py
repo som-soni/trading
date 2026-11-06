@@ -1374,17 +1374,16 @@ def stage_analysis_live(market: str, symbol: str, date: str | None = None, years
     provisional = bool(wk.index[-1] > as_of_ts)
     labels = [d.strftime("%Y-%m-%d") for d in days]
     lo_i = max(0, len(wk) - years * 52)
+    # each stage drawn from the week its move began (the breakout, the breakdown), as Weinstein draws
+    # it -- stage_periods, known `confirm_weeks` later; the gates read `st`, the stage as known each week
     segs: list[dict] = []
-    for i in range(lo_i, len(wk)):
-        v = int(st.iloc[i])
-        if not v:
+    for p in stage_mod.stage_periods(wk):
+        a, b = max(p["start"], lo_i), p["end"]
+        if b < lo_i:
             continue
-        if segs and segs[-1]["stage"] == v:
-            segs[-1].update(to=labels[i], high=max(segs[-1]["high"], float(wk["high"].iloc[i])),
-                            low=min(segs[-1]["low"], float(wk["low"].iloc[i])), weeks=segs[-1]["weeks"] + 1)
-        else:
-            segs.append({"stage": v, "from": labels[i], "to": labels[i], "weeks": 1,
-                         "high": float(wk["high"].iloc[i]), "low": float(wk["low"].iloc[i])})
+        segs.append({"stage": p["stage"], "from": labels[a], "to": labels[b], "known": labels[p["known"]],
+                     "weeks": b - a + 1, "high": float(wk["high"].iloc[a:b + 1].max()),
+                     "low": float(wk["low"].iloc[a:b + 1].min())})
     if segs:
         segs[-1]["ongoing"] = True
     state, slope = stage_mod.line_state(wk)
@@ -1394,9 +1393,9 @@ def stage_analysis_live(market: str, symbol: str, date: str | None = None, years
         "line": [{"time": t, "value": round(float(v), 4)}
                  for t, v in zip(labels[lo_i:], line.iloc[lo_i:]) if v == v],
         "stages": segs,
-        # The machine holds a stage until the new one's condition has held this many weeks, so a
-        # breakout ENTRY necessarily leads the band that ratifies it -- the chart says so rather
-        # than leaving the two looking contradictory. The number is the strategy's, not retyped.
+        # The machine holds a stage until the new one's condition has held this many weeks; the band
+        # is drawn from the week the move began, so the chart says when it was confirmed rather than
+        # leaving a band that starts before anything could know it. The number is the strategy's.
         "confirm_weeks": int(stage_mod.CONFIRM_WEEKS),
         "current": {"stage": int(done.iloc[-1]) or None if len(done) else None,
                     "line_state": state,

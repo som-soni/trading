@@ -6,9 +6,9 @@ top, Stage 4 a decline. This buys the Stage 1-to-2 transition and holds while th
 stays above the line.
 
 The stage itself comes from `stage_series`, a state machine with memory: a stage persists until
-the weekly close has been on the other side of the line for CONFIRM_WEEKS weeks, and a flat line
-reads as Stage 1 or Stage 3 according to what came before it — the one question a pointwise
-slope-and-side read can never answer. The chart's Stage analysis indicator and the market/sector
+the next stage's condition has held CONFIRM_WEEKS weeks -- a breakout above the base, a breakdown
+below the top, the line turning -- and a flat line reads as Stage 1 or Stage 3 according to what
+came before it, the one question a pointwise slope-and-side read can never answer. The chart's Stage analysis indicator and the market/sector
 gates all draw from this same function, so there is exactly one implementation of the rule.
 
 THE ONLY WEEKLY STRATEGY HERE. Everything else in this package decides on daily bars. That is not
@@ -111,6 +111,8 @@ DIST_VOL_WEEKS = 10
 #: it -- the first lower high. A swing high is the highest high of SWING_WEEKS weeks either side, so it
 #: is known SWING_WEEKS weeks after it, and that is the week it can sell.
 EXIT_ON_LOWER_HIGH = 0
+#: Also the stage machine's swing low (2.11): the support whose break starts a Stage 2's fall to Stage 4. So
+#: the scan reads it, and it is not signal-exempt.
 SWING_WEEKS = 2
 #: >0 asks for a DECISIVE break (2.10): the trend exit sells only on a week that closes more than this percent
 #: below the line, not on any close below it. Off by default. The canonical investor holds through a shallow
@@ -165,100 +167,149 @@ def line_state(weekly: pd.DataFrame) -> tuple[str, float]:
     return ("rising" if c > b else "falling" if c < -b else "flat"), c
 
 
-def stage_series(weekly: pd.DataFrame) -> pd.Series:
+def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None]]:
     """Weinstein's stage per weekly bar, as a state machine with memory (0 = not yet decidable).
 
-    A pointwise read (slope x side-of-the-line) cannot tell Stage 1 from Stage 3 -- both are a
-    flat line -- and flickers whenever the close wobbles around it. With memory, both problems
-    disappear by construction: a flat line is Stage 3 only when an ADVANCE came before it, and
-    every transition needs its condition to hold for CONFIRM_WEEKS consecutive weeks, counted from
-    the last transition (so every stage lasts at least that long). The slope state has HYSTERESIS:
-    once "rising" it stays rising until the line is no higher than SLOPE_WEEKS ago, once "falling"
-    until it is no lower -- a line wobbling about the FLAT_BAND_PCT edge no longer toggles the stage.
-    Transitions:
+    Returns (stage, onset) per week: the stage as known at that week's close, and the index of the week
+    the move that produced it began. A stage changes only when the next stage's condition has held
+    CONFIRM_WEEKS weeks in a row, so the stage as KNOWN lags the move by that much; `onset` dates the
+    stage back to the first of those weeks, which is how Weinstein draws it (Stage 2 from the breakout
+    week). Both are point in time: at the confirming week the run behind it has already closed.
 
-      1 -> 2  the close above the line for C weeks and EITHER the line rising for C weeks (above a
-              rising line is Stage 2, Weinstein's own test) OR, under a line that is merely not
-              falling, the close above the base's own high with the base at least STAGE1_MIN_WEEKS
-              old (the breakout; a two-week bounce above a flat line is not one)
-      1 -> 4  close below the line with the line falling (a base that failed)
-      2 -> 3  the line stops rising after having risen this Stage 2, or the close holds below it
+    Weinstein's stages turn on PRICE STRUCTURE confirmed by the line: an advance begins with a breakout
+    above the base's resistance, a decline with a breakdown below the top's support, and the 30-week
+    line's slope confirms. So each upward or downward transition starts on a break of the stage's own
+    range (or, downward, on a falling line) and then needs the close to hold its side of the line:
+
+      1 -> 2  starts on a close above the base's high (the highest weekly high of this Stage 1 before
+              that week), the base at least STAGE1_MIN_WEEKS old; holds while the close is above a line
+              that is not falling
+      1 -> 4  starts on a close below the base's low (the lowest weekly low since the decline or the
+              stage before it, so the bottom the base formed on); holds while the close is below a line
+              that is not rising -- a base that failed. A falling line alone does not start it: a base
+              is a range, and only a new low breaks it
+      2 -> 4  starts on a close below the last confirmed weekly swing low, or with the line falling;
+              holds while the close is below the line -- a fast break skips the top
+      2 -> 3  the line rose during this Stage 2, and then it stops rising or the close falls below it,
+              week after week -- the advance stalls
       2 -> 1  the close holds below a line that never rose -- a failed breakout, back to the base
-      2 -> 4  close below with the line falling (a fast break skips the top)
-      3 -> 2  the line rises again with the close above it AND above the Stage 2's own high: a top
-              resolves upward only by breaking out of it
-      3 -> 4  the close holds below a FALLING line; below a line that merely went flat, the top
-              resolves into a new base instead (3 -> 1)
-      4 -> 1  the line stops falling with the close back above it. Never straight to 2: the base
-              comes first, and its breakout is judged by the 1 -> 2 rule
+      3 -> 2  starts on a close above the top's high (the highest weekly high of the Stage 2 and 3 before
+              that week); holds while the close is above a line that is not falling -- only a breakout
+              out of the top resumes the advance
+      3 -> 4  starts on a close below the top's low (the lowest weekly low of this Stage 3 before that
+              week), or with the line falling; holds while the close is below the line
+      4 -> 1  starts on a close above the line; holds while the line is not falling -- the decline
+              ends in a base, with the price crossing back and forth over a line gone flat
+
+    A top never becomes a base (no 3 -> 1) and a decline never becomes an advance (no 4 -> 2): a top
+    resolves only by breaking out of its range or down through it, and a decline goes through a base
+    whose own breakout is the 1 -> 2 rule. The slope is read inside the fixed FLAT_BAND_PCT band each
+    week, with no hysteresis: the transitions need a break of a range, so a line wobbling at the band's
+    edge can delay a stage but no longer toggle it.
     """
+    from ..core import swings as sw
     n = len(weekly)
-    vals = [0] * n
+    vals: list[int] = [0] * n
+    onset: list[int | None] = [None] * n
     if n <= MA_WEEKS + SLOPE_WEEKS:
-        return pd.Series(vals, index=weekly.index, dtype=int)
+        return vals, onset
     chg, band = _slope_and_band(weekly)
-    close, lv, high = weekly["close"].tolist(), ma30(weekly).tolist(), weekly["high"].tolist()
+    close, lv = weekly["close"].tolist(), ma30(weekly).tolist()
+    high, low = weekly["high"].astype(float).tolist(), weekly["low"].astype(float).tolist()
     cv, bv = chg.tolist(), band.tolist()
+    # the last weekly swing low known at each week's close: a swing low is the lowest low of SWING_WEEKS
+    # weeks either side, so it is known SWING_WEEKS weeks after it is made
+    is_lo = sw.swing_low_mask(weekly["low"].astype(float), SWING_WEEKS, SWING_WEEKS).to_numpy()
+    support, last_lo = [float("nan")] * n, float("nan")
+    for j in range(n):
+        if j >= SWING_WEEKS and is_lo[j - SWING_WEEKS]:
+            last_lo = low[j - SWING_WEEKS]
+        support[j] = last_lo
     C = CONFIRM_WEEKS
-    stage, st = 0, "flat"
-    above_w = below_w = 0        # consecutive weeks of the close on one side of the line
-    rising_w = falling_w = 0     # consecutive weeks of the slope state itself
-    not_rising_w = not_falling_w = 0
-    rose2 = False                # did the line actually rise during this Stage 2?
-    peak = base_high = None      # the Stage 2's high so far; the Stage 1's high so far
-    age = 0                      # weeks in the current stage
+    stage, start = 0, None
+    hi = lo = peak = None        # this stage's range before the current week; the advance's high
+    rose2, rising_run = False, 0
+    runs: dict[int, int] = {}    # target stage -> weeks its condition has held, counted from its start
     for i in range(MA_WEEKS + SLOPE_WEEKS, n):
         if lv[i] != lv[i] or cv[i] != cv[i]:   # NaN: carry the last stage
-            vals[i] = stage
+            vals[i], onset[i] = stage, start
             continue
         b = bv[i] if bv[i] == bv[i] else FLAT_BAND_PCT
-        if st == "rising" and cv[i] > 0:
-            pass
-        elif st == "falling" and cv[i] < 0:
-            pass
-        else:
-            st = "rising" if cv[i] > b else "falling" if cv[i] < -b else "flat"
-        above_w, below_w = (above_w + 1, 0) if close[i] > lv[i] else (0, below_w + 1)
-        rising_w = rising_w + 1 if st == "rising" else 0
-        falling_w = falling_w + 1 if st == "falling" else 0
-        not_rising_w = 0 if st == "rising" else not_rising_w + 1
-        not_falling_w = 0 if st == "falling" else not_falling_w + 1
-        up = above_w >= C and not_falling_w >= C
-        prev = stage
+        st = "rising" if cv[i] > b else "falling" if cv[i] < -b else "flat"
+        c, ln = close[i], lv[i]
+        above, below = c > ln, c < ln
         if stage == 0:   # seed: the pointwise read, before there is history to remember
-            above = close[i] > lv[i]
             stage = (2 if above else 1) if st == "rising" else \
                     ((3 if above else 4) if st == "falling" else (3 if above else 1))
-            rose2 = stage == 2 and st == "rising"
-            peak = base_high = high[i]
-        elif stage == 1:
-            if up and (rising_w >= C or (age >= STAGE1_MIN_WEEKS and close[i] > base_high)):
-                stage, rose2 = 2, False
-            elif below_w >= C and falling_w >= C:
-                stage = 4
-            else:
-                base_high = max(base_high, high[i])
+            start, rose2, rising_run = i, False, 0
+            hi, lo, peak = high[i], low[i], high[i]
+            vals[i], onset[i] = stage, start
+            continue
+        rising_run = rising_run + 1 if st == "rising" else 0
+        if stage == 2:
+            rose2 = rose2 or rising_run >= C
+        # (target, the week may START the run, the week HOLDS it), in priority order
+        if stage == 1:
+            cands = ((2, c > hi and i - start >= STAGE1_MIN_WEEKS, above and st != "falling"),
+                     (4, c < lo, below and st != "rising"))
         elif stage == 2:
-            rose2 = rose2 or rising_w >= C
-            peak = max(peak, high[i])
-            if below_w >= C and falling_w >= C: stage = 4
-            elif below_w >= C: stage = 3 if rose2 else 1
-            elif rose2 and not_rising_w >= C: stage = 3
+            cands = ((4, c < support[i] or st == "falling", below),
+                     (3, rose2, below or st != "rising"),
+                     (1, not rose2, below))
         elif stage == 3:
-            if rising_w >= C and above_w >= C and close[i] > peak: stage, rose2 = 2, True
-            elif below_w >= C and falling_w >= C: stage = 4
-            elif below_w >= C and not_falling_w >= C: stage = 1
-        else:  # stage 4
-            if not_falling_w >= C and close[i] > lv[i]: stage = 1
-        if stage != prev:
-            age = 0
-            above_w = below_w = rising_w = falling_w = not_rising_w = not_falling_w = 0
-            if stage == 1: base_high = high[i]
-            if stage == 2: peak = high[i]
+            cands = ((2, c > peak, above and st != "falling"),
+                     (4, c < lo or st == "falling", below))
         else:
-            age += 1
-        vals[i] = stage
-    return pd.Series(vals, index=weekly.index, dtype=int)
+            cands = ((1, above, st != "falling"),)
+        new = None
+        for tgt, begins, holds in cands:
+            k = runs.get(tgt, 0)
+            k = (k + 1 if holds else 0) if k else (1 if begins and holds else 0)
+            runs[tgt] = k
+            if k >= C and new is None:
+                new = tgt
+        if new is not None:
+            k = runs[new]
+            prev, prev_lo, stage, start, runs = stage, lo, new, i - k + 1, {}
+            hi, lo = max(high[start:i + 1]), min(low[start:i + 1])
+            if stage == 1:
+                lo = min(lo, prev_lo)    # a base's support is the low it formed on: the decline's, or the old base's
+            elif stage == 2:
+                rose2 = rising_run >= C
+                peak = hi if prev != 3 else max(peak, hi)
+            elif stage == 3:
+                peak = max(peak, hi)
+        else:
+            hi, lo = max(hi, high[i]), min(lo, low[i])
+            if stage in (2, 3):
+                peak = max(peak, high[i])
+        vals[i], onset[i] = stage, start
+    return vals, onset
+
+
+def stage_series(weekly: pd.DataFrame) -> pd.Series:
+    """Weinstein's stage per weekly bar as known at that week's close (0 = not yet decidable): the
+    state machine `_stage_machine`. Point in time: what the gates and exits read."""
+    return pd.Series(_stage_machine(weekly)[0], index=weekly.index, dtype=int)
+
+
+def stage_periods(weekly: pd.DataFrame) -> list[dict]:
+    """The stages as Weinstein draws them, as of the last week: one period per stage, from the week its
+    move began (the breakout, the breakdown, the line turning) to the week before the next one began.
+    Each period carries `known`, the week the machine confirmed it, CONFIRM_WEEKS after its start. The
+    chart draws these; nothing trades on them, because a period's start is known only at `known`."""
+    vals, onset = _stage_machine(weekly)
+    out: list[dict] = []
+    for i, (v, s) in enumerate(zip(vals, onset)):
+        if not v:
+            continue
+        if not out or out[-1]["stage"] != v or out[-1]["start"] != s:
+            if out:
+                out[-1]["end"] = max(out[-1]["start"], s - 1)
+            out.append({"stage": v, "start": s, "known": i, "end": i})
+        else:
+            out[-1]["end"] = i
+    return out
 
 
 def stage_of(weekly: pd.DataFrame) -> int:
@@ -332,11 +383,33 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.10"
-    # 2.7 to 2.10 change only what happens after evaluate() -- the simulator, and exits -- never the
-    # scan, so the cached signal rows carry forward (CLAUDE.md, signal_version).
-    signal_version = "2.6"
+    version = "2.11"
+    # 2.11 changes the stage machine, which build_context and evaluate read (G7, G8, G9, W2), so the
+    # scan reruns: no signal_version pin (CLAUDE.md).
     changelog = (
+        ("2.11", "2026-11-06",
+         "The stage machine follows Weinstein's definitions: a stage turns on a break of PRICE STRUCTURE, confirmed by "
+         "the line. Checked against the guides' worked examples, 2.10 made three kinds of error. (1) A top became a "
+         "base: a Stage 3 whose close held below a line that was not yet falling went to Stage 1 (3 -> 1), and from "
+         "there the rising line alone made it Stage 2 again -- Nvidia read Stage 2 from 1 April 2022, in the middle of "
+         "its decline. Weinstein's top resolves only by breaking out above its high (3 -> 2) or down through its "
+         "support (3 -> 4), so 3 -> 1 is gone. (2) Stage 2 without a breakout: a close above a rising line for "
+         "{CONFIRM_WEEKS} weeks was enough to leave Stage 1; now 1 -> 2 starts on a close above the base's high, the "
+         "base at least {STAGE1_MIN_WEEKS} weeks old, and holds while the close stays above a line that is not falling. "
+         "(3) Stage 4 waited for the line: 1/2/3 -> 4 needed the line falling for {CONFIRM_WEEKS} weeks, months after "
+         "the breakdown; now it starts on a close below the stage's support -- the last weekly swing low in an "
+         "advance or a top's low, or a falling line; a base only on a new low below the bottom it formed on -- "
+         "and holds while the close stays below the line. Every transition is "
+         "one condition held {CONFIRM_WEEKS} weeks in a row from the week its move began, and the slope's hysteresis is "
+         "gone (the range breaks stop a wobble at the band's edge toggling the stage). The chart now draws each stage "
+         "from that first week, as Weinstein does -- Stage 2 from the breakout week -- and says it was confirmed "
+         "{CONFIRM_WEEKS} weeks later; what the gates read is unchanged in timing, the stage as known at each week's "
+         "close. Over 180 random stocks: stage changes per 100 weeks 5.7 -> 3.8, stage runs under 6 weeks "
+         "3,536 -> 787; the Stage 2 share of weeks falls from 39% to 29% (a creep above a rising line without a "
+         "breakout is Stage 1 now), Stage 1 rises from 12% to 28%, Stage 4 falls from 42% to 36%. tests.test_stage_machine pins the rules on a synthetic history that 2.10 fails. Lupin's Stage 2 now runs "
+         "from its June 2023 breakout to February 2025, Nvidia's 2022 reads Stage 3 from January and Stage 4 from "
+         "22 April to January 2023, the S&P 500's 2020 Stage 4 runs from 28 February to May. G7, G8, G9 and W2 read the "
+         "machine, so all four move; the scan reruns."),
         ("2.10", "2026-11-06",
          "TREND_EXIT_BELOW_PCT, off by default, so this version trades exactly as 2.9: the weekly trend exit can "
          "ask for a decisive break -- a week closing more than that percent below the 30-week line -- instead of "
@@ -520,8 +593,8 @@ class StageAnalysisStrategy(Strategy):
     watch_codes = ("W1", "W2", "W3")
     setup_codes = (STG01,)
     #: "Breakout INTO Stage 2", not "Stage 2 breakout": the setup fires on the week the close
-    #: clears the base high, and the state machine only ratifies Stage 2 {CONFIRM_WEEKS} weeks
-    #: later, so at entry the band on the chart is often still Stage 1 (or, briefly, Stage 4).
+    #: clears the base high, and the state machine only confirms Stage 2 {CONFIRM_WEEKS} weeks
+    #: later (the chart then draws it from the breakout week), so at entry the stage is still Stage 1.
     #: Measured over the Indian run, 33 of 241 entries sat in a band that had not turned, and
     #: every winner among them was ratified within six weeks. The old name asserted a stage the
     #: strategy had not yet been given, which read as the card contradicting the chart.
@@ -537,7 +610,7 @@ class StageAnalysisStrategy(Strategy):
     # W1_RANKS_ONLY's ranking (classify, setup_quality).
     signal_exempt_consts = ("MAX_STOP_PCT", "STOP_BUFFER_PCT", "BASE_TARGET_MULT", "W1_RANKS_ONLY", "W1_RANK_QUALITY",
                             "EXIT_ON_STAGE3", "EXIT_DIST_WEEKS", "DIST_WINDOW_WEEKS", "DIST_VOL_WEEKS",
-                            "EXIT_ON_LOWER_HIGH", "SWING_WEEKS", "TREND_EXIT_BELOW_PCT")
+                            "EXIT_ON_LOWER_HIGH", "TREND_EXIT_BELOW_PCT")
     extra_columns = ("stage", "line_slope_pct", "resistance", "base_weeks", "base_depth_pct",
                      "vol_ratio", "ma30", "mansfield_pct")
     #: `broke_out` is carried in extras but is a BOOL, so it is not a numeric column.
@@ -560,8 +633,9 @@ class StageAnalysisStrategy(Strategy):
         "every session, so mid-week \"this week\" is the week so far. The one line is the {MA_WEEKS}-week simple "
         "average of weekly closes.",
         "Step 1, the stage. Every stock, sector index and market index is given a stage by one state machine "
-        "(see Stage and base checks): the line's slope over {SLOPE_WEEKS} weeks, which side of the line the close "
-        "is on, and what stage came before.",
+        "(see Stage and base checks), on Weinstein's definitions: a stage turns on a breakout above a base, a "
+        "breakdown below a top or support, or the line's slope over {SLOPE_WEEKS} weeks turning, and the close must "
+        "then hold its side of the line for {CONFIRM_WEEKS} weeks.",
         "Step 2, the gates (G1-G9). A daily uptrend near the highs (the Near-highs screen), then the weekly tests: "
         "close above a line that is not falling, relative strength positive or improving, and none of market, "
         "sector or stock in Stage 4.",
@@ -610,9 +684,10 @@ class StageAnalysisStrategy(Strategy):
         "setting admits -- the opposite of Weinstein's market rule; in the US the same variant is worse (excess "
         "-9.36). None of the v2.8 exits beats the trend exit on return. An audit of the losing trades "
         "(research/audit-stage-analysis-losers.md) found no stage-detection error worth a rule: entries that pass "
-        "every Weinstein check did worse than the ones that fail some. The stage model itself is validated against "
-        "the guide's Trent narrative (Stage 2 from August 2023 through October 2024, close 2,049 to 7,128; "
-        "Stage 4 by March 2025). It is the only WEEKLY strategy here, and weekly decisions are the one "
+        "every Weinstein check did worse than the ones that fail some. Version 2.11 then rebuilt the stage machine on "
+        "Weinstein's definitions (a stage turns on a breakout or breakdown, confirmed by the line; see the "
+        "changelog), which moves G7, G8, G9 and W2: these figures are 2.8's rules, and 2.11's optimise runs are "
+        "pending. It is the only WEEKLY strategy here, and weekly decisions are the one "
         "structural difference none of the others test."
     )
     gate_docs = {
@@ -661,44 +736,53 @@ class StageAnalysisStrategy(Strategy):
     pattern_title = "Stage and base checks"
     pattern_intro = (
         "The stage machine runs week by week from the first week with a {MA_WEEKS}-week line and a {SLOPE_WEEKS}-week "
-        "slope. Each week it reads the slope state and counts consecutive weeks: close above the line, close "
-        "below it, line rising, falling, not rising, not falling. A stage changes only when its condition has held "
-        "{CONFIRM_WEEKS} weeks in a row; the counts restart at every change, so every stage lasts at least "
-        "{CONFIRM_WEEKS} weeks. The base and resistance checks after the transitions are the setup's own, run on "
-        "the stock only."
+        "slope, on Weinstein's definitions: an advance begins with a breakout above the base, a decline with a "
+        "breakdown below support, and the line confirms. Each transition below has a week that may START it (the "
+        "break) and a condition that must HOLD; it happens when the condition has held {CONFIRM_WEEKS} weeks in a "
+        "row from a starting week. The counts restart at every change, so every stage lasts at least "
+        "{CONFIRM_WEEKS} weeks. A stage is known {CONFIRM_WEEKS} weeks after its move began; the gates read it "
+        "then, and the chart draws it from the week the move began. A stage's range is its highest weekly high "
+        "and lowest weekly low since that week. The base and resistance checks after the transitions are the "
+        "setup's own, run on the stock only."
     )
     pattern_docs = {
-        "Slope": "The line is rising, flat or falling.\n\n"
-                 "- **Rising:** more than {FLAT_BAND_PCT}% above its value {SLOPE_WEEKS} weeks ago. Once rising, it "
-                 "stays rising while it is above that value at all.\n"
-                 "- **Falling:** more than {FLAT_BAND_PCT}% below. Once falling, it stays falling while it is below "
-                 "that value at all.\n"
+        "Slope": "The line is rising, flat or falling, read fresh each week.\n\n"
+                 "- **Rising:** more than {FLAT_BAND_PCT}% above its value {SLOPE_WEEKS} weeks ago.\n"
+                 "- **Falling:** more than {FLAT_BAND_PCT}% below.\n"
                  "- **Flat:** anything else.",
         "Seed": "The first week has no history, so it is read directly.\n\n"
                 "- **Rising line:** Stage 2 if the close is above it, else Stage 1.\n"
                 "- **Falling line:** Stage 3 if the close is above it, else Stage 4.\n"
                 "- **Flat line:** Stage 3 if the close is above it, else Stage 1.",
-        "1→2": "A base becomes an advance.\n\n"
-               "- **Always:** the close above the line and the line not falling, each for {CONFIRM_WEEKS} weeks.\n"
-               "- **And either:** the line rising for {CONFIRM_WEEKS} weeks, or Stage 1 at least "
-               "{STAGE1_MIN_WEEKS} weeks old with the close above the highest weekly high of this Stage 1 so far.",
-        "1→4": "A base fails: the close below the line and the line falling, each for {CONFIRM_WEEKS} weeks.",
-        "2→4": "A fast break skips the top: the close below the line and the line falling, each for "
-               "{CONFIRM_WEEKS} weeks.",
-        "2→3": "An advance tops out.\n\n"
-               "- **Needs:** the line rose during this Stage 2 (rising {CONFIRM_WEEKS} weeks in a row at some "
-               "point).\n"
-               "- **Then either:** the close below the line for {CONFIRM_WEEKS} weeks, or the line not rising for "
-               "{CONFIRM_WEEKS} weeks.",
-        "2→1": "A failed breakout: the close below the line for {CONFIRM_WEEKS} weeks, when the line never rose "
-               "during this Stage 2.",
-        "3→2": "A top resolves upward: the line rising and the close above it, each for {CONFIRM_WEEKS} weeks, "
-               "and the close above the highest weekly high of the Stage 2 before it.",
-        "3→4": "A top breaks down: the close below the line and the line falling, each for {CONFIRM_WEEKS} weeks.",
-        "3→1": "A top turns into a base: the close below the line for {CONFIRM_WEEKS} weeks with the line not "
-               "falling for {CONFIRM_WEEKS} weeks.",
-        "4→1": "A decline ends in a base: the line not falling for {CONFIRM_WEEKS} weeks and this week's close "
-               "above it. Stage 4 never goes straight to Stage 2.",
+        "1→2": "A base breaks out into an advance.\n\n"
+               "- **Starts:** a close above the base's high (this Stage 1's highest weekly high before that week), "
+               "the base at least {STAGE1_MIN_WEEKS} weeks old.\n"
+               "- **Holds:** the close above the line and the line not falling.",
+        "1→4": "A base fails.\n\n"
+               "- **Starts:** a close below the base's low -- the lowest weekly low since the decline before it, so "
+               "the bottom it formed on. A falling line alone does not start it: only a new low breaks a base.\n"
+               "- **Holds:** the close below the line and the line not rising.",
+        "2→4": "A fast break skips the top.\n\n"
+               "- **Starts:** a close below the last confirmed weekly swing low (the lowest low of {SWING_WEEKS} weeks "
+               "either side, known {SWING_WEEKS} weeks after it), or a falling line.\n"
+               "- **Holds:** the close below the line.",
+        "2→3": "An advance stalls.\n\n"
+               "- **Needs:** the line rose during this Stage 2 (rising {CONFIRM_WEEKS} weeks in a row at some point).\n"
+               "- **Holds:** the line not rising, or the close below it, each week.",
+        "2→1": "A failed breakout: the close below the line, when the line never rose during this Stage 2.",
+        "3→2": "A top resolves upward: only a breakout out of it resumes the advance.\n\n"
+               "- **Starts:** a close above the top's high (the highest weekly high of the Stage 2 and 3 before "
+               "that week).\n"
+               "- **Holds:** the close above the line and the line not falling.",
+        "3→4": "A top breaks down.\n\n"
+               "- **Starts:** a close below the top's low (this Stage 3's lowest weekly low before that week), or a "
+               "falling line.\n"
+               "- **Holds:** the close below the line.\n\n"
+               "A top never turns into a base: it resolves up (3→2) or down (3→4).",
+        "4→1": "A decline ends in a base.\n\n"
+               "- **Starts:** a close above the line.\n"
+               "- **Holds:** the line not falling.\n\n"
+               "Stage 4 never goes straight to Stage 2: the base comes first, and its breakout is the 1→2 rule.",
         "Base": "The setup's base: the longest contained range before this week.\n\n"
                 "- **Window:** the completed weeks before this one. Every length from {BASE_MAX_WEEKS} weeks (or "
                 "the history available) down to {BASE_MIN_WEEKS} is tried, longest first.\n"
@@ -738,9 +822,9 @@ class StageAnalysisStrategy(Strategy):
                "2013-21 optimise runs about 95% of entries were made with the stock's band already at Stage 2 "
                "(a median 14-25 weeks into it), and the base sat at the depth limit (median 29%). The first "
                "breakout out of a Stage 1 base, the method's own setup, is the minority.\n\n"
-               "\"Into\", not \"in\": when it IS that first breakout, the stage machine ratifies Stage 2 only "
-               "after {CONFIRM_WEEKS} weeks, so at entry the band still reads Stage 1, and a failed breakout never "
-               "turns it.",
+               "\"Into\", not \"in\": when it IS that first breakout, the stage machine confirms Stage 2 only "
+               "after {CONFIRM_WEEKS} weeks, so at entry the stock still reads Stage 1. Once confirmed, the chart "
+               "draws Stage 2 from the breakout week; a failed breakout never turns it.",
     }
     entry_rules = (
         "Signal. Every gate passes, the setup is a completed breakout, and no watch flag is set: a HIGH "
@@ -855,7 +939,9 @@ class StageAnalysisStrategy(Strategy):
                                                        "made after the entry is confirmed below the one before."),
         ("Decisive break", "TREND_EXIT_BELOW_PCT", "Experiment, off by default: the trend exit sells only on a "
                                                    "week that closes more than this percent below the line."),
-        ("Swing width", "SWING_WEEKS", "Weeks either side a weekly swing high must top; it is known this late."),
+        ("Swing width", "SWING_WEEKS", "Weeks either side a weekly swing high must top, or a swing low undercut; it "
+                                       "is known this late. The lower-high exit reads the highs, the stage "
+                                       "machine's 2→4 the lows."),
         ("G7's blocked market stage", "G7_BLOCK_STAGE", "Experiment: 4 is the shipped rule; 3 refuses entries "
                                                         "while the market tops instead of after it has fallen. "
                                                         "Only that stage is refused, so at 3 a Stage 4 market "

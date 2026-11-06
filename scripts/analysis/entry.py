@@ -27,8 +27,11 @@ from fundamentals import canslim as _cs
 
 from . import framework as _fw
 
-VERSION = "1.0"
+VERSION = "1.1"
 CHANGELOG = (
+    ("1.1", "2026-11-06", "T2 (Weinstein stage) reads Stage analysis 2.11's stage machine, rebuilt on Weinstein's "
+                          "definitions: a stage turns on a breakout above a base or a breakdown below support, "
+                          "confirmed by the line; a top no longer becomes a base. The check's grading is unchanged."),
     ("1.0", "2026-10-27", "First entry framework: six pillars (market, sector & group, trend, setup, entry point, event "
                           "risk), 25 data checks, 8 questions, reference levels and a plan."),
 )

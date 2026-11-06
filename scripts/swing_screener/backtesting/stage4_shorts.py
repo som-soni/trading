@@ -661,8 +661,15 @@ class Stage4ShortsStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "stage4_shorts"
-    version = "1.3"
+    version = "1.4"
     changelog = (
+        ("1.4", "2026-11-06",
+         "The stage model moved under it: Stage analysis 2.11 rebuilt `stage_series` on Weinstein's definitions -- "
+         "Stage 4 now also starts on a close below the stage's support (a base's low, the last weekly swing low, a "
+         "top's low) and holds while the close stays below the line, instead of waiting for the line to fall for the "
+         "confirmation weeks; a top no longer becomes a base, and Stage 2 needs a breakout. This strategy's own rules "
+         "are unchanged, but which weeks read Stage 4 is not, so its signals move and the version is bumped by hand "
+         "(the fingerprint cannot see a change in another module's code)."),
         ("1.3", "2026-10-26",
          "Signals read total return: the stage, the 30-week line, the 50-day, the ATR and both entries are computed on prices back-adjusted for credited special dividends and demergers, so a demerger is no longer read as a Stage 4 breakdown; each stop and line is then put back on its own day's price scale (corporate_actions.pit_scale), so none carries a later action. Fills and turnover read traded prices."),
         ("1.2", "2026-10-25",
