@@ -164,6 +164,7 @@ class ExitPolicy:
     km_partial_bars: int = field(default_factory=lambda: _km.PARTIAL_AFTER_BARS)
     km_partial_divisor: int = field(default_factory=lambda: _km.PARTIAL_DIVISOR)
     km_trail_sma: int = field(default_factory=lambda: _km.TRAIL_SMA)
+    km_trail_ema: bool = field(default_factory=lambda: bool(_km.TRAIL_EMA))   # the trail is an EMA, not an SMA
     km_max_bars: int = field(default_factory=lambda: _km.MAX_HOLD_BARS)
     # for darvas: the stop trails by Darvas boxes (core/darvas.py), found with the darvas strategy's own
     # constants through a factory, as above. A box completed today whose top is above the last box's
@@ -251,7 +252,8 @@ class ExitPolicy:
         elif self.mode == "supertrend":
             bits.append(f"{self.st_period}x{self.st_mult:g}")
         elif self.mode == "kullamagi":
-            bits.append(f"p{self.km_partial_bars}d{self.km_partial_divisor}-sma{self.km_trail_sma}-max{self.km_max_bars}")
+            bits.append(f"p{self.km_partial_bars}d{self.km_partial_divisor}-{'ema' if self.km_trail_ema else 'sma'}"
+                        f"{self.km_trail_sma}-max{self.km_max_bars}")
         elif self.mode == "darvas":
             bits.append(f"h{self.dv_lookback}t{self.dv_top_confirm}b{self.dv_bottom_confirm}"
                         + (f"-time{self.dv_time_stop_bars}" if self.dv_time_stop_bars else ""))
@@ -449,7 +451,7 @@ _FLAT = Exposure()   # disabled: every entry risks the full risk_pct
 
 WEEKLY_LINE = "_weekly_line"   # the weekly_ma exit's level, added to each price frame by `simulate`
 ST_DIR = "_st_dir"             # the supertrend exit's direction (1 up, -1 down), added the same way
-KM_TRAIL = "_km_trail"         # the kullamagi exit's trailing simple average, added the same way
+KM_TRAIL = "_km_trail"         # the kullamagi exit's trailing average (simple or exponential), added the same way
 
 
 def _below(policy: ExitPolicy) -> float:
@@ -546,7 +548,8 @@ def simulate(
         prices = {s: df.assign(**{ST_DIR: ind.supertrend(df, policy.st_period, policy.st_mult)["dir"]})
                   for s, df in prices.items()}
     elif policy.mode == "kullamagi":
-        prices = {s: df.assign(**{KM_TRAIL: ind.sma(df["close"].astype(float), policy.km_trail_sma)})
+        avg = ind.ema if policy.km_trail_ema else ind.sma
+        prices = {s: df.assign(**{KM_TRAIL: avg(df["close"].astype(float), policy.km_trail_sma)})
                   for s, df in prices.items()}
     elif policy.mode == "darvas":
         prices = {s: df.assign(**darvas_levels(df, policy)) for s, df in prices.items()}

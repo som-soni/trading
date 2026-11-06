@@ -422,7 +422,7 @@
   },
   "kullamagi": {
     "family": "kullamagi",
-    "fingerprint": "94f6df82",
+    "fingerprint": "ee3c4311",
     "params": {
       "MAX_HOLD_BARS": 120,
       "MAX_STOP_ADR": 1.0,
@@ -444,6 +444,7 @@
       "REST_MAX_GIVEBACK_PCT": 50.0,
       "REST_SMA": 20,
       "TIGHT_MAX_PCT": 20.0,
+      "TRAIL_EMA": 0,
       "TRAIL_SMA": 10,
       "_key": "kullamagi",
       "gate_codes": [
@@ -460,7 +461,7 @@
         "S1"
       ]
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "ma_trend": {
     "family": "ma_trend",

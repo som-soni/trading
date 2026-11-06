@@ -62,7 +62,8 @@ NOMINAL_TARGET_R = 10             # a far target for the plan's R column only; t
 # ---- management (the backtest's `--exit-mode kullamagi` reads these)
 PARTIAL_AFTER_BARS = 3            # at the close of this session after the entry, if above the entry …
 PARTIAL_DIVISOR = 3               # … sell 1/PARTIAL_DIVISOR of the shares and move the stop to the entry
-TRAIL_SMA = 10                    # the rest sells at the first close below this simple average
+TRAIL_SMA = 10                    # the rest sells at the first close below the average of this length …
+TRAIL_EMA = 0                     # … simple (0) or exponential (1)
 MAX_HOLD_BARS = 120               # … or at the close of this session after the entry
 
 S1 = "S1"   # today's close is above the rest's high
@@ -70,8 +71,15 @@ S1 = "S1"   # today's close is above the rest's high
 
 class KullamagiStrategy(Strategy):
     selection = "time_series"
-    version = "1.1"
+    version = "1.2"
+    # 1.2 changes only the exit (an off-by-default EMA trail), so it keeps 1.1's signal scan
+    signal_version = "1.1"
     changelog = (
+        ("1.2", "2026-11-06",
+         "An exit switch, off by default: TRAIL_EMA = 1 trails the remainder on an exponential average instead of a "
+         "simple one. With the defaults the rules are exactly 1.1's. Added to test the EMA20 trail as a variant: "
+         "replaying every trade of the v1.0 optimise runs, a close below the 20-day EMA instead of the 10-day SMA "
+         "added R in all six runs (+12 to +64R a run), most of it from a few longer runners."),
         ("1.1", "2026-11-06",
          "Two entry rules from a loss audit of the v1.0 optimise runs (2013-2021, so chosen in-sample): the prior "
          "move must be at least {MOVERS_MIN_MOVE_PCT}% (was 30%, the Big movers screen's M2), and the rest must hold "
@@ -112,7 +120,7 @@ class KullamagiStrategy(Strategy):
     extra_numeric_columns = extra_columns
     signal_exempt_consts = (
         "MAX_STOP_ADR", "MIN_STOP_PCT", "NOMINAL_TARGET_R",
-        "PARTIAL_AFTER_BARS", "PARTIAL_DIVISOR", "TRAIL_SMA", "MAX_HOLD_BARS",
+        "PARTIAL_AFTER_BARS", "PARTIAL_DIVISOR", "TRAIL_SMA", "TRAIL_EMA", "MAX_HOLD_BARS",
     )
 
     thesis = (
@@ -179,10 +187,13 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
-        "v1.1 NOT YET MEASURED. Stage: optimise (2013-2021, in-sample); verify not run. Pass criterion, set before "
-        "any v1.1 result: in the optimise stage, the base rules beat the market's benchmark CAGR AND make a positive "
+        "v1.1 NOT YET MEASURED (v1.2 is v1.1's rules plus an exit switch that is off by default, so a v1.2 run "
+        "with the defaults measures v1.1). Stage: optimise (2013-2021, in-sample); verify not run. Pass criterion, "
+        "set before any v1.1 result: in the optimise stage, the base rules beat the market's benchmark CAGR AND make a positive "
         "average R after costs, in at least one market; the top 10% of trades' share of P&L is reported beside it. "
-        "Up-front variant, measured beside the base and never a substitute for it: TIGHT_MAX_PCT=15. "
+        "Up-front variants, measured beside the base and never a substitute for it: TIGHT_MAX_PCT=15, and "
+        "TRAIL_EMA=1 with TRAIL_SMA=20 (the 20-day EMA trail, chosen from a replay of the v1.0 optimise trades, so "
+        "in-sample too). "
         "v1.1's two new entry rules were chosen from the v1.0 optimise runs, so those years are in-sample for them. "
         "v1.0 FAILED the same criterion in the optimise stage: US -0.65% CAGR, excess -14.66 points a year, max "
         "drawdown -54.2%, 1,493 trades, win rate 37.4%, +0.05R a trade; India -4.48% CAGR, excess -18.02, max "
@@ -274,7 +285,8 @@ class KullamagiStrategy(Strategy):
     exit_rules = (
         "Each session after the entry, in this order (backtest, `--exit-mode kullamagi`):",
         "1. The stop: everything left sells at the stop, or at the open if the stock gapped through it.",
-        "2. The trail: a close below the {TRAIL_SMA}-day simple average sells everything left at that close.",
+        "2. The trail: a close below the {TRAIL_SMA}-day average sells everything left at that close. The average "
+        "is simple, or exponential when TRAIL_EMA = 1 (now {TRAIL_EMA}).",
         "3. The partial sale: at the close of session {PARTIAL_AFTER_BARS} after the entry, if that close is "
         "above the entry, 1/{PARTIAL_DIVISOR} of the shares sells there and the stop moves up to the entry. Checked "
         "on that session only.",
@@ -326,7 +338,8 @@ class KullamagiStrategy(Strategy):
         ("Minimum stop", "MIN_STOP_PCT", "A stop closer than this % below the entry is not bought."),
         ("Partial after", "PARTIAL_AFTER_BARS", "The session after the entry whose close decides the partial sale."),
         ("Partial size", "PARTIAL_DIVISOR", "1/this of the shares is sold."),
-        ("Trailing average", "TRAIL_SMA", "The rest sells at the first close below this simple average."),
+        ("Trailing average", "TRAIL_SMA", "The rest sells at the first close below the average of this length."),
+        ("Exponential trail", "TRAIL_EMA", "0: that average is simple; 1: exponential."),
         ("Time limit", "MAX_HOLD_BARS", "Sessions after the entry before what is left is sold."),
         ("Nominal target", "NOMINAL_TARGET_R", "Target = entry + this × R, for the R column only."),
         ("Minimum history", "min_bars", "Daily bars a stock needs before it is evaluated."),
