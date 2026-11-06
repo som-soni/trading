@@ -1,7 +1,8 @@
 """Zerodha Kite Connect, read-only: your holdings and cash, to start the rebalance account from.
 
-READ-ONLY by construction. The only calls are the login exchange and three GETs (holdings, positions,
-equity margins); there is no order endpoint in this module, so the portal cannot trade through it.
+READ-ONLY by construction. The only calls are the login exchange and four GETs (holdings, positions,
+equity margins, and the OHLC quote a watchlist's "Pull LTP" asks for); there is no order endpoint in this
+module, so the portal cannot trade through it.
 
 Setup, once:
   1. Create a Kite Connect app at developers.kite.trade. Set its redirect URL to
@@ -37,6 +38,7 @@ LOGIN = "https://kite.zerodha.com/connect/login"
 IST = ZoneInfo("Asia/Kolkata")
 TOKEN_RESET = time(6, 0)   # Kite invalidates every access token at 06:00 IST
 TIMEOUT = 15
+QUOTE_MAX = 1000           # instruments Kite accepts in one quote call
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS broker_sessions (
@@ -133,9 +135,9 @@ def _json(r: requests.Response) -> dict:
     return body
 
 
-def _get(path: str, token: str) -> object:
+def _get(path: str, token: str, params: list | None = None) -> object:
     key, _ = _keys()
-    r = requests.get(f"{API}{path}", timeout=TIMEOUT,
+    r = requests.get(f"{API}{path}", timeout=TIMEOUT, params=params,
                      headers={"X-Kite-Version": "3", "Authorization": f"token {key}:{token}"})
     return _json(r)["data"]
 
@@ -181,4 +183,29 @@ def account(suffix: str) -> dict:
     return {"user_id": s["user_id"], "user_name": s["user_name"], "positions": shares, "cash": cash,
             "cash_note": "Kite's available equity margin ('net'): set it to the cash you run this strategy with.",
             "holdings": detail, "today": today, "warnings": warnings,
+            "fetched_at": datetime.now(IST).isoformat(timespec="seconds")}
+
+
+def quotes(symbols: list[str], suffix: str, exchange: str) -> dict:
+    """The last traded price and the previous session's close for stored symbols ("RELIANCE.NS"), from
+    Kite's OHLC quote (GET /quote/ohlc). A snapshot when asked, not a feed: nothing is stored, and no
+    screen or backtest reads it. Kite's `ohlc.close` is the previous session's close; `ohlc` also carries
+    today's open, high and low. A symbol Kite does not know is left out of the answer. Kite serves quotes
+    only on a Connect plan with market data: without one it answers with a permission error, raised here.
+    """
+    s = session()
+    if not s:
+        raise KiteError("Not logged in to Kite (or the session expired at 06:00 IST): log in first")
+    by_inst = {f"{exchange}:{sym[:-len(suffix)] if suffix and sym.endswith(suffix) else sym}": sym for sym in symbols}
+    insts, out = list(by_inst), {}
+    for i in range(0, len(insts), QUOTE_MAX):
+        data = _get("/quote/ohlc", s["access_token"], [("i", x) for x in insts[i:i + QUOTE_MAX]]) or {}
+        for inst, d in data.items():
+            sym, ltp, prev = by_inst.get(inst), d.get("last_price"), (d.get("ohlc") or {}).get("close")
+            if sym is None or ltp is None:
+                continue
+            o = d.get("ohlc") or {}
+            out[sym] = {"ltp": ltp, "prev_close": prev, "open": o.get("open"), "high": o.get("high"), "low": o.get("low"),
+                        "change_pct": (ltp / prev - 1) * 100 if prev else None}
+    return {"quotes": out, "missing": sorted(set(symbols) - set(out)),
             "fetched_at": datetime.now(IST).isoformat(timespec="seconds")}

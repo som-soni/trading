@@ -3,7 +3,8 @@
 `broker/kite.py` is checked against canned Kite Connect responses -- no network, no account, no
 database (the stored session is stubbed). It must: count settled + T1 shares; add the market's ticker
 suffix; flag today's delivery trades and shares sold today instead of guessing at them; leave intraday /
-F&O positions out; read cash from the equity margin; expire a session at 06:00 IST; and contain no order
+F&O positions out; read cash from the equity margin; read a watchlist's LTP against the previous close
+from the OHLC quote; expire a session at 06:00 IST; and contain no order
 endpoint at all, so the portal cannot place a trade through it.
 
     PYTHONPATH=. .venv/bin/python -m tests.test_kite_sync
@@ -47,13 +48,19 @@ POSITIONS = {"net": [
     {"tradingsymbol": "NIFTY26NOVFUT", "product": "NRML", "quantity": 75},
     {"tradingsymbol": "FLAT", "product": "CNC", "quantity": 0},
 ]}
+OHLC = {
+    "NSE:LAURUSLABS": {"instrument_token": 1, "last_price": 2400.0, "ohlc": {"open": 2350, "high": 2410, "low": 2340, "close": 2348.0}},
+    "NSE:M&M": {"instrument_token": 2, "last_price": 3000.0, "ohlc": {"open": 3010, "high": 3020, "low": 2990, "close": 0}},
+}
 MARGINS = {"enabled": True, "net": 500000.75, "available": {"cash": 480000.0, "live_balance": 500000.75}}
 
 
-def fake_get(url, timeout=None, headers=None):
+def fake_get(url, timeout=None, headers=None, params=None):
     fake_get.calls.append((url, headers))
+    fake_get.params = params
     path = url.split("api.kite.trade", 1)[1]
-    data = {"/portfolio/holdings": HOLDINGS, "/portfolio/positions": POSITIONS, "/user/margins/equity": MARGINS}[path]
+    data = {"/portfolio/holdings": HOLDINGS, "/portfolio/positions": POSITIONS, "/user/margins/equity": MARGINS,
+            "/quote/ohlc": OHLC}[path]
     return FakeResponse({"status": "success", "data": data})
 
 
@@ -77,6 +84,16 @@ def main() -> None:
     check("F&O positions are left out, with a note", "NIFTY26NOVFUT.NS" not in a["positions"]
           and any("F&O" in w for w in a["warnings"]), a["warnings"])
     check("auth header carries key:token", all(h.get("Authorization") == "token testkey:tok" for _, h in fake_get.calls))
+
+    print("quotes(): LTP against the previous close")
+    qt = kite.quotes(["LAURUSLABS.NS", "M&M.NS", "NOSUCH.NS"], ".NS", "NSE")
+    check("instruments are exchange:symbol without the suffix",
+          fake_get.params == [("i", "NSE:LAURUSLABS"), ("i", "NSE:M&M"), ("i", "NSE:NOSUCH")], fake_get.params)
+    lq = qt["quotes"].get("LAURUSLABS.NS", {})
+    check("LTP and previous close read from the OHLC quote", lq.get("ltp") == 2400.0 and lq.get("prev_close") == 2348.0, lq)
+    check("change is LTP vs previous close", abs((lq.get("change_pct") or 0) - (2400 / 2348 - 1) * 100) < 1e-9, lq)
+    check("no previous close gives no change, not a division error", qt["quotes"].get("M&M.NS", {}).get("change_pct") is None, qt)
+    check("a symbol Kite does not answer for is listed as missing", qt["missing"] == ["NOSUCH.NS"], qt["missing"])
 
     print("read-only by construction")
     src = inspect.getsource(kite)

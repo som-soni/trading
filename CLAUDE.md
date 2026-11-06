@@ -17,7 +17,10 @@ A second exception: the rebalance account may be *read* from the market's broker
 (`MarketConfig.broker`; `broker/kite.py`, Zerodha Kite Connect). It is read-only by
 construction — login exchange plus GETs of holdings, positions and margins, no order
 endpoint (`tests.test_kite_sync` fails if one appears) — and fills the account form as a
-draft the user edits and saves. Keys live in `scripts/.env`; the user logs in on the
+draft the user edits and saves. A watchlist's **Pull LTP** reads the same way — one GET of
+Kite's OHLC quote (`kite.quotes`, `/api/broker/{market}/quotes`) when the user asks: last traded
+price against the previous close, shown on the page, never stored, never read by a screen or
+backtest (those use the stored daily bars). Keys live in `scripts/.env`; the user logs in on the
 broker's own page. Order placement would be a separate, explicit change, not an
 extension of this module.
 
