@@ -262,7 +262,7 @@ Decide in advance how much you will have at risk in each state:
 | **Reduced** | Below the 50-day, or a 10% correction, 200-day still rising | Half size or half the positions; only the strongest setups |
 | **Cash / minimal** | Below a falling 200-day, Stage 4, 20%+ drawdown | No new breakouts; manage exits; keep the watchlist |
 
-Move one rung at a time. Step back up as the evidence improves. After a low, the first leading stocks to break out of sound bases are often the cycle's best trades.
+Move one rung at a time. Step back up as the evidence improves. After a low, traders watch the first stocks to break out of sound bases. Whether those early leaders beat the rest is less certain than the old saying. In three recent sell-offs, stocks that made a new high soon after the low did no better than the others ([relative strength](learn-price-rs.md) §4.3).
 
 ### 8.2 Combine trend, breadth and volatility
 
@@ -270,8 +270,24 @@ Move one rung at a time. Step back up as the evidence improves. After a low, the
 - **Breadth** ([the breadth guide](learn-health-breadth.md)): an index at highs while fewer stocks make new highs, and fewer sit above their 50-day, is a fragile trend.
 - **Volatility** ([the volatility guide](learn-health-volatility.md)): when VIX or India VIX stays high, trade smaller.
 - **Selling** ([the distribution-day guide](learn-health-distribution.md)): heavy-volume down days clustering near a high.
+- **Narrow or broad**: compare the usual index with an equal-weighted version of it. When the usual index falls but the equal-weighted one holds near its high, a few giant stocks are falling, not the market. That tells you where the selling is, not where the index goes next.
+- **Stretch**: how far the index sits from its own 9-day or 21-day average. After a sharp fall far below it, US indexes have usually bounced within a week. New shorts can wait for it, and new buys should not count on it.
+- **Setup supply**: how many stocks are in a confirmed uptrend, and whether that count is rising. Many traders watch for more stocks setting up while the index is still falling.
+- **Your own results**: when your first few breakouts fail one after another, the market is telling you something. Trade smaller until they start to work.
 
 Two or three warnings together justify a rung down; one alone usually does not.
+
+**What two of these readings have done.** We can test the stretch and the narrow-or-broad readings on daily prices from 2009 to 2026. A *weak* stock here is one below a falling 50-day average and in the bottom third by three-month return. A *stretched* close is one at least 2% under the 9-day average. For the more volatile Nasdaq 100 fund the bar is 3%.
+
+| Reading | What followed |
+|---|---|
+| QQQ (the Nasdaq 100 fund) closes 3%+ under its 9-day average | Next five sessions: +2.0% on average, up 73% of the time, against +0.4% and 60% on all days. Weak stocks bounced with it. |
+| The Nifty 50 or Nifty 500 closes 2%+ under its 9-day average | No reliable bounce. Weak stocks kept falling for a day or two. |
+| Short a weak stock only after the index gets back to its 9-day average, when the stock closes back under its own 9-day | A better entry than shorting on the stretched day: about 1.3 to 1.6 points in the US and 1.5 to 3 in India, to the same exit. Trades after entry were no better. |
+| The index closes 2%+ *above* its 9-day average | No pullback; strong stocks kept leading. Waiting for a dip to buy cost money. |
+| The S&P 500 falls while its equal-weighted version holds near its high | The next one, three and six months were no worse than after an ordinary day. In India the result flipped between 2009–2021 and 2022–2026. |
+
+So the stretch is a **timing tool for new shorts**, not a forecast, and it does not work in reverse for buys. Narrow versus broad says **where** the selling is: a group rather than the market. That decides what to look for, not how much to expect from the index. The tests used today's listed stocks only, with no costs, and short selling of this kind is not open to most traders in India's cash market.
 
 ## 9. What the evidence says
 

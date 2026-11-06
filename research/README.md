@@ -1,4 +1,4 @@
-# Research
+# About the research notes
 
 Written findings. Code lives in `scripts/`, generated output in `reports/`.
 
@@ -21,9 +21,33 @@ Written findings. Code lives in `scripts/`, generated output in `reports/`.
 | [learn-candlestick-patterns.md](learn-candlestick-patterns.md) | Learning material: reading candles — anatomy, the single/two/three-bar patterns, context rules, and how the screener's candle commentary uses them |
 | [learn-support-resistance.md](learn-support-resistance.md) | Learning material: drawing support and resistance — zones not lines, the timeframe stack, wicks versus bodies and zone width, grading a level, the kinds of levels, breakouts, false breakouts, retests and new highs, common mistakes, the evidence, and a checklist |
 | [learn-supply-demand.md](learn-supply-demand.md) | Learning material: supply and demand — why levels exist, identifying demand/supply zones and role reversal, a zone-scoring checklist, and how the strategies here already use the same mechanics (overhead supply, capped targets, stops under demand) |
+| [system-overview.md](system-overview.md) | **My trading system (draft)**: the decision chain from market to review, its principles, and the status of every rule (proposed → adopted → tested). Pages: [daily market review](system-daily-market-review.md) (which indexes, seven questions, the decision table, overrides, a worked example), [swing longs](system-swing-longs.md), [shorts](system-shorts.md), [risk and exposure](system-risk-exposure.md), [tools to build](system-tools.md) |
+| [creator-martin-luk.md](creator-martin-luk.md), [creator-mark-minervini.md](creator-mark-minervini.md) | Research notes on trading creators: what each says on their streams and talks, by a shared template, with timestamps — and their named-stock claims checked against stored prices |
 
 Files named `learn-*.md` are teaching material, not findings; the web app
 shows them under **Library → Learn**.
+
+## Material from trading creators goes to three places
+
+A creator's video or stream is processed into all three, in this order:
+
+1. **`creator-<name>.md`** — the raw material, synthesized: what they said and did, faithfully, using the template in
+   [creator-martin-luk.md](creator-martin-luk.md) §0, with timestamps; inferences and unclear audio are marked; claims
+   about named stocks are checked against stored prices. One cumulative note per creator; each new video adds a row to
+   its source log.
+2. **`learn-*.md`** — the generalizable mechanism, folded into the existing guide it belongs to, under the Learn rules
+   below (no creator names or their numbers; evidence from stored data, or clearly unmeasured).
+3. **`system-*.md`** — every decision the creator makes, added to the matching page of the trading system as a
+   *proposed* rule with its source, so the pages consolidate all creators into one procedure.
+
+**How the Research menu groups notes.** By file name: `system-*` → My trading system, `creator-*` → Creators &
+videos, `app-guide-breakouts*` → Case studies, `*-spec` → Specs & proposals, other `app-guide-*` → Using the app;
+older notes are listed by name (`RESEARCH_GROUPS` in `web/static/app.js`). A note whose name starts with another
+note's name plus a dash (`app-guide-breakouts-us-1`) is shown as a page under it. A note no rule places appears
+under **Other** — name it to fit a group, or add it to the list.
+
+Videos are transcribed locally (a speech model on the audio; a second pass primed with the tickers and indicator
+names fixes most jargon). Viewer questions read aloud on streams are not the creator's views.
 
 ## Writing a learning guide
 

@@ -89,6 +89,12 @@ The slope of VWAP is the quickest clue. A rising VWAP means buyers keep paying h
 
 An anchor works when many traders would agree the date mattered. Good anchors: a results gap, a major high or low, a breakout day, a listing day, an index inclusion, a policy decision. A random date gives a random line.
 
+A line also earns trust by being respected. Many traders want to see price react to it once — stall there, or turn from it — before they trade it. After a few clear reactions, the line is no longer a matter of opinion about the anchor.
+
+The same anchor gives slightly different lines on hourly, daily and weekly bars. An hourly line starts at the hour of the high or low; a daily line includes that whole day. Treat the gap between them as a zone, with the daily line as the main level. One common approach: a small first try where the nearer line is touched, and a second try at the daily line only if price shows strength there again.
+
+Does a line weaken with each test? Each test uses up some of the orders waiting there, which suggests it should. No measurement of this is reported here.
+
 ### Where it suits, and where it doesn't
 
 It suits liquid stocks and index futures, where VWAP reflects real institutional trading. It does not suit thin stocks, where a few trades move VWAP and the spread is larger than the edge. A cash index has no volume of its own, so use the index future's VWAP.

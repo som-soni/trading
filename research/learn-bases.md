@@ -198,6 +198,12 @@ If any link is missing, it is not a base yet, or it is a weak one.
 | **Laggard RS** — the stock bases while its group and the market run | No leadership |
 | **Earnings due inside the base** | A gap can wreck a perfect pattern in one session |
 
+**One exception to laggard RS: the leader that rests.** Some stocks rise hard while the market is still falling. When the market finally rallies, such a stock often pauses and builds a base. The market catches up, so the stock's RS line flattens or dips for a while. Here the lag does not mean weakness: the stock showed its strength earlier. Judge it on the base and the breakout, and drop it if the breakout does not follow through.
+
+**A failed base can reset.** Sometimes the breakout never comes, or it comes and the stock falls back below the base's low. That ends the setup, but not always the stock. Watch for a fast recovery off the new low, then higher lows while the index makes lower lows, then a new, tighter range on falling volume. The new base is judged on its own; the old pivot no longer matters.
+
+Neither pattern has been measured here. Treat both as reasons to keep watching a stock, not as signals.
+
 ## 7. Measuring a base by rule
 
 If you want to find bases with a program, or just measure them consistently by hand, the description above needs exact rules. Common choices:

@@ -19,16 +19,19 @@ In August 2023 NVIDIA peaked at 50.27 (split-adjusted). It then fell 22%, to 39.
 ```series
 title: NVIDIA — a cup with handle, and the breakout in January 2024
 from: 2023-07-01
-to: 2024-04-30
+to: 2024-02-15
 tf: D
-line: us:NVDA | NVIDIA (split-adjusted) | log
+line: us:NVDA | NVIDIA, daily candles (split-adjusted) | candles
 line: us:NVDA@sma50 | 50-day average
 line: us:NVDA@vol | Volume | pane2 bars
-mark: 2023-08-24 | left side high 50.27
-mark: 2023-10-31 | cup low 39.23
-mark: 2023-12-04 | handle low 45.01
-mark: 2024-01-08 | breakout, 1.58× volume
-caption: A rounded fall and recovery (the cup), a smaller dip near the top (the handle), then a breakout above the handle high of 50.55.
+level: 50.55 | Pivot 50.55 | 2023-08-24 2024-02-15 | pivot
+level: 45.01 | Handle low 45.01 | 2023-12-04 2024-02-15 | stop
+mark: 2023-08-24 | left rim
+mark: 2023-10-31 | cup low | below
+mark: 2023-11-20 | right rim
+mark: 2023-12-04 | handle | below
+mark: 2024-01-08 | breakout
+caption: A rounded fall and recovery (the cup), a smaller dip near the top (the handle), then a close above the pivot of 50.55 on 1.58 times average volume. The handle low, 45.01, is where the pattern would have been proved wrong.
 ```
 
 That shape is a **cup with handle**. It is a story about supply (shares for sale) and demand (buyers). After an advance, some holders take profits, and the price falls until buyers soak up the shares being sold. If large investors keep buying (accumulation), each wave of selling is smaller than the last. Eventually few sellers are left, and a small amount of buying pushes the price through the old high.
@@ -71,20 +74,24 @@ Trigger: a close above the handle high on rising volume. Invalidation: the handl
 
 ### Double bottom
 
-UnitedHealth fell to 216.84 in April 2019 (closing prices). It rallied to 266.65 in July. In late September it fell back to 215.26, just under the first low, and recovered at once. On 15 November it closed above the July high at 269.40, on 2.3 times its average volume. Sixty sessions later it was 12.7% higher.
+UnitedHealth fell to 216.84 in April 2019 (closing prices). It rallied to 266.65 in July. In late September it fell back to 215.26, just under the first low, and recovered at once. On 15 November it closed at 269.40, above the July high of 268.69. Volume that day was 2.3 times average.
+
+Sixty sessions later it was 12.2% higher.
 
 ```series
 title: UnitedHealth — a double bottom with an undercut, 2019
 from: 2019-02-01
 to: 2020-02-14
 tf: D
-line: us:UNH | UnitedHealth
+line: us:UNH | UnitedHealth, daily candles | candles
 line: us:UNH@sma200 | 200-day average
 line: us:UNH@vol | Volume | pane2 bars
-mark: 2019-04-17 | first low 216.84
-mark: 2019-07-17 | middle peak 266.65
-mark: 2019-09-27 | second low 215.26
-mark: 2019-11-15 | breakout, 2.3× volume
+level: 268.69 | Pivot: July high | 2019-07-17 2020-01-31 | pivot
+level: 215.26 | Second low | 2019-09-27 2020-01-31 | stop
+mark: 2019-04-17 | first low | below
+mark: 2019-07-17 | middle peak
+mark: 2019-09-27 | second low | below
+mark: 2019-11-15 | breakout
 caption: The second low dipped just below the first and turned up at once. The breakout came above the middle peak.
 ```
 
@@ -98,7 +105,23 @@ double-bottom
 
 Trigger: the middle peak between the two lows. Invalidation: the second low. Measured move: the middle peak minus the low. The mirror image at highs, the **double top**, is a warning, covered in section 3.
 
-Context still decides. Amazon made a similar W in early 2022. Its second low of 136.01 undercut the first, and on 21 March it closed above the middle peak at 161.49. But it was below a falling 200-day average, and the breakout came on light volume (0.8 times average). Sixty sessions later it was 36.6% lower.
+Context still decides. Amazon made a similar W in early 2022. Its second low of 136.01 undercut the first, and on 21 March it closed above the middle peak at 161.49. But it was below a falling 200-day average, and the breakout came on light volume (0.8 times average). Sixty sessions later it was 33.3% lower.
+
+```series
+title: Amazon — the same W in the wrong place, 2022
+from: 2021-11-01
+to: 2022-06-30
+tf: D
+line: us:AMZN | Amazon, daily candles (split-adjusted) | candles
+line: us:AMZN@sma200 | 200-day average
+line: us:AMZN@vol | Volume | pane2 bars
+level: 161.41 | Middle peak | 2022-02-08 2022-06-30 | pivot
+mark: 2022-02-03 | first low | below
+mark: 2022-02-08 | middle peak
+mark: 2022-03-08 | second low | below
+mark: 2022-03-21 | breakout, 0.8× volume
+caption: The shape matches UnitedHealth's, but the setting does not. The whole W formed below a falling 200-day average, and the breakout came on less than average volume. The rally stalled near the 200-day, and on 6 April the price closed back below the middle peak.
+```
 
 ### Flat base / Darvas box
 
@@ -112,6 +135,21 @@ flat-base
 
 Trigger: the box high. Invalidation: the box low. Measured move: a tight box's own height is too small to be a useful target, so some traders add the **prior advance** instead. For the full trade, see [Darvas boxes](learn-strat-darvas.md).
 
+Titan shows one. From early May to late June 2021 it rose about 24%. It then traded sideways for six weeks, between ₹1,662.50 and ₹1,792.95, a box less than 8% deep. On 3 August it closed at ₹1,840.20 on four times its average volume. By mid-October it was at ₹2,588.80, 44% above the box.
+
+```series
+title: Titan — a flat base after an advance, 2021
+from: 2021-04-01
+to: 2021-09-15
+tf: D
+line: india:TITAN.NS | Titan, daily candles | candles
+line: india:TITAN.NS@vol | Volume | pane2 bars
+zone: 1662.5 1792.95 | Box ₹1,662–1,793 | 2021-06-22 2021-08-02
+mark: 2021-05-04 | advance starts | below
+mark: 2021-08-03 | breakout
+caption: An advance, then six weeks sideways in a shallow box near the high instead of a deep pullback. The breakout closed clear of the box high on four times the usual volume.
+```
+
 ### Bull flag
 
 A near-vertical advance (the pole), then a short, shallow drift downward (the flag). In the textbook case the flag gives back less than half the pole, over a few weeks.
@@ -124,6 +162,24 @@ bull-flag
 
 Trigger: the pole high. Invalidation: the flag low. Measured move: the pole height. The old saying is that "flags fly at half mast": the flag sits halfway up, and the move after it repeats the pole. For the full trade, see [Flags, pennants and high tight flags](learn-strat-flags.md).
 
+Dixon Technologies made a high tight flag in 2019. In eight weeks, to 10 October, it rose from ₹312 to ₹646.40 (split-adjusted). It then drifted down for four weeks, to a low of ₹532.51, giving back 18%. On 14 November it closed at ₹652.63, above the pole high, on 19 times its average volume. By early February 2020 it was at ₹952.71.
+
+```series
+title: Dixon Technologies — a high tight flag, 2019
+from: 2019-07-15
+to: 2020-02-14
+tf: D
+line: india:DIXON.NS | Dixon Technologies, daily candles (split-adjusted) | candles
+line: india:DIXON.NS@vol | Volume | pane2 bars
+level: 646.4 | Pole high | 2019-10-10 2020-01-15 | pivot
+level: 532.51 | Flag low | 2019-11-07 2019-12-31 | stop
+mark: 2019-08-13 | pole starts | below
+mark: 2019-10-10 | pole high
+mark: 2019-11-07 | flag low | below
+mark: 2019-11-14 | breakout
+caption: The pole more than doubled the price; the flag gave back less than a fifth of it, in a quiet drift. The breakout above the pole high came on the heaviest volume on the chart, and the flag low was the stop.
+```
+
 ### Ascending triangle
 
 A flat resistance line that the price tests again and again from below, while the lows keep **rising**. The price gets squeezed into the corner. Sellers wait at one fixed price. Buyers are willing to pay more on every dip.
@@ -133,6 +189,27 @@ ascending-triangle
 ```
 
 Trigger: the resistance line. Invalidation: the last rising low. Measured move: the triangle's height at its left edge. Descending and symmetrical triangles also exist in the classical catalogue. The ascending form has the clearest bullish logic.
+
+Saia shows the shape. Between February and April 2023 it reached about $298–306 three times and turned back each time. Its lows meanwhile kept rising, from $180 in October 2022 to $245 in late April. On 14 June it closed at $313.35, through the top line, on 1.7 times its average volume. By 1 September it was at $438.58.
+
+```series
+title: Saia — an ascending triangle, 2022–23
+from: 2022-09-01
+to: 2023-07-31
+tf: D
+line: us:SAIA | Saia, daily candles | candles
+line: us:SAIA@vol | Volume | pane2 bars
+level: 306.4 | Resistance | 2023-02-02 2023-07-31 | pivot
+trend: 2022-10-21 180.17 2023-04-26 244.69 | Rising lows | stop | 2023-06-14
+mark: 2023-02-02 | top
+mark: 2023-03-06 | top
+mark: 2023-04-28 | top
+mark: 2022-10-21 | low | below
+mark: 2023-01-05 | higher low | below
+mark: 2023-04-26 | higher low | below
+mark: 2023-06-14 | breakout
+caption: Sellers met every rally at about the same price, while buyers paid more on each dip. The squeeze ended with a close through the flat top on above-average volume.
+```
 
 ### Volatility contraction pattern (VCP)
 
@@ -157,12 +234,13 @@ title: Salesforce — a head-and-shoulders top, 2021–22
 from: 2021-03-01
 to: 2022-06-30
 tf: D
-line: us:CRM | Salesforce
+line: us:CRM | Salesforce, daily candles | candles
 line: us:CRM@sma200 | 200-day average
-mark: 2021-04-28 | left shoulder 236.88
-mark: 2021-11-08 | head 309.96
-mark: 2022-01-31 | right shoulder 232.63
-mark: 2022-02-11 | close below the neckline
+level: 210.5 | Neckline | 2021-05-12 2022-06-30 | stop
+mark: 2021-04-28 | left shoulder
+mark: 2021-11-08 | head
+mark: 2022-01-31 | right shoulder
+mark: 2022-02-11 | breaks neckline | below
 caption: Three rallies, the middle one highest. The neckline joined the lows near 210. After the break the price bounced back above it in March, then fell to 163.60 by May.
 ```
 
@@ -176,6 +254,23 @@ Two other topping structures:
 - **Climax run.** This is not a geometric pattern. After a long advance, the price makes the steepest rally of the whole move. It has the biggest weekly gains, the widest bars and often record volume. It also has exhaustion gaps: gaps that the price soon falls back into.
 
 A climax run marks the moment the last buyers arrive. Minervini and O'Neil both sell *while the price is still rising* here.
+
+Monolithic Power made a double top in 2024, after rising more than 50% since April. On 29 August it reached $959.64, then fell to a low of $795.95 a week later. In mid-October it rallied back to $954, on about a fifth less volume than at the first top. On 31 October it closed at $759.30, below the September low, on almost six times its average volume. By 20 November it was at $560.06.
+
+```series
+title: Monolithic Power — a double top, 2024
+from: 2024-06-15
+to: 2024-12-31
+tf: D
+line: us:MPWR | Monolithic Power, daily candles | candles
+line: us:MPWR@vol | Volume | pane2 bars
+level: 795.95 | Middle low | 2024-09-06 2024-12-31 | stop
+mark: 2024-08-29 | first top
+mark: 2024-09-06 | middle low | below
+mark: 2024-10-14 | second top
+mark: 2024-10-31 | breaks down
+caption: Two rallies stopped at the same price, the second on lighter volume. The pattern was confirmed only when the price closed below the low between them.
+```
 
 ---
 

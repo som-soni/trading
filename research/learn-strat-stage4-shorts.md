@@ -102,6 +102,8 @@ Risk 0.5% of the account per short (0.25–1%). Shares or lots = account risk ÷
 - A short grows as the price rises. A losing short becomes a bigger share of your account, the opposite of a losing long. Never add to it.
 - Watch for news: results, takeover rumours, a big investor buying. These cause gaps up.
 - If the stock jumps more than 3 ATR in a day on heavy volume, take that as a warning. Tighten the stop to the day's low or cover.
+- Mind the index. If it has just fallen far below its own short average, most stocks are due a bounce with it. Wait for that bounce before adding shorts.
+- Consider covering part into weakness. A gap down, or a fall to the prior swing low, is a good place to take some profit. Short-covering rallies are fast, and a trailing stop gives much of it back.
 - In India, roll before expiry. Check that the next month's contract is liquid.
 
 ## 4. The parameters
@@ -139,6 +141,10 @@ head-and-shoulders
 ```pattern
 role-reversal
 ```
+
+**A faster version: the snap-back into a falling short average.** Swing traders who hold for days, not months, use the same idea on a shorter clock. A stock already in decline breaks down hard, often on one wide down day. Over the next session or two it snaps back. They short where that bounce meets resistance: a falling 9-day or 21-day exponential average, an unfilled gap, or the old swing lows.
+
+The stop goes just above the bounce's high, far closer than a stop above the 150-day line. The first rally after a breakdown is mostly trapped buyers getting out near cost, and shorts covering. Once that buying is spent, sellers are back in control. Many of these traders time the entry on an intraday chart and expect to be stopped out often, at small cost.
 
 **Put options instead of a short.** Buying a put limits the loss to the premium paid. It costs time decay and needs the fall to come fast. In India, options are the only way to short some setups if futures lots are too large (see the Futures & options section).
 

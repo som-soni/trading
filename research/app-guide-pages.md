@@ -28,7 +28,7 @@ config, so a page always shows the market you picked last.
 |---|---|---|---|
 | **Today** | Today | Is the data current, how did the market close, and what can I trade? | [Trading plan](learn-process-plan.md) |
 | **Markets** | Post-market · Breadth · Sectors · Movers | How healthy is the market, and where is the strength? | [Breadth](learn-health-breadth.md), [sectors](learn-sectors-groups.md) |
-| **Screens** | Screens (and Quality companies) | Which stocks qualify? | [Stages](learn-price-stages.md), [system filters](learn-system-filters.md) |
+| **Screens** | Screens (and Quality companies) · Screener picks | Which stocks qualify, and which did the strategies pick? | [Stages](learn-price-stages.md), [system filters](learn-system-filters.md) |
 | **Strategies** | Today's setups · one page per strategy | Is there a trade, at what price, with what stop? | [Strategies overview](learn-strat-overview.md) |
 | **Chart** | Chart · Fundamentals · Analysis · News | What does this one stock look like — and what do I make of it? | [Indicators](learn-price-indicators.md), [earnings](learn-fund-earnings.md) |
 | **Watchlists** | Watchlists | What am I following, and what did the screener pick? | [Journal](learn-process-journal.md) |
@@ -37,15 +37,22 @@ config, so a page always shows the market you picked last.
 
 ## 2. Today
 
-Today is the starting page. It answers four questions for the market chosen in the header.
+Today is the starting page. It summarises the day for the market chosen in the header; each card opens its full page.
 
 | Part | What it shows | How to read it |
 |---|---|---|
 | **Data health** banner | "Data current" (prices, breadth and the screens are up to date) or "Data health — check before trading" with a list of issues | Any issue — a stale dataset, a stopped job worker, a run that failed in the last 24 hours — means no orders from today's setups until it is fixed |
 | **Market** card | The post-market tone label, "N of 6 signals", rising and falling stocks, and the first two Breadth readings against history since 2015 | The label is a count of six yes/no signals (§3.1). It describes the day, not the trend |
 | **Macro** card and tiles | A rule-based read of rates, the dollar, oil, credit, growth and fear: each signal supportive or a headwind, and a label from Supportive to Hostile | Background, not a trade signal. See [rates](learn-macro-rates.md), [currencies](learn-macro-currencies.md), [credit](learn-macro-liquidity-credit.md) |
-| **Today's setups** | The tradeable setups of every strategy, HIGH CONFIDENCE first: peer group, group RS, decision, setup, price, entry, stop, Risk %, Target R | A chip per strategy gives its count of tradeable names. A warning appears if newer prices loaded after the setups ran |
-| **Screener picks** | Stocks added to the Screener picks list in the latest run | New names to look at, not trades |
+| **Market readings** card | The daily review's readings from the market snapshot (`analytics/market_snapshot.py`, job `market_snapshot`): each review index against its 9- and 21-day EMA, 50- and 200-day, weekly 50 EMA, distance below its 52-week high and distribution days; then breadth, the volatility index against its threshold, the strategies' market gate, a follow-through flag and the cap- vs broad-index ratios | Readings only, no rule applied; hover a heading for how it is measured. As of the latest session with the benchmark's close. The [daily market review](system-daily-market-review.md) says how to read them |
+| **Rates & yields** card | Each market's policy rate and its bill and bond yields (`marketdata/rates.py`, job `rates`), charted over up to decades, with each rate's latest value and 1-month / 1-year / 5-year change | A dash means the series is not old enough yet for that change (India's T-bills and most G-secs are stored from 15 Oct 2026) |
+| **Today's setups** (summary) | How many setups are tradeable, how many of those are high confidence, how many are on watch, and a chip per strategy with its tradeable count | A summary only — the setups themselves, with entry, stop and target, are on **Strategies → Today's setups**. A warning appears if newer prices loaded after the setups ran |
+| **Screener picks** (summary) | How many stocks joined the screener list in the latest run, how many are on it, how many new ones are trades and how many on watch, and which strategies the new ones came from | New names to look at, not trades. The full list, filterable, is **Screens → Screener picks** (§4). A strategy whose last run is more than 3 days older than the rest is named, since its picks may be stale |
+
+Above the cards, one line gives the day at a glance: the market's tone, the macro read, the
+strategies' market gate (from Market readings), the setups count and — for a market with
+institutional-flow data, India — FII and DII net cash-market buying for the latest day in ₹ crore
+(`marketdata/flows.py`, job `flows`; hover for the 5- and 20-day sums; click for Markets → Macro).
 
 ## 3. Markets
 
@@ -118,8 +125,12 @@ Below the cards:
   crossing its 50-day.
 - **Charts** (6M, 1Y, 3Y, All): the two main indexes, highs minus lows, stocks above the 50-day with lines
   at 30% and 70%, and rising minus falling.
-- **Sectors: where the strength is?** — each sector's stocks, 3- and 1-month change against the average
-  stock, % above the 50-day, and highs and lows over two weeks. Click a sector for its stocks.
+- **Sectors over the last 3 months** — each sector's stocks (the most-traded ones), 3- and 1-month change
+  against the average stock, % above the 50-day, highs and lows over two weeks, and the Sectors page's own
+  **RS rating** (with its 1-month change) and **rotation quadrant**. It sorts by 3 months only, so a sector
+  that led for months and has just turned down still sorts high: its 1M, 50-day, RS change and quadrant
+  show the turn (e.g. +4% over 3 months, RS 70 ▼19, Lagging). Click a sector for its stocks: a table of
+  each one's 3- and 1-month return, whether it is above its 50-day and any new 52-week high or low.
 - **The last 30 days**: every reading by day, with the indexes and the options numbers. Green shading marks
   a reading in its strongest fifth since 2015; red, its weakest fifth.
 
@@ -190,7 +201,12 @@ Three presets have no strategy behind them: **Strong stocks in leading groups** 
 rated 80+, above the 50- and 200-day), **Minervini leaders in Stage 2** (Stage 2 plus a SEPA verdict of
 LEADER) and **Trend aligned — daily, weekly and monthly** (the snapshot field *Trend aligned (D/W/M)*: the
 50-day above a rising 200-day, the close above a rising 30-week average and above a rising 10-month average,
-the current week and month counted as they stand that day; `trend_alignment` in screens/criteria.py). **+ New screen** builds your own from the
+the current week and month counted as they stand that day; `trend_alignment` in screens/criteria.py).
+**Breakout watch — RS and OBV leading** (US only; a preset may name its `markets`, and is hidden elsewhere)
+lists stocks within 5% under their 55-session pivot whose RS line and OBV are already at new 55-session
+highs, in a group rated 70+. It is the rule the breakout anticipation study kept
+(research/breakout-anticipation-study.md); its daily members are logged by the `breakout_watch` job
+(`screen_alerts`) and scored forward by `analytics/breakout_study.py --forward`. **+ New screen** builds your own from the
 snapshot's ~60 fields; editing a built-in saves a copy of your own.
 
 **Quality companies** is the long-term tracker. Each company gets a quality score out of 100 (70+ with no
@@ -210,6 +226,15 @@ Each screen has two tabs:
 
 The ideas: [stages and the Trend Template](learn-price-stages.md), [relative strength](learn-price-rs.md),
 [bases](learn-bases.md).
+
+**Screener picks** is the screener list on its own page: every stock a strategy's latest run marks as a
+trade or on watch, one row per stock, with every strategy that flags it, its best decision, the date it
+joined the list and today's move. A stock stays while its strategy keeps flagging it and drops off when it
+stops. Filters: **New / All** (joined in the latest run, or the whole list), **Trade / Watch**, and a chip
+per strategy (click to show only its picks; click again to clear). Each control counts what it would show
+with the other filters applied. A strategy whose last run is more than `PICK_STALE_DAYS` (3) days older
+than the newest is greyed with its run date: its picks may be stale. Dismissing a pick, and moving it to
+your own list, is done on **Watchlists** (§7).
 
 ## 5. Strategies
 
@@ -478,7 +503,7 @@ current.**
 
 | # | Page | What to look for | Minutes |
 |---|---|---|---|
-| 1 | **Today** | Data health; the market's tone; number of tradeable setups; new screener picks | 2 |
+| 1 | **Today** | Data health; the one-line verdict (tone, macro, market gate, setups, FII/DII); new screener picks | 2 |
 | 2 | **Markets → Post-market** | The six signals; *Sectors today*; *Group leadership changes*; *Unusual volume — up*; new highs; *Your watchlists*; *Earnings in the next 10 days*; *Screener changes* | 5–8 |
 | 3 | **Markets → Breadth** | The cards against history; *What changed in the last 5 sessions*; decide how much exposure | 3 |
 | 4 | **Markets → Sectors** | Leading groups; anything new in Improving; your holdings' groups slipping to Weakening | 3–5 |
