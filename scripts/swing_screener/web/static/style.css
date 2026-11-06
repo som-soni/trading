@@ -1497,7 +1497,7 @@ table.fin.peers tbody th a { color: var(--link); }
 .td-pstrat .chip-s.on { outline: 1.5px solid var(--strong); outline-offset: 1px; }
 .td-pstrat .chip-s.old { font-style: italic; }
 .td-warn { margin-bottom: 6px; color: var(--warn); }
-.td-setups, .td-picks { margin-bottom: 12px; }
+.td-setups, .td-picks, .td-positions { margin-bottom: 12px; }
 .td-rates-card { margin-bottom: 12px; }
 .rt-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); gap: 16px; align-items: start; }
 @media (max-width: 900px) { .rt-wrap { grid-template-columns: minmax(0, 1fr); } }

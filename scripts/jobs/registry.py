@@ -612,6 +612,20 @@ def _screen_history(ctx: Ctx) -> None:
     ctx.step.stats = {"built": n}
 
 
+def _positions(ctx: Ctx) -> None:
+    """Open positions (backtesting/tracker.py): every open signal trade in a book's ledger, re-managed by its
+    strategy's own exit on the stored bars since its entry -- the simulator's exit code, under the policy the
+    strategy was backtested with -- and stored with its current stop and status. Stored prices only."""
+    from swing_screener.backtesting import tracker
+    from swing_screener.marketdata import cache
+    with cache.offline():
+        st = tracker.refresh(ctx.market)
+    ctx.step.detail = " · ".join([f"{st['positions']} open signal trades in {st['books']} books"]
+                                 + [f"{k.replace('_', ' ')} {st[k]}" for k in tracker.STATUS_TEXT if st[k]]
+                                 + ([f"{st['no_bars']} without bars"] if st["no_bars"] else []))
+    ctx.step.stats = st
+
+
 # A backtest's window comes from its STAGE -- swing_screener/backtesting/windows.py -- not a constant here.
 
 
@@ -1077,6 +1091,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         False, _screen_history, after=("prices",)),
     Job("strategies", "screening", "strategies: today's setups — entry, stop, target and decision per strategy", "on demand", False,
         after=("prices",), expand=_strategy_steps),
+    Job("positions", "screening", "open positions: each book's open signal trades re-managed by its strategy's own exit on "
+        "stored bars — current stop and status (backtesting/tracker.py)", "daily", False, _positions, after=("prices",)),
     Job("backtest", "screening", "backtest: walk-forward simulation of a strategy's full history, with its documented exit policy (slow)",
         "on demand", False, after=("prices",), expand=_backtest_steps),
     Job("group_research", "screening", "research: does group strength improve forward returns? (writes research/group-strength-study.md)",
@@ -1104,7 +1120,7 @@ PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
               "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "market_snapshot", "sectors",
-                       "screens", "breakout_watch", "postmarket", "strategies", "report", "ingest"],
+                       "screens", "breakout_watch", "postmarket", "strategies", "positions", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
                         "re-run only the strategies left stale, then check everything is ready",
@@ -1140,7 +1156,8 @@ PIPELINES: dict[str, dict] = {
 # The fast lane runs only these: short jobs that read stored data (seconds to a few minutes), so a
 # page's screens rebuild or a setups refresh does not wait hours behind a backtest in the main lane.
 # Anything not listed — backtests, downloads, month-end history, research — stays in the main lane.
-FAST_JOBS = frozenset({"breadth", "market_snapshot", "sectors", "screens", "breakout_watch", "strategies", "postmarket", "report", "ingest", "readiness"})
+FAST_JOBS = frozenset({"breadth", "market_snapshot", "sectors", "screens", "breakout_watch", "strategies", "positions",
+                       "postmarket", "report", "ingest", "readiness"})
 # The backtest lane runs these: long jobs on stored data (minutes to many hours, no downloads), so a
 # scheduled market routine in the main lane never waits behind one. Downloads stay in the main lane, so
 # two lanes never hit the data sources at once.

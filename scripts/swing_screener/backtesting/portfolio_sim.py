@@ -543,20 +543,7 @@ def simulate(
     policy = exit_policy or ExitPolicy()
     base_slip = cfg.slippage_bps if slippage_bps is None else slippage_bps
     fee_rate = cost_bps / 10_000.0
-    if policy.mode == "weekly_ma":
-        early = policy.wk_stage3 or policy.wk_dist_weeks or policy.wk_lower_high
-        prices = {s: df.assign(**{WEEKLY_LINE: weekly_line(df, policy.ma_weeks)},
-                               **(dict(_sa.deterioration(df).items()) if early else {}))
-                  for s, df in prices.items()}
-    elif policy.mode == "supertrend":
-        prices = {s: df.assign(**{ST_DIR: ind.supertrend(df, policy.st_period, policy.st_mult)["dir"]})
-                  for s, df in prices.items()}
-    elif policy.mode == "kullamagi":
-        avg = ind.ema if policy.km_trail_ema else ind.sma
-        prices = {s: df.assign(**{KM_TRAIL: avg(df["close"].astype(float), policy.km_trail_sma)})
-                  for s, df in prices.items()}
-    elif policy.mode == "darvas":
-        prices = {s: df.assign(**darvas_levels(df, policy)) for s, df in prices.items()}
+    prices = exit_frames(prices, policy)
 
     check_ma_col(policy, prices)   # every caller, not only the command line
 
@@ -723,74 +710,7 @@ def simulate(
             df = prices.get(sym)
             if df is None or today not in df.index:
                 continue
-            bar = df.loc[today]
-
-            if policy.mode == "minervini":
-                _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg)
-                continue
-
-            if policy.mode == "kullamagi":
-                _manage_kullamagi(sym, pos, bar, today, policy, close_out, sell)
-                continue
-
-            if policy.mode == "darvas":
-                _manage_darvas(sym, pos, bar, today, policy, close_out, cfg)
-                continue
-
-            if policy.managed:
-                _manage_bracket(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg)
-                continue
-
-            hit_stop = bar["low"] <= pos.stop
-            # ma_low: a sell-stop under the low of a held session that closed below the line. It acts during
-            # the bar, after the stop (which wins a tie, as always) and before the target (conservative)
-            low_break = (_ma_low_level(pos, df, today, bar, policy)
-                         if policy.mode == "ma_low" and not hit_stop else None)
-            hit_target = low_break is None and policy.use_target and bar["high"] >= pos.target
-            trend_break = False
-            if not hit_stop and not hit_target and policy.mode in ("ma", "weekly_ma", "donchian", "supertrend"):
-                # trend-failure exits act on the CLOSE, so they are evaluated
-                # only once the bar is complete -- no intrabar clairvoyance
-                if policy.mode == "supertrend":
-                    trend_break = bar.get(ST_DIR, 0) == -1
-                elif policy.mode in ("ma", "weekly_ma"):
-                    ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
-                    trend_break = ma == ma and float(bar["close"]) < float(ma) * _below(policy)
-                else:
-                    hist = df.loc[:today, "low"]
-                    if len(hist) > policy.donchian_bars:
-                        floor_ = float(hist.iloc[-(policy.donchian_bars + 1) : -1].min())
-                        trend_break = float(bar["close"]) < floor_
-
-            early = (_weekly_early_exit(pos, df, today, bar, policy)
-                     if policy.mode == "weekly_ma" and not (hit_stop or hit_target or trend_break) else None)
-
-            if not (hit_stop or hit_target or trend_break or low_break is not None or early):
-                # nothing exited: ratchet the trailing stop upward for tomorrow
-                c = float(bar["close"])
-                pos.peak_close = c if pos.peak_close != pos.peak_close else max(pos.peak_close, c)
-                if policy.mode == "trail_atr":
-                    atr = bar.get("atr14", float("nan"))
-                    if atr == atr and atr:
-                        pos.stop = max(pos.stop, pos.peak_close - policy.atr_mult * float(atr))
-                elif policy.mode == "trail_pct":
-                    _trail_pct(pos, bar, policy)
-                continue
-
-            o = float(bar["open"])
-            if hit_stop:  # conservative: the stop wins a same-bar tie
-                raw = min(pos.stop, o)  # gap-through fills at the open
-                reason, at = "STOP", AT_OPEN if o <= pos.stop else INTRADAY
-            elif low_break is not None:
-                raw = min(low_break, o)  # a gap under the candle's low fills at the open
-                reason, at = "TREND_EXIT", AT_OPEN if o <= low_break else INTRADAY
-            elif hit_target:
-                raw = max(pos.target, o)
-                reason, at = "TARGET", AT_OPEN if o >= pos.target else INTRADAY
-            else:
-                raw = float(bar["close"])  # trend-failure exit, at the close
-                reason, at = early or "TREND_EXIT", AT_CLOSE
-            close_out(sym, pos, raw, reason, today, at=at)
+            manage_exit(sym, pos, df, df.loc[today], today, policy, close_out, sell, fee_rate, cfg)
 
         # ---- 2. resting orders -------------------------------------------
         # PF-06 / MKT-01: in risk-off, nothing new is bought. Signals are already
@@ -1028,22 +948,7 @@ def simulate(
                 bases_entered[_k] = bases_entered.get(_k, 0) + 1
             taken += 1
             del pending[sym]
-            if policy.mode == "minervini":
-                # the entry bar's close counts for the close-based exits (EX-02, EX-06)
-                df = prices[sym]
-                _manage_minervini(sym, positions[sym], df, bar, today, policy, close_out, sell, fee_rate, cfg, entry_day=True)
-            elif at != AT_CLOSE and float(bar["low"]) <= order["stop"]:
-                # The fill bar reached the stop. After an open fill the rest of the bar came later, so
-                # the stop was hit; after an intraday buy-stop the bar does not say which came first,
-                # and the stop wins the tie, as in step 1. It fills at the stop: the price passed through
-                # it after the buy. Until 2026-10-31 the fill bar was never tested, so a buy that
-                # reversed through its stop that session survived to the next one.
-                close_out(sym, positions[sym], order["stop"], "STOP", today, at=INTRADAY)
-            elif policy.mode == "darvas" and meta.get("min_breakout_vol"):
-                # a light-volume breakout session: sold at the next open (the darvas strategy's switch)
-                v50 = float(bar.get("vol_sma50", float("nan")))
-                if v50 == v50 and v50 > 0 and float(bar.get("volume", 0) or 0) < meta["min_breakout_vol"] * v50:
-                    positions[sym].queued_exit = "LIGHT_VOLUME_BREAKOUT"
+            manage_entry_bar(sym, positions[sym], prices[sym], bar, today, policy, at, close_out, sell, fee_rate, cfg)
 
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
@@ -1095,6 +1000,122 @@ def simulate(
         partial_fills=partial_fills, skipped=skipped,
         skipped_at=skipped_at, missed_slot_at=missed_slot_at, missed_cash_at=missed_cash_at,
     )
+
+
+def exit_frames(prices: dict[str, pd.DataFrame], policy: ExitPolicy) -> dict[str, pd.DataFrame]:
+    """Each price frame with the columns its exit policy reads (the weekly line, the Supertrend
+    direction, the trailing average, the Darvas boxes) -- added once, before the walk. `simulate` and
+    the open-position tracker (`backtesting/tracker.py`) both call it."""
+    if policy.mode == "weekly_ma":
+        early = policy.wk_stage3 or policy.wk_dist_weeks or policy.wk_lower_high
+        return {s: df.assign(**{WEEKLY_LINE: weekly_line(df, policy.ma_weeks)},
+                             **(dict(_sa.deterioration(df).items()) if early else {}))
+                for s, df in prices.items()}
+    if policy.mode == "supertrend":
+        return {s: df.assign(**{ST_DIR: ind.supertrend(df, policy.st_period, policy.st_mult)["dir"]})
+                for s, df in prices.items()}
+    if policy.mode == "kullamagi":
+        avg = ind.ema if policy.km_trail_ema else ind.sma
+        return {s: df.assign(**{KM_TRAIL: avg(df["close"].astype(float), policy.km_trail_sma)})
+                for s, df in prices.items()}
+    if policy.mode == "darvas":
+        return {s: df.assign(**darvas_levels(df, policy)) for s, df in prices.items()}
+    return prices
+
+
+def manage_entry_bar(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, policy: ExitPolicy, at: int,
+                     close_out, sell, fee_rate: float, cfg: MarketConfig) -> None:
+    """What the session a position was bought in does to it, after the fill at moment `at`. The one
+    implementation for `simulate` and the open-position tracker."""
+    if policy.mode == "minervini":
+        # the entry bar's close counts for the close-based exits (EX-02, EX-06)
+        _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg, entry_day=True)
+    elif at != AT_CLOSE and float(bar["low"]) <= pos.stop:
+        # The fill bar reached the stop. After an open fill the rest of the bar came later, so
+        # the stop was hit; after an intraday buy-stop the bar does not say which came first,
+        # and the stop wins the tie, as in step 1. It fills at the stop: the price passed through
+        # it after the buy. Until 2026-10-31 the fill bar was never tested, so a buy that
+        # reversed through its stop that session survived to the next one.
+        close_out(sym, pos, pos.stop, "STOP", today, at=INTRADAY)
+    elif policy.mode == "darvas" and pos.meta.get("min_breakout_vol"):
+        # a light-volume breakout session: sold at the next open (the darvas strategy's switch)
+        v50 = float(bar.get("vol_sma50", float("nan")))
+        if v50 == v50 and v50 > 0 and float(bar.get("volume", 0) or 0) < pos.meta["min_breakout_vol"] * v50:
+            pos.queued_exit = "LIGHT_VOLUME_BREAKOUT"
+
+
+def manage_exit(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, policy: ExitPolicy,
+                close_out, sell, fee_rate: float, cfg: MarketConfig) -> None:
+    """One session of an open position under `policy`: sell it (`close_out`), sell part (`sell`), or
+    ratchet its stop for tomorrow. `simulate` calls it for every held position each session, and the
+    open-position tracker replays a live position's bars through it -- one implementation of the exits.
+    `df` is the position's frame from `exit_frames`, `bar` its row for `today`."""
+    if policy.mode == "minervini":
+        _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg)
+        return
+
+    if policy.mode == "kullamagi":
+        _manage_kullamagi(sym, pos, bar, today, policy, close_out, sell)
+        return
+
+    if policy.mode == "darvas":
+        _manage_darvas(sym, pos, bar, today, policy, close_out, cfg)
+        return
+
+    if policy.managed:
+        _manage_bracket(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg)
+        return
+
+    hit_stop = bar["low"] <= pos.stop
+    # ma_low: a sell-stop under the low of a held session that closed below the line. It acts during
+    # the bar, after the stop (which wins a tie, as always) and before the target (conservative)
+    low_break = (_ma_low_level(pos, df, today, bar, policy)
+                 if policy.mode == "ma_low" and not hit_stop else None)
+    hit_target = low_break is None and policy.use_target and bar["high"] >= pos.target
+    trend_break = False
+    if not hit_stop and not hit_target and policy.mode in ("ma", "weekly_ma", "donchian", "supertrend"):
+        # trend-failure exits act on the CLOSE, so they are evaluated
+        # only once the bar is complete -- no intrabar clairvoyance
+        if policy.mode == "supertrend":
+            trend_break = bar.get(ST_DIR, 0) == -1
+        elif policy.mode in ("ma", "weekly_ma"):
+            ma = bar.get(policy.ma_col if policy.mode == "ma" else WEEKLY_LINE, float("nan"))
+            trend_break = ma == ma and float(bar["close"]) < float(ma) * _below(policy)
+        else:
+            hist = df.loc[:today, "low"]
+            if len(hist) > policy.donchian_bars:
+                floor_ = float(hist.iloc[-(policy.donchian_bars + 1) : -1].min())
+                trend_break = float(bar["close"]) < floor_
+
+    early = (_weekly_early_exit(pos, df, today, bar, policy)
+             if policy.mode == "weekly_ma" and not (hit_stop or hit_target or trend_break) else None)
+
+    if not (hit_stop or hit_target or trend_break or low_break is not None or early):
+        # nothing exited: ratchet the trailing stop upward for tomorrow
+        c = float(bar["close"])
+        pos.peak_close = c if pos.peak_close != pos.peak_close else max(pos.peak_close, c)
+        if policy.mode == "trail_atr":
+            atr = bar.get("atr14", float("nan"))
+            if atr == atr and atr:
+                pos.stop = max(pos.stop, pos.peak_close - policy.atr_mult * float(atr))
+        elif policy.mode == "trail_pct":
+            _trail_pct(pos, bar, policy)
+        return
+
+    o = float(bar["open"])
+    if hit_stop:  # conservative: the stop wins a same-bar tie
+        raw = min(pos.stop, o)  # gap-through fills at the open
+        reason, at = "STOP", AT_OPEN if o <= pos.stop else INTRADAY
+    elif low_break is not None:
+        raw = min(low_break, o)  # a gap under the candle's low fills at the open
+        reason, at = "TREND_EXIT", AT_OPEN if o <= low_break else INTRADAY
+    elif hit_target:
+        raw = max(pos.target, o)
+        reason, at = "TARGET", AT_OPEN if o >= pos.target else INTRADAY
+    else:
+        raw = float(bar["close"])  # trend-failure exit, at the close
+        reason, at = early or "TREND_EXIT", AT_CLOSE
+    close_out(sym, pos, raw, reason, today, at=at)
 
 
 def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, policy: ExitPolicy,

@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS book_trades (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS book_trades_book ON book_trades (book, market, trade_date, id);
+-- signal trades: the levels the strategy's exit reads (a Darvas box, a pivot), as its signal carried them
+ALTER TABLE book_trades ADD COLUMN IF NOT EXISTS meta JSONB;
 """
 
 
@@ -175,7 +177,7 @@ def diff_trades(held: dict, cash: float, want: dict, want_cash: float | None, pr
 # ------------------------------------------------------------------ storage
 
 _COLS = ("id", "trade_date", "symbol", "side", "shares", "price", "amount", "costs", "rebalance_id", "source",
-         "entry_rule", "setup", "initial_stop", "target", "note", "created_at")
+         "entry_rule", "setup", "initial_stop", "target", "note", "created_at", "meta")
 
 
 def trades(book: str, market: str) -> list[dict]:
@@ -213,7 +215,8 @@ def _clean(market: str, t: dict, source: str, default_date) -> dict:
            "rebalance_id": t.get("rebalance_id") or None, "entry_rule": t.get("entry_rule") or None,
            "setup": t.get("setup") or None,
            "initial_stop": float(t["initial_stop"]) if t.get("initial_stop") not in (None, "") else None,
-           "target": float(t["target"]) if t.get("target") not in (None, "") else None}
+           "target": float(t["target"]) if t.get("target") not in (None, "") else None,
+           "meta": t.get("meta") or None}
     datetime.strptime(out["trade_date"], "%Y-%m-%d")   # a date, or ValueError
     if out["costs"] < 0:
         raise ValueError("costs cannot be negative")
@@ -252,11 +255,11 @@ def record(book: str, market: str, rows: list[dict], source: str = "manual") -> 
         for t in clean:
             cur.execute(
                 "INSERT INTO book_trades (book, market, trade_date, symbol, side, shares, price, amount, costs, "
-                "rebalance_id, source, entry_rule, setup, initial_stop, target, note) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
+                "rebalance_id, source, entry_rule, setup, initial_stop, target, note, meta) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id",
                 (book, market, t["trade_date"], t["symbol"], t["side"], t["shares"], t["price"], t["amount"],
                  t["costs"], t["rebalance_id"], t["source"], t["entry_rule"], t["setup"], t["initial_stop"],
-                 t["target"], t["note"]))
+                 t["target"], t["note"], json.dumps(t["meta"]) if t["meta"] else None))
             ids.append(cur.fetchone()[0])
     _sync_snapshot(book, market)
     return ids

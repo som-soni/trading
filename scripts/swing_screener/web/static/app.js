@@ -8811,6 +8811,7 @@ async function todayPage(alive, mkt) {
     <div class="mstrip td-tiles" id="td-tiles"></div>
     <div class="sec-card td-readings" id="td-readings">${tdHead(`Market readings · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div>
     <div class="sec-card td-rates-card" id="td-rates">${tdHead(`Rates & yields · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div>
+    <div class="sec-card td-positions" id="td-pos"></div>
     <div class="td-grid">
       <div class="sec-card td-card">${tdHead(`Today's setups · ${esc(mktInfo(mkt).name)}`)}
         <div class="muted small td-explain">Each strategy's verdict on today's data: the trades it would take, with entry, stop and target.</div>
@@ -8830,6 +8831,7 @@ async function todayPage(alive, mkt) {
   macroSection($view.querySelector("#td-macro"), $view.querySelector("#td-tiles"), mkt)
     .then((a) => fill("tdv-macro", a ? `<span class="td-tl tl ${MACRO_CLS[a.label] || ""}"></span>${esc(a.label)}` : "—"));
   ratesSection($view.querySelector("#td-rates"), mkt);
+  openPositionsCard($view.querySelector("#td-pos"), mkt, alive, trade);
   readingsSection($view.querySelector("#td-readings"), mkt).then((g) => fill("tdv-gate", gateLabel(g)));
   api("/api/flows").catch(() => null).then((d) => {
     const el_ = $view.querySelector("#tdv-flows");
@@ -8839,6 +8841,62 @@ async function todayPage(alive, mkt) {
     el_.querySelector(".td-v-v").innerHTML = d.flows.map((x) => `<a href="#/macro/${mkt}" class="td-flow"><span class="muted">${esc(x.label.split(" ")[0])}</span> ${n(x.value)}</a>`).join("");
     el_.hidden = false;
   });
+}
+
+/** Open positions (/api/open-positions -> backtesting/tracker.py): each open signal trade in a book, with the
+ * stop and status its strategy's own exit gives after the latest close -- the backtest's exit code replayed on
+ * stored bars by the daily `positions` job. "Take a setup…" records one of today's tradeable setups into its
+ * strategy's book at your fill, with the setup's initial stop. Nothing here places an order. */
+async function openPositionsCard(host, mkt, alive, trade) {
+  const r = await api(`/api/open-positions/${mkt}`).catch(() => null);
+  if (!alive() || !r) { host.remove(); return; }
+  const n = r.rows.length + r.pending.length;
+  const act = r.rows.filter((x) => x.status !== "hold").length;
+  host.innerHTML = `${tdHead(`Open positions · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${n} open${act ? ` · <b>${act} need${act === 1 ? "s" : ""} action</b>` : ""}</span>
+      <button class="sm" id="takebtn" ${trade.length ? "" : "disabled title=\"No tradeable setup today\""}>Take a setup…</button>`)}
+    <div class="muted small">Each open signal trade, managed by its strategy's own exit — the rule it was backtested with, replayed on the
+      stored bars since your entry after each close. The stop is for the next session; R is measured from the stop you entered with.
+      A reading of the rules, not a recommendation.</div>
+    <div id="takeform"></div><div id="postbl"></div>`;
+  const tbl = host.querySelector("#postbl");
+  if (!n) tbl.innerHTML = `<div class="muted small" style="margin-top:6px">No open signal trades. Take one of today's tradeable setups to track it here.</div>`;
+  else {
+    const rows = r.rows.map((x) => [x.symbol, x.book, x.status_text, x.entry_date, x.entry_price, x.shares, x.initial_stop, x.stop,
+      x.dist_pct, x.r_now, x.last_close, x.reason || "", x.as_of]).concat(r.pending.map((x) => [x.symbol, x.book,
+      "Not yet tracked — refreshed with the next positions run", x.entry_date, x.entry_price, x.shares, x.initial_stop, x.initial_stop, null, null, null, "", null]));
+    dataTable(tbl, ["symbol", "book", "status", "entry_date", "entry", "shares", "initial_stop", "stop", "to_stop_pct", "r_now", "close", "exit", "as_of"], rows, {
+      name: `open_positions_${mkt}`, noStack: true, sort: ["status", 1],
+      html: { status: (v) => `<span class="tag ${/^Hold/.test(v) ? "neutral" : /raised/.test(v) ? "warn" : /^Not yet/.test(v) ? "neutral" : "neg"}">${esc(v)}</span>` },
+      rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[0])}`),
+    });
+  }
+  host.querySelector("#takebtn").onclick = () => {
+    const f = host.querySelector("#takeform");
+    const opt = (x, i) => `<option value="${i}">${esc(bareSymbol(x.symbol))} — ${esc(x.strategy_name)} · entry ${x.entry ?? "—"} · stop ${x.stop ?? "—"}</option>`;
+    f.innerHTML = `<div class="sd-intro small" style="margin-top:8px"><b>Take a setup into its strategy's book.</b> Records a BUY at your fill with the setup's
+        stop as the initial stop; the next <b>positions</b> run (asked for now, and part of the close routine) tracks it.
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+        <select id="tk-s">${trade.map(opt).join("")}</select>
+        <label>Shares <input id="tk-n" type="number" min="1" step="1" style="width:6em"></label>
+        <label>Fill price <input id="tk-p" type="number" min="0" step="any" style="width:7em"></label>
+        <label>Costs <input id="tk-c" type="number" min="0" step="any" style="width:5em" value="0"></label>
+        <label>Initial stop <input id="tk-st" type="number" min="0" step="any" style="width:7em"></label>
+        <label>Date <input id="tk-d" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+        <button class="primary sm" id="tk-go">Record</button><button class="ghost sm" id="tk-x">Cancel</button>
+        <span id="tk-err" style="color:var(--neg, #e5484d)"></span></div></div>`;
+    const fill = () => { const x = trade[+f.querySelector("#tk-s").value]; f.querySelector("#tk-p").value = x.entry ?? ""; f.querySelector("#tk-st").value = x.stop ?? ""; };
+    fill();
+    f.querySelector("#tk-s").onchange = fill;
+    f.querySelector("#tk-x").onclick = () => { f.innerHTML = ""; };
+    f.querySelector("#tk-go").onclick = async () => {
+      const x = trade[+f.querySelector("#tk-s").value];
+      const body = { strategy: x.strategy, symbol: x.symbol, shares: parseFloat(f.querySelector("#tk-n").value), price: parseFloat(f.querySelector("#tk-p").value),
+        costs: parseFloat(f.querySelector("#tk-c").value) || 0, initial_stop: parseFloat(f.querySelector("#tk-st").value), trade_date: f.querySelector("#tk-d").value };
+      const ok = await api(`/api/open-positions/${mkt}/take`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+        .catch((e) => { f.querySelector("#tk-err").textContent = String(e.message || e); return null; });
+      if (ok) openPositionsCard(host, mkt, alive, trade);
+    };
+  };
 }
 
 async function route() {

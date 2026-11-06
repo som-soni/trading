@@ -1662,10 +1662,9 @@ def _portfolio_suffix(args, cfg) -> str:
         parts.append(f"_maxbase{args.max_base}")
     return "".join(parts)
 
-def main(argv: list[str] | None = None) -> dict | None:
-    """CLI entry point. `argv` lets the `backtest` job (jobs/registry.py) run it in-process with the
-    same arguments the command line would take; the portfolio branch returns {run_dir, trades, perf}
-    so the job can record a result line."""
+def build_parser() -> argparse.ArgumentParser:
+    """The backtest's command line -- also how a strategy's `backtest_args` are read outside a run
+    (the open-position tracker builds a strategy's exit policy from them, `exit_policy_for`)."""
     parser = argparse.ArgumentParser(description="Walk-forward backtest")
     parser.add_argument("--market", choices=list(MARKETS.keys()), required=True)
     parser.add_argument("--start", required=True, help="YYYY-MM-DD")
@@ -1896,7 +1895,51 @@ def main(argv: list[str] | None = None) -> dict | None:
                              "not exceed 1.0, or the book runs out of cash before slots")
     parser.add_argument("--no-ingest", action="store_true",
                     help="skip updating the viewer database after the run")
+    return parser
 
+
+def exit_policy_from_args(args) -> "ExitPolicy":
+    """The exit policy a backtest with these arguments runs. `main` and the open-position tracker both
+    build it here, so a position tracked live is managed by the policy its strategy was measured with.
+    Reads `--spec`'s default exit (the minervini ladder, no target) the way `main` sets it."""
+    from .portfolio_sim import ExitPolicy
+    exit_mode, no_target = args.exit_mode, args.no_target
+    if args.spec and exit_mode == "bracket":
+        exit_mode, no_target = "minervini", True
+    if args.target:
+        no_target = False
+    managed = exit_mode != "minervini"
+    extra = {k: v for k, v in (("partial_r", args.partial_r), ("fail_days", args.fail_days),
+                               ("breakeven_r" if not managed else "be_r", args.breakeven_r),
+                               ("time_stop_bars", args.time_stop_bars), ("time_stop_mult", args.time_stop_mult),
+                               ("partial_at_target", args.partial_at_target),
+                               ("strength_ext", args.strength_ext / 100 if args.strength_ext is not None else None),
+                               ("climax_partial", False if args.climax_full else None),
+                               ("climax_second", True if args.climax_second else None),
+                               ("trend_volume", True if args.trend_volume else (False if args.no_trend_volume else None)),
+                               ("climax", False if args.no_climax else None),
+                               ("time_stop_days", args.time_stop)) if v is not None}
+    return ExitPolicy(
+        mode=exit_mode, use_target=not no_target,
+        atr_mult=args.atr_mult, trail_pct=args.trail_pct / 100, ma_col=args.ma_col, ma_weeks=args.ma_weeks,
+        donchian_bars=args.donchian_bars, **extra,
+    )
+
+
+def exit_policy_for(strategy_key: str, market: str) -> "ExitPolicy":
+    """A registered strategy's exit policy: its own `backtest_args`, read by the backtest's parser."""
+    import shlex
+    from ..strategies import get_strategy
+    argv = ["--market", market, "--start", "2000-01-01", "--strategy", strategy_key,
+            *shlex.split(get_strategy(strategy_key).backtest_args or "")]
+    return exit_policy_from_args(build_parser().parse_args(argv))
+
+
+def main(argv: list[str] | None = None) -> dict | None:
+    """CLI entry point. `argv` lets the `backtest` job (jobs/registry.py) run it in-process with the
+    same arguments the command line would take; the portfolio branch returns {run_dir, trades, perf}
+    so the job can record a result line."""
+    parser = build_parser()
     args = parser.parse_args(argv)
     signal_source = None   # a run whose cached signal rows this one would write too (seed_signal_cache)
     if getattr(args, "vcp", None):
@@ -2032,22 +2075,7 @@ def main(argv: list[str] | None = None) -> dict | None:
         parser.error("--partial-at-target is a fraction between 0 and 1, e.g. 0.5")
     if args.target:
         args.no_target = False
-    managed = args.exit_mode != "minervini"
-    extra = {k: v for k, v in (("partial_r", args.partial_r), ("fail_days", args.fail_days),
-                               ("breakeven_r" if not managed else "be_r", args.breakeven_r),
-                               ("time_stop_bars", args.time_stop_bars), ("time_stop_mult", args.time_stop_mult),
-                               ("partial_at_target", args.partial_at_target),
-                               ("strength_ext", args.strength_ext / 100 if args.strength_ext is not None else None),
-                               ("climax_partial", False if args.climax_full else None),
-                               ("climax_second", True if args.climax_second else None),
-                               ("trend_volume", True if args.trend_volume else (False if args.no_trend_volume else None)),
-                               ("climax", False if args.no_climax else None),
-                               ("time_stop_days", args.time_stop)) if v is not None}
-    policy = ExitPolicy(
-        mode=args.exit_mode, use_target=not args.no_target,
-        atr_mult=args.atr_mult, trail_pct=args.trail_pct / 100, ma_col=args.ma_col, ma_weeks=args.ma_weeks,
-        donchian_bars=args.donchian_bars, **extra,
-    )
+    policy = exit_policy_from_args(args)
     # Before the scan, not hours into it: the simulator checks again on the real frames, but by then
     # the signals have been collected. The frames are enrich_daily output, so one stored series says
     # which averages exist.

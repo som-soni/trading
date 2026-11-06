@@ -71,6 +71,8 @@ def _startup() -> None:
     rebalance_mod.init_schema()
     from ..broker import kite as kite_mod
     kite_mod.init_schema()
+    from ..backtesting import tracker as tracker_mod
+    tracker_mod.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
     threading.Thread(target=_background_refresh, daemon=True).start()  # what the Today page needs, computed ahead
     threading.Thread(target=db_mod.releasing(_prewarm_sectors), daemon=True).start()
@@ -1651,6 +1653,68 @@ def rebalance_orders(strategy: str, market: str):
     if not hasattr(portfolio_strategies()[strategy], "lookback"):
         raise HTTPException(400, f"{strategy} does not rank stocks")
     return rebalance.orders(strategy, market)
+
+
+@app.get("/api/open-positions/{market}")
+def open_positions(market: str):
+    """Every open signal trade in the market's books, with the status the `positions` job stored after the
+    latest close (backtesting/tracker.py: the strategy's own exit replayed on stored bars). A trade taken
+    since the last refresh is listed under `pending` until the job has run."""
+    from ..backtesting import tracker
+    from ..strategies import _REGISTRY
+
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    rows = tracker.statuses(market)
+    seen = {r["trade_id"] for r in rows}
+    books = [b for (b,) in q("SELECT DISTINCT book FROM book_trades WHERE market=%s AND initial_stop IS NOT NULL",
+                             (market,)) if b in _REGISTRY]
+    pending = [{"trade_id": o.trade_id, "book": o.book, "symbol": o.symbol, "entry_date": o.entry_date.date().isoformat(),
+                "entry_price": o.entry_price, "shares": o.shares, "initial_stop": o.initial_stop}
+               for b in books for o in tracker.openings(b, market) if o.trade_id not in seen]
+    return {"market": market, "rows": rows, "pending": pending, "status_text": tracker.STATUS_TEXT}
+
+
+# the signal's own levels the exits read, copied from the strategy's stored run row when it carries them
+_TAKE_META = {"box_top": "box_top", "box_bottom": "box_bottom", "pivot": "pivot", "box_top_date": "setup_start"}
+
+
+@app.post("/api/open-positions/{market}/take")
+def take_setup(market: str, body: dict):
+    """Take a tradeable setup into its strategy's book: a BUY at your fill, with the setup's initial stop (and
+    target), recorded in the ledger; then ask the queue for a `positions` refresh. {strategy, symbol, shares,
+    price, trade_date?, initial_stop?, costs?, refresh?}. Nothing is ordered: you buy at the broker."""
+    from ..backtesting import ledger, rebalance
+
+    strategy = str(body.get("strategy") or "")
+    _book_ok(strategy, market)
+    sym = rebalance.normalise_symbol(market, str(body.get("symbol") or ""))
+    rows = _latest_strategy_rows(market).get(strategy, (None, []))
+    fr = next((r for s_, r in rows[1] if s_ == sym), None)
+    if fr is None and body.get("initial_stop") in (None, ""):
+        raise HTTPException(400, f"{sym} is not in {strategy}'s latest run: give the initial stop")
+    fr = fr or {}
+    stop = float(body.get("initial_stop") or fr.get("stop") or 0)
+    entry, tr = fr.get("entry"), fr.get("target_r")
+    target = (float(entry) + float(tr) * (float(entry) - stop)) if entry and tr and float(entry) > stop else None
+    meta = {v: fr[k] for k, v in _TAKE_META.items() if fr.get(k) is not None}
+    if "box_top_date" in fr:
+        meta["base_id"] = f"darvas:{fr['box_top_date']}"
+    try:
+        ids = ledger.record(strategy, market, [{
+            "side": "BUY", "symbol": sym, "shares": body.get("shares"), "price": body.get("price"),
+            "costs": body.get("costs") or 0, "trade_date": body.get("trade_date"), "initial_stop": stop,
+            "target": target, "entry_rule": fr.get("strategy_setup"), "setup": fr.get("decision"), "meta": meta,
+            "note": f"taken from {strategy}'s run {rows[0]}" if rows[0] else "taken by hand"}], source="manual")
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, str(e))
+    queued = None
+    if body.get("refresh", True):
+        try:
+            queued = _jq().enqueue(["positions"], market, {}, requested_by="web: a setup taken", priority=10)["id"]
+        except Exception as exc:  # noqa: BLE001 -- the trade is recorded; the close routine refreshes it anyway
+            print(f"positions {market}: could not queue a refresh ({exc})")
+    return {"trade_id": ids[0], "queued": queued}
 
 
 @app.get("/api/dual-pick/{market}")
