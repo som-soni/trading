@@ -155,8 +155,13 @@ class Ema100TrendStrategy(Strategy):
     )
 
     status = (
-        "NOT YET MEASURED. Stage: optimise (2013-2021, in-sample); verify has not been run. Reported against the "
-        "market's index at the same exposure, in both markets; no rule is tuned on these years."
+        "In-sample (optimise, 2013-2021), v1.0; verify has not been run. Lags its index in both markets, even "
+        "scaled to the same exposure. India (top 500 by traded value): 361 trades, 22.6% winners, avg +0.15R, "
+        "profit factor 1.20, CAGR 3.5% (max drawdown -27%) against 5.6% (-20%) for the Nifty 500 held at the "
+        "strategy's average 73% invested; buy-and-hold 13.5%. US (top 500): 535 trades, 25.9% winners, avg "
+        "+0.35R, profit factor 1.41, CAGR 9.0% (-28%) against 11.0% (-24%) for SPY at the same 94% invested; "
+        "buy-and-hold 14.0%. The edge is in the exit: trend exits average +0.5R (India) and +1.2R (US), the "
+        "stops -1.0R to -1.1R, and a few US stops gapped to -3R to -4.5R. No rule has been tuned on these years."
     )
     gate_docs = {
         "G1": (
