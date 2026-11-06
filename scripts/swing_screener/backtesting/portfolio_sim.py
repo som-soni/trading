@@ -106,12 +106,14 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | weekly_ma | donchian | supertrend | kullamagi | minervini
+    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | ma_low | weekly_ma | donchian | supertrend | kullamagi | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
     trail_pct: float = 0.04      # for trail_pct: the stop sits this fraction below the highest HIGH since entry
                                  #   (the "fixed % from the peak" trail); it only ever rises
-    ma_col: str = "sma50"        # for ma, and minervini's EX-06
+    ma_col: str = "sma50"        # for ma and ma_low, and minervini's EX-06. ma_low: a close below this line
+                                 #   is not an exit; the NEXT session trading under that candle's low is
+                                 #   (see `_ma_low_level`)
     ma_weeks: int = 30           # for weekly_ma: a completed week closing below the simple average of
                                  #   this many weekly closes sells at that close (Weinstein's 30-week line)
     donchian_bars: int = 50      # for donchian
@@ -188,7 +190,7 @@ class ExitPolicy:
             bits.append(f"{self.atr_mult:g}ATR")
         elif self.mode == "trail_pct":
             bits.append(f"{self.trail_pct * 100:g}pct")
-        elif self.mode == "ma":
+        elif self.mode in ("ma", "ma_low"):
             bits.append(self.ma_col)
         elif self.mode == "weekly_ma":
             bits.append(f"{self.ma_weeks}w")
@@ -641,7 +643,11 @@ def simulate(
                 continue
 
             hit_stop = bar["low"] <= pos.stop
-            hit_target = policy.use_target and bar["high"] >= pos.target
+            # ma_low: a sell-stop under the low of a held session that closed below the line. It acts during
+            # the bar, after the stop (which wins a tie, as always) and before the target (conservative)
+            low_break = (_ma_low_level(pos, df, today, bar, policy)
+                         if policy.mode == "ma_low" and not hit_stop else None)
+            hit_target = low_break is None and policy.use_target and bar["high"] >= pos.target
             trend_break = False
             if not hit_stop and not hit_target and policy.mode in ("ma", "weekly_ma", "donchian", "supertrend"):
                 # trend-failure exits act on the CLOSE, so they are evaluated
@@ -657,7 +663,7 @@ def simulate(
                         floor_ = float(hist.iloc[-(policy.donchian_bars + 1) : -1].min())
                         trend_break = float(bar["close"]) < floor_
 
-            if not (hit_stop or hit_target or trend_break):
+            if not (hit_stop or hit_target or trend_break or low_break is not None):
                 # nothing exited: ratchet the trailing stop upward for tomorrow
                 c = float(bar["close"])
                 pos.peak_close = c if pos.peak_close != pos.peak_close else max(pos.peak_close, c)
@@ -673,6 +679,9 @@ def simulate(
             if hit_stop:  # conservative: the stop wins a same-bar tie
                 raw = min(pos.stop, o)  # gap-through fills at the open
                 reason, at = "STOP", AT_OPEN if o <= pos.stop else INTRADAY
+            elif low_break is not None:
+                raw = min(low_break, o)  # a gap under the candle's low fills at the open
+                reason, at = "TREND_EXIT", AT_OPEN if o <= low_break else INTRADAY
             elif hit_target:
                 raw = max(pos.target, o)
                 reason, at = "TARGET", AT_OPEN if o >= pos.target else INTRADAY
@@ -1076,12 +1085,34 @@ def _time_stop_bars(pos: PortfolioTrade, df: pd.DataFrame, policy: ExitPolicy) -
     return policy.time_stop_bars
 
 
+def _ma_low_level(pos: PortfolioTrade, df: pd.DataFrame, today, bar, policy: ExitPolicy) -> float | None:
+    """The ma_low exit: the price at which today sells, or None.
+
+    A close below `ma_col` is not an exit by itself; it arms one. The session after it sells if it trades
+    under that candle's low -- a sell-stop resting there, filled at it (at the open on a gap below it).
+    Only the previous session is read: a close back above the line cancels the armed exit, and each new
+    close below it arms at that candle's own low, so "a close below, then a break of that candle's low"
+    always means the next session. The armed candle must be one the position held (the entry session
+    or later): a dip before the buy is the setup, not an exit. Reads nothing past today's bar."""
+    i = df.index.get_loc(today)
+    if i < 1 or df.index[i - 1] < pos.entry_date:
+        return None
+    prev = df.iloc[i - 1]
+    ma = prev.get(policy.ma_col, float("nan"))
+    if not (ma == ma and float(prev["close"]) < float(ma)):
+        return None
+    level = float(prev["low"])
+    return level if float(bar["low"]) < level else None
+
+
 def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, policy: ExitPolicy,
                     close_out, sell, fee_rate: float, cfg: MarketConfig) -> None:
     """One session of the shared exit modes plus the opt-in trade management (`ExitPolicy.managed`).
 
     Order within the bar, conservative wherever the bar's path is unknown:
       1. the stop (at the open if the stock gapped through it) -- it wins a tie with the target;
+      1b. ma_low only: a trade under the low of a held session that closed below `ma_col` (at the open
+         if the stock gapped under it), before the target;
       2. the target: everything, or `partial_at_target` of the shares, after which the rest has no
          target and trails `atr_mult` × ATR14 under its highest close (a trailing mode keeps its own);
       3. the mode's close-based exit (ma, donchian, supertrend), at the close;
@@ -1106,6 +1137,12 @@ def _manage_bracket(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, poli
             reason = "STOP"          # a trailing mode's own raised stop, labelled as it always was
         close_out(sym, pos, min(pos.stop, o), reason, today, at=AT_OPEN if o <= pos.stop else INTRADAY)
         return
+
+    if policy.mode == "ma_low":
+        level = _ma_low_level(pos, df, today, bar, policy)
+        if level is not None:
+            close_out(sym, pos, min(level, o), "TREND_EXIT", today, at=AT_OPEN if o <= level else INTRADAY)
+            return
 
     target_live = not pos.partial_shares and (policy.use_target or policy.partial_at_target)
     if target_live and h >= pos.target:

@@ -277,6 +277,31 @@
     },
     "version": "1.6"
   },
+  "ema100_trend": {
+    "family": "ema100_trend",
+    "fingerprint": "0b233039",
+    "params": {
+      "DAILY_EMA": 100,
+      "NOMINAL_TARGET_R": 10,
+      "STOP_AT_DIP_LOW": 1,
+      "TOP_N": 500,
+      "TREND_MIN_ABOVE_PCT": 100,
+      "TREND_WEEKS": 104,
+      "TRIGGER_WINDOW": 5,
+      "WEEKLY_EMA": 100,
+      "_key": "ema100_trend",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3"
+      ],
+      "min_bars": 260,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
+  },
   "ema_pullback": {
     "family": "ema_pullback",
     "fingerprint": "cb17462f",

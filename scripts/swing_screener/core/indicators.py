@@ -102,6 +102,8 @@ def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
     # the EMA pullback strategy's trend stack and touch lines, and its `--exit-mode ma` trail
     out["ema10"] = ema(out["close"], 10)
     out["ema21"] = ema(out["close"], 21)
+    # the 100-day EMA trend strategy's cross line and its `--exit-mode ma_low --ma-col ema100` exit
+    out["ema100"] = ema(out["close"], 100)
     out["rsi14"] = rsi(out["close"], 14)
     out["rsi_ma"] = sma(out["rsi14"], 14)  # DEFINITIONS: 14-period SMA of RSI14
     out["atr14"] = atr(out, 14)

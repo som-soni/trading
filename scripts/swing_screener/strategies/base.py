@@ -441,7 +441,7 @@ class Strategy(SpecMeta, ABC):
     # --- how a trade is entered and left, for the Strategy page ---
     # `entry_rules` / `exit_rules`: one rule per item, `{NAME}` placeholders like the other docs.
     # `backtest_args`: the flags its real exit policy needs, appended to the page's backtest command.
-    # The exit is the backtest's: `--exit-mode` (bracket | trail_atr | ma | donchian | minervini) in
+    # The exit is the backtest's: `--exit-mode` (bracket | trail_atr | ma | ma_low | donchian | minervini) in
     # backtesting/portfolio_sim.py, plus opt-in trade management for every mode but minervini
     # (ExitPolicy.be_r / time_stop_bars / time_stop_mult / partial_at_target):
     #   --breakeven-r X        stop to entry + round-trip costs once the HIGH reaches entry + X·R,

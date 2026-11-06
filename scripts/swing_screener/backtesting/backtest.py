@@ -1703,9 +1703,11 @@ def main(argv: list[str] | None = None) -> dict | None:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "weekly_ma", "donchian", "supertrend", "kullamagi", "minervini"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "ma_low", "weekly_ma", "donchian", "supertrend", "kullamagi", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
         "stop+target; the others test whether letting winners run beats capping them. "
+        "'ma_low' does not sell on a close below --ma-col: the next session trading under that candle's low sells, "
+        "as a sell-stop at that low (a close back above the line cancels it). "
         "'weekly_ma' sells at a week's last close when that week closes below the --ma-weeks average of weekly closes. "
         "'supertrend' sells at the close that turns the Supertrend down (the supertrend strategy's ATR_PERIOD and MULTIPLIER). "
         "'kullamagi' is the kullamagi strategy's management: a partial sale and stop to entry after PARTIAL_AFTER_BARS "
@@ -1830,7 +1832,7 @@ def main(argv: list[str] | None = None) -> dict | None:
                              "large / mid / small) is at or below its DAYS-session average (e.g. 21 or 50)")
     parser.add_argument("--tf-align", action="store_true",
                         help="skip signals whose stock is not in an uptrend on the daily, weekly and monthly charts at once")
-    parser.add_argument("--ma-col", default="sma50", help="for --exit-mode ma")
+    parser.add_argument("--ma-col", default="sma50", help="for --exit-mode ma and ma_low")
     parser.add_argument("--ma-weeks", type=int, default=30,
                         help="for --exit-mode weekly_ma: weeks in the simple average of weekly closes")
     parser.add_argument("--donchian-bars", type=int, default=50, help="for --exit-mode donchian")
@@ -2140,7 +2142,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (f" --max-positions {args.max_positions}" if args.max_positions else "")
             + (f" --exit-mode {args.exit_mode}" if args.exit_mode != "bracket" else "")
             + (" --no-target" if args.no_target else "")
-            + (f" --ma-col {args.ma_col}" if args.exit_mode == "ma" else "")
+            + (f" --ma-col {args.ma_col}" if args.exit_mode in ("ma", "ma_low") else "")
             + (f" --ma-weeks {args.ma_weeks}" if args.exit_mode == "weekly_ma" else "")
             + (f" --rank-by {args.rank_by}" if args.rank_by != "setup" else "")
             + (f" --min-group-rs {args.min_group_rs}" if args.min_group_rs is not None else "")
