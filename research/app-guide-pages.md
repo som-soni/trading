@@ -312,7 +312,10 @@ right of the last bar. A past **E** is green when the company beat the analyst c
 upcoming **E** card shows the consensus for the quarter being reported: its range and analyst count, growth
 against the year-ago quarter, the **estimate trend** (the consensus now against 30 and 90 days ago — raised
 estimates into a report tend to precede a beat), upward and downward revisions over 30 days, the revenue
-consensus and the beat record (`marketdata/estimates.py`). The right-hand rail opens panels:
+consensus and the beat record (`marketdata/estimates.py`). For US stocks both cards also show **company
+guidance** for that quarter, from the previous results press release: a past report's revenue and EPS came in
+above, inside or below the range the company gave; for the upcoming one, whether the analysts' consensus sits
+above, inside or below it (`marketdata/guidance.py`). The right-hand rail opens panels:
 
 | Panel | Contents |
 |---|---|
@@ -328,8 +331,14 @@ Loss, Balance Sheet, Cash Flows, Ratios, Shareholding (India: promoters, FIIs, D
 **Analyst estimates**: EPS and revenue consensus for this and next quarter and fiscal year (range, analysts,
 growth against a year ago, the 30- and 90-day trend, revisions, and "since first stored" once the weekly
 snapshots reach past Yahoo's 90 days), a one-line read, and the earnings surprise record (consensus against
-reported, beat or miss). Analysts' EPS is often adjusted, so it can differ from the filed EPS above; company
-guidance is not included (no free source carries it as numbers). It
+reported, beat or miss). Analysts' EPS is often adjusted, so it can differ from the filed EPS above. For US
+companies a **Company guidance** section follows: the outlook in the latest results press release (8-K exhibit
+99) — revenue, EPS (GAAP and non-GAAP), margins and operating income for the next quarter and the fiscal year —
+each figure against the previous release's figure for the same period (raised, lowered, maintained) and against
+the analysts' consensus now (above, inside or below the range), with the statements as written and a link to
+the release. The figures are read from the release's text by rules (`marketdata/guidance.py`, its tests in
+`tests/test_guidance.py`), so check one against the release before relying on it; companies that guide only on
+the call (Microsoft) or not at all (Apple) show none. It
 includes a **Minervini SEPA** section (tests F1–F8 and a verdict) and a **CAN SLIM** section (`fundamentals/canslim.py`):
 C1–C2 and A1–A2 from the filings, then N (within 15% of the 52-week high), S (up-day over down-day volume, 50
 sessions), L (RS rank 80+), I (FII + DII up on the quarter; India only) and M (the index above its 50-day with at

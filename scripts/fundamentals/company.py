@@ -16,6 +16,8 @@ metrics of `fundamentals/growth.py`, and builds:
   peers           the stock's peer group (Sectors page), largest first
   estimates       analysts' EPS and revenue consensus per period, its 30 / 90-day trend and revisions, and the
                   earnings surprise history (marketdata/estimates.py summary)
+  guidance        the company's outlook from its latest results press release, each figure against the prior
+                  release (raised / lowered / maintained) and the consensus (marketdata/guidance.py summary; US)
   views           each strategy's reading of the shared metrics (Minervini SEPA; CAN SLIM, which also reads the
                   stock's prices, RS rank, shareholding and the market, judged live)
 
@@ -344,6 +346,9 @@ def build(market: str, symbol: str, snap=None) -> dict:
     # what analysts expect next, which way that has moved, and how past results compared (marketdata/estimates.py)
     from swing_screener.marketdata import estimates
     out["estimates"] = estimates.summary(market, symbol)
+    # the company's own outlook from its results press releases, against that consensus (marketdata/guidance.py; US)
+    from swing_screener.marketdata import guidance
+    out["guidance"] = guidance.summary(market, symbol, out["estimates"])
 
     # strategy views
     views = scores[1] if scores else {}

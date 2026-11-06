@@ -790,6 +790,28 @@ def _estimates(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _guidance(ctx: Ctx) -> None:
+    """Company guidance from results press releases (marketdata/guidance.py), weekly: each company's new 8-K
+    item 2.02 releases read for their outlook. Markets whose filings come from SEC EDGAR only; the same
+    companies as `estimates`, whose consensus the page compares the guidance with."""
+    from swing_screener.config import MARKETS
+    from swing_screener.marketdata import guidance
+    if MARKETS[ctx.market].quarterly_source != "sec_edgar":
+        ctx.step.skip("guidance is read from SEC filings, which this market does not have")
+        return
+    if ctx.opt("symbols"):
+        syms = [s.strip().upper() for s in str(ctx.opt("symbols")).split(",") if s.strip()]
+    else:
+        syms = list(dict.fromkeys([*_news_symbols(ctx.market), *(_company_symbols(ctx.market) or [])]))
+    if not syms:
+        ctx.step.skip("no stock snapshot, watchlist or picks to read guidance for")
+        return
+    r = guidance.refresh(ctx.market, syms, force=bool(ctx.opt("force")), progress=ctx.step.progress)
+    ctx.step.detail = (f"{r['requested'] - r['skipped_fresh']:,} / {r['requested']:,} companies checked "
+                       f"({r['skipped_fresh']:,} still fresh) · {r['releases_read']:,} releases read · {r['failed']} failed")
+    ctx.step.stats = r
+
+
 def _financials(ctx: Ctx) -> None:
     """Company financials for the Fundamentals page: the most liquid tradable stocks plus every stock passing
     the Trend Template in the latest snapshot (the technical leaders, whose businesses matter most); any other
@@ -1003,6 +1025,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("estimates", "data", "analyst estimates: EPS and revenue consensus, its 7–90 day trend and revisions, and the "
         "earnings surprise history (Yahoo) for the Fundamentals page's companies and watchlisted / picked stocks "
         "(marketdata/estimates.py)", "weekly", True, _estimates, after=("screens",)),
+    Job("guidance", "data", "company guidance: the outlook in each results press release (SEC 8-K, exhibit 99) — revenue, "
+        "EPS and margin ranges per quarter and year, read by rules (marketdata/guidance.py, US)", "weekly", True, _guidance,
+        after=("screens",)),
     Job("fundamentals", "data", "live fundamentals: sales/earnings growth for strategies that use them", "weekly", True, _fundamentals),
     Job("financials", "data", "company financials: quarterly and annual results, balance sheet, cash flow, shareholding "
         "(SEC / NSE filings) for the Fundamentals page", "weekly", True, _financials, after=("screens",)),
@@ -1070,7 +1095,7 @@ PIPELINES: dict[str, dict] = {
                  "jobs": ["backtest", "ingest"]},
     "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, analyst estimates, fundamentals, "
                           "company financials and their scores, quality scores; corporate actions; split & bonus repair",
-               "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "splits", "earnings", "estimates", "fundamentals", "financials",
+               "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "splits", "earnings", "estimates", "guidance", "fundamentals", "financials",
                         "fundamental_scores", "quality", "fpi_sectors", "prune_signals"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},

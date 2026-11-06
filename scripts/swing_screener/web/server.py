@@ -798,6 +798,23 @@ def stock_news(market: str, symbol: str, refresh: bool = False):
                 p = est_mod.period_for_report(est["periods"], e["date"])
                 if p:
                     e["detail"] = {**(e["detail"] or {}), "consensus": p, "beats": est["beats"]}
+    # company guidance (marketdata/guidance.py, SEC markets): what the company guided for the quarter a report
+    # covers — a past report with its reported EPS and revenue against the range, the upcoming one with the consensus
+    if MARKETS[market].quarterly_source == "sec_edgar":
+        from ..marketdata import guidance as guide_mod
+        today, sales = _dt.date.today().isoformat(), None
+        for e in events:
+            if e["kind"] not in ("earnings", "results"):
+                continue
+            det = e["detail"] or {}
+            if e["date"] < today:
+                sales = guide_mod.reported_sales(market, symbol) if sales is None else sales
+                gq = guide_mod.quarter_guidance(market, symbol, e["date"], (det.get("surprise") or {}).get("actual"),
+                                                guide_mod.quarter_reported(sales, e["date"]))
+            else:
+                gq = guide_mod.quarter_guidance(market, symbol, e["date"], consensus=det.get("consensus"))
+            if gq:
+                e["detail"] = {**det, "guidance": gq}
     filings = {"sec_edgar": "SEC 8-K filings", "nse": "NSE announcements, corporate actions and board meetings"}
     sources = ["Google News", filings.get(MARKETS[market].quarterly_source, ""), "Yahoo"]
     return {"market": market, "symbol": symbol, "name": _name(market, symbol),
@@ -1040,9 +1057,9 @@ def taxonomy():
     from ..strategies import BEHAVIOURS, HORIZONS, SELECTION
 
     return {"behaviours": [{"key": k, "label": v} for k, v in BEHAVIOURS.items()],
+            "horizons": [{"key": k, "label": v} for k, v in HORIZONS.items()],
             "selection": [{"key": k, "label": v} for k, v in SELECTION.items()]}
 
-            "horizons": [{"key": k, "label": v} for k, v in HORIZONS.items()],
 
 def _vtuple(v: str) -> tuple:
     try:

@@ -585,6 +585,27 @@ const BENCH = { us: "SPY", india: "NIFTY50" };
  *  results, and its EPS against the analyst consensus; the next one with the consensus, its 30 / 90-day
  *  trend and revisions, and the beat record — marketdata/estimates.py, attached by /api/news); click
  *  calls onOpen. Returns { set(events), destroy() }. */
+/** a company guidance figure for display: "$11.42B – $11.50B", "3.42 – 3.44", "11% – 12%" (marketdata/guidance.py) */
+function guideFig(lo, hi, unit, market) {
+  if (lo == null) return "";
+  const cur = (MKTS.find((m) => m.key === market) || {}).currency || "";
+  const trim = (x) => x.replace(/\.0+$/, "").replace(/(\.\d*?)0+$/, "$1");
+  const f = (v) => (unit === "pct" || unit === "growth" ? `${trim((v * 100).toFixed(1))}%`
+    : Math.abs(v) >= 1e9 ? `${v < 0 ? "−" : ""}${cur}${trim((Math.abs(v) / 1e9).toFixed(Math.abs(v) >= 1e11 ? 1 : 2))}B`
+    : Math.abs(v) >= 1e6 ? `${v < 0 ? "−" : ""}${cur}${trim((Math.abs(v) / 1e6).toFixed(Math.abs(v) >= 1e8 ? 0 : 1))}M` : (+v).toFixed(2));
+  return lo === hi ? f(lo) : `${f(lo)} – ${f(hi)}`;
+}
+const GUIDE_POS = { above: ["above", "up"], within: ["inside", "muted"], below: ["below", "dn"] };
+/** the earnings card's guidance rows: a past report's EPS / revenue against what the company guided for the
+ *  quarter ("actual"), or the upcoming report's consensus against it ("consensus") */
+function guideRows(g, market, mode) {
+  if (!g) return [];
+  return [["revenue", "Revenue guide"], ["eps", "EPS guide"]].filter(([k]) => g[k]).map(([k, name]) => {
+    const x = g[k], v = x[mode], pos = GUIDE_POS[x[mode === "actual" ? "position" : "consensus_position"]];
+    const fig = guideFig(x.low, x.high, "money", market) + (k === "eps" && x.basis === "non_gaap" ? " <span class=\"muted\">non-GAAP</span>" : "");
+    return [name, `${fig}${pos ? ` · <span class="${pos[1]}">${mode === "actual" ? "came in" : "consensus"} ${pos[0]} the range</span>` : ""}`];
+  });
+}
 /** an estimate move for display: "↑ 2.5%", "↓ 1.1%", "unchanged" (the direction is estimates.py's call) */
 const estDir = (v, dir) => (dir === "flat" ? "unchanged" : `${dir === "up" ? "↑" : "↓"} ${Math.abs(v * 100).toFixed(1)}%`);
 const estDirClass = (dir) => (dir === "up" ? "up" : dir === "down" ? "dn" : "muted");
@@ -619,6 +640,7 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
         if (c.up_30d != null || c.down_30d != null) rows.push(["Revisions, 30 days", `<span class="up">${c.up_30d || 0} up</span> · <span class="dn">${c.down_30d || 0} down</span>`]);
         if (c.rev_avg != null) rows.push(["Revenue consensus", `${moneyShort(c.rev_avg, market)}${c.rev_growth != null ? ` <span class="${c.rev_growth > 0 ? "up" : c.rev_growth < 0 ? "dn" : "muted"}">${pct(c.rev_growth)}</span>` : ""}`]);
         if (det.beats) rows.push(["Beat record", `${det.beats.beat} of the last ${det.beats.of} quarters`]);
+        rows.push(...guideRows(det.guidance, market, "consensus"));
       } else {
         if (det.eps_estimate != null) rows.push(["EPS estimate", num(det.eps_estimate) + (det.eps_low != null ? ` <span class="muted">(${num(det.eps_low)} – ${num(det.eps_high)})</span>` : "")]);
         if (yago && det.eps_estimate != null && yago.eps > 0) rows.push(["vs year-ago quarter", `${num(yago.eps)} → ${pct(det.eps_estimate / yago.eps - 1)}`]);
@@ -632,6 +654,7 @@ function eventStrip({ chart, chartEl, times, tf, market, quarters, onOpen }) {
       }
       const s = det.surprise;
       if (s) rows.push(["vs consensus", `${num(s.actual)} vs ${num(s.estimate)} <span class="${s.beat ? "up" : "dn"}">${s.beat ? "beat" : "miss"}${s.surprise != null ? ` ${s.surprise >= 0 ? "+" : "−"}${Math.abs(s.surprise * 100).toFixed(0)}%` : ""}</span>`]);
+      rows.push(...guideRows(det.guidance, market, "actual"));
     } else if (L === "D") {
       if (det.amount != null) rows.push(["Amount", `${(MKTS.find((m) => m.key === market) || {}).currency || ""}${(+det.amount).toFixed(det.amount < 1 ? 3 : 2)} per share`]);
       if (det.pay_date) rows.push(["Pay date", prettyDate(det.pay_date)]);
@@ -4293,9 +4316,31 @@ async function companyPage(alive, market, symbol) {
     const sur = est.surprises.length ? `<h3 class="est-h">Earnings surprises</h3><div class="fin-wrap"><table class="fin est"><thead><tr><th>Quarter to</th><th>Consensus</th><th>Reported</th><th>Surprise</th></tr></thead>
       <tbody>${est.surprises.map((x) => `<tr><th>${esc(colLabel(x.quarter))}</th><td>${f2(x.estimate)}</td><td>${f2(x.actual)}</td><td>${x.beat == null ? "" : `<span class="${x.beat ? "pos" : "neg"}">${x.beat ? "beat" : "miss"}</span> ${gpct(x.surprise)}`}</td></tr>`).join("")}</tbody></table></div>` : "";
     return `${est.read.length ? `<ul class="est-read">${est.read.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}${tbl}${sur}
-      <div class="muted small fin-note">EPS on the basis analysts use (often adjusted, so it can differ from the reported EPS above). Trend: the consensus now against 30 and 90 days ago; a move under ${esc(String(Math.round((est.flat || 0.01) * 100)))}% reads as unchanged. Snapshot ${est.asof ? prettyDate(est.asof) : "—"} · ${esc(est.source)}. Company guidance is not included — no free source carries it as numbers.</div>`;
+      <div class="muted small fin-note">EPS on the basis analysts use (often adjusted, so it can differ from the reported EPS above). Trend: the consensus now against 30 and 90 days ago; a move under ${esc(String(Math.round((est.flat || 0.01) * 100)))}% reads as unchanged. Snapshot ${est.asof ? prettyDate(est.asof) : "—"} · ${esc(est.source)}.${d.guidance ? " The company's own outlook is under Company guidance." : ""}</div>`;
   })();
-  const SECS = [["overview", "Overview"], ["quarters", "Quarters"], ["est", "Estimates"], ["pl", "Profit & Loss"], ["bs", "Balance Sheet"], ["cf", "Cash Flows"],
+  // company guidance (marketdata/guidance.py summary; SEC markets): the latest release's outlook, each figure
+  // against the prior release and the consensus, and the statements as written
+  const gd = d.guidance;
+  const guideHtml = (() => {
+    if (!gd) return "";
+    const rel = gd.latest ? `<a href="${esc(gd.latest.url)}" target="_blank" rel="noopener">results release of ${prettyDate(gd.latest.filed)}</a>` : "";
+    if (!gd.items.length) return `<div class="muted small">${gd.latest ? `No figures could be read from the outlook in the ${rel}.` : `No outlook found in the ${gd.releases.length} results releases read${gd.releases.length ? "" : " yet"} — some companies give guidance only on the call, some none.`}</div>`;
+    const per = (it) => (it.period_kind === "Q" ? `Q${it.fiscal_quarter || "?"}${it.fiscal_year ? ` FY${String(it.fiscal_year).slice(2)}` : ""}` : it.period_kind === "FY" ? (it.fiscal_year ? `FY${String(it.fiscal_year).slice(2)}` : "Full year") : "—");
+    const BASIS = { gaap: "GAAP", non_gaap: "non-GAAP" };
+    const CH = { raised: "pos", lowered: "neg", maintained: "muted" };
+    const rows = gd.items.map((it) => {
+      const pr = it.prior, c = it.consensus;
+      return `<tr class="${it.headline && ["revenue", "eps"].includes(it.metric) ? "strong" : ""}"><th>${esc(it.line)}${BASIS[it.basis] ? ` <span class="muted small">${BASIS[it.basis]}</span>` : ""}</th>
+        <td>${esc(per(it))}</td><td><b>${guideFig(it.low, it.high, it.unit, market)}</b></td>
+        <td>${pr ? `<span class="${CH[pr.change] || ""}">${esc(pr.change || "")}</span> <span class="muted">from ${guideFig(pr.low, pr.high, it.unit, market)}</span>` : ""}</td>
+        <td>${c ? `${guideFig(c.value, c.value, it.unit, market)} <span class="${(GUIDE_POS[c.position] || [])[1] || ""}">${(GUIDE_POS[c.position] || [""])[0]}</span>` : ""}</td></tr>`;
+    }).join("");
+    return `${gd.read.length ? `<ul class="est-read">${gd.read.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      <div class="fin-wrap"><table class="fin est guide"><thead><tr><th></th><th>Period</th><th>Guidance</th><th>vs prior release</th><th>Consensus${gd.consensus_asof ? ` <span class="muted small">${prettyDate(gd.consensus_asof)}</span>` : ""}</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <details class="qhow"><summary>As written in the release</summary><ul class="sd-list">${gd.written.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></details>
+      <div class="muted small fin-note">From the ${rel} — read by rules, so check a figure against the release before relying on it. Consensus: analysts' estimate for the same period on the snapshot date — one taken before the release does not reflect it yet. Releases read: ${gd.releases.map((r) => `<a href="${esc(r.url || "#")}" target="_blank" rel="noopener">${prettyDate(r.filed)}</a>${r.has_outlook ? "" : " (no outlook)"}`).join(", ")}.</div>`;
+  })();
+  const SECS = [["overview", "Overview"], ["quarters", "Quarters"], ["est", "Estimates"], ...(gd ? [["guide", "Guidance"]] : []), ["pl", "Profit & Loss"], ["bs", "Balance Sheet"], ["cf", "Cash Flows"],
     ["ratios", "Ratios"], ["shp", "Shareholding"], ["peers", "Peers"], ...(d.views || []).map((v) => [`view-${v.key}`, v.name])];
   $view.innerHTML = head + `<nav class="co-nav">${SECS.map(([k, t]) => `<a href="#co-${k}" data-sec="co-${k}">${esc(t)}</a>`).join("")}</nav>
     <section class="co-sec" id="co-overview"><div class="co-ratios">${ratio.map(([k, v]) => `<div><span class="muted">${k}</span><b>${v}</b></div>`).join("")}</div>
@@ -4308,6 +4353,7 @@ async function companyPage(alive, market, symbol) {
       <span class="muted small">${unitNote}</span></h2>${table(d.quarters,
       `${d.latest?.split_adjusted ? "EPS on today's share basis (adjusted for splits / bonus issues). " : ""}${d.layout === "us" ? "Q4 is the 10-K's year less the first nine months." : ""}`, qOlder)}</section>
     <section class="co-sec" id="co-est"><h2>Analyst estimates <span class="muted small">What analysts expect, which way that has moved, and how past results compared</span></h2>${estHtml}</section>
+    ${gd ? `<section class="co-sec" id="co-guide"><h2>Company guidance <span class="muted small">What the company itself expects, from its latest results release</span></h2>${guideHtml}</section>` : ""}
     <section class="co-sec" id="co-pl"><h2>Profit &amp; Loss <span class="muted small">${unitNote}</span></h2>${table(d.profit_loss,
       d.layout === "bank" ? "Banks: revenue is interest earned; financing profit = revenue − interest − expenses (incl. provisions), before other income." : "")}
       <div class="cg">${gbox("Compounded sales growth", g.sales)}${gbox("Compounded profit growth", g.profit)}${gbox("Stock price CAGR", g.price)}${gbox("Return on equity", g.roe)}</div></section>

@@ -23,6 +23,8 @@ Sources, per market (`MarketConfig.quarterly_source` picks the filings feed):
                    (`Ticker.calendar`); US dividends and splits; US analyst rating changes; and the
                    analyst consensus with its trend and the surprise history (marketdata/estimates.py,
                    its own tables).
+  SEC EDGAR        US: the outlook in each results press release (8-K exhibit 99) — company guidance,
+                   read by rules (marketdata/guidance.py, its own tables).
 
     PYTHONPATH=. python3 -m swing_screener.marketdata.news --market us --symbols AAPL,NVDA
 """
@@ -427,6 +429,11 @@ def fetch_symbol(market: str, symbol: str, name: str | None = None) -> dict:
     # fetch_symbol records a failure in its own status table rather than raising, so read its note
     got = estimates.fetch_symbol(market, symbol)
     notes.append("Yahoo estimates " + ("failed" if got["note"].startswith("failed") else "ok"))
+    if cfg.quarterly_source == "sec_edgar":   # company guidance from any new results release (marketdata/guidance.py)
+        from . import guidance
+        guidance.init_schema()
+        got = guidance.fetch_symbol(market, symbol)
+        notes.append("SEC guidance " + ("failed" if got["note"].startswith("failed") else "ok"))
     _store(market, symbol, news, superseded(events), " · ".join(notes), refetched)
     return {"news": len(news), "events": len(events), "note": " · ".join(notes)}
 
