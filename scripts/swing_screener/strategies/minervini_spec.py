@@ -689,6 +689,22 @@ def shakeout(base: dict, daily: pd.DataFrame) -> dict | None:
     return None
 
 
+def flat_base(base: dict, d: pd.DataFrame) -> dict | None:
+    """S6 / S8's flat base in `base` (a `vcp_spec.detect` result on the last bar of `d`), or None: a base that never
+    became a VCP but passes the base's own qualifications (VCP-01, 02, 03, 05), FLAT_MIN_DAYS to FLAT_MAX_DAYS
+    sessions long and at most FLAT_MAX_DEPTH_PCT deep. Its pivot is the base's high; `low` is the low of the last
+    FLAT_STOP_DAYS sessions (the stop's anchor); `dried` is VCP-10's dry-up test on the last FLAT_PIVOT_DAYS
+    sessions. Shared by evaluate (S6 on yesterday's base, S8 on today's) and the chart."""
+    if (base["ok"] or not base.get("bh") or base["fail"] in ("VCP-01", "VCP-02", "VCP-03", "VCP-05")
+            or base.get("base_days") is None or not FLAT_MIN_DAYS <= base["base_days"] <= FLAT_MAX_DAYS
+            or base.get("base_depth_pct") is None or base["base_depth_pct"] > FLAT_MAX_DEPTH_PCT):
+        return None
+    dry, quiet = vcp_spec._dryup(d, len(d) - FLAT_PIVOT_DAYS, d["volume"].iloc[-FLAT_PIVOT_DAYS:], DRYUP_QUIET_RATIO)
+    return {"pivot": float(base["bh"]), "low": float(d["low"].iloc[-FLAT_STOP_DAYS:].min()),
+            "depth": float(base["base_depth_pct"]), "dry": float(dry), "quiet": int(quiet),
+            "dried": bool(dry <= DRYUP_RATIO or quiet >= DRYUP_QUIET_DAYS), "base_date": str(base["bh_date"].date())}
+
+
 def base_diagnostics(r: dict, daily: pd.DataFrame) -> dict:
     """What a pass/fail hides about a base, from one `vcp_spec.detect` result: how it contracted, which
     route its pivot passed by, how its volume dried up, its undercuts, its trend through the base and the
@@ -2711,36 +2727,22 @@ class MinerviniSpecStrategy(Strategy):
         # S6, the flat base: yesterday's base, if it never became a VCP, is shallow and four to seven
         # weeks long, and today closes through its high with the MV-01 conviction tests.
         flat = False
-        if (not prev["ok"] and prev.get("bh") and prev["fail"] not in ("VCP-01", "VCP-02", "VCP-03", "VCP-05")
-                and prev.get("base_days") is not None and FLAT_MIN_DAYS <= prev["base_days"] <= FLAT_MAX_DAYS
-                and prev.get("base_depth_pct") is not None and prev["base_depth_pct"] <= FLAT_MAX_DEPTH_PCT):
-            fh = float(prev["bh"])
-            area = d.iloc[-1 - FLAT_PIVOT_DAYS:-1]
-            dry, quiet = vcp_spec._dryup(d.iloc[:-1], len(d) - 1 - FLAT_PIVOT_DAYS, area["volume"],
-                                         DRYUP_QUIET_RATIO)
-            e.update(flat_pivot=fh, flat_low=float(d["low"].iloc[-1 - FLAT_STOP_DAYS:-1].min()),
-                     flat_depth_pct=float(prev["base_depth_pct"]), flat_dryup=float(dry), flat_quiet_days=int(quiet),
-                     flat_base_date=str(prev["bh_date"].date()))
+        fb = flat_base(prev, d.iloc[:-1])
+        if fb is not None:
+            fh = fb["pivot"]
+            e.update(flat_pivot=fh, flat_low=fb["low"], flat_depth_pct=fb["depth"], flat_dryup=fb["dry"],
+                     flat_quiet_days=fb["quiet"], flat_base_date=fb["base_date"])
             flat = bool(prev_close <= fh < close and vol_ratio >= VOL_MULT and upper >= UPPER_HALF
-                        and close <= fh * (1 + BUY_RANGE_PCT / 100)
-                        and (dry <= DRYUP_RATIO or quiet >= DRYUP_QUIET_DAYS))
+                        and close <= fh * (1 + BUY_RANGE_PCT / 100) and fb["dried"])
         result.setups[FLAT] = flat
         # S8: today's base qualifies as a flat base (the S6 tests, on today's bar instead of yesterday's) and the
         # close sits within COIL_PCT below its high: a buy-stop above the high, as MV-02 rests above a VCP's pivot
         flat_coil = False
-        if (FLAT_COIL_ON and not flat and not mv01 and not mv02 and not today["ok"] and today.get("bh")
-                and today["fail"] not in ("VCP-01", "VCP-02", "VCP-03", "VCP-05")
-                and today.get("base_days") is not None and FLAT_MIN_DAYS <= today["base_days"] <= FLAT_MAX_DAYS
-                and today.get("base_depth_pct") is not None and today["base_depth_pct"] <= FLAT_MAX_DEPTH_PCT):
-            fh = float(today["bh"])
-            if fh * (1 - COIL_PCT / 100) <= close <= fh:
-                area = d.iloc[-FLAT_PIVOT_DAYS:]
-                dry, quiet = vcp_spec._dryup(d, len(d) - FLAT_PIVOT_DAYS, area["volume"], DRYUP_QUIET_RATIO)
-                if dry <= DRYUP_RATIO or quiet >= DRYUP_QUIET_DAYS:
-                    flat_coil = True
-                    e.update(flat_pivot=fh, flat_low=float(d["low"].iloc[-FLAT_STOP_DAYS:].min()),
-                             flat_depth_pct=float(today["base_depth_pct"]), flat_dryup=float(dry),
-                             flat_quiet_days=int(quiet), flat_base_date=str(today["bh_date"].date()))
+        fc = flat_base(today, d) if FLAT_COIL_ON and not flat and not mv01 and not mv02 else None
+        if fc is not None and fc["pivot"] * (1 - COIL_PCT / 100) <= close <= fc["pivot"] and fc["dried"]:
+            flat_coil = True
+            e.update(flat_pivot=fc["pivot"], flat_low=fc["low"], flat_depth_pct=fc["depth"], flat_dryup=fc["dry"],
+                     flat_quiet_days=fc["quiet"], flat_base_date=fc["base_date"])
         result.setups[FLAT_COIL] = flat_coil
         # S9: yesterday's base had a shakeout (undercut on volume, reclaimed), and today closes through the base's
         # highest high with MV-01's tests -- the dry-up and tight area of a VCP are not asked of it
@@ -3302,6 +3304,15 @@ class MinerviniSpecStrategy(Strategy):
         # the next session) -- by the same cheat_cross test, so it can be a later shelf than the base's
         # first: when the first cross was not entered (no slot, refused), EN-04's one entry per base is
         # still unspent, and the run takes a later one.
+        # S9 and the flat base (S6 / S8) are drawn by their own passes. A run's fill one of them explains -- its
+        # date AND its initial stop (`_run_bought`) -- is theirs: no cheat claims it below, and it is not drawn
+        # again as a base judged on its signal bar (INFY.NS 2020-09-15, an S8 fill, was also claimed by a cheat
+        # crossed the session before it).
+        out = self._shakeouts(daily, cfg, dets, start, anchors or []) + self._flats(daily, cfg, dets, start, anchors or [])
+        own_fills = {s["_fill"] for s in out if s.get("_fill") is not None}
+        for s in out:
+            s.pop("_fill", None)
+        fills = [f for f in fills if f not in own_fills]
         signalled: dict = {}
         for f in fills:
             j = int(daily.index.searchsorted(f)) - 1
@@ -3323,10 +3334,6 @@ class MinerviniSpecStrategy(Strategy):
         def count_of(key) -> dict | None:
             return None if key is None else base_number(daily, int(daily.index.get_loc(key)), adv)
 
-        out = self._shakeouts(daily, cfg, dets, start, fills)
-        shake_bars = {s["_signal"] for s in out}
-        for s in out:
-            del s["_signal"]
         # A run's fill that today's rules see no entry for -- no cheat crossed the bar before it, no breakout
         # just before it: a run of an older version bought what these rules no longer take. Drawn as the base
         # stood on the signal bar, so the trade sits in the setup it was bought from rather than in the base
@@ -3337,7 +3344,7 @@ class MinerviniSpecStrategy(Strategy):
             if j < start or j >= len(daily):
                 continue
             p, key = dets[j], dets[j]["bh_date"]
-            if key is None or key in signalled or j in shake_bars:   # an S9 fill is drawn as its shakeout
+            if key is None or key in signalled:
                 continue
             bo = bases.get(key, {}).get("breakout")
             if bo is not None and 0 <= j - bo <= 3:           # the breakout itself: drawn by the base below
@@ -3391,7 +3398,22 @@ class MinerviniSpecStrategy(Strategy):
         out += self._power_plays(daily, cfg)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
 
-    def _shakeouts(self, daily: pd.DataFrame, cfg: MarketConfig, dets: list, start: int, fills: list) -> list[dict]:
+    @staticmethod
+    def _run_bought(daily: pd.DataFrame, anchors: list, fill_i: int, stop: float) -> bool:
+        """Did the selected run fill on bar `fill_i` with this initial stop (within 0.5%, the chart eval's
+        tolerance)? A fill date alone is not enough: two setups can fill on one session, and the run's stop
+        says which order it was (an S8 placed days earlier, or an S6 or S9 confirmed the session before)."""
+        if fill_i >= len(daily):
+            return False
+        f = daily.index[fill_i]
+        for a in anchors:
+            if a.get("entry") and pd.Timestamp(a["entry"]) == f:
+                st = a.get("stop")
+                if st is None or (st and abs(float(stop) / float(st) - 1) <= 0.005):
+                    return True
+        return False
+
+    def _shakeouts(self, daily: pd.DataFrame, cfg: MarketConfig, dets: list, start: int, anchors: list) -> list[dict]:
         """S9 on the chart: each base's shakeout breakout, by evaluate's own test -- the bar before has a
         `shakeout` (an undercut of earlier pullback lows on volume, won back), and this bar closes through the
         base's highest high passing MV-01's `entry_misses`, on a session that passes the screen. `dets` are
@@ -3404,35 +3426,51 @@ class MinerviniSpecStrategy(Strategy):
             return []
         close, hi_, lo_, vo_ = (daily[k].to_numpy(float) for k in ("close", "high", "low", "volume"))
         v50_ = daily["vol_sma50"].to_numpy(float) if "vol_sma50" in daily else np.full(len(daily), np.nan)
-        found: dict = {}
-        for i in range(start + 1, len(daily)):
+        def test(i: int) -> dict | None:
+            """S9 on bar i, or None: the shakeout breakout as evaluate decides it, `missed` saying why it is refused."""
             p = dets[i - 1]
             if not (p and p.get("bh") and p.get("bh_date") is not None) or p["fail"] in ("VCP-01", "VCP-02", "VCP-03", "VCP-05"):
-                continue
+                return None
             if (p["ok"] or (NEAR_MISS and p.get("near_ok"))) and p.get("pivot") and close[i - 1] <= p["pivot"] < close[i]:
-                continue
-            got = found.get(p["bh_date"])
-            if got is not None and not got["missed"]:
-                continue
+                return None
             b0 = int(daily.index.get_loc(p["bh_date"]))
             sp = float(hi_[b0:i].max())            # the base's highest high, through the bar before
             if not (close[i - 1] <= sp < close[i]):
-                continue
+                return None
             so = shakeout(p, daily.iloc[:i])
             if so is None:
-                continue
+                return None
             miss, vr, up = entry_misses(close[i], hi_[i], lo_[i], vo_[i], v50_[i], sp)
             screen = self._screen_miss(cfg, daily, i)
             missed = (f"the stock failed the strategy's screen that session -- {screen}" if screen
                       else entry_misses_text(miss, vr, up, close[i], sp) if any(miss.values()) else None)
-            if got is None or not missed:
-                found[p["bh_date"]] = {"i": i, "b0": b0, "sp": sp, "so": so, "missed": missed}
+            return {"key": p["bh_date"], "i": i, "b0": b0, "sp": sp, "so": so, "missed": missed}
+
+        found: dict = {}
+        for i in range(start + 1, len(daily)):
+            p = dets[i - 1]
+            got = found.get(p["bh_date"]) if p else None
+            if got is not None and not got["missed"]:
+                continue
+            g = test(i)
+            if g is not None and (got is None or not g["missed"]):
+                found[g["key"]] = g
+        # a run's S9 fill on a later crossing than the base's first (the run skipped the first for a reason of
+        # its own): the crossing the session before the fill, when its stop is the run's
+        for a in anchors:
+            k = int(daily.index.searchsorted(pd.Timestamp(a["entry"]))) if a.get("entry") else -1
+            if not (start + 1 < k < len(daily)) or daily.index[k] != pd.Timestamp(a["entry"]):
+                continue
+            g = test(k - 1)
+            if g is not None and not g["missed"] and \
+                    self._run_bought(daily, anchors, k, pivot_stop(float(lo_[k - 1]), cfg.tick_size)):
+                found[g["key"]] = g
         out = []
         for g in found.values():
-            traded = any(f == daily.index[g["i"] + 1] for f in fills) if g["i"] + 1 < len(daily) else False
+            traded = self._run_bought(daily, anchors, g["i"] + 1, pivot_stop(float(daily["low"].iloc[g["i"]]), cfg.tick_size))
             s = self._shake_setup(daily, cfg, g["b0"], g["i"], g["sp"], g["so"], g["missed"])
             s["anchored"] = traded
-            s["_signal"] = g["i"]
+            s["_fill"] = daily.index[g["i"] + 1] if traded else None
             out.append(s)
         return out
 
@@ -3508,6 +3546,188 @@ class MinerviniSpecStrategy(Strategy):
                 "complete": not missed, "fail": None, "base_number": None,
                 "breakout": day(i) if not missed else None, "crossed": day(i) if missed else None, "live": False,
                 "as_of": day(i), "title": title, "summary": summary,
+                "frame": {"from": day(b0), "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
+                "zones": zones}
+
+    def _flats(self, daily: pd.DataFrame, cfg: MarketConfig, dets: list, start: int, anchors: list) -> list[dict]:
+        """S6 and S8, the flat base, on the chart: per base, by evaluate's own tests (`flat_base` on the base as it
+        stood) and the simulator's order handling. S6: the bar before qualifies and this bar closes through the
+        base's high passing MV-01's `entry_misses`, on a session that passes the screen -- bought at the next open.
+        S8 (FLAT_COIL_ON): today's base qualifies and the close sits within COIL_PCT under its high -- a buy-stop
+        above the high rests up to PENDING_EXPIRY_BDAYS sessions, filled by the first session that trades through
+        it, cancelled by a low through the stop or a close under the flat low; while it rests, later signals are
+        ignored. A fill whose session's volume is under VOL_MULT x the 50-day is sold at the next open
+        (LIGHT_VOLUME_EXIT). Each base keeps its first filled S8 order, else its first S6 breakout, else the first
+        refused crossing; a run's fill anchors to the order that made it (`_run_bought`: its date and initial stop),
+        searched back through the resting window when the run's order was a later one -- the run can skip an earlier
+        signal for a reason of its own (no free slot, the market filter, the results blackout). Each carries `_fill`
+        for bases_live."""
+        from ..backtesting.portfolio_sim import PENDING_EXPIRY_BDAYS
+        close, hi_, lo_, vo_ = (daily[k].to_numpy(float) for k in ("close", "high", "low", "volume"))
+        v50_ = daily["vol_sma50"].to_numpy(float) if "vol_sma50" in daily else np.full(len(daily), np.nan)
+        found: dict = {}      # base date -> what to draw
+        order = None          # the resting S8 buy-stop
+        for i in range(start + 1, len(daily)):
+            # the resting order, as the simulator handles it on this session
+            if order is not None:
+                if i > order["expires"]:
+                    order = None
+                elif hi_[i] >= order["buy"]:
+                    order["fill"] = i
+                    order["light"] = bool(LIGHT_VOLUME_EXIT and v50_[i] == v50_[i] and v50_[i] > 0
+                                          and vo_[i] < VOL_MULT * v50_[i])
+                    if order["key"] not in found:
+                        found[order["key"]] = order
+                    order = None
+                elif lo_[i] <= order["stop"] or close[i] < order["fb"]["low"]:
+                    order = None
+            # S6 on this bar: yesterday's base, today's close through its high
+            p = dets[i - 1]
+            fb = flat_base(p, daily.iloc[:i]) if p else None
+            if fb is not None and not (NEAR_MISS and p.get("near_ok")) and close[i - 1] <= fb["pivot"] < close[i]:
+                key = p["bh_date"]
+                g = found.get(key)
+                bought = self._run_bought(daily, anchors, i + 1, pivot_stop(fb["low"], cfg.tick_size))
+                if g is None or (g["kind"] == FLAT and g["missed"]) or bought:
+                    miss, vr, up = entry_misses(close[i], hi_[i], lo_[i], vo_[i], v50_[i], fb["pivot"])
+                    screen = self._screen_miss(cfg, daily, i)
+                    missed = (f"the stock failed the strategy's screen that session -- {screen}" if screen
+                              else entry_misses_text(miss, vr, up, close[i], fb["pivot"]) if any(miss.values())
+                              else None if fb["dried"] else "no volume dry-up in the sessions before it (VCP-10)")
+                    if g is None or bought or not missed:
+                        found[key] = {"kind": FLAT, "key": key, "fb": fb, "sig": i, "fill": i + 1 if not missed else None,
+                                      "missed": missed, "buy": float(close[i]), "stop": pivot_stop(fb["low"], cfg.tick_size),
+                                      "run": bought}
+                continue
+            # S8 on this bar: today's base, coiled under its high, places the buy-stop
+            t = dets[i]
+            if not FLAT_COIL_ON or order is not None or not t:
+                continue
+            fc = flat_base(t, daily.iloc[: i + 1])
+            if (fc is not None and fc["pivot"] * (1 - COIL_PCT / 100) <= close[i] <= fc["pivot"] and fc["dried"]
+                    and self._screen_miss(cfg, daily, i) is None):
+                order = {"kind": FLAT_COIL, "key": t["bh_date"], "fb": fc, "sig": i, "fill": None, "missed": None,
+                         "buy": pivot_buy_stop(fc["pivot"], cfg.tick_size), "stop": pivot_stop(fc["low"], cfg.tick_size),
+                         "expires": i + PENDING_EXPIRY_BDAYS}
+        # a run's S8 fill this replay did not explain: the coil day within the resting window whose order it was
+        explained = {g["fill"] for g in found.values() if g.get("fill") is not None
+                     and self._run_bought(daily, anchors, g["fill"], g["stop"])}
+        for a in anchors:
+            k = int(daily.index.searchsorted(pd.Timestamp(a["entry"]))) if a.get("entry") else -1
+            if not FLAT_COIL_ON or k <= start or k >= len(daily) or daily.index[k] != pd.Timestamp(a["entry"]) or k in explained:
+                continue
+            for j in range(k - 1, max(start, k - 1 - PENDING_EXPIRY_BDAYS), -1):
+                t = dets[j]
+                fc = flat_base(t, daily.iloc[: j + 1]) if t else None
+                if fc is None or not (fc["pivot"] * (1 - COIL_PCT / 100) <= close[j] <= fc["pivot"] and fc["dried"]):
+                    continue
+                buy, stop = pivot_buy_stop(fc["pivot"], cfg.tick_size), pivot_stop(fc["low"], cfg.tick_size)
+                if hi_[k] >= buy and self._run_bought(daily, anchors, k, stop):
+                    found[t["bh_date"]] = {"kind": FLAT_COIL, "key": t["bh_date"], "fb": fc, "sig": j, "fill": k,
+                                           "missed": None, "buy": buy, "stop": stop, "expires": j + PENDING_EXPIRY_BDAYS,
+                                           "light": bool(LIGHT_VOLUME_EXIT and v50_[k] == v50_[k] and v50_[k] > 0
+                                                         and vo_[k] < VOL_MULT * v50_[k])}
+                    explained.add(k)
+                    break
+        out = []
+        for g in found.values():
+            s = self._flat_setup(daily, cfg, g)
+            run = g.get("fill") is not None and self._run_bought(daily, anchors, g["fill"], g["stop"])
+            s["anchored"] = run
+            s["_fill"] = daily.index[g["fill"]] if run else None
+            out.append(s)
+        return out
+
+    def _flat_setup(self, daily: pd.DataFrame, cfg: MarketConfig, g: dict) -> dict:
+        """One flat base for the chart, in `_setup`'s shape: the base under its high, the pivot area whose low
+        anchors the stop, and the entry build_plans places -- S6 at the next open after the close through the
+        high, S8 a buy-stop just above it -- stopped under the pivot area (`pivot_stop`): an illustration."""
+        from ..backtesting.portfolio_sim import PENDING_EXPIRY_BDAYS
+        idx = daily.index
+        day = lambda k: str(idx[k].date())   # noqa: E731
+        px = lambda v: f"{v:,.2f}"           # noqa: E731
+        fb, sig, coil = g["fb"], g["sig"], g["kind"] == FLAT_COIL
+        b0 = int(idx.get_loc(pd.Timestamp(fb["base_date"])))
+        last = sig if coil else sig - 1               # the bar the base was judged on
+        lows = daily["low"].to_numpy(float)
+        base_low = float(lows[b0: last + 1].min())
+        a0 = last - FLAT_STOP_DAYS + 1                # the pivot area: the stop's sessions
+        buy, stop = g["buy"], g["stop"]
+        risk = buy - stop
+        risk_pct = risk / buy * 100 if buy > 0 else float("nan")
+        ok_risk = risk > 0 and risk_pct <= MAX_STOP_PCT
+        fill = g.get("fill")
+        end = min(len(daily) - 1, (fill if fill is not None else sig) + TIME_STOP_DAYS)
+        entry_to = day(end)
+        tick = lambda c: {"code": c[0], "name": c[1], "value": c[2], "limit": c[3], "state": c[4]}  # noqa: E731
+        dry_txt = f"{fb['dry']:.2f}x avg, {fb['quiet']} quiet"
+        zones = [
+            {"key": "base", "title": "Flat base", "tag": f"{max(1, round((last - b0) / 5))}W {fb['depth']:.0f}%",
+             "state": "pass", "from": day(b0), "to": day(last), "line": f"{last - b0} sessions, {fb['depth']:.1f}% deep",
+             "text": (f"A flat base: from its high of {px(fb['pivot'])} on {day(b0)}, {last - b0} sessions long and "
+                      f"{fb['depth']:.1f}% deep, with no tight pivot to measure. Minervini buys it as it moves above the "
+                      f"base's high, provided the base is {FLAT_MIN_DAYS}-{FLAT_MAX_DAYS} sessions and corrects no more "
+                      f"than {FLAT_MAX_DEPTH_PCT:g}%; it must still pass the base's own qualifications (VCP-01, 02, 03, 05)."),
+             "checks": [tick(("S6", "Length", f"{last - b0} sessions", f"{FLAT_MIN_DAYS}-{FLAT_MAX_DAYS}", "pass")),
+                        tick(("S6", "Depth", f"{fb['depth']:.1f}%", f"at most {FLAT_MAX_DEPTH_PCT:g}%", "pass")),
+                        tick(("VCP-10", "Volume dry-up", dry_txt,
+                              f"at most {DRYUP_RATIO:g}x, or {DRYUP_QUIET_DAYS} quiet sessions over the last {FLAT_PIVOT_DAYS}",
+                              "pass" if fb["dried"] else "fail"))],
+             "shapes": [{"shape": "box", "from": day(b0), "to": day(last), "top": fb["pivot"], "bottom": base_low,
+                         "role": "base", "label": ""},
+                        {"shape": "level", "from": day(b0), "to": day(min(len(daily) - 1, last + 1)), "price": fb["pivot"],
+                         "role": "pivot", "label": f"base high {px(fb['pivot'])}"}]},
+            {"key": "tight", "title": "Pivot area", "state": "pass", "from": day(a0), "to": day(last),
+             "line": f"low {px(fb['low'])}, the stop's anchor",
+             "text": (f"The last {FLAT_STOP_DAYS} sessions before the {'order' if coil else 'breakout'}: their low, "
+                      f"{px(fb['low'])}, anchors the stop, {STOP_BUFFER_PCT:g}% under it."),
+             "shapes": [{"shape": "box", "from": day(a0), "to": day(last), "top": float(daily['high'].iloc[a0: last + 1].max()),
+                         "bottom": fb["low"], "role": "tight", "label": ""}]},
+        ]
+        skip = [] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]
+        light = coil and g.get("light")
+        if not g["missed"]:
+            levels = [("buy", buy, f"Buy {px(buy)}"), ("stop", stop, f"Stop {px(stop)}"),
+                      ("breakeven", buy + BREAKEVEN_R * risk, f"+{BREAKEVEN_R:g}R")]
+            how = (f"On {day(sig)} the close sat within {COIL_PCT:g}% under the base's high, so a buy-stop goes just above "
+                   f"it, at {px(buy)}, resting up to {PENDING_EXPIRY_BDAYS} sessions"
+                   + (f"; it filled on {day(fill)}" if fill is not None else "; it never filled")
+                   + (f", on volume under {VOL_MULT:g}x the 50-day, so the strategy sells at the next open: "
+                      f"an unconfirmed breakout (LIGHT_VOLUME_EXIT)" if light else "") + "."
+                   if coil else
+                   f"On {day(sig)} the close went through the base's high with MV-01's tests (volume at least {VOL_MULT:g}x, "
+                   f"within {BUY_RANGE_PCT:g}% of the high, in the upper part of the day's range); the buy is the next open, "
+                   f"about that close.")
+            zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip and not light else "fail",
+                          "from": day(sig), "to": entry_to, "illustration": True, "skip": skip,
+                          "line": f"buy {px(buy)} · stop {px(stop)}" + (" · light-volume fill" if light else ""),
+                          "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
+                                   f"not a backtest result. {how} The stop goes {STOP_BUFFER_PCT:g}% under the pivot area's "
+                                   f"low, at {px(stop)}: a risk of {risk_pct:.1f}%." + _NO_TARGET
+                                   + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
+                          "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {MAX_STOP_PCT:g}%",
+                                           "pass" if ok_risk else "fail"))],
+                          "shapes": [{"shape": "level", "from": day(sig), "to": entry_to, "price": v, "role": role,
+                                      "label": lab, "dash": role != "buy"} for role, v, lab in levels]})
+        name = "Flat base S8" if coil else "Flat base S6"
+        title = (f"{name} ✓" + (" · no valid breakout" if g["missed"] else " · trade skipped" if skip
+                                else " · light-volume fill, sold next open" if light
+                                else " · order unfilled" if coil and fill is None else ""))
+        summary = (f"A flat base, {fb['depth']:.1f}% deep over {last - b0} sessions. "
+                   + (f"It crossed its high on {day(sig)}, but the strategy would not have bought: {g['missed']}." if g["missed"]
+                      else f"A buy-stop rested above its high from {day(sig)}"
+                           + (f" and filled on {day(fill)}" + (" on light volume, sold the next open" if light else "") if fill is not None
+                              else ", unfilled") + "." if coil
+                      else f"Broke out through its high on {day(sig)}."))
+        top = max(fb["pivot"], buy + BREAKEVEN_R * risk if not g["missed"] and risk > 0 else fb["pivot"])
+        bottom = min(base_low, stop if not g["missed"] else base_low)
+        frame_to = entry_to if not g["missed"] else day(sig)
+        done = not g["missed"]
+        return {"from": day(b0), "base_from": day(b0), "to": frame_to, "kind": "flat" if done else "fail",
+                "complete": done, "fail": None, "base_number": None,
+                "breakout": day(fill if coil and fill is not None else sig) if done and (fill is not None or not coil) else None,
+                "crossed": day(sig) if g["missed"] else None, "live": False, "as_of": day(last),
+                "title": title, "summary": summary,
                 "frame": {"from": day(b0), "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
                 "zones": zones}
 
