@@ -106,6 +106,31 @@ def stored_round_trip() -> None:
             cur.execute("DELETE FROM prices WHERE market='india' AND symbol=%s", (SYM,))
 
 
+def two_records() -> None:
+    print("two recorded errors in one series are both fixed, the older first (SILVERTUC.NS)")
+    idx = pd.bdate_range("2022-01-03", periods=500)
+    rng = np.random.default_rng(11)
+    truth = _frame(500 * np.exp(np.cumsum(rng.normal(0, 0.01, len(idx)))), idx)
+    year, gap = (100, 200), 400                         # a year served at a tenth; a 1:10 split left out
+    src = truth.copy()
+    m = np.zeros(len(idx), bool); m[year[0]:year[1]] = True
+    src = _rescale(src, m, 0.1)
+    src = _rescale(src, np.arange(len(idx)) < gap, 10.0)
+    want = truth                                        # the adjusted series: post-split scale throughout
+    try:
+        db.execute_values("INSERT INTO price_corrections (market, symbol, date, kind, ratio, reason) VALUES %s",
+                          [("india", SYM, idx[year[1]].date(), "rescale_before", 10.0, "test"),
+                           ("india", SYM, idx[gap].date(), "rescale_before", 0.1, "test")])
+        got = apply_recorded("india", SYM, src)
+        check("both errors fixed: the series is continuous and on the post-split scale",
+              np.allclose(got["close"], want["close"]),
+              f"max error {np.abs(got['close'] / want['close'] - 1).max():.3f}")
+        check("re-applying changes nothing", np.allclose(apply_recorded("india", SYM, got)["close"], got["close"]))
+    finally:
+        with db.get_connection().cursor() as cur:
+            cur.execute("DELETE FROM price_corrections WHERE market='india' AND symbol=%s", (SYM,))
+
+
 def rescale_check() -> None:
     print("a fetched window on a new scale is told from one on the stored scale")
     idx = pd.bdate_range("2025-01-01", periods=300)
@@ -158,6 +183,7 @@ def refresh_round_trip() -> None:
 def main() -> int:
     synthetic()
     stored_round_trip()
+    two_records()
     rescale_check()
     refresh_round_trip()
     print(f"\n{'OK — no refresh window leaves a scale break behind.' if not FAILS else f'{len(FAILS)} FAILURE(S)'}")

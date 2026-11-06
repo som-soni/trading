@@ -31,6 +31,13 @@ place (recorded in `price_corrections`, and re-applied whenever a later write br
     `corporate_actions` within SPLIT_MATCH_DAYS of it and the volume moved the way a split's does --
     a real crash has no such record, so YESBANK 2020-03-06 and the like are never touched. The bars
     before the gap are multiplied by the ratio (volume divided), as a correct source would have.
+    When the volume or lasting test refuses a gap that the source's own split record or the exchange's
+    corporate actions confirm -- a penny stock's level moves too much in ten sessions, an ETF's volume is
+    the market maker's -- `record_unadjusted_split` records it by hand after checking: AQYLON.NS and
+    SILVERTUC.NS 2026-01-01, CONS.NS and MIDCAP.NS 2026-02-27 (ETF unit splits NSE lists under "mf"),
+    FRGT, GP, GTBP and HUBC 2026-01-02 (2026 reverse splits). The same record fixes a year the source
+    serves at the wrong scale: SILVERTUC.NS's 2023, at a tenth (rescale before 2024-01-01 by 10, back to
+    the 2023-01-02 break).
   * a STRAY BAR: one bar off the scale of both neighbours by a split ratio, the neighbours agreeing
     with each other -- a zero-volume placeholder at a tenth of the price on a holiday (CCAVENUE 2026),
     or a Diwali muhurat session the source left unadjusted (INDIAMART 2019-10-27, before its 2023
@@ -321,6 +328,22 @@ def record_stray_run(market: str, symbol: str, dates, ratio: float, reason: str,
     return reapply_recorded(market, [symbol]) if apply else {"symbols_recorded": 0, "bars": 0, "symbols": 0}
 
 
+def record_unadjusted_split(market: str, symbol: str, date, ratio: float, reason: str, apply: bool = True) -> dict:
+    """Record a split-shaped gap verified BY HAND as an adjustment the source left out (`ratio` new / old),
+    and fix it: kind `rescale_before`, so it is re-applied on every write (`apply_recorded`).
+
+    Only for a gap the source's split record or the exchange confirms but `correct` refuses -- see the
+    module docstring.
+    """
+    with db.get_connection().cursor() as cur:
+        cur.execute(SCHEMA)
+    db.execute_values("""INSERT INTO price_corrections (market, symbol, date, kind, ratio, reason) VALUES %s
+                         ON CONFLICT (market, symbol, date, kind) DO UPDATE SET ratio=EXCLUDED.ratio,
+                         reason=EXCLUDED.reason, applied_at=now()""",
+                      [(market, symbol, pd.Timestamp(date).date(), "rescale_before", ratio, reason)])
+    return reapply_recorded(market, [symbol]) if apply else {"symbols_recorded": 0, "bars": 0, "symbols": 0}
+
+
 def reapply_recorded(market: str, symbols: list[str] | None = None) -> dict:
     """Put every recorded `rescale_before` and `stray_run` that is off-scale again in the stored bars back on
     scale (`apply_recorded`), and drop the touched symbols' cached signals (computed on the broken bars)."""
@@ -380,7 +403,9 @@ def offscale_before(df: pd.DataFrame, date, ratio: float):
     if d not in df.index:
         return mask
     i = df.index.get_loc(d)
-    if i == 0 or not _gap_at(df, i, ratio):
+    # still there? Only old scale (a move near `ratio`) against fixed (a move near 1), so the open is held to
+    # CLOSE_TOL: a recorded gap can open well off the ratio (SILVER1.NS 2026-02-27, 7.7% after silver moved)
+    if i == 0 or not _gap_at(df, i, ratio, open_tol=CLOSE_TOL):
         return mask
     start = next((j for j in range(i - 1, 0, -1) if _window_break(df, j, 1.0 / ratio)), 0)
     mask[start:i] = True
@@ -392,13 +417,17 @@ def apply_recorded(market: str, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
 
     `cache.save_cached` runs this on every frame it writes, so no writer -- a full re-fetch, or a refresh
     that re-writes its recent window from the source -- can bring a recorded source error back.
+
+    Oldest first: a later gap's old-scale bars run back only to the nearest break of the opposite ratio, so an
+    earlier error must be fixed before it is read as one (SILVERTUC.NS: its 2023 at a tenth ends in a x10 break
+    on 2024-01-01, which would stop the 2026-01-01 correction there).
     """
     if df is None or df.empty:
         return df
     with db.get_connection().cursor() as cur:
         cur.execute(SCHEMA)
         cur.execute("SELECT date, kind, ratio FROM price_corrections WHERE market=%s AND symbol=%s "
-                    "AND kind IN ('rescale_before', 'stray_run') ORDER BY date DESC", (market, symbol))
+                    "AND kind IN ('rescale_before', 'stray_run') ORDER BY date", (market, symbol))
         rows = cur.fetchall()
     if not rows:
         return df

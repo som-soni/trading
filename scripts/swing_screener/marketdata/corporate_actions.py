@@ -70,6 +70,7 @@ RECENT_PERIOD = "1y"                # what a routine refresh re-reads per symbol
 NSE_FIRST = dt.date(2005, 1, 1)     # India's stored prices start in 2005
 NSE_WINDOW_DAYS = 90                # NSE's corporate-actions API, queried a quarter at a time
 NSE_RECENT_DAYS = 400               # what a routine refresh re-reads from NSE
+NSE_INDEXES = ("equities", "mf")    # NSE lists an ETF's unit split under "mf", never under "equities"
 
 # What every strategy page says about it -- built from the constants above, so a threshold change
 # cannot leave stale text behind. One text per way a runner holds a position.
@@ -233,7 +234,8 @@ def _nse_day(s: str | None) -> dt.date | None:
 
 def refresh_nse(full: bool = False, progress=None) -> dict:
     """India: NSE's whole-market corporate-action feed, a quarter at a time — every window since
-    NSE_FIRST on a full read, the last NSE_RECENT_DAYS (and the announced ones ahead) otherwise."""
+    NSE_FIRST on a full read, the last NSE_RECENT_DAYS (and the announced ones ahead) otherwise. Both of
+    NSE_INDEXES: ETFs' unit splits (CONS, MIDCAP 2026-02-27; PSUBANK 2026-07-10) are listed only under "mf"."""
     from . import financials as fin
     init_schema()
     market = "india"
@@ -251,14 +253,17 @@ def refresh_nse(full: bool = False, progress=None) -> dict:
         d = e + dt.timedelta(days=1)
     rows, failed = {}, 0
     for i, (a, b) in enumerate(windows):
-        try:
-            data = fin._nse.get(fin.NSE + "/api/corporates-corporateActions", index="equities",
-                                from_date=a.strftime("%d-%m-%Y"), to_date=b.strftime("%d-%m-%Y")).json()
-        except Exception as e:  # noqa: BLE001
-            logger.warning("NSE corporate actions %s..%s failed: %s", a, b, e)
-            failed += 1
-            continue
-        for x in data if isinstance(data, list) else data.get("data", []):
+        data = []
+        for index in NSE_INDEXES:
+            try:
+                got = fin._nse.get(fin.NSE + "/api/corporates-corporateActions", index=index,
+                                   from_date=a.strftime("%d-%m-%Y"), to_date=b.strftime("%d-%m-%Y")).json()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("NSE corporate actions (%s) %s..%s failed: %s", index, a, b, e)
+                failed += 1
+                continue
+            data += got if isinstance(got, list) else got.get("data", [])
+        for x in data:
             day, subj, sym = _nse_day(x.get("exDate")), " ".join((x.get("subject") or "").split()), x.get("symbol")
             if day is None or not subj or not sym or (x.get("series") or "EQ") not in ("EQ", "BE", "BZ", "SM", "ST"):
                 continue
