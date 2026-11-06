@@ -1552,6 +1552,51 @@ def book_delete_trade(book: str, market: str, trade_id: int):
     return {"account": ledger.holdings_of(book, market)}
 
 
+@app.get("/api/book/{book}/{market}")
+def book_view(book: str, market: str):
+    """A book as its Portfolio tab reads it: holdings valued at the latest stored closes with P&L, return and
+    drawdown (backtesting/book_view.py), the open rebalance with each order line's progress, the confirmed
+    rebalances, and the ledger, newest first."""
+    from ..backtesting import book_view as bv, ledger, paper
+    _book_ok(book, market)
+    trades = ledger.trades(book, market)
+    rebs = ledger.rebalances(book, market)
+    for r in rebs:
+        r["lines"] = ledger.progress(r["orders"], trades, r["id"], r["skipped"])
+    try:
+        kind = paper.kind_of(paper.strategy_of(book, market))   # ranking, dual_momentum, momentum_dual_combo, signal
+    except ValueError:
+        kind = "other"                                          # no live selection to rebalance against
+    return {"kind": kind, "valuation": bv.valuation(book, market), "open_rebalance": ledger.open_rebalance(book, market),
+            "rebalances": rebs, "trades": trades[::-1]}
+
+
+@app.post("/api/ledger/{book}/{market}/rebalances/{rid}/skip")
+def book_rebalance_skip(book: str, market: str, rid: int, body: dict):
+    """{symbol, skipped}: mark an open rebalance's order line as one you chose not to trade, or undo it."""
+    from ..backtesting import ledger
+    _book_ok(book, market, writable=True)
+    try:
+        return {"skipped": ledger.set_skipped(book, market, rid, str(body.get("symbol") or ""),
+                                              bool(body.get("skipped", True)))}
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/ledger/{book}/{market}/rebalances/{rid}/complete")
+def book_rebalance_complete(book: str, market: str, rid: int, body: dict | None = None):
+    """Close a rebalance once you have reviewed what was filled and what was not. Its record stays."""
+    from ..backtesting import ledger
+    _book_ok(book, market, writable=True)
+    try:
+        ledger.complete(book, market, rid, (body or {}).get("note"))
+    except LookupError as e:
+        raise HTTPException(404, str(e))
+    return {"ok": True}
+
+
 def _broker(market: str):
     """The market's broker module (config `broker`), or 404 when it names none."""
     if market not in MARKETS or not MARKETS[market].broker:
@@ -1807,7 +1852,10 @@ def rebalance_confirm(strategy: str, market: str):
         raise HTTPException(404, "unknown strategy or market")
     if not hasattr(portfolio_strategies()[strategy], "lookback"):
         raise HTTPException(400, f"{strategy} does not rank stocks")
-    return rebalance.confirm(strategy, market)
+    try:
+        return rebalance.confirm(strategy, market)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
 
 
 def _combo(market: str, capital: float | None):

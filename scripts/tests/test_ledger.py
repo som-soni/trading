@@ -4,7 +4,9 @@
 tab, the rebalance orders, the position tracker, the paper books), so it is checked here on its own:
 shares, average cost, cash and realised P&L from a sequence of rows; a sale of shares never held is
 refused; the account form's difference (`diff_trades`) lands the book exactly where the user says it
-is; and a snapshot migrated as an opening balance (`opening_rows`) reads back as that snapshot.
+is; a snapshot migrated as an opening balance (`opening_rows`) reads back as that snapshot; a
+rebalance's order lines read as pending / partial / filled / skipped from the trades linked to it
+(`progress`); and the Portfolio tab's return takes deposits out (`book_view.chained`).
 
 Pure arithmetic, no database.
 
@@ -13,7 +15,9 @@ Pure arithmetic, no database.
 
 import sys
 
-from swing_screener.backtesting import ledger
+import pandas as pd
+
+from swing_screener.backtesting import book_view, ledger
 
 FAILS: list[str] = []
 
@@ -107,10 +111,45 @@ def test_opening_balance() -> None:
     check("an empty account still gets a row (so it reads as migrated)", len(empty) == 1 and empty[0]["side"] == "CASH")
 
 
+def test_progress() -> None:
+    print("a rebalance's order lines against the trades linked to it")
+    orders = [{"symbol": "A", "action": "BUY", "change": 100}, {"symbol": "B", "action": "SELL ALL", "change": -50},
+              {"symbol": "C", "action": "TRIM", "change": -10}, {"symbol": "D", "action": "HOLD", "change": 0},
+              {"symbol": "E", "action": "ADD", "change": 20}]
+    trades = [{"rebalance_id": 7, "symbol": "A", "side": "BUY", "shares": 60},
+              {"rebalance_id": 7, "symbol": "B", "side": "SELL", "shares": 50},
+              {"rebalance_id": 8, "symbol": "C", "side": "SELL", "shares": 10},     # another rebalance's fill
+              {"rebalance_id": 7, "symbol": "E", "side": "SELL", "shares": 5}]      # the wrong side
+    st = {r["symbol"]: r for r in ledger.progress(orders, trades, 7, skipped=["E"])}
+    check("part of a buy is partial, with what remains", st["A"]["state"] == "partial" and st["A"]["remaining"] == 40, st["A"])
+    check("a whole sale is filled", st["B"]["state"] == "filled", st["B"])
+    check("a fill linked to another rebalance does not count", st["C"]["state"] == "pending", st["C"])
+    check("no change ordered reads as hold", st["D"]["state"] == "hold" and st["D"]["side"] is None, st["D"])
+    check("a skipped line reads as skipped", st["E"]["state"] == "skipped", st["E"])
+
+
+def test_chained_return() -> None:
+    print("the book's return with deposits taken out")
+    idx = pd.date_range("2026-01-01", periods=4)
+    eq = pd.Series([100.0, 110.0, 310.0, 279.0], index=idx)      # +10%, then a 200 deposit, then -10%
+    flow = pd.Series([100.0, 0.0, 200.0, 0.0], index=idx)
+    ix = book_view.chained(eq, flow)
+    check("a deposit is not a gain", abs(ix.iloc[2] - 1.10) < 1e-9, ix.tolist())
+    check("returns chain across it", abs(ix.iloc[3] - 0.99) < 1e-9, ix.tolist())
+    trades = [{"side": "CASH", "amount": 100, "trade_date": "2026-01-01"},
+              {"side": "OPEN", "symbol": "X", "shares": 2, "price": None, "trade_date": "2026-01-03"},
+              {"side": "BUY", "symbol": "X", "shares": 1, "price": 50, "trade_date": "2026-01-02"}]
+    closes = pd.DataFrame({"X": [40.0, 50.0, 60.0, 70.0]}, index=idx)
+    fl = book_view.flows(trades, closes)
+    check("cash in and shares brought in are flows; a buy is not", fl.tolist() == [100.0, 0.0, 120.0, 0.0], fl.tolist())
+
+
 def main() -> int:
     test_holdings()
     test_diff()
     test_opening_balance()
+    test_progress()
+    test_chained_return()
     print(f"\n{'FAILED: ' + ', '.join(FAILS) if FAILS else 'all ledger checks pass'}")
     return 1 if FAILS else 0
 

@@ -13,7 +13,9 @@ each save replaced, so nothing recorded how the book got there. Now every change
 
 `book_rebalances` records a rebalance as it was computed when you confirmed it -- the target book and
 the orders -- and the trades that execute it carry its id, so a month's orders can later be read
-against what was actually done.
+against what was actually done. It stays OPEN while you execute it: each order line is pending,
+partly filled, filled (from the linked trades, `progress`) or skipped (you chose not to trade it),
+and you complete it once you have reviewed what is left. A new ranking never edits it.
 
 The snapshot tables are kept in step after every write (`_sync_snapshot`), so anything reading them
 still sees the current holdings; the readers in this repo go through `holdings_of`. A book that has a
@@ -74,6 +76,9 @@ CREATE TABLE IF NOT EXISTS book_trades (
 CREATE INDEX IF NOT EXISTS book_trades_book ON book_trades (book, market, trade_date, id);
 -- signal trades: the levels the strategy's exit reads (a Darvas box, a pivot), as its signal carried them
 ALTER TABLE book_trades ADD COLUMN IF NOT EXISTS meta JSONB;
+-- a rebalance is open until you complete it; an order line you chose not to trade is skipped, not dropped
+ALTER TABLE book_rebalances ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+ALTER TABLE book_rebalances ADD COLUMN IF NOT EXISTS skipped JSONB NOT NULL DEFAULT '[]';
 """
 
 
@@ -336,10 +341,42 @@ def save_rebalance(book: str, market: str, as_of: str, spec_id: str | None, targ
         return cur.fetchone()[0]
 
 
+def progress(orders: list[dict], trades_: list[dict], rebalance_id: int, skipped=()) -> list[dict]:
+    """Each order line of a rebalance against the trades linked to it (`rebalance_id`): how much of the
+    ordered change is filled, and its state -- pending, partial, filled, skipped (you chose not to trade
+    it) or hold (no change ordered). Pure arithmetic, so it is tested without a database.
+
+    A BUY / ADD line is filled by BUY rows of its symbol, a SELL ALL / TRIM line by SELL rows; a fill
+    beyond the ordered size counts as filled (the extra shows in `filled`)."""
+    skipped = set(skipped or ())
+    out = []
+    for o in orders:
+        change = float(o.get("change") or 0)
+        side = "BUY" if change > 0 else "SELL" if change < 0 else None
+        fills = [t for t in trades_ if side and t.get("rebalance_id") == rebalance_id
+                 and t.get("symbol") == o.get("symbol") and t.get("side") == side]
+        filled = sum(float(t.get("shares") or 0) for t in fills)
+        paid = sum(float(t.get("shares") or 0) * float(t.get("price") or 0) for t in fills)
+        want = abs(change)
+        if side is None:
+            state = "hold"
+        elif o.get("symbol") in skipped:
+            state = "skipped"
+        elif filled >= want - EPS:
+            state = "filled"
+        else:
+            state = "partial" if filled > EPS else "pending"
+        out.append({**o, "side": side, "ordered": want, "filled": filled,
+                    "fill_price": paid / filled if filled > EPS else None,
+                    "remaining": max(0.0, want - filled), "state": state})
+    return out
+
+
 def rebalances(book: str, market: str, limit: int = 24) -> list[dict]:
+    """The book's confirmed rebalances, newest first, each with what was traded against it."""
     with db.get_connection().cursor() as cur:
         cur.execute("""
-            SELECT r.id, r.as_of, r.spec_id, r.targets, r.orders, r.note, r.created_at,
+            SELECT r.id, r.as_of, r.spec_id, r.targets, r.orders, r.note, r.created_at, r.completed_at, r.skipped,
                    count(t.id), coalesce(sum(CASE WHEN t.side='BUY' THEN t.shares*t.price END), 0),
                    coalesce(sum(CASE WHEN t.side='SELL' THEN t.shares*t.price END), 0)
             FROM book_rebalances r LEFT JOIN book_trades t ON t.rebalance_id = r.id
@@ -347,5 +384,47 @@ def rebalances(book: str, market: str, limit: int = 24) -> list[dict]:
                     (book, market, limit))
         rows = cur.fetchall()
     return [{"id": r[0], "as_of": r[1].isoformat(), "spec_id": r[2], "targets": r[3], "orders": r[4],
-             "note": r[5], "created_at": r[6].isoformat(), "trades": r[7], "bought": r[8], "sold": r[9]}
+             "note": r[5], "created_at": r[6].isoformat(), "completed_at": r[7].isoformat() if r[7] else None,
+             "skipped": r[8] or [], "trades": r[9], "bought": r[10], "sold": r[11]}
             for r in rows]
+
+
+def open_rebalance(book: str, market: str) -> dict | None:
+    """The newest rebalance not yet completed, with each order line's progress -- or None."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT id FROM book_rebalances WHERE book=%s AND market=%s AND completed_at IS NULL "
+                    "ORDER BY as_of DESC, id DESC LIMIT 1", (book, market))
+        r = cur.fetchone()
+    if not r:
+        return None
+    reb = next(x for x in rebalances(book, market, limit=200) if x["id"] == r[0])
+    reb["lines"] = progress(reb["orders"], trades(book, market), reb["id"], reb["skipped"])
+    return reb
+
+
+def _rebalance_of(cur, book: str, market: str, rid: int) -> tuple:
+    cur.execute("SELECT skipped, completed_at FROM book_rebalances WHERE id=%s AND book=%s AND market=%s",
+                (rid, book, market))
+    r = cur.fetchone()
+    if not r:
+        raise LookupError("no such rebalance in this book")
+    return r
+
+
+def set_skipped(book: str, market: str, rid: int, symbol: str, skipped: bool) -> list:
+    """Mark an order line of an open rebalance as one you chose not to trade (or undo that)."""
+    with _tx() as cur:
+        have, done = _rebalance_of(cur, book, market, rid)
+        if done:
+            raise ValueError("this rebalance is completed")
+        now = sorted((set(have or []) | {symbol}) if skipped else (set(have or []) - {symbol}))
+        cur.execute("UPDATE book_rebalances SET skipped=%s WHERE id=%s", (json.dumps(now), rid))
+    return now
+
+
+def complete(book: str, market: str, rid: int, note: str | None = None) -> None:
+    """Close a rebalance: you have reviewed what was filled, partly filled or skipped. Its record stays."""
+    with _tx() as cur:
+        _rebalance_of(cur, book, market, rid)
+        cur.execute("UPDATE book_rebalances SET completed_at=now(), note=coalesce(%s, note) WHERE id=%s",
+                    (note, rid))

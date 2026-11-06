@@ -124,6 +124,11 @@ def _last_closes(market: str, symbols: list, as_of: str | None) -> dict:
         return {s: float(c) for s, c in cur.fetchall() if c is not None}
 
 
+# how deep the ranking returned with the orders goes: the page's Candidates view, and the rank of a
+# held stock that fell out of the book (its SELL reason). A view parameter; the strategy never reads it.
+RANKING_ROWS = 200
+
+
 def orders(book: str, market: str) -> dict:
     """The trades that turn the positions you hold into the strategy's book on the latest close."""
     from ..strategies import portfolio_strategies
@@ -134,7 +139,7 @@ def orders(book: str, market: str) -> dict:
     held = acct["positions"]
     # the decision starts from what you actually hold (with a rank buffer, a held stock ranked between
     # top_n and hold_rank is kept); the replayed model book comes back beside it as `model_held`
-    sel = baseline.current_selection(market, book, held_now=set(held))
+    sel = baseline.current_selection(market, book, limit=RANKING_ROWS, held_now=set(held))
     target_rows = [r for r in sel.get("rows", []) if r.get("held") and r.get("weight_pct") is not None]
     price = {r["symbol"]: r["close"] for r in sel.get("rows", [])}
     rank = {r["symbol"]: r["rank"] for r in sel.get("rows", [])}
@@ -166,6 +171,7 @@ def orders(book: str, market: str) -> dict:
                        "BUY" if r["held"] == 0 and r["target"] > 0 else
                        "ADD" if d > 0 else "TRIM" if d < 0 else "HOLD")
         r["amount"] = round(d * r["price"], 2) if r["price"] else None
+        r["reason"] = _reason(r, sel.get("hold_rank") or cls.top_n, sel.get("regime"))
     order = {"SELL ALL": 0, "TRIM": 1, "BUY": 2, "ADD": 3, "HOLD": 4}
     rows.sort(key=lambda r: (order[r["action"]], -abs(r["amount"] or 0)))
     sells = -sum(r["amount"] for r in rows if r["amount"] and r["amount"] < 0)
@@ -180,9 +186,40 @@ def orders(book: str, market: str) -> dict:
         "cash_after": round(acct["cash"] + sells - buys, 2),
         "est_costs": round((sells + buys) * cost, 2), "cost_bps": float(getattr(cls, "cost_bps", 0.0)),
         "hold_rank": sel.get("hold_rank"), "replayed_rebalances": sel.get("replayed_rebalances"),
-        "drift": drift(set(held), model),
+        "drift": drift(set(held), model), "next_rebalance": next_rebalance(sel.get("as_of")),
+        "top_n": getattr(cls, "top_n", None), "eligible": sel.get("eligible"),
+        # the whole ranking the orders came from, so the page's Candidates view needs no second ranking
+        "ranking": [{k: r[k] for k in ("rank", "symbol", "score", "close", "turnover")} for r in sel.get("rows", [])],
         "rows": rows,
     }
+
+
+def _reason(r: dict, keep_within: int, regime: dict | None) -> str:
+    """Why an order line says what it says, in the words of the rule that decided it."""
+    rank, w = r.get("rank"), r.get("weight_pct")
+    if r["action"] == "SELL ALL":
+        if regime and not regime.get("on"):
+            return "market filter off: the strategy holds cash"
+        return (f"rank {rank}, outside the top {keep_within} it keeps" if rank
+                else "no longer ranked (fails the liquidity, price or trend filter)")
+    if r["action"] == "BUY":
+        return f"new in the book at rank {rank}, target weight {w:g}%"
+    if r["action"] in ("ADD", "TRIM"):
+        return f"target weight {w:g}% is {r['target']:g} shares; you hold {r['held']:g}"
+    return f"rank {rank}, target weight {w:g}%: no change" if rank else "no change"
+
+
+def next_rebalance(as_of: str | None) -> str | None:
+    """The last weekday of the month after `as_of`'s close (the month's own when `as_of` is not its last
+    session): the strategy decides at the close of each month's last session. A weekday, not a holiday
+    calendar, so the page says "on or before"."""
+    if not as_of:
+        return None
+    d = pd.Timestamp(as_of)
+    end = d + pd.offsets.BMonthEnd(0)
+    if end <= d:
+        end = d + pd.offsets.BMonthEnd(1)
+    return end.date().isoformat()
 
 
 def drift(held: set, model: set) -> dict:
@@ -194,6 +231,8 @@ def confirm(book: str, market: str) -> dict:
     """Store the rebalance as computed now -- its targets and orders -- so the trades that execute it
     can be linked to it (`book_trades.rebalance_id`) and read against it later."""
     from . import ledger
+    if ledger.open_rebalance(book, market):
+        raise ValueError("a rebalance is still open: complete it before starting the next")
     o = orders(book, market)
     targets = [{"symbol": r["symbol"], "weight_pct": r["weight_pct"], "shares": r["target"], "price": r["price"]}
                for r in o["rows"] if r["target"] > 0]

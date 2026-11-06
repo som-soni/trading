@@ -5182,8 +5182,9 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
   // list". "Candidates" is true of both and promises neither freshness nor a decision.
   const tabs = [["rules", "How it works"],
     ...(trades ? [["setups", "Candidates"]] : []),
-    // The combination holds two sleeves, not one ranking: its tab is the month's book in money.
-    ...(holds ? [["holdings", key === COMBO_KEY ? "Orders" : "Candidates"]] : []),
+    // A portfolio strategy's tab is the workspace for running money under it (portfolioTab): the
+    // ranking is one view of it ("Candidates"), beside the rebalance, your holdings and their history.
+    ...(holds ? [["holdings", "Portfolio"]] : []),
     // The tab's count is what the tab SHOWS. Counting archived runs here put "Backtests 47" above
     // a table of 4, which is the same mismatch the chips had.
     ["backtests", (() => { const n = d.backtests.filter((b) => !b.archived).length;
@@ -5200,7 +5201,7 @@ async function strategyPage(alive, root, key, tab, mkt, runKey) {
     ${tabsHtml(tabs.map(([k, t]) => [k, t, `#/strategies/${key}/${k}`]), tab)}<div id="stab"></div>`;
   const host = root.querySelector("#stab");
   if (tab === "setups") return strategySetups(host, alive, key, mkt, runKey, d);
-  if (tab === "holdings") return key === COMBO_KEY ? strategyOrders(host, alive, key) : strategyHoldings(host, alive, d, key);
+  if (tab === "holdings") return portfolioTab(host, alive, d, key);
   if (tab === "backtests") return strategyBacktests(host, d, key);
   strategyRules(host, d, key);
 }
@@ -5442,183 +5443,512 @@ function strategyRules(host, d, key) {
  *  cannot disagree. It is a RANKING as of the last complete session, not a rebalance -- the
  *  strategy only acts on its rebalance date, which the note says so nobody reads it as a buy list.
  */
-async function strategyHoldings(host, alive, d, key) {
-  if (key === "dual_momentum") return dualHoldings(host, alive, key);
+/** A portfolio strategy's Portfolio tab: a workspace for running money under it, month to month.
+ *
+ * Two sources, kept apart. The STRATEGY is the source of recommendations -- its ranking and the orders
+ * computed from it (/api/rebalance -> rebalance.orders, the backtest's own selection and sizing). The
+ * book's trade LEDGER (backtesting/ledger.py) is the source of truth for what you own. A stock in the
+ * ranking is not a holding, a stock leaving it is not a sale, and an order is not a fill until you record it.
+ *
+ *   Rebalance   the orders against what you hold. "Start rebalance" stores them as computed now
+ *               (book_rebalances: a dated record a later ranking never edits); each line then reads
+ *               pending / partial / filled / skipped from the fills you record, until you complete it.
+ *   Holdings    what the ledger says you own, valued at the latest stored closes (/api/book ->
+ *               book_view.valuation); record a trade, edit the whole account, or compare with the broker.
+ *   Candidates  the full ranking, each name's status against your ledger and the target.
+ *   History     every confirmed rebalance against its fills, the paper book, and the ledger.
+ *
+ * Dual momentum and the combination open on their own first view (the pick; the two-sleeve orders); a
+ * portfolio strategy with no live selection has Holdings and History only.
+ */
+const PF_VIEWS = {
+  ranking: [["rebalance", "Rebalance"], ["holdings", "Holdings"], ["candidates", "Candidates"], ["history", "History"]],
+  dual_momentum: [["orders", "Pick"], ["holdings", "Holdings"], ["history", "History"]],
+  momentum_dual_combo: [["orders", "Orders"], ["holdings", "Holdings"], ["history", "History"]],
+  other: [["holdings", "Holdings"], ["history", "History"]],
+};
+
+async function portfolioTab(host, alive, d, key) {
   let mkt = store.get("setupMkt:" + key, null) || pageMarket();
-  let show = store.get("selShow:" + key, "held");
-  // A paint takes ~18s (it ranks the whole universe), so switching market starts a second one
-  // while the first is still in flight. alive() only guards against leaving the PAGE, so without
-  // a sequence token the slower reply writes its header into the newer market's head -- which it
-  // did: two "Ranked ..." labels, for two different markets, side by side.
-  let seq = 0;
+  let view = store.get("pfView:" + key, null);
+  let seq = 0, viewSeq = 0, ctx = null;
+  const show = () => {
+    const tok = ++viewSeq;
+    ctx.live = () => ctx.current() && tok === viewSeq;
+    host.querySelectorAll(".pfseg button").forEach((b) => b.classList.toggle("on", b.dataset.v === view));
+    ({ rebalance: pfRebalance, holdings: pfHoldings, candidates: pfCandidates, history: pfHistory,
+       orders: ctx.kind === "dual_momentum" ? dualPick : comboOrders })[view](host.querySelector("#pfbody"), ctx);
+  };
   const paint = async () => {
     const my = ++seq;
     host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}<span class="spacer"></span>
-        <button id="run1" title="Re-rank this strategy on the latest stored prices">Re-rank…</button></div>
-      <div class="chips" id="dec"></div><div id="tbl">${LOADING}</div><div id="acct"></div>`;
-    wireHead();
-    const r = await api(`/api/portfolio-selection/${encodeURIComponent(key)}/${mkt}?limit=200`).catch(() => null);
-    if (!alive() || my !== seq) return;   // a newer paint owns the page
-    const tbl = host.querySelector("#tbl");
-    if (!r || !r.rows?.length) {
-      tbl.innerHTML = `<div class="empty"><b>Nothing ranks in ${esc(mktInfo(mkt).name)}</b><div class="muted">${
-        r ? "No name clears this strategy's liquidity floor and trend filter on the latest bar." : "The ranking could not be computed."}</div></div>`;
-      return;
-    }
-    host.querySelector(".page-head.sub").insertAdjacentHTML("afterbegin",
-      `<span class="run-label">Ranked ${esc(prettyDate(r.as_of))} — ${r.rows.filter((x) => x.held).length} held of ${r.eligible} eligible</span>${edgeChip(key, mkt)}`);
-    const nHeld = r.rows.filter((x) => x.held).length;
-    // The strategy's market filter (backtesting/regime.py) is read on the same close as the ranking.
-    // While it is off the strategy holds cash, so the page says so rather than showing an empty book.
-    const regimeOff = r.regime && !r.regime.on;
-    if (regimeOff) host.querySelector("#dec").insertAdjacentHTML("beforebegin",
-      `<div class="muted small sd-intro"><b>Market filter off — holding cash.</b> On ${esc(prettyDate(r.as_of))} the benchmark
-        index closed at or below its 200-day average, so at a month-end this strategy sells everything and holds cash
-        until the index is back above it. <b>All ranked</b> shows what it would buy then.</div>`);
-    const dec = host.querySelector("#dec");
-    const drawChips = () => {
-      dec.innerHTML = [["held", "Held", nHeld, "trade"], ["all", "All ranked", r.rows.length, ""]]
-        .map(([v, t, n, cls]) => `<button class="chip ${cls} ${v === show ? "on" : ""}" data-d="${v}">${t}<span>${n}</span></button>`).join("");
-      dec.querySelectorAll(".chip").forEach((b) => b.onclick = () => {
-        show = b.dataset.d; store.set("selShow:" + key, show); draw();
-      });
-    };
-    const cols = ["rank", "symbol", "weight_pct", "score", "price", "turnover_20d"];
-    const draw = () => {
-      drawChips();
-      const rows = (show === "held" ? r.rows.filter((x) => x.held) : r.rows)
-        .map((x) => [x.rank, x.symbol, x.weight_pct, x.score, x.close, x.turnover]);
-      if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>Nothing held</b>${regimeOff ? `<div class="muted">The market filter is off: the strategy is in cash.</div>` : ""}</div>`; return; }
-      dataTable(tbl, cols, rows, {
-        name: `selection_${key}`, sort: [0, 1], noStack: true,
-        rowHint: "Click a row to open its chart",
-        rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`),
-      });
-    };
-    draw();
-    bookOrders(host.querySelector("#acct"), alive, () => my === seq, key, mkt);
-  };
-  const wireHead = () => {
-    host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {
-      mkt = b.dataset.v; store.set("setupMkt:" + key, mkt); paint();
-    });
-    host.querySelector("#run1").onclick = () => paint();
-  };
-  paint();
-}
-
-/** Dual momentum's Holdings tab: the one asset it holds now (/api/dual-pick -> dual_momentum.current_pick,
- * the rule its backtest runs), and the book's account. It holds an index through a fund you choose, so the
- * order is "the whole book in the pick" -- record the fund you buy with the account form. */
-async function dualHoldings(host, alive, key) {
-  let mkt = store.get("setupMkt:" + key, null) || pageMarket();
-  let seq = 0;
-  const paint = async () => {
-    const my = ++seq;
-    host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}<span class="spacer"></span><button id="run1">Refresh</button></div>
-      <div id="dhead">${LOADING}</div><div id="acctbox"></div>`;
+        <button id="run1" title="Re-read the book and the strategy's orders on the latest stored prices">Refresh</button></div>
+      <div id="pfsum">${LOADING}</div><div id="pfseg"></div><div id="pfbody"></div>`;
     host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { mkt = b.dataset.v; store.set("setupMkt:" + key, mkt); paint(); });
     host.querySelector("#run1").onclick = () => paint();
-    const r = await api(`/api/dual-pick/${mkt}`).catch(() => null);
+    const book = await api(`/api/book/${encodeURIComponent(key)}/${mkt}`).catch(() => null);
     if (!alive() || my !== seq) return;
-    const box = host.querySelector("#dhead");
-    if (!r) { box.innerHTML = `<div class="empty"><b>The pick could not be read on the stored prices.</b></div>`; return; }
-    const pick = r.rows.find((x) => x.held);
-    const month = new Date(r.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
-    box.innerHTML = `<div class="muted small sd-intro"><b>As of the ${esc(prettyDate(r.as_of))} close: ${esc(pick ? pick.label : "—")}.</b>
-        ${r.is_month_end ? `This is <b>${esc(month)}'s last session</b>: the rebalance is to hold it.` : `Not a rebalance day — the strategy acts at the close of the last session of ${esc(month)}.`}
-        The whole book (${bookMoney(mkt, r.account_value)} at the latest closes) goes in the pick, held through ${esc(pick?.priced_by || "a fund tracking it")}.
-        Rules ${esc(r.spec_id)}. What the rules point at, not a recommendation.</div>
-      <table class="data compact"><thead><tr><th>Choice</th><th>Priced by</th><th class="num">${r.lookback_months}-month return</th><th></th></tr></thead><tbody>
-      ${r.rows.map((x) => `<tr><td>${esc(x.label)}${x.safe ? ` <span class="muted small">(safe asset)</span>` : ""}</td>
-        <td class="muted small">${esc(x.priced_by || "")}</td>
-        <td class="num">${x.return_pct == null ? "—" : `${x.return_pct >= 0 ? "+" : ""}${x.return_pct.toFixed(2)}%`}</td>
-        <td>${x.held ? `<span class="tag pos">held</span>` : ""}</td></tr>`).join("")}</tbody></table>`;
-    bookAccount(host.querySelector("#acctbox"), alive, () => my === seq, key, mkt, paint);
+    if (!book) { host.querySelector("#pfsum").innerHTML = `<div class="empty"><b>The book could not be read.</b></div>`; return; }
+    const kind = PF_VIEWS[book.kind] ? book.kind : "other";
+    const views = PF_VIEWS[kind];
+    if (!views.some(([v]) => v === view)) view = views[0][0];
+    ctx = { key, mkt, d, kind, book, alive, current: () => alive() && my === seq, refresh: paint,
+      // the strategy's orders against this book: one request per paint, shared by every view (a cold ranking takes ~18s)
+      orders: kind === "ranking" ? api(`/api/rebalance/${encodeURIComponent(key)}/${mkt}`).catch(() => null) : Promise.resolve(null),
+      goto: (v) => { view = v; store.set("pfView:" + key, v); show(); } };
+    host.querySelector("#pfseg").outerHTML = segmented(views, view, "pfseg");
+    host.querySelectorAll(".pfseg button").forEach((b) => b.onclick = () => ctx.goto(b.dataset.v));
+    pfSummary(host.querySelector("#pfsum"), ctx);
+    show();
   };
   paint();
-}
-
-
-/** Your account under a ranking strategy, and the trades that turn it into the strategy's book.
- *
- * The account is the book's trade LEDGER (/api/ledger -> backtesting/ledger.py): an opening balance and
- * every trade since, from which the holdings are derived. Saving the form or comparing with the broker
- * never overwrites it -- both show the difference as proposed trades, recorded only when you confirm.
- * The orders come from /api/rebalance -> rebalance.orders, sized in whole shares as the backtest sizes them.
- */
-async function bookOrders(box, alive, current, key, mkt) {
-  box.innerHTML = `<div id="acctbox"></div><div id="orders"></div>`;
-  const ordersBox = box.querySelector("#orders");
-  const showOrders = async () => {
-    ordersBox.innerHTML = LOADING;
-    const o = await api(`/api/rebalance/${encodeURIComponent(key)}/${mkt}`).catch(() => null);
-    if (!alive() || !current()) return;
-    if (!o) { ordersBox.innerHTML = `<div class="empty"><b>The orders could not be computed.</b></div>`; return; }
-    if (!o.account_value) { ordersBox.innerHTML = `<div class="muted small">Enter your holdings and cash to see the orders.</div>`; return; }
-    rebalancePanel(ordersBox, o, key, mkt, () => bookAccount(box.querySelector("#acctbox"), alive, current, key, mkt, showOrders));
-  };
-  bookAccount(box.querySelector("#acctbox"), alive, current, key, mkt, showOrders);
-  showOrders();
 }
 
 /** Money in the market's currency, whole units. */
 const bookMoney = (mkt, v) => v == null ? "—" : `${v < 0 ? "−" : ""}${mktInfo(mkt).currency || ""}${Math.abs(Math.round(v)).toLocaleString("en-IN")}`;
 const bookSym = (mkt, s) => { const sfx = mktInfo(mkt).suffix || ""; return s && sfx && s.endsWith(sfx) ? s.slice(0, -sfx.length) : (s || ""); };
+const pfPct = (x) => x == null ? "—" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(2)}%`;
+const pfCls = (x) => x == null || Math.abs(x) < 1e-9 ? "" : x > 0 ? "pos" : "neg";
+const pfErr = (e) => `<span class="small" style="color:var(--down)">${esc(String(e?.message || e))}</span>`;
+// an order line's state, and the tag it wears
+const PF_STATE = { pending: ["Pending", "warn"], partial: ["Partly filled", "warn"], filled: ["Filled", "pos"],
+  skipped: ["Skipped", "neutral"], hold: ["No change", "neutral"] };
 
-/** The book's holdings (from its ledger), the form that changes them, the broker comparison and the ledger itself. */
-async function bookAccount(host, alive, current, key, mkt, onChange) {
-  const L = await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}`).catch(() => null);
-  if (!alive() || !current() || !L) return;
-  const acct = L.account;
-  const lines = Object.entries(acct.positions).map(([s, n]) => `${bookSym(mkt, s)} ${n}`).join("\n");
-  host.innerHTML = `<h3>Your account</h3>
-    <div class="muted small">Derived from this book's trade ledger: ${acct.trades} entr${acct.trades === 1 ? "y" : "ies"}, the opening balance and every
-      trade since. ${Object.keys(acct.positions).length} holding${Object.keys(acct.positions).length === 1 ? "" : "s"}, cash ${bookMoney(mkt, acct.cash)}${acct.realised ? `, realised ${bookMoney(mkt, acct.realised)}` : ""}.
-      Edit the lines below to what you hold now — one stock per line, <code>SYMBOL shares</code> — and review: the difference is
-      recorded as trades, never overwritten.</div>
+/** The book at a glance: value, cash, P&L, return and drawdown from the ledger; for a ranking strategy,
+ * the ranking date, the next rebalance and how far the open one is executed. */
+function pfSummary(box, ctx) {
+  const v = ctx.book.valuation, m = (x) => bookMoney(ctx.mkt, x);
+  const upct = v.invested ? v.unrealised / v.invested * 100 : null;
+  const tile = (label, val, tip = "", cls = "") => `<div class="tile" title="${esc(tip)}"><span>${label}</span><b class="${cls}">${val}</b></div>`;
+  box.innerHTML = `<div class="tiles small pf-tiles">
+      ${tile("Account value", m(v.value), `Cash plus every holding at its latest stored close${v.as_of ? `, ${prettyDate(v.as_of)}` : ""}`)}
+      ${tile("Holdings", `${v.positions.length}<small class="pf-of muted"></small>`, "Stocks the ledger says you own (of the strategy's target count)")}
+      ${tile("Cash", m(v.cash), "Opening cash, deposits and withdrawals, less what was bought, plus what was sold, less costs")}
+      ${tile("Invested", m(v.invested), "What the shares you hold cost: average cost × shares")}
+      ${tile("Unrealised", `${m(v.unrealised)} <small>${pfPct(upct)}</small>`, "Holdings at the latest close against their average cost", pfCls(v.unrealised))}
+      ${tile("Realised", m(v.realised), "P&L of every sale against its average cost, after the sale's costs", pfCls(v.realised))}
+      ${tile("Return", pfPct(v.return_pct), `Time-weighted since the first ledger entry${v.first_trade ? ` (${prettyDate(v.first_trade)})` : ""}: money you put in or took out is not a gain or a loss`, pfCls(v.return_pct))}
+      ${tile("From peak", pfPct(v.drawdown_pct), `The return index against its own peak, now. Worst since the start: ${pfPct(v.max_drawdown_pct)}`, pfCls(v.drawdown_pct))}
+    </div><div class="pf-status small muted"></div>`;
+  const status = box.querySelector(".pf-status");
+  const reb = ctx.book.open_rebalance;
+  const openText = reb ? (() => {
+    const act = reb.lines.filter((l) => l.state !== "hold");
+    const n = (s) => act.filter((l) => l.state === s).length;
+    return `<b>Rebalance #${reb.id} open</b> (${prettyDate(reb.as_of)} orders): ${n("filled")} of ${act.length} filled${n("partial") ? `, ${n("partial")} partly` : ""}${n("skipped") ? `, ${n("skipped")} skipped` : ""}, ${n("pending")} pending.`;
+  })() : "";
+  status.innerHTML = openText;
+  if (ctx.kind !== "ranking") return;
+  ctx.orders.then((o) => {
+    if (!o || !ctx.current()) return;
+    if (o.top_n) box.querySelector(".pf-of").textContent = ` / ${o.top_n}`;
+    const c = (a) => o.rows.filter((r) => r.action === a).length;
+    const pending = c("SELL ALL") + c("TRIM") + c("BUY") + c("ADD");
+    status.innerHTML = `Ranked on the <b>${esc(prettyDate(o.as_of))}</b> close · next rebalance at the close of the month's last session, on or
+      before <b>${esc(prettyDate(o.next_rebalance))}</b>${o.regime && !o.regime.on ? ` · <b>market filter off</b>: the strategy holds cash` : ""}
+      · ${openText || (o.account_value ? (pending ? `rebalancing now would take <b>${pending} order${pending === 1 ? "" : "s"}</b>: ${c("SELL ALL")} exit, ${c("TRIM")} trim, ${c("BUY")} new, ${c("ADD")} add; ${c("HOLD")} unchanged.`
+        : `the book matches the target.`) : `no account recorded yet.`)}`;
+  });
+}
+
+/** Order lines grouped by what they ask: exits, trims, new buys, adds -- and the unchanged, folded.
+ * `reb` (an open rebalance) adds each line's fills and state, with Record fill / Skip. */
+function pfGroups(host, ctx, lines, reb, costBps) {
+  const { mkt } = ctx, money = (v) => bookMoney(mkt, v);
+  const groups = [["SELL ALL", "Sell — exit the position", "neg"], ["TRIM", "Trim — weight down", "neg"],
+    ["BUY", "Buy — new in the book", "pos"], ["ADD", "Add — weight up", "pos"]];
+  const line = (l) => {
+    const n = reb ? l.remaining : l.ordered;
+    const st = reb ? PF_STATE[l.state] : null;
+    return `<tr data-s="${esc(l.symbol)}"><td><a href="#/chart/${mkt}/${encodeURIComponent(l.symbol)}">${esc(bookSym(mkt, l.symbol))}</a></td>
+      <td class="muted small why">${esc(l.reason || "")}</td>
+      <td class="num">${l.ordered.toLocaleString("en-IN")}${reb && l.state === "partial" ? ` <span class="muted small">filled ${l.filled.toLocaleString("en-IN")}</span>` : ""}</td>
+      <td class="num">${l.price != null ? l.price.toFixed(2) : "—"}</td>
+      <td class="num">${l.price != null ? money(n * l.price) : "—"}</td>
+      ${reb ? `<td><span class="tag ${st[1]}">${st[0]}</span></td>
+        <td class="pf-acts">${l.state === "pending" || l.state === "partial" ? `<button class="sm" data-a="fill">Record fill…</button>` : ""}
+          ${l.state === "skipped" ? `<button class="ghost sm" data-a="unskip">Unskip</button>` : l.state !== "filled" ? `<button class="ghost sm" data-a="skip" title="You chose not to trade this line: it stays on record as skipped">Skip</button>` : ""}</td>` : ""}</tr>`;
+  };
+  const head = `<thead><tr><th>Stock</th><th>Why</th><th class="num">Shares</th><th class="num">Price</th><th class="num">${reb ? "Remaining" : "Amount"}</th>${reb ? "<th>State</th><th></th>" : ""}</tr></thead>`;
+  const hold = lines.filter((l) => !l.side);
+  host.innerHTML = groups.map(([a, title, cls]) => {
+    const ls = lines.filter((l) => l.action === a && l.side);
+    return ls.length ? `<div class="pf-group"><h4><span class="tag ${cls}">${ls.length}</span> ${title}</h4>
+      <div class="pf-scroll"><table class="data compact">${head}<tbody>${ls.map(line).join("")}</tbody></table></div></div>` : "";
+  }).join("") + (hold.length ? `<details class="pf-group"><summary><span class="tag neutral">${hold.length}</span> Retain — no change</summary>
+      <div class="small muted" style="margin:6px 0">${hold.map((l) => `${esc(bookSym(mkt, l.symbol))} ${l.held ?? ""}`).join(" · ")}</div></details>` : "")
+    + (lines.some((l) => l.side) ? "" : `<div class="sd-intro small"><b>No orders.</b> What you hold already matches the target.</div>`);
+  if (!reb) return;
+  host.querySelectorAll("button[data-a]").forEach((b) => b.onclick = async () => {
+    const l = lines.find((x) => x.symbol === b.closest("tr").dataset.s);
+    if (b.dataset.a === "fill") return tradeDialog(ctx, { side: l.side, symbol: l.symbol, shares: l.remaining, price: l.price,
+      costBps, rebalanceId: reb.id, note: `rebalance #${reb.id}: ${l.action}`, title: `Record a fill — ${bookSym(mkt, l.symbol)}` });
+    b.disabled = true;
+    await api(`/api/ledger/${encodeURIComponent(ctx.key)}/${mkt}/rebalances/${reb.id}/skip`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: l.symbol, skipped: b.dataset.a === "skip" }) })
+      .then(() => ctx.refresh()).catch((e) => { b.disabled = false; toast(String(e.message || e), "err"); });
+  });
+}
+
+/** When the strategy acts, and what the orders below are. */
+function pfTiming(o, mkt) {
+  const money = (v) => bookMoney(mkt, v);
+  const month = new Date(o.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
+  return `<div class="muted small sd-intro"><b>Ranked on the ${esc(prettyDate(o.as_of))} close.</b>
+    ${o.is_month_end ? `This is <b>${esc(month)}'s last session</b>: these are the month's orders.`
+      : `Not a rebalance day — the strategy decides at the close of the month's last session (on or before ${esc(prettyDate(o.next_rebalance))}), and the orders can change before then.`}
+    Its backtest trades at that close; you can act only after it, so your fills come a session later — History compares what you paid with the ranking's close.
+    ${o.account_value ? `Account ${money(o.account_value)} (cash ${money(o.cash)}): sells ${money(o.sells)}, buys ${money(o.buys)}, cash after ${money(o.cash_after)};
+    costs at the strategy's ${o.cost_bps} bps a side ≈ ${money(o.est_costs)}. Whole shares, sized as the backtest sizes them.` : ""}
+    What the rules point at, not a recommendation.
+    ${o.regime && !o.regime.on ? `<br><b>Market filter off:</b> the benchmark closed at or below its 200-day average, so at a month-end this strategy sells everything and holds cash.` : ""}
+    ${o.unpriced.length ? `<br><b>No stored price for ${esc(o.unpriced.map((s) => bookSym(mkt, s)).join(", "))}</b> — left out of the account value; check the symbol.` : ""}</div>`;
+}
+
+/** Rebalance: the open rebalance's progress, or the orders now and "Start rebalance". */
+async function pfRebalance(body, ctx) {
+  const { key, mkt } = ctx, reb = ctx.book.open_rebalance;
+  body.innerHTML = LOADING;
+  const o = await ctx.orders;
+  if (!ctx.live()) return;
+  if (reb) return pfOpenRebalance(body, ctx, reb, o);
+  if (!o) { body.innerHTML = `<div class="empty"><b>The orders could not be computed.</b></div>`; return; }
+  if (!o.account_value) {
+    body.innerHTML = `${pfTiming(o, mkt)}<div class="empty"><b>No account recorded yet</b><div class="muted">The orders are sized on what this book
+      holds. Put in the cash you run this strategy with — and any shares you already hold for it — on the <a href="#" id="toh">Holdings</a> view.</div></div>`;
+    body.querySelector("#toh").onclick = (e) => { e.preventDefault(); ctx.goto("holdings"); };
+    return;
+  }
+  const lines = o.rows.map((r) => ({ ...r, side: r.change > 0 ? "BUY" : r.change < 0 ? "SELL" : null, ordered: Math.abs(r.change) }));
+  body.innerHTML = `${pfTiming(o, mkt)}<div id="drift"></div><div id="groups"></div>
+    <div class="pf-actions"><button class="primary sm" id="start">Start rebalance…</button>
+      <span class="muted small">Stores these orders as computed now — a dated record no later ranking changes — and tracks each line as you record its fills.</span>
+      <span id="serr"></span></div>`;
+  driftNote(body.querySelector("#drift"), o.drift, o.hold_rank, o.replayed_rebalances, mkt);
+  pfGroups(body.querySelector("#groups"), ctx, lines, null);
+  body.querySelector("#start").onclick = async (e) => {
+    if (!lines.some((l) => l.side)) return;
+    e.target.disabled = true;
+    try { await api(`/api/rebalance/${encodeURIComponent(key)}/${mkt}/confirm`, { method: "POST" }); ctx.refresh(); }
+    catch (err) { e.target.disabled = false; body.querySelector("#serr").innerHTML = pfErr(err); }
+  };
+}
+
+function pfOpenRebalance(body, ctx, reb, o) {
+  const { key, mkt } = ctx;
+  const act = reb.lines.filter((l) => l.side);
+  const n = (s) => act.filter((l) => l.state === s).length;
+  const out = act.filter((l) => l.state === "pending" || l.state === "partial");
+  const bps = o?.cost_bps || 0;
+  body.innerHTML = `<div class="muted small sd-intro"><b>Rebalance #${reb.id} is open</b> — the orders as computed on the ${esc(prettyDate(reb.as_of))} close
+      (rules ${esc(reb.spec_id || "")}), stored ${esc(prettyDate(reb.created_at.slice(0, 10)))}. <b>${n("filled")} of ${act.length}</b> filled${n("partial") ? `, ${n("partial")} partly` : ""}${n("skipped") ? `, ${n("skipped")} skipped` : ""}${n("pending") ? `, ${n("pending")} pending` : ""}.
+      Record each fill as it happens, at the price and cost on your contract note; skip a line you decide not to trade. Complete the rebalance once you have reviewed what is left.
+      ${o && o.as_of > reb.as_of ? `<br>The strategy has ranked again since (the ${esc(prettyDate(o.as_of))} close): complete this rebalance to see the new orders.` : ""}</div>
+    <div id="groups"></div>
+    <div class="pf-actions"><button class="primary sm" id="complete">Complete rebalance…</button>
+      ${out.length ? `<button class="sm" id="bulk">Record the outstanding fills together…</button>` : ""}<span id="cerr"></span></div>
+    <div id="bulkbox"></div>`;
+  pfGroups(body.querySelector("#groups"), ctx, reb.lines, reb, bps);
+  body.querySelector("#complete").onclick = async (e) => {
+    const msg = out.length ? `${out.length} order${out.length === 1 ? " is" : "s are"} not fully filled: ${out.map((l) => bookSym(mkt, l.symbol)).join(", ")}.\n\nComplete anyway? They stay on record as not filled.`
+      : "Complete this rebalance? Its orders and fills stay on record.";
+    if (!confirm(msg)) return;
+    e.target.disabled = true;
+    await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/rebalances/${reb.id}/complete`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: "{}" })
+      .then(() => ctx.refresh()).catch((err) => { e.target.disabled = false; body.querySelector("#cerr").innerHTML = pfErr(err); });
+  };
+  const bulk = body.querySelector("#bulk");
+  if (bulk) bulk.onclick = () => proposedFills(body.querySelector("#bulkbox"), key, mkt,
+    out.map((l) => ({ side: l.side, symbol: l.symbol, shares: l.remaining, price: l.price, price_from: "close",
+      costs: Math.round(l.remaining * (l.price || 0) * bps / 100) / 100, note: `rebalance #${reb.id}: ${l.action}` })),
+    { source: "manual", rebalanceId: reb.id, onDone: ctx.refresh,
+      intro: `<b>Not recorded yet.</b> The outstanding orders of rebalance #${reb.id} at the ranking's close — correct each price and cost to the contract note,
+        untick what you did not trade, then record.` });
+}
+
+/** Record one trade -- a buy, a sale, or cash in / out -- as a ledger row. A fill of an open rebalance's
+ * pending line is linked to it, so the line's progress counts it. */
+function tradeDialog(ctx, init = {}) {
+  const { key, mkt } = ctx, cur = mktInfo(mkt).currency || "";
+  const reb = ctx.book.open_rebalance;
+  const today = new Date().toISOString().slice(0, 10);
+  let side = init.side || "BUY", feeEdited = false;
+  const dlg = el(`<dialog class="pf-dlg"><form method="dialog">
+    <h3>${esc(init.title || "Record a trade")}</h3>
+    <div class="seg pf-side">${[["BUY", "Buy"], ["SELL", "Sell"], ["CASH", "Cash in / out"]].map(([v, t]) => `<button type="button" data-v="${v}">${t}</button>`).join("")}</div>
+    <div class="pf-form">
+      <label class="t-stk">Stock <input name="symbol" value="${esc(bookSym(mkt, init.symbol || ""))}" placeholder="SYMBOL" autocomplete="off" spellcheck="false"></label>
+      <label>Date <input name="date" type="date" value="${today}"></label>
+      <label class="t-stk">Price ${esc(cur)} <input name="price" type="number" step="any" min="0" value="${init.price ?? ""}"></label>
+      <label class="t-stk">Shares <input name="shares" type="number" step="any" min="0" value="${init.shares ?? ""}"></label>
+      <label class="t-stk">Costs ${esc(cur)} <input name="costs" type="number" step="any" min="0"></label>
+      <label class="t-cash" hidden>Amount ${esc(cur)} <input name="amount" type="number" step="any" placeholder="+ in, − out"></label>
+      <label class="wide">Note <input name="note" value="${esc(init.note || "")}"></label>
+    </div>
+    <div class="muted small t-hint">${init.price != null ? "The price is the latest stored close: change it to your actual fill. " : ""}Costs are brokerage, taxes and charges from the contract note${init.costBps ? `, estimated at ${init.costBps} bps until you change them` : ""}.</div>
+    <div class="t-sum small"></div>
+    <div class="pf-actions"><button type="submit" class="primary sm">Record</button><button type="button" class="ghost sm t-cancel">Cancel</button><span class="t-err"></span></div>
+  </form></dialog>`);
+  document.body.append(dlg);
+  const f = dlg.querySelector("form"), val = (n) => f.elements[n].value, num = (n) => parseFloat(val(n));
+  const close = () => { dlg.close(); dlg.remove(); };
+  const sym = () => val("symbol").trim().toUpperCase();
+  const held = () => (ctx.book.valuation.positions.find((p) => bookSym(mkt, p.symbol) === sym()) || {}).shares || 0;
+  const line = () => reb && side !== "CASH" ? reb.lines.find((l) => bookSym(mkt, l.symbol) === sym() && l.side === side && (l.state === "pending" || l.state === "partial")) : null;
+  const update = () => {
+    dlg.querySelectorAll(".pf-side button").forEach((b) => b.classList.toggle("on", b.dataset.v === side));
+    dlg.querySelectorAll(".t-stk").forEach((x) => x.hidden = side === "CASH");
+    dlg.querySelector(".t-cash").hidden = side !== "CASH";
+    dlg.querySelector(".t-hint").hidden = side === "CASH";
+    const px = num("price"), sh = num("shares");
+    if (!feeEdited && side !== "CASH") f.elements.costs.value = init.costBps && px > 0 && sh > 0 ? (Math.round(px * sh * init.costBps / 100) / 100) : (f.elements.costs.value || "");
+    const fee = num("costs") || 0, gross = px > 0 && sh > 0 ? px * sh : null, l = line();
+    dlg.querySelector(".t-sum").innerHTML = side === "CASH" ? `Cash ${num("amount") >= 0 ? "into" : "out of"} the book: ${bookMoney(mkt, num("amount") || 0)}.`
+      : `${sym() ? `You hold ${held().toLocaleString("en-IN")} ${esc(sym())}. ` : ""}${gross != null ? (side === "BUY"
+        ? `Investment ${bookMoney(mkt, gross)} · cash out <b>${bookMoney(mkt, gross + fee)}</b>.` : `Proceeds ${bookMoney(mkt, gross)} · cash in <b>${bookMoney(mkt, gross - fee)}</b>.`) : ""}
+        ${l ? `<br>Counts toward <b>rebalance #${reb.id}</b> (${l.remaining.toLocaleString("en-IN")} shares outstanding).` : ""}`;
+  };
+  dlg.querySelectorAll(".pf-side button").forEach((b) => b.onclick = () => { side = b.dataset.v; update(); });
+  f.elements.costs.oninput = () => { feeEdited = true; update(); };
+  ["symbol", "price", "shares", "amount"].forEach((n) => f.elements[n].oninput = update);
+  dlg.querySelector(".t-cancel").onclick = close;
+  dlg.addEventListener("cancel", (e) => { e.preventDefault(); close(); });
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const l = line();
+    const t = side === "CASH" ? { side, amount: num("amount"), trade_date: val("date"), note: val("note") || null }
+      : { side, symbol: sym(), shares: num("shares"), price: num("price"), costs: num("costs") || 0, trade_date: val("date"),
+          note: val("note") || null, rebalance_id: l ? reb.id : null };
+    const err = dlg.querySelector(".t-err");
+    if (side === "CASH" ? !t.amount : !(t.symbol && t.shares > 0 && t.price > 0)) { err.innerHTML = pfErr(side === "CASH" ? "Enter an amount." : "Enter the stock, shares and price."); return; }
+    try {
+      await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/trades`, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trades: [t], source: "manual" }) });
+    } catch (x) { err.innerHTML = pfErr(x); return; }
+    close();
+    toast(side === "CASH" ? "Cash recorded" : `Recorded: ${side === "BUY" ? "bought" : "sold"} ${t.shares} ${t.symbol}`);
+    ctx.refresh();
+  };
+  update();
+  dlg.showModal();
+  (init.symbol ? f.elements[side === "CASH" ? "amount" : "price"] : f.elements.symbol).focus();
+}
+
+/** Holdings: what the ledger says you own, valued at the latest stored closes, with the strategy's
+ * target and next order beside each (a ranking strategy). Click a stock for its trades. */
+function pfHoldings(body, ctx) {
+  const { key, mkt } = ctx, v = ctx.book.valuation;
+  body.innerHTML = `<div class="pf-actions"><button class="primary sm" id="rec">Record a trade…</button>
+      <button class="sm" id="dep">Cash in / out…</button><button class="sm" id="bulk">Edit the whole account…</button>
+      <span id="brk" class="small"></span></div>
+    <div id="bulkbox"></div><div id="proposal"></div>
+    ${v.unpriced?.length ? `<div class="sd-intro small"><b>No stored price for ${esc(v.unpriced.map((s) => bookSym(mkt, s)).join(", "))}</b> — valued at nothing; check the symbol.</div>` : ""}
+    <div id="htbl"></div><div id="hdetail"></div>`;
+  body.querySelector("#rec").onclick = () => tradeDialog(ctx, {});
+  body.querySelector("#dep").onclick = () => tradeDialog(ctx, { side: "CASH", title: "Cash in or out of this book" });
+  body.querySelector("#bulk").onclick = () => pfBulkEdit(body.querySelector("#bulkbox"), body.querySelector("#proposal"), ctx);
+  brokerSync(body.querySelector("#brk"), body.querySelector("#proposal"), key, mkt, ctx.alive, ctx.live, ctx.refresh);
+  const tbl = body.querySelector("#htbl");
+  if (!v.positions.length) {
+    tbl.innerHTML = `<div class="empty"><b>Nothing recorded as held</b><div class="muted">${v.trades ? `Cash ${bookMoney(mkt, v.cash)}. ` : ""}Record a purchase,
+      put in the cash you run this strategy with, or edit the whole account at once.</div></div>`;
+    return;
+  }
+  const draw = (o) => {
+    const tgt = new Map((o?.rows || []).map((r) => [r.symbol, r]));
+    const cols = ["symbol", "shares", "avg_cost", "close", "invested", "value", "pnl", "pnl_pct", "weight_pct",
+      ...(o ? ["target_pct", "next_order"] : []), "since"];
+    const rows = v.positions.map((p) => [p.symbol, p.shares, p.avg_cost, p.close, p.invested, p.value, p.pnl, p.pnl_pct, p.weight_pct,
+      ...(o ? [tgt.get(p.symbol)?.weight_pct || null, (() => { const t = tgt.get(p.symbol); return !t ? "" : t.action === "HOLD" ? "Retain"
+        : `${t.action === "SELL ALL" ? "Sell all" : t.action === "TRIM" ? "Trim" : "Add"} ${Math.abs(t.change)}`; })()] : []), p.since]);
+    dataTable(tbl, cols, rows, {
+      name: `holdings_${key}`, noStack: true, sort: ["value", -1], signed: ["pnl", "pnl_pct"],
+      tags: o ? { next_order: (s) => s.startsWith("Sell") || s.startsWith("Trim") ? "neg" : s.startsWith("Add") ? "pos" : "neutral" } : {},
+      rowHint: "Click a stock for its trades",
+      rowClick: (row) => pfSymbolDetail(body.querySelector("#hdetail"), ctx, row[0]),
+      actions: [{ key: "t", title: "Record a trade in this stock", icon: "±", fn: (row) => tradeDialog(ctx, { symbol: row[0], side: "SELL", shares: row[1], price: row[3] }) }],
+    });
+  };
+  draw(null);
+  ctx.orders.then((o) => { if (o && ctx.live()) draw(o); });
+}
+
+/** One holding's trades from the ledger, and its target. */
+function pfSymbolDetail(host, ctx, sym) {
+  const { mkt } = ctx;
+  const ts = ctx.book.trades.filter((t) => t.symbol === sym);
+  host.innerHTML = `<h3>${esc(bookSym(mkt, sym))} <a class="small" href="#/chart/${mkt}/${encodeURIComponent(sym)}">chart →</a></h3><div id="sdt"></div>`;
+  dataTable(host.querySelector("#sdt"), ["date", "side", "shares", "price", "costs", "source", "rebalance", "note"],
+    ts.map((t) => [t.trade_date, t.side, t.shares, t.price, t.costs, t.source, t.rebalance_id ? `#${t.rebalance_id}` : "", t.note || ""]),
+    { name: "holding_trades", noStack: true });
+  host.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/** The whole account at once -- one stock per line -- reviewed as the trades that would get the ledger there. */
+function pfBulkEdit(box, prop, ctx) {
+  const { key, mkt } = ctx, v = ctx.book.valuation;
+  const lines = v.positions.map((p) => `${bookSym(mkt, p.symbol)} ${p.shares}`).join("\n");
+  box.innerHTML = `<div class="sd-intro small">Type what you hold now — one stock per line, <code>SYMBOL shares</code> — and the cash. The difference
+      from the ledger becomes proposed trades for you to correct and record; nothing is overwritten.</div>
     <div class="acct-form" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin:8px 0">
       <textarea id="pos" rows="8" style="min-width:16em;font-family:var(--mono, monospace)" placeholder="LAURUSLABS 34\nSBC 1038">${esc(lines)}</textarea>
-      <div><label class="small muted">Cash ${esc(mktInfo(mkt).currency || "")} <input id="cash" type="number" min="0" step="any" style="width:10em" value="${Math.round(acct.cash * 100) / 100 || ""}"></label>
-        <div style="margin-top:8px"><button id="savepos" class="primary sm">Review changes…</button></div>
-        <div id="poserr" class="small" style="color:var(--neg, #e5484d)"></div></div></div>
-    <div id="brk" class="small"></div>
-    <div id="proposal"></div>
-    <details id="ledger" style="margin-top:8px"><summary class="small"><b>Ledger</b> <span class="muted">— ${L.trades.length} rows, newest first${L.rebalances.length ? ` · ${L.rebalances.length} confirmed rebalance${L.rebalances.length === 1 ? "" : "s"}` : ""}</span></summary><div id="ltbl"></div></details>`;
-  const refresh = () => { bookAccount(host, alive, current, key, mkt, onChange); onChange && onChange(); };
-  const prop = host.querySelector("#proposal");
-  host.querySelector("#savepos").onclick = async () => {
-    const err = host.querySelector("#poserr");
-    err.textContent = "";
+      <div><label class="small muted">Cash ${esc(mktInfo(mkt).currency || "")} <input id="cash" type="number" min="0" step="any" style="width:10em" value="${Math.round(v.cash * 100) / 100 || ""}"></label>
+        <div style="margin-top:8px;display:flex;gap:8px"><button id="savepos" class="primary sm">Review changes…</button><button id="bclose" class="ghost sm">Close</button></div>
+        <div id="poserr" class="small"></div></div></div>`;
+  box.querySelector("#bclose").onclick = () => { box.innerHTML = ""; prop.innerHTML = ""; };
+  box.querySelector("#savepos").onclick = async () => {
+    const err = box.querySelector("#poserr");
+    err.innerHTML = "";
     const positions = {};
-    for (const raw of host.querySelector("#pos").value.split("\n")) {
+    for (const raw of box.querySelector("#pos").value.split("\n")) {
       const line = raw.trim();
       if (!line) continue;
       const m = line.match(/^([A-Za-z0-9&._-]+)[\s,:=]+([0-9]+(?:\.[0-9]+)?)$/);
-      if (!m) { err.textContent = `Not "SYMBOL shares": ${line}`; return; }
+      if (!m) { err.innerHTML = pfErr(`Not "SYMBOL shares": ${line}`); return; }
       positions[m[1]] = (positions[m[1]] || 0) + parseFloat(m[2]);
     }
-    const cash = parseFloat(host.querySelector("#cash").value) || 0;
+    const cash = parseFloat(box.querySelector("#cash").value) || 0;
     const p = await api(`/api/positions/${encodeURIComponent(key)}/${mkt}`,
       { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positions, cash, dry_run: true }) })
-      .catch((e) => { err.textContent = String(e.message || e); return null; });
+      .catch((e) => { err.innerHTML = pfErr(e); return null; });
     if (!p) return;
-    proposedFills(prop, key, mkt, p.trades, { source: "manual", onDone: refresh,
+    proposedFills(prop, key, mkt, p.trades, { source: "manual", onDone: ctx.refresh,
       intro: `<b>Not recorded yet.</b> The difference between the account you entered and the ledger, priced at the latest stored close —
         correct each price to what you actually paid or received, untick a line that is not a trade, then record.` });
   };
-  brokerSync(host.querySelector("#brk"), prop, key, mkt, alive, current, refresh);
-  const rows = L.trades.map((t) => [t.trade_date, t.side, bookSym(mkt, t.symbol) || "cash", t.side === "CASH" ? null : t.shares,
+}
+
+/** Candidates: the strategy's whole ranking, each name read against your ledger and the target. */
+async function pfCandidates(body, ctx) {
+  const { key, mkt } = ctx;
+  body.innerHTML = LOADING;
+  const o = await ctx.orders;   // the orders carry the whole ranking they came from
+  if (!ctx.live()) return;
+  if (!o || !o.ranking?.length) {
+    body.innerHTML = `<div class="empty"><b>Nothing ranks in ${esc(mktInfo(mkt).name)}</b><div class="muted">${
+      o ? "No name clears this strategy's liquidity floor and trend filter on the latest bar." : "The ranking could not be computed."}</div></div>`;
+    return;
+  }
+  const r = { as_of: o.as_of, eligible: o.eligible, rows: o.ranking };
+  const held = new Map(ctx.book.valuation.positions.map((p) => [p.symbol, p.shares]));
+  const tgt = new Map((o?.rows || []).filter((x) => x.weight_pct > 0).map((x) => [x.symbol, x]));
+  const line = new Map((ctx.book.open_rebalance?.lines || []).map((l) => [l.symbol, l]));
+  // Within a tenth of the target's shares reads as held: between rebalances prices move every weight.
+  const status = (sym) => {
+    const h = held.get(sym) || 0, t = tgt.get(sym), l = line.get(sym);
+    if (l?.state === "skipped") return "Skipped";
+    if (t) {
+      if (!h) return l?.state === "partial" ? "Partly bought" : "Not bought";
+      if (t.target && h < t.target * 0.9) return "Below target";
+      if (t.target && h > t.target * 1.1) return "Above target";
+      return "Held";
+    }
+    return h ? "To sell" : "";
+  };
+  const ranked = new Set(r.rows.map((x) => x.symbol));
+  const all = r.rows.map((x) => ({ rank: x.rank, symbol: x.symbol, score: x.score, close: x.close, turnover: x.turnover }))
+    .concat([...held.keys()].filter((s) => !ranked.has(s)).map((s) => ({ rank: null, symbol: s, score: null,
+      close: ctx.book.valuation.positions.find((p) => p.symbol === s)?.close, turnover: null })));
+  let show = store.get("selShow:" + key, "target");
+  if (!["target", "held", "all"].includes(show)) show = "target";
+  body.innerHTML = `<div class="muted small sd-intro"><b>The strategy's ranking on the ${esc(prettyDate(r.as_of))} close</b> — ${r.eligible} eligible.
+      These are its recommendations; the status reads your ledger. A stock in the target is not yours until you record its purchase,
+      and one that leaves it is still yours until you record the sale.</div>
+    <div class="chips" id="dec"></div><div id="ctbl"></div>`;
+  const dec = body.querySelector("#dec"), tbl = body.querySelector("#ctbl");
+  const pick = { target: (x) => tgt.has(x.symbol), held: (x) => held.has(x.symbol), all: () => true };
+  const draw = () => {
+    dec.innerHTML = [["target", "Target", tgt.size, "The book the strategy wants now, from what you hold"], ["held", "You hold", held.size, "In your ledger"],
+      ["all", "All ranked", all.length, ""]].map(([v, t, n, tip]) => `<button class="chip ${v === show ? "on" : ""}" data-d="${v}" title="${esc(tip)}">${t}<span>${n}</span></button>`).join("");
+    dec.querySelectorAll(".chip").forEach((b) => b.onclick = () => { show = b.dataset.d; store.set("selShow:" + key, show); draw(); });
+    const rows = all.filter(pick[show]).map((x) => [x.rank, x.symbol, status(x.symbol), tgt.get(x.symbol)?.weight_pct ?? null,
+      tgt.get(x.symbol)?.target ?? null, held.get(x.symbol) || null, x.score, x.close, x.turnover]);
+    if (!rows.length) { tbl.innerHTML = `<div class="empty"><b>${show === "held" ? "Nothing recorded as held" : "Nothing in the target"}</b></div>`; return; }
+    dataTable(tbl, ["rank", "symbol", "status", "target_pct", "target_shares", "held", "score", "price", "turnover_20d"], rows, {
+      name: `candidates_${key}`, sort: [0, 1], noStack: true,
+      tags: { status: (s) => ({ Held: "pos", "To sell": "neg", Skipped: "neutral" })[s] || "warn" },
+      rowHint: "Click a row to open its chart",
+      rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`),
+      actions: [{ key: "t", title: "Record a trade in this stock", icon: "±", fn: (row) => {
+        const t = tgt.get(row[1]), h = held.get(row[1]) || 0, want = t ? (t.target || 0) - h : -h;
+        tradeDialog(ctx, { symbol: row[1], side: want >= 0 ? "BUY" : "SELL", shares: Math.abs(want) || null, price: row[7],
+          costBps: o?.cost_bps, title: `Record a trade — ${bookSym(mkt, row[1])}` });
+      } }],
+    });
+  };
+  draw();
+}
+
+/** History: every confirmed rebalance -- kept as computed -- against its fills; the paper book; the ledger. */
+async function pfHistory(body, ctx) {
+  const { key, mkt } = ctx, B = ctx.book;
+  body.innerHTML = `<h3>Rebalances</h3>
+    <div class="muted small">Each rebalance you started, with its targets and orders as they were computed — whatever the strategy ranks later —
+      against the fills recorded for it. Click one for its lines: the price at the ranking's close against your average fill.</div>
+    <div id="rtbl"></div><div id="rdetail"></div><div id="paper"></div>
+    <h3>Ledger</h3><div class="muted small">Every entry, newest first: the opening balance, deposits, and each trade. Holdings and cash are derived from it.</div>
+    <div id="ltbl"></div>`;
+  const rtbl = body.querySelector("#rtbl");
+  if (!B.rebalances.length) rtbl.innerHTML = `<div class="muted small" style="margin:6px 0">None yet.</div>`;
+  else dataTable(rtbl, ["id", "as_of", "rules", "state", "orders", "filled", "partly", "skipped", "bought", "sold"],
+    B.rebalances.map((r) => { const act = r.lines.filter((l) => l.side), n = (s) => act.filter((l) => l.state === s).length;
+      return [r.id, r.as_of, r.spec_id || "", r.completed_at ? `completed ${r.completed_at.slice(0, 10)}` : "open", act.length, n("filled"), n("partial"), n("skipped"), r.bought, r.sold]; }), {
+      name: `rebalances_${key}`, noStack: true, tags: { state: (s) => s === "open" ? "warn" : "neutral" }, rowHint: "Click a rebalance for its lines",
+      rowClick: (row) => pfRebalanceDetail(body.querySelector("#rdetail"), ctx, B.rebalances.find((r) => r.id === row[0])),
+    });
+  const rows = B.trades.map((t) => [t.trade_date, t.side, bookSym(mkt, t.symbol) || "cash", t.side === "CASH" ? null : t.shares,
     t.price, t.side === "CASH" ? t.amount : (t.price != null ? (t.side === "SELL" ? 1 : -1) * t.shares * t.price : null), t.costs,
     t.source, t.rebalance_id ? `#${t.rebalance_id}` : "", t.note || t.setup || "", t.id]);
-  dataTable(host.querySelector("#ltbl"), ["date", "side", "symbol", "shares", "price", "cash_effect", "costs", "source", "rebalance", "note", "id"], rows, {
+  dataTable(body.querySelector("#ltbl"), ["date", "side", "symbol", "shares", "price", "cash_effect", "costs", "source", "rebalance", "note", "id"], rows, {
     name: `ledger_${key}`, noStack: true, hidden: ["id"], rowHint: "Click a row to remove it (a mistaken entry)",
     rowClick: async (row) => {
       if (!confirm(`Remove ${row[1]} ${row[2]} ${row[3] ?? ""} of ${row[0]} from the ledger?`)) return;
       await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/trades/${row[10]}`, { method: "DELETE" })
-        .then(refresh).catch((e) => alert(String(e.message || e)));
+        .then(ctx.refresh).catch((e) => alert(String(e.message || e)));
     },
   });
+  const p = await api(`/api/paper/${mkt}`).catch(() => null);
+  if (!ctx.live() || !p) return;
+  const pb = (p.books || []).find((b) => b.strategy === key);
+  body.querySelector("#paper").innerHTML = `<div class="sd-intro small">${pb
+    ? `<b><a href="#/paper/${mkt}/${encodeURIComponent(pb.book)}">Its paper book</a></b> trades the same rules forward without money, filling each
+       month-end's targets at the next open: the strategy's own record of what it recommended, to read beside what you did.`
+    : `<b>No paper book for this strategy in ${esc(mktInfo(mkt).name)}.</b> Start one on <a href="#/paper/${mkt}">Paper books</a>: it stores every
+       month-end's targets as a dated rebalance and fills them at the next open — the strategy's own record, to read beside yours.`}</div>`;
+}
+
+function pfRebalanceDetail(host, ctx, r) {
+  const { mkt } = ctx;
+  const act = r.lines.filter((l) => l.side);
+  host.innerHTML = `<h3>Rebalance #${r.id} — ${esc(prettyDate(r.as_of))} orders</h3><div id="rdl"></div>`;
+  // what you paid against the ranking's close, signed so that positive is worse: paid more, or sold for less
+  const slip = (l) => l.fill_price && l.price ? (l.side === "BUY" ? l.fill_price / l.price - 1 : l.price / l.fill_price - 1) * 100 : null;
+  dataTable(host.querySelector("#rdl"), ["symbol", "action", "ordered", "filled", "state", "ranking_close", "avg_fill", "vs_close_pct", "reason"],
+    act.map((l) => [l.symbol, l.action, l.ordered, l.filled, PF_STATE[l.state][0], l.price, l.fill_price, slip(l), l.reason || ""]),
+    { name: "rebalance_lines", noStack: true, tags: { state: (s) => s === "Filled" ? "pos" : s === "Skipped" ? "neutral" : "warn" } });
+  host.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/** Dual momentum's first view: the one asset it holds now (/api/dual-pick -> dual_momentum.current_pick, the
+ * rule its backtest runs). It holds an index through a fund you choose: record the fund you buy on Holdings. */
+async function dualPick(body, ctx) {
+  const { mkt } = ctx;
+  body.innerHTML = LOADING;
+  const r = await api(`/api/dual-pick/${mkt}`).catch(() => null);
+  if (!ctx.live()) return;
+  if (!r) { body.innerHTML = `<div class="empty"><b>The pick could not be read on the stored prices.</b></div>`; return; }
+  const pick = r.rows.find((x) => x.held);
+  const month = new Date(r.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
+  body.innerHTML = `<div class="muted small sd-intro"><b>As of the ${esc(prettyDate(r.as_of))} close: ${esc(pick ? pick.label : "—")}.</b>
+      ${r.is_month_end ? `This is <b>${esc(month)}'s last session</b>: the rebalance is to hold it.` : `Not a rebalance day — the strategy acts at the close of the last session of ${esc(month)}.`}
+      The whole book (${bookMoney(mkt, r.account_value)} at the latest closes) goes in the pick, held through ${esc(pick?.priced_by || "a fund tracking it")};
+      record the fund you buy with <b>Record a trade</b> on Holdings. Rules ${esc(r.spec_id)}. What the rules point at, not a recommendation.</div>
+    <table class="data compact"><thead><tr><th>Choice</th><th>Priced by</th><th class="num">${r.lookback_months}-month return</th><th></th></tr></thead><tbody>
+    ${r.rows.map((x) => `<tr><td>${esc(x.label)}${x.safe ? ` <span class="muted small">(safe asset)</span>` : ""}</td>
+      <td class="muted small">${esc(x.priced_by || "")}</td>
+      <td class="num">${x.return_pct == null ? "—" : `${x.return_pct >= 0 ? "+" : ""}${x.return_pct.toFixed(2)}%`}</td>
+      <td>${x.held ? `<span class="tag pos">held</span>` : ""}</td></tr>`).join("")}</tbody></table>`;
 }
 
 /** Proposed trades for you to tick, correct and confirm -- from the account form or a broker pull.
@@ -5711,47 +6041,6 @@ async function brokerSync(host, prop, key, mkt, alive, current, onDone) {
 }
 
 
-/** The rebalance orders against your holdings, the model book beside them, and "Confirm rebalance".
- * `o` is /api/rebalance -> rebalance.orders. */
-function rebalancePanel(host, o, key, mkt, onRecorded) {
-  const money = (v) => bookMoney(mkt, v);
-  const month = new Date(o.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
-  host.innerHTML = `<h3>Rebalance orders</h3>
-    <div class="muted small sd-intro"><b>As of the ${esc(prettyDate(o.as_of))} close.</b>
-      ${o.is_month_end ? `This is <b>${esc(month)}'s last session</b>: these are the rebalance orders.`
-        : `Not a rebalance day — the strategy trades at the close of the last session of ${esc(month)}, and the book can change before then.`}
-      Account ${money(o.account_value)} at the latest closes (cash ${money(o.cash)}). Sells ${money(o.sells)}, buys ${money(o.buys)},
-      cash after ${money(o.cash_after)}; costs at the strategy's ${o.cost_bps} bps a side ≈ ${money(o.est_costs)}.
-      Whole shares, sized as the backtest sizes them. What the rules point at, not a recommendation.
-      ${o.unpriced.length ? `<br><b>No stored price for ${esc(o.unpriced.join(", "))}</b> — left out of the account value; check the symbol.` : ""}</div>
-    <div id="drift"></div><div id="otbl"></div>
-    <div style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
-      <button class="sm" id="confirmreb" title="Store these targets and orders as computed now, then record the fills that execute them">Confirm rebalance…</button>
-      <span class="muted small">Stores the targets and orders as computed now, then lets you record the fills against them.</span></div>
-    <div id="rebfills"></div>`;
-  driftNote(host.querySelector("#drift"), o.drift, o.hold_rank, o.replayed_rebalances, mkt);
-  const cols = ["action", "symbol", "held", "target", "change", "price", "amount", "weight_pct", "rank", "model"];
-  dataTable(host.querySelector("#otbl"), cols,
-    o.rows.map((x) => [x.action, x.symbol, x.held, x.target, x.change, x.price, x.amount, x.weight_pct, x.rank ?? null, x.in_model ? "yes" : ""]), {
-      name: `rebalance_${key}`, noStack: true, rowHint: "Click a row to open its chart",
-      rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`),
-    });
-  host.querySelector("#confirmreb").onclick = async () => {
-    const box = host.querySelector("#rebfills");
-    box.innerHTML = LOADING;
-    let r;
-    try { r = await api(`/api/rebalance/${encodeURIComponent(key)}/${mkt}/confirm`, { method: "POST" }); }
-    catch (e) { box.innerHTML = `<span style="color:var(--neg, #e5484d)">${esc(String(e.message || e))}</span>`; return; }
-    const fills = r.orders.rows.filter((x) => x.change).map((x) => ({ side: x.change > 0 ? "BUY" : "SELL", symbol: x.symbol,
-      shares: Math.abs(x.change), price: x.price, costs: Math.round(Math.abs(x.change) * x.price * r.orders.cost_bps / 100) / 100,
-      price_from: "close", note: `rebalance #${r.id}: ${x.action}` }));
-    proposedFills(box, key, mkt, fills, { source: "manual", rebalanceId: r.id, onDone: onRecorded,
-      intro: `<b>Rebalance #${r.id} stored</b> (targets and orders as of the ${esc(prettyDate(r.orders.as_of))} close). Record the fills as they
-        happen: correct each price and cost to the contract note; untick what you did not trade. Costs are estimated at the strategy's
-        ${r.orders.cost_bps} bps a side.` });
-  };
-}
-
 /** Where your holdings and the model book part: the model is the strategy replayed from an empty book; the
  * orders start from what you hold. */
 function driftNote(host, d, holdRank, replayed, mkt) {
@@ -5772,23 +6061,22 @@ function driftNote(host, d, holdRank, replayed, mkt) {
  */
 const COMBO_KEY = "momentum_dual_combo";
 
-async function strategyOrders(host, alive, key) {
-  let mkt = store.get("setupMkt:" + key, null) || pageMarket();
-  let seq = 0;
+async function comboOrders(host, ctx) {
+  const { key, mkt } = ctx;
   const paint = async () => {
-    const my = ++seq;
     const cur = mktInfo(mkt).currency || "";
     const cap = store.get("ordersCap:" + mkt, null);   // an account size you typed; empty = this book's own value
-    host.innerHTML = `<div class="page-head sub">${marketSeg(mkt)}<span class="spacer"></span>
-        <label class="small muted">Account ${esc(cur)} <input id="cap" type="number" min="0" step="any" style="width:9em"
-          value="${cap ?? ""}" placeholder="amount"></label>
-        <button id="run1" title="Re-read both sleeves on the latest stored prices">Refresh</button></div>
+    host.innerHTML = `<div class="pf-actions"><label class="small muted">Account ${esc(cur)} <input id="cap" type="number" min="0" step="any" style="width:9em"
+          value="${cap ?? ""}" placeholder="amount" title="An account size to size the orders on; empty = this book's own value"></label></div>
       <div id="ohead"></div><div id="dual"></div><h3>Book</h3><div id="odrift"></div><div id="tbl">${LOADING}</div><div id="oother"></div>
-      <div id="oconfirm"></div><div id="acctbox"></div>`;
-    wireHead();
+      <div id="oconfirm"></div>`;
+    host.querySelector("#cap").onchange = (e) => {
+      const v = parseFloat(e.target.value);
+      store.set("ordersCap:" + mkt, v > 0 ? v : null); paint();
+    };
     const q = cap ? `?capital=${encodeURIComponent(cap)}` : "";
     const r = await api(`/api/combo-orders/${mkt}${q}`).catch(() => null);
-    if (!alive() || my !== seq) return;
+    if (!ctx.live()) return;
     const tbl = host.querySelector("#tbl");
     if (!r || !r.orders?.length) {
       tbl.innerHTML = `<div class="empty"><b>No book in ${esc(mktInfo(mkt).name)}</b><div class="muted">The sleeves could not be read on the latest stored prices.</div></div>`;
@@ -5803,7 +6091,7 @@ async function strategyOrders(host, alive, key) {
       It shows what the rules point at — ${Math.round(r.momentum_weight * 100)}% in the momentum sleeve's
       ${r.orders.filter((o) => o.sleeve === "momentum_vol_scaled").length} stocks, the rest in dual momentum's one holding —
       an illustration of the rules, not a recommendation. Rules: combination ${esc(r.spec_id)}, momentum ${esc(ms.spec_id || "")},
-      dual ${esc(ds.spec_id)}. ${r.capital ? `Sized on ${r.capital_from === "the book" ? `this book's value, ${bookMoney(mkt, r.capital)} at the latest closes` : "the account size you entered"}; shares are rounded down, so a little cash is left over.` : `Enter an account size, or record this book's holdings below, for amounts and shares.`}
+      dual ${esc(ds.spec_id)}. ${r.capital ? `Sized on ${r.capital_from === "the book" ? `this book's value, ${bookMoney(mkt, r.capital)} at the latest closes` : "the account size you entered"}; shares are rounded down, so a little cash is left over.` : `Enter an account size, or record this book's holdings on Holdings, for amounts and shares.`}
       ${r.from_holdings ? `The momentum sleeve starts from what this book holds.` : ""}</div>`;
     const pick = ds.rows.find((x) => x.held);
     host.querySelector("#dual").innerHTML = `<h3>Dual momentum: ${esc(pick ? pick.label : "—")}</h3>
@@ -5836,28 +6124,17 @@ async function strategyOrders(host, alive, key) {
           shares: Math.abs(o.change), price: o.price, costs: 0, price_from: "close", note: `rebalance #${c.id}` }))
           .concat(c.orders.other.filter((x) => !c.orders.orders.some((o) => o.symbol === x.symbol))
             .map((x) => ({ side: "SELL", symbol: x.symbol, shares: x.shares, price: null, costs: 0, note: `rebalance #${c.id}: not in the momentum sleeve — untick the dual sleeve's fund` })));
-        proposedFills(fb, key, mkt, fills, { source: "manual", rebalanceId: c.id, onDone: paint, checked: (f) => f.price != null,
+        proposedFills(fb, key, mkt, fills, { source: "manual", rebalanceId: c.id, onDone: ctx.refresh, checked: (f) => f.price != null,
           intro: `<b>Rebalance #${c.id} stored.</b> The momentum sleeve's changes at the latest close — correct each price and cost to the contract note.
             The dual sleeve's move (to ${esc(pick ? pick.label : "—")}, ${bookMoney(mkt, (1 - c.orders.momentum_weight) * c.orders.capital)}) is made in the fund you
-            hold it through: record that fund's trade with the account form below.` });
+            hold it through: record that fund's trade with <b>Record a trade</b> on Holdings.` });
       };
     }
-    bookAccount(host.querySelector("#acctbox"), alive, () => my === seq, key, mkt, paint);
     dataTable(tbl, cols, rows, {
       name: `orders_${key}`, sort: ["account_pct", -1], noStack: true,
       rowHint: "Click a stock to open its chart",
       rowClick: (row) => { if (row[0] === "Momentum") go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`); },
     });
-  };
-  const wireHead = () => {
-    host.querySelectorAll(".mk button").forEach((b) => b.onclick = () => {
-      mkt = b.dataset.v; store.set("setupMkt:" + key, mkt); paint();
-    });
-    host.querySelector("#run1").onclick = () => paint();
-    host.querySelector("#cap").onchange = (e) => {
-      const v = parseFloat(e.target.value);
-      store.set("ordersCap:" + mkt, v > 0 ? v : null); paint();
-    };
   };
   paint();
 }

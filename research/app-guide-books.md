@@ -5,7 +5,8 @@
 - A **book** is the money you run under one strategy in one market. Its holdings are not typed in: they are
   derived from its **trade ledger** — an opening balance and every trade since.
 - **Monthly** (portfolio strategies: momentum, dual momentum, the combination): on the month's last session,
-  compare the book with Kite, read the orders, **Confirm rebalance**, place the orders by hand, record the fills.
+  open the strategy's **Portfolio** tab, compare the book with Kite, **Start rebalance**, place the orders by
+  hand, record each fill against its order line, then **Complete rebalance**.
 - **Daily** (signal strategies): after the close routine, read **Today → Open positions**; move a raised stop,
   sell at the open what says so; **Take a setup…** when you buy one.
 - **Paper books** trade each strategy forward without money, by the same rules, so every strategy builds a
@@ -27,33 +28,51 @@ is a row of the ledger (`book_trades`, `backtesting/ledger.py`):
 The holdings, average cost, cash and realised P&L are computed from these rows every time they are read
 (`ledger.holdings`). A sale of more shares than the book holds is refused, and the whole save with it.
 
-Each row says where it came from: **manual** (the account form, a confirmed rebalance, a taken setup),
-**kite** (fills confirmed from a Kite comparison) or **paper** (the paper job). A mistaken row can be removed
-from the **Ledger** list under *Your account* (click it); the rest must still add up.
+Each row says where it came from: **manual** (a recorded trade, the account form, a rebalance fill, a taken
+setup), **kite** (fills confirmed from a Kite comparison) or **paper** (the paper job). A mistaken row can be
+removed from the **Ledger** on the Portfolio tab's *History* view (click it); the rest must still add up.
 
-The account form is still there, on each portfolio strategy's **Candidates** (Holdings) tab. It no longer
-overwrites anything: **Review changes…** shows the difference from the ledger as proposed trades at the latest
-stored close, plus one CASH row that brings the cash to what you entered. Correct each price to your real fill,
-untick what was not a trade, then **Record ticked trades**.
+One trade at a time: **Record a trade…** (Holdings view, or the ± on any row of Holdings or Candidates) opens a
+dialog — buy, sell, or cash in / out — with the date, your fill price, shares and costs, and shows the cash it
+moves. The whole account at once: **Edit the whole account…** takes one `SYMBOL shares` line per stock and the
+cash. It never overwrites anything: **Review changes…** shows the difference from the ledger as proposed trades
+at the latest stored close, plus one CASH row that brings the cash to what you entered. Correct each price to
+your real fill, untick what was not a trade, then **Record ticked trades**.
 
 ## 2. The monthly routine — portfolio strategies
 
 Momentum baseline, volatility-scaled momentum, dual momentum and the momentum + dual momentum combination
-trade only at the close of the **last session of each month**. The tab says so: "This is November's last
-session: these are the rebalance orders", or "Not a rebalance day".
+trade only at the close of the **last session of each month**. Each has a **Portfolio** tab that keeps two
+things apart: the strategy is the source of *recommendations* (its ranking and the orders computed from it);
+the ledger is the source of truth for what you *own*. A stock in the ranking is not a holding until you record
+its purchase, and one that leaves the ranking is still yours until you record the sale.
+
+The tab opens with the book at a glance — account value, holdings against the strategy's target count, cash,
+invested, unrealised and realised P&L, the return since the first ledger row and the fall from its peak — and
+a status line: the ranking's date, the next rebalance, and how far an open rebalance is executed. Below it:
+
+| View | What it answers |
+|---|---|
+| **Rebalance** | What to trade: SELL (exit), TRIM, BUY (new), ADD, each with the rule's reason, and the unchanged folded. Then the open rebalance's progress |
+| **Holdings** | What you own, at the latest stored close: shares, average cost, invested, value, P&L, weight, the strategy's target weight and its next order. Click a stock for its trades |
+| **Candidates** | The strategy's ranking, each name's status against your ledger and the target: *Held*, *Not bought*, *Partly bought*, *Below / Above target* (more than a tenth off), *To sell*, *Skipped* |
+| **History** | Every rebalance you started, kept as it was computed, against its fills (the ranking's close against your average fill); the paper book; the ledger |
+
+Dual momentum's first view is its pick, the combination's its two-sleeve orders; both share Holdings and History.
 
 | # | Where | What to do |
 |---|---|---|
-| 1 | Strategies → the strategy → Candidates | Choose the market. Wait for the ranking (up to a minute on the first load) |
-| 2 | *Your account* → **Compare with Kite…** | Your Kite holdings against the ledger, as proposed fills at Kite's last price. A stock this book has never held starts unticked. Record only what belongs to this book |
-| 3 | *Rebalance orders* | SELL ALL / TRIM / BUY / ADD / HOLD per stock, sized in whole shares as the backtest sizes them, with the costs at the strategy's own rate |
-| 4 | *Drift from the model book* | Where your holdings and the model differ (§2.1) |
-| 5 | **Confirm rebalance…** | Stores the targets and orders as computed now (`book_rebalances`) and offers the fills, each carrying the rebalance's number |
-| 6 | Kite | Place the orders by hand. Sells first: they free the cash |
-| 7 | Back on the tab | Correct each fill's price and cost from the contract note; **Record ticked trades** |
+| 1 | Strategies → the strategy → Portfolio | Choose the market. Wait for the orders (up to a minute on the first load) |
+| 2 | Holdings → **Compare with Kite…** | Your Kite holdings against the ledger, as proposed fills at Kite's last price. A stock this book has never held starts unticked. Record only what belongs to this book |
+| 3 | Rebalance | The orders, sized in whole shares as the backtest sizes them, with the costs at the strategy's own rate; the drift from the model book (§2.1) |
+| 4 | **Start rebalance…** | Stores the targets and orders as computed now (`book_rebalances`). A later ranking never changes them |
+| 5 | Kite | Place the orders by hand. Sells first: they free the cash |
+| 6 | Rebalance → **Record fill…** on each line | The price and cost from the contract note. The fill carries the rebalance's number, so the line reads *Partly filled* or *Filled*. **Skip** a line you decide not to trade. **Record the outstanding fills together…** does several at once |
+| 7 | **Complete rebalance…** | Once you have reviewed what is left. Lines not filled stay on record as not filled. The next month's orders appear after this |
 
-The backtest trades at the next session's open after the month-end close. Placing the orders before the
-next open matches it; a fill later in the day is a different price, and the ledger records what you paid.
+The backtest trades at the month-end close itself — the session the book is decided on, which nobody can
+trade at. Your fills come a session later; for volatility-scaled momentum, filling at the next open measured
+no different (its caveats). The ledger records what you paid, and History sets it against the ranking's close.
 
 ### 2.1 Orders start from what you hold
 
@@ -73,8 +92,8 @@ Neither is an error. The drift says how far your book is from the measured one, 
 The combination's tab sizes both sleeves on its book's value, when the book has one; type an account size to
 override it. The momentum sleeve's stocks show *held* and *change*. The dual sleeve holds one asset through a
 fund you choose (its tab names the instrument, such as MON100 for the Nasdaq 100 in rupees), so its order is an
-amount: record the fund's trade with the account form. Dual momentum's own Candidates tab shows its pick and
-its book.
+amount: record the fund's trade with **Record a trade…** on Holdings. Dual momentum's Portfolio tab opens on its
+pick.
 
 ## 3. The daily routine — signal strategies
 
@@ -138,7 +157,7 @@ the result you would have had.
 | Table | What it holds |
 |---|---|
 | `book_trades` | Every ledger row, with source, rebalance id, setup, initial stop, target and the signal's levels |
-| `book_rebalances` | Each confirmed (or paper) rebalance: the close it was computed on, the strategy's spec id, targets and orders |
+| `book_rebalances` | Each started (or paper) rebalance: the close it was computed on, the strategy's spec id, targets and orders, the lines you skipped, and when you completed it. A line's fills are the ledger rows carrying its id (`ledger.progress`) |
 | `book_positions`, `book_cash` | The ledger's holdings, kept in step: a snapshot for anything that reads it |
 | `position_status` | Each open signal trade's stop, status, R and distance to the stop after the latest close |
 | `books`, `paper_orders` | Paper books, and their decisions waiting for the next open |
