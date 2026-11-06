@@ -9,7 +9,7 @@
 
 ## 1. The idea
 
-In May 2023 Trent, the Tata group retailer, was trading above its 50-day and 200-day averages. On 16 May the 50-day rose above the 200-day, which was itself rising. A simple rule said buy. Apart from one short gap in October 2023, the same rule kept the stock until October 2024. By then the price had risen from about ₹1,500 to more than ₹7,000.
+In May 2023 Trent, the Tata group retailer, was trading above its 50-day and 200-day averages. On 16 May the 50-day rose above the 200-day, which was itself rising. A simple rule said buy. Apart from one short gap in October 2023, the same rule kept the stock until October 2024. By then the price had risen from about ₹1,000 to more than ₹4,800 (prices adjusted for its 2026 bonus issue).
 
 ```series
 title: Trent, 2023–2024 — above a rising average for most of two years
@@ -142,12 +142,12 @@ The chart in §1 shows it. Here is the second trade, step by step.
 
 | Step | Date | Detail |
 |---|---|---|
-| Setup | 27 Oct 2023 | Close 2,122.1; 50-day 2,056.9; 200-day 1,615.1 and rising; ATR(20) 54.3 |
-| Entry | 30 Oct 2023 | Bought at the open, 2,143.2 |
-| Initial stop | — | 2,143.2 − 3 × 54.3 = 1,980.4, a risk of 162.8 per share |
-| Highest close while held | 11 Oct 2024 | 8,235.0 |
-| Exit signal | 28 Oct 2024 | Second close below the 50-day: 7,307.9 against 7,416.3 |
-| Exit | 29 Oct 2024 | Sold at the open, 7,313.3 |
+| Setup | 27 Oct 2023 | Close 1,414.7; 50-day 1,371.3; 200-day 1,076.7 and rising; ATR(20) 36.2 |
+| Entry | 30 Oct 2023 | Bought at the open, 1,428.8 |
+| Initial stop | — | 1,428.8 − 3 × 36.2 = 1,320.2, a risk of 108.6 per share |
+| Highest close while held | 11 Oct 2024 | 5,490.0 |
+| Exit signal | 28 Oct 2024 | Second close below the 50-day: 4,871.9 against 4,944.2 |
+| Exit | 29 Oct 2024 | Sold at the open, 4,875.5 |
 
 The trade gained 241% in a year. That is about 32R: the gain was 32 times the risk taken at entry. The rule gave back about 11% from the peak close, the price of waiting for proof that the trend had turned.
 

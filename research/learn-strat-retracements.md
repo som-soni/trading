@@ -169,8 +169,8 @@ to: 2025-03-31
 line: india:TRENT.NS | Trent | log
 line: india:TRENT.NS@sma50 | 50-day average
 line: india:NIFTY500 | Nifty 500 | right
-mark: 2024-07-19 | Swing low 5,166
-mark: 2024-10-11 | Swing high 8,235
+mark: 2024-07-19 | Swing low 3,444
+mark: 2024-10-11 | Swing high 5,490
 mark: 2024-11-22 | Reversal bar in the zone
 mark: 2025-01-13 | Stop hit
 caption: Trent bounced from near its 61.8% retracement in November, failed below its old high, and then gave back the whole rise as the Indian market fell.
@@ -178,15 +178,15 @@ caption: Trent bounced from near its 61.8% retracement in November, failed below
 
 | Step | Date | Detail |
 |---|---|---|
-| Swing low L / high H | 19 Jul / 11 Oct 2024 | 5166.35 / 8234.95; rise 3068.60 |
-| Zone | | 7062.7 (38.2%) down to 6338.5 (61.8%) |
+| Swing low L / high H | 19 Jul / 11 Oct 2024 | 3444.23 / 5489.97; rise 2045.73 (prices adjusted for the 2026 bonus issue) |
+| Zone | | 4708.5 (38.2%) down to 4225.7 (61.8%) |
 | Confluence | | None clear; the 50-day average was above the zone |
-| Low of the pullback | 18 Nov | Low 6275.00, close 6301.65, just under 61.8% |
-| Reversal bar | 22 Nov | Low 6430.00, close 6652.80, high 6678.00 |
-| Entry | 25 Nov | Opened at 6799.00, above the trigger |
-| Stop | | 6338.5 − 0.25 × ATR (261.2) = about 6273.2; risk about 525.8, or 7.7% |
-| Best price | 3 Jan 2025 | High 7493.05, about +1.3R; 2R (about 7850.6) never reached |
-| Exit | 13 Jan 2025 | Low 6155.00; stopped, −1R |
+| Low of the pullback | 18 Nov | Low 4183.33, close 4201.10, just under 61.8% |
+| Reversal bar | 22 Nov | Low 4286.67, close 4435.20, high 4452.00 |
+| Entry | 25 Nov | Opened at 4532.67, above the trigger |
+| Stop | | 4225.7 − 0.25 × ATR (174.1) = about 4182.1; risk about 350.5, or 7.7% |
+| Best price | 3 Jan 2025 | High 4995.37, about +1.3R; 2R (about 5233.7) never reached |
+| Exit | 13 Jan 2025 | Low 4103.33; stopped, −1R |
 
 The "61.8% held" story was true for six weeks. Then the market decline took over. Trent closed below the 78.6% level on 21 January and below the original swing low in February. The structural confluence rule would have kept you out. So would the market filter: the Nifty 500 closed below its 50-day average throughout November 2024.
 

@@ -277,14 +277,14 @@ line: india:TRENT.NS@sma50 | 50-day average
 line: india:TRENT.NS@vol | Volume | pane2 bars
 mark: 2023-09-25 | breakout, 2.87× volume
 mark: 2023-10-04 | stop hit
-mark: 2023-11-01 | new breakout above ₹2,185
+mark: 2023-11-01 | new breakout above ₹1,457
 caption: The September breakout failed within six sessions. The stock rebuilt a base and broke out again on 1 November.
 ```
 
-- **Setup.** Base high ₹2,131.55 on 8 September. Pullbacks of 5.6% and then 3.2%, to ₹2,022.45 on 20 September. The Trend Template passed.
-- **Entry.** Buy-stop at ₹2,131.60 on 25 September, on 2.87 times average volume. Stop at ₹2,012: risk 5.6%.
-- **What happened.** The stock closed back below the pivot two days later. On 4 October the low reached ₹2,007.60 and the stop sold at ₹2,012. Loss: −5.6%, or −1R.
-- **The second base.** The stock pulled back 8.1% and then 8.2%, and broke out above ₹2,185 on 1 November. Those pullbacks did not shrink, so strict VCP rules did not allow a re-entry. By May 2024 it had traded at more than double that breakout price.
+- **Setup.** Base high ₹1,421.03 on 8 September (prices adjusted for Trent's 2026 bonus issue). Pullbacks of 5.6% and then 3.2%, to ₹1,348.30 on 20 September. The Trend Template passed.
+- **Entry.** Buy-stop at ₹1,421.07 on 25 September, on 2.87 times average volume. Stop at ₹1,341: risk 5.6%.
+- **What happened.** The stock closed back below the pivot two days later. On 4 October the low reached ₹1,338.40 and the stop sold at ₹1,341. Loss: −5.6%, or −1R.
+- **The second base.** The stock pulled back 8.1% and then 8.2%, and broke out above ₹1,457 on 1 November. Those pullbacks did not shrink, so strict VCP rules did not allow a re-entry. By May 2024 it had traded at more than double that breakout price.
 - **Lesson.** The stop did its job: a small, planned loss. Strict pattern rules then missed the larger move. Whether you allow a looser re-entry rule is a parameter to test, not a matter of opinion.
 - **Reset, not breakdown.** In late October the price dipped under its September lows, then closed back above them the same day: a shakeout. The stock rebuilt within weeks instead of breaking down. That is why a stock that stops you out stays on the watch list.
 

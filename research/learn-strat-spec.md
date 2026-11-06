@@ -200,14 +200,16 @@ All trades use the example rules from §1 and §3. Prices are adjusted closes an
 
 ### Trent, May 2023 — a long winner
 
+Prices are adjusted for Trent's 2026 bonus issue.
+
 | Step | Date | Rule | Value |
 |---|---|---|---|
-| Signal | 2 May 2023 | 50-day closing high, above a rising 200-day, volume 2.7× | Close ₹1,406.50; 200-day ₹1,354 |
-| Entry | 3 May 2023 | Next open | ₹1,409.45 |
-| Stop | — | Entry − 2 × ATR (₹31.95) | ₹1,345.54; risk ₹63.91 |
+| Signal | 2 May 2023 | 50-day closing high, above a rising 200-day, volume 2.7× | Close ₹937.67; 200-day ₹903 |
+| Entry | 3 May 2023 | Next open | ₹939.63 |
+| Stop | — | Entry − 2 × ATR (₹21.30) | ₹897.03; risk ₹42.60 |
 | Time stop check | 20 sessions in | Up more than 1R? | Yes, keep |
-| Exit signal | 20 Oct 2023 | First close below the 50-day | Close ₹2,036.15 |
-| Exit | 23 Oct 2023 | Next open | ₹2,035.00 |
+| Exit signal | 20 Oct 2023 | First close below the 50-day | Close ₹1,357.43 |
+| Exit | 23 Oct 2023 | Next open | ₹1,356.67 |
 | Result | — | | +44%, about +9.8R |
 
 ### Hindustan Aeronautics, March 2023 — a stop hit by a gap (failure)

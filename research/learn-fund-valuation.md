@@ -125,7 +125,7 @@ The rank correlation between P/E and the next three months' excess return was 0.
 | Meta | 3 Nov 2022 → end-2023 | ×4.0 | ×1.08 | 8.5 → 31 (×3.7) | Re-rating from a panic low |
 | Super Micro (SMCI) | end-2022 → 13 Mar 2024 | ×14.5 | ×1.6 | 10 → 93 (×9.2) | Re-rating |
 | HAL (India) | Mar 2023 → Jun 2024 | ×3.9 | ×1.25 | 15 → 46 (×3.1) | Re-rating |
-| Trent (India) | end-2022 → Sep 2024 | ×5.8 | ×4.7 | 198 → 245 (×1.24) | Mostly earnings |
+| Trent (India) | end-2022 → Sep 2024 | ×5.8 | ×4.7 | 132 → 163 (×1.24) | Mostly earnings |
 
 **Earnings-driven gains are durable.** The P/E can shrink and the stock still holds its price. **Re-rating gains depend on growth that has not happened yet.** They reverse fast when that growth does not arrive (SMCI, section 7).
 
@@ -256,9 +256,9 @@ Sector norms hold in India too. Trailing P/Es in September 2024:
 | HDFC Bank | 20 | TCS | 33 |
 | ICICI Bank | 21 | DMart | 125 |
 | SBI | 11 | Dixon | 188 |
-| | | Trent | 245 |
+| | | Trent | 163 |
 
-Government-owned (PSU) banks and energy companies sit low; Coal India was about 5× at end-2022. Consumer and retail companies sit high. Re-ratings run both ways: Trent fell 62% from September 2024 to October 2026 as its P/E halved. (Its trailing EPS in the data also fell — check the filings.)
+Government-owned (PSU) banks and energy companies sit low; Coal India was about 5× at end-2022. Consumer and retail companies sit high. Re-ratings run both ways: Trent fell 42% from September 2024 to October 2026 as its P/E halved. (Its trailing EPS in the data also fell — check the filings.)
 
 ## 10. What the trader does with valuation
 

@@ -171,7 +171,7 @@ One caveat: the stock was below its 200-day average, so the trend filter in sect
 
 ### Trent, July 2025 (India): the fade failed
 
-On 4 July 2025 Trent opened 8.3% below the previous close of 6,191, and fell to 5,350 during the day. It closed at 5,456, down 11.9%. Volume was about 6 times normal.
+On 4 July 2025 Trent opened 8.3% below the previous close of 4,127, and fell to 3,567 during the day. It closed at 3,637, down 11.9%. These prices are adjusted for its 2026 bonus issue. Volume was about 6 times normal.
 
 ```series
 title: Trent — a gap down that did not fill, July 2025
@@ -181,10 +181,10 @@ line: india:TRENT.NS | Trent
 line: india:TRENT.NS@sma50 | 50-day average
 line: india:TRENT.NS@vol | Volume | pane2 bars
 mark: 2025-07-04 | Gap down 8.3% on heavy volume
-caption: The gap was never filled. The highest close in the following months was 5,529.
+caption: The gap was never filled. The highest close in the following months was 3,686.
 ```
 
-The fade rules would have rejected this trade twice. The gap was larger than 8%, and volume was above 2 times normal. A trader who bought it anyway, expecting the "gap must fill", waited in vain. Through October 2026 the price never traded back to 6,191.
+The fade rules would have rejected this trade twice. The gap was larger than 8%, and volume was above 2 times normal. A trader who bought it anyway, expecting the "gap must fill", waited in vain. Through October 2026 the price never traded back to 4,127.
 
 ### Kaynes Technology, May 2023 (India): a breakaway gap
 

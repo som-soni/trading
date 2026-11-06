@@ -169,7 +169,7 @@ liquidity-sweep
 
 A **liquidity sweep**, also called a stop hunt or liquidity grab, is a push beyond an obvious high or low that closes back inside. The push fills the stops waiting there. The close back inside shows that the move found no follow-through.
 
-Here is a real one. On 2 January 2025 Trent made a high of ₹7,336, its highest in four weeks. The next day it traded up to ₹7,493, above that high, but closed at ₹7,308, back below it. Twenty sessions later the stock closed at ₹5,753, 21% lower.
+Here is a real one. On 2 January 2025 Trent made a high of ₹4,891, its highest in four weeks (prices adjusted for its 2026 bonus issue). The next day it traded up to ₹4,995, above that high, but closed at ₹4,872, back below it. Twenty sessions later the stock closed at ₹3,835, 21% lower.
 
 ```series
 title: Trent — a push above a four-week high that closed back below, January 2025
@@ -179,9 +179,9 @@ tf: D
 line: india:TRENT.NS | Trent | log
 line: india:TRENT.NS@sma50 | 50-day average
 line: india:TRENT.NS@vol | Volume | pane2 bars
-mark: 2025-01-02 | high ₹7,336
-mark: 2025-01-03 | above it to ₹7,493, close ₹7,308
-mark: 2025-01-31 | ₹5,753
+mark: 2025-01-02 | high ₹4,891
+mark: 2025-01-03 | above it to ₹4,995, close ₹4,872
+mark: 2025-01-31 | ₹3,835
 caption: The day's high cleared the prior four-week high, but the close did not. The fall that followed came with a weak Indian market in January.
 ```
 
