@@ -54,6 +54,7 @@ from .darvas import DarvasStrategy
 from .delivery_breakout import DeliveryBreakoutStrategy
 from .donchian import DonchianStrategy
 from .earnings_gaps import EarningsGapStrategy
+from .ema100_trend import Ema100TrendStrategy
 from .ema_pullback import EmaPullbackStrategy
 from .kullamagi import KullamagiStrategy
 from .minervini_spec import MinerviniSpecStrategy
@@ -85,6 +86,7 @@ register(KullamagiStrategy())
 register(MomentumBurstStrategy())
 register(EmaPullbackStrategy())
 register(DeliveryBreakoutStrategy())
+register(Ema100TrendStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
 # idea as the `_spec` strategy above it, which is built to the written detection

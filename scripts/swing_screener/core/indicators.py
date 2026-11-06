@@ -102,6 +102,8 @@ def enrich_daily(df: pd.DataFrame) -> pd.DataFrame:
     # the EMA pullback strategy's trend stack and touch lines, and its `--exit-mode ma` trail
     out["ema10"] = ema(out["close"], 10)
     out["ema21"] = ema(out["close"], 21)
+    # the 100-day EMA trend strategy's cross line and its `--exit-mode ma_low --ma-col ema100` exit
+    out["ema100"] = ema(out["close"], 100)
     out["rsi14"] = rsi(out["close"], 14)
     out["rsi_ma"] = sma(out["rsi14"], 14)  # DEFINITIONS: 14-period SMA of RSI14
     out["atr14"] = atr(out, 14)
@@ -189,6 +191,24 @@ def atr_distance(close: float, level: float, atr_value: float) -> float:
     if not atr_value or pd.isna(atr_value):
         return float("nan")
     return (close - level) / atr_value
+
+
+def prior_high(series: pd.Series, n: int) -> pd.Series:
+    """The highest value of the n bars BEFORE each bar (the bar itself excluded): on highs, a breakout's
+    pivot; NaN until n bars precede it."""
+    return series.shift(1).rolling(n, min_periods=n).max()
+
+
+def at_prior_high(series: pd.Series, n: int) -> pd.Series:
+    """True where a value is at or above its highest of the n bars before it (prior_high): a new n-bar high."""
+    return series >= prior_high(series, n)
+
+
+def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """On-balance volume: the running sum of volume, added on an up close, subtracted on a down close.
+    Its level depends on where the series starts; only its changes and its own highs mean anything."""
+    step = np.sign(close.diff().fillna(0.0))
+    return (step * volume).cumsum()
 
 
 class SupertrendState:
