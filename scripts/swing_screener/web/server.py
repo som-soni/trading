@@ -1470,30 +1470,75 @@ def portfolio_selection(strategy: str, market: str, limit: int | None = None):
     return baseline.current_selection(market, strategy, limit=limit)
 
 
+def _book_ok(book: str, market: str) -> None:
+    """404 unless `book` names a strategy (portfolio or signal) in a known market: a book is the money
+    run under one strategy."""
+    from ..strategies import _REGISTRY, portfolio_strategies
+    if market not in MARKETS or (book not in portfolio_strategies() and book not in _REGISTRY):
+        raise HTTPException(404, "unknown strategy or market")
+
+
 @app.get("/api/positions/{strategy}/{market}")
 def get_book_positions(strategy: str, market: str):
-    """The positions and cash you hold under a ranking strategy -- what its rebalance orders start from."""
+    """The positions and cash you hold under a strategy -- derived from the book's trade ledger
+    (backtesting/ledger.py) -- what its rebalance orders start from."""
     from ..backtesting import rebalance
-    from ..strategies import portfolio_strategies
-
-    if market not in MARKETS or strategy not in portfolio_strategies():
-        raise HTTPException(404, "unknown strategy or market")
+    _book_ok(strategy, market)
     return rebalance.get_positions(strategy, market)
 
 
 @app.put("/api/positions/{strategy}/{market}")
 def put_book_positions(strategy: str, market: str, body: dict):
-    """Replace the account: {positions: {symbol: shares}, cash}. Stored in Postgres (book_positions)."""
+    """Save the account as you hold it: {positions: {symbol: shares}, cash}. The difference from the
+    ledger is recorded as manual trades at the latest closes, plus a cash reconciliation -- not
+    overwritten. `dry_run: true` returns those trades without recording them."""
     from ..backtesting import rebalance
-    from ..strategies import portfolio_strategies
-
-    if market not in MARKETS or strategy not in portfolio_strategies():
-        raise HTTPException(404, "unknown strategy or market")
+    _book_ok(strategy, market)
     try:
-        return rebalance.set_positions(strategy, market, dict(body.get("positions") or {}),
-                                       float(body.get("cash") or 0))
+        positions, cash = dict(body.get("positions") or {}), float(body.get("cash") or 0)
+        if body.get("dry_run"):
+            return rebalance.propose_positions(strategy, market, positions, cash)
+        return rebalance.set_positions(strategy, market, positions, cash, body.get("trade_date"))
     except (TypeError, ValueError) as e:
         raise HTTPException(400, str(e))
+
+
+@app.get("/api/ledger/{book}/{market}")
+def book_ledger(book: str, market: str):
+    """The book's ledger: holdings derived from it, every trade, and the rebalances you confirmed."""
+    from ..backtesting import ledger
+    _book_ok(book, market)
+    return {"account": ledger.holdings_of(book, market), "trades": ledger.trades(book, market)[::-1],
+            "rebalances": ledger.rebalances(book, market)}
+
+
+@app.post("/api/ledger/{book}/{market}/trades")
+def book_record_trades(book: str, market: str, body: dict):
+    """Record fills you confirmed: {trades: [{side, symbol, shares, price, costs, trade_date, rebalance_id,
+    ...}], source: manual | kite}. Refused as a whole if any would sell shares the book does not hold."""
+    from ..backtesting import ledger
+    _book_ok(book, market)
+    src = body.get("source") or "manual"
+    if src not in ("manual", "kite"):
+        raise HTTPException(400, "source must be manual or kite (paper trades are the paper job's)")
+    try:
+        ids = ledger.record(book, market, list(body.get("trades") or []), source=src)
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, str(e))
+    return {"recorded": ids, "account": ledger.holdings_of(book, market)}
+
+
+@app.delete("/api/ledger/{book}/{market}/trades/{trade_id}")
+def book_delete_trade(book: str, market: str, trade_id: int):
+    """Remove one mistaken ledger row (refused if what remains would sell shares never held)."""
+    from ..backtesting import ledger
+    _book_ok(book, market)
+    try:
+        if not ledger.delete_trade(book, market, trade_id):
+            raise HTTPException(404, "no such trade in this book")
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"account": ledger.holdings_of(book, market)}
 
 
 def _broker(market: str):
@@ -1563,6 +1608,29 @@ def broker_quotes(market: str, symbols: str):
         raise HTTPException(409, str(e))
     except requests.RequestException as e:
         raise HTTPException(502, f"could not reach the broker: {e}")
+
+
+@app.get("/api/broker/{market}/proposal/{book}")
+def broker_proposal(market: str, book: str):
+    """Your broker holdings against the book's ledger, as PROPOSED fills -- the BUY / SELL per difference at
+    the broker's last price. Nothing is recorded: the page shows them for you to tick, correct and confirm.
+    Read-only on the broker side (holdings and margins GETs only)."""
+    import requests
+    from ..backtesting import rebalance
+
+    b = _broker(market)
+    _book_ok(book, market)
+    try:
+        a = b.account(MARKETS[market].symbol_suffix)
+    except b.KiteError as e:
+        raise HTTPException(409, str(e))
+    except requests.RequestException as e:
+        raise HTTPException(502, f"could not reach the broker: {e}")
+    sfx = MARKETS[market].symbol_suffix or ""
+    last = {h["symbol"] + sfx: h.get("last_price") for h in a.get("holdings", [])}
+    p = rebalance.propose_positions(book, market, a["positions"], None, prices=last)
+    return {**p, "broker": {k: a[k] for k in ("user_id", "user_name", "cash", "cash_note", "warnings", "today",
+                                                "fetched_at")}}
 
 
 @app.post("/api/broker/{market}/logout")

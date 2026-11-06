@@ -5508,28 +5508,13 @@ async function strategyHoldings(host, alive, d, key) {
 
 /** Your account under a ranking strategy, and the trades that turn it into the strategy's book.
  *
- * The positions and cash are stored in Postgres (/api/positions); the orders come from
- * /api/rebalance -> rebalance.orders, which reads the book through the same selection the
- * Holdings table shows, sized in whole shares as the backtest sizes it.
+ * The account is the book's trade LEDGER (/api/ledger -> backtesting/ledger.py): an opening balance and
+ * every trade since, from which the holdings are derived. Saving the form or comparing with the broker
+ * never overwrites it -- both show the difference as proposed trades, recorded only when you confirm.
+ * The orders come from /api/rebalance -> rebalance.orders, sized in whole shares as the backtest sizes them.
  */
 async function bookOrders(box, alive, current, key, mkt) {
-  const cur = mktInfo(mkt).currency || "";
-  const sfx = mktInfo(mkt).suffix || "";
-  const money = (v) => v == null ? "—" : `${cur}${Math.round(v).toLocaleString("en-IN")}`;
-  const acct = await api(`/api/positions/${encodeURIComponent(key)}/${mkt}`).catch(() => null);
-  if (!alive() || !current() || !acct) return;
-  const lines = Object.entries(acct.positions).map(([s, n]) => `${s.endsWith(sfx) && sfx ? s.slice(0, -sfx.length) : s} ${n}`).join("\n");
-  box.innerHTML = `<h3>Your account</h3>
-    <div class="muted small">What you hold under this strategy now — one stock per line, <code>SYMBOL shares</code> — and your
-      cash for it. Stored in the database; the orders below start from it.${acct.updated_at ? ` Last saved ${esc(prettyDate(acct.updated_at.slice(0, 10)))}.` : ""}</div>
-    <div class="acct-form" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin:8px 0">
-      <textarea id="pos" rows="8" style="min-width:16em;font-family:var(--mono, monospace)" placeholder="LAURUSLABS 34\nSBC 1038">${esc(lines)}</textarea>
-      <div><label class="small muted">Cash ${esc(cur)} <input id="cash" type="number" min="0" step="any" style="width:10em" value="${acct.cash || ""}"></label>
-        <div style="margin-top:8px"><button id="savepos" class="primary sm">Save and compute orders</button></div>
-        <div id="poserr" class="small" style="color:var(--neg, #e5484d)"></div></div></div>
-    <div id="brk" class="small"></div>
-    <div id="orders"></div>`;
-  brokerSync(box.querySelector("#brk"), box, mkt, sfx, alive, current);
+  box.innerHTML = `<div id="acctbox"></div><div id="orders"></div>`;
   const ordersBox = box.querySelector("#orders");
   const showOrders = async () => {
     ordersBox.innerHTML = LOADING;
@@ -5537,88 +5522,180 @@ async function bookOrders(box, alive, current, key, mkt) {
     if (!alive() || !current()) return;
     if (!o) { ordersBox.innerHTML = `<div class="empty"><b>The orders could not be computed.</b></div>`; return; }
     if (!o.account_value) { ordersBox.innerHTML = `<div class="muted small">Enter your holdings and cash to see the orders.</div>`; return; }
-    const month = new Date(o.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
-    ordersBox.innerHTML = `<h3>Rebalance orders</h3>
-      <div class="muted small sd-intro"><b>As of the ${esc(prettyDate(o.as_of))} close.</b>
-        ${o.is_month_end ? `This is <b>${esc(month)}'s last session</b>: these are the rebalance orders.`
-          : `Not a rebalance day — the strategy trades at the close of the last session of ${esc(month)}, and the book can change before then.`}
-        Account ${money(o.account_value)} at the latest closes (cash ${money(o.cash)}). Sells ${money(o.sells)}, buys ${money(o.buys)},
-        cash after ${money(o.cash_after)}; costs at the strategy's ${o.cost_bps} bps a side ≈ ${money(o.est_costs)}.
-        Whole shares, sized as the backtest sizes them. What the rules point at, not a recommendation.
-        ${o.unpriced.length ? `<br><b>No stored price for ${esc(o.unpriced.join(", "))}</b> — left out of the account value; check the symbol.` : ""}</div>
-      <div id="otbl"></div>`;
-    const cols = ["action", "symbol", "held", "target", "change", "price", "amount", "weight_pct"];
-    dataTable(ordersBox.querySelector("#otbl"), cols,
-      o.rows.map((x) => [x.action, x.symbol, x.held, x.target, x.change, x.price, x.amount, x.weight_pct]), {
-        name: `rebalance_${key}`, noStack: true, rowHint: "Click a row to open its chart",
-        rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`),
-      });
+    rebalancePanel(ordersBox, o, key, mkt, () => bookAccount(box.querySelector("#acctbox"), alive, current, key, mkt, showOrders));
   };
-  box.querySelector("#savepos").onclick = async () => {
-    const err = box.querySelector("#poserr");
+  bookAccount(box.querySelector("#acctbox"), alive, current, key, mkt, showOrders);
+  showOrders();
+}
+
+/** Money in the market's currency, whole units. */
+const bookMoney = (mkt, v) => v == null ? "—" : `${v < 0 ? "−" : ""}${mktInfo(mkt).currency || ""}${Math.abs(Math.round(v)).toLocaleString("en-IN")}`;
+const bookSym = (mkt, s) => { const sfx = mktInfo(mkt).suffix || ""; return s && sfx && s.endsWith(sfx) ? s.slice(0, -sfx.length) : (s || ""); };
+
+/** The book's holdings (from its ledger), the form that changes them, the broker comparison and the ledger itself. */
+async function bookAccount(host, alive, current, key, mkt, onChange) {
+  const L = await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}`).catch(() => null);
+  if (!alive() || !current() || !L) return;
+  const acct = L.account;
+  const lines = Object.entries(acct.positions).map(([s, n]) => `${bookSym(mkt, s)} ${n}`).join("\n");
+  host.innerHTML = `<h3>Your account</h3>
+    <div class="muted small">Derived from this book's trade ledger: ${acct.trades} entr${acct.trades === 1 ? "y" : "ies"}, the opening balance and every
+      trade since. ${Object.keys(acct.positions).length} holding${Object.keys(acct.positions).length === 1 ? "" : "s"}, cash ${bookMoney(mkt, acct.cash)}${acct.realised ? `, realised ${bookMoney(mkt, acct.realised)}` : ""}.
+      Edit the lines below to what you hold now — one stock per line, <code>SYMBOL shares</code> — and review: the difference is
+      recorded as trades, never overwritten.</div>
+    <div class="acct-form" style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap;margin:8px 0">
+      <textarea id="pos" rows="8" style="min-width:16em;font-family:var(--mono, monospace)" placeholder="LAURUSLABS 34\nSBC 1038">${esc(lines)}</textarea>
+      <div><label class="small muted">Cash ${esc(mktInfo(mkt).currency || "")} <input id="cash" type="number" min="0" step="any" style="width:10em" value="${Math.round(acct.cash * 100) / 100 || ""}"></label>
+        <div style="margin-top:8px"><button id="savepos" class="primary sm">Review changes…</button></div>
+        <div id="poserr" class="small" style="color:var(--neg, #e5484d)"></div></div></div>
+    <div id="brk" class="small"></div>
+    <div id="proposal"></div>
+    <details id="ledger" style="margin-top:8px"><summary class="small"><b>Ledger</b> <span class="muted">— ${L.trades.length} rows, newest first${L.rebalances.length ? ` · ${L.rebalances.length} confirmed rebalance${L.rebalances.length === 1 ? "" : "s"}` : ""}</span></summary><div id="ltbl"></div></details>`;
+  const refresh = () => { bookAccount(host, alive, current, key, mkt, onChange); onChange && onChange(); };
+  const prop = host.querySelector("#proposal");
+  host.querySelector("#savepos").onclick = async () => {
+    const err = host.querySelector("#poserr");
     err.textContent = "";
     const positions = {};
-    for (const raw of box.querySelector("#pos").value.split("\n")) {
+    for (const raw of host.querySelector("#pos").value.split("\n")) {
       const line = raw.trim();
       if (!line) continue;
       const m = line.match(/^([A-Za-z0-9&._-]+)[\s,:=]+([0-9]+(?:\.[0-9]+)?)$/);
       if (!m) { err.textContent = `Not "SYMBOL shares": ${line}`; return; }
       positions[m[1]] = (positions[m[1]] || 0) + parseFloat(m[2]);
     }
-    const cash = parseFloat(box.querySelector("#cash").value) || 0;
-    const ok = await api(`/api/positions/${encodeURIComponent(key)}/${mkt}`,
-      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positions, cash }) })
+    const cash = parseFloat(host.querySelector("#cash").value) || 0;
+    const p = await api(`/api/positions/${encodeURIComponent(key)}/${mkt}`,
+      { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ positions, cash, dry_run: true }) })
       .catch((e) => { err.textContent = String(e.message || e); return null; });
-    if (ok) showOrders();
+    if (!p) return;
+    proposedFills(prop, key, mkt, p.trades, { source: "manual", onDone: refresh,
+      intro: `<b>Not recorded yet.</b> The difference between the account you entered and the ledger, priced at the latest stored close —
+        correct each price to what you actually paid or received, untick a line that is not a trade, then record.` });
   };
-  showOrders();
+  brokerSync(host.querySelector("#brk"), prop, key, mkt, alive, current, refresh);
+  const rows = L.trades.map((t) => [t.trade_date, t.side, bookSym(mkt, t.symbol) || "cash", t.side === "CASH" ? null : t.shares,
+    t.price, t.side === "CASH" ? t.amount : (t.price != null ? (t.side === "SELL" ? 1 : -1) * t.shares * t.price : null), t.costs,
+    t.source, t.rebalance_id ? `#${t.rebalance_id}` : "", t.note || t.setup || "", t.id]);
+  dataTable(host.querySelector("#ltbl"), ["date", "side", "symbol", "shares", "price", "cash_effect", "costs", "source", "rebalance", "note", "id"], rows, {
+    name: `ledger_${key}`, noStack: true, hidden: ["id"], rowHint: "Click a row to remove it (a mistaken entry)",
+    rowClick: async (row) => {
+      if (!confirm(`Remove ${row[1]} ${row[2]} ${row[3] ?? ""} of ${row[0]} from the ledger?`)) return;
+      await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/trades/${row[10]}`, { method: "DELETE" })
+        .then(refresh).catch((e) => alert(String(e.message || e)));
+    },
+  });
+}
+
+/** Proposed trades for you to tick, correct and confirm -- from the account form or a broker pull.
+ * `opts.checked(row)` decides the default tick; `opts.rebalanceId` links the recorded trades to a confirmed rebalance. */
+function proposedFills(host, key, mkt, rows, opts = {}) {
+  if (!rows.length) { host.innerHTML = `<div class="sd-intro small"><b>Nothing to record</b> — the ledger already matches.</div>`; return; }
+  const today = new Date().toISOString().slice(0, 10);
+  const checked = opts.checked || (() => true);
+  host.innerHTML = `<div class="sd-intro small">${opts.intro || ""}</div>
+    <table class="data compact"><thead><tr><th></th><th>Side</th><th>Symbol</th><th class="num">Shares</th><th class="num">Price</th><th class="num">Costs</th><th class="num">Cash</th><th>Note</th></tr></thead><tbody>
+    ${rows.map((r, i) => `<tr data-i="${i}"><td><input type="checkbox" class="pick" ${checked(r) ? "checked" : ""}></td>
+      <td><span class="tag ${r.side === "BUY" ? "pos" : r.side === "SELL" ? "neg" : "neutral"}">${esc(r.side)}</span></td>
+      <td>${esc(bookSym(mkt, r.symbol) || "cash")}</td>
+      <td class="num">${r.side === "CASH" ? "" : `<input class="sh" type="number" min="0" step="any" style="width:6em" value="${r.shares}">`}</td>
+      <td class="num">${r.side === "CASH" ? "" : `<input class="px" type="number" min="0" step="any" style="width:7em" value="${r.price ?? ""}">`}${r.price_from ? ` <span class="muted small">${esc(r.price_from)}</span>` : ""}</td>
+      <td class="num">${r.side === "CASH" ? "" : `<input class="fee" type="number" min="0" step="any" style="width:5em" value="${r.costs || 0}">`}</td>
+      <td class="num">${r.side === "CASH" ? `<input class="amt" type="number" step="any" style="width:8em" value="${r.amount}">` : ""}</td>
+      <td class="muted small">${esc(r.note || r.why || "")}</td></tr>`).join("")}</tbody></table>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <label class="small muted">Trade date <input id="tdate" type="date" value="${opts.date || today}"></label>
+      <button class="primary sm" id="rec">Record ticked trades</button><button class="ghost sm" id="cancel">Cancel</button>
+      <span id="recerr" class="small" style="color:var(--neg, #e5484d)"></span></div>`;
+  host.querySelector("#cancel").onclick = () => { host.innerHTML = ""; };
+  host.querySelector("#rec").onclick = async () => {
+    const date = host.querySelector("#tdate").value;
+    const out = [];
+    host.querySelectorAll("tbody tr").forEach((tr) => {
+      if (!tr.querySelector(".pick").checked) return;
+      const r = rows[+tr.dataset.i];
+      const v = (c) => tr.querySelector(c) ? parseFloat(tr.querySelector(c).value) : null;
+      out.push(r.side === "CASH" ? { side: "CASH", amount: v(".amt"), trade_date: date, note: r.note, rebalance_id: opts.rebalanceId }
+        : { side: r.side, symbol: r.symbol, shares: v(".sh"), price: v(".px"), costs: v(".fee") || 0, trade_date: date,
+            note: r.note || null, rebalance_id: opts.rebalanceId || null });
+    });
+    if (!out.length) { host.querySelector("#recerr").textContent = "Nothing ticked."; return; }
+    const ok = await api(`/api/ledger/${encodeURIComponent(key)}/${mkt}/trades`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trades: out, source: opts.source || "manual" }) })
+      .catch((e) => { host.querySelector("#recerr").textContent = String(e.message || e); return null; });
+    if (ok) { host.innerHTML = `<div class="sd-intro small"><b>Recorded ${ok.recorded.length} ledger entr${ok.recorded.length === 1 ? "y" : "ies"}.</b></div>`; opts.onDone && opts.onDone(); }
+  };
 }
 
 
-/** Fill the account form from the market's broker (config `broker`; /api/broker -> broker/kite.py).
+/** Compare the book with the market's broker (config `broker`; /api/broker -> broker/kite.py).
  *
- * READ-ONLY: it fills the textarea and cash as a draft and saves nothing -- your broker account may hold
- * stocks that are not part of this strategy, and taking them out is yours to do before "Save". Login is
- * the broker's own page; the password never reaches this app.
+ * READ-ONLY: the broker's holdings are compared with the ledger and shown as PROPOSED fills at the broker's
+ * last price; nothing is recorded until you tick and confirm. Your broker account may hold stocks that are not
+ * part of this book, so a stock the book has never held starts unticked. Login is the broker's own page; the
+ * password never reaches this app.
  */
-async function brokerSync(host, box, mkt, sfx, alive, current) {
+async function brokerSync(host, prop, key, mkt, alive, current, onDone) {
   const st = await api(`/api/broker/${mkt}/status?next=${encodeURIComponent(location.hash)}`).catch(() => null);
   if (!alive() || !current() || !st) return;   // no broker for this market
   const name = { kite: "Kite" }[st.broker] || st.broker;
   if (!st.configured) {
     host.innerHTML = `<div class="muted">${esc(name)} is not set up: add <code>KITE_API_KEY</code> and <code>KITE_API_SECRET</code>
-      to <code>scripts/.env</code> and restart the server to fill this form from your account.</div>`;
+      to <code>scripts/.env</code> and restart the server to compare this book with your account.</div>`;
     return;
   }
   if (!st.logged_in) {
     host.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <a class="btn ghost sm" href="${esc(st.login_url)}">Log in to ${esc(name)}</a>
-      <span class="muted">to fill this form from your holdings. Zerodha's own login page; the session lasts until 06:00 IST.</span></div>`;
+      <span class="muted">to compare this book with your holdings. Zerodha's own login page; the session lasts until 06:00 IST.</span></div>`;
     return;
   }
   host.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="ghost sm" id="bfill">Fill from ${esc(name)}</button>
+      <button class="ghost sm" id="bfill">Compare with ${esc(name)}…</button>
       <span class="muted">${esc(name)}: ${esc(st.user_name || st.user_id || "")} · read-only</span>
       <button class="ghost sm" id="bout">Log out</button></div><div id="bmsg" style="margin-top:6px"></div>`;
   const msg = host.querySelector("#bmsg");
   host.querySelector("#bout").onclick = async () => {
     await api(`/api/broker/${mkt}/logout`, { method: "POST" }).catch(() => null);
-    brokerSync(host, box, mkt, sfx, alive, current);
+    brokerSync(host, prop, key, mkt, alive, current, onDone);
   };
   host.querySelector("#bfill").onclick = async () => {
     msg.innerHTML = LOADING;
     let a;
-    try { a = await api(`/api/broker/${mkt}/account`); }
+    try { a = await api(`/api/broker/${mkt}/proposal/${encodeURIComponent(key)}`); }
     catch (e) { msg.innerHTML = `<span style="color:var(--neg, #e5484d)">${esc(String(e.message || e))}</span>`; return; }
     if (!alive() || !current()) return;
-    box.querySelector("#pos").value = Object.entries(a.positions)
-      .map(([s, n]) => `${sfx && s.endsWith(sfx) ? s.slice(0, -sfx.length) : s} ${n}`).join("\n");
-    box.querySelector("#cash").value = Math.floor(a.cash);
-    msg.innerHTML = `<div class="sd-intro"><b>Filled from ${esc(name)}, not saved.</b> ${Object.keys(a.positions).length} holdings and
-      ${esc(mktInfo(mkt).currency || "")}${Math.floor(a.cash).toLocaleString("en-IN")} cash (${esc(a.cash_note)})
-      Remove any stock that is not part of this strategy and set the cash you run it with, then <b>Save and compute orders</b>.
-      ${(a.warnings || []).map((w) => `<div style="color:var(--warn, #b7791f)">⚠ ${esc(w)}</div>`).join("")}</div>`;
+    msg.innerHTML = (a.broker.warnings || []).map((w) => `<div style="color:var(--warn, #b7791f)">⚠ ${esc(w)}</div>`).join("");
+    const inBook = new Set(Object.keys(a.account.positions));
+    proposedFills(prop, key, mkt, a.trades.map((t) => ({ ...t, why: inBook.has(t.symbol) ? "" : "not in this book: tick only if bought for it" })), {
+      source: "kite", onDone, checked: (r) => inBook.has(r.symbol),
+      intro: `<b>Proposed fills from ${esc(name)}, not recorded.</b> Your ${esc(name)} holdings against this book's ledger, priced at
+        ${esc(name)}'s last price — set each to your actual fill. A stock this book has never held starts unticked: your account may hold it for
+        another reason. ${esc(name)} cash ${bookMoney(mkt, a.broker.cash)} is the whole account's, so cash is left to the trades.`,
+    });
   };
+}
+
+
+/** The rebalance orders against your holdings. `o` is /api/rebalance -> rebalance.orders. */
+function rebalancePanel(host, o, key, mkt, onRecorded) {
+  const money = (v) => bookMoney(mkt, v);
+  const month = new Date(o.as_of + "T00:00:00").toLocaleString("en", { month: "long" });
+  host.innerHTML = `<h3>Rebalance orders</h3>
+    <div class="muted small sd-intro"><b>As of the ${esc(prettyDate(o.as_of))} close.</b>
+      ${o.is_month_end ? `This is <b>${esc(month)}'s last session</b>: these are the rebalance orders.`
+        : `Not a rebalance day — the strategy trades at the close of the last session of ${esc(month)}, and the book can change before then.`}
+      Account ${money(o.account_value)} at the latest closes (cash ${money(o.cash)}). Sells ${money(o.sells)}, buys ${money(o.buys)},
+      cash after ${money(o.cash_after)}; costs at the strategy's ${o.cost_bps} bps a side ≈ ${money(o.est_costs)}.
+      Whole shares, sized as the backtest sizes them. What the rules point at, not a recommendation.
+      ${o.unpriced.length ? `<br><b>No stored price for ${esc(o.unpriced.join(", "))}</b> — left out of the account value; check the symbol.` : ""}</div>
+    <div id="otbl"></div>`;
+  const cols = ["action", "symbol", "held", "target", "change", "price", "amount", "weight_pct"];
+  dataTable(host.querySelector("#otbl"), cols,
+    o.rows.map((x) => [x.action, x.symbol, x.held, x.target, x.change, x.price, x.amount, x.weight_pct]), {
+      name: `rebalance_${key}`, noStack: true, rowHint: "Click a row to open its chart",
+      rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[1])}`),
+    });
 }
 
 

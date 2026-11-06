@@ -2,9 +2,10 @@
 
 The strategy's book comes from `baseline.current_selection` -- the selection and weights its backtest
 uses -- so the orders cannot drift from the measured rules. What this module adds is the account:
-the shares you hold in each stock and your cash, stored in Postgres (`book_positions`,
-`book_cash`), so the page can say SELL / BUY / ADD / TRIM / HOLD per stock instead of leaving the
-difference to be worked out by hand.
+the shares you hold in each stock and your cash, derived from the book's trade ledger
+(`ledger.py`, `book_trades`; `book_positions` / `book_cash` are kept as its snapshot), so the page
+can say SELL / BUY / ADD / TRIM / HOLD per stock instead of leaving the difference to be worked out
+by hand.
 
 The account is valued at the latest stored closes, each target is sized as the backtest sizes it --
 whole shares, `int(account value x weight / price)` -- and costs are estimated at the strategy's own
@@ -38,11 +39,6 @@ CREATE TABLE IF NOT EXISTS book_cash (
 """
 
 
-def init_schema() -> None:
-    with db.get_connection().cursor() as cur:
-        cur.execute(SCHEMA)
-
-
 def normalise_symbol(market: str, symbol: str) -> str:
     """`laurus labs` is not a symbol, but `LAURUSLABS` is `LAURUSLABS.NS` in India: upper-case it and
     add the market's ticker suffix when it is missing."""
@@ -51,22 +47,21 @@ def normalise_symbol(market: str, symbol: str) -> str:
     return sym if not suffix or sym.endswith(suffix) else sym + suffix
 
 
-def get_positions(book: str, market: str) -> dict:
+def init_schema() -> None:
     with db.get_connection().cursor() as cur:
-        cur.execute("SELECT symbol, shares, updated_at FROM book_positions WHERE book=%s AND market=%s "
-                    "ORDER BY symbol", (book, market))
-        rows = cur.fetchall()
-        cur.execute("SELECT cash, updated_at FROM book_cash WHERE book=%s AND market=%s", (book, market))
-        c = cur.fetchone()
-    stamps = [r[2] for r in rows] + ([c[1]] if c else [])
-    return {"book": book, "market": market, "positions": {r[0]: float(r[1]) for r in rows},
-            "cash": float(c[0]) if c else 0.0,
-            "updated_at": max(stamps).isoformat() if stamps else None}
+        cur.execute(SCHEMA)
+    from . import ledger
+    ledger.init_schema()
 
 
-def set_positions(book: str, market: str, positions: dict, cash: float) -> dict:
-    """Replace the whole account: the positions you hold now, and your cash. A symbol at zero shares
-    is dropped."""
+def get_positions(book: str, market: str) -> dict:
+    """The account the orders start from: the book's holdings derived from its ledger
+    (`ledger.holdings_of` -- opening balance plus every trade since)."""
+    from . import ledger
+    return ledger.holdings_of(book, market)
+
+
+def _clean_positions(market: str, positions: dict, cash: float) -> dict:
     clean = {}
     for sym, sh in positions.items():
         sh = float(sh)
@@ -76,13 +71,43 @@ def set_positions(book: str, market: str, positions: dict, cash: float) -> dict:
             clean[normalise_symbol(market, sym)] = clean.get(normalise_symbol(market, sym), 0.0) + sh
     if cash < 0:
         raise ValueError("cash cannot be negative")
-    with db.get_connection().cursor() as cur:
-        cur.execute("DELETE FROM book_positions WHERE book=%s AND market=%s", (book, market))
-        for sym, sh in clean.items():
-            cur.execute("INSERT INTO book_positions (book, market, symbol, shares) VALUES (%s,%s,%s,%s)",
-                        (book, market, sym, sh))
-        cur.execute("INSERT INTO book_cash (book, market, cash) VALUES (%s,%s,%s) ON CONFLICT (book, market) "
-                    "DO UPDATE SET cash = EXCLUDED.cash, updated_at = now()", (book, market, float(cash)))
+    return clean
+
+
+def propose_positions(book: str, market: str, positions: dict, cash: float | None,
+                      prices: dict | None = None) -> dict:
+    """What saving `positions` and `cash` as the account would record: the BUY / SELL for each
+    difference from the ledger's holdings, priced at `prices` (a broker's last price) or else the
+    latest stored close, and one CASH row reconciling the cash. Nothing is written."""
+    from . import ledger
+    clean = _clean_positions(market, positions, cash or 0.0)
+    acct = ledger.holdings_of(book, market)
+    syms = sorted(set(clean) | set(acct["positions"]))
+    px = {s: float(p) for s, p in ((normalise_symbol(market, k), v) for k, v in (prices or {}).items()) if p}
+    broker = set(px)
+    px.update(_last_closes(market, [s for s in syms if s not in px], None))
+    rows = ledger.diff_trades(acct["positions"], acct["cash"], clean, cash, px)
+    for r in rows:
+        if r["side"] != "CASH":
+            r["price_from"] = "broker" if r["symbol"] in broker else "close"
+    return {"book": book, "market": market, "account": acct, "trades": rows,
+            "unpriced": [r["symbol"] for r in rows if r["side"] != "CASH" and not r["price"]]}
+
+
+def set_positions(book: str, market: str, positions: dict, cash: float, trade_date: str | None = None) -> dict:
+    """Save the account as you hold it now. The difference from the ledger is RECORDED as manual
+    trades at the latest closes (and a cash reconciliation), not overwritten: the ledger keeps how
+    the book got here. A symbol at zero shares is sold out of the book."""
+    from . import ledger
+    p = propose_positions(book, market, positions, cash)
+    if p["unpriced"]:
+        raise ValueError(f"no stored price for {', '.join(p['unpriced'])}: check the symbol, or record the "
+                         "trade with its price")
+    for r in p["trades"]:
+        r.pop("price_from", None)
+        r["trade_date"] = trade_date
+        r.setdefault("note", "account saved: the difference, at the latest close")
+    ledger.record(book, market, p["trades"], source="manual")
     return get_positions(book, market)
 
 
