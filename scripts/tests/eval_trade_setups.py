@@ -46,7 +46,8 @@ from swing_screener.strategies import get_strategy
 GOLDEN = Path(__file__).resolve().parent / "golden_trade_setups.json"
 BEFORE_YEARS = 4     # history before the fill the layer sees (warm-up for the 200-day and the 52-week tests)
 AFTER_DAYS = 90      # bars after the fill, so an episode can run on past the trade as it does on the chart
-KINDS = {"minervini": ["vcp", "cheat"]}   # a traded setup's kind, where a strategy's layer names its own
+# a traded setup's kind, where a strategy's layer names its own (minervini: S7's near miss, S9's shakeout, S6/S8's flat base)
+KINDS = {"minervini": ["vcp", "cheat", "near", "shake", "flat"]}
 AT_OPEN = {"rs_leaders", "minervini"}   # bought at the next open (a market order), not a buy-stop: the fill may be below the buy
 
 
