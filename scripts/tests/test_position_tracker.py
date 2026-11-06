@@ -52,6 +52,9 @@ POLICIES = [
     ps.ExitPolicy(mode="trail_atr", use_target=False),
     ps.ExitPolicy(mode="trail_pct", use_target=False),
     ps.ExitPolicy(mode="ma", use_target=False, ma_col="sma50"),
+    ps.ExitPolicy(mode="ma_low", use_target=False, ma_col="ema100"),
+    ps.ExitPolicy(mode="ma_low", ma_col="sma20"),
+    ps.ExitPolicy(mode="ma_low", use_target=False, ma_col="sma20", be_r=1.5),
     ps.ExitPolicy(mode="weekly_ma", use_target=False),
     ps.ExitPolicy(mode="donchian", use_target=False),
     ps.ExitPolicy(mode="supertrend", use_target=False),
@@ -82,7 +85,10 @@ def test_matches_simulate() -> None:
                     if t.exit_reason == "OPEN":
                         n_open += 1
                         same = r["exit"] is None or (r["status"] == "exit_next_open" and r["exit"]["date"] is None)
-                        same = same and math.isclose(r["stop"] or 0, t.stop, rel_tol=1e-9)
+                        # an armed ma_low exit shows the sell-stop to rest for tomorrow: the higher of the two
+                        want = (max(t.stop, float(df.loc[:end, "low"].iloc[-1])) if r["status"] == "sell_stop_armed"
+                                else t.stop)
+                        same = same and math.isclose(r["stop"] or 0, want, rel_tol=1e-9)
                     else:
                         n_closed += 1
                         ex = r["exit"] or {}
@@ -122,6 +128,19 @@ def test_status() -> None:
                       shares=10)
     check("a close below the average reads 'exit_next_open'", r["status"] == "exit_next_open"
           and r["exit"]["reason"] == "TREND_EXIT", f"{r['status']} {r['exit']}")
+    low = ps.ExitPolicy(mode="ma_low", use_target=False, ma_col="sma20")
+    r = tracker.track(down, low, CFG, symbol="X", entry_date=idx[30], entry_price=up[30], initial_stop=up[30] * 0.8,
+                      shares=10)
+    check("ma_low: a close below the line arms a sell-stop at that session's low", r["status"] == "sell_stop_armed"
+          and r["exit"] is None and math.isclose(r["stop"], float(down["low"].iloc[-1])), f"{r['status']} {r['stop']}")
+    under = pd.concat([down, down.iloc[[-1]].set_axis([idx[-1] + pd.offsets.BDay()])])
+    under.loc[under.index[-1], ["open", "high", "low", "close"]] = [down["low"].iloc[-1] * 1.01, down["low"].iloc[-1] * 1.01,
+                                                                  down["low"].iloc[-1] * 0.98, down["low"].iloc[-1] * 0.99]
+    r = tracker.track(under, low, CFG, symbol="X", entry_date=idx[30], entry_price=up[30], initial_stop=up[30] * 0.8,
+                      shares=10)
+    check("ma_low: the next session under that low sells there", r["status"] == "stopped"
+          and r["exit"]["reason"] == "TREND_EXIT" and math.isclose(r["exit"]["price"], float(down["low"].iloc[-1])),
+          f"{r['status']} {r['exit']}")
     r = tracker.track(down, flat, CFG, symbol="X", entry_date=idx[30], entry_price=up[30],
                       initial_stop=float(down["low"].iloc[-1]) + 1, shares=10)
     check("an intraday stop reads 'stopped'", r["status"] == "stopped" and r["exit"]["reason"] == "STOP",
