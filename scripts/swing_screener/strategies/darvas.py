@@ -170,7 +170,12 @@ class DarvasStrategy(Strategy):
         "are a trailed stop, median R -0.28 US, -0.40 India), so the few long runs (about one trade in "
         "twenty reaches 3R) do not pay for the rest. Same stage, for comparison: Donchian v1.5 excess "
         "-10.40 US, -1.69 India; Chart patterns excess -9.22 US (v1.18), -6.13 India (v1.19). Verify not "
-        "run, and not to be run on this version: it failed before verify."
+        "run, and not to be run on this version: it failed before verify. Variants queued 2026-11-06, "
+        "optimise stage only: a wider exit (close below the 50-day average; a 3-ATR chandelier trail) and "
+        "the market switch (G3). Criterion written before them, per market: excess CAGR above 0 both at "
+        "the run's cost and at the standard cost, on more than 50 trades. Three variants are tried, so "
+        "the best one's margin is optimistic: at most one passing variant per market becomes a new "
+        "version, and only that version is verified, once."
     )
     gate_docs = {
         "G1": (
