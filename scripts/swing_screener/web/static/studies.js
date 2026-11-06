@@ -330,9 +330,9 @@ const Studies = (() => {
           if (!s) { card.innerHTML = `<div class="tt-h"><b>No setup in view</b><i>${open ? "▾" : "▸"}</i></div>${open ? keyHtml : ""}`; return; }
           const cls = s.kind === "fail" ? "no" : "ok", k = setups.indexOf(s);
           const tr = tradeOf(s);
-          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}">${ref(s)} · ${esc(s.title)}</span>
+          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}" title="${esc(`${ref(s)} · ${s.title}`)}">${ref(s)} · ${esc(s.title)}</span>
               ${tr ? `<span class="tt-traded" title="The selected backtest run bought this setup — these are its own levels, not an illustration">● traded${tr.r_multiple != null ? ` ${(+tr.r_multiple).toFixed(1)}R` : ""}</span>` : ""}
-              <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
+              <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${p.tradedOnly ? "trade" : "setup"} ${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
               <i>${open ? "▾" : "▸"}</i></div>`
             + (open ? `<div class="tt-date">${esc(s.from)} → ${esc(s.to)}${s.live ? ` <span class="tt-live">forming · judged today</span>` : ""}</div><div class="tt-sum">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}
               <div class="tt-sub">Pick a setup from the lane at the bottom of the chart, or step with ‹ ›. Drag this header to move the card${moved ? ` · <a data-a="dock">put it back</a>` : ""}.</div>${keyHtml}` : "");
@@ -1751,45 +1751,6 @@ const Studies = (() => {
     .map(([type, d]) => ({ type, strategy: d.setupsFor, name: stratName(d.setupsFor) }));
   const activeSetup = () => load().find((s) => CATALOG[s.type].setupsFor)?.type ?? null;
 
-  /** The Trade setups picker: the Indicators picker's shape, deliberately — the same modal, search and
-   *  category rail, so one thing is learned once — but SINGLE-select, because only one strategy's
-   *  setups can be on a chart. Clicking the layer already on toggles it off, so there is no "None" row
-   *  pretending to be a setup. Categories are the Strategies section of Learn: each layer names its
-   *  guide (`learnGuide`) and the category is that guide's group in app.js's GUIDE_GROUP ("Breakouts
-   *  from a base", "Trend following"...), so the two can never disagree. Resolved here, not at module
-   *  scope, because app.js loads after this file. */
-  /** badge(strategyKey) → HTML before each name (the Chart page passes the strategy's edge dot for the chart's market) */
-  function openSetupPicker({ onChange, badge } = {}) {
-    const { el, close } = modal(`<div class="sm-head"><b>Trade setups</b><button class="sm-x" title="Close">${BTN.x}</button></div>
-      <div class="sm-search"><input placeholder="Search" spellcheck="false"></div>
-      <div class="sm-body"><nav class="sm-cats"></nav><div class="sm-list"></div></div>
-      <div class="sm-foot"><span class="muted small">What a strategy's rules would set up on, run over the whole history — not trades. Pick a backtest run to see what was actually bought.</span></div>`, "picker");
-    let cat = "All";
-    const q = el.querySelector(".sm-search input"), list = el.querySelector(".sm-list"), cats = el.querySelector(".sm-cats");
-    const group = (t) => (typeof GUIDE_GROUP !== "undefined" && GUIDE_GROUP[CATALOG[t].learnGuide]) || "Strategies";
-    const draw = () => {
-      const layers = setupLayers(), cur = activeSetup();
-      const used = [...new Set(layers.map((l) => group(l.type)))];
-      cats.innerHTML = ["All", ...used].map((c) => `<a data-c="${esc(c)}" class="${c === cat ? "on" : ""}">${esc(c)}</a>`).join("");
-      const f = q.value.trim().toLowerCase();
-      const items = layers.filter((l) => (cat === "All" || group(l.type) === cat)
-        && (!f || l.name.toLowerCase().includes(f) || group(l.type).toLowerCase().includes(f)));
-      list.innerHTML = items.map((l) => `<div class="sm-item${l.type === cur ? " act" : ""}" data-set="${l.type}">
-          <span>${badge ? badge(l.strategy) : ""}${esc(l.name)}</span><span class="muted">${esc(group(l.type))}${l.type === cur ? " · <b>on chart</b>" : ""}</span></div>`).join("")
-        || `<div class="muted sm-empty">${layers.length ? `No setups match “${esc(q.value)}”.` : "No strategy has a trade-setups layer yet."}</div>`;
-    };
-    q.oninput = draw;
-    cats.onclick = (e) => { const a = e.target.closest("a"); if (a) { cat = a.dataset.c; draw(); } };
-    list.onclick = (e) => {
-      const it = e.target.closest("[data-set]"); if (!it) return;
-      const type = it.dataset.set;
-      setSetup(type === activeSetup() ? null : type);   // clicking the one already on takes it off
-      draw(); onChange?.();
-    };
-    el.querySelector(".sm-x").onclick = close;
-    draw(); q.focus();
-    return { close };
-  }
   const setSetup = (type) => {
     const list = load().filter((s) => !CATALOG[s.type].setupsFor);
     save(list);
@@ -1798,7 +1759,7 @@ const Studies = (() => {
 
   return { setStrategies: (keys) => STRATEGY_CHOICES.splice(1, STRATEGY_CHOICES.length, ...keys),
     setStrategyNames: (m) => Object.assign(STRATEGY_NAMES, m),
-    setupLayers, activeSetup, setSetup, openSetupPicker,
+    setupLayers, activeSetup, setSetup,
     transient: (type, params = {}) => ({ ...make(type, params), transient: true }),   // drawn this visit, never saved
     setupName: () => { const t = activeSetup(); return t ? stratName(CATALOG[t].setupsFor) : null; },
     restore: save, CATALOG, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };

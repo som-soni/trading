@@ -735,14 +735,14 @@ async function chartPage(alive, market, symbol, tf) {
       ${store.get("chartType", "candles") === "renko" ? `<label class="field" title="Renko box size: the ATR (TradingView's default) or a percentage of the last brick"><span>Box</span>
         <select id="rkbox">${RENKO_BOXES.map((b) => `<option ${store.get("renkoBox", "ATR (14)") === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>` : ""}
       <button class="ghost" id="ind" title="Add indicators"><svg viewBox="0 0 20 20"><path d="M3 15l4-5 3 3 7-8"/><path d="M13 5h4v4"/></svg>Indicators</button>
-      <button class="ghost" id="setupbtn" title="Draw one strategy's trade setups over the whole history — what its rules would set up on, run on demand. Not trades: pick a backtest run to see what was actually bought."><svg viewBox="0 0 20 20"><path d="M3 13l4-4 3 2 4-6"/><rect x="11" y="11" width="6" height="5" rx="1"/></svg>Trade setups</button>
+      <button class="ghost" id="setupbtn" title="Trade setups: open the panel to pick a strategy and draw what its rules would set up on over the whole history. Not trades: pick a backtest run to see what was actually bought."><svg viewBox="0 0 20 20"><path d="M3 13l4-4 3 2 4-6"/><rect x="11" y="11" width="6" height="5" rx="1"/></svg>Trade setups</button>
       <label class="field" id="trades-field" title="Mark the buys and exits a backtest run made in this symbol"><span>Backtest trades</span>
         <select id="trades"><option value="">None</option></select></label>
       <button class="ghost icon" id="fit" title="Show full history"><svg viewBox="0 0 20 20"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"/></svg></button>
       <span class="spacer"></span>
       ${pos >= 0 ? `<div class="srcchip" title="You are stepping through this list (↑ / ↓)"><span class="muted">From</span>
         <a href="${esc(list.back || "#/screens")}" title="Back to the list">${esc(list.label)}</a>
-        <button class="ghost icon" id="prev" title="Previous (↑)">‹</button><span class="pos-n">${pos + 1} / ${list.items.length}</span><button class="ghost icon" id="next" title="Next (↓)">›</button>
+        <button class="ghost icon" id="prev" title="Previous (↑)">‹</button><span class="pos-n" title="This stock's place in the list">stock ${pos + 1} of ${list.items.length}</span><button class="ghost icon" id="next" title="Next (↓)">›</button>
         <button class="ghost icon" id="exitlist" title="Stop stepping through this list">✕</button></div>` : ""}
     </div>
     <div class="quote" id="quote"><b class="q-sym">${esc(symbol)}</b><span class="mkt">${MKT_BADGE[market] || market}</span></div>
@@ -850,8 +850,9 @@ async function chartPage(alive, market, symbol, tf) {
   const rerender = () => { try { if (chart) keepView = { key: viewKey, range: chart.timeScale().getVisibleLogicalRange() }; } catch {} route(); };
   $("#ind").onclick = () => Studies.openPicker({ onChange: () => { leaveBtView(); rerender(); } });
 
-  // Trade setups: picked the way indicators are, from its own picker — one strategy at a time.
-  // The button carries the chosen strategy, so the chart says what it is drawing without the card open.
+  // Trade setups: one strategy at a time, picked in the side panel's Setups tab (its Strategy row), which also
+  // lists the setups. The button carries the chosen strategy, so the chart says what it is drawing, and opens
+  // (or closes) that tab -- one place to choose and read, not a picker beside a panel that repeats it.
   const setupBtn = $("#setupbtn");
   const markSetup = async () => {
     await STRATEGIES;
@@ -861,11 +862,12 @@ async function chartPage(alive, market, symbol, tf) {
     setupBtn.hidden = !Studies.setupLayers().length;
   };
   markSetup();
-  // await the registry first: a layer is NAMED for its strategy, and opening before /api/strategies
+  // await the registry first: a layer is NAMED for its strategy, and the panel opening before /api/strategies
   // lands would list the raw key
   setupBtn.onclick = async () => {
     await Promise.all([STRATEGIES, loadEdges()]);
-    Studies.openSetupPicker({ onChange: () => { leaveBtView(); markSetup(); rerender(); }, badge: (k) => edgeDot(k, market) });
+    const open = prefs.panel && prefs.tab === "setups";
+    prefs.tab = open ? null : "setups"; prefs.panel = !open; store.set("chartPrefs", prefs); syncPanel(); renderSide();
   };
   // leaving the backtest view (below): a pick of your own means you want your layers back
   function leaveBtView() { const l = store.get("chartList", null); if (l?.backtest) store.set("chartList", { ...l, backtest: { ...l.backtest, layers: true } }); }
@@ -918,13 +920,34 @@ async function chartPage(alive, market, symbol, tf) {
     return;
   }
   chartEl.innerHTML = `<div class="legend"></div>`;
-  const sector = (ctx.latest.find((l) => l.sector) || {}).sector;
+  // the stock's own classification (industry, sector on hover), not the screening rows' `sector`: that one is the
+  // index each sector's trend is judged by (config sector_alias_map), so a cement stock reads "Metal" there
+  const cls = ctx.classification || {};
+  const sector = cls.industry || cls.sector || (ctx.latest.find((l) => l.sector) || {}).sector;
+  const sectorTip = cls.sector ? [cls.sector, cls.industry, cls.sub_key].filter(Boolean).join(" › ") : "";
 
   const sel = $("#trades");
   // the stage leads each option: trades drawn from an in-sample run are trades on years that chose the rules
   // a pre-stage run is listed without a [Legacy] prefix: it is read like any other run
-  tradeRuns.forEach((r) => { const st = r.stage === "legacy" ? null : stageInfo(r);
-    sel.insertAdjacentHTML("beforeend", `<option value="${r.id}"${st ? ` title="${esc(st.tip)}"` : ""}>${st ? `[${esc(st.text)}] ` : ""}${esc(r.strategy)} · ${esc(r.run)} — ${r.trades} trade${r.trades > 1 ? "s" : ""}</option>`); });
+  // Each run reads as what a person picks by -- the strategy's name, its version, the stage and years, its trades
+  // in this stock -- grouped by strategy; the raw run name (the options it ran with) is the tooltip, and its
+  // exit and options are spelled out only where two runs would otherwise read the same.
+  const stratNames = Object.fromEntries((await STRATEGIES).map((x) => [x.key, x.name]));
+  const runLabel = (r) => {
+    const st = stageInfo(r), rp = runParts(r.run), ver = rp?.version || (r.spec_id || "").split("-")[0];
+    const yrs = r.window_start ? `${r.window_start.slice(0, 4)}–${r.window_end ? r.window_end.slice(2, 4) : "now"}` : "";
+    return `${stratNames[r.strategy] || r.strategy}${ver ? ` ${ver}` : ""} · ${st.text.toLowerCase()}${yrs ? ` ${yrs}` : ""} · ${r.trades} trade${r.trades > 1 ? "s" : ""} here`;
+  };
+  const runVariant = (r) => { const rp = runParts(r.run); return rp ? [rp.exit, ...rp.options.filter((o) => !o.startsWith("stage-"))].filter(Boolean).join(", ") : r.run; };
+  const byStrat = new Map();
+  tradeRuns.forEach((r) => { if (!byStrat.has(r.strategy)) byStrat.set(r.strategy, []); byStrat.get(r.strategy).push(r); });
+  for (const [k, rs] of byStrat) {
+    const opts = rs.map((r) => {
+      const base = runLabel(r), twin = rs.some((x) => x !== r && runLabel(x) === base);
+      return `<option value="${r.id}" title="${esc(`${stageInfo(r).tip}\nRun: ${r.run}`)}">${esc(base)}${twin ? ` — ${esc(runVariant(r))}` : ""}</option>`;
+    }).join("");
+    sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(stratNames[k] || k)}">${opts}</optgroup>`);
+  }
   $("#trades-field").hidden = !tradeRuns.length;
   // a remembered run may no longer exist (or not trade this symbol): fall back to no overlay
   const want = store.get("tradeRun:" + market, "") + "";
@@ -942,7 +965,10 @@ async function chartPage(alive, market, symbol, tf) {
   const btView = pos >= 0 && list.backtest && !list.backtest.layers && String(list.backtest.run) === String(sel.value) ? list.backtest : null;
   const isOverlayLayer = (s, def) => !!def.setupsFor || ["sdz", "patterns", "plan"].includes(s.type);
   if (btView) {
-    $(".srcchip")?.insertAdjacentHTML("beforeend", `<span class="muted" title="Opened from a backtest's trades: the chart shows that run's trades only. Your own overlay layers are hidden while you step through this list.">· backtest view</span><a class="small" id="btlayers" title="Show your saved overlay layers too">show my layers</a>`);
+    // said as a tag, with the run's years, so a trade from 2013 is never read as a setup forming today
+    const btRun = tradeRuns.find((r) => String(r.id) === String(sel.value));
+    const yrs = btRun?.window_start ? `${btRun.window_start.slice(0, 4)}–${btRun.window_end ? btRun.window_end.slice(0, 4) : "now"}` : "";
+    $(".srcchip")?.insertAdjacentHTML("beforeend", `<span class="tag watch bt-tag" title="Opened from a backtest's trades: the chart shows that run's trades only — what it bought${yrs ? ` in ${yrs}` : ""}, not setups forming today. Your own overlay layers are hidden while you step through this list.">Backtest view${yrs ? ` · ${yrs} trades` : ""}</span><a class="small" id="btlayers" title="Show your saved overlay layers too">show my layers</a>`);
     $("#btlayers").onclick = () => { leaveBtView(); route(); };
     if (["setups", "patterns", "zones"].includes(prefs.tab)) prefs.tab = "trades";   // their buttons stand down here
     if (list.backtest.arrive) { prefs.tab = "trades"; store.set("chartList", { ...store.get("chartList", {}), backtest: { ...list.backtest, arrive: false } }); }
@@ -1323,7 +1349,7 @@ async function chartPage(alive, market, symbol, tf) {
     lo52 = px.range52?.lo ?? Math.min(...yr.map((r) => (px.ohlc ? r.low : r.value)));
   const chg = (lastClose / prevClose - 1) * 100, fromHi = (lastClose / hi52 - 1) * 100;
   const rangePos = hi52 > lo52 ? ((lastClose - lo52) / (hi52 - lo52)) * 100 : 50;
-  $("#quote").innerHTML = `<b class="q-sym">${esc(symbol)}</b>${ctx.name ? `<span class="q-name" title="${esc(ctx.name)}">${esc(ctx.name)}</span>` : ""}<span class="mkt">${MKT_BADGE[market] || market}</span><button class="star" id="star"></button>${sector ? `<span class="muted">${esc(sector)}</span>` : ""}
+  $("#quote").innerHTML = `<b class="q-sym">${esc(symbol)}</b>${ctx.name ? `<span class="q-name" title="${esc(ctx.name)}">${esc(ctx.name)}</span>` : ""}<span class="mkt">${MKT_BADGE[market] || market}</span><button class="star" id="star"></button>${sector ? `<span class="muted" title="${esc(sectorTip)}">${esc(sector)}</span>` : ""}
     <span class="q-px">${fmt(lastClose)}</span><span class="${chg >= 0 ? "pos" : "neg"}">${signed(chg)}%</span>
     <span class="muted">${tf === "D" ? "1 day" : tf === "W" ? "1 week" : "1 month"} · ${prettyDate(last.time)}</span>
     ${real[0].time > "2011-01-01" ? `<span class="hist-note" title="The database holds this symbol from ${prettyDate(real[0].time)} only — a recent listing, or history that was never backfilled. To fetch up to 16 years, run from scripts/:\npython3 -m swing_screener.marketdata.backfill --market ${market} --years 16 --only-short">history from ${prettyDate(real[0].time)} ⓘ</span>` : ""}
@@ -1613,7 +1639,7 @@ async function chartPage(alive, market, symbol, tf) {
   }
   /** TradingView's details block under the watchlist: the open symbol's price, day change, 52-week range and verdicts */
   function detailsHtml() {
-    const q = pxQuote(), sector = ctx.latest[0]?.sector || qrow?.sector || "";
+    const q = pxQuote(), sector = ctx.classification?.industry || ctx.classification?.sector || ctx.latest[0]?.sector || qrow?.sector || "";
     const best = [...ctx.latest].sort((a, b) => DEC_RANK(a.decision) - DEC_RANK(b.decision))[0];
     const pos52 = q && q.hi > q.lo ? ((q.last - q.lo) / (q.hi - q.lo)) * 100 : 50;
     return `<div class="wld-head"><b>${esc(symbol)}</b><span class="mkt">${MKT_BADGE[market] || market}</span>${sector ? `<span class="muted small">${esc(sector)}</span>` : ""}</div>
@@ -1678,7 +1704,7 @@ async function chartPage(alive, market, symbol, tf) {
         ${t.setup_name ? `<div class="small">Pattern: <b>${esc(t.setup_name)}</b></div>` : ""}
         <div class="muted small">${esc([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · "))}</div>
         ${t.note ? `<div class="btr-note small">${esc(t.note)}</div>` : ""}</div>`).join("");
-    return `<section><h3>Backtest trades</h3><div class="muted small">${run ? `${run.stage && run.stage !== "legacy" ? stageChip(run) + " " : ""}${esc(`${run.strategy} · ${run.run}`)}` : ""}</div>
+    return `<section><h3>Backtest trades</h3><div class="muted small">${run ? `${run.stage && run.stage !== "legacy" ? stageChip(run) + " " : ""}<span title="${esc(`Run: ${run.run}`)}">${esc($("#trades").selectedOptions[0]?.textContent || run.run)}</span>` : ""}</div>
       <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div>
       <label class="small bt-only"><input type="checkbox" id="tradeonly" ${prefs.tradeOnly ? "checked" : ""}> Trade only — just the buy, stop, target and sell, without the setup drawing</label></section>
       <div class="btrs">${rows || '<div class="muted small">This run has no trades in this symbol.</div>'}</div>`;
@@ -1703,6 +1729,7 @@ async function chartPage(alive, market, symbol, tf) {
       const t = today[l.strategy], c = seen[l.strategy];
       const tip = [t ? `Today: ${t.tradeable ? (/TRIGGER/i.test(t.decision || "") ? "on trigger" : "would trade") : "on watch"} (screened ${prettyDate(t.as_of)})` : "",
         c ? `${c.n} setup${c.n === 1 ? "" : "s"} on this chart, ${c.trade} would trade${c.at ? ` (counted on bars to ${prettyDate(c.at)})` : ""}` : "",
+        EDGE?.strategies?.[l.strategy]?.[market] ? `Backtest: ${EDGE.strategies[l.strategy][market].label}` : "",
         l.type === cur ? "Click to take it off the chart" : "Click to draw its setups"].filter(Boolean).join("\n");
       return `<a class="sp-strat${l.type === cur ? " on" : ""}" data-layer="${l.type}" title="${esc(tip)}">${t ? `<i class="${t.tradeable ? "trade" : ""}"></i>` : ""}${esc(l.name)}${c ? ` <span>${c.n}</span>` : ""}</a>`;
     }).join("")}</div>`;
