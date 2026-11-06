@@ -1095,10 +1095,16 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.52"
+    version = "1.53"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.53", "2026-11-06",
+         "S2_FILL_NEEDS_VOLUME is its own switch. 1.51 set it only while LIGHT_VOLUME_EXIT was on, so a "
+         "LIGHT_VOLUME_EXIT=0 variant also let S2 fill on light closes: in the US optimise run 188 of its 201 S2 "
+         "trades were such fills, and the variant measured two changes as one. The defaults (both on) trade "
+         "exactly as 1.52; only a variant that turns one switch off differs. After the scan, so signal_version "
+         "stays 1.51."),
         ("1.52", "2026-11-06",
          "The results blackout counts a quarter once, on its earliest record (RESULTS_FIRST_PER_QUARTER). An Indian "
          "company publishes results at its board meeting, and NSE's XBRL broadcast of the same quarter often lands "
@@ -2497,7 +2503,7 @@ class MinerviniSpecStrategy(Strategy):
         ("Trend exit needs volume", "TREND_EXIT_NEEDS_VOLUME", "EX-06: 1 = only on above-average volume (1.7)."),
         ("Time stop", "TIME_STOP_DAYS", "EX-07: sessions to reach +1R (0 = off)."),
         ("Light-volume fill exit", "LIGHT_VOLUME_EXIT", "EN-02: sell a buy-stop fill on under-average breakout volume (1 = on)."),
-        ("S2 fill needs volume", "S2_FILL_NEEDS_VOLUME", "1.51: an MV-02 close through the pivot on under VOL_MULT x volume does not fill (1); 0 = fill and sell at the next open."),
+        ("S2 fill needs volume", "S2_FILL_NEEDS_VOLUME", "1.51: an MV-02 close through the pivot on under VOL_MULT x volume does not fill (1); 0 = it fills, and LIGHT_VOLUME_EXIT, while on, sells it at the next open. Independent of LIGHT_VOLUME_EXIT since 1.53."),
         ("Low cheat", "LOW_CHEAT_ENABLED", "MV-03 on (1) or off (0)."),
         ("Results blackout", "EARNINGS_BLACKOUT_DAYS", "Days before results with no new buy."),
         ("Blackout on announcements", "RESULTS_BY_ANNOUNCEMENT", "1.51: the backtest's blackout keys on recorded results announcements (1) or on filing dates only (0)."),
@@ -3055,8 +3061,11 @@ class MinerviniSpecStrategy(Strategy):
                 # the guide's buy-stop is valid only if the breakout day's volume reaches
                 # VOL_MULT x the 50-day average by the close (portfolio_sim, entry day)
                 meta["min_breakout_vol"] = VOL_MULT
-                # 1.51: the fill IS that close, so a light one does not fill and the order keeps resting
-                meta["fill_needs_volume"] = S2_FILL_NEEDS_VOLUME
+            if S2_FILL_NEEDS_VOLUME:
+                # 1.51: the fill IS that close, so a light one does not fill and the order keeps resting.
+                # Its own switch, not nested under LIGHT_VOLUME_EXIT: a LIGHT_VOLUME_EXIT=0 variant
+                # otherwise also let S2 fill on light closes, and measured two changes as one.
+                meta["fill_min_vol"] = VOL_MULT
         else:
             # the shelf was cleared on today's close, so the fill is the next open,
             # as MV-01 does; cancel if it closes back under the shelf low

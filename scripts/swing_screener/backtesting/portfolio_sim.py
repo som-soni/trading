@@ -54,6 +54,8 @@ without meta behaves exactly as before:
   adv                 50-day average traded value, for the `max_adv_pct` cap (SL-06)
   slippage_bps        this order's slippage (and its exits'), overriding the market's
   min_breakout_vol    sell at the next open if the fill day's volume is under this × its 50-day average
+  fill_min_vol        with confirm_close_above: a close through the level on volume under this × its
+                      50-day average does not fill; the order keeps resting
   pivot, rs, tightness  carried on the trade for exits and reports
 
 and the "minervini" exit mode runs the strategy's EX-01 … EX-07 (see ExitPolicy).
@@ -846,12 +848,12 @@ def simulate(
                 # with a median hold of one day. Leave the order resting instead; the
                 # base is intact until it closes below the tight low.
                 lvl = meta.get("confirm_close_above")
-                mbv = meta.get("min_breakout_vol")
+                fmv = meta.get("fill_min_vol")
                 v50 = float(bar.get("vol_sma50", float("nan")))
                 if lvl is not None and float(bar["close"]) < float(lvl):
                     skip("poked through the pivot but closed back below it", sym, today)
-                elif (lvl is not None and meta.get("fill_needs_volume") and mbv and v50 == v50 and v50 > 0
-                      and float(bar.get("volume", 0) or 0) < mbv * v50):
+                elif (lvl is not None and fmv and v50 == v50 and v50 > 0
+                      and float(bar.get("volume", 0) or 0) < fmv * v50):
                     # The fill is at this close, and this close's volume is already known to be light: the
                     # breakout is unconfirmed, which the entry-day check below would sell at the next open
                     # for a round trip of costs and an overnight gap (517 of 574 S2 fills in the 1.46 US
