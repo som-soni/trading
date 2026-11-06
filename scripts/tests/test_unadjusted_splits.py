@@ -28,6 +28,7 @@ from swing_screener.marketdata.splits import _rescale, apply_recorded, offscale_
 FAILS: list[str] = []
 RATIO = 2 / 3                    # a 1:2 bonus: new / old price
 SYM = "__SPLITTEST__.NS"
+SYM2, SYM3 = "__SPLITTEST2__.NS", "__SPLITTEST3__.NS"
 
 
 def check(what: str, ok: bool, detail: str = "") -> None:
@@ -131,6 +132,34 @@ def two_records() -> None:
             cur.execute("DELETE FROM price_corrections WHERE market='india' AND symbol=%s", (SYM,))
 
 
+def carried_factor() -> None:
+    print("the traded-price factor follows a recorded correction where Yahoo misstates or lacks the split")
+    from swing_screener.backtesting.spec import split_factor_after
+    acts = [("india", SYM, "2026-03-06", "split", 2.0, "yahoo"),        # SILVERTUC.NS: Yahoo records 2 ...
+            ("india", SYM, "2026-03-06", "bonus", 2.0, "nse"),          # ... NSE a 1:1 bonus
+            ("india", SYM, "2026-03-06", "face_split", 5.0, "nse"),     # ... and Rs 10 -> Rs 2: 10 in all
+            ("india", SYM2, "2026-02-27", "face_split", 10.0, "nse"),   # an ETF's unit split: no Yahoo row
+            ("india", SYM3, "2026-06-04", "split", 1.5, "yahoo")]       # Yahoo right (TRENT.NS): unchanged
+    idx = pd.DatetimeIndex(["2025-06-02", "2026-02-02", "2026-03-02", "2026-07-01"])
+    try:
+        db.execute_values("INSERT INTO corporate_actions (market, symbol, ex_date, kind, value, source) VALUES %s", acts)
+        db.execute_values("INSERT INTO price_corrections (market, symbol, date, kind, ratio, reason) VALUES %s",
+                          [("india", SYM, "2026-01-01", "rescale_before", 0.1, "test"),
+                           ("india", SYM, "2024-01-01", "rescale_before", 10.0, "test: not a split"),
+                           ("india", SYM2, "2026-02-27", "rescale_before", 0.1, "test"),
+                           ("india", SYM3, "2026-01-01", "rescale_before", 0.666667, "test")])
+        k = split_factor_after("india", idx, [SYM, SYM2, SYM3])
+        check("NSE's bonus x face-value split, not Yahoo's row, before the ex-date",
+              k[SYM].tolist() == [10.0, 10.0, 10.0, 1.0], str(k[SYM].tolist()))
+        check("an ETF's unit split with no Yahoo row", k[SYM2].tolist() == [10.0, 10.0, 1.0, 1.0], str(k[SYM2].tolist()))
+        check("Yahoo's exact factor kept where it agrees", k[SYM3].tolist() == [1.5, 1.5, 1.5, 1.0], str(k[SYM3].tolist()))
+    finally:
+        with db.get_connection().cursor() as cur:
+            for sym in (SYM, SYM2, SYM3):
+                cur.execute("DELETE FROM corporate_actions WHERE market='india' AND symbol=%s", (sym,))
+                cur.execute("DELETE FROM price_corrections WHERE market='india' AND symbol=%s", (sym,))
+
+
 def rescale_check() -> None:
     print("a fetched window on a new scale is told from one on the stored scale")
     idx = pd.bdate_range("2025-01-01", periods=300)
@@ -184,6 +213,7 @@ def main() -> int:
     synthetic()
     stored_round_trip()
     two_records()
+    carried_factor()
     rescale_check()
     refresh_round_trip()
     print(f"\n{'OK — no refresh window leaves a scale break behind.' if not FAILS else f'{len(FAILS)} FAILURE(S)'}")

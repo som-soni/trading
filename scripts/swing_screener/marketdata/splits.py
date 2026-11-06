@@ -228,6 +228,46 @@ def _split_factors(market: str, symbols: list[str]) -> dict[str, list[tuple]]:
     return out
 
 
+def carried_splits(market: str, symbols) -> dict[str, dict]:
+    """{symbol: {ex_date: factor}} for the splits the stored bars carry at a factor Yahoo's split rows misstate
+    or leave out -- what `backtesting.spec.split_factor_after` puts in place of Yahoo's row.
+
+    A recorded `rescale_before` (gap, ratio) put the bars before its gap on the scale of a split the source
+    left out. Its split is the first ex-date on or after the gap, within SPLIT_MATCH_DAYS, where Yahoo's split
+    or NSE's bonus x face-value split (one event, two rows) is 1 / ratio; the bars carry that factor before
+    it. SILVERTUC.NS: Yahoo records 2 for 2026-03-06, NSE a 1:1 bonus and Rs 10 -> Rs 2, which is 10, as the
+    bars do. An ETF's unit split has no Yahoo row at all (CONS.NS 2026-02-27). A correction with no such
+    event is not a split (SILVERTUC.NS's 2023 served at a tenth) and adds nothing. Every row is read, as in
+    `split_factor_after`: the stored bars carry them all, whatever a backtest stage's end.
+    """
+    with db.get_connection().cursor() as cur:
+        cur.execute(SCHEMA)
+        cur.execute("SELECT symbol, date, ratio FROM price_corrections WHERE market=%s AND kind='rescale_before' "
+                    "AND symbol = ANY(%s)", (market, list(symbols)))
+        corr = cur.fetchall()
+        if not corr:
+            return {}
+        cur.execute("""SELECT symbol, ex_date, kind, source, value FROM corporate_actions
+                       WHERE market=%s AND symbol = ANY(%s) AND value > 0 AND (
+                             (source='yahoo' AND kind='split') OR (source='nse' AND kind IN ('bonus', 'face_split')))""",
+                    (market, sorted({s for s, _, _ in corr})))
+        acts = cur.fetchall()
+    events: dict = {}                      # (symbol, ex_date) -> {"yahoo": factor, "nse": factor}
+    for sym, ex, kind, src, v in acts:
+        e = events.setdefault((sym, ex), {})
+        e[src] = e.get(src, 1.0) * float(v) if src == "nse" else float(v)
+    out: dict[str, dict] = {}
+    for sym, gap, ratio in corr:
+        want = 1.0 / float(ratio)
+        hit = sorted((ex, f) for (s, ex), e in events.items()
+                     if s == sym and 0 <= (ex - gap).days <= SPLIT_MATCH_DAYS
+                     for f in [next((e[k] for k in ("yahoo", "nse") if k in e and abs(math.log(e[k] / want)) <= OPEN_TOL), None)]
+                     if f is not None)
+        if hit:
+            out.setdefault(sym, {})[hit[0][0]] = hit[0][1]   # the source's exact factor, Yahoo's when it agrees
+    return out
+
+
 def _lasting(market: str, symbol: str, date, ratio: float, bars: int = 10) -> bool:
     """The median close of the `bars` sessions from `date` sits at `ratio` of the median of the `bars`
     before it: a change of scale, not a one-bar excursion or a move that reversed."""
