@@ -52,7 +52,7 @@ MOVERS_ADR_BARS = 20
 MOVERS_MIN_ADR_PCT = 4.0
 MOVERS_HIGH_BARS = 20
 MOVERS_LOW_BARS = 63
-MOVERS_MIN_MOVE_PCT = 30.0
+MOVERS_MIN_MOVE_PCT = 50.0      # 30 until kullamagi 1.1 (2026-11-06): 30-50% moves lost money in its audit
 
 # ---- moving-average slope. "falling" means more than FALLING_PCT% below its value SLOPE_BARS ago.
 SMA200_FALLING_PCT = 0.5

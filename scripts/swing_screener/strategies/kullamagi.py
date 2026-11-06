@@ -45,6 +45,7 @@ TIGHT_MAX_PCT = 20.0              # the rest's highest high to lowest low, as % 
 REST_SMA = 20                     # the average the rest's lows must hold …
 REST_LOW_MIN_PCT_OF_SMA = 97.0    # … each low at least this % of that day's average
 PRIOR_CLOSE_SMA = 10              # the session before the breakout closes above this average
+REST_MAX_GIVEBACK_PCT = 50.0      # the rest's low gives back at most this % of the prior move (G7)
 
 # ---- market (evaluate() reads these). The index is the first of MARKET_INDEX_LABELS that the
 # market's config lists in broad_index_symbols (the Nasdaq-100 ETF, the Nifty 500), else its benchmark.
@@ -69,8 +70,15 @@ S1 = "S1"   # today's close is above the rest's high
 
 class KullamagiStrategy(Strategy):
     selection = "time_series"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-11-06",
+         "Two entry rules from a loss audit of the v1.0 optimise runs (2013-2021, so chosen in-sample): the prior "
+         "move must be at least {MOVERS_MIN_MOVE_PCT}% (was 30%, the Big movers screen's M2), and the rest must hold "
+         "the upper part of that move, giving back at most {REST_MAX_GIVEBACK_PCT}% of it (new G7). Over the four "
+         "audited runs and both base runs, the trades each rule removes had a negative total R in every run, at "
+         "every giveback threshold from 40% to 70%; the canonical volume dry-up and range-contraction tests were "
+         "checked the same way and did not help, so they are not added."),
         ("1.0", "2026-10-28",
          "v1: the Learn guide's daily-bar version. Big movers (ADR >= {MOVERS_MIN_ADR_PCT}%, prior move >= "
          "{MOVERS_MIN_MOVE_PCT}%), a {REST_BARS}-session rest within {TIGHT_MAX_PCT}%, a close above its high bought "
@@ -85,7 +93,7 @@ class KullamagiStrategy(Strategy):
     )
     style = "breakout"
     horizon = "swing"
-    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7")
     screen_key = "big_movers"
     screen_gates = {"G1": "M1", "G2": "M2"}
     watch_codes = ()
@@ -94,13 +102,13 @@ class KullamagiStrategy(Strategy):
     gate_titles = {
         "G1": "Fast stock (ADR)", "G2": "Big prior move", "G3": "Tight rest",
         "G4": "Lows hold the {REST_SMA}-day", "G5": "Prior close above the {PRIOR_CLOSE_SMA}-day",
-        "G6": "Market uptrend",
+        "G6": "Market uptrend", "G7": "Rest holds the move",
     }
     nominal_target = True
     min_bars = 210
 
     needs_ctx_extras = True
-    extra_columns = ("adr_pct", "prior_move_pct", "rest_high", "rest_low", "rest_span_pct", "stop_adr")
+    extra_columns = ("adr_pct", "prior_move_pct", "rest_high", "rest_low", "rest_span_pct", "giveback_pct", "stop_adr")
     extra_numeric_columns = extra_columns
     signal_exempt_consts = (
         "MAX_STOP_ADR", "MIN_STOP_PCT", "NOMINAL_TARGET_R",
@@ -123,6 +131,8 @@ class KullamagiStrategy(Strategy):
         "**The rest.** The {REST_BARS} sessions before today span at most {TIGHT_MAX_PCT}% high to low (G3), each of "
         "their lows holds at least {REST_LOW_MIN_PCT_OF_SMA}% of that day's {REST_SMA}-day average (G4), and "
         "yesterday closed above its {PRIOR_CLOSE_SMA}-day average (G5).",
+        "**The rest holds the move.** The rest's low gives back at most {REST_MAX_GIVEBACK_PCT}% of the prior move "
+        "(G7): a flag near the top of the run, not a pullback that has undone most of it.",
         "**The market.** The index (Nasdaq-100 in the US, Nifty 500 in India) closes above its {MKT_EMA}-day "
         "exponential average, and its {MKT_FAST_EMA}-day EMA is above the {MKT_EMA}-day (G6).",
         "**Signal and buy.** S1: today closes above the rest's high. Buy at that close. The stop is today's low; the "
@@ -154,6 +164,9 @@ class KullamagiStrategy(Strategy):
         "**The guide's own measurement.** Its daily-bar event study found about break-even in India before costs "
         "and slightly negative in the US, with over half the gains from the best 5% of trades. A few missing "
         "winners decide the result; read the share of P&L from the top trades.",
+        "**Two rules were chosen in-sample.** v1.1's prior-move floor ({MOVERS_MIN_MOVE_PCT}%) and G7 came from "
+        "auditing the losing trades of v1.0's optimise runs (2013-2021), so an optimise result for v1.1 is partly "
+        "fitted to those years; only the verify stage can judge them.",
         "**Fills at the stop.** On a day that does not gap through it, the stop fills at its price. On fast stocks "
         "the real fill is often worse.",
         "**Run it with its exit flags.** `--exit-mode kullamagi --no-target` (the page's backtest command adds "
@@ -166,17 +179,16 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
-        "FAILS ITS PASS CRITERION in the optimise stage (2013-2021, in-sample, v1.0); verify not run. The base "
-        "rules trail the benchmark in both markets: US -0.65% CAGR, excess -14.66 points a year, max drawdown "
-        "-54.2%; India -4.48% CAGR, excess -18.02, max drawdown -44.6%. The criterion, set before any result: in "
-        "the optimise stage, the base rules beat the market's benchmark CAGR AND make a positive average R after "
-        "costs, in at least one market; and that market's result does not rest on a handful of trades (the top "
-        "10% of trades' share of P&L is reported beside it). It fails the first test in both. The up-front "
-        "variants, measured beside the base and never a substitute for it (optimise stage): TIGHT_MAX_PCT=15 (a "
-        "tighter rest) US 3.23% CAGR, excess -10.78, India -1.09%, excess -14.63; TRAIL_SMA=20 (the slower "
-        "trailing average) US -3.25%, excess -17.26, India -2.46%, excess -15.99. Per trade (base, optimise): US "
-        "1,493 trades, win rate 37.4%, +0.05R a trade; India 558 trades, 35.5%, -0.11R. In both markets the best "
-        "10% of trades made more than the whole book: every gain came from them, and the rest lost it back."
+        "v1.1 NOT YET MEASURED. Stage: optimise (2013-2021, in-sample); verify not run. Pass criterion, set before "
+        "any v1.1 result: in the optimise stage, the base rules beat the market's benchmark CAGR AND make a positive "
+        "average R after costs, in at least one market; the top 10% of trades' share of P&L is reported beside it. "
+        "Up-front variant, measured beside the base and never a substitute for it: TIGHT_MAX_PCT=15. "
+        "v1.1's two new entry rules were chosen from the v1.0 optimise runs, so those years are in-sample for them. "
+        "v1.0 FAILED the same criterion in the optimise stage: US -0.65% CAGR, excess -14.66 points a year, max "
+        "drawdown -54.2%, 1,493 trades, win rate 37.4%, +0.05R a trade; India -4.48% CAGR, excess -18.02, max "
+        "drawdown -44.6%, 558 trades, 35.5%, -0.11R. Variants (v1.0, optimise): TIGHT_MAX_PCT=15 US 3.23% (excess "
+        "-10.78), India -1.09% (-14.63); TRAIL_SMA=20 US -3.25% (-17.26), India -2.46% (-15.99). In both markets the "
+        "best 10% of v1.0's trades made more than the whole book."
     )
     gate_docs = {
         "G1": (
@@ -219,6 +231,15 @@ class KullamagiStrategy(Strategy):
             "{MKT_FAST_EMA}-day EMA is above the {MKT_EMA}-day.\n"
             "- **Off switch:** with REQUIRE_MARKET = 0 (now {REQUIRE_MARKET}) the gate always passes.\n\n"
             "In the guide's event study this filter did not help in either market; it is kept because it is his rule."
+        ),
+        "G7": (
+            "The rest holds the upper part of the prior move.\n\n"
+            "- **The move:** from L, the lowest low of the {MOVERS_LOW_BARS} sessions before today, to H, the highest "
+            "high of the {MOVERS_HIGH_BARS} sessions before today.\n"
+            "- **Test:** (H − the rest's lowest low) ÷ (H − L) is at most {REST_MAX_GIVEBACK_PCT}%.\n"
+            "- **Fails:** a deeper pullback, or no move (H not above L).\n\n"
+            "Kullamägi's flags hold near the top of the run. In the v1.0 optimise runs, breakouts from bases that had "
+            "given back more than half the move lost money in every run."
         ),
     }
     watch_docs = {}
@@ -297,6 +318,7 @@ class KullamagiStrategy(Strategy):
         ("Rest average", "REST_SMA", "G4: the average the rest's lows must hold."),
         ("Lows vs that average", "REST_LOW_MIN_PCT_OF_SMA", "G4: each low at least this % of the average."),
         ("Prior-close average", "PRIOR_CLOSE_SMA", "G5: yesterday's close must be above this average."),
+        ("Maximum giveback", "REST_MAX_GIVEBACK_PCT", "G7: the share, %, of the prior move the rest's low may give back."),
         ("Market gate", "REQUIRE_MARKET", "1: G6 is a hard gate; 0: it always passes."),
         ("Index EMA", "MKT_EMA", "G6: the index closes above this exponential average."),
         ("Index fast EMA", "MKT_FAST_EMA", "G6: this EMA must be above the slower one."),
@@ -369,6 +391,7 @@ class KullamagiStrategy(Strategy):
         if n < REST_BARS + max(REST_SMA, PRIOR_CLOSE_SMA) + 1:
             for g in ("G3", "G4", "G5"):
                 result.fail(g, "insufficient history for the rest")
+            g7 = (False, "insufficient history for the rest")
         else:
             rest = d.iloc[-REST_BARS - 1:-1]
             hi, lo = float(rest["high"].max()), float(rest["low"].min())
@@ -387,6 +410,17 @@ class KullamagiStrategy(Strategy):
             else:
                 result.fail("G4", f"a low at {frac.min() * 100:.1f}% of the {REST_SMA}-day "
                                   f"(< {REST_LOW_MIN_PCT_OF_SMA}%)")
+
+            before = d.iloc[:-1]
+            move_hi = float(before["high"].iloc[-MOVERS_HIGH_BARS:].max())
+            move_lo = float(before["low"].iloc[-MOVERS_LOW_BARS:].min())
+            if move_hi > move_lo:
+                giveback = (move_hi - lo) / (move_hi - move_lo) * 100
+                ctx.extras["giveback_pct"] = giveback
+                g7 = ((True, f"rest gave back {giveback:.0f}% of the move") if giveback <= REST_MAX_GIVEBACK_PCT else
+                      (False, f"rest gave back {giveback:.0f}% of the move (> {REST_MAX_GIVEBACK_PCT}%)"))
+            else:
+                g7 = (False, "no prior move")
 
             prev = d["close"].iloc[-(PRIOR_CLOSE_SMA + 1):-1].astype(float)
             prev_close, prev_avg = float(prev.iloc[-1]), float(prev.mean())
@@ -408,6 +442,8 @@ class KullamagiStrategy(Strategy):
 
         rest_high = ctx.extras.get("rest_high")
         result.setups[S1] = bool(rest_high is not None and ctx.close > rest_high)
+        # G7 last: codes follow evaluation order, and it was added after G6 (v1.1)
+        (result.ok if g7[0] else result.fail)("G7", g7[1])
         result.recompute_first_fail()
         return result
 
