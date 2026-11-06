@@ -395,7 +395,12 @@ class QualityMomentumStrategy(PortfolioStrategy):
     style = "trend"
     horizon = "positional"
     runner = "quality_momentum"
-    live_selection = False       # baseline.current_selection would show the ranking without the filter
+
+    @classmethod
+    def live_filter(cls, market: str) -> "QualityFilter":
+        """The filter baseline.current_selection applies to the live ranking: the backtest's own, at its
+        default variant, on the filings public on the latest bar."""
+        return QualityFilter(market)
 
     # the baseline's tunables, read off it: the filter must be the only difference from the control
     top_n = MomentumBaselineStrategy.top_n

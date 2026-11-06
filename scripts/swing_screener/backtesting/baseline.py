@@ -306,12 +306,6 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     if not hasattr(cls, "lookback") or not hasattr(cls, "skip"):
         return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market, "available": False,
                 "note": f"{cls.name} does not rank stocks, so it has no ranked holdings to show here."}
-    # A ranking narrowed by more than prices (quality_momentum's point-in-time fundamentals) would be
-    # shown here WITHOUT its filter -- a list the strategy does not hold. Say so instead.
-    if getattr(cls, "live_selection", True) is False:
-        return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market, "available": False,
-                "note": f"{cls.name} filters its ranking on point-in-time fundamentals, which this live "
-                        "ranking does not apply, so it has no live holdings view yet."}
     # each knob as the backtest reads it: a strategy that does not set one gets run()'s default
     rank, weighting = getattr(cls, "rank", "momentum"), getattr(cls, "weighting", "equal")
     vol_window = getattr(cls, "vol_window", 63)
@@ -383,6 +377,12 @@ def _selection_state(market, cls, today, px, dv, tr, sma200, buffered, hold_rank
         trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[today],
         floor_row=floor_px.loc[today],
     )
+    # A ranking narrowed by more than prices (quality_momentum's point-in-time fundamentals) applies the
+    # SAME filter the backtest passes run() as `universe_filter`, read through the strategy's
+    # `live_filter`, so the page never lists a name the strategy would have dropped.
+    live_filter = cls.live_filter(market) if hasattr(cls, "live_filter") else None
+    if live_filter is not None:
+        mom = live_filter(today, mom)
     full = sorted(mom, key=mom.get, reverse=True)
     rank_of = {sym: i + 1 for i, sym in enumerate(full)}
     replayed = 0
@@ -405,6 +405,8 @@ def _selection_state(market, cls, today, px, dv, tr, sma200, buffered, hold_rank
                 trend_filter=True, liquidity_rank_top=(cls.liquidity_top or None), trend_row=tr.loc[d],
                 floor_row=floor_px.loc[d],
             )
+            if live_filter is not None:
+                m_d = live_filter(d, m_d)
             book = buffered_target(sorted(m_d, key=m_d.get, reverse=True), book, cls.top_n, hold_rank)
             replayed += 1
         held = buffered_target(full, book, cls.top_n, hold_rank)
