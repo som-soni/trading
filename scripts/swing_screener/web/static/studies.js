@@ -183,7 +183,7 @@ const Studies = (() => {
         // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
         // (a listing too new for the template is neither: neutral grey, so it never reads as a failure)
         // (the generic layer's kinds — pass / watch / fail — share the same three colours)
-        const kindKey = (s) => ({ vcp: "vcp", pass: "vcp", cheat: "cheat", watch: "cheat", young: "young", near: "near" })[s.kind] || "miss";
+        const kindKey = (s) => ({ vcp: "vcp", pass: "vcp", cheat: "cheat", watch: "cheat", young: "young", near: "near", shake: "shake" })[s.kind] || "miss";
         // a near miss (Minervini's S7): complete but for one rule missed narrowly -- amber, never the VCP's colour
         const NEAR = "#d4a017";
         const kindCol = (s) => (s.kind === "young" ? YOUNG : s.kind === "near" ? NEAR : col(kindKey(s)));
@@ -1180,6 +1180,7 @@ const Studies = (() => {
         { k: "broke", t: "What ended it", c: "#ef5350" },
         { k: "uptrend", t: "Uptrend", c: "#ab47bc" }, { k: "base", t: "Base · VCP", c: "#2962ff" },
         { k: "vcp", t: "VCP setup", c: "#22c55e" }, { k: "cheat", t: "Cheat entry setup", c: "#38bdf8" },
+        { k: "shake", t: "Shakeout setup", c: "#a78bfa" },
         { k: "miss", t: "Failed setup", c: "#f43f5e" }, { k: "flag", t: "Flag", c: "#f59e0b" },
         { k: "tight", t: "Tight area", c: "#ff9800" },
         { k: "buy", t: "Buy", c: "#26a69a" }, { k: "stop", t: "Stop", c: "#ef5350" }, { k: "target", t: "Target", c: "#4caf50" }],
@@ -1221,6 +1222,7 @@ const Studies = (() => {
         const keyRows = (YOUNG) => [
           ["frame", col("vcp"), "Green frame", "the selected setup is a VCP (✓)."],
           ["frame", col("cheat"), "Blue frame", "not a VCP, but it triggered a cheat entry: a close through a tight shelf low in the base."],
+          ["frame", col("shake"), "Lavender frame", "a shakeout (S9): the base undercut its earlier pullback lows in one sharp drop on heavy volume, won them back within days, then closed through the base's high. Bought without the VCP's contractions, dry-up and tight area; the dot marks the shakeout's low."],
           ["frame", "#d4a017", "Gold frame", "a near miss (S7): the base passed every rule but one, which it missed by a small margin; the header names the rule. The strategy buys its breakout as a setup of its own, so its results are measured apart from a full VCP's."],
           ["dashframe", YOUNG, "Grey dashed frame", "too new to judge (?): the stock lacks the history for a 200-day average."],
           ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],

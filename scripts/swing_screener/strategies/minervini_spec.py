@@ -3323,7 +3323,10 @@ class MinerviniSpecStrategy(Strategy):
         def count_of(key) -> dict | None:
             return None if key is None else base_number(daily, int(daily.index.get_loc(key)), adv)
 
-        out = []
+        out = self._shakeouts(daily, cfg, dets, start, fills)
+        shake_bars = {s["_signal"] for s in out}
+        for s in out:
+            del s["_signal"]
         # A run's fill that today's rules see no entry for -- no cheat crossed the bar before it, no breakout
         # just before it: a run of an older version bought what these rules no longer take. Drawn as the base
         # stood on the signal bar, so the trade sits in the setup it was bought from rather than in the base
@@ -3334,7 +3337,7 @@ class MinerviniSpecStrategy(Strategy):
             if j < start or j >= len(daily):
                 continue
             p, key = dets[j], dets[j]["bh_date"]
-            if key is None or key in signalled:
+            if key is None or key in signalled or j in shake_bars:   # an S9 fill is drawn as its shakeout
                 continue
             bo = bases.get(key, {}).get("breakout")
             if bo is not None and 0 <= j - bo <= 3:           # the breakout itself: drawn by the base below
@@ -3387,6 +3390,126 @@ class MinerviniSpecStrategy(Strategy):
                                    count=count_of(key)))
         out += self._power_plays(daily, cfg)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
+
+    def _shakeouts(self, daily: pd.DataFrame, cfg: MarketConfig, dets: list, start: int, fills: list) -> list[dict]:
+        """S9 on the chart: each base's shakeout breakout, by evaluate's own test -- the bar before has a
+        `shakeout` (an undercut of earlier pullback lows on volume, won back), and this bar closes through the
+        base's highest high passing MV-01's `entry_misses`, on a session that passes the screen. `dets` are
+        bases_live's per-bar detections (evaluate's `prev` is the same detect on the bar before). The first
+        crossing a base's shakeout makes that the strategy would buy ends that base's search, as EN-04's one
+        entry does; a refused one is kept only while no other turns up, so the card can say why. A crossing
+        that is also MV-01's or S7's breakout is that setup's, drawn by the base, as evaluate gives them
+        precedence (S6, the flat base, is not re-tested here). Each carries `_signal`, its bar, for bases_live."""
+        if not SHAKEOUT_ON:
+            return []
+        close, hi_, lo_, vo_ = (daily[k].to_numpy(float) for k in ("close", "high", "low", "volume"))
+        v50_ = daily["vol_sma50"].to_numpy(float) if "vol_sma50" in daily else np.full(len(daily), np.nan)
+        found: dict = {}
+        for i in range(start + 1, len(daily)):
+            p = dets[i - 1]
+            if not (p and p.get("bh") and p.get("bh_date") is not None) or p["fail"] in ("VCP-01", "VCP-02", "VCP-03", "VCP-05"):
+                continue
+            if (p["ok"] or (NEAR_MISS and p.get("near_ok"))) and p.get("pivot") and close[i - 1] <= p["pivot"] < close[i]:
+                continue
+            got = found.get(p["bh_date"])
+            if got is not None and not got["missed"]:
+                continue
+            b0 = int(daily.index.get_loc(p["bh_date"]))
+            sp = float(hi_[b0:i].max())            # the base's highest high, through the bar before
+            if not (close[i - 1] <= sp < close[i]):
+                continue
+            so = shakeout(p, daily.iloc[:i])
+            if so is None:
+                continue
+            miss, vr, up = entry_misses(close[i], hi_[i], lo_[i], vo_[i], v50_[i], sp)
+            screen = self._screen_miss(cfg, daily, i)
+            missed = (f"the stock failed the strategy's screen that session -- {screen}" if screen
+                      else entry_misses_text(miss, vr, up, close[i], sp) if any(miss.values()) else None)
+            if got is None or not missed:
+                found[p["bh_date"]] = {"i": i, "b0": b0, "sp": sp, "so": so, "missed": missed}
+        out = []
+        for g in found.values():
+            traded = any(f == daily.index[g["i"] + 1] for f in fills) if g["i"] + 1 < len(daily) else False
+            s = self._shake_setup(daily, cfg, g["b0"], g["i"], g["sp"], g["so"], g["missed"])
+            s["anchored"] = traded
+            s["_signal"] = g["i"]
+            out.append(s)
+        return out
+
+    def _shake_setup(self, daily: pd.DataFrame, cfg: MarketConfig, b0: int, i: int, sp: float, so: dict,
+                     missed: str | None) -> dict:
+        """One S9 for the chart, in `_setup`'s shape: the base from its high, the shakeout under the earlier
+        lows and its recovery, and the entry build_plans places -- bought at the next open after the close
+        through the base's high, stopped under that session's low (`pivot_stop`): an illustration, as for a VCP."""
+        idx = daily.index
+        day = lambda k: str(idx[k].date())   # noqa: E731
+        px = lambda v: f"{v:,.2f}"           # noqa: E731
+        close, lows = daily["close"].to_numpy(float), daily["low"].to_numpy(float)
+        lo_i = int(idx.get_loc(so["date"]))
+        rec = next((k for k in range(lo_i + 1, min(len(daily), lo_i + 1 + SHAKEOUT_RECOVER_DAYS)) if close[k] > so["prior_low"]), lo_i)
+        under = (so["prior_low"] - so["low"]) / so["prior_low"] * 100
+        depth = (sp - float(lows[b0:i].min())) / sp * 100
+        buy, stop = float(close[i]), pivot_stop(float(lows[i]), cfg.tick_size)
+        risk = buy - stop
+        risk_pct = risk / buy * 100 if buy > 0 else float("nan")
+        ok_risk = risk > 0 and risk_pct <= MAX_STOP_PCT
+        entry_to = day(min(len(daily) - 1, i + 1 + TIME_STOP_DAYS))
+        tick = lambda c: {"code": c[0], "name": c[1], "value": c[2], "limit": c[3], "state": c[4]}  # noqa: E731
+        skip = [] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]
+        zones = [
+            {"key": "base", "title": "Base", "tag": f"{max(1, round((i - b0) / 5))}W {depth:.0f}%", "state": "pass",
+             "from": day(b0), "to": day(i - 1), "line": f"{i - b0} sessions, {depth:.1f}% deep",
+             "text": (f"The base, from its high on {day(b0)}. Its highest high through the session before the breakout, "
+                      f"{px(sp)}, is S9's pivot. A shakeout is bought without the VCP's contractions, dry-up and tight "
+                      f"area; it needs the base's own qualifications (VCP-01, 02, 03 and 05)."),
+             "shapes": [{"shape": "level", "from": day(b0), "to": day(i), "price": sp, "role": "pivot",
+                         "label": f"base high {px(sp)}"}]},
+            {"key": "shakeout", "title": "Shakeout", "state": "pass", "from": day(lo_i), "to": day(rec),
+             "line": f"{under:.1f}% under the earlier lows on {so['vol_ratio']:.1f}x volume",
+             "text": (f"On {day(lo_i)} the price fell to {px(so['low'])}, {under:.1f}% under the lows of the "
+                      f"{SHAKEOUT_PRIOR_LEGS} pullbacks before it ({px(so['prior_low'])}), on {so['vol_ratio']:.1f}x "
+                      f"the 50-day volume -- at least {SHAKEOUT_VOL:g}x -- and closed back above them on {day(rec)}, "
+                      f"within {SHAKEOUT_RECOVER_DAYS} sessions: the weak holders were flushed out."),
+             "checks": [tick(("S9", "Undercut volume", f"{so['vol_ratio']:.2f}x", f"at least {SHAKEOUT_VOL:g}x", "pass")),
+                        tick(("S9", "Won back", f"{rec - lo_i} sessions", f"within {SHAKEOUT_RECOVER_DAYS}", "pass")),
+                        tick(("S9", "Shakeout to breakout", f"{i - lo_i} sessions", f"at most {SHAKEOUT_WINDOW}", "pass"))],
+             "shapes": [{"shape": "level", "from": day(max(b0, lo_i - 15)), "to": day(rec), "price": so["prior_low"],
+                         "role": "dim", "dash": True, "label": f"earlier lows {px(so['prior_low'])}"},
+                        {"shape": "dots", "role": "flag",
+                         "points": [{"at": day(lo_i), "price": so["low"], "label": f"shakeout −{under:.1f}%"}]}]},
+        ]
+        if not missed:
+            levels = [("buy", buy, f"Buy {px(buy)}"), ("stop", stop, f"Stop {px(stop)}"),
+                      ("breakeven", buy + BREAKEVEN_R * risk, f"+{BREAKEVEN_R:g}R")]
+            zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip else "fail", "from": day(i),
+                          "to": entry_to, "illustration": True, "skip": skip,
+                          "line": f"buy {px(buy)} · stop {px(stop)}",
+                          "text": (f"Where this strategy's rules place the trade: an illustration, not a recommendation and "
+                                   f"not a backtest result. On {day(i)} the close went through {px(sp)} with MV-01's tests "
+                                   f"(volume at least {VOL_MULT:g}x, within {BUY_RANGE_PCT:g}% of the pivot, in the upper "
+                                   f"part of the day's range); the buy is the next open, about that close, and the stop goes "
+                                   f"{STOP_BUFFER_PCT:g}% under the breakout session's low, at {px(stop)}: a risk of "
+                                   f"{risk_pct:.1f}%. The shakeout's own low is far below the buy." + _NO_TARGET
+                                   + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
+                          "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {MAX_STOP_PCT:g}%",
+                                           "pass" if ok_risk else "fail"))],
+                          "shapes": [{"shape": "level", "from": day(i), "to": entry_to, "price": v, "role": role,
+                                      "label": lab, "dash": role != "buy"} for role, v, lab in levels]})
+        title = "Shakeout ✓" + (" · trade skipped" if skip and not missed else " · no valid breakout" if missed else "")
+        summary = (f"A shakeout: on {day(lo_i)} the base undercut its earlier lows by {under:.1f}% on {so['vol_ratio']:.1f}x "
+                   f"volume and won them back. "
+                   + (f"It crossed the base's high on {day(i)}, but the strategy would not have bought: {missed}." if missed
+                      else f"Broke out on {day(i)}, but the strategy would skip it: {' and '.join(skip)}." if skip
+                      else f"Broke out through the base's high on {day(i)}."))
+        top = max(sp, buy + BREAKEVEN_R * risk if not missed and risk > 0 else sp)
+        bottom = min(so["low"], stop if not missed else so["low"])
+        frame_to = entry_to if not missed else day(i)
+        return {"from": day(b0), "base_from": day(b0), "to": frame_to, "kind": "shake" if not missed else "fail",
+                "complete": not missed, "fail": None, "base_number": None,
+                "breakout": day(i) if not missed else None, "crossed": day(i) if missed else None, "live": False,
+                "as_of": day(i), "title": title, "summary": summary,
+                "frame": {"from": day(b0), "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
+                "zones": zones}
 
     @staticmethod
     def _target_checks(px, target, uncapped, capped: bool, r_mult, ok_r: bool) -> list[dict]:
