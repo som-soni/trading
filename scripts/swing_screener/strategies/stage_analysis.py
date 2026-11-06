@@ -167,11 +167,13 @@ def line_state(weekly: pd.DataFrame) -> tuple[str, float]:
     return ("rising" if c > b else "falling" if c < -b else "flat"), c
 
 
-def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None]]:
+def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None], list[float]]:
     """Weinstein's stage per weekly bar, as a state machine with memory (0 = not yet decidable).
 
-    Returns (stage, onset) per week: the stage as known at that week's close, and the index of the week
-    the move that produced it began. A stage changes only when the next stage's condition has held
+    Returns (stage, onset, ceiling) per week: the stage as known at that week's close, the index of the
+    week the move that produced it began, and in Stage 3 the top's high -- the close that would start
+    3 -> 2; while that breakout's run is underway, the high as it stood before the breakout week (NaN in
+    any other stage). A stage changes only when the next stage's condition has held
     CONFIRM_WEEKS weeks in a row, so the stage as KNOWN lags the move by that much; `onset` dates the
     stage back to the first of those weeks, which is how Weinstein draws it (Stage 2 from the breakout
     week). Both are point in time: at the confirming week the run behind it has already closed.
@@ -211,8 +213,9 @@ def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None]]:
     n = len(weekly)
     vals: list[int] = [0] * n
     onset: list[int | None] = [None] * n
+    ceiling: list[float] = [float("nan")] * n
     if n <= MA_WEEKS + SLOPE_WEEKS:
-        return vals, onset
+        return vals, onset, ceiling
     chg, band = _slope_and_band(weekly)
     close, lv = weekly["close"].tolist(), ma30(weekly).tolist()
     high, low = weekly["high"].astype(float).tolist(), weekly["low"].astype(float).tolist()
@@ -229,6 +232,7 @@ def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None]]:
     stage, start = 0, None
     hi = lo = peak = None        # this stage's range before the current week; the advance's high
     rose2, rising_run = False, 0
+    breakout_from = float("nan")  # the top's high before the week a 3 -> 2 run began
     runs: dict[int, int] = {}    # target stage -> weeks its condition has held, counted from its start
     for i in range(MA_WEEKS + SLOPE_WEEKS, n):
         if lv[i] != lv[i] or cv[i] != cv[i]:   # NaN: carry the last stage
@@ -246,6 +250,7 @@ def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None]]:
             vals[i], onset[i] = stage, start
             continue
         rising_run = rising_run + 1 if st == "rising" else 0
+        top_before = peak
         if stage == 2:
             rose2 = rose2 or rising_run >= C
         # (target, the week may START the run, the week HOLDS it), in priority order
@@ -284,7 +289,12 @@ def _stage_machine(weekly: pd.DataFrame) -> tuple[list[int], list[int | None]]:
             if stage in (2, 3):
                 peak = max(peak, high[i])
         vals[i], onset[i] = stage, start
-    return vals, onset
+        if stage == 3:
+            k2 = runs.get(2, 0)
+            if k2 == 1:
+                breakout_from = top_before
+            ceiling[i] = breakout_from if k2 else peak
+    return vals, onset, ceiling
 
 
 def stage_series(weekly: pd.DataFrame) -> pd.Series:
@@ -298,7 +308,7 @@ def stage_periods(weekly: pd.DataFrame) -> list[dict]:
     move began (the breakout, the breakdown, the line turning) to the week before the next one began.
     Each period carries `known`, the week the machine confirmed it, CONFIRM_WEEKS after its start. The
     chart draws these; nothing trades on them, because a period's start is known only at `known`."""
-    vals, onset = _stage_machine(weekly)
+    vals, onset, _ = _stage_machine(weekly)
     out: list[dict] = []
     for i, (v, s) in enumerate(zip(vals, onset)):
         if not v:
@@ -310,6 +320,13 @@ def stage_periods(weekly: pd.DataFrame) -> list[dict]:
         else:
             out[-1]["end"] = i
     return out
+
+
+def stage3_ceiling(weekly: pd.DataFrame) -> float:
+    """In Stage 3 at the last week, the top's high: a close above it starts the 3 -> 2 breakout (while
+    one is underway, the high it broke). NaN in any other stage."""
+    c = _stage_machine(weekly)[2]
+    return c[-1] if c else float("nan")
 
 
 def stage_of(weekly: pd.DataFrame) -> int:
@@ -404,7 +421,9 @@ class StageAnalysisStrategy(Strategy):
          "gone (the range breaks stop a wobble at the band's edge toggling the stage). The chart now draws each stage "
          "from that first week, as Weinstein does -- Stage 2 from the breakout week -- and says it was confirmed "
          "{CONFIRM_WEEKS} weeks later; what the gates read is unchanged in timing, the stage as known at each week's "
-         "close. Over 180 random stocks: stage changes per 100 weeks 5.7 -> 3.8, stage runs under 6 weeks "
+         "close. W2 no longer flags the week a stock closes above its top's high: that is the 3 -> 2 breakout, "
+         "Weinstein's buy, and with Stage 3 now lasting until a top resolves, flagging it would refuse the "
+         "advance resuming. Over 180 random stocks: stage changes per 100 weeks 5.7 -> 3.8, stage runs under 6 weeks "
          "3,536 -> 787; the Stage 2 share of weeks falls from 39% to 29% (a creep above a rising line without a "
          "breakout is Stage 1 now), Stage 1 rises from 12% to 28%, Stage 4 falls from 42% to 36%. tests.test_stage_machine pins the rules on a synthetic history that 2.10 fails. Lupin's Stage 2 now runs "
          "from its June 2023 breakout to February 2025, Nvidia's 2022 reads Stage 3 from January and Stage 4 from "
@@ -800,7 +819,10 @@ class StageAnalysisStrategy(Strategy):
               "before it is below {VOL_MULT}. Checked only on a breakout.\n"
               "- **Effect:** the decision drops to WATCH, so the backtest does not buy it.",
         "W2": "The stock is in Stage 3: its line flattened or the close dropped below it after an advance.\n\n"
-              "- **Test:** the stage machine on the stock's completed weeks reads Stage 3.\n"
+              "- **Test:** the stage machine on the stock's completed weeks reads Stage 3, and this week's close "
+              "is not above the top's high (the highest weekly high of the Stage 2 and 3; while a breakout "
+              "above it is being confirmed, the high it broke). A close above it is Weinstein's breakout out of "
+              "the top, the start of 3→2, so it is not flagged.\n"
               "- **Effect:** the decision drops to WATCH, so the backtest does not buy it.",
         "W3": "The structural stop is more than {MAX_STOP_PCT}% below the entry.\n\n"
               "- **Test:** the higher of the {MA_WEEKS}-week line and the base low, less {STOP_BUFFER_PCT}%, "
@@ -1173,7 +1195,9 @@ class StageAnalysisStrategy(Strategy):
         stage_now = stage_of(done)
         result.setups[STG01] = broke or armed
         result.watch_flags["W1"] = bool(broke and not (vol_ratio >= VOL_MULT))
-        result.watch_flags["W2"] = stage_now == 3
+        # Weinstein buys a breakout OUT of a top: a close above the top's high starts Stage 2 again (3 -> 2),
+        # so that week is the advance resuming, not a Stage 3 to stay out of (2.11)
+        result.watch_flags["W2"] = bool(stage_now == 3 and not (wclose > stage3_ceiling(done)))
         if result.watch_flags["W1"]:
             result.watch_notes["W1"] = f"volume {vol_ratio:.2f}x the {VOL_WEEKS}-week average"
         if result.watch_flags["W2"]:
