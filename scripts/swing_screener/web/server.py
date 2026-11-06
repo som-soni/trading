@@ -11,6 +11,7 @@ process never executes one.
 import datetime as dt
 import inspect
 import json
+import math
 import re
 import threading
 from functools import lru_cache
@@ -2247,7 +2248,19 @@ def company_page(market: str, symbol: str):
     pending = [it for it in _jq().items(50)["queued"] + _jq().items(0)["running_all"]
                if it and "financials" in it.get("command", "") and symbol in it.get("command", "")]
     d["fetch_pending"] = pending[0]["id"] if pending else None
-    return json.loads(json.dumps(d, default=str))
+    return _finite(json.loads(json.dumps(d, default=str)))
+
+
+def _finite(x):
+    """NaN / infinity -> None, all the way down: they are not JSON, and one (a new listing's RS rank, not
+    computed yet) would fail the whole response with a 500. The page shows None as a blank."""
+    if isinstance(x, float):
+        return x if math.isfinite(x) else None
+    if isinstance(x, dict):
+        return {k: _finite(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_finite(v) for v in x]
+    return x
 
 
 @app.post("/api/company/fetch")
