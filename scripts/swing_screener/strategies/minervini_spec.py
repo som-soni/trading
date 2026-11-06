@@ -3203,7 +3203,11 @@ class MinerviniSpecStrategy(Strategy):
         whose cheat entry the run bought -- a cheat crossed on the bar before the fill, else the base's first
         cheat when it is the closest of its events before the fill, within 21 days -- is drawn as that cheat, judged on the base as it stood the bar before,
         not as a later breakout the run never took."""
-        start = 2 * VCP.swing_k + VCP.prior_window
+        # from the session the strategy first judges a stock: a young listing at YOUNG_MIN_BARS (the detector waives
+        # the history it lacks), else once VCP-01's advance can be measured. Drawn from the later point only, a new
+        # listing's first months showed nothing the strategy traded in them (DMART.NS, bought 2017-07-04, listed
+        # that March)
+        start = min(2 * VCP.swing_k + VCP.prior_window, YOUNG_MIN_BARS if YOUNG_LISTING else 10 ** 9)
         ov = overhead_at(daily)
         dets = [None] * len(daily)
         for i in range(start, len(daily)):
@@ -3334,29 +3338,6 @@ class MinerviniSpecStrategy(Strategy):
         def count_of(key) -> dict | None:
             return None if key is None else base_number(daily, int(daily.index.get_loc(key)), adv)
 
-        # A run's fill that today's rules see no entry for -- no cheat crossed the bar before it, no breakout
-        # just before it: a run of an older version bought what these rules no longer take. Drawn as the base
-        # stood on the signal bar, so the trade sits in the setup it was bought from rather than in the base
-        # as it looked months later (ANANDRATHI.NS, a 1.22 cheat bought 2025-12-26, drew inside a base judged
-        # in March 2026, its entry zone and shelf nowhere near the buy).
-        for f in fills:
-            j = int(daily.index.searchsorted(f)) - 1          # the signal bar: the session before the fill
-            if j < start or j >= len(daily):
-                continue
-            p, key = dets[j], dets[j]["bh_date"]
-            if key is None or key in signalled:
-                continue
-            bo = bases.get(key, {}).get("breakout")
-            if bo is not None and 0 <= j - bo <= 3:           # the breakout itself: drawn by the base below
-                continue
-            s_ = self._setup(daily, cfg, p, j, None, None, False, ov=ov, count=count_of(key))
-            s_["anchored"] = True
-            s_["summary"] = (f"Drawn as the base stood on {ts(j).date()}, the session before the selected run "
-                             f"bought it; today's rules: " + s_["summary"][0].lower() + s_["summary"][1:])
-            fill_to = str(ts(min(len(daily) - 1, j + 1 + TIME_STOP_DAYS)).date())
-            s_["to"] = max(s_["to"], fill_to)
-            s_["frame"]["to"] = max(s_["frame"]["to"], fill_to)
-            out.append(s_)
         for key, b in bases.items():
             bo = b["breakout"]
             ch = signalled.get(key) or b["cheat"]
@@ -3396,6 +3377,71 @@ class MinerviniSpecStrategy(Strategy):
             out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed"), near=b.get("near"), ov=ov,
                                    count=count_of(key)))
         out += self._power_plays(daily, cfg)
+        # A drawn breakout (S1, S2, S7, a power play) the selected run bought: the fill the session after it (at the
+        # open) or on it (S2's buy-stop, filled on the close through), with the run's initial stop (`_run_bought`).
+        # Until this, only a cheat was tied to the run's trade, so a run's near-miss or power-play fill drew beside
+        # a base judged on its signal bar and the chart picked that one (DDD 2013-05-31, CRK 2018-07-12).
+        explained = set(own_fills)
+        for s_ in out:
+            if s_.get("anchored") or not s_.get("breakout") or not anchors:
+                continue
+            st = next((sh["price"] for z in s_.get("zones", []) for sh in z.get("shapes", [])
+                       if sh.get("shape") == "level" and sh.get("role") == "stop"), None)
+            k = int(daily.index.get_loc(pd.Timestamp(s_["breakout"])))
+            hit = next((i for i in (k + 1, k) if st is not None and self._run_bought(daily, anchors, i, st)), None)
+            if hit is not None:
+                s_["anchored"] = True
+                explained.add(daily.index[hit])
+        for s_ in out:
+            if s_.get("anchored") and s_.get("kind") not in ("fail", "young"):
+                explained.update(f for f in fills if s_["base_from"] <= str(f.date()) <= s_["to"])
+        # A run's fill that today's rules see no entry for -- no cheat crossed the bar before it, no breakout
+        # just before it: a run of an older version bought what these rules no longer take. Drawn as the base
+        # stood on the signal bar, so the trade sits in the setup it was bought from rather than in the base
+        # as it looked months later (ANANDRATHI.NS, a 1.22 cheat bought 2025-12-26, drew inside a base judged
+        # in March 2026, its entry zone and shelf nowhere near the buy).
+        for f in fills:
+            j = int(daily.index.searchsorted(f)) - 1          # the signal bar: the session before the fill
+            if j < start or j >= len(daily):
+                continue
+            if f in explained:
+                continue
+            # an MV-02 buy-stop placed days before the fill, from a base complete then and re-measured since
+            # (DELTACORP.NS: placed 2013-12-03 under a 93.95 pivot, it poked through twice and closed back, then
+            # filled on 2013-12-13's close, by when the base read as failing VCP-06): the bar that placed it
+            from ..backtesting.portfolio_sim import PENDING_EXPIRY_BDAYS
+            placed = next((i for i in range(j, max(start, j - PENDING_EXPIRY_BDAYS) - 1, -1)
+                           if (dets[i]["ok"] or (NEAR_MISS and dets[i].get("near_ok"))) and dets[i].get("tight_low")
+                           and self._run_bought(daily, anchors, j + 1, pivot_stop(dets[i]["tight_low"], cfg.tick_size))), None)
+            if placed is not None:
+                s_ = self._setup(daily, cfg, dets[placed], placed, None, None, False, ov=ov, count=count_of(dets[placed]["bh_date"]))
+                s_["anchored"] = True
+                s_["summary"] = (f"Drawn as the base stood on {ts(placed).date()}, when the buy-stop the selected run filled "
+                                 f"on {f.date()} was placed. " + s_["summary"])
+                fill_to = str(ts(min(len(daily) - 1, j + 1 + TIME_STOP_DAYS)).date())
+                s_["to"] = max(s_["to"], fill_to)
+                s_["frame"]["to"] = max(s_["frame"]["to"], fill_to)
+                out.append(s_)
+                continue
+            p = dets[j]
+            # a breakout's close resets the base it broke out of (MV-01 is judged from the bar before), so a signal
+            # bar showing no base yet is drawn as the base stood the session before it
+            if p["fail"] in ("VCP-01", "VCP-02") and j - 1 >= start and dets[j - 1]["fail"] not in ("VCP-01", "VCP-02"):
+                j, p = j - 1, dets[j - 1]
+            key = p["bh_date"]
+            if key is None or key in signalled:
+                continue
+            bo = bases.get(key, {}).get("breakout")
+            if bo is not None and 0 <= j - bo <= 3:           # the breakout itself: drawn by the base
+                continue
+            s_ = self._setup(daily, cfg, p, j, None, None, False, ov=ov, count=count_of(key))
+            s_["anchored"] = True
+            s_["summary"] = (f"Drawn as the base stood on {ts(j).date()}, the session before the selected run "
+                             f"bought it; today's rules: " + s_["summary"][0].lower() + s_["summary"][1:])
+            fill_to = str(ts(min(len(daily) - 1, j + 1 + TIME_STOP_DAYS)).date())
+            s_["to"] = max(s_["to"], fill_to)
+            s_["frame"]["to"] = max(s_["frame"]["to"], fill_to)
+            out.append(s_)
         return sorted(out, key=lambda x: x["base_from"] or x["from"])
 
     @staticmethod
