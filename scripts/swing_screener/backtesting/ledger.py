@@ -235,7 +235,10 @@ def _clean(market: str, t: dict, source: str, default_date) -> dict:
     px = float(px) if px not in (None, "") else None
     if px is not None and px <= 0:
         raise ValueError(f"{sym}: price must be positive")
-    out.update(symbol=normalise_symbol(market, sym), shares=n, price=px, amount=None)
+    # a paper book's dual momentum leg holds the asset series itself (NDX_INR, CASH_FUND), not a ticker
+    from .paper import _asset_keys
+    keep = src == "paper" and sym in _asset_keys(market)
+    out.update(symbol=sym if keep else normalise_symbol(market, sym), shares=n, price=px, amount=None)
     return out
 
 

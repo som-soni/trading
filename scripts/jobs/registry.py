@@ -626,6 +626,22 @@ def _positions(ctx: Ctx) -> None:
     ctx.step.stats = st
 
 
+def _paper(ctx: Ctx) -> None:
+    """Paper books (backtesting/paper.py): fill each paper book's pending decisions at the next stored open,
+    with the strategy's own cost per side, then record what the strategy decides on the latest close -- a
+    month-end rebalance, or the latest run's tradeable setups and the tracker's exits. Stored data only."""
+    from swing_screener.backtesting import paper
+    from swing_screener.marketdata import cache
+    with cache.offline():
+        done = paper.run(ctx.market)
+    if not done:
+        ctx.step.skip("no paper books in this market")
+        return
+    ctx.step.detail = " · ".join(f"{b}: {d['filled']} filled, {d['decided']} decided"
+                                 + (f", {d['skipped']} skipped" if d["skipped"] else "") for b, d in done.items())
+    ctx.step.stats = {b: d for b, d in done.items()}
+
+
 # A backtest's window comes from its STAGE -- swing_screener/backtesting/windows.py -- not a constant here.
 
 
@@ -1093,6 +1109,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         after=("prices",), expand=_strategy_steps),
     Job("positions", "screening", "open positions: each book's open signal trades re-managed by its strategy's own exit on "
         "stored bars — current stop and status (backtesting/tracker.py)", "daily", False, _positions, after=("prices",)),
+    Job("paper", "screening", "paper books: each paper book's decisions filled at the next open with the strategy's own "
+        "costs, and the latest close's decisions recorded — a forward record without money (backtesting/paper.py)",
+        "daily", False, _paper, after=("prices", "strategies", "positions")),
     Job("backtest", "screening", "backtest: walk-forward simulation of a strategy's full history, with its documented exit policy (slow)",
         "on demand", False, after=("prices",), expand=_backtest_steps),
     Job("group_research", "screening", "research: does group strength improve forward returns? (writes research/group-strength-study.md)",
@@ -1120,7 +1139,7 @@ PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
               "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "market_snapshot", "sectors",
-                       "screens", "breakout_watch", "postmarket", "strategies", "positions", "report", "ingest"],
+                       "screens", "breakout_watch", "postmarket", "strategies", "positions", "paper", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
                         "re-run only the strategies left stale, then check everything is ready",

@@ -71,8 +71,9 @@ def _startup() -> None:
     rebalance_mod.init_schema()
     from ..broker import kite as kite_mod
     kite_mod.init_schema()
-    from ..backtesting import tracker as tracker_mod
+    from ..backtesting import tracker as tracker_mod, paper as paper_mod
     tracker_mod.init_schema()
+    paper_mod.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
     threading.Thread(target=_background_refresh, daemon=True).start()  # what the Today page needs, computed ahead
     threading.Thread(target=db_mod.releasing(_prewarm_sectors), daemon=True).start()
@@ -1472,11 +1473,19 @@ def portfolio_selection(strategy: str, market: str, limit: int | None = None):
     return baseline.current_selection(market, strategy, limit=limit)
 
 
-def _book_ok(book: str, market: str) -> None:
-    """404 unless `book` names a strategy (portfolio or signal) in a known market: a book is the money
-    run under one strategy."""
+def _book_ok(book: str, market: str, writable: bool = False) -> None:
+    """404 unless `book` names a strategy (portfolio or signal) in a known market -- a book is the money run
+    under one strategy -- or one of its paper books. A paper book's ledger is the `paper` job's alone, so
+    `writable` refuses it."""
+    from ..backtesting import paper
     from ..strategies import _REGISTRY, portfolio_strategies
-    if market not in MARKETS or (book not in portfolio_strategies() and book not in _REGISTRY):
+    if market not in MARKETS:
+        raise HTTPException(404, "unknown market")
+    if paper.is_paper(book, market):
+        if writable:
+            raise HTTPException(400, "a paper book is traded by the paper job only")
+        return
+    if book not in portfolio_strategies() and book not in _REGISTRY:
         raise HTTPException(404, "unknown strategy or market")
 
 
@@ -1495,7 +1504,7 @@ def put_book_positions(strategy: str, market: str, body: dict):
     ledger is recorded as manual trades at the latest closes, plus a cash reconciliation -- not
     overwritten. `dry_run: true` returns those trades without recording them."""
     from ..backtesting import rebalance
-    _book_ok(strategy, market)
+    _book_ok(strategy, market, writable=True)
     try:
         positions, cash = dict(body.get("positions") or {}), float(body.get("cash") or 0)
         if body.get("dry_run"):
@@ -1519,7 +1528,7 @@ def book_record_trades(book: str, market: str, body: dict):
     """Record fills you confirmed: {trades: [{side, symbol, shares, price, costs, trade_date, rebalance_id,
     ...}], source: manual | kite}. Refused as a whole if any would sell shares the book does not hold."""
     from ..backtesting import ledger
-    _book_ok(book, market)
+    _book_ok(book, market, writable=True)
     src = body.get("source") or "manual"
     if src not in ("manual", "kite"):
         raise HTTPException(400, "source must be manual or kite (paper trades are the paper job's)")
@@ -1534,7 +1543,7 @@ def book_record_trades(book: str, market: str, body: dict):
 def book_delete_trade(book: str, market: str, trade_id: int):
     """Remove one mistaken ledger row (refused if what remains would sell shares never held)."""
     from ..backtesting import ledger
-    _book_ok(book, market)
+    _book_ok(book, market, writable=True)
     try:
         if not ledger.delete_trade(book, market, trade_id):
             raise HTTPException(404, "no such trade in this book")
@@ -1665,7 +1674,7 @@ def open_positions(market: str):
 
     if market not in MARKETS:
         raise HTTPException(400, f"unknown market {market}")
-    rows = tracker.statuses(market)
+    rows = [r for r in tracker.statuses(market) if r["book"] in _REGISTRY]   # paper books have their own page
     seen = {r["trade_id"] for r in rows}
     books = [b for (b,) in q("SELECT DISTINCT book FROM book_trades WHERE market=%s AND initial_stop IS NOT NULL",
                              (market,)) if b in _REGISTRY]
@@ -1687,7 +1696,7 @@ def take_setup(market: str, body: dict):
     from ..backtesting import ledger, rebalance
 
     strategy = str(body.get("strategy") or "")
-    _book_ok(strategy, market)
+    _book_ok(strategy, market, writable=True)
     sym = rebalance.normalise_symbol(market, str(body.get("symbol") or ""))
     rows = _latest_strategy_rows(market).get(strategy, (None, []))
     fr = next((r for s_, r in rows[1] if s_ == sym), None)
@@ -1715,6 +1724,55 @@ def take_setup(market: str, body: dict):
         except Exception as exc:  # noqa: BLE001 -- the trade is recorded; the close routine refreshes it anyway
             print(f"positions {market}: could not queue a refresh ({exc})")
     return {"trade_id": ids[0], "queued": queued}
+
+
+@app.get("/api/paper/{market}")
+def paper_list(market: str):
+    """The market's paper books (backtesting/paper.py), each with its forward record's headline, and the
+    strategies a paper book can be started for."""
+    from ..backtesting import paper
+    from ..strategies import _REGISTRY, portfolio_strategies
+    from ..strategies import docs as sdocs
+
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    out = []
+    for b in paper.paper_books(market):
+        r = paper.record(b["book"], market)
+        out.append({**b, "name": sdocs.strategy_doc(b["strategy"])["name"], "as_of": r.get("as_of"),
+                    "return_pct": r.get("return_pct"), "benchmark_pct": r.get("benchmark_pct"),
+                    "max_drawdown_pct": r.get("max_drawdown_pct"), "trades": len(r.get("trades", [])),
+                    "pending": len(r.get("pending", []))})
+    can = []
+    for k in sorted(set(_REGISTRY) | set(portfolio_strategies())):
+        try:
+            paper.kind_of(k)
+        except ValueError:
+            continue
+        can.append({"key": k, "name": sdocs.strategy_doc(k)["name"]})
+    return {"market": market, "books": out, "strategies": can, "account_size": MARKETS[market].account_size}
+
+
+@app.post("/api/paper/{market}")
+def paper_create(market: str, body: dict):
+    """Start a paper book: {strategy, capital?}. The `paper` job trades it from the next close on."""
+    from ..backtesting import paper
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    try:
+        return paper.create(str(body.get("strategy") or ""), market, body.get("capital"))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/paper/{market}/{book}")
+def paper_record(market: str, book: str):
+    """A paper book's forward record: its value each session against the benchmark, every trade, and the
+    decisions waiting for the next open."""
+    from ..backtesting import paper
+    if market not in MARKETS or not paper.is_paper(book, market):
+        raise HTTPException(404, "no such paper book")
+    return paper.record(book, market)
 
 
 @app.get("/api/dual-pick/{market}")

@@ -7984,7 +7984,8 @@ const SECTIONS = [
     ["macro", "Macro", "Key macro indicators: rates, inflation, growth, consumption and market stress — current value and history"]] },
   { key: "screens", label: "Screens", pages: [["screens", "Screens", "Built-in and your own screens: which stocks qualify"],
     ["picks", "Screener picks", "Every stock a strategy's latest run marks as a trade or on watch — filter by new, decision and strategy"]] },
-  { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"]] },
+  { key: "strategies", label: "Strategies", pages: [["strategies", "Strategies", "Today's setups, and each strategy's rules and backtests"],
+    ["paper", "Paper books", "Each strategy traded forward without money: its equity against the benchmark from the start, and every trade"]] },
   { key: "chart", label: "Chart", pages: [["chart", "Chart", "Price chart, indicators and drawings"],
     ["company", "Fundamentals", "The company's financials: quarterly results, profit & loss, balance sheet, cash flows, ratios, shareholding, peers"],
     ["analysis", "Analysis", "The stock read through the analysis framework: ten pillars of evidence, your answers and your verdict"],
@@ -8899,6 +8900,82 @@ async function openPositionsCard(host, mkt, alive, trade) {
   };
 }
 
+/** Paper books (/api/paper -> backtesting/paper.py): each strategy traded forward without money by the daily
+ * `paper` job -- decided on a close, filled at the next open with the strategy's own costs. The list, and one
+ * book's forward record: its value against the benchmark from the start, every trade, what waits for the open. */
+async function paperPage(alive, mkt, book) {
+  mkt = pageMarket(mkt);
+  document.title = "Paper books · Trading";
+  $view.innerHTML = LOADING;
+  if (book) return paperBook(alive, mkt, book);
+  const r = await api(`/api/paper/${mkt}`).catch(() => null);
+  if (!alive()) return;
+  $view.innerHTML = pageHead("Paper books", { extra: marketSeg(mkt) }) + `
+    <p class="sd-lead">Each strategy traded forward without money: decided on a close, filled at the next session's open with the
+      strategy's own cost per side, by the daily <b>paper</b> job. A forward record is the one test no earlier decision could have seen.
+      Not a recommendation, and not real fills — a stock that gaps or trades thinly would fill worse.</p>
+    <div id="pbooks"></div>
+    <h3>Start a paper book</h3>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="pstrat">${(r?.strategies || []).map((x) => `<option value="${esc(x.key)}">${esc(x.name)}</option>`).join("")}</select>
+      <label class="small muted">Capital ${esc(mktInfo(mkt).currency || "")} <input id="pcap" type="number" min="1" step="any" style="width:10em" value="${r?.account_size || ""}"></label>
+      <button class="primary sm" id="pgo">Start</button><span id="perr" class="small" style="color:var(--neg, #e5484d)"></span></div>
+    <div class="muted small">It starts on the latest stored close: a portfolio strategy's first rebalance is decided there and filled at the next open;
+      a signal strategy takes the tradeable setups of its next run.</div>`;
+  $view.querySelectorAll(".mk button").forEach((b) => b.onclick = () => { pageMarket(b.dataset.v); go(`#/paper/${b.dataset.v}`); });
+  const host = $view.querySelector("#pbooks");
+  if (!r?.books.length) host.innerHTML = `<div class="empty"><b>No paper books in ${esc(mktInfo(mkt).name)}</b><div class="muted">Start one below.</div></div>`;
+  else dataTable(host, ["book", "strategy", "started", "as_of", "return_pct", "benchmark_pct", "max_drawdown_pct", "trades", "pending"],
+    r.books.map((b) => [b.book, b.name, b.started, b.as_of, b.return_pct, b.benchmark_pct, b.max_drawdown_pct, b.trades, b.pending]), {
+      name: `paper_${mkt}`, noStack: true, hidden: ["book"], rowHint: "Click a book for its forward record",
+      rowClick: (row) => go(`#/paper/${mkt}/${encodeURIComponent(row[0])}`),
+    });
+  $view.querySelector("#pgo").onclick = async () => {
+    const body = { strategy: $view.querySelector("#pstrat").value, capital: parseFloat($view.querySelector("#pcap").value) || null };
+    const ok = await api(`/api/paper/${mkt}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .catch((e) => { $view.querySelector("#perr").textContent = String(e.message || e); return null; });
+    if (ok) go(`#/paper/${mkt}/${encodeURIComponent(ok.book)}`);
+  };
+}
+
+async function paperBook(alive, mkt, book) {
+  const r = await api(`/api/paper/${mkt}/${encodeURIComponent(book)}`).catch(() => null);
+  if (!alive()) return;
+  if (!r) { $view.innerHTML = `<div class="empty"><b>No such paper book</b><div class="muted"><a href="#/paper/${mkt}">Paper books</a></div></div>`; return; }
+  const pct = (v) => v == null ? "—" : `${v >= 0 ? "+" : ""}${v.toFixed(2)}%`;
+  const money = (v) => bookMoney(mkt, v);
+  document.title = `${r.strategy} paper · Trading`;
+  $view.innerHTML = `<div class="crumbs"><a href="#/paper/${mkt}">Paper books</a></div>` + pageHead(`${esc(r.strategy)} — paper`, {
+      context: `<a class="small" href="#/strategies/${encodeURIComponent(r.strategy)}/rules">the strategy's rules →</a>` }) + `
+    <div class="muted small sd-intro"><b>Since ${esc(prettyDate(r.started))}, through the ${esc(prettyDate(r.as_of || r.started))} close.</b>
+      ${money(r.capital)} of paper capital: ${pct(r.return_pct)} against ${pct(r.benchmark_pct)} for the benchmark (${esc(r.benchmark_name)}, rebased to the same
+      capital); deepest fall ${pct(r.max_drawdown_pct)}. Cash ${money(r.account?.cash)}, ${Object.keys(r.account?.positions || {}).length} holdings.
+      Forward record only — decisions on each close, fills at the next open with the strategy's costs.</div>
+    <div id="pchart" style="height:300px;margin:8px 0"></div>
+    ${r.pending.length ? `<h3>Waiting for the next open</h3><div id="ppend"></div>` : ""}
+    <h3>Holdings</h3><div id="phold"></div>
+    <h3>Trades</h3><div id="ptrades"></div>`;
+  if (r.equity.length > 1) {
+    const el_ = $view.querySelector("#pchart");
+    const chart = LC.createChart(el_, { autoSize: true, ...chartTheme(), handleScroll: false, handleScale: false });
+    const eq = chart.addSeries(LC.LineSeries, { color: cssVar("--accent") || "#3b82f6", lineWidth: 2, title: "paper book", priceLineVisible: false });
+    eq.setData(r.equity.map(([t, v]) => ({ time: t, value: v })));
+    const bm = chart.addSeries(LC.LineSeries, { color: "#9ca3af", lineWidth: 1.5, title: "benchmark", priceLineVisible: false });
+    bm.setData(r.benchmark.map(([t, v]) => ({ time: t, value: v })));
+    chart.timeScale().fitContent();
+    cleanup = ((prev) => () => { prev(); chart.remove(); })(cleanup);
+  } else $view.querySelector("#pchart").innerHTML = `<div class="muted small">The equity line starts once the book has traded for two sessions.</div>`;
+  if (r.pending.length) dataTable($view.querySelector("#ppend"), ["kind", "symbol", "decided_on", "stop", "setup"],
+    r.pending.map((o) => [o.kind, o.symbol || "rebalance", o.signal_date, o.stop, o.setup || o.entry_rule || ""]), { name: "paper_pending", noStack: true });
+  const a = r.account || { positions: {}, avg_cost: {} };
+  dataTable($view.querySelector("#phold"), ["symbol", "shares", "avg_cost", "since"],
+    Object.entries(a.positions).map(([s, n]) => [s, n, a.avg_cost[s], a.since[s]]), { name: "paper_holdings", noStack: true,
+      rowClick: (row) => { if (row[0].includes(".") || mkt === "us") go(`#/chart/${mkt}/${encodeURIComponent(row[0])}`); } });
+  dataTable($view.querySelector("#ptrades"), ["date", "side", "symbol", "shares", "price", "costs", "note"],
+    r.trades.map((t) => [t.trade_date, t.side, t.symbol || "cash", t.side === "CASH" ? t.amount : t.shares, t.price, t.costs, t.note || ""]),
+    { name: "paper_trades", noStack: true });
+}
+
 async function route() {
   cleanup(); cleanup = () => {};
   // a new page opens at the top; re-rendering the same page (indicator change, refresh) keeps the scroll
@@ -8916,6 +8993,7 @@ async function route() {
     else if (page === "picks") await picksPage(alive, parts[1]);
     else if (page === "watchlist") await watchlistPage(alive, parts[1]);
     else if (page === "strategies") await strategiesPage(alive, parts[1], parts[2], parts[3], parts[4]);
+    else if (page === "paper") await paperPage(alive, parts[1], parts[2]);
     else if (page === "quality") await qualityPage(alive, parts[1]);
     else if (page === "company") await companyPage(alive, parts[1], parts[2]);
     else if (page === "analysis") await analysisPage(alive, parts[1], parts[2], parts[3], parts[4]);

@@ -216,11 +216,14 @@ def refresh(market: str, books: list[str] | None = None) -> dict:
     from ..strategies import _REGISTRY
     from .backtest import exit_policy_for
 
+    from . import paper
     init_schema()
+    paper.init_schema()
     with db.get_connection().cursor() as cur:
         cur.execute("SELECT DISTINCT book FROM book_trades WHERE market=%s AND initial_stop IS NOT NULL", (market,))
         names = [r[0] for r in cur.fetchall()]
-    names = [b for b in names if b in _REGISTRY and (books is None or b in books)]
+    strat = {b: paper.strategy_of(b, market) for b in names}
+    names = [b for b in names if strat[b] in _REGISTRY and (books is None or b in books)]
     cfg = MARKETS[market]
     stats = {"books": 0, "positions": 0, **{k: 0 for k in STATUS_TEXT}, "no_bars": 0}
     keep = []
@@ -229,7 +232,7 @@ def refresh(market: str, books: list[str] | None = None) -> dict:
         if not opens:
             continue
         stats["books"] += 1
-        policy, fee = exit_policy_for(book, market), fee_rate_for(book, market)
+        policy, fee = exit_policy_for(strat[book], market), fee_rate_for(strat[book], market)
         for o in opens:
             raw = cache.load_cached(market, o.symbol)
             if raw is None or raw.empty:
@@ -262,8 +265,10 @@ def refresh(market: str, books: list[str] | None = None) -> dict:
                              o.shares, o.initial_stop, r["stop"], r["status"], ex.get("reason"), ex.get("date"),
                              ex.get("price"), r["last_close"], r["r_now"], r["dist_pct"], r["policy"],
                              json.dumps(r["stops"][-60:])))
-    with db.get_connection().cursor() as cur:
-        cur.execute("DELETE FROM position_status WHERE market=%s AND NOT (trade_id = ANY(%s))", (market, keep))
+    with db.get_connection().cursor() as cur:   # trades no longer open, in the books this run covered
+        cur.execute("DELETE FROM position_status WHERE market=%s AND NOT (trade_id = ANY(%s))"
+                    + (" AND book = ANY(%s)" if books is not None else ""),
+                    (market, keep, books) if books is not None else (market, keep))
     return stats
 
 
