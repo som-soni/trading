@@ -91,7 +91,7 @@ title: Trent and its 150-day average, 2022–2025
 from: 2022-01-01
 to: 2025-12-31
 tf: W
-line: india:TRENT.NS | Trent | log
+line: india:TRENT.NS | Trent (bonus-adjusted) | log
 line: india:TRENT.NS@sma150 | 150-day average (≈ 30 weeks)
 band: 2022-01-01 2023-05-29 | Stage 1
 band: 2023-05-30 2024-10-11 | Stage 2
@@ -102,31 +102,33 @@ mark: 2024-10-11 | peak
 caption: Eighteen months sideways, sixteen months up (+428% from the breakout), three months of churning at the top, then a decline of half.
 ```
 
+All Trent prices here are adjusted for its 1:2 bonus issue of June 2026. They are two-thirds of the prices quoted at the time: the peak close of 5,490 was 8,235 then.
+
 | Stage | Dates | What happened |
 |---|---|---|
-| 1 | Late 2021 – May 2023 | A range between about 998 (December 2021) and 1,558 (1 November 2022). The 150-day went flat; it was rising again from 1 March 2023 |
-| 2 | 30 May 2023 – 11 Oct 2024 | First close above the 2022 high on 30 May 2023. Trend Template passed from 1 August 2023 at 1,708. Peak close 8,235 on 11 October 2024 |
-| 3 | Oct 2024 – Jan 2025 | Closes between about 6,160 and 8,190. Last Trend Template pass on 6 January 2025 |
-| 4 | Jan 2025 onward | First close below the 150-day on 10 January, below the 200-day on 20 January; the 150-day was falling from 18 February. Low of 4,018 on 10 December 2025, 51% below the peak |
+| 1 | Late 2021 – May 2023 | A range between about 665 (December 2021) and 1,038 (1 November 2022). The 150-day went flat; it was rising again from 1 March 2023 |
+| 2 | 30 May 2023 – 11 Oct 2024 | First close above the 2022 high on 30 May 2023. Trend Template passed from 1 August 2023 at 1,138. Peak close 5,490 on 11 October 2024 |
+| 3 | Oct 2024 – Jan 2025 | Closes between about 4,110 and 5,460. Last Trend Template pass on 6 January 2025 |
+| 4 | Jan 2025 onward | First close below the 150-day on 10 January, below the 200-day on 20 January; the 150-day was falling from 18 February. Low of 2,679 on 10 December 2025, 51% below the peak |
 
 **Stage 2 was a staircase.** The swing lows rose in four steps:
 
 | Swing low | Price |
 |---|---|
-| July 2023 | 1,666 |
-| October 2023 | 1,992 |
-| February 2024 | 3,027 |
-| July 2024 | 5,166 |
+| July 2023 | 1,111 |
+| October 2023 | 1,328 |
+| February 2024 | 2,018 |
+| July 2024 | 3,444 |
 
 The swing highs rose with them. Over those 358 sessions the stock closed below its 50-day only five times. It never closed below its 150-day.
 
 **Stage 3 showed in the swings before the averages.** The events after the 11 October 2024 peak, in order:
 
-- 7 November 2024: a fall of 6.5% on 4.5 times average volume. The next day held a low of 6,299.
-- 20 December: a second low at 6,832, higher than the first. The structure was still intact.
-- 2 January 2025: the rally stopped at 7,321, a **lower high**.
+- 7 November 2024: a fall of 6.5% on 4.5 times average volume. The next day held a low of 4,199.
+- 20 December: a second low at 4,555, higher than the first. The structure was still intact.
+- 2 January 2025: the rally stopped at 4,881, a **lower high**.
 - 10 January: the first close below the 150-day.
-- 14 January: a close at 6,161, below the November low. That was the first **lower low**.
+- 14 January: a close at 4,107, below the November low. That was the first **lower low**.
 - 20 January: the first close below the 200-day. The 150-day itself only turned down a month later.
 
 ## 5. Worked example: Super Micro, 2022–2024 — late Stage 2, and a fast Stage 4

@@ -115,16 +115,16 @@ to: 2026-06-30
 line: india:TRENT.NS | Trent | log
 line: india:fund.TRENT.NS.rev_g | Sales growth, % y/y (as filed) | pane2 zero
 mark: 2024-10-11 | peak
-caption: Sales growth held around 45–56% through 2023–24 while the stock rose about 4.9 times. After the October 2024 peak growth stepped down every quarter, to about 16% by late 2025, and the stock fell 73% by March 2026.
+caption: Sales growth held around 45–56% through 2023–24 while the stock rose about 4.9 times. After the October 2024 peak growth stepped down every quarter, to about 16% by late 2025, and the stock fell 60% by March 2026.
 ```
 
-**India — Trent.** The stock went from about ₹1,666 (July 2023) to ₹8,235 (October 2024) on sales growth of about 50%. Then growth slowed each quarter:
+**India — Trent.** The stock went from about ₹1,111 (July 2023) to ₹5,490 (October 2024) on sales growth of about 50%. These prices are adjusted for its 1:2 bonus issue of June 2026. Then growth slowed each quarter:
 
 | Quarter after the peak | 1st | 2nd | 3rd | 4th | 5th |
 |---|---|---|---|---|---|
 | Sales growth, y/y | 39% | 34% | 28% | 19% | 16% |
 
-The stock fell 73%. One stored April 2023 quarter shows growth in the thousands of percent. That is a data error, and the chart starts after it. **Check the filing behind any big number.**
+The stock fell 60%. One stored April 2023 quarter shows growth in the thousands of percent. That is a data error, and the chart starts after it. **Check the filing behind any big number.**
 
 ## 5. Surprises, expectations and guidance
 
