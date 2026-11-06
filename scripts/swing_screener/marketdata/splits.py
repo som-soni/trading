@@ -1,9 +1,13 @@
 """Find and repair splits and bonus issues the incremental price refresh cannot see.
 
-Prices are stored adjusted as the source returned them when fetched. The daily refresh only appends
-new bars, so when a stock splits (or, in India, issues bonus shares) after its last full fetch, the new
-bars are on the post-split scale and the stored ones are not: the history shows a false 50–80% crash
-that stops every position out and breaks every indicator (spec section 2, condition 2).
+Prices are stored adjusted as the source returned them when fetched. The daily refresh fetches only a
+recent window, so when a stock splits (or, in India, issues bonus shares) after its last full fetch, the
+new bars are on the post-split scale and the stored ones are not: the history shows a false 50–80% crash
+that stops every position out and breaks every indicator (spec section 2, condition 2). The refresh
+catches most of these itself: when the fetched bars and the stored ones disagree in scale on their latest
+common sessions (`cache.source_rescaled`), it re-fetches the full history (`refetch_full`) instead of
+merging -- a merge would leave the break at the start of its window, about 450 sessions back, where
+`detect` does not look (CONCORDBIO.NS's 2026-11-04 bonus left one at 2025-01-10).
 
 `detect` scans the stored bars for split-shaped gaps: a one-day move whose open AND close both sit near
 a split or bonus ratio (1:2, 1:1 bonus, 2:1 bonus, 5:1, …, and reverse splits). A real crash rarely
@@ -19,7 +23,7 @@ records the check in `split_checks` so a gap that survives a re-fetch (a real mo
 again.
 
 Two errors survive a re-fetch because they are in the source's own history, and `correct` fixes them in
-place (recorded in `price_corrections`, and re-applied after a later re-fetch brings them back):
+place (recorded in `price_corrections`, and re-applied whenever a later write brings them back):
 
   * an UNADJUSTED SPLIT: Yahoo sometimes adjusts a split only back to the start of its year, so the
     bars before 1 January stay on the old scale (MOTILALOFS 2024-01-01 for its June 2024 split, GPIL,
@@ -40,9 +44,16 @@ place (recorded in `price_corrections`, and re-applied after a later re-fetch br
     serves at a tenth of the price with about ten times the volume (the value traded unchanged), no split
     in its actions or in `corporate_actions`, and the series back at 27.8 the next session. Left in, it
     produced a +902.6% "trade" in any strategy free to buy below trend. `record_stray_run` records the
-    dates and ratio as kind `stray_run`; `correct` re-applies every recorded run whose bars are off-scale
-    again, which is what makes the fix survive a re-fetch -- `price_corrections` is otherwise only a log,
-    and the stray-bar detector re-finds its own errors but would never re-find this one.
+    dates and ratio as kind `stray_run`.
+
+Recorded unadjusted splits and stray runs are re-applied on every write: `cache.save_cached` passes each
+frame through `apply_recorded`, which puts back on scale whatever a recorded correction finds off-scale in
+it, and does nothing to bars already corrected. Re-applying only in `correct` was not enough: the daily
+refresh re-writes its recent window (about 450 sessions) from the source, so TRENT.NS's 2026-01-01
+correction (a 1:2 bonus Yahoo adjusts only back to 1 January) was undone from 2025-01-08 on, which left a
++46% break there and the gap at 2026-01-01 back in place -- and a second `correct` would have rescaled the
+already-corrected bars before 2025-01-08 again. So a gap's old-scale bars run back only to the nearest
+earlier break of the opposite ratio (`offscale_before`), not to the start of the history.
 
     PYTHONPATH=. python3 -m swing_screener.marketdata.splits --market india            # report suspects
     PYTHONPATH=. python3 -m swing_screener.marketdata.splits --market india --repair   # and re-fetch them
@@ -53,6 +64,7 @@ import argparse
 import logging
 import math
 
+import numpy as np
 import pandas as pd
 
 from . import cache, db
@@ -75,6 +87,7 @@ STRAY_RATIOS = [r for r in RATIOS if r <= 0.5 or r >= 2]   # a stray bar's offse
 STRAY_NEIGHBOUR_TOL = 0.15  # a stray bar's neighbours agree within this (log) -- the bar alone is off
 STRAY_RUN_TOL = 0.15        # a recorded run is still off-scale while its close sits within this (log) of its ratio
 STRAY_RUN_REF_BARS = 5      # the neighbours' level: median close of this many bars each side of the run
+WINDOW_BREAK_BARS = 5       # a re-written window's break lasts: median close of this many bars each side
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS split_checks (
@@ -151,14 +164,15 @@ def source_suspects(market: str) -> pd.DataFrame:
     return d[keep].reset_index(drop=True)
 
 
-def repair(market: str, suspects: pd.DataFrame, pause: float = 1.0) -> dict:
-    """Re-fetch the full history of every suspect symbol; drop its cached strategy signals."""
+def refetch_full(market: str, syms: list[str], provider=None, pause: float = 1.0) -> dict[str, pd.DataFrame]:
+    """Re-fetch the full history of `syms`, which brings each series onto the source's current scale (and
+    `cache.save_cached` re-applies the recorded corrections); record the full fetch and drop the symbols'
+    cached strategy signals. Returns {symbol: bars} for those the source served."""
     from ..providers import YFinanceProvider
-    syms = sorted(set(suspects["symbol"]))
     if not syms:
-        return {"symbols": 0, "fixed": 0, "still_there": 0}
-    provider = YFinanceProvider(pause_sec=pause)
-    fixed = 0
+        return {}
+    provider = provider or YFinanceProvider(pause_sec=pause)
+    out: dict[str, pd.DataFrame] = {}
     for i in range(0, len(syms), 20):
         chunk = syms[i: i + 20]
         got = provider.get_many_daily_bars(chunk, 0, batch_size=20, period="max", threads=False, fallback=False)
@@ -168,13 +182,22 @@ def repair(market: str, suspects: pd.DataFrame, pause: float = 1.0) -> dict:
             if df is None or df.empty:
                 continue
             cache.save_cached(market, sym, df)
-            fixed += 1
+            out[sym] = df
             rows.append((market, sym, "max", df.index[0].date(), len(df)))
         if rows:
             db.execute_values("INSERT INTO backfill_progress (market, symbol, mode, first_date, bars) VALUES %s "
                               "ON CONFLICT (market, symbol, mode) DO UPDATE SET done_at=now(), first_date=EXCLUDED.first_date, bars=EXCLUDED.bars", rows)
     with db.get_connection().cursor() as cur:
-        cur.execute("DELETE FROM backtest_signals WHERE market=%s AND symbol = ANY(%s)", (market, syms))
+        cur.execute("DELETE FROM backtest_signals WHERE market=%s AND symbol = ANY(%s)", (market, list(syms)))
+    return out
+
+
+def repair(market: str, suspects: pd.DataFrame, pause: float = 1.0) -> dict:
+    """Re-fetch the full history of every suspect symbol; drop its cached strategy signals."""
+    syms = sorted(set(suspects["symbol"]))
+    if not syms:
+        return {"symbols": 0, "fixed": 0, "still_there": 0}
+    fixed = len(refetch_full(market, syms, pause=pause))
     # what is still there after a full re-fetch is the source's own history: a real move (or its error)
     after = detect(market, syms, all_dates=True)
     still = {(r.symbol, r.date) for r in after.itertuples()}
@@ -295,34 +318,105 @@ def record_stray_run(market: str, symbol: str, dates, ratio: float, reason: str,
                          ON CONFLICT (market, symbol, date, kind) DO UPDATE SET ratio=EXCLUDED.ratio,
                          reason=EXCLUDED.reason, applied_at=now()""",
                       [(market, symbol, pd.Timestamp(d).date(), "stray_run", ratio, reason) for d in dates])
-    return apply_recorded_runs(market, [symbol]) if apply else {"runs": 0, "bars": 0, "symbols": 0}
+    return reapply_recorded(market, [symbol]) if apply else {"symbols_recorded": 0, "bars": 0, "symbols": 0}
 
 
-def apply_recorded_runs(market: str, symbols: list[str] | None = None) -> dict:
-    """Put every recorded `stray_run` that is off-scale again back on its neighbours' scale."""
+def reapply_recorded(market: str, symbols: list[str] | None = None) -> dict:
+    """Put every recorded `rescale_before` and `stray_run` that is off-scale again in the stored bars back on
+    scale (`apply_recorded`), and drop the touched symbols' cached signals (computed on the broken bars)."""
     with db.get_connection().cursor() as cur:
         cur.execute(SCHEMA)
-        cur.execute("SELECT symbol, date, ratio FROM price_corrections WHERE market=%s AND kind='stray_run'"
+        cur.execute("SELECT DISTINCT symbol FROM price_corrections WHERE market=%s AND kind IN ('rescale_before', 'stray_run')"
                     + (" AND symbol = ANY(%s)" if symbols else ""), (market, symbols) if symbols else (market,))
-        rows = cur.fetchall()
-    runs: dict = {}
-    for sym, d, ratio in rows:
-        runs.setdefault((sym, float(ratio)), []).append(d)
+        syms = sorted(s for (s,) in cur.fetchall())
     touched, bars = set(), 0
-    for (sym, ratio), dates in runs.items():
+    for sym in syms:
         df = cache.load_cached(market, sym)
         if df is None:
             continue
-        mask = offscale_run(df, dates, ratio)
-        if not mask.any():
+        fixed = apply_recorded(market, sym, df)
+        n = int((fixed["close"] != df["close"]).sum())
+        if not n:
             continue          # already on scale: nothing to re-apply
-        cache.save_cached(market, sym, _rescale(df, mask, 1.0 / ratio))
-        bars += int(mask.sum())
+        cache.save_cached(market, sym, fixed)
+        bars += n
         touched.add(sym)
     if touched:
         with db.get_connection().cursor() as cur:
             cur.execute("DELETE FROM backtest_signals WHERE market=%s AND symbol = ANY(%s)", (market, sorted(touched)))
-    return {"runs": len(runs), "bars": bars, "symbols": len(touched)}
+    return {"symbols_recorded": len(syms), "bars": bars, "symbols": len(touched)}
+
+
+def _gap_at(df: pd.DataFrame, i: int, ratio: float, open_tol: float = OPEN_TOL) -> bool:
+    """Bar `i` opens and closes at `ratio` of the close before it, as `detect` finds a split-shaped gap."""
+    prev, o, c = (float(x) for x in (df["close"].iloc[i - 1], df["open"].iloc[i], df["close"].iloc[i]))
+    return (prev > 0 and o > 0 and c > 0 and abs(math.log(o / prev / ratio)) <= open_tol
+            and abs(math.log(c / prev / ratio)) <= CLOSE_TOL)
+
+
+def _window_break(df: pd.DataFrame, i: int, ratio: float) -> bool:
+    """Bar `i` is where a re-written window meets corrected bars: a change of scale by `ratio` that lasts --
+    the median close of WINDOW_BREAK_BARS bars after it sits nearer `ratio` times the median before it than
+    the median itself (BRTX 2025-01-17 is a penny stock whose level moved 27% in those days). Its open moves
+    like any day's, not like a split session's, so it is held to CLOSE_TOL (MBRX 2025-01-22 opened 3.9% off)."""
+    if not _gap_at(df, i, ratio, open_tol=CLOSE_TOL):
+        return False
+    before = df["close"].iloc[max(0, i - WINDOW_BREAK_BARS):i].median()
+    after = df["close"].iloc[i:i + WINDOW_BREAK_BARS].median()
+    return bool(before > 0 and after > 0 and abs(math.log(after / before / ratio)) < abs(math.log(ratio)) / 2)
+
+
+def offscale_before(df: pd.DataFrame, date, ratio: float):
+    """Mask of the bars before a recorded unadjusted split at `date` (kind `rescale_before`, `ratio` new / old)
+    that are STILL on the old scale -- empty once the gap at `date` is gone, so re-applying does nothing.
+
+    The old-scale bars run back from the gap to the start of `df`, or to the nearest earlier break of
+    1 / `ratio`. That break is what a refresh leaves when it re-writes only its recent window from the source
+    over bars already corrected (TRENT.NS: the window from 2025-01-08 back at the pre-bonus scale, the bars
+    before it corrected); the bars before it are on the right scale and must not be rescaled again.
+    """
+    mask = np.zeros(len(df), dtype=bool)
+    d = pd.Timestamp(date)
+    if d not in df.index:
+        return mask
+    i = df.index.get_loc(d)
+    if i == 0 or not _gap_at(df, i, ratio):
+        return mask
+    start = next((j for j in range(i - 1, 0, -1) if _window_break(df, j, 1.0 / ratio)), 0)
+    mask[start:i] = True
+    return mask
+
+
+def apply_recorded(market: str, symbol: str, df: pd.DataFrame) -> pd.DataFrame:
+    """`df` with every recorded `rescale_before` and `stray_run` that is off-scale in it put back on scale.
+
+    `cache.save_cached` runs this on every frame it writes, so no writer -- a full re-fetch, or a refresh
+    that re-writes its recent window from the source -- can bring a recorded source error back.
+    """
+    if df is None or df.empty:
+        return df
+    with db.get_connection().cursor() as cur:
+        cur.execute(SCHEMA)
+        cur.execute("SELECT date, kind, ratio FROM price_corrections WHERE market=%s AND symbol=%s "
+                    "AND kind IN ('rescale_before', 'stray_run') ORDER BY date DESC", (market, symbol))
+        rows = cur.fetchall()
+    if not rows:
+        return df
+    df = df.sort_index()
+    for d, kind, ratio in rows:
+        if kind == "rescale_before":
+            mask = offscale_before(df, d, float(ratio))
+            if mask.any():
+                df = _rescale(df, mask, float(ratio))
+    runs: dict = {}
+    for d, kind, ratio in rows:
+        if kind == "stray_run":
+            runs.setdefault(float(ratio), []).append(d)
+    for ratio, dates in runs.items():
+        mask = offscale_run(df, dates, ratio)
+        if mask.any():
+            df = _rescale(df, mask, 1.0 / ratio)
+    return df
 
 
 def _rescale(df: pd.DataFrame, mask, ratio: float) -> pd.DataFrame:
@@ -341,8 +435,9 @@ def correct(market: str, apply: bool = True) -> dict:
         cur.execute(SCHEMA)
     if not apply:
         return {"unadjusted": unadjusted_gaps(market), "stray": stray_bars(market)}
-    # runs verified by hand first: a re-fetch brings them back and nothing else would find them
-    recorded = apply_recorded_runs(market)
+    # recorded corrections first: a write from the source brings them back, and a gap found again below would
+    # otherwise be rescaled over bars already corrected
+    recorded = reapply_recorded(market)
     strays = stray_bars(market)
     touched, rows = set(), []
     deleted = 0
@@ -366,7 +461,10 @@ def correct(market: str, apply: bool = True) -> dict:
         df = cache.load_cached(market, r.symbol)
         if df is None:
             continue
-        cache.save_cached(market, r.symbol, _rescale(df, df.index < pd.Timestamp(r.date), r.ratio))
+        mask = offscale_before(df, r.date, r.ratio)
+        if not mask.any():
+            continue
+        cache.save_cached(market, r.symbol, _rescale(df, mask, r.ratio))
         rows.append((market, r.symbol, r.date, "rescale_before", r.ratio, r.action))
         touched.add(r.symbol)
     if rows:

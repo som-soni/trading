@@ -11,9 +11,10 @@ import contextlib
 import logging
 import time
 
+import numpy as np
 import pandas as pd
 
-from . import db, frozen, sessions, spac_history
+from . import db, frozen, sessions, spac_history, splits
 from . import asof
 
 from ..core import indicators as ind
@@ -111,6 +112,9 @@ def save_cached(market: str, symbol: str, df: pd.DataFrame) -> None:
     df = spac_history.clip(market, symbol, df)
     if df.empty:
         return
+    # a source error recorded in `price_corrections` (an unadjusted split, a stray run): a re-fetch, or a
+    # refresh re-writing its recent window from the source, must not bring it back (marketdata/splits.py)
+    df = splits.apply_recorded(market, symbol, df)
     enriched = ind.enrich_daily(df)
     rows = [
         (
@@ -157,6 +161,24 @@ def append_bars(market: str, new: dict[str, pd.DataFrame], context_days: int = 6
     return len(rows)
 
 
+RESCALE_CHECK_BARS = 20   # the latest sessions both the stored bars and a fetched window hold ...
+RESCALE_TOL = 0.05        # ... whose median close ratio (log) beyond this means the source re-adjusted
+
+
+def source_rescaled(cached: pd.DataFrame, new_rows: pd.DataFrame) -> bool:
+    """The fetched bars are on a different scale from the stored ones over their latest RESCALE_CHECK_BARS
+    common sessions: the source has re-adjusted its history for a split or bonus since the stored bars were
+    fetched (Yahoo's closes are split-adjusted only, never for dividends, so nothing else moves them). Merging
+    would put the break at the start of the fetched window; the caller re-fetches the full history instead."""
+    if cached is None or new_rows is None or cached.empty or new_rows.empty:
+        return False
+    common = cached.index.intersection(new_rows.index).sort_values()[-RESCALE_CHECK_BARS:]
+    if len(common) < 5:
+        return False
+    ratio = (new_rows.loc[common, "close"].astype(float) / cached.loc[common, "close"].astype(float)).median()
+    return bool(ratio > 0 and abs(np.log(ratio)) > RESCALE_TOL)
+
+
 def get_bars(
     provider: DataProvider,
     market: str,
@@ -194,6 +216,13 @@ def get_bars(
         new_rows = pd.DataFrame(columns=cached.columns)
 
     changed = new_rows is not None and not new_rows.empty
+    if changed and source_rescaled(cached, new_rows):
+        logger.info("%s: the source re-adjusted its history (a split or bonus): re-fetching it in full", symbol)
+        try:
+            if splits.refetch_full(market, [symbol], provider=provider).get(symbol) is not None:
+                return load_cached(market, symbol)
+        except Exception as e:
+            logger.warning("Full re-fetch failed for %s (%s); merging the window", symbol, e)
     if changed:
         combined = pd.concat([cached, new_rows])
         combined = combined[~combined.index.duplicated(keep="last")].sort_index()
@@ -406,6 +435,7 @@ def get_many_bars(
 
     # ---- stale symbols: bulk read + batched fetch, chunk by chunk ----
     updated = 0
+    rescaled: list[str] = []
     for ci in range(0, len(stale), chunk_size):
         chunk = stale[ci : ci + chunk_size]
         existing = load_many_cached(market, chunk)          # one query
@@ -430,6 +460,10 @@ def get_many_bars(
             if new_rows is None or new_rows.empty:
                 out[sym] = cached           # nothing new; do NOT rewrite it
                 continue
+            if source_rescaled(cached, new_rows):
+                rescaled.append(sym)        # re-fetched in full below, not merged
+                out[sym] = cached
+                continue
             combined = pd.concat([cached, new_rows])
             combined = combined[~combined.index.duplicated(keep="last")].sort_index()
             if len(combined) > len(cached):
@@ -442,6 +476,17 @@ def get_many_bars(
             "  refreshed %d/%d stale symbols (%d written, %.0f/s, ETA %.0f min)",
             done, len(stale), updated, rate, (len(stale) - done) / max(rate, 1e-9) / 60,
         )
+
+    # ---- re-adjusted by the source (a split or bonus): the full history, so no break is left behind ----
+    if rescaled:
+        logger.info("  %d symbol(s) re-adjusted by the source (a split or bonus): re-fetching their full history: %s",
+                    len(rescaled), ", ".join(rescaled[:20]))
+        try:
+            splits.refetch_full(market, rescaled, provider=provider)
+            out.update(load_many_cached(market, rescaled))
+            updated += len(rescaled)
+        except Exception as e:
+            logger.warning("  full re-fetch failed (%s); the stored bars stay as they were", e)
 
     # ---- already up to date: one bulk read, no network at all ----
     if fresh:
