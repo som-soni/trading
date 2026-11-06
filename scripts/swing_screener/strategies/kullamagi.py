@@ -187,13 +187,16 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
-        "v1.1 NOT YET MEASURED (v1.2 is v1.1's rules plus an exit switch that is off by default, so a v1.2 run "
-        "with the defaults measures v1.1). Stage: optimise (2013-2021, in-sample); verify not run. Pass criterion, "
-        "set before any v1.1 result: in the optimise stage, the base rules beat the market's benchmark CAGR AND make a positive "
-        "average R after costs, in at least one market; the top 10% of trades' share of P&L is reported beside it. "
-        "Up-front variants, measured beside the base and never a substitute for it: TIGHT_MAX_PCT=15, and "
-        "TRAIL_EMA=1 with TRAIL_SMA=20 (the 20-day EMA trail, chosen from a replay of the v1.0 optimise trades, so "
-        "in-sample too). "
+        "v1.1 rules FAILED the pass criterion in the optimise stage (2013-2021, in-sample; measured by v1.2 runs with "
+        "the defaults, which are v1.1's rules). Verify not run. The criterion, set before any v1.1 result: the base rules "
+        "beat the market's benchmark CAGR AND make a positive average R after costs, in at least one market. "
+        "US: -0.64% CAGR against 14.01% (excess -14.65 points a year), max drawdown -54.2%, 1,104 trades, win rate "
+        "36.4%, -0.03R a trade, net P&L negative. India: 1.03% against 13.54% (excess -12.50), max drawdown -27.5%, "
+        "347 trades, 36.6%, +0.05R; the best 10% of trades made 11 times the whole book's P&L. "
+        "Up-front variants (v1.2, optimise, in-sample; neither passes): TIGHT_MAX_PCT=15 US 0.58% (excess -13.43, "
+        "+0.05R, max drawdown -43.6%), India 2.37% (-11.17, +0.13R, -18.8%); TRAIL_EMA=1 with TRAIL_SMA=20 (the "
+        "20-day EMA trail, chosen from a replay of the v1.0 optimise trades) US 2.01% (-12.00, +0.08R, -42.4%), "
+        "India 1.79% (-11.75, +0.19R, -31.2%). In every arm the median trade is a full -1R stop. "
         "v1.1's two new entry rules were chosen from the v1.0 optimise runs, so those years are in-sample for them. "
         "v1.0 FAILED the same criterion in the optimise stage: US -0.65% CAGR, excess -14.66 points a year, max "
         "drawdown -54.2%, 1,493 trades, win rate 37.4%, +0.05R a trade; India -4.48% CAGR, excess -18.02, max "
