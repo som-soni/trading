@@ -1,4 +1,4 @@
-# Volume indicators — relative volume, OBV, A/D line, Chaikin Money Flow and Oscillator, MFI, Force Index, Ease of Movement, VWAP and volume by price
+# Volume indicators — relative volume, OBV, A/D line, Chaikin Money Flow and Oscillator, MFI, Force Index, Ease of Movement, VWAP, MVP and volume by price
 
 **In short**
 
@@ -250,7 +250,40 @@ A **rolling VWAP** uses the last N days (20 by default here). An **anchored VWAP
 
 **How traders use it.** The line itself is the point, not the distance. Large funds judge their buying against VWAP. An anchored VWAP shows whether the average buyer since an event is in profit or loss. The trades built on it are in [VWAP strategies — trading around the day's average price](learn-strat-vwap.md).
 
-## 10. Volume by price
+## 10. MVP — momentum, volume and price together
+
+**The question:** is a stock being bought steadily, on rising volume, and moving fast?
+
+On 1 February 2023 Nvidia had closed higher on 12 of its last 15 sessions. Its volume over those 15 sessions was 27% above the 15 before. Its close, $20.94 in today's split-adjusted prices, was 32% above the close 15 sessions earlier. All three tests passed at once, for the first time in over a year.
+
+```series
+title: Nvidia, December 2022–April 2023 — the first MVP session of the rally
+from: 2022-12-01
+to: 2023-04-28
+tf: D
+line: us:NVDA | Nvidia
+line: us:NVDA@rvol50 | Relative volume (÷ 50-day) | pane2 bars
+mark: 2023-02-01 | MVP: 12 of 15 up
+caption: The day before, 31 January, only two tests passed: volume was 20% above the prior 15 sessions, short of 25%. Over the next three months the stock rose another 33%.
+```
+
+**What it computes.** MVP is David Ryan's screen, named for its three letters. Over the last 15 sessions:
+
+| Letter | Test | Default |
+|---|---|---|
+| M — momentum | Up closes in the last 15 sessions | at least 12 |
+| V — volume | Average volume against the 15 sessions before | at least 25% higher |
+| P — price | Close against the close 15 sessions ago | at least 20% higher |
+
+A session that passes all three is an **MVP session**. Traders mark each one with a small dot above the bar, often called an "ant". A run of them reads as steady buying rather than one spike.
+
+Sources differ on the volume test. Some compare the 15 sessions with the 50-day average instead of the 15 sessions before. The version here compares one window with the one before it.
+
+**What it repeats.** The P test is the 15-day % change, a Rate of Change reading. The M test counts up days, a slower cousin of RSI. Only the V test adds something the momentum family does not have.
+
+**How traders use it.** As a sign that institutions are accumulating, read beside a base or a breakout. It is rare: about 1 US session in 480 passes. In India it is 1 in 240. The pitfall is timing. By the time 15 sessions have risen 20%, the stock is usually extended from its base.
+
+## 11. Volume by price
 
 **The question:** at which prices did the most shares change hands?
 
@@ -266,7 +299,7 @@ Traders treat high-volume prices as likely support or resistance: many holders h
 
 **Pitfall.** Built from daily bars, it has to spread each day's volume across that day's range, because the bar does not say where in the range the shares traded. That is an approximation. Intraday data gives a truer profile. It is not measured in this guide.
 
-## 11. The family side by side
+## 12. The family side by side
 
 | Indicator | Question it answers | Defaults | Mostly repeats | Typical use |
 |---|---|---|---|---|
@@ -279,9 +312,10 @@ Traders treat high-volume prices as likely support or resistance: many holders h
 | Force Index | Price change × volume | 13 (and 2) | Envelope position (0.70) | Short-term pushes; pullback timing |
 | Ease of Movement | Price move per unit of volume | 14 | Momentum (10) (0.71) | Easy moves on light volume |
 | Distance from VWAP | How far above the volume-weighted average? | 20 | 14-day % change (0.92) | Levels; extension |
+| MVP | Up days, rising volume and a fast rise, all at once? | 15 sessions; 12 up, +25%, +20% | 15-day % change (its P test) | Spotting accumulation beside a base |
 | Volume by price | Where did the most shares trade? | A chosen period | — | Support and resistance zones |
 
-## 12. What the evidence says
+## 13. What the evidence says
 
 > **Method.** US: a random 300 stocks; India: all 147 that qualify. Each has at least 1,500 sessions since 2015 and a large daily traded value. Every indicator was computed on daily bars at its default settings. Correlations were measured day by day within each stock over 2015 to October 2026; the figures are medians across stocks. Today's listed stocks only, so failed companies are missing.
 
@@ -303,6 +337,17 @@ So adding MFI to a chart that already shows RSI adds almost nothing. Chaikin Mon
 
 **Running totals cannot be compared this way.** OBV and the A/D line add up day after day. A correlation between two running totals mostly says whether both trended over the same years. Their day-to-day links with RSI were near zero. OBV and the A/D line agreed in the US (0.74) and disagreed in India (−0.50), for the gap reason in section 4.
 
+**MVP: no edge after the signal.**
+
+> **Method.** Liquid stocks: price at least $5 or ₹20, and an average daily traded value of at least $5 million or ₹5 crore. Signals from November 2021 to October 2026, about 3,900 US and 1,600 Indian stocks. Each signal is the first MVP session of a run. Entry at the next open; the return is compared with the average of all liquid stocks over the same days.
+
+| First MVP session | Signals | Next month vs the average | t | Beat the average |
+|---|---|---|---|---|
+| US | 2,476 | −0.5% | −2.3 | 49% |
+| India | 1,707 | +0.6% | 0.9 | 47% |
+
+Neither market showed an edge over the next three months either. A stock that has just risen 20% in three weeks is, on average, no better a buy than any other. The screen describes strength already seen; it does not forecast more.
+
 **Divergences are not tested.** "OBV fails to confirm a new high" is the classic use of OBV and the A/D line. This guide has not measured whether it predicts anything.
 
 **Published research.**
@@ -313,7 +358,7 @@ So adding MFI to a chart that already shows RSI adds almost nothing. Chaikin Mon
 
 **Limits.** Correlation shows overlap, not predictive power. Today's listed stocks only. No costs. Daily bars only, so intraday VWAP and volume profiles are not measured.
 
-## 13. Checklist
+## 14. Checklist
 
 - [ ] Am I reading volume as relative volume, against the stock's own 50-day average?
 - [ ] Do I have MFI or Force Index beside RSI? They say mostly the same thing.
@@ -321,6 +366,7 @@ So adding MFI to a chart that already shows RSI adds almost nothing. Chaikin Mon
 - [ ] An Indian stock with a falling A/D line: is it just gaps up and fades inside the day?
 - [ ] Is a volume spike explained by results, an index change, expiry or a block deal?
 - [ ] Am I comparing Force Index or Chaikin Oscillator values across stocks? Their units do not allow it.
+- [ ] An MVP signal: where is the base, and how far is the price above it?
 - [ ] Is there a VWAP anchor or a high-volume price nearby that could act as support or resistance?
 
 ## Further reading
@@ -329,6 +375,7 @@ So adding MFI to a chart that already shows RSI adds almost nothing. Chaikin Mon
 - Alexander Elder, *Trading for a Living* (1993) — the Force Index.
 - Richard Arms, *Volume Cycles in the Stock Market* — Equivolume and Ease of Movement.
 - James F. Dalton, Eric T. Jones and Robert B. Dahlquist, *Mind Over Markets* — market profile and value areas.
+- Mark Minervini, *Think & Trade Like a Champion* (2017) — David Ryan's MVP indicator.
 - Simon Gervais, Ron Kaniel and Dan Mingelgrin, "The High-Volume Return Premium", *Journal of Finance* (2001).
 - Charles Lee and Bhaskaran Swaminathan, "Price Momentum and Trading Volume", *Journal of Finance* (2000).
 - Lawrence Blume, David Easley and Maureen O'Hara, "Market Statistics and Technical Analysis: The Role of Volume", *Journal of Finance* (1994).

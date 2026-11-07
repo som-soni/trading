@@ -284,8 +284,11 @@ bricks on the main chart with a **Box** picker beside the menu: ATR (14) — Tra
 the size of the last 14-bar average range — or 2, 3, 5 or 10% of the last brick. A green brick prints once the
 close is a full brick above the last one, a red one a brick below, so time and flat stretches drop out. Bricks
 completed on one session take the following calendar days on the time axis; the legend shows each brick's real
-completion date. Bricks have no volume. **Indicators** opens a searchable picker of 35
-studies, computed in the browser from the bars on screen; your list is saved and applies to every symbol.
+completion date. Bricks have no volume. **Indicators** opens a searchable picker of 73
+studies, computed in the browser from the bars on screen; your list is saved and applies to every symbol. Each row's
+**Learn** link (and **Learn about it** in an indicator's settings) opens the Learn section that explains it, at
+that heading (`studies.js` `LEARN`, `#/learn/<guide>/<section>`); `tests.test_study_learn` fails when an
+indicator has no section or a link points at a heading that no longer exists.
 **Relative Volume** shows each session's volume as a multiple of its 50-day average on a fixed 0–3× scale, so a
 50% drop is the 0.5 line however tall the spikes around it. Its lines are the Minervini strategy's own volume rules,
 read from its constants: breakout volume (`VOL_MULT`), the tight area's average dry-up (`DRYUP_RATIO`) and a quiet

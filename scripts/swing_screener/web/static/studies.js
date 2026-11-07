@@ -1580,6 +1580,62 @@ const Studies = (() => {
     minBars: "Label stretches of at least (bars)", label: "Label", gaps: "Label gaps",
     stretched: "Stretched above (ATRs)", pass: "Pass above (ATRs)" };
   const CATS = ["Screener", "Moving averages", "Bands & channels", "Support & resistance", "Trend", "Momentum", "Volatility", "Volume"];
+  // Where Learn explains each indicator: "<guide>#<section>", the guide's file name without "learn-" and its
+  // heading slugged without the outline number ("9. VWAP — rolling and anchored" -> "vwap-rolling-and-anchored"),
+  // so renumbering a guide's sections does not break the link. A trade-setups layer names its strategy's guide
+  // in `learnGuide` instead. Every indicator needs an entry, and every entry an existing heading:
+  // tests/test_study_learn.py fails otherwise, which is what keeps the chart and the Learn guides in step.
+  const LEARN = {
+    sma: "ind-moving-averages#sma-and-ema-the-two-basics", ema: "ind-moving-averages#sma-and-ema-the-two-basics",
+    wma: "ind-moving-averages#wma-weights-in-a-straight-line",
+    ribbon: "ind-moving-averages#moving-average-ribbons-many-lengths-at-once", ribbon_ema: "ind-moving-averages#moving-average-ribbons-many-lengths-at-once",
+    dema: "ind-moving-averages#dema-two-emas-combined-to-cancel-the-lag",
+    hma: "ind-moving-averages#hull-a-fast-wma-with-its-lag-subtracted-then-smoothed",
+    kama: "ind-moving-averages#kama-an-average-that-slows-down-in-noise",
+    alligator: "ind-moving-averages#the-williams-alligator-three-averages-of-the-bar-s-midpoint",
+    bb: "ind-bands-channels#bollinger-bands-width-from-the-spread-of-closes",
+    kc: "ind-bands-channels#keltner-channels-width-from-the-average-daily-range",
+    dc: "ind-bands-channels#donchian-channels-the-highest-high-and-lowest-low",
+    env: "ind-bands-channels#moving-average-envelopes-a-fixed-either-side",
+    atrbands: "ind-bands-channels#atr-bands-keltner-s-width-round-a-simple-average",
+    avwap: "ind-volume#vwap-rolling-and-anchored", vwap: "ind-volume#vwap-rolling-and-anchored",
+    sar: "ind-trend#parabolic-sar", st: "ind-trend#supertrend", chandelier: "ind-trend#chandelier-exit",
+    ichimoku: "ind-trend#ichimoku-kinko-hyo-the-cloud",
+    vortex: "ind-trend#vortex-upward-reach-against-downward-reach",
+    adx: "ind-trend#dmi-and-adx-direction-and-steadiness",
+    aroon: "ind-trend#aroon-and-the-aroon-oscillator-how-recent-was-the-high", aroonosc: "ind-trend#aroon-and-the-aroon-oscillator-how-recent-was-the-high",
+    rs: "price-rs#the-rs-line",
+    pivots_hl: "ind-levels#swing-pivots-turning-points-confirmed-late", pivots_std: "ind-levels#floor-trader-pivot-points",
+    zigzag: "ind-levels#zig-zag-swings-above-a-size-and-a-line-that-repaints",
+    sr: "support-resistance", sdz: "supply-demand", patterns: "chart-patterns", stageweekly: "price-stages",
+    plan: "risk-stops-exits",
+    vol: "price-volume#what-volume-is-and-what-it-cannot-tell-you", rvol: "ind-volume#relative-volume",
+    mvp: "ind-volume#mvp-momentum-volume-and-price-together",
+    obv: "ind-volume#on-balance-volume", adl: "ind-volume#the-accumulation-distribution-line",
+    cmf: "ind-volume#chaikin-money-flow", chosc: "ind-volume#chaikin-oscillator", mfi: "ind-volume#money-flow-index",
+    force: "ind-volume#force-index", eom: "ind-volume#ease-of-movement",
+    rsi: "ind-momentum-range#rsi-the-reference-reading", stoch: "ind-momentum-range#stochastic-k-and-d",
+    stochrsi: "ind-momentum-range#stochastic-rsi", cci: "ind-momentum-range#cci-the-commodity-channel-index",
+    wpr: "ind-momentum-range#williams-r", bbpct: "ind-momentum-range#bollinger-b", uo: "ind-momentum-range#ultimate-oscillator",
+    crsi: "ind-momentum-range#connors-rsi", bop: "ind-momentum-range#balance-of-power",
+    roc: "ind-momentum-rate#rate-of-change-and-momentum", mom: "ind-momentum-rate#rate-of-change-and-momentum",
+    distma: "ind-momentum-rate#distance-from-a-moving-average", atrext: "ind-momentum-rate#atr-extension-above-the-20-day",
+    macd: "ind-momentum-rate#macd-the-reference-reading", ppo: "ind-momentum-rate#ppo-the-percentage-price-oscillator",
+    trix: "ind-momentum-rate#trix", tsi: "ind-momentum-rate#tsi-the-true-strength-index",
+    kst: "ind-momentum-rate#kst-and-pring-s-special-k", specialk: "ind-momentum-rate#kst-and-pring-s-special-k",
+    pmo: "ind-momentum-rate#pmo-the-price-momentum-oscillator", dpo: "ind-momentum-rate#dpo-the-detrended-price-oscillator",
+    atr: "ind-volatility#atr-and-atr-the-daily-swing", atrp: "ind-volatility#atr-and-atr-the-daily-swing",
+    stdev: "ind-volatility#standard-deviation-of-closes", bbw: "ind-volatility#bollinger-bandwidth",
+    hv: "ind-volatility#historical-volatility", mass: "ind-volatility#mass-index", ulcer: "ind-volatility#ulcer-index",
+    squeeze: "ind-volatility#ttm-squeeze", contraction: "ind-volatility#the-contraction-gauge-range-volume-and-the-high-together",
+  };
+  /** the Learn page that explains an indicator, as an app route (#/learn/<guide>/<section>), or null */
+  const learnHref = (type) => {
+    const d = CATALOG[type], ref = d?.learnGuide ? d.learnGuide.replace(/^learn-/, "") : LEARN[type];
+    if (!ref) return null;
+    const [g, s] = ref.split("#");
+    return `#/learn/${g}${s ? `/${s}` : ""}`;
+  };
   const MA_COLORS = ["#f5a623", "#2196f3", "#e040fb", "#ffeb3b", "#00bcd4", "#ff5252", "#8bc34a"];
 
   // ------------------------------------------------------------- active list
@@ -1794,12 +1850,14 @@ const Studies = (() => {
         && (cat === "All" || d.cat === cat) && (!f || (d.name + " " + d.short).toLowerCase().includes(f)));
       list.innerHTML = items.map(([k, d]) => {
         const n = active.filter((s) => s.type === k).length;
-        return `<div class="sm-item" data-add="${k}"><span>${esc(d.name)}</span><span class="muted">${esc(d.cat)}${n ? ` · <b>${n} on chart</b>` : ""}</span></div>`;
+        const lh = learnHref(k);
+        return `<div class="sm-item" data-add="${k}"><span>${esc(d.name)}</span><span class="muted">${esc(d.cat)}${n ? ` · <b>${n} on chart</b>` : ""}${lh ? ` · <a class="sm-learn" href="${lh}" title="What it measures, how it is read and what the evidence says">Learn</a>` : ""}</span></div>`;
       }).join("") || `<div class="muted sm-empty">No indicator matches “${esc(q.value)}”.</div>`;
     };
     q.oninput = () => { if (cat === "Active") cat = "All"; draw(); };
     cats.onclick = (e) => { const a = e.target.closest("a"); if (a) { cat = a.dataset.c; draw(); } };
     list.onclick = (e) => {
+      if (e.target.closest(".sm-learn")) { close(); return; }   // follow the link to Learn; don't add the indicator
       const it = e.target.closest("[data-add]"), rm = e.target.closest("[data-rm]");
       if (it) { add(it.dataset.add); onChange(); draw(); it.classList.add("flash"); }
       if (rm) { save(load().filter((s) => s.id !== rm.dataset.rm)); onChange(); draw(); }
@@ -1819,9 +1877,10 @@ const Studies = (() => {
       return `<label><span>${name}</span><input type="number" step="${Number.isInteger(d) ? 1 : 0.01}" min="${Number.isInteger(d) ? 1 : 0}" data-p="${k}" value="${s.params[k]}"></label>`;
     }).join("");
     const colors = def.plots.map((pl) => `<label><span>${pl.t || def.short}</span><input type="color" data-c="${pl.k}" value="${(s.colors[pl.k] || pl.c).slice(0, 7)}"></label>`).join("");
+    const lh = learnHref(s.type);
     const { el, close } = modal(`<div class="sm-head"><b>${esc(catName(s.type))}</b><button class="sm-x" title="Close">${BTN.x}</button></div>
       <div class="sm-form">${inputs ? `<h4>Inputs</h4>${inputs}` : ""}<h4>Style</h4>${colors}</div>
-      <div class="sm-foot"><button class="ghost" data-a="reset">Defaults</button><span class="spacer"></span><button class="ghost" data-a="cancel">Cancel</button><button class="primary" data-a="ok">OK</button></div>`, "settings");
+      <div class="sm-foot"><button class="ghost" data-a="reset">Defaults</button>${lh ? `<a class="sm-learn small" href="${lh}">Learn about it →</a>` : ""}<span class="spacer"></span><button class="ghost" data-a="cancel">Cancel</button><button class="primary" data-a="ok">OK</button></div>`, "settings");
     const before = JSON.stringify(s);
     const apply = () => {
       const list = load(), t = list.find((x) => x.id === id); if (!t) return;
@@ -1832,6 +1891,7 @@ const Studies = (() => {
     el.querySelector(".sm-form").addEventListener("change", apply);
     el.querySelector(".sm-x").onclick = close;
     el.querySelector(".sm-foot").onclick = (e) => {
+      if (e.target.closest(".sm-learn")) { close(); return; }
       const a = e.target.closest("button")?.dataset.a;
       if (a === "ok") close();
       if (a === "cancel") { const list = load().map((x) => (x.id === id ? JSON.parse(before) : x)); save(list); onChange(); close(); }
@@ -1860,5 +1920,5 @@ const Studies = (() => {
     setupLayers, activeSetup, setSetup,
     transient: (type, params = {}) => ({ ...make(type, params), transient: true }),   // drawn this visit, never saved
     setupName: () => { const t = activeSetup(); return t ? stratName(CATALOG[t].setupsFor) : null; },
-    restore: save, CATALOG, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
+    restore: save, CATALOG, learnHref, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
 })();

@@ -318,5 +318,12 @@ a guide's structure but are never cited, and their numbers are never quoted.
 Write plainly: an "In short" block of 3–5 bullets, example before rule, short
 paragraphs and sentences, tables for numbers; link other guides by their title.
 `PYTHONPATH=. .venv/bin/python -m tests.test_learn_style` enforces the measurable
-part. App-specific material belongs in the app manual, `research/app-guide-*.md`
+part.
+
+**Every chart indicator has a Learn section.** A new indicator in `studies.js` `CATALOG` gets
+a section in its family's `learn-ind-*.md` guide — what it computes, a measured example, what it
+repeats, how traders use it, its row in the family table and the evidence — and an entry in
+`studies.js` `LEARN` (`"<guide>#<heading slug without its number>"`), which the picker's Learn link
+opens. `PYTHONPATH=. .venv/bin/python -m tests.test_study_learn` fails on an indicator without one
+or a link to a heading that no longer exists. App-specific material belongs in the app manual, `research/app-guide-*.md`
 (Library → Research), which may name pages, code and constants.

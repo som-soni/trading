@@ -94,6 +94,33 @@ In June, 36.6% was 7.7 ATRs: extreme for this stock. In August, −17.8% was onl
 
 **How traders use it.** As an extension check: a stock far above its 20-day or 50-day in ATRs is stretched, and a new purchase there carries a wide stop. Some traders pass on entries more than about 2.5 to 4 ATRs above the 20-day. The pitfall: a stretch is not a top. By 18 June 2024, Nvidia had been more than 4 ATRs above its average for 17 sessions in a row.
 
+### 3.1 ATR extension above the 20-day
+
+The same reading, measured from the 20-day simple average, is often drawn on its own as a histogram:
+
+```
+ATR extension = (close − 20-day SMA) ÷ 14-day ATR
+```
+
+Two lines are marked on it. Bars above **2.5** are coloured as stretched, and bars above **4** as very stretched. Those are the levels at which some traders stop adding to a position.
+
+On 18 June 2024, Nvidia was 7.7 ATRs above its 50-day. It was only 3.9 above its 20-day. The 20-day had already climbed with the price. Its peak came earlier, at 5.1 ATRs on 28 May, two sessions after a breakout on results.
+
+```series
+title: Nvidia, May–August 2024 — ATRs above the 20-day average
+from: 2024-05-01
+to: 2024-08-15
+line: us:NVDA | Nvidia
+line: us:NVDA@sma(length=20).ma | 20-day average
+line: us:NVDA@atrext.ext | ATRs above the 20-day | pane2 bars zero
+mark: 2024-05-28 | 5.1 ATRs above
+caption: Between May and mid-August the reading was above 2.5 on 18 sessions and above 4 on three. By 7 August it was 2.1 ATRs below the 20-day.
+```
+
+**What it repeats.** Almost exactly RSI. Within a stock, the median correlation with RSI14 was 0.95 in both markets. It was 0.90 with the 15-day % change. With the ATR distance from the 50-day it was about 0.8.
+
+**How traders use it.** Not as a sell signal, but as a reason not to buy more. A stock 4 ATRs above its 20-day needs a stop at least 4 ATRs away to sit below that average. Section 12 shows what followed such days.
+
 ## 4. MACD — the reference reading
 
 MACD is the 12-day EMA minus the 26-day EMA. Its signal line is a 9-day EMA of MACD, and the histogram is the gap between the two. It is explained in [Momentum indicators — RSI, MACD and Bollinger Bands](learn-price-oscillators.md).
@@ -235,6 +262,7 @@ DPO = close (n ÷ 2 + 1) days ago − today's n-day SMA         default n = 20, 
 | Rate of Change | % change over N days | 9 | Envelope position (0.90) | Above/below zero; long-period trend filter |
 | Momentum | Price change over N days, in price units | 10 | ROC (0.87), MACD histogram | As ROC; not comparable across stocks |
 | Distance from MA | Close vs its average, in % or ATRs | 50; ATR 14 | PPO (0.96) | Extension checks |
+| ATR extension | Close vs the 20-day, in ATRs | 20; ATR 14; lines 2.5 / 4 | RSI14 (0.95) | Not adding to a stretched stock |
 | MACD | Fast EMA minus slow EMA | 12, 26, 9 | PPO; histogram ≈ Momentum (0.86) | Crossings; see the core guide |
 | PPO | MACD as % of the slow EMA | 12, 26, 9 | Distance from 50-day (0.96) | Comparing stocks and years |
 | TRIX | Daily % change of a triple EMA | 15, 9 | KST, PMO (0.98) | Slow trend speed |
@@ -299,6 +327,17 @@ Each crossing of zero changes the verdict from "rising" to "falling" or back. On
 
 Smoothing buys fewer reversals at the price of later ones. No reading gets both from the same prices.
 
+### Extension above the 20-day — tested
+
+> **Method.** Liquid stocks: price at least $5 or ₹20, and an average daily traded value of at least $5 million or ₹5 crore. Signals from November 2021 to October 2026, about 3,900 US and 1,600 Indian stocks. A signal is the first session of a run above 2.5 or above 4 ATRs. Entry at the next open; the return is compared with the average of all liquid stocks over the same days. The t-statistic treats each month as one observation.
+
+| First session above | Share of all sessions (US / India) | US: next month | US: next 3 months | India: next month | India: next 3 months |
+|---|---|---|---|---|---|
+| 2.5 ATRs | 7.4% / 6.4% | 0.0% (t −1.3) | −0.1% (t −1.6) | −0.1% (t −1.1) | +0.3% (t 0.4) |
+| 4 ATRs | 1.1% / 1.0% | −0.4% (t −2.9) | −0.7% (t −2.8) | +0.6% (t 0.8) | +1.2% (t 0.5) |
+
+**Stretched is not a top.** Above 2.5 ATRs, what followed was the same as for any stock. Above 4, US stocks lagged the average by under 1% over three months; Indian stocks did not lag at all. Between 43% and 51% of them beat the average. The reading is a guide to how wide a stop must be, not to what comes next. In India the week after a first move above 2.5 lagged by 0.2% (t −4.0), a short-term reversal too small to trade after costs.
+
 ### Published research
 
 - **Medium-term momentum across stocks is the robust finding.** Jegadeesh and Titman (1993) found that US stocks with the best returns over the past 3 to 12 months went on to beat the worst over the following months. That compares stocks with each other, which a single stock's TRIX or PMO does not.
@@ -313,6 +352,7 @@ Smoothing buys fewer reversals at the price of later ones. No reading gets both 
 - [ ] Is the reading in price units (MACD, Momentum)? Then do not compare it across stocks or years; use PPO or the % distance.
 - [ ] Do I have two of distance from an average, PPO, TSI, TRIX, KST and PMO on my chart? They say the same thing.
 - [ ] How far is the close from its 20-day and 50-day, in ATRs? Is a new entry here too stretched for a sensible stop?
+- [ ] Am I selling only because the ATR extension is above 4? On the evidence that is a sizing question, not a signal.
 - [ ] Am I reading DPO as today's momentum? It describes a price from about two weeks ago.
 - [ ] Am I using a short rate (9-day ROC) where I mean a long one (6 to 12 months)? Only the long one has research behind it.
 - [ ] Has the reading crossed zero many times this year? Then each crossing is weak evidence.
