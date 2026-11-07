@@ -65,7 +65,14 @@ def _running_jobs(cur) -> list[tuple]:
         rows = cur.fetchall()
     except Exception:  # noqa: BLE001 — no run log: nothing is recorded as running
         return []
-    return [r for r in rows if r[2] and db._pid_alive(r[2])]
+    return [r for r in rows if r[2] and db._pid_alive(r[2]) and "jobs" in _command(r[2])]
+
+
+def _command(pid: int) -> str:
+    """The process's command line: a run that died leaves its pid to be reused by anything (#993's went
+    to a macOS service), so a live pid alone does not mean the job is running."""
+    import subprocess
+    return subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout
 
 
 def _old_transactions(cur, older_than_s: int = 60) -> list[tuple]:
