@@ -186,12 +186,16 @@ class DarvasStrategy(Strategy):
         "max drawdown -26.5%. A 3-ATR chandelier trail (--exit-mode trail_atr): US excess -8.70, India "
         "-3.73 (-6.07), Sharpe 0.77. The market switch (G3 on, box exit): US excess -8.13, India -6.69 -- "
         "worse in both. The slower exit is the only change that moved the US result much: it keeps more "
-        "of the long runs (6% of trades reach 3R against 4.5%). No variant has become a version. LAST "
-        "ROUND, queued 2026-11-07, US only, on the 50-day exit, optimise stage: momentum ranking "
-        "(--rank-by momentum), Darvas's box add (--pyramid 0.5 --pyramid-at box), and both. Same "
-        "criterion, written before them. Six US variants will then have been tried, so a pass by a "
-        "small margin is weak evidence; if none passes, the method is judged not to beat buy and hold "
-        "here and the refining stops."
+        "of the long runs (6% of trades reach 3R against 4.5%). LAST ROUND, US only, on the 50-day exit, "
+        "optimise stage, measured 2026-11-07, same criterion written before the runs -- all FAIL, each "
+        "worse than the 50-day exit alone: momentum ranking (--rank-by momentum) excess -4.09 (-4.25), "
+        "Sharpe 0.57, 659 trades; Darvas's box add (--pyramid 0.5 --pyramid-at box) excess -6.20 (-6.35), "
+        "Sharpe 0.60, max drawdown -23.9%, 679 trades, average +0.01R; both excess -3.45 (-3.60), Sharpe "
+        "0.63, 720 trades. The add halves the first position and its raised stop sells more of the "
+        "trades that later run (stopped exits 143 -> 256, trades reaching 3R 6.4% -> 3.8%). VERDICT, "
+        "in-sample: across six US variants and three Indian ones, the method does not beat buy and hold "
+        "here; the best (the 50-day exit, US) trails it by 1.75 points a year with a smaller drawdown. No "
+        "variant has become a version, verify is not run, and the refining has stopped."
     )
     gate_docs = {
         "G1": (
