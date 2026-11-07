@@ -291,6 +291,21 @@ studies, computed in the browser from the bars on screen; your list is saved and
 read from its constants: breakout volume (`VOL_MULT`), the tight area's average dry-up (`DRYUP_RATIO`) and a quiet
 session (`DRYUP_QUIET_RATIO`). Bars at breakout volume take the candle's colour, quiet and dry sessions two blues;
 the orange line averages the last 5 sessions, because the dry-up rule judges an area's average, not one bar.
+**VCP contraction gauge** (`core/contraction.py`, `/api/contraction`) reads, on every session, the three things a
+volatility contraction tightens together, over the last 10 sessions: their range (limit `TIGHT_PCT`), their volume
+against the 50-day average taken before them (limit `DRYUP_RATIO`) and how far their high sits below the
+`BASE_MAX_DAYS`-session high (limit `1 − PIVOT_NEAR_HIGH`) — the Minervini strategy's own constants. Each line is the
+reading divided by its limit, so all three share one scale and under the dashed 1 line means met; green columns mark
+sessions where all three are met (coiled), and an arrow a close through the window's high on `VOL_MULT` volume the
+session after a coil. The legend shows the raw readings. It is a gauge for exploring, not the strategy: it cannot see
+the successively smaller pullbacks that make a base a VCP — the Minervini SEPA setups layer finds those — and nothing
+here says whether a coil or its breakout predicts anything.
+**MVP — momentum, volume, price** is David Ryan's accumulation check as Minervini describes it: over the last 15
+sessions the stock closed up on at least 12, its average volume is at least 25% above the 15 sessions before, and it
+gained at least 20%. Every session where all three hold gets an "ant", a small dot above its price bar, so a run of
+them reads as steady buying rather than one news day; the pane plots each reading against its threshold (1 = met) and
+shades MVP sessions green, and the legend shows the raw numbers. Every number is a setting. Sources differ on the
+volume half (some compare with the 50-day average); this compares the window with the one before it.
 On first use the chart shows the 20-, 50- and 200-day SMA, Volume and RSI. Two studies are not
 indicators: **Screener levels** draws a strategy's entry, stop and target, and **Chart patterns (live
 detection)** runs the chart-pattern detectors on stored prices. **Support & Resistance (zones)** is computed

@@ -57,6 +57,7 @@ from .earnings_gaps import EarningsGapStrategy
 from .ema100_trend import Ema100TrendStrategy
 from .ema_pullback import EmaPullbackStrategy
 from .kullamagi import KullamagiStrategy
+from .minervini_coil import MinerviniCoilStrategy
 from .minervini_spec import MinerviniSpecStrategy
 from .momentum_burst import MomentumBurstStrategy
 from .rs_leaders import RsLeadersStrategy
@@ -79,6 +80,7 @@ register(EarningsGapStrategy())
 register(BreakoutStrategy())
 register(ChartPatternSpecStrategy())
 register(MinerviniSpecStrategy())
+register(MinerviniCoilStrategy())   # a variant: Minervini with the contraction gauge's breakout as its setup
 register(RsLeadersStrategy())
 register(StageAnalysisStrategy())
 register(SupertrendStrategy())

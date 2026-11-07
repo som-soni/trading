@@ -2088,6 +2088,25 @@ def chart_patterns_history(market: str, symbol: str, years: int = 5):
 _sr_cache: dict = {}   # (market, symbol, tf, last bar) -> response
 
 
+@app.get("/api/contraction/{market}/{symbol}")
+def contraction(market: str, symbol: str, window: int = 0):
+    """The chart's VCP contraction gauge: per-session tightness, volume dry-up and nearness to the high, judged
+    by the Minervini strategy's own constants (core/contraction.py). Readings for exploring, never a signal."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..core import contraction as con
+    from ..marketdata import cache
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    window = max(window or con.WINDOW, con.rules()["TIGHT_MIN_DAYS"])
+    g = con.gauge(raw, window)
+    num = lambda s: [None if v != v else round(float(v), 4) for v in s]   # NaN -> null
+    return {"as_of": str(raw.index[-1].date()), "window": window, "rules": con.rules(),
+            "dates": [str(x.date()) for x in g.index], "tight": num(g["tight"]), "dry": num(g["dry"]),
+            "near": num(g["near"]), "coiled": [bool(x) for x in g["coiled"]], "breakout": [bool(x) for x in g["breakout"]]}
+
+
 @app.get("/api/sr-levels/{market}/{symbol}")
 def sr_levels(market: str, symbol: str, tf: str = "D"):
     """The chart's Support & Resistance indicator: zones from core/sr_levels.py on the stored bars — the

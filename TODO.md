@@ -17,6 +17,7 @@ with `[x]` when done; move it under **Done** when you like.
 - [x] Strategy (Implement): Honest answer: classic trend following via breakouts. Buy when price closes above the 20- or 55-day high. Sell short below the low. Size so you risk ~1% of account (use ATR for stops at 2 ATR). Exit on opposite 10- or 20-day extreme. It has decades of positive expectancy across futures including NQ, ES and gold. Win rate sits around 45%. Most of the money comes from a few big trends. Long flat periods and drawdowns are normal. _(added 2026-10-24)_
 - [x] Add this dashboard - https://x.com/MrBsCoffee30/status/2113694563911315862 _(added 2026-10-24)_
 - [x] Identify (Coloir coded) strategies based on the edge -- Same should be there on each page where strategies is shown .. E g Today's Module _(added 2026-10-28)_
+- [ ] Minervini: try a "tennis ball" variant in the optimise stage -- judge the first pullback after a breakout: hold one that dips on light volume and snaps back above the entry, sell early one that undercuts the entry on heavy volume ("egg" action), instead of only waiting for the stop. A new constant (off by default), run as a `--const` variant in the optimise stage (2013-2021) against the current version. _(added 2026-11-07)_
 
 ## Data
 
