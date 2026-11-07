@@ -1021,7 +1021,8 @@ def _prune_signals(ctx: Ctx) -> None:
     from swing_screener.backtesting import signal_cache
     r = signal_cache.prune(apply=True)
     ctx.step.detail = (f"kept {r['kept']} of {r['spec_ids']} spec ids (current and previous version per strategy); "
-                       f"deleted {r['rows_deleted']} rows of {r['dropped']}")
+                       + (f"dropped {r['dropped']}, {r['gb_freed']} GB back to the disk" if r["gb_freed"] else
+                          f"deleted {r['rows_deleted']} rows of {r['dropped']}"))
 
 
 def _ingest(ctx: Ctx) -> None:
@@ -1126,7 +1127,7 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("report", "publish", "consolidated report: the daily review across strategies and markets", "on demand", False, _report,
         per_market=False, after=("strategies",)),
     Job("ingest", "publish", "load reports into the web app", "on demand", False, _ingest, per_market=False),
-    Job("prune_signals", "screening", "signal cache: delete the backtest signal rows of strategy versions older than the "
+    Job("prune_signals", "screening", "signal cache: drop the backtest signal tables of strategy versions older than the "
         "previous one, so the cache cannot fill the disk again (backtesting/signal_cache.py)", "weekly", False,
         _prune_signals, per_market=False),
 ]}

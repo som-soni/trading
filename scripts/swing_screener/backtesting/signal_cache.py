@@ -16,9 +16,12 @@ are deleted. What that costs: the trade-anatomy chart of a run made on a pruned 
 draw the structure the strategy saw (its trades, P&L and report are untouched), and a backtest of a
 pruned version would rescan.
 
-A DELETE does not hand space back to the operating system: Postgres keeps it for its own reuse, so the
-VACUUM that follows stops the table growing rather than shrinking the file. Run weekly (jobs/registry.py
-`prune_signals`), that keeps the table near its working size.
+The table is partitioned by strategy, then spec id (marketdata/db.py `ensure_signal_partition`), so a
+pruned spec id is a dropped table and the disk gets its space back at once. A DELETE would not: Postgres
+keeps deleted rows' space for its own reuse, and by 2026-11-07 the unpartitioned table held 234 GB for
+~126 GB of kept rows, with backtests paused on the worker's free-disk floor. On a table not yet migrated
+(backtesting/signal_migrate.py) prune still DELETEs and VACUUMs. Run weekly (jobs/registry.py
+`prune_signals`).
 
     PYTHONPATH=. python3 -m swing_screener.backtesting.signal_cache            # report what would go
     PYTHONPATH=. python3 -m swing_screener.backtesting.signal_cache --apply    # and delete it
@@ -96,28 +99,43 @@ def better_runs(stored: set[tuple[str, str]], kept: set[tuple[str, str]]) -> set
             and c > best_kept.get((s, m, st), float("-inf"))}
 
 
-def plan() -> list[tuple[str, str, bool]]:
-    """(strategy, spec_id, keep) for every spec id stored, from its distinct keys -- not a table scan."""
-    keep = kept_versions()
+def _stored(table: str) -> list[tuple[str, str]]:
+    """(strategy, spec_id) of every rule set stored: the partitions, or the distinct keys unpartitioned."""
     with db.get_connection().cursor() as cur:
-        cur.execute("SELECT DISTINCT strategy, spec_id FROM backtest_signals")
-        rows = cur.fetchall()
+        if db.signals_partitioned(cur, table):
+            return [(s, sp) for s, sp, _, _ in db.signal_leaves(table)]
+        cur.execute(f"SELECT DISTINCT strategy, spec_id FROM {table}")
+        return cur.fetchall()
+
+
+def plan(table: str = db.SIGNALS) -> list[tuple[str, str, bool]]:
+    """(strategy, spec_id, keep) for every spec id stored."""
+    keep = kept_versions()
+    rows = _stored(table)
     kept = {(s, sp) for s, sp in rows if s in keep and _version_of(sp or "") in keep[s]}
     kept |= pinned_sources(set(rows), kept)
     kept |= better_runs(set(rows), kept)
     return [(s, sp, (s, sp) in kept) for s, sp in rows]
 
 
-def prune(apply: bool = False) -> dict:
-    """Delete the rows of every spec id outside kept_versions(), then VACUUM. Returns the counts."""
-    p = plan()
+def prune(apply: bool = False, table: str = db.SIGNALS) -> dict:
+    """Drop the table of every spec id outside kept_versions() (unpartitioned: delete its rows, then
+    VACUUM). Returns the counts."""
+    p = plan(table)
     drop = [(s, sp) for s, sp, k in p if not k]
-    deleted = 0
-    if apply:
-        conn = db.get_connection()
+    deleted = freed = 0
+    conn = db.get_connection()
+    with conn.cursor() as cur:
+        partitioned = db.signals_partitioned(cur, table)
+    if apply and partitioned:
+        for s, sp in drop:
+            n = db.drop_signal_partition(s, sp, table)
+            freed += n
+            logger.info("pruned %s %s: dropped its table, %.1f GB", s, sp, n / 1e9)
+    elif apply:
         with conn.cursor() as cur:
             for s, sp in drop:
-                cur.execute("DELETE FROM backtest_signals WHERE strategy=%s AND spec_id IS NOT DISTINCT FROM %s", (s, sp))
+                cur.execute(f"DELETE FROM {table} WHERE strategy=%s AND spec_id IS NOT DISTINCT FROM %s", (s, sp))
                 deleted += cur.rowcount
                 logger.info("pruned %s %s: %d rows", s, sp, cur.rowcount)
         if drop:
@@ -125,11 +143,11 @@ def prune(apply: bool = False) -> dict:
             conn.autocommit = True               # VACUUM cannot run inside a transaction
             try:
                 with conn.cursor() as cur:
-                    cur.execute("VACUUM ANALYZE backtest_signals")
+                    cur.execute(f"VACUUM ANALYZE {table}")
             finally:
                 conn.autocommit = prev
     return {"spec_ids": len(p), "kept": len(p) - len(drop), "dropped": len(drop), "rows_deleted": deleted,
-            "dropped_ids": [f"{s} {sp}" for s, sp in drop]}
+            "gb_freed": round(freed / 1e9, 1), "dropped_ids": [f"{s} {sp}" for s, sp in drop]}
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -138,7 +156,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--apply", action="store_true", help="delete (default: report only)")
     r = prune(apply=ap.parse_args(argv).apply)
     print(f"{r['spec_ids']} spec ids stored: keep {r['kept']}, drop {r['dropped']}"
-          + (f" ({r['rows_deleted']} rows deleted)" if r["rows_deleted"] else ""))
+          + (f" ({r['rows_deleted']} rows deleted)" if r["rows_deleted"] else "")
+          + (f" ({r['gb_freed']} GB freed)" if r["gb_freed"] else ""))
     for x in r["dropped_ids"]:
         print("  drop", x)
 

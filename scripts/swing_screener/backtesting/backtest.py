@@ -155,6 +155,7 @@ def _cached_signal_rows(market_key: str, strategy, symbol: str, start: pd.Timest
         rows = cur.fetchall()
         peers = [] if rows else _signal_peers(market_key, strategy)
         if peers:
+            db.ensure_signal_partition(strategy.key, strategy.spec_id())
             cols = "market, strategy, symbol, date, " + ", ".join(_SIGNAL_FIELDS)
             cur.execute(
                 f"INSERT INTO backtest_signals ({cols}, spec_id) "
@@ -244,6 +245,8 @@ def _save_signals(rows: list[tuple]) -> None:
 
 
 def _upsert_signals(rows: list[tuple], target: str) -> None:
+    for key, spec in {(r[1], r[-1]) for r in rows}:
+        db.ensure_signal_partition(key, spec)
     query = f"""
         INSERT INTO backtest_signals
             (market, strategy, symbol, date, hard_gates_passed, first_failed_gate,
@@ -292,6 +295,7 @@ def seed_signal_cache(
             "setups, h_value, h_index, l_value, p_value, prior_swing_low, overhead_levels, watch_flags, "
             "watch_notes, extras")
     t0 = time.time()
+    db.ensure_signal_partition(strategy.key, strategy.spec_id())
     with db.get_connection().cursor() as cur:
         cur.execute(
             f"INSERT INTO backtest_signals ({cols}, spec_id) "

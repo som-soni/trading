@@ -11,6 +11,7 @@ shell profile.
 """
 
 import functools
+import hashlib
 import logging
 import re
 import threading
@@ -201,7 +202,10 @@ CREATE TABLE IF NOT EXISTS backtest_signals (
     -- leaves the old run's record — what that run actually traded on — intact.
     spec_id VARCHAR(32) NOT NULL DEFAULT '',
     PRIMARY KEY (market, strategy, symbol, date, spec_id)
-);
+-- one table per (strategy, spec_id) under it (ensure_signal_partition), so pruning a rule set drops
+-- its table and the disk gets the space back; a DELETE only frees it for Postgres to reuse. A table
+-- made before this was migrated by backtesting/signal_migrate.py.
+) PARTITION BY LIST (strategy);
 ALTER TABLE backtest_signals ADD COLUMN IF NOT EXISTS spec_id VARCHAR(32);
 
 -- which signal_id each spec_id's backtest_signals rows were written under (Strategy.signal_id): two
@@ -322,6 +326,116 @@ def ensure_signal_key() -> None:
             cur.execute("ROLLBACK")
             raise
     logger.info("Signal cache is now keyed by version: each version's rows are kept")
+
+
+SIGNALS = "backtest_signals"
+_SIGNAL_PARTS: set = set()   # (table, strategy, spec_id) whose partition this process has seen
+
+
+def signals_partitioned(cur, table: str = SIGNALS) -> bool:
+    """Whether the signal cache is partitioned: strategy, then spec_id, one table per rule set."""
+    cur.execute("SELECT relkind FROM pg_class WHERE oid = to_regclass(%s)", (table,))
+    row = cur.fetchone()
+    return bool(row and row[0] == "p")
+
+
+def _part_name(*keys: str) -> str:
+    raw = "bsig_" + "__".join(re.sub(r"[^a-z0-9]+", "_", k.lower()) for k in keys)
+    return raw if len(raw) <= 63 else raw[:54] + "_" + hashlib.md5(raw.encode()).hexdigest()[:8]
+
+
+def _bound_value(expr: str) -> str | None:
+    m = re.fullmatch(r"FOR VALUES IN \('(.*)'\)", expr or "")
+    return m.group(1).replace("''", "'") if m else None
+
+
+def _children(cur, parent: str) -> list[tuple[str, str, bool]]:
+    """(value, schema-qualified name, detach pending) of each partition of `parent`."""
+    cur.execute("""SELECT pg_get_expr(c.relpartbound, c.oid), format('%%I.%%I', n.nspname, c.relname),
+                          i.inhdetachpending
+                   FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+                   JOIN pg_namespace n ON n.oid = c.relnamespace
+                   WHERE i.inhparent = to_regclass(%s)""", (parent,))
+    return [(_bound_value(b), name, pending) for b, name, pending in cur.fetchall()]
+
+
+def signal_leaves(table: str = SIGNALS) -> list[tuple[str, str, str, bool]]:
+    """(strategy, spec_id, table name, detach pending) of every rule set's table, from the catalog."""
+    with get_connection().cursor() as cur:
+        if not signals_partitioned(cur, table):
+            return []
+        return [(s, sp, leaf, pending)
+                for s, mid, _ in _children(cur, table)
+                for sp, leaf, pending in _children(cur, mid)]
+
+
+def ensure_signal_partition(strategy: str, spec_id: str, table: str = SIGNALS) -> None:
+    """Make the table that holds `strategy`'s rows under `spec_id`, before anything writes them: a
+    partitioned table without a partition for a row refuses it. A no-op on a table not yet partitioned.
+    Created standalone, then ATTACHed: that takes SHARE UPDATE EXCLUSIVE on the parent, which lets
+    reads and writes of the other rule sets go on. No DEFAULT partition: with one, each new partition
+    would scan it, and DETACH CONCURRENTLY (signal_cache.prune) would be refused."""
+    key = (table, strategy, spec_id)
+    if key in _SIGNAL_PARTS:
+        return
+    from psycopg2 import sql
+    with get_connection().cursor() as cur:
+        if not signals_partitioned(cur, table):
+            return
+        cur.execute("BEGIN")
+        try:
+            # two lanes starting the same rule set must not both create it
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"{table}:partitions",))
+            cur.execute("SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                        "WHERE c.oid = to_regclass(%s)", (table,))
+            schema = cur.fetchone()[0]
+            parent = table
+            # the strategy's table (itself partitioned by spec_id), then the rule set's
+            for value, keys, sub in ((strategy, (strategy,), " PARTITION BY LIST (spec_id)"),
+                                     (spec_id, (strategy, spec_id), "")):
+                found = [name for v, name, _ in _children(cur, parent) if v == value]
+                if found:
+                    parent = found[0]
+                    continue
+                name = sql.Identifier(schema, _part_name(*keys))
+                cur.execute(sql.SQL("CREATE TABLE {} (LIKE {} INCLUDING DEFAULTS)" + sub)
+                            .format(name, sql.SQL(table)))
+                cur.execute(sql.SQL("ALTER TABLE {} ATTACH PARTITION {} FOR VALUES IN (%s)")
+                            .format(sql.SQL(parent), name), (value,))
+                parent = name.as_string(cur)
+            cur.execute("COMMIT")
+        except Exception:
+            cur.execute("ROLLBACK")
+            raise
+    _SIGNAL_PARTS.add(key)
+
+
+def drop_signal_partition(strategy: str, spec_id: str, table: str = SIGNALS) -> int:
+    """Drop the table of one rule set's rows, handing its disk space back at once. DETACH CONCURRENTLY
+    first, so readers and writers of the other rule sets are not blocked (needs an autocommit
+    connection, which get_connection gives). A strategy left with no rule sets is dropped too.
+    Returns the bytes freed (0 when there was no such table)."""
+    from psycopg2 import sql
+    freed = 0
+    with get_connection().cursor() as cur:
+        for s, mid, mid_pending in _children(cur, table):
+            if s != strategy:
+                continue
+            for sp, leaf, pending in _children(cur, mid):
+                if sp != spec_id:
+                    continue
+                cur.execute("SELECT pg_total_relation_size(%s::regclass)", (leaf,))
+                freed += cur.fetchone()[0]
+                # an interrupted DETACH CONCURRENTLY leaves the partition pending: finish that one
+                cur.execute(sql.SQL("ALTER TABLE {} DETACH PARTITION {} " + ("FINALIZE" if pending else "CONCURRENTLY"))
+                            .format(sql.SQL(mid), sql.SQL(leaf)))
+                cur.execute(sql.SQL("DROP TABLE {}").format(sql.SQL(leaf)))
+            if not _children(cur, mid):
+                cur.execute(sql.SQL("ALTER TABLE {} DETACH PARTITION {} " + ("FINALIZE" if mid_pending else "CONCURRENTLY"))
+                            .format(sql.SQL(table), sql.SQL(mid)))
+                cur.execute(sql.SQL("DROP TABLE {}").format(sql.SQL(mid)))
+    _SIGNAL_PARTS.discard((table, strategy, spec_id))
+    return freed
 
 
 def _legacy_setup_col_to_code(column: str) -> str:

@@ -222,7 +222,10 @@ rescanning for hours. Never pin it across a change to `build_context()`, `evalua
 or a detector — the carried rows would replay the old detections. Leave it unset
 otherwise (it defaults to `version`, so a bump rescans). The cache keeps only each
 strategy's current and previous version: the weekly `prune_signals` job
-(`backtesting/signal_cache.py`) deletes older rows, because left alone they filled the disk.
+(`backtesting/signal_cache.py`) drops older ones, because left alone they filled the disk. The table
+is partitioned, one table per (strategy, spec id), so a prune is a dropped table that gives the disk its
+space back (a DELETE would not); a writer calls `db.ensure_signal_partition` before inserting a new spec
+id's rows — every write path in `backtest.py` does — or Postgres refuses them.
 
 Then run, from `scripts/`:
 
