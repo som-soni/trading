@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 CHUNK_GB = 4          # pages of legacy moved per step: the most the disk ever holds twice
 MIN_FREE_GB = 8       # stop between steps below this much free disk
+TRUNCATE_RETRIES, TRUNCATE_WAIT_S = 10, 30   # a VACUUM that could not truncate is retried this long
 LEGACY_SUFFIX = "_legacy"
 _KEY = "market, strategy, symbol, date, spec_id"
 
@@ -81,6 +82,7 @@ def _old_transactions(cur, older_than_s: int = 60) -> list[tuple]:
     exactly that to the first test run)."""
     cur.execute("""SELECT pid, now() - xact_start, left(query, 80) FROM pg_stat_activity
                    WHERE pid <> pg_backend_pid() AND (backend_xmin IS NOT NULL OR backend_xid IS NOT NULL)
+                     AND backend_type <> 'autovacuum worker'   -- a vacuum holds back no one's cleanup
                      AND xact_start < now() - make_interval(secs => %s)""", (older_than_s,))
     return cur.fetchall()
 
@@ -174,11 +176,17 @@ def migrate(apply: bool = False, table: str = db.SIGNALS, chunk_blocks: int | No
             moved, deleted = _move(cur, table, legacy, first)
             cur.execute(f"VACUUM {legacy}")         # truncates the now-empty tail
             left = _blocks(cur, legacy)
-            if left > first:
-                # VACUUM could not truncate (it gives up on a conflicting lock): one retry, else stop
-                # rather than loop over the same empty pages
+            for _ in range(TRUNCATE_RETRIES):
+                if left <= first:
+                    break
+                # VACUUM could not truncate: it gives up on a conflicting lock, and cannot remove rows a
+                # snapshot still sees (an autovacuum's ANALYZE of a new table holds one briefly). Wait,
+                # then stop rather than loop over the same empty pages.
+                time.sleep(TRUNCATE_WAIT_S)
                 cur.execute(f"VACUUM {legacy}")
-                if (left := _blocks(cur, legacy)) > first:
+                left = _blocks(cur, legacy)
+            else:
+                if left > first:
                     raise SystemExit(f"stopped: VACUUM did not truncate {legacy} below block {first}; "
                                      f"transactions holding it back: {_old_transactions(cur, 0)}. Re-run to resume")
             steps += 1
