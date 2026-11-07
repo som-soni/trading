@@ -517,6 +517,7 @@ def simulate(
     max_adv_pct: float | None = None,
     pyramid_frac: float | None = None,
     pyramid_add_pct: float = 2.0,
+    pyramid_at: str = "pct",
     credits=None,
     equal_alloc_pct: float | None = None,
 ) -> PortfolioResult:
@@ -536,6 +537,13 @@ def simulate(
     the same buy-range ceiling the initial entry respects, and refused once any
     partial profit has been taken. None or 1.0 keeps the old single-tranche fill.
 
+    `pyramid_at="box"` is Darvas's add instead: nothing rests at first; when a box higher than the
+    bought one (meta["box_top"]) completes while the position is held, the remainder rests as a buy-stop
+    over its top (darvas.buy_above), and on that fill the stop rises to one tick under its bottom
+    (darvas.stop_below). A later, higher box moves an unfilled add up to its own top. Boxes come from
+    the same causal scan as the darvas exit (`darvas_levels`), read from the previous session's row, so
+    an add rests only from the session after its box completed. `pyramid_add_pct` is unused.
+
     `credits` (marketdata.corporate_actions.Credits): on a special dividend's or demerger's ex-date a
     held position receives the cash and its levels move down by it (`credit_action`); an order
     still resting in that symbol is cancelled, its levels set against the pre-payout price."""
@@ -544,6 +552,12 @@ def simulate(
     base_slip = cfg.slippage_bps if slippage_bps is None else slippage_bps
     fee_rate = cost_bps / 10_000.0
     prices = exit_frames(prices, policy)
+    if pyramid_at not in ("pct", "box"):
+        raise ValueError(f"pyramid_at must be 'pct' or 'box', not {pyramid_at!r}")
+    if pyramid_at == "box" and pyramid_frac:
+        # the box add reads the darvas exit's box columns, whatever the exit mode
+        prices = {s: (df if DV_TOP in df.columns else df.assign(**darvas_levels(df, policy)))
+                  for s, df in prices.items()}
 
     check_ma_col(policy, prices)   # every caller, not only the command line
 
@@ -675,6 +689,8 @@ def simulate(
             if df is None or today not in df.index or today == pos.entry_date:
                 continue
             bar = df.loc[today]
+            if pyramid_at == "box":
+                _box_add_level(pos, df, today, cfg)
             if not (float(bar["high"]) >= pos.add_price):
                 continue
             fill = max(pos.add_price, float(bar["open"]))        # a gap fills worse
@@ -702,6 +718,9 @@ def simulate(
             pos.costs += extra
             pos.slippage += (fill_slipped - fill) * add_n
             pos.adds += 1
+            if pyramid_at == "box":
+                # Darvas: the add is bought on the next box's breakout, and the stop goes under that box
+                pos.stop = max(pos.stop, _dv.stop_below(pos.meta["_py_bottom"], cfg.tick_size))
             if pos.shares >= pos.target_shares:
                 pos.target_shares = 0
 
@@ -940,7 +959,8 @@ def simulate(
                 target=order["target"], shares=shares, costs=cost, meta=dict(meta),
                 slippage=(entry - raw_entry) * shares,
                 target_shares=(full_shares if pyramid_frac and shares < full_shares else 0),
-                add_price=(entry * (1 + pyramid_add_pct / 100)
+                # box: nothing rests until a higher box completes (`_box_add_level`)
+                add_price=((math.inf if pyramid_at == "box" else entry * (1 + pyramid_add_pct / 100))
                            if pyramid_frac and shares < full_shares else float("nan")),
             )
             if meta.get("base_id") is not None:
@@ -1386,6 +1406,21 @@ def darvas_levels(df: pd.DataFrame, policy: ExitPolicy) -> dict:
                                     policy.dv_bottom_confirm):
             top.iat[b.done_i], bottom.iat[b.done_i] = b.top, b.bottom
     return {DV_TOP: top, DV_BOTTOM: bottom}
+
+
+def _box_add_level(pos: "PortfolioTrade", df: pd.DataFrame, today, cfg: MarketConfig) -> None:
+    """`pyramid_at="box"`: rest the add over a box higher than the last one, read from the PREVIOUS
+    session's row (a box completes at a close, so its buy-stop acts from the next session). Only boxes
+    completed while the position was held count, starting above the bought box (meta["box_top"])."""
+    i = df.index.get_loc(today)
+    if i < 1 or df.index[i - 1] < pos.entry_date:
+        return
+    prev = df.iloc[i - 1]
+    top = prev.get(DV_TOP, float("nan"))
+    m = pos.meta
+    if top == top and top > m.get("_py_top", m.get("box_top", -math.inf)):
+        m["_py_top"], m["_py_bottom"] = float(top), float(prev[DV_BOTTOM])
+        pos.add_price = _dv.buy_above(top, cfg.tick_size)
 
 
 def _manage_darvas(sym, pos: "PortfolioTrade", bar, today, policy: ExitPolicy, close_out, cfg: MarketConfig) -> None:

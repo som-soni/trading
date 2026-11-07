@@ -136,6 +136,32 @@ def main() -> int:
     check("its R is measured against the initial stop", t is not None and t.initial_stop == s0 and t.r_multiple > 1,
           f"{t.r_multiple if t else None}")
 
+    print("box pyramid: half at the breakout, the rest over the next higher box once it completes")
+    # under a plain stop-only exit, so the box columns must come from the pyramid, not the exit mode
+    def pyr(end_bar):
+        sig = Signal(date=df.index[b(5)], symbol="TEST", setup="S1", entry=102.11, stop=s0, target=10_000.0,
+                     decision="TRADE - HIGH CONFIDENCE", quality=2.0, meta={"box_top": 102.0, "box_bottom": 97.0})
+        res = simulate([sig], {"TEST": df}, MARKETS["us"], start=df.index[200], end=df.index[end_bar],
+                       exit_policy=ExitPolicy(mode="bracket", use_target=False), slippage_bps=0.0,
+                       pyramid_frac=0.5, pyramid_at="box")
+        return res.trades[0] if res.trades else None
+    t15, t16 = pyr(b(15)), pyr(b(16))
+    check("nothing added while box 2 is forming, nor on the session it completes (b15)",
+          t15 is not None and t15.adds == 0 and abs(t15.stop - s0) < 1e-9, f"adds {t15.adds if t15 else None}")
+    add_at = dv.buy_above(110, tick)
+    full = _run(df, s0, b(15)).shares                     # the unpyramided position's size
+    want_px = (t15.shares * t15.entry_price + (full - t15.shares) * add_at) / full if t15 else None
+    check(f"added on b16 at {add_at:g} (over box 2's top) up to full size, the stop raised under 105",
+          t16 is not None and t16.adds == 1 and t15.shares == int(full * 0.5) and t16.shares == full
+          and abs(t16.entry_price - want_px) < 1e-9 and abs(t16.stop - s2) < 1e-9,
+          f"adds {t16.adds if t16 else None} shares {t16.shares if t16 else None} "
+          f"avg {t16.entry_price if t16 else None} stop {t16.stop if t16 else None}")
+    try:
+        simulate([], {"TEST": df}, MARKETS["us"], start=df.index[200], pyramid_frac=0.5, pyramid_at="boxes")
+        check("an unknown pyramid_at is refused", False)
+    except ValueError:
+        check("an unknown pyramid_at is refused", True)
+
     print(f"\n{'OK — the darvas exit trails by causal boxes.' if not FAILS else f'{len(FAILS)} FAILURE(S)'}")
     return 1 if FAILS else 0
 

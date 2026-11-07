@@ -74,6 +74,12 @@ def stop_below(bottom: float, tick: float) -> float:
     return round_tick(bottom - tick, tick, "down") if tick > 0 else bottom
 
 
+def buy_above(top: float, tick: float) -> float:
+    """The buy-stop over a box top: ENTRY_BUFFER_PCT above it, rounded up to the tick. The entry and the
+    simulator's box pyramid (`--pyramid-at box`, backtesting/portfolio_sim.py) both use this."""
+    return round_tick(float(top) * (1 + ENTRY_BUFFER_PCT / 100), tick, "up")
+
+
 class DarvasStrategy(Strategy):
     selection = "time_series"
     version = "1.0"
@@ -139,7 +145,9 @@ class DarvasStrategy(Strategy):
     caveats = (
         "**No pyramiding.** Darvas added to a winner on each new box's breakout; version 1.0 buys "
         "once per position and only trails the stop. A breakout from a higher box while held is not "
-        "bought.",
+        "bought. The backtester can test his add as a variant (`--pyramid 0.5 --pyramid-at box`: half "
+        "size at the breakout, the rest over the next higher box's top, the stop then under its "
+        "bottom) -- one add, not his repeated ones, and not part of the strategy's rules.",
         "**Daily bars, worse case first.** A session whose range covers both the buy-stop and the stop "
         "buys and sells the same session, at the stop. A gap below the stop fills at the open, so a "
         "loss can exceed 1R.",
@@ -178,7 +186,12 @@ class DarvasStrategy(Strategy):
         "max drawdown -26.5%. A 3-ATR chandelier trail (--exit-mode trail_atr): US excess -8.70, India "
         "-3.73 (-6.07), Sharpe 0.77. The market switch (G3 on, box exit): US excess -8.13, India -6.69 -- "
         "worse in both. The slower exit is the only change that moved the US result much: it keeps more "
-        "of the long runs (6% of trades reach 3R against 4.5%). No variant has become a version."
+        "of the long runs (6% of trades reach 3R against 4.5%). No variant has become a version. LAST "
+        "ROUND, queued 2026-11-07, US only, on the 50-day exit, optimise stage: momentum ranking "
+        "(--rank-by momentum), Darvas's box add (--pyramid 0.5 --pyramid-at box), and both. Same "
+        "criterion, written before them. Six US variants will then have been tried, so a pass by a "
+        "small margin is weak evidence; if none passes, the method is judged not to beat buy and hold "
+        "here and the refining stops."
     )
     gate_docs = {
         "G1": (
@@ -477,7 +490,7 @@ class DarvasStrategy(Strategy):
         top, bottom = e.get("box_top"), e.get("box_bottom")
         if top is None or bottom is None:
             return PlanChoice(None, None, "missing box")
-        entry = round_tick(float(top) * (1 + ENTRY_BUFFER_PCT / 100), cfg.tick_size, "up")
+        entry = buy_above(float(top), cfg.tick_size)
         stop = stop_below(float(bottom), cfg.tick_size)
         risk = entry - stop
         target = entry + NOMINAL_TARGET_R * risk

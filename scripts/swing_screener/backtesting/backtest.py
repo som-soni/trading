@@ -1307,6 +1307,7 @@ def run_portfolio_backtest(
     min_dollar_volume: float | None = None,
     pyramid_frac: float | None = None,
     pyramid_add_pct: float = 2.0,
+    pyramid_at: str = "pct",
     use_market_filter: bool = False,
     mkt_confirm: int = 0,
     market_guide: bool = False,
@@ -1533,7 +1534,7 @@ def run_portfolio_backtest(
         all_signals, prices, cfg, start,
         max_positions=max_positions, exit_policy=policy,
         max_open_risk_pct=max_open_risk_pct, max_adv_pct=max_adv_pct,
-        pyramid_frac=pyramid_frac, pyramid_add_pct=pyramid_add_pct,
+        pyramid_frac=pyramid_frac, pyramid_add_pct=pyramid_add_pct, pyramid_at=pyramid_at,
         exposure=exposure, regime_ok=regime_ok, credits=credits, equal_alloc_pct=equal_alloc_pct, **sim_kw,
     )
     tdf = p_trades_to_df(result.trades)
@@ -1864,6 +1865,11 @@ def build_parser() -> argparse.ArgumentParser:
                              "the buy range so the average cost stays near the pivot.")
     parser.add_argument("--pyramid-add-pct", type=float, default=2.0, metavar="PCT",
                         help="how far above the entry the second tranche rests (default 2%%)")
+    parser.add_argument("--pyramid-at", default="pct", choices=["pct", "box"],
+                        help="where the second tranche of --pyramid rests: 'pct' (default) --pyramid-add-pct "
+                             "above the entry; 'box' Darvas's add, over the top of the next higher Darvas box "
+                             "once it completes, with the stop raised under that box's bottom on the fill "
+                             "(the darvas strategy's box rules, whatever the exit mode)")
     parser.add_argument("--min-dollar-volume", type=float, default=None, metavar="X",
                         help="override the market's traded-value floor for this run, e.g. "
                              "--min-dollar-volume 100e6 to drop small and micro caps. Point in time "
@@ -2101,7 +2107,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             rank_by=args.rank_by, min_group_rs=args.min_group_rs, block_stage3=args.block_stage3,
                 min_rs=args.min_rs, max_base_no=args.max_base,
             min_dollar_volume=args.min_dollar_volume,
-            pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct,
+            pyramid_frac=args.pyramid, pyramid_add_pct=args.pyramid_add_pct, pyramid_at=args.pyramid_at,
             use_market_filter=args.market_filter, mkt_confirm=args.mkt_confirm,
             market_guide=market_guide, results_blackout_days=args.results_blackout or None,
             results_by_announcement=bool(ms.RESULTS_BY_ANNOUNCEMENT) if args.spec else True,
@@ -2173,7 +2179,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     if args.equal_alloc:
         run += f"_eq{args.equal_alloc:g}"
     if args.pyramid:
-        run += f"_pyr{args.pyramid:g}at{args.pyramid_add_pct:g}pct"
+        run += (f"_pyr{args.pyramid:g}atbox" if args.pyramid_at == "box"
+                else f"_pyr{args.pyramid:g}at{args.pyramid_add_pct:g}pct")
     run += _portfolio_suffix(args, cfg)
     if args.symbols:
         picked = [x.strip().upper() for x in args.symbols.split(",") if x.strip()]
