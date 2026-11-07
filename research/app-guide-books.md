@@ -8,7 +8,7 @@
   open the strategy's **Portfolio** tab, compare the book with Kite, **Start rebalance**, place the orders by
   hand, record each fill against its order line, then **Complete rebalance**.
 - **Daily** (signal strategies): after the close routine, read **Today → Open positions**; move a raised stop,
-  sell at the open what says so; **Take a setup…** when you buy one.
+  sell at the open what says so and **Record an exit…**; **Take a setup…** when you buy one.
 - **Paper books** trade each strategy forward without money, by the same rules, so every strategy builds a
   record no earlier decision could have seen.
 - The app never places an order. Kite is read-only; you trade on Kite's own screens.
@@ -110,7 +110,7 @@ under the strategy's `backtest_args`) and stores where it stands (`position_stat
 | 3 | Kite | Move each raised stop; place a sell at the open for each exit |
 | 4 | Today → Today's setups | Choose the setups you will buy. Size from your own equity |
 | 5 | Kite, then Today → **Take a setup…** | After the fill: the setup, shares, fill price, costs and date. The setup's stop is the initial stop |
-| 6 | The next morning | Record exits and stop fills as SELLs on the strategy's book (the Ledger, or the account form) |
+| 6 | After each sale, Today → **Record an exit…** | Pick the position; it is prefilled with what its exit says to sell — all of it, or the part an exit ladder sold — at the stop it reached or the latest close. Change the shares and price to your fill. The SELL lands in the trade's own book, and a positions refresh is asked for |
 
 | Status | Meaning | What to do |
 |---|---|---|
