@@ -9128,14 +9128,16 @@ async function todayPage(alive, mkt) {
 /** Open positions (/api/open-positions -> backtesting/tracker.py): each open signal trade in a book, with the
  * stop and status its strategy's own exit gives after the latest close -- the backtest's exit code replayed on
  * stored bars by the daily `positions` job. "Take a setup…" records one of today's tradeable setups into its
- * strategy's book at your fill, with the setup's initial stop. Nothing here places an order. */
+ * strategy's book at your fill, with the setup's initial stop; "Record an exit…" records the sale that closes
+ * all or part of one, prefilled with what its exit says to sell. Nothing here places an order. */
 async function openPositionsCard(host, mkt, alive, trade) {
   const r = await api(`/api/open-positions/${mkt}`).catch(() => null);
   if (!alive() || !r) { host.remove(); return; }
   const n = r.rows.length + r.pending.length;
   const act = r.rows.filter((x) => x.status !== "hold").length;
   host.innerHTML = `${tdHead(`Open positions · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">${n} open${act ? ` · <b>${act} need${act === 1 ? "s" : ""} action</b>` : ""}</span>
-      <button class="sm" id="takebtn" ${trade.length ? "" : "disabled title=\"No tradeable setup today\""}>Take a setup…</button>`)}
+      <button class="sm" id="takebtn" ${trade.length ? "" : "disabled title=\"No tradeable setup today\""}>Take a setup…</button>
+      <button class="sm" id="exitbtn" ${n ? "" : "disabled title=\"No open signal trade\""}>Record an exit…</button>`)}
     <div class="muted small">Each open signal trade, managed by its strategy's own exit — the rule it was backtested with, replayed on the
       stored bars since your entry after each close. The stop is for the next session; R is measured from the stop you entered with.
       A reading of the rules, not a recommendation.</div>
@@ -9152,6 +9154,8 @@ async function openPositionsCard(host, mkt, alive, trade) {
       rowClick: (row) => go(`#/chart/${mkt}/${encodeURIComponent(row[0])}`),
     });
   }
+  host.querySelector("#exitbtn").onclick = () => recordExitForm(host.querySelector("#takeform"), mkt, r,
+    () => openPositionsCard(host, mkt, alive, trade));
   host.querySelector("#takebtn").onclick = () => {
     const f = host.querySelector("#takeform");
     const opt = (x, i) => `<option value="${i}">${esc(bareSymbol(x.symbol))} — ${esc(x.strategy_name)} · entry ${x.entry ?? "—"} · stop ${x.stop ?? "—"}</option>`;
@@ -9178,6 +9182,47 @@ async function openPositionsCard(host, mkt, alive, trade) {
         .catch((e) => { f.querySelector("#tk-err").textContent = String(e.message || e); return null; });
       if (ok) openPositionsCard(host, mkt, alive, trade);
     };
+  };
+}
+
+/** The sale that exits an open signal trade, recorded in its strategy's book (/api/open-positions/exit). A trade
+ * whose exit fired comes first, prefilled with what the exit says to sell -- all of it, or the part the ladder
+ * sold -- at the stop it reached or the latest close: change both to your fill. */
+function recordExitForm(f, mkt, r, onDone) {
+  const all = r.rows.map((x) => ({ ...x, tracked: true })).concat(r.pending.map((x) => ({ ...x, status_text: "Not yet tracked", sell_shares: null, sell_price: null })))
+    .sort((a, b) => (b.sell_shares ? 1 : 0) - (a.sell_shares ? 1 : 0));
+  const opt = (x, i) => `<option value="${i}">${esc(bareSymbol(x.symbol))} — ${esc(x.book)} · ${x.shares} shares · ${esc(x.status_text)}</option>`;
+  f.innerHTML = `<div class="sd-intro small" style="margin-top:8px"><b>Record an exit.</b> A SELL in the trade's own book at your fill. Sell all of it to
+      close the trade, or part of it (an exit ladder's step); the next <b>positions</b> run (asked for now) tracks what is left.
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px">
+      <select id="ex-s">${all.map(opt).join("")}</select>
+      <label>Shares <input id="ex-n" type="number" min="0" step="any" style="width:6em"></label>
+      <label>Fill price <input id="ex-p" type="number" min="0" step="any" style="width:7em"></label>
+      <label>Costs <input id="ex-c" type="number" min="0" step="any" style="width:5em" value="0"></label>
+      <label>Date <input id="ex-d" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+      <button class="primary sm" id="ex-go">Record</button><button class="ghost sm" id="ex-x">Cancel</button>
+      <span id="ex-err" style="color:var(--neg, #e5484d)"></span></div>
+    <div class="muted" id="ex-hint" style="margin-top:4px"></div></div>`;
+  const pick = () => all[+f.querySelector("#ex-s").value];
+  const fill = () => {
+    const x = pick();
+    f.querySelector("#ex-n").value = x.sell_shares || x.shares;
+    f.querySelector("#ex-p").value = x.sell_price ?? x.last_close ?? "";
+    f.querySelector("#ex-hint").textContent = x.status === "stopped" ? "Prefilled at the stop the low reached — if your resting stop order filled, that is about the price; otherwise the open you sold at."
+      : x.status === "partial" ? "Prefilled with the part the exit ladder sold." : x.sell_shares ? "Prefilled with the whole position, at the latest close — change it to your fill at the open."
+      : "This trade's exit has not fired: prefilled with the whole position at the latest close.";
+  };
+  fill();
+  f.querySelector("#ex-s").onchange = fill;
+  f.querySelector("#ex-x").onclick = () => { f.innerHTML = ""; };
+  f.querySelector("#ex-go").onclick = async () => {
+    const x = pick();
+    const body = { trade_id: x.trade_id, shares: parseFloat(f.querySelector("#ex-n").value), price: parseFloat(f.querySelector("#ex-p").value),
+      costs: parseFloat(f.querySelector("#ex-c").value) || 0, trade_date: f.querySelector("#ex-d").value };
+    if (!(body.shares > 0 && body.price > 0)) { f.querySelector("#ex-err").textContent = "Enter the shares and the fill price."; return; }
+    const ok = await api(`/api/open-positions/${mkt}/exit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .catch((e) => { f.querySelector("#ex-err").textContent = String(e.message || e); return null; });
+    if (ok) { toast(`Recorded: sold ${body.shares} ${bareSymbol(x.symbol)} from ${x.book}`); onDone(); }
   };
 }
 

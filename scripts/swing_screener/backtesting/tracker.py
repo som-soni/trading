@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS position_status (
     stops JSONB,                      -- [[date, stop]] after each session
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- the shares the exit leaves open after the latest session: below `shares` when the ladder sold part
+ALTER TABLE position_status ADD COLUMN IF NOT EXISTS open_shares DOUBLE PRECISION;
 """
 
 STATUS_TEXT = {
@@ -254,17 +256,18 @@ def refresh(market: str, books: list[str] | None = None) -> dict:
                 cur.execute("""
                     INSERT INTO position_status (trade_id, book, market, symbol, as_of, entry_date, entry_price, shares,
                         initial_stop, stop, status, reason, exit_date, exit_price, last_close, r_now, dist_pct, policy,
-                        stops, updated_at)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
+                        stops, open_shares, updated_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s, now())
                     ON CONFLICT (trade_id) DO UPDATE SET as_of=EXCLUDED.as_of, entry_date=EXCLUDED.entry_date,
                         entry_price=EXCLUDED.entry_price, shares=EXCLUDED.shares, initial_stop=EXCLUDED.initial_stop,
                         stop=EXCLUDED.stop, status=EXCLUDED.status, reason=EXCLUDED.reason, exit_date=EXCLUDED.exit_date,
                         exit_price=EXCLUDED.exit_price, last_close=EXCLUDED.last_close, r_now=EXCLUDED.r_now,
-                        dist_pct=EXCLUDED.dist_pct, policy=EXCLUDED.policy, stops=EXCLUDED.stops, updated_at=now()""",
+                        dist_pct=EXCLUDED.dist_pct, policy=EXCLUDED.policy, stops=EXCLUDED.stops,
+                        open_shares=EXCLUDED.open_shares, updated_at=now()""",
                             (o.trade_id, book, market, o.symbol, r["as_of"], o.entry_date.date(), o.entry_price,
                              o.shares, o.initial_stop, r["stop"], r["status"], ex.get("reason"), ex.get("date"),
                              ex.get("price"), r["last_close"], r["r_now"], r["dist_pct"], r["policy"],
-                             json.dumps(r["stops"][-60:])))
+                             json.dumps(r["stops"][-60:]), r["open_shares"]))
     with db.get_connection().cursor() as cur:   # trades no longer open, in the books this run covered
         cur.execute("DELETE FROM position_status WHERE market=%s AND NOT (trade_id = ANY(%s))"
                     + (" AND book = ANY(%s)" if books is not None else ""),
@@ -276,7 +279,8 @@ def statuses(market: str) -> list[dict]:
     """The stored status of every open signal trade in the market, for the Today page."""
     init_schema()
     cols = ("trade_id", "book", "symbol", "as_of", "entry_date", "entry_price", "shares", "initial_stop", "stop",
-            "status", "reason", "exit_date", "exit_price", "last_close", "r_now", "dist_pct", "policy", "updated_at")
+            "status", "reason", "exit_date", "exit_price", "last_close", "r_now", "dist_pct", "policy", "open_shares",
+            "updated_at")
     with db.get_connection().cursor() as cur:
         cur.execute(f"SELECT {', '.join(cols)} FROM position_status WHERE market=%s ORDER BY book, symbol", (market,))
         rows = [dict(zip(cols, r)) for r in cur.fetchall()]

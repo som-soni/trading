@@ -1719,14 +1719,59 @@ def open_positions(market: str):
 
     if market not in MARKETS:
         raise HTTPException(400, f"unknown market {market}")
-    rows = [r for r in tracker.statuses(market) if r["book"] in _REGISTRY]   # paper books have their own page
-    seen = {r["trade_id"] for r in rows}
     books = [b for (b,) in q("SELECT DISTINCT book FROM book_trades WHERE market=%s AND initial_stop IS NOT NULL",
                              (market,)) if b in _REGISTRY]
+    # the ledger is what is open NOW: a sale recorded since the last positions run drops or shrinks the row at once
+    opens = {o.trade_id: o for b in books for o in tracker.openings(b, market)}
+    rows = [r for r in tracker.statuses(market) if r["book"] in _REGISTRY and r["trade_id"] in opens]
+    for r in rows:
+        held = float(opens[r["trade_id"]].shares)
+        left = r.get("open_shares")
+        r["sold_since_refresh"] = held < float(r["shares"]) - 1e-9
+        r["shares"] = held
+        # what the exit says to sell: all of it, or the part the ladder sold (less any part already recorded)
+        r["sell_shares"] = (held if r["status"] in ("exit_next_open", "stopped") else
+                            max(0.0, held - float(left)) if r["status"] == "partial" and left is not None else None)
+        r["sell_price"] = r["exit_price"] if r["status"] == "stopped" and r.get("exit_price") else r["last_close"]
+    seen = {r["trade_id"] for r in rows}
     pending = [{"trade_id": o.trade_id, "book": o.book, "symbol": o.symbol, "entry_date": o.entry_date.date().isoformat(),
                 "entry_price": o.entry_price, "shares": o.shares, "initial_stop": o.initial_stop}
-               for b in books for o in tracker.openings(b, market) if o.trade_id not in seen]
+               for o in opens.values() if o.trade_id not in seen]
     return {"market": market, "rows": rows, "pending": pending, "status_text": tracker.STATUS_TEXT}
+
+
+@app.post("/api/open-positions/{market}/exit")
+def record_exit(market: str, body: dict):
+    """Record the sale that exits (all or part of) an open signal trade: a SELL in the trade's own book at your
+    fill, then ask the queue for a `positions` refresh. {trade_id, shares, price, costs?, trade_date?, note?}.
+    Nothing is ordered: you sell at the broker."""
+    from ..backtesting import ledger, tracker
+    from ..strategies import _REGISTRY
+
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    tid = int(body.get("trade_id") or 0)
+    books = [b for (b,) in q("SELECT DISTINCT book FROM book_trades WHERE market=%s AND initial_stop IS NOT NULL",
+                             (market,)) if b in _REGISTRY]
+    o = next((o for b in books for o in tracker.openings(b, market) if o.trade_id == tid), None)
+    if o is None:
+        raise HTTPException(404, "no such open position (already closed?)")
+    _book_ok(o.book, market, writable=True)
+    st = next((r for r in tracker.statuses(market) if r["trade_id"] == tid), {})
+    why = tracker.STATUS_TEXT.get(st.get("status"), "") if st.get("status") not in (None, "hold", "stop_raised") else ""
+    try:
+        ledger.record(o.book, market, [{
+            "side": "SELL", "symbol": o.symbol, "shares": body.get("shares"), "price": body.get("price"),
+            "costs": body.get("costs") or 0, "trade_date": body.get("trade_date"),
+            "note": body.get("note") or (f"exit: {st.get('reason') or why}" if why else "exit by hand")}], source="manual")
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, str(e))
+    queued = None
+    try:
+        queued = _jq().enqueue(["positions"], market, {}, requested_by="web: an exit recorded", priority=10)["id"]
+    except Exception as exc:  # noqa: BLE001 -- the sale is recorded; the close routine refreshes it anyway
+        print(f"positions {market}: could not queue a refresh ({exc})")
+    return {"book": o.book, "symbol": o.symbol, "queued": queued}
 
 
 # the signal's own levels the exits read, copied from the strategy's stored run row when it carries them
