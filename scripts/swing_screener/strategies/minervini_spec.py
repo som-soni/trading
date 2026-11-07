@@ -406,7 +406,7 @@ TREND_EXIT_NEEDS_VOLUME = 0
 TIME_STOP_DAYS = 15
 # EN-02 fills on the close through the pivot; a fill on volume under VOL_MULT x the
 # 50-day average is not a valid breakout and is sold at the next open.
-LIGHT_VOLUME_EXIT = 1
+LIGHT_VOLUME_EXIT = 0   # 1.54: was 1; a light fill is held to the normal exits (changelog)
 # 1.51: MV-02 fills AT the close through the pivot, so that close's volume is known when it fills: under
 # VOL_MULT x the 50-day it does not fill and the order keeps resting (1). 0 = fill it and let
 # LIGHT_VOLUME_EXIT sell it at the next open, as before -- 517 of 574 S2 fills in the 1.46 US run did that.
@@ -1095,10 +1095,18 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.53"
+    version = "1.54"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.54", "2026-11-07",
+         "LIGHT_VOLUME_EXIT is off: a buy-stop that fills on light breakout volume is no longer sold at the next "
+         "open but held to the stop and the normal exits. Optimise stage (2013-2021, in-sample), 1.53 with the "
+         "switch off against 1.52 plain: US +2.76% CAGR vs -3.32%, max drawdown -19.5% vs -40.4%, 7 of 9 years "
+         "better -- four of its five largest winners (CSGP 2013 +16.2R, AEIS 2016 +10.1R) were sold the day after "
+         "entry for light volume in 1.52; India +5.83% vs +3.71%, but only 2021 is better (+65.6% that year) and "
+         "drawdown is deeper. S2's own fill rule (S2_FILL_NEEDS_VOLUME) still applies. The candidate is verified "
+         "once against the criterion in `status`. After the scan, so signal_version stays 1.51."),
         ("1.53", "2026-11-06",
          "S2_FILL_NEEDS_VOLUME is its own switch. 1.51 set it only while LIGHT_VOLUME_EXIT was on, so a "
          "LIGHT_VOLUME_EXIT=0 variant also let S2 fill on light closes: in the US optimise run 188 of its 201 S2 "
@@ -1878,6 +1886,14 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "VERIFY PENDING for v1.54 (LIGHT_VOLUME_EXIT off). Criterion written 2026-11-07, before the verify runs "
+        "(2022-01-01 to today), each market once: v1.54 passes only if, in BOTH the US and India, (1) CAGR is "
+        "above 0, (2) CAGR is above the same-window run of the 1.53 rules (`--const LIGHT_VOLUME_EXIT=1`), and "
+        "(3) it makes at least 50 trades. A fail in either market fails the version, and the next version "
+        "restores the 1.53 exit. The figures behind choosing it are in-sample (optimise stage, 2013-2021): US "
+        "+2.76% CAGR vs -3.32% for 1.52, India +5.83% vs +3.71% (India's gain is 2021 alone). Five candidates "
+        "were compared on those years (S8 off, S9 off, both, the light-volume exit off, and 1.52), so the "
+        "chosen one's in-sample margin is optimistic. Older figures follow. "
         "IN-SAMPLE ONLY, not verified; verify not run. v1.41 (fresh and cached scans build one plan, with 1.39's simulator and 1.40's filter fixes) has no run "
         "yet. Its rules are 1.38's, but a 1.38 run could serve a bar from the signal cache, where the plan saw "
         "almost no overhead supply and took setups the rules refuse (SSNC 2017-04-18 at 2.03R instead of 0.85R), "
@@ -2259,11 +2275,11 @@ class MinerviniSpecStrategy(Strategy):
         "Each session an open position is checked against these rules, in this order, and the first that "
         "applies acts. Apart from the stop (see Stop), each exit is decided on the session's close and "
         "sold at the next session's open.",
-        "Unconfirmed breakout (MV-02 buys only). If the session that filled the buy-stop traded less "
-        "than {VOL_MULT} times its 50-day average volume, the breakout was not confirmed: the whole "
-        "position is sold.\n\n"
-        "Since 1.51 the fill itself needs that volume (S2_FILL_NEEDS_VOLUME), so this exit acts only "
-        "when that switch is 0, which fills the light close and sells it at the next open as before.",
+        "Unconfirmed breakout (buy-stop fills, S2 and S8), while LIGHT_VOLUME_EXIT is on -- it is "
+        "{LIGHT_VOLUME_EXIT} (off) since 1.54. When on: if the session that filled the buy-stop traded less "
+        "than {VOL_MULT} times its 50-day average volume, the breakout was not confirmed and the whole "
+        "position is sold at the next open. Off, such a fill is held to the stop and the exits below.\n\n"
+        "S2's fill itself needs that volume since 1.51 (S2_FILL_NEEDS_VOLUME), whichever way this is set.",
         "EX-04 — sell part into strength. {STRENGTH_FRAC} of the position (about a third) is sold "
         "the first time EITHER trigger fires, once only, and the rest is held for the trend:\n\n"
         "- the trade's high reaches +{PARTIAL_R}R — the same point EX-03 moves the stop to "
