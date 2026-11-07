@@ -170,12 +170,15 @@ class DarvasStrategy(Strategy):
         "are a trailed stop, median R -0.28 US, -0.40 India), so the few long runs (about one trade in "
         "twenty reaches 3R) do not pay for the rest. Same stage, for comparison: Donchian v1.5 excess "
         "-10.40 US, -1.69 India; Chart patterns excess -9.22 US (v1.18), -6.13 India (v1.19). Verify not "
-        "run, and not to be run on this version: it failed before verify. Variants queued 2026-11-06, "
-        "optimise stage only: a wider exit (close below the 50-day average; a 3-ATR chandelier trail) and "
-        "the market switch (G3). Criterion written before them, per market: excess CAGR above 0 both at "
-        "the run's cost and at the standard cost, on more than 50 trades. Three variants are tried, so "
-        "the best one's margin is optimistic: at most one passing variant per market becomes a new "
-        "version, and only that version is verified, once."
+        "run, and not to be run on this version: it failed before verify. VARIANTS, optimise stage, "
+        "measured 2026-11-07, all FAIL their criterion (written before them, per market: excess CAGR above "
+        "0 at the run's and at the standard cost, on more than 50 trades). Exit on a close below the "
+        "50-day average (--exit-mode ma): US 12.26% CAGR, excess -1.75 (-1.91 standard cost), Sharpe 0.79, "
+        "max drawdown -26.9%, 612 trades, median hold 39 days; India excess -4.34 (-6.16), Sharpe 0.68, "
+        "max drawdown -26.5%. A 3-ATR chandelier trail (--exit-mode trail_atr): US excess -8.70, India "
+        "-3.73 (-6.07), Sharpe 0.77. The market switch (G3 on, box exit): US excess -8.13, India -6.69 -- "
+        "worse in both. The slower exit is the only change that moved the US result much: it keeps more "
+        "of the long runs (6% of trades reach 3R against 4.5%). No variant has become a version."
     )
     gate_docs = {
         "G1": (
