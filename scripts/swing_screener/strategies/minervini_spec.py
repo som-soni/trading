@@ -406,7 +406,7 @@ TREND_EXIT_NEEDS_VOLUME = 0
 TIME_STOP_DAYS = 15
 # EN-02 fills on the close through the pivot; a fill on volume under VOL_MULT x the
 # 50-day average is not a valid breakout and is sold at the next open.
-LIGHT_VOLUME_EXIT = 0   # 1.54: was 1; a light fill is held to the normal exits (changelog)
+LIGHT_VOLUME_EXIT = 1   # 1.55: back on -- 1.54 held light fills and failed verify (changelog)
 # 1.51: MV-02 fills AT the close through the pivot, so that close's volume is known when it fills: under
 # VOL_MULT x the 50-day it does not fill and the order keeps resting (1). 0 = fill it and let
 # LIGHT_VOLUME_EXIT sell it at the next open, as before -- 517 of 574 S2 fills in the 1.46 US run did that.
@@ -1095,10 +1095,14 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.54"
+    version = "1.55"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.55", "2026-11-07",
+         "LIGHT_VOLUME_EXIT is back on, as 1.54's criterion required: 1.54 failed verify (2022 to today, once). "
+         "US -1.33% CAGR, failing CAGR above 0, though above the 1.53 rules' -4.40%; India 2.18%, failing "
+         "'above the 1.53 rules' (2.27%). The rules are 1.53's; signal_version stays 1.51."),
         ("1.54", "2026-11-07",
          "LIGHT_VOLUME_EXIT is off: a buy-stop that fills on light breakout volume is no longer sold at the next "
          "open but held to the stop and the normal exits. Optimise stage (2013-2021, in-sample), 1.53 with the "
@@ -1886,7 +1890,13 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "VERIFY PENDING for v1.54 (LIGHT_VOLUME_EXIT off). Criterion written 2026-11-07, before the verify runs "
+        "v1.55 has 1.53's rules: v1.54 (LIGHT_VOLUME_EXIT off) FAILED verify, 2022-01-01 to 2026-11-07, run once "
+        "per market. US: -1.33% CAGR (the 1.53 rules -4.40%), Sharpe -0.05, max drawdown -26.6%, 342 trades -- "
+        "fails CAGR above 0. India: 2.18% (the 1.53 rules 2.27%), Sharpe 0.28, max drawdown -25.7%, 210 trades "
+        "-- fails 'above the 1.53 rules'. Neither version beats holding the index over those years (excess "
+        "CAGR: US -10.65 / -13.72 points, India -6.97 / -6.88). Those years are now seen: a rule changed "
+        "because of them is tuned on them. The criterion, as written before the runs: "
+        "v1.54 (LIGHT_VOLUME_EXIT off). Criterion written 2026-11-07, before the verify runs "
         "(2022-01-01 to today), each market once: v1.54 passes only if, in BOTH the US and India, (1) CAGR is "
         "above 0, (2) CAGR is above the same-window run of the 1.53 rules (`--const LIGHT_VOLUME_EXIT=1`), and "
         "(3) it makes at least 50 trades. A fail in either market fails the version, and the next version "

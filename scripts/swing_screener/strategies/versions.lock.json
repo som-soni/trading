@@ -535,7 +535,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "ca887ba2",
+    "fingerprint": "9e138e59",
     "params": {
       "BASE_COUNT_MIN_DAYS": 25,
       "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
@@ -572,7 +572,7 @@
       "FUND_EPS_GROWTH_MIN_PCT": 20.0,
       "FUND_MARGIN_SLACK_PP": 1.0,
       "FUND_SALES_GROWTH_MIN_PCT": 15.0,
-      "LIGHT_VOLUME_EXIT": 0,
+      "LIGHT_VOLUME_EXIT": 1,
       "LIVE_MIN_PRICE_INR": 100,
       "LIVE_MIN_PRICE_USD": 15,
       "LOW_CHEAT_ENABLED": 1,
@@ -769,7 +769,48 @@
         "W5"
       ]
     },
-    "version": "1.54"
+    "version": "1.55"
+  },
+  "minervini_coil": {
+    "family": "minervini",
+    "fingerprint": "03f49df5",
+    "params": {
+      "BASE_MAX_DAYS": 325,
+      "BUY_RANGE_PCT": 5.0,
+      "DRYUP_RATIO": 0.8,
+      "MAX_ENTRIES_PER_BASE": 2,
+      "MAX_PCT_BELOW_52W_HIGH": 25.0,
+      "MAX_STOP_PCT": 10.0,
+      "MIN_PCT_ABOVE_52W_LOW": 30.0,
+      "NOMINAL_TARGET_R": 3,
+      "PIVOT_NEAR_HIGH": 0.9,
+      "RS_MIN_RANK": 70,
+      "RS_MIN_SCORE": 0.5,
+      "SMA200_RISING_BARS": 21,
+      "STOP_BUFFER_PCT": 0.5,
+      "TIGHT_MIN_DAYS": 5,
+      "TIGHT_PCT": 10.0,
+      "VOL_MULT": 1.4,
+      "WINDOW": 10,
+      "YOUNG_LISTING": 1,
+      "YOUNG_MIN_BARS": 60,
+      "_key": "minervini_coil",
+      "gate_codes": [
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7",
+        "G8"
+      ],
+      "min_bars": 300,
+      "setup_codes": [
+        "S1"
+      ]
+    },
+    "version": "1.0"
   },
   "momentum_baseline": {
     "family": "momentum_baseline",

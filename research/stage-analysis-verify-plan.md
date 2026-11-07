@@ -46,3 +46,14 @@ Each market is judged on its own. A pass in one market does not carry over to th
   version, judged on new forward data, because these years are no longer out of sample.
 - **Inconclusive:** reported as such. A second verify run of 2.11 would be a repeat (`--again`) and would be
   labelled one.
+
+## Result (added 2026-11-07, after the verify runs; nothing above was changed)
+
+Verify window 2022-01-03 → 2026-11-06, v2.11-66dbb1bc, judged on the criteria above.
+
+| Market | CAGR (index) | Max drawdown (index) | Sharpe (index) | Closed trades | 1 Drawdown | 2 Sharpe | 3 Trades | Verdict |
+|---|---|---|---|---|---|---|---|---|
+| US vs SPY | 2.84% (9.32%) | −13.0% (−25.4%) | 0.32 (0.60) | 78 | yes (+12.4) | no (−0.28) | yes | **FAIL** |
+| India vs ^CRSLDX | 5.87% (9.15%) | −18.8% (−18.8%) | 0.56 (0.69) | 73 | no (+0.0) | no (−0.13) | yes | **FAIL** |
+
+Both markets fail. The strategy has not earned paper trading under 2.11; the result is in its `status`.

@@ -447,6 +447,8 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .sm-item button { width: 26px; height: 26px; padding: 0; justify-content: center; background: transparent; border: 0; color: var(--muted); }
 .sm-item button:hover { color: var(--down); background: var(--line); }
 .sm-item.flash { animation: flash .6s; }
+/* an indicator's link to the Learn section that explains it (studies.js LEARN) */
+.sm-learn { color: var(--accent-text); text-decoration: none; } .sm-learn:hover { text-decoration: underline; }
 @keyframes flash { from { background: var(--accent-soft); } }
 .sm-empty { padding: 30px; text-align: center; }
 .sm-foot { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); }
@@ -1360,6 +1362,8 @@ table.fin.peers tbody th a { color: var(--link); }
    instead of the lines getting ever longer */
 .lp-guide { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 24px; align-items: start; }
 .lp-guide .md { max-width: none; }
+/* a section opened by link (#/learn/<guide>/<section>) or from the contents lands below the sticky header */
+.lp-guide h2, .lp-guide h3 { scroll-margin-top: 96px; }
 /* Sector research: version picker, data date and review state above the analysis */
 .lp-nav .sr-age { display: block; font-size: 12px; color: var(--muted); }
 .sr-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }

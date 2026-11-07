@@ -1,4 +1,4 @@
-# Volatility indicators — ATR, standard deviation, BandWidth, historical volatility, Mass Index, Ulcer Index, TTM Squeeze
+# Volatility indicators — ATR, standard deviation, BandWidth, historical volatility, Mass Index, Ulcer Index, TTM Squeeze, contraction gauge
 
 **In short**
 
@@ -264,13 +264,51 @@ mark: 2026-02-19 | fired
 caption: The longer squeeze fired downward and went nowhere for a month. The short one also fired downward, and the stock fell 15% in the next 20 sessions, including a 5% drop on very heavy volume on 19 March.
 ```
 
-Both fires pointed down. One was followed by nothing, the other by a large fall. A month later the same tool had given one useful warning and one false one. Section 10 shows that across more than 33,000 fires, the moves that followed were no bigger than usual.
+Both fires pointed down. One was followed by nothing, the other by a large fall. A month later the same tool had given one useful warning and one false one. Section 11 shows that across more than 33,000 fires, the moves that followed were no bigger than usual.
 
 **What it repeats.** "Squeeze on" correlated at −0.41 with BandWidth in the US (−0.46 in India): it is a yes/no version of "BandWidth is low for this stock's ATR". It was −0.26 to −0.28 with ADX: squeezes come when there is no trend. With direction readings it was near zero.
 
 **Pitfalls.** The histogram is a smoothed momentum line, so it repeats short-term momentum and lags turns. The squeeze can fire on a tiny change, as HDFC Bank's second one did (₹23.98 against ₹23.70). And Carter's settings (2 standard deviations inside 1.5 ATR) are conventions; other packages use slightly different ones.
 
-## 9. The family side by side
+## 9. The contraction gauge — range, volume and the high together
+
+**The question:** is the stock quiet, on light volume, right under its high — all at the same time?
+
+On 22 May 2024 Nvidia's last 10 sessions had stayed inside a range of 8.1%. Their average volume was 0.70 times the 50-day average before them. Their high was within 1.4% of the stock's highest price of the past 15 months. It had met all three tests since 16 May.
+
+The next day, after its quarterly results, it closed 9.3% higher on 1.8 times its average volume. That close cleared the 10-session high. Twenty-one sessions later the stock was another 21.5% higher.
+
+```series
+title: Nvidia, April–June 2024 — five coiled sessions, then a results-day breakout
+from: 2024-04-01
+to: 2024-06-28
+tf: D
+line: us:NVDA | Nvidia
+line: us:NVDA@rvol50 | Relative volume (÷ 50-day) | pane2 bars
+band: 2024-05-16 2024-05-22 | coiled
+mark: 2024-05-23 | breakout on 1.8× volume
+caption: The shaded sessions met all three tests. Volume was below its 50-day average through most of May, then jumped on the breakout. Prices are in today's split-adjusted terms.
+```
+
+**What it computes.** Three readings, each over the last 10 sessions and each with a limit:
+
+| Reading | What it measures | Limit used here |
+|---|---|---|
+| Range | The 10 sessions' high minus their low, as % of the high | at most 10% |
+| Volume | Their average volume ÷ the 50-day average before them | at most 0.8 |
+| Near the high | Their high ÷ the highest high of the last 325 sessions | at least 0.90 |
+
+A session that meets all three is **coiled**. The gauge plots each reading as a share of its limit, so all three use one scale and "under 1" means met. A **breakout** is a close above the 10-session high, on at least 1.4 times the 50-day volume, the session after a coiled one.
+
+The volume baseline is taken from the 50 sessions *before* the window. Otherwise the quiet days being judged would drag down the average they are judged against.
+
+These are the tight-area tests of a volatility contraction pattern (VCP). They are not the whole pattern. A VCP is a run of pullbacks, each smaller than the one before. The gauge reads only the last 10 sessions, so it cannot see that run. The pattern itself is in [VCP — the volatility contraction pattern](learn-vcp.md).
+
+**What it repeats.** Each part is a familiar reading. The range is a 10-session cousin of BandWidth and ATR %. The volume test is relative volume averaged over two weeks. The last test is closeness to the 52-week high, stretched to 15 months. What is new is asking all three at once.
+
+**How traders use it.** To find bases worth watching, not to buy. A coil gives a nearby stop: below the 10-session low, often less than 10% away. The pitfall: coils are common. About 7% of US sessions and 8% of Indian sessions were coiled. Nvidia's breakout came on a results day, which the gauge knows nothing about.
+
+## 10. The family side by side
 
 | Indicator | Question it answers | Defaults | Mostly repeats | Typical use |
 |---|---|---|---|---|
@@ -281,8 +319,9 @@ Both fires pointed down. One was followed by nothing, the other by a large fall.
 | Mass Index | Is the daily range widening fast? | 9, 25; lines 27 / 26.5 | Nothing above 0.40 | Reversal-bulge warnings |
 | Ulcer Index | How deep are the recent falls from a high? | 14 | PPO (−0.80), distance from the 50-day | Drawdown pain; ranking funds or systems |
 | TTM Squeeze | Are the bands inside the Keltner channel? | 20; 2 sd, 1.5 ATR | BandWidth (−0.41) | Flagging a quiet stock; timing with the histogram |
+| Contraction gauge | Tight, quiet and near the high, all at once? | 10 sessions; 10%, 0.8, 0.90 | BandWidth, relative volume, distance from the high | Finding bases to watch; a nearby stop |
 
-## 10. What the evidence says
+## 11. What the evidence says
 
 > **Method.** US: a random 300 stocks; India: all 147 that qualify. Each has at least 1,500 sessions since 2015 and a large daily traded value. Every indicator was computed on daily bars at its default settings. Correlations were measured day by day within each stock over 2015 to October 2026; the figures are medians across stocks. Today's listed stocks only, so failed companies are missing.
 
@@ -314,21 +353,33 @@ Both fires pointed down. One was followed by nothing, the other by a large fall.
 
 Be clear about what was tested. It measured the **size** of the next move, not its direction. A trader who buys a squeeze only when it fires upward, in an uptrend, is using a different rule. And a squeeze can still mark a calm base, where a breakout has a nearby stop. Tightness as part of a base is a reason to watch, not an edge on its own.
 
+**The contraction gauge test.** Does the first coiled session lead to better returns than other stocks?
+
+> **Method.** Liquid stocks: price at least $5 or ₹20, and an average daily traded value of at least $5 million or ₹5 crore. Signals from November 2021 to October 2026, about 3,900 US and 1,600 Indian stocks. A signal is the first coiled session after at least 10 sessions that were not. Entry at the next open; the return is compared with the average of all liquid stocks over the same days. The t-statistic treats each month as one observation.
+
+| First coiled session | Signals | Next week | Next month | Next 3 months | Beat the average, 3 months |
+|---|---|---|---|---|---|
+| US | 23,229 | +0.2% (t 2.3) | +0.6% (t 1.6) | +1.6% (t 2.8) | 53% |
+| India | 10,077 | +0.2% (t 2.2) | +0.5% (t 0.9) | +1.4% (t 2.8) | 47% |
+
+**A small edge, mostly from being near the high.** Coiled stocks beat the average by about 1.5% over three months in both markets. In India fewer than half of them did, so a few large winners carry the average. Part of this is the near-the-high test alone: stocks close to their 52-week high have tended to do better in published research too (George and Hwang, 2004). The gauge's edge is too small to trade on its own, and costs are not deducted.
+
 **Published research.**
 
 - **Volatility clusters.** Big moves follow big moves, and calm follows calm. Robert Engle's ARCH model (1982) made that measurable. It is why today's ATR is a fair guide to next month's: the ratios above sit near 1.
 - **High volatility has not paid.** Ang, Hodrick, Xing and Zhang (2006) found that US stocks with high recent idiosyncratic volatility had low later returns. Idiosyncratic means the part not explained by the market.
 - **Scaling by volatility.** Moreira and Muir (2017) found that cutting exposure when recent volatility was high improved risk-adjusted returns for several factor portfolios.
 
-**Limits.** Correlation shows overlap, not predictive power. Today's listed stocks only. No costs. Overlapping 20-session windows, so the event counts overstate how many independent tests there were. The Mass Index bulge and the squeeze histogram's direction were not tested.
+**Limits.** Correlation shows overlap, not predictive power. Today's listed stocks only. No costs. Overlapping 20-session windows, so the event counts overstate how many independent tests there were. The Mass Index bulge and the squeeze histogram's direction were not tested. The contraction gauge was tested only at the limits shown; other limits were not tried, so they are not tuned to these years.
 
-## 11. Checklist
+## 12. Checklist
 
 - [ ] Do I have more than one of ATR %, BandWidth, standard deviation and historical volatility on my chart? Keep one.
 - [ ] Is my stop at least about one ATR from entry, and is the position sized from that distance?
 - [ ] Is a high BandWidth or standard deviation just a strong trend, not wild daily moves?
 - [ ] Is a big HV change real, or a single huge day entering or leaving the 20-day window?
 - [ ] A squeeze or a low BandWidth: what will turn it into a trade — a pivot, volume, a results date?
+- [ ] A coiled stock: is it a real base with shrinking pullbacks, and is a results date inside the window?
 - [ ] A Mass Index bulge: what does the trend say about direction?
 - [ ] Ulcer Index: is the setting long enough for the drawdown I care about?
 
@@ -340,6 +391,8 @@ Be clear about what was tested. It measured the **size** of the next move, not i
 - Chester Keltner, *How to Make Money in Commodities* (1960) — the original Keltner channel.
 - Peter Martin and Byron McCann, *The Investor's Guide to Fidelity Funds* (1989) — the Ulcer Index.
 - John Hull, *Options, Futures, and Other Derivatives* — historical and implied volatility.
+- Mark Minervini, *Trade Like a Stock Market Wizard* (2013) — the volatility contraction pattern and its tight area.
+- Thomas George and Chuan-Yang Hwang, "The 52-Week High and Momentum Investing" (*Journal of Finance*, 2004).
 - Robert Engle, "Autoregressive Conditional Heteroscedasticity with Estimates of the Variance of United Kingdom Inflation" (*Econometrica*, 1982).
 - Ang, Hodrick, Xing and Zhang, "The Cross-Section of Volatility and Expected Returns" (*Journal of Finance*, 2006).
 - Alan Moreira and Tyler Muir, "Volatility-Managed Portfolios" (*Journal of Finance*, 2017).

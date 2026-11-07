@@ -1294,6 +1294,100 @@ const Studies = (() => {
           : quiet && v <= quiet ? "#5c6bc0" : dry && v <= dry ? "rgba(33,150,243,.55)" : "rgba(149,152,161,.5)"));
         return { rv, avg: sma(rv.map((v) => v ?? 0), p.smooth).map((v, i) => (rv[i] == null ? null : v)), _colors: { rv: colors } };
       } },
+    // ---- the VCP contraction gauge (core/contraction.py, /api/contraction): per session, the last `window`
+    // sessions' range, their volume against the 50-day, and their high against the base's -- each judged by the
+    // Minervini strategy's own limit (TIGHT_PCT, DRYUP_RATIO, PIVOT_NEAR_HIGH) and plotted as a fraction of it,
+    // so all three share one scale and "under the 1 line" means met. Green columns: all three met (coiled);
+    // arrows: a close through the window's high on VOL_MULT volume the session after a coil. Readings for
+    // exploring -- it cannot see the shrinking pullbacks that make a base a VCP (the Minervini setups layer does).
+    contraction: { name: "VCP contraction gauge", short: "Coil", cat: "Volatility", custom: true, pane: true, needsVolume: true,
+      label: (p) => `Coil ${p.window}`,
+      params: { window: 10 },
+      plots: [{ k: "coil", t: "Coiled (all three met)", c: "#26a69a" }, { k: "tight", t: "Range ÷ limit", c: "#ff9800" },
+        { k: "dry", t: "Volume ÷ limit", c: "#2196f3" }, { k: "near", t: "Below the high ÷ limit", c: "#ab47bc" }],
+      draw: ({ chart, times, p, col, ctx, id, pane }) => {
+        if (ctx.tf !== "D") return { series: [], note: "daily charts only", setVisible() {} };
+        const fixed = { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 3 } }) };
+        const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, ...fixed };
+        const coil = chart.addSeries(LC.HistogramSeries, { ...quiet, color: col("coil") + "33" }, pane);
+        const line = (k) => chart.addSeries(LC.LineSeries, { ...quiet, color: col(k), lineWidth: 1.5 }, pane);
+        const L = { tight: line("tight"), dry: line("dry"), near: line("near") };
+        L.tight.createPriceLine({ price: 1, color: "#787b86", lineStyle: 2, lineWidth: 1, title: "limit", axisLabelVisible: true });
+        const series = [coil, L.tight, L.dry, L.near];
+        const vals = {}, raw = {};
+        let markers = null, mlist = [], on = true;
+        fetch(`/api/contraction/${ctx.market}/${encodeURIComponent(ctx.symbol)}?window=${+p.window || 10}`)
+          .then((x) => (x.ok ? x.json() : null)).then((r) => {
+            if (!r) return setNote(id, "could not load the gauge");
+            const R = r.rules, ix = new Map(r.dates.map((d, i) => [d, i])), at = times.map((t) => ix.get(t));
+            const pick = (arr, f) => at.map((j) => (j == null || arr[j] == null ? null : f(arr[j])));
+            raw.tight = pick(r.tight, (v) => v); raw.dry = pick(r.dry, (v) => v); raw.near = pick(r.near, (v) => v);
+            vals.tight = pick(r.tight, (v) => v / R.TIGHT_PCT);
+            vals.dry = pick(r.dry, (v) => v / R.DRYUP_RATIO);
+            vals.near = pick(r.near, (v) => (1 - v) / (1 - R.PIVOT_NEAR_HIGH));
+            vals.coil = at.map((j) => (j != null && r.coiled[j] ? 3 : null));
+            coil.setData(times.map((t, i) => (vals.coil[i] == null ? { time: t } : { time: t, value: 3 })));
+            for (const k of ["tight", "dry", "near"]) L[k].setData(times.map((t, i) => (vals[k][i] == null ? { time: t } : { time: t, value: Math.min(3, vals[k][i]) })));
+            const bo = times.filter((t, i) => at[i] != null && r.breakout[at[i]]);
+            mlist = bo.map((t) => ({ time: t, position: "belowBar", shape: "arrowUp", color: "#26a69a", text: "breakout" }));
+            markers = LC.createSeriesMarkers(L.tight, on ? mlist : []);
+            const n = vals.coil.filter(Boolean).length, last = times.filter((t, i) => vals.coil[i]).at(-1);
+            setNote(id, `${r.window}-session readings · coiled on ${n} sessions${last ? `, last ${last}` : ""} · ${bo.length} breakout${bo.length === 1 ? "" : "s"}`
+              + ` · limits: range ≤ ${R.TIGHT_PCT}%, volume ≤ ${R.DRYUP_RATIO}× the 50-day, within ${Math.round((1 - R.PIVOT_NEAR_HIGH) * 100)}% of the ${R.BASE_MAX_DAYS}-session high`);
+          }).catch(() => setNote(id, "could not load the gauge"));
+        const fmt = (v, k, i) => k === "coil" ? "coiled" : raw[k]?.[i] == null ? ""
+          : k === "tight" ? `range ${raw.tight[i].toFixed(1)}%` : k === "dry" ? `vol ${raw.dry[i].toFixed(2)}×` : `${((raw.near[i] - 1) * 100).toFixed(1)}% from high`;
+        return { series, vals, fmt, note: "loading…",
+          setVisible: (v) => { on = v; series.forEach((x) => x.applyOptions({ visible: v })); markers?.setMarkers(v ? mlist : []); } };
+      } },
+    // ---- David Ryan's MVP (Momentum, Volume, Price), as Minervini describes it: over the last `days` sessions the
+    // stock closed up on at least `upDays` of them (M), their average volume is at least `volPct`% above the
+    // `days` sessions before (V), and the close is at least `pricePct`% above the close `days` sessions ago (P).
+    // A session where all three hold gets an "ant" -- a small dot above its bar -- so a run of them reads as
+    // steady accumulation. The pane plots each reading against its threshold (1 = the threshold), so all three
+    // share a scale; green columns are MVP sessions. Sources differ on the volume half (some compare with the
+    // 50-day): this one compares the window with the window before it.
+    mvp: { name: "MVP — momentum, volume, price (David Ryan)", short: "MVP", cat: "Volume", custom: true, pane: true, needsVolume: true,
+      label: (p) => `MVP ${p.days}`,
+      params: { days: 15, upDays: 12, volPct: 25, pricePct: 20, ants: { type: "select", def: "Show", options: ["Show", "Hide"] } },
+      plots: [{ k: "mvp", t: "MVP (all three met)", c: "#26a69a" }, { k: "m", t: "Up days ÷ needed", c: "#ff9800" },
+        { k: "v", t: "Volume change ÷ needed", c: "#2196f3" }, { k: "pr", t: "Price change ÷ needed", c: "#ab47bc" }],
+      draw: ({ chart, main, times, bars, p, col, pane }) => {
+        const n = Math.max(2, +p.days || 15), up = +p.upDays || 12, vp = (+p.volPct || 25) / 100, pp = (+p.pricePct || 20) / 100;
+        const { C, V } = bars, N = C.length;
+        const raw = { m: Array(N).fill(null), v: Array(N).fill(null), pr: Array(N).fill(null) };
+        const vals = { m: Array(N).fill(null), v: Array(N).fill(null), pr: Array(N).fill(null), mvp: Array(N).fill(null) };
+        let ups = 0, volNow = 0, volPrev = 0;
+        for (let i = 0; i < N; i++) {   // rolling sums: up closes and volume over the window, volume over the one before
+          if (i >= 1) ups += C[i] > C[i - 1] ? 1 : 0; if (i - n >= 1) ups -= C[i - n] > C[i - n - 1] ? 1 : 0;
+          volNow += V[i]; if (i - n >= 0) { volNow -= V[i - n]; volPrev += V[i - n]; } if (i - 2 * n >= 0) volPrev -= V[i - 2 * n];
+          if (i < 2 * n) continue;
+          raw.m[i] = ups; raw.v[i] = volPrev > 0 ? volNow / volPrev - 1 : null; raw.pr[i] = C[i - n] > 0 ? C[i] / C[i - n] - 1 : null;
+          vals.m[i] = ups / up; vals.v[i] = raw.v[i] == null ? null : raw.v[i] / vp; vals.pr[i] = raw.pr[i] == null ? null : raw.pr[i] / pp;
+          if (ups >= up && raw.v[i] != null && raw.v[i] >= vp && raw.pr[i] != null && raw.pr[i] >= pp) vals.mvp[i] = 2;
+        }
+        const fixed = { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 2 } }) };
+        const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, ...fixed };
+        const cols = chart.addSeries(LC.HistogramSeries, { ...quiet, color: col("mvp") + "33" }, pane);
+        cols.setData(times.map((t, i) => (vals.mvp[i] ? { time: t, value: 2 } : { time: t })));
+        const L = {};
+        for (const k of ["m", "v", "pr"]) {
+          L[k] = chart.addSeries(LC.LineSeries, { ...quiet, color: col(k), lineWidth: 1.5 }, pane);
+          L[k].setData(times.map((t, i) => (vals[k][i] == null ? { time: t } : { time: t, value: Math.max(0, Math.min(2, vals[k][i])) })));
+        }
+        L.m.createPriceLine({ price: 1, color: "#787b86", lineStyle: 2, lineWidth: 1, title: "needed", axisLabelVisible: true });
+        // the ants, over the price bars themselves
+        const ants = times.filter((t, i) => vals.mvp[i]).map((t) => ({ time: t, position: "aboveBar", shape: "circle", color: col("mvp"), size: 0.4 }));
+        const showAnts = p.ants !== "Hide" && main;
+        const mk = showAnts ? LC.createSeriesMarkers(main, ants) : null;
+        const runs = ants.length, last = ants.at(-1)?.time;
+        const note = `${up} of ${n} up · volume +${Math.round(vp * 100)}% · price +${Math.round(pp * 100)}% · ${runs} MVP session${runs === 1 ? "" : "s"}${last ? `, last ${last}` : ""}`;
+        const fmt = (v, k, i) => k === "mvp" ? "MVP" : raw[k]?.[i] == null ? ""
+          : k === "m" ? `${raw.m[i]}/${n} up` : k === "v" ? `vol ${raw.v[i] >= 0 ? "+" : ""}${Math.round(raw.v[i] * 100)}%` : `${raw.pr[i] >= 0 ? "+" : ""}${(raw.pr[i] * 100).toFixed(1)}%`;
+        const series = [cols, L.m, L.v, L.pr];
+        return { series, vals, fmt, note,
+          setVisible: (on) => { series.forEach((x) => x.applyOptions({ visible: on })); mk?.setMarkers(on ? ants : []); } };
+      } },
     rsi: { name: "Relative Strength Index", short: "RSI", cat: "Momentum", params: { length: 14, source: SRC }, levels: [70, 50, 30], plots: [{ k: "rsi", c: "#7e57c2" }],
       calc: (b, p) => ({ rsi: rsi(source(b, p.source), p.length) }) },
     macd: { name: "MACD", short: "MACD", cat: "Momentum", params: { fast: 12, slow: 26, signal: 9, source: SRC }, levels: [0],
@@ -1472,7 +1566,7 @@ const Studies = (() => {
         return { rs, ma: sma(rs, p.maLength) };
       } },
   };
-  const PARAM_LABELS = { smooth: "Average of last N sessions", length: "Length", source: "Source", mult: "StdDev / multiplier", atrLength: "ATR length", maLength: "MA length",
+  const PARAM_LABELS = { days: "Sessions", upDays: "Up days needed", volPct: "Volume rise needed, %", pricePct: "Price rise needed, %", ants: "Ants on the price bars", window: "Sessions per reading", smooth: "Average of last N sessions", length: "Length", source: "Source", mult: "StdDev / multiplier", atrLength: "ATR length", maLength: "MA length",
     fast: "Fast length", slow: "Slow length", signal: "Signal smoothing", kLength: "%K length", kSmoothing: "%K smoothing", dSmoothing: "%D smoothing",
     rsiLength: "RSI length", stochLength: "Stochastic length", k: "K smoothing", d: "D smoothing", factor: "Factor", start: "Start", increment: "Increment",
     maximum: "Maximum", left: "Left bars", right: "Right bars", labels: "Labels", zigzag: "Zig-zag line", timeframe: "Pivots timeframe",
@@ -1486,6 +1580,62 @@ const Studies = (() => {
     minBars: "Label stretches of at least (bars)", label: "Label", gaps: "Label gaps",
     stretched: "Stretched above (ATRs)", pass: "Pass above (ATRs)" };
   const CATS = ["Screener", "Moving averages", "Bands & channels", "Support & resistance", "Trend", "Momentum", "Volatility", "Volume"];
+  // Where Learn explains each indicator: "<guide>#<section>", the guide's file name without "learn-" and its
+  // heading slugged without the outline number ("9. VWAP — rolling and anchored" -> "vwap-rolling-and-anchored"),
+  // so renumbering a guide's sections does not break the link. A trade-setups layer names its strategy's guide
+  // in `learnGuide` instead. Every indicator needs an entry, and every entry an existing heading:
+  // tests/test_study_learn.py fails otherwise, which is what keeps the chart and the Learn guides in step.
+  const LEARN = {
+    sma: "ind-moving-averages#sma-and-ema-the-two-basics", ema: "ind-moving-averages#sma-and-ema-the-two-basics",
+    wma: "ind-moving-averages#wma-weights-in-a-straight-line",
+    ribbon: "ind-moving-averages#moving-average-ribbons-many-lengths-at-once", ribbon_ema: "ind-moving-averages#moving-average-ribbons-many-lengths-at-once",
+    dema: "ind-moving-averages#dema-two-emas-combined-to-cancel-the-lag",
+    hma: "ind-moving-averages#hull-a-fast-wma-with-its-lag-subtracted-then-smoothed",
+    kama: "ind-moving-averages#kama-an-average-that-slows-down-in-noise",
+    alligator: "ind-moving-averages#the-williams-alligator-three-averages-of-the-bar-s-midpoint",
+    bb: "ind-bands-channels#bollinger-bands-width-from-the-spread-of-closes",
+    kc: "ind-bands-channels#keltner-channels-width-from-the-average-daily-range",
+    dc: "ind-bands-channels#donchian-channels-the-highest-high-and-lowest-low",
+    env: "ind-bands-channels#moving-average-envelopes-a-fixed-either-side",
+    atrbands: "ind-bands-channels#atr-bands-keltner-s-width-round-a-simple-average",
+    avwap: "ind-volume#vwap-rolling-and-anchored", vwap: "ind-volume#vwap-rolling-and-anchored",
+    sar: "ind-trend#parabolic-sar", st: "ind-trend#supertrend", chandelier: "ind-trend#chandelier-exit",
+    ichimoku: "ind-trend#ichimoku-kinko-hyo-the-cloud",
+    vortex: "ind-trend#vortex-upward-reach-against-downward-reach",
+    adx: "ind-trend#dmi-and-adx-direction-and-steadiness",
+    aroon: "ind-trend#aroon-and-the-aroon-oscillator-how-recent-was-the-high", aroonosc: "ind-trend#aroon-and-the-aroon-oscillator-how-recent-was-the-high",
+    rs: "price-rs#the-rs-line",
+    pivots_hl: "ind-levels#swing-pivots-turning-points-confirmed-late", pivots_std: "ind-levels#floor-trader-pivot-points",
+    zigzag: "ind-levels#zig-zag-swings-above-a-size-and-a-line-that-repaints",
+    sr: "support-resistance", sdz: "supply-demand", patterns: "chart-patterns", stageweekly: "price-stages",
+    plan: "risk-stops-exits",
+    vol: "price-volume#what-volume-is-and-what-it-cannot-tell-you", rvol: "ind-volume#relative-volume",
+    mvp: "ind-volume#mvp-momentum-volume-and-price-together",
+    obv: "ind-volume#on-balance-volume", adl: "ind-volume#the-accumulation-distribution-line",
+    cmf: "ind-volume#chaikin-money-flow", chosc: "ind-volume#chaikin-oscillator", mfi: "ind-volume#money-flow-index",
+    force: "ind-volume#force-index", eom: "ind-volume#ease-of-movement",
+    rsi: "ind-momentum-range#rsi-the-reference-reading", stoch: "ind-momentum-range#stochastic-k-and-d",
+    stochrsi: "ind-momentum-range#stochastic-rsi", cci: "ind-momentum-range#cci-the-commodity-channel-index",
+    wpr: "ind-momentum-range#williams-r", bbpct: "ind-momentum-range#bollinger-b", uo: "ind-momentum-range#ultimate-oscillator",
+    crsi: "ind-momentum-range#connors-rsi", bop: "ind-momentum-range#balance-of-power",
+    roc: "ind-momentum-rate#rate-of-change-and-momentum", mom: "ind-momentum-rate#rate-of-change-and-momentum",
+    distma: "ind-momentum-rate#distance-from-a-moving-average", atrext: "ind-momentum-rate#atr-extension-above-the-20-day",
+    macd: "ind-momentum-rate#macd-the-reference-reading", ppo: "ind-momentum-rate#ppo-the-percentage-price-oscillator",
+    trix: "ind-momentum-rate#trix", tsi: "ind-momentum-rate#tsi-the-true-strength-index",
+    kst: "ind-momentum-rate#kst-and-pring-s-special-k", specialk: "ind-momentum-rate#kst-and-pring-s-special-k",
+    pmo: "ind-momentum-rate#pmo-the-price-momentum-oscillator", dpo: "ind-momentum-rate#dpo-the-detrended-price-oscillator",
+    atr: "ind-volatility#atr-and-atr-the-daily-swing", atrp: "ind-volatility#atr-and-atr-the-daily-swing",
+    stdev: "ind-volatility#standard-deviation-of-closes", bbw: "ind-volatility#bollinger-bandwidth",
+    hv: "ind-volatility#historical-volatility", mass: "ind-volatility#mass-index", ulcer: "ind-volatility#ulcer-index",
+    squeeze: "ind-volatility#ttm-squeeze", contraction: "ind-volatility#the-contraction-gauge-range-volume-and-the-high-together",
+  };
+  /** the Learn page that explains an indicator, as an app route (#/learn/<guide>/<section>), or null */
+  const learnHref = (type) => {
+    const d = CATALOG[type], ref = d?.learnGuide ? d.learnGuide.replace(/^learn-/, "") : LEARN[type];
+    if (!ref) return null;
+    const [g, s] = ref.split("#");
+    return `#/learn/${g}${s ? `/${s}` : ""}`;
+  };
   const MA_COLORS = ["#f5a623", "#2196f3", "#e040fb", "#ffeb3b", "#00bcd4", "#ff5252", "#8bc34a"];
 
   // ------------------------------------------------------------- active list
@@ -1580,9 +1730,12 @@ const Studies = (() => {
       if ((def.needsVolume && !hasVolume(bars)) || (def.needsBench && !ctx.bench)) { out.push({ s, def, skipped: true, pane: def.overlay ? 0 : null }); continue; }
       if (def.custom) {
         const col = (k) => s.colors[k] || def.plots.find((x) => x.k === k).c;
-        const r = def.draw({ chart, main: ctx.main, times, bars, p: s.params, col, tf: ctx.tf, plans: ctx.plans, ctx, id: s.id, def });
+        // a custom study with `pane: true` draws in a pane of its own (its data arrives from the server, so
+        // it fills `vals` when it lands and formats its legend per plot: fmt(v, plotKey, barIndex))
+        const own = def.pane ? pane++ : 0;
+        const r = def.draw({ chart, main: ctx.main, times, bars, p: s.params, col, tf: ctx.tf, plans: ctx.plans, ctx, id: s.id, def, pane: own });
         if (s.hidden) r.setVisible(false);
-        out.push({ s, def, pane: 0, series: r.series || [], vals: {}, fmt: () => "", note: r.note, setVisible: r.setVisible });
+        out.push({ s, def, pane: own, series: r.series || [], vals: r.vals || {}, fmt: r.fmt || (() => ""), note: r.note, setVisible: r.setVisible });
         continue;
       }
       const p = def.overlay ? 0 : pane++;
@@ -1659,7 +1812,7 @@ const Studies = (() => {
     return def.plots.map((pl) => {
       const v = e.vals[pl.k]?.[i]; if (v == null) return "";
       const c = (e.vals._colors?.[pl.k]?.[i]) || s.colors[pl.k] || pl.c;
-      return `<span style="color:${c}">${e.fmt(v)}</span>`;
+      return `<span style="color:${c}">${e.fmt(v, pl.k, i)}</span>`;
     }).join(" ");
   }
   // both eye icons are rendered; CSS shows the one matching the row's .off state
@@ -1697,12 +1850,14 @@ const Studies = (() => {
         && (cat === "All" || d.cat === cat) && (!f || (d.name + " " + d.short).toLowerCase().includes(f)));
       list.innerHTML = items.map(([k, d]) => {
         const n = active.filter((s) => s.type === k).length;
-        return `<div class="sm-item" data-add="${k}"><span>${esc(d.name)}</span><span class="muted">${esc(d.cat)}${n ? ` · <b>${n} on chart</b>` : ""}</span></div>`;
+        const lh = learnHref(k);
+        return `<div class="sm-item" data-add="${k}"><span>${esc(d.name)}</span><span class="muted">${esc(d.cat)}${n ? ` · <b>${n} on chart</b>` : ""}${lh ? ` · <a class="sm-learn" href="${lh}" title="What it measures, how it is read and what the evidence says">Learn</a>` : ""}</span></div>`;
       }).join("") || `<div class="muted sm-empty">No indicator matches “${esc(q.value)}”.</div>`;
     };
     q.oninput = () => { if (cat === "Active") cat = "All"; draw(); };
     cats.onclick = (e) => { const a = e.target.closest("a"); if (a) { cat = a.dataset.c; draw(); } };
     list.onclick = (e) => {
+      if (e.target.closest(".sm-learn")) { close(); return; }   // follow the link to Learn; don't add the indicator
       const it = e.target.closest("[data-add]"), rm = e.target.closest("[data-rm]");
       if (it) { add(it.dataset.add); onChange(); draw(); it.classList.add("flash"); }
       if (rm) { save(load().filter((s) => s.id !== rm.dataset.rm)); onChange(); draw(); }
@@ -1722,9 +1877,10 @@ const Studies = (() => {
       return `<label><span>${name}</span><input type="number" step="${Number.isInteger(d) ? 1 : 0.01}" min="${Number.isInteger(d) ? 1 : 0}" data-p="${k}" value="${s.params[k]}"></label>`;
     }).join("");
     const colors = def.plots.map((pl) => `<label><span>${pl.t || def.short}</span><input type="color" data-c="${pl.k}" value="${(s.colors[pl.k] || pl.c).slice(0, 7)}"></label>`).join("");
+    const lh = learnHref(s.type);
     const { el, close } = modal(`<div class="sm-head"><b>${esc(catName(s.type))}</b><button class="sm-x" title="Close">${BTN.x}</button></div>
       <div class="sm-form">${inputs ? `<h4>Inputs</h4>${inputs}` : ""}<h4>Style</h4>${colors}</div>
-      <div class="sm-foot"><button class="ghost" data-a="reset">Defaults</button><span class="spacer"></span><button class="ghost" data-a="cancel">Cancel</button><button class="primary" data-a="ok">OK</button></div>`, "settings");
+      <div class="sm-foot"><button class="ghost" data-a="reset">Defaults</button>${lh ? `<a class="sm-learn small" href="${lh}">Learn about it →</a>` : ""}<span class="spacer"></span><button class="ghost" data-a="cancel">Cancel</button><button class="primary" data-a="ok">OK</button></div>`, "settings");
     const before = JSON.stringify(s);
     const apply = () => {
       const list = load(), t = list.find((x) => x.id === id); if (!t) return;
@@ -1735,6 +1891,7 @@ const Studies = (() => {
     el.querySelector(".sm-form").addEventListener("change", apply);
     el.querySelector(".sm-x").onclick = close;
     el.querySelector(".sm-foot").onclick = (e) => {
+      if (e.target.closest(".sm-learn")) { close(); return; }
       const a = e.target.closest("button")?.dataset.a;
       if (a === "ok") close();
       if (a === "cancel") { const list = load().map((x) => (x.id === id ? JSON.parse(before) : x)); save(list); onChange(); close(); }
@@ -1763,5 +1920,5 @@ const Studies = (() => {
     setupLayers, activeSetup, setSetup,
     transient: (type, params = {}) => ({ ...make(type, params), transient: true }),   // drawn this visit, never saved
     setupName: () => { const t = activeSetup(); return t ? stratName(CATALOG[t].setupsFor) : null; },
-    restore: save, CATALOG, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
+    restore: save, CATALOG, learnHref, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
 })();

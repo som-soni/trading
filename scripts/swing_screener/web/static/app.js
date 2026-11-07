@@ -8572,7 +8572,7 @@ const GUIDE_BLURB = {
   "learn-ind-momentum-range": "Stochastic, Williams %R, CCI, %B, Ultimate Oscillator, Connors RSI and Balance of Power: where the close sits in its range.",
   "learn-ind-momentum-rate": "Rate of change, distance from an average, PPO, TRIX, TSI, KST and Special K, PMO and DPO: how fast the price is changing.",
   "learn-ind-volatility": "ATR, standard deviation, BandWidth, historical volatility, Mass Index, Ulcer Index and the TTM Squeeze — tested.",
-  "learn-ind-volume": "Relative volume, OBV, the A/D line, Chaikin, MFI, Force Index, Ease of Movement, VWAP and volume by price.",
+  "learn-ind-volume": "Relative volume, OBV, the A/D line, Chaikin, MFI, Force Index, Ease of Movement, VWAP, MVP and volume by price.",
   "learn-ind-levels": "Pivot points, swing pivots, Fibonacci retracements, Zig Zag and Darvas boxes: indicators that output prices, not lines.",
   "learn-process-plan": "A written plan and a daily and weekly routine — what to check, in what order, using this app's pages.",
   "learn-process-journal": "What to record on every trade, and how to review it to find what actually works — and what doesn't.",
@@ -8721,7 +8721,7 @@ async function learnPage(alive, topic, sub) {
   $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
   if (p) window.scrollTo(0, 0);
   if (catView && sub) document.getElementById(`g-${sub}`)?.scrollIntoView({ block: "start" });
-  if (guide) await learnGuide(alive, guide);
+  if (guide) await learnGuide(alive, guide, sub);
 }
 
 /** In a guide, link the first mention of each drawn pattern to its page, so guides and patterns
@@ -8829,22 +8829,26 @@ async function researchPage(alive, slug) {
 }
 
 /** One long-form guide inside the Learn layout, with an "On this page" list of its sections. */
-async function learnGuide(alive, guide) {
+async function learnGuide(alive, guide, section) {
   const r = await api(`/api/reports/${guide.id}`).catch((e) => ({ error: e.message }));
   if (!alive()) return;
   const body = $view.querySelector("#lpg-body");
   if (r.error) { body.innerHTML = `<div class="empty"><b>Guide not found</b><div class="muted">Reload the documents from the Reports archive (Load reports).</div></div>`; return; }
   const art = showGuideMd(r.markdown);
   if (String(guide.run).startsWith("learn-")) linkPatternMentions(art);
-  window.scrollTo(0, 0);
+  // #/learn/<guide>/<section> opens the guide at that section (a chart indicator's "Learn" link)
+  const at = section && document.getElementById(`s-${section}`);
+  if (at) at.scrollIntoView({ block: "start" }); else window.scrollTo(0, 0);
 }
 
 /** Render Markdown into the guide layout's #lpg-body, with an "On this page" list of its sections in .lp-toc. */
 function showGuideMd(markdown) {
   const body = $view.querySelector("#lpg-body"), toc = $view.querySelector(".lp-toc");
   const art = renderResearchMd(body, markdown);
-  // anchors for every section, so the contents can jump to them (and a section can be linked)
-  const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  // anchors for every section, so the contents can jump to them (and a section can be linked). The outline
+  // number is left out ("9. VWAP" -> s-vwap), so renumbering a guide keeps its links; the chart's indicators
+  // link to theirs this way (studies.js LEARN, checked by tests/test_study_learn.py, which slugs the same way)
+  const slug = (t) => t.replace(/^\d+(\.\d+)*\.?\s+/, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const heads = [...art.querySelectorAll("h2, h3")];
   heads.forEach((h) => { h.id = "s-" + slug(h.textContent); });
   if (heads.length > 2) {
