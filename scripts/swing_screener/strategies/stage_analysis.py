@@ -695,19 +695,19 @@ class StageAnalysisStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v2.8); verify not run. US 8.04% CAGR, "
-        "excess -5.97 points a year over the benchmark, max drawdown -24.1%, Sharpe 0.75; India 1.31% CAGR, "
-        "excess -12.23, max drawdown -20.7%, Sharpe 0.23. It trails holding the index in both markets. The "
-        "closest India variant, W1_RANKS_ONLY=1 with G7_BLOCK_STAGE=3, still trails (excess -3.86, max drawdown "
-        "-27.1%), and most of its gain came from 44 trades bought while the market index read Stage 4, which that "
-        "setting admits -- the opposite of Weinstein's market rule; in the US the same variant is worse (excess "
-        "-9.36). None of the v2.8 exits beats the trend exit on return. An audit of the losing trades "
-        "(research/audit-stage-analysis-losers.md) found no stage-detection error worth a rule: entries that pass "
-        "every Weinstein check did worse than the ones that fail some. Version 2.11 then rebuilt the stage machine on "
-        "Weinstein's definitions (a stage turns on a breakout or breakdown, confirmed by the line; see the "
-        "changelog), which moves G7, G8, G9 and W2: these figures are 2.8's rules, and 2.11's optimise runs are "
-        "pending. It is the only WEEKLY strategy here, and weekly decisions are the one "
-        "structural difference none of the others test."
+        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v2.11); verify (2022-today) queued, "
+        "judged against criteria fixed before the run (research/stage-analysis-verify-plan.md). US 9.27% CAGR, "
+        "excess -4.74 points a year over SPY, max drawdown -21.2% against the index's -34.1%, Sharpe 0.82 against "
+        "0.88, 157 trades, profit factor 2.06; India 3.86% CAGR, excess -9.68 over ^CRSLDX, max drawdown -18.5% "
+        "against -38.3%, Sharpe 0.51 against 0.86, 95 trades, profit factor 1.41. It trails holding the index in "
+        "both markets, with much shallower drawdowns. Against 2.10 on the same window (US 8.04% CAGR, -24.1%, "
+        "Sharpe 0.71; India 1.31%, -20.7%) the Weinstein stage machine is better in both, but the comparison is "
+        "not clean: 2.11 ran after the split repair restated the prices of 44 symbols. Earlier findings, on the old "
+        "stage machine: the closest India variant, W1_RANKS_ONLY=1 with G7_BLOCK_STAGE=3, still trailed, and most "
+        "of its gain came from trades bought while the market index read Stage 4, the opposite of Weinstein's "
+        "market rule; no exit tried beat the trend exit on return; an audit of the losing trades "
+        "(research/audit-stage-analysis-losers.md) found no stage-detection error worth a rule. It is the only "
+        "WEEKLY strategy here, and weekly decisions are the one structural difference none of the others test."
     )
     gate_docs = {
         "G1": "H1: the daily close is above the 200-day average.\n\n"
