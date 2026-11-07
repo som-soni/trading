@@ -197,12 +197,16 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
-        "v1.3 NOT YET MEASURED. Stage: optimise (2013-2021, in-sample); verify not run. Pass criterion, set before "
-        "any v1.3 result and unchanged from v1.1: in the optimise stage, the base rules beat the market's benchmark "
-        "CAGR AND make a positive average R after costs, in at least one market; the top 10% of trades' share of P&L "
-        "is reported beside it. Up-front variants, measured beside the base and never a substitute for it: "
-        "TIGHT_MAX_ADR=2, and TRAIL_EMA=1 with TRAIL_SMA=20. v1.3's rest constants were set from the model book's "
-        "marked buys (2019-2020), inside the optimise window. "
+        "v1.3 FAILED the pass criterion in the optimise stage (2013-2021, in-sample: its rest constants were set "
+        "from the model book's 2019-2020 marked buys). Verify not run. The criterion, set before any v1.3 result and "
+        "unchanged from v1.1: the base rules beat the market's benchmark CAGR AND make a positive average R after "
+        "costs, in at least one market. US: 5.85% CAGR against 14.01% (excess -8.16 points a year), max drawdown "
+        "-41.4%, 1,202 trades, win rate 39.0%, +0.11R a trade; the best 10% of trades made 7 times the book's P&L. "
+        "India: 1.81% against 13.54% (excess -11.72), max drawdown -21.4%, 333 trades, 40.2%, +0.12R, top 10% 7 "
+        "times. Average R is positive in both markets, but neither beats buy-and-hold. Up-front variants (v1.3, "
+        "optimise, in-sample): TIGHT_MAX_ADR=2 US -2.83% (excess -16.84, +0.02R), India -2.74% (-16.28, -0.27R); "
+        "TRAIL_EMA=1 with TRAIL_SMA=20 US 6.78% (-7.23, +0.10R, max drawdown -33.4%), India 1.54% (-11.99, "
+        "+0.18R, -24.6%). In every arm the median trade is a full -1R stop. "
         "v1.1 rules FAILED the pass criterion in the optimise stage (2013-2021, in-sample; measured by v1.2 runs with "
         "the defaults, which are v1.1's rules). Verify not run. The criterion, set before any v1.1 result: the base rules "
         "beat the market's benchmark CAGR AND make a positive average R after costs, in at least one market. "
