@@ -447,7 +447,7 @@
   },
   "kullamagi": {
     "family": "kullamagi",
-    "fingerprint": "ee3c4311",
+    "fingerprint": "19a348fa",
     "params": {
       "MAX_HOLD_BARS": 120,
       "MAX_STOP_ADR": 1.0,
@@ -465,10 +465,12 @@
       "PRIOR_CLOSE_SMA": 10,
       "REQUIRE_MARKET": 1,
       "REST_BARS": 10,
-      "REST_LOW_MIN_PCT_OF_SMA": 97.0,
       "REST_MAX_GIVEBACK_PCT": 50.0,
-      "REST_SMA": 20,
-      "TIGHT_MAX_PCT": 20.0,
+      "REST_UNDERCUT_ADR": 0.5,
+      "SUPPORT_FAST": 10,
+      "SUPPORT_MID": 20,
+      "SUPPORT_SLOW": 50,
+      "TIGHT_MAX_ADR": 3.0,
       "TRAIL_EMA": 0,
       "TRAIL_SMA": 10,
       "_key": "kullamagi",
@@ -486,7 +488,7 @@
         "S1"
       ]
     },
-    "version": "1.2"
+    "version": "1.3"
   },
   "ma_trend": {
     "family": "ma_trend",

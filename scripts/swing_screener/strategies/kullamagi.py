@@ -41,9 +41,11 @@ from .trend_pullback import round_tick
 
 # ---- the rest (the setup's structure; evaluate() reads these)
 REST_BARS = 10                    # the sessions before the breakout that make up the rest
-TIGHT_MAX_PCT = 20.0              # the rest's highest high to lowest low, as % of the high
-REST_SMA = 20                     # the average the rest's lows must hold …
-REST_LOW_MIN_PCT_OF_SMA = 97.0    # … each low at least this % of that day's average
+TIGHT_MAX_ADR = 3.0               # the rest's highest high to lowest low, % of the high, in ADRs (G3)
+SUPPORT_FAST = 10                 # the rest surfs one of these rising averages (G4) …
+SUPPORT_MID = 20
+SUPPORT_SLOW = 50
+REST_UNDERCUT_ADR = 0.5           # … no rest close more than this many ADRs below it
 PRIOR_CLOSE_SMA = 10              # the session before the breakout closes above this average
 REST_MAX_GIVEBACK_PCT = 50.0      # the rest's low gives back at most this % of the prior move (G7)
 
@@ -71,10 +73,16 @@ S1 = "S1"   # today's close is above the rest's high
 
 class KullamagiStrategy(Strategy):
     selection = "time_series"
-    version = "1.2"
-    # 1.2 changes only the exit (an off-by-default EMA trail), so it keeps 1.1's signal scan
-    signal_version = "1.1"
+    version = "1.3"
     changelog = (
+        ("1.3", "2026-11-07",
+         "The rest is measured against the stock's own speed, as in the Kullamaggi model book. G3's span limit is "
+         "now {TIGHT_MAX_ADR} ADRs instead of a fixed 20%, and G4 asks that the rest surf a rising {SUPPORT_FAST}-, "
+         "{SUPPORT_MID}- or {SUPPORT_SLOW}-day average with no close more than {REST_UNDERCUT_ADR} ADR under it, "
+         "instead of every low at 97% of the 20-day. Run over the book's 2019-2020 examples, v1.2 bought CVNA's June "
+         "2020 breakout but blocked APPS, NVAX, ZM and CODX at their marked buys, on G3 (rests of 25-30% on stocks "
+         "moving 10% a day) and G4 (one wick through the 20-day). The constants were set from those marked buys, "
+         "which are winners only and sit inside the optimise window."),
         ("1.2", "2026-11-06",
          "An exit switch, off by default: TRAIL_EMA = 1 trails the remainder on an exponential average instead of a "
          "simple one. With the defaults the rules are exactly 1.1's. Added to test the EMA20 trail as a variant: "
@@ -89,7 +97,7 @@ class KullamagiStrategy(Strategy):
          "checked the same way and did not help, so they are not added."),
         ("1.0", "2026-10-28",
          "v1: the Learn guide's daily-bar version. Big movers (ADR >= {MOVERS_MIN_ADR_PCT}%, prior move >= "
-         "{MOVERS_MIN_MOVE_PCT}%), a {REST_BARS}-session rest within {TIGHT_MAX_PCT}%, a close above its high bought "
+         "{MOVERS_MIN_MOVE_PCT}%), a {REST_BARS}-session rest within 20%, a close above its high bought "
          "at that close with the stop at the day's low; 1/{PARTIAL_DIVISOR} sold after {PARTIAL_AFTER_BARS} sessions in "
          "profit, the rest on a close below the {TRAIL_SMA}-day."),
     )
@@ -109,14 +117,15 @@ class KullamagiStrategy(Strategy):
     setup_names = {S1: "Close above a tight rest"}
     gate_titles = {
         "G1": "Fast stock (ADR)", "G2": "Big prior move", "G3": "Tight rest",
-        "G4": "Lows hold the {REST_SMA}-day", "G5": "Prior close above the {PRIOR_CLOSE_SMA}-day",
+        "G4": "Rest surfs a rising average", "G5": "Prior close above the {PRIOR_CLOSE_SMA}-day",
         "G6": "Market uptrend", "G7": "Rest holds the move",
     }
     nominal_target = True
     min_bars = 210
 
     needs_ctx_extras = True
-    extra_columns = ("adr_pct", "prior_move_pct", "rest_high", "rest_low", "rest_span_pct", "giveback_pct", "stop_adr")
+    extra_columns = ("adr_pct", "prior_move_pct", "rest_high", "rest_low", "rest_span_pct", "rest_span_adr",
+                     "support_sma", "giveback_pct", "stop_adr")
     extra_numeric_columns = extra_columns
     signal_exempt_consts = (
         "MAX_STOP_ADR", "MIN_STOP_PCT", "NOMINAL_TARGET_R",
@@ -136,9 +145,10 @@ class KullamagiStrategy(Strategy):
         "**Qualify (the Big movers screen).** An average daily range of {MOVERS_MIN_ADR_PCT}% or more (G1) and a "
         "big prior move: the {MOVERS_HIGH_BARS}-session high at least {MOVERS_MIN_MOVE_PCT}% above the "
         "{MOVERS_LOW_BARS}-session low (G2).",
-        "**The rest.** The {REST_BARS} sessions before today span at most {TIGHT_MAX_PCT}% high to low (G3), each of "
-        "their lows holds at least {REST_LOW_MIN_PCT_OF_SMA}% of that day's {REST_SMA}-day average (G4), and "
-        "yesterday closed above its {PRIOR_CLOSE_SMA}-day average (G5).",
+        "**The rest.** The {REST_BARS} sessions before today span at most {TIGHT_MAX_ADR} average daily ranges high "
+        "to low (G3), so a stock that moves 10% a day may rest wider than one that moves 4%; they surf a rising "
+        "{SUPPORT_FAST}-, {SUPPORT_MID}- or {SUPPORT_SLOW}-day average, no close more than {REST_UNDERCUT_ADR} ADR "
+        "under it (G4); and yesterday closed above its {PRIOR_CLOSE_SMA}-day average (G5).",
         "**The rest holds the move.** The rest's low gives back at most {REST_MAX_GIVEBACK_PCT}% of the prior move "
         "(G7): a flag near the top of the run, not a pullback that has undone most of it.",
         "**The market.** The index (Nasdaq-100 in the US, Nifty 500 in India) closes above its {MKT_EMA}-day "
@@ -187,6 +197,12 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
+        "v1.3 NOT YET MEASURED. Stage: optimise (2013-2021, in-sample); verify not run. Pass criterion, set before "
+        "any v1.3 result and unchanged from v1.1: in the optimise stage, the base rules beat the market's benchmark "
+        "CAGR AND make a positive average R after costs, in at least one market; the top 10% of trades' share of P&L "
+        "is reported beside it. Up-front variants, measured beside the base and never a substitute for it: "
+        "TIGHT_MAX_ADR=2, and TRAIL_EMA=1 with TRAIL_SMA=20. v1.3's rest constants were set from the model book's "
+        "marked buys (2019-2020), inside the optimise window. "
         "v1.1 rules FAILED the pass criterion in the optimise stage (2013-2021, in-sample; measured by v1.2 runs with "
         "the defaults, which are v1.1's rules). Verify not run. The criterion, set before any v1.1 result: the base rules "
         "beat the market's benchmark CAGR AND make a positive average R after costs, in at least one market. "
@@ -222,15 +238,21 @@ class KullamagiStrategy(Strategy):
         "G3": (
             "A tight rest.\n\n"
             "- **The rest:** the {REST_BARS} sessions before today.\n"
-            "- **Test:** their highest high minus their lowest low is at most {TIGHT_MAX_PCT}% of that high.\n"
-            "- **Fails:** a wider range: no close stop is possible from a loose base."
+            "- **Test:** their highest high minus their lowest low, as % of that high, is at most {TIGHT_MAX_ADR} "
+            "times today's average daily range (G1's ADR).\n"
+            "- **Fails:** a wider range: no close stop is possible from a loose base.\n\n"
+            "Tightness is relative to how far the stock moves in a day: the model book's high-momentum rests "
+            "span 1.3 to 3.3 ADRs, often 25-30% on a stock that moves 10% a day."
         ),
         "G4": (
-            "The rest's lows hold the rising averages.\n\n"
-            "- **Test:** each of the rest's {REST_BARS} lows is at least {REST_LOW_MIN_PCT_OF_SMA}% of that "
-            "session's {REST_SMA}-day simple average of closes.\n"
-            "- **Fails:** any low further under it, or no average yet.\n\n"
-            "The guide's \"surfing\" the averages: the move is resting, not breaking down."
+            "The rest surfs a rising average.\n\n"
+            "- **Averages:** the {SUPPORT_FAST}-, {SUPPORT_MID}- and {SUPPORT_SLOW}-day simple averages of closes.\n"
+            "- **Test:** for at least one of them, its value on the rest's last session is above its value on the "
+            "rest's first, and every one of the rest's {REST_BARS} closes is at most {REST_UNDERCUT_ADR} ADR below "
+            "that session's average (intraday lows may dip further).\n"
+            "- **Fails:** no average both rising and held, or not enough history for the slowest.\n\n"
+            "Kullamägi: the stock \"starts surfing one of the moving averages ... the 10-day, the 20-day, the "
+            "50-day\"; the shakeout wick through an average is part of the setup, a close well under it is not."
         ),
         "G5": (
             "Yesterday closed above its {PRIOR_CLOSE_SMA}-day average.\n\n"
@@ -329,9 +351,11 @@ class KullamagiStrategy(Strategy):
         ("Prior-move high window", "MOVERS_HIGH_BARS", "Sessions whose highest high is compared."),
         ("Prior-move low window", "MOVERS_LOW_BARS", "Sessions whose lowest low it is compared with."),
         ("Rest length", "REST_BARS", "Sessions before the breakout that form the rest."),
-        ("Rest tightness", "TIGHT_MAX_PCT", "G3: the rest's high-to-low span, % of its high, at most."),
-        ("Rest average", "REST_SMA", "G4: the average the rest's lows must hold."),
-        ("Lows vs that average", "REST_LOW_MIN_PCT_OF_SMA", "G4: each low at least this % of the average."),
+        ("Rest tightness", "TIGHT_MAX_ADR", "G3: the rest's high-to-low span, % of its high, at most this many ADRs."),
+        ("Fast support", "SUPPORT_FAST", "G4: the fastest average the rest may surf."),
+        ("Middle support", "SUPPORT_MID", "G4: the middle average."),
+        ("Slow support", "SUPPORT_SLOW", "G4: the slowest average."),
+        ("Close undercut", "REST_UNDERCUT_ADR", "G4: how far, in ADRs, a rest close may sit below the average."),
         ("Prior-close average", "PRIOR_CLOSE_SMA", "G5: yesterday's close must be above this average."),
         ("Maximum giveback", "REST_MAX_GIVEBACK_PCT", "G7: the share, %, of the prior move the rest's low may give back."),
         ("Market gate", "REQUIRE_MARKET", "1: G6 is a hard gate; 0: it always passes."),
@@ -404,7 +428,7 @@ class KullamagiStrategy(Strategy):
         ctx.extras["prior_move_pct"] = crit.prior_move_pct(d)
 
         n = len(d)
-        if n < REST_BARS + max(REST_SMA, PRIOR_CLOSE_SMA) + 1:
+        if n < REST_BARS + max(SUPPORT_SLOW, PRIOR_CLOSE_SMA) + 1:
             for g in ("G3", "G4", "G5"):
                 result.fail(g, "insufficient history for the rest")
             g7 = (False, "insufficient history for the rest")
@@ -413,19 +437,30 @@ class KullamagiStrategy(Strategy):
             hi, lo = float(rest["high"].max()), float(rest["low"].min())
             span = (hi - lo) / hi * 100 if hi > 0 else float("nan")
             ctx.extras["rest_high"], ctx.extras["rest_low"], ctx.extras["rest_span_pct"] = hi, lo, span
-            if span <= TIGHT_MAX_PCT:
-                result.ok("G3", f"rest spans {span:.1f}%")
+            adr = ctx.extras["adr_pct"]
+            span_adr = span / adr if adr else float("nan")
+            ctx.extras["rest_span_adr"] = span_adr
+            if span_adr <= TIGHT_MAX_ADR:
+                result.ok("G3", f"rest spans {span:.1f}% ({span_adr:.1f} ADR)")
             else:
-                result.fail("G3", f"rest spans {span:.1f}% (> {TIGHT_MAX_PCT}%)")
+                result.fail("G3", f"rest spans {span:.1f}% ({span_adr:.1f} ADR > {TIGHT_MAX_ADR})")
 
-            closes = d["close"].iloc[-(REST_BARS + REST_SMA):].astype(float)
-            avg = closes.rolling(REST_SMA).mean().iloc[-REST_BARS - 1:-1]
-            frac = rest["low"].astype(float).to_numpy() / avg.to_numpy()
-            if (frac >= REST_LOW_MIN_PCT_OF_SMA / 100).all():
-                result.ok("G4", f"lowest low {frac.min() * 100:.1f}% of the {REST_SMA}-day")
+            closes = d["close"].astype(float)
+            rest_closes = closes.iloc[-REST_BARS - 1:-1].to_numpy()
+            floor = 1 - REST_UNDERCUT_ADR * adr / 100
+            support, worst = 0, []
+            for length in (SUPPORT_FAST, SUPPORT_MID, SUPPORT_SLOW):
+                avg = closes.iloc[-(REST_BARS + length):].rolling(length).mean().iloc[-REST_BARS - 1:-1].to_numpy()
+                ratio = (rest_closes / avg).min()
+                worst.append(f"{length}-day {(ratio - 1) * 100 / adr:+.1f} ADR{'' if avg[-1] > avg[0] else ' falling'}")
+                if avg[-1] > avg[0] and ratio >= floor:
+                    support = length
+                    break
+            ctx.extras["support_sma"] = support
+            if support:
+                result.ok("G4", f"surfs the rising {support}-day")
             else:
-                result.fail("G4", f"a low at {frac.min() * 100:.1f}% of the {REST_SMA}-day "
-                                  f"(< {REST_LOW_MIN_PCT_OF_SMA}%)")
+                result.fail("G4", "no rising average held: " + ", ".join(worst))
 
             before = d.iloc[:-1]
             move_hi = float(before["high"].iloc[-MOVERS_HIGH_BARS:].max())
