@@ -27,12 +27,12 @@ by accident.
 
 Variants (`--variant`), fixed before any run and not to be added to after one:
 
-  quality       the strategy: the thresholds below;
+  quality       the full test: the thresholds below (the default until v1.6);
   covered       the CONTROL for coverage: data for every test is required, no threshold is applied --
                 "has filings" is itself a selection (bigger, older, better-documented companies);
   strict        every threshold one notch tighter (the STRICT_* constants);
-  filings_only  ROE and sales only -- the two tests the quarterly filings answer, which in the US reach
-                back to 2011, while statement lines (debt, cash flow) start in 2016;
+  filings_only  ROE and sales only -- the two tests the quarterly filings answer. THE DEFAULT from v1.6,
+                picked by a rule fixed before the post-backfill optimise runs and verified in both markets;
   filings_covered  the coverage control for filings_only (ROE and sales data required, nothing judged).
                 ADDED AFTER the first four had run, when they showed coverage itself carries a look-ahead
                 bias (see the caveats); a control, not a threshold, so it can only weaken the case.
@@ -73,6 +73,7 @@ STRICT_SALES_GROWTH_MIN_PCT = 5
 QM_STATEMENT_STALE_DAYS = 550     # a fiscal year or balance sheet older than this (about 18 months) is no data
 
 VARIANTS = ("quality", "covered", "strict", "filings_only", "filings_covered")
+DEFAULT_VARIANT = "filings_only"     # v1.6; the full test is the `quality` variant
 
 
 def thresholds(variant: str) -> dict:
@@ -165,7 +166,7 @@ class QualityFilter:
     """The `universe_filter` baseline.run applies: drops ranked names that fail on the filings public
     on the rebalance date, and records the coverage of every rebalance."""
 
-    def __init__(self, market: str, variant: str = "quality"):
+    def __init__(self, market: str, variant: str = DEFAULT_VARIANT):
         from fundamentals.quality import FIN_SECTORS
         from ..marketdata import financials
         self.market, self.variant, self.limits = market, variant, thresholds(variant)
@@ -226,9 +227,12 @@ DOC = {
     "key": "quality_momentum",
     "name": "Quality momentum",
     "description": "The momentum baseline, ranked only among companies whose filings public on the "
-                   "rebalance date show ROE of at least {QM_ROE_MIN_PCT}%, modest net debt, positive free "
-                   "cash flow and no shrinking sales; top {top_n}, rebalanced every month-end.",
+                   "rebalance date show ROE of at least {QM_ROE_MIN_PCT}% and no shrinking sales; top "
+                   "{top_n}, rebalanced every month-end.",
     "status": (
+        "v1.6 MAKES filings_only (ROE AND SALES ONLY) THE DEFAULT, on the evidence below; the full test "
+        "lives on as the `quality` variant. Its verify result is the v1.5 filings_only run (the rules are "
+        "identical). Next test: forward (paper) data. "
         "THE filings_only VARIANT (ROE AND SALES ONLY) PASSES ITS VERIFY RUN IN BOTH MARKETS -- ON ONE YEAR "
         "IN THE US. The default full test fails (below). On 2026-11-07, after the backfill, the optimise "
         "stage was re-run for every variant and the candidate picked by a rule written down first: the "
@@ -285,15 +289,17 @@ DOC = {
         "momentum skipping {skip}, top {top_n} equal-weighted, {cost_bps}bps a side, month-end rebalance -- "
         "with one step added: before the top {top_n} are taken, the ranked pool drops every company that "
         "fails the quality test on the filings public that day.",
-        "The test, from the latest public filings: trailing-twelve-month ROE at least {QM_ROE_MIN_PCT}%; "
-        "trailing-twelve-month sales at least the year-ago twelve months (growth at least "
-        "{QM_SALES_GROWTH_MIN_PCT}%); net debt at most {QM_NET_DEBT_EQUITY_MAX}x equity (net cash always "
+        "The test (from v1.6, the filings_only variant), from the latest public filings: "
+        "trailing-twelve-month ROE at least {QM_ROE_MIN_PCT}%, and trailing-twelve-month sales at least the "
+        "year-ago twelve months (growth at least {QM_SALES_GROWTH_MIN_PCT}%). Banks and insurers take the "
+        "same two tests.",
+        "The full test (the default until v1.6, now the `quality` variant) adds two: net debt at most {QM_NET_DEBT_EQUITY_MAX}x equity (net cash always "
         "passes); and in the latest fiscal year positive operating cash flow, with free cash flow at least "
         "{QM_FCF_CONVERSION_MIN_PCT}% of net profit -- that is, positive. Banks and insurers take the ROE and "
-        "sales tests only.",
+        "sales tests only. It failed its US verify run.",
         "A company with no data for a test is not eligible. Each rebalance records how many ranked names "
         "had the data and how many passed, in the run's report and quality_coverage.csv.",
-        "Four variants were fixed before any run, as experiments on this one: covered (data required, no "
+        "Four variants were fixed before any run, as experiments on the full test: covered (data required, no "
         "threshold -- the control for having filings at all), strict (ROE {STRICT_ROE_MIN_PCT}%, net debt "
         "{STRICT_NET_DEBT_EQUITY_MAX}x equity, free cash flow {STRICT_FCF_CONVERSION_MIN_PCT}% of profit, "
         "sales growth {STRICT_SALES_GROWTH_MIN_PCT}%) and filings_only (ROE and sales only). A fifth, "
@@ -316,10 +322,10 @@ DOC = {
         "after it.",
         "Sales. Revenue of the last four consecutive quarters over the same quarters' year-ago revenue as "
         "first published, minus one, at least {QM_SALES_GROWTH_MIN_PCT}%.",
-        "Debt (not banks or insurers). (Borrowings - cash) / equity on the latest public balance sheet, at "
+        "The `quality` variant only -- debt (not banks or insurers). (Borrowings - cash) / equity on the latest public balance sheet, at "
         "most {QM_NET_DEBT_EQUITY_MAX}. A balance sheet with no borrowings or cash line counts it as zero; "
         "the balance sheet's equity must be there. Negative equity fails unless the company has net cash.",
-        "Cash (not banks or insurers). Latest public fiscal year: operating cash flow positive, net profit "
+        "The `quality` variant only -- cash (not banks or insurers). Latest public fiscal year: operating cash flow positive, net profit "
         "positive, and (operating cash flow - capex) / net profit at least {QM_FCF_CONVERSION_MIN_PCT}%. No "
         "capex line counts as zero.",
         "Banks and insurers: the company's sector is Financial Services, or it files the bank layout.",
@@ -372,8 +378,15 @@ class QualityMomentumStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "quality_momentum"
-    version = "1.5"
+    version = "1.6"
     changelog = (
+        ("1.6", "2026-11-08",
+         "The default is the filings_only variant: ROE and sales growth only, no debt or free-cash-flow test. "
+         "Picked on 2026-11-07 by a rule fixed before the post-backfill optimise runs (largest US margin over "
+         "its own control, drawdown no deeper: +2.02 points, 2013-2021) and then passed its single verify run "
+         "in both markets against filings_covered (US +11.10, India +5.95 points a year, drawdowns shallower), "
+         "while the full test failed its verify in the US. The full test stays as `--variant quality`. The "
+         "live candidates and paper trading follow the default."),
         ("1.5", "2026-11-03",
          "ROE accepts a year-end equity for the three quarters after it (growth.ROE_EQUITY_MAX_AGE_DAYS, was a "
          "fixed 200 days). Before FY2022 Indian companies state equity only in their annual results -- now read "
@@ -444,7 +457,7 @@ def main(argv: list[str] | None = None) -> dict | None:
     """baseline.main with the quality filter, plus `--variant`; writes quality_coverage.csv."""
     from pathlib import Path
     pre = argparse.ArgumentParser(add_help=False)
-    pre.add_argument("--variant", default="quality", choices=VARIANTS)
+    pre.add_argument("--variant", default=DEFAULT_VARIANT, choices=VARIANTS)
     pre.add_argument("--market")   # required by baseline.main's parser, which windows.runner_defaults reads
     known, rest = pre.parse_known_args(argv)
     if known.market:
@@ -453,8 +466,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         rest = ["--strategy", QualityMomentumStrategy.key, *rest]
     filt = QualityFilter(known.market, known.variant) if known.market else None
     r = baseline.main(rest, universe_filter=filt,
-                      run_suffix="" if known.variant == "quality" else f"_{known.variant}",
-                      reproduce_extra=() if known.variant == "quality" else (f"--variant {known.variant}",))
+                      run_suffix="" if known.variant == DEFAULT_VARIANT else f"_{known.variant}",
+                      reproduce_extra=() if known.variant == DEFAULT_VARIANT else (f"--variant {known.variant}",))
     if r:
         filt.coverage().to_csv(Path(r["run_dir"]) / "quality_coverage.csv", index=False)
     return r

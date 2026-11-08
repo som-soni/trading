@@ -974,7 +974,7 @@
       "skip": 21,
       "top_n": 10
     },
-    "version": "1.5"
+    "version": "1.6"
   },
   "rs_leaders": {
     "family": "rs_leaders",
