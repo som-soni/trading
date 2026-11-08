@@ -113,6 +113,26 @@ Ask each reviewer for at most about 15 findings, ranked.
 15. **Functionality gaps.** From `TODO.md`, the review's open items and a trader's daily
     workflow (Today → Market → Screens → Strategies → Chart → Watchlists), what is missing or
     awkward. Rank by how directly it feeds a trading decision.
+16. **Trader experience, holistically.** Use the app in the browser the way a trader does on a
+    real day, start to finish: check the market, find candidates, judge a setup on the chart, size
+    it, record it, then manage open positions and the books. Judge the whole, not page by page:
+    the number of clicks and page changes to reach a decision, whether each page answers the
+    trader's question first (plain verdicts before tables, units and dates on every number),
+    consistency of terms, colours and layout across pages, what a trader must remember between
+    pages, alerts and next actions that are missing, and how it works on a phone. Recommend
+    concrete redesigns, each with the page it changes and a sketch of the new layout. Only this
+    reviewer and the UI walk-through may use the browser, and they run one after the other.
+17. **Backtest results: strategy, risk and sizing improvements.** Read the stored runs
+    (`report_runs`, `report_tables`, each run's `trades.csv` and `equity.csv`) and recommend
+    improvements, not bugs. Per strategy and market: where the losses come from (by setup, exit
+    reason, market regime, sector, holding time), the R-multiple distribution and the share of
+    profit from the best trades, drawdown depth and length, exposure and idle cash, and
+    correlation between strategies. Then propose changes to entries, exits, stops, position
+    sizing (fixed fraction, volatility-scaled, by setup quality), portfolio heat and
+    concentration limits, and regime filters. Each proposal names the evidence, the expected
+    effect, the pass criteria to set before testing it, and the optimise-stage run that would
+    test it. Use optimise-stage runs only: never propose a change from a verify run's result,
+    and never run a backtest.
 
 ## Coverage map
 
@@ -130,15 +150,16 @@ package or rule section cannot land without a line here. Dimensions are the numb
 | `swing_screener/` | 6 |
 | `tests/` | 13 |
 | `swing_screener/analytics/` | 6 |
-| `swing_screener/backtesting/` | 2, 14 |
+| `swing_screener/backtesting/` | 2, 14, 17 |
 | `swing_screener/config/` | 6, 7 |
 | `swing_screener/core/` | 2, 3 |
 | `swing_screener/marketdata/` | 6 |
 | `swing_screener/providers/` | 6 |
 | `swing_screener/screening/` | 4 |
 | `swing_screener/screens/` | 4 |
-| `swing_screener/strategies/` | 3 |
-| `swing_screener/web/` | 7, 8, 9 |
+| `swing_screener/strategies/` | 3, 17 |
+| `swing_screener/broker/` | 7, 12 |
+| `swing_screener/web/` | 7, 8, 9, 16 |
 | Sidebar: threads are marked by rank | none — session housekeeping, not code |
 | Markets come from config | 7, 8 |
 | Screens vs strategies | 3, 4 |
@@ -163,11 +184,15 @@ Write `REVIEW-<today's ISO date>.md` in the repo root. Keep it skimmable:
 3. **Test suite:** each failing test with its cause, and golden differences attributed to commits.
 4. **Fix now:** confirmed bugs, ranked by impact on a trading decision or a backtest result.
 5. **UI and performance:** what a user feels, with the measured timings.
-6. **Gaps:** missing tests, missing evals, and missing functionality, as three short lists, each
+6. **Trader experience:** the holistic UI recommendations, ranked by how much time or error they
+   save on a trading day, each with the page it changes.
+7. **Strategy, risk and sizing:** the backtest-driven proposals, each with its evidence, pass
+   criteria and the optimise run that tests it.
+8. **Gaps:** missing tests, missing evals, and missing functionality, as three short lists, each
    item with its cheapest next step.
-7. **Suggested order:** the next five pieces of work, each sized (minutes, an afternoon, a sprint).
-8. **Coverage:** what the coverage step found new this week, and anything it could not place.
-9. **Skill updates:** the exact edits this skill needs, as old and new text. Include every new
+9. **Suggested order:** the next five pieces of work, each sized (minutes, an afternoon, a sprint).
+10. **Coverage:** what the coverage step found new this week, and anything it could not place.
+11. **Skill updates:** the exact edits this skill needs, as old and new text. Include every new
    area the map could not place, every review dimension that came back empty or off-target, and
    every trap the run hit (a command that behaves differently here, a check that misleads).
    Apply them only if the user approves, then run `tests.test_review_coverage`.
