@@ -141,6 +141,16 @@ def _headline(markdown: str) -> dict:
             bench = (m.group(2) or "").replace("*", "").strip()
             if key in _BENCH and _pct(bench) is not None:
                 out[_BENCH[key]] = bench
+    # Win rate and the number of trades behind it. Reports print it either as a table row
+    # ("| Win rate | 49.4% |") or in the plain-text block ("Trades  4   win rate 50.0%").
+    w = (re.search(r"^\|\s*(?:\*\*)?Win rate(?:\*\*)?\s*\|\s*([\d.]+)\s*%", markdown, re.M | re.I)
+         or re.search(r"win rate\s+([\d.]+)\s*%", markdown, re.I))
+    if w:
+        out["win_rate"] = f"{float(w.group(1)):.1f}%"
+    t = (re.search(r"^\|\s*(?:\*\*)?(?:Closed trades|Trades)(?:\*\*)?\s*\|\s*([\d,]+)\s*\|", markdown, re.M)
+         or re.search(r"^Trades\s+([\d,]+)\s+win rate", markdown, re.M | re.I))
+    if t:
+        out["trades"] = t.group(1).replace(",", "")
     return out
 
 

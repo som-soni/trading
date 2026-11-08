@@ -5290,9 +5290,10 @@ function perfGlance(d, key) {
       <td class="num ${sign(s.excess_std_cost)}" title="${esc(stdCostTip(s))}">${esc(s.excess_std_cost || "—")}</td>
       <td class="num">${esc(s.max_drawdown || "")}</td>
       <td class="num">${esc(s.sharpe || "")}</td>
+      <td class="num" title="${s.trades ? `share of ${esc(s.trades)} trades that made money` : "share of trades that made money"}">${esc(s.win_rate || "—")}</td>
       <td class="muted small">${prettyDate(b.generated_at)}</td></tr>`; };
   const gap = (m, first, stageHtml, text) => `<tr class="muted"><td>${first ? `${mktInfo(m).flag || ""} ${esc(mktInfo(m).name || m.toUpperCase())}` : ""}</td>
-      <td></td><td>${stageHtml}</td><td colspan="6" class="small">${text}</td></tr>`;
+      <td></td><td>${stageHtml}</td><td colspan="7" class="small">${text}</td></tr>`;
   // the best version in one market: each version's newest run within the pool, ranked by excess CAGR
   const winOf = (b) => `${b.window_start}|${b.window_end}`;
   // A configuration is a version plus any experiment settings: v1.2 with a $100m turnover floor is a
@@ -5365,7 +5366,8 @@ function perfGlance(d, key) {
       <th class="num">CAGR</th>
       <th class="num" title="The strategy's CAGR minus its benchmark's. Positive means it beat buying and holding the index.">Excess CAGR</th>
       <th class="num" title="Excess CAGR restated at one standard cost per side for every strategy in the market, so strategies compare like for like. Hover a cell for the run's own cost and turnover.">Excess at std cost</th>
-      <th class="num">Max DD</th><th class="num">Sharpe</th><th>Run</th></tr></thead>
+      <th class="num">Max DD</th><th class="num">Sharpe</th>
+      <th class="num" title="Share of the run's trades that made money. Hover a cell for how many trades it counts.">Win rate</th><th>Run</th></tr></thead>
     <tbody>${rows}</tbody></table>
     <p class="muted small"><b>Out-of-sample</b> is the number to believe: years ${esc(ver.start || "")} onward, which the rules were never tuned on.
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
