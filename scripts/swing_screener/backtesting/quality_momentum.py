@@ -232,7 +232,10 @@ DOC = {
     "status": (
         "v1.6 MAKES filings_only (ROE AND SALES ONLY) THE DEFAULT, on the evidence below; the full test "
         "lives on as the `quality` variant. Its verify result is the v1.5 filings_only run (the rules are "
-        "identical). Next test: forward (paper) data. "
+        "identical). Full stage under v1.6 (2013-01-01 to the latest close, context, never a verdict): US "
+        "19.25% CAGR, max drawdown -44.6%, against SPY's 12.38% (excess +6.87); India 12.14%, -39.3%, against "
+        "the Nifty 500's 12.08% (+0.06) -- India's book is mostly cash until 2019, when its stored filings "
+        "begin to carry an equity. Next test: forward (paper) data. "
         "THE filings_only VARIANT (ROE AND SALES ONLY) PASSES ITS VERIFY RUN IN BOTH MARKETS -- ON ONE YEAR "
         "IN THE US. The default full test fails (below). On 2026-11-07, after the backfill, the optimise "
         "stage was re-run for every variant and the candidate picked by a rule written down first: the "
