@@ -8398,7 +8398,7 @@ const GUIDE_ORDER = ["learn-start-here", "learn-macro-rates", "learn-macro-yield
   "learn-health-trend", "learn-health-breadth", "learn-health-volatility", "learn-health-distribution",
   "learn-sectors-groups",
   "learn-fund-earnings", "learn-fund-reading-results", "learn-fund-valuation", "learn-fund-quality",
-  "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio",
+  "learn-risk-expectancy", "learn-risk-sizing", "learn-risk-stops-exits", "learn-risk-portfolio", "learn-risk-your-numbers",
   "learn-process-plan", "learn-process-journal", "learn-process-biases",
   "learn-price-stages", "learn-price-volume", "learn-price-rs",
   "learn-ind-map", "learn-price-indicators", "learn-price-oscillators", "learn-ind-moving-averages", "learn-ind-bands-channels", "learn-ind-trend",
@@ -8412,7 +8412,7 @@ const GUIDE_TOPIC = {"learn-start-here": "start", "learn-macro-rates": "macro", 
   "learn-health-trend": "health", "learn-health-breadth": "health", "learn-health-volatility": "health", "learn-health-distribution": "health",
   "learn-sectors-groups": "sectors",
   "learn-fund-earnings": "fundamentals", "learn-fund-reading-results": "fundamentals", "learn-fund-valuation": "fundamentals", "learn-fund-quality": "fundamentals",
-  "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk",
+  "learn-risk-expectancy": "risk", "learn-risk-sizing": "risk", "learn-risk-stops-exits": "risk", "learn-risk-portfolio": "risk", "learn-risk-your-numbers": "risk",
   "learn-process-plan": "process", "learn-process-journal": "process", "learn-process-biases": "process",
   "learn-price-stages": "price", "learn-price-volume": "price", "learn-price-rs": "price",
   "learn-ind-map": "indicators", "learn-price-indicators": "indicators", "learn-price-oscillators": "indicators", "learn-ind-moving-averages": "indicators",
@@ -8579,6 +8579,7 @@ const GUIDE_BLURB = {
   "learn-process-plan": "A written plan and a daily and weekly routine — what to check, in what order, using this app's pages.",
   "learn-process-journal": "What to record on every trade, and how to review it to find what actually works — and what doesn't.",
   "learn-process-biases": "Loss aversion, FOMO, revenge trading, anchoring and overconfidence — what each costs, measured on the app's trades.",
+  "learn-risk-your-numbers": "Your win rate, average gain and average loss: the loss you can afford, stops keyed to your average gain, and what to track each month.",
   "learn-risk-portfolio": "Open risk across positions, correlation and sector clusters, drawdowns and the arithmetic of recovering.",
   "learn-candlestick-patterns": "Reading candles: anatomy, the one-, two- and three-bar patterns, context, and how the screener's candle notes use them.",
   "learn-chart-patterns": "The bases this app detects, topping structures, how to judge a breakout — and what the backtests found.",
@@ -8756,17 +8757,21 @@ function linkPatternMentions(root) {
  *  chosen one beside its "On this page" contents. Opens on the sector playbook. */
 /* Research notes by kind, placed by file name: the prefixes place new notes, older ones are named.
    A note no rule places lands in "Other", so a missing entry shows rather than hides. */
+// The array order is the sidebar's order AND the order the rules are tried in, so a case study ("-cases") is
+// placed before a strategy's own notes could claim it, and those before the specs ("minervini-backtest-spec").
 const RESEARCH_GROUPS = [
   ["system", "My trading system", /^(system-|sector-analysis-playbook$)/],
+  ["cases", "Case studies", /(^app-guide-breakouts|-cases$)/],
+  ["strategy", "Strategy audits & tests", /^(audit-|minervini-(?!backtest-spec$)|.*-verify-plan$)/],
+  ["studies", "Studies & findings", /^(README|momentum-trend-research|index-investing-research|daily-review-rule-tests|selection-vs-drag|.*-study|.*-studies)$/],
   ["creators", "Creators & videos", /^(creator-|video-strategy-notes$|swing-trading-video-series$)/],
-  ["studies", "Studies & findings", /^(README|momentum-trend-research|index-investing-research|daily-review-rule-tests|group-strength-study|crwd-gap-studies|selection-vs-drag|minervini-spec-sensitivity-.*)$/],
-  ["cases", "Case studies", /^app-guide-breakouts/],
   ["specs", "Specs & proposals", /(-spec|^fno-scope|^sector-taxonomy|^snapshot-freshness)$/],
   ["manual", "Using the app", /^app-guide-/],
 ];
 // listed first in their group, in this order; the rest follow by title
 const RESEARCH_FIRST = ["system-overview", "system-daily-market-review", "system-swing-longs", "system-shorts",
-  "system-risk-exposure", "system-tools", "sector-analysis-playbook", "README", "momentum-trend-research"];
+  "system-risk-exposure", "system-tools", "sector-analysis-playbook", "minervini-book-cases", "app-guide-breakouts",
+  "README", "momentum-trend-research"];
 
 async function researchPage(alive, slug) {
   $view.innerHTML = LOADING;

@@ -220,6 +220,17 @@ Those trades were worse than average. Held to the 20-day-low exit, they averaged
 
 **Time stops.** Another rule sells a trade that has gone nowhere: for example, one that has not reached +1R after 15 sessions. About a fifth of the illustrative trades fit that description and were still open. Held on, they averaged +0.20R in the US and +0.30R in India. Sold at the fifteenth session's close, they averaged +0.05R and −0.04R.
 
+**Follow-through: a reason to hold, not a reason to sell.** A strong breakout tends to act strong in its first two weeks. Up days outnumber down days, most closes sit in the upper half of the day's range, and volume is heavier on up days than on down days. We checked this on the illustrative trades still open after 10 sessions. The table shows what each group made from the tenth session on, in R:
+
+| First 10 sessions | US: R still to come | India: R still to come |
+|---|---|---|
+| More up days than down | +0.21 | +0.83 |
+| Up days not in the majority | +0.16 | +0.46 |
+| All three signs present | +0.20 | +0.92 |
+| None of the three | +0.11 | +0.41 |
+
+The signs of follow-through did point to better trades, clearly in India and slightly in the US. That held even among trades with the same gain so far. But the weakest group still made money from there on. So poor follow-through is a reason not to add, and to watch closely, not a reason to sell. The stop handles a real failure.
+
 On these trades, both rules cost money, because both sell some trades before they become large winners. They may still suit a method with a fixed target, or a trader who needs the capital for new setups. Test them on your own method before adopting them.
 
 ## 11. What a trader does

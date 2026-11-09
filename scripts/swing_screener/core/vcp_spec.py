@@ -455,7 +455,7 @@ def _detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
            "depths": [], "lows": [], "pivot": None, "tight_low": None, "tight_range_pct": None, "dryup": None, "base_tt": None, "zigzag_pct_used": None,
            "base_low": None, "cheat_ok": False, "cheat_pivot": None, "cheat_low": None,
            "cheat_range_pct": None, "cheat_pos": None, "cheat_zone": None,
-           "cheat_dryup": None, "cheat_quiet_days": None, "cheat_fail_why": None,
+           "cheat_dryup": None, "cheat_quiet_days": None, "cheat_fail_why": None, "cheat_misses": None,
            "cheat_rally": None, "cheat_higher_low": None, "cheat_vol_vs_lead": None,
            "pivot_pos": None, "pivot_zone": None, "tight_days_actual": None,
            "base_closes_below_200": None, "fail_why": None, "base_depth_pct": None,
@@ -646,6 +646,29 @@ def _detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
         out["cheat_ok"] = False
         out["cheat_fail_why"] = (f"the shelf's volume did not contract: {vr:.2f}x the sessions before it "
                                  f"(needs <= {p.cheat_vol_contract:g})")
+    # Every shelf test the shelf misses, not only the first: cheat_ok above stops at the first miss (and the
+    # shelf's own width test set no reason at all). Recorded for the chart, which names a cheat the strategy
+    # refused -- Minervini's own AMZN 3-C of 2002-10-10 failed three of these at once. cheat_ok is unchanged.
+    misses = []
+    if not (sh_rng == sh_rng and sh_rng <= p.cheat_shelf_pct):
+        misses.append(f"the shelf is {sh_rng:.1f}% wide (at most {p.cheat_shelf_pct:g}%)")
+    if not sh_hi < high[bh_i]:
+        misses.append("the shelf is not below the base high")
+    if len(sh) < p.cheat_shelf_days:
+        misses.append(f"the shelf has {len(sh)} sessions (needs {p.cheat_shelf_days})")
+    if p.cheat_dryup and not (sh_dry <= p.dryup_ratio or sh_quiet >= p.dryup_quiet_days):
+        misses.append(f"its volume averaged {sh_dry:.2f}x the 50-day with {sh_quiet} quiet session(s) (at most "
+                      f"{p.dryup_ratio:g}x, or {p.dryup_quiet_days} sessions at or under {p.dryup_quiet_ratio:g}x)")
+    if p.cheat_rally_frac > 0 and not (out["cheat_higher_low"] and (out["cheat_rally"] or 0) >= p.cheat_rally_frac):
+        misses.append("no turn before it: " + ("no higher low than the base's" if not out["cheat_higher_low"] else
+                      f"the rally won back {(out['cheat_rally'] or 0) * 100:.0f}% of the decline "
+                      f"(needs {p.cheat_rally_frac * 100:.0f}%)"))
+    if p.cheat_vol_contract > 0 and not (vr is not None and vr == vr and vr <= p.cheat_vol_contract):
+        misses.append(f"its volume did not contract: {vr:.2f}x the sessions before it (at most {p.cheat_vol_contract:g}x)"
+                      if vr is not None and vr == vr else "its volume could not be compared with the sessions before it")
+    out["cheat_misses"] = misses
+    if not out["cheat_ok"] and out["cheat_fail_why"] is None and misses:
+        out["cheat_fail_why"] = misses[0]
 
     # ---- step 2: the contractions, segmented by zig-zag
     # A leg turns only after a `zigzag_pct` reversal in BOTH directions. Segmenting on swing

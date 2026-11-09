@@ -1213,7 +1213,8 @@ const Studies = (() => {
               label: `${x.began.replace("Stage 2 ended: ", "Stage 2 ended — ")} · after ${prev.bars} sessions, ${prev.gain_pct >= 0 ? "+" : ""}${prev.gain_pct}%` }] })));
           const all = r.bases || [];
           const setups = p.bases === "None" ? [] : p.bases === "Completed VCPs" ? all.filter((b) => b.complete)
-            : p.bases === "Setups" ? all.filter((b) => b.kind !== "fail" && b.kind !== "young") : all;
+            // a failed base with a cheat the strategy refused stays: the pattern was there, and the card says which rule stopped it
+            : p.bases === "Setups" ? all.filter((b) => (b.kind !== "fail" && b.kind !== "young") || b.cheat_refused?.length) : all;
           const hidden = all.length - setups.length;
           return { background: stage, setups,
             note: `${r.note} · ${setups.length} setups, ${all.filter((b) => b.complete).length} VCPs`

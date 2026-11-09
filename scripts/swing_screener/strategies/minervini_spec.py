@@ -1802,8 +1802,8 @@ class MinerviniSpecStrategy(Strategy):
         "**The steps, in order.** Each has its own section below.\n\n"
         "- **Qualify** (G1–G8): the stock passes the Trend Template.\n"
         "- **Find the base** (VCP-01 to VCP-10): the base checks.\n"
-        "- **Pick the setup** (S1–S6): a breakout, a coil under the pivot, two early \"cheat\" buys, "
-        "a power play, or a flat base.\n"
+        "- **Pick the setup** (S1–S9): a breakout, a coil under the pivot, two early \"cheat\" buys, "
+        "a power play, a flat base (bought through its high, or coiled under it), a near miss, or a shakeout.\n"
         "- **Buy** (Entry), **protect** (Stop), **no price target** (Target) and **manage** (Exit).\n"
         "- **Size** the position, and skip new buys in the cases under \"When no new trade is taken\".",
         "**Timing.** Every rule is judged on a session's close, using only data up to that close. An "
@@ -1930,7 +1930,8 @@ class MinerviniSpecStrategy(Strategy):
               "The longer rise Minervini prefers — about 4-5 months — is watch flag W5, noted but "
               "never blocking.",
         "G6": "TT-06: today's close is at least {MIN_PCT_ABOVE_52W_LOW}% above the 52-week low (the "
-              "lowest low of the last 252 sessions).",
+              "lowest low of the last 252 sessions). That is the figure in *Trade Like a Stock Market Wizard*; "
+              "*Think & Trade Like a Champion* gives 25%.",
         "G7": "TT-07: today's close is no more than {MAX_PCT_BELOW_52W_HIGH}% below the 52-week high "
               "(the highest high of the last 252 sessions).",
         "G8": "TT-08: an RS rating of {RS_MIN_RANK} or more. The RS score adds up the stock's gains "
@@ -2286,7 +2287,7 @@ class MinerviniSpecStrategy(Strategy):
         "applies acts. Apart from the stop (see Stop), each exit is decided on the session's close and "
         "sold at the next session's open.",
         "Unconfirmed breakout (buy-stop fills, S2 and S8), while LIGHT_VOLUME_EXIT is on -- it is "
-        "{LIGHT_VOLUME_EXIT} (off) since 1.54. When on: if the session that filled the buy-stop traded less "
+        "{LIGHT_VOLUME_EXIT} (on; 1.54 turned it off, failed verify, and 1.55 turned it back on). When on: if the session that filled the buy-stop traded less "
         "than {VOL_MULT} times its 50-day average volume, the breakout was not confirmed and the whole "
         "position is sold at the next open. Off, such a fill is held to the stop and the exits below.\n\n"
         "S2's fill itself needs that volume since 1.51 (S2_FILL_NEEDS_VOLUME), whichever way this is set.",
@@ -2392,8 +2393,9 @@ class MinerviniSpecStrategy(Strategy):
         "TRADE_ON_TRIGGER": "A valid plan from any setup other than MV-01: coiled within {COIL_PCT}% below the "
                             "pivot (MV-02), entered only on a session that closes through it; a cheat (MV-03 / "
                             "MV-04) that cleared its shelf on the close, bought at the next open and stopped under "
-                            "the shelf low; or a power play (MV-05), bought at the next open and stopped under the "
-                            "flag's tight low. The market regime never caps a decision to this tier.",
+                            "the shelf low; a power play (MV-05), bought at the next open and stopped under the "
+                            "flag's tight low; or a flat base (S6), flat-base coil (S8), shakeout (S9) or near miss "
+                            "(S7), each as its setup describes. The market regime never caps a decision to this tier.",
         "WATCH_WAIT": "A valid plan held back: its stop sits more than {MAX_STOP_PCT}% below entry, results are due "
                       "within {EARNINGS_BLACKOUT_DAYS} days, the 200-day has risen for under "
                       "{SMA200_RISING_PREF_BARS} sessions while SMA200_PREF_REQUIRED is 1, or the market filter "
@@ -3335,6 +3337,29 @@ class MinerviniSpecStrategy(Strategy):
                     refused = self._screen_miss(cfg, daily, i) is not None
                     if b.get("cheat") is None or not refused:
                         b["cheat"], b["cheat_refused"] = (i, z, p), refused
+        # A cheat the strategy REFUSED: a close through yesterday's shelf high, in the lower (when LOW_CHEAT_ENABLED)
+        # or middle third and below the base high, on a shelf that failed one of its own tests. Never a trade: it is
+        # drawn as a note on its base (`_cheat_refused`), so the chart shows the pattern was seen and which rule
+        # stopped it. Minervini's own AMZN 3-C of 2002-10-10 was invisible here: the base read only "not a VCP".
+        # Only after the turn a cheat needs (a higher low, then a rally of CHEAT_RALLY_FRAC of the decline): before
+        # it, a close through a shelf is a bounce in a falling base, not a cheat attempt (AMZN's June 2002 bounce
+        # failed all four tests). Every attempt is kept, the latest three drawn -- one alone hid the rest: AMZN's
+        # base tried on 9 Sep 2002, missing only the width (8.2% against 8%), and on 10 Oct, the one Minervini
+        # bought, missing three. An attempt is the first close of a run (consecutive up days each clear a new shelf
+        # high). Only on a base no cheat was taken from, and drawn only on a base with no entry of its own.
+        for i in range(start + 1, len(daily)):
+            p = dets[i - 1]
+            b = bases.get(p["bh_date"]) if p else None
+            if b is None or b.get("cheat") is not None or p.get("cheat_ok") or not p.get("cheat_misses"):
+                continue
+            zone, piv = p.get("cheat_zone"), p.get("cheat_pivot")
+            turned = p.get("cheat_higher_low") and (p.get("cheat_rally") or 0) >= CHEAT_RALLY_FRAC
+            if turned and piv is not None and piv < p["bh"] \
+                    and (zone == "mid" or (zone == "low" and LOW_CHEAT_ENABLED)) and close[i - 1] <= piv < close[i]:
+                # a run of up days crosses a new shelf high every session: the first of the run is the attempt
+                if b.get("cheat_miss_at") != i - 1:
+                    b.setdefault("cheat_miss", []).append((i, p))
+                b["cheat_miss_at"] = i
         last = len(daily) - 1
         live = dets[last]["bh_date"] if last >= start and dets[last]["bh_date"] in bases else None
         fills = [pd.Timestamp(a["entry"]) for a in (anchors or []) if a.get("entry")]
@@ -3411,6 +3436,10 @@ class MinerviniSpecStrategy(Strategy):
             rep = last if now else bo - 1 if bo is not None else b["ok"][-1] if b["ok"] else b["best"]
             out.append(self._setup(daily, cfg, dets[rep], rep, bo, ch, now, missed=b.get("missed"), near=b.get("near"), ov=ov,
                                    count=count_of(key)))
+            # only on a base that gives no entry of its own: beside a VCP's buy or a cheat it only adds noise
+            if ch is None and b.get("cheat_miss") and not any(z["key"] in ("entry", "cheat") for z in out[-1]["zones"]):
+                for n, (i, p) in enumerate(b["cheat_miss"][-3:]):
+                    self._cheat_refused(out[-1], daily, i, p, n)
         out += self._power_plays(daily, cfg)
         # A drawn breakout (S1, S2, S7, a power play) the selected run bought: the fill the session after it (at the
         # open) or on it (S2's buy-stop, filled on the close through), with the run's initial stop (`_run_bought`).
@@ -4576,6 +4605,58 @@ class MinerviniSpecStrategy(Strategy):
                 "frame": {"from": focus_from, "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
                 "advance_from": up_from,
                 "zones": zones}
+
+    @staticmethod
+    def _cheat_refused(setup: dict, daily: pd.DataFrame, i: int, p: dict, n: int = 0) -> None:
+        """Add to a base's `setup` (from `_setup`) the cheat the strategy refused on bar `i`: a close through the shelf
+        `p` (yesterday's detection) measured, whose shelf failed `p["cheat_misses"]`. A zone with the shelf's checks
+        and a box round the shelf, the reason in the title and summary. Never an entry: no buy, stop or target."""
+        day = lambda k: str(daily.index[k].date())  # noqa: E731
+        name = "3-C" if p["cheat_zone"] == "mid" else "Low cheat"
+        third = "middle" if p["cheat_zone"] == "mid" else "lower"
+        s_from, s_to = max(0, i - CHEAT_SHELF_DAYS), i - 1
+        num = lambda v: v is not None and v == v  # noqa: E731
+        checks = [
+            {"code": "MV-03/04", "name": "Shelf width", "value": f"{p['cheat_range_pct']:.1f}%",
+             "limit": f"at most {CHEAT_SHELF_PCT:g}% over {CHEAT_SHELF_DAYS} sessions",
+             "state": "pass" if p["cheat_range_pct"] <= CHEAT_SHELF_PCT else "fail"},
+        ] + ([
+            {"code": "MV-03/04", "name": "Shelf volume",
+             "value": f"{p['cheat_dryup']:.2f}x avg, {p['cheat_quiet_days']} quiet" if num(p.get("cheat_dryup")) else "—",
+             "limit": f"at most {DRYUP_RATIO:g}x, or {DRYUP_QUIET_DAYS} sessions at or under {DRYUP_QUIET_RATIO:g}x",
+             "state": "pass" if num(p.get("cheat_dryup")) and (p["cheat_dryup"] <= DRYUP_RATIO
+                                                              or p["cheat_quiet_days"] >= DRYUP_QUIET_DAYS) else "fail"},
+        ] if CHEAT_DRYUP else []) + ([
+            {"code": "MV-03/04", "name": "Turn before the shelf",
+             "value": (f"rally won back {p['cheat_rally'] * 100:.0f}%" + ("" if p.get("cheat_higher_low") else ", no higher low")
+                       if num(p.get("cheat_rally")) else "—"),
+             "limit": f"a higher low, then a rally of at least {CHEAT_RALLY_FRAC * 100:.0f}% of the decline",
+             "state": "pass" if p.get("cheat_higher_low") and (p.get("cheat_rally") or 0) >= CHEAT_RALLY_FRAC else "fail"},
+        ] if CHEAT_RALLY_FRAC else []) + ([
+            {"code": "MV-03/04", "name": "Volume contraction",
+             "value": f"{p['cheat_vol_vs_lead']:.2f}x the sessions before" if num(p.get("cheat_vol_vs_lead")) else "—",
+             "limit": f"at most {CHEAT_VOL_CONTRACT:g}x",
+             "state": "pass" if num(p.get("cheat_vol_vs_lead")) and p["cheat_vol_vs_lead"] <= CHEAT_VOL_CONTRACT else "fail"},
+        ] if CHEAT_VOL_CONTRACT else [])
+        why = "; ".join(p["cheat_misses"])
+        setup["zones"].append({
+            "key": f"cheat_miss{n}", "title": f"{name} refused", "state": "fail", "from": day(s_from), "to": day(i),
+            "line": f"shelf {p['cheat_low']:.2f}–{p['cheat_pivot']:.2f} · crossed {day(i)}",
+            "text": (f"A cheat the strategy saw and refused. On {day(i)} the close ({float(daily['close'].iloc[i]):.2f}) "
+                     f"cleared the high of a shelf in the {third} third of the base ({p['cheat_pivot']:.2f}, the "
+                     f"{CHEAT_SHELF_DAYS} sessions to {day(s_to)}) -- the {name} entry -- but the shelf failed its tests: "
+                     f"{why}. No trade: the strategy buys a cheat only when every test passes."),
+            "checks": checks,
+            "shapes": [{"shape": "box", "from": day(s_from), "to": day(s_to), "top": p["cheat_pivot"],
+                        "bottom": p["cheat_low"], "role": "stop", "dash": True, "label": f"{name} shelf ✗"}],
+        })
+        setup.setdefault("cheat_refused", []).append({"date": day(i), "zone": p["cheat_zone"], "shelf_high": p["cheat_pivot"],
+                                                      "shelf_low": p["cheat_low"], "misses": list(p["cheat_misses"])})
+        t, today, tag = setup["title"], " · today", f" · {name} ✗"
+        if tag not in t:
+            setup["title"] = (t[: -len(today)] + tag + today) if t.endswith(today) else t + tag
+        setup["summary"] += (f" On {day(i)} the close cleared a {name} shelf in the {third} third of the base, but the "
+                             f"strategy refused it: {why}.")
 
     @staticmethod
     def _vcp_fail_why(r: dict, daily: pd.DataFrame, bh_i: int, rep: int) -> str:

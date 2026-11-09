@@ -253,6 +253,22 @@ Decide these now; look them up then.
 | Heat at the limit | No new trade until a stop is raised or a position closes |
 | **Data not current** | No new orders until it is |
 | A **big macro event** tomorrow | No new full-size entry today; enter after the reaction if the setup holds |
+| A setup is **almost there**, but not quite | No trade. "Close enough" is how a rule gets dropped; put it back on the watchlist |
+| **Internet, power or broker down** with positions open | Follow the disaster plan below. It was written for this moment |
+
+**A disaster plan.** Some failures have nothing to do with the market. The connection drops, the power fails, the broker's site is down, or a holding opens 40% lower on news of an investigation. Write down now what you will do:
+
+- Keep stops as orders resting with the broker, not as numbers in your head. They work while you are offline.
+- Keep the broker's phone dealing number and a second device with the trading app ready.
+- For a gap far through a stop, the rule above applies: exit, log it, and do not average down.
+
+**Three priorities, in order.** When rules seem to pull different ways, settle it by rank:
+
+1. Limit the loss: the initial stop goes in with the order.
+2. Protect your capital: once a trade has a good gain, it should not become a loss.
+3. Protect the profit: once the gain is large, lock in part of it.
+
+The second and third are covered in [Your own numbers](learn-risk-your-numbers.md).
 
 How often does a stop gap? In the two illustrative rules of §3, about one stop in ten (India) to one in six (US)
 filled below the stop price. The median gapped stop cost about −1.2R instead of −1R. Plan for it: it is part of

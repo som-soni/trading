@@ -64,9 +64,12 @@ Each rule below is a condition a program can check. Section 4 gives the ranges.
   - the 200-day is higher than it was 21 sessions ago (one month; Minervini prefers four to five months);
   - the 50-day is above the 150-day and the 200-day;
   - the close is above the 50-day;
-  - the close is at least 30% above its 52-week low;
+  - the close is at least 30% above its 52-week low (his first book says 30%; *Think & Trade Like a Champion* says 25%);
   - the close is within 25% of its 52-week high;
-  - the stock's relative strength percentile is at least 70 (see [Relative strength](learn-price-rs.md)).
+  - the stock's relative strength percentile is at least 70, preferably in the 90s (see [Relative strength](learn-price-rs.md));
+  - the RS line, the stock divided by the index, is not in a strong downtrend. Minervini likes it rising for at least six weeks, better thirteen or more.
+
+  He reads the rank, the RS line and the chart together. A high rank alone can point to a stock that has already run too far, too fast.
 - **Fundamentals.** Quarterly EPS growth of at least 20% on the same quarter a year earlier, and higher than the quarter before (acceleration). Sales growth of at least 15%. A stable or rising profit margin. Use announced numbers only (see [Earnings that move stocks](learn-fund-earnings.md)).
 - **Catalyst (optional).** A new product, a sector tailwind, an earnings surprise. It cannot be coded well, so treat it as a tie-breaker.
 - **Market.** The index closes above its 50-day average, and the share of stocks above their own 50-day average is rising or above half.
@@ -157,7 +160,7 @@ Viking came off a long slide rather than a flat, quiet range, so it matches the 
 
 ### Exits
 
-- **Breakeven.** When the price reaches entry + 2R (two times the initial risk), raise the stop to the entry price.
+- **Breakeven.** When the price reaches entry + 2R (two times the initial risk), raise the stop to the entry price. Minervini's later book ties this to your own record: at about three times the risk, if that is also above your average gain. At twice your average gain, he raises the stop to lock in about your average gain. [Your own numbers](learn-risk-your-numbers.md) tests both.
 - **Sell into strength.** Sell a third to a half of the position when the close is 25% or more above the 50-day average, or after the biggest up-day since the breakout, late in the move.
 - **Sell into weakness.** Sell the rest on the first close below the 50-day average.
 - **Failed breakout.** If the price closes back below the pivot and then below the last contraction's low, the stop handles it. Do not wait for it to recover.
@@ -178,7 +181,11 @@ Viking came off a long slide rather than a flat, quiet range, so it matches the 
 - Never add to a losing trade.
 - You may add a second piece when the price clears a new, smaller pivot above the first entry.
 - **Tennis-ball action.** Normal pullbacks after a breakout recover within a few days, on lighter volume. Swings that widen instead of tightening mean the pattern is loosening.
-- A stock that stops you out can be bought again if it builds a new, valid setup. Re-entry is part of the method, so keep it on the watch list.
+- **Follow-through.** In the first week or two, a strong breakout has more up days than down, more closes in the upper half of the day's range, and heavier volume on up days. These are reasons to hold and add, not their absence a reason to sell; see [Stops and exits](learn-risk-stops-exits.md) §10.
+- A stock that stops you out can be bought again if it builds a new, valid setup. Re-entry is part of the method, so keep it on the watch list. Your first timing may simply have been early; it can take two or three tries to catch a big winner.
+- **Add and reduce.** Buy 1,000 shares at $16.50 with a stop at $15.50: $1,000 at risk. The stock forms a new pivot, and you add 1,000 more at $17.50. Raise the stop on all 2,000 shares to $16.50. The position doubled, and the risk is still $1,000. The open profit pays for the new risk.
+- **Results dates.** Hold a large position into an earnings report only with a profit cushion, around 10% or more. With no cushion, or at a loss, sell or cut the size first. A results gap of 10–15% against you is common enough to plan for.
+- **Extended is not always a sale.** A stock more than about 10% above its last base is called *extended*. David Ryan's momentum-volume-price test, in [Volume](learn-ind-volume.md), separates the extended stocks that kept going. It is a reason to hold, not to buy: wait for a pullback or a new base. Used in reverse, the same burst late in a move, from a late-stage base, is a sign to sell into.
 - **Reset or rebuild.** After a *pivot failure* the base is still intact, and a new pivot can form within days. After a *base failure* the price broke through the base's lows, and it needs a whole new base.
 
 ## 4. The parameters
@@ -187,7 +194,7 @@ Viking came off a long slide rather than a flat, quiet range, so it matches the 
 |---|---|---|---|
 | Minimum price / turnover | ₹100 / $15; ₹10 crore / $20m | Tradeability | Raise for bigger accounts |
 | 200-day rising over | 21 sessions (21–105) | Trend maturity | Longer = fewer, cleaner stocks |
-| Above 52-week low | ≥ 30% | Distance from the bottom | 25–100% |
+| Above 52-week low | ≥ 25–30% | Distance from the bottom | 25–100%; his two books differ |
 | Within 52-week high | ≤ 25% | Nearness to highs | 15–25% |
 | RS percentile | ≥ 70 | Leadership | 70–90 |
 | Quarterly EPS growth | ≥ 20%, accelerating | Earnings strength | 20–40% |
@@ -304,6 +311,9 @@ caption: The September breakout failed within six sessions. The stock rebuilt a 
 | Buying before the base has shaken out its weak holders | They sell into the breakout |
 | Buying a V-shaped right side as it reaches the old high | The base has had no time to tighten |
 | Selling a squat on the breakout day's weak close | Many good breakouts recover within days |
+| Buying a setup that is "almost there" | Every rule exists for a reason; forcing a trade is how the losing ones get in |
+| Buying early, off the lows, before Stage 2 is confirmed | A big winner has to make a series of new highs. A bounce off the lows often fizzles back into a sideways Stage 1 |
+| Holding a former leader after it tops, waiting for it to come back | Minervini's rule of thumb: once a leader tops, a fall of 50% is likely and 80% is possible. Every big decline starts as a small pullback |
 
 ## 8. What the evidence says
 

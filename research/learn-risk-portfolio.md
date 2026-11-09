@@ -160,11 +160,12 @@ caption: −60% at the October 2008 low. It took almost three years to get back,
 
 ## 8. Cutting exposure after losses or in weak markets
 
-Three common rules manage exposure for the whole portfolio:
+Four common rules manage exposure for the whole portfolio:
 
 - **Progressive exposure** (Minervini's term): halve the risk per trade during a losing stretch, for example while the last ten closed trades are net negative, and restore it once they turn positive.
 - **A market filter**: take no new trades while the index is below its 200-day average, or while its 50-day average is below its 200-day.
 - **A drawdown rule**: cut risk when the account is a set distance below its peak, and stop opening trades if the fall deepens.
+- **Tighter terms**: in a hard market, gains shrink and losses grow, because breakouts fail and gaps are more common. So shorten both ends. Cut losses sooner, take profits sooner, stop using borrowed money, and trade smaller. Widen back step by step once your win rate and average gain recover ([Your own numbers](learn-risk-your-numbers.md)).
 
 The [sizing guide](learn-risk-sizing.md) §9 simulates the first. Cutting size after losses made drawdowns shallower but cost some growth. The cost was smaller when results came in clusters, as they do in real markets.
 
