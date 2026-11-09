@@ -205,6 +205,12 @@ YOUNG_LISTING = 1
 # deep_decline_resets). TNDM's 2018 recovery bases were held inside a 90%-deep "base" from its March 2017
 # high and never judged. 0 = an old unbeaten high anchors whatever lies below it (1.34).
 DEEP_DECLINE_RESETS = 1
+# 1.56, research switch (off): a base in which the long trend broke -- more than MAX_CLOSES_BELOW_200 closes under the
+# 200-day -- and then recovered restarts at the highs after its last close below the 200-day (VcpParams.
+# trend_break_resets). eBay's 7-week base of Dec 2002 (Think & Trade Like a Champion fig. 7-4) sat under its unbeaten
+# Dec 2001 high, was read as one 13-month base failing VCP-03, and never judged; with it on, S8 fills on 2003-01-06,
+# Minervini's own breakout day. It is baked into VCP at import, so a variant runs with `--vcp trend_break_resets=1`.
+TREND_BREAK_RESETS = 0
 YOUNG_MIN_BARS = 60     # sessions listed before anything is judged: core.context's minimum, past the 50-day
 
 # MV-03/MV-04 (1.27): the cheat shelf must show VCP-10's volume dry-up as well as its tightness.
@@ -272,6 +278,7 @@ VCP = vcp_spec.VcpParams(
     tight_min_days=TIGHT_MIN_DAYS, upper_zone=UPPER_ZONE, max_closes_below_200=MAX_CLOSES_BELOW_200,
     tight_pct=TIGHT_PCT, pivot_near_high=PIVOT_NEAR_HIGH, dryup_ratio=DRYUP_RATIO,
     cheat_dryup=CHEAT_DRYUP, young_listing=YOUNG_LISTING, deep_decline_resets=DEEP_DECLINE_RESETS,
+    trend_break_resets=TREND_BREAK_RESETS,
     cheat_rally_frac=CHEAT_RALLY_FRAC, cheat_vol_contract=CHEAT_VOL_CONTRACT, cheat_vol_lookback=CHEAT_VOL_LOOKBACK,
     tight_area_route=TIGHT_AREA_ROUTE, skip_dead_bars=SKIP_DEAD_BARS,
     near_final_ref_ratio=NEAR_FINAL_REF_RATIO if NEAR_MISS else 0.0,
@@ -1095,10 +1102,16 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.55"
+    version = "1.56"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.56", "2026-11-09",
+         "Adds TREND_BREAK_RESETS (VcpParams.trend_break_resets), a research switch, OFF: no rule changes. With it on, "
+         "a base the long trend broke inside restarts after its last close below the 200-day, so a recent base under "
+         "an old unbeaten high is judged on its own (eBay, Dec 2002, Minervini's fig. 7-4: S8 fills on his breakout day, "
+         "2003-01-06). The new field moves the fingerprint and the signal id, so the next run rescans once; "
+         "signal_version stays 1.51 because the scan is unchanged while the switch is off."),
         ("1.55", "2026-11-07",
          "LIGHT_VOLUME_EXIT is back on, as 1.54's criterion required: 1.54 failed verify (2022 to today, once). "
          "US -1.33% CAGR, failing CAGR above 0, though above the 1.53 rules' -4.40%; India 2.18%, failing "
@@ -2428,6 +2441,10 @@ class MinerviniSpecStrategy(Strategy):
         ("Deep decline resets the base", "DEEP_DECLINE_RESETS", "1 = a high with a fall of more than "
          "{MAX_BASE_DEPTH_PCT}% below it cannot anchor a base: that is a Stage 4 decline, and the base count "
          "starts again from the highs after its low."),
+        ("Trend break resets the base", "TREND_BREAK_RESETS", "1 = a base with more than {MAX_CLOSES_BELOW_200} "
+         "closes below the 200-day restarts at the highs after its last close below it, so a recent base under an "
+         "old, unbeaten high is judged on its own. 0 (now) = the highest unbeaten high anchors the base, however "
+         "the trend fared inside it. A research switch: run it as a variant with --vcp trend_break_resets=1."),
         ("Deep-base flag", "DEEP_BASE_FLAG_PCT", "Recorded, never a rejection (VCP-05)."),
         ("Volume dry-up, quiet days", "DRYUP_QUIET_DAYS", "The alternative route past VCP-10."),
         ("Volume dry-up, quiet level", "DRYUP_QUIET_RATIO", "A quiet session is at or under this × the 50-day."),

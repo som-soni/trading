@@ -184,6 +184,13 @@ class VcpParams:
     # 25-fold run -- were read as a 65-week, 90%-deep base failing VCP-03, so none was ever judged.
     # 0 = the high anchors whatever lies below it (1.33).
     deep_decline_resets: int = 0
+    # 1.56: a base in which the long trend broke -- more than `max_closes_below_200` closes under the
+    # 200-day, so VCP-03 would fail it -- and then recovered restarts at the highs AFTER its last close below
+    # the 200-day. The older high stays overhead supply; it no longer anchors the base. eBay's 7-week base of
+    # Dec 2002 (Minervini, Think & Trade Like a Champion fig. 7-4) sat just under its unbeaten Dec 2001 high,
+    # so it was read as one 13-month base with 142 closes below the 200-day and never judged.
+    # 0 = the highest unbeaten high anchors the base however the trend fared inside it (1.55).
+    trend_break_resets: int = 0
     # 1.28: VCP-06's "no deeper than the one before" allows `widen_tol`, like the widening test.
     # 1 = strict, any deeper pullback fails (1.27).
     strict_shrink: int = 0
@@ -501,26 +508,40 @@ def _detect(daily: pd.DataFrame, p: VcpParams = VcpParams()) -> dict:
     # * A high older than `base_max_days` cannot anchor the base. Deckers' unbeaten 2004 high made
     #   its 2006 base 430 sessions long, so the base it actually built was never seen.
     t = n - 1
-    bh_i = start_i = None
-    for j in range(n):
-        # A swing high is only usable once confirmed, `swing_k` bars after it forms.
-        if not is_hi[j] or j + p.swing_k > t or t - j > p.base_max_days:
-            continue
-        if bh_i is not None and high[j] <= high[bh_i]:
-            continue                      # cannot raise the base high; nothing to check
-        hj = high[j]
-        later = close[j + 1:]
-        if len(later):
-            marg = np.where(np.isnan(atr[j + 1:]), hj * p.bh_break_pct / 100,
-                            p.bh_break_atr * atr[j + 1:])
-            if bool(np.any(later > hj + marg)):
-                continue                  # a close resolved it: this high no longer caps a base
-        if p.deep_decline_resets and hj > 0 and \
-                (hj - float(low[j:].min())) / hj * 100 > p.max_base_depth_pct:
-            continue                      # a decline, not a base: this high cannot anchor one
-        bh_i = j
-        if start_i is None or not p.base_keeps_start:
-            start_i = j
+
+    def pick(first: int) -> tuple:
+        bh, st = None, None
+        for j in range(first, n):
+            # A swing high is only usable once confirmed, `swing_k` bars after it forms.
+            if not is_hi[j] or j + p.swing_k > t or t - j > p.base_max_days:
+                continue
+            if bh is not None and high[j] <= high[bh]:
+                continue                  # cannot raise the base high; nothing to check
+            hj = high[j]
+            later = close[j + 1:]
+            if len(later):
+                marg = np.where(np.isnan(atr[j + 1:]), hj * p.bh_break_pct / 100,
+                                p.bh_break_atr * atr[j + 1:])
+                if bool(np.any(later > hj + marg)):
+                    continue              # a close resolved it: this high no longer caps a base
+            if p.deep_decline_resets and hj > 0 and \
+                    (hj - float(low[j:].min())) / hj * 100 > p.max_base_depth_pct:
+                continue                  # a decline, not a base: this high cannot anchor one
+            bh = j
+            if st is None or not p.base_keeps_start:
+                st = j
+        return bh, st
+
+    bh_i, start_i = pick(0)
+    # `trend_break_resets`: a base the long trend broke inside restarts after its last close below the 200-day
+    if p.trend_break_resets and start_i is not None and "sma200" in d.columns:
+        s200 = d["sma200"].to_numpy(float)
+        under = np.flatnonzero(close[start_i:] < s200[start_i:]) + start_i
+        if len(under) > p.max_closes_below_200:
+            bh2, st2 = pick(int(under[-1]) + 1)
+            if bh2 is not None:
+                bh_i, start_i = bh2, st2
+                out["base_restarted"] = True
     if bh_i is None:
         out["fail"] = "VCP-02"
         return out
