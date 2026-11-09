@@ -211,6 +211,11 @@ class ExitPolicy:
     trend_loose_r: float = field(default_factory=lambda: float(_ms.TREND_LOOSE_R))   # EX-06: once the high reaches this many R ...
     trend_loose_sma: int = field(default_factory=lambda: int(_ms.TREND_LOOSE_SMA))   #   ... the line is this-day average (0 = off)
     time_stop_days: int = field(default_factory=lambda: _ms.TIME_STOP_DAYS)    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
+    # Minervini's follow-up buy ('add and reduce', 1.58): while held, a breakout of a NEW base adds this fraction of
+    # the first buy, at most `add_max` times, the stop on the whole position raised so its risk stays the first
+    # trade's (`_fill_add`). 0 = off.
+    add_frac: float = field(default_factory=lambda: float(_ms.ADD_ON_NEW_BASE))
+    add_max: int = field(default_factory=lambda: int(_ms.ADD_MAX))
     # ---- trade management for the other modes (bracket, trail_atr, ma, donchian). All off by default,
     # so a run without them trades exactly as before. `minervini` has its own ladder above and ignores these.
     be_r: float = 0.0            # stop to entry + round-trip costs once the HIGH reaches entry + this × R;
@@ -579,6 +584,7 @@ def simulate(
     cash = float(cfg.account_size)
     positions: dict[str, PortfolioTrade] = {}
     pending: dict[str, dict] = {}
+    adds_pending: dict[str, dict] = {}   # follow-up buys into held positions (policy.add_frac), by symbol
     closed: list[PortfolioTrade] = []
     costs_total = 0.0
     taken = missed_slot = missed_cash = partial_fills = 0
@@ -726,6 +732,20 @@ def simulate(
                 pos.stop = max(pos.stop, _dv.stop_below(pos.meta["_py_bottom"], cfg.tick_size))
             if pos.shares >= pos.target_shares:
                 pos.target_shares = 0
+
+        # ---- 0b. follow-up buys (policy.add_frac): at this open, before the exits, like the pyramid adds above
+        for sym, add in list(adds_pending.items()):
+            del adds_pending[sym]
+            pos, df = positions.get(sym), prices.get(sym)
+            if pos is None or df is None or today not in df.index:
+                continue
+            got = _fill_add(pos, add, float(df.loc[today, "open"]), cash, fee_rate, cfg, base_slip)
+            if isinstance(got, str):
+                skip(got, sym, today)
+                continue
+            spent, extra = got
+            cash -= spent
+            costs_total += extra
 
         # ---- 1. exits ----------------------------------------------------
         for sym, pos in list(positions.items()):
@@ -975,6 +995,9 @@ def simulate(
 
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
+            if s.symbol in positions and _add_wanted(positions[s.symbol], s, policy, today):
+                adds_pending[s.symbol] = {"setup": s.setup, "meta": s.meta, "policy": policy}
+                continue
             if s.meta.get("order") == "close":
                 if s.symbol in positions and positions[s.symbol].entry_date != today:
                     skip("already holding this symbol", s.symbol, today)
@@ -1419,6 +1442,55 @@ def darvas_levels(df: pd.DataFrame, policy: ExitPolicy) -> dict:
                                     policy.dv_bottom_confirm):
             top.iat[b.done_i], bottom.iat[b.done_i] = b.top, b.bottom
     return {DV_TOP: top, DV_BOTTOM: bottom}
+
+
+ADD_SETUPS = ("S1", "S2", "S7", "S8")   # the minervini breakouts a follow-up buy is made on (`policy.add_frac`)
+
+
+def _add_wanted(pos: "PortfolioTrade", s, policy: ExitPolicy, today) -> bool:
+    """Whether today's signal `s`, in a stock `pos` already holds, is a follow-up buy -- Minervini's "add and reduce":
+    a breakout (ADD_SETUPS) of a base other than the one the position was bought from, its pivot above the
+    position's average cost (adding into strength, never into weakness), with fewer than `add_max` adds so far."""
+    if policy.mode != "minervini" or not policy.add_frac or pos.adds >= policy.add_max or pos.entry_date == today:
+        return False
+    if s.setup not in ADD_SETUPS or s.meta.get("base_id") is None or s.meta.get("base_id") == pos.meta.get("base_id"):
+        return False
+    piv = s.meta.get("pivot")
+    return piv is not None and float(piv) > pos.entry_price
+
+
+def _fill_add(pos: "PortfolioTrade", add: dict, o: float, cash: float, fee_rate: float, cfg: MarketConfig,
+              base_slip: float):
+    """A follow-up buy into `pos` at the open `o`, the session after its signal. Size: `add_frac` of the FIRST buy.
+    The stop on the whole position rises only as far as it must to keep its open risk at the first trade's risk --
+    the add is paid for by the profit, not by new risk. Not to the new base's own stop: in the smoke test that
+    tightened Netflix's 2013 position from a +3.5R trend exit to a +0.5R stop-out. Returns (cash spent, costs), or
+    the reason it was refused. `entry_price` becomes the share-weighted average, as for the pyramid adds."""
+    m, policy = add["meta"], add["policy"]
+    if o > float(m.get("max_fill", math.inf)):
+        return "add gapped above the new base's buy range"
+    pos.meta.setdefault("_n0", pos.shares)
+    pos.meta.setdefault("_risk0", (pos.entry_price - pos.initial_stop) * pos.shares)
+    fill = _slip(o, pos.meta.get("slippage_bps", base_slip), "buy")
+    n = min(int(pos.meta["_n0"] * policy.add_frac), int((cash - cfg.commission_per_order) // (fill * (1 + fee_rate))))
+    if n < 1:
+        return "not enough cash to add"
+    held = pos.held + n
+    avg_held = (pos.entry_price * pos.held + fill * n) / held   # the average cost of the shares still held
+    stop = max(pos.stop, avg_held - pos.meta["_risk0"] / held)
+    if stop >= fill:
+        return "add would need a stop at or above its own fill"
+    fee = fill * n * fee_rate
+    extra = cfg.commission_per_order + (fill - o) * n + fee
+    pos.entry_price = (pos.entry_price * pos.shares + fill * n) / (pos.shares + n)
+    pos.shares += n
+    if pos.open_shares >= 0:
+        pos.open_shares += n
+    pos.stop = stop
+    pos.costs += extra
+    pos.slippage += (fill - o) * n
+    pos.adds += 1
+    return n * fill + cfg.commission_per_order + fee, extra
 
 
 def _box_add_level(pos: "PortfolioTrade", df: pd.DataFrame, today, cfg: MarketConfig) -> None:

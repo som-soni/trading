@@ -88,6 +88,10 @@ class MarketConfig:
     # whose ratio line the snapshot keeps -- where the selling is, in a few giants or in the average stock.
     review_symbols: dict = field(default_factory=dict)
     breadth_pairs: tuple = ()
+    # The index of the market's small and mid caps -- the segment a turnover-floored universe of breakouts mostly
+    # trades (a label of `broad_index_symbols`, or a ticker). The Minervini market gate can read its trend
+    # (minervini_spec.MKT_SEGMENT_MOM_DAYS). Empty = none.
+    segment_symbol: str = ""
     review_names: dict = field(default_factory=dict)   # label -> short display name ("Nifty 50"); the label otherwise
 
     @property
@@ -98,6 +102,11 @@ class MarketConfig:
         real ticker. US happens to work either way because 'SPY' is both,
         which is why the India benchmark comparison was silently absent."""
         return self.broad_index_symbols.get(self.benchmark_symbol, self.benchmark_symbol)
+
+    @property
+    def segment_ticker(self) -> str:
+        """`segment_symbol` resolved through `broad_index_symbols`, as `benchmark_ticker` is."""
+        return self.broad_index_symbols.get(self.segment_symbol, self.segment_symbol)
 
     # ---- PORTFOLIO / EXECUTION (used by the portfolio backtest) ----
     # A per-symbol backtest implicitly assumes unlimited capital and no

@@ -17,6 +17,7 @@ US_CONFIG = MarketConfig(
     vol_threshold=25,
     broad_index_symbols={"SPY": "SPY", "QQQ": "QQQ", "IWM": "IWM"},
     benchmark_symbol="SPY",
+    segment_symbol="IWM",
     review_symbols={"RSP": "RSP"},          # the equal-weight S&P 500: the average large stock
     breadth_pairs=(("SPY", "RSP"),),
     review_names={"SPY": "S&P 500", "QQQ": "Nasdaq 100", "IWM": "Russell 2000", "RSP": "S&P 500 equal weight"},

@@ -388,11 +388,25 @@ def market_ok(market: str, confirm_days: int = 0, guide: bool = False) -> pd.Ser
         ok = c > sma
         if ms.MKT_SMA_RISING_DAYS:          # 0 turns the slope term off, as a sweepable parameter
             ok = ok & (sma > sma.shift(ms.MKT_SMA_RISING_DAYS))
-        br = breadth_pct50(market)
+        if not ms.MKT_INDEX_TEST:
+            # 1.59: the benchmark and breadth tests off, so the segment test below can stand alone
+            ok = pd.Series(True, index=c.index)
+        br = breadth_pct50(market) if ms.MKT_INDEX_TEST else pd.Series(dtype=float)
         if len(br):
             breadth_ok = (br > ms.MKT_BREADTH_MIN_PCT) | (br > br.shift(ms.MKT_BREADTH_RISING_DAYS))
             known = breadth_ok.reindex(c.index)          # NaN where breadth has no row that day
             ok = ok & known.fillna(True).astype(bool)
+        if ms.MKT_SEGMENT_MOM_DAYS and MARKETS[market].segment_symbol:
+            # The segment (1.59): the small- and mid-cap index -- the stocks a breakout book mostly holds -- must be up
+            # more than MKT_SEGMENT_MOM_MIN_PCT over MKT_SEGMENT_MOM_DAYS sessions. The benchmark can hold up while the
+            # segment falls: India 2018, when the Nifty rose and the small caps fell by a third, and the strategy's
+            # 14 trades that year won once.
+            seg = cache.load_cached(market, MARKETS[market].segment_ticker)
+            if seg is not None and len(seg):
+                sc = seg["close"].astype(float)
+                mom = (sc / sc.shift(int(ms.MKT_SEGMENT_MOM_DAYS)) - 1) * 100 > ms.MKT_SEGMENT_MOM_MIN_PCT
+                mom = mom.where(sc.shift(int(ms.MKT_SEGMENT_MOM_DAYS)).notna())
+                ok = ok & mom.reindex(c.index).ffill().fillna(True).astype(bool)
         if ms.MKT_HIGHS_LOWS_DAYS:
             # Leadership (1.32): over the last MKT_HIGHS_LOWS_DAYS sessions, more stocks made new
             # 52-week highs than MKT_HIGHS_LOWS_RATIO x those making new lows.

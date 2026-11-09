@@ -417,6 +417,13 @@ TREND_EXIT_NEEDS_VOLUME = 0
 TREND_EXIT_CLOSES = 1
 TREND_LOOSE_R = 0.0
 TREND_LOOSE_SMA = 100
+# 1.58, research switch (off): Minervini's follow-up buy, 'add and reduce'. While a position is held, a breakout
+# (S1, S2, S7, S8) of a NEW base with its pivot above the average cost adds ADD_ON_NEW_BASE of the first buy at the
+# next open (refused above the new base's buy range), at most ADD_MAX times; the stop on the whole position rises
+# only as far as keeps its open risk at the first trade's. Apple 2004 (Think & Trade Like a Champion fig. 7-9) marks two follow-up
+# buys; the backtest skipped every signal in a held stock ('already holding this symbol'). 0 = off.
+ADD_ON_NEW_BASE = 0.0
+ADD_MAX = 2
 # EX-07, the time stop: sold if the high has not reached +1R within this many sessions.
 TIME_STOP_DAYS = 15
 # EN-02 fills on the close through the pivot; a fill on volume under VOL_MULT x the
@@ -463,6 +470,16 @@ MKT_SMA_RISING_DAYS = 10
 # applied to 1.31's trades it dropped 2-24 of 490 US trades averaging about 0R (the index and breadth
 # terms already block those days) and 17-23 of 199 Indian trades averaging about -0.2R.
 MKT_HIGHS_LOWS_DAYS = 0
+# 1.59, research switch (off): the segment's trend. The market's small- and mid-cap index (MarketConfig.segment_symbol:
+# Nifty Smallcap 250, IWM) must be up more than MKT_SEGMENT_MOM_MIN_PCT% over MKT_SEGMENT_MOM_DAYS sessions for new
+# buys. Measured on the 2013-2021 trades of three runs (2026-11-10), the segment's 3-month return was the one entry-
+# time measure whose buckets ordered R in both markets: Indian trades taken with it at or under 0 lost 11-13R in
+# all. The benchmark (Nifty 500, SPY) can rise while the segment falls -- India 2018. 0 = off.
+MKT_SEGMENT_MOM_DAYS = 0
+MKT_SEGMENT_MOM_MIN_PCT = 0.0
+# 1.59, research switch: 0 drops the benchmark-above-a-rising-average and breadth tests, so the gate is the segment
+# test alone (with MKT_SEGMENT_MOM_DAYS set) or open (without). 1 = as before.
+MKT_INDEX_TEST = 1
 MKT_HIGHS_LOWS_RATIO = 1.0
 # The bottoming pilot (1.46, research switches; 0 = the binary gate of 1.45). Minervini's bear-market
 # webinar (research/creator-mark-minervini.md §2.1-2.3, §6): the best setups come at and just before the
@@ -1110,10 +1127,22 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.57"
+    version = "1.59"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.59", "2026-11-10",
+         "Adds MKT_SEGMENT_MOM_DAYS, MKT_SEGMENT_MOM_MIN_PCT and MKT_INDEX_TEST, research switches, OFF so no rule changes: the market "
+         "filter can also require the small- and mid-cap index (Nifty Smallcap 250, IWM) to be up over a window. Of "
+         "the entry-time measures tried on three runs' 2013-2021 trades, the segment's 3-month return was the one that "
+         "ordered R in both markets; the benchmark can rise while the segment falls (India 2018). Read after the scan, "
+         "signal-exempt; signal_version stays 1.51."),
+        ("1.58", "2026-11-10",
+         "Adds ADD_ON_NEW_BASE and ADD_MAX, a research switch, OFF so no rule changes: Minervini's follow-up buy. While "
+         "held, a breakout (S1, S2, S7, S8) of a new base above the average cost adds a fraction of the first buy at the "
+         "next open, the stop on the whole position raised so its risk stays the first trade's. From the Apple 2004 "
+         "case (fig. 7-9), whose follow-up buys the backtest skipped as 'already holding this symbol'. Post-scan and "
+         "signal-exempt; signal_version stays 1.51."),
         ("1.57", "2026-11-09",
          "Adds three EX-06 research switches, all OFF so no rule changes: TREND_EXIT_CLOSES (closes in a row below the "
          "50-day to sell), TREND_LOOSE_R and TREND_LOOSE_SMA (a slower average once the trade has reached that many R). "
@@ -1787,12 +1816,13 @@ class MinerviniSpecStrategy(Strategy):
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TREND_EXIT_CLOSES", "TREND_LOOSE_R", "TREND_LOOSE_SMA",
+        "ADD_ON_NEW_BASE", "ADD_MAX",
         "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
         "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT", "RESULTS_FIRST_PER_QUARTER",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
         "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
         "MKT_GUIDE", "MKT_INDEX_SMA", "MKT_BREADTH_MIN_PCT", "MKT_BREADTH_RISING_DAYS",
-        "MKT_SMA_RISING_DAYS", "MKT_HIGHS_LOWS_DAYS", "MKT_HIGHS_LOWS_RATIO", "MKT_PILOT", "MKT_FTD_LOW_DAYS",
+        "MKT_SMA_RISING_DAYS", "MKT_HIGHS_LOWS_DAYS", "MKT_HIGHS_LOWS_RATIO", "MKT_SEGMENT_MOM_DAYS", "MKT_SEGMENT_MOM_MIN_PCT", "MKT_INDEX_TEST", "MKT_PILOT", "MKT_FTD_LOW_DAYS",
         "MKT_FTD_MIN_DAY", "MKT_FTD_MIN_GAIN_PCT", "MKT_PILOT_BREADTH_DAYS", "MKT_FILTER", "MAX_POSITIONS", "MAX_OPEN_RISK_PCT", "MAX_ADV_PCT",
         # which bars are scanned (prefilter_row) and the live price floor -- not what a scan records
         "MIN_TURNOVER_INR_CR", "MIN_TURNOVER_USD_M", "LIVE_MIN_PRICE_INR", "LIVE_MIN_PRICE_USD",
@@ -2272,6 +2302,12 @@ class MinerviniSpecStrategy(Strategy):
         "pivot).",
         "Every fill must still pass the checks under Stop and Target, tested again on the price actually "
         "paid: a gap at the open moves the buy price but not the stop or the target.",
+        "Follow-up buys (a research switch, off: ADD_ON_NEW_BASE is {ADD_ON_NEW_BASE}). Minervini adds to a winner "
+        "as it builds each new base. With the switch on, a breakout (S1, S2, S7 or S8) of a new base in a stock "
+        "already held, its pivot above the average cost, adds ADD_ON_NEW_BASE of the first buy at the next open "
+        "(refused above the new base's buy range), at most {ADD_MAX} times. The stop on the whole position rises "
+        "only as far as keeps its risk at the first trade's: the profit pays for the add. Off, a "
+        "signal in a stock already held is skipped.",
     )
     stop_rules = (
         "Where it goes (SL-01). {STOP_BUFFER_PCT}% under the tight low — the lowest low of the "
@@ -2567,6 +2603,9 @@ class MinerviniSpecStrategy(Strategy):
         ("Loose trend exit after", "TREND_LOOSE_R", "EX-06: once the high reaches this many R, watch the "
          "{TREND_LOOSE_SMA}-day average instead of the 50-day (0 = off)."),
         ("Loose trend exit average", "TREND_LOOSE_SMA", "EX-06: the slower average TREND_LOOSE_R switches to, in sessions."),
+        ("Follow-up buy size", "ADD_ON_NEW_BASE", "While held, a breakout of a new base adds this fraction of the first "
+         "buy, the stop raised so the position's risk stays the first trade's (0 = off; a research switch)."),
+        ("Follow-up buys, most", "ADD_MAX", "Adds at most this many follow-up buys to one position."),
         ("Time stop", "TIME_STOP_DAYS", "EX-07: sessions to reach +1R (0 = off)."),
         ("Light-volume fill exit", "LIGHT_VOLUME_EXIT", "EN-02: sell a buy-stop fill on under-average breakout volume (1 = on)."),
         ("S2 fill needs volume", "S2_FILL_NEEDS_VOLUME", "1.51: an MV-02 close through the pivot on under VOL_MULT x volume does not fill (1); 0 = it fills, and LIGHT_VOLUME_EXIT, while on, sells it at the next open. Independent of LIGHT_VOLUME_EXIT since 1.53."),
@@ -2590,6 +2629,11 @@ class MinerviniSpecStrategy(Strategy):
         ("Breadth rising over", "MKT_BREADTH_RISING_DAYS", "Sessions over which breadth may instead be rising."),
         ("Leadership window", "MKT_HIGHS_LOWS_DAYS", "Sessions over which new highs must outnumber new lows (0 = off)."),
         ("Leadership ratio", "MKT_HIGHS_LOWS_RATIO", "New highs must exceed this multiple of new lows."),
+        ("Segment trend window", "MKT_SEGMENT_MOM_DAYS", "Market filter: the small- and mid-cap index must be up over this "
+         "many sessions for new buys (0 = off; a research switch)."),
+        ("Segment trend, least", "MKT_SEGMENT_MOM_MIN_PCT", "Market filter: by more than this %."),
+        ("Benchmark and breadth tests", "MKT_INDEX_TEST", "Market filter: 1 = the benchmark above its rising average and the "
+         "breadth test apply; 0 = they are dropped (a research switch, to test the segment trend alone)."),
         ("Bottoming pilot", "MKT_PILOT", "Research switch (0 = off): while risk-off, buy at the pilot fraction on a "
                                          "bottoming signal; 1 = a follow-through day, 2 = breadth turning up."),
         ("Follow-through: low window", "MKT_FTD_LOW_DAYS", "MKT_PILOT 1: sessions whose lowest close starts a rally attempt."),
