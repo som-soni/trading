@@ -31,12 +31,14 @@ figures with no stored prices.
 | 3-C / cheat shelf: width (`CHEAT_SHELF_PCT`) | 1 | AMZN 2002 |
 | 3-C / cheat shelf: volume (`CHEAT_DRYUP`, `CHEAT_VOL_CONTRACT`) | 1 | AMZN 2002 |
 | Stop more than `MAX_STOP_PCT` below the fill | 1 | AMZN 2002 |
-| No RS-line rule (the book's tip-off, absent from the strategy) | 2 | AMZN 2002, EBAY 2003 |
+| No RS-line rule (the book's tip-off, absent from the strategy) | 2 | AMZN 2002, EBAY 2003 (NFLX 2009: the RS line *lagged* at the breakout, so it must not become a hard gate) |
+| Exit: the rest sold on the first close below the 50-day (EX-06) | 1 (caught, but the winner cut short) | NFLX 2009: +1.55R, against a 525% move |
 
 | Case | Book's entry | Strategy buys? | Deciding rules |
 |---|---|---|---|
 | [AMZN, Oct 2002](#1-amazoncom-amzn-october-2002--3-c-out-of-a-22-week-base) | 3-C, 10 Oct 2002 | No, and no later setup through 2003 | market gate, G4, shelf width and volume, stop 12.4% |
 | [EBAY, Jan 2003](#2-ebay-ebay-january-2003--a-7-week-base-after-the-market-low) | 7-week base, 6 Jan 2003 | No: it never sees the 7-week base. Shown only recent bars, it buys the same day (S8) | base anchored on the Dec 2001 high; market gate closed until 8 Jan |
+| [NFLX, Oct 2009](#3-netflix-nflx-october-2009--a-27-week-vcp-months-after-the-market-low) | VCP breakout, 15 Oct 2009 | **Yes, the same day** (S1), after a 3-C two months earlier stopped out. But it sells the rest in Dec 2009 at +14% and never re-enters | caught; exit EX-06 |
 
 ---|---|---|---|
 | [AMZN, Oct 2002](#1-amazoncom-amzn-october-2002--3-c-out-of-a-22-week-base) | 3-C, 10 Oct 2002 | No, and no later setup through 2003 | market gate, G4, shelf width and volume, stop 12.4% |
@@ -301,3 +303,106 @@ turning up.
 - **The RS-line lead again**: two cases of two. The study of RS-line highs ahead of price is worth doing.
 - **The market gate's confirmation delay** cost this trade two sessions. Not a reason to drop it on one case.
 - **Data:** the 31 Jan 2003 bar of EBAY looks wrong; check it before relying on that date.
+
+---
+
+## 3. Netflix (NFLX), October 2009 — a 27-week VCP months after the market low
+
+*Book: Figure 7-5, chapter 7 (the same base as* Trade Like a Stock Market Wizard *fig. 10.31). Eval id
+`tlsmw-10.31-nflx`, pinned and caught. Prices × 10 (the 2025 split).*
+
+**What the book says.** Netflix bottomed in October 2008. The S&P 500 did not bottom until March 2009, and
+while the index made its new low, Netflix rose 125%. That put it in Stage 2, with a soaring RS line and RS rank.
+Then, as the market rallied, Netflix corrected 27% and went sideways for 27 weeks, long enough to wear out most
+investors. Its RS line looked weak, and it was, for a while: the stock was digesting the rally. To a trained eye
+it was a textbook VCP. Leaders do not all emerge at the market low; Netflix came out months after it. From the
+VCP it rose more than 500% in 21 months, on eight straight quarters of rising sales and earnings growth averaging
+45%.
+
+```series
+title: NFLX, 2004–2009 — the book's Figure 7-5 redrawn from stored data
+from: 2004-01-02
+to: 2009-11-30
+tf: W
+line: us:NFLX | NFLX (weekly) | log candles
+line: us:NFLX@sma150 | 30-week (150-day) average
+line: us:NFLX@sma200 | 40-week (200-day) average
+line: us:NFLX / us:SPY | RS line (NFLX ÷ SPY) | pane2
+band: 2009-04-13 2009-10-14 | the 27-week base
+mark: 2008-10-27 | stock bottoms | below
+mark: 2009-03-09 | market bottoms | below
+mark: 2009-10-15 | emerges from the base
+caption: Prices ×10 for the book's scale. The RS line soared into April 2009, then drifted while the index rallied and the stock built its base. It did not make a new high before the breakout, which is the point he makes.
+```
+
+```series
+title: NFLX, April–December 2009 — the VCP, the stopped 3-C, the breakout and the strategy's exit, daily
+from: 2009-03-16
+to: 2010-01-29
+tf: D
+line: us:NFLX | NFLX | candles
+line: us:NFLX@sma50 | 50-day average
+line: us:NFLX@vol | Volume | pane2 bars
+level: 0.718 | base high $7.18 | 2009-04-13 2009-10-15
+level: 0.6899 | pivot $6.90 | 2009-09-15 2010-01-29 | pivot
+level: 0.6291 | stop $6.29 | 2009-10-15 2010-01-29 | stop
+mark: 2009-08-07 | 3-C cheat bought $6.43 | below
+mark: 2009-09-01 | cheat stopped out | below
+mark: 2009-10-15 | breakout, 2.3× volume | below
+mark: 2009-10-23 | +2R: a third sold, stop to breakeven
+mark: 2009-12-17 | first close below the 50-day: the rest sold
+caption: Prices ×10. The strategy buys the breakout on Minervini's day. A third goes at +2R; the rest is sold the next session after the first close below the 50-day average, at $7.70. Four months later the stock was at $14; by July 2011, $43.
+```
+
+**What the data shows.**
+
+| Item | Stored data |
+|---|---|
+| Stock low | $2.56 on 27 Oct 2008. To SPY's low on 9 Mar 2009: NFLX +115%, SPY −19% |
+| The base (detector) | High $7.18 on 13 Apr 2009, low $5.18; 129 sessions (about 26 weeks; he says 27), 27.8% deep |
+| Contractions | 9%, 27%, 18%, 8% — his footprint is "27W 27/7 3T" (three contractions to 7%); ours counts one more, early |
+| Tight area and pivot | Final contraction 8.1%; volume 0.63× the 50-day (dried up); pivot $6.90, in the upper zone |
+| Breakout | 15 Oct 2009: close $7.19, 4.3% over the pivot, on 2.3× volume, in the top of the day's range |
+| Trend Template and market gate | Both pass on 15 Oct |
+| RS line (NFLX / SPY) | 52-week highs in April 2009 only; it lagged through the base and the breakout |
+| Outcome | From $6.90 to $43.54 on 13 Jul 2011 (+531%) |
+
+**Would the strategy buy? Yes, on his day.** It is a pinned case in the eval set, caught as S1 on 15 Oct 2009:
+buy at the pivot, $6.90, stop $6.29 (8.8%). It also took an earlier attempt: a 3-C in the middle third of the base
+on 7 Aug 2009 (buy $6.43, stop $5.96), stopped out on 1 Sep. Then it re-entered on the breakout, as EN-04 allows
+(two entries per base). That is his "it can take two or three tries".
+
+**But it does not keep the winner.** The exits as they stand:
+
+| Date | Rule | Price | R |
+|---|---|---|---|
+| 23 Oct 2009 | EX-04: a third sold at +2R; EX-03: stop to breakeven | $8.11 | +2.0 |
+| 18 Dec 2009 | EX-06: the rest sold after the first close below the 50-day (17 Dec, $7.68 vs $7.87) | $7.70 | +1.3 |
+| Trade | | | **+1.55R, about +14%** |
+
+After that it never gets back in. The next bases fail the tight-area or contraction rules. From August 2010 the
+setups are counted as the 4th to 6th base of the advance and skipped as late. The stock went on to $14 by April
+2010 and $43 by July 2011.
+
+**Why he took it, and held it.** *Inference from his stated principles.*
+
+- Netflix was a leader that rested. It had already proven itself by doubling while the market made its final low.
+- He explicitly does not need the RS line to lead here: the market is catching up with the stock (creator note
+  §4, "Lead and rest").
+- The base was a clean VCP with dry volume at the pivot, and the business was accelerating (by his account, 45%
+  average earnings growth).
+- He sells on his own rules, not on a first close below the 50-day. A strong stock's ordinary pullback, like
+  Netflix's in December 2009, is exactly what he holds through.
+
+**Takeaways.**
+
+- **The entry rules work here; the exit is the leak.** This is the repo's own audit finding again: "winners are too
+  small". A single close under the 50-day in the second month of a new advance ended a 500% trade at +14%. Two
+  things could be tested as optimise variants, never tuned on this one chart:
+  - a 50-day exit that needs volume, or two closes;
+  - a longer trend exit once the trade is well in profit.
+  The queued +3R breakeven and sell-half variants touch the same part of the trade.
+- **The RS line lagged at this breakout.** A "new RS-line high before the breakout" rule would have refused his best
+  trade here. So the RS-line study should treat it as evidence for a setup, never as a gate.
+- **Late bases.** The 2010–2011 bases were skipped as the 4th to 6th base of the advance. That follows the rule he
+  states (favour early bases), so it is not a miss.
