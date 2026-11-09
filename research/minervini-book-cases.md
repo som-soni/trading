@@ -25,12 +25,13 @@ figures with no stored prices.
 
 | Rule | Cases it blocked | Cases |
 |---|---|---|
-| Market gate closed (index below a rising 50-day, 5 sessions to confirm) | 2 | AMZN 2002; EBAY 2003 (by two sessions) |
+| Market gate closed (index below a rising 50-day, 5 sessions to confirm) | 3 | AMZN 2002; EBAY 2003 (by two sessions); WMT 1981–82 (every buy point) |
 | Base anchored on an older, higher high (`vcp_spec` base high) | 1 | EBAY 2003 |
 | Trend Template on the signal day (G1–G8) | 1 | AMZN 2002 (G4) |
 | 3-C / cheat shelf: width (`CHEAT_SHELF_PCT`) | 1 | AMZN 2002 |
 | 3-C / cheat shelf: volume (`CHEAT_DRYUP`, `CHEAT_VOL_CONTRACT`) | 1 | AMZN 2002 |
 | Stop more than `MAX_STOP_PCT` below the fill | 1 | AMZN 2002 |
+| Liquidity floor (turnover under the strategy's scaled floor) | 1 | WMT 1981–82: $0.6–1.6m a day against $2.8m |
 | No RS-line rule (the book's tip-off, absent from the strategy) | 2 | AMZN 2002, EBAY 2003 (NFLX 2009: the RS line *lagged* at the breakout, so it must not become a hard gate) |
 | Exit: the rest sold on the first close below the 50-day (EX-06) | 1 (caught, but the winner cut short) | NFLX 2009: +1.55R, against a 525% move |
 
@@ -39,6 +40,7 @@ figures with no stored prices.
 | [AMZN, Oct 2002](#1-amazoncom-amzn-october-2002--3-c-out-of-a-22-week-base) | 3-C, 10 Oct 2002 | No, and no later setup through 2003 | market gate, G4, shelf width and volume, stop 12.4% |
 | [EBAY, Jan 2003](#2-ebay-ebay-january-2003--a-7-week-base-after-the-market-low) | 7-week base, 6 Jan 2003 | No: it never sees the 7-week base. Shown only recent bars, it buys the same day (S8) | base anchored on the Dec 2001 high; market gate closed until 8 Jan |
 | [NFLX, Oct 2009](#3-netflix-nflx-october-2009--a-27-week-vcp-months-after-the-market-low) | VCP breakout, 15 Oct 2009 | **Yes, the same day** (S1), after a 3-C two months earlier stopped out. But it sells the rest in Dec 2009 at +14% and never re-enters | caught; exit EX-06 |
+| [WMT, 1981–82](#4-wal-mart-wmt-1981-82--a-leader-breaking-out-through-a-bear-market) | Buy points Oct 1981 and Mar 1982 | **Sees every setup** (a 3-C, VCP breakouts on 2 Nov 1981 and 30 Mar 1982) but buys none | liquidity floor; market gate |
 
 ---|---|---|---|
 | [AMZN, Oct 2002](#1-amazoncom-amzn-october-2002--3-c-out-of-a-22-week-base) | 3-C, 10 Oct 2002 | No, and no later setup through 2003 | market gate, G4, shelf width and volume, stop 12.4% |
@@ -406,3 +408,81 @@ setups are counted as the 4th to 6th base of the advance and skipped as late. Th
   trade here. So the RS-line study should treat it as evidence for a setup, never as a gate.
 - **Late bases.** The 2010–2011 bases were skipped as the 4th to 6th base of the advance. That follows the rule he
   states (favour early bases), so it is not a miss.
+
+---
+
+## 4. Wal-Mart (WMT), 1981–82 — a leader breaking out through a bear market
+
+*Book: Figure 7-8, chapter 7. Eval ids `ttlc-7.8-wmt-1` (a setup, refused by the plan) and `ttlc-7.8-wmt-2`
+(caught as S1). Prices × 3 (the 2024 split); stored data is split-adjusted throughout. No SPY before 1993:
+the index here is the long S&P 500 price series, and the market gate is a proxy on it, without breadth.*
+
+**What the book says.** In 1981 Wal-Mart was a small, fast-growing company few knew; on some days it traded
+40,000–50,000 shares. Through the bear market of the early 1980s it held up. Each time the indexes rallied
+against the trend, it broke out of a base and tried to advance right off the market's lows. Leaders show this
+strength cycle after cycle; such a divergence cannot hide. He marks two buy points, in autumn 1981 and spring
+1982, before the August 1982 market bottom.
+
+```series
+title: WMT and the S&P 500, 1980–1982 — the book's Figure 7-8 redrawn from stored data
+from: 1980-12-01
+to: 1982-08-31
+tf: D
+line: us:WMT | WMT | log
+line: us:WMT@sma200 | 200-day average
+line: us:SP500_PRICE_LONG | S&P 500 | pane2
+mark: 1981-09-29 | 3-C cheat | below
+mark: 1981-11-02 | VCP breakout | below
+mark: 1982-03-30 | VCP breakout | below
+mark: 1982-08-12 | market bottom | below
+caption: Prices ×3 for the book's scale. The S&P 500 (lower pane) fell 27% from November 1980 to August 1982. Wal-Mart rose 80% over the same span, above a rising 200-day almost throughout.
+```
+
+```series
+title: WMT, 1980–1984 — the RS line through the bear market and the run after it, weekly
+from: 1980-01-04
+to: 1984-06-29
+tf: W
+line: us:WMT | WMT (weekly) | log
+line: us:WMT / us:SP500_PRICE_LONG | RS line (WMT ÷ S&P 500) | pane2
+band: 1980-11-28 1982-08-12 | S&P 500 bear market
+caption: The RS line made 52-week highs again and again through 1981 and into early 1982 while the index fell. From the March 1982 buy point the stock rose 325% within 21 months; he says 360%.
+```
+
+**What the data shows.**
+
+| Item | Stored data (book scale) |
+|---|---|
+| Held up | S&P 500 −27% from its Nov 1980 high to its 12 Aug 1982 low; WMT +80% over the same span |
+| RS line (WMT / S&P 500) | 52-week highs repeatedly through 1981, the last on 4 Feb 1982 |
+| Setups the detector finds | A complete VCP breaking out 25 Mar 1981; a 3-C in the middle third on 29 Sep 1981 (buy $0.287); a complete VCP breaking out 2 Nov 1981 (buy $0.312); a complete VCP breaking out 30 Mar 1982 (buy $0.343, stop $0.328) |
+| Liquidity | $0.6–1.6m traded a day (50-day average), under the strategy's floor of $2.8m in 1981 dollars |
+| Market gate (proxy) | Closed on every one of those dates: the index was below a falling 50-day average |
+| Outcome | From the 30 Mar 1982 buy, $0.343 to $1.46 within 21 months (+325%) |
+
+**Would the strategy buy? It sees every setup and buys none.** This case is the opposite of Amazon and eBay. The
+pattern rules agree with him: the detector finds VCPs breaking out on 2 Nov 1981 and 30 Mar 1982, and a 3-C on
+29 Sep 1981, at his marked buy points. Two portfolio rules refuse them:
+
+1. **Liquidity.** Wal-Mart was a small company then, and its turnover was a third to a half of the floor. That is
+   the book's own point: a future giant, unknown at the time.
+2. **The market gate.** Every buy point came on a countertrend rally inside the bear market, with the index under
+   a falling 50-day average. Breaking out *while the market falls* is the strength he describes. It is exactly
+   what the gate is built to sit out.
+
+**Why he took it.** *Inference from his principles.* The divergence was impossible to miss. The index made lower
+lows; the stock made higher highs above a rising 200-day, and its RS line kept setting new highs. Each base
+was tight and broke out on the market's rallies. He reads that as institutions buying a leader before the market
+turns, and he buys it small and adds as it proves itself.
+
+**Takeaways.**
+
+- **Third case in four blocked by the market gate.** In each, the stock had already proven itself against a
+  falling index. The pattern so far: the gate refuses the strongest stocks at the moment they are strongest.
+  The bottoming pilot tested the broad version and failed. The narrower one — let a stock through the closed
+  gate only when its RS line is at a new high — is the same RS-line study the earlier cases point to. It now
+  has three cases behind it.
+- **Liquidity is a floor we keep on purpose.** It protects fills and slippage. The book's examples include
+  small companies that later became giants, and the floor will always refuse those early. That is a known
+  cost, not a rule to tune on one case.
+- **The detector is right about the setups here.** No pattern rule needs changing for this case.
