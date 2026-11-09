@@ -293,6 +293,11 @@ turning up.
   change: let a base restart after a long enough interval (a "base on a base"), or anchor a flat base on its own
   recent high. Test it across all trades before adopting. eBay and his other "late emerging" leaders are the
   cases it would catch.
+  - **Built (1.56) as a research switch, off:** `TREND_BREAK_RESETS` / `--vcp trend_break_resets=1`. A base with
+    more closes below the 200-day than VCP-03 allows restarts at the highs after its last close below it.
+  - **With it on**, S8 fills on 2003-01-06. The book eval set rises from 12 to 14 of 35 buy points: eBay and
+    Microsoft's 1991 handle. It still holds 4 of 4 setups to avoid.
+  - Optimise-stage variants are queued for both markets. The switch stays off unless they beat the baseline.
 - **The RS-line lead again**: two cases of two. The study of RS-line highs ahead of price is worth doing.
 - **The market gate's confirmation delay** cost this trade two sessions. Not a reason to drop it on one case.
 - **Data:** the 31 Jan 2003 bar of EBAY looks wrong; check it before relying on that date.
