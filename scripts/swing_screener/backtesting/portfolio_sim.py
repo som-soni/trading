@@ -207,6 +207,9 @@ class ExitPolicy:
     climax_gap: float = 0.03     #   … a gap up this large after a rise of `climax_gap_after`
     climax_gap_after: float = 0.50
     trend_volume: bool = field(default_factory=lambda: bool(_ms.TREND_EXIT_NEEDS_VOLUME))  # EX-06 needs volume ≥ its 50-day average
+    trend_closes: int = field(default_factory=lambda: int(_ms.TREND_EXIT_CLOSES))    # EX-06: closes in a row below the line to sell
+    trend_loose_r: float = field(default_factory=lambda: float(_ms.TREND_LOOSE_R))   # EX-06: once the high reaches this many R ...
+    trend_loose_sma: int = field(default_factory=lambda: int(_ms.TREND_LOOSE_SMA))   #   ... the line is this-day average (0 = off)
     time_stop_days: int = field(default_factory=lambda: _ms.TIME_STOP_DAYS)    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
     # ---- trade management for the other modes (bracket, trail_atr, ma, donchian). All off by default,
     # so a run without them trades exactly as before. `minervini` has its own ladder above and ignores these.
@@ -1233,8 +1236,18 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
         elif climax:
             pos.queued_exit = "CLIMAX"
             return
-    # EX-06: trend break (on volume, when trend_volume)
-    if ma == ma and c < ma and (not policy.trend_volume or (v50 == v50 and vol >= v50)):
+    # EX-06: trend break (on volume, when trend_volume). With trend_loose_r, a trade whose high has reached that many R
+    # watches the slower trend_loose_sma-day average instead; with trend_closes, it takes that many closes in a row below.
+    line = ma
+    if policy.trend_loose_r and r > 0 and m.get("_max_high", -math.inf) >= entry + policy.trend_loose_r * r:
+        slow = bar.get(f"sma{policy.trend_loose_sma}")
+        if slow is None:
+            k = df["close"].iloc[max(0, i - policy.trend_loose_sma + 1): i + 1]
+            slow = float(k.mean()) if len(k) == policy.trend_loose_sma else float("nan")
+        line = float(slow)
+    under = line == line and c < line
+    m["_under_n"] = m.get("_under_n", 0) + 1 if under else 0
+    if under and m["_under_n"] >= max(1, policy.trend_closes) and (not policy.trend_volume or (v50 == v50 and vol >= v50)):
         pos.queued_exit = "TREND_EXIT"
         return
     # EX-07: time stop -- the high has not reached +1R within time_stop_days sessions

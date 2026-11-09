@@ -409,6 +409,14 @@ STRENGTH_FRAC = 0.33   # 1.22: was 1 / 3, which the page rendered as "0.333333 o
 CLIMAX_IS_PARTIAL = 1
 # EX-06, the close below the 50-day average, no longer needs above-average volume.
 TREND_EXIT_NEEDS_VOLUME = 0
+# 1.57, research switches for EX-06 (off = 1.56): Netflix's Oct 2009 breakout, Minervini's own fig. 7-5 trade, was
+# sold on its first close under the 50-day (17 Dec 2009) at +1.55R, four months before it doubled and 21 before it
+# was up 500%. TREND_EXIT_CLOSES: that many consecutive closes below the average to sell (1 = the first).
+# TREND_LOOSE_R / TREND_LOOSE_SMA: once the trade's high has reached TREND_LOOSE_R x its risk, the exit watches the
+# TREND_LOOSE_SMA-day average instead of the 50-day, giving a proven winner room (0 = off).
+TREND_EXIT_CLOSES = 1
+TREND_LOOSE_R = 0.0
+TREND_LOOSE_SMA = 100
 # EX-07, the time stop: sold if the high has not reached +1R within this many sessions.
 TIME_STOP_DAYS = 15
 # EN-02 fills on the close through the pivot; a fill on volume under VOL_MULT x the
@@ -1102,10 +1110,15 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.56"
+    version = "1.57"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.57", "2026-11-09",
+         "Adds three EX-06 research switches, all OFF so no rule changes: TREND_EXIT_CLOSES (closes in a row below the "
+         "50-day to sell), TREND_LOOSE_R and TREND_LOOSE_SMA (a slower average once the trade has reached that many R). "
+         "From Minervini's Netflix 2009 case, which the strategy bought on his day and sold at +1.55R on the first "
+         "close below the 50-day. Post-scan only and signal-exempt, so variants reuse the scan; signal_version stays 1.51."),
         ("1.56", "2026-11-09",
          "Adds TREND_BREAK_RESETS (VcpParams.trend_break_resets), a research switch, OFF: no rule changes. With it on, "
          "a base the long trend broke inside restarts after its last close below the 200-day, so a recent base under "
@@ -1773,7 +1786,8 @@ class MinerviniSpecStrategy(Strategy):
         "MIN_STRUCTURAL_R", "MEASURED_MOVE_RR", "MAX_BASE_COUNT", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
-        "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
+        "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TREND_EXIT_CLOSES", "TREND_LOOSE_R", "TREND_LOOSE_SMA",
+        "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
         "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT", "RESULTS_FIRST_PER_QUARTER",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
         "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
@@ -2320,7 +2334,10 @@ class MinerviniSpecStrategy(Strategy):
         "- a close 70% or more above the 200-day average;\n"
         "- an open 3% or more above the previous close, once the position is up more than 50%.",
         "EX-06 — the trend ends. The first close below the 50-day average sells everything still "
-        "held. This is how most winners end.\n\n"
+        "held. This is how most winners end. Two research switches, both off: TREND_EXIT_CLOSES "
+        "({TREND_EXIT_CLOSES} now) asks for that many closes in a row below it, and TREND_LOOSE_R "
+        "({TREND_LOOSE_R} now; 0 = off) moves the line to the {TREND_LOOSE_SMA}-day average once the trade's high "
+        "has reached that many R.\n\n"
         "Under the variant the live screen runs, that close must also come on at least the 50-day "
         "average volume.",
         "EX-07 — time stop. If the high has not reached +1R within {TIME_STOP_DAYS} sessions of the "
@@ -2546,6 +2563,10 @@ class MinerviniSpecStrategy(Strategy):
         ("Part sold into strength", "STRENGTH_FRAC", "EX-04 / EX-05: share of the position sold."),
         ("Climax sells a part", "CLIMAX_IS_PARTIAL", "EX-05: 1 = the strength part only, 0 = everything (1.7)."),
         ("Trend exit needs volume", "TREND_EXIT_NEEDS_VOLUME", "EX-06: 1 = only on above-average volume (1.7)."),
+        ("Trend exit closes", "TREND_EXIT_CLOSES", "EX-06: consecutive closes below the 50-day that sell (1 = the first)."),
+        ("Loose trend exit after", "TREND_LOOSE_R", "EX-06: once the high reaches this many R, watch the "
+         "{TREND_LOOSE_SMA}-day average instead of the 50-day (0 = off)."),
+        ("Loose trend exit average", "TREND_LOOSE_SMA", "EX-06: the slower average TREND_LOOSE_R switches to, in sessions."),
         ("Time stop", "TIME_STOP_DAYS", "EX-07: sessions to reach +1R (0 = off)."),
         ("Light-volume fill exit", "LIGHT_VOLUME_EXIT", "EN-02: sell a buy-stop fill on under-average breakout volume (1 = on)."),
         ("S2 fill needs volume", "S2_FILL_NEEDS_VOLUME", "1.51: an MV-02 close through the pivot on under VOL_MULT x volume does not fill (1); 0 = it fills, and LIGHT_VOLUME_EXIT, while on, sells it at the next open. Independent of LIGHT_VOLUME_EXIT since 1.53."),

@@ -535,7 +535,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "c18a59af",
+    "fingerprint": "fb9cb8bf",
     "params": {
       "BASE_COUNT_MIN_DAYS": 25,
       "BASE_COUNT_MIN_DEPTH_PCT": 10.0,
@@ -675,7 +675,10 @@
       "TIGHT_PCT": 10.0,
       "TIME_STOP_DAYS": 15,
       "TREND_BREAK_RESETS": 0,
+      "TREND_EXIT_CLOSES": 1,
       "TREND_EXIT_NEEDS_VOLUME": 0,
+      "TREND_LOOSE_R": 0.0,
+      "TREND_LOOSE_SMA": 100,
       "TURNOVER_FLOOR_BP_INR": 1.0,
       "TURNOVER_FLOOR_BP_USD": 0.32,
       "UNDERCUT_RECOVERY_DAYS": 5,
@@ -771,7 +774,7 @@
         "W5"
       ]
     },
-    "version": "1.56"
+    "version": "1.57"
   },
   "minervini_coil": {
     "family": "minervini",
