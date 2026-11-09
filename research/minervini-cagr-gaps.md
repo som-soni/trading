@@ -168,4 +168,30 @@ number here is in-sample.
 
 ## Results
 
-*To be filled in as the queued runs land.*
+*First batch, 2026-11-10: the exit variants and the trend-break reset (optimise, 2013–2021). Each changes one
+thing against the 1.57 baseline. The sizing, gate, lean-exit and follow-up-buy variants are still running.*
+
+| Variant | India CAGR | Sharpe | Max DD | Trades | US CAGR | Sharpe | Max DD | Trades |
+|---|---|---|---|---|---|---|---|---|
+| Baseline 1.57 (#3754 / #3758) | 3.71% | 0.50 | −20.1% | 323 | −3.30% | −0.26 | −40.3% | 1255 |
+| Breakeven and partial at +3R, not +2R (#3752 / #3738) | 3.57% | 0.47 | −20.3% | 319 | −2.75% | −0.20 | −33.8% | 1201 |
+| Strength sale halved (#3753 / #3750) | 3.43% | 0.51 | −18.1% | 323 | −3.26% | −0.29 | −39.2% | 1258 |
+| Base anchoring: trend break resets (#3764 / #3761) | 4.15% | 0.55 | −17.6% | 350 | −3.05% | −0.23 | −36.8% | 1307 |
+| Trend exit needs volume (#3769 / #3765) | 8.59% | 0.93 | −21.0% | 273 | −1.15% | −0.05 | −32.7% | 1083 |
+| Two closes under the 50-day (#3770 / #3766) | 5.55% | 0.67 | −20.8% | 300 | −0.82% | −0.01 | −29.2% | 1095 |
+| **After +3R, the 100-day** (#3771 / #3767) | **8.89%** | **1.00** | −24.4% | 265 | 1.24% | 0.17 | −22.7% | 1042 |
+| **After +3R, the 150-day** (#3772 / #3768) | 8.26% | 0.96 | −20.9% | 251 | **3.08%** | **0.31** | **−23.9%** | 962 |
+| *Earlier: always full size (v1.55, #2350 / #3281)* | 5.17% | 0.53 | −21.5% | 329 | −1.45% | −0.04 | −37.1% | 1192 |
+
+**Reading.**
+
+- **The replay was right about exits.** Giving a trade that reached +3R room to its 100- or 150-day more than
+  doubles India's CAGR (3.7% → 8.3–8.9%), and is the first change in this series to turn the US positive (+3.1%,
+  with the drawdown nearly halved). The 150-day is the one that works in both markets.
+- **Trims at +2R barely matter in a portfolio.** Moving the partial and breakeven to +3R, or halving the strength
+  sale, moves CAGR by under half a point either way. The cost of the early sales in the replay comes mostly from
+  the light-volume and time-stop exits, which the lean variants test.
+- Requiring volume on the trend exit (one close under the 50-day only counts on heavy volume) is nearly as good in
+  India (8.6%) and helps the US less. It is a different route to the same thing: fewer exits on a quiet dip.
+- The trend-break reset is a small gain in both markets (+0.4 / +0.25 points): adopt it on the book-case
+  evidence, not for CAGR.
