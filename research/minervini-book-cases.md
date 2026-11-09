@@ -134,6 +134,42 @@ cheat rules skip the contraction checks for that reason.
 
 The strategy misses the whole move.
 
+**Why he took it — a reconstruction.** *This is inference from his stated principles and the stored prices; the
+book does not give his full reasoning.*
+
+1. **The strongest stock in a collapsing market.** From 24 July to 9 October the index made a lower low while
+   AMZN made a much higher one: the divergence he looks for during a decline (the "sore thumb", see
+   [creator note](creator-mark-minervini.md) §2.1). Its sellers were gone and buyers had been taking stock all
+   through the decline. The RS line making new highs said the same in one line.
+
+   | | Sept 2001 low → 9 Oct 2002 | 24 Jul → 9 Oct 2002 | 15 May → 9 Oct 2002 |
+   |---|---|---|---|
+   | AMZN | +182% | +20% | −15% |
+   | SPY | −20% | −8% | −29% |
+
+2. **A changed business.** *General knowledge, not stored data, which holds no fundamentals for 2002.* Amazon
+   reported its first-ever quarterly profit in early 2002, a turn from dot-com survivor to a business that earns.
+   That is what draws institutions in, and the 182% climb off the low was their footprint.
+3. **He does not wait for the market.** Setups appear before or at the market's low, and the low is never
+   known in time. So he buys a few leaders small and adds only if they work ([creator note](creator-mark-minervini.md)
+   §2.2–2.3). A leader breaking out on the day of the low is his "coincident" setup, which he reads as cause, not
+   coincidence.
+4. **Small risk against a large possible gain.** A stop under the shelf risked about 9% from his buy at $17.64,
+   probably less with a tighter stop and a small first position. The first objective, the old high at $20.40, was
+   16% away, and a true leader out of a bear market can run for years.
+5. **The weekly chart looked right.** A 40% base is deep, but he allows deeper bases after a bear market. The
+   right side was two-thirds rebuilt, with weekly closes bunched together. The 3-C bought below the old high,
+   before the crowd waiting for $20.40.
+
+**In one line:** a leader with a changed business, holding up while the market made new lows, offering a
+low-risk entry as the market exhausted itself. Our rules refuse it chiefly because they want the *market* to
+confirm first; his edge here was trusting the *stock*.
+
+**The caveat is hindsight.** Other stocks looked strong in October 2002 and failed. He expected many such buys to
+stop out; Amazon is the one in the book. The bottoming pilot (1.46) bought at market lows and counted every such
+case, losers included, and it failed its criteria. What remains untested is the narrower version: only stocks
+whose RS line makes new highs while the index makes new lows. That is the RS-line study below.
+
 **Takeaways.**
 
 - The RS-line lead is the clearest gap. The book names it, the data shows it, and the strategy has no
