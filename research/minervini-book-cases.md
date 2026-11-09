@@ -494,7 +494,7 @@ turns, and he buys it small and adds as it proves itself.
 
 ## 5. Apple (AAPL), 2004 — three buy points through a Nasdaq correction
 
-*Book: Figure 7-9, chapter 7. Eval ids `ttlc-7.9-aapl-1` and `ttlc-7.9-aapl-2`, both scored misses (see below).
+*Book: Figure 7-9, chapter 7. Eval ids `ttlc-7.9-aapl-1` (caught, S7, after the window fix below) and `ttlc-7.9-aapl-2` (a miss).
 Prices × 27.76 to the book's chart, which was itself split-adjusted in 2005. QQQ stands in for the Nasdaq
 Composite, which is not stored.*
 
@@ -543,7 +543,7 @@ The first trade, managed by the strategy's exits:
 After that, the November 2004 – January 2005 bases are skipped: a flat base whose stop was 12.2% away, and a cheat
 on the 4th base of the advance. From the first buy to February 2005 the stock rose from $11.95 to $45 (+277%).
 
-**Why the eval set scores both cases as misses.** `ttlc-7.9-aapl-1`'s window opens on 1 Mar 2004. The strategy's
+**Why the eval set first scored both as misses.** `ttlc-7.9-aapl-1`'s window opened on 1 Mar 2004. The strategy's
 signal came on the 27 Feb close and filled at the 1 Mar open: it caught the book's first buy, two sessions before
 the window as drawn. `ttlc-7.9-aapl-2` is a real miss (volume, gate).
 
@@ -562,5 +562,6 @@ itself, and the third, right off the market's August low, is the textbook one.
   taken it. Both are candidates only if the tally repeats them.
 - **The gate, a fourth time.** It was closed for the second and third buys, the same pattern as Amazon, eBay and
   Wal-Mart: a stock making higher lows against an index making lower ones. That pattern is the RS-line study's Q2.
-- **The eval set.** `ttlc-7.9-aapl-1`'s window could start on 27 Feb, the signal date; then it is caught. The window
-  was read off the book's chart. Moving it is a correction of the record, not of the strategy.
+- **The eval set.** `ttlc-7.9-aapl-1`'s window now opens on 27 Feb, the signal date (2026-11-09), and the case is
+  caught: the set scores 13 of 35 buy points, up from 12. The window was read off the book's chart; moving it
+  corrects the record, not the strategy.

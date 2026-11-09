@@ -136,8 +136,9 @@ CASES = [
          note="3-C days after the Dow's 1978 bear-market low, above a rising 200-day while the market was "
               "below a falling one"),
     dict(id="ttlc-7.9-aapl-1", book="TTLC", fig="7-9", symbol="AAPL", kind="buy", source="marked",
-         window=("2004-03-01", "2004-03-12"), setups=BUY, pinned=False,
-         note="first buy, out of the base from Oct 2003, while the Nasdaq was topping"),
+         window=("2004-02-27", "2004-03-12"), setups=BUY, pinned=False,
+         note="first buy, out of the base from Oct 2003, while the Nasdaq was topping; the window opens on the "
+              "27 Feb signal close, which fills at the 1 Mar open the book's arrow marks (was 1 Mar, 2026-11-09)"),
     dict(id="ttlc-7.9-aapl-2", book="TTLC", fig="7-9", symbol="AAPL", kind="buy", source="marked",
          window=("2004-06-01", "2004-06-18"), setups=BUY, pinned=False,
          note="follow-up buy out of the April–May 2004 pullback"),
