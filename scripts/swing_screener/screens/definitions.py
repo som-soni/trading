@@ -22,7 +22,8 @@ import pandas as pd
 
 from ..marketdata import db
 from . import criteria as c
-from .snapshot import BASE_MAX_DAYS, LEAD_HIGH_BARS, MDD_BARS, PIVOT_BARS, R2Y_BARS, STAGE2_DAYS_WINDOW
+from .snapshot import (BASE_MAX_DAYS, HIGH_BARS, LEAD_HIGH_BARS, MDD_BARS, PIVOT_BARS, R2Y_BARS, RANGE_PRIOR_BARS,
+                       RANGE_RECENT_BARS, STAGE2_DAYS_WINDOW, VOLUME_RECENT_BARS)
 
 OPS = (">", ">=", "<", "<=", "=", "!=", "is", "in")
 
@@ -80,13 +81,24 @@ LEADER_MIN_RS = 70       # the stock's own RS rank
 
 
 EARLY_STAGE2_MAX_DAYS = 40   # Trend Template held on at most this many of the last ~6 months' sessions (snapshot.STAGE2_DAYS_WINDOW)
+MATURE_SMA200_MIN_DAYS = 84  # the 200-day has passed the Trend Template's rising test (C5) this many sessions running: about four months
 
 LONG_BASE_MIN_DAYS = 120          # sessions in the base (about six months)
 LONG_BASE_MAX_DEPTH_PCT = 30.0    # the base's high-to-low depth; no looser than snapshot.BASE_MAX_DEPTH_PCT, where base_days stops
 LONG_BASE_MAX_PCT_BELOW_HIGH = 10.0  # the close this close to the top of the base
 LONG_BASE_MIN_QUALITY = 60        # Quality score (fundamentals/quality.py), present-only
 
-BEAR_LEADER_MIN_REL_RETURN = 30.0    # rel_r2y: beat the market benchmark by this many points over two years
+# Forming a base: a Stage 2 stock resting under its high. Base length and depth follow Minervini's published
+# ranges (a base of about 5 weeks or more; corrections deeper than about 35% are suspect outside a bear market);
+# the range and volume cutoffs are this screen's own, set so it returns a watchlist rather than hundreds.
+BASE_FORMING_MIN_DAYS = 25               # sessions without a new 52-week high: about five weeks
+BASE_FORMING_MAX_DEPTH_PCT = 35.0        # the correction from that high, at its deepest
+BASE_FORMING_MIN_DEPTH_PCT = 5.0         # … and at least this: a stock that barely moves for weeks is pinned to a takeover price
+BASE_FORMING_MAX_PCT_BELOW_HIGH = 15.0   # the close back in the upper part of the base
+BASE_FORMING_MAX_RANGE_RATIO = 0.6       # the latest range at most this fraction of the one before it
+BASE_FORMING_MAX_VOLUME_RATIO = 1.0      # recent volume under the 50-day average
+
+BEAR_LEADER_MIN_REL_RETURN = 30.0   # rel_r2y: beat the market benchmark by this many points over two years
 BEAR_LEADER_MAX_DRAWDOWN = 35.0      # mdd_2y no deeper than this: it held up through the decline
 BEAR_LEADER_MAX_PCT_BELOW_HIGH = 25.0  # still near its 52-week high, not a past winner fading
 BEAR_LEADER_MIN_RS = 80              # still a leader today
@@ -114,25 +126,8 @@ BREAKOUT_WATCH_MARKETS = ("us",)
 def presets() -> dict[str, dict]:
     stage2 = builtin()["stage2"]["conditions"]
     return {
-        "minervini_leaders": {
-            "name": "Minervini leaders in Stage 2",
-            "description": "Stage-2 stocks (the Trend Template) whose quarterly results pass Minervini's fundamental tests (verdict LEADER).",
-            "thesis": ("Minervini's SEPA wants both halves: a stock already in a Stage-2 uptrend, and a business whose earnings and sales "
-                       "are growing strongly and accelerating, with expanding margins. The verdict comes from the Fundamentals page "
-                       "(fundamentals/sepa.py): EPS growth, EPS acceleration, sales growth, margins and no slowdown must pass, and "
-                       "annual EPS growth and ROE must not fail. Present-only: it is not available for past snapshots, so it cannot be studied."),
-            "conditions": [*stage2, {"field": "sepa_verdict", "op": "in", "value": ["LEADER"]}]},
-        "trend_aligned_dwm": {
-            "name": "Trend aligned — daily, weekly and monthly",
-            "description": ("Stocks in an uptrend on all three charts at once: the 50-day above a rising 200-day (both rising), "
-                            "the weekly close above a rising 30-week average and the monthly close above a rising 10-month average."),
-            "thesis": ("Swing traders such as Deron Wagner check that a stock is ready to move on the daily, weekly and monthly "
-                       "charts before buying: convergence, not conflict. A strong monthly trend with a daily downtrend is not the "
-                       "setup they want. The three tests are the snapshot field Trend aligned (D/W/M), from screens/criteria.py "
-                       "trend_alignment; the backtester's --tf-align applies the same rule to any strategy's signals."),
-            "conditions": [{"field": "tf_aligned", "op": "is", "value": True}]},
         "early_stage2": {
-            "name": "Early Stage 2",
+            "name": "Stage 2 — just started",
             "description": f"Stocks that pass the full Trend Template today but held it on no more than {EARLY_STAGE2_MAX_DAYS} of "
                            f"the last {STAGE2_DAYS_WINDOW} sessions — new to Stage 2, or back in it after a correction. "
                            "A list for finding them, not a stronger screen: in the study they did no better than the Trend Template.",
@@ -146,8 +141,55 @@ def presets() -> dict[str, dict]:
                        "month, which is too few to call; neither market showed a higher hit rate. Use it to see who just "
                        "turned up, and judge the setup on its own."),
             "conditions": [*stage2, {"field": "stage2_days", "op": "<=", "value": EARLY_STAGE2_MAX_DAYS}]},
+        "stage2_mature_sma200": {
+            "name": "Stage 2 — mature 200-day",
+            "description": (f"The full Trend Template, with the 200-day rising for at least {MATURE_SMA200_MIN_DAYS} sessions in a row "
+                            f"(about four months), not just higher than {c.SMA200_RISING_BARS} sessions ago."),
+            "thesis": ("Minervini's Trend Template asks for a 200-day that has been trending up for at least a month, and prefers four "
+                       "to five months or longer. He reads the line by eye and gives no formula. The built-in Stage 2 screen tests the "
+                       f"minimum: the 200-day higher than {c.SMA200_RISING_BARS} sessions ago. Comparing only two endpoints months "
+                       "apart would let a line that rolled over or bottomed in a V pass, so this screen counts how many sessions in "
+                       "a row that one-month test has held (the field 200-day rising for). A line that fell for about a month resets "
+                       "the count. A flat line drifting up very slowly still counts: neither Minervini nor Weinstein gives a slope "
+                       "that separates flat from rising. Weinstein prefers the opposite end — buying as the 30-week line turns up — "
+                       "which is the Stage 2 — just started screen. Not yet studied."),
+            "conditions": [*stage2, {"field": "sma200_rising_days", "op": ">=", "value": MATURE_SMA200_MIN_DAYS}]},
+        "base_forming": {
+            "name": "Base — forming in Stage 2",
+            "description": (f"Stocks above a rising 200-day (and the 150-day above it) that have gone {BASE_FORMING_MIN_DAYS}+ "
+                            f"sessions without a new 52-week high, corrected {BASE_FORMING_MIN_DEPTH_PCT:g}–"
+                            f"{BASE_FORMING_MAX_DEPTH_PCT:g}% from it "
+                            f"and sit within {BASE_FORMING_MAX_PCT_BELOW_HIGH:g}% of it, with the last {RANGE_RECENT_BARS} "
+                            f"sessions' range at most {BASE_FORMING_MAX_RANGE_RATIO:g}× the {RANGE_PRIOR_BARS} before and "
+                            "volume under its 50-day average. A watchlist of bases still forming, not a buy signal."),
+            "thesis": ("Minervini and Weinstein buy a Stage 2 stock as it leaves a base, so the work is to have the base on a "
+                       "watchlist before it ends. A base starts at a high the stock has not beaten since; Minervini's run from "
+                       "about five weeks to over a year, and a correction much deeper than about a third is suspect outside a "
+                       f"bear market. A correction under {BASE_FORMING_MIN_DEPTH_PCT:g}% is left out: a stock that sits at "
+                       "one price for weeks is usually waiting on a takeover, not building a base. As a base matures the swings narrow and volume dries up: sellers are running out. This "
+                       "screen approximates that from the daily snapshot. The base is measured from the 52-week high, so it "
+                       f"stops at {HIGH_BARS - 1} sessions. Tightening is the latest {RANGE_RECENT_BARS} sessions' high-to-low "
+                       f"range against the {RANGE_PRIOR_BARS} before them, and dry-up is {VOLUME_RECENT_BARS}-session volume "
+                       "against the 50-day. It is not a detected VCP or flat base: no strategy's detector runs, there is no "
+                       "pivot, and a stock rolling over can pass on a quiet fortnight. Read each chart. The breakout "
+                       "anticipation study found volatility contraction and volume dry-up did not raise the odds of a "
+                       "breakout on their own, so this finds candidates, it does not rank them. Not yet studied."),
+            "conditions": [
+                {"field": "tradable", "op": "is", "value": True},
+                {"field": "close", "op": ">", "ref": "sma200"},
+                {"field": "close", "op": ">", "ref": "sma150"},
+                {"field": "sma150", "op": ">", "ref": "sma200"},
+                {"field": "sma200", "op": ">", "ref": "sma200_21d_ago"},
+                {"field": "days_since_52w_high", "op": ">=", "value": BASE_FORMING_MIN_DAYS},
+                {"field": "depth_since_52w_high_pct", "op": ">=", "value": BASE_FORMING_MIN_DEPTH_PCT},
+                {"field": "depth_since_52w_high_pct", "op": "<=", "value": BASE_FORMING_MAX_DEPTH_PCT},
+                {"field": "pct_below_high", "op": "<=", "value": BASE_FORMING_MAX_PCT_BELOW_HIGH},
+                {"field": "range_ratio", "op": "<=", "value": BASE_FORMING_MAX_RANGE_RATIO},
+                {"field": "volume_ratio", "op": "<", "value": BASE_FORMING_MAX_VOLUME_RATIO},
+            ],
+            "columns": ["days_since_52w_high", "depth_since_52w_high_pct", "pct_below_high", "range_ratio", "volume_ratio"]},
         "long_base_quality": {
-            "name": "Long base, quality business",
+            "name": "Base — long, quality business",
             "description": f"Quality businesses (quality score {LONG_BASE_MIN_QUALITY}+) that have moved sideways for "
                            f"{LONG_BASE_MIN_DAYS}+ sessions inside a range no deeper than {LONG_BASE_MAX_DEPTH_PCT:g}%, with the "
                            f"close within {LONG_BASE_MAX_PCT_BELOW_HIGH:g}% of the range's top and its pullbacks contracting.",
@@ -169,8 +211,24 @@ def presets() -> dict[str, dict]:
                 {"field": "sma200_not_falling", "op": "is", "value": True},
                 {"field": "quality", "op": ">=", "value": LONG_BASE_MIN_QUALITY},
             ]},
+        "leaders": {
+            "name": "Leaders — in leading groups",
+            "description": f"Strong stocks (RS {LEADER_MIN_RS}+) in the strongest peer groups (group RS {LEADER_GROUP_RS}+), in an uptrend.",
+            "thesis": ("Big winners tend to come from the groups leading the market (O'Neil, Minervini): a strong stock in a weak group "
+                       "usually lags. In our five-year study, stocks in strong groups beat those in weak groups in both markets "
+                       "(clearly so in India), while a stock's rank inside its group added nothing — so this screen asks for a strong "
+                       "group and a strong stock, not for the group's #1. The peer group is the stock's sub-industry where its industry "
+                       "group is split and the sub-industry has enough tradable stocks, else its industry group; its RS rating comes "
+                       "from the Sectors page."),
+            "conditions": [
+                {"field": "tradable", "op": "is", "value": True},
+                {"field": "peer_rs", "op": ">=", "value": LEADER_GROUP_RS},
+                {"field": "rs_rank", "op": ">=", "value": LEADER_MIN_RS},
+                {"field": "close", "op": ">", "ref": "sma50"},
+                {"field": "close", "op": ">", "ref": "sma200"},
+            ]},
         "bear_market_leaders": {
-            "name": "Bear-market leaders",
+            "name": "Leaders — in a bear market",
             "description": f"Stocks that beat the market by {BEAR_LEADER_MIN_REL_RETURN:g}+ points over two years without falling more "
                            f"than {BEAR_LEADER_MAX_DRAWDOWN:g}% from a peak, still within {BEAR_LEADER_MAX_PCT_BELOW_HIGH:g}% of the "
                            f"52-week high and above the 200-day, RS {BEAR_LEADER_MIN_RS}+, with ROE {BEAR_LEADER_MIN_ROE:g}%+, EPS "
@@ -198,25 +256,25 @@ def presets() -> dict[str, dict]:
             ],
             "columns": ["rel_r2y", "r2y", "mdd_2y", "rel_r12m"], "sort_by": "rel_r2y"},
         "growth_leaders": {
-            "name": "Growth businesses above the 200-day",
+            "name": "Leaders — growth in Stage 2",
             "description": f"Quarterly results that pass Minervini's growth tests (SEPA verdict {' or '.join(GROWTH_VERDICTS)}), "
-                           "with the stock above its 200-day average. Its twin for turnarounds is Recoveries.",
+                           "with the stock in Stage 2 (the full Trend Template). Its twin for turnarounds is Fundamentals — recoveries.",
             "thesis": ("Minervini's fundamentals ask for strong, accelerating earnings and sales growth, measured against the same "
                        "quarter a year earlier so seasonality cancels. LEADER passes every test (EPS and sales growth, EPS "
                        "acceleration, margins, no slowdown); ACCEPTABLE passes growth and no slowdown without all the "
-                       "confirmation. The 200-day is the one price condition: Minervini buys growth only once the market agrees, "
-                       "and a growing business under a falling average is a different trade. For his full setup use Minervini "
-                       "leaders in Stage 2. Growth from a loss cannot be measured, so a company coming out of losses never "
-                       "appears here: see Recoveries. Present-only: the verdict exists only for the latest snapshot, so the "
+                       "confirmation. The price half is the full Trend Template: Minervini's SEPA wants both a Stage-2 uptrend and "
+                       "a growing business, and a growing business under a falling average is a different trade. Filter the "
+                       "verdict condition to LEADER alone for his strictest version. Growth from a loss cannot be measured, so a company coming out of losses never "
+                       "appears here: see Fundamentals — recoveries. Present-only: the verdict exists only for the latest snapshot, so the "
                        "screen cannot be studied."),
             "conditions": [
                 {"field": "tradable", "op": "is", "value": True},
+                *stage2[1:],
                 {"field": "sepa_verdict", "op": "in", "value": GROWTH_VERDICTS},
-                {"field": "close", "op": ">", "ref": "sma200"},
             ],
             "columns": ["sepa_verdict", "eps_growth_q", "sales_growth_q", "sepa_code33"], "sort_by": "eps_growth_q"},
         "recoveries": {
-            "name": "Recoveries",
+            "name": "Fundamentals — recoveries",
             "description": f"Turnarounds: a profit in the latest quarter after a loss a year earlier, EPS above the year-ago quarter "
                            f"for {RECOVERY_MIN_IMPROVING_QUARTERS}+ quarters running, sales up {RECOVERY_MIN_SALES_GROWTH:g}%+, "
                            "and the stock above its 200-day average.",
@@ -267,22 +325,6 @@ def presets() -> dict[str, dict]:
                 {"field": "group_rs", "op": ">=", "value": BREAKOUT_WATCH_MIN_GROUP_RS},
             ],
             "columns": ["pivot_55", "group_rs", "rs_rank"], "sort_by": "group_rs"},
-        "leaders": {
-            "name": "Strong stocks in leading groups",
-            "description": f"Strong stocks (RS {LEADER_MIN_RS}+) in the strongest peer groups (group RS {LEADER_GROUP_RS}+), in an uptrend.",
-            "thesis": ("Big winners tend to come from the groups leading the market (O'Neil, Minervini): a strong stock in a weak group "
-                       "usually lags. In our five-year study, stocks in strong groups beat those in weak groups in both markets "
-                       "(clearly so in India), while a stock's rank inside its group added nothing — so this screen asks for a strong "
-                       "group and a strong stock, not for the group's #1. The peer group is the stock's sub-industry where its industry "
-                       "group is split and the sub-industry has enough tradable stocks, else its industry group; its RS rating comes "
-                       "from the Sectors page."),
-            "conditions": [
-                {"field": "tradable", "op": "is", "value": True},
-                {"field": "peer_rs", "op": ">=", "value": LEADER_GROUP_RS},
-                {"field": "rs_rank", "op": ">=", "value": LEADER_MIN_RS},
-                {"field": "close", "op": ">", "ref": "sma50"},
-                {"field": "close", "op": ">", "ref": "sma200"},
-            ]},
     }
 
 

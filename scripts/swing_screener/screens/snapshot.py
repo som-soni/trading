@@ -41,9 +41,14 @@ KEEP_DAILY = 40                 # daily snapshots kept; month-end ones are kept 
 MIN_SNAPSHOT_BARS = 60          # a stock needs this much history to appear at all (longer-window fields are empty until it has it)
 LOOKBACK_DAYS = 1160            # calendar days loaded: enough sessions for R3Y_BARS (and BASE_MAX_DAYS)
 STAGE2_DAYS_WINDOW = 126       # stage2_days counts the Trend Template's sessions over this many (about six months)
+SMA200_RISING_MAX_DAYS = 504   # sma200_rising_days counts back at most this many sessions (about two years)
 BASE_MAX_DAYS = 500            # base_days looks back at most this many sessions (about two years)
 BASE_MAX_DEPTH_PCT = 30.0      # a window is a base while its high-to-low depth is within this
 BASE_CONTRACTION_LOOKBACK = 120  # range_contracting reads the pullbacks of this many sessions
+HIGH_BARS = 252                # days_since_52w_high / depth_since_52w_high_pct: the 52-week window high_252 reads
+RANGE_RECENT_BARS = 10         # range_ratio: the latest sessions' high-to-low range (about two weeks) …
+RANGE_PRIOR_BARS = 40          # … against the range of this many sessions before them (about two months)
+VOLUME_RECENT_BARS = 10        # volume_ratio: the average volume of the latest sessions, against the 50-day
 R2Y_BARS = 504                 # r2y / rel_r2y: two years of sessions
 R3Y_BARS = 756                 # r3y / rel_r3y: three years
 MDD_BARS = 504                 # mdd_2y: the window the deepest fall is measured over
@@ -116,6 +121,10 @@ FIELDS = [
     ("higher_swing_lows", "Higher swing lows", "Trend & structure", "bool", "The last two confirmed swing lows (last ~50 sessions) are rising."),
     ("momentum_positive", "12-1M momentum positive", "Trend & structure", "bool", "The close a month ago is above the close a year ago."),
     ("trend_not_fading", "Trend not fading", "Trend & structure", "bool", "Not both a negative 3-month return and a flat or falling 50-day."),
+    ("sma200_rising_days", "200-day rising for (sessions)", "Trend & structure", "num",
+     f"How many sessions in a row, up to today, the 200-day has been higher than {crit.SMA200_RISING_BARS} sessions earlier — "
+     f"the Trend Template's rising-200-day test (C5), held day after day (counted back at most {SMA200_RISING_MAX_DAYS}). "
+     "0 when it does not hold today. Minervini asks for at least a month and prefers four to five: about 84–105 sessions."),
     ("stage2_days", "Trend Template days (6M)", "Trend & structure", "num",
      f"On how many of the last {STAGE2_DAYS_WINDOW} sessions the price part of Minervini's Trend Template held (close above the "
      "50-, 150- and 200-day, averages stacked, 200-day rising, off the low, near the high). Filled only when it holds today: "
@@ -129,6 +138,16 @@ FIELDS = [
     ("range_contracting", "Range contracting", "Base", "bool",
      f"The last pullbacks of the last {BASE_CONTRACTION_LOOKBACK} sessions each shallower than the one before "
      "(the volatility contraction of a tightening base; two or more legs)."),
+    ("days_since_52w_high", "Sessions since 52-week high", "Base", "num",
+     f"Sessions since the highest high of the last {HIGH_BARS} (0 = the high was made today): how long the stock has gone "
+     f"without a new high — a base measured from its left-side high. At most {HIGH_BARS - 1}."),
+    ("depth_since_52w_high_pct", "Depth since 52-week high", "Base", "pct",
+     "From that high to the lowest low since: how deep the correction from it has been, as a % of the high (0 = no pullback)."),
+    ("range_ratio", "Range ratio (recent ÷ prior)", "Base", "num",
+     f"The high-to-low range of the last {RANGE_RECENT_BARS} sessions ÷ the range of the {RANGE_PRIOR_BARS} sessions before "
+     "them. Under 1 the price is moving in a narrower band than it was: a tightening range."),
+    ("volume_ratio", "Volume ratio (recent ÷ 50-day)", "Volume", "num",
+     f"Average volume of the last {VOLUME_RECENT_BARS} sessions ÷ the 50-day average. Under 1 volume is drying up."),
     ("sector", "Sector", "Classification", "text", "Yahoo sector."),
     ("industry", "Industry group", "Classification", "text", "Yahoo industry group."),
     ("sub_industry", "Sub-industry", "Classification", "text", "The sub-industry, where the industry group mixes businesses (Library → Sub-industries)."),
@@ -264,7 +283,9 @@ def _row(cfg, sym: str, raw: pd.DataFrame, enriched: pd.DataFrame, i: int, bench
         floor_row["close"] = close * split
     out["tradable"] = bool(i + 1 >= MIN_BARS and Screen.tradable(cfg, floor_row)[0])
     out["stage2_days"] = _stage2_days(enriched, i)
+    out["sma200_rising_days"] = _sma200_rising_days(enriched, i)
     out.update(_base(enriched, i))
+    out.update(_basing(enriched, i))
     return out
 
 
@@ -329,6 +350,29 @@ def _base(enriched: pd.DataFrame, i: int) -> dict:
     return out
 
 
+def _basing(enriched: pd.DataFrame, i: int) -> dict:
+    """days_since_52w_high, depth_since_52w_high_pct, range_ratio and volume_ratio as of bar i (bars up to i only)."""
+    out = {"days_since_52w_high": None, "depth_since_52w_high_pct": None, "range_ratio": None, "volume_ratio": None}
+    if i + 1 >= HIGH_BARS:
+        high = enriched["high"].iloc[i + 1 - HIGH_BARS: i + 1].to_numpy(float)
+        low = enriched["low"].iloc[i + 1 - HIGH_BARS: i + 1].to_numpy(float)
+        top = int(len(high) - 1 - np.nanargmax(high[::-1]))      # the latest bar at the high, if it was touched twice
+        if high[top] > 0:
+            out["days_since_52w_high"] = len(high) - 1 - top
+            out["depth_since_52w_high_pct"] = float((1 - np.nanmin(low[top:]) / high[top]) * 100)
+    n = RANGE_RECENT_BARS + RANGE_PRIOR_BARS
+    if i + 1 >= n:
+        w = enriched.iloc[i + 1 - n: i + 1]
+        rec, pri = w.iloc[-RANGE_RECENT_BARS:], w.iloc[:RANGE_PRIOR_BARS]
+        width = float(pri["high"].max() - pri["low"].min())
+        if width > 0:
+            out["range_ratio"] = float(rec["high"].max() - rec["low"].min()) / width
+    v50 = enriched["vol_sma50"].iloc[i]
+    if i + 1 >= VOLUME_RECENT_BARS and pd.notna(v50) and v50 > 0:
+        out["volume_ratio"] = float(enriched["volume"].iloc[i + 1 - VOLUME_RECENT_BARS: i + 1].mean() / v50)
+    return out
+
+
 # The price part of the Trend Template (C1–C7 of the stage2 screen). C8, relative strength, is a rank across
 # the whole market on the day, so it cannot be replayed bar by bar for one stock.
 STAGE2_PRICE_CRITERIA = (crit.stage2_above_sma50, crit.stage2_above_sma150, crit.stage2_above_sma200, crit.stage2_stacked,
@@ -345,6 +389,25 @@ def _stage2_days(enriched: pd.DataFrame, i: int) -> int | None:
     if not holds(i):
         return None
     return 1 + sum(holds(j) for j in range(max(0, i - STAGE2_DAYS_WINDOW + 1), i))
+
+
+def _sma200_rising_days(enriched: pd.DataFrame, i: int) -> int | None:
+    """Consecutive sessions ending at bar i on which the stage2 screen's own rising-200-day predicate (C5) held,
+    counted back at most SMA200_RISING_MAX_DAYS. None before the 200-day exists."""
+    lo = max(0, i - SMA200_RISING_MAX_DAYS + 1)
+    win = enriched.iloc[lo: i + 1]
+    cols = {k: win[k].to_numpy(float) if k in win else np.full(len(win), np.nan)
+            for k in ("close", "sma50", "sma150", "sma200", "sma200_21d_ago", "low_252", "high_252", "rs_score")}
+    if np.isnan(cols["sma200_21d_ago"][-1]):
+        return None
+    n = 0
+    for j in range(len(win) - 1, -1, -1):
+        row = {k: v[j] for k, v in cols.items()}
+        if np.isnan(row["sma200_21d_ago"]) or not crit.stage2_sma200_rising(
+                SimpleNamespace(last=row, close=row["close"], extras={}))[0]:
+            break
+        n += 1
+    return n
 
 
 def _finish(market: str, rows: list[dict], d, present: bool) -> pd.DataFrame:

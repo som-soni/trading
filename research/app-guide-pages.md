@@ -199,11 +199,13 @@ A screen only says which stocks qualify. It has no entry, stop or decision. See
 | **Near highs, rising 200-day** | Above a 200-day that is not falling, within 15% of the 52-week high (H1–H3) | Volume breakout, Chart patterns |
 | **Above the 200-day** | The long-term trend filter alone (A1) | Donchian channel |
 
-Three presets have no strategy behind them: **Strong stocks in leading groups** (RS 70+ in a peer group
-rated 80+, above the 50- and 200-day), **Minervini leaders in Stage 2** (Stage 2 plus a SEPA verdict of
-LEADER) and **Trend aligned — daily, weekly and monthly** (the snapshot field *Trend aligned (D/W/M)*: the
-50-day above a rising 200-day, the close above a rising 30-week average and above a rising 10-month average,
-the current week and month counted as they stand that day; `trend_alignment` in screens/criteria.py).
+The presets (`definitions.presets()`) have no strategy behind them and are named by family, so related
+ones sit together: **Stage 2 —** just started / mature 200-day, **Base —** forming in Stage 2 / long,
+quality business, **Leaders —** in leading groups (RS 70+ in a peer group rated 80+, above the 50- and
+200-day) / in a bear market / growth in Stage 2 (the Trend Template plus a SEPA verdict of LEADER or
+ACCEPTABLE), and **Fundamentals — recoveries**. A preset's key, not its name, keys its study results, so a
+rename keeps them. The field *Trend aligned (D/W/M)* (`trend_alignment` in screens/criteria.py) has no preset
+of its own; add it as a condition to any screen.
 **Breakout watch — RS and OBV leading** (US only; a preset may name its `markets`, and is hidden elsewhere)
 lists stocks within 5% under their 55-session pivot whose RS line and OBV are already at new 55-session
 highs, in a group rated 70+. It is the rule the breakout anticipation study kept

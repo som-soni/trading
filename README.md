@@ -62,7 +62,7 @@ Two separate things, kept apart in code and in the web app:
   and you can build your own in the web app, like Chartink or Screener.in.
   The built-in screens' conditions are proven to return exactly what their
   coded criteria (shared with the strategies) return. A fifth built-in,
-  **Strong stocks in leading groups**, uses the peer-group fields: stocks with RS
+  **Leaders — in leading groups**, uses the peer-group fields: stocks with RS
   70+ whose peer group (sub-industry, else industry group) is rated RS 80+, in an
   uptrend. Every list (screen results, today's setups, strategy setups, movers,
   watchlists) shows each stock's peer group and its RS badge, and "Clusters"
@@ -500,8 +500,8 @@ shown in ₹ crore, the US in $ million (`MarketConfig.money_unit`). A company n
 
 Strategy sections sit at the bottom: today **Minervini SEPA** (`fundamentals/sepa.py`) — his eight
 tests on the quarterly results, a verdict (LEADER / ACCEPTABLE / WEAK) and the CODE 33 badge. The
-verdict is also a snapshot field, so **Screens → Minervini leaders in Stage 2** lists the stocks that
-pass both the Trend Template and his fundamentals. Another strategy's view is a module with `key`,
+verdict is also a snapshot field, so **Screens → Leaders — growth in Stage 2** lists the stocks that
+pass both the Trend Template and his fundamentals (LEADER or ACCEPTABLE). Another strategy's view is a module with `key`,
 `criteria()` and `evaluate(metrics)`, listed in `fundamentals/growth.py`'s `views()`.
 
 Where the numbers come from (`marketdata/financials.py`):
