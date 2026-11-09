@@ -25,15 +25,20 @@ figures with no stored prices.
 
 | Rule | Cases it blocked | Cases |
 |---|---|---|
-| Market gate closed (index below a rising 50-day) | 1 | AMZN 2002 |
+| Market gate closed (index below a rising 50-day, 5 sessions to confirm) | 2 | AMZN 2002; EBAY 2003 (by two sessions) |
+| Base anchored on an older, higher high (`vcp_spec` base high) | 1 | EBAY 2003 |
 | Trend Template on the signal day (G1–G8) | 1 | AMZN 2002 (G4) |
 | 3-C / cheat shelf: width (`CHEAT_SHELF_PCT`) | 1 | AMZN 2002 |
 | 3-C / cheat shelf: volume (`CHEAT_DRYUP`, `CHEAT_VOL_CONTRACT`) | 1 | AMZN 2002 |
 | Stop more than `MAX_STOP_PCT` below the fill | 1 | AMZN 2002 |
-| No RS-line rule (the book's tip-off, absent from the strategy) | 1 | AMZN 2002 |
+| No RS-line rule (the book's tip-off, absent from the strategy) | 2 | AMZN 2002, EBAY 2003 |
 
 | Case | Book's entry | Strategy buys? | Deciding rules |
 |---|---|---|---|
+| [AMZN, Oct 2002](#1-amazoncom-amzn-october-2002--3-c-out-of-a-22-week-base) | 3-C, 10 Oct 2002 | No, and no later setup through 2003 | market gate, G4, shelf width and volume, stop 12.4% |
+| [EBAY, Jan 2003](#2-ebay-ebay-january-2003--a-7-week-base-after-the-market-low) | 7-week base, 6 Jan 2003 | No: it never sees the 7-week base. Shown only recent bars, it buys the same day (S8) | base anchored on the Dec 2001 high; market gate closed until 8 Jan |
+
+---|---|---|---|
 | [AMZN, Oct 2002](#1-amazoncom-amzn-october-2002--3-c-out-of-a-22-week-base) | 3-C, 10 Oct 2002 | No, and no later setup through 2003 | market gate, G4, shelf width and volume, stop 12.4% |
 
 ---
@@ -183,3 +188,111 @@ whose RS line makes new highs while the index makes new lows. That is the RS-lin
     the pattern repeats.
 - Our cheat fills at the next open; he bought at the shelf high. From $17.64, the same stop risks 9.7%, inside the
   cap; from the $18.18 open it risks 12.4%. A buy-stop fill for cheats, as S8 already uses, is a second candidate.
+
+---
+
+## 2. eBay (EBAY), January 2003 — a 7-week base after the market low
+
+*Book: Figure 7-4, chapter 7. Eval id `ttlc-7.4-ebay` (scored a miss). Stored prices match the book's scale (×1).*
+
+**What the book says.** Some leaders bottom before the market. eBay bottomed in late 2000, almost two years
+before the October 2002 market low. After the low, it built a tight 7-week base. By then it was in a confirmed
+Stage 2 with a top RS ranking, and its RS line had been rising for a long time. The RS line reached new highs
+well ahead of the price, the tip-off to institutional buying. From the point it emerged from the base, the
+stock gained 234% in 24 months.
+
+```series
+title: EBAY, 2000–2003 — the book's Figure 7-4 redrawn from stored data
+from: 2000-01-03
+to: 2003-02-28
+tf: W
+line: us:EBAY | EBAY (weekly) | log candles
+line: us:EBAY@sma150 | 30-week (150-day) average
+line: us:EBAY@sma200 | 40-week (200-day) average
+line: us:EBAY / us:SPY | RS line (EBAY ÷ SPY) | pane2
+band: 2002-11-22 2003-01-03 | the 7-week base
+mark: 2000-12-20 | stock bottoms | below
+mark: 2002-10-09 | market bottoms | below
+mark: 2003-01-06 | emerges from the 7-week base
+caption: The RS line, in the lower pane, made one 52-week high after another from October 2002, while the price sat under its December 2001 high. That old high, $7.65, is what our detector measures the base from.
+```
+
+```series
+title: EBAY, November 2002 – February 2003 — the 7-week base and the breakout, daily
+from: 2002-10-15
+to: 2003-02-28
+tf: D
+line: us:EBAY | EBAY | candles
+line: us:EBAY@sma50 | 50-day average
+line: us:EBAY@vol | Volume | pane2 bars
+level: 7.654 | Dec 2001 high $7.65 (our detector's base high) | 2002-10-15 2003-02-28
+zone: 6.955 7.455 | 7-week base, 6.7% deep | 2002-12-02 2003-01-03
+level: 7.47 | buy-stop $7.47 | 2002-12-31 2003-02-28 | pivot
+level: 6.96 | stop $6.96 | 2003-01-06 2003-02-28 | stop
+mark: 2003-01-06 | breakout, 2.4× volume | below
+mark: 2003-01-31 | low $6.74, probably a bad print | below
+caption: Shown only these bars, the strategy finds the flat base and fills its buy-stop on 6 January. With the full history it measures the base from the December 2001 high instead, a 13-month base that fails its trend rule.
+```
+
+**What the data shows.**
+
+| Item | Stored data |
+|---|---|
+| Stock low | $2.94 on 20 Dec 2000 |
+| Held up | From its low to the market's low (9 Oct 2002): EBAY +90%, SPY −38%. From SPY's March 2002 high: EBAY −9%, SPY −34% |
+| The 7-week base | High $7.46 on 2 Dec 2002, low $6.96; 20 sessions, 6.7% deep; volume below its 50-day average through December |
+| Breakout | 6 Jan 2003: close $7.68, from $7.36, on 125M shares (2.4× the 50-day) |
+| Trend Template | Passes every session from mid-November 2002 |
+| RS line (EBAY / SPY) | 52-week highs from 27 Sep 2002 and through December, with the price below its old high |
+| Market gate | Closed until 8 Jan 2003 (SPY back above a rising 50-day, held 5 sessions); open 8–16 Jan; closed again until 21 Apr |
+| Outcome | From the $7.68 close to $24.92 on 31 Dec 2004 (+224%) |
+
+**Would the strategy buy? No. It never sees the 7-week base.** Our detector takes as the base high the
+highest swing high no close has yet cleared. For eBay on 6 January that was the **5 December 2001 high, $7.65**,
+13 months earlier and just above the 7-week base. So it measures one long base from December 2001, and that
+base fails VCP-03: 142 closes below the 200-day inside it, against a limit of 10. The 7-week base is part of it,
+not a base of its own. Only the 6 January close of $7.68 cleared the old high, and by then there was no finished
+base to break out of.
+
+**Shown only the bars from August 2002**, without the old high, the strategy catches it on the book's day:
+
+| | Counterfactual (bars from Aug 2002 only) |
+|---|---|
+| Setup | S8, flat base coiled: 20 sessions, 6.7% deep |
+| Buy-stop | $7.47, resting from 31 Dec 2002 |
+| Fill | 6 Jan 2003, the breakout day |
+| Stop | $6.96 (under the last 5 sessions' low), 6.8% risk |
+
+Two things would still stand in the way:
+
+1. **The market gate.** It opened on 8 January, two sessions after the fill. The strategy places no buy-stop
+   while the gate is closed.
+2. **A single bar on 31 January 2003.** It opened at $7.78, traded down to $6.74 and closed at $7.91. A 13%
+   intraday drop that closes near the high is very likely a bad print in the stored data. Taken at face
+   value, it hits the $6.96 stop. Not fixed here; noted for the data-quality check.
+
+**What came after.** With the full history, the strategy's first entries come in March 2003 (S8, a fill on light
+volume, sold the next open, with the market gate closed anyway). Then come refused breakouts in June, October and
+December 2003 (breakout volume short, or near misses). It never holds eBay through the 234% run.
+
+**Why he took it.** *Inference from his principles.* It fits his "leaders that bottom early" type:
+
+- eBay rose 90% from its own low while the market fell 38%.
+- It held its gains through the market's final leg down.
+- Its RS line made new highs before the price did.
+- It formed a tight, quiet base just after the market's low.
+
+Unlike Amazon, it needed no early entry. He bought a breakout from a finished base, with the market already
+turning up.
+
+**Takeaways.**
+
+- **A structural blind spot: a short base under an older high.** The detector measures every base from the
+  highest uncleared swing high, however old. A tight base forming just below a high from a year earlier is
+  absorbed into one long base that a broken trend disqualifies. Minervini counts the recent base. A candidate
+  change: let a base restart after a long enough interval (a "base on a base"), or anchor a flat base on its own
+  recent high. Test it across all trades before adopting. eBay and his other "late emerging" leaders are the
+  cases it would catch.
+- **The RS-line lead again**: two cases of two. The study of RS-line highs ahead of price is worth doing.
+- **The market gate's confirmation delay** cost this trade two sessions. Not a reason to drop it on one case.
+- **Data:** the 31 Jan 2003 bar of EBAY looks wrong; check it before relying on that date.
