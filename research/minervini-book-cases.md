@@ -25,7 +25,7 @@ figures with no stored prices.
 
 | Rule | Cases it blocked | Cases |
 |---|---|---|
-| Market gate closed (index below a rising 50-day, 5 sessions to confirm) | 3 | AMZN 2002; EBAY 2003 (by two sessions); WMT 1981–82 (every buy point) |
+| Market gate closed (index below a rising 50-day, 5 sessions to confirm) | 4 | AMZN 2002; EBAY 2003 (by two sessions); WMT 1981–82 (every buy point); AAPL 2004 (2nd and 3rd buys) |
 | Base anchored on an older, higher high (`vcp_spec` base high) | 1 | EBAY 2003 |
 | Trend Template on the signal day (G1–G8) | 1 | AMZN 2002 (G4) |
 | 3-C / cheat shelf: width (`CHEAT_SHELF_PCT`) | 1 | AMZN 2002 |
@@ -33,7 +33,9 @@ figures with no stored prices.
 | Stop more than `MAX_STOP_PCT` below the fill | 1 | AMZN 2002 |
 | Liquidity floor (turnover under the strategy's scaled floor) | 1 | WMT 1981–82: $0.6–1.6m a day against $2.8m |
 | No RS-line rule (the book's tip-off, absent from the strategy) | 2 | AMZN 2002, EBAY 2003 (NFLX 2009: the RS line *lagged* at the breakout, so it must not become a hard gate) |
-| Exit: the rest sold on the first close below the 50-day (EX-06) | 1 (caught, but the winner cut short) | NFLX 2009: +1.55R, against a 525% move |
+| Exit: the rest sold on the first close below the 50-day (EX-06) | 2 (caught, but the winner cut short) | NFLX 2009: +1.55R, against a 525% move; AAPL 2004: +1.2R, against +277% |
+| Breakout volume under `VOL_MULT` (1.4× the 50-day) | 1 | AAPL 2004: 2 Jun (0.90×), 25 Aug (1.21×) |
+| Close more than `BUY_RANGE_PCT` (5%) past the pivot | 1 | AAPL 2004: 26 Aug, 5.0% past it, on 2.3× volume |
 
 | Case | Book's entry | Strategy buys? | Deciding rules |
 |---|---|---|---|
@@ -41,6 +43,7 @@ figures with no stored prices.
 | [EBAY, Jan 2003](#2-ebay-ebay-january-2003--a-7-week-base-after-the-market-low) | 7-week base, 6 Jan 2003 | No: it never sees the 7-week base. Shown only recent bars, it buys the same day (S8) | base anchored on the Dec 2001 high; market gate closed until 8 Jan |
 | [NFLX, Oct 2009](#3-netflix-nflx-october-2009--a-27-week-vcp-months-after-the-market-low) | VCP breakout, 15 Oct 2009 | **Yes, the same day** (S1), after a 3-C two months earlier stopped out. But it sells the rest in Dec 2009 at +14% and never re-enters | caught; exit EX-06 |
 | [WMT, 1981–82](#4-wal-mart-wmt-1981-82--a-leader-breaking-out-through-a-bear-market) | Buy points Oct 1981 and Mar 1982 | **Sees every setup** (a 3-C, VCP breakouts on 2 Nov 1981 and 30 Mar 1982) but buys none | liquidity floor; market gate |
+| [AAPL, 2004](#5-apple-aapl-2004--three-buy-points-through-a-nasdaq-correction) | Three buys: Mar, Jun, Aug 2004 | **Buys the first** (S7, 27 Feb), sells it at +1.2R on 3 May; refuses the second and third | exit EX-06; breakout volume; buy range; market gate |
 
 ---|---|---|---|
 | [AMZN, Oct 2002](#1-amazoncom-amzn-october-2002--3-c-out-of-a-22-week-base) | 3-C, 10 Oct 2002 | No, and no later setup through 2003 | market gate, G4, shelf width and volume, stop 12.4% |
@@ -486,3 +489,78 @@ turns, and he buys it small and adds as it proves itself.
   small companies that later became giants, and the floor will always refuse those early. That is a known
   cost, not a rule to tune on one case.
 - **The detector is right about the setups here.** No pattern rule needs changing for this case.
+
+---
+
+## 5. Apple (AAPL), 2004 — three buy points through a Nasdaq correction
+
+*Book: Figure 7-9, chapter 7. Eval ids `ttlc-7.9-aapl-1` and `ttlc-7.9-aapl-2`, both scored misses (see below).
+Prices × 27.76 to the book's chart, which was itself split-adjusted in 2005. QQQ stands in for the Nasdaq
+Composite, which is not stored.*
+
+**What the book says.** Leaders of one cycle rarely lead the next, but some emerge late in a bull market and lead
+in the next one. What to watch is how they hold up in a bear market or a sizeable correction. Apple broke out of
+a base in March 2004, just as the market was topping. Each time the market made a new low, Apple made a higher
+low and built another base. That gave three buy points, the last a textbook one right off the market's low in
+August 2004. It rose 125% in six months.
+
+```series
+title: AAPL and the Nasdaq, Sep 2003 – Aug 2004 — the book's Figure 7-9 redrawn from stored data
+from: 2003-09-02
+to: 2004-09-15
+tf: D
+line: us:AAPL | AAPL | candles
+line: us:AAPL@sma50 | 50-day average
+line: us:QQQ | QQQ (Nasdaq-100) | pane2
+level: 0.423 | 1st pivot $11.74 | 2004-02-01 2004-05-31 | pivot
+level: 0.3885 | 1st stop $10.78 | 2004-02-27 2004-05-03 | stop
+level: 0.514 | 2nd pivot $14.27 | 2004-05-10 2004-07-15 | pivot
+level: 0.5893 | 3rd pivot $16.36 | 2004-07-20 2004-09-15 | pivot
+mark: 2004-02-27 | 1st buy: S7 breakout, bought | below
+mark: 2004-04-15 | +2R: a third sold
+mark: 2004-04-30 | close under the 50-day: rest sold | below
+mark: 2004-06-02 | 2nd: crossed on 0.90× volume, refused | below
+mark: 2004-08-26 | 3rd: 2.3× volume but 5.0% past the pivot, refused | below
+caption: Prices ×27.76 for the book's scale. QQQ (lower pane) topped in January and made lower lows into 12 August; Apple made higher lows and broke out three times. The market gate was closed from 10 March to 10 June and from 23 June to 24 September.
+```
+
+**What the data shows.**
+
+| Buy | Date | What the strategy sees | Decision |
+|---|---|---|---|
+| 1st ("I'm buying here") | 27 Feb 2004 | S7 near miss (only VCP-10: volume 0.83× against 0.8×) out of the base from 15 Oct 2003; close $11.86 on 1.48× volume; Trend Template and gate pass | **Bought** at the 1 Mar open, $11.95, stop $10.78 (9.7%) |
+| 2nd ("follow-up buy") | 2 Jun 2004 | S7 near miss (only VCP-08: tight area 4 sessions, needs 5); close $14.34 through the $14.27 pivot | Refused: volume 0.90× (needs 1.4×); gate closed |
+| 3rd ("3rd buy") | 25–26 Aug 2004 | Base from 28 Jun not complete (VCP-06: final contraction 0.63× the reference, needs ≤ 0.6). 25 Aug closed 0.1% over the $16.36 high on 1.21×; 26 Aug closed $17.18 on 2.29× | Refused: 25 Aug light volume, 26 Aug 5.0% past the pivot (limit 5%); gate closed until 24 Sep |
+
+The first trade, managed by the strategy's exits:
+
+| Date | Rule | Price | R |
+|---|---|---|---|
+| 15 Apr 2004 | EX-04: a third sold at +2R; EX-03: stop to breakeven | $14.27 | +2.0 |
+| 3 May 2004 | EX-06: rest sold after the first close under the 50-day (30 Apr, $12.78) | $12.89 | +0.8 |
+| Trade | | | **about +1.2R** |
+
+After that, the November 2004 – January 2005 bases are skipped: a flat base whose stop was 12.2% away, and a cheat
+on the 4th base of the advance. From the first buy to February 2005 the stock rose from $11.95 to $45 (+277%).
+
+**Why the eval set scores both cases as misses.** `ttlc-7.9-aapl-1`'s window opens on 1 Mar 2004. The strategy's
+signal came on the 27 Feb close and filled at the 1 Mar open: it caught the book's first buy, two sessions before
+the window as drawn. `ttlc-7.9-aapl-2` is a real miss (volume, gate).
+
+**Why he took them.** *Inference from his principles.* Apple was the stock that would not go down. The Nasdaq made
+lower lows in April–May and again in August; Apple made higher lows each time and built a new, tighter base
+above the last. To him every new base after a market low is another entry into a leader that has already proven
+itself, and the third, right off the market's August low, is the textbook one.
+
+**Takeaways.**
+
+- **The exit again.** Like Netflix, the strategy bought his first buy point and sold it on the first close under the
+  50-day, at +1.2R, before a +277% run. The EX-06 variants queued on 2026-11-09 test exactly this.
+- **Breakout-day rules, at the margin.** The second buy failed on volume (0.90× against 1.4×). The third split
+  across two days: the light-volume day just cleared the pivot, and the volume day landed 5.0% past it. A
+  breakout measured over two sessions, or a buy range a little wider for a gap off a tight base, would have
+  taken it. Both are candidates only if the tally repeats them.
+- **The gate, a fourth time.** It was closed for the second and third buys, the same pattern as Amazon, eBay and
+  Wal-Mart: a stock making higher lows against an index making lower ones. That pattern is the RS-line study's Q2.
+- **The eval set.** `ttlc-7.9-aapl-1`'s window could start on 27 Feb, the signal date; then it is caught. The window
+  was read off the book's chart. Moving it is a correction of the record, not of the strategy.
