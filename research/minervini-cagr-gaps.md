@@ -280,6 +280,19 @@ gap up moves the stop to the gap day's low and ratchets it on each later gap. Bu
 in **both** markets against its comparison run without deepening the maximum drawdown by more than 1 point.
 Otherwise it is recorded as a failure.
 
+**Result (runs #1419–1425, optimise, in-sample): fails.** It lowers CAGR in every pairing, in both markets.
+
+| Variant | India CAGR / max DD | US CAGR / max DD | Compared with |
+|---|---|---|---|
+| Backstop from +3R, with the 150-day | 5.77% / −15.4% | −0.58% / −26.5% | 8.26% / −20.9% · 3.08% / −23.9% |
+| Backstop from +2R, with the 150-day | 5.82% / −15.3% | −1.84% / −32.6% | the same |
+| Backstop from +3R alone | 2.67% / −14.7% | −4.08% / −40.7% | 3.71% / −20.1% · −3.30% / −40% |
+| US: + lean exits and the 150-day | — | 1.13% / −24.4% | 5.02% / −25.9% |
+
+The backstop does what it says: it gives up less of a gain, and India's drawdown falls by about 5 points. But it
+sells the winners the 150-day exit exists to keep — a gap that fills is a normal day for a leader. Recorded as a
+failure; it does not join the combined candidate. The switch stays off.
+
 ## The add on a natural reaction (1.61), queued 2026-11-10
 
 From [Minervini's ANF clip](creator-mark-minervini.md) §13: a held winner that pulls back to its 20-day average is
