@@ -2120,7 +2120,8 @@ class _BarCtx:
         return float(self.daily["close"].iloc[-1])
 
 
-_tt_bands: dict = {}   # (market, symbol, last bar, years) -> response
+_tt_bands: dict = {}   # (market, symbol, last bar, years, last stored RS Friday) -> response
+STOCK_RS_CARRY_DAYS = 10   # a Friday's stored RS rating stands for the sessions up to this many days after it
 
 
 @app.get("/api/trend-bands/{market}/{symbol}")
@@ -2129,10 +2130,14 @@ def trend_template_bands(market: str, symbol: str, years: int = 5):
     trend-health bands indicator (studies.js `trendbands`).
 
     The criteria are the screen's own functions (screens `stage2`, C1-C8), run bar by bar, never a copy in
-    JavaScript. One stock at a time cannot be ranked against the market, so C8 is the per-stock RS floor
-    (RS_MIN_SCORE on the weighted RS score), as in every single-stock tool -- looser than the rating the
-    daily screen and the backtest apply (the strategy's caveats say so). The tradability floor is left out:
-    the band reads the trend, not whether the stock is tradable that day. Exploration only.
+    JavaScript. C8 reads the stock's true RS rating (1-99 across the market) where one is stored -- the
+    weekly history in `stock_rs_history` (analytics/stock_rs_history.py), each Friday's rating carried
+    forward to the sessions after it, seeded the way the criterion documents (`rs_ranked` / `rs_rank`).
+    A bar with no stored rating (before the history, or a week the stock was outside the rated universe)
+    falls back to the per-stock floor (RS_MIN_SCORE on the weighted RS score), as in every single-stock
+    tool; `rs_rated` counts the bars that used the rating. `rs` returns the ratings for the RS strip. The
+    tradability floor is left out: the band reads the trend, not whether the stock is tradable that day.
+    Exploration only.
     """
     if market not in MARKETS:
         raise HTTPException(400, f"unknown market {market}")
@@ -2143,16 +2148,27 @@ def trend_template_bands(market: str, symbol: str, years: int = 5):
     raw = cache.load_cached(market, symbol)
     if raw is None or raw.empty:
         raise HTTPException(404, f"no prices stored for {symbol}")
+    from ..analytics import stock_rs_history
+    from ..screens.criteria import RS_MIN_RANK, RS_MIN_SCORE
     daily = ind.enrich_daily(raw)
-    key = (market, symbol, str(daily.index[-1].date()), years)
-    if key in _tt_bands:
-        return _tt_bands[key]
     if years:
         daily = daily[daily.index >= daily.index[-1] - pd.DateOffset(years=years)]
+    fridays, mine = stock_rs_history.load(market, symbol, since=(daily.index[0] - pd.Timedelta(days=10)).date())
+    key = (market, symbol, str(daily.index[-1].date()), years, str(fridays[-1]) if fridays else None)
+    if key in _tt_bands:
+        return _tt_bands[key]
+    rs = pd.Series([mine.get(f, np.nan) for f in fridays], index=pd.DatetimeIndex(fridays), dtype=float)
+    # each Friday's rating holds until the next one; a bar more than a week past the last stored Friday is unrated
+    rs = (rs.reindex(daily.index, method="ffill", tolerance=pd.Timedelta(days=STOCK_RS_CARRY_DAYS))
+          if len(rs) else pd.Series(np.nan, index=daily.index))
     crit = get_screen("stage2").criteria
-    dates, met, fails = [], [], []
+    dates, met, fails, rs_out = [], [], [], []
     for i in range(len(daily)):
         ctx = _BarCtx(daily.iloc[i:i + 1])
+        r = rs.iloc[i]
+        if r == r:
+            ctx.extras.update(rs_ranked=True, rs_rank=float(r))
+        rs_out.append(None if r != r else int(r))
         bad = []
         for c in crit:
             try:
@@ -2164,7 +2180,8 @@ def trend_template_bands(market: str, symbol: str, years: int = 5):
         dates.append(str(daily.index[i].date())); met.append(len(crit) - len(bad)); fails.append(bad)
     out = {"symbol": symbol, "market": market, "criteria": [{"code": c.code, "doc": d["text"]}
                                                             for c, d in zip(crit, get_screen("stage2").docs())],
-           "dates": dates, "met": met, "fails": fails}
+           "dates": dates, "met": met, "fails": fails, "rs": rs_out,
+           "rs_rated": sum(r is not None for r in rs_out), "rs_min_rank": RS_MIN_RANK, "rs_min_score": RS_MIN_SCORE}
     if len(_tt_bands) > 64:
         _tt_bands.clear()
     _tt_bands[key] = out

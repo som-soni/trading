@@ -271,38 +271,41 @@ A close above the cloud reads as an uptrend, below as a downtrend, inside as no 
 
 **Pitfalls.** The forward shift makes the cloud look predictive. It is not: everything in it was known 26 bars ago. The many lines also invite reading crossings everywhere, which multiplies signals rather than information.
 
-## 6. Trend-health bands — pressure, buy risk and the Trend Template
+## 6. Trend-health bands — RS rank, pressure, buy risk and the Trend Template
 
-**The question:** is this stock in good shape to own today, read as three colours instead of three numbers?
+**The question:** is this stock in good shape to own today, read as four colours instead of four numbers?
 
-Marico broke out of a flat base on 23 August 2018. It closed lower on most of the next eight sessions and was back under its 50-day average by 4 September. Three readings tracked it, each coloured green, amber or red:
+Marico broke out of a flat base on 23 August 2018. It closed lower on most of the next eight sessions and was back under its 50-day average by 4 September. Four readings tracked it, each coloured green, amber or red:
 
 | Marico (MARICO.NS) | 13 Jul 2018 | 23 Aug 2018 | 29 Aug 2018 | 4 Sep 2018 | 28 Sep 2018 |
 |---|---|---|---|---|---|
 | Close | ₹354.90 | ₹381.90 | ₹368.70 | ₹354.50 | ₹333.05 |
+| RS rank (1–99, last Friday) | 72 green | 75 green | 74 green | 71 green | 66 amber |
 | Pressure (up ÷ down volume, 20 days) | 2.20 green | 1.63 green | 0.90 amber | 0.58 red | 0.54 red |
 | Buy risk (% above the 50-day) | +7.5% green | +8.8% green | +4.3% green | −0.4% red | −6.4% red |
 | Trend Template (criteria met of 8) | 7 amber | 8 green | 7 amber | 6 amber | 4 red |
 
-On the breakout day all three were green. Pressure faded first, then the close slipped under the 50-day, and a month later the Trend Template had lost half its criteria.
+On the breakout day all four were green. Pressure faded first, then the close slipped under the 50-day, and a month later the Trend Template had lost half its criteria. The RS rank moved last: it is built from 3 to 12 months of returns, so one bad month moves it only a little.
 
 **How each band is built.**
 
+- **RS rank.** Each Friday, every liquid stock in the market gets a weighted return: the last 3, 6, 9 and 12 months added up, with the last 3 months counted twice. The stocks are then ranked, and the rank is scaled to 1–99. A rank of 80 means the stock beat 80% of the market on that measure. Green is 70 or more, amber 50–69, red below 50. The rank holds until the next Friday. A stock too cheap, too thinly traded or too new to rank has no colour that week.
 - **Pressure.** Over the last 20 sessions, add up the volume on days that closed higher and the volume on days that closed lower, and divide the first by the second. A reading of 1.25 or more is green: buyers' days carried more volume. 0.8 or less is red; between is amber.
 - **Buy risk.** How far the close sits above the 50-day average. Green from 0% to 15%, amber from 15% to 25%, red above 25% (extended) or below the average (broken). It describes where a new buy would sit, not whether the stock is good.
-- **Trend Template.** How many of Minervini's eight Stage 2 conditions the stock meets that day: above the 50-, 150- and 200-day averages; those averages stacked in order; a rising 200-day; at least 30% above the 52-week low; within 25% of the 52-week high; and relative strength. Green is all eight, amber six or seven, red five or fewer. A single stock cannot be ranked against the market, so the strength condition here uses a fixed floor on the weighted 3-to-12-month return that the rank is built from. That is looser than a true rank of 70 or more.
+- **Trend Template.** How many of Minervini's eight Stage 2 conditions the stock meets that day: above the 50-, 150- and 200-day averages; those averages stacked in order; a rising 200-day; at least 30% above the 52-week low; within 25% of the 52-week high; and relative strength. Green is all eight, amber six or seven, red five or fewer. The strength condition is the RS rank above: 70 or more. In a week with no rank, it falls back to a fixed floor on the weighted return the rank is built from, which is looser.
 
 **What it repeats.** Median correlation within a stock, US / India:
 
 | Band | RSI14 | Distance from the 50-day |
 |---|---|---|
+| RS rank | 0.38 / 0.36 | 0.44 / 0.44 |
 | Pressure | 0.71 / 0.71 | 0.65 / 0.67 |
 | Buy risk | — | 1 (it is that distance, banded) |
 | Trend Template count | 0.52 / 0.51 | 0.57 / 0.56 |
 
-Pressure is mostly momentum. The Trend Template count is the least redundant of the three, because it adds the long averages and the 52-week range.
+Pressure is mostly momentum. The RS rank repeats the least: it is slow, and it compares the stock with every other stock rather than with its own past. The Trend Template count sits between the two, because it adds the long averages and the 52-week range.
 
-**How traders use it.** As a glance at the state of a stock before reading the chart. The Trend Template is the filter. Buy risk asks whether this is a place to buy or a chase. Pressure is a reason to wait, or not to add.
+**How traders use it.** As a glance at the state of a stock before reading the chart. The Trend Template is the filter, and the RS rank says whether the stock is a leader. Buy risk asks whether this is a place to buy or a chase. Pressure is a reason to wait, or not to add.
 
 The pitfall is treating a colour change as a signal. Pressure turns amber or red inside many healthy advances. Selling a new trade on a run of down days lowered results in [Stops and exits — where a trade is wrong, and how it ends](learn-risk-stops-exits.md).
 
@@ -325,7 +328,7 @@ The pitfall is treating a colour change as a signal. Pressure turns amber or red
 | Chandelier Exit | Has it fallen 3 ATRs from the high? | 22, 3 | Donchian position (0.74) | Trailing stop |
 | Ichimoku cloud | Above or below the middle of past ranges? | 9 / 26 / 52 | Distance from 50-day (0.76) | Trend filter; zones |
 | Chande Trend Meter | All of the above in one score | Not published | Not measured | Ranking trend strength |
-| Trend-health bands | Pressure, buy risk and the Trend Template, as colours | 20-day volume; 15/25% above the 50-day; 8 conditions | RSI14 (0.71, pressure) | A glance before the chart; the Trend Template as the filter |
+| Trend-health bands | RS rank, pressure, buy risk and the Trend Template, as colours | RS 70 / 50; 20-day volume; 15/25% above the 50-day; 8 conditions | RSI14 (0.71, pressure) | A glance before the chart; the Trend Template as the filter |
 | RS line | Is it beating the index? | Price ÷ index | Not measured | Choosing leaders |
 
 ## 9. What the evidence says
@@ -354,10 +357,14 @@ What it shows:
 
 **The trend-health bands, tested.** Did a colour sort the next three months?
 
-> **Method.** Today's listed US and Indian stocks with a close of at least $5 / ₹20 and 50-day average turnover of at least $20 million / ₹10 crore, and at least 200 sessions of history. Each Friday from June 2014 to July 2026, every stock's three colours; its return over the next 63 sessions minus the average of all such stocks that day, outliers trimmed at 1% and 99%. t-statistics use monthly averages. About 748,000 US and 251,000 Indian stock-weeks.
+> **Method.** Today's listed US and Indian stocks with a close of at least $5 / ₹20 and 50-day average turnover of at least $20 million / ₹10 crore, and at least 200 sessions of history. Each Friday from June 2014 to July 2026, every stock's four colours; its return over the next 63 sessions minus the average of all such stocks that day, outliers trimmed at 1% and 99%. t-statistics use monthly averages. About 748,000 US and 251,000 Indian stock-weeks. The Trend Template rows use the fixed strength floor, not the RS rank.
 
 | Band and colour | US: share of weeks | US: next 3 months vs average | India: share of weeks | India: next 3 months vs average |
 |---|---|---|---|---|
+| RS rank green (70–99) | 30.4% | +0.6% (t 1.9) | 28.8% | +1.8% (t 7.1) |
+| RS rank amber (50–69) | 19.0% | +0.4% (t 2.0) | 19.3% | +0.3% (t 1.9) |
+| RS rank red (1–49) | 45.7% | −0.2% (t −1.2) | 47.1% | −1.0% (t −5.7) |
+| RS rank: none (too new to rank) | 4.9% | −3.3% (t −5.1) | 4.8% | −1.7% (t −4.2) |
 | Pressure green (≥ 1.25) | 37.5% | −0.1% (t −1.3) | 52.4% | +0.2% (t 2.1) |
 | Pressure amber | 33.2% | +0.2% (t 2.3) | 24.6% | −0.2% (t −2.8) |
 | Pressure red (≤ 0.8) | 29.3% | −0.1% (t −0.6) | 23.0% | −0.3% (t −3.2) |
@@ -371,6 +378,7 @@ What it shows:
 
 What it shows:
 
+- **The RS rank sorted India strongly and the US weakly.** In India the top tenth (90–99) led by 2.5% and the bottom fifth (1–19) lagged by 1.8%, both t above 4.8. In the US the top four-fifths were close to one another, and only the bottom fifth lagged clearly (−0.8%, t −2.3). Stocks too new to rank lagged in both markets.
 - **The Trend Template band sorted best**, and mostly at the bottom. Stocks meeting five or fewer conditions lagged in both markets. Meeting all eight led clearly in India and only weakly in the US.
 - **Below the 50-day lagged in both markets.** Above it, the colour of buy risk mattered little, except at the extremes.
 - **"Extended" split the markets.** More than 25% above the 50-day was followed by a 3% lag in the US and a 1.6% lead in India. It is not a reliable reason to sell on its own.

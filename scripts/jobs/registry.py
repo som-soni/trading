@@ -518,6 +518,18 @@ def _sectors(ctx: Ctx) -> None:
                        + (f" · {n_theme} theme history rows added" if n_theme else ""))
 
 
+def _stock_rs_history(ctx: Ctx) -> None:
+    """Each stock's weekly RS rating (analytics/stock_rs_history.py) -- the chart's RS strip reads it.
+    Adds the Fridays not stored yet (the first run backfills from 2010); `--force` rates every one again."""
+    from swing_screener.analytics import stock_rs_history
+    r = stock_rs_history.ensure(ctx.market, rebuild=bool(ctx.opt("force")))
+    if not r["dates"]:
+        ctx.step.skip(f"every Friday already rated · latest {r['latest']}")
+        return
+    ctx.step.detail = f"{r['dates']} Friday(s) rated, {r['rows']} ratings · latest {r['latest']}"
+    ctx.step.stats = {"dates": r["dates"], "rows": r["rows"]}
+
+
 # ------------------------------------------------------------------ screening
 
 def _check_prices(market: str, allow_stale: bool) -> str:
@@ -1117,6 +1129,10 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         after=("prices", "indexes", "breadth")),
     Job("sectors", "analytics", "sector ranking: RS ratings, rotation, breadth per group (kept daily)", "daily", False, _sectors,
         after=("prices", "industries")),
+    # main lane on purpose: the weekly run adds one Friday per market in seconds, inside the weekly
+    # pipeline (a main-lane item anyway); only the one-off backfill takes minutes
+    Job("stock_rs_history", "analytics", "stock RS history: each stock's RS rating (1-99 across the market) every Friday "
+        "since 2010 -- the chart's RS strip", "weekly", False, _stock_rs_history, after=("prices",)),
     Job("screens", "screening", "screens: the day's stock snapshot (~45 fields per stock) every screen queries", "daily", False, _screens,
         after=("prices",)),
     Job("breakout_watch", "screening", "breakout watch: the day's Breakout watch members, kept as the screen's forward record "
@@ -1176,9 +1192,9 @@ PIPELINES: dict[str, dict] = {
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
                  "jobs": ["backtest", "ingest"]},
     "weekly": {"summary": "reference data: universe list, company names, fund labels, earnings dates, analyst estimates, fundamentals, "
-                          "company financials and their scores, quality scores; corporate actions; split & bonus repair",
+                          "company financials and their scores, quality scores; corporate actions; split & bonus repair; each stock's weekly RS rating",
                "jobs": [("universe", {"force": True}), "names", "classify", "corporate_actions", "splits", "earnings", "estimates", "guidance", "fundamentals", "financials",
-                        "fundamental_scores", "quality", "fpi_sectors", "prune_signals"]},
+                        "fundamental_scores", "quality", "fpi_sectors", "stock_rs_history", "prune_signals"]},
     "monthly": {"summary": "re-classify industries and sub-industries, fill gaps in the month-end snapshot history, re-run the group-strength study",
                 "jobs": [("industries", {"force": True}), "subindustries", "screen_history", "group_research", "ingest"]},
     "quality": {"summary": "on demand: fetch financial statements and score companies (the Quality screen) — slow, network-heavy",
