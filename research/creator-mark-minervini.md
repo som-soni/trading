@@ -344,6 +344,12 @@ measurements:
 (US) are queued ([CAGR gaps](minervini-cagr-gaps.md)). The rule was sliced from the same window, so those runs can
 only rule it out; a pass earns one verify run with criteria written first.
 
+**On the chart.** The chart's setups drawing applies the same check, so the frame agrees with the backtest. With the
+switch on, a cheat's card gets a *Pullbacks* row ("1, at least 2"). A one-dip cheat then reads "trade skipped" and
+the card gives the pullback count as the reason. With the switch off, which is the default, nothing on the chart changes. Checked on
+Zydus, Marico, Britannia and Manappuram: only the one-pullback cheats change, among them Zydus's 2001 and Britannia's
+2013.
+
 ## 10. How it compares
 
 - **With the repository's Minervini implementation**: the spec covers the Trend Template, the VCP, pivots, stops, the market
