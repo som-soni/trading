@@ -1268,6 +1268,111 @@ def parse_nse_xbrl(content: bytes) -> dict | None:
     return out
 
 
+NSE_H1_DAYS = (175, 190)       # a half-year context: the first two quarters of a fiscal year
+NSE_H1_PARSER = 1
+NSE_H1_FIELDS = ("revenue", "net_income", "pretax_income", "eps")
+
+
+def parse_nse_h1(content: bytes) -> dict | None:
+    """A second-quarter document's half-year and quarter figures, this year and a year ago:
+    {"h1": {start, end, revenue, ...}, "q2": {...}, "h1_ago": {...}, "q2_ago": {...}} (each when filed).
+
+    NSE's results feed has no record of many companies' first-quarter (June) results -- on either basis, in the
+    company's own listing or the market-wide sweep -- yet their September document carries the half year.
+    `_derive_q1` subtracts the quarter from it."""
+    from lxml import etree
+    root = etree.fromstring(content, etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=True))
+    local = lambda el: etree.QName(el).localname  # noqa: E731
+    ctxs = {}
+    for c in root.iter("{*}context"):
+        start, end = c.find(".//{*}startDate"), c.find(".//{*}endDate")
+        if start is None or end is None or c.find(".//{*}segment") is not None or c.find(".//{*}scenario") is not None:
+            continue
+        ctxs[c.get("id")] = (_d(start.text), _d(end.text))
+    stated: dict = defaultdict(dict)
+    for el in root.iter("{*}DateOfStartOfReportingPeriod", "{*}DateOfEndOfReportingPeriod"):
+        stated[el.get("contextRef")][local(el)[6:11]] = _d(el.text)
+    for cid, d in stated.items():
+        if d.get("Start") and d.get("EndOf"):
+            ctxs[cid] = (d["Start"], d["EndOf"])
+    quarters = [(s, e) for s, e in ctxs.values() if s and e and _in((e - s).days, QUARTER_DAYS)]
+    if not quarters:
+        return None
+    q_end = max(e for _, e in quarters)
+    vals: dict = defaultdict(dict)
+    for el in root.iter():
+        if isinstance(el.tag, str) and el.get("contextRef") in ctxs:
+            vals[el.get("contextRef")].setdefault(local(el), el.text)
+
+    def figures(kind_days, end):
+        cid = next((c for c, (s, e) in ctxs.items() if e == end and s and _in((e - s).days, kind_days)), None)
+        if cid is None:
+            return None
+        v = vals.get(cid, {})
+        out = {"start": ctxs[cid][0], "end": end, "revenue": next((_num(v[n]) for n in NSE_TAGS["revenue"] if _num(v.get(n)) is not None), None),
+               "net_income": _nse_profit(v), "eps": _nse_eps(v),
+               "pretax_income": next((_num(v[n]) for n in NSE_TAGS["pretax_income"] if _num(v.get(n)) is not None), None)}
+        return out if out["revenue"] is not None or out["net_income"] is not None else None
+
+    ago = next((e for _, e in quarters if _in((q_end - e).days, YEAR_APART)), None)
+    out = {"h1": figures(NSE_H1_DAYS, q_end), "q2": figures(QUARTER_DAYS, q_end),
+           "h1_ago": figures(NSE_H1_DAYS, ago) if ago else None, "q2_ago": figures(QUARTER_DAYS, ago) if ago else None}
+    return out if out["h1"] and out["q2"] else None
+
+
+def _nse_h1_doc(url: str) -> dict | None:
+    """parse_nse_h1 of one document, cached (nse_documents is keyed on the URL, so under `url#h1`: the
+    document's own parse stays where it is). Dates come back as dates, from the cache or not."""
+    key = f"{url}#h1"
+    hit = _cache_get(key, "h1", NSE_H1_PARSER)
+    if hit is None:
+        try:
+            hit = parse_nse_h1(_nse.get(url).content) or {}
+        except Exception as exc:  # noqa: BLE001 -- an unreadable document derives nothing
+            logger.debug("%s unreadable for the half year: %s", url, exc)
+            hit = {}
+        _cache_put(key, "h1", NSE_H1_PARSER, hit)
+        hit = json.loads(json.dumps(hit, default=str))
+    for part in hit.values():
+        if part:
+            part["start"], part["end"] = _d(part["start"]), _d(part["end"])
+    return hit or None
+
+
+def _derive_q1(quarters: dict, basis: str, since: dt.date | None = None) -> list[dict]:
+    """First quarters NSE never listed, from the next quarter's document: half year minus that quarter.
+
+    `quarters`: {period end: row} of one basis. For each second quarter (a row whose period starts three months
+    after its fiscal year does: the half-year context starting the day before the quarter's start minus a
+    quarter) with no first quarter beside it, the first quarter is the September document's half year less its
+    quarter, and its year-ago comparative the same from the year-ago columns. It is dated by that document's
+    filing -- the day the figure became public -- and marked derived, like the SEC's Q4 (full year - nine months).
+    """
+    out = []
+    for end, r in sorted(quarters.items()):
+        if not r.get("doc_url") or not str(r["doc_url"]).lower().endswith(".xml") or r.get("derived"):
+            continue
+        q1_end = (r["period_start"] or end) - dt.timedelta(days=1) if r.get("period_start") else None
+        if q1_end is None or q1_end in quarters or (since and q1_end < since):
+            continue
+        if any(abs((q1_end - e).days) <= 10 for e in quarters):
+            continue
+        h = _nse_h1_doc(r["doc_url"])
+        if not h or h["h1"]["end"] != end or not _in((h["q2"]["start"] - h["h1"]["start"]).days, QUARTER_DAYS):
+            continue
+        row = _row(period_end=q1_end, period_start=h["h1"]["start"], source=r["source"], basis=basis, filed=r["filed"],
+                   derived=True, doc_url=r["doc_url"], shares=r.get("shares"))
+        for k in NSE_H1_FIELDS:
+            a, b = h["h1"].get(k), h["q2"].get(k)
+            row[k] = a - b if a is not None and b is not None else None
+            if h.get("h1_ago") and h.get("q2_ago"):
+                a, b = h["h1_ago"].get(k), h["q2_ago"].get(k)
+                row[f"{k}_prior"] = a - b if a is not None and b is not None else None
+        if row["revenue"] is not None or row["net_income"] is not None:
+            out.append(row)
+    return out
+
+
 def _cache_get(url: str, kind: str, parser: int) -> dict | None:
     with db.get_connection().cursor() as cur:
         cur.execute("SELECT parsed FROM nse_documents WHERE url=%s AND kind=%s AND parser=%s", (url, kind, parser))
@@ -1361,7 +1466,10 @@ def fetch_nse(symbol: str, reparse: bool = False) -> tuple[list[dict], dict]:
                 continue
             lines += [(ptype, p["period_end"], k, v) for k, v in vals.items()]
     rows = list({r["period_end"]: r for r in rows}.values())
+    q1 = _derive_q1({r["period_end"]: r for r in rows}, basis, since=min(window))
+    rows = sorted(rows + q1, key=lambda r: r["period_end"])
     return rows, {"basis": basis, "layout": layout, "lines": lines, "parser": NSE_PARSER_VERSION,
+                  **({"derived_q1": len(q1)} if q1 else {}),
                   **({"unreadable_documents": failed} if failed else {})}
 
 
@@ -1522,6 +1630,11 @@ def fetch_nse_history(symbol: str, before: dt.date | None, reparse: bool = False
     by_basis: dict = defaultdict(dict)
     for r in rows:
         by_basis[r["basis"]][r["period_end"]] = r
+    for b, quarters in by_basis.items():
+        for r in _derive_q1(quarters, b, since=HISTORY_START):
+            if not before or r["period_end"] < before:
+                quarters[r["period_end"]] = r
+                rows.append(r)
     for quarters in by_basis.values():
         for end, r in quarters.items():
             ago = next((q for e, q in quarters.items() if YEAR_APART[0] <= (end - e).days <= YEAR_APART[1]), None)
