@@ -168,6 +168,11 @@ CREATE TABLE IF NOT EXISTS nse_filing_index (
     swept_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (symbol, to_date, consolidated, xbrl, html)
 );
+-- a US filer that re-registered under a new CIK (a holding-company reorganisation: ExxonMobil 2026, BlackRock
+-- 2024, Marvell 2021) has its earlier filings under the old one; sec_predecessor finds it once, null when none
+CREATE TABLE IF NOT EXISTS sec_predecessors (
+    cik INT PRIMARY KEY, predecessor_cik INT, matched TEXT, checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS quarterly_fetch (
     market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL,
     fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -229,7 +234,11 @@ def _row(**kw) -> dict:
 SEC_CONCEPTS = {
     "revenue": ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax",
                 "SalesRevenueNet", "SalesRevenueGoodsNet", "SalesRevenueServicesNet", "RevenuesNetOfInterestExpense",
-                "InterestAndDividendIncomeOperating"),
+                "InterestAndDividendIncomeOperating",
+                # last, so they only fill quarters the general concepts leave empty: utilities file their total
+                # as regulated + unregulated revenue, REITs and homebuilders as real-estate revenue, refiners
+                # as refining and marketing -- DTE, AWK, PLD, MTH and VLO had no sales reading without them
+                "RegulatedAndUnregulatedOperatingRevenue", "RealEstateRevenueNet", "RefiningAndMarketingRevenue"),
     "net_income": ("NetIncomeLoss", "NetIncomeLossAvailableToCommonStockholdersBasic", "ProfitLoss"),
     "eps": ("EarningsPerShareDiluted", "EarningsPerShareBasicAndDiluted", "EarningsPerShareBasic"),
     "gross_profit": ("GrossProfit",),
@@ -240,7 +249,10 @@ SEC_CONCEPTS = {
 SEC_SHARES = ("WeightedAverageNumberOfDilutedSharesOutstanding", "WeightedAverageNumberOfShareOutstandingBasicAndDiluted")
 SEC_EQUITY = ("StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest")
 SEC_FORMS = ("10-Q", "10-K", "10-QT", "10-KT")
-QUARTER_DAYS, NINE_MONTH_DAYS, YEAR_DAYS = (80, 100), (250, 290), (350, 380)
+# A quarter is 12-17 weeks: a 52/53-week year has one 16- or 17-week quarter (PepsiCo's Q4, AutoZone's Q1, Costco's
+# Q4 -- 112 days, 119 in a 53-week year), which a 100-day ceiling dropped every year, and with it every
+# trailing-four-quarter reading.
+QUARTER_DAYS, NINE_MONTH_DAYS, YEAR_DAYS = (80, 120), (250, 290), (350, 380)
 YEAR_APART = (355, 375)       # the same quarter a year earlier (52/53-week years drift by a few days)
 
 
@@ -565,19 +577,134 @@ def sec_lines(facts_json: dict, rows: list[dict]) -> tuple[list[tuple], str]:
     return out, "us"
 
 
+SEC_PREDECESSOR_AFTER = dt.date(2011, 12, 31)   # a filer whose first 10-Q / 10-K came later is checked for a predecessor:
+                                                # XBRL was universal for US filers by mid-2011
+SEC_PREDECESSOR_PROBES = 4      # earliest calendar quarters whose figures are looked up in the other filers' frames
+SEC_PREDECESSOR_MIN_VAL = 1e6   # ... only figures this large: an exact match on a small number could be chance
+SEC_PREDECESSOR_MATCHES = 2     # ... and at least this many must agree on one filer
+SEC_PREDECESSOR_LEAD_DAYS = 365 # which must have been filing at least this long before
+SEC_PREDECESSOR_DEPTH = 3       # Broadcom Inc <- Broadcom Ltd <- Avago: follow a chain this far
+_frames: dict = {}
+
+
+def _sec_facts(cik: int) -> dict | None:
+    r = requests.get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json", headers=_sec_headers(), timeout=60)
+    time.sleep(SEC_PAUSE)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return r.json()
+
+
+def _first_filed(gaap: dict) -> dt.date | None:
+    filed = [_d(f["filed"]) for c in gaap.values() for u in c.get("units", {}).values() for f in u
+             if str(f.get("form", "")).split("/")[0] in SEC_FORMS]
+    return min(filed) if filed else None
+
+
+def _frame(concept: str, frame: str) -> dict:
+    """{cik: (value, entity name)} of every filer's figure for one calendar period (SEC's frames API)."""
+    key = (concept, frame)
+    if key not in _frames:
+        r = requests.get(f"https://data.sec.gov/api/xbrl/frames/us-gaap/{concept}/USD/{frame}.json",
+                         headers=_sec_headers(), timeout=60)
+        time.sleep(SEC_PAUSE)
+        _frames[key] = ({d["cik"]: (d["val"], d.get("entityName")) for d in r.json().get("data", [])}
+                        if r.status_code == 200 else {})
+    return _frames[key]
+
+
+def _match_predecessor(cik: int, gaap: dict) -> tuple[int | None, str | None]:
+    """The other filer that reported exactly the figures this one restates for its earliest quarters.
+
+    A successor's first 10-Q carries the year-ago quarter as a comparative -- the predecessor's own figure.
+    SEC's frames hold one value per filer per calendar quarter, so the same revenue and net income to the
+    dollar under another CIK names the predecessor. One figure is not enough (Alcoa's -$124M net loss for
+    Q3 2015 is also CNH Industrial's): SEC_PREDECESSOR_MATCHES of them must point at the same filer, and it
+    must have been filing for at least SEC_PREDECESSOR_LEAD_DAYS before this one -- a co-registrant filing the
+    same figures alongside it (Broadcom Ltd and Broadcom Cayman L.P.) is not where its history lives. A spin-off
+    restates carve-out figures its parent never reported, so it finds none, which is right: the parent's
+    history is not its own.
+    """
+    probes = []
+    for concept in (*SEC_CONCEPTS["revenue"], *SEC_CONCEPTS["net_income"]):
+        for f in _sec_units(gaap.get(concept, {}), "USD"):
+            fr = f.get("frame") or ""
+            if fr.startswith("CY") and "Q" in fr and not fr.endswith("I") and abs(f.get("val") or 0) >= SEC_PREDECESSOR_MIN_VAL:
+                probes.append((f["end"], concept, fr, f["val"]))
+    seen, hits = set(), defaultdict(list)
+    for _, concept, fr, val in sorted(probes):
+        if (concept, fr) in seen:
+            continue
+        seen.add((concept, fr))
+        if len({p for _, p in seen}) > SEC_PREDECESSOR_PROBES:
+            break
+        for c, (v, name) in _frame(concept, fr).items():
+            if v == val and c != cik:
+                hits[c].append(f"{concept} {fr} = {val:,.0f} ({name})")
+    first = _first_filed(gaap)
+    for c, how in sorted(hits.items(), key=lambda kv: -len(kv[1])):
+        if len(how) < SEC_PREDECESSOR_MATCHES:
+            break
+        older = _sec_facts(c)
+        older_first = _first_filed(older.get("facts", {}).get("us-gaap", {})) if older else None
+        if older_first and first and (first - older_first).days >= SEC_PREDECESSOR_LEAD_DAYS:
+            return c, "; ".join(how)
+    return None, None
+
+
+def sec_predecessor(cik: int, gaap: dict) -> int | None:
+    """The CIK this filer's earlier filings live under, if it re-registered; looked up once and stored."""
+    with db.get_connection().cursor() as cur:
+        cur.execute("SELECT predecessor_cik FROM sec_predecessors WHERE cik=%s", (cik,))
+        r = cur.fetchone()
+    if r is not None:
+        return r[0]
+    first = _first_filed(gaap)
+    pred, how = _match_predecessor(cik, gaap) if first and first > SEC_PREDECESSOR_AFTER else (None, None)
+    with db.get_connection().cursor() as cur:
+        cur.execute("INSERT INTO sec_predecessors (cik, predecessor_cik, matched) VALUES (%s, %s, %s) "
+                    "ON CONFLICT (cik) DO UPDATE SET predecessor_cik=EXCLUDED.predecessor_cik, matched=EXCLUDED.matched, "
+                    "checked_at=now()", (cik, pred, how))
+    if pred:
+        logger.info("SEC CIK %s: predecessor %s (%s)", cik, pred, how)
+    return pred
+
+
+def _merge_facts(js: dict, older: dict) -> dict:
+    """Add a predecessor's us-gaap facts under this filer's. Facts are keyed by filing, so nothing collides:
+    sec_quarters still takes each quarter as first reported (the predecessor's own 10-Q), and the balance-sheet
+    and annual readers the latest filed, as they do for one CIK."""
+    gaap = js.setdefault("facts", {}).setdefault("us-gaap", {})
+    for concept, c in older.get("facts", {}).get("us-gaap", {}).items():
+        mine = gaap.setdefault(concept, {"units": {}})
+        for unit, facts in c.get("units", {}).items():
+            mine["units"][unit] = facts + mine["units"].get(unit, [])
+    return js
+
+
 def fetch_sec(symbol: str) -> tuple[list[dict], dict]:
     cik = _sec_cik(symbol)
     if cik is None:
         return [], {"note": "not an SEC filer"}
-    r = requests.get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json", headers=_sec_headers(), timeout=60)
-    time.sleep(SEC_PAUSE)
-    if r.status_code == 404:
+    js = _sec_facts(cik)
+    if js is None:
         return [], {"cik": cik, "note": "no XBRL facts"}
-    r.raise_for_status()
-    js = r.json()
+    chain, at, at_gaap = [], cik, dict(js.get("facts", {}).get("us-gaap", {}))
+    for _ in range(SEC_PREDECESSOR_DEPTH):
+        pred = sec_predecessor(at, at_gaap)
+        if not pred or pred in chain or pred == cik:
+            break
+        older = _sec_facts(pred)
+        if older is None:
+            break
+        at, at_gaap = pred, older.get("facts", {}).get("us-gaap", {})
+        js = _merge_facts(js, older)
+        chain.append(pred)
     rows = parse_sec(js)
     lines, layout = sec_lines(js, rows) if rows else ([], None)
     return rows, {"cik": cik, "name": js.get("entityName"), "layout": layout, "lines": lines,
+                  **({"predecessor_ciks": chain} if chain else {}),
                   **({} if rows else {"note": "no quarterly 10-Q facts (a foreign filer on 20-F/40-F?)"})}
 
 
