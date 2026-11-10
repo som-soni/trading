@@ -350,6 +350,22 @@ the card gives the pullback count as the reason. With the switch off, which is t
 Zydus, Marico, Britannia and Manappuram: only the one-pullback cheats change, among them Zydus's 2001 and Britannia's
 2013.
 
+**Textbook cheats disagree (event study, 2026-11-10).** Rebuilt from stored prices with no strategy code, 2014–2026,
+liquid stocks: a 5-session shelf at most 8% wide, in the lower two thirds of a 10–40% base, quiet volume, above a
+rising 200-day; buy the next open, stop under the shelf, measured at the stop or after 40 sessions. Pullbacks are
+4% dips on closes.
+
+| Base before the cheat | India avg R (n) | US avg R (n) |
+|---|---|---|
+| 0–1 pullbacks | +0.23 (2,902) | +0.02 (8,100) |
+| 2+, each shallower | +0.17 (1,643) | −0.01 (3,495) |
+| 2+, other | +0.20 (2,939) | +0.05 (6,581) |
+
+No split, in either half of the period or either third of the base; short one-dip bases like Zydus's did no worse.
+The strategy-trade split above rests on 24 India and 82 US one-pullback cheats, so it is likely noise. Expect
+#1451–1452 to fail; the Learn guide now says the count is a way to read a chart, not an edge. Script:
+`cheat_study.py` (session scratchpad, not kept).
+
 ## 10. How it compares
 
 - **With the repository's Minervini implementation**: the spec covers the Trend Template, the VCP, pivots, stops, the market

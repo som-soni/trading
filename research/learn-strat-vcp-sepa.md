@@ -123,9 +123,21 @@ Read as a cheat, that is a buy near ₹324 with a stop under ₹302.32. The stop
 
 Look at what the "base" was. It had one pullback from a one-day spike, 16 sessions long. There was no decline in a downtrend, no first rally and no second push, so the 3C sequence above never happened. The shelf was the drift's own pause.
 
-The rule that follows is simple. Before buying a cheat, count the pullbacks in the base. One dip after a sharp run is a pullback, not a contraction. Ask for at least two, each shallower than the last.
+The textbook reading is to count the pullbacks before buying a cheat. One dip after a sharp run is a pullback, not a contraction, so the rule asks for at least two.
 
-The evidence is thin. Minervini describes the sequence, but no published test splits cheat entries by how many pullbacks the base had. Treat this as a reading rule, not a measured edge.
+The count did not sort trades when measured. *Event study on stored prices, 2014–2026:* every textbook cheat on liquid stocks was rebuilt, then split by its base's pullbacks. A cheat here is a 5-session shelf at most 8% wide, on quiet volume. It sits in the lower two thirds of a base 10–40% deep, above a rising 200-day.
+
+A pullback is a dip of at least 4% on closes. Each trade bought the next open, with a stop just under the shelf, and was measured at the stop or after 40 sessions.
+
+| Base before the cheat | India avg R (cheats) | US avg R (cheats) |
+|---|---|---|
+| 0–1 pullbacks | +0.23 (2,902) | +0.02 (8,100) |
+| 2+ pullbacks, each shallower | +0.17 (1,643) | −0.01 (3,495) |
+| 2+ pullbacks, other | +0.20 (2,939) | +0.05 (6,581) |
+
+The gaps sit inside the noise: about ±0.04R in India and ±0.02R in the US. The result was the same in each half of the period and in each third of the base. Short one-dip bases like Zydus's did no worse. The stock list is today's, so delisted names are missing.
+
+So the count is a way to read a chart, not an edge. Zydus failed, but a one-dip cheat did as well as any other on average. The stop, not the pullback count, is what limited the damage.
 
 ### A second setup: the power play
 
