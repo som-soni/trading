@@ -1957,6 +1957,15 @@ class MinerviniSpecStrategy(Strategy):
         "is divided by every later split, so a price floor there would delete the stocks that rose most.",
         "**The low cheat (MV-03) is on because the guide lists it**, but it lost heavily when measured in 1.5 "
         "(India 2010 onward: 25 trades, a 4% win rate, -0.515R each). Read its trades separately.",
+        "**A trade that starts weak is held to its stop.** Minervini sells early on violations soon after the "
+        "buy: a heavy-volume reversal, a close back below the pivot, more down days than up. The strategy "
+        "does not, so a trade like Manappuram (May 2018) or Marico (Aug 2018) takes a full -1R where he might "
+        "have lost about half that. This is measured, not missed (10 Nov 2026, the optimise trades replayed "
+        "alone). The exits tried sell at the next open after a close below the pivot (with or without "
+        "above-average volume), 3 or 4 down closes in a row, or more down days than up, within 5-10 sessions. "
+        "None raised the average in both markets: India +0.20R held against +0.04R to +0.20R, US -0.040R against "
+        "-0.031R to -0.052R. The trades sold include breakouts that dip first and then run. The narrower "
+        "test is the stop cap ({MAX_STOP_PCT}% now; 8% and 6% queued), which skips a wide stop instead.",
         "**Circuit limits** (C-03, India) are not modelled: a stop on a locked day fills at the next open, "
         "which daily bars cannot tell apart from a gap.",
         "**Base number** counts the bases that produced a breakout since the trend last broke; it is "
