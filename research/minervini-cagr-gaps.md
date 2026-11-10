@@ -243,6 +243,26 @@ The pick among them follows a rule fixed now: the highest CAGR in India whose ma
 −22%, provided the same configuration does not lower the US result against the US baseline. That one candidate
 becomes a new version and gets its single verify run, with pass criteria written before it runs.
 
+**Result (runs #1404–1410, optimise 2013–2021, in-sample).** The baselines are 3.71% / −20.1% for India and
+−3.30% / −40% for the US.
+
+| Candidate | India CAGR | India max DD | US CAGR | US max DD |
+|---|---|---|---|---|
+| A: 150-day + no near-miss | 9.51% | −22.6% | −1.85% | −42.1% |
+| B: A + segment trend added | **10.14%** | **−18.7%** | −1.62% | −40.4% |
+| C: A + segment trend in place of the index test | 9.69% | −20.8% | +1.66% | −21.2% |
+| D (US only): lean + 150-day + segment trend in place of index | — | — | **+8.20%** | −19.6% |
+
+- **B is the pick under the fixed rule.** A breaks the −22% cap. B has the highest India CAGR of the two that
+  stay inside it, and it does not lower the US result (−1.62% against −3.30%).
+- **The rule leaves the US where it was.** B's US drawdown stays at −40%. C halves it and turns the US positive,
+  at a cost of 0.45 points in India. D, the US's own levers, reaches 8.2% with a −19.6% drawdown on 379 trades.
+  That makes the case for per-market settings, but the rule fixed beforehand asks for one configuration, so the
+  rule is not changed after the fact.
+- **Not yet a version.** The gap backstop (1.60) and the reaction add (1.61) are still running, and each was set to
+  join the candidate if it passes its own rule. B becomes a version, with its verify pass criteria written first,
+  once those two batches are in.
+
 ## The gap-day backstop (1.60), queued 2026-11-10
 
 From the [Minervini team's June 2026 trade review](creator-mark-minervini.md) §12: once a trade is well in profit, a
