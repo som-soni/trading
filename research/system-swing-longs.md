@@ -66,6 +66,9 @@ mostly sector and low beta. The setup and the feedback decide, not the list.
 | L6 | **Higher, tighter pivot** — a second pivot higher in the same base | New entry, or an add | Under the new tight area | Minervini (Ollie's 2016) | Untested |
 | L7 | **Lead and rest** — a stock that ran far during the decline bases while the market catches up; its RS line lags | Base breakout; the RS-line lag is *allowed* here | Under the tight area; cut fast if no follow-through | Minervini (Netflix 2009) | Untested |
 | L8 | **Anchored-VWAP pullback** in an uptrend | First try where the hourly line is touched; second try at the daily line after an intraday breakout | Under the try's low | Luk (SK Hynix); [VWAP](learn-strat-vwap.md) Strategy C | The daily version is in the Learn guide; untested here |
+| L9 | **Pause pivot** — a strong stock (RS near the top) pulls back in three or four lower lows after a power move, then pauses; buy the break of the pause | Over the pause's high | Under the pause low | Ritchie/Hedgepath (Vicor, Dec 2025; Arm, May 2026) | Untested; our detector refuses it (VCP-08 tightness) |
+| L10 | **Pullback buy after a missed breakout** — a low-volume 1-2-3 pullback to the cheat area or the 50-day, then an inside day or a turn | Over the inside day's high | Under the pullback low; out in 5–10 sessions if it does not work | Ritchie/Hedgepath (Fluence, Modine 2026) | Untested; our detector refuses Modine (VCP-06) |
+| L11 | **First setup after a new all-time high out of a multi-year base** — may come before the Trend Template is met | The first tight setup above the old high | Under the setup | Ritchie (Arm), Weissman (IREN, Aug 2025) | Untested; refused by the Trend Template's stacked averages (G4) |
 
 ## 4. Execution
 
@@ -89,6 +92,10 @@ The two creators disagree on partial profits, and both are right for different m
 | A gap-up in my favour | Sell some into the gap | Luk |
 | Kullamägi's default | Sell a third to a half after 3–5 days; trail the rest on a close below the 10- or 20-day | [Kullamägi](learn-strat-kullamagi.md) |
 | Missed the first base | Wait for the second or third; late-stage bases can give faster, blow-off profits | Minervini |
+| Up 15–20% before the first natural reaction | Sell a third or a quarter "to finance the risk", so the rest can sit through the reaction | Ritchie/Hedgepath (Seagate, Modine, Arm) |
+| A news or earnings gap up while well in profit | Backstop at the gap day's low; ratchet it up as the move goes vertical; no resting trailing stop | Ritchie/Hedgepath (Modine, Micron 2026) |
+| Results due | Never hold an overweight position into them; hold a remainder only with profit banked | Ritchie/Hedgepath (Broadcom, Dec 2025) |
+| Last piece of a winner | Close below the 50-day, ratcheted higher once enough is made | Ritchie/Hedgepath (Seagate) |
 
 *Proposed decision rule:* at entry, label the trade **tradable** or **leader**. Tradable → scale out into strength; leader →
 hold and trail. Never take a partial only because a trade went fast.
@@ -100,3 +107,6 @@ hold and trail. Never take a partial only because a trade went fast.
 | ~~L3 fast rebound~~ | Done 4 Nov 2026: [event study](minervini-fast-rebound-study.md) — no edge over Stage 2 stocks bought the same day, over the index, or over buying at the new high; rejected |
 | L5 failure reset | A base whose pivot fails and undercuts, followed within 30 sessions by higher lows while the index makes a lower low |
 | Tradable vs leader labelling | Split past base breakouts by group (cyclical vs growth) and compare the scale-out exit with the trailing exit |
+| Gap-day backstop | In the `minervini` backtest, once a position is +3R or more, a gap up of 1 ATR or more moves the stop to that day's low; compare with the 150-day room after +3R (the current best exit) |
+| Earnings rule for held positions | Before a results date, sell all if the open gain is under a cushion, else sell part; needs point-in-time results dates in the backtest |
+| L9 pause pivot, L10 pullback buy | As new setups in the `minervini` strategy, research switches off, with pass criteria written first |

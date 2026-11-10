@@ -10,6 +10,8 @@ against stored prices (§9).*
 the `minervini_spec` strategy, [SEPA and the VCP](learn-strat-vcp-sepa.md)). This note records what the talks add
 beyond those — here, **how he finds the next leaders while the market is still falling**.*
 
+*What went where (June 2026 podcast, §12): trading system — [swing longs](system-swing-longs.md) setups L9–L11, the management rows and the tests; Learn — nothing new (the results-cushion rule is already in [SEPA and the VCP](learn-strat-vcp-sepa.md)).*
+
 *What went where: Learn — [bases](learn-bases.md) §6 (the leader that rests — an exception to "laggard RS" — and the
 failed base that resets), [the index trend](learn-health-trend.md) §8 (setup supply and your own results as exposure
 inputs; an unmeasured "first breakouts are the best trades" line corrected against [relative strength](learn-price-rs.md)
@@ -264,8 +266,98 @@ the sample, as the tail: the median trade lost its full 1R.
 - What "fastest rebound" means numerically — his examples ran from 3 to 18 days to a new high.
 - How "corrected the least" interacts with beta: is a defensive stock that held up a leader, or just low-beta?
 
-## 12. Source log
+## 12. The team's own trades, 2025–26 (second source)
+
+*TraderLion podcast, recorded about 15 June 2026: Mark Ritchie II and Brandon Hedgepath (Minervini Private Access
+portfolio managers, trading as a team since about 2011, "$100,000 into $20 million" over 15 years) and Bob
+Weissman (2025 US Investing Championship, money-manager division, 115%). They walk through their trades on
+Minervini's charting platform. Minervini himself is not on it. Timestamps are from a local transcript; dollar
+figures heard in it are marked **[unclear]** where the audio is doubtful.*
+
+### 12.1 The trades shown
+
+| Stock | Their entry | What they bought | How they sold | Our strategy on stored data |
+|---|---|---|---|---|
+| Seagate (STX) | 18 Aug 2025 | First viable base after the April-low rally; tried in July and shaken out, "the base improved"; lowest-volume day of the base right before the buy (5:05) | A third at +20% "to finance the risk"; more as it stretched; last piece on a close under the 50-day, ratcheted up (15:45) | **Caught**: S8 (flat base coiled) on 13–15 Aug, tradable |
+| Vicor (VICR) | Dec 2025 | A "pause pivot" after three lower lows following an earnings power move, RPR 98; bought the break of the pause two days later (19:18) | Pieces into back-to-back extension days; held a remainder through earnings on the cushion (22:32) | **Missed**: VCP-08 (not tight enough) all week |
+| Fluence (FLNC) | — | Missed the first breakout off the 50-day; bought the low-volume 1-2-3 pullback to the cheat area plus an inside day (35:19) | Leaked out into strength; last piece on the earnings gap down | Not scored (no date given) |
+| Modine (MOD) | 7 Apr 2026 | Pullback buy on the market's follow-through day; added on the gap; volume dry on the pullback (40:23) | A piece at +15–20% before the first natural reaction; more on the earnings gap; rest on a backstop at the gap day's low (41:53) | **Missed**: VCP-06 (contractions not shrinking enough) |
+| Arm (ARM) | 13 May 2026 | Early turn after three lower lows, out of a multi-year base to all-time highs; small size; trend stage not yet confirmed (50:22) | A quarter at +17.75%, a quarter next day, rest the day after: +40% in days (53:28) | No stored prices |
+| IREN | 15 Aug 2025 | Weissman, short-term: new all-time high out of a three-year base, then the first setup; intraday entry (56:49) | Out in 4–5 days, before earnings, +10–15% | **Missed**: G4 (averages not yet stacked) |
+
+### 12.2 What they add to this note
+
+**Selection**
+
+- **Bottom-up, never theme-first** (7:22): run the screens, and the theme shows up in what passes, not the other way
+  round. Correlated names breaking out the same day are fine; manage the total risk, not the group.
+- **Relative performance near the top**: their names are RPR 98–100, a 1–100 rank of every stock against every other
+  (19:30, 34:46). A stock's first move to an **all-time high out of a long dormant base** is what puts it on the radar
+  (50:27, 61:04).
+
+**Entries**
+
+- **More entries than the pivot breakout:**
+  - a **pause pivot** after three or four lower lows, where a stock under accumulation stabilises (20:03, 51:27);
+  - a **pullback buy** to the cheat area or the 50-day, on low volume, confirmed by an inside day or a turn (35:19);
+  - an **early turn** for a power play or a big base, before the trend stage confirms (51:51).
+- **Buy incrementally between two pivots**: the first reversal high, then the range high (12:22).
+- **Pay up to be right**: "I'd much rather pay up 1% to be sure that the stock is free and clear" (12:44).
+- **No big gap**: a 12–13% gap clearing a base is passed; a 3–4% gap through a pivot is fine (46:26, 47:11).
+- **A buy should prove itself fast**: "pretty much all our losers look the same, it doesn't work within one to five
+  days, max, probably five to ten. We're gone" (35:48). But a stock "acting normal" is held: there is no reason to
+  sell without a violation of the rules (11:05).
+
+**Sizing and exposure**
+
+- Their Seagate position was **7.5%** of the account (9:48), small because their results were not yet good. "If I
+  have a tight entry and I'm running hot… I'm coming in big right off the hop. If things aren't working… I'm going to
+  start smaller" (10:31): sizing follows **their own results**, not the index.
+- **The stocks over the index** (54:28): in June 2026 they bought breakouts on the day they shorted the S&P 500 and
+  the Nasdaq 100, as a hedge on their long book during an 8% index pullback, not as a market call. The index is
+  context; the leaders' own action decides.
+- Weissman made about 80% of his 2025 gain in August–October (56:49); Minervini was in cash for half of 1997, the year
+  he won with 155% (57:20).
+
+**Management and exits: the part most specific to this source**
+
+- **Sell part early to finance the risk**: a third (or a quarter) at about +15–20%, which makes the rest a "free
+  roll" (15:45, 53:28). Its purpose is to **sit through the first natural reaction** without pressure (41:21).
+- **Then sell into strength in steps** as the stock stretches from its averages, measured against the stock's own
+  historical extension levels, "multiples and multiples of our risk" (17:14).
+- **A backstop on the gap day's low**: after a news gap, put the stop at that day's low; if the momentum continues,
+  it keeps you in; if the gap fills, it takes you out. Ratchet it up intraday when the move goes vertical (42:40, 43:13).
+  No resting trailing stop.
+- **The last piece on a close below the 50-day**, ratcheted higher once enough has been made (15:45).
+- **Earnings**: "never hold an overweight position into an announcement" (23:40). Hold through only with profit
+  already banked; how much is a personal "pillow factor" (25:13). Broadcom (Dec 2025) fell on record results; they recalled "about a 15 or 16 or 18% gap". Stored prices show a 6.5% gap
+  down, 11% lost on the day and 21% within a week. They had trimmed into the rally and broke even on the rest (25:52).
+- **Why sell into strength** (Weissman, 38:03): the equity curve. Return is judged against risk, and a stock that is
+  sold and keeps rising costs less than one held through a 20–30% reaction, because the capital moves to the next
+  low-risk setup.
+- **The target**: about a 50% win rate with the average win twice the average loss (39:48).
+
+### 12.3 Against this strategy and its backtests **[inferred]**
+
+- **Caught one of four testable entries.** The breakout of a finished base (Seagate) is caught. The pause pivot
+  (Vicor), the pullback buy (Modine) and the early turn out of a long base (IREN) are not entries this strategy has.
+  The early turn fails the Trend Template by design; the other two fail the VCP's tightness or shrink rules.
+- **Selling part at +15–20% conflicts with the backtests**, and only in part. Here a third sold at +2R (about the
+  same point, with a 7% stop) cost about 0.1R a trade in the India replay (nothing in the US), and moving it to +3R changed portfolio CAGR by under a point
+  ([CAGR gaps](minervini-cagr-gaps.md) §3, Results). Their reason is not expectancy but sitting through the first
+  reaction and through earnings. The backtest does not hold into earnings differently, so it cannot see that benefit.
+- **Their fast cut contradicts the measured time stop.** The coded time stop (+1R within 15 sessions) cost
+  expectancy. Their "doesn't work within five to ten days" is a judgement of how the stock acts, which the time stop
+  does not capture.
+- **Their market view supports the book cases**: the index gate refuses most of Minervini's book trades. They keep
+  buying the leaders and hedge with an index short instead of stopping. A hedge is not modelled here.
+- **New and testable**: the gap-day backstop, an earnings rule for held positions, a stop raised to the first natural
+  reaction's low, the pause pivot and the pullback buy. See [swing longs](system-swing-longs.md) for how each is
+  proposed.
+
+## 13. Source log
 
 | Date | Source | Length | Notes |
 |---|---|---|---|
 | Late June–July 2022 **[inferred]** | Webinar, "How to Spot Leading Stocks in a Bear Market", with Mark Ritchie II; moderator Bob Weissman; sponsored by MarketSmith / Investor's Business Daily | 63 min; first 4.5 min promotional | Date from internal clues: he is 57 and started in 1983; "we are in the bear market"; the PBF trade of 24 May 2022 was "recent", followed by the market's new low and a return to cash; BLTE (listed spring 2022) "just recently"; the Master Trader Program "in November", its 12th or 13th year since 2010. Transcribed locally; video at 144p |
+| ~15 June 2026 | TraderLion podcast, "Trading $100K Into $20 Million With Only One Setup: The VCP Strategy"; Mark Ritchie II, Brandon Hedgepath, Bob Weissman; host Richard Moglen | 72 min; sponsor read 13:43–15:01 | Date from the transcript ("the middle of June here, June 15th"; a 12 June IPO "yesterday"). Charts on Minervini's platform (RPR, "trend stage", pressure and buy-risk bands, news count). Transcribed locally (Whisper small.en); frames read at 480p, so chart dates are from the speakers, not the screen |
