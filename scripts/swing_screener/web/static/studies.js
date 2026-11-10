@@ -1308,7 +1308,7 @@ const Studies = (() => {
         { k: "dry", t: "Volume ÷ limit", c: "#2196f3" }, { k: "near", t: "Below the high ÷ limit", c: "#ab47bc" }],
       draw: ({ chart, times, p, col, ctx, id, pane }) => {
         if (ctx.tf !== "D") return { series: [], note: "daily charts only", setVisible() {} };
-        const fixed = { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 3 } }) };
+        const fixed = { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 4 } }) };
         const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, ...fixed };
         const coil = chart.addSeries(LC.HistogramSeries, { ...quiet, color: col("coil") + "33" }, pane);
         const line = (k) => chart.addSeries(LC.LineSeries, { ...quiet, color: col(k), lineWidth: 1.5 }, pane);
@@ -1389,21 +1389,23 @@ const Studies = (() => {
         return { series, vals, fmt, note,
           setVisible: (on) => { series.forEach((x) => x.applyOptions({ visible: on })); mk?.setMarkers(on ? ants : []); } };
       } },
-    // ---- Trend-health bands: three colour strips in one pane, read the way trader platforms show a stock's
+    // ---- Trend-health bands: four colour strips in one pane, read the way trader platforms show a stock's
     // state at a glance (Minervini's charts show bands like these). Pressure and buy risk are functions of the
-    // bars, so they are computed here; the Trend Template strip is the Stage 2 screen's own eight criteria, run
-    // per bar on the server (/api/trend-bands -- never a second copy here), daily charts only.
-    trendbands: { name: "Trend-health bands — pressure, buy risk, Trend Template", short: "Bands", cat: "Trend", custom: true, pane: true,
+    // bars, so they are computed here; the RS rank is the stored weekly rating (1-99 across the market) and the
+    // Trend Template strip the Stage 2 screen's own eight criteria, run per bar on the server
+    // (/api/trend-bands -- never a second copy here), daily charts only.
+    trendbands: { name: "Trend-health bands — RS rank, pressure, buy risk, Trend Template", short: "Bands", cat: "Trend", custom: true, pane: true,
       needsVolume: true,
-      label: (p) => `Bands · pressure ${p.length} · risk ${p.riskLow}/${p.riskHigh}%`,
-      params: { length: 20, pressureHigh: 1.25, pressureLow: 0.8, riskLow: 15, riskHigh: 25 },
-      plots: [{ k: "pressure", t: "Pressure: up ÷ down volume", c: "#26a69a" }, { k: "risk", t: "Buy risk: % above the 50-day", c: "#f5b300" },
-        { k: "tt", t: "Trend Template: criteria met of 8", c: "#ef5350" }],
+      label: (p) => `Bands · RS ${p.rsLow} · pressure ${p.length} · risk ${p.riskLow}/${p.riskHigh}%`,
+      params: { rsLow: 50, length: 20, pressureHigh: 1.25, pressureLow: 0.8, riskLow: 15, riskHigh: 25 },
+      plots: [{ k: "rs", t: "RS rank: 1–99 across the market", c: "#2962ff" }, { k: "pressure", t: "Pressure: up ÷ down volume", c: "#26a69a" },
+        { k: "risk", t: "Buy risk: % above the 50-day", c: "#f5b300" }, { k: "tt", t: "Trend Template: criteria met of 8", c: "#ef5350" }],
       draw: ({ chart, times, bars, p, tf, ctx, id, pane }) => {
         const G = "#26a69a", Y = "#f5b300", R = "#ef5350", N = times.length, { C, V } = bars;
         const n = Math.max(2, +p.length || 20), hi = +p.pressureHigh || 1.25, lo = +p.pressureLow || 0.8;
-        const rLo = +p.riskLow || 15, rHi = +p.riskHigh || 25;
-        const raw = { pressure: Array(N).fill(null), risk: Array(N).fill(null), tt: Array(N).fill(null) };
+        const rLo = +p.riskLow || 15, rHi = +p.riskHigh || 25, rsLo = +p.rsLow || 50;
+        let rsHi = 70;   // replaced by the server's RS_MIN_RANK once the ratings arrive
+        const raw = { rs: Array(N).fill(null), pressure: Array(N).fill(null), risk: Array(N).fill(null), tt: Array(N).fill(null) };
         let up = 0, dn = 0;
         for (let i = 1; i < N; i++) {   // rolling volume on up closes and on down closes, over the last n sessions
           if (C[i] > C[i - 1]) up += V[i]; else if (C[i] < C[i - 1]) dn += V[i];
@@ -1414,6 +1416,7 @@ const Studies = (() => {
         const m50 = sma(C, 50);
         for (let i = 0; i < N; i++) if (m50[i]) raw.risk[i] = (C[i] / m50[i] - 1) * 100;
         const colour = {
+          rs: (v) => (v >= rsHi ? G : v >= rsLo ? Y : R),
           pressure: (v) => (v >= hi ? G : v <= lo ? R : Y),
           risk: (v) => (v < 0 || v > rHi ? R : v > rLo ? Y : G),
           tt: (v) => (v >= 8 ? G : v >= 6 ? Y : R),
@@ -1422,31 +1425,36 @@ const Studies = (() => {
         // the strips' heights are positions, not values: the axis shows only each strip's name
         const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, ...fixed,
           priceFormat: { type: "custom", formatter: () => "", minMove: 0.01 } };
-        const rows = { pressure: 2, risk: 1, tt: 0 }, S = {};
+        const rows = { rs: 3, pressure: 2, risk: 1, tt: 0 }, S = {};
         const paint = (k) => S[k].setData(times.map((t, i) => (raw[k][i] == null ? { time: t }
           : { time: t, value: rows[k] + 0.85, color: colour[k](raw[k][i]) })));
-        for (const k of ["pressure", "risk", "tt"]) {
+        for (const k of ["rs", "pressure", "risk", "tt"]) {
           S[k] = chart.addSeries(LC.HistogramSeries, { ...quiet, base: rows[k] + 0.05 }, pane);
           S[k].createPriceLine({ price: rows[k] + 0.45, color: "transparent", lineVisible: false, axisLabelVisible: true,
-            title: { pressure: "Pressure", risk: "Buy risk", tt: "Trend Template" }[k] });
+            title: { rs: "RS rank", pressure: "Pressure", risk: "Buy risk", tt: "Trend Template" }[k] });
           paint(k);
         }
         let fails = [], note = `pressure ≥ ${hi} green, ≤ ${lo} red · buy risk green 0–${rLo}% above the 50-day, red below it or over ${rHi}%`;
         if (tf === "D" && ctx?.market) {
-          setNote(id, "reading the Trend Template…");
+          setNote(id, "reading the RS rank and the Trend Template…");
           fetch(`/api/trend-bands/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${scanYears(5, ctx)}`)
             .then((x) => (x.ok ? x.json() : null)).catch(() => null).then((r) => {
-              if (!r) { setNote(id, note + " · Trend Template unavailable"); return; }
-              const at = new Map(r.dates.map((d, i) => [d, i]));
-              fails = times.map((t) => { const i = at.get(t); return i == null ? null : r.fails[i]; });
-              raw.tt = times.map((t) => { const i = at.get(t); return i == null ? null : r.met[i]; });
-              paint("tt");
-              setNote(id, note + " · Trend Template green 8 of 8, amber 6–7 (RS by the per-stock floor)");
+              if (!r) { setNote(id, note + " · RS rank and Trend Template unavailable"); return; }
+              const at = new Map(r.dates.map((d, i) => [d, i])), pick = (a) => times.map((t) => { const i = at.get(t); return i == null ? null : a[i]; });
+              fails = pick(r.fails); raw.tt = pick(r.met); raw.rs = pick(r.rs || []).map((v) => v ?? null);
+              if (r.rs_min_rank) rsHi = r.rs_min_rank;
+              paint("rs"); paint("tt");
+              const n = r.dates.length, k = r.rs_rated || 0;
+              const c8 = k === n ? "C8 by the RS rank" : k === 0 ? `C8 by the per-stock floor (RS score ≥ ${r.rs_min_score}; no stored rank)`
+                : `C8 by the RS rank on ${k} of ${n} bars, the per-stock floor (RS score ≥ ${r.rs_min_score}) where unrated`;
+              setNote(id, `RS rank green ${rsHi}+, amber ${rsLo}–${rsHi - 1}, red below (weekly, held to the next Friday) · ${note}`
+                + ` · Trend Template green 8 of 8, amber 6–7 (${c8})`);
             });
-        } else note += " · Trend Template: daily charts only";
+        } else note += " · RS rank and Trend Template: daily charts only";
         const fmt = (v, k, i) => raw[k]?.[i] == null ? ""
           : k === "pressure" ? `pressure ${raw.pressure[i].toFixed(2)}`
           : k === "risk" ? `${raw.risk[i] >= 0 ? "+" : ""}${raw.risk[i].toFixed(1)}% vs 50-day`
+          : k === "rs" ? `RS ${raw.rs[i]}`
           : `TT ${raw.tt[i]}/8${fails[i]?.length ? ` · fails ${fails[i].join(" ")}` : ""}`;
         const series = Object.values(S);
         return { series, vals: raw, fmt, note, setVisible: (on) => series.forEach((x) => x.applyOptions({ visible: on })) };
@@ -1690,7 +1698,7 @@ const Studies = (() => {
     atr: "ind-volatility#atr-and-atr-the-daily-swing", atrp: "ind-volatility#atr-and-atr-the-daily-swing",
     stdev: "ind-volatility#standard-deviation-of-closes", bbw: "ind-volatility#bollinger-bandwidth",
     hv: "ind-volatility#historical-volatility", mass: "ind-volatility#mass-index", ulcer: "ind-volatility#ulcer-index",
-    trendbands: "ind-trend#trend-health-bands-pressure-buy-risk-and-the-trend-template",
+    trendbands: "ind-trend#trend-health-bands-rs-rank-pressure-buy-risk-and-the-trend-template",
     squeeze: "ind-volatility#ttm-squeeze", contraction: "ind-volatility#the-contraction-gauge-range-volume-and-the-high-together",
   };
   /** the Learn page that explains an indicator, as an app route (#/learn/<guide>/<section>), or null */
