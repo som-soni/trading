@@ -74,7 +74,7 @@ the low still leaves the right-side build-out ([notes](creator-mark-minervini.md
   | Trend Template (criteria met of 8; the 50-day above the 150- and 200-day counts for C4 without waiting for the 150-day to cross the 200-day) | **The filter**: red (0–5) is a pass, whatever the pattern | Red lagged in both markets (US −0.3%, India −0.9%); 8 of 8 led in India (+1.1%), weakly in the US (+0.5%, not significant) |
   | Buy risk (close and 21-day EMA vs the 50-day; green above both, amber one, red below both) | **Entry check**, read from the % above the 50-day in its tooltip, not the colour: close below the 50-day, no new buy; over 25% above it, no chase. Green covers extended stocks too | Red and amber lagged in India (−0.4%, −0.5%), barely in the US (−0.1%); inside green, US stocks over 25% above the 50-day lagged −3.0%, India's did not (+0.1%), so not a sell signal |
   | Pressure (up ÷ down volume, 20 days; green at 1.0 or more, red below) | **A reason not to add**, never a reason to sell | Mostly repeats RSI (0.71); no forward difference: green and red both within 0.1% of the average in both markets |
-  | RS rank | The relative-strength check above | Strip being added (stored weekly ratings) |
+  | RS rank (1–99, weekly; green 70+, amber 50–69, red below 50) | The relative-strength check above: green for a leader; in India, red is a pass | Sorted India strongly (green +1.8%, red −1.0%), the US weakly (green +0.6%, red −0.2%); a stock too new to rank lagged in both (US −3.3%, India −1.7%) |
 
 ### 2.2 In a decline — the watchlist (Minervini's five things)
 
