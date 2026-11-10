@@ -289,7 +289,7 @@ across the trades those cases are outweighed.
 
 **Takeaway [inferred]:** as a mechanical rule, holding to the stop is better here. His early sells likely rely on context
 the rule cannot see: the market's tone, his recent results, and the whole chart. Not adopted, and nothing queued. A
-narrower test that remains is a tighter initial stop (his 5–6% average loss) rather than an early exit.
+narrower test that remains is a tighter cap on the initial stop, aiming at his 5–6% average loss, rather than an early exit. `MAX_STOP_PCT` (SL-03) skips fills with a stop more than 10% away, and no tighter value has been run.
 
 ## 10. How it compares
 
