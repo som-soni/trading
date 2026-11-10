@@ -417,6 +417,12 @@ TREND_EXIT_NEEDS_VOLUME = 0
 TREND_EXIT_CLOSES = 1
 TREND_LOOSE_R = 0.0
 TREND_LOOSE_SMA = 100
+# 1.60, research switch (off): the gap-day backstop of Minervini's portfolio managers (TraderLion podcast, June 2026).
+# Once a trade's high has reached GAP_BACKSTOP_R x its risk, a session that opens at least GAP_BACKSTOP_ATR x ATR14
+# above the previous close raises the stop to that session's low, from the next session; each later such gap
+# ratchets it again. If the momentum continues it keeps the trade; if the gap fills it takes it out (0 = off).
+GAP_BACKSTOP_R = 0.0
+GAP_BACKSTOP_ATR = 1.0
 # 1.58, research switch (off): Minervini's follow-up buy, 'add and reduce'. While a position is held, a breakout
 # (S1, S2, S7, S8) of a NEW base with its pivot above the average cost adds ADD_ON_NEW_BASE of the first buy at the
 # next open (refused above the new base's buy range), at most ADD_MAX times; the stop on the whole position rises
@@ -1127,10 +1133,12 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.59"
+    version = "1.60"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.60", "2026-11-10",
+         "Adds GAP_BACKSTOP_R and GAP_BACKSTOP_ATR, a research switch, OFF so no rule changes: the gap-day backstop. Once the trade has reached that many R, a gap up of at least that many ATR raises the stop to the gap day's low, from the next session, ratcheting on each later gap. From Minervini's portfolio managers' Modine and Micron 2026 trades (TraderLion podcast, June 2026). After the scan, signal-exempt; signal_version stays 1.51."),
         ("1.59", "2026-11-10",
          "Adds MKT_SEGMENT_MOM_DAYS, MKT_SEGMENT_MOM_MIN_PCT and MKT_INDEX_TEST, research switches, OFF so no rule changes: the market "
          "filter can also require the small- and mid-cap index (Nifty Smallcap 250, IWM) to be up over a window. Of "
@@ -1816,7 +1824,7 @@ class MinerviniSpecStrategy(Strategy):
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TREND_EXIT_CLOSES", "TREND_LOOSE_R", "TREND_LOOSE_SMA",
-        "ADD_ON_NEW_BASE", "ADD_MAX",
+        "GAP_BACKSTOP_R", "GAP_BACKSTOP_ATR", "ADD_ON_NEW_BASE", "ADD_MAX",
         "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
         "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT", "RESULTS_FIRST_PER_QUARTER",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
@@ -2376,6 +2384,10 @@ class MinerviniSpecStrategy(Strategy):
         "has reached that many R.\n\n"
         "Under the variant the live screen runs, that close must also come on at least the 50-day "
         "average volume.",
+        "EX-06b — gap-day backstop, a research switch: GAP_BACKSTOP_R is {GAP_BACKSTOP_R} (0 = off). Once the trade's "
+        "high has reached that many R, a session that opens at least {GAP_BACKSTOP_ATR} ATR above the previous close "
+        "raises the stop to that session's low, from the next session, and each later such gap raises it again. "
+        "A gap that holds keeps the trade; one that fills sells it at the stop (reason GAP_BACKSTOP).",
         "EX-07 — time stop. If the high has not reached +1R within {TIME_STOP_DAYS} sessions of the "
         "buy, the position is sold: it has tied up money without proving itself.",
         "EX-02b — the breakout fails its 20-day average: switched off (FAIL_SMA20_DAYS = 0). Set to a "
@@ -2602,6 +2614,9 @@ class MinerviniSpecStrategy(Strategy):
         ("Trend exit closes", "TREND_EXIT_CLOSES", "EX-06: consecutive closes below the 50-day that sell (1 = the first)."),
         ("Loose trend exit after", "TREND_LOOSE_R", "EX-06: once the high reaches this many R, watch the "
          "{TREND_LOOSE_SMA}-day average instead of the 50-day (0 = off)."),
+        ("Gap backstop after", "GAP_BACKSTOP_R", "EX-06b: once the high reaches this many R, a gap up raises the stop "
+         "to the gap day's low (0 = off)."),
+        ("Gap backstop size", "GAP_BACKSTOP_ATR", "EX-06b: the smallest gap, open over the previous close, in ATR14."),
         ("Loose trend exit average", "TREND_LOOSE_SMA", "EX-06: the slower average TREND_LOOSE_R switches to, in sessions."),
         ("Follow-up buy size", "ADD_ON_NEW_BASE", "While held, a breakout of a new base adds this fraction of the first "
          "buy, the stop raised so the position's risk stays the first trade's (0 = off; a research switch)."),

@@ -590,7 +590,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "5c69c658",
+    "fingerprint": "2c9dc85b",
     "params": {
       "ADD_MAX": 2,
       "ADD_ON_NEW_BASE": 0.0,
@@ -629,6 +629,8 @@
       "FUND_EPS_GROWTH_MIN_PCT": 20.0,
       "FUND_MARGIN_SLACK_PP": 1.0,
       "FUND_SALES_GROWTH_MIN_PCT": 15.0,
+      "GAP_BACKSTOP_ATR": 1.0,
+      "GAP_BACKSTOP_R": 0.0,
       "LIGHT_VOLUME_EXIT": 1,
       "LIVE_MIN_PRICE_INR": 100,
       "LIVE_MIN_PRICE_USD": 15,
@@ -834,7 +836,7 @@
         "W5"
       ]
     },
-    "version": "1.59"
+    "version": "1.60"
   },
   "minervini_coil": {
     "family": "minervini",

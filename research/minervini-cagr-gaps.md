@@ -242,3 +242,20 @@ window, both markets:
 The pick among them follows a rule fixed now: the highest CAGR in India whose maximum drawdown is no deeper than
 −22%, provided the same configuration does not lower the US result against the US baseline. That one candidate
 becomes a new version and gets its single verify run, with pass criteria written before it runs.
+
+## The gap-day backstop (1.60), queued 2026-11-10
+
+From the [Minervini team's June 2026 trade review](creator-mark-minervini.md) §12: once a trade is well in profit, a
+gap up moves the stop to the gap day's low and ratchets it on each later gap. Built as a research switch
+(`GAP_BACKSTOP_R`, `GAP_BACKSTOP_ATR` = 1 ATR; off). Optimise stage, both markets:
+
+| Variant | Compared with |
+|---|---|
+| Backstop from +3R, with the 150-day after +3R | 150-day after +3R alone (#3772 India 8.26%, #3768 US 3.08%) |
+| Backstop from +2R, with the 150-day after +3R | the same |
+| Backstop from +3R alone | the 1.57 baseline (3.71% / −3.30%) |
+| US only: backstop from +3R with lean exits and the 150-day | lean + 150-day (#3820, 5.02%) |
+
+**Decision rule, fixed now:** the backstop joins the combined candidate only if, at the same R level, it raises CAGR
+in **both** markets against its comparison run without deepening the maximum drawdown by more than 1 point.
+Otherwise it is recorded as a failure.

@@ -216,6 +216,8 @@ class ExitPolicy:
     trend_closes: int = field(default_factory=lambda: int(_ms.TREND_EXIT_CLOSES))    # EX-06: closes in a row below the line to sell
     trend_loose_r: float = field(default_factory=lambda: float(_ms.TREND_LOOSE_R))   # EX-06: once the high reaches this many R ...
     trend_loose_sma: int = field(default_factory=lambda: int(_ms.TREND_LOOSE_SMA))   #   ... the line is this-day average (0 = off)
+    gap_backstop_r: float = field(default_factory=lambda: float(_ms.GAP_BACKSTOP_R))     # EX-06b: once the high reaches this many R ...
+    gap_backstop_atr: float = field(default_factory=lambda: float(_ms.GAP_BACKSTOP_ATR)) #   ... a gap up this many ATR moves the stop to its low
     time_stop_days: int = field(default_factory=lambda: _ms.TIME_STOP_DAYS)    # EX-07: sold if the high has not reached +1R within this many sessions (0 = off)
     # Minervini's follow-up buy ('add and reduce', 1.58): while held, a breakout of a NEW base adds this fraction of
     # the first buy, at most `add_max` times, the stop on the whole position raised so its risk stays the first
@@ -1256,7 +1258,8 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
     if not entry_day:
         # EX-01: the stop; the stop wins a tie with any profit level the same day
         if l <= pos.stop:
-            reason = "STOP" if pos.stop <= pos.initial_stop else "BREAKEVEN_STOP"
+            reason = ("GAP_BACKSTOP" if m.get("_gap_stop") == pos.stop
+                      else "STOP" if pos.stop <= pos.initial_stop else "BREAKEVEN_STOP")
             close_out(sym, pos, min(pos.stop, o), reason, today, at=AT_OPEN if o <= pos.stop else INTRADAY)
             return
     # EX-02: failed breakout
@@ -1318,6 +1321,14 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
     if under and m["_under_n"] >= max(1, policy.trend_closes) and (not policy.trend_volume or (v50 == v50 and vol >= v50)):
         pos.queued_exit = "TREND_EXIT"
         return
+    # EX-06b: gap-day backstop -- once the high has reached gap_backstop_r R, a gap up of gap_backstop_atr ATR raises
+    # the stop to the gap day's low, from the next session (the stop test above runs before this)
+    if (policy.gap_backstop_r and not entry_day and r > 0 and i > 0
+            and m.get("_max_high", -math.inf) >= entry + policy.gap_backstop_r * r):
+        atr = float(bar.get("atr14", float("nan")))
+        if atr == atr and atr > 0 and o - prev >= policy.gap_backstop_atr * atr and l > pos.stop:
+            pos.stop = l
+            m["_gap_stop"] = l
     # EX-07: time stop -- the high has not reached +1R within time_stop_days sessions
     if (policy.time_stop_days and pos.bars_held == policy.time_stop_days and r > 0
             and m.get("_max_high", -math.inf) < entry + r):
