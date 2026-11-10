@@ -12,7 +12,7 @@ beyond those — here, **how he finds the next leaders while the market is still
 
 *What went where (ANF clip, §13): Learn — [Volume](learn-price-volume.md) §4 (reading the base on weekly bars) and [SEPA and the VCP](learn-strat-vcp-sepa.md) (adding on a natural reaction; buying the turn, not the dip); trading system — [swing longs](system-swing-longs.md) L10 (a second source), two management rows and two test rows.*
 
-*What went where (June 2026 podcast, §12): trading system — [swing longs](system-swing-longs.md) setups L9–L11, the management rows and the tests; Learn — nothing new (the results-cushion rule is already in [SEPA and the VCP](learn-strat-vcp-sepa.md)).*
+*What went where (June 2026 podcast, §12): trading system — [swing longs](system-swing-longs.md) setups L9–L11, the management rows and the tests; Learn — the results-cushion rule was already in [SEPA and the VCP](learn-strat-vcp-sepa.md); the platform's indicator bands (§12.4) became the chart's Trend-health bands indicator, explained and measured in [trend indicators](learn-ind-trend.md).*
 
 *What went where: Learn — [bases](learn-bases.md) §6 (the leader that rests — an exception to "laggard RS" — and the
 failed base that resets), [the index trend](learn-health-trend.md) §8 (setup supply and your own results as exposure
@@ -416,6 +416,48 @@ figures heard in it are marked **[unclear]** where the audio is doubtful.*
 - **New and testable**: the gap-day backstop, an earnings rule for held positions, a stop raised to the first natural
   reaction's low, the pause pivot and the pullback buy. See [swing longs](system-swing-longs.md) for how each is
   proposed.
+
+### 12.4 The platform's indicator bands, and the version built here (2026-11-10)
+
+The podcast's charts are on Minervini's own platform (Minervini Markets 360). Its indicator panel, read from a
+frame of the Fluence chart, has colour strips named **Minervini RPR**, **Minervini Pressure**, **Minervini Buy Risk
+(Colors)** and **Minervini TTR (Colors)**, plus a news-alert count. The page header shows an ER and an SR score
+(FLNC: ER 42, SR 91). None of the formulas is published. What is known:
+
+| Strip | What it appears to be | Source |
+|---|---|---|
+| RPR | "Relative performance ranking… rating every stock against every other stock, not the indexes" (21:10); leaders read 98–100 | The speakers |
+| Pressure | Whether a stock is "under pressure" (34:46): selling outweighing buying | The speakers; third-party TradingView copies describe it as accumulation vs distribution |
+| Buy Risk | Green, yellow or red by distance above the 50-day; one copy uses 0–15% / 15–25% / over 25%, and "broken" below the 50-day | Third-party copies only |
+| TTR | Not defined anywhere found; most likely a Trend Template rating | Inferred |
+| ER / SR | Probably earnings and sales ratings | Inferred |
+
+**Built here:** the chart's *Trend-health bands* indicator, three strips in the same style. Our thresholds are
+choices, not his, and are adjustable.
+
+- **Pressure:** volume on up closes ÷ volume on down closes over 20 sessions; green ≥ 1.25, red ≤ 0.8.
+- **Buy risk:** distance above the 50-day; green 0–15%, amber 15–25%, red over 25% or below the 50-day.
+- **Trend Template:** how many of the Stage 2 screen's eight criteria the bar meets, run by the screen's own code on
+  the server; green 8, amber 6–7, red 0–5. C8 uses the per-stock RS floor, because a chart sees one stock.
+- **RS rank (RPR's counterpart):** not yet. Ranking the market on the fly takes about 34 s for India, so a
+  separate session is adding a weekly stored rating and a fourth strip.
+
+**Measured** (liquid US and Indian stocks, each Friday June 2014–July 2026, next 3 months vs the average stock; full
+table in the [trend indicators](learn-ind-trend.md) guide, "Trend-health bands"):
+
+| Colour | US | India |
+|---|---|---|
+| Trend Template red (0–5 met) | −0.5% (t −3.5) | −1.1% (t −6.5) |
+| Trend Template green (8 of 8) | +0.7% (t 1.6) | +1.5% (t 3.6) |
+| Below the 50-day | −0.1% (t −2.0) | −0.7% (t −5.6) |
+| More than 25% above the 50-day | −3.0% (t −3.1) | +1.6% (t 1.8) |
+| Pressure red (≤ 0.8) | −0.1% (t −0.6) | −0.3% (t −3.2) |
+
+**Reading it [inferred]:** the Trend Template strip does the sorting, mostly by marking the stocks to avoid.
+"Extended" pointed opposite ways in the two markets, so it is not a sell rule on its own. Pressure mostly repeats
+RSI (median correlation 0.71) and added little. On Marico in August 2018 the strips turned in order: all green on the
+breakout day, pressure amber within four sessions, then pressure and buy risk red on the day it was stopped. That is
+the "under pressure" read he describes, but §9.3 measured selling on it and it lowered results.
 
 ## 13. Abercrombie & Fitch, January–February 2021: volume markers and adding on reactions (third source)
 
