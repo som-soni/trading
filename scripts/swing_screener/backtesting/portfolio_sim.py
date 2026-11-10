@@ -439,6 +439,7 @@ class Exposure:
     press_net_r: float | None = None   # PE-04: net R over the window that unlocks the press
     press_frac: float = 1.25     # PE-04: fraction of risk_pct when pressing
     press_slots: int = 2         # PE-04: extra concurrent positions when pressing
+    streak: bool = True          # two losses in a row drop to pilot size (off: the window alone decides)
 
     def state(self, closed: list) -> tuple[float, int, str]:
         """(risk multiplier, extra slots, why) from the trades closed before today."""
@@ -447,7 +448,7 @@ class Exposure:
         window = [t for t in closed[-self.window:] if t.r_multiple is not None]
         net_r = sum(t.r_multiple for t in window)
         last_two = [t for t in closed[-2:] if t.r_multiple is not None]
-        two_losses = len(last_two) == 2 and all(t.r_multiple < 0 for t in last_two)
+        two_losses = self.streak and len(last_two) == 2 and all(t.r_multiple < 0 for t in last_two)
         if len(closed) < self.warmup:
             return self.pilot_frac, 0, "pilot: warming up"
         if two_losses:

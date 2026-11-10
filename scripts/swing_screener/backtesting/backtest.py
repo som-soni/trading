@@ -1634,7 +1634,7 @@ def _exposure_from(args):
         return None
     from .portfolio_sim import Exposure
     return Exposure(enabled=True, window=args.pe_window, warmup=args.pe_warmup,
-                    pilot_frac=args.pe_pilot, press_net_r=args.pe_press)
+                    pilot_frac=args.pe_pilot, press_net_r=args.pe_press, streak=not args.pe_no_streak)
 
 
 
@@ -1815,6 +1815,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="PE-02: pilot size until this many trades have closed (default 5)")
     parser.add_argument("--pe-pilot", type=float, default=0.5, metavar="FRAC",
                         help="PE-02: fraction of --risk-pct at pilot size (default 0.5; test 0.33-0.66)")
+    parser.add_argument("--pe-no-streak", action="store_true",
+                        help="two losses in a row no longer drop to pilot size, so the window's net R "
+                             "alone decides. For low win-rate strategies, where two losses in a row is the normal case")
     parser.add_argument("--pe-press", type=float, default=None, metavar="NET_R",
                         help="PE-04, off by default: net R over the window that unlocks 1.25x risk and "
                              "two extra position slots (the spec suggests +4)")
@@ -2168,7 +2171,8 @@ def main(argv: list[str] | None = None) -> dict | None:
     if args.top_dollar_volume:
         run += f"_top{args.top_dollar_volume}"
     if args.pe:
-        run += f"_pe{args.pe_window}w{args.pe_pilot:g}" + (f"press{args.pe_press:g}" if args.pe_press is not None else "")
+        run += (f"_pe{args.pe_window}w{args.pe_pilot:g}" + (f"press{args.pe_press:g}" if args.pe_press is not None else "")
+                + ("ns" if args.pe_no_streak else ""))
     if args.fundamentals:
         run += f"_fund{args.fundamentals}"
     if args.accept_labels != "TRADE - HIGH CONFIDENCE":
@@ -2237,7 +2241,9 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (" --market-filter" if args.market_filter else "")
             + (" --mkt01" if args.mkt01 else "")
             + (f" --results-blackout {args.results_blackout}" if args.results_blackout is not None and not args.spec else "")
-            + (" --pe" if args.pe else "")
+            + ((f" --pe --pe-window {args.pe_window} --pe-pilot {args.pe_pilot:g}"
+                + (f" --pe-press {args.pe_press:g}" if args.pe_press is not None else "")
+                + (" --pe-no-streak" if args.pe_no_streak else "")) if args.pe else "")
             + (f" --trail-pct {args.trail_pct:g}" if args.exit_mode == "trail_pct" else "")
             + (f" --equal-alloc {args.equal_alloc:g}" if args.equal_alloc else "")
             + (f" --segment-filter {args.segment_filter}" if args.segment_filter else "")

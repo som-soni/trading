@@ -448,8 +448,9 @@
   },
   "kullamagi": {
     "family": "kullamagi",
-    "fingerprint": "19a348fa",
+    "fingerprint": "90bf89de",
     "params": {
+      "ENTRY_MIN_ADR_PCT": 0.0,
       "MAX_HOLD_BARS": 120,
       "MAX_STOP_ADR": 1.0,
       "MIN_STOP_PCT": 1.0,
@@ -489,7 +490,7 @@
         "S1"
       ]
     },
-    "version": "1.3"
+    "version": "1.4"
   },
   "ma_trend": {
     "family": "ma_trend",

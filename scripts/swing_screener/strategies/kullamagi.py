@@ -59,6 +59,7 @@ MARKET_INDEX_LABELS = ("QQQ", "NIFTY500")
 # ---- the stop (classify() reads these, after evaluate())
 MAX_STOP_ADR = 1.0                # a stop further than this many ADRs below the entry is not bought
 MIN_STOP_PCT = 1.0                # … nor one closer than this %
+ENTRY_MIN_ADR_PCT = 0.0           # a buy needs at least this ADR, % (0: off; G1's screen floor still applies)
 NOMINAL_TARGET_R = 10             # a far target for the plan's R column only; the backtest has no target
 
 # ---- management (the backtest's `--exit-mode kullamagi` reads these)
@@ -73,8 +74,15 @@ S1 = "S1"   # today's close is above the rest's high
 
 class KullamagiStrategy(Strategy):
     selection = "time_series"
-    version = "1.3"
+    version = "1.4"
+    # 1.4 adds an entry-time ADR floor read only by classify() (off by default), so it keeps 1.3's signal scan
+    signal_version = "1.3"
     changelog = (
+        ("1.4", "2026-11-10",
+         "An optional entry floor on the average daily range, ENTRY_MIN_ADR_PCT, applied when the trade is "
+         "decided rather than in the scan, so a variant reuses the cached signals. Off by default (0), so the "
+         "rules are v1.3's. Added to test Kullamagi's advice that smaller accounts use a 5-6% ADR floor: in "
+         "v1.3's US optimise run the trades with the widest stops, which track ADR, earned far more per trade."),
         ("1.3", "2026-11-07",
          "The rest is measured against the stock's own speed, as in the Kullamaggi model book. G3's span limit is "
          "now {TIGHT_MAX_ADR} ADRs instead of a fixed 20%, and G4 asks that the rest surf a rising {SUPPORT_FAST}-, "
@@ -128,7 +136,7 @@ class KullamagiStrategy(Strategy):
                      "support_sma", "giveback_pct", "stop_adr")
     extra_numeric_columns = extra_columns
     signal_exempt_consts = (
-        "MAX_STOP_ADR", "MIN_STOP_PCT", "NOMINAL_TARGET_R",
+        "MAX_STOP_ADR", "MIN_STOP_PCT", "ENTRY_MIN_ADR_PCT", "NOMINAL_TARGET_R",
         "PARTIAL_AFTER_BARS", "PARTIAL_DIVISOR", "TRAIL_SMA", "TRAIL_EMA", "MAX_HOLD_BARS",
     )
 
@@ -154,7 +162,8 @@ class KullamagiStrategy(Strategy):
         "**The market.** The index (Nasdaq-100 in the US, Nifty 500 in India) closes above its {MKT_EMA}-day "
         "exponential average, and its {MKT_FAST_EMA}-day EMA is above the {MKT_EMA}-day (G6).",
         "**Signal and buy.** S1: today closes above the rest's high. Buy at that close. The stop is today's low; the "
-        "trade is skipped if that is more than {MAX_STOP_ADR} ADR or less than {MIN_STOP_PCT}% below the close.",
+        "trade is skipped if that is more than {MAX_STOP_ADR} ADR or less than {MIN_STOP_PCT}% below the close, "
+        "or if the ADR is under {ENTRY_MIN_ADR_PCT}% (0 = no floor beyond G1).",
         "**Manage.** At the close of session {PARTIAL_AFTER_BARS} after the entry, if the close is above the "
         "entry, sell 1/{PARTIAL_DIVISOR} there and move the stop to the entry. The rest sells at the first close "
         "below the {TRAIL_SMA}-day average, at the stop (or the open, if it gaps through), or after "
@@ -197,6 +206,10 @@ class KullamagiStrategy(Strategy):
     )
 
     status = (
+        "v1.4 is v1.3's rules plus an entry ADR floor that is off by default; v1.3's results below stand for it. "
+        "Being measured (optimise, in-sample): Kullamagi's sizing and a switch that drops to a quarter size while "
+        "the last 20 closed trades lose (--pe --pe-window 20 --pe-pilot 0.25 --pe-no-streak), and "
+        "ENTRY_MIN_ADR_PCT=5. All three were chosen from v1.3's US optimise trades. "
         "v1.3 FAILED the pass criterion in the optimise stage (2013-2021, in-sample: its rest constants were set "
         "from the model book's 2019-2020 marked buys). Verify not run. The criterion, set before any v1.3 result and "
         "unchanged from v1.1: the base rules beat the market's benchmark CAGR AND make a positive average R after "
@@ -345,7 +358,8 @@ class KullamagiStrategy(Strategy):
                                  "fits the account. The only tier the backtest buys.",
         "TRADE_ON_TRIGGER": "Not used.",
         "WATCH_WAIT": "S1 fired but the stop is too far (more than {MAX_STOP_ADR} ADR) or too close (under "
-                      "{MIN_STOP_PCT}%), or not even one share fits the account.",
+                      "{MIN_STOP_PCT}%), the ADR is under the entry floor ({ENTRY_MIN_ADR_PCT}%, when set), or not "
+                      "even one share fits the account.",
         "AVOID": "A gate failed, or the plan's risk is not a positive number.",
     }
     param_docs = (
@@ -367,6 +381,7 @@ class KullamagiStrategy(Strategy):
         ("Index fast EMA", "MKT_FAST_EMA", "G6: this EMA must be above the slower one."),
         ("Maximum stop", "MAX_STOP_ADR", "A stop further than this many ADRs below the entry is not bought."),
         ("Minimum stop", "MIN_STOP_PCT", "A stop closer than this % below the entry is not bought."),
+        ("Entry ADR floor", "ENTRY_MIN_ADR_PCT", "A stock with a lower ADR, %, is not bought (0: off)."),
         ("Partial after", "PARTIAL_AFTER_BARS", "The session after the entry whose close decides the partial sale."),
         ("Partial size", "PARTIAL_DIVISOR", "1/this of the shares is sold."),
         ("Trailing average", "TRAIL_SMA", "The rest sells at the first close below the average of this length."),
@@ -548,6 +563,8 @@ class KullamagiStrategy(Strategy):
             label, reason = "WATCH_WAIT", f"stop {risk_pct:.1f}% away, more than {MAX_STOP_ADR} ADR ({adr or 0:.1f}%)"
         elif risk_pct < MIN_STOP_PCT:
             label, reason = "WATCH_WAIT", f"stop only {risk_pct:.1f}% away (< {MIN_STOP_PCT}%)"
+        elif adr < ENTRY_MIN_ADR_PCT:
+            label, reason = "WATCH_WAIT", f"ADR {adr:.1f}% under the entry floor ({ENTRY_MIN_ADR_PCT}%)"
         else:
             label, reason = "TRADE_HIGH_CONFIDENCE", f"close above a tight rest; stop {risk_pct:.1f}% away"
         return Decision(LABELS[label], LABELS[label], reason, risk_pct, plan.r_multiple, self.setup_quality(result))
