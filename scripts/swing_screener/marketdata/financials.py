@@ -158,6 +158,16 @@ CREATE TABLE IF NOT EXISTS quarterly_results_history (
     eps_fy DOUBLE PRECISION, net_income_fy DOUBLE PRECISION,
     PRIMARY KEY (market, symbol, period_end, basis)
 );
+-- NSE's results feed swept market-wide by filing date (refresh_filing_index): a company's own listing leaves
+-- quarters out (BALKRISIND's June 2022 results are absent from it, present in the date sweep). One row per
+-- feed record, kept in the feed's own spelling so nse_filings / nse_history_filings read it like their own.
+CREATE TABLE IF NOT EXISTS nse_filing_index (
+    symbol VARCHAR(32) NOT NULL, to_date VARCHAR(16) NOT NULL, from_date VARCHAR(16),
+    consolidated VARCHAR(24) NOT NULL, cumulative VARCHAR(24), filing_date VARCHAR(32),
+    broadcast_date VARCHAR(32), xbrl TEXT NOT NULL DEFAULT '', html TEXT NOT NULL DEFAULT '',
+    swept_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (symbol, to_date, consolidated, xbrl, html)
+);
 CREATE TABLE IF NOT EXISTS quarterly_fetch (
     market VARCHAR(16) NOT NULL, symbol VARCHAR(32) NOT NULL,
     fetched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -657,10 +667,77 @@ def _nse_date(s: str, fmt: str) -> dt.date | None:
         return None
 
 
+NSE_INDEX_START = dt.date(2009, 1, 1)   # the sweep's first filing date: HISTORY_START, which needs no earlier filing
+NSE_INDEX_DAYS = 7                      # days per sweep request; a week's filings never reached a truncation
+NSE_INDEX_OVERLAP_DAYS = 45             # a top-up re-reads this far back: late broadcasts, revised filings
+
+
+def refresh_filing_index(since: dt.date | None = None, until: dt.date | None = None, progress=None) -> dict:
+    """Sweep NSE's quarterly results feed by filing date, every company at once, into `nse_filing_index`.
+
+    Asked company by company the feed leaves quarters out -- about a fifth of all June 2022 results, and smaller
+    holes in other quarters -- and one missing quarter blanks a company's year-on-year sales growth for a year.
+    Asked by date, the same feed lists them. With no `since` it tops up from NSE_INDEX_OVERLAP_DAYS before the
+    latest filing already stored, or sweeps from NSE_INDEX_START when the table is empty."""
+    init_schema()
+    until = until or dt.date.today()
+    if since is None:
+        with db.get_connection().cursor() as cur:
+            cur.execute("SELECT MAX(swept_at)::date FROM nse_filing_index")
+            last = cur.fetchone()[0]
+        since = last - dt.timedelta(days=NSE_INDEX_OVERLAP_DAYS) if last else NSE_INDEX_START
+    days = (until - since).days + 1
+    stats = {"windows": 0, "rows": 0, "errors": 0}
+    d = since
+    while d <= until:
+        e = min(d + dt.timedelta(days=NSE_INDEX_DAYS - 1), until)
+        try:
+            recs = _nse.get(NSE + "/api/corporates-financial-results", index="equities", period="Quarterly",
+                            from_date=d.strftime("%d-%m-%Y"), to_date=e.strftime("%d-%m-%Y")).json() or []
+        except Exception as exc:  # noqa: BLE001 -- one bad window must not stop the sweep
+            stats["errors"] += 1
+            logger.warning("filing index %s..%s: %s", d, e, exc)
+            recs = []
+        vals = {(r.get("symbol"), r.get("toDate"), r.get("consolidated") or "", r.get("xbrl") or "",
+                 r.get("resultDetailedDataLink") or ""): r for r in recs if r.get("symbol") and r.get("toDate")}
+        if vals:
+            db.execute_values(
+                "INSERT INTO nse_filing_index (symbol, to_date, from_date, consolidated, cumulative, filing_date, "
+                "broadcast_date, xbrl, html) VALUES %s ON CONFLICT (symbol, to_date, consolidated, xbrl, html) DO UPDATE "
+                "SET swept_at = now(), filing_date = EXCLUDED.filing_date, broadcast_date = EXCLUDED.broadcast_date",
+                [(k[0], k[1], r.get("fromDate"), k[2], r.get("cumulative"), r.get("filingDate"), r.get("broadCastDate"),
+                  k[3], k[4]) for k, r in vals.items()])
+        stats["windows"] += 1
+        stats["rows"] += len(vals)
+        if progress:
+            progress(f"filing index through {e} ({stats['rows']:,} records)", done=(e - since).days + 1, total=days)
+        d = e + dt.timedelta(days=1)
+    return stats
+
+
+def _legacy_results(sym: str) -> list[dict]:
+    """NSE's quarterly results feed for one company -- its own listing plus every record the date sweep found
+    that the listing left out (`nse_filing_index`), in the feed's spelling."""
+    own = _nse.get(NSE + "/api/corporates-financial-results", index="equities", symbol=sym, period="Quarterly").json() or []
+    have = {(r.get("toDate"), r.get("consolidated") or "", r.get("xbrl") or "", r.get("resultDetailedDataLink") or "")
+            for r in own}
+    try:
+        with db.get_connection().cursor() as cur:
+            cur.execute("SELECT to_date, from_date, consolidated, cumulative, filing_date, broadcast_date, xbrl, html "
+                        "FROM nse_filing_index WHERE symbol=%s", (sym,))
+            swept = cur.fetchall()
+    except Exception:  # noqa: BLE001 -- the table does not exist until the first sweep
+        swept = []
+    extra = [{"toDate": t, "fromDate": f, "consolidated": c, "cumulative": cu, "filingDate": fd, "broadCastDate": b,
+              "xbrl": x or None, "resultDetailedDataLink": h or None}
+             for t, f, c, cu, fd, b, x, h in swept if (t, c, x, h) not in have]
+    return list(own) + extra
+
+
 def nse_filings(sym: str) -> list[dict]:
     """Every quarterly results filing NSE lists for one company, both feeds: {end, start, basis, filed, url}."""
     out = []
-    legacy = _nse.get(NSE + "/api/corporates-financial-results", index="equities", symbol=sym, period="Quarterly").json() or []
+    legacy = _legacy_results(sym)
     for r in legacy:
         if str(r.get("cumulative", "")).lower().startswith("cumulative") or not str(r.get("xbrl", "")).endswith(".xml"):
             continue
@@ -1275,7 +1352,7 @@ def nse_history_filings(sym: str) -> list[dict]:
     """Every quarterly filing NSE's legacy feed lists for one company, XBRL or not:
     {end, start, basis, filed, xbrl, html}: per quarter and basis the earliest filing that links a document (as
     first reported), dated by that filing -- an announcement filed without one is not data yet."""
-    legacy = _nse.get(NSE + "/api/corporates-financial-results", index="equities", symbol=sym, period="Quarterly").json() or []
+    legacy = _legacy_results(sym)
     first: dict = {}
     for r in legacy:
         if str(r.get("cumulative", "")).lower().startswith("cumulative"):

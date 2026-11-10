@@ -928,6 +928,21 @@ def _financials_history(ctx: Ctx) -> None:
     ctx.step.stats = r
 
 
+def _nse_filing_index(ctx: Ctx) -> None:
+    """India: NSE's quarterly results feed swept by filing date, every company at once (financials.refresh_filing_index),
+    so the per-company fetches see the quarters a company's own listing leaves out. Tops up from the last sweep;
+    --force re-sweeps from financials.NSE_INDEX_START."""
+    from swing_screener.config import MARKETS
+    from swing_screener.marketdata import financials
+    if getattr(MARKETS[ctx.market], "quarterly_source", None) != "nse":
+        ctx.step.skip(f"{ctx.market}: the filing index is NSE's")
+        return
+    since = financials.NSE_INDEX_START if ctx.opt("force") else None
+    r = financials.refresh_filing_index(since, progress=ctx.step.progress)
+    ctx.step.detail = f"{r['windows']:,} weeks swept · {r['rows']:,} filing records · {r['errors']} error(s)"
+    ctx.step.stats = r
+
+
 def _financials_backfill(ctx: Ctx) -> None:
     """Company financials for every stock a backtest could have ranked (backtesting/fundamentals_universe.py):
     each one liquid at some month-end since the optimise stage began, not only today's liquid and Stage-2
@@ -1089,6 +1104,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("financials_history", "data", "company results before the stored window: India's quarterly results back to 2009 "
         "from NSE's older filings, for backtests over the optimise window", "on demand", True, _financials_history,
         after=("financials",)),
+    Job("nse_filing_index", "data", "NSE results filings indexed by filing date, every company at once -- the quarters a "
+        "company's own listing leaves out (India)", "weekly", True, _nse_filing_index),
     Job("financials_backfill", "data", "company financials for every stock liquid at some month-end since 2013 (not "
         "only today's), so a fundamentals-filtered backtest is not looking ahead", "monthly", True, _financials_backfill,
         after=("financials",)),
