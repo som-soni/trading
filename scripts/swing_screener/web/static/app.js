@@ -8274,6 +8274,7 @@ const SECTIONS = [
   { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"],
     ["research", "Research", "The research notes: findings, studies, specifications and the sector playbook"],
     ["sector-research", "Sector research", "Long-term sector analyses, dated so you can revisit and extend them"],
+    ["trade-desk", "Trade desk", "Trade-desk research by date: strong sectors, their stock lists and sector reports as they stood that day"],
     ["learn", "Learn", "Learning material: candlesticks, chart patterns, bases and the VCP"]] },
   { key: "system", label: "System", pages: [["status", "Status", "Is the data current? And the job queue"], ["runs", "Runs", "Every run, its steps and log"],
     ["schedules", "Schedules", "When each pipeline runs — and run one now"], ["reports", "Reports archive", "Every backtest and screening report the scripts wrote"],
@@ -8920,6 +8921,65 @@ async function sectorResearchPage(alive, slug, vid) {
   showGuideMd(v.body);
 }
 
+/** Library → Trade desk: the research made while choosing trades — which sectors are strong, the stocks in
+ *  them, sector write-ups — stored as dated versions on the trade desk (sector_research.py, desk "trade-desk").
+ *  The sidebar groups it by the day its data is as of, so each day reads as one research session; an entry
+ *  stored again later shows under that day too and keeps its earlier versions. An HTML entry is a frozen page
+ *  (its data embedded) shown in a sandboxed frame, so its own charts, sorting and filters work; a Markdown
+ *  entry renders like the other guides. */
+async function tradeDeskPage(alive, slug, vid) {
+  $view.innerHTML = LOADING;
+  const list = await api("/api/trade-desk").catch(() => null);
+  if (!alive()) return;
+  const days = list?.days || [];
+  if (!days.length) {
+    $view.innerHTML = `<div class="empty"><b>No trade-desk research stored yet</b><div class="muted">Store a page with <code>python -m swing_screener.sector_research --import &lt;file&gt; --desk trade-desk --kind sector-report --sector &lt;name&gt;</code>.</div></div>`;
+    return;
+  }
+  const all = days.flatMap((d) => d.entries.map((e) => ({ ...e, day: d.as_of })));
+  const cur = (vid && all.find((e) => e.slug === slug && String(e.version_id) === String(vid)))
+    || all.find((e) => e.slug === slug && e.latest) || all[0];
+  const d = await api(`/api/sector-research/${encodeURIComponent(cur.slug)}?version=${cur.version_id}`).catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  if (d.error) { $view.innerHTML = `<div class="empty"><b>Entry not found</b><div class="muted"><a href="#/trade-desk">Open the latest day</a></div></div>`; return; }
+  const v = d.version, href = (e) => `#/trade-desk/${encodeURIComponent(e.slug)}/${e.version_id}`;
+  const pageUrl = `/api/sector-research/${encodeURIComponent(d.slug)}/page?version=${v.id}`;
+  document.title = `${v.title} · Trade desk · Trading`;
+  $view.innerHTML = `<div class="rep-layout td-layout"><aside class="rep-nav strat-nav lp-nav">
+      <div class="nav-h">Trade desk · ${days.length} day${days.length > 1 ? "s" : ""}</div>
+      ${days.map((day) => `<div class="td-day"><div class="td-day-h"><b>${fmtDay(day.as_of)}</b> <span class="muted small">${ageText(day.age_days)}</span></div>
+        ${day.notes.map((n) => `<div class="muted small td-note">${esc(n)}</div>`).join("")}
+        ${day.entries.map((e) => `<a class="nav-item ${e.slug === cur.slug && e.version_id === cur.version_id ? "active" : ""}" href="${href(e)}" title="${esc(e.title)}">
+          <span><span class="tag td-kind td-${esc(e.kind)}">${esc(e.kind_label)}</span> <b class="sn">${esc(e.sector)}</b>
+          <span class="sr-age">${esc(e.title)}${e.latest ? "" : " · earlier version"}${e.markets.length ? " · " + e.markets.map((m) => esc(m.toUpperCase())).join(", ") : ""}</span></span></a>`).join("")}</div>`).join("")}
+      <div class="nav-empty muted small">Each day is one research session, kept as it was: the pages are frozen with the data of that day, so you can reopen what the desk saw then and compare it with today.</div>
+    </aside><section class="scr-main lp-main">
+      <div class="sr-head">
+        <span class="tag td-kind td-${esc(d.kind)}">${esc(d.kind_label)}</span>
+        <b>${esc(v.title)}</b>
+        <span class="muted small">data as of <b>${fmtDay(v.as_of)}</b> (${ageText(v.age_days)})${v.latest ? "" : ` · <span class="neg">an earlier version</span> — <a href="#/trade-desk/${esc(d.slug)}">open the latest</a>`}</span>
+        ${d.versions.length > 1 ? `<label class="small muted">Version <select id="tdver">${d.versions.map((x) => `<option value="${x.id}" ${x.id === v.id ? "selected" : ""}>${fmtDay(x.as_of)}${x.note ? " — " + esc(x.note) : ""}</option>`).join("")}</select></label>` : ""}
+        <span class="spacer"></span>
+        ${v.format === "html" ? `<a class="btn" href="${pageUrl}" target="_blank" rel="noopener" title="The page on its own, in a new tab">Open full screen ↗</a>` : ""}
+        ${v.source_url ? `<a class="btn" href="${esc(v.source_url)}" target="_blank" rel="noopener" title="Where this page was published">Source ↗</a>` : ""}
+      </div>
+      ${v.format === "html"
+        ? `<iframe class="td-frame" title="${esc(v.title)}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer"></iframe>`
+        : `<div class="lp-guide"><div id="lpg-body"></div><nav class="lp-toc" hidden></nav></div>`}
+    </section></div>`;
+  $view.querySelector(".lp-nav .nav-item.active")?.scrollIntoView({ block: "nearest" });
+  const sel = $view.querySelector("#tdver");
+  if (sel) sel.onchange = (e) => go(`#/trade-desk/${encodeURIComponent(d.slug)}/${e.target.value}`);
+  if (v.format !== "html") { showGuideMd(v.body); return; }
+  // the page goes in as srcdoc (not src), so a browser that blocks framed navigations still shows it; the
+  // sandbox has no allow-same-origin, so the stored page runs isolated from the app
+  const html = await fetch(pageUrl).then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText)))).catch((e) => ({ error: e.message }));
+  if (!alive()) return;
+  const fr = $view.querySelector(".td-frame");
+  if (html.error) fr.outerHTML = `<div class="empty"><b>Could not load the page</b><div class="muted">${esc(html.error)} — <a href="${pageUrl}" target="_blank" rel="noopener">open it on its own</a></div></div>`;
+  else fr.srcdoc = html;
+}
+
 
 // ------------------------------------------------------------ Today: the daily starting point
 
@@ -9342,6 +9402,7 @@ async function route() {
     else if (page === "playbook") go("#/research/sector-analysis-playbook");   // its own tab, before Research listed every note
     else if (page === "research") await researchPage(alive, parts[1]);
     else if (page === "sector-research") await sectorResearchPage(alive, parts[1], parts[2]);
+    else if (page === "trade-desk") await tradeDeskPage(alive, parts[1], parts[2]);
     else if (page === "learn") await learnPage(alive, parts[1], parts[2]);
     else if (page === "status") await statusPage(alive, parts[1]);
     else if (page === "schedules") await schedulesPage(alive);

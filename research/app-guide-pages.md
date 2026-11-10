@@ -474,6 +474,16 @@ index series, company fundamentals), and a ```` ```chart ```` block draws cited 
 (`labels:`, one `series:` line per series, `estimate:` to draw forecasts lighter, `years:` to show the
 growth rate per year) — the grammar is in the comments above `parseSeriesSpec` and `parseChartSpec`
 in `app.js`.
+**Trade desk** holds the research made while choosing trades: which sectors are strong, the stocks in
+them, and sector reports (share shifts between companies, growth, margins, valuation, ownership flows).
+It shares the same store as Sector research, on its own desk (`desk = 'trade-desk'`), and the sidebar
+groups it **by the day its data is as of**, so each day reads as one research session; an entry stored
+again later shows under that day too, with its earlier versions kept. An entry is a **Stock list**, a
+**Sector report** or a **Note**. Most are self-contained HTML pages, frozen with that day's data and
+shown in a sandboxed frame, so their own charts, column sorting and filters work (**Open full screen**
+shows one on its own). Store one with `python -m swing_screener.sector_research --import <file.html>
+--slug <key> --sector <name> --desk trade-desk --kind sector-report|stock-list --markets india
+--as-of <YYYY-MM-DD> --note "<session>"`.
 **Learn** holds the learning guides, the pattern catalogue and the glossary.
 
 ## 9. System

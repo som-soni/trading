@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 
@@ -3897,8 +3897,26 @@ from .. import sector_research as secres_mod
 
 
 @app.get("/api/sector-research")
-def sector_research_list():
-    return {"items": secres_mod.list_all(), "review_after_days": secres_mod.REVIEW_AFTER_DAYS}
+def sector_research_list(desk: str = "long-term"):
+    if desk not in secres_mod.DESKS:
+        raise HTTPException(400, f"desk must be one of {', '.join(secres_mod.DESKS)}")
+    return {"items": secres_mod.list_all(desk=desk), "review_after_days": secres_mod.REVIEW_AFTER_DAYS}
+
+
+@app.get("/api/trade-desk")
+def trade_desk_list():
+    """Library › Trade desk: the trade-desk research grouped by data date (sector_research.by_date)."""
+    return {"days": secres_mod.by_date("trade-desk"), "kinds": secres_mod.KINDS}
+
+
+@app.get("/api/sector-research/{slug}/page", response_class=HTMLResponse)
+def sector_research_page(slug: str, version: int | None = None):
+    """An HTML version as its own document, for the page's sandboxed frame. The stored page is a frozen
+    record (its data is embedded): a pinned version is cached, the latest is revalidated."""
+    html = secres_mod.page_html(slug, version)
+    if html is None:
+        raise HTTPException(404, "no such HTML version")
+    return HTMLResponse(html, headers={"Cache-Control": "private, max-age=86400" if version else "no-cache"})
 
 
 @app.get("/api/sector-research/{slug}")
