@@ -287,6 +287,27 @@ In India the trades the 5-session volume rule sells would have finished at **+0.
 recover into 2R+ winners. Sold early they average about −0.40R. Manappuram is the case where the early sell helps, and
 across the trades those cases are outweighed.
 
+**A second case, and a second rule: down days in a row.** Marico (NSE) was S6 in the same run. It was bought on 24 Aug
+2018 at 382.92, the day after a +5.4% breakout on 2.3× volume, with the pivot at 374.75 and the stop at 357.70, 6.6% away.
+It then closed down four sessions running, 24 to 29 Aug, and was back below the pivot on 28 Aug. It drifted lower and was
+stopped on 4 Sep for −1.06R. Here the warning is a run of down days rather than one heavy-volume break. His "more down days
+than up days" after a buy is that violation. Each rule below sells at the next open, counted from the session after the
+buy, in the same replay:
+
+| Exit rule (within 10 sessions unless noted) | India avg R | Sold | US avg R | Sold |
+|---|---|---|---|---|
+| Hold to the stop (current) | **+0.20** | — | **−0.040** | — |
+| 3 down closes in a row | +0.04 | 100 | −0.035 | 177 |
+| 3 down closes in a row, close below cost | +0.15 | 71 | −0.031 | 131 |
+| 4 down closes in a row | +0.15 | 31 | −0.052 | 62 |
+| 4 down closes in a row, close below cost | +0.20 | 28 | −0.039 | 48 |
+| More down than up days (3+), below cost, within 5 sessions | +0.19 | 71 | −0.034 | 163 |
+| Same, within 10 sessions | +0.16 | 102 | −0.038 | 216 |
+
+The rules that catch Marico cut it from −1.06R to −0.48R. In the US they help by under 0.01R; in India every one lowers
+the average, and the plain three-down rule sells trades that would have averaged +0.44R. No version improves both
+markets, so none is proposed.
+
 **Takeaway [inferred]:** as a mechanical rule, holding to the stop is better here. His early sells likely rely on context
 the rule cannot see: the market's tone, his recent results, and the whole chart. Not adopted, and nothing queued. A
 narrower test that remains is a tighter cap on the initial stop, aiming at his 5–6% average loss, rather than an early exit. `MAX_STOP_PCT` (SL-03) skips fills with a stop more than 10% away, and no tighter value has been run.
