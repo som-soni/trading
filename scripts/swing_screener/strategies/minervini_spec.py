@@ -2152,7 +2152,8 @@ class MinerviniSpecStrategy(Strategy):
               "high — the stock has recovered part of its decline but not its old high.\n\n"
               "Both cheats (S3, S4) may need a base with at least {CHEAT_MIN_CONTRACTIONS} pullbacks "
               "(CHEAT_MIN_CONTRACTIONS, 1.63, a research switch; 0 = off): one dip after a sharp run is a "
-              "pullback, not a contraction.",
+              "pullback, not a contraction. The chart's setups frame applies the same check: with the "
+              "switch on, a cheat on a one-pullback base shows a failed Pullbacks row and reads \"trade skipped\".",
         MV05: "MV-05 power play: a stock that has run up very fast, then paused briefly. No base is "
               "needed.\n\n"
               "- **Flag high:** the most recent confirmed swing high that leaves a pause of "
@@ -2668,7 +2669,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Only with MEASURED_MOVE_RR = 1: setups whose measured move projects less are refused — "
                                                  "tested on the signal close and again on the fill."),
         ("Pullbacks a cheat needs", "CHEAT_MIN_CONTRACTIONS", "1.63, research switch: a cheat entry (S3 / S4) is "
-         "refused when its base has had fewer than this many pullbacks; 0 (default) is off, 2 the rule tested."),
+         "refused when its base has had fewer than this many pullbacks; 0 (default) is off, 2 the rule tested. "
+         "The chart's cheat frame checks it too, so its \"trade skipped\" matches the backtest."),
         ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
                                                               "when the base's own pivot is below the upper zone."),
         ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target (MEASURED_MOVE_RR = 1 only)."),
