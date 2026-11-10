@@ -1,4 +1,4 @@
-# Trend indicators — DMI and ADX, Aroon, Vortex, Parabolic SAR, Supertrend, Chandelier Exit, Ichimoku
+# Trend indicators — DMI and ADX, Aroon, Vortex, Parabolic SAR, Supertrend, Chandelier Exit, Ichimoku, trend-health bands
 
 **In short**
 
@@ -271,13 +271,48 @@ A close above the cloud reads as an uptrend, below as a downtrend, inside as no 
 
 **Pitfalls.** The forward shift makes the cloud look predictive. It is not: everything in it was known 26 bars ago. The many lines also invite reading crossings everywhere, which multiplies signals rather than information.
 
-## 6. Two more: the Chande Trend Meter and the RS line
+## 6. Trend-health bands — pressure, buy risk and the Trend Template
+
+**The question:** is this stock in good shape to own today, read as three colours instead of three numbers?
+
+Marico broke out of a flat base on 23 August 2018. It closed lower on most of the next eight sessions and was back under its 50-day average by 4 September. Three readings tracked it, each coloured green, amber or red:
+
+| Marico (MARICO.NS) | 13 Jul 2018 | 23 Aug 2018 | 29 Aug 2018 | 4 Sep 2018 | 28 Sep 2018 |
+|---|---|---|---|---|---|
+| Close | ₹354.90 | ₹381.90 | ₹368.70 | ₹354.50 | ₹333.05 |
+| Pressure (up ÷ down volume, 20 days) | 2.20 green | 1.63 green | 0.90 amber | 0.58 red | 0.54 red |
+| Buy risk (% above the 50-day) | +7.5% green | +8.8% green | +4.3% green | −0.4% red | −6.4% red |
+| Trend Template (criteria met of 8) | 7 amber | 8 green | 7 amber | 6 amber | 4 red |
+
+On the breakout day all three were green. Pressure faded first, then the close slipped under the 50-day, and a month later the Trend Template had lost half its criteria.
+
+**How each band is built.**
+
+- **Pressure.** Over the last 20 sessions, add up the volume on days that closed higher and the volume on days that closed lower, and divide the first by the second. A reading of 1.25 or more is green: buyers' days carried more volume. 0.8 or less is red; between is amber.
+- **Buy risk.** How far the close sits above the 50-day average. Green from 0% to 15%, amber from 15% to 25%, red above 25% (extended) or below the average (broken). It describes where a new buy would sit, not whether the stock is good.
+- **Trend Template.** How many of Minervini's eight Stage 2 conditions the stock meets that day: above the 50-, 150- and 200-day averages; those averages stacked in order; a rising 200-day; at least 30% above the 52-week low; within 25% of the 52-week high; and relative strength. Green is all eight, amber six or seven, red five or fewer. A single stock cannot be ranked against the market, so the strength condition here uses a fixed floor on the weighted 3-to-12-month return that the rank is built from. That is looser than a true rank of 70 or more.
+
+**What it repeats.** Median correlation within a stock, US / India:
+
+| Band | RSI14 | Distance from the 50-day |
+|---|---|---|
+| Pressure | 0.71 / 0.71 | 0.65 / 0.67 |
+| Buy risk | — | 1 (it is that distance, banded) |
+| Trend Template count | 0.52 / 0.51 | 0.57 / 0.56 |
+
+Pressure is mostly momentum. The Trend Template count is the least redundant of the three, because it adds the long averages and the 52-week range.
+
+**How traders use it.** As a glance at the state of a stock before reading the chart. The Trend Template is the filter. Buy risk asks whether this is a place to buy or a chase. Pressure is a reason to wait, or not to add.
+
+The pitfall is treating a colour change as a signal. Pressure turns amber or red inside many healthy advances. Selling a new trade on a run of down days lowered results in [Stops and exits — where a trade is wrong, and how it ends](learn-risk-stops-exits.md).
+
+## 7. Two more: the Chande Trend Meter and the RS line
 
 **The Chande Trend Meter** is a composite score from 0 to 100, attributed to Tushar Chande. It blends several trend readings over different lookbacks into one number. High readings describe a strong uptrend, low ones a weak or falling stock. Its exact formula has not been published, so it is described here, not computed. Since it is built from trend and momentum readings, expect it to repeat them.
 
 **The RS line** divides a stock's price by an index. A rising line means the stock is beating the market, whatever the market does. It is a trend indicator of *relative* performance, and it answers something none of the others here can: is this stock a leader? It was not part of the overlap measurement below. The full treatment is in [Relative strength — which stocks are beating the market, and what that is worth](learn-price-rs.md).
 
-## 7. The family side by side
+## 8. The family side by side
 
 | Indicator | Question it answers | Defaults | Mostly repeats | Typical use |
 |---|---|---|---|---|
@@ -290,9 +325,10 @@ A close above the cloud reads as an uptrend, below as a downtrend, inside as no 
 | Chandelier Exit | Has it fallen 3 ATRs from the high? | 22, 3 | Donchian position (0.74) | Trailing stop |
 | Ichimoku cloud | Above or below the middle of past ranges? | 9 / 26 / 52 | Distance from 50-day (0.76) | Trend filter; zones |
 | Chande Trend Meter | All of the above in one score | Not published | Not measured | Ranking trend strength |
+| Trend-health bands | Pressure, buy risk and the Trend Template, as colours | 20-day volume; 15/25% above the 50-day; 8 conditions | RSI14 (0.71, pressure) | A glance before the chart; the Trend Template as the filter |
 | RS line | Is it beating the index? | Price ÷ index | Not measured | Choosing leaders |
 
-## 8. What the evidence says
+## 9. What the evidence says
 
 **Measured here: overlap.** Each indicator was correlated, day by day within each stock, with six reference readings.
 
@@ -316,13 +352,37 @@ What it shows:
 - **The trailing lines are slow, yes/no momentum.** Their 0.58–0.70 with RSI14 understates the overlap. A yes/no reading cannot correlate perfectly with a smooth one; about 0.8 is the practical ceiling.
 - **The two markets agree** closely: the largest gap in the table is about 0.1, and none changes the picture.
 
+**The trend-health bands, tested.** Did a colour sort the next three months?
+
+> **Method.** Today's listed US and Indian stocks with a close of at least $5 / ₹20 and 50-day average turnover of at least $20 million / ₹10 crore, and at least 200 sessions of history. Each Friday from June 2014 to July 2026, every stock's three colours; its return over the next 63 sessions minus the average of all such stocks that day, outliers trimmed at 1% and 99%. t-statistics use monthly averages. About 748,000 US and 251,000 Indian stock-weeks.
+
+| Band and colour | US: share of weeks | US: next 3 months vs average | India: share of weeks | India: next 3 months vs average |
+|---|---|---|---|---|
+| Pressure green (≥ 1.25) | 37.5% | −0.1% (t −1.3) | 52.4% | +0.2% (t 2.1) |
+| Pressure amber | 33.2% | +0.2% (t 2.3) | 24.6% | −0.2% (t −2.8) |
+| Pressure red (≤ 0.8) | 29.3% | −0.1% (t −0.6) | 23.0% | −0.3% (t −3.2) |
+| Buy risk green (0–15% above the 50-day) | 48.7% | +0.2% (t 0.1) | 46.2% | +0.3% (t 0.9) |
+| Buy risk amber (15–25%) | 4.2% | +0.5% (t −0.5) | 7.3% | +1.4% (t 2.8) |
+| Buy risk red, over 25% | 2.2% | −3.0% (t −3.1) | 3.5% | +1.6% (t 1.8) |
+| Buy risk red, below the 50-day | 44.9% | −0.1% (t −2.0) | 43.0% | −0.7% (t −5.6) |
+| Trend Template green (8 of 8) | 22.5% | +0.7% (t 1.6) | 29.9% | +1.5% (t 3.6) |
+| Trend Template amber (6–7) | 21.6% | +0.5% (t 2.2) | 23.5% | +0.3% (t 0.7) |
+| Trend Template red (0–5) | 55.9% | −0.5% (t −3.5) | 46.5% | −1.1% (t −6.5) |
+
+What it shows:
+
+- **The Trend Template band sorted best**, and mostly at the bottom. Stocks meeting five or fewer conditions lagged in both markets. Meeting all eight led clearly in India and only weakly in the US.
+- **Below the 50-day lagged in both markets.** Above it, the colour of buy risk mattered little, except at the extremes.
+- **"Extended" split the markets.** More than 25% above the 50-day was followed by a 3% lag in the US and a 1.6% lead in India. It is not a reliable reason to sell on its own.
+- **Pressure added little.** In India green was slightly ahead and red behind; in the US neither differed from average. That fits what it repeats: mostly RSI.
+
 **Published research.** Wilder presented his indicators as rules with examples, not as statistical tests. Published tests of these exact indicators on stocks are few. The wider evidence on simple technical rules is mixed. Brock, Lakonishok and LeBaron (1992) found moving-average and breakout rules had predictive power on the Dow up to 1986. Sullivan, Timmermann and White (1999) showed the best rule did not hold up afterwards, once the number of rules tried was allowed for.
 
 Park and Irwin's survey (2007) found many positive studies, along with common flaws: many rules tried on the same data, costs ignored, rules chosen after the fact. The strongest evidence for trend following is time-series momentum. Moskowitz, Ooi and Pedersen (2012) found that a market's own past-year return predicted its next month's across many futures markets. That is diversified futures over months, not one stock's ADX or Supertrend.
 
 **Limits.** Correlation shows overlap, not predictive power: two readings can be the same number and both useless. The sample is today's listed stocks, and nothing here includes costs. The Microsoft and TCS examples were chosen to show the indicators clearly, so they are not typical.
 
-## 9. Checklist
+## 10. Checklist
 
 - [ ] Which question am I asking: which way, how steady, or where do I get out?
 - [ ] Is ADX my only reading that is not momentum? Am I treating +DI/−DI, Aroon or Vortex as a second opinion beside RSI?
@@ -331,6 +391,7 @@ Park and Irwin's survey (2007) found many positive studies, along with common fl
 - [ ] Do I have a results date ahead? No ATR line protects against a gap.
 - [ ] Am I reading the Ichimoku cloud as a forecast, when it was computed 26 bars ago?
 - [ ] Do I have one trend reading and one stop line, rather than five indicators voting?
+- [ ] Am I reading a colour change in a band as a signal, or as the state of the stock?
 
 ## Further reading
 

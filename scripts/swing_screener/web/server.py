@@ -2102,6 +2102,75 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
     return out
 
 
+class _BarCtx:
+    """The slice of a StockContext that the Stage 2 criteria read (screens/criteria.py: `daily`, `last`,
+    `close`, `extras`), for one bar. One row is all they look at, so the band below evaluates each bar
+    without rebuilding the full context."""
+    __slots__ = ("daily", "extras")
+
+    def __init__(self, row_frame):
+        self.daily, self.extras = row_frame, {}
+
+    @property
+    def last(self):
+        return self.daily.iloc[-1]
+
+    @property
+    def close(self):
+        return float(self.daily["close"].iloc[-1])
+
+
+_tt_bands: dict = {}   # (market, symbol, last bar, years) -> response
+
+
+@app.get("/api/trend-bands/{market}/{symbol}")
+def trend_template_bands(market: str, symbol: str, years: int = 5):
+    """How many of the Stage 2 screen's eight Trend Template criteria each bar meets -- the chart's
+    trend-health bands indicator (studies.js `trendbands`).
+
+    The criteria are the screen's own functions (screens `stage2`, C1-C8), run bar by bar, never a copy in
+    JavaScript. One stock at a time cannot be ranked against the market, so C8 is the per-stock RS floor
+    (RS_MIN_SCORE on the weighted RS score), as in every single-stock tool -- looser than the rating the
+    daily screen and the backtest apply (the strategy's caveats say so). The tradability floor is left out:
+    the band reads the trend, not whether the stock is tradable that day. Exploration only.
+    """
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..core import indicators as ind
+    from ..marketdata import cache
+    from ..screens import get_screen
+
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    daily = ind.enrich_daily(raw)
+    key = (market, symbol, str(daily.index[-1].date()), years)
+    if key in _tt_bands:
+        return _tt_bands[key]
+    if years:
+        daily = daily[daily.index >= daily.index[-1] - pd.DateOffset(years=years)]
+    crit = get_screen("stage2").criteria
+    dates, met, fails = [], [], []
+    for i in range(len(daily)):
+        ctx = _BarCtx(daily.iloc[i:i + 1])
+        bad = []
+        for c in crit:
+            try:
+                ok = bool(c.fn(ctx)[0])
+            except Exception:  # noqa: BLE001 -- a bar too early for an average fails that criterion
+                ok = False
+            if not ok:
+                bad.append(c.code)
+        dates.append(str(daily.index[i].date())); met.append(len(crit) - len(bad)); fails.append(bad)
+    out = {"symbol": symbol, "market": market, "criteria": [{"code": c.code, "doc": d["text"]}
+                                                            for c, d in zip(crit, get_screen("stage2").docs())],
+           "dates": dates, "met": met, "fails": fails}
+    if len(_tt_bands) > 64:
+        _tt_bands.clear()
+    _tt_bands[key] = out
+    return out
+
+
 _pattern_lists: dict = {}   # (market, symbol, last bar, years, spec) -> response
 
 
