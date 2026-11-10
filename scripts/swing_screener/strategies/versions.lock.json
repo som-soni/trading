@@ -590,7 +590,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "7f8e2e33",
+    "fingerprint": "9ad523f7",
     "params": {
       "ADD_MAX": 2,
       "ADD_ON_NEW_BASE": 0.0,
@@ -604,6 +604,7 @@
       "BUY_RANGE_PCT": 5.0,
       "CHEAT_BLOCK_VCP09": 0,
       "CHEAT_DRYUP": 1,
+      "CHEAT_MIN_CONTRACTIONS": 0,
       "CHEAT_RALLY_FRAC": 0.33,
       "CHEAT_SHELF_DAYS": 7,
       "CHEAT_SHELF_PCT": 8.0,
@@ -841,7 +842,7 @@
         "W5"
       ]
     },
-    "version": "1.62"
+    "version": "1.63"
   },
   "minervini_coil": {
     "family": "minervini",

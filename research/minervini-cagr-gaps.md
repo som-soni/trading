@@ -315,3 +315,32 @@ results blackout instead (board meeting 14 Nov, inside 14 days of the 3 and 5 No
 
 **Decision rule, fixed before the results:** adopted only if it raises CAGR in both markets against its comparison
 run, with max drawdown no more than 1 point deeper. A win in one market only is recorded, not adopted.
+
+## A cheat needs at least two pullbacks (1.63), queued 2026-11-10
+
+A cheat entry (S3, S4) is bought while the base is still forming, so any base that clears VCP-01 to VCP-03 can fire
+one, including a single dip after a sharp run. Zydus Lifesciences (NSE) is the case: a 16-session base off the
+11 November 2014 high, after a 22% run in 20 sessions, one 15.5% pullback, its third base. Bought on 4 December as an
+S4, stopped on 17 December for −1.05R. `CHEAT_MIN_CONTRACTIONS=2` refuses a cheat on a base with fewer than two
+pullbacks.
+
+**This is in-sample.** The rule was found by slicing the trades of runs #3779 and #3790, in the same optimise window:
+
+| Cheat entries | India avg R (trades) | US avg R (trades) |
+|---|---|---|
+| Base with 1 pullback | −0.02 (24) | −0.08 (82) |
+| Base with 2 or more | +0.38 (91) | +0.05 (197) |
+
+Of a dozen base dimensions checked the same way (length, depth, final tightness, dry-up, base number, the run into
+the base, RS), this was the only one that pointed the same way in both markets. Bases that passed the full VCP test
+did worse than the rest in both markets, so no composite "VCP score" is proposed.
+
+| # | Market | Setting | Compared with |
+|---|---|---|---|
+|  1451 1452 | India | `CHEAT_MIN_CONTRACTIONS=2` | #3754 (3.71%) |
+|  | US | `CHEAT_MIN_CONTRACTIONS=2` | #3758 (−3.30%) |
+
+**Decision rule, fixed before the results:** the optimise runs only screen the rule out. If it raises CAGR in both
+markets with max drawdown no more than 1 point deeper, it becomes a candidate for one verify run per market. Its
+pass criteria will be written before that run. Otherwise it is recorded and dropped. A win in one market only is
+recorded, not adopted.

@@ -310,6 +310,16 @@ LOW_CHEAT_ENABLED = 1
 # it and a variant run cannot overwrite the shipped one.
 CHEAT_BLOCK_VCP09 = 0
 
+# 1.63, research switch (0 = off, 1.62): refuse a cheat entry (S3 / S4) whose base has had fewer than this
+# many pullbacks. A cheat is bought while the VCP is still forming, so any base clearing VCP-01/02/03 can
+# fire one -- including a single dip after a sharp run, which is a pullback, not a contraction. Zydus
+# Lifesciences (NSE): a 16-session base off the 11 Nov 2014 high after a 22% run in 20 sessions, one 15.5%
+# pullback, its third base; S4 bought on 4 Dec, stopped for -1.05R. Sliced from the optimise trades
+# (runs #3779 / #3790), so these runs are in-sample by construction: cheats with one pullback averaged
+# -0.02R in India (24) and -0.08R in the US (82), with two or more +0.38R (91) and +0.05R (197). Applied
+# in build_plans, after the scan, so the cached signals stand. 2 is the rule's natural setting.
+CHEAT_MIN_CONTRACTIONS = 0
+
 CHEAT_SHELF_DAYS = 7    # MV-03/MV-04: sessions in the shelf (mirrors VcpParams.cheat_shelf_days)
 CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpParams.cheat_shelf_pct)
 
@@ -1151,10 +1161,16 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.62"
+    version = "1.63"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.63", "2026-11-10",
+         "Adds a research switch, CHEAT_MIN_CONTRACTIONS, OFF so no rule changes. 2 refuses a cheat entry "
+         "(S3 / S4) on a base with fewer than two pullbacks: a cheat fires on any base clearing VCP-01 to "
+         "VCP-03, so one dip after a sharp run could be bought (Zydus Lifesciences, 4 Dec 2014, -1.05R). "
+         "Sliced from the optimise trades, so its optimise runs are in-sample; the verify stage is the test. "
+         "Plan rule only (build_plans), so signal_version stays 1.51."),
         ("1.62", "2026-11-10",
          "Adds a research switch, REENTRY_AFTER_LIGHT_VOLUME, OFF so no rule changes. A base reopens only "
          "after a shakeout (STOP, BREAKEVEN_STOP, FAILED_SMA20), so a buy-stop sold at the next open by the "
@@ -1846,7 +1862,7 @@ class MinerviniSpecStrategy(Strategy):
     # CHEAT_BLOCK_VCP09) and the watch flags' are not here: a variant on one of them rescans.
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
-        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "REENTRY_AFTER_LIGHT_VOLUME", "NOMINAL_TARGET_R",
+        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "REENTRY_AFTER_LIGHT_VOLUME", "CHEAT_MIN_CONTRACTIONS", "NOMINAL_TARGET_R",
         "MIN_STRUCTURAL_R", "MEASURED_MOVE_RR", "MAX_BASE_COUNT", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
@@ -2131,7 +2147,10 @@ class MinerviniSpecStrategy(Strategy):
               "VCP-09.",
         MV04: "MV-04 cheat (\"3C\", the cup-completion cheat): the same as MV-03, but the shelf's "
               "high is between one third and two thirds of the way from the base low to the base "
-              "high — the stock has recovered part of its decline but not its old high.",
+              "high — the stock has recovered part of its decline but not its old high.\n\n"
+              "Both cheats (S3, S4) may need a base with at least {CHEAT_MIN_CONTRACTIONS} pullbacks "
+              "(CHEAT_MIN_CONTRACTIONS, 1.63, a research switch; 0 = off): one dip after a sharp run is a "
+              "pullback, not a contraction.",
         MV05: "MV-05 power play: a stock that has run up very fast, then paused briefly. No base is "
               "needed.\n\n"
               "- **Flag high:** the most recent confirmed swing high that leaves a pause of "
@@ -2646,6 +2665,8 @@ class MinerviniSpecStrategy(Strategy):
          "by overhead supply, must project MIN_STRUCTURAL_R (1.42)."),
         ("Minimum reward-to-risk", "MIN_STRUCTURAL_R", "Only with MEASURED_MOVE_RR = 1: setups whose measured move projects less are refused — "
                                                  "tested on the signal close and again on the fill."),
+        ("Pullbacks a cheat needs", "CHEAT_MIN_CONTRACTIONS", "1.63, research switch: a cheat entry (S3 / S4) is "
+         "refused when its base has had fewer than this many pullbacks; 0 (default) is off, 2 the rule tested."),
         ("Block cheats on VCP-09 bases", "CHEAT_BLOCK_VCP09", "Experiment, off by default: 1 withholds a cheat "
                                                               "when the base's own pivot is below the upper zone."),
         ("Overhead cluster", "OVERHEAD_CLUSTER_ATR", "ATRs above the base high before a swing high caps the target (MEASURED_MOVE_RR = 1 only)."),
@@ -3109,6 +3130,8 @@ class MinerviniSpecStrategy(Strategy):
             cp, cl = e.get("cheat_pivot"), e.get("cheat_low")
             if not cp or cl is None or pd.isna(cl):
                 return PlanChoice(None, None, "missing cheat shelf")
+            if CHEAT_MIN_CONTRACTIONS and int(e.get("contractions") or 0) < CHEAT_MIN_CONTRACTIONS:
+                return PlanChoice(None, None, f"cheat on a base with fewer than {CHEAT_MIN_CONTRACTIONS} pullbacks")
             pivot = float(cp)
             entry = float(ctx.close)          # confirmed by the close, as EN-02 is since v1.1
             stop = pivot_stop(cl, cfg.tick_size)
