@@ -590,7 +590,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "2c9dc85b",
+    "fingerprint": "8756f9bc",
     "params": {
       "ADD_MAX": 2,
       "ADD_ON_NEW_BASE": 0.0,
@@ -710,6 +710,10 @@
       "PP_RUN_WINDOW": 40,
       "PP_TIGHT_PCT": 25.0,
       "PRIOR_ADVANCE_PCT": 30.0,
+      "REACTION_ADD": 0.0,
+      "REACTION_ADD_MAX": 2,
+      "REACTION_NEAR_SMA20_PCT": 2.0,
+      "REACTION_PB_PCT": 5.0,
       "RESULTS_BY_ANNOUNCEMENT": 1,
       "RESULTS_FIRST_PER_QUARTER": 1,
       "RS_MIN_RANK": 70,
@@ -836,7 +840,7 @@
         "W5"
       ]
     },
-    "version": "1.60"
+    "version": "1.61"
   },
   "minervini_coil": {
     "family": "minervini",

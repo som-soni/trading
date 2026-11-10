@@ -224,6 +224,12 @@ class ExitPolicy:
     # trade's (`_fill_add`). 0 = off.
     add_frac: float = field(default_factory=lambda: float(_ms.ADD_ON_NEW_BASE))
     add_max: int = field(default_factory=lambda: int(_ms.ADD_MAX))
+    # The add on a natural reaction (1.61, `_reaction_add`): a pullback to the 20-day, bought on the turn over the
+    # previous session's high, `rx_frac` of the first buy, each add with its own stop under the reaction low. 0 = off.
+    rx_frac: float = field(default_factory=lambda: float(_ms.REACTION_ADD))
+    rx_max: int = field(default_factory=lambda: int(_ms.REACTION_ADD_MAX))
+    rx_pb_pct: float = field(default_factory=lambda: float(_ms.REACTION_PB_PCT))
+    rx_near_pct: float = field(default_factory=lambda: float(_ms.REACTION_NEAR_SMA20_PCT))
     # ---- trade management for the other modes (bracket, trail_atr, ma, donchian). All off by default,
     # so a run without them trades exactly as before. `minervini` has its own ladder above and ignores these.
     be_r: float = 0.0            # stop to entry + round-trip costs once the HIGH reaches entry + this × R;
@@ -394,7 +400,8 @@ RE_ENTRY_AFTER = frozenset({"STOP", "BREAKEVEN_STOP", "FAILED_SMA20"})
 
 
 # price levels a position or its order carries in `meta`, lowered with the price on an ex-date
-_META_LEVELS = ("pivot", "_be", "_max_high", "max_fill", "min_open", "cancel_close_below", "confirm_close_above")
+_META_LEVELS = ("pivot", "_be", "_max_high", "max_fill", "min_open", "cancel_close_below", "confirm_close_above",
+                "_rx_peak", "_rx_low")
 
 
 def credit_action(pos: "PortfolioTrade", cash_per_share: float) -> float:
@@ -418,6 +425,8 @@ def credit_action(pos: "PortfolioTrade", cash_per_share: float) -> float:
     for t in pos.meta.get("_tranches") or ():   # the kell exit's tranches: [shares, price paid, stop]
         t[1] -= c
         t[2] -= c
+    for lot in pos.meta.get("_rx_lots") or ():  # the reaction adds (1.61): [shares, stop, date]
+        lot[1] -= c
     pos.credited += c * held
     return c * held
 
@@ -675,7 +684,7 @@ def simulate(
         if pos.meta.get("base_id") is not None:
             base_last_exit[(sym, pos.meta["base_id"])] = reason
         # blended over any partial sale; exactly the fill when there was none
-        pos.exit_price = pos.sold_value / pos.shares if pos.partial_shares else fill
+        pos.exit_price = pos.sold_value / pos.shares if (pos.partial_shares or pos.meta.get("_rx_sold")) else fill
         closed.append(pos)
         del positions[sym]
 
@@ -761,6 +770,19 @@ def simulate(
             spent, extra = got
             cash -= spent
             costs_total += extra
+
+        # ---- 0c. adds on a natural reaction (policy.rx_frac): a buy-stop over the previous session's high
+        if policy.mode == "minervini" and policy.rx_frac:
+            for sym, pos in list(positions.items()):
+                df = prices.get(sym)
+                if df is None or today not in df.index or today == pos.entry_date:
+                    continue
+                got = _reaction_add(pos, df, today, policy, cash, fee_rate, cfg, base_slip)
+                if isinstance(got, str):
+                    skip(got, sym, today)
+                elif got:
+                    cash -= got[0]
+                    costs_total += got[1]
 
         # ---- 1. exits ----------------------------------------------------
         for sym, pos in list(positions.items()):
@@ -1066,7 +1088,8 @@ def simulate(
             pos.exit_date = last
             pos.exit_reason = "OPEN"
             c = float(df.loc[:last, "close"].iloc[-1])
-            pos.exit_price = (pos.sold_value + c * pos.held) / pos.shares if pos.partial_shares else c
+            pos.exit_price = ((pos.sold_value + c * pos.held) / pos.shares
+                              if (pos.partial_shares or pos.meta.get("_rx_sold")) else c)
         closed.append(pos)
 
     idx = pd.DatetimeIndex(all_dates)
@@ -1255,6 +1278,15 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
         # a buy-stop that filled on a light-volume close is not a valid breakout: sold at the next open
         pos.queued_exit = "LIGHT_VOLUME_BREAKOUT"
         return
+    if not entry_day and m.get("_rx_lots"):
+        # 1.61: a reaction add whose own stop the low reaches is sold alone (not on the day it was bought)
+        for lot in m["_rx_lots"]:
+            if lot[0] and lot[2] != today and l <= lot[1]:
+                n = min(lot[0], pos.held - 1)
+                if n > 0:
+                    sell(pos, min(lot[1], o), n, today, at=AT_OPEN if o <= lot[1] else INTRADAY)
+                    m["_rx_sold"] = m.get("_rx_sold", 0) + n
+                lot[0] = 0
     if not entry_day:
         # EX-01: the stop; the stop wins a tie with any profit level the same day
         if l <= pos.stop:
@@ -1629,6 +1661,59 @@ def _fill_add(pos: "PortfolioTrade", add: dict, o: float, cash: float, fee_rate:
     pos.costs += extra
     pos.slippage += (fill - o) * n
     pos.adds += 1
+    return n * fill + cfg.commission_per_order + fee, extra
+
+
+def _reaction_add(pos: "PortfolioTrade", df: pd.DataFrame, today, policy: ExitPolicy, cash: float, fee_rate: float,
+                  cfg: MarketConfig, base_slip: float):
+    """1.61, the add on a natural reaction, at today's session: reads the PREVIOUS session (a completed bar) for the
+    reaction and buys today only if today's high clears that session's high (a buy-stop; a gap fills at the open).
+    Tracks the highest high since the entry (or the last add) and the lowest low since it in `pos.meta`; an add needs
+    a new high after the entry or the last add. Returns None (nothing to do), the reason it was refused, or
+    (cash spent, costs). Each add is a lot [shares, stop, date] in meta["_rx_lots"], sold alone by `_manage_minervini`."""
+    i = df.index.get_loc(today)
+    if i < 1 or df.index[i - 1] < pos.entry_date:
+        return None
+    m, p = pos.meta, df.iloc[i - 1]
+    ph, pl, pc = float(p["high"]), float(p["low"]), float(p["close"])
+    if "_rx_peak" not in m:
+        m["_rx_peak"], m["_rx_low"], m["_rx_armed"] = ph, math.inf, False
+    elif ph > m["_rx_peak"]:
+        m["_rx_peak"], m["_rx_low"], m["_rx_armed"] = ph, math.inf, True
+    m["_rx_low"] = min(m["_rx_low"], pl)
+    if (not m["_rx_armed"] or m.get("_rx_n", 0) >= policy.rx_max or pos.partial_shares
+            or pos.queued_exit or m.get("_queued_partial")):
+        return None
+    s20, s50 = float(p.get("sma20", float("nan"))), float(p.get(policy.ma_col, float("nan")))
+    if not (s20 == s20 and s50 == s50) or 100 * (1 - m["_rx_low"] / m["_rx_peak"]) < policy.rx_pb_pct:
+        return None
+    if not (pl <= s20 * (1 + policy.rx_near_pct / 100) and pc >= s50 and pc > pos.entry_price):
+        return None
+    bar = df.loc[today]
+    level = ph + cfg.tick_size
+    if float(bar["high"]) < level:
+        return None
+    raw = max(level, float(bar["open"]))
+    stop = m["_rx_low"] - cfg.tick_size
+    m["_rx_armed"] = False                      # this reaction is used, filled or refused
+    if raw <= stop:
+        return "reaction add at or under its own stop"
+    pos.meta.setdefault("_n0", pos.shares)
+    fill = _slip(raw, pos.meta.get("slippage_bps", base_slip), "buy")
+    n = min(int(m["_n0"] * policy.rx_frac), int((cash - cfg.commission_per_order) // (fill * (1 + fee_rate))))
+    if n < 1:
+        return "not enough cash to add"
+    fee = fill * n * fee_rate
+    extra = cfg.commission_per_order + (fill - raw) * n + fee
+    pos.entry_price = (pos.entry_price * pos.shares + fill * n) / (pos.shares + n)
+    pos.shares += n
+    if pos.open_shares >= 0:
+        pos.open_shares += n
+    pos.costs += extra
+    pos.slippage += (fill - raw) * n
+    pos.adds += 1
+    m["_rx_n"] = m.get("_rx_n", 0) + 1
+    m.setdefault("_rx_lots", []).append([n, stop, today])
     return n * fill + cfg.commission_per_order + fee, extra
 
 

@@ -259,3 +259,25 @@ gap up moves the stop to the gap day's low and ratchets it on each later gap. Bu
 **Decision rule, fixed now:** the backstop joins the combined candidate only if, at the same R level, it raises CAGR
 in **both** markets against its comparison run without deepening the maximum drawdown by more than 1 point.
 Otherwise it is recorded as a failure.
+
+## The add on a natural reaction (1.61), queued 2026-11-10
+
+From [Minervini's ANF clip](creator-mark-minervini.md) §13: a held winner that pulls back to its 20-day average is
+added to as it turns up over the previous session's high. Each add has its own stop under the reaction low; the first
+buy keeps its stop. Built as a research switch (`REACTION_ADD`, a fraction of the first buy; at most
+`REACTION_ADD_MAX` = 2; a pullback of 5%+ whose low comes within 2% of the 20-day, closing above the 50-day and the
+cost; off). On ANF alone it adds on 3 Feb 2021 ($23.91) and 11 Feb ($25.04), his two dates. A rough replay on
+existing trades (that section) was positive in India and not in the US, so India leads. Optimise stage:
+
+| Variant | Compared with |
+|---|---|
+| India: add half the first buy, with the 150-day after +3R | 150-day after +3R alone (#3772, 8.26%) |
+| India: add the full first buy, with the 150-day after +3R | the same |
+| India: add half, alone | the 1.57 baseline (#3754, 3.71%) |
+| US: add half, with the 150-day after +3R | 150-day after +3R alone (#3768, 3.08%) |
+| US: add half, alone | the 1.56 baseline (#3758, −3.30%) |
+
+**Decision rule, fixed now:** the add joins the combined candidate only if it raises India's CAGR beside the 150-day
+exit with the maximum drawdown no more than 2 points deeper (an add is extra exposure, so some extra drawdown is the
+price), **and** the same setting does not lower the US CAGR against #3768. A win in India alone is recorded as an
+India-only result, not adopted, because the replay already showed the US does not support it.

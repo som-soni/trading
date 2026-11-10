@@ -430,6 +430,17 @@ GAP_BACKSTOP_ATR = 1.0
 # buys; the backtest skipped every signal in a held stock ('already holding this symbol'). 0 = off.
 ADD_ON_NEW_BASE = 0.0
 ADD_MAX = 2
+# 1.61, research switch (off): the add on a natural reaction (Minervini's ANF position, Feb 2021). While a position is
+# held and none of it has been sold, a pullback of at least REACTION_PB_PCT % from its highest high since the entry
+# (or since the last add) whose low comes within REACTION_NEAR_SMA20_PCT % of the 20-day average, closing above the
+# 50-day and above the average cost, is bought as the next session clears that session's high -- on the turn, never
+# on the way down. REACTION_ADD of the first buy, at most REACTION_ADD_MAX times, a new high needed between adds. Each
+# add has its own stop a tick under the reaction low and is sold alone when it is hit; the first buy keeps its stop.
+# A replay on the 1.56/1.57 optimise trades: US -0.22R an add, India +0.47R (+2.85R beside the 150-day exit). 0 = off.
+REACTION_ADD = 0.0
+REACTION_ADD_MAX = 2
+REACTION_PB_PCT = 5.0
+REACTION_NEAR_SMA20_PCT = 2.0
 # EX-07, the time stop: sold if the high has not reached +1R within this many sessions.
 TIME_STOP_DAYS = 15
 # EN-02 fills on the close through the pivot; a fill on volume under VOL_MULT x the
@@ -1133,10 +1144,12 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.60"
+    version = "1.61"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.61", "2026-11-10",
+         "Adds REACTION_ADD, REACTION_ADD_MAX, REACTION_PB_PCT and REACTION_NEAR_SMA20_PCT, a research switch, OFF so no rule changes: the add on a natural reaction. A held winner that pulls back to its 20-day, above the 50-day and its cost, is added to as it clears the previous session's high, each add with its own stop under the reaction low. From Minervini's ANF trade (Jan-Feb 2021 clip), where he added twice on reactions with no new base. After the scan, signal-exempt; signal_version stays 1.51."),
         ("1.60", "2026-11-10",
          "Adds GAP_BACKSTOP_R and GAP_BACKSTOP_ATR, a research switch, OFF so no rule changes: the gap-day backstop. Once the trade has reached that many R, a gap up of at least that many ATR raises the stop to the gap day's low, from the next session, ratcheting on each later gap. From Minervini's portfolio managers' Modine and Micron 2026 trades (TraderLion podcast, June 2026). After the scan, signal-exempt; signal_version stays 1.51."),
         ("1.59", "2026-11-10",
@@ -1825,6 +1838,7 @@ class MinerviniSpecStrategy(Strategy):
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
         "CLIMAX_IS_PARTIAL", "TREND_EXIT_NEEDS_VOLUME", "TREND_EXIT_CLOSES", "TREND_LOOSE_R", "TREND_LOOSE_SMA",
         "GAP_BACKSTOP_R", "GAP_BACKSTOP_ATR", "ADD_ON_NEW_BASE", "ADD_MAX",
+        "REACTION_ADD", "REACTION_ADD_MAX", "REACTION_PB_PCT", "REACTION_NEAR_SMA20_PCT",
         "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
         "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT", "RESULTS_FIRST_PER_QUARTER",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
@@ -2316,6 +2330,14 @@ class MinerviniSpecStrategy(Strategy):
         "(refused above the new base's buy range), at most {ADD_MAX} times. The stop on the whole position rises "
         "only as far as keeps its risk at the first trade's: the profit pays for the add. Off, a "
         "signal in a stock already held is skipped.",
+        "Adds on a natural reaction (a research switch, off: REACTION_ADD is {REACTION_ADD}). Minervini also adds "
+        "without a new base, on a pullback inside the advance, bought as it turns back up. With the switch on, a held "
+        "position none of which has been sold, after a pullback of at least {REACTION_PB_PCT}% from its highest high "
+        "since the entry or the last add, whose low came within {REACTION_NEAR_SMA20_PCT}% of the 20-day average and "
+        "which closed above the 50-day and the average cost, adds REACTION_ADD of the first buy as the next session "
+        "clears that session's high (a buy-stop; a gap fills at the open). At most {REACTION_ADD_MAX} adds, with a "
+        "new high between them. Each add has its own stop a tick under the reaction low and is sold alone when the "
+        "low reaches it; the first buy keeps its own stop.",
     )
     stop_rules = (
         "Where it goes (SL-01). {STOP_BUFFER_PCT}% under the tight low — the lowest low of the "
@@ -2621,6 +2643,13 @@ class MinerviniSpecStrategy(Strategy):
         ("Follow-up buy size", "ADD_ON_NEW_BASE", "While held, a breakout of a new base adds this fraction of the first "
          "buy, the stop raised so the position's risk stays the first trade's (0 = off; a research switch)."),
         ("Follow-up buys, most", "ADD_MAX", "Adds at most this many follow-up buys to one position."),
+        ("Reaction add size", "REACTION_ADD", "Adds this fraction of the first buy on a natural reaction to the 20-day, "
+         "bought on the turn, with its own stop under the reaction low (0 = off; a research switch)."),
+        ("Reaction adds, most", "REACTION_ADD_MAX", "At most this many reaction adds to one position."),
+        ("Reaction depth", "REACTION_PB_PCT", "A reaction is a pullback at least this deep, in %, from the highest high "
+         "since the entry or the last add."),
+        ("Reaction near the 20-day", "REACTION_NEAR_SMA20_PCT", "The reaction's low must come within this many % of "
+         "the 20-day average."),
         ("Time stop", "TIME_STOP_DAYS", "EX-07: sessions to reach +1R (0 = off)."),
         ("Light-volume fill exit", "LIGHT_VOLUME_EXIT", "EN-02: sell a buy-stop fill on under-average breakout volume (1 = on)."),
         ("S2 fill needs volume", "S2_FILL_NEEDS_VOLUME", "1.51: an MV-02 close through the pivot on under VOL_MULT x volume does not fill (1); 0 = it fills, and LIGHT_VOLUME_EXIT, while on, sells it at the next open. Independent of LIGHT_VOLUME_EXIT since 1.53."),
