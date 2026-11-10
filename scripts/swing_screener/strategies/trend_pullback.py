@@ -186,6 +186,15 @@ class TrendPullbackStrategy(Strategy):
     # attributes (max_stop_*), not constants of this module, so most are written out as numbers.
     # Keep them in sync by hand; adding a module constant here would move the fingerprint.
     status = (
+        "IDLE-CASH VARIANT, US, AWAITING ITS ONE VERIFY RUN (criterion written 2026-11-10, before the run). "
+        "In-sample (optimise, 2013-2021, v1.4): run plain, the US book makes 11.45% CAGR against SPY's 14.01% "
+        "while about a fifth of the account sits in cash; with that cash held in the index (`--idle-index`, "
+        "5bps on every change in the holding) it makes 16.22%, +2.21 a year over SPY, max drawdown -33.3% "
+        "against SPY's -34.1%, Sharpe 0.86 against 0.88, ahead in both halves of the window but in only 4 of "
+        "8 years. So the edge, if real, is small and no steadier than the index. PASS, on the verify window "
+        "(2022 onward): CAGR at least 1 point a year above SPY's AND max drawdown no more than 5 points "
+        "deeper than SPY's. Anything else is a fail, reported here, and the variant is dropped -- not re-tuned. "
+        "India is not a candidate: its picks do not beat the index at the same exposure (-0.3). "
         "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v1.3); verify not run. US 9.68% CAGR, "
         "excess -4.33 points a year over the benchmark, max drawdown -18.2%, Sharpe 0.67; India 2.35% CAGR, "
         "excess -11.18, max drawdown -16.8%, Sharpe 0.34 (bracket exits). LEGACY (v1.1, full period from 2013 "
