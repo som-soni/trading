@@ -312,6 +312,38 @@ markets, so none is proposed.
 the rule cannot see: the market's tone, his recent results, and the whole chart. Not adopted, and nothing queued. A
 narrower test that remains is a tighter cap on the initial stop, aiming at his 5–6% average loss, rather than an early exit. `MAX_STOP_PCT` (SL-03) skips fills with a stop more than 10% away, and no tighter value has been run.
 
+### 9.4 Scoring a VCP on several dimensions — checked on the backtest trades (2026-11-10)
+
+The question came from a chart review: Zydus Lifesciences (NSE) was bought as a cheat on 4 December 2014 and stopped
+on 17 December for −1.05R. Why was it a base at all, and could a multi-part score have rejected it?
+
+**Why it was a base.** The detector starts a base at the first high the price has not beaten. Here that was ₹352.03 on
+11 November 2014, after a 22% run in 20 sessions. The base was 16 sessions, 15.5% deep, one pullback, and the stock's
+third base. It failed the VCP test (VCP-04, two pullbacks needed). It was bought as an **S4 cheat**, which only needs a
+tight shelf (₹302.32–323.59) in the middle third of a base that clears VCP-01 to VCP-03. A cheat buys before the VCP
+finishes, so it does not require one. **[inferred]** Minervini would likely call this a single pullback after a
+spike, not a base that has contracted.
+
+**Measured.** Each trade of runs #3779 (India, 324 trades) and #3790 (US, 1,072), 2013–2021, joined to its base's stored
+measurements:
+
+- **Most dimensions did not separate winners from losers** among trades the rules already accept. That covers base
+  length, depth, final tightness, volume dry-up, base number, the run into the base and RS rank. Each was flat,
+  contradicted itself between markets, or moved less than the noise (about ±0.4R per tercile in India).
+- **A full VCP did worse**: India +0.12R against +0.16R for the rest, US −0.31R against −0.01R. A score rewarding the
+  textbook pattern would point the wrong way.
+- **One dimension held in both markets:**
+
+| Cheat entries (S3, S4) | India avg R (trades) | US avg R (trades) |
+|---|---|---|
+| Base with 1 pullback | −0.02 (24) | −0.08 (82) |
+| Base with 2 or more | +0.38 (91) | +0.05 (197) |
+
+**What was done.** No composite score: its weights would be fitted to noise. The one rule became a research switch,
+`CHEAT_MIN_CONTRACTIONS` (1.63, off). Set to 2, it refuses both Zydus cheats. Optimise runs #1451 (India) and #1452
+(US) are queued ([CAGR gaps](minervini-cagr-gaps.md)). The rule was sliced from the same window, so those runs can
+only rule it out; a pass earns one verify run with criteria written first.
+
 ## 10. How it compares
 
 - **With the repository's Minervini implementation**: the spec covers the Trend Template, the VCP, pivots, stops, the market
