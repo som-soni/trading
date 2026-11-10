@@ -122,6 +122,7 @@ The two creators disagree on partial profits, and both are right for different m
 | Last piece of a winner | Close below the 50-day, ratcheted higher once enough is made | Ritchie/Hedgepath (Seagate) |
 | A winner pulls back to the top of its pivot or to the 20-day (a natural reaction) | **Add** as it turns up over the prior day's high; stop on the add under the reaction low. Different from adding at a new, higher pivot | Minervini (ANF, Feb 2021: two adds) |
 | One to three natural reactions done, and the advance accelerates | Sell into the strength | Minervini (ANF) |
+| A new trade starts weak — a heavy-volume reversal, a close back below the pivot, or a run of down days | **Hold to the stop**; do not add, and watch it. Selling early helped the two cases that raised it (Manappuram, Marico 2018), but lowered the average in every replay (§6) | Minervini lists these as violations; measured here |
 
 *Proposed decision rule:* at entry, label the trade **tradable** or **leader**. Tradable → scale out into strength; leader →
 hold and trail. Never take a partial only because a trade went fast.
@@ -138,3 +139,5 @@ hold and trail. Never take a partial only because a trade went fast.
 | L9 pause pivot, L10 pullback buy | As new setups in the `minervini` strategy, research switches off, with pass criteria written first |
 | Add on a natural reaction | Replayed 10 Nov 2026 on the optimise runs' trades ([Minervini note](creator-mark-minervini.md) §13.3): US −0.22R an add (+0.11R with the 150-day exit), India +0.47R (+2.85R, mostly 2020–21); 57–73% stopped at the reaction low. Worth building as a research switch in the backtest only beside the 150-day exit, and judged on India first |
 | ~~Weekly volume markers~~ | Done 10 Nov 2026: no right-side distribution week, or a quiet right side, made no difference to the trades' R in either market (same section). Not a filter; the daily dry-up already covers it |
+| ~~Early-weakness exits~~ | Done 10 Nov 2026 ([Minervini note](creator-mark-minervini.md) §9.3; [Stops and exits](learn-risk-stops-exits.md) §10): a close back below the pivot, the same on above-average volume, 3 or 4 down closes in a row, and more down days than up, each within 5–10 sessions. On the `minervini` optimise trades none raised the average in both markets (India +0.20R → +0.04 to +0.20; US −0.040 → −0.031 to −0.052); on ~61,000 US and ~18,000 Indian textbook breakouts every version lowered it. Rejected |
+| Tighter stop cap | Instead of exiting early, skip wide stops: `MAX_STOP_PCT` 8 and 6 (now 10) in the `minervini` optimise window, runs #1440–1443; adopted only if the same value raises CAGR in both markets with max drawdown no more than 1 point deeper ([CAGR gaps](minervini-cagr-gaps.md)) |
