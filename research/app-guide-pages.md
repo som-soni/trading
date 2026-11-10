@@ -306,6 +306,15 @@ sessions where all three are met (coiled), and an arrow a close through the wind
 session after a coil. The legend shows the raw readings. It is a gauge for exploring, not the strategy: it cannot see
 the successively smaller pullbacks that make a base a VCP — the Minervini SEPA setups layer finds those — and nothing
 here says whether a coil or its breakout predicts anything.
+**Minervini SEPA setups** (`MinerviniSpecStrategy.bases_live`, `/api/setups/minervini/…`) frames each base with its
+uptrend, contractions and the entry the strategy's rules would place — buy, stop, +2R and target from the same
+functions `build_plans` uses — labelled as an illustration. A frame reads "trade skipped" when one of the
+strategy's plan refusals applies, and the card names it: the screen failing on the entry's session, the stop more
+than `MAX_STOP_PCT` below the buy, less than `MIN_STRUCTURAL_R`:1 to the target, a base past `MAX_BASE_COUNT`. A
+cheat entry also checks its base's pullback count against `CHEAT_MIN_CONTRACTIONS` (1.63's switch, a *Pullbacks*
+row shown only while it is on), so a one-dip cheat reads "trade skipped" exactly when the backtest would refuse it.
+These refusals are written beside `build_plans`, not called from it: a new plan rule needs its row here too. Exit
+rules are not drawn; with a backtest run selected, a setup that run traded shows the run's stored trade instead.
 **MVP — momentum, volume, price** is David Ryan's accumulation check as Minervini describes it: over the last 15
 sessions the stock closed up on at least 12, its average volume is at least 25% above the 15 sessions before, and it
 gained at least 20%. Every session where all three hold gets an "ant", a small dot above its price bar, so a run of
