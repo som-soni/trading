@@ -4633,6 +4633,7 @@ class MinerviniSpecStrategy(Strategy):
             shapes += [{"shape": "level", "from": c_from, "to": c_to, "price": v, "role": role, "label": lab,
                         "dash": role != "buy"} for role, v, lab in levels]
             ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (not MEASURED_MOVE_RR) or (r_mult or 0) >= MIN_STRUCTURAL_R
+            ok_pb = not CHEAT_MIN_CONTRACTIONS or len(cd or ()) >= CHEAT_MIN_CONTRACTIONS
             c_screen = self._screen_miss(cfg, daily, ci)   # the cheat is bought only on a session that passes it
             c_checks = [
                 {"code": "TT", "name": "Screen", "value": f"fails on {c_from}: {c_screen}" if c_screen
@@ -4656,12 +4657,18 @@ class MinerviniSpecStrategy(Strategy):
                  "value": (f"{cp['cheat_vol_vs_lead']:.2f}x the sessions before"
                            if cp.get("cheat_vol_vs_lead") is not None and cp["cheat_vol_vs_lead"] == cp["cheat_vol_vs_lead"] else "—"),
                  "limit": f"at most {CHEAT_VOL_CONTRACT:g}x", "state": "pass"},
-            ] if CHEAT_VOL_CONTRACT else []) + [
+            ] if CHEAT_VOL_CONTRACT else []) + ([
+                # 1.63's plan rule, the same test build_plans applies (the stored `contractions` is len(depths))
+                {"code": cz, "name": "Pullbacks", "value": f"{len(cd or ())}",
+                 "limit": f"at least {CHEAT_MIN_CONTRACTIONS}", "state": "pass" if ok_pb else "fail"},
+            ] if CHEAT_MIN_CONTRACTIONS else []) + [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
             ] + (self._target_checks(px, target, c_uncapped, c_capped, r_mult, ok_r) if MEASURED_MOVE_RR
                  else self._measured_move_note(px, c_uncapped, c_cap if c_capped else None, risk, entry))
             skip = ([f"the stock fails the strategy's screen on {c_from} -- {c_screen}"] if c_screen else []) + \
+                   ([] if ok_pb else [f"the base has {len(cd or ())} pullback{'' if len(cd or ()) == 1 else 's'}, under the "
+                                      f"{CHEAT_MIN_CONTRACTIONS} a cheat needs"]) + \
                    ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
                    ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"]) + \
                    ([f"it is the {_ordinal(cnt['n'])} base of its advance (at most the {_ordinal(MAX_BASE_COUNT)})"]
