@@ -207,9 +207,14 @@ class KullamagiStrategy(Strategy):
 
     status = (
         "v1.4 is v1.3's rules plus an entry ADR floor that is off by default; v1.3's results below stand for it. "
-        "Being measured (optimise, in-sample): Kullamagi's sizing and a switch that drops to a quarter size while "
-        "the last 20 closed trades lose (--pe --pe-window 20 --pe-pilot 0.25 --pe-no-streak), and "
-        "ENTRY_MIN_ADR_PCT=5. All three were chosen from v1.3's US optimise trades. "
+        "v1.4 variants (optimise, 2013-2021, in-sample: all were chosen from v1.3's US optimise trades) all FAIL the "
+        "criterion. Quarter size while the last 20 closed trades lose (--pe --pe-window 20 --pe-pilot 0.25 "
+        "--pe-no-streak): US 5.85% CAGR (excess -8.16), max drawdown -24.2% against the base's -41.4%, +0.13R; India "
+        "-0.35% (-13.88), -18.5%, +0.11R. The same with a 12.5% position cap: US 5.48% (-8.53), -20.9%, +0.14R. "
+        "Kullamagi's sizing (25% cap, 5 slots) with it: US 1.34% (-12.67), -26.2%, +0.08R; India -1.26% (-14.79), "
+        "-20.8%, +0.12R. ENTRY_MIN_ADR_PCT=5: US 6.77% (-7.24), -34.7%, 908 trades, +0.17R; India 0.83% (-12.71), "
+        "191 trades, +0.03R. The loss throttle halves the US drawdown at no cost in CAGR. Concentrating into 5 "
+        "positions cuts CAGR. Neither change closes the gap to buy-and-hold. "
         "v1.3 FAILED the pass criterion in the optimise stage (2013-2021, in-sample: its rest constants were set "
         "from the model book's 2019-2020 marked buys). Verify not run. The criterion, set before any v1.3 result and "
         "unchanged from v1.1: the base rules beat the market's benchmark CAGR AND make a positive average R after "
