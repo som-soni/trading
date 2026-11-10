@@ -194,3 +194,35 @@ stated, and draft 2 gets its own run.
   ranges, is exactly what the Dixon chart puts in doubt.
 - His championship result is a concentrated, high-turnover, small-account record from 2020, an unusual year for
   growth stocks. The spec takes his method, not his returns.
+
+## 8. Results — draft 1 (optimise stage, 2013–2021, in-sample)
+
+Built as strategy `kell_cycle` v1.0 (spec id `v1.0-a4345dde`), with the section-4 changes and the section-5
+trading rules. Six optimise-stage runs are queued: both markets × {default break (a), break (b) `BREAK_MODE=2`,
+loose screen `SCREEN_LOOSE=1`} (queue #1412–#1417). No verify run is made until all three section-6 criteria
+pass and the owner says so.
+
+### Diagnostics recorded before the runs
+
+**Wedge-pop volume** (diagnostic only; the rule keeps 1.3×). Pops found over 2013–2021, on every bar and on the
+bars that also passed the Trend Template:
+
+| Market | Symbols | 1.0× | 1.3× (used) | 1.6× |
+|---|---:|---:|---:|---:|
+| India, all bars | 2,309 | 45,198 | 39,931 | 35,224 |
+| India, Trend Template days | | 4,511 | 3,996 | 3,475 |
+| US, all bars | 4,998 | 106,127 | 77,054 | 55,921 |
+| US, Trend Template days | | 10,602 | 7,681 | 5,332 |
+
+Raising the bar from 1.0× to 1.3× drops about 11% of India's pops but 28% of the US's. India's pops come mostly
+on heavy volume anyway.
+
+**The break rule on the check charts.** With break (a), Tesla 2020 keeps the spec's marks. The WP of 14 April is
+newly found once the uptrend test needs EMA10 > EMA20, and BKs fire on 11 August and 8 September. On Dixon,
+March 2023 to September 2024, break (a) calls 9 BKs (draft 0 called 8) and break (b) calls 5. So break (b) is
+the variant that actually addresses the whipsaw the Dixon check found.
+
+### Backtest results
+
+Pending: the runs are queued behind the rest of the backtest lane. Each run is reported here with CAGR,
+Sharpe, max drawdown, trade count and expectancy in R, plus each criterion's pass or fail, including failures.
