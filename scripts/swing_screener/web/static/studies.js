@@ -1773,6 +1773,13 @@ const Studies = (() => {
       store.set("failedBasesHidden2026", true);
     }
     if (moved) save(list);
+    // a study saved before one of its settings existed has no value for it ("RS undefined" in the trend-health
+    // bands' label after the RS strip was added): fill each missing setting with its default, keep the rest
+    for (const s of list) {
+      const def = CATALOG[s.type];
+      if (!def?.params) continue;
+      for (const [k, v] of Object.entries(def.params)) if (s.params?.[k] === undefined) (s.params ??= {})[k] = typeof v === "object" ? v.def : v;
+    }
     return list.filter((s) => CATALOG[s.type]);
   }
   const save = (list) => store.set("chartStudies", list);

@@ -1223,8 +1223,11 @@ async function chartPage(alive, market, symbol, tf) {
         }
         if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: layerLabels ? "B" : `B ${fmt(ep)}`,
           ...(ep > 0 ? { position: "atPriceBottom", price: ep } : { position: "belowBar" }) });
-        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", size: 1.5, text: layerLabels ? "S" : `S · ${r[c("exit_reason")]} ${res(rm)}`,
-          ...(xp > 0 ? { position: "atPriceTop", price: xp } : { position: "aboveBar" }) });
+        // The sell has its own colour and sits ABOVE the bar. In the candles' green or red, pinned to a fill inside
+        // the bar, a stop-out vanished into its own red candle and the setup frame's edge (BRITANNIA.NS, Sep 2018).
+        // The result is in the trade's heading and card; the level is the stop / target line.
+        if (b) marks.push({ time: b, shape: "arrowDown", color: "#d500f9", size: 1.5, position: "aboveBar",
+          text: layerLabels ? "S" : `S ${fmt(xp)} · ${r[c("exit_reason")]} ${res(rm)}` });
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
       LC.createSeriesMarkers(main, marks);
