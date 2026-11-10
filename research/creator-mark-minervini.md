@@ -252,6 +252,45 @@ the sample, as the tail: the median trade lost its full 1R.
    your own results, go back to cash fast. The least defensible part is the selection claim "the stocks that go down the least
    are going to be the ones that go up the most".
 
+### 9.3 Selling a breakout that fails at once — checked on a backtest trade (2026-11-10)
+
+The question came from a chart review, not a clip: on a trade that turns down right after the buy, would he wait for the
+stop? The trade is Manappuram Finance (NSE), S1 in India run #3754 (1.57, optimise window). It was bought on 4 May 2018
+at 126.94, with the pivot at 124.5 and the stop at 115.90, 8.7% away. It was stopped on 15 May for −1.04R.
+
+| Date | Bar |
+|---|---|
+| 3 May | Breakout above 124.5 on 2.8× the 50-day average volume |
+| 4 May | Bought on the close, 126.94 |
+| 9 May | New high of 130.45 intraday, closed at 126.25 on 2.7× volume: an up-and-reverse day |
+| 10 May | −4.1% to 121.05 on 1.7× volume: the biggest down day since the buy, closing back inside the base below the pivot |
+| 15 May | Stop hit at 115.90 |
+
+**His reading [inferred]:** 9 and 10 May are the post-breakout violations he describes selling on: a heavy-volume
+reversal, then the largest decline since the breakout, on volume, back below the pivot. He also aims for an average loss
+of about 5–6%, and this stop was wider. Selling at the 11 May open (121.95) would have cost about −0.45R.
+
+**Measured:** the strategy already tested and switched off the mechanical versions. These are EX-02, a close back below
+the pivot (`FAIL_DAYS`, about 80% of trades sold in 1.7 at about −0.3R each), and EX-02b, a close below the 20-day
+(`FAIL_SMA20_DAYS`, off since 1.31). A replay of the stricter, volume-qualified version on the baseline trades
+(2013–2021; India #3754, US #3758; each trade alone, sold at the next open) also lowered the average R:
+
+| Exit rule | India avg R (323 trades) | US avg R (1,255 trades) |
+|---|---|---|
+| Hold to the stop (current) | **+0.20** | **−0.04** |
+| Close below the pivot within 5 sessions | +0.08 (117 sold) | −0.045 (292 sold) |
+| Down close below the pivot on above-average volume, within 3 sessions | +0.135 (24 sold) | −0.045 (86 sold) |
+| Same, within 5 sessions | +0.14 (32 sold) | −0.045 (124 sold) |
+| Same, within 10 sessions | +0.14 (44 sold) | −0.044 (166 sold) |
+
+In India the trades the 5-session volume rule sells would have finished at **+0.26R on average** if held, because some
+recover into 2R+ winners. Sold early they average about −0.40R. Manappuram is the case where the early sell helps, and
+across the trades those cases are outweighed.
+
+**Takeaway [inferred]:** as a mechanical rule, holding to the stop is better here. His early sells likely rely on context
+the rule cannot see: the market's tone, his recent results, and the whole chart. Not adopted, and nothing queued. A
+narrower test that remains is a tighter initial stop (his 5–6% average loss) rather than an early exit.
+
 ## 10. How it compares
 
 - **With the repository's Minervini implementation**: the spec covers the Trend Template, the VCP, pivots, stops, the market
