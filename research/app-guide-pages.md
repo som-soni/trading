@@ -312,6 +312,17 @@ gained at least 20%. Every session where all three hold gets an "ant", a small d
 them reads as steady buying rather than one news day; the pane plots each reading against its threshold (1 = met) and
 shades MVP sessions green, and the legend shows the raw numbers. Every number is a setting. Sources differ on the
 volume half (some compare with the 50-day average); this compares the window with the one before it.
+**Trend-health bands** draws three colour strips in one pane, in the style of the bands on Minervini's own
+platform. **Pressure** is volume on up closes ÷ volume on down closes over 20 sessions (green at 1.25 or more, red
+at 0.8 or less). **Buy risk** is the distance above the 50-day (green 0–15%, amber 15–25%, red above 25% or below
+the average). **Trend Template** is how many of the Stage 2 screen's eight criteria the bar meets (green 8, amber
+6–7, red 0–5). The first two are computed in the browser and every threshold is a setting. The Trend Template strip
+comes from `/api/trend-bands` (`web/server.py` `trend_template_bands`), which runs the `stage2` screen's own
+criteria C1–C8 bar by bar, on daily charts only. Its C8 is the per-stock RS floor (`RS_MIN_SCORE`), looser than the
+rank the daily screen and the backtest apply. Hovering names the failing criteria ("TT 6/8 · fails C4 C6"). It
+is for reading a chart: no strategy reads pressure or buy risk, and the Trend Template strip only mirrors the
+gates. The Learn section is in [trend indicators](learn-ind-trend.md), "Trend-health bands". A fourth strip, the
+stored weekly RS rank, is being added.
 On first use the chart shows the 20-, 50- and 200-day SMA, Volume and RSI. Two studies are not
 indicators: **Screener levels** draws a strategy's entry, stop and target, and **Chart patterns (live
 detection)** runs the chart-pattern detectors on stored prices. **Support & Resistance (zones)** is computed
