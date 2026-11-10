@@ -195,3 +195,50 @@ thing against the 1.57 baseline. The sizing, gate, lean-exit and follow-up-buy v
   India (8.6%) and helps the US less. It is a different route to the same thing: fewer exits on a quiet dip.
 - The trend-break reset is a small gain in both markets (+0.4 / +0.25 points): adopt it on the book-case
   evidence, not for CAGR.
+
+*Second batch, 2026-11-10: sizing, the segment gate, lean exits, follow-up buys and no near-miss setups (optimise,
+2013–2021). Each again changes only what it names against the 1.57 baseline (3.71% India, −3.30% US).*
+
+| Variant | India CAGR | Sharpe | Max DD | Trades | US CAGR | Sharpe | Max DD | Trades |
+|---|---|---|---|---|---|---|---|---|
+| Always full size (#3778 / #3782) | 5.17% | 0.53 | −21.5% | 329 | −1.45% | −0.04 | −37.1% | 1192 |
+| Full size, 1.5% risk, 9% open risk (#3779 / #3790) | 4.27% | 0.39 | −28.4% | 324 | −0.20% | 0.06 | −39.5% | 1072 |
+| Segment trend added to the gate (#3776 / #3780) | 5.34% | 0.67 | **−15.6%** | 293 | −3.63% | −0.31 | −42.4% | 1145 |
+| Segment trend alone, index and breadth dropped (#3777 / #3781) | 4.80% | 0.60 | −17.3% | 351 | −0.46% | 0.01 | **−22.4%** | 1225 |
+| No near-miss setups (#3775 / #3774) | **6.70%** | 0.82 | −19.0% | 308 | −2.88% | −0.25 | −41.5% | 1288 |
+| Lean exits (#3791 / #3804) | 8.04% | 0.82 | −21.5% | 260 | 2.42% | 0.26 | −20.3% | 507 |
+| Lean + 150-day after +3R (#3796 / #3820) | 6.12% | 0.70 | −24.1% | 209 | **5.02%** | **0.44** | −25.9% | 369 |
+| Follow-up buys (#3823 / #3825) | 5.49% | 0.61 | −24.9% | 325 | −3.29% | −0.25 | −37.8% | 1259 |
+| Follow-up buys + 150-day after +3R (#3824 / #3827) | 7.03% | 0.71 | −28.9% | 289 | −1.74% | −0.10 | −31.2% | 1075 |
+| *For comparison: 150-day after +3R alone (#3772 / #3768)* | *8.26%* | *0.96* | *−20.9%* | *251* | *3.08%* | *0.31* | *−23.9%* | *962* |
+
+**Reading.**
+
+- **More risk did not buy more return.** At 1.5% risk with a 9% open-risk cap, India's CAGR *fell* (5.2% → 4.3%) and
+  its drawdown deepened by 7 points. The scaling estimate in section 1 assumed the extra risk would go into the same
+  trades; in the portfolio it goes into more, weaker trades and larger losses in the bad stretches. That estimate was
+  wrong, and the sizing lever is closed until the average trade is better. Full size at 1% helps a little (+1.5 points).
+- **Exits remain the lever.** In India, the 150-day after +3R alone (8.26%) beats every combination with it. Dropping
+  the early sales too (lean + 150) loosens too far: the win rate falls to 26% and CAGR to 6.1%. In the US the order
+  reverses: lean + 150 is the best US result so far (+5.0%, Sharpe 0.44), because the US trades' early sales cost more
+  than India's.
+- **The segment gate helps the drawdown more than the return.** In India it adds 1.6 points and cuts the maximum
+  drawdown from −20.1% to −15.6%. In the US, the segment trend alone in place of the index test turns −3.3% into
+  −0.5% and halves the drawdown (−40% → −22%). Adding it on top of the index test does nothing there.
+- **The near-miss setups cost India 3 points.** Taking them out raises CAGR from 3.7% to 6.7% with a shallower
+  drawdown. In the US the effect is small (+0.4).
+- **Follow-up buys do not pay in the portfolio.** With or without the 150-day exit they lower CAGR and deepen the
+  drawdown in both markets. The book cases showed Minervini adding; in this backtest the adds mostly arrive late in
+  the move and get stopped out.
+
+**Next: the combined candidate.** Each change was measured alone, so the gains need not add up. Queued on the same
+window, both markets:
+
+- **A:** 150-day after +3R + no near-miss setups;
+- **B:** A + the segment trend added to the gate;
+- **C:** A + the segment trend in place of the index test;
+- **D (US only):** lean exits + 150-day + segment trend in place of the index test, the US's own best levers.
+
+The pick among them follows a rule fixed now: the highest CAGR in India whose maximum drawdown is no deeper than
+−22%, provided the same configuration does not lower the US result against the US baseline. That one candidate
+becomes a new version and gets its single verify run, with pass criteria written before it runs.
