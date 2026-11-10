@@ -1957,6 +1957,15 @@ class MinerviniSpecStrategy(Strategy):
         "is divided by every later split, so a price floor there would delete the stocks that rose most.",
         "**The low cheat (MV-03) is on because the guide lists it**, but it lost heavily when measured in 1.5 "
         "(India 2010 onward: 25 trades, a 4% win rate, -0.515R each). Read its trades separately.",
+        "**The chart's Trend-health bands read this strategy's gate, not its decisions.** The indicator shows "
+        "three strips in the style of Minervini's own platform. Pressure is up-day ÷ down-day volume over 20 "
+        "sessions. Buy risk is the distance above the 50-day. The Trend Template strip counts how many of the "
+        "gates G1-G8 a bar meets, using the Stage 2 screen's own criteria and the per-stock RS floor of "
+        "{RS_MIN_SCORE}, so it can be looser than G8's rank of {RS_MIN_RANK}+. Only that strip is a rule here, "
+        "as the gates. Pressure and buy risk are not read by `evaluate()` or the exits. Selling on falling "
+        "pressure was measured and rejected (next caveat). Measured on liquid stocks 2014-2026: a Trend "
+        "Template count of 0-5 lagged the average stock over the next 3 months in both markets, and a close "
+        "more than 25% above the 50-day pointed opposite ways in the US and India.",
         "**A trade that starts weak is held to its stop.** Minervini sells early on violations soon after the "
         "buy: a heavy-volume reversal, a close back below the pivot, more down days than up. The strategy "
         "does not, so a trade like Manappuram (May 2018) or Marico (Aug 2018) takes a full -1R where he might "
