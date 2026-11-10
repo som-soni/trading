@@ -117,6 +117,16 @@ vcp
 
 The idea goes back to Jesse Livermore: do not buy the low of a downtrend. Wait for the trend to change, with a rally, a pullback that holds and a second push up. Buy that second push as it clears the pause.
 
+**A cheat still needs a base, not one dip.** *Illustration (textbook rule on stored prices):* Zydus Lifesciences spiked to ₹352.03 on 11 November 2014, on about five times its usual volume. It closed far below that high, at ₹326.64. It then drifted down once, to ₹302.32 on 26 November, and paused in a shelf between that low and ₹323.59. It cleared the shelf on 3 December.
+
+Read as a cheat, that is a buy near ₹324 with a stop under ₹302.32. The stop was hit on 17 December.
+
+Look at what the "base" was. It had one pullback from a one-day spike, 16 sessions long. There was no decline in a downtrend, no first rally and no second push, so the 3C sequence above never happened. The shelf was the drift's own pause.
+
+The rule that follows is simple. Before buying a cheat, count the pullbacks in the base. One dip after a sharp run is a pullback, not a contraction. Ask for at least two, each shallower than the last.
+
+The evidence is thin. Minervini describes the sequence, but no published test splits cheat entries by how many pullbacks the base had. Treat this as a reading rule, not a measured edge.
+
 ### A second setup: the power play
 
 Viking Therapeutics, a drug developer, had slid from about 24 to 8.28 by late October 2023. Over the next seven weeks it rose 140%, to 19.91. The biggest jump came in two days in early December, on four to four and a half times average volume.
