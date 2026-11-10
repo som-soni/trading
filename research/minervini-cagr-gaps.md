@@ -337,8 +337,8 @@ did worse than the rest in both markets, so no composite "VCP score" is proposed
 
 | # | Market | Setting | Compared with |
 |---|---|---|---|
-|  1451 1452 | India | `CHEAT_MIN_CONTRACTIONS=2` | #3754 (3.71%) |
-|  | US | `CHEAT_MIN_CONTRACTIONS=2` | #3758 (−3.30%) |
+| 1451 | India | `CHEAT_MIN_CONTRACTIONS=2` | #3754 (3.71%) |
+| 1452 | US | `CHEAT_MIN_CONTRACTIONS=2` | #3758 (−3.30%) |
 
 **Decision rule, fixed before the results:** the optimise runs only screen the rule out. If it raises CAGR in both
 markets with max drawdown no more than 1 point deeper, it becomes a candidate for one verify run per market. Its
