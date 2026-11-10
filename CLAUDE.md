@@ -78,7 +78,8 @@ its letter has to follow the position it is drawn in: the threads an Orchestrato
 letters right after it, and later threads shift down. That is why the module's `Orchestrator`, if
 any, is `A.` but Minervini is `J.` under 1.1 Strategies — eight Orchestrator threads sit between
 them. No digits, no depth markers, no module prefix (the module's own row names it). Keep letters
-contiguous (no gaps); at 26 a module is full — split it. Do not use sidebar sections or groups for
+contiguous (no gaps). After `Z.` continue `ZA.`, `ZB.` … `ZZ.` — never `AA.`: sorted as text,
+`AA.` falls between `A.` and `B.`, while `ZA.` follows `Z.`. Do not use sidebar sections or groups for
 this: they replace the project grouping and duplicate the module names.
 
 **On your first turn in a new session, mark yourself** (when the ccd session tools are
