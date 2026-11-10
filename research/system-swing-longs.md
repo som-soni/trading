@@ -65,6 +65,16 @@ the low still leaves the right-side build-out ([notes](creator-mark-minervini.md
   the RS line *and* price at a 52-week high together was the best month-end combination measured here (§4.4 there).
 - **Group**: a leading or emerging group from the weekly [Sectors → stocks](system-sector-selection.md) list.
 - **Liquidity** per the strategy floors.
+- **A glance first: the chart's Trend-health bands** (the platform-style strips Minervini's team trade from, §12.4 of the
+  [Minervini note](creator-mark-minervini.md); explained in [trend indicators](learn-ind-trend.md), "Trend-health bands").
+  How to read each, from what was measured on liquid stocks 2014–2026 (next 3 months vs the average stock):
+
+  | Strip | Use it as | Measured |
+  |---|---|---|
+  | Trend Template (criteria met of 8) | **The filter**: red (0–5) is a pass, whatever the pattern | Red lagged in both markets (US −0.5%, India −1.1%); 8 of 8 led in India (+1.5%), weakly in the US |
+  | Buy risk (% above the 50-day) | **Entry check**: below the 50-day, no new buy; over 25%, no chase | Below the 50-day lagged in both; over 25% split the markets (US −3.0%, India +1.6%), so not a sell signal |
+  | Pressure (up ÷ down volume, 20 days) | **A reason not to add**, never a reason to sell | Mostly repeats RSI (0.71); little forward difference |
+  | RS rank | The relative-strength check above | Strip being added (stored weekly ratings) |
 
 ### 2.2 In a decline — the watchlist (Minervini's five things)
 
@@ -140,4 +150,5 @@ hold and trail. Never take a partial only because a trade went fast.
 | Add on a natural reaction | Replayed 10 Nov 2026 on the optimise runs' trades ([Minervini note](creator-mark-minervini.md) §13.3): US −0.22R an add (+0.11R with the 150-day exit), India +0.47R (+2.85R, mostly 2020–21); 57–73% stopped at the reaction low. Worth building as a research switch in the backtest only beside the 150-day exit, and judged on India first |
 | ~~Weekly volume markers~~ | Done 10 Nov 2026: no right-side distribution week, or a quiet right side, made no difference to the trades' R in either market (same section). Not a filter; the daily dry-up already covers it |
 | ~~Early-weakness exits~~ | Done 10 Nov 2026 ([Minervini note](creator-mark-minervini.md) §9.3; [Stops and exits](learn-risk-stops-exits.md) §10): a close back below the pivot, the same on above-average volume, 3 or 4 down closes in a row, and more down days than up, each within 5–10 sessions. On the `minervini` optimise trades none raised the average in both markets (India +0.20R → +0.04 to +0.20; US −0.040 → −0.031 to −0.052); on ~61,000 US and ~18,000 Indian textbook breakouts every version lowered it. Rejected |
+| ~~Trend-health bands as signals~~ | Done 10 Nov 2026 ([trend indicators](learn-ind-trend.md), "Trend-health bands"): each strip's colour against the next 3 months on liquid stocks, 2014–2026. Used as the read in §2.1, not as entry or exit rules; the Trend Template is already the strategy's gate, and selling on pressure was measured and rejected (early-weakness exits, above) |
 | Tighter stop cap | Instead of exiting early, skip wide stops: `MAX_STOP_PCT` 8 and 6 (now 10) in the `minervini` optimise window, runs #1440–1443; adopted only if the same value raises CAGR in both markets with max drawdown no more than 1 point deeper ([CAGR gaps](minervini-cagr-gaps.md)) |
