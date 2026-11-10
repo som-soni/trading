@@ -147,6 +147,15 @@ def stage2_stacked(ctx):
     return v["s50"] > v["s150"] > v["s200"], f"SMA50 {v['s50']:.2f} / SMA150 {v['s150']:.2f} / SMA200 {v['s200']:.2f}"
 
 
+def stage2_fifty_leads(ctx):
+    """Not a screen criterion: the chart's trend-health bands count it in place of C4 (`stage2_stacked`).
+    The 50-day above both the 150- and the 200-day, without asking the 150-day to have crossed the
+    200-day yet -- that crossing lags a base by weeks, so the strip would turn green late in a new
+    advance. The Stage 2 screen and every strategy keep C4 as written."""
+    v = _stage2_vals(ctx)
+    return v["s50"] > v["s150"] and v["s50"] > v["s200"], f"SMA50 {v['s50']:.2f} vs SMA150 {v['s150']:.2f} and SMA200 {v['s200']:.2f}"
+
+
 def stage2_sma200_rising(ctx):
     v = _stage2_vals(ctx)
     return v["s200"] > v["s200_prev"], f"SMA200 {v['s200']:.2f} vs {v['s200_prev']:.2f} {SMA200_RISING_BARS} bars ago"

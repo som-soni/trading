@@ -295,9 +295,30 @@ Three terms come with it:
 - The **value area**: the range around it holding most of the volume, commonly 70%.
 - **High- and low-volume nodes**: prices where much or little traded.
 
+**An example.** Take Nvidia's 126 sessions from July to December 2024, in 24 price rows. The point of control was $117.90. The value area ran from $114.02 to $142.52, and the year closed at $134.29.
+
+On 27 January 2025 the stock fell 17% in a day, on four times its usual volume. Over the next week the low reached $113.01, at the bottom of the value area, near the busiest price. It then recovered to $143.44 by 18 February. In March it came back and broke through, closing at $106.98 on 10 March.
+
+```series
+title: Nvidia, July 2024–April 2025 — the second-half profile's busiest price, held once and then broken
+from: 2024-07-01
+to: 2025-04-30
+tf: D
+line: us:NVDA | Nvidia
+zone: 114.02 142.52 | Value area, July–December 2024 | 2024-07-03 2025-04-30 | support
+level: 117.9 | Point of control $117.90 | 2024-07-03 2025-04-30 | pivot
+mark: 2025-02-03 | low $113.01
+mark: 2025-03-10 | close $106.98
+caption: The profile is fixed at the end of 2024, so nothing in it uses later prices. The level held in early February and gave way five weeks later.
+```
+
 Traders treat high-volume prices as likely support or resistance: many holders have a cost there. Price tends to cross low-volume gaps quickly. This connects to [Support and resistance — drawing the levels that matter](learn-support-resistance.md) and [Supply and demand — zones, and why price levels matter](learn-supply-demand.md).
 
-**Pitfall.** Built from daily bars, it has to spread each day's volume across that day's range, because the bar does not say where in the range the shares traded. That is an approximation. Intraday data gives a truer profile. It is not measured in this guide.
+**What it repeats.** Where the price sits against its own busy zone is mostly where it sits in its trend. The distance from the point of control correlated 0.72 with the distance from the 50-day average, in ATRs, in the US. In India it was 0.70. With the six-month change it was 0.68 in both.
+
+**How traders use it.** As a map of levels: the point of control and the edges of the value area as likely support or resistance, and thin rows as prices the stock may cross fast. About a quarter of sessions closed above the six-month value area, and fewer than one in five below it. That is in both markets.
+
+**Pitfall.** Built from daily bars, it has to spread each day's volume across that day's range, because the bar does not say where in the range the shares traded. That is an approximation; intraday data gives a truer profile. The period matters too: a profile of the bars on screen changes as you scroll.
 
 ## 12. The family side by side
 
@@ -313,7 +334,7 @@ Traders treat high-volume prices as likely support or resistance: many holders h
 | Ease of Movement | Price move per unit of volume | 14 | Momentum (10) (0.71) | Easy moves on light volume |
 | Distance from VWAP | How far above the volume-weighted average? | 20 | 14-day % change (0.92) | Levels; extension |
 | MVP | Up days, rising volume and a fast rise, all at once? | 15 sessions; 12 up, +25%, +20% | 15-day % change (its P test) | Spotting accumulation beside a base |
-| Volume by price | Where did the most shares trade? | A chosen period | — | Support and resistance zones |
+| Volume by price | Where did the most shares trade? | A chosen period; 24 rows; 70% value area | Distance from 50-day (0.72) | Support and resistance zones |
 
 ## 13. What the evidence says
 
@@ -356,7 +377,19 @@ Neither market showed an edge over the next three months either. A stock that ha
 - Lee and Swaminathan (2000) found that past trading volume helps predict how strong and how lasting price momentum is.
 - Blume, Easley and O'Hara (1994) argued in theory that volume carries information that prices alone do not.
 
-**Limits.** Correlation shows overlap, not predictive power. Today's listed stocks only. No costs. Daily bars only, so intraday VWAP and volume profiles are not measured.
+**Volume by price, tested.** Did it matter whether the close was above, inside or below the value area?
+
+> **Method.** Liquid US and Indian stocks, November 2021 to October 2026. Each Friday, a profile of the last 126 sessions in 24 rows, with a 70% value area, each day's volume spread over its range. Buy at the next open. Returns are compared with the average of the same stocks that Friday. t-statistics use monthly averages.
+
+| Close on the Friday | US: next 3 months vs average | India: next 3 months vs average |
+|---|---|---|
+| Above the value area | +0.9% (t 0.8) | +1.1% (t 3.1) |
+| Inside it | −0.2% (t −2.1) | −0.2% (t −2.0) |
+| Below the value area | −0.7% (t −3.2) | −1.0% (t −5.6) |
+
+Below the value area was a weak place to be in both markets. Above it helped in India and was noise in the US. That is the trend result again: a close below six months of busy trading is a stock that has been falling. The test says nothing about whether a single level held on the day it was touched.
+
+**Limits.** Correlation shows overlap, not predictive power. Today's listed stocks only. No costs. Daily bars only, so intraday VWAP and intraday volume profiles are not measured.
 
 ## 14. Checklist
 
@@ -368,6 +401,7 @@ Neither market showed an edge over the next three months either. A stock that ha
 - [ ] Am I comparing Force Index or Chaikin Oscillator values across stocks? Their units do not allow it.
 - [ ] An MVP signal: where is the base, and how far is the price above it?
 - [ ] Is there a VWAP anchor or a high-volume price nearby that could act as support or resistance?
+- [ ] Is the close above or below its value area, and over which period was the profile drawn?
 
 ## Further reading
 

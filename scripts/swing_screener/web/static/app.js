@@ -830,6 +830,7 @@ async function chartPage(alive, market, symbol, tf) {
   let dr = null, vcpAnnotations = [], anatomy = [], selTrade = -1, runStrategy = null, viewClaimed = false;
   // the active Trade setups layer's list, as it published it (studies.js setupLayer): { list, focus, select }
   let setupFeed = null, setupFilter = store.get("setupFilter", "all");
+  let spPickOpen = false;   // the setups panel's strategy list, folded to the picked one so the setups get the room
   // "Setups today" (/api/chart-setups): the strategies whose latest screening run has this stock on trigger or watch
   let todaySetups = [];
   // the Chart patterns indicator's history, as it published it (studies.js patterns): { list, focus, select, clear }
@@ -1761,14 +1762,17 @@ async function chartPage(alive, market, symbol, tf) {
   function setupPickerHtml() {
     const cur = Studies.activeSetup(), seen = SETUP_COUNTS[`${market}:${symbol}`] || {};
     const today = Object.fromEntries(todaySetups.map((x) => [x.strategy, x]));
-    return `<div class="sp-strats">${Studies.setupLayers().map((l) => {
+    const layers = Studies.setupLayers();
+    // once a strategy is picked the list folds to it: fourteen chips would push the setups off the panel
+    const folded = cur && !spPickOpen;
+    return `<div class="sp-strats">${layers.filter((l) => !folded || l.type === cur).map((l) => {
       const t = today[l.strategy], c = seen[l.strategy];
       const tip = [t ? `Today: ${t.tradeable ? (/TRIGGER/i.test(t.decision || "") ? "on trigger" : "would trade") : "on watch"} (screened ${prettyDate(t.as_of)})` : "",
         c ? `${c.n} setup${c.n === 1 ? "" : "s"} on this chart, ${c.trade} would trade${c.at ? ` (counted on bars to ${prettyDate(c.at)})` : ""}` : "",
         EDGE?.strategies?.[l.strategy]?.[market] ? `Backtest: ${EDGE.strategies[l.strategy][market].label}` : "",
-        l.type === cur ? "Click to take it off the chart" : "Click to draw its setups"].filter(Boolean).join("\n");
+        l.type === cur ? (cur && !spPickOpen ? "Click to change strategy" : "Click to take it off the chart") : "Click to draw its setups"].filter(Boolean).join("\n");
       return `<a class="sp-strat${l.type === cur ? " on" : ""}" data-layer="${l.type}" title="${esc(tip)}">${t ? `<i class="${t.tradeable ? "trade" : ""}"></i>` : ""}${esc(l.name)}${c ? ` <span>${c.n}</span>` : ""}</a>`;
-    }).join("")}</div>`;
+    }).join("")}${cur ? `<a class="sp-more" data-spmore>${folded ? `Change strategy (${layers.length - 1} more) ▾` : "Fold ▴"}</a>` : ""}</div>`;
   }
   function setupsPanelHtml() {
     const name = Studies.setupName();
@@ -1790,11 +1794,10 @@ async function chartPage(alive, market, symbol, tf) {
           <span class="muted small sp-to" title="The setup's last bar">${s.live ? "live today" : `to ${prettyDate(s.to)}`}</span></div>
         <div class="small sp-title">${esc(s.title)}</div>
         <div class="muted small">${esc(s.summary)}</div></div>`).join("");
-    return `<section><h3>${esc(name)} · setups</h3>
-      <div class="sp-lab">Strategy</div>${setupPickerHtml()}
-      ${setupFeed.note ? `<div class="small sp-note">${esc(setupFeed.note)}</div>` : ""}
-      <div class="muted small">What the strategy's rules would set up on — not trades. Click one here or in the lane along the chart's foot to go to it.</div>
-      <div class="sp-lab">Show</div><div class="sp-chips">${chips}</div></section>
+    return `<section><h3 title="What the strategy's rules would set up on — not trades. Click one here or in the lane along the chart's foot to go to it.">${esc(name)} · setups</h3>
+      ${setupPickerHtml()}
+      ${setupFeed.note ? `<div class="small sp-note" title="${esc(setupFeed.note)}">${esc(setupFeed.note)}</div>` : ""}
+      <div class="sp-chips">${chips}</div></section>
       <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;
   }
   /** The Chart patterns panel: every pattern the strategy's detectors found over five years, newest
@@ -1978,9 +1981,13 @@ async function chartPage(alive, market, symbol, tf) {
     }
     if (prefs.tab === "setups") {
       body.querySelectorAll(".sp-strat").forEach((el) => el.onclick = () => {
-        Studies.setSetup(el.dataset.layer === Studies.activeSetup() ? null : el.dataset.layer);
+        const off = el.dataset.layer === Studies.activeSetup();
+        if (off && !spPickOpen) { spPickOpen = true; renderSide(); return; }   // the folded chip opens the list
+        Studies.setSetup(off ? null : el.dataset.layer);
+        spPickOpen = false;
         leaveBtView(); markSetup(); rerender();
       });
+      body.querySelector("[data-spmore]")?.addEventListener("click", () => { spPickOpen = !spPickOpen; renderSide(); });
       body.querySelectorAll(".sp-chip").forEach((el) => el.onclick = () => { setupFilter = el.dataset.f; store.set("setupFilter", setupFilter); renderSide(); });
       body.querySelectorAll(".sp-row").forEach((el) => el.onclick = () => setupFeed?.select(+el.dataset.si));
       body.querySelector(".sp-row.cur")?.scrollIntoView({ block: "nearest" });
@@ -8271,7 +8278,7 @@ async function runsPage(alive, runId) {
 /* Trade desk: my trading system (the playbook), one tab per step of the decision chain. Each tab is a
    research note (research/system-*.md) rendered as it is in Research; the notes stay the one source, so the
    menu only names them. [page id, tab label, note, tooltip] — the first is the section's home page. The
-   desk's dated work (Scans & reports, the trade-desk page) sits between them, after the sector step it records. */
+   desk's dated work (Scans & reports, the trade-desk page) comes after them, under Records in the desk's left panel. */
 const PLAYBOOK = [
   ["playbook", "Playbook", "system-overview", "My trading system: what it trades, the decision chain, the principles and how new material gets in"],
   ["playbook-review", "Daily review", "system-daily-market-review", "After the close: regime, stretch, breadth, events and my results, ending in a written call"],
@@ -8282,6 +8289,28 @@ const PLAYBOOK = [
   ["playbook-risk", "Risk", "system-risk-exposure", "Risk per trade and per book, exposure and leverage limits, progressive exposure and the overrides"],
 ];
 const playbookTab = (run) => PLAYBOOK.find((x) => x[2] === run)?.[0];
+/* Trade desk navigates by a left panel, as Research and Learn do, not by the top tab row: its pages grouped in
+   decision-chain order. Every desk page must sit in one group (deskNav lists any it misses under "Other"). */
+const DESK_GROUPS = [
+  ["Process", ["playbook", "playbook-review", "playbook-sectors"]],
+  ["Books", ["playbook-longs", "playbook-shorts", "playbook-fno"]],
+  ["Risk", ["playbook-risk"]],
+  ["Records", ["trade-desk"]],
+];
+/** The Trade desk panel's contents. `extra` goes under the current page's link (Scans & reports puts its days there).
+ *  On a phone the panel stacks above the page, so only the current page's group starts open. */
+function deskNav(page, extra = "") {
+  const pages = SECTIONS.find((s) => s.key === "desk").pages, grouped = DESK_GROUPS.flatMap(([, ps]) => ps);
+  const groups = [...DESK_GROUPS, ["Other", pages.map(([p]) => p).filter((p) => !grouped.includes(p))]].filter(([, ps]) => ps.length);
+  const narrow = matchMedia("(max-width: 860px)").matches;
+  const item = (p) => {
+    const [, t, d] = pages.find(([x]) => x === p);
+    return `<a class="nav-item ${p === page ? "active" : ""}" href="${esc(tabRoot(p))}" title="${esc(d)}"><span><b class="sn">${esc(t)}</b></span></a>`
+      + (p === page ? extra : "");
+  };
+  return `<div class="nav-h">Trade desk</div>` + groups.map(([label, ps]) => `<details class="lp-sec" ${!narrow || ps.includes(page) ? "open" : ""}>
+      <summary><span>${esc(label)}</span><span class="n">${ps.length}</span></summary><div class="lp-sub">${ps.map(item).join("")}</div></details>`).join("");
+}
 const SECTIONS = [
   { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, the macro backdrop and flows, and a summary of today's setups and new picks"]] },
   { key: "markets", label: "Markets", pages: [["postmarket", "Post-market", "The day's recap after the close"], ["breadth", "Breadth", "How healthy is the market — risk, not direction"],
@@ -8297,9 +8326,9 @@ const SECTIONS = [
     ["analysis", "Analysis", "The stock read through the analysis framework: ten pillars of evidence, your answers and your verdict"],
     ["news", "News", "Headlines, filings and exchange announcements, and key events — earnings, dividends, splits, analyst ratings"]] },
   { key: "watchlists", label: "Watchlists", pages: [["watchlist", "Watchlists", "Your lists and the screener's picks"]] },
-  { key: "desk", label: "Trade desk", pages: (([home, review, sectors, ...rest]) => [home, review, sectors,
-    ["trade-desk", "Scans & reports", "The desk's research by date: strong sectors, their stock lists and sector reports as they stood that day"],
-    ...rest])(PLAYBOOK.map(([p, t, , d]) => [p, t, d])) },
+  // in the left panel's order (DESK_GROUPS), so Alt+[ / Alt+] and the phone menu step through the pages as the panel lists them
+  { key: "desk", label: "Trade desk", sidePanel: true, pages: [...PLAYBOOK.map(([p, t, , d]) => [p, t, d]),
+    ["trade-desk", "Scans & reports", "The desk's research by date: strong sectors, their stock lists and sector reports as they stood that day"]] },
   // Library is reading material; the data-maintenance tools (TODO, sub-industry labels) live under System
   { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"],
     ["research", "Research", "The research notes: findings, studies, specifications and the sector playbook"],
@@ -8339,7 +8368,7 @@ function renderNav(page) {
   $nav.innerHTML = SECTIONS.map((s, i) => `<a href="${secHref_(s)}" data-sec="${s.key}" data-href="${secHref_(s)}" class="sec ${s === sec ? "active" : ""}"
       title="${esc(s.pages.map((x) => x[1]).join(" · "))} (Alt+${i + 1})">${s.label}</a>`).join("");
   const sub = document.getElementById("subnav");
-  sub.hidden = !(sec && sec.pages.length > 1);
+  sub.hidden = !(sec && sec.pages.length > 1) || !!sec.sidePanel;   // a side-panel section lists its pages in the page's own panel
   sub.innerHTML = sub.hidden ? "" : `<nav class="ptabs subtabs">${sec.pages.map(([p, t, d]) => `<a href="${pageHref(p)}" class="${p === page ? "active" : ""}" title="${esc(d)} — Alt+[ / Alt+] for the previous / next tab">${t}</a>`).join("")}</nav>`;
   const cur = sec && sec.pages.find(([p]) => p === page);
   $navbtn.innerHTML = `<svg viewBox="0 0 20 20"><path d="M3 5h14M3 10h14M3 15h14"/></svg><b>${sec ? sec.label : "Menu"}</b>${cur && sec.pages.length > 1 ? `<span>› ${cur[1]}</span>` : ""}`;
@@ -8600,7 +8629,7 @@ const GUIDE_BLURB = {
   "learn-ind-map": "Every indicator sorted into eight families, which ones say the same thing (measured), and one indicator per question.",
   "learn-ind-moving-averages": "SMA, EMA, WMA, DEMA, Hull, KAMA, the Alligator and ribbons: the trade-off between lag and false turns, measured.",
   "learn-ind-bands-channels": "Bollinger, Keltner, Donchian, envelopes and ATR bands: four ways to set a band's width, and what each band repeats.",
-  "learn-ind-trend": "DMI and ADX, Aroon, Vortex, Parabolic SAR, Supertrend, Chandelier Exit and Ichimoku — trend strength against trend direction.",
+  "learn-ind-trend": "DMI and ADX, Aroon, Vortex, Parabolic SAR, Supertrend, Chandelier Exit, Ichimoku and the Chande Trend Meter — trend strength against trend direction.",
   "learn-ind-momentum-range": "Stochastic, Williams %R, CCI, %B, Ultimate Oscillator, Connors RSI and Balance of Power: where the close sits in its range.",
   "learn-ind-momentum-rate": "Rate of change, distance from an average, PPO, TRIX, TSI, KST and Special K, PMO and DPO: how fast the price is changing.",
   "learn-ind-volatility": "ATR, standard deviation, BandWidth, historical volatility, Mass Index, Ulcer Index and the TTM Squeeze — tested.",
@@ -8812,13 +8841,12 @@ async function playbookPage(alive, page) {
   if (!alive()) return;
   const doc = runs.find((x) => x.run === run);
   document.title = `${label} · Trade desk · Trading`;
-  if (!doc) {
-    $view.innerHTML = `<div class="empty"><b>This page of the playbook is not loaded</b><div class="muted">research/${esc(run)}.md is ingested with the
+  const body = doc ? `<div class="lp-guide pb-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>`
+    : `<div class="empty"><b>This page of the playbook is not loaded</b><div class="muted">research/${esc(run)}.md is ingested with the
       research notes: load them from System → Reports archive (Load reports).</div></div>`;
-    return;
-  }
-  $view.innerHTML = `<div class="lp-guide pb-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>`;
-  await learnGuide(alive, doc);
+  $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">${deskNav(page)}</aside>
+    <section class="scr-main lp-main">${body}</section></div>`;
+  if (doc) await learnGuide(alive, doc);
 }
 
 async function researchPage(alive, slug) {
@@ -8982,7 +9010,8 @@ async function tradeDeskPage(alive, slug, vid) {
   if (!alive()) return;
   const days = list?.days || [];
   if (!days.length) {
-    $view.innerHTML = `<div class="empty"><b>No trade-desk research stored yet</b><div class="muted">Store a page with <code>python -m swing_screener.sector_research --import &lt;file&gt; --desk trade-desk --kind sector-report --sector &lt;name&gt;</code>.</div></div>`;
+    $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">${deskNav("trade-desk")}</aside><section class="scr-main lp-main">
+      <div class="empty"><b>No trade-desk research stored yet</b><div class="muted">Store a page with <code>python -m swing_screener.sector_research --import &lt;file&gt; --desk trade-desk --kind sector-report --sector &lt;name&gt;</code>.</div></div></section></div>`;
     return;
   }
   const all = days.flatMap((d) => d.entries.map((e) => ({ ...e, day: d.as_of })));
@@ -8990,17 +9019,21 @@ async function tradeDeskPage(alive, slug, vid) {
     || all.find((e) => e.slug === slug && e.latest) || all[0];
   const d = await api(`/api/sector-research/${encodeURIComponent(cur.slug)}?version=${cur.version_id}`).catch((e) => ({ error: e.message }));
   if (!alive()) return;
-  if (d.error) { $view.innerHTML = `<div class="empty"><b>Entry not found</b><div class="muted"><a href="#/trade-desk">Open the latest day</a></div></div>`; return; }
+  if (d.error) {
+    $view.innerHTML = `<div class="rep-layout"><aside class="rep-nav strat-nav lp-nav">${deskNav("trade-desk")}</aside><section class="scr-main lp-main">
+      <div class="empty"><b>Entry not found</b><div class="muted"><a href="#/trade-desk">Open the latest day</a></div></div></section></div>`;
+    return;
+  }
   const v = d.version, href = (e) => `#/trade-desk/${encodeURIComponent(e.slug)}/${e.version_id}`;
   const pageUrl = `/api/sector-research/${encodeURIComponent(d.slug)}/page?version=${v.id}`;
   document.title = `${v.title} · Scans & reports · Trading`;
   $view.innerHTML = `<div class="rep-layout td-layout"><aside class="rep-nav strat-nav lp-nav">
-      <div class="nav-h">Scans & reports · ${days.length} day${days.length > 1 ? "s" : ""}</div>
+      ${deskNav("trade-desk", `<div class="td-days"><div class="nav-h">${days.length} day${days.length > 1 ? "s" : ""}</div>
       ${days.map((day) => `<div class="td-day"><div class="td-day-h"><b>${fmtDay(day.as_of)}</b> <span class="muted small">${ageText(day.age_days)}</span></div>
         ${day.notes.map((n) => `<div class="muted small td-note">${esc(n)}</div>`).join("")}
         ${day.entries.map((e) => `<a class="nav-item ${e.slug === cur.slug && e.version_id === cur.version_id ? "active" : ""}" href="${href(e)}" title="${esc(e.title)}">
           <span><span class="tag td-kind td-${esc(e.kind)}">${esc(e.kind_label)}</span> <b class="sn">${esc(e.sector)}</b>
-          <span class="sr-age">${esc(e.title)}${e.latest ? "" : " · earlier version"}${e.markets.length ? " · " + e.markets.map((m) => esc(m.toUpperCase())).join(", ") : ""}</span></span></a>`).join("")}</div>`).join("")}
+          <span class="sr-age">${esc(e.title)}${e.latest ? "" : " · earlier version"}${e.markets.length ? " · " + e.markets.map((m) => esc(m.toUpperCase())).join(", ") : ""}</span></span></a>`).join("")}</div>`).join("")}</div>`)}
       <div class="nav-empty muted small">Each day is one research session, kept as it was: the pages are frozen with the data of that day, so you can reopen what the desk saw then and compare it with today.</div>
     </aside><section class="scr-main lp-main">
       <div class="sr-head">

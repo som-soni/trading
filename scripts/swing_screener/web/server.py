@@ -2137,7 +2137,8 @@ def trend_template_bands(market: str, symbol: str, years: int = 5):
     falls back to the per-stock floor (RS_MIN_SCORE on the weighted RS score), as in every single-stock
     tool; `rs_rated` counts the bars that used the rating. `rs` returns the ratings for the RS strip. The
     tradability floor is left out: the band reads the trend, not whether the stock is tradable that day.
-    Exploration only.
+    `met` / `fails` are the screen's own count; `strip_met` / `strip_fails`, which the strip draws, count C4
+    as met when the 50-day leads both longer averages (`criteria.stage2_fifty_leads`). Exploration only.
     """
     if market not in MARKETS:
         raise HTTPException(400, f"unknown market {market}")
@@ -2161,8 +2162,9 @@ def trend_template_bands(market: str, symbol: str, years: int = 5):
     # each Friday's rating holds until the next one; a bar more than a week past the last stored Friday is unrated
     rs = (rs.reindex(daily.index, method="ffill", tolerance=pd.Timedelta(days=STOCK_RS_CARRY_DAYS))
           if len(rs) else pd.Series(np.nan, index=daily.index))
+    from ..screens.criteria import stage2_fifty_leads
     crit = get_screen("stage2").criteria
-    dates, met, fails, rs_out = [], [], [], []
+    dates, met, fails, rs_out, strip_met, strip_fails = [], [], [], [], [], []
     for i in range(len(daily)):
         ctx = _BarCtx(daily.iloc[i:i + 1])
         r = rs.iloc[i]
@@ -2178,9 +2180,20 @@ def trend_template_bands(market: str, symbol: str, years: int = 5):
             if not ok:
                 bad.append(c.code)
         dates.append(str(daily.index[i].date())); met.append(len(crit) - len(bad)); fails.append(bad)
+        # the strip counts C4 as met when the 50-day leads both longer averages (criteria.stage2_fifty_leads)
+        sb = bad
+        if "C4" in bad:
+            try:
+                lead = bool(stage2_fifty_leads(ctx)[0])
+            except Exception:  # noqa: BLE001 -- too early for the averages
+                lead = False
+            if lead:
+                sb = [c for c in bad if c != "C4"]
+        strip_met.append(len(crit) - len(sb)); strip_fails.append(sb)
     out = {"symbol": symbol, "market": market, "criteria": [{"code": c.code, "doc": d["text"]}
                                                             for c, d in zip(crit, get_screen("stage2").docs())],
            "dates": dates, "met": met, "fails": fails, "rs": rs_out,
+           "strip_met": strip_met, "strip_fails": strip_fails,
            "rs_rated": sum(r is not None for r in rs_out), "rs_min_rank": RS_MIN_RANK, "rs_min_score": RS_MIN_SCORE}
     if len(_tt_bands) > 64:
         _tt_bands.clear()

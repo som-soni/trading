@@ -679,6 +679,76 @@ const Studies = (() => {
       } },
     vwap: { name: "Rolling VWAP", short: "VWAP", cat: "Volume", overlay: true, needsVolume: true, params: { length: 20 }, plots: [{ k: "vwap", c: "#e040fb" }],
       calc: (b, p) => { const tp = source(b, "hlc3"); return { vwap: zip((x, y) => (y ? x / y : null), sum(zip((t, v) => t * v, tp, b.V), p.length), sum(b.V, p.length)) }; } },
+    // ---- Volume by price (volume profile): a histogram on the price axis, drawn from the right edge behind the
+    // candles. Daily bars do not say where in the range the shares traded, so each bar's volume is spread evenly
+    // over its high-low range -- an approximation. Up bars (close >= open) and down bars are stacked in two
+    // shades; the point of control (the row with the most volume) is a line and the value area (the rows
+    // around it holding `valueArea`% of the volume) is drawn stronger. "Visible range" follows the scroll.
+    vbp: { name: "Volume by price (volume profile)", short: "VBP", cat: "Volume", overlay: true, custom: true, needsVolume: true,
+      label: (p) => `VBP ${p.period === "Visible range" ? "visible" : p.bars} ${p.rows}`,
+      params: { period: { type: "select", def: "Visible range", options: ["Visible range", "Last N bars"] }, bars: 126, rows: 24, valueArea: 70,
+        width: 30 },
+      plots: [{ k: "up", t: "Up volume", c: "#26a69a" }, { k: "down", t: "Down volume", c: "#ef5350" }, { k: "poc", t: "Point of control", c: "#ffb300" }],
+      draw({ chart, main, times, bars, p, col, id }) {
+        const N = times.length, rowsN = Math.max(4, Math.min(100, +p.rows || 24)), va = Math.max(1, Math.min(100, +p.valueArea || 70)) / 100;
+        let on = true, prof = null, req = () => {};
+        const build = (i0, i1) => {
+          i0 = Math.max(0, i0); i1 = Math.min(N - 1, i1); if (i1 <= i0) return null;
+          let lo = Infinity, hi = -Infinity;
+          for (let i = i0; i <= i1; i++) { if (bars.L[i] < lo) lo = bars.L[i]; if (bars.H[i] > hi) hi = bars.H[i]; }
+          if (!(hi > lo)) return null;
+          const step = (hi - lo) / rowsN, up = new Array(rowsN).fill(0), dn = new Array(rowsN).fill(0);
+          for (let i = i0; i <= i1; i++) {
+            const v = bars.V[i] || 0, h = bars.H[i], l = bars.L[i], tgt = bars.C[i] >= bars.O[i] ? up : dn;
+            if (!v) continue;
+            if (h <= l) { tgt[Math.min(rowsN - 1, Math.floor((l - lo) / step))] += v; continue; }
+            const r0 = Math.max(0, Math.floor((l - lo) / step)), r1 = Math.min(rowsN - 1, Math.floor((h - lo) / step));
+            for (let r = r0; r <= r1; r++) {   // the share of the bar's range that falls in this row
+              const a = Math.max(l, lo + r * step), b2 = Math.min(h, lo + (r + 1) * step);
+              if (b2 > a) tgt[r] += (v * (b2 - a)) / (h - l);
+            }
+          }
+          const tot = up.map((u, r) => u + dn[r]), all = tot.reduce((x, y) => x + y, 0);
+          let poc = 0; tot.forEach((t, r) => { if (t > tot[poc]) poc = r; });
+          let a = poc, z = poc, got = tot[poc];   // grow the value area from the POC toward the busier neighbour
+          while (got < va * all && (a > 0 || z < rowsN - 1)) {
+            const below = a > 0 ? tot[a - 1] : -1, above = z < rowsN - 1 ? tot[z + 1] : -1;
+            if (above >= below) got += tot[++z]; else got += tot[--a];
+          }
+          return { lo, step, up, dn, tot, max: Math.max(...tot), poc, vaLo: a, vaHi: z, from: times[i0], to: times[i1] };
+        };
+        const noteOf = (pr) => (pr ? `${pr.from} → ${pr.to} · POC ${fmtPx(pr.lo + (pr.poc + 0.5) * pr.step)}`
+          + ` · value area ${fmtPx(pr.lo + pr.vaLo * pr.step)}–${fmtPx(pr.lo + (pr.vaHi + 1) * pr.step)}` : "no bars in range");
+        const visible = p.period === "Visible range";
+        const refresh = () => {
+          if (visible) { const r = chart.timeScale().getVisibleLogicalRange(); prof = r ? build(Math.ceil(r.from), Math.floor(r.to)) : build(0, N - 1); }
+          else prof = build(N - Math.max(2, +p.bars || 126), N - 1);
+          setNote(id, noteOf(prof)); req();
+        };
+        const prim = {
+          attached(x) { req = x.requestUpdate; }, detached() { req = () => {}; }, updateAllViews() {},
+          paneViews: () => [{ zOrder: () => "bottom", renderer: () => ({
+            draw: (target) => target.useMediaCoordinateSpace(({ context: g, mediaSize }) => {
+              if (!on || !prof) return;
+              const W = mediaSize.width * Math.max(5, Math.min(80, +p.width || 30)) / 100, x1 = mediaSize.width;
+              const alpha = (r) => (r >= prof.vaLo && r <= prof.vaHi ? "66" : "2e");
+              for (let r = 0; r < rowsN; r++) {
+                const yTop = main.priceToCoordinate(prof.lo + (r + 1) * prof.step), yBot = main.priceToCoordinate(prof.lo + r * prof.step);
+                if (yTop == null || yBot == null || !prof.max) continue;
+                const h = Math.max(1, yBot - yTop - 1), wu = (W * prof.up[r]) / prof.max, wd = (W * prof.dn[r]) / prof.max;
+                g.fillStyle = col("up") + alpha(r); g.fillRect(x1 - wu - wd, yTop, wu, h);
+                g.fillStyle = col("down") + alpha(r); g.fillRect(x1 - wd, yTop, wd, h);
+              }
+              const yp = main.priceToCoordinate(prof.lo + (prof.poc + 0.5) * prof.step);
+              if (yp != null) { g.strokeStyle = col("poc"); g.lineWidth = 1.5; g.setLineDash([4, 3]); g.beginPath(); g.moveTo(0, yp); g.lineTo(x1, yp); g.stroke(); g.setLineDash([]); }
+            }),
+          }) }],
+        };
+        main.attachPrimitive(prim);
+        if (visible) chart.timeScale().subscribeVisibleLogicalRangeChange(refresh);
+        prof = visible ? build(0, N - 1) : build(N - Math.max(2, +p.bars || 126), N - 1);
+        return { series: [], note: noteOf(prof), setVisible: (v) => { on = v; req(); } };
+      } },
     sar: { name: "Parabolic SAR", short: "SAR", cat: "Trend", overlay: true, params: { start: 0.02, increment: 0.02, maximum: 0.2 }, plots: [{ k: "sar", c: "#2962ff", s: "dots" }],
       calc: (b, p) => {
         const n = b.C.length, o = nul(n); if (n < 2) return { sar: o };
@@ -1393,17 +1463,19 @@ const Studies = (() => {
     // state at a glance (Minervini's charts show bands like these). Pressure and buy risk are functions of the
     // bars, so they are computed here; the RS rank is the stored weekly rating (1-99 across the market) and the
     // Trend Template strip the Stage 2 screen's own eight criteria, run per bar on the server
-    // (/api/trend-bands -- never a second copy here), daily charts only.
+    // (/api/trend-bands -- never a second copy here), daily charts only. Fitted by eye to the colour timing of
+    // the platform's own strips on seven 2025-26 charts: pressure two colours, buy risk read from the 21-day and
+    // 50-day (not the distance above the 50-day, which turned every strong advance red), and the strip's C4
+    // counting the 50-day leading both longer averages (criteria.stage2_fifty_leads).
     trendbands: { name: "Trend-health bands — RS rank, pressure, buy risk, Trend Template", short: "Bands", cat: "Trend", custom: true, pane: true,
       needsVolume: true,
-      label: (p) => `Bands · RS ${p.rsLow} · pressure ${p.length} · risk ${p.riskLow}/${p.riskHigh}%`,
-      params: { rsLow: 50, length: 20, pressureHigh: 1.25, pressureLow: 0.8, riskLow: 15, riskHigh: 25 },
+      label: (p) => `Bands · RS ${p.rsLow} · pressure ${p.length} / ${p.pressureMid}`,
+      params: { rsLow: 50, length: 20, pressureMid: 1.0 },
       plots: [{ k: "rs", t: "RS rank: 1–99 across the market", c: "#2962ff" }, { k: "pressure", t: "Pressure: up ÷ down volume", c: "#26a69a" },
-        { k: "risk", t: "Buy risk: % above the 50-day", c: "#f5b300" }, { k: "tt", t: "Trend Template: criteria met of 8", c: "#ef5350" }],
+        { k: "risk", t: "Buy risk: close and 21-day against the 50-day", c: "#f5b300" }, { k: "tt", t: "Trend Template: criteria met of 8", c: "#ef5350" }],
       draw: ({ chart, times, bars, p, tf, ctx, id, pane }) => {
         const G = "#26a69a", Y = "#f5b300", R = "#ef5350", N = times.length, { C, V } = bars;
-        const n = Math.max(2, +p.length || 20), hi = +p.pressureHigh || 1.25, lo = +p.pressureLow || 0.8;
-        const rLo = +p.riskLow || 15, rHi = +p.riskHigh || 25, rsLo = +p.rsLow || 50;
+        const n = Math.max(2, +p.length || 20), mid = +p.pressureMid || 1, rsLo = +p.rsLow || 50;
         let rsHi = 70;   // replaced by the server's RS_MIN_RANK once the ratings arrive
         const raw = { rs: Array(N).fill(null), pressure: Array(N).fill(null), risk: Array(N).fill(null), tt: Array(N).fill(null) };
         let up = 0, dn = 0;
@@ -1413,12 +1485,17 @@ const Studies = (() => {
           if (j >= 1) { if (C[j] > C[j - 1]) up -= V[j]; else if (C[j] < C[j - 1]) dn -= V[j]; }
           if (i >= n) raw.pressure[i] = dn > 0 ? up / dn : up > 0 ? 9.99 : 1;
         }
-        const m50 = sma(C, 50);
-        for (let i = 0; i < N; i++) if (m50[i]) raw.risk[i] = (C[i] / m50[i] - 1) * 100;
+        // buy risk: green with the close and the 21-day both above the 50-day (a buy sits on a rising
+        // structure), amber with the close above only one of them (a base or a pullback), red below both
+        const m50 = sma(C, 50), e21 = ema(C, 21), state = Array(N).fill(null);
+        for (let i = 0; i < N; i++) if (m50[i] && e21[i] != null) {
+          raw.risk[i] = (C[i] / m50[i] - 1) * 100;
+          state[i] = C[i] > m50[i] && e21[i] > m50[i] ? 2 : C[i] > m50[i] || C[i] > e21[i] ? 1 : 0;
+        }
         const colour = {
           rs: (v) => (v >= rsHi ? G : v >= rsLo ? Y : R),
-          pressure: (v) => (v >= hi ? G : v <= lo ? R : Y),
-          risk: (v) => (v < 0 || v > rHi ? R : v > rLo ? Y : G),
+          pressure: (v) => (v >= mid ? G : R),
+          risk: (v, i) => [R, Y, G][state[i]],
           tt: (v) => (v >= 8 ? G : v >= 6 ? Y : R),
         };
         const fixed = { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 3 } }) };
@@ -1427,33 +1504,33 @@ const Studies = (() => {
           priceFormat: { type: "custom", formatter: () => "", minMove: 0.01 } };
         const rows = { rs: 3, pressure: 2, risk: 1, tt: 0 }, S = {};
         const paint = (k) => S[k].setData(times.map((t, i) => (raw[k][i] == null ? { time: t }
-          : { time: t, value: rows[k] + 0.85, color: colour[k](raw[k][i]) })));
+          : { time: t, value: rows[k] + 0.85, color: colour[k](raw[k][i], i) })));
         for (const k of ["rs", "pressure", "risk", "tt"]) {
           S[k] = chart.addSeries(LC.HistogramSeries, { ...quiet, base: rows[k] + 0.05 }, pane);
           S[k].createPriceLine({ price: rows[k] + 0.45, color: "transparent", lineVisible: false, axisLabelVisible: true,
             title: { rs: "RS rank", pressure: "Pressure", risk: "Buy risk", tt: "Trend Template" }[k] });
           paint(k);
         }
-        let fails = [], note = `pressure ≥ ${hi} green, ≤ ${lo} red · buy risk green 0–${rLo}% above the 50-day, red below it or over ${rHi}%`;
+        let fails = [], note = `pressure ≥ ${mid} green, below red · buy risk green with the close and the 21-day above the 50-day, amber above one, red below both`;
         if (tf === "D" && ctx?.market) {
           setNote(id, "reading the RS rank and the Trend Template…");
           fetch(`/api/trend-bands/${ctx.market}/${encodeURIComponent(ctx.symbol)}?years=${scanYears(5, ctx)}`)
             .then((x) => (x.ok ? x.json() : null)).catch(() => null).then((r) => {
               if (!r) { setNote(id, note + " · RS rank and Trend Template unavailable"); return; }
               const at = new Map(r.dates.map((d, i) => [d, i])), pick = (a) => times.map((t) => { const i = at.get(t); return i == null ? null : a[i]; });
-              fails = pick(r.fails); raw.tt = pick(r.met); raw.rs = pick(r.rs || []).map((v) => v ?? null);
+              fails = pick(r.strip_fails || r.fails); raw.tt = pick(r.strip_met || r.met); raw.rs = pick(r.rs || []).map((v) => v ?? null);
               if (r.rs_min_rank) rsHi = r.rs_min_rank;
               paint("rs"); paint("tt");
               const n = r.dates.length, k = r.rs_rated || 0;
               const c8 = k === n ? "C8 by the RS rank" : k === 0 ? `C8 by the per-stock floor (RS score ≥ ${r.rs_min_score}; no stored rank)`
                 : `C8 by the RS rank on ${k} of ${n} bars, the per-stock floor (RS score ≥ ${r.rs_min_score}) where unrated`;
               setNote(id, `RS rank green ${rsHi}+, amber ${rsLo}–${rsHi - 1}, red below (weekly, held to the next Friday) · ${note}`
-                + ` · Trend Template green 8 of 8, amber 6–7 (${c8})`);
+                + ` · Trend Template green 8 of 8, amber 6–7 (C4 met when the 50-day is above the 150- and 200-day; ${c8})`);
             });
         } else note += " · RS rank and Trend Template: daily charts only";
         const fmt = (v, k, i) => raw[k]?.[i] == null ? ""
           : k === "pressure" ? `pressure ${raw.pressure[i].toFixed(2)}`
-          : k === "risk" ? `${raw.risk[i] >= 0 ? "+" : ""}${raw.risk[i].toFixed(1)}% vs 50-day`
+          : k === "risk" ? `${["below both", "above one", "above both"][state[i]]} · close ${raw.risk[i] >= 0 ? "+" : ""}${raw.risk[i].toFixed(1)}% vs 50-day`
           : k === "rs" ? `RS ${raw.rs[i]}`
           : `TT ${raw.tt[i]}/8${fails[i]?.length ? ` · fails ${fails[i].join(" ")}` : ""}`;
         const series = Object.values(S);
@@ -1625,6 +1702,26 @@ const Studies = (() => {
       } },
     aroonosc: { name: "Aroon Oscillator", short: "Aroon Osc", cat: "Trend", params: { length: 14 }, levels: [50, 0, -50], plots: [{ k: "osc", c: "#ff6d00" }],
       calc: (b, p) => { const a = CATALOG.aroon.calc(b, p); return { osc: zip((u, d) => u - d, a.up, a.down) }; } },
+    // ---- Chande Trend Meter, reconstructed. StockCharts publishes its ingredients -- the high, low and close
+    // against Bollinger Bands of 20, 50, 75 and 100 days; the price change against the 100-day standard
+    // deviation; RSI(14); a 2-day channel breakout -- but not their weights. Here each ingredient is scored
+    // 0..1 and they count equally (each band length is one), times 100. Levels are StockCharts' bands.
+    ctm: { name: "Chande Trend Meter (reconstruction)", short: "CTM", cat: "Trend", params: {}, levels: [90, 80, 60, 20], range: [0, 100],
+      plots: [{ k: "ctm", c: "#26a69a", w: 2 }],
+      calc: (b) => {
+        const clip = (v) => Math.max(0, Math.min(1, v)), parts = [];
+        for (const n of [20, 50, 75, 100]) {
+          const m = sma(b.C, n), sd = stdev(b.C, n);
+          parts.push(b.C.map((c, i) => { if (m[i] == null || !sd[i]) return null; const lo = m[i] - 2 * sd[i], w = 4 * sd[i];
+            return (clip((b.H[i] - lo) / w) + clip((b.L[i] - lo) / w) + clip((c - lo) / w)) / 3; }));
+        }
+        const sd100 = stdev(b.C, 100);   // the 100-day change in standard deviations, -2..+2 mapped to 0..1
+        parts.push(b.C.map((c, i) => (i < 100 || !sd100[i] ? null : clip(((c - b.C[i - 100]) / sd100[i] + 2) / 4))));
+        parts.push(rsi(b.C, 14).map((v) => (v == null ? null : v / 100)));
+        parts.push(b.C.map((c, i) => (i < 2 ? null : c > Math.max(b.H[i - 1], b.H[i - 2]) ? 1 : c < Math.min(b.L[i - 1], b.L[i - 2]) ? 0 : 0.5)));
+        const k = parts.length;   // zip passes the bar index after the values
+        return { ctm: zip((...v) => (100 * v.slice(0, k).reduce((x, y) => x + y, 0)) / k, ...parts) };
+      } },
     rs: { name: "Relative Strength vs index", short: "RS", cat: "Trend", needsBench: true, params: { maLength: 50 }, levels: [100],
       plots: [{ k: "rs", t: "RS", c: "#2962ff", w: 2 }, { k: "ma", t: "RS MA", c: "#ff9800" }],
       calc: (b, p, ctx) => {
@@ -1657,6 +1754,7 @@ const Studies = (() => {
   // in `learnGuide` instead. Every indicator needs an entry, and every entry an existing heading:
   // tests/test_study_learn.py fails otherwise, which is what keeps the chart and the Learn guides in step.
   const LEARN = {
+    ctm: "ind-trend#the-chande-trend-meter-many-trend-readings-in-one-score", vbp: "ind-volume#volume-by-price",
     sma: "ind-moving-averages#sma-and-ema-the-two-basics", ema: "ind-moving-averages#sma-and-ema-the-two-basics",
     wma: "ind-moving-averages#wma-weights-in-a-straight-line",
     ribbon: "ind-moving-averages#moving-average-ribbons-many-lengths-at-once", ribbon_ema: "ind-moving-averages#moving-average-ribbons-many-lengths-at-once",

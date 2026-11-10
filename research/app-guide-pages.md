@@ -33,7 +33,7 @@ config, so a page always shows the market you picked last.
 | **Strategies** | Today's setups · one page per strategy · Paper books | Is there a trade, at what price, with what stop? How has each strategy done forward? | [Strategies overview](learn-strat-overview.md) |
 | **Chart** | Chart · Fundamentals · Analysis · News | What does this one stock look like — and what do I make of it? | [Indicators](learn-price-indicators.md), [earnings](learn-fund-earnings.md) |
 | **Watchlists** | Watchlists | What am I following, and what did the screener pick? | [Journal](learn-process-journal.md) |
-| **Trade desk** | Playbook · Daily review · Sectors → stocks · Scans & reports · Longs · Shorts · F&O · Risk | What is my procedure — what I trade, in what order, how much I risk — and what did the desk find on each day? | [Trading plan](learn-process-plan.md) |
+| **Trade desk** | Playbook · Daily review · Sectors → stocks · Longs · Shorts · F&O · Risk · Scans & reports | What is my procedure — what I trade, in what order, how much I risk — and what did the desk find on each day? | [Trading plan](learn-process-plan.md) |
 | **Library** | Notes · Research · Sector research · Learn | My notes and journal; reference reading | [Journal](learn-process-journal.md) |
 | **System** | Status · Runs · Schedules · Reports archive · Sub-industries · TODO | Is the data current, and what did the jobs do? | — |
 
@@ -287,7 +287,7 @@ bricks on the main chart with a **Box** picker beside the menu: ATR (14) — Tra
 the size of the last 14-bar average range — or 2, 3, 5 or 10% of the last brick. A green brick prints once the
 close is a full brick above the last one, a red one a brick below, so time and flat stretches drop out. Bricks
 completed on one session take the following calendar days on the time axis; the legend shows each brick's real
-completion date. Bricks have no volume. **Indicators** opens a searchable picker of 73
+completion date. Bricks have no volume. **Indicators** opens a searchable picker of 75
 studies, computed in the browser from the bars on screen; your list is saved and applies to every symbol. Each row's
 **Learn** link (and **Learn about it** in an indicator's settings) opens the Learn section that explains it, at
 that heading (`studies.js` `LEARN`, `#/learn/<guide>/<section>`); `tests.test_study_learn` fails when an
@@ -313,15 +313,22 @@ them reads as steady buying rather than one news day; the pane plots each readin
 shades MVP sessions green, and the legend shows the raw numbers. Every number is a setting. Sources differ on the
 volume half (some compare with the 50-day average); this compares the window with the one before it.
 **Trend-health bands** draws three colour strips in one pane, in the style of the bands on Minervini's own
-platform. **Pressure** is volume on up closes ÷ volume on down closes over 20 sessions (green at 1.25 or more, red
-at 0.8 or less). **Buy risk** is the distance above the 50-day (green 0–15%, amber 15–25%, red above 25% or below
-the average). **Trend Template** is how many of the Stage 2 screen's eight criteria the bar meets (green 8, amber
-6–7, red 0–5). The first two are computed in the browser and every threshold is a setting. The Trend Template strip
-comes from `/api/trend-bands` (`web/server.py` `trend_template_bands`), which runs the `stage2` screen's own
-criteria C1–C8 bar by bar, on daily charts only. Its C8 is the per-stock RS floor (`RS_MIN_SCORE`), looser than the
-rank the daily screen and the backtest apply. Hovering names the failing criteria ("TT 6/8 · fails C4 C6"). It
-is for reading a chart: no strategy reads pressure or buy risk, and the Trend Template strip only mirrors the
-gates. The Learn section is in [trend indicators](learn-ind-trend.md), "Trend-health bands". A fourth strip, the
+platform. **Pressure** is volume on up closes ÷ volume on down closes over 20 sessions, in two colours: green at
+1.0 or more, red below. **Buy risk** reads the close and the 21-day EMA against the 50-day: green with both above
+it, amber with the close above only one of the two averages (a base or a pullback), red below both. Hovering shows
+the close's distance from the 50-day too. **Trend Template** is how many of the Stage 2 screen's eight criteria
+the bar meets (green 8, amber 6–7, red 0–5). The definitions were fitted by eye to the colour timing of the
+platform's own strips on seven 2025–26 charts from an interview with its team (STX, VICR, FLNC, MOD, MU, IREN;
+ARM has no stored prices). The old buy risk, the distance above the 50-day with red over 25%, turned every
+strong advance red where the platform stays green. Agreement with the read timelines rose from 64% to 80%
+(pressure), 38% to 78% (buy risk) and 85% to 91% (Trend Template). Pressure and buy risk are computed in the
+browser; the pressure length and level are settings. The Trend Template strip comes from `/api/trend-bands`
+(`web/server.py` `trend_template_bands`), which runs the `stage2` screen's own criteria C1–C8 bar by bar, on
+daily charts only. The strip counts C4 as met when the 50-day is above both the 150- and the 200-day
+(`criteria.stage2_fifty_leads`), without waiting for the 150-day to cross the 200-day, which lags a base by
+weeks. The screen and the strategies keep C4 as written, so the strip can read 8 where the screen reads 7. Its
+C8 is the RS rank where one is stored, else the per-stock RS floor (`RS_MIN_SCORE`). Hovering names the failing
+criteria ("TT 6/8 · fails C1 C6"). It is for reading a chart: no strategy reads pressure or buy risk. The Learn section is in [trend indicators](learn-ind-trend.md), "Trend-health bands". A fourth strip, the
 stored weekly RS rank, is being added.
 On first use the chart shows the 20-, 50- and 200-day SMA, Volume and RSI. Two studies are not
 indicators: **Screener levels** draws a strategy's entry, stop and target, and **Chart patterns (live
@@ -486,11 +493,13 @@ index series, company fundamentals), and a ```` ```chart ```` block draws cited 
 (`labels:`, one `series:` line per series, `estimate:` to draw forecasts lighter, `years:` to show the
 growth rate per year) — the grammar is in the comments above `parseSeriesSpec` and `parseChartSpec`
 in `app.js`.
-**Trade desk** (its own menu, before Library) is my trading system and the work done with it. Its tabs
-follow the decision chain: **Playbook** (the overview), **Daily review**, **Sectors → stocks**, **Scans &
-reports** (where that step's dated lists are stored), **Longs**, **Shorts**, **F&O** and **Risk**. Each tab but Scans & reports is a `research/system-*.md` note rendered as Research
-renders it. The notes stay the one source — the menu only names them (`PLAYBOOK` in `app.js`) — and an
-old `#/research/system-…` link opens the note's tab. The system's reference material (the tools plan, the
+**Trade desk** (its own menu, before Library) is my trading system and the work done with it. It has no
+top tab row: a left panel, like Research's, groups its pages in decision-chain order — **Process**
+(Playbook, the overview; Daily review; Sectors → stocks), **Books** (Longs, Shorts, F&O), **Risk**, and
+**Records** (Scans & reports, where the sector step's dated lists are stored; its days are listed under
+it). Alt+[ and Alt+] step through the pages in that order. Each page but Scans & reports is a `research/system-*.md` note rendered as Research
+renders it. The notes stay the one source — the panel only names them (`PLAYBOOK` and `DESK_GROUPS` in `app.js`) — and an
+old `#/research/system-…` link opens the note's page here. The system's reference material (the tools plan, the
 sector playbook) stays under Research.
 
 **Scans & reports** (Trade desk) holds the research made while choosing trades: which sectors are strong, the stocks in
