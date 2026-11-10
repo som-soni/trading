@@ -951,6 +951,8 @@ _POOL_CTX: dict = {}
 # histories. Speed only: the scan is per symbol and merged in candidate order, so the trades are the
 # same for any count (windows._SPEED_ONLY_BT).
 MAX_SCAN_WORKERS = 6
+#: `--idle-index`: per-side cost, in basis points, of moving money into or out of the index holding
+IDLE_INDEX_COST_BPS = 5.0
 SCAN_WORKER_MEM_MB = 350
 
 
@@ -1302,6 +1304,7 @@ def run_portfolio_backtest(
     refresh_history: bool = False,
     risk_pct: float | None = None,
     max_position_pct: float | None = None,
+    idle_index: bool = False,
     rank_by: str = "setup",
     min_group_rs: int | None = None,
     block_stage3: bool = False,
@@ -1558,6 +1561,11 @@ def run_portfolio_backtest(
     if bench_raw is not None and not bench_raw.empty:
         bench_close = bench_raw["close"].reindex(result.equity.index).ffill()
 
+    if idle_index:
+        if bench_close is None:
+            raise SystemExit("--idle-index needs the market's benchmark series, and none is stored")
+        spec_notes.append(idle_index_overlay(result, bench_close, cfg))
+
     cap = max_positions if max_positions is not None else cfg.max_open_positions
     notes = [
         "SURVIVORSHIP BIAS: the universe is today's listed names, so companies "
@@ -1584,6 +1592,37 @@ def run_portfolio_backtest(
         bench_close=bench_close, cash=result.cash, notes=notes,
     )
     return tdf, perf, result
+
+
+def idle_index_overlay(result, bench_close: pd.Series, cfg: MarketConfig) -> str:
+    """Hold the benchmark with whatever the strategy leaves in cash. Rewrites `result.equity` and
+    `result.cash` in place and returns the note for the report.
+
+    A per-stock strategy is judged against an index that is always fully invested while it sits
+    partly in cash, so its headline mixes stock picking with idle money (research/selection-vs-drag.md).
+    This asks the other question: the same trades, with the idle share of the account in the index.
+
+    Each day's return is the strategy's own return plus the index's return on yesterday's uninvested
+    share (the same close the simulator marked equity at, so nothing reads ahead), less
+    IDLE_INDEX_COST_BPS on every change in that share. Returns compound, which assumes positions are
+    sized on the larger account -- sizing is a fraction of equity, so the trades scale with it. Limits:
+    the trade ledger keeps the plain run's share counts and P&L (R multiples are unaffected); a
+    signal the plain run skipped for lack of cash is still skipped; the index is traded at the close.
+    """
+    eq = result.equity.dropna()
+    idle = (result.cash.reindex(eq.index).ffill() / eq).clip(lower=0, upper=1)   # share of the account in cash
+    rb = bench_close.reindex(eq.index).ffill().pct_change().fillna(0.0)
+    held = idle.shift().fillna(0.0)                      # the index holding going into the session
+    moved = idle.diff().abs().fillna(idle.iloc[0])       # bought or sold at the close
+    r = eq.pct_change().fillna(0.0) + held * rb - moved * IDLE_INDEX_COST_BPS / 1e4
+    new = float(eq.iloc[0]) * (1 + r).cumprod()
+    result.equity_plain = result.equity
+    result.equity = new.reindex(result.equity.index)
+    result.cash = pd.Series(0.0, index=result.cash.index)   # the idle share is in the index now
+    return (f"Idle cash held in the index (--idle-index): the uninvested share of the account, "
+            f"{idle.mean() * 100:.0f}% on average, earns {cfg.benchmark_ticker}'s daily return, with "
+            f"{IDLE_INDEX_COST_BPS:g}bps charged on every change in that holding. The trade ledger keeps "
+            "the plain run's share counts and P&L; equity, CAGR and drawdown include the index holding.")
 
 
 def trades_to_df(trades: list[Trade]) -> pd.DataFrame:
@@ -1906,6 +1945,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="notional cap per position as a fraction, e.g. 0.10 "
                              "(default: market config). max_positions x this should "
                              "not exceed 1.0, or the book runs out of cash before slots")
+    parser.add_argument("--idle-index", action="store_true",
+                        help="hold the benchmark with the cash the strategy leaves idle (idle_index_overlay): "
+                             "the same trades, judged without the cash drag")
     parser.add_argument("--no-ingest", action="store_true",
                     help="skip updating the viewer database after the run")
     return parser
@@ -2110,7 +2152,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             accept_labels=labels, max_positions=args.max_positions, exit_policy=policy,
             sample=args.sample, refresh_history=args.refresh_history,
             include=[x.strip() for x in args.include.split(",") if x.strip()],
-            risk_pct=args.risk_pct, max_position_pct=args.max_position_pct,
+            risk_pct=args.risk_pct, max_position_pct=args.max_position_pct, idle_index=args.idle_index,
             rank_by=args.rank_by, min_group_rs=args.min_group_rs, block_stage3=args.block_stage3,
                 min_rs=args.min_rs, max_base_no=args.max_base,
             min_dollar_volume=args.min_dollar_volume,
@@ -2154,6 +2196,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         run += f"_risk{args.risk_pct * 100:g}pct"
     if args.max_position_pct is not None:
         run += f"_cap{args.max_position_pct * 100:g}pct"
+    if args.idle_index:
+        run += "_idleindex"
     if args.rank_by != "setup":
         run += f"_rank{args.rank_by}"
     if args.min_group_rs is not None:
