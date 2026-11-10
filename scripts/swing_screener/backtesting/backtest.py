@@ -1751,7 +1751,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="cap on simultaneously held positions (default: the market config's)",
     )
     parser.add_argument(
-        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "ma_low", "weekly_ma", "donchian", "supertrend", "kullamagi", "darvas", "minervini"],
+        "--exit-mode", default="bracket", choices=["bracket", "trail_atr", "trail_pct", "ma", "ma_low", "weekly_ma", "donchian", "supertrend", "kullamagi", "kell", "darvas", "minervini"],
         help="how open positions are managed. 'bracket' is the strategy's fixed "
         "stop+target; the others test whether letting winners run beats capping them. "
         "'ma_low' does not sell on a close below --ma-col: the next session trading under that candle's low sells, "
@@ -1760,6 +1760,8 @@ def build_parser() -> argparse.ArgumentParser:
         "'supertrend' sells at the close that turns the Supertrend down (the supertrend strategy's ATR_PERIOD and MULTIPLIER). "
         "'kullamagi' is the kullamagi strategy's management: a partial sale and stop to entry after PARTIAL_AFTER_BARS "
         "sessions in profit, the rest on a close below its TRAIL_SMA-day average or after MAX_HOLD_BARS sessions. "
+        "'kell' is the kell_cycle strategy's management: each tranche at its own stop, 1/EX_SELL_DIVISOR sold at "
+        "the first exhaustion of each leg, the rest at the EMA break; signals in a held stock add tranches. "
         "'darvas' trails the stop by Darvas boxes (the darvas strategy's constants): each higher box raises it to "
         "one tick under its bottom; the stop is the only exit. "
         "'minervini' is the spec's EX-01..EX-07 (research/minervini-backtest-spec.md).",

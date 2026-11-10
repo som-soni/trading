@@ -76,6 +76,7 @@ from ..config.base import MarketConfig
 from ..core import indicators as ind
 from ..strategies import minervini_spec as _ms
 from ..strategies import kullamagi as _km
+from ..strategies import kell_cycle as _kc
 from ..strategies import supertrend as _st
 from ..strategies import darvas as _dv
 from ..strategies import stage_analysis as _sa
@@ -134,7 +135,7 @@ class ExitPolicy:
     and only ever raise it, so a trade can still fail fast; what changes is
     that a winner is no longer forced out at a predetermined price.
     """
-    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | ma_low | weekly_ma | donchian | supertrend | kullamagi | minervini
+    mode: str = "bracket"        # bracket | trail_atr | trail_pct | ma | ma_low | weekly_ma | donchian | supertrend | kullamagi | kell | minervini
     use_target: bool = True      # False lets winners run indefinitely
     atr_mult: float = 3.0        # for trail_atr
     trail_pct: float = 0.04      # for trail_pct: the stop sits this fraction below the highest HIGH since entry
@@ -170,6 +171,11 @@ class ExitPolicy:
     km_trail_sma: int = field(default_factory=lambda: _km.TRAIL_SMA)
     km_trail_ema: bool = field(default_factory=lambda: bool(_km.TRAIL_EMA))   # the trail is an EMA, not an SMA
     km_max_bars: int = field(default_factory=lambda: _km.MAX_HOLD_BARS)
+    # for kell: the kell_cycle strategy's management (`_manage_kell`). Each tranche of a position keeps its own
+    # stop; on the first exhaustion (EX) session of each leg 1/`kell_ex_divisor` of the shares sells at the close;
+    # an EMA break (BK) sells the rest at the close. EX, BK and the leg come from the strategy's own cycle scan
+    # (`exit_frames`). Signals in a held stock add tranches at their close (`_kell_add`).
+    kell_ex_divisor: int = field(default_factory=lambda: int(_kc.EX_SELL_DIVISOR))
     # for darvas: the stop trails by Darvas boxes (core/darvas.py), found with the darvas strategy's own
     # constants through a factory, as above. A box completed today whose top is above the last box's
     # raises the stop to one tick under its bottom, from tomorrow; never lowered. The optional time stop
@@ -266,6 +272,8 @@ class ExitPolicy:
         elif self.mode == "kullamagi":
             bits.append(f"p{self.km_partial_bars}d{self.km_partial_divisor}-{'ema' if self.km_trail_ema else 'sma'}"
                         f"{self.km_trail_sma}-max{self.km_max_bars}")
+        elif self.mode == "kell":
+            bits.append(f"ex{self.kell_ex_divisor}")
         elif self.mode == "darvas":
             bits.append(f"h{self.dv_lookback}t{self.dv_top_confirm}b{self.dv_bottom_confirm}"
                         + (f"-time{self.dv_time_stop_bars}" if self.dv_time_stop_bars else ""))
@@ -405,6 +413,9 @@ def credit_action(pos: "PortfolioTrade", cash_per_share: float) -> float:
         v = pos.meta.get(k)
         if isinstance(v, (int, float)) and v == v:
             pos.meta[k] = v - c
+    for t in pos.meta.get("_tranches") or ():   # the kell exit's tranches: [shares, price paid, stop]
+        t[1] -= c
+        t[2] -= c
     pos.credited += c * held
     return c * held
 
@@ -465,6 +476,7 @@ _FLAT = Exposure()   # disabled: every entry risks the full risk_pct
 WEEKLY_LINE = "_weekly_line"   # the weekly_ma exit's level, added to each price frame by `simulate`
 ST_DIR = "_st_dir"             # the supertrend exit's direction (1 up, -1 down), added the same way
 KM_TRAIL = "_km_trail"         # the kullamagi exit's trailing average (simple or exponential), added the same way
+KELL_EX, KELL_BK, KELL_LEG = "_kell_ex", "_kell_bk", "_kell_leg"   # the kell exit's cycle phases, the same way
 
 
 def _below(policy: ExitPolicy) -> float:
@@ -773,6 +785,11 @@ def simulate(
         # today's fills here, so it ranks, sizes and takes a slot with them; one that cannot fill
         # today is dropped. Its stop and exits are first tested tomorrow (step 1 has already run).
         for s in by_date.get(today, []):
+            if s.meta.get("add_only"):
+                # a signal that only adds to a position held (kell_cycle's later crossback): step 3
+                if s.symbol not in positions:
+                    skip("an add-only signal in a stock not held", s.symbol, today)
+                continue
             if s.meta.get("order") != "close" or s.symbol in positions or s.symbol in pending:
                 continue
             if regime_ok is not None and not _risk_on(regime_known, today):   # it buys today's close
@@ -996,6 +1013,20 @@ def simulate(
 
         # ---- 3. today's new signals become resting orders ----------------
         for s in by_date.get(today, []):
+            if policy.mode == "kell" and s.symbol in positions:
+                pos, df = positions[s.symbol], prices.get(s.symbol)
+                if pos.entry_date == today or df is None or today not in df.index:
+                    continue
+                cash_at, equity_now = book_at(AT_CLOSE, today)
+                got = _kell_add(pos, s, float(df.loc[today, "close"]), cash_at, equity_now, risk_pct_today,
+                                fee_rate, cfg, base_slip, open_risk_at(AT_CLOSE, today), max_open_risk_pct)
+                if isinstance(got, str):
+                    skip(got, s.symbol, today)
+                    continue
+                spent, extra = got
+                cash -= spent
+                costs_total += extra
+                continue
             if s.symbol in positions and _add_wanted(positions[s.symbol], s, policy, today):
                 adds_pending[s.symbol] = {"setup": s.setup, "meta": s.meta, "policy": policy}
                 continue
@@ -1067,6 +1098,12 @@ def exit_frames(prices: dict[str, pd.DataFrame], policy: ExitPolicy) -> dict[str
                 for s, df in prices.items()}
     if policy.mode == "darvas":
         return {s: df.assign(**darvas_levels(df, policy)) for s, df in prices.items()}
+    if policy.mode == "kell":
+        out = {}
+        for s, df in prices.items():
+            ph = _kc.cycle_frame(df)
+            out[s] = df.assign(**{KELL_EX: ph["ex"], KELL_BK: ph["bk"], KELL_LEG: ph["leg"]})
+        return out
     return prices
 
 
@@ -1074,6 +1111,9 @@ def manage_entry_bar(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, p
                      close_out, sell, fee_rate: float, cfg: MarketConfig) -> None:
     """What the session a position was bought in does to it, after the fill at moment `at`. The one
     implementation for `simulate` and the open-position tracker."""
+    if policy.mode == "kell":
+        _kell_tranches(pos)       # bought at the close: its stop and exits are first tested tomorrow
+        return
     if policy.mode == "minervini":
         # the entry bar's close counts for the close-based exits (EX-02, EX-06)
         _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg, entry_day=True)
@@ -1103,6 +1143,10 @@ def manage_exit(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, policy
 
     if policy.mode == "kullamagi":
         _manage_kullamagi(sym, pos, bar, today, policy, close_out, sell)
+        return
+
+    if policy.mode == "kell":
+        _manage_kell(sym, pos, bar, today, policy, close_out, sell)
         return
 
     if policy.mode == "darvas":
@@ -1427,6 +1471,89 @@ def _manage_kullamagi(sym, pos: PortfolioTrade, bar, today, policy: ExitPolicy, 
         close_out(sym, pos, c, "TIME", today, at=AT_CLOSE)
 
 
+def _kell_tranches(pos: PortfolioTrade) -> list:
+    """The kell exit's tranches of `pos`, [shares held, price paid, stop] each; the first is the entry."""
+    return pos.meta.setdefault("_tranches", [[pos.held, pos.entry_price, pos.stop]])
+
+
+def _manage_kell(sym, pos: PortfolioTrade, bar, today, policy: ExitPolicy, close_out, sell) -> None:
+    """One session of the kell_cycle strategy's management, in this order:
+      1. each tranche whose stop the low touches sells at its stop, or at the open if the stock gapped through it
+         (highest stop first); the last shares close the trade (STOP);
+      2. an EMA break session (the cycle scan's BK) sells everything left at the close (EMA_BREAK);
+      3. the first exhaustion session (EX) of each leg sells 1/`kell_ex_divisor` of every tranche at the close."""
+    o, l, c = float(bar["open"]), float(bar["low"]), float(bar["close"])
+    pos.bars_held += 1
+    tr = _kell_tranches(pos)
+    hit = sorted((t for t in tr if t[0] > 0 and l <= t[2]), key=lambda t: -t[2])
+    for t in hit:
+        raw, at = min(t[2], o), (AT_OPEN if o <= t[2] else INTRADAY)
+        if t[0] >= pos.held:
+            t[0] = 0
+            close_out(sym, pos, raw, "STOP", today, at=at)
+            return
+        sell(pos, raw, t[0], today, at=at)
+        pos.partial_shares += t[0]
+        t[0] = 0
+    if hit:
+        pos.stop = min(t[2] for t in tr if t[0] > 0)
+    if bool(bar.get(KELL_BK, False)):
+        close_out(sym, pos, c, "EMA_BREAK", today, at=AT_CLOSE)
+        return
+    leg = bar.get(KELL_LEG)
+    if bool(bar.get(KELL_EX, False)) and policy.kell_ex_divisor and pos.meta.get("_ex_leg") != leg:
+        pos.meta["_ex_leg"] = leg
+        cut = [t[0] // policy.kell_ex_divisor for t in tr]
+        n = sum(cut)
+        if 0 < n < pos.held:
+            for t, k in zip(tr, cut):
+                t[0] -= k
+            sell(pos, c, n, today, at=AT_CLOSE)
+            pos.partial_shares += n
+
+
+def _kell_add(pos: PortfolioTrade, s, c: float, cash: float, equity: float, risk_pct: float, fee_rate: float,
+              cfg: MarketConfig, base_slip: float, open_risk: float, max_open_risk_pct: float | None):
+    """A kell_cycle signal `s` in a stock `pos` holds: a new tranche bought at today's close `c`, with the signal's
+    own stop. Only while every tranche still held was bought below `c` (adds only while the earlier entries are in
+    profit) and the position is worth less than `cfg.max_position_pct` of equity (its full size). Sized like an entry:
+    `risk_pct` of equity between the price paid and its stop, capped at what fills the position to full size and what
+    cash buys. The trade's `initial_stop` moves so that (average cost - initial_stop) x shares is the sum of every
+    tranche's risk at its fill, which keeps the trade's R on the total risk taken. Returns (cash spent, costs), or the
+    reason it was refused."""
+    tr = _kell_tranches(pos)
+    if any(t[0] > 0 and t[1] >= c for t in tr):
+        return "add refused: an earlier tranche is not in profit"
+    cap = equity * cfg.max_position_pct
+    if pos.held * c >= cap:
+        return "add refused: the position is at full size"
+    fill = _slip(c, pos.meta.get("slippage_bps", base_slip), "buy")
+    risk = fill - float(s.stop)
+    if risk <= 0:
+        return "add refused: its stop is at or above the fill"
+    n = min(int(equity * risk_pct // risk), int((cap - pos.held * c) // fill),
+            int((cash - cfg.commission_per_order) // (fill * (1 + fee_rate))))
+    if n < 1:
+        return "add refused: too small for the cash or the room left"
+    if max_open_risk_pct is not None and open_risk + risk * n > max_open_risk_pct * equity:
+        return "add refused: open-risk cap"
+    fee = fill * n * fee_rate
+    extra = cfg.commission_per_order + (fill - c) * n + fee
+    pos.meta.setdefault("_risk_total", (pos.entry_price - pos.initial_stop) * pos.shares)
+    pos.meta["_risk_total"] += risk * n
+    pos.entry_price = (pos.entry_price * pos.shares + fill * n) / (pos.shares + n)
+    pos.shares += n
+    if pos.open_shares >= 0:
+        pos.open_shares += n
+    pos.initial_stop = pos.entry_price - pos.meta["_risk_total"] / pos.shares
+    tr.append([n, fill, float(s.stop)])
+    pos.stop = min(t[2] for t in tr if t[0] > 0)
+    pos.costs += extra
+    pos.slippage += (fill - c) * n
+    pos.adds += 1
+    return n * fill + cfg.commission_per_order + fee, extra
+
+
 DV_TOP = "_dv_top"             # the darvas exit's boxes: top and bottom on the session that completes each
 DV_BOTTOM = "_dv_bottom"       #   box, NaN on every other session
 
@@ -1606,6 +1733,7 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
             **({"partial_shares": t.partial_shares, "pivot": t.meta.get("pivot"), "base_id": t.meta.get("base_id"),
                 "base_no": t.meta.get("base_no"), "rs": t.meta.get("rs"), "sepa": t.meta.get("sepa")} if t.meta else {}),
             **({"mkt_pilot": 1} if t.meta and t.meta.get("mkt_pilot") else {}),
+            "adds": t.adds,
         }
         for t in trades
     ]
@@ -1619,4 +1747,6 @@ def trades_to_df(trades: list[PortfolioTrade]) -> pd.DataFrame:
         cols += ["partial_shares", "pivot", "base_id", "base_no", "rs", "sepa"]
     if any(t.meta and t.meta.get("mkt_pilot") for t in trades):
         cols += ["mkt_pilot"]           # bought at pilot size on the market filter's bottoming signal
+    if any(t.adds for t in trades):
+        cols += ["adds"]                # follow-up buys into the position (pyramid, add_frac, the kell exit's tranches)
     return pd.DataFrame(rows, columns=cols)

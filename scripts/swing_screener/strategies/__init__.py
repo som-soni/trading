@@ -56,6 +56,7 @@ from .donchian import DonchianStrategy
 from .earnings_gaps import EarningsGapStrategy
 from .ema100_trend import Ema100TrendStrategy
 from .ema_pullback import EmaPullbackStrategy
+from .kell_cycle import KellCycleStrategy
 from .kullamagi import KullamagiStrategy
 from .minervini_coil import MinerviniCoilStrategy
 from .minervini_spec import MinerviniSpecStrategy
@@ -89,6 +90,7 @@ register(MomentumBurstStrategy())
 register(EmaPullbackStrategy())
 register(DeliveryBreakoutStrategy())
 register(Ema100TrendStrategy())
+register(KellCycleStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
 # idea as the `_spec` strategy above it, which is built to the written detection
@@ -187,7 +189,7 @@ __all__ = [
     "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy", "EarningsGapStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",
     "MinerviniSpecStrategy", "StageAnalysisStrategy", "KullamagiStrategy", "EmaPullbackStrategy",
-    "MomentumBurstStrategy", "DeliveryBreakoutStrategy",
+    "MomentumBurstStrategy", "DeliveryBreakoutStrategy", "KellCycleStrategy",
     "portfolio_strategies", "all_specs",
     "register", "get_strategy", "list_strategies", "describe_strategies",
     "DEFAULT_STRATEGY",
