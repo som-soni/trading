@@ -10,6 +10,8 @@ against stored prices (§9).*
 the `minervini_spec` strategy, [SEPA and the VCP](learn-strat-vcp-sepa.md)). This note records what the talks add
 beyond those — here, **how he finds the next leaders while the market is still falling**.*
 
+*What went where (ANF clip, §13): Learn — [Volume](learn-price-volume.md) §4 (reading the base on weekly bars) and [SEPA and the VCP](learn-strat-vcp-sepa.md) (adding on a natural reaction; buying the turn, not the dip); trading system — [swing longs](system-swing-longs.md) L10 (a second source), two management rows and two test rows.*
+
 *What went where (June 2026 podcast, §12): trading system — [swing longs](system-swing-longs.md) setups L9–L11, the management rows and the tests; Learn — nothing new (the results-cushion rule is already in [SEPA and the VCP](learn-strat-vcp-sepa.md)).*
 
 *What went where: Learn — [bases](learn-bases.md) §6 (the leader that rests — an exception to "laggard RS" — and the
@@ -355,9 +357,89 @@ figures heard in it are marked **[unclear]** where the audio is doubtful.*
   reaction's low, the pause pivot and the pullback buy. See [swing longs](system-swing-longs.md) for how each is
   proposed.
 
-## 13. Source log
+## 13. Abercrombie & Fitch, January–February 2021: volume markers and adding on reactions (third source)
+
+*A 6½-minute clip in which Minervini walks through his own ANF position on daily and weekly eSignal charts. The
+charts end on 24 February 2021 (last price $28.43, the stored close that day), so it was recorded on 24 or 25
+February. Timestamps are from a local transcript. Prices below are stored daily bars; his own prices are not on
+screen. Where a buy price is worked back from the percentages he gives, it is marked **[inferred]**.*
+
+### 13.1 The trade
+
+| Step | Date | What he did (timestamp) | Stored prices |
+|---|---|---|---|
+| Base | late Nov 2020 – early Jan 2021 | A **low cheat**: a shelf near $20–21 in the lower part of the base (0:48) | 17–31 Dec at 0.45–0.55× the 50-day volume |
+| Passed | 4–5 Jan | "Almost buying it" on the 4th and on the 5th's reversal outside day, but held off: it "was wedging up a bit and didn't really form the right side fully" (0:57, 1:16) | 5 Jan: range $20.26–22.12, 1.2× volume |
+| Waited | 6–8 Jan | It ran to $22.69, then pulled back "to the top of that breakout" (1:16) | 8 Jan: low $21.01, high $21.91 |
+| **Buy 1** | 11 Jan (Mon) | Bought as it went above Friday's high (1:28) | Through $21.91; closed $23.04 on 2.0× volume |
+| Traded around it | Jan | Sold some into the rally and bought back; "pretty much the exact same decisions" if you only built the position (2:09) | — |
+| **Buy 2** | about 2–3 Feb | First natural reaction "came right to the top of the cheat"; an inside day, then the turn back up (2:27) | 1 Feb low $22.29; his +17% implies about $24.3 **[inferred]** |
+| **Buy 3** | 11 Feb | Second reaction to the 20-day, turning up (2:45) | 10 Feb low $24.18 = the 20-day; above $25.03 on the 11th |
+| Status | 24 Feb | Up about 30%, 17% and 11% on the three buys, about 20% on the position (5:16) | $28.43 |
+| Plan | — | After **one to three natural reactions**, sell into strength if the advance accelerates (5:42) | 8 Mar: +8.8% on 2.0× volume; peak $37.88 on 18 Mar; $30.24 a week later |
+
+He calls it a value turnaround, in vogue with the rotation from growth into value (6:08).
+
+### 13.2 What it adds to this note
+
+- **Buy on the way up, never on the way down** (1:45): "even though I may be buying a pullback, I'm still waiting
+  until the stock turns up." The trigger is the prior day's high.
+- **Waiting for the right side**: he skipped a valid-looking early entry because the base had not finished its right
+  side and the move was wedging. He then bought the pullback to the top of the cheat breakout.
+- **Pyramiding on natural reactions** (2:45): each add comes on a pullback to support, either the top of the earlier
+  pivot or the 20-day, bought as the stock turns up. This differs from the add at a new, higher pivot (§4, Ollie's).
+  There is no new base, only a reaction inside the advance.
+- **Volume markers, read on the weekly** (3:20): "institutions are buying over a number of days", so their footprint
+  shows on weekly bars. He wants a **selling vacuum**: few down weeks on above-average volume, and any he sees on the
+  *left* side of the base, not the right side, where "supply should stop coming to market" (4:52). A down week that
+  closes above the middle of its range is "not even a selling week… that's actually an accumulation week" (4:27).
+- **The first volume spike off the low is not a buy** (3:48): the big up week off the bear-market low is skipped
+  until the Trend Template holds (above a rising 200-day; "stage two, early turn").
+- **Selling is counted in reactions**: one to three natural reactions, then sell into strength on an acceleration.
+
+**Checked against stored weekly bars.** His reading is exact. The base has one down week on above-average volume:
+4 Dec 2020, −5.9% on 1.29× its 10-week average, closing at 57% of its range. The right side then ran at 0.67×,
+0.55×, 0.47× and 0.45×, and the breakout week at 1.45×. The spike he skips is the week of 28 Aug 2020: +21.8% on 2.6×.
+
+### 13.3 Against this strategy and its backtests **[inferred]**
+
+- **The entry is caught, on his day.** The strategy flags ANF on 11 Jan 2021 as a near-miss VCP (S7). The miss is
+  VCP-08: the tight area was only two sessions old, short of the five it needs. It fills at the next open, $23.01,
+  with a stop of $20.90. Run alone, the backtest holds it to 21 May and sells on the close under the 50-day at
+  $34.48: **+5.4R**. Its strength sale (a third at 25% over the 50-day) falls on 9 March, the acceleration he planned
+  to sell into.
+- **But the full US run never takes it.** On 11–12 Jan 2021 the 8-position cap was full. ZBRA and SAIA (both S8,
+  higher RS) took the last slots. Separately, the "no near-miss" candidate in [CAGR gaps](minervini-cagr-gaps.md)
+  would drop this trade. It is one trade, not evidence either way.
+- **Weekly volume markers do not separate our trades.** Every traded base in the 1.56/1.57 optimise runs (US 1,255
+  trades, India 323) was split by its weekly bars:
+  - **No right-side distribution week** (down, above-average volume, closing in the lower half of the range): US
+    −0.05R over 1,012 trades against about −0.01R for the 243 with one or more. India +0.13R over 240 against +0.57R
+    for 63 with exactly one.
+  - **Quietest third of right sides** against the loudest: US −0.04R against +0.01R; India +0.12R against +0.14R.
+
+  The strategy already requires a daily dry-up (VCP-10), so the weekly reading adds nothing measurable here. Not
+  proposed as a filter.
+- **Adding on natural reactions is mixed.** This replay adds to each held, profitable trade:
+  - **Trigger**: a pullback of 5% or more from the trade's high, to within 2% of the 20-day and above the 50-day.
+  - **Fill**: the turn above the prior day's high, at most two adds, with a new high needed between them.
+  - **Stop**: under the reaction low. Otherwise the add leaves with the trade.
+
+  | Run (optimise, 2013–2021) | Adds | Mean R per add | Median | Won | Stopped at the reaction low |
+  |---|---|---|---|---|---|
+  | US, 1.56 | 260 | −0.22 | −1.00 | 23% | 65% |
+  | US, 150-day after +3R | 212 | +0.11 | −1.00 | 21% | 73% |
+  | India, 1.57 | 159 | +0.47 | −1.00 | 31% | 57% |
+  | India, 150-day after +3R | 126 | +2.85 | −1.00 | 33% | 58% |
+
+  India's +2.85R comes mostly from 2020–21 (42 adds at about +8R). Over 2013–19 it is about +0.35R an add. The replay
+  ignores partial sales and cash, so it is a screen for whether to build the rule, not a result. See
+  [swing longs](system-swing-longs.md) §6.
+
+## 14. Source log
 
 | Date | Source | Length | Notes |
 |---|---|---|---|
 | Late June–July 2022 **[inferred]** | Webinar, "How to Spot Leading Stocks in a Bear Market", with Mark Ritchie II; moderator Bob Weissman; sponsored by MarketSmith / Investor's Business Daily | 63 min; first 4.5 min promotional | Date from internal clues: he is 57 and started in 1983; "we are in the bear market"; the PBF trade of 24 May 2022 was "recent", followed by the market's new low and a return to cash; BLTE (listed spring 2022) "just recently"; the Master Trader Program "in November", its 12th or 13th year since 2010. Transcribed locally; video at 144p |
 | ~15 June 2026 | TraderLion podcast, "Trading $100K Into $20 Million With Only One Setup: The VCP Strategy"; Mark Ritchie II, Brandon Hedgepath, Bob Weissman; host Richard Moglen | 72 min; sponsor read 13:43–15:01 | Date from the transcript ("the middle of June here, June 15th"; a 12 June IPO "yesterday"). Charts on Minervini's platform (RPR, "trend stage", pressure and buy-risk bands, news count). Transcribed locally (Whisper small.en); frames read at 480p, so chart dates are from the speakers, not the screen |
+| 24–25 Feb 2021 **[inferred]** | Short clip, Minervini on his Abercrombie & Fitch (ANF) position: "volume markers" on daily and weekly charts | 6.5 min | Date from the charts, which end on the 24 Feb 2021 close ($28.43). eSignal daily and weekly charts at 442×360, so chart dates are read against stored prices. Transcribed locally (Whisper small.en) |

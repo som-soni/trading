@@ -144,6 +144,26 @@ Quiet trading near the lows of a base suggests sellers are scarce. That is the "
 
 A dry-up before the breakout made **no measurable difference** here. Dry-up plus a 1.5× breakout day (835 cases) did no better either. This is a crude stand-in for a VCP: ten days, not the tight area of a measured base. It does say that **"quiet before the breakout" is not an edge on its own**. Treat the dry-up as one piece of a base that looks right, not as a signal.
 
+### 4.1 Reading the base on weekly bars
+
+Funds buy over days and weeks, not in one session. A week's total volume can show that better than any single day. The weekly reading asks two things of a base:
+
+- **Few heavy down weeks.** A down week on above-average volume is a sign of supply. One or two on the left side of the base, near the start of the decline, are normal. On the right side, near the pivot, they are a warning.
+- **Where the heavy week closed.** A down week that closes in the upper half of its range was bought into. It reads as support, not selling.
+
+**Example: Abercrombie & Fitch, 2020–21** (stored weekly bars, volume against the 10-week average):
+
+| Week ending | Change | Volume | Close in the week's range |
+|---|---|---|---|
+| 28 Aug 2020 | +21.8% | 2.6× | 72% |
+| 4 Dec 2020 | −5.9% | 1.3× | 57% |
+| 11 Dec – 1 Jan | −2.7% to +1.3% | 0.45–0.67× | — |
+| 15 Jan 2021 (breakout) | +12.7% | 1.45× | 86% |
+
+The August week is the first big surge off the 2020 low. The stock was still below a falling long-term average, so it was not yet a buy. The base that followed had one heavy down week, and it closed above the middle of its range. Then volume dried up for four weeks, and the breakout week expanded again. The stock rose about 50% over the next nine weeks.
+
+This guide has not measured the weekly reading across many stocks. The daily counts in section 5.2 showed no edge on their own, so treat the weekly picture as a check on a base, not as a signal.
+
 ## 5. Accumulation and distribution in one stock
 
 ### 5.1 The counts

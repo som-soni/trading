@@ -67,7 +67,7 @@ mostly sector and low beta. The setup and the feedback decide, not the list.
 | L7 | **Lead and rest** — a stock that ran far during the decline bases while the market catches up; its RS line lags | Base breakout; the RS-line lag is *allowed* here | Under the tight area; cut fast if no follow-through | Minervini (Netflix 2009) | Untested |
 | L8 | **Anchored-VWAP pullback** in an uptrend | First try where the hourly line is touched; second try at the daily line after an intraday breakout | Under the try's low | Luk (SK Hynix); [VWAP](learn-strat-vwap.md) Strategy C | The daily version is in the Learn guide; untested here |
 | L9 | **Pause pivot** — a strong stock (RS near the top) pulls back in three or four lower lows after a power move, then pauses; buy the break of the pause | Over the pause's high | Under the pause low | Ritchie/Hedgepath (Vicor, Dec 2025; Arm, May 2026) | Untested; our detector refuses it (VCP-08 tightness) |
-| L10 | **Pullback buy after a missed breakout** — a low-volume 1-2-3 pullback to the cheat area or the 50-day, then an inside day or a turn | Over the inside day's high | Under the pullback low; out in 5–10 sessions if it does not work | Ritchie/Hedgepath (Fluence, Modine 2026) | Untested; our detector refuses Modine (VCP-06) |
+| L10 | **Pullback buy after a missed breakout** — a low-volume 1-2-3 pullback to the cheat area or the 50-day, then an inside day or a turn | Over the inside day's (or the prior day's) high — bought as it turns up, never on the way down | Under the pullback low; out in 5–10 sessions if it does not work | Ritchie/Hedgepath (Fluence, Modine 2026); Minervini (ANF, Jan 2021: skipped the first breakout as "wedging", bought the pullback to the top of the low cheat as it cleared Friday's high) | Untested; our detector refuses Modine (VCP-06), but catches ANF on the same day as a near-miss VCP (S7) |
 | L11 | **First setup after a new all-time high out of a multi-year base** — may come before the Trend Template is met | The first tight setup above the old high | Under the setup | Ritchie (Arm), Weissman (IREN, Aug 2025) | Untested; refused by the Trend Template's stacked averages (G4) |
 
 ## 4. Execution
@@ -96,6 +96,8 @@ The two creators disagree on partial profits, and both are right for different m
 | A news or earnings gap up while well in profit | Backstop at the gap day's low; ratchet it up as the move goes vertical; no resting trailing stop | Ritchie/Hedgepath (Modine, Micron 2026) |
 | Results due | Never hold an overweight position into them; hold a remainder only with profit banked | Ritchie/Hedgepath (Broadcom, Dec 2025) |
 | Last piece of a winner | Close below the 50-day, ratcheted higher once enough is made | Ritchie/Hedgepath (Seagate) |
+| A winner pulls back to the top of its pivot or to the 20-day (a natural reaction) | **Add** as it turns up over the prior day's high; stop on the add under the reaction low. Different from adding at a new, higher pivot | Minervini (ANF, Feb 2021: two adds) |
+| One to three natural reactions done, and the advance accelerates | Sell into the strength | Minervini (ANF) |
 
 *Proposed decision rule:* at entry, label the trade **tradable** or **leader**. Tradable → scale out into strength; leader →
 hold and trail. Never take a partial only because a trade went fast.
@@ -110,3 +112,5 @@ hold and trail. Never take a partial only because a trade went fast.
 | Gap-day backstop | In the `minervini` backtest, once a position is +3R or more, a gap up of 1 ATR or more moves the stop to that day's low; compare with the 150-day room after +3R (the current best exit) |
 | Earnings rule for held positions | Before a results date, sell all if the open gain is under a cushion, else sell part; needs point-in-time results dates in the backtest |
 | L9 pause pivot, L10 pullback buy | As new setups in the `minervini` strategy, research switches off, with pass criteria written first |
+| Add on a natural reaction | Replayed 10 Nov 2026 on the optimise runs' trades ([Minervini note](creator-mark-minervini.md) §13.3): US −0.22R an add (+0.11R with the 150-day exit), India +0.47R (+2.85R, mostly 2020–21); 57–73% stopped at the reaction low. Worth building as a research switch in the backtest only beside the 150-day exit, and judged on India first |
+| ~~Weekly volume markers~~ | Done 10 Nov 2026: no right-side distribution week, or a quiet right side, made no difference to the trades' R in either market (same section). Not a filter; the daily dry-up already covers it |
