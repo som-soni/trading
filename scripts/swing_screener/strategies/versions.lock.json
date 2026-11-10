@@ -282,10 +282,11 @@
   },
   "earnings_gaps": {
     "family": "earnings_gaps",
-    "fingerprint": "7a923344",
+    "fingerprint": "05c9c7c5",
     "params": {
       "ANNOUNCE_WINDOW_DAYS": 3,
       "CATALYST_FILED_GRACE": 5,
+      "CATALYST_GATE": 1,
       "CATALYST_MIN_DAYS": 10,
       "CATALYST_UNFILED_DAYS": 50,
       "ENTRY_AT_CLOSE": 0,
@@ -332,7 +333,7 @@
         "W2"
       ]
     },
-    "version": "1.9"
+    "version": "1.10"
   },
   "ema100_trend": {
     "family": "ema100_trend",

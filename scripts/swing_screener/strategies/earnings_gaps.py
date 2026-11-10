@@ -98,6 +98,10 @@ MIN_GROWTH_PCT = 0.0       # G6: above 0 = the announced quarter's sales OR EPS 
                            # the same quarter a year earlier; 0 = off
 NEGLECT_GATE = 0           # 1 = G7: refuse a stock already up more than NEGLECT_MAX_RUN_PCT over the
                            # NEGLECT_LOOKBACK sessions BEFORE the reaction day (W1 only notes it)
+CATALYST_GATE = 1          # G3, the results link: 1 = enforced (as shipped); 0 = off, so any qualifying
+                           # move counts -- Bonde's episodic pivot keys on news of every kind (contracts,
+                           # approvals, products), which no stored data identifies; heavy volume stands
+                           # in for it (run with a higher MIN_REL_VOLUME)
 SCREEN_GATE = 1            # G1, the Above-the-200-day screen: 1 = enforced (as shipped); 0 = off. He
                            # buys neglected stocks, which often sit below the 200-day: G1 refused 60%
                            # of the US 10%+ gaps of 2014-2021 before any other rule looked at them
@@ -146,10 +150,15 @@ EG02 = "S2"   # 1.8: the break of the flag that follows the reaction (FLAG_*)
 class EarningsGapStrategy(Strategy):
     selection = "time_series"
     family = "earnings_gaps"
-    version = "1.9"
+    version = "1.10"
     # 1.7 adds gates to evaluate(), so signal_version is NOT pinned: a pin across a scan change would
     # replay old detections (CLAUDE.md). It defaults to `version`, which rescans.
     changelog = (
+        ("1.10", "2026-11-10",
+         "CATALYST_GATE, a research switch for G3 (on by default, so a default run trades exactly as 1.9). "
+         "Off, a move qualifies without a results announcement: Pradeep Bonde's episodic pivot is any big "
+         "news, not only results, and no stored data identifies other news, so the volume-only variant "
+         "tests whether extreme volume alone (a higher MIN_REL_VOLUME) finds the same moves."),
         ("1.9", "2026-11-05",
          "US reactions are tied to recorded results announcements, as India's are: each 8-K with Item 2.02, "
          "back to 2005 (the `announcements` job, `financials.sec_announcements`). Until now every US company "
@@ -421,6 +430,8 @@ class EarningsGapStrategy(Strategy):
               "after the close, so they tie to the next session's move) and the exchange's broadcast "
               "time for the results filing, which in older years is often days later. In the US, "
               "the day of the 8-K with Item 2.02 the company filed with its results release.\n"
+              "- **Switch:** CATALYST_GATE (now {CATALYST_GATE}); 0 turns this gate off, so a big move on "
+              "heavy volume qualifies without any results link (a research variant for news of other kinds).\n"
               "- **No recorded announcements (a US company with no 8-K 2.02 on file, such as a "
               "foreign issuer, and any Indian one the exchange does not list):** the window below.\n\n"
               "The window: the reaction day falls at least {CATALYST_MIN_DAYS} days after a quarter "
@@ -643,6 +654,7 @@ class EarningsGapStrategy(Strategy):
         ("Market gate", "MARKET_GATE", "G5, research switch: 1 = buy only while the small-cap index is above its 200-day; 0 = off."),
         ("Entry at the close", "ENTRY_AT_CLOSE", "Research switch: 1 = buy the reaction day's own close, stopped at its low; 0 = a buy-stop above its high from the next session."),
         ("Minimum growth", "MIN_GROWTH_PCT", "G6, research switch: the announced quarter's sales or EPS up at least this % on a year earlier; 0 = off."),
+        ("Catalyst gate", "CATALYST_GATE", "G3, research switch: 1 = the move must be linked to results (as shipped); 0 = off, any qualifying move counts."),
         ("Screen gate", "SCREEN_GATE", "G1, research switch: 1 = the stock must close above its 200-day (as shipped); 0 = off."),
         ("Neglect gate", "NEGLECT_GATE", "G7, research switch: 1 = refuse a stock up more than the neglect threshold in the sessions before the news; 0 = off."),
         ("Minimum close position", "MIN_CLOSE_POS", "G2: (close − low) ÷ (high − low); 1 is a close on the high."),
@@ -887,8 +899,10 @@ class EarningsGapStrategy(Strategy):
                      flag_range_pct=round(flag["range_pct"], 2))
 
         # G3 — the news link
-        how = self._link(ctx.symbol, r["date"])
-        if how:
+        how = self._link(ctx.symbol, r["date"]) if CATALYST_GATE else None
+        if not CATALYST_GATE:
+            result.ok("G3", "off (CATALYST_GATE = 0): any qualifying move counts")
+        elif how:
             result.ok("G3", how)
         elif self._announcements(_market_of(ctx.symbol)).get(ctx.symbol):
             result.fail("G3", f"no results announced in the {ANNOUNCE_WINDOW_DAYS} days before the move")
