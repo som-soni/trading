@@ -281,3 +281,20 @@ existing trades (that section) was positive in India and not in the US, so India
 exit with the maximum drawdown no more than 2 points deeper (an add is extra exposure, so some extra drawdown is the
 price), **and** the same setting does not lower the US CAGR against #3768. A win in India alone is recorded as an
 India-only result, not adopted, because the replay already showed the US does not support it.
+
+## A tighter stop cap (SL-03), queued 2026-11-10
+
+From the Manappuram 2018 review ([creator notes](creator-mark-minervini.md) §9.3): an early failed-breakout exit lowered
+average R in both markets. The narrower idea is to skip wide-stop entries instead, nearer Minervini's 5–6% average loss.
+`MAX_STOP_PCT` (10%) skips a fill whose stop is further below it; the power play keeps its own 20% cap. The constant is
+read after the scan, so these runs copy the cached signals.
+
+| # | Market | `MAX_STOP_PCT` | Compared with |
+|---|---|---|---|
+| 1440 | India | 8 | #3754 (3.71%) |
+| 1441 | India | 6 | #3754 |
+| 1442 | US | 8 | #3758 (−3.30%) |
+| 1443 | US | 6 | #3758 |
+
+**Decision rule, fixed before the results:** a cap is adopted only if the same value raises CAGR in both markets against
+its comparison run, with max drawdown no more than 1 point deeper. A win in one market only is recorded, not adopted.
