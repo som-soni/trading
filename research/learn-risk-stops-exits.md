@@ -217,6 +217,14 @@ Those trades were worse than average. Held to the 20-day-low exit, they averaged
 | No extra rule (20-day-low exit) | +0.11 | +0.35 |
 | Sell after a close back below the breakout level within 5 sessions | +0.07 | +0.25 |
 | Sell after 15 sessions if the trade never reached +1R | +0.08 | +0.29 |
+| Sell after 3 down closes in a row, within 10 sessions of the buy | +0.08 | +0.22 |
+| The same, only if the close is below the buy price | +0.10 | +0.28 |
+| Sell after 4 down closes in a row, below the buy price | +0.11 | +0.33 |
+| Sell when down days outnumber up days (3 or more), below the buy price, within 5 sessions | +0.10 | +0.27 |
+
+**A run of down days.** Another common rule sells a new trade that closes lower several days running. Three down closes in a row, within ten sessions of the buy, happened to 30% of the US trades and 34% of the Indian ones. Those that were also below the buy price were poor trades: held on, they averaged −0.30R in the US and −0.11R in India. Sold at the next open, they did worse: −0.39R and −0.40R.
+
+Of all the trades the plain three-day rule sold, 701 US and 337 Indian ones would have gone on to make +5R or more. Every version in the table lowered the average in both markets. The four-day version, below the buy price, cost the least, because it sold the fewest trades.
 
 **Time stops.** Another rule sells a trade that has gone nowhere: for example, one that has not reached +1R after 15 sessions. About a fifth of the illustrative trades fit that description and were still open. Held on, they averaged +0.20R in the US and +0.30R in India. Sold at the fifteenth session's close, they averaged +0.05R and −0.04R.
 
