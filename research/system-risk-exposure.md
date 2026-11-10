@@ -12,6 +12,8 @@ and what the creators said they do.
   losses. It is the one sizing rule tested here, and it cut drawdown.
 - Four overrides only ever reduce risk: index **stretch**, **events**, poor **recent results**, and a **hot streak**.
 - Stops are set before entry, on the instrument actually traded, and **never moved against the trade**.
+- Each **book** — position, swing, short-term, F&O — has its own slice of the open-risk budget, so one style cannot crowd out
+  the others. **Leverage** is capped three ways: notional, margin in use, and the worst-case loss of all F&O together (§6).
 
 ---
 
@@ -36,6 +38,7 @@ the same idea, scaled up as the first trades work.
 | Maximum positions | **to decide** | Minervini spec: 8 (PF-02) |
 | Position size cap | **to decide** | Minervini spec: 25% of equity (SL-05); Luk on 3 Nov 2026: each new short under 20% |
 | Per group | **to decide** | Not yet in any strategy here |
+| Per book — position / swing / short-term / F&O | **to decide**, each as a share of total open risk | None yet; the books are defined in the [overview](system-overview.md) §1 |
 
 ## 3. Progressive exposure — size by results
 
@@ -73,7 +76,22 @@ Overrides combine by taking the **smallest** tier; none can raise one.
 - **Tighter on a doubtful day** — Luk put a stop under the daily VWAP rather than above it "to limit my loss as much as
   possible" when the tape was poor.
 
-## 6. Leverage and lifestyle
+## 6. Leverage and F&O
+
+Futures and options are sized by their worst case, never by their margin ([F&O and leverage](system-fno-leverage.md) §4). On
+top of each trade's R, three limits hold for the account as a whole:
+
+| Limit | Value | Why | Reference points |
+|---|---|---|---|
+| **Notional exposure** — the full value of every future and of the shares behind every option held, plus cash longs, against equity | **to decide** (1× would mean no net leverage) | Margin hides size: one Nifty lot is worth about ₹15 lakh whatever the deposit | [India rules](learn-fno-india-rules.md) §2 |
+| **Margin in use** against the account | **to decide**, leaving a cash buffer for margin calls | A margin call forces a sale at the worst moment | [Sizing in F&O](learn-fno-risk-sizing.md) §5 |
+| **Open F&O risk** — the worst-case loss of all F&O positions together, gaps included | **to decide**, as a share of total open risk | Index and large-stock positions fall together; their stops do not add up independently | Sizing in F&O §9, step 4 |
+
+**Defined vs open-ended risk.** A bought option or a debit spread cannot lose more than it cost. A future, a short option or
+a short share can. *Rule (proposed):* open-ended positions only in the rows of the daily review that allow full size, and
+never as probes — a probe must be cheap even when it gaps.
+
+**Lifestyle.**
 
 - Margin and heavy exposure overnight carry a cost beyond money: Luk stays awake for the US close (4–5 a.m. in Hong Kong) only
   when volatility is high and he carries heavy exposure, and expects to trade some performance for health with age.
@@ -86,3 +104,5 @@ Overrides combine by taking the **smallest** tier; none can raise one.
 2. Total open risk and short risk caps.
 3. Whether to adopt both the market filter and progressive exposure (smoother equity, lower return) or the filter alone.
 4. Which session I trade with full attention — India by day, the US by night — and the size cap for the other.
+5. Each book's share of open risk: position, swing, short-term, F&O.
+6. The leverage caps in §6: notional, margin in use, open F&O risk.

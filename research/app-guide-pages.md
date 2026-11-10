@@ -2,8 +2,8 @@
 
 **In short**
 
-- The menu has eight sections: **Today**, **Markets**, **Screens**, **Strategies**, **Chart**,
-  **Watchlists**, **Library** and **System**. Alt+1 … Alt+8 jumps to each; ⌘K searches pages and symbols.
+- The menu has nine sections: **Today**, **Markets**, **Screens**, **Strategies**, **Chart**,
+  **Watchlists**, **Trade desk**, **Library** and **System**. Alt+1 … Alt+9 jumps to each; ⌘K searches pages and symbols.
 - The app screens and backtests. It never places an order. It knows your positions only through each
   book's trade ledger — see [your books](app-guide-books.md).
 - Read it in menu order after the close: Today → Post-market → Breadth → Sectors → Strategies → Chart →
@@ -33,7 +33,8 @@ config, so a page always shows the market you picked last.
 | **Strategies** | Today's setups · one page per strategy · Paper books | Is there a trade, at what price, with what stop? How has each strategy done forward? | [Strategies overview](learn-strat-overview.md) |
 | **Chart** | Chart · Fundamentals · Analysis · News | What does this one stock look like — and what do I make of it? | [Indicators](learn-price-indicators.md), [earnings](learn-fund-earnings.md) |
 | **Watchlists** | Watchlists | What am I following, and what did the screener pick? | [Journal](learn-process-journal.md) |
-| **Library** | Notes · Research · Learn | My notes and journal; reference reading | [Journal](learn-process-journal.md) |
+| **Trade desk** | Playbook · Daily review · Sectors → stocks · Scans & reports · Longs · Shorts · F&O · Risk | What is my procedure — what I trade, in what order, how much I risk — and what did the desk find on each day? | [Trading plan](learn-process-plan.md) |
+| **Library** | Notes · Research · Sector research · Learn | My notes and journal; reference reading | [Journal](learn-process-journal.md) |
 | **System** | Status · Runs · Schedules · Reports archive · Sub-industries · TODO | Is the data current, and what did the jobs do? | — |
 
 ## 2. Today
@@ -474,7 +475,14 @@ index series, company fundamentals), and a ```` ```chart ```` block draws cited 
 (`labels:`, one `series:` line per series, `estimate:` to draw forecasts lighter, `years:` to show the
 growth rate per year) — the grammar is in the comments above `parseSeriesSpec` and `parseChartSpec`
 in `app.js`.
-**Trade desk** holds the research made while choosing trades: which sectors are strong, the stocks in
+**Trade desk** (its own menu, before Library) is my trading system and the work done with it. Its tabs
+follow the decision chain: **Playbook** (the overview), **Daily review**, **Sectors → stocks**, **Scans &
+reports** (where that step's dated lists are stored), **Longs**, **Shorts**, **F&O** and **Risk**. Each tab but Scans & reports is a `research/system-*.md` note rendered as Research
+renders it. The notes stay the one source — the menu only names them (`PLAYBOOK` in `app.js`) — and an
+old `#/research/system-…` link opens the note's tab. The system's reference material (the tools plan, the
+sector playbook) stays under Research.
+
+**Scans & reports** (Trade desk) holds the research made while choosing trades: which sectors are strong, the stocks in
 them, and sector reports (share shifts between companies, growth, margins, valuation, ownership flows).
 It shares the same store as Sector research, on its own desk (`desk = 'trade-desk'`), and the sidebar
 groups it **by the day its data is as of**, so each day reads as one research session; an entry stored

@@ -95,7 +95,7 @@ small**, not a prediction.
 
 - Long side (Minervini): how many stocks pass the Trend Template, and is the count **rising or falling**? How many RS lines
   are making new highs out of bases? How many quality setups today, in how many groups (true leadership is three to five
-  groups)? Are the most recent breakouts **working**?
+  groups — the week's [Sectors → stocks](system-sector-selection.md) list)? Are the most recent breakouts **working**?
 - Short side (Luk): how many Stage 4 or breaking stocks are bouncing into falling short averages, and in which groups?
 - *Caution (tested here):* "held up best in the sell-off" is not, by itself, a buy signal — such stocks did worse than
   average after three recent sell-offs ([relative strength](learn-price-rs.md) §4.3). Use it as a watchlist, and let the

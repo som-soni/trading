@@ -1,20 +1,44 @@
-# Swing longs (draft)
+# Longs — position, swing and short-term (draft)
 
-Part of [my trading system](system-overview.md). Which stocks to buy, on which pattern, how to enter, and how to manage
-them. Every rule is *proposed*, with its source; the status column says what this repository has measured. Size always
-comes from the [daily market review](system-daily-market-review.md) and [risk and exposure](system-risk-exposure.md).
+Part of [my trading system](system-overview.md). Which stocks to buy, in which book, and — once a strategy has earned
+it — how to enter and exit. **The entry and exit rules are not set yet** (§0): they will come from a tested strategy. Until
+then the setups, execution and management below are *candidates under study*, each with its source and what this repository
+has measured. Size always comes from the [daily market review](system-daily-market-review.md) and [risk and
+exposure](system-risk-exposure.md); the stocks come from [Sectors → stocks](system-sector-selection.md).
 
 **In short**
 
-- Candidates come from the **Stage 2 Trend Template**, strong relative strength and leading groups; in a decline, the
-  same plus Minervini's five things — kept as a **watchlist**, because "held up best" alone has not paid here.
-- Eight setups are on the table, from the classic base breakout to a fast rebound's first pullback. Two have been
-  tested here: the base breakout showed little edge on its own, and the fast rebound's first pullback none (rejected).
-- Enter at the pivot on a buy-stop; don't chase gaps or extended stocks; the stop goes under the base's tight area.
-- Management depends on the kind of move: **scale out of a quick "tradable" move**, **hold a true leader** — and don't
-  take quick partials just because a trade went fast (Luk).
+- Three books: **position** (months), **swing** (days to weeks) and **short-term** (1–5 days), all planned on daily bars.
+  Entry and exit for each are **TBD — to be set from a tested strategy**.
+- Candidates come from the **Stage 2 Trend Template**, strong relative strength and the leading and emerging groups of
+  [Sectors → stocks](system-sector-selection.md); in a decline, the same plus Minervini's five things — kept as a
+  **watchlist**, because "held up best" alone has not paid here.
+- Eleven candidate setups, from the classic base breakout to a fast rebound's first pullback. Two have been tested
+  here: the base breakout showed little edge on its own, and the fast rebound's first pullback none (rejected).
+- The candidate execution and management rules — buy-stop at the pivot, no chasing; **scale out of a quick "tradable"
+  move, hold a true leader** — wait for a strategy to confirm or replace them.
 
 ---
+
+## 0. Books, and the rules still to set
+
+| Book | Holding period | Candidates | Strategies to draw the rules from |
+|---|---|---|---|
+| **Position** | Months, while the trend holds | Leaders in groups leading for 4+ weeks | Minervini SEPA (its 150-day room after +3R), RS leaders, Stage analysis, 100-EMA trend, Donchian channel |
+| **Swing** | Days to a few weeks | Leaders in leading and emerging groups | Minervini SEPA, Minervini coil breakout, Trend pullback, EMA pullback, Kullamägi breakout, Kell cycle, Chart patterns, Darvas box, Earnings gaps |
+| **Short-term** | 1–5 sessions | The fastest movers in the week's strongest groups | Momentum burst (a time stop after a few sessions) |
+
+Each strategy's page (Strategies) shows its rules and its measured result by stage; most have not passed a verify run. A
+setup in §3 becomes a strategy when it can be coded; a strategy becomes the rule here when it passes.
+
+> **Entry — TBD.** To be set from a tested strategy, one per book. Until then, a trade taken is a candidate setup from
+> §3, sized as a probe or at reduced risk ([risk and exposure](system-risk-exposure.md) §1), and logged.
+>
+> **Exit — TBD.** To be set from the same strategy: the initial stop, the trailing or time exit, partial sales. The
+> candidate rules are in §5. Whatever the exit, the stop is set before entry and never moved against the trade.
+
+**Short-term is on daily bars.** A 1–5 session trade is planned at the close like any other; no position is opened and
+closed in one session. Intraday trading is a separate decision, deferred ([overview](system-overview.md) §1).
 
 ## 1. When to look
 
@@ -39,7 +63,7 @@ the low still leaves the right-side build-out ([notes](creator-mark-minervini.md
 - **Stage 2**: the Trend Template — all criteria ([SEPA and the VCP](learn-strat-vcp-sepa.md)).
 - **Relative strength**: a high RS rank; an RS line at or near a new high ([relative strength](learn-price-rs.md)). In India,
   the RS line *and* price at a 52-week high together was the best month-end combination measured here (§4.4 there).
-- **Group**: one of the three to five leading groups ([sector playbook](sector-analysis-playbook.md)).
+- **Group**: a leading or emerging group from the weekly [Sectors → stocks](system-sector-selection.md) list.
 - **Liquidity** per the strategy floors.
 
 ### 2.2 In a decline — the watchlist (Minervini's five things)
@@ -54,7 +78,7 @@ the low still leaves the right-side build-out ([notes](creator-mark-minervini.md
 afterwards, and early new highs did no better ([relative strength](learn-price-rs.md) §4.3). Strength in a decline was
 mostly sector and low beta. The setup and the feedback decide, not the list.
 
-## 3. Setups
+## 3. Setups under study (candidates, not rules)
 
 | # | Setup | Entry | Stop | Source | Status here |
 |---|---|---|---|---|---|
@@ -70,7 +94,7 @@ mostly sector and low beta. The setup and the feedback decide, not the list.
 | L10 | **Pullback buy after a missed breakout** — a low-volume 1-2-3 pullback to the cheat area or the 50-day, then an inside day or a turn | Over the inside day's (or the prior day's) high — bought as it turns up, never on the way down | Under the pullback low; out in 5–10 sessions if it does not work | Ritchie/Hedgepath (Fluence, Modine 2026); Minervini (ANF, Jan 2021: skipped the first breakout as "wedging", bought the pullback to the top of the low cheat as it cleared Friday's high) | Untested; our detector refuses Modine (VCP-06), but catches ANF on the same day as a near-miss VCP (S7) |
 | L11 | **First setup after a new all-time high out of a multi-year base** — may come before the Trend Template is met | The first tight setup above the old high | Under the setup | Ritchie (Arm), Weissman (IREN, Aug 2025) | Untested; refused by the Trend Template's stacked averages (G4) |
 
-## 4. Execution
+## 4. Execution — candidate rules
 
 - **Buy-stop at the pivot**, set the evening before (the [app manual](app-guide-pages.md) §11 routine).
 - **No chasing**: not a gap, not more than 5% past the pivot. *Exception (Minervini):* a gap that stays close to the base.
@@ -80,7 +104,7 @@ mostly sector and low beta. The setup and the feedback decide, not the list.
 - **Intraday triggers** (Luk; [Kullamägi](learn-strat-kullamagi.md)): a lower-timeframe candle or opening-range break gives a
   tighter stop but more stop-outs. Choose the trigger timeframe by the stop width I can accept, not by which signal "works".
 
-## 5. Management and exits
+## 5. Management and exits — candidate rules
 
 The two creators disagree on partial profits, and both are right for different moves:
 

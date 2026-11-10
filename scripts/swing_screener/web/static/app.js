@@ -3612,7 +3612,7 @@ async function sectorsPage(alive, mkt, level, group) {
       · typical stock ${SEC_H.map((h) => `${h} <b class="${pctCls(mret[h])}">${pct1(mret[h])}</b>`).join(" ")}
       ${bench ? ` · ${esc(bench.label)} 3M <b class="${pctCls(bench["3M"])}">${pct1(bench["3M"])}</b> 12M <b class="${pctCls(bench["12M"])}">${pct1(bench["12M"])}</b>` : ""}
       ${d.updating ? ' <span class="tag watch">updating…</span>' : ""}
-      · ${info(["rs", "returns", "relative", "breadth", "rrg", "universe", "caveats"].map((k) => `<p>${esc(d.doc[k])}</p>`).join("") + '<p><a href="#/playbook">Read the sector-analysis playbook →</a></p>', "How to read this page")}</div>
+      · ${info(["rs", "returns", "relative", "breadth", "rrg", "universe", "caveats"].map((k) => `<p>${esc(d.doc[k])}</p>`).join("") + '<p><a href="#/research/sector-analysis-playbook">Read the sector-analysis playbook →</a></p>', "How to read this page")}</div>
     <div class="sec-top one">
       <section class="sec-card"><div class="sec-card-h"><h3>Rotation</h3><span class="muted small" id="rrg-note"></span><span class="spacer"></span>
         ${level !== "sector" ? `<label class="small muted">show <select id="rrgn">${[6, 8, 12, 20].map((n) => `<option ${n === prefs.rrgN ? "selected" : ""}>${n}</option>`).join("")}</select></label>` : ""}</div>
@@ -6665,7 +6665,8 @@ function renderResearchMd(host, markdown) {
       e.preventDefault();
       const runs = await api("/api/reports?kind=research").catch(() => []);
       const t = runs.find((x) => x.run === f.replace(/\.md$/, ""));
-      if (t) go(t.run.startsWith("learn-") ? `#/learn/${t.run.replace(/^learn-/, "")}` : t.kind === "research" ? `#/research/${t.run}` : `#/reports/${t.id}`);
+      if (t) go(t.run.startsWith("learn-") ? `#/learn/${t.run.replace(/^learn-/, "")}` : playbookTab(t.run) ? `#/${playbookTab(t.run)}`
+        : t.kind === "research" ? `#/research/${t.run}` : `#/reports/${t.id}`);
       else toast("That document is not loaded — click Load reports on the Reports archive", "err");
     };
   });
@@ -8255,6 +8256,20 @@ async function runsPage(alive, runId) {
 
 /** Top-level sections in the order of a review — market, ideas, the stock, what I track, does it work —
  *  each with its pages (shown inline in the header, next to the open section, when there is more than one). */
+/* Trade desk: my trading system (the playbook), one tab per step of the decision chain. Each tab is a
+   research note (research/system-*.md) rendered as it is in Research; the notes stay the one source, so the
+   menu only names them. [page id, tab label, note, tooltip] — the first is the section's home page. The
+   desk's dated work (Scans & reports, the trade-desk page) sits between them, after the sector step it records. */
+const PLAYBOOK = [
+  ["playbook", "Playbook", "system-overview", "My trading system: what it trades, the decision chain, the principles and how new material gets in"],
+  ["playbook-review", "Daily review", "system-daily-market-review", "After the close: regime, stretch, breadth, events and my results, ending in a written call"],
+  ["playbook-sectors", "Sectors → stocks", "system-sector-selection", "Weekly: the leading, emerging, weakening and lagging groups, narrowed to a dated stock list for each book"],
+  ["playbook-longs", "Longs", "system-swing-longs", "The long books (position, swing, short-term): candidates, setups under study; entry and exit to be set from a tested strategy"],
+  ["playbook-shorts", "Shorts", "system-shorts", "When to short, what, where; setups under study; entry and exit to be set from a tested strategy"],
+  ["playbook-fno", "F&O", "system-fno-leverage", "When a chosen trade is better as a future or an option (India), and how it is sized: by the worst case, never the margin"],
+  ["playbook-risk", "Risk", "system-risk-exposure", "Risk per trade and per book, exposure and leverage limits, progressive exposure and the overrides"],
+];
+const playbookTab = (run) => PLAYBOOK.find((x) => x[2] === run)?.[0];
 const SECTIONS = [
   { key: "today", label: "Today", pages: [["today", "Today", "Your daily starting point: the market, the macro backdrop and flows, and a summary of today's setups and new picks"]] },
   { key: "markets", label: "Markets", pages: [["postmarket", "Post-market", "The day's recap after the close"], ["breadth", "Breadth", "How healthy is the market — risk, not direction"],
@@ -8270,11 +8285,13 @@ const SECTIONS = [
     ["analysis", "Analysis", "The stock read through the analysis framework: ten pillars of evidence, your answers and your verdict"],
     ["news", "News", "Headlines, filings and exchange announcements, and key events — earnings, dividends, splits, analyst ratings"]] },
   { key: "watchlists", label: "Watchlists", pages: [["watchlist", "Watchlists", "Your lists and the screener's picks"]] },
+  { key: "desk", label: "Trade desk", pages: (([home, review, sectors, ...rest]) => [home, review, sectors,
+    ["trade-desk", "Scans & reports", "The desk's research by date: strong sectors, their stock lists and sector reports as they stood that day"],
+    ...rest])(PLAYBOOK.map(([p, t, , d]) => [p, t, d])) },
   // Library is reading material; the data-maintenance tools (TODO, sub-industry labels) live under System
   { key: "library", label: "Library", pages: [["notes", "Notes", "Your notes and trading journal"],
     ["research", "Research", "The research notes: findings, studies, specifications and the sector playbook"],
     ["sector-research", "Sector research", "Long-term sector analyses, dated so you can revisit and extend them"],
-    ["trade-desk", "Trade desk", "Trade-desk research by date: strong sectors, their stock lists and sector reports as they stood that day"],
     ["learn", "Learn", "Learning material: candlesticks, chart patterns, bases and the VCP"]] },
   { key: "system", label: "System", pages: [["status", "Status", "Is the data current? And the job queue"], ["runs", "Runs", "Every run, its steps and log"],
     ["schedules", "Schedules", "When each pipeline runs — and run one now"], ["reports", "Reports archive", "Every backtest and screening report the scripts wrote"],
@@ -8761,7 +8778,8 @@ function linkPatternMentions(root) {
 // The array order is the sidebar's order AND the order the rules are tried in, so a case study ("-cases") is
 // placed before a strategy's own notes could claim it, and those before the specs ("minervini-backtest-spec").
 const RESEARCH_GROUPS = [
-  ["system", "My trading system", /^(system-|sector-analysis-playbook$)/],
+  // the system's own pages are under Trade desk (filtered out below); what stays here is its reference material
+  ["system", "Trading system — references", /^(system-|sector-analysis-playbook$)/],
   ["cases", "Case studies", /(^app-guide-breakouts|-cases$)/],
   ["strategy", "Strategy audits & tests", /^(audit-|minervini-(?!backtest-spec$)|.*-verify-plan$)/],
   ["studies", "Studies & findings", /^(README|momentum-trend-research|index-investing-research|daily-review-rule-tests|selection-vs-drag|.*-study|.*-studies)$/],
@@ -8774,9 +8792,28 @@ const RESEARCH_FIRST = ["system-overview", "system-daily-market-review", "system
   "system-risk-exposure", "system-tools", "sector-analysis-playbook", "minervini-book-cases", "app-guide-breakouts",
   "README", "momentum-trend-research"];
 
-async function researchPage(alive, slug) {
+/** Trade desk: one playbook note (research/system-*.md) per tab, in the guide layout (the note, beside its "On this page" contents). */
+async function playbookPage(alive, page) {
+  const [, label, run] = PLAYBOOK.find(([p]) => p === page);
   $view.innerHTML = LOADING;
-  const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => !x.run.startsWith("learn-"));
+  const runs = await api("/api/reports?kind=research").catch(() => []);
+  if (!alive()) return;
+  const doc = runs.find((x) => x.run === run);
+  document.title = `${label} · Trade desk · Trading`;
+  if (!doc) {
+    $view.innerHTML = `<div class="empty"><b>This page of the playbook is not loaded</b><div class="muted">research/${esc(run)}.md is ingested with the
+      research notes: load them from System → Reports archive (Load reports).</div></div>`;
+    return;
+  }
+  $view.innerHTML = `<div class="lp-guide pb-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div>`;
+  await learnGuide(alive, doc);
+}
+
+async function researchPage(alive, slug) {
+  // the trading system's notes have their own menu (Trade desk); old links land on their tab
+  if (playbookTab(slug)) { go(`#/${playbookTab(slug)}`); return; }
+  $view.innerHTML = LOADING;
+  const runs = (await api("/api/reports?kind=research").catch(() => [])).filter((x) => !x.run.startsWith("learn-") && !playbookTab(x.run));
   if (!alive()) return;
   if (!runs.length) { $view.innerHTML = `<div class="empty"><b>No research notes loaded</b><div class="muted">Load them from System → Reports archive (Load reports).</div></div>`; return; }
   const doc = runs.find((x) => x.run === slug) || runs.find((x) => x.run === "sector-analysis-playbook") || runs[0];
@@ -8806,7 +8843,7 @@ async function researchPage(alive, slug) {
       ${groups.map(([key, label, list]) => `<details class="lp-sec" data-sec="${key}" ${key === openKey ? "open" : ""}>
         <summary><span>${esc(label)}</span><span class="n">${list.length}</span></summary><div class="lp-sub">${items(list)}</div></details>`).join("")}
       <div class="nav-empty muted small lp-none" hidden></div>
-      <div class="nav-empty muted small">Learning guides are under <a href="#/learn">Learn</a>; backtest and screening reports under System → <a href="#/reports">Reports archive</a>.</div>
+      <div class="nav-empty muted small">My trading system's pages are under <a href="#/playbook">Trade desk</a>. Learning guides are under <a href="#/learn">Learn</a>; backtest and screening reports under System → <a href="#/reports">Reports archive</a>.</div>
     </aside><section class="scr-main lp-main"><div class="lp-guide"><div id="lpg-body">${LOADING}</div><nav class="lp-toc" hidden></nav></div></section></div>`;
 
   // search across every group: matching groups open while you type and close again when you clear it;
@@ -8921,7 +8958,7 @@ async function sectorResearchPage(alive, slug, vid) {
   showGuideMd(v.body);
 }
 
-/** Library → Trade desk: the research made while choosing trades — which sectors are strong, the stocks in
+/** Trade desk → Scans & reports: the research made while choosing trades — which sectors are strong, the stocks in
  *  them, sector write-ups — stored as dated versions on the trade desk (sector_research.py, desk "trade-desk").
  *  The sidebar groups it by the day its data is as of, so each day reads as one research session; an entry
  *  stored again later shows under that day too and keeps its earlier versions. An HTML entry is a frozen page
@@ -8944,9 +8981,9 @@ async function tradeDeskPage(alive, slug, vid) {
   if (d.error) { $view.innerHTML = `<div class="empty"><b>Entry not found</b><div class="muted"><a href="#/trade-desk">Open the latest day</a></div></div>`; return; }
   const v = d.version, href = (e) => `#/trade-desk/${encodeURIComponent(e.slug)}/${e.version_id}`;
   const pageUrl = `/api/sector-research/${encodeURIComponent(d.slug)}/page?version=${v.id}`;
-  document.title = `${v.title} · Trade desk · Trading`;
+  document.title = `${v.title} · Scans & reports · Trading`;
   $view.innerHTML = `<div class="rep-layout td-layout"><aside class="rep-nav strat-nav lp-nav">
-      <div class="nav-h">Trade desk · ${days.length} day${days.length > 1 ? "s" : ""}</div>
+      <div class="nav-h">Scans & reports · ${days.length} day${days.length > 1 ? "s" : ""}</div>
       ${days.map((day) => `<div class="td-day"><div class="td-day-h"><b>${fmtDay(day.as_of)}</b> <span class="muted small">${ageText(day.age_days)}</span></div>
         ${day.notes.map((n) => `<div class="muted small td-note">${esc(n)}</div>`).join("")}
         ${day.entries.map((e) => `<a class="nav-item ${e.slug === cur.slug && e.version_id === cur.version_id ? "active" : ""}" href="${href(e)}" title="${esc(e.title)}">
@@ -9399,7 +9436,7 @@ async function route() {
     else if (page === "postmarket") await postmarketPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "sectors") await sectorsPage(alive, parts[1], parts[2], parts[3]);
     else if (page === "reports") await (parts[1] ? reportPage(alive, parts[1], parts[2]) : reportsPage(alive));
-    else if (page === "playbook") go("#/research/sector-analysis-playbook");   // its own tab, before Research listed every note
+    else if (PLAYBOOK.some(([p]) => p === page)) await playbookPage(alive, page);
     else if (page === "research") await researchPage(alive, parts[1]);
     else if (page === "sector-research") await sectorResearchPage(alive, parts[1], parts[2]);
     else if (page === "trade-desk") await tradeDeskPage(alive, parts[1], parts[2]);

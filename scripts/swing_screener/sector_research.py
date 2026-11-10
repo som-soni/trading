@@ -9,7 +9,7 @@ Two desks share the store:
 
   long-term    Library › Sector research: the slow sector theses. The page lists them with the age of their
                latest version and flags one as due for review once it is older than REVIEW_AFTER_DAYS.
-  trade-desk   Library › Trade desk: the snapshots made while choosing trades — which sectors are strong, the
+  trade-desk   Trade desk › Scans & reports: the snapshots made while choosing trades — which sectors are strong, the
                stocks in them, a sector write-up. The page groups them by the day their data is as of
                (`by_date`), so each day reads as one research session you can reopen later.
 
@@ -246,7 +246,7 @@ def main() -> None:
     ap.add_argument("--source", default="", help="link to the live doc it was exported from")
     ap.add_argument("--note", default="", help="what this version changed")
     ap.add_argument("--title", help="the version's title (default: the file's first heading or <title>)")
-    ap.add_argument("--desk", default="long-term", choices=DESKS, help="long-term (Sector research) or trade-desk (Trade desk)")
+    ap.add_argument("--desk", default="long-term", choices=DESKS, help="long-term (Sector research) or trade-desk (Trade desk › Scans & reports)")
     ap.add_argument("--kind", default="sector-report", choices=tuple(KINDS), help="what the entry is")
     ap.add_argument("--format", choices=FORMATS, help="md or html (default: from the file's extension)")
     ap.add_argument("--list", action="store_true", help="list the analyses and their versions")

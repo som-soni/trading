@@ -3905,7 +3905,7 @@ def sector_research_list(desk: str = "long-term"):
 
 @app.get("/api/trade-desk")
 def trade_desk_list():
-    """Library › Trade desk: the trade-desk research grouped by data date (sector_research.by_date)."""
+    """Trade desk › Scans & reports: the trade-desk research grouped by data date (sector_research.by_date)."""
     return {"days": secres_mod.by_date("trade-desk"), "kinds": secres_mod.KINDS}
 
 

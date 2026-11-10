@@ -1,8 +1,11 @@
 # Shorts (draft)
 
-Part of [my trading system](system-overview.md). When to short, what, where, and how to get out. Every rule is *proposed*,
-with its source. Nothing on this page has been backtested here: the repository's strategies are long-only, and the
-intraday triggers need data that is not stored. §7 is the plan to test a daily version.
+Part of [my trading system](system-overview.md). When to short, what, where, and — once a strategy has earned it — how
+to enter and get out. **The entry and exit rules are not set yet** (§0). Every rule below is a *proposed* candidate, with
+its source. Nothing on this page has been backtested here: the repository's strategies are long-only, and the intraday
+triggers need data that is not stored. §7 is the plan to test a daily version. Candidates come from the lagging and
+weakening groups of [Sectors → stocks](system-sector-selection.md); in India a short held overnight is a stock future
+([F&O and leverage](system-fno-leverage.md) F2).
 
 **In short**
 
@@ -16,7 +19,21 @@ intraday triggers need data that is not stored. §7 is the plan to test a daily 
 
 ---
 
-## 0. Can I short this?
+## 0. Books, and the rules still to set
+
+| Book | Holding period | Candidates | Strategies to draw the rules from |
+|---|---|---|---|
+| **Swing** | Days to a few weeks | Stage 4 stocks in lagging and weakening groups, bouncing into resistance | None yet — §7 specifies the first |
+| **Short-term** | 1–5 sessions | The same, on the first failed bounce | None yet |
+| **Position** | Weeks to months | Former leaders in Stage 4 | None yet — [Stage 4 shorts](learn-strat-stage4-shorts.md) describes one |
+
+> **Entry — TBD.** To be set from a tested short strategy. Until then a short is a candidate setup from §3, at probe size
+> ([risk and exposure](system-risk-exposure.md) §1), and logged.
+>
+> **Exit — TBD.** To be set from the same strategy. The candidate rules (cover into weakness, never add to a loser) are in
+> §6. The stop is set before entry and never moved against the trade.
+
+## 0.1 Can I short this?
 
 | Market | How | Constraints |
 |---|---|---|
@@ -51,7 +68,7 @@ sector are smaller.
 - **Avoid**: short interest over about 20% of the float (squeezes); results within five sessions, unless the gap risk is
   accepted; volatility products.
 
-## 3. Setups
+## 3. Setups under study (candidates, not rules)
 
 | # | Setup | Where to short | Stop | Source |
 |---|---|---|---|---|
@@ -68,7 +85,7 @@ there gives a tight, objective stop — tighter than shorting the breakdown itse
 **Location beats the intraday trend (Luk).** Even if the intraday chart is making higher highs and higher lows, a stock
 rising *into* daily resistance and showing rejection is still a short.
 
-## 4. Execution
+## 4. Execution — candidate rules
 
 | Trigger timeframe | Typical stop | Trade-off | Source |
 |---|---|---|---|
@@ -89,7 +106,7 @@ rising *into* daily resistance and showing rejection is still a short.
   exposure](system-risk-exposure.md).
 - The stop is set before entry and **never moved** (Luk). A short can gap far past its stop; size for that.
 
-## 6. Management and exits
+## 6. Management and exits — candidate rules
 
 - **Cover into weakness (Luk)**: take a first part at the prior swing low or on a gap-down; cover the rest on the next
   gap-down open. Don't wait for a close and trail on the 9 or 21 — short-covering rallies give the gains back fast.
