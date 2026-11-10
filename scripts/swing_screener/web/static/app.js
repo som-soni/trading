@@ -1203,7 +1203,7 @@ async function chartPage(alive, market, symbol, tf) {
       const res = (rm) => (rm == null ? "" : noStop ? `${rm > 0 ? "+" : ""}${(rm * 100).toFixed(1)}%` : `${rm > 0 ? "+" : ""}${rm}R`);
       const marks = [];
       // a setups layer drawing this run's trades labels the buy and stop levels and heads the trade with its
-      // result, so the arrows carry no text of their own: on a trade a few bars long the two marker texts
+      // result, so the arrows carry only a B / S letter: on a trade a few bars long the two marker texts
       // landed on the layer's labels and on each other (ULTRACEMCO.NS, January 2013). Trade only keeps them.
       const layerLabels = !tradeOnly && !!runLayerType && (!!btLayer || Studies.activeSetup() === runLayerType);
       t.rows.forEach((r) => {
@@ -1211,10 +1211,12 @@ async function chartPage(alive, market, symbol, tf) {
         const ep = +r[c("entry_price")], xp = +r[c("exit_price")];
         // pinned to the FILL price, not under the bar's low: a marker below the candle reads as a
         // fill below the trigger line when the trade actually bought through it
-        // size 2: at the default size the run's buys and sells were lost among the candles and the setup's levels
-        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: layerLabels ? "" : `Buy ${fmt(ep)}`,
+        // size 2: at the default size the run's buys and sells were lost among the candles and the setup's levels.
+        // The sell is size 1 and both carry a B / S letter: a size-2 sell pinned to a next-day open sat above
+        // the buy's candle and read as a sell before the buy (FEL.NS, January 2013)
+        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: layerLabels ? "B" : `B ${fmt(ep)}`,
           ...(ep > 0 ? { position: "atPriceBottom", price: ep } : { position: "belowBar" }) });
-        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", size: 2, text: layerLabels ? "" : `Sell · ${r[c("exit_reason")]} ${res(rm)}`,
+        if (b) marks.push({ time: b, shape: "arrowDown", color: pnl >= 0 ? "#26a69a" : "#ef5350", size: 1, text: layerLabels ? "S" : `S · ${r[c("exit_reason")]} ${res(rm)}`,
           ...(xp > 0 ? { position: "atPriceTop", price: xp } : { position: "aboveBar" }) });
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
