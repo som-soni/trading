@@ -925,7 +925,8 @@ def simulate(
                     skip("base already entered", sym, today)
                     del pending[sym]
                     continue
-                if _taken and base_last_exit.get(_key) not in RE_ENTRY_AFTER:
+                # a strategy may count more exits as a shakeout (minervini REENTRY_AFTER_LIGHT_VOLUME)
+                if _taken and base_last_exit.get(_key) not in RE_ENTRY_AFTER | set(meta.get("re_entry_after_extra") or ()):
                     skip("base's last trade was not shaken out", sym, today)
                     del pending[sym]
                     continue

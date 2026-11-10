@@ -298,3 +298,20 @@ read after the scan, so these runs copy the cached signals.
 
 **Decision rule, fixed before the results:** a cap is adopted only if the same value raises CAGR in both markets against
 its comparison run, with max drawdown no more than 1 point deeper. A win in one market only is recorded, not adopted.
+
+## Re-entry after a light-volume exit (1.62), queued 2026-11-10
+
+A base reopens only after a shakeout (a stop, a breakeven stop, the 20-day failure). A buy-stop sold at the next
+open by the light-volume exit therefore closes its base, though that exit says the breakout was not yet confirmed,
+not that the move is over. `REENTRY_AFTER_LIGHT_VOLUME=1` lets the same base be bought again, within the two
+entries per base. The base veto dropped 26 Indian and 186 US orders in the comparison runs, after any exit, so the
+effect is capped at those. The case that raised it, Britannia in November 2014, turned out to be blocked by the
+results blackout instead (board meeting 14 Nov, inside 14 days of the 3 and 5 Nov signals).
+
+| # | Market | Setting | Compared with |
+|---|---|---|---|
+| 1449 | India | `REENTRY_AFTER_LIGHT_VOLUME=1` | #3754 (3.71%) |
+| 1450 | US | `REENTRY_AFTER_LIGHT_VOLUME=1` | #3758 (−3.30%) |
+
+**Decision rule, fixed before the results:** adopted only if it raises CAGR in both markets against its comparison
+run, with max drawdown no more than 1 point deeper. A win in one market only is recorded, not adopted.

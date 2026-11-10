@@ -330,6 +330,13 @@ PP_MAX_STOP_PCT = 20.0
 # were stocks that stopped me out and then reset"), so a shakeout now leaves the base buyable once
 # more. `--const MAX_ENTRIES_PER_BASE=1` restores 1.26.
 MAX_ENTRIES_PER_BASE = 2
+# 1.62, research switch (0 = off, 1.61). A base reopens only after a shakeout (a stop, a breakeven stop,
+# the 20-day failure), so a buy-stop sold at the next open by LIGHT_VOLUME_EXIT leaves its base closed: the
+# breakout was not confirmed, yet the same base re-firing days later cannot be bought. 1 counts that exit
+# as a shakeout too (portfolio_sim RE_ENTRY_AFTER), still within MAX_ENTRIES_PER_BASE. In the optimise runs
+# the base veto dropped 26 Indian and 186 US orders (1.56/1.57), after any exit; this reopens only the
+# light-volume ones. (Britannia, Nov 2014, which raised it, was blocked by the results blackout instead.)
+REENTRY_AFTER_LIGHT_VOLUME = 0
 NOMINAL_TARGET_R = 3.0  # reporting only: the exits are rules (and EX-04 sells a third at 3R)
 # Minervini's stated minimum reward-to-risk (ChartMill's SEPA write-up and the
 # books both give 2:1 as the floor, 3:1 preferred). A rejection threshold, never
@@ -1144,10 +1151,17 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.61"
+    version = "1.62"
     # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
     signal_version = "1.51"
     changelog = (
+        ("1.62", "2026-11-10",
+         "Adds a research switch, REENTRY_AFTER_LIGHT_VOLUME, OFF so no rule changes. A base reopens only "
+         "after a shakeout (STOP, BREAKEVEN_STOP, FAILED_SMA20), so a buy-stop sold at the next open by the "
+         "light-volume exit closes its base, though that exit says the breakout was not yet confirmed, not "
+         "that the move is over. On, a light-volume exit counts as a shakeout, within MAX_ENTRIES_PER_BASE. "
+         "The base veto dropped 26 Indian and 186 US orders in the 1.56/1.57 optimise runs, after any exit. "
+         "Post-scan only, so signal_version stays 1.51."),
         ("1.61", "2026-11-10",
          "Adds REACTION_ADD, REACTION_ADD_MAX, REACTION_PB_PCT and REACTION_NEAR_SMA20_PCT, a research switch, OFF so no rule changes: the add on a natural reaction. A held winner that pulls back to its 20-day, above the 50-day and its cost, is added to as it clears the previous session's high, each add with its own stop under the reaction low. From Minervini's ANF trade (Jan-Feb 2021 clip), where he added twice on reactions with no new base. After the scan, signal-exempt; signal_version stays 1.51."),
         ("1.60", "2026-11-10",
@@ -1832,7 +1846,7 @@ class MinerviniSpecStrategy(Strategy):
     # CHEAT_BLOCK_VCP09) and the watch flags' are not here: a variant on one of them rescans.
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
-        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "NOMINAL_TARGET_R",
+        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "REENTRY_AFTER_LIGHT_VOLUME", "NOMINAL_TARGET_R",
         "MIN_STRUCTURAL_R", "MEASURED_MOVE_RR", "MAX_BASE_COUNT", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
@@ -2331,7 +2345,8 @@ class MinerviniSpecStrategy(Strategy):
         "Up to {MAX_ENTRIES_PER_BASE} entries per base (EN-04), the failure reset. Once a base, or a "
         "power play's flag, has been bought that many times, it is never bought again.\n\n"
         "Only a SHAKEOUT reopens a base — the stop, the breakeven stop, or a failed 20-day "
-        "(EX-02b, when switched on) — never a trend exit, "
+        "(EX-02b, when switched on), and the light-volume exit when REENTRY_AFTER_LIGHT_VOLUME is on "
+        "(it is {REENTRY_AFTER_LIGHT_VOLUME}; 1.62, a research switch) — never a trend exit, "
         "which says the move itself is over rather than that the trade was shaken out of it. The "
         "setup still has to re-fire on its own; this only stops the veto. Minervini keeps a stock "
         "that stopped him out on his list, because a failed pivot can reset within days and "
@@ -2638,6 +2653,8 @@ class MinerviniSpecStrategy(Strategy):
         ("Largest position", "cfg.max_position_pct", "SL-05: share of equity one position may hold."),
         ("Positions", "MAX_POSITIONS", "PF-02, with --spec."),
         ("Breakeven trigger", "BREAKEVEN_R", "EX-03: R gained before the stop moves to breakeven plus costs."),
+        ("Re-entry after a light-volume exit", "REENTRY_AFTER_LIGHT_VOLUME", "1.62, research switch: 1 lets a base "
+         "reopen after the light-volume exit sold its breakout, as after a shakeout; 0 (default) keeps it closed."),
         ("Entries per base", "MAX_ENTRIES_PER_BASE", "EN-04: how many times one base may be bought — the failure reset. "
                                                       "Above 1, only a stop, breakeven stop or failed 20-day reopens it."),
         ("Part-sale trigger", "PARTIAL_R", "EX-04: R gained before about a third is sold. Pairs with the "
@@ -3215,6 +3232,7 @@ class MinerviniSpecStrategy(Strategy):
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": max_stop_pct(plan.setup) / 100, "base_id": base_id,
                 "max_entries_per_base": MAX_ENTRIES_PER_BASE,
+                "re_entry_after_extra": ("LIGHT_VOLUME_BREAKOUT",) if REENTRY_AFTER_LIGHT_VOLUME else (),
                 "min_structural_r": MIN_STRUCTURAL_R if MEASURED_MOVE_RR else None,
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:
