@@ -179,11 +179,17 @@ def get(slug: str, version_id: int | None = None, today: dt.date | None = None) 
 def by_date(desk: str = "trade-desk", today: dt.date | None = None) -> list[dict]:
     """The desk's versions grouped by data date, newest first. Each day lists every entry stored for it (stock
     lists first, then sector reports, then notes), so a day reads as one research session. An entry stored
-    again on a later day shows under that day as well, and its earlier versions stay under theirs."""
+    again on a later day shows under that day as well, and its earlier versions stay under theirs. Stored
+    more than once for the same day (a correction, charts added), the day shows its newest version; the
+    others stay reachable from the page's version picker."""
     order = list(KINDS)
     days: dict[str, list] = {}
     for x in list_all(today, desk):
-        for v in x["versions"]:
+        seen = set()
+        for v in x["versions"]:            # newest first, so the first one per day wins
+            if v["as_of"] in seen:
+                continue
+            seen.add(v["as_of"])
             days.setdefault(v["as_of"], []).append({
                 "slug": x["slug"], "sector": x["sector"], "markets": x["markets"], "kind": x["kind"],
                 "kind_label": x["kind_label"], "version_id": v["id"], "title": v["title"], "note": v["note"],
@@ -203,6 +209,16 @@ _PAGE = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <style>:root{{color-scheme:light dark}}body{{margin:0;font:14px system-ui,-apple-system,sans-serif}}img{{max-width:100%}}[hidden]{{display:none!important}}</style>
 </head><body>
 {body}
+<script>
+// The page is shown as the srcdoc of a sandboxed frame, where an in-page link ("#section", "#src-3") resolves
+// against the portal's own address instead of the page; scroll to the target here instead.
+document.addEventListener("click", function (e) {{
+  var a = e.target.closest && e.target.closest('a[href^="#"]');
+  if (!a) return;
+  var t = document.getElementById(decodeURIComponent(a.getAttribute("href").slice(1)));
+  if (t) {{ e.preventDefault(); t.scrollIntoView({{ block: "start" }}); }}
+}});
+</script>
 </body></html>"""
 
 
