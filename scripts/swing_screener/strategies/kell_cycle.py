@@ -81,8 +81,14 @@ def cycle_frame(df: pd.DataFrame) -> pd.DataFrame:
 class KellCycleStrategy(Strategy):
     key = "kell_cycle"
     name = "Kell cycle of price action"
-    version = "1.0"
+    version = "1.1"
+    # 1.1 changes only the market filter, applied to the signals after the scan.
+    signal_version = "1.0"
     changelog = (
+        ("1.1", "2026-11-11",
+         "The market filter is the minervini strategy's test, and its 1.64 adds the segment's trend: no new buy "
+         "unless the small- and mid-cap index (Nifty Smallcap 250, IWM) is up over 63 sessions. Measured on "
+         "minervini's trades, not on this strategy's. After the scan, so signal_version stays 1.0."),
         ("1.0", "2026-11-10",
          "Draft 1 of research/kell-cycle-spec.md: the draft-0 phase definitions with the four changes the chart check "
          "settled. Only the first crossback after a wedge pop or base-n-break is an entry (later ones add to a position "

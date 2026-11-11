@@ -38,8 +38,15 @@ _MV = MinerviniSpecStrategy()   # its prefilter, reused as is
 
 class MinerviniCoilStrategy(Strategy):
     selection = "time_series"
-    version = "1.0"
+    version = "1.1"
+    # 1.1 moves only rules applied after the scan (the stop cap at the fill, an exit, the market filter).
+    signal_version = "1.0"
     changelog = (
+        ("1.1", "2026-11-11",
+         "Follows minervini 1.64's shared rules, which this strategy imports: MAX_STOP_PCT 8 (was 10), the trend "
+         "exit moving to the 150-day once a trade reaches +3R (EX-06), and the market filter's segment test (the "
+         "small- and mid-cap index up over 63 sessions). Measured on minervini's trades, not on this strategy's. "
+         "All after the scan, so signal_version stays 1.0."),
         ("1.0", "2026-11-07",
          "v1: the Minervini SEPA strategy's screen, gates, stop, exits and portfolio rules, with the contraction "
          "gauge's breakout (core/contraction.py) as the only setup in place of the VCP detector."),

@@ -100,8 +100,9 @@ FINAL_REF_RATIO = 0.6        # final contraction / reference contraction, at mos
 # and most of his own book examples (tests/minervini_book_cases.py) miss one or two by a little. A base
 # that fails exactly ONE of these graded rules, by no more than its margin, and then breaks out with every
 # MV-01 test passed -- or a full VCP whose breakout volume alone falls short, by no more than its margin --
-# is bought as S7, a separate setup so its trades are read apart from S1's. 0 turns S7 off.
-NEAR_MISS = 1
+# is bought as S7, a separate setup so its trades are read apart from S1's. 0 turns S7 off -- the default since
+# 1.64: dropping S7 helped both markets in the 2013-2021 optimise runs (research/minervini-cagr-gaps.md).
+NEAR_MISS = 0
 NEAR_FINAL_REF_RATIO = 0.75  # VCP-06: final / reference contraction (strict: FINAL_REF_RATIO)
 NEAR_TIGHT_MIN_DAYS = 2      # VCP-08: sessions in the final contraction (strict: TIGHT_MIN_DAYS)
 NEAR_TIGHT_PCT = 12.0        # VCP-08: depth of the final contraction and its range (strict: TIGHT_PCT)
@@ -324,7 +325,7 @@ CHEAT_SHELF_DAYS = 7    # MV-03/MV-04: sessions in the shelf (mirrors VcpParams.
 CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpParams.cheat_shelf_pct)
 
 STOP_BUFFER_PCT = 0.5   # SL-01: stop this % under the tight low
-MAX_STOP_PCT = 10.0     # SL-03: skip a fill whose stop is further below it than this (the guide's limit)
+MAX_STOP_PCT = 8.0      # SL-03: skip a fill whose stop is further below it than this (1.64: was 10, the guide's limit)
 # SL-03 for a power play (1.36). Its stop goes under a flag of up to PP_FLAG_MAX_DEPTH_PCT, so 12-20% is
 # normal, and 10% refused nearly every one -- the Learn guide's own example (VKTX, 14%) says "trade it
 # smaller, or wait for a tighter entry". Positions are sized by their risk, so a wider stop is already a
@@ -432,8 +433,9 @@ TREND_EXIT_NEEDS_VOLUME = 0
 # TREND_LOOSE_R / TREND_LOOSE_SMA: once the trade's high has reached TREND_LOOSE_R x its risk, the exit watches the
 # TREND_LOOSE_SMA-day average instead of the 50-day, giving a proven winner room (0 = off).
 TREND_EXIT_CLOSES = 1
-TREND_LOOSE_R = 0.0
-TREND_LOOSE_SMA = 100
+# 1.64: on at +3R and the 150-day (was off, 100).
+TREND_LOOSE_R = 3.0
+TREND_LOOSE_SMA = 150
 # 1.60, research switch (off): the gap-day backstop of Minervini's portfolio managers (TraderLion podcast, June 2026).
 # Once a trade's high has reached GAP_BACKSTOP_R x its risk, a session that opens at least GAP_BACKSTOP_ATR x ATR14
 # above the previous close raises the stop to that session's low, from the next session; each later such gap
@@ -509,7 +511,7 @@ MKT_HIGHS_LOWS_DAYS = 0
 # buys. Measured on the 2013-2021 trades of three runs (2026-11-10), the segment's 3-month return was the one entry-
 # time measure whose buckets ordered R in both markets: Indian trades taken with it at or under 0 lost 11-13R in
 # all. The benchmark (Nifty 500, SPY) can rise while the segment falls -- India 2018. 0 = off.
-MKT_SEGMENT_MOM_DAYS = 0
+MKT_SEGMENT_MOM_DAYS = 63   # 1.64: on, three months (was 0)
 MKT_SEGMENT_MOM_MIN_PCT = 0.0
 # 1.59, research switch: 0 drops the benchmark-above-a-rising-average and breadth tests, so the gate is the segment
 # test alone (with MKT_SEGMENT_MOM_DAYS set) or open (without). 1 = as before.
@@ -1161,10 +1163,18 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.63"
-    # 1.52 changed only the results blackout, which filters signals after evaluate(): the scan is 1.51's.
-    signal_version = "1.51"
+    version = "1.64"
+    # 1.64 turns S7 (NEAR_MISS) off, which evaluate() reads, so the scan is new: no signal_version pin.
     changelog = (
+        ("1.64", "2026-11-11",
+         "Ships candidate B plus the 8% stop cap as the defaults, from the CAGR-gap study "
+         "(research/minervini-cagr-gaps.md; optimise runs, 2013-2021, in-sample): NEAR_MISS 0 (no S7), "
+         "TREND_LOOSE_R 3 with TREND_LOOSE_SMA 150 (the trend exit moves to the 150-day once a trade has "
+         "reached +3R), MKT_SEGMENT_MOM_DAYS 63 (new buys also need the small- and mid-cap index up over three "
+         "months) and MAX_STOP_PCT 8 (was 10). Optimise: India 10.31% CAGR / -18.0% max drawdown (1.63: 3.71% / "
+         "-20.1%), US -0.13% / -35.8% (1.63: -3.30% / -40%). Four candidates and several single rules were "
+         "compared on those years, so the margin is optimistic. Pass criterion fixed before the verify run, "
+         "see status. S7 is read by evaluate(), so the scan is new and signal_version is unpinned."),
         ("1.63", "2026-11-10",
          "Adds a research switch, CHEAT_MIN_CONTRACTIONS, OFF so no rule changes. 2 refuses a cheat entry "
          "(S3 / S4) on a base with fewer than two pullbacks: a cheat fires on any base clearing VCP-01 to "
@@ -1946,7 +1956,7 @@ class MinerviniSpecStrategy(Strategy):
         "the spec allows one.\n"
         "- **Entry:** the buy-stop needs a close at or above the pivot, where the spec fills on a touch "
         "(EN-02).\n"
-        "- **Stop and size:** a {MAX_STOP_PCT}% maximum stop instead of 8% (SL-03); half size until the "
+        "- **Stop and size:** a {MAX_STOP_PCT}% maximum stop, the spec's 8% since 1.64 (SL-03); half size until the "
         "record pays (PE) is added; open risk is measured from the lower of the last close and the price "
         "paid, not from the last close (PF-04).\n"
         "- **Target:** none, as in the spec and in Minervini (since 1.43). Until 1.42 a measured-move target "
@@ -2006,7 +2016,8 @@ class MinerviniSpecStrategy(Strategy):
         "above-average volume), 3 or 4 down closes in a row, or more down days than up, within 5-10 sessions. "
         "None raised the average in both markets: India +0.20R held against +0.04R to +0.20R, US -0.040R against "
         "-0.031R to -0.052R. The trades sold include breakouts that dip first and then run. The narrower "
-        "test is the stop cap ({MAX_STOP_PCT}% now; 8% and 6% queued), which skips a wide stop instead.",
+        "test is the stop cap, which skips a wide stop instead: {MAX_STOP_PCT}% since 1.64 (10% before; 6% "
+        "lowered CAGR in both markets).",
         "**Circuit limits** (C-03, India) are not modelled: a stop on a locked day fills at the next open, "
         "which daily bars cannot tell apart from a gap.",
         "**Base number** counts the bases that produced a breakout since the trend last broke; it is "
@@ -2019,6 +2030,13 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v1.64: verify not run yet. Criterion written 2026-11-11, before the verify runs (2022-01-01 to today), "
+        "each market once: v1.64 passes only if India, (1) CAGR is above 0, (2) the average trade is above 0R "
+        "and (3) max drawdown is no deeper than -25%. The US run is reported, not a condition. A fail means "
+        "1.64's defaults are not adopted and the next version restores 1.63's. The figures behind it are "
+        "in-sample (optimise stage, 2013-2021): India 10.31% CAGR, max drawdown -18.0%, +0.30R a trade over 181 "
+        "trades (1.63: 3.71%, -20.1%); US -0.13%, -35.8% (1.63: -3.30%, -40%). Four candidates and several "
+        "single rules were compared on those years, so the margin is optimistic. Older figures follow. "
         "v1.55 has 1.53's rules: v1.54 (LIGHT_VOLUME_EXIT off) FAILED verify, 2022-01-01 to 2026-11-07, run once "
         "per market. US: -1.33% CAGR (the 1.53 rules -4.40%), Sharpe -0.05, max drawdown -26.6%, 342 trades -- "
         "fails CAGR above 0. India: 2.18% (the 1.53 rules 2.27%), Sharpe 0.28, max drawdown -25.7%, 210 trades "
@@ -2191,7 +2209,8 @@ class MinerviniSpecStrategy(Strategy):
               "- **The breakout:** otherwise exactly MV-01 -- a close through yesterday's pivot, within "
               "{BUY_RANGE_PCT}% of it and in the upper part of the day's range, bought at the next open and "
               "stopped under the tight area's low.\n\n"
-              "Off with NEAR_MISS = 0.",
+              "Off since 1.64 (NEAR_MISS is {NEAR_MISS}; 1 turns it on): with it off, CAGR rose in both "
+              "markets in the 2013-2021 optimise runs (in-sample).",
         SHAKE: "Shakeout: a base that flushes its weak holders in one sharp drop under its recent lows, on heavy "
                "volume, wins those lows back within days and closes through its high. The flush is the supply "
                "leaving, so the quiet tight area a VCP needs is not asked of it.\n\n"
@@ -2455,10 +2474,10 @@ class MinerviniSpecStrategy(Strategy):
         "- a close 70% or more above the 200-day average;\n"
         "- an open 3% or more above the previous close, once the position is up more than 50%.",
         "EX-06 — the trend ends. The first close below the 50-day average sells everything still "
-        "held. This is how most winners end. Two research switches, both off: TREND_EXIT_CLOSES "
-        "({TREND_EXIT_CLOSES} now) asks for that many closes in a row below it, and TREND_LOOSE_R "
-        "({TREND_LOOSE_R} now; 0 = off) moves the line to the {TREND_LOOSE_SMA}-day average once the trade's high "
-        "has reached that many R.\n\n"
+        "held. This is how most winners end. Once the trade's high has reached +{TREND_LOOSE_R}R, the line moves "
+        "to the {TREND_LOOSE_SMA}-day average instead, giving a proven winner room (1.64; TREND_LOOSE_R 0 = the "
+        "50-day throughout). A research switch, TREND_EXIT_CLOSES ({TREND_EXIT_CLOSES} now), asks for that many "
+        "closes in a row below the line.\n\n"
         "Under the variant the live screen runs, that close must also come on at least the 50-day "
         "average volume.",
         "EX-06b — gap-day backstop, a research switch: GAP_BACKSTOP_R is {GAP_BACKSTOP_R} (0 = off). Once the trade's "
@@ -2518,7 +2537,10 @@ class MinerviniSpecStrategy(Strategy):
         "above {MKT_BREADTH_MIN_PCT}%, or higher than {MKT_BREADTH_RISING_DAYS} sessions ago;\n"
         "- leadership, only when MKT_HIGHS_LOWS_DAYS is set (it is {MKT_HIGHS_LOWS_DAYS}, 0 = off): "
         "over that many sessions, more of those stocks made new 52-week highs than "
-        "{MKT_HIGHS_LOWS_RATIO} times the number making new lows.\n\n"
+        "{MKT_HIGHS_LOWS_RATIO} times the number making new lows;\n"
+        "- the segment's trend (1.64; MKT_SEGMENT_MOM_DAYS 0 = off): the small- and mid-cap index (Nifty "
+        "Smallcap 250 in India, IWM in the US) is up more than {MKT_SEGMENT_MOM_MIN_PCT}% over "
+        "{MKT_SEGMENT_MOM_DAYS} sessions. The benchmark can rise while the segment falls (India 2018).\n\n"
         "When it fails, no new buy is taken and waiting buy-stops are cancelled before the next session "
         "opens (the test reads a close, so it cannot cancel a buy that filled earlier that session); positions already "
         "held are kept and managed as usual. The live screen applies the same test.\n\n"
@@ -2625,7 +2647,7 @@ class MinerviniSpecStrategy(Strategy):
          "than this % of the price (split-adjusted history); 0 = the tick as it is."),
         ("Tight-area noise", "TIGHT_NOISE_PCT", "VCP-06: a pullback this shallow is noise inside a tight area; it "
          "can neither widen the base nor fail the shrink test. 0 = every pullback counts (1.48)."),
-        ("Near miss", "NEAR_MISS", "1 = S7 buys a breakout from a base that missed one rule narrowly; 0 = off."),
+        ("Near miss", "NEAR_MISS", "1 = S7 buys a breakout from a base that missed one rule narrowly; 0 = off (the default since 1.64)."),
         ("Near miss, final ratio", "NEAR_FINAL_REF_RATIO", "S7: VCP-06's final / reference contraction, at most."),
         ("Near miss, tight-area age", "NEAR_TIGHT_MIN_DAYS", "S7: VCP-08's sessions in the final contraction, at least."),
         ("Near miss, tight-area depth", "NEAR_TIGHT_PCT", "S7: VCP-08's final contraction and range, at most this %."),
@@ -2699,7 +2721,7 @@ class MinerviniSpecStrategy(Strategy):
         ("Trend exit needs volume", "TREND_EXIT_NEEDS_VOLUME", "EX-06: 1 = only on above-average volume (1.7)."),
         ("Trend exit closes", "TREND_EXIT_CLOSES", "EX-06: consecutive closes below the 50-day that sell (1 = the first)."),
         ("Loose trend exit after", "TREND_LOOSE_R", "EX-06: once the high reaches this many R, watch the "
-         "{TREND_LOOSE_SMA}-day average instead of the 50-day (0 = off)."),
+         "{TREND_LOOSE_SMA}-day average instead of the 50-day (0 = off; on since 1.64)."),
         ("Gap backstop after", "GAP_BACKSTOP_R", "EX-06b: once the high reaches this many R, a gap up raises the stop "
          "to the gap day's low (0 = off). Tested and rejected, 1.60: it lowered CAGR in both markets."),
         ("Gap backstop size", "GAP_BACKSTOP_ATR", "EX-06b: the smallest gap, open over the previous close, in ATR14."),
@@ -2738,7 +2760,7 @@ class MinerviniSpecStrategy(Strategy):
         ("Leadership window", "MKT_HIGHS_LOWS_DAYS", "Sessions over which new highs must outnumber new lows (0 = off)."),
         ("Leadership ratio", "MKT_HIGHS_LOWS_RATIO", "New highs must exceed this multiple of new lows."),
         ("Segment trend window", "MKT_SEGMENT_MOM_DAYS", "Market filter: the small- and mid-cap index must be up over this "
-         "many sessions for new buys (0 = off; a research switch)."),
+         "many sessions for new buys (0 = off; on since 1.64)."),
         ("Segment trend, least", "MKT_SEGMENT_MOM_MIN_PCT", "Market filter: by more than this %."),
         ("Benchmark and breadth tests", "MKT_INDEX_TEST", "Market filter: 1 = the benchmark above its rising average and the "
          "breadth test apply; 0 = they are dropped (a research switch, to test the segment trend alone)."),
