@@ -622,7 +622,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "2d62dd41",
+    "fingerprint": "86c64319",
     "params": {
       "ADD_MAX": 2,
       "ADD_ON_NEW_BASE": 0.0,
@@ -747,6 +747,10 @@
       "REACTION_ADD_MAX": 2,
       "REACTION_NEAR_SMA20_PCT": 2.0,
       "REACTION_PB_PCT": 5.0,
+      "RECLAIM_DAYS": 20,
+      "RECLAIM_MIN_DROP_PCT": 5.0,
+      "RECLAIM_ON": 0,
+      "RECLAIM_STOP_DAYS": 5,
       "REENTRY_AFTER_LIGHT_VOLUME": 0,
       "RESULTS_BY_ANNOUNCEMENT": 1,
       "RESULTS_FIRST_PER_QUARTER": 1,
@@ -864,7 +868,8 @@
         "S6",
         "S7",
         "S8",
-        "S9"
+        "S9",
+        "S10"
       ],
       "watch_codes": [
         "W1",
@@ -874,7 +879,7 @@
         "W5"
       ]
     },
-    "version": "1.64"
+    "version": "1.65"
   },
   "minervini_coil": {
     "family": "minervini",

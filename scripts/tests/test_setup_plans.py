@@ -34,7 +34,9 @@ SYMBOLS = [("us", "NVDA"), ("us", "AVGO"), ("us", "LLY"), ("india", "BAJFINANCE.
            ("india", "TITAN.NS"), ("india", "COALINDIA.NS"), ("india", "CDSL.NS"),
            ("india", "TATAINVEST.NS"),
            # power plays (MV-05) that pass the hard gates: KRNT 2020-06-30, IRB 2020-08-19
-           ("us", "KRNT"), ("india", "IRB.NS")]
+           ("us", "KRNT"), ("india", "IRB.NS"),
+           # a reclaim after a failed breakout (S10): RADICO 2021-09-27
+           ("india", "RADICO.NS")]
 
 
 def main() -> int:
@@ -43,6 +45,13 @@ def main() -> int:
     # still has to work -- that is exactly the kind of branch that rots unseen.
     import swing_screener.strategies.minervini_spec as ms
     ms.LOW_CHEAT_ENABLED = 1
+    # Research switches that are off by default, for the same reason: S7 (NEAR_MISS, off since 1.64 -- its VCP
+    # params are read at import, so rebuilt here) and S10 (RECLAIM_ON, 1.65).
+    import dataclasses
+    ms.NEAR_MISS, ms.RECLAIM_ON = 1, 1
+    ms.VCP = dataclasses.replace(ms.VCP, near_final_ref_ratio=ms.NEAR_FINAL_REF_RATIO,
+                                 near_tight_min_days=ms.NEAR_TIGHT_MIN_DAYS, near_tight_pct=ms.NEAR_TIGHT_PCT,
+                                 near_dryup_ratio=ms.NEAR_DRYUP_RATIO)
     seen, built, no_plan, problems = {}, {}, {}, []
     for market, sym in SYMBOLS:
         cfg = MARKETS[market]

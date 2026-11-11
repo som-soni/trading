@@ -76,6 +76,7 @@ FLAT = "S6"   # flat base: a shallow, sideways base with no pivot but its own hi
 NEAR = "S7"   # near miss (1.38): an MV-01 breakout of a base that missed ONE graded rule by a small margin
 FLAT_COIL = "S8"  # flat base coiled (1.48): a resting buy-stop at a flat base's high, as MV-02 is for a VCP
 SHAKE = "S9"  # shakeout (1.50): a base's recent lows undercut on volume and reclaimed, then a close through its high
+RECLAIM = "S10"  # reclaim (1.65): a failed breakout shaken out, coiled back under its high -- a buy-stop above it
 
 # ---- section 5: base and VCP (core/vcp_spec.py)
 SWING_K = 5
@@ -171,6 +172,19 @@ FLAT_STOP_DAYS = 5
 # flat base and the close sits within COIL_PCT below its high, a buy-stop just above the high, stopped under
 # the low of the last FLAT_STOP_DAYS sessions. 0 = off (1.47).
 FLAT_COIL_ON = 1
+# 1.65, research switch (0 = off, 1.64): S10, the reclaim after a failed breakout. RADICO's flat base (30 Jul 2021,
+# high 945) was bought on 20 Sep, poked to 965 and closed back inside, was stopped on 30 Sep, then closed back
+# over 945 on 6 Oct on 2.9x volume and ran to 1,267 -- with no setup on any session in between: the flat base
+# had aged past FLAT_MAX_DAYS and the shakeout widened the VCP's last contraction. Minervini's rule is to buy it
+# again when it sets up again (EN-04 allows MAX_ENTRIES_PER_BASE). S10 sees the base the detector still holds:
+# its ceiling raised by a poke (`bh_peak_date`) at least FLAT_MIN_DAYS after the base began and within
+# RECLAIM_DAYS sessions; a shakeout since that poke of at least RECLAIM_MIN_DROP_PCT under it that held the
+# base's low; and a close back within COIL_PCT under the poke's high. A buy-stop goes just above that high,
+# stopped under the low of the last RECLAIM_STOP_DAYS sessions, keyed to the same base (EN-04).
+RECLAIM_ON = 0
+RECLAIM_DAYS = 20           # sessions after the failed breakout's high in which the reclaim may set up
+RECLAIM_MIN_DROP_PCT = 5.0  # the shakeout: the low since that high at least this % under it
+RECLAIM_STOP_DAYS = 5       # the stop goes under the low of this many sessions (FLAT_STOP_DAYS' reading)
 # 1.50, S9: the shakeout. A base that sheds its weak holders in one sharp drop under its recent lows, on heavy
 # volume, recovers them within days, and then closes through its high is one Minervini buys -- the flush IS the
 # supply leaving, so the quiet tight area a VCP needs (VCP-08, VCP-10) is not asked of it. Papa John's, Feb-Mar
@@ -773,6 +787,36 @@ def flat_base(base: dict, d: pd.DataFrame) -> dict | None:
             "dried": bool(dry <= DRYUP_RATIO or quiet >= DRYUP_QUIET_DAYS), "base_date": str(base["bh_date"].date())}
 
 
+def reclaim_base(base: dict, d: pd.DataFrame) -> dict | None:
+    """S10's failed breakout in `base` (a `vcp_spec.detect` result on the last bar of `d`), or None (RECLAIM_ON).
+    The detector keeps a base whose high is poked without a decisive close and raises its ceiling to the poke
+    (`bh_peak_date`); that poke, at least FLAT_MIN_DAYS after the base began and at most RECLAIM_DAYS sessions ago,
+    is a failed breakout when the low since it fell at least RECLAIM_MIN_DROP_PCT under its high (the shakeout)
+    without breaking the low the base had before it. Its pivot is the poke's high; `low` is the low of the last
+    RECLAIM_STOP_DAYS sessions (the stop's anchor). Shared by evaluate and the chart. Says nothing about the close:
+    the caller asks for it to sit within COIL_PCT under the pivot."""
+    if (not RECLAIM_ON or not base.get("bh") or base.get("bh_date") is None or base.get("bh_peak_date") is None
+            or base["fail"] in ("VCP-01", "VCP-02", "VCP-03", "VCP-05")):
+        return None
+    idx = d.index
+    if base["bh_date"] not in idx or base["bh_peak_date"] not in idx:
+        return None
+    s0, pk, t = int(idx.get_loc(base["bh_date"])), int(idx.get_loc(base["bh_peak_date"])), len(d) - 1
+    if pk - s0 < FLAT_MIN_DAYS or not 1 <= t - pk <= RECLAIM_DAYS:
+        return None
+    high, low = d["high"].to_numpy(float), d["low"].to_numpy(float)
+    peak, ceiling, held = float(high[pk]), float(high[s0:pk].max()), float(low[s0:pk].min())
+    k = pk + 1 + int(low[pk + 1:].argmin())
+    shake_low = float(low[k])
+    drop = (peak - shake_low) / peak * 100
+    if drop < RECLAIM_MIN_DROP_PCT or shake_low <= held:
+        return None
+    return {"pivot": peak, "low": float(low[-RECLAIM_STOP_DAYS:].min()), "ceiling": ceiling, "base_low": held,
+            "shake_low": shake_low, "shake_date": str(idx[k].date()), "drop": drop,
+            "depth": (peak - min(held, shake_low)) / peak * 100,
+            "peak_date": str(idx[pk].date()), "base_date": str(base["bh_date"].date())}
+
+
 def base_diagnostics(r: dict, daily: pd.DataFrame) -> dict:
     """What a pass/fail hides about a base, from one `vcp_spec.detect` result: how it contracted, which
     route its pivot passed by, how its volume dried up, its undercuts, its trend through the base and the
@@ -1163,9 +1207,19 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.64"
-    # 1.64 turns S7 (NEAR_MISS) off, which evaluate() reads, so the scan is new: no signal_version pin.
+    version = "1.65"
+    # 1.65 adds S10 behind RECLAIM_ON, off: with it off evaluate() detects exactly what 1.64 did (S10 is always
+    # False), so 1.64's cached rows stand. A variant turning it on has its own signal id and rescans.
+    signal_version = "1.64"
     changelog = (
+        ("1.65", "2026-11-11",
+         "Adds S10, the reclaim after a failed breakout, behind a research switch, RECLAIM_ON, OFF so no rule "
+         "changes (with RECLAIM_DAYS, RECLAIM_MIN_DROP_PCT, RECLAIM_STOP_DAYS). RADICO's flat base was bought on 20 Sep "
+         "2021, poked to 965, was stopped on 30 Sep, then closed back over its 945 high on 6 Oct on 2.9x volume and ran "
+         "to 1,267 with no setup on any session in between: the flat base had aged past FLAT_MAX_DAYS and the shakeout "
+         "widened the VCP. S10 rests a buy-stop above the poke's high once the base has been shaken out and held and the "
+         "close is back within COIL_PCT, keyed to the same base so EN-04 counts it as the re-entry. Inert while off, so "
+         "signal_version is 1.64."),
         ("1.64", "2026-11-11",
          "Ships candidate B plus the 8% stop cap as the defaults, from the CAGR-gap study "
          "(research/minervini-cagr-gaps.md; optimise runs, 2013-2021, in-sample): NEAR_MISS 0 (no S7), "
@@ -1852,7 +1906,7 @@ class MinerviniSpecStrategy(Strategy):
 
     gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
     watch_codes = ("W1", "W2", "W3", "W4", "W5")
-    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT, NEAR, FLAT_COIL, SHAKE)
+    setup_codes = (MV01, MV02, MV03, MV04, MV05, FLAT, NEAR, FLAT_COIL, SHAKE, RECLAIM)
     extra_columns = ("pp_pivot", "pp_tight_low", "pp_run_pct", "pp_flag_days", "pp_flag_high",
                      "fundamentals_ok", "revenue_yoy_pct", "earnings_yoy_pct", "gross_margin_change_pp",
                      "pivot", "tight_low", "pct_from_pivot", "base_high", "base_days", "contractions",
@@ -2233,6 +2287,22 @@ class MinerviniSpecStrategy(Strategy):
                "{VOL_MULT} times average volume, in the upper part of the day's range, at most {BUY_RANGE_PCT}% past "
                "it). Bought at the next open, stopped under today's low.\n\n"
                "Off with SHAKEOUT_ON = 0.",
+        RECLAIM: "Reclaim after a failed breakout: Minervini's re-entry. A breakout that pokes above the base's high, "
+                 "closes back inside and shakes out the buyers is bought again when it sets up again -- passing "
+                 "on that second chance is the mistake, not the first loss. RADICO (Sep-Oct 2021) is the case: "
+                 "stopped on the shakeout, it reclaimed the pivot on heavy volume and ran a third higher, with "
+                 "no setup in between.\n\n"
+                 "- **The failed breakout:** the base passes VCP-01, VCP-02, VCP-03 and VCP-05, and a high at least "
+                 "{FLAT_MIN_DAYS} sessions after it began raised its ceiling without a decisive close above (the "
+                 "detector keeps the base), at most {RECLAIM_DAYS} sessions ago.\n"
+                 "- **The shakeout:** since that high, a low at least {RECLAIM_MIN_DROP_PCT}% under it that held "
+                 "the low the base had before it.\n"
+                 "- **The order:** the close back within {COIL_PCT}% under that high places a buy-stop just above "
+                 "it, filled during the day as S8 is, stopped under the low of the last {RECLAIM_STOP_DAYS} "
+                 "sessions. It belongs to the same base, so EN-04 counts it as that base's re-entry (at most "
+                 "{MAX_ENTRIES_PER_BASE} entries, after a shakeout exit).\n\n"
+                 "A research switch, off: RECLAIM_ON is {RECLAIM_ON}. The stop under the shakeout's low is often "
+                 "wide -- RADICO's was 11% from the buy, so SL-03 would skip it at {MAX_STOP_PCT}%.",
         FLAT_COIL: "Flat base coiled: the flat base (S6) bought AT its high with a resting buy-stop, as MV-02 "
                    "is for a VCP, instead of after a close through it. Today's base passes S6's base tests "
                    "({FLAT_MIN_DAYS}–{FLAT_MAX_DAYS} sessions, at most {FLAT_MAX_DEPTH_PCT}% deep, the last "
@@ -2389,6 +2459,9 @@ class MinerviniSpecStrategy(Strategy):
         "fills during the day at the buy-stop, or at the open if the stock gaps through it -- not at the "
         "close, as MV-02 does -- and is sold at the next open if that day's volume is under {VOL_MULT} times "
         "average. Cancelled by a close below the low of the last {FLAT_STOP_DAYS} sessions.",
+        "Reclaim (S10, a research switch: RECLAIM_ON is {RECLAIM_ON}). The same buy-stop as S8, just above the "
+        "failed breakout's high, filled during the day; cancelled by a close below the low of the last "
+        "{RECLAIM_STOP_DAYS} sessions. It counts as the base's re-entry (EN-04).",
         "Flat base (S6). Bought at the next session's open. Skipped if that open is more than "
         "{BUY_RANGE_PCT}% above the base high, or at or below the low of the {FLAT_STOP_DAYS} "
         "sessions before the breakout.",
@@ -2584,8 +2657,8 @@ class MinerviniSpecStrategy(Strategy):
                             "pivot (MV-02), entered only on a session that closes through it; a cheat (MV-03 / "
                             "MV-04) that cleared its shelf on the close, bought at the next open and stopped under "
                             "the shelf low; a power play (MV-05), bought at the next open and stopped under the "
-                            "flag's tight low; or a flat base (S6), flat-base coil (S8), shakeout (S9) or near miss "
-                            "(S7), each as its setup describes. The market regime never caps a decision to this tier.",
+                            "flag's tight low; or a flat base (S6), flat-base coil (S8), shakeout (S9), near miss "
+                            "(S7) or reclaim (S10), each as its setup describes. The market regime never caps a decision to this tier.",
         "WATCH_WAIT": "A valid plan held back: its stop sits more than {MAX_STOP_PCT}% below entry, results are due "
                       "within {EARNINGS_BLACKOUT_DAYS} days, the 200-day has risen for under "
                       "{SMA200_RISING_PREF_BARS} sessions while SMA200_PREF_REQUIRED is 1, or the market filter "
@@ -2671,6 +2744,12 @@ class MinerviniSpecStrategy(Strategy):
                                                    "up."),
         ("Flat base, stop area", "FLAT_STOP_DAYS", "S6/S8: sessions before the breakout whose low sets the stop."),
         ("Flat base buy-stop", "FLAT_COIL_ON", "1 = S8 rests a buy-stop at a coiled flat base's high; 0 = off."),
+        ("Reclaim after a failed breakout", "RECLAIM_ON", "1.65, research switch: 1 = S10 rests a buy-stop above a "
+         "failed breakout's high once the base is shaken out and the close is back under it; 0 = off."),
+        ("Reclaim window", "RECLAIM_DAYS", "S10: sessions after the failed breakout's high in which it may set up."),
+        ("Reclaim shakeout", "RECLAIM_MIN_DROP_PCT", "S10: the low since that high at least this % under it, "
+         "above the base's earlier low."),
+        ("Reclaim stop area", "RECLAIM_STOP_DAYS", "S10: sessions whose low sets the stop."),
         ("Shakeout", "SHAKEOUT_ON", "1 = S9 buys a base's breakout after a shakeout; 0 = off."),
         ("Shakeout, pullbacks looked at", "SHAKEOUT_LOOKBACK_LEGS", "S9: the last this many pullbacks may hold the shakeout."),
         ("Shakeout, lows undercut", "SHAKEOUT_PRIOR_LEGS", "S9: the shakeout's low is under the lows of this many pullbacks before it."),
@@ -2999,6 +3078,16 @@ class MinerviniSpecStrategy(Strategy):
             e.update(flat_pivot=fc["pivot"], flat_low=fc["low"], flat_depth_pct=fc["depth"], flat_dryup=fc["dry"],
                      flat_quiet_days=fc["quiet"], flat_base_date=fc["base_date"])
         result.setups[FLAT_COIL] = flat_coil
+        # S10 (RECLAIM_ON): today's base had a failed breakout, shaken out and held, and the close sits back within
+        # COIL_PCT under the poke's high: a buy-stop above it, as S8 rests one above a flat base's high
+        reclaim = False
+        rc = reclaim_base(today, d) if RECLAIM_ON and not (flat or flat_coil or mv01 or mv02 or near) else None
+        if rc is not None and rc["pivot"] * (1 - COIL_PCT / 100) <= close <= rc["pivot"]:
+            reclaim = True
+            e.update(reclaim_pivot=rc["pivot"], reclaim_low=rc["low"], reclaim_depth_pct=rc["depth"],
+                     reclaim_base_date=rc["base_date"], reclaim_peak_date=rc["peak_date"],
+                     reclaim_shake_low=rc["shake_low"], reclaim_shake_date=rc["shake_date"])
+        result.setups[RECLAIM] = reclaim
         # S9: yesterday's base had a shakeout (undercut on volume, reclaimed), and today closes through the base's
         # highest high with MV-01's tests -- the dry-up and tight area of a VCP are not asked of it
         shake = False
@@ -3099,7 +3188,7 @@ class MinerviniSpecStrategy(Strategy):
         # reason plan_overhead is: a signal-cache hit rebuilds the context from 70 bars, too few to see the advance.
         if result.hard_gates_passed and result.has_setup:
             for k, col in (("base_date", "base_number"), ("flat_base_date", "flat_base_number"),
-                           ("shake_base_date", "shake_base_number")):
+                           ("shake_base_date", "shake_base_number"), ("reclaim_base_date", "reclaim_base_number")):
                 if e.get(k) and pd.Timestamp(e[k]) in d.index:
                     e[col] = base_number(d, int(d.index.get_loc(pd.Timestamp(e[k]))))["n"]
         return result
@@ -3115,7 +3204,8 @@ class MinerviniSpecStrategy(Strategy):
             return 1.0
         # a cheat is a lower-confidence entry than the pivot buy, and the low cheat
         # lower than the 3C -- he describes it as the riskiest of the three
-        if result.setups.get(FLAT) or result.setups.get(FLAT_COIL) or result.setups.get(SHAKE):
+        if (result.setups.get(FLAT) or result.setups.get(FLAT_COIL) or result.setups.get(SHAKE)
+                or result.setups.get(RECLAIM)):
             return 1.0
         return 0.8 if result.setups.get(MV04) else (0.6 if result.setups.get(MV03) else 0.0)
 
@@ -3140,6 +3230,10 @@ class MinerviniSpecStrategy(Strategy):
                                                          or result.setups.get(NEAR))
         if shake:
             cheat = power = False
+        reclaim = bool(result.setups.get(RECLAIM)) and not (flat or shake or result.setups.get(MV01)
+                                                             or result.setups.get(MV02) or result.setups.get(NEAR))
+        if reclaim:
+            cheat = power = False
         # A power play has no base, so its pivot and stop come from the FLAG, not from
         # e["pivot"]/e["tight_low"] -- which are None for it, since the base path rejected it.
         pivot, tl = ((e.get("pp_pivot"), e.get("pp_tight_low")) if power
@@ -3147,13 +3241,18 @@ class MinerviniSpecStrategy(Strategy):
         # Only the pivot buy needs the FINAL tight area. A cheat is taken while the
         # base is still forming, so that area does not exist yet -- requiring it here
         # rejected 122 of 133 cheats before they reached their own branch.
-        if not cheat and not flat and not shake and (not pivot or tl is None or pd.isna(tl)):
+        if not cheat and not flat and not shake and not reclaim and (not pivot or tl is None or pd.isna(tl)):
             return PlanChoice(None, None, "missing pivot / tight low")
         if flat:
             setup, pivot = (FLAT, float(fp)) if result.setups.get(FLAT) else (FLAT_COIL, float(fp))
             # S6 is confirmed by the close and bought at the next open; S8 rests a buy-stop at the high
             entry = float(ctx.close) if setup == FLAT else pivot_buy_stop(pivot, cfg.tick_size)
             stop = pivot_stop(fl, cfg.tick_size)
+        elif reclaim:
+            # S10: a buy-stop just above the failed breakout's high, stopped under the last RECLAIM_STOP_DAYS sessions
+            setup, pivot = RECLAIM, float(e["reclaim_pivot"])
+            entry = pivot_buy_stop(pivot, cfg.tick_size)
+            stop = pivot_stop(e["reclaim_low"], cfg.tick_size)
         elif shake:
             # S9: the base's highest high is the pivot; bought at the next open after the close through it, and
             # stopped under the breakout session's low (the shakeout's own low is far below the buy)
@@ -3189,6 +3288,7 @@ class MinerviniSpecStrategy(Strategy):
             return PlanChoice(None, None, "degenerate stop")
         # the base count (1.44): a late-stage base is refused. A power play has no base, so no number.
         n = (None if power else e.get("flat_base_number") if flat else e.get("shake_base_number") if shake
+             else e.get("reclaim_base_number") if reclaim
              else e.get("base_number"))
         if MAX_BASE_COUNT and n and n > MAX_BASE_COUNT:
             return PlanChoice(None, None, f"late-stage base: the {_ordinal(n)} of its advance "
@@ -3203,6 +3303,8 @@ class MinerviniSpecStrategy(Strategy):
         depth = e.get("base_depth_pct") if first_depth is not None else None
         if flat:
             measured_move = float(fp) * float(fd) / 100 if fd is not None else float("nan")
+        elif reclaim:
+            measured_move = float(e["reclaim_pivot"]) * float(e["reclaim_depth_pct"]) / 100
         elif power:
             # No base, so no base-depth measured move: the run into the flag is the structure, and its
             # size projected from the buy is the objective (power_measured_move). The flag's tight range,
@@ -3283,6 +3385,8 @@ class MinerviniSpecStrategy(Strategy):
             pivot, tl = float(e["flat_pivot"]), float(e["flat_low"])
         elif plan.setup == SHAKE:
             pivot, tl = float(e["shake_pivot"]), float(e["shake_low"])
+        elif plan.setup == RECLAIM:
+            pivot, tl = float(e["reclaim_pivot"]), float(e["reclaim_low"])
         else:
             pivot, tl = float(e["pivot"]), float(e["tight_low"])
         # EN-04 ("one entry per base") keys on `base_id`, and a power play has no base -- so
@@ -3290,7 +3394,8 @@ class MinerviniSpecStrategy(Strategy):
         # structure after a stop-out, which is exactly what EN-04 exists to stop. The flag high's
         # date identifies the flag the way the base start identifies a base.
         base_id = (e.get("pp_flag_high_date") if plan.setup == MV05
-                   else e.get("flat_base_date") if plan.setup in (FLAT, FLAT_COIL) else e.get("shake_base_date") if plan.setup == SHAKE else e.get("base_date"))
+                   else e.get("flat_base_date") if plan.setup in (FLAT, FLAT_COIL) else e.get("shake_base_date") if plan.setup == SHAKE
+                   else e.get("reclaim_base_date") if plan.setup == RECLAIM else e.get("base_date"))
         meta = {"pivot": pivot, "tight_low": tl, "max_fill": pivot * (1 + BUY_RANGE_PCT / 100),
                 "max_risk_pct": max_stop_pct(plan.setup) / 100, "base_id": base_id,
                 "max_entries_per_base": MAX_ENTRIES_PER_BASE,
@@ -3299,8 +3404,8 @@ class MinerviniSpecStrategy(Strategy):
                 "tightness": e.get("tightness_pct")}
         if plan.setup == MV01:
             meta.update(order="open", min_open=tl)
-        elif plan.setup == FLAT_COIL:
-            # S8 fills INTRADAY at the buy-stop (or the open, on a gap through it): buying at the pivot is its
+        elif plan.setup in (FLAT_COIL, RECLAIM):
+            # S8 (and S10, the same order) fills INTRADAY at the buy-stop (or the open, on a gap through it): buying at the pivot is its
             # whole point. MV-02 waits for the close instead because a poke-through that closes back under the
             # pivot was a fast loser (India, 9 of 14); S8 is a setup of its own so the two can be compared, and
             # a fill on light breakout volume is still sold at the next open.
@@ -3345,6 +3450,10 @@ class MinerviniSpecStrategy(Strategy):
         elif plan.setup == FLAT_COIL:
             label, reasons = "TRADE_ON_TRIGGER", ["flat base coiled under its high: buy-stop through it, "
                                                   "stopped under the low of the last sessions"]
+        elif plan.setup == RECLAIM:
+            label, reasons = "TRADE_ON_TRIGGER", [f"reclaim: the breakout of {ctx.extras.get('reclaim_peak_date')} failed "
+                                                  f"and was shaken out to {ctx.extras.get('reclaim_shake_low'):.2f}; "
+                                                  "buy-stop through its high, stopped under the last sessions' low"]
         elif plan.setup == SHAKE:
             label, reasons = "TRADE_ON_TRIGGER", [f"shakeout: undercut on {ctx.extras.get('shake_date')} and reclaimed, "
                                                   "closed through the base's high; buy at the next open, stopped "
@@ -3596,7 +3705,8 @@ class MinerviniSpecStrategy(Strategy):
         # date AND its initial stop (`_run_bought`) -- is theirs: no cheat claims it below, and it is not drawn
         # again as a base judged on its signal bar (INFY.NS 2020-09-15, an S8 fill, was also claimed by a cheat
         # crossed the session before it).
-        out = self._shakeouts(daily, cfg, dets, start, anchors or []) + self._flats(daily, cfg, dets, start, anchors or [])
+        out = (self._shakeouts(daily, cfg, dets, start, anchors or []) + self._flats(daily, cfg, dets, start, anchors or [])
+               + self._reclaims(daily, cfg, dets, start, anchors or []))
         own_fills = {s["_fill"] for s in out if s.get("_fill") is not None}
         for s in out:
             s.pop("_fill", None)
@@ -4063,6 +4173,135 @@ class MinerviniSpecStrategy(Strategy):
                 "crossed": day(sig) if g["missed"] else None, "live": False, "as_of": day(last),
                 "title": title, "summary": summary,
                 "frame": {"from": day(b0), "to": frame_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
+                "zones": zones}
+
+    def _reclaims(self, daily: pd.DataFrame, cfg: MarketConfig, dets: list, start: int, anchors: list) -> list[dict]:
+        """S10 (RECLAIM_ON), the reclaim after a failed breakout, on the chart: per base, by evaluate's own test
+        (`reclaim_base` on the base as it stood, the close within COIL_PCT under the failed breakout's high) and the
+        simulator's order handling, as `_flats` replays S8 -- a buy-stop just above that high rests up to
+        PENDING_EXPIRY_BDAYS sessions, filled by the first session that trades through it, cancelled by a low through
+        the stop or a close under the stop's anchor; a later signal replaces an order that was cancelled. Each base keeps
+        its first filled order, else its last unfilled one. Each carries `_fill` for bases_live."""
+        if not RECLAIM_ON:
+            return []
+        from ..backtesting.portfolio_sim import PENDING_EXPIRY_BDAYS
+        close, hi_, lo_, vo_ = (daily[k].to_numpy(float) for k in ("close", "high", "low", "volume"))
+        v50_ = daily["vol_sma50"].to_numpy(float) if "vol_sma50" in daily else np.full(len(daily), np.nan)
+        found: dict = {}
+        order = None
+        for i in range(start + 1, len(daily)):
+            if order is not None:
+                if i > order["expires"]:
+                    order = None
+                elif hi_[i] >= order["buy"]:
+                    order["fill"] = i
+                    order["light"] = bool(LIGHT_VOLUME_EXIT and v50_[i] == v50_[i] and v50_[i] > 0
+                                          and vo_[i] < VOL_MULT * v50_[i])
+                    if found.get(order["key"], {}).get("fill") is None:
+                        found[order["key"]] = order
+                    order = None
+                elif lo_[i] <= order["stop"] or close[i] < order["rc"]["low"]:
+                    order = None
+            t = dets[i]
+            if order is not None or not t:
+                continue
+            # evaluate gives S8 and the VCP's own setups precedence on the same bar
+            if flat_base(t, daily.iloc[: i + 1]) is not None or t.get("ok"):
+                continue
+            rc = reclaim_base(t, daily.iloc[: i + 1])
+            if (rc is not None and rc["pivot"] * (1 - COIL_PCT / 100) <= close[i] <= rc["pivot"]
+                    and self._screen_miss(cfg, daily, i) is None):
+                key = t["bh_date"]
+                if found.get(key, {}).get("fill") is not None:
+                    continue
+                order = {"key": key, "rc": rc, "sig": i, "fill": None, "buy": pivot_buy_stop(rc["pivot"], cfg.tick_size),
+                         "stop": pivot_stop(rc["low"], cfg.tick_size), "expires": i + PENDING_EXPIRY_BDAYS}
+                found[key] = order
+        out = []
+        for g in found.values():
+            s = self._reclaim_setup(daily, cfg, g)
+            run = g.get("fill") is not None and self._run_bought(daily, anchors, g["fill"], g["stop"])
+            s["anchored"] = run
+            s["_fill"] = daily.index[g["fill"]] if run else None
+            out.append(s)
+        return out
+
+    def _reclaim_setup(self, daily: pd.DataFrame, cfg: MarketConfig, g: dict) -> dict:
+        """One S10 for the chart, in `_setup`'s shape: the base up to its failed breakout, the breakout's high, the
+        shakeout, and the entry build_plans places -- a buy-stop just above that high, stopped under the last
+        RECLAIM_STOP_DAYS sessions (`pivot_stop`): an illustration."""
+        from ..backtesting.portfolio_sim import PENDING_EXPIRY_BDAYS
+        idx = daily.index
+        day = lambda k: str(idx[k].date())   # noqa: E731
+        px = lambda v: f"{v:,.2f}"           # noqa: E731
+        tick = lambda c: {"code": c[0], "name": c[1], "value": c[2], "limit": c[3], "state": c[4]}  # noqa: E731
+        rc, sig, fill = g["rc"], g["sig"], g.get("fill")
+        b0, pk = int(idx.get_loc(pd.Timestamp(rc["base_date"]))), int(idx.get_loc(pd.Timestamp(rc["peak_date"])))
+        sk = int(idx.get_loc(pd.Timestamp(rc["shake_date"])))
+        a0 = sig - RECLAIM_STOP_DAYS + 1
+        buy, stop = g["buy"], g["stop"]
+        risk = buy - stop
+        risk_pct = risk / buy * 100 if buy > 0 else float("nan")
+        ok_risk = risk > 0 and risk_pct <= MAX_STOP_PCT
+        light = bool(g.get("light"))
+        end = min(len(daily) - 1, (fill if fill is not None else sig) + TIME_STOP_DAYS)
+        entry_to = day(end)
+        zones = [
+            {"key": "base", "title": "Base", "state": "pass", "from": day(b0), "to": day(pk - 1),
+             "line": f"{pk - b0} sessions, high {px(rc['ceiling'])}",
+             "text": (f"The base: from {day(b0)}, {pk - b0} sessions to the breakout, its high {px(rc['ceiling'])} and its "
+                      f"low {px(rc['base_low'])}. It passes the base's own qualifications (VCP-01, 02, 03, 05)."),
+             "shapes": [{"shape": "box", "from": day(b0), "to": day(pk - 1), "top": rc["ceiling"], "bottom": rc["base_low"],
+                         "role": "base", "label": ""}]},
+            {"key": "failed", "title": "Failed breakout", "state": "warn", "from": day(pk), "to": day(pk),
+             "line": f"high {px(rc['pivot'])} on {day(pk)}",
+             "text": (f"On {day(pk)} the price pushed above the base's high to {px(rc['pivot'])} but no close held above it: "
+                      f"the detector keeps the base and raises its ceiling to that high."),
+             "shapes": [{"shape": "level", "from": day(pk), "to": day(min(len(daily) - 1, sig + 1)), "price": rc["pivot"],
+                         "role": "pivot", "label": f"failed high {px(rc['pivot'])}"}]},
+            {"key": "shake", "title": "Shakeout", "state": "pass", "from": day(pk + 1), "to": day(sig),
+             "line": f"low {px(rc['shake_low'])} on {day(sk)}, {rc['drop']:.1f}% under",
+             "text": (f"The shakeout: the low since the failed breakout, {px(rc['shake_low'])} on {day(sk)}, is "
+                      f"{rc['drop']:.1f}% under its high (at least {RECLAIM_MIN_DROP_PCT:g}%) and held the base's low, "
+                      f"{px(rc['base_low'])}."),
+             "checks": [tick(("S10", "Shakeout", f"{rc['drop']:.1f}%", f"at least {RECLAIM_MIN_DROP_PCT:g}%", "pass")),
+                        tick(("S10", "Base low held", px(rc["shake_low"]), f"above {px(rc['base_low'])}", "pass")),
+                        tick(("S10", "Since the breakout", f"{sig - pk} sessions", f"at most {RECLAIM_DAYS}", "pass"))],
+             "shapes": [{"shape": "box", "from": day(pk + 1), "to": day(sig), "top": rc["pivot"], "bottom": rc["shake_low"],
+                         "role": "tight", "label": ""}]},
+        ]
+        skip = [] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]
+        levels = [("buy", buy, f"Buy {px(buy)}"), ("stop", stop, f"Stop {px(stop)}"),
+                  ("breakeven", buy + BREAKEVEN_R * risk, f"+{BREAKEVEN_R:g}R")]
+        how = (f"On {day(sig)} the close sat back within {COIL_PCT:g}% under the failed breakout's high, so a buy-stop goes "
+               f"just above it, at {px(buy)}, resting up to {PENDING_EXPIRY_BDAYS} sessions"
+               + (f"; it filled on {day(fill)}" if fill is not None else "; it never filled")
+               + (f", on volume under {VOL_MULT:g}x the 50-day, so the strategy sells at the next open (LIGHT_VOLUME_EXIT)"
+                  if light else "") + ".")
+        zones.append({"key": "entry", "title": "Entry", "state": "pass" if not skip and not light else "fail",
+                      "from": day(sig), "to": entry_to, "illustration": True, "skip": skip,
+                      "line": f"buy {px(buy)} · stop {px(stop)}",
+                      "text": (f"Where this strategy's rules place the re-entry: an illustration, not a recommendation and not "
+                               f"a backtest result. {how} The stop goes {STOP_BUFFER_PCT:g}% under the low of the last "
+                               f"{RECLAIM_STOP_DAYS} sessions, at {px(stop)}: a risk of {risk_pct:.1f}%. It belongs to the "
+                               f"same base, so EN-04 counts it as that base's re-entry." + _NO_TARGET
+                               + (f" The strategy would skip it: {' and '.join(skip)}." if skip else "")),
+                      "checks": [tick(("SL-03", "Risk", f"{risk_pct:.1f}%", f"at most {MAX_STOP_PCT:g}%",
+                                       "pass" if ok_risk else "fail"))],
+                      "shapes": [{"shape": "level", "from": day(sig), "to": entry_to, "price": v, "role": role,
+                                  "label": lab, "dash": role != "buy"} for role, v, lab in levels]})
+        title = ("Reclaim S10 ✓" + (" · trade skipped" if skip else " · light-volume fill, sold next open" if light
+                                    else " · order unfilled" if fill is None else ""))
+        summary = (f"A breakout above the base's high failed on {day(pk)} and was shaken out to {px(rc['shake_low'])}. "
+                   f"A buy-stop rested above the failed high from {day(sig)}"
+                   + (f" and filled on {day(fill)}" if fill is not None else ", unfilled")
+                   + (f"; the strategy would skip it: {' and '.join(skip)}" if skip else "") + ".")
+        top = max(rc["pivot"], buy + BREAKEVEN_R * risk if risk > 0 else rc["pivot"])
+        bottom = min(rc["base_low"], stop)
+        return {"from": day(b0), "base_from": day(b0), "to": entry_to, "kind": "flat", "complete": True, "fail": None,
+                "base_number": None, "breakout": day(fill) if fill is not None else None, "crossed": None,
+                "live": False, "as_of": day(sig), "title": title, "summary": summary,
+                "frame": {"from": day(b0), "to": entry_to, "top": top + (top - bottom) * 0.08, "bottom": bottom},
                 "zones": zones}
 
     @staticmethod

@@ -313,6 +313,12 @@ strategy's plan refusals applies, and the card names it: the screen failing on t
 than `MAX_STOP_PCT` below the buy, less than `MIN_STRUCTURAL_R`:1 to the target, a base past `MAX_BASE_COUNT`. A
 cheat entry also checks its base's pullback count against `CHEAT_MIN_CONTRACTIONS` (1.63's switch, a *Pullbacks*
 row shown only while it is on), so a one-dip cheat reads "trade skipped" exactly when the backtest would refuse it.
+While `RECLAIM_ON` is set (1.65's switch, off by default), the layer also draws S10, the reclaim after a failed
+breakout (`_reclaims`): the base up to the breakout, the failed high, the shakeout box with its depth, and the
+buy-stop above the failed high, replaying the resting order the way the simulator handles it. Its test is
+`reclaim_base`, the function `evaluate` calls, so the frame appears on exactly the sessions the backtest would
+place the order. RADICO, Sep–Oct 2021, is the worked case: an order from 1 Oct, filled 7 Oct at 966, drawn "trade
+skipped" because the stop under the 864 shakeout low is 11% away.
 These refusals are written beside `build_plans`, not called from it: a new plan rule needs its row here too. Exit
 rules are not drawn; with a backtest run selected, a setup that run traded shows the run's stored trade instead.
 **MVP — momentum, volume, price** is David Ryan's accumulation check as Minervini describes it: over the last 15

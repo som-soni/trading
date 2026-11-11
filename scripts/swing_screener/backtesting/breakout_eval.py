@@ -70,8 +70,8 @@ EVAL_SET = "us-2017-2021-x2"   # the default set
 COVID_SAMPLE = ("TSLA", "ENPH", "DOCU", "FVRR", "APPN", "SNAP", "AMBA", "CELH", "LAD", "TWST", "MSTR")
 SCORE_BEFORE, SCORE_AFTER = 5, 3   # sessions around the reviewed entry that count as the strategy's buy
 NO_BUY_BEFORE = 20                  # sessions before a `no` case's breakout in which a buy is a false buy
-# a buy: breakout, cheats, power play, flat base, near miss, and the flat base's buy-stop (S8, an order at the pivot)
-BUY_SETUPS = (ms.MV01, ms.MV03, ms.MV04, ms.MV05, ms.FLAT, ms.NEAR, ms.FLAT_COIL, ms.SHAKE)
+# a buy: breakout, cheats, power play, flat base, near miss, the buy-stops at a flat base (S8) and a reclaim (S10)
+BUY_SETUPS = (ms.MV01, ms.MV03, ms.MV04, ms.MV05, ms.FLAT, ms.NEAR, ms.FLAT_COIL, ms.SHAKE, ms.RECLAIM)
 RANGE_SESSIONS = 60       # the breakout close clears the highest high of this many sessions before it
 MIN_PRICE = 5.0
 MIN_SESSIONS_TO_PEAK = 10  # a move that tops out inside two weeks is a news spike, not a trend
