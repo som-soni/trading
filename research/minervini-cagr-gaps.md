@@ -434,3 +434,28 @@ on 177 trades (#1519), against 10.31% / −18.0%. US −0.21% / −25.6%, +0.03R
 drawdown is 10 points shallower, which is tempting, but changing the rule after seeing the result is what the
 stages exist to prevent — and the textbook study says the count does not sort cheats. Recorded, not adopted; the
 switch stays off. 1.64 is B + the 8% cap.
+
+## 1.64 verify (2022-01-01 → 2026-11-11), run once per market — PASSED (India)
+
+1.64 = candidate B (no S7; the trend exit on the 150-day after +3R; the segment trend in the market gate) + the 8%
+stop cap. **Pass criterion, written 2026-11-11 before the runs:** India CAGR above 0, average trade above 0R, max
+drawdown no deeper than −25%; the US reported, not a condition.
+
+| Market (run) | CAGR | Index held | Max DD | Sharpe | Trades | Win % | Avg R | PF |
+|---|---|---|---|---|---|---|---|---|
+| India (#1523, run 1808) | **6.38%** | 9.46% | −10.9% | 0.65 | 201 | 33.2 | +0.23 | 1.28 |
+| US (#1524, run 1809) | −3.36% | 9.74% | −17.4% | −0.34 | 400 | 33.9 | −0.06 | 0.72 |
+| *India, 1.53 rules (1.54 verify)* | *2.18%* | | *−25.7%* | *0.28* | *210* | | | |
+| *US, 1.53 rules (1.54 verify)* | *−1.33%* | | *−26.6%* | *−0.05* | *342* | | | |
+
+India passes all three conditions, so 1.64's defaults stand. Read it with two cautions:
+
+- **It rests on four trades.** Aparna, Dixon, Kaynes and RVNL (2023 breakouts, +14R to +30R, all sold by the trend
+  exit) made ₹10.9 lakh; the run made ₹7.0 lakh in all, so the other 197 trades lost about ₹3.9 lakh. That is the
+  style working as designed — the 150-day exit is what held Dixon and Aparna for 15–20 months — but one fewer such
+  run in 2023 and the result is near zero.
+- **Neither market beats holding the index** (excess −3.08 points India, −13.10 US). The drawdowns are shallower
+  than the index's in both. In the US, 1.64 lowered CAGR against the 1.53 rules on these years (−1.33% → −3.36%)
+  while cutting the drawdown by 9 points.
+
+These years are now seen. Any rule changed because of them is tuned on them; the next clean test is forward data.

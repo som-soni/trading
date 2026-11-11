@@ -2030,7 +2030,16 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
-        "v1.64: verify not run yet. Criterion written 2026-11-11, before the verify runs (2022-01-01 to today), "
+        "v1.64 PASSED verify (India), 2022-01-01 to 2026-11-11, run once per market (runs #1808 India, #1809 US). "
+        "India: 6.38% CAGR (Nifty 500 held: 9.46%, excess -3.08 points), max drawdown -10.9% (index -18.8%), "
+        "Sharpe 0.65, 201 trades, 33% won, +0.23R a trade, profit factor 1.28 -- passes all three conditions. "
+        "It rests on few trades: the best four (Aparna, Dixon, Kaynes, RVNL; +14R to +30R, all trend exits) made "
+        "more than the whole run, and the other 197 lost. US (reported, not a condition): -3.36% CAGR (SPY "
+        "9.74%), max drawdown -17.4%, Sharpe -0.34, 400 trades, -0.06R, profit factor 0.72. Against the same "
+        "years under the 1.53 rules (1.54 verify): India 2.18% / -25.7%, US -1.33% / -26.6% -- 1.64 is better "
+        "in India, lower in US CAGR with a shallower drawdown. Neither market beats holding the index. Those "
+        "years are now seen: a rule changed because of them is tuned on them. The criterion, as written before "
+        "the runs: Criterion written 2026-11-11, before the verify runs (2022-01-01 to today), "
         "each market once: v1.64 passes only if India, (1) CAGR is above 0, (2) the average trade is above 0R "
         "and (3) max drawdown is no deeper than -25%. The US run is reported, not a condition. A fail means "
         "1.64's defaults are not adopted and the next version restores 1.63's. The figures behind it are "
