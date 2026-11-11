@@ -93,15 +93,19 @@ class Opening:
 
 def track(df: pd.DataFrame, policy: "ps.ExitPolicy", cfg, *, symbol: str, entry_date, entry_price: float,
           initial_stop: float, shares: float, target: float = math.inf, meta: dict | None = None,
-          fee_rate: float = 0.0, entry_at: int = ps.INTRADAY, setup: str = "") -> dict:
+          fee_rate: float = 0.0, entry_at: int = ps.INTRADAY, setup: str = "", frame: pd.DataFrame | None = None) -> dict:
     """Replay `df` (enriched daily bars) from `entry_date` through the strategy's exit, exactly as
     `simulate` manages a held position, and say where the position stands after the last bar.
 
     `entry_at` is the moment of the fill: INTRADAY (a buy-stop, or a buy at the open -- the rest of the
     entry bar can still reach the stop, as in the backtest) or AT_CLOSE (a close order: the entry bar is
-    not tested). Fills here are the raw levels: your own fills carry the slippage and costs."""
+    not tested). Fills here are the raw levels: your own fills carry the slippage and costs.
+
+    `frame`: `df` already through `ps.exit_frames` for this policy -- a caller replaying many entries in one
+    stock (the chart's setup outcomes, strategies/setup_outcomes.py) builds it once."""
     entry_date = pd.Timestamp(entry_date)
-    frame = ps.exit_frames({symbol: df}, policy)[symbol]
+    if frame is None:
+        frame = ps.exit_frames({symbol: df}, policy)[symbol]
     bars = frame.loc[frame.index >= entry_date]
     pos = ps.PortfolioTrade(symbol=symbol, setup=setup, decision="TAKEN", entry_date=entry_date,
                             entry_price=float(entry_price), stop=float(initial_stop),

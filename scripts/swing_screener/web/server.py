@@ -1993,6 +1993,23 @@ def _run_anchors(run: int | None, strategy: str, symbol: str) -> tuple:
     return tuple(sorted(out))
 
 
+def _attach_outcomes(strat, market: str, raw: pd.DataFrame, symbol: str, setups: list[dict]) -> None:
+    """Each setup's outcome -- filled or not, how it ended -- replayed through the strategy's own fill and exit
+    (strategies/setup_outcomes.py). Exploration, like the setups themselves: never a strategy result."""
+    from ..core import indicators as ind
+    from ..strategies import setup_outcomes
+    try:
+        setup_outcomes.attach(strat, market, MARKETS[market], ind.enrich_daily(raw), symbol, setups)
+    except Exception as e:  # noqa: BLE001 -- outcomes are extra: the setups still show without them
+        print(f"setup outcomes for {strat.key} {symbol} failed: {e}", flush=True)
+
+
+def _with_outcomes(strat, market, daily, raw, symbol, setups):
+    """`setups` with their outcomes, replayed on the bars they were found on (up to `daily`'s last)."""
+    _attach_outcomes(strat, market, raw.loc[:daily.index[-1]], symbol, setups)
+    return setups
+
+
 def _generic_setups(strat, market: str, symbol: str, date: str | None, years: int, run: int | None = None) -> dict:
     """A strategy's setups from the generic layer, cached per last bar (a full evaluate per bar is
     seconds, not milliseconds). With `run`, episodes holding one of that run's trades are judged on
@@ -2012,6 +2029,7 @@ def _generic_setups(strat, market: str, symbol: str, date: str | None, years: in
         if len(_generic_cache) > 64:
             _generic_cache.clear()
         setups = strat.setups_live(raw, MARKETS[market], symbol, years or None, [{"entry": e, "stop": st, "price": px} for e, st, px in anchors])
+        _attach_outcomes(strat, market, raw, symbol, setups)
         n = {k: sum(x["kind"] == k for x in setups) for k in ("pass", "watch", "fail")}
         n_exp = sum(bool(x.get("expired")) for x in setups)
         # "would trade", not "traded": with no backtest selected nothing here was bought (the chart keeps
@@ -2111,7 +2129,8 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
     out = {"as_of": as_of, "spec_id": strat.spec_id(), "strategy": strategy, "symbol": symbol, "market": market,
            "bars": int(len(daily)), "passing": passing,
            "pct": round(100.0 * passing / max(len(daily), 1), 1),
-           "runs": runs, "stages": stages, "bases": strat.bases_live(daily, cfg, [{"entry": e, "stop": st, "price": px} for e, st, px in anchors]),
+           "runs": runs, "stages": stages, "bases": _with_outcomes(strat, market, daily, raw, symbol,
+                strat.bases_live(daily, cfg, [{"entry": e, "stop": st, "price": px} for e, st, px in anchors])),
            "note": ((f"{names[last['stage']]} since {last['from']}"
                      + (f", Trend Template confirmed {last['confirmed']}" if last.get("confirmed") else
                         ", not yet confirmed by the Trend Template" if last["stage"] == 2 else "")) if last else "no stage yet")}

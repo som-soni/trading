@@ -1981,6 +1981,34 @@ async function chartPage(alive, market, symbol, tf) {
       s.stopped ? `price went through the stop ${prettyDate(s.stopped)}` : "",
       `drawn to ${prettyDate(s.to)} — an illustration's span, not a trade's exit`].filter(Boolean).join("\n");
   }
+  // a setup's outcome (strategies/setup_outcomes.py: its fill and its exit, replayed through the strategy's own
+  // order and exit policy) in a few words: "+2.4R · trend exit · 102d", "open +0.5R · 6d", "not filled"
+  const EXIT_WORD = { STOP: "stop", TARGET: "target", TIME: "time", hold: "open", stop_raised: "open", partial: "open",
+    exit_next_open: "exit at the open", sell_stop_armed: "open", stopped: "stop" };
+  const exitWord = (r) => EXIT_WORD[r] || Studies.plainText(String(r || "").replace(/_/g, " ")).toLowerCase();
+  const rTxt = (r) => `${r >= 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`;
+  function outcomeHtml(s) {
+    const o = s.outcome;
+    if (!o) return "";
+    if (!o.filled) return `<span class="sp-out none" title="${esc(o.note || "")}">not filled</span>`;
+    const cls = o.open ? "open" : o.r >= 0 ? "win" : "loss";
+    const tip = `Replayed through the strategy's own order and exit (${o.policy || "its exit policy"}), one setup at a time:\n`
+      + `bought ${fmt(o.fill)} on ${prettyDate(o.filled)}, stop ${fmt(o.stop)}\n`
+      + (o.open ? `still open: last close ${fmt(o.exit_price)} (${o.pct >= 0 ? "+" : ""}${o.pct}%)` : `sold ${fmt(o.exit_price)} on ${prettyDate(o.exit)} — ${exitWord(o.reason)} (${o.pct >= 0 ? "+" : ""}${o.pct}%)`)
+      + "\nNot a backtest result: no costs, no portfolio, today's code.";
+    return `<span class="sp-out ${cls}" title="${esc(tip)}">${o.open ? `open ${rTxt(o.r)}` : `${rTxt(o.r)} · ${esc(exitWord(o.reason))}`} · ${o.days}d</span>`;
+  }
+  // the list's results in one line: the filled setups' wins, average and worst R and median hold (the counts by
+  // decision stay in its tooltip). Overlapping setups can replay the same move, so this is not a strategy result.
+  function outcomeSummary(list) {
+    const f = list.map((x) => x.outcome).filter((o) => o?.filled), done = f.filter((o) => !o.open);
+    if (!f.length) return "";
+    const rs = done.map((o) => o.r), days = done.map((o) => o.days).sort((a, b) => a - b);
+    const avg = rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null;
+    return [`${f.length} filled`, done.length ? `${rs.filter((r) => r > 0).length} win${rs.filter((r) => r > 0).length === 1 ? "" : "s"}` : "",
+      avg != null ? `avg ${rTxt(avg)}` : "", rs.length ? `worst ${rTxt(Math.min(...rs))}` : "",
+      days.length ? `median hold ${days[Math.floor(days.length / 2)]}d` : "", f.length - done.length ? `${f.length - done.length} open` : ""].filter(Boolean).join(" · ");
+  }
   function setupKind(s) {
     const entry = s.zones.find((z) => z.key === "entry" || z.key === "cheat");
     return s.kind === "young" ? "young" : s.kind === "watch" ? (s.expired ? "expired" : "trigger") : s.kind === "pass" ? "trade"
@@ -2059,7 +2087,15 @@ async function chartPage(alive, market, symbol, tf) {
     const years = [...new Set(setupFeed.list.map((x) => (x.base_from || x.from || "").slice(0, 4)).filter(Boolean))].sort().reverse();
     const yr = years.includes(setupYear) ? setupYear : "";
     const rows = setupFeed.list.map((s, i) => ({ s, i }))
-      .sort((a, b) => (setupSort === "oldest" ? a.i - b.i : b.i - a.i))
+      .sort((a, b) => {
+        const r = (x) => (x.s.outcome?.filled ? x.s.outcome.r : null);
+        if (setupSort === "best" || setupSort === "worst") {   // setups with no outcome go last either way
+          const ra = r(a), rb = r(b);
+          if (ra == null || rb == null) return (ra == null) - (rb == null) || b.i - a.i;
+          return setupSort === "best" ? rb - ra : ra - rb;
+        }
+        return setupSort === "oldest" ? a.i - b.i : b.i - a.i;
+      })
       .filter(({ s }) => setupFilter === "all" || kindOf(s) === setupFilter)
       .filter(({ s }) => !yr || (s.base_from || s.from || "").startsWith(yr))
       // compact rows -- id, verdict, end date, one-line title; only the selected one opens to its detail (the
@@ -2069,12 +2105,16 @@ async function chartPage(alive, market, symbol, tf) {
           <span class="sp-pill">${PILL[kindOf(s)] || ""}</span>
           <span class="muted small sp-to" title="${esc(setupDates(s))}">${s.live ? "live today" : s.breakout ? `signal ${prettyDate(s.breakout)}` : s.stopped ? `stop hit ${prettyDate(s.stopped)}` : `judged ${prettyDate(s.as_of || s.to)}`}</span></div>
         <div class="small sp-title" title="${esc(Studies.plainText(s.title))}">${esc(Studies.plainText(s.title))}</div>
+        ${s.outcome ? `<div class="sp-outs">${outcomeHtml(s)}</div>` : ""}
         ${cur && setupFeed.detail ? setupFeed.detail() : ""}</div>`; }).join("");
     return `<section class="sp-head"><h3 title="What the strategy's rules would set up on — not trades. Click one here or in the lane along the chart's foot to go to it.">${esc(name)} · setups</h3>
       ${setupPickerHtml()}
-      ${setupFeed.note ? `<div class="small sp-note" title="${esc(Studies.plainText(setupFeed.note))}">${esc(Studies.plainText(setupFeed.note))}</div>` : ""}
+      ${(() => { const sum = outcomeSummary(setupFeed.list), note = Studies.plainText(setupFeed.note || "");
+        const tip = [note, sum ? "Results: each filled setup replayed through the strategy's own order and exit, one at a time — no costs or portfolio; overlapping setups can repeat a move. Not a backtest result." : ""].filter(Boolean).join("\n\n");
+        return sum || note ? `<div class="small sp-note" title="${esc(tip)}">${esc(sum || note)}</div>` : ""; })()}
       <div class="sp-chips">${chips}</div>
-      <div class="sp-sort"><select data-spsort title="Order of the list"><option value="newest">Newest first</option><option value="oldest" ${setupSort === "oldest" ? "selected" : ""}>Oldest first</option></select>
+      <div class="sp-sort"><select data-spsort title="Order of the list (best / worst by the replayed outcome's R)">${[["newest", "Newest first"], ["oldest", "Oldest first"], ["best", "Best R first"], ["worst", "Worst R first"]]
+          .map(([v, t]) => `<option value="${v}" ${setupSort === v ? "selected" : ""}>${t}</option>`).join("")}</select>
         <select data-spyear title="Only the setups that began in one year"><option value="">All years</option>${years.map((y) => `<option ${y === yr ? "selected" : ""}>${y}</option>`).join("")}</select></div>
       ${todayCardHtml()}${setupFeed.keyBox ? setupFeed.keyBox() : ""}</section>
       <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;

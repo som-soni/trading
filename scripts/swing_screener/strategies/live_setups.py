@@ -253,8 +253,14 @@ def _episode(strategy, cfg, daily: pd.DataFrame, ep: list, judge=None) -> dict:
                      "limit": "TRADE - HIGH CONFIDENCE, with the entry fired",
                      "state": "pass" if kind == "pass" else "warn" if kind == "watch" else "fail"}]
         rules = " ".join(strategy.render_doc(x) for x in (getattr(strategy, "entry_rules", ()) or ()))
+        # how the strategy's order fills (its signal_meta): setup_outcomes replays the fill from it
+        try:
+            from .setup_outcomes import order_meta
+            order = order_meta(strategy.signal_meta(ctx, r, plan))
+        except Exception:  # noqa: BLE001 -- a strategy whose meta needs what a live bar lacks: a plain buy-stop
+            order = {}
         zones.append({"key": "entry", "title": "Entry", "state": "pass" if kind == "pass" else "warn" if kind == "watch" else "fail",
-                      "from": day(i), "to": to, "illustration": True,
+                      "from": day(i), "to": to, "illustration": True, "order": order,
                       "line": f"buy {px(plan.entry)} · stop {px(plan.stop)}" + ("" if nominal else f" · {plan.r_multiple:.1f}R")
                               + (f" · stop hit {day(stop_hit)}" if stop_hit is not None else ""),
                       "text": (f"Where this strategy's own build_plans puts the trade on {d.date()}: an illustration, not a "

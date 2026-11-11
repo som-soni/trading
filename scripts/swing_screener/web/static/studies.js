@@ -517,8 +517,12 @@ const Studies = (() => {
               const fits = (t) => t.length * 5.6 + 10 <= x1 - x0;
               const sel = s === focus, txt = fits(`${ref(s)} ${s.title}`) ? `${ref(s)} ${s.title}` : fits(ref(s)) ? ref(s) : "";
               const tr = tradeOf(s);
-              pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""} ${tr ? "traded" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}${tr ? ` · traded by the selected run${tr.r_multiple != null ? `, ${(+tr.r_multiple).toFixed(2)}R` : ""}` : ""}"
-                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${kindCol(s)}">${tr ? "● " : ""}${esc(txt)}</button>`);
+              // coloured by how it ended (its replayed outcome: won green, lost red, still open blue), not by the
+              // decision -- a setup that never filled, or one the strategy refused, stays grey
+              const o = s.outcome, oc = o?.filled ? (o.open ? "#38bdf8" : o.r >= 0 ? "#22c55e" : "#f43f5e") : YOUNG;
+              const ot = o?.filled ? ` · ${o.open ? "open" : "closed"} ${o.r >= 0 ? "+" : ""}${o.r}R after ${o.days} sessions` : o?.note ? ` · ${o.note}` : "";
+              pills.push(`<button class="tt-pill ${s.kind === "fail" || s.kind === "young" ? "no" : "ok"} ${sel ? "sel" : ""} ${tr ? "traded" : ""}" data-i="${i}" title="${esc(s.title)} · ${esc(s.from)} → ${esc(s.to)}${esc(ot)}${tr ? ` · traded by the selected run${tr.r_multiple != null ? `, ${(+tr.r_multiple).toFixed(2)}R` : ""}` : ""}"
+                style="left:${left + x0}px;width:${x1 - x0}px;bottom:${ctx.chartEl.clientHeight - H + 30 + r * 17}px;--c:${tr ? kindCol(s) : oc}">${tr ? "● " : ""}${esc(txt)}</button>`);
             });
             el.innerHTML = pills.join("");
           };
@@ -620,7 +624,7 @@ const Studies = (() => {
           ["frame", col("cheat"), "Blue frame", "a valid plan the strategy stops short of buying today (TRADE ON TRIGGER), such as a coil not yet through its pivot."],
           ["dashframe", col("miss"), "Rose dashed frame", "refused: a gate failed, the plan was refused, or the decision said WATCH. The header names it."],
           ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup: its levels are the run's own record."],
-          ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
+          ["pill", "#22c55e", "Lane at the bottom", "every setup, one pill each, coloured by how its replayed trade ended: green won, red lost, blue still open, grey never filled or refused. Click one to select it."],
           ["arrow", col("uptrend"), "① Gates", "the trend into the setup, and every hard gate in the strategy's own words."],
           ...Object.entries(structure).map(([k, [t]]) => ["box", col(k), `② ${t}`, "the structure the setup was judged on, drawn by the strategy itself."]),
           ["line", col("buy"), "③ Entry", "the strategy's own buy, stop and target for the judged bar. An illustration of the rules."],
@@ -1335,7 +1339,7 @@ const Studies = (() => {
           ["dashframe", YOUNG, "Grey dashed frame", "too new to judge (?): the stock lacks the history for a 200-day average."],
           ["dashframe", col("miss"), "Rose dashed frame", "the selected setup failed (✗); its header says why."],
           ["frame", col("buy"), "● traded", "a backtest run is selected AND it bought this setup. Its levels are the run's own record; every other setup here is what the rules would have set up on, not a trade."],
-          ["pill", col("vcp"), "Lane at the bottom", "every setup, one pill each. Click one to select it."],
+          ["pill", "#22c55e", "Lane at the bottom", "every setup, one pill each, coloured by how its replayed trade ended: green won, red lost, blue still open, grey never filled or refused. Click one to select it."],
           ["arrow", col("uptrend"), "① Uptrend", "the advance into the base. It needs to be strong."],
           ["dot", col("base"), "② Base", "its caption carries Minervini's footprint: weeks, deepest/final pullback in %, number of pullbacks (7W 11/3 2T). Each pullback is marked at its low, T1, T2 … with its depth; a VCP's get smaller, and ✗ marks the one that broke the rule."],
           ["box", col("tight"), "Tight area", "the quiet end of the base. Its high is the pivot."],

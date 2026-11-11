@@ -2111,3 +2111,10 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
   header { gap: 14px; } nav a, nav .sec { padding: 0 8px; } }
 @media (max-width: 1100px) { .dstatus .ds-l { display: none; } }
 #chart.on-divider, #chart.on-divider * { cursor: row-resize !important; }
+/* a setup's replayed outcome: won, lost, still open, or never filled */
+.sp-outs { margin-top: 2px; }
+.sp-out { font-size: 11px; font-variant-numeric: tabular-nums; padding: 0 5px; border-radius: 3px; }
+.sp-out.win { color: var(--up-text); background: color-mix(in srgb, #22c55e 14%, transparent); }
+.sp-out.loss { color: var(--down-text); background: color-mix(in srgb, #f43f5e 14%, transparent); }
+.sp-out.open { color: var(--strong); background: color-mix(in srgb, #38bdf8 18%, transparent); }
+.sp-out.none { color: var(--muted); }
