@@ -16,6 +16,12 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 | L2 | A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017, GLENMARK 2020 (a one-day news spike) | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
 | L3 | A cheat (S3/S4) confirmed on below-average volume fails more often: Minervini wants the stock to come out of the shelf on rising volume, and the strategy asks the shelf to dry up but sets no volume floor on the close through it | GLENMARK 2020 (0.6x; LUXIND 1.5x and BFINVEST 2.1x passed) | The strategy's cheat trades and the textbook cheat event study: avg R by the cross day's volume ÷ its 50-day (<1x, 1–1.4x, 1.4x+), and by how far the close cleared the shelf | Not tested |
 
+## Fixes found by the reviews (bugs, not hypotheses — they ship in the next version, measured with the batch)
+
+| # | Fix | From | Where | Status |
+|---|---|---|---|---|
+| F1 | The results blackout misses an announcement ON the signal date: it blocks only dates strictly after it (`f > d`), so a signal on results day is bought at the next open, into the reaction. Make it `>=` | LTTS 2019 (board meeting 17 Jan, signal 17 Jan, filled into a 5x-volume reversal on the 18th) | `backtesting/spec.py` `results_blackout`, used by every strategy run with `--results-blackout` — a version bump for each | Not applied. Rough size: 15 of 201 India verify trades and 16 of 400 US had results within the four days up to the fill (avg R +0.53 / −0.08 against +0.38 / −0.04 for all), an upper bound on the leak |
+
 Already measured and rejected, so not lessons on their own: selling early on weakness after the buy (a close back
 under the pivot, a run of down days; [CAGR gaps](minervini-cagr-gaps.md), early-weakness exits), and a cheat's
 pullback count or contraction pattern (textbook cheat event study, [system-swing-longs](system-swing-longs.md) §6).
@@ -74,3 +80,17 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   (21.4% → 26.4%; VCP-06 rejected it). The cross was barely one: the close cleared the shelf by 0.1 on 0.6x average
   volume — no demand at the pivot. Fundamentals rated weak (SEPA) and RS 76. Nothing was missed by the stop: the stock
   ranged 444–536 for the next seven months. → **L2** (third case, the spike variant), **L3**.
+
+### LTTS.NS — S4 cheat (3C), 18 Jan 2019, −0.99R
+
+- **Trade:** base from the 3 Sep 2018 high of 1,855 (91 sessions, 3rd base, six pullbacks 21.8% → 8.6%, the final tight
+  area dry at 0.93x); shelf 1,621.75–1,672 in the middle third, the VCP's own pivot 1,739.95 just above. 17 Jan closed
+  1,693.4 through the shelf on 1.6x volume; bought the 18 Jan open at 1,720.15, stop 1,613.60 (6.2%); sold 31 Jan by
+  the 50-day exit at 1,619.13.
+- **Fine by Minervini:** a long, properly contracting base with a dry tight area; RS 96; a cheat within 1% of the
+  pivot is nearly the pivot buy itself.
+- **The issue: results.** The board met on 17 Jan, the signal day, and the fill on the 18th was the reaction: a run to
+  1,757.7 then a close at 1,641.2 on 5.0x volume — a heavy-volume reversal Minervini would sell on, and a session he
+  would not have bought into at all (he does not buy just before results). The strategy's 14-day results blackout
+  should have blocked it, but it only looks at announcements after the signal date. → **F1**.
+- The stock never made a new high in the next six months (best close 1,774.6, June 2019); the trend exit cut it near −1R.
