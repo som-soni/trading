@@ -13,7 +13,7 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 | # | Lesson (hypothesis) | From | How to test | Status |
 |---|---|---|---|---|
 | L1 | After a stop-out, a base that reclaims its failed breakout high should be bought again (Minervini's re-entry) | RADICO 2021, UFLEX 2016 | S10 `RECLAIM_ON=1` as an optimise variant; compare CAGR and avg R with and without | Built (1.65, off). Two open parameters: the stop — under the shakeout low it is often wide (RADICO 11%, skipped at the 8% cap; `RECLAIM_STOP_DAYS=3` gives 7.5%) — and the window: UFLEX reclaimed 27 sessions after its failed high, past `RECLAIM_DAYS=20`. Test 20 vs 30 and both stops, rule fixed first |
-| L2 | A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017, GLENMARK 2020 (a one-day news spike), TMPV 2021, APCOTEX 2021 (a two-day spike) | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
+| L2 | *(batch review: not borne out — see below)* A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017, GLENMARK 2020 (a one-day news spike), TMPV 2021, APCOTEX 2021 (a two-day spike) | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
 | L3 | A cheat (S3/S4) confirmed on below-average volume fails more often: Minervini wants the stock to come out of the shelf on rising volume, and the strategy asks the shelf to dry up but sets no volume floor on the close through it | GLENMARK 2020 (0.6x), TMPV 2014 (1.0x), APCOTEX 2021 (1.2x); LUXIND 1.5x and BFINVEST 2.1x passed | The strategy's cheat trades and the textbook cheat event study: avg R by the cross day's volume ÷ its 50-day (<1x, 1–1.4x, 1.4x+), and by how far the close cleared the shelf | Not tested |
 | L4 | A buy that sits just above the 50-day fails more often — the 50-day exit (EX-06) is then the trade's real stop, a day or two away. Two routes there: the stock regains a flat or falling 50-day (Minervini buys above a *rising* one; the gates ask only that the close is above it), or a base that began far above the 50-day sits long enough for it to rise into the shelf | TMPV 2014 (buy 1.7% over a falling 50-day), APCOTEX 2021 (2.7% over a rising one), LUXIND 2021 (about 5%) | The strategy's trades and textbook breakouts: avg R and the share sold by EX-06 within 10 sessions, by the buy's distance above the 50-day (<3%, 3–6%, 6%+), by the 50-day's 10-session slope, and by how many of the last 20 closes were below it | Not tested |
 
@@ -28,6 +28,54 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 Already measured and rejected, so not lessons on their own: selling early on weakness after the buy (a close back
 under the pivot, a run of down days; [CAGR gaps](minervini-cagr-gaps.md), early-weakness exits), and a cheat's
 pullback count or contraction pattern (textbook cheat event study, [system-swing-longs](system-swing-longs.md) §6).
+
+## Batch review — every trade of run 4089 (India, 1.63, optimise 2013–2021, in-sample)
+
+`swing_screener.backtesting.trade_review --run 4089` applies the checks above to all 177 trades (72 won, 105 lost)
+and stores one row per trade in `trade_reviews` (its flags and the numbers behind them). Thresholds were fixed
+before reading any result: L2 base high ≥25% over the 50-day or ≥30% in the 10 sessions into it; L3 crossing volume
+under 1.4x; L4 buy under 3% over the 50-day; F2 a high inside the base ≥0.5% over the pivot; L1 a losing trade's base
+closed back over its ceiling within 60 sessions and then gained ≥20%, not retaken. **In-sample: this ranks lessons
+for the batch test, it tests nothing.** Averages are carried by a few huge winners (TATAELXSI +51.5R, KPITTECH
++38.7R), so read the win rate and the median beside them.
+
+| Flag | Trades | Win % | Median R | Avg R | Without: trades | Win % | Median R | Avg R |
+|---|---|---|---|---|---|---|---|---|
+| L2 base after a climax | 50 | 44 | −0.06 | +2.01 | 127 | 39 | −0.15 | +0.52 |
+| L2, among cheats | 26 | 38 | −0.50 | +1.57 | 28 | 25 | −0.49 | −0.19 |
+| L3 light cross, open-fill setups | 35 | 34 | −0.34 | +1.16 | 41 | 46 | −0.36 | +0.66 |
+| L3 light fill, buy-stop setups | 57 | 19 | −0.16 | −0.21 | 44 | 68 | +0.60 | +2.52 |
+| L4 buy within 3% of the 50-day | 18 | 11 | −0.37 | −0.24 | 159 | 44 | −0.10 | +1.08 |
+| L4, among cheats (all 18 are cheats) | 18 | 11 | −0.37 | −0.24 | 36 | 42 | −0.53 | +1.11 |
+| F1 results between signal and fill | 19 | 47 | −0.03 | +2.78 | 158 | 40 | −0.15 | +0.72 |
+| F2 stale flat-base pivot | 40 | 30 | −0.17 | +0.48 | 137 | 44 | −0.11 | +1.08 |
+| F3 results within 14 days of the fill | 8 | 62 | +0.02 | +0.45 | 169 | 40 | −0.14 | +0.97 |
+| Day one closed back under the pivot | 75 | 17 | −0.40 | −0.17 | 102 | 58 | +0.12 | +1.76 |
+| Market fell 3%+ in the 10 sessions after | 10 | 20 | −0.12 | +0.34 | 167 | 42 | −0.14 | +0.98 |
+| Cheat (S3/S4) | 54 | 31 | −0.50 | +0.66 | 123 | 45 | −0.06 | +1.07 |
+
+**What it changes:**
+
+- **L2 is not borne out — the hand-picked cases misled.** Bases after a climax won *more* often (44% against 39%) and
+  carry the two biggest winners. Even among cheats they did better than other cheats. Five losers reviewed one at a
+  time told the opposite story. L2 drops to the bottom of the batch.
+- **L4 is the clearest pre-entry signal**: 18 trades, 2 winners, all of them cheats. Among cheats, a buy within 3% of
+  the 50-day averaged −0.24R against +1.11R for the rest. Small, so it needs the event study, but it leads the batch.
+- **L1 is the largest pool.** 79 of the 105 losers closed back over their base's ceiling within 60 sessions; the run
+  re-bought 2. 42 of them then gained 20% or more (median 15 sessions after the exit), most after a light-volume exit
+  (22), then the stop (10) and the trend exit (10). That gain is the best close within 120 sessions with no stop
+  applied, so it is an upper bound; 14 of the 79 gained under 5%. The S10 reclaim is the test.
+- **L3 splits by order type.** For buy-stops, a light fill is already sold the next morning by rule (−0.21R against
+  +2.52R), so the light-volume exit is doing its job. For setups bought on the close it does not separate (+1.16R
+  against +0.66R): L3 as written is weak.
+- **F2 looks costly** (30% won against 44%), but two big winners carry the flag too (FLUOROCHEM +18.1R, IGL +10.5R):
+  the fix moves the pivot up rather than dropping the trade, so only the run can say what it does.
+- **F1 and F3 are not losing money here** (+2.78R, +0.45R; TATAELXSI is an F1). They are still fixes — the blackout
+  should mean what it says — but expect no gain from them.
+- Day one back under the pivot separates sharply (17% won), but it happens after the buy; selling on it was measured
+  and rejected (early-weakness exits).
+- **Six full losers carry no pre-entry flag** (CANBK 2016, CENTRALBK 2015, GSFC 2017, ICICIBANK 2019, PIIND 2020,
+  SYNGENE 2020): the chart review sample.
 
 ## Reviews
 
