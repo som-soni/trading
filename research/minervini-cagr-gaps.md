@@ -427,3 +427,10 @@ recorded, not adopted.
 - **So it does not get a verify run of its own.** It is tested the way the stop cap is: B + 8% cap + this rule, optimise,
   #1519 (India) and #1520 (US), against B + 8% cap (#1517, #1518). It joins 1.64 only if it raises CAGR in both
   markets there with max drawdown no more than 1 point deeper; otherwise it is dropped.
+
+**B + 8% cap + two-pullback cheats (optimise, in-sample): fails, narrowly — dropped.** India 11.22% / −18.3%, +0.34R
+on 177 trades (#1519), against 10.31% / −18.0%. US −0.21% / −25.6%, +0.03R on 909 trades (#1520), against
+−0.13% / −35.8%. India gains 0.9 points; the US CAGR is 0.08 lower, so the rule fixed beforehand is not met. The US
+drawdown is 10 points shallower, which is tempting, but changing the rule after seeing the result is what the
+stages exist to prevent — and the textbook study says the count does not sort cheats. Recorded, not adopted; the
+switch stays off. 1.64 is B + the 8% cap.
