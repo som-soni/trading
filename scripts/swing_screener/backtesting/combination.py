@@ -64,6 +64,15 @@ DOC = {
         "month-end."
     ),
     "status": (
+        "FROM 2018-06-01 (full stage, v1.6, 2026-11-11 -- context, not a verdict; the years from 2022 are the "
+        "verify window, and the start matches the quality-momentum runs): INDIA 22.89% CAGR, -27.3% max "
+        "drawdown against its blended benchmark's 12.64% and -44.7% (+10.25 excess), volatility 17.9%, 836 "
+        "trades; by year 2018 -9.3, 2019 +13.2, 2020 +34.7, 2021 +55.4, 2022 -11.0, 2023 +66.8, 2024 +33.8, "
+        "2025 +25.2, 2026 +6.6. Over the same dates the momentum sleeve alone made 25.27% with a -40.7% "
+        "drawdown: the dual half gave up 2.4 points a year for a drawdown 13.4 points shallower, and turned "
+        "2025 from -6.9% into +25.2%. US 12.65% CAGR, -38.3% max drawdown against 9.76% and -37.4% (+2.89 "
+        "excess, a drawdown about the benchmark's), 884 trades; by year 2018 -13.7, 2019 +5.2, 2020 +46.6, "
+        "2021 +14.5, 2022 -14.7, 2023 +18.3, 2024 +45.8, 2025 +28.6, 2026 -5.3. "
         "INDIA VERIFY: TWO OF THREE TESTS MET. Out-of-sample (verify, 2022-01-01 to 2026-10-28) India half "
         "and half at v1.5 returns 22.65% CAGR, "
         "+12.82 points a year over its blended benchmark, Sharpe 1.16 against 0.66, max drawdown -23.5% "
