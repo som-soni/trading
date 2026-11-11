@@ -172,6 +172,12 @@ FLAT_STOP_DAYS = 5
 # flat base and the close sits within COIL_PCT below its high, a buy-stop just above the high, stopped under
 # the low of the last FLAT_STOP_DAYS sessions. 0 = off (1.47).
 FLAT_COIL_ON = 1
+# 1.66, research switch (0 = off, 1.65): F2 of the trade reviews. A flat base's pivot (S6 / S8) is the base's high as
+# the detector holds it -- its last CONFIRMED swing high, which lags SWING_K sessions, so a higher high of the last few
+# sessions is ignored and the 'breakout' can be a close through a level the stock already cleared (MARICO 28 Apr 2016:
+# pivot 252.9 after closes over it and a 263.5 high; STAR 21 Aug 2015; ZEEL 15 Jun 2016). 1 = the pivot is the base's
+# highest high through the bar judged, as S9 reads it. Read by evaluate: a variant rescans.
+FLAT_PIVOT_HIGHEST = 0
 # 1.65, research switch (0 = off, 1.64): S10, the reclaim after a failed breakout. RADICO's flat base (30 Jul 2021,
 # high 945) was bought on 20 Sep, poked to 965 and closed back inside, was stopped on 30 Sep, then closed back
 # over 945 on 6 Oct on 2.9x volume and ran to 1,267 -- with no setup on any session in between: the flat base
@@ -182,9 +188,10 @@ FLAT_COIL_ON = 1
 # base's low; and a close back within COIL_PCT under the poke's high. A buy-stop goes just above that high,
 # stopped under the low of the last RECLAIM_STOP_DAYS sessions, keyed to the same base (EN-04).
 RECLAIM_ON = 0
-RECLAIM_DAYS = 20           # sessions after the failed breakout's high in which the reclaim may set up
+RECLAIM_SCAN_DAYS = 30      # 1.66: how far back the scan looks for the failed breakout (the widest window tested)
+RECLAIM_DAYS = 20           # sessions after the failed breakout's high in which the reclaim may set up (a plan rule)
 RECLAIM_MIN_DROP_PCT = 5.0  # the shakeout: the low since that high at least this % under it
-RECLAIM_STOP_DAYS = 5       # the stop goes under the low of this many sessions (FLAT_STOP_DAYS' reading)
+RECLAIM_STOP_DAYS = 5       # the stop goes under the low of this many sessions (FLAT_STOP_DAYS' reading; a plan rule)
 # 1.50, S9: the shakeout. A base that sheds its weak holders in one sharp drop under its recent lows, on heavy
 # volume, recovers them within days, and then closes through its high is one Minervini buys -- the flush IS the
 # supply leaving, so the quiet tight area a VCP needs (VCP-08, VCP-10) is not asked of it. Papa John's, Feb-Mar
@@ -334,6 +341,11 @@ CHEAT_BLOCK_VCP09 = 0
 # -0.02R in India (24) and -0.08R in the US (82), with two or more +0.38R (91) and +0.05R (197). Applied
 # in build_plans, after the scan, so the cached signals stand. 2 is the rule's natural setting.
 CHEAT_MIN_CONTRACTIONS = 0
+# 1.66, research switch (0 = off): L4 of the trade reviews (research/minervini-trade-reviews.md). A cheat (S3 / S4) is
+# refused when its buy sits less than this % above the 50-day: the 50-day exit (EX-06) is then the trade's real
+# stop, a session or two away. In the 1.63 optimise trades 18 Indian and 107 US buys were that close, 11% and 25%
+# of them winners against 44% and 40% for the rest; all but five were cheats. In build_plans, after the scan.
+CHEAT_MIN_SMA50_PCT = 0.0
 
 CHEAT_SHELF_DAYS = 7    # MV-03/MV-04: sessions in the shelf (mirrors VcpParams.cheat_shelf_days)
 CHEAT_SHELF_PCT = 8.0   # MV-03/MV-04: widest shelf that counts  (mirrors VcpParams.cheat_shelf_pct)
@@ -565,6 +577,11 @@ RESULTS_BY_ANNOUNCEMENT = 1
 # out at the board meeting lands weeks later and is not a second announcement; 0 = every record counts, as
 # in 1.51 (India then read ~7 dates per company-year). Read after the scan.
 RESULTS_FIRST_PER_QUARTER = 1
+# 1.66, research switch (0 = off, 1.65): F1 + F3 of the trade reviews. 1 = the blackout also blocks results ON the
+# signal date (LTTS 17 Jan 2019, MARICO 29 Apr 2016 were bought the next open, into the reaction), and a resting order
+# is cancelled once its stock's next results fall within EARNINGS_BLACKOUT_DAYS (ZEEL's S2, placed 24 Dec 2013, filled
+# 10 Jan, 12 days before results). Read by the backtest (spec.results_blackout, portfolio_sim), after the scan.
+RESULTS_BLACKOUT_STRICT = 0
 
 # The guide's liquidity floor. Turnover is the 50-day average volume x the close, which is
 # split-invariant, so it applies in backtests too. The price floor is LIVE ONLY: a backtest
@@ -782,7 +799,13 @@ def flat_base(base: dict, d: pd.DataFrame) -> dict | None:
             or base.get("base_depth_pct") is None or base["base_depth_pct"] > FLAT_MAX_DEPTH_PCT):
         return None
     dry, quiet = vcp_spec._dryup(d, len(d) - FLAT_PIVOT_DAYS, d["volume"].iloc[-FLAT_PIVOT_DAYS:], DRYUP_QUIET_RATIO)
-    return {"pivot": float(base["bh"]), "low": float(d["low"].iloc[-FLAT_STOP_DAYS:].min()),
+    pivot = float(base["bh"])
+    if FLAT_PIVOT_HIGHEST and base["bh_date"] in d.index:
+        # F2 (1.66): the base's highest high through the bar judged, not its last confirmed swing high
+        pivot = max(pivot, float(d["high"].iloc[int(d.index.get_loc(base["bh_date"])):].max()))
+        if base.get("base_low") and (pivot - base["base_low"]) / pivot * 100 > FLAT_MAX_DEPTH_PCT:
+            return None
+    return {"pivot": pivot, "low": float(d["low"].iloc[-FLAT_STOP_DAYS:].min()),
             "depth": float(base["base_depth_pct"]), "dry": float(dry), "quiet": int(quiet),
             "dried": bool(dry <= DRYUP_RATIO or quiet >= DRYUP_QUIET_DAYS), "base_date": str(base["bh_date"].date())}
 
@@ -792,9 +815,11 @@ def reclaim_base(base: dict, d: pd.DataFrame) -> dict | None:
     The detector keeps a base whose high is poked without a decisive close and raises its ceiling to the poke
     (`bh_peak_date`); that poke, at least FLAT_MIN_DAYS after the base began and at most RECLAIM_DAYS sessions ago,
     is a failed breakout when the low since it fell at least RECLAIM_MIN_DROP_PCT under its high (the shakeout)
-    without breaking the low the base had before it. Its pivot is the poke's high; `low` is the low of the last
-    RECLAIM_STOP_DAYS sessions (the stop's anchor). Shared by evaluate and the chart. Says nothing about the close:
-    the caller asks for it to sit within COIL_PCT under the pivot."""
+    without breaking the low the base had before it. Its pivot is the poke's high; `age` is the sessions since it.
+    The scan looks back RECLAIM_SCAN_DAYS; the plan keeps an age up to RECLAIM_DAYS and anchors the stop under the
+    last RECLAIM_STOP_DAYS sessions (`reclaim_low`), so both are plan rules and a variant on them reuses the scan.
+    Shared by evaluate and the chart. Says nothing about the close: the caller asks for it to sit within COIL_PCT
+    under the pivot."""
     if (not RECLAIM_ON or not base.get("bh") or base.get("bh_date") is None or base.get("bh_peak_date") is None
             or base["fail"] in ("VCP-01", "VCP-02", "VCP-03", "VCP-05")):
         return None
@@ -802,7 +827,7 @@ def reclaim_base(base: dict, d: pd.DataFrame) -> dict | None:
     if base["bh_date"] not in idx or base["bh_peak_date"] not in idx:
         return None
     s0, pk, t = int(idx.get_loc(base["bh_date"])), int(idx.get_loc(base["bh_peak_date"])), len(d) - 1
-    if pk - s0 < FLAT_MIN_DAYS or not 1 <= t - pk <= RECLAIM_DAYS:
+    if pk - s0 < FLAT_MIN_DAYS or not 1 <= t - pk <= RECLAIM_SCAN_DAYS:
         return None
     high, low = d["high"].to_numpy(float), d["low"].to_numpy(float)
     peak, ceiling, held = float(high[pk]), float(high[s0:pk].max()), float(low[s0:pk].min())
@@ -811,10 +836,22 @@ def reclaim_base(base: dict, d: pd.DataFrame) -> dict | None:
     drop = (peak - shake_low) / peak * 100
     if drop < RECLAIM_MIN_DROP_PCT or shake_low <= held:
         return None
-    return {"pivot": peak, "low": float(low[-RECLAIM_STOP_DAYS:].min()), "ceiling": ceiling, "base_low": held,
+    return {"pivot": peak, "age": t - pk, "ceiling": ceiling, "base_low": held,
             "shake_low": shake_low, "shake_date": str(idx[k].date()), "drop": drop,
             "depth": (peak - min(held, shake_low)) / peak * 100,
             "peak_date": str(idx[pk].date()), "base_date": str(base["bh_date"].date())}
+
+
+def cheat_near_sma50(d: pd.DataFrame, buy: float) -> bool:
+    """L4 (CHEAT_MIN_SMA50_PCT): does a cheat's buy sit less than that % above the 50-day of `d`'s last bar?
+    build_plans and the chart."""
+    s50 = float(d["sma50"].iloc[-1]) if "sma50" in d else float(d["close"].iloc[-50:].mean())
+    return bool(CHEAT_MIN_SMA50_PCT and s50 == s50 and buy < s50 * (1 + CHEAT_MIN_SMA50_PCT / 100))
+
+
+def reclaim_low(d: pd.DataFrame) -> float:
+    """S10's stop anchor: the low of the last RECLAIM_STOP_DAYS sessions of `d` (build_plans and the chart)."""
+    return float(d["low"].iloc[-RECLAIM_STOP_DAYS:].min())
 
 
 def base_diagnostics(r: dict, daily: pd.DataFrame) -> dict:
@@ -1207,11 +1244,20 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.65"
-    # 1.65 adds S10 behind RECLAIM_ON, off: with it off evaluate() detects exactly what 1.64 did (S10 is always
-    # False), so 1.64's cached rows stand. A variant turning it on has its own signal id and rescans.
+    version = "1.66"
+    # 1.65 and 1.66 add switches, all off: with them off evaluate() detects exactly what 1.64 did, so 1.64's
+    # cached rows stand. A variant turning on one evaluate() reads (RECLAIM_ON, FLAT_PIVOT_HIGHEST) rescans.
     signal_version = "1.64"
     changelog = (
+        ("1.66", "2026-11-11",
+         "The trade-review batch (research/minervini-trade-reviews.md), as research switches, all OFF so no rule "
+         "changes. CHEAT_MIN_SMA50_PCT (L4): refuse a cheat whose buy sits less than that % above the 50-day "
+         "(build_plans). FLAT_PIVOT_HIGHEST (F2): a flat base's pivot is its highest high through the bar judged, not "
+         "its last confirmed swing high (flat_base; read by evaluate). RESULTS_BLACKOUT_STRICT (F1 + F3): results on "
+         "the signal date block too, and a resting order is cancelled once results fall within the blackout "
+         "(spec.results_blackout, portfolio_sim). S10's window and stop move to the plan (RECLAIM_DAYS, "
+         "RECLAIM_STOP_DAYS signal-exempt; the scan looks back RECLAIM_SCAN_DAYS), so its variants share one scan. "
+         "signal_version stays 1.64."),
         ("1.65", "2026-11-11",
          "Adds S10, the reclaim after a failed breakout, behind a research switch, RECLAIM_ON, OFF so no rule "
          "changes (with RECLAIM_DAYS, RECLAIM_MIN_DROP_PCT, RECLAIM_STOP_DAYS). RADICO's flat base was bought on 20 Sep "
@@ -1926,7 +1972,8 @@ class MinerviniSpecStrategy(Strategy):
     # CHEAT_BLOCK_VCP09) and the watch flags' are not here: a variant on one of them rescans.
     signal_exempt_consts = (
         # the plan: build_plans, signal_meta, classify
-        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "REENTRY_AFTER_LIGHT_VOLUME", "CHEAT_MIN_CONTRACTIONS", "NOMINAL_TARGET_R",
+        "STOP_BUFFER_PCT", "MAX_STOP_PCT", "PP_MAX_STOP_PCT", "MAX_ENTRIES_PER_BASE", "REENTRY_AFTER_LIGHT_VOLUME", "CHEAT_MIN_CONTRACTIONS", "CHEAT_MIN_SMA50_PCT",
+        "RECLAIM_DAYS", "RECLAIM_STOP_DAYS", "NOMINAL_TARGET_R",
         "MIN_STRUCTURAL_R", "MEASURED_MOVE_RR", "MAX_BASE_COUNT", "OVERHEAD_CLUSTER_ATR", "TICK_MAX_PCT",
         # the exits (portfolio_sim's ExitPolicy)
         "BREAKEVEN_R", "PARTIAL_R", "PARTIAL_BY_SEPA", "FAIL_DAYS", "FAIL_SMA20_DAYS", "STRENGTH_EXT_PCT", "STRENGTH_FRAC",
@@ -1934,7 +1981,7 @@ class MinerviniSpecStrategy(Strategy):
         "GAP_BACKSTOP_R", "GAP_BACKSTOP_ATR", "ADD_ON_NEW_BASE", "ADD_MAX",
         "REACTION_ADD", "REACTION_ADD_MAX", "REACTION_PB_PCT", "REACTION_NEAR_SMA20_PCT",
         "TIME_STOP_DAYS", "LIGHT_VOLUME_EXIT",
-        "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT", "RESULTS_FIRST_PER_QUARTER",
+        "S2_FILL_NEEDS_VOLUME", "RESULTS_BY_ANNOUNCEMENT", "RESULTS_FIRST_PER_QUARTER", "RESULTS_BLACKOUT_STRICT",
         # sizing, the market filter and the book (backtesting/spec.py, --spec)
         "PE_WINDOW", "PE_WARMUP", "PE_PILOT_FRAC", "PE_PRESS_NET_R", "MKT_CONFIRM_DAYS",
         "MKT_GUIDE", "MKT_INDEX_SMA", "MKT_BREADTH_MIN_PCT", "MKT_BREADTH_RISING_DAYS",
@@ -2637,7 +2684,9 @@ class MinerviniSpecStrategy(Strategy):
         "earnings calendar; in a backtest from the recorded results announcements (RESULTS_BY_ANNOUNCEMENT "
         "is {RESULTS_BY_ANNOUNCEMENT}), or the filing date for a company with none recorded. A quarter counts "
         "once, on its earliest record (RESULTS_FIRST_PER_QUARTER is {RESULTS_FIRST_PER_QUARTER}): a filing "
-        "broadcast weeks after the board meeting is not a second announcement.",
+        "broadcast weeks after the board meeting is not a second announcement. RESULTS_BLACKOUT_STRICT "
+        "({RESULTS_BLACKOUT_STRICT}; 1.66, a research switch): results on the signal date block too, and a resting "
+        "buy-stop is cancelled once its stock's next results fall within {EARNINGS_BLACKOUT_DAYS} days.",
         "The stock is too thin. It must trade at least {TURNOVER_FLOOR_BP_INR} basis points (India) or "
         "{TURNOVER_FLOOR_BP_USD} (US) of the whole market's daily turnover (50-day average of volume × close). "
         "The floor grows with the market: set to ₹{MIN_TURNOVER_INR_CR} crore and ${MIN_TURNOVER_USD_M} million "
@@ -2744,12 +2793,17 @@ class MinerviniSpecStrategy(Strategy):
                                                    "up."),
         ("Flat base, stop area", "FLAT_STOP_DAYS", "S6/S8: sessions before the breakout whose low sets the stop."),
         ("Flat base buy-stop", "FLAT_COIL_ON", "1 = S8 rests a buy-stop at a coiled flat base's high; 0 = off."),
+        ("Flat base pivot, highest high", "FLAT_PIVOT_HIGHEST", "1.66, research switch: 1 = S6 / S8's pivot is the "
+         "base's highest high through the bar judged, not its last confirmed swing high; 0 = off."),
         ("Reclaim after a failed breakout", "RECLAIM_ON", "1.65, research switch: 1 = S10 rests a buy-stop above a "
          "failed breakout's high once the base is shaken out and the close is back under it; 0 = off."),
-        ("Reclaim window", "RECLAIM_DAYS", "S10: sessions after the failed breakout's high in which it may set up."),
+        ("Reclaim window", "RECLAIM_DAYS", "S10: sessions after the failed breakout's high in which it may set up "
+         "(a plan rule since 1.66)."),
+        ("Reclaim scan window", "RECLAIM_SCAN_DAYS", "S10: how far back the scan looks for the failed breakout; "
+         "the plan keeps RECLAIM_DAYS of it."),
         ("Reclaim shakeout", "RECLAIM_MIN_DROP_PCT", "S10: the low since that high at least this % under it, "
          "above the base's earlier low."),
-        ("Reclaim stop area", "RECLAIM_STOP_DAYS", "S10: sessions whose low sets the stop."),
+        ("Reclaim stop area", "RECLAIM_STOP_DAYS", "S10: sessions whose low sets the stop (a plan rule since 1.66)."),
         ("Shakeout", "SHAKEOUT_ON", "1 = S9 buys a base's breakout after a shakeout; 0 = off."),
         ("Shakeout, pullbacks looked at", "SHAKEOUT_LOOKBACK_LEGS", "S9: the last this many pullbacks may hold the shakeout."),
         ("Shakeout, lows undercut", "SHAKEOUT_PRIOR_LEGS", "S9: the shakeout's low is under the lows of this many pullbacks before it."),
@@ -2830,6 +2884,10 @@ class MinerviniSpecStrategy(Strategy):
         ("Low cheat", "LOW_CHEAT_ENABLED", "MV-03 on (1) or off (0)."),
         ("Results blackout", "EARNINGS_BLACKOUT_DAYS", "Days before results with no new buy."),
         ("Blackout on announcements", "RESULTS_BY_ANNOUNCEMENT", "1.51: the backtest's blackout keys on recorded results announcements (1) or on filing dates only (0)."),
+        ("Strict results blackout", "RESULTS_BLACKOUT_STRICT", "1.66, research switch: 1 = results on the signal "
+         "date block too, and a resting order is cancelled once results fall within the blackout; 0 = off."),
+        ("Cheat distance above the 50-day", "CHEAT_MIN_SMA50_PCT", "1.66, research switch: a cheat (S3 / S4) "
+         "whose buy sits less than this % above the 50-day is refused (0 = off)."),
         ("One announcement per quarter", "RESULTS_FIRST_PER_QUARTER", "1.52: a quarter's earliest record is its announcement (1); 0 = every record counts, as in 1.51."),
         ("Preferred uptrend", "SMA200_RISING_PREF_BARS", "W5: sessions over which the 200-day should have risen."),
         ("Preferred uptrend required", "SMA200_PREF_REQUIRED", "1 = W5 holds the plan at WATCH (no new buy); 0 = noted only."),
@@ -3084,7 +3142,7 @@ class MinerviniSpecStrategy(Strategy):
         rc = reclaim_base(today, d) if RECLAIM_ON and not (flat or flat_coil or mv01 or mv02 or near) else None
         if rc is not None and rc["pivot"] * (1 - COIL_PCT / 100) <= close <= rc["pivot"]:
             reclaim = True
-            e.update(reclaim_pivot=rc["pivot"], reclaim_low=rc["low"], reclaim_depth_pct=rc["depth"],
+            e.update(reclaim_pivot=rc["pivot"], reclaim_age=rc["age"], reclaim_depth_pct=rc["depth"],
                      reclaim_base_date=rc["base_date"], reclaim_peak_date=rc["peak_date"],
                      reclaim_shake_low=rc["shake_low"], reclaim_shake_date=rc["shake_date"])
         result.setups[RECLAIM] = reclaim
@@ -3232,6 +3290,10 @@ class MinerviniSpecStrategy(Strategy):
             cheat = power = False
         reclaim = bool(result.setups.get(RECLAIM)) and not (flat or shake or result.setups.get(MV01)
                                                              or result.setups.get(MV02) or result.setups.get(NEAR))
+        if reclaim and int(e.get("reclaim_age") or 0) > RECLAIM_DAYS:
+            reclaim = False          # seen by the scan's wider window, outside the plan's
+            if not (cheat or power):
+                return PlanChoice(None, None, f"reclaim more than {RECLAIM_DAYS} sessions after the failed breakout")
         if reclaim:
             cheat = power = False
         # A power play has no base, so its pivot and stop come from the FLAG, not from
@@ -3252,6 +3314,7 @@ class MinerviniSpecStrategy(Strategy):
             # S10: a buy-stop just above the failed breakout's high, stopped under the last RECLAIM_STOP_DAYS sessions
             setup, pivot = RECLAIM, float(e["reclaim_pivot"])
             entry = pivot_buy_stop(pivot, cfg.tick_size)
+            e["reclaim_low"] = reclaim_low(ctx.daily)
             stop = pivot_stop(e["reclaim_low"], cfg.tick_size)
         elif shake:
             # S9: the base's highest high is the pivot; bought at the next open after the close through it, and
@@ -3270,6 +3333,8 @@ class MinerviniSpecStrategy(Strategy):
                 return PlanChoice(None, None, "missing cheat shelf")
             if CHEAT_MIN_CONTRACTIONS and int(e.get("contractions") or 0) < CHEAT_MIN_CONTRACTIONS:
                 return PlanChoice(None, None, f"cheat on a base with fewer than {CHEAT_MIN_CONTRACTIONS} pullbacks")
+            if CHEAT_MIN_SMA50_PCT and cheat_near_sma50(ctx.daily, float(ctx.close)):
+                return PlanChoice(None, None, f"cheat within {CHEAT_MIN_SMA50_PCT:g}% above the 50-day")
             pivot = float(cp)
             entry = float(ctx.close)          # confirmed by the close, as EN-02 is since v1.1
             stop = pivot_stop(cl, cfg.tick_size)
@@ -4209,8 +4274,9 @@ class MinerviniSpecStrategy(Strategy):
             if flat_base(t, daily.iloc[: i + 1]) is not None or t.get("ok"):
                 continue
             rc = reclaim_base(t, daily.iloc[: i + 1])
-            if (rc is not None and rc["pivot"] * (1 - COIL_PCT / 100) <= close[i] <= rc["pivot"]
+            if (rc is not None and rc["age"] <= RECLAIM_DAYS and rc["pivot"] * (1 - COIL_PCT / 100) <= close[i] <= rc["pivot"]
                     and self._screen_miss(cfg, daily, i) is None):
+                rc = {**rc, "low": reclaim_low(daily.iloc[: i + 1])}
                 key = t["bh_date"]
                 if found.get(key, {}).get("fill") is not None:
                     continue
@@ -4910,6 +4976,7 @@ class MinerviniSpecStrategy(Strategy):
                         "dash": role != "buy"} for role, v, lab in levels]
             ok_risk, ok_r = risk_pct <= MAX_STOP_PCT, (not MEASURED_MOVE_RR) or (r_mult or 0) >= MIN_STRUCTURAL_R
             ok_pb = not CHEAT_MIN_CONTRACTIONS or len(cd or ()) >= CHEAT_MIN_CONTRACTIONS
+            near50 = cheat_near_sma50(daily.iloc[: ci + 1], entry)   # 1.66, L4: build_plans' test, on the signal bar
             c_screen = self._screen_miss(cfg, daily, ci)   # the cheat is bought only on a session that passes it
             c_checks = [
                 {"code": "TT", "name": "Screen", "value": f"fails on {c_from}: {c_screen}" if c_screen
@@ -4937,7 +5004,10 @@ class MinerviniSpecStrategy(Strategy):
                 # 1.63's plan rule, the same test build_plans applies (the stored `contractions` is len(depths))
                 {"code": cz, "name": "Pullbacks", "value": f"{len(cd or ())}",
                  "limit": f"at least {CHEAT_MIN_CONTRACTIONS}", "state": "pass" if ok_pb else "fail"},
-            ] if CHEAT_MIN_CONTRACTIONS else []) + [
+            ] if CHEAT_MIN_CONTRACTIONS else []) + ([
+                {"code": cz, "name": "Above the 50-day", "value": f"{(entry / float(daily['sma50'].iloc[ci]) - 1) * 100:.1f}%",
+                 "limit": f"at least {CHEAT_MIN_SMA50_PCT:g}%", "state": "fail" if near50 else "pass"},
+            ] if CHEAT_MIN_SMA50_PCT else []) + [
                 {"code": "SL-03", "name": "Risk", "value": f"{risk_pct:.1f}%", "limit": f"at most {MAX_STOP_PCT:g}%",
                  "state": "pass" if ok_risk else "fail"},
             ] + (self._target_checks(px, target, c_uncapped, c_capped, r_mult, ok_r) if MEASURED_MOVE_RR
@@ -4945,6 +5015,7 @@ class MinerviniSpecStrategy(Strategy):
             skip = ([f"the stock fails the strategy's screen on {c_from} -- {c_screen}"] if c_screen else []) + \
                    ([] if ok_pb else [f"the base has {len(cd or ())} pullback{'' if len(cd or ()) == 1 else 's'}, under the "
                                       f"{CHEAT_MIN_CONTRACTIONS} a cheat needs"]) + \
+                   ([f"the buy is within {CHEAT_MIN_SMA50_PCT:g}% above the 50-day"] if near50 else []) + \
                    ([] if ok_risk else [f"risk is {risk_pct:.1f}%, over the {MAX_STOP_PCT:g}% limit"]) + \
                    ([] if ok_r else [f"it projects {_rr(r_mult, False)}, under the {MIN_STRUCTURAL_R:g}:1 minimum" if r_mult else "no objective"]) + \
                    ([f"it is the {_ordinal(cnt['n'])} base of its advance (at most the {_ordinal(MAX_BASE_COUNT)})"]

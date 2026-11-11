@@ -479,7 +479,7 @@ def pilot_signal(market: str, bench: pd.DataFrame, full: pd.Series) -> pd.Series
 
 
 def results_blackout(signals: list, market: str, days: int, by_announcement: bool = True,
-                     first_per_quarter: bool = True) -> tuple[list, dict]:
+                     first_per_quarter: bool = True, strict: bool = False) -> tuple[list, dict]:
     """Drop a signal whose company announces results within `days` calendar days AFTER the signal date.
 
     The dates are the results ANNOUNCEMENTS (`financials.announcements`, the `results_announcements` table):
@@ -504,7 +504,12 @@ def results_blackout(signals: list, market: str, days: int, by_announcement: boo
     A quarter blocks once, before its earliest record (`first_per_quarter`, `financials.announcements`): NSE's
     XBRL broadcast of results already out at the board meeting arrives weeks later, and until minervini 1.52 it
     counted as an announcement of its own, so India's blackout also blocked the fortnight just after results.
-    On the 1.51 India optimise run that removed 17 trades with nothing due; `first_per_quarter=False` restores it."""
+    On the 1.51 India optimise run that removed 17 trades with nothing due; `first_per_quarter=False` restores it.
+
+    `strict` (minervini RESULTS_BLACKOUT_STRICT, 1.66): an announcement ON the signal date blocks too (by default only
+    a later one does, so a signal on results day was bought the next open, into the reaction), and each kept signal
+    carries `blackout_from` -- its stock's next results less `days` -- from which portfolio_sim cancels the order: a
+    buy-stop rests up to 10 sessions, so one placed before the window could otherwise fill inside it."""
     from ..marketdata import financials
     syms = sorted({s.symbol for s in signals})
     if not syms or not days:
@@ -529,11 +534,13 @@ def results_blackout(signals: list, market: str, days: int, by_announcement: boo
     gone = {"blocked": []}
     for s in signals:
         d = pd.Timestamp(s.date)
-        nxt = next((f for f in dates.get(s.symbol, []) if f > d), None)
+        nxt = next((f for f in dates.get(s.symbol, []) if (f >= d if strict else f > d)), None)
         if nxt is not None and (nxt - d).days <= days:
             blocked += 1
             gone["blocked"].append(s)
         else:
+            if strict and nxt is not None:
+                s.meta = {**(s.meta or {}), "blackout_from": str((nxt - pd.Timedelta(days=days)).date())}
             kept.append(s)
     logger.info("Results blackout (%d days): kept %d of %d signals (%d of %d symbols on announcement dates)",
                 days, len(kept), len(signals), by_announcement, len(syms))

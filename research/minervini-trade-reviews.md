@@ -29,6 +29,33 @@ Already measured and rejected, so not lessons on their own: selling early on wea
 under the pivot, a run of down days; [CAGR gaps](minervini-cagr-gaps.md), early-weakness exits), and a cheat's
 pullback count or contraction pattern (textbook cheat event study, [system-swing-longs](system-swing-longs.md) §6).
 
+## The batch test (1.66 switches), queued 2026-11-11 — pass rules fixed before any run
+
+All runs: `minervini`, optimise stage (2013–2021, in-sample), both markets, 1.66 with its defaults (= 1.64's rules)
+plus the switch named. 1.66 adds each change as a research switch, off: `CHEAT_MIN_SMA50_PCT` (L4),
+`FLAT_PIVOT_HIGHEST` (F2), `RESULTS_BLACKOUT_STRICT` (F1 + F3), and S10's window and stop as plan rules
+(`RECLAIM_DAYS`, `RECLAIM_STOP_DAYS`; the scan looks back `RECLAIM_SCAN_DAYS` = 30).
+
+| Run | Setting | Why |
+|---|---|---|
+| Baseline | 1.66 defaults | Must reproduce B + 8% cap (#1517 India 10.31% / −18.0%, #1518 US −0.13% / −35.8%) within 0.05 points, or the batch stops until the difference is explained |
+| L1a–d | `RECLAIM_ON=1`, `RECLAIM_DAYS` 20 or 30 × `RECLAIM_STOP_DAYS` 5 or 3 | the re-entry after a failed breakout |
+| L4 | `CHEAT_MIN_SMA50_PCT=3` | the one value fixed from the review; no other is tried |
+| Fixes | `FLAT_PIVOT_HIGHEST=1 RESULTS_BLACKOUT_STRICT=1` | F1 + F2 + F3 together |
+
+**Pass rules:**
+
+1. **A lesson (L1, L4)** is adopted only if it raises CAGR against the baseline in **both** markets with max drawdown
+   no more than 1 point deeper in either. A win in one market is recorded, not adopted.
+2. **L1 has four variants**, so it is judged as one: among the variants that pass rule 1, the one with the largest
+   mean CAGR gain across the two markets is chosen; if none passes, L1 fails. The other three are reported, not used.
+3. **The fixes** are corrections, not tuning: adopted unless they lower CAGR in **both** markets. A fall in one market
+   is accepted and recorded.
+4. **Everything adopted is then run together** as the 1.67 candidate, which must itself pass rule 1 against the
+   baseline; if it does not, only the single best adopted change goes in, and the rest are recorded.
+5. Reported whatever the outcome, with the stage named. The 2022-onward verify years were already used for 1.64,
+   so any verify of 1.67 is a second look at them and is labelled that way; the clean test is forward data.
+
 ## Batch review — every trade of run 4089 (India, 1.63, optimise 2013–2021, in-sample)
 
 `swing_screener.backtesting.trade_review --run 4089` applies the checks above to all 177 trades (72 won, 105 lost)

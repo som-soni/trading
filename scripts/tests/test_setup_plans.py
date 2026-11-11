@@ -48,7 +48,7 @@ def main() -> int:
     # Research switches that are off by default, for the same reason: S7 (NEAR_MISS, off since 1.64 -- its VCP
     # params are read at import, so rebuilt here) and S10 (RECLAIM_ON, 1.65).
     import dataclasses
-    ms.NEAR_MISS, ms.RECLAIM_ON = 1, 1
+    ms.NEAR_MISS, ms.RECLAIM_ON, ms.CHEAT_MIN_SMA50_PCT, ms.FLAT_PIVOT_HIGHEST = 1, 1, 3.0, 1
     ms.VCP = dataclasses.replace(ms.VCP, near_final_ref_ratio=ms.NEAR_FINAL_REF_RATIO,
                                  near_tight_min_days=ms.NEAR_TIGHT_MIN_DAYS, near_tight_pct=ms.NEAR_TIGHT_PCT,
                                  near_dryup_ratio=ms.NEAR_DRYUP_RATIO)

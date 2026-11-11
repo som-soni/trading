@@ -622,7 +622,7 @@
   },
   "minervini": {
     "family": "minervini",
-    "fingerprint": "86c64319",
+    "fingerprint": "ebac5f47",
     "params": {
       "ADD_MAX": 2,
       "ADD_ON_NEW_BASE": 0.0,
@@ -637,6 +637,7 @@
       "CHEAT_BLOCK_VCP09": 0,
       "CHEAT_DRYUP": 1,
       "CHEAT_MIN_CONTRACTIONS": 0,
+      "CHEAT_MIN_SMA50_PCT": 0.0,
       "CHEAT_RALLY_FRAC": 0.33,
       "CHEAT_SHELF_DAYS": 7,
       "CHEAT_SHELF_PCT": 8.0,
@@ -658,6 +659,7 @@
       "FLAT_MAX_DEPTH_PCT": 15.0,
       "FLAT_MIN_DAYS": 20,
       "FLAT_PIVOT_DAYS": 10,
+      "FLAT_PIVOT_HIGHEST": 0,
       "FLAT_STOP_DAYS": 5,
       "FUND_EPS_GROWTH_MIN_PCT": 20.0,
       "FUND_MARGIN_SLACK_PP": 1.0,
@@ -750,8 +752,10 @@
       "RECLAIM_DAYS": 20,
       "RECLAIM_MIN_DROP_PCT": 5.0,
       "RECLAIM_ON": 0,
+      "RECLAIM_SCAN_DAYS": 30,
       "RECLAIM_STOP_DAYS": 5,
       "REENTRY_AFTER_LIGHT_VOLUME": 0,
+      "RESULTS_BLACKOUT_STRICT": 0,
       "RESULTS_BY_ANNOUNCEMENT": 1,
       "RESULTS_FIRST_PER_QUARTER": 1,
       "RS_MIN_RANK": 70,
@@ -879,7 +883,7 @@
         "W5"
       ]
     },
-    "version": "1.65"
+    "version": "1.66"
   },
   "minervini_coil": {
     "family": "minervini",

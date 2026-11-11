@@ -833,6 +833,11 @@ def simulate(
                 continue
             bar = df.loc[today]
             meta = order["meta"]
+            # results now within the blackout window (spec.results_blackout strict): the order is withdrawn
+            if meta.get("blackout_from") and today >= pd.Timestamp(meta["blackout_from"]):
+                skip("results due: resting order cancelled", sym, today)
+                del pending[sym]
+                continue
             if meta.get("order") == "close":
                 triggered.append((sym, order, bar))
                 continue
