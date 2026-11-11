@@ -10,9 +10,10 @@ Two independent views, so each catches what the other misses:
     standalone command, step by step, with timestamps, results and errors.
 
 The expected trading day: a market's session counts once its close plus a data
-delay has passed (US 17:30 New York, India 17:00 Kolkata), on weekdays. Exchange
-holidays are not modelled, so being one trading day behind is a warning
-("a holiday, or today's update has not run yet"), two or more is stale.
+delay has passed (US 17:30 New York, India 17:00 Kolkata), on exchange trading days -- weekdays less
+the market's holiday calendar (marketdata/freshness.py). Being one trading day behind is a warning
+("a holiday, or today's update has not run yet": a one-off closure may be missing from the calendar),
+two or more is stale.
 """
 
 import datetime as dt
@@ -36,8 +37,8 @@ AGE_LIMITS = {"universe": (8, 15), "industries": (35, 60), "names": (60, 120), "
 LOG_TAIL_LINES = 150
 
 
-def _session_item(key: str, label: str, d, expected, note: str = "") -> dict:
-    lag = _lag(d, expected)
+def _session_item(key: str, label: str, d, expected, note: str = "", market: str | None = None) -> dict:
+    lag = _lag(d, expected, market)
     status = "missing" if lag is None else "ok" if lag == 0 else "warn" if lag == 1 else "stale"
     text = ("no data" if d is None else "up to date" if lag == 0
             else "1 trading day behind — a holiday, or today's update has not run yet" if lag == 1
@@ -73,7 +74,7 @@ def _snapshot_item(market: str, expected) -> dict:
     ds = snapshot.dates(market)
     d = ds[-1] if ds else None
     held = f"{len(ds)} stored, back to {ds[0].isoformat()}" if ds else ""
-    item = _session_item("screens_snapshot", "Stock snapshot (screens)", d, expected)
+    item = _session_item("screens_snapshot", "Stock snapshot (screens)", d, expected, market=market)
     stale = snapshot.stale_inputs(market) if d else []
     if stale:
         fields = sorted({f for x in stale for f in x["fields"]})
@@ -117,12 +118,12 @@ def freshness(q, price_day) -> dict:
         items = []
         d, partial, n = price_day(m)
         note = f"{n:,} symbols on that day" + (f" · {partial[0].isoformat()} partly loaded ({partial[1]:,} symbols)" if partial else "")
-        items.append(_session_item("prices", "Prices", d, exp, note))
+        items.append(_session_item("prices", "Prices", d, exp, note, market=m))
         b = q("SELECT max(date) FROM breadth_daily WHERE market=%s", (m,))[0][0]
         items.append(_session_item("breadth", "Market breadth", min(b, d) if (b and d) else b, exp,
-                                   "" if not (b and d) or b >= d else f"prices reach {d.isoformat()}"))
+                                   "" if not (b and d) or b >= d else f"prices reach {d.isoformat()}", market=m))
         ix = q("SELECT max(date) FROM index_series WHERE market=%s AND series=%s", (m, BENCH_SERIES[m]))[0][0]
-        items.append(_session_item("indexes", "Index & VIX series", ix, exp))
+        items.append(_session_item("indexes", "Index & VIX series", ix, exp, market=m))
         from ..marketdata import rates
         rk = [r.key for r in rates.RATES.get(m, []) if r.kind == "bond"]
         if rk:
@@ -133,21 +134,21 @@ def freshness(q, price_day) -> dict:
         last_d = dt.date.fromisoformat(last[:10]) if last else None
         latest = sorted(s for s, r in runs if r[:10] == (last or "")[:10])
         items.append(_session_item("screening", "Screening", last_d, exp,
-                                   f"strategies run that day: {', '.join(latest)}" if latest else ""))
+                                   f"strategies run that day: {', '.join(latest)}" if latest else "", market=m))
         items.append(_snapshot_item(m, exp))
         sd = q("SELECT max(date) FROM sector_daily WHERE market=%s", (m,))[0][0]
-        items.append(_session_item("sectors", "Sector ranking (Sectors, themes)", sd, exp))
+        items.append(_session_item("sectors", "Sector ranking (Sectors, themes)", sd, exp, market=m))
         pm = q("SELECT max(date) FROM postmarket_daily WHERE market=%s", (m,))[0][0]
-        items.append(_session_item("postmarket", "Post-market analysis", pm, exp))
+        items.append(_session_item("postmarket", "Post-market analysis", pm, exp, market=m))
         nav = q("SELECT max(date) FROM fund_nav WHERE market=%s", (m,))[0][0]
         if nav:
-            items.append(_session_item("funds", "Mutual fund NAVs", nav, exp))
+            items.append(_session_item("funds", "Mutual fund NAVs", nav, exp, market=m))
         if q("SELECT 1 FROM index_series WHERE market=%s AND series='FII_NET' LIMIT 1", (m,)):
             fl = q("SELECT max(date) FROM index_series WHERE market=%s AND series='FII_NET'", (m,))[0][0]
-            items.append(_session_item("flows", "FII / DII flows", fl, exp))
+            items.append(_session_item("flows", "FII / DII flows", fl, exp, market=m))
         if q("SELECT to_regclass('derivatives_bhav') IS NOT NULL")[0][0] and q("SELECT 1 FROM derivatives_bhav WHERE market=%s LIMIT 1", (m,)):
             fo = q("SELECT max(trade_date) FROM derivatives_bhav WHERE market=%s", (m,))[0][0]
-            items.append(_session_item("fno", "F&O prices & open interest", fo, exp))
+            items.append(_session_item("fno", "F&O prices & open interest", fo, exp, market=m))
         items.append(_job_item(q, "indicators", "Economic indicators (Macro)", "indicators", m))
         items.append(_job_item(q, "news", "News & events", "news", m))
         items.append(_job_item(q, "financials", "Company financials", "financials", m))

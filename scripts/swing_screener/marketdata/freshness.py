@@ -122,8 +122,11 @@ def lag(d: dt.date | None, expected: dt.date, market: str | None = None) -> int 
         return None
     if d >= expected:
         return 0
-    hol = holidays_between(market, d, expected) if market else []
-    return int(np.busday_count(d, expected, holidays=hol))
+    # trading days after `d` up to and including `expected` -- so a date that is itself a holiday (a NAV
+    # published on an exchange holiday) still counts the sessions after it
+    start, end = d + dt.timedelta(days=1), expected + dt.timedelta(days=1)
+    hol = holidays_between(market, start, expected) if market else []
+    return int(np.busday_count(start, end, holidays=hol))
 
 
 def ensure_day_counts() -> bool:
