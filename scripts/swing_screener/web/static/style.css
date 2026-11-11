@@ -167,7 +167,7 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .tfoot { margin-top: 8px; } .tfoot button[hidden] { display: none; }
 
 /* ---------- chart page */
-.chart-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.chart-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 6px; }
 .search { position: relative; display: inline-flex; align-items: center; }
 .search > svg { position: absolute; left: 9px; color: var(--muted); width: 14px; height: 14px; pointer-events: none; }
 .search input { padding-left: 30px; width: 170px; font-weight: 600; text-transform: uppercase; }
@@ -182,13 +182,16 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .menu-pop label { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
 .menu-pop label:hover { background: var(--line); }
 .menu-pop i { width: 12px; height: 3px; border-radius: 2px; }
-#trades { max-width: 260px; } #trades-field[hidden] { display: none; }
+#trades { max-width: 200px; } #trades-field[hidden] { display: none; }
 .stepper { display: inline-flex; align-items: center; gap: 2px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .stepper button { font-size: 18px; }
-.quote { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 2px 0 10px 44px; min-height: 26px; }
+/* one line: the name and sector give way (ellipsis) before anything wraps */
+.quote { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 6px 12px; margin: 0 0 6px 44px; min-height: 26px; white-space: nowrap; }
+.quote > * { flex: none; } .quote > .q-name, .quote > .q-sector, .quote > .hist-note { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 900px) { .quote { flex-wrap: wrap; } }
 .q-sym { font-size: 18px; } .q-px { font-size: 18px; font-weight: 600; color: var(--strong); font-variant-numeric: tabular-nums; }
 .q-range { display: inline-flex; align-items: center; gap: 8px; margin-left: 8px; font-variant-numeric: tabular-nums; }
-.q-setups { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 8px; font-size: 12px; }
+.q-setups { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-left: 4px; font-size: 12px; }
 .q-setups:empty { display: none; }
 .q-setups .sc { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border: 1px solid var(--line-2);
   border-radius: 11px; background: var(--panel); color: var(--text); font-size: 12px; cursor: pointer; }
@@ -199,10 +202,13 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .q-setups .sc.trade i { background: var(--up); border-color: var(--up); }
 .bar52 { position: relative; width: 90px; height: 4px; background: linear-gradient(90deg, var(--down), var(--line-2), var(--up)); border-radius: 2px; }
 .bar52 i { position: absolute; top: -3px; width: 2px; height: 10px; background: var(--strong); border-radius: 1px; transform: translateX(-1px); }
-.chart-layout { display: grid; grid-template-columns: 36px minmax(0, 1fr) var(--side-w, 320px) 40px; gap: 8px; }
+/* one height for the chart, the side panel and the icon rail: app.js sets the grid's height to the window's
+   foot (sizeChart) and the grid stretches all three to it, so they always end level and the page never scrolls */
+.chart-layout { display: grid; grid-template-columns: 36px minmax(0, 1fr) var(--side-w, 320px) 40px; gap: 8px; height: calc(100vh - 150px); min-height: 440px; position: relative; }
+body[data-page="chart"] main { padding-bottom: 0; }
 .chart-layout.collapsed { grid-template-columns: 36px minmax(0, 1fr) 40px; }
 .chart-layout.collapsed .side { display: none; }
-#chart { height: calc(100vh - 150px); min-height: 440px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); position: relative; overflow: hidden; }
+#chart { min-height: 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); position: relative; overflow: hidden; }
 .legend, .pane-legend { position: absolute; left: 10px; z-index: 5; pointer-events: none; font-size: 12px; font-variant-numeric: tabular-nums;
   display: grid; gap: 1px; justify-items: start; text-shadow: 0 0 3px var(--panel), 0 0 3px var(--panel); }
 .legend { top: 6px; }
@@ -227,7 +233,7 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .srow .sbtns svg { width: 15px; height: 15px; }
 .srow .sbtns button[data-a="x"]:hover { color: var(--down); }
 .tools { display: flex; flex-direction: column; gap: 2px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 0; align-self: start; position: relative;
-  overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }   /* capped at the chart's height (app.js sizeChart): scrolls in a short window */
+  overflow-y: auto; overflow-x: hidden; scrollbar-width: none; max-height: 100%; }   /* capped at the layout's height: scrolls in a short window */
 .tools::-webkit-scrollbar { display: none; }
 .tools > * { flex: 0 0 auto; }
 .tools button { height: 32px; padding: 0; justify-content: center; background: transparent; border: 0; border-radius: 4px; color: var(--muted); }
@@ -268,7 +274,7 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .dtb svg { width: 16px; height: 16px; }
 .dtext { position: absolute; z-index: 9; min-height: 26px; width: 300px; max-width: 46vw; background: var(--panel-2); border: 1px solid var(--accent);
   font-size: 14px; font-family: inherit; line-height: 1.35; padding: 3px 6px; resize: none; overflow: hidden; }
-.side { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); height: calc(100vh - 150px); min-height: 440px;
+.side { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-height: 0;
   position: relative; display: flex; flex-direction: column; min-width: 0; }
 .side-body { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; }
 .side-body > section { flex: none; }
@@ -280,8 +286,7 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 #side .side-body > section:first-of-type, #side .side-body > div > section:first-of-type, #side .wl-head { padding-right: 38px; }   /* the top header clears the close button */
 .side-grip:hover, .side-grip:active { background: linear-gradient(90deg, transparent 3px, var(--accent) 3px, var(--accent) 5px, transparent 5px); }
 /* TradingView's right icon bar */
-.rbar { display: flex; flex-direction: column; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
-  height: calc(100vh - 150px); min-height: 440px; }
+.rbar { display: flex; flex-direction: column; gap: 4px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); min-height: 0; }
 .rbar button { width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; background: transparent; border: 0;
   border-radius: 4px; color: var(--muted); cursor: pointer; }
 .rbar button svg { width: 20px; height: 20px; }
@@ -339,8 +344,10 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .wl a { padding: 2px 8px; border-radius: 4px; background: var(--panel-2); color: var(--text); font-size: 12px; font-weight: 500; }
 .wl a:hover { background: var(--line-2); } .wl a.cur { background: var(--accent); color: var(--on-accent); }
 @media (max-width: 1100px) {
+  /* a narrow window: the panel opens as a drawer over the chart's right side, so the chart keeps its width */
   .chart-layout, .chart-layout.collapsed { grid-template-columns: 36px minmax(0, 1fr) 40px; }
-  .side { grid-column: 1 / -1; grid-row: 2; height: 520px; }
+  .side { position: absolute; top: 0; bottom: 0; right: 48px; z-index: 30; width: min(var(--side-w, 320px), calc(100% - 140px));
+    box-shadow: -8px 0 24px var(--shadow-c); }
   .side-grip { display: none; }
   .quote { margin-left: 0; } .q-range { margin-left: 0; }
 }
@@ -1736,7 +1743,6 @@ a.lp-mention { text-decoration: underline dotted; text-underline-offset: 3px; }
 .sp-lab { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); margin: 8px 0 2px; }
 .sp-lab + .sp-strats, .sp-lab + .sp-chips { margin-top: 2px; }
 .sp-note { margin: 2px 0 6px; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.sp-more { font-size: 11px; color: var(--accent); cursor: pointer; align-self: center; padding: 0 2px; }
 /* a study's note in the legend stays one line; the full text is its tooltip (and, for a setups layer, the side panel) */
 .srow .snote { display: inline-block; max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .sp-row + .sp-row { margin-top: 0; } .btrs a[data-plive], section a[data-plive] { cursor: pointer; color: var(--accent); text-decoration: underline; }
@@ -2015,3 +2021,45 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
 .pf-group td.why { white-space: normal; min-width: 14em; }
 .strat-nav .sfull { display: block; font-size: 11px; font-weight: 400; color: var(--muted); margin: 1px 0 0 22px; font-variant-numeric: tabular-nums; }
 .strat-nav .sfull span { margin-right: 6px; }
+
+/* ---- Trade setups: the panel's compact list (only the selected row opens), the legend pager, a quiet lane */
+.wlpanel > .btrs { flex: 1; min-height: 0; align-content: start; }
+.btrs > * { min-width: 0; }   /* a grid item's min-width is its content's: a nowrap title widened the row past the panel */
+.sp-row .sp-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sp-more { font-size: 11px; color: var(--accent); cursor: pointer; align-self: center; padding: 0 2px; }
+/* the selected setup's detail, inside its panel row: the card's own markup, laid flat */
+.tt-card.tt-in { position: static; width: auto; max-height: none; overflow: visible; margin: 6px -9px -7px; border: 0; border-top: 1px solid var(--line-2);
+  border-radius: 0 0 6px 6px; box-shadow: none; background: var(--panel); cursor: default; }
+.tt-card.tt-in .tt-date { padding-top: 6px; }
+/* the pager in the setups layer's legend row: id and title, ‹ n of N ›, open the panel */
+.srow .tt-pager { display: inline-flex; align-items: center; gap: 4px; min-width: 0; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.srow .tt-pager .tt-title { color: var(--c); font-weight: 600; cursor: pointer; max-width: 34ch; overflow: hidden; text-overflow: ellipsis; }
+.srow .tt-pager button { border: 1px solid var(--line-2); background: var(--panel); color: var(--text); border-radius: 4px; min-width: 20px; height: 18px;
+  line-height: 14px; padding: 0 3px; cursor: pointer; font-size: 12px; }
+.srow .tt-pager button:disabled { opacity: .35; cursor: default; }
+.srow .snote:empty { display: none; }
+.tt-pill:not(.sel) { opacity: .55; background: color-mix(in srgb, var(--c) 8%, var(--panel)); color: var(--muted); }
+.tt-pill:not(.sel):hover { opacity: 1; color: var(--strong); }
+/* a lower pane's legend stops short of the price lines' titles on its right ("RS rank", "Pressure"…), one line
+   per row: the name never wraps, the values give way first, and a long note is an ⓘ whose tooltip holds it */
+.pane-legend { max-width: calc(100% - 190px); }
+.pane-legend .srow { white-space: nowrap; min-width: 0; max-width: 100%; }
+.pane-legend .srow .sname { flex: none; }
+.pane-legend .srow .svals { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.srow .snote.long { font-size: 0; max-width: none; pointer-events: auto; cursor: help; }
+.srow .snote.long::before { content: "ⓘ"; font-size: 12px; }
+.tt-card.tt-in .tt-sum { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; padding: 0 10px; margin: 6px 0; font-weight: 400; }
+.tt-card.tt-in .tt-zh { padding: 4px 10px; }
+/* the panel's head stays short so the list keeps the height: the note on one line (its tooltip has the rest),
+   the verdict filters on one row */
+#side .sp-note { -webkit-line-clamp: 1; }
+#side .sp-chips { flex-wrap: nowrap; gap: 3px; } #side .sp-chips .sp-chip { padding: 2px 6px; white-space: nowrap; }
+.tt-card.tt-keybox { margin: 8px -14px -12px; border-radius: 0; }
+.tt-card.tt-keybox .tt-key { max-height: 40vh; overflow: auto; }
+/* only the heading clears the panel's close button: the chips below get the full width */
+#side .side-body > div > section.sp-head { padding-right: 14px; } #side section.sp-head h3 { padding-right: 26px; }
+#side .sp-row { padding: 5px 9px; } #side .sp-row .sp-title { margin: 1px 0 0; }
+/* the toolbar holds one row down to ~1440px: a "Today" chip's name shortens (its tip has it in full) and,
+   below 1600px, the Backtest trades label folds into the select's own empty option */
+.q-setups .sc { max-width: 150px; } .q-setups .sc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 1600px) { #trades-field > span { display: none; } }

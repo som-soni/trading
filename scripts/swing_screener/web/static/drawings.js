@@ -207,17 +207,31 @@ const Drawings = (() => {
     const placed = [];
     let placing = null;   // { w, h } of the pane while annotations paint, else null
     const hits = (r) => placed.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h);
+    // the legend's rows (OHLC, one per study) and the setup lane's pills, in pane pixels (the pane starts at
+    // the chart element's top-left): a label under either could not be read
+    function legendRects() {
+      const o = chartEl.getBoundingClientRect();
+      return [...chartEl.querySelectorAll(".legend > *, .tt-lane .tt-pill")].map((e) => e.getBoundingClientRect()).filter((b) => b.width && b.height)
+        .map((b) => ({ x: b.left - o.left - chartEl.clientLeft - 4, y: b.top - o.top - chartEl.clientTop - 2, w: b.width + 8, h: b.height + 4 }));
+    }
     function place(x, y, w, h) {
       if (!placing) return { x, y };
       x = Math.max(2, Math.min(x, placing.w - w - 2));
       y = Math.max(2, Math.min(y, placing.h - h - 2));
-      // try the spot, then alternately below and above it, a label-height at a time
+      // try the spot, then alternately below and above it, a label-height at a time (far enough to get
+      // past the legend, which is seeded into `placed` as an obstacle)
       let r = { x, y, w, h };
-      for (let k = 1; hits(r) && k <= 12; k++) {
+      for (let k = 1; hits(r) && k <= 24; k++) {
         const dy = Math.ceil(k / 2) * (h + 2) * (k % 2 ? 1 : -1);
         const ny = y + dy;
         if (ny < 2 || ny > placing.h - h - 2) continue;
         r = { x, y: ny, w, h };
+      }
+      // no free row in reach (a column of labels pinned to the pane's left edge, under the legend): step sideways
+      for (let k = 1; hits(r) && k <= 8; k++) {
+        const nx = x + k * 40;
+        if (nx > placing.w - w - 2) break;
+        r = { x: nx, y, w, h };
       }
       placed.push(r);
       return r;
@@ -406,6 +420,7 @@ const Drawings = (() => {
             ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
             // strategy annotations first, so a user's own drawing always sits on top
             placed.length = 0; placing = { w, h };
+            placed.push(...legendRects());
             auto.forEach((it) => paintItem(ctx, it, w, h, false));
             placing = null;
             if (!opts.hide) items.forEach((it) => paintItem(ctx, it, w, h, it.id === selected));

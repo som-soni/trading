@@ -17,7 +17,10 @@ const Studies = (() => {
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   /** a custom study whose result arrives later (a server request) rewrites its legend note in place */
-  const setNote = (id, text) => document.querySelectorAll(`.srow[data-id="${id}"] .snote`).forEach((el) => { el.textContent = text; el.title = text; });
+  // a note longer than a glance (an explanation, not a status) reads as an ⓘ with the text as its tooltip
+  const LONG_NOTE = 70;
+  const setNote = (id, text) => document.querySelectorAll(`.srow[data-id="${id}"] .snote`).forEach((el) => {
+    el.textContent = text; el.title = text; el.classList.toggle("long", (text || "").length > LONG_NOTE); });
 
   // ------------------------------------------------------------- math
   const nul = (n) => new Array(n).fill(null);
@@ -151,7 +154,8 @@ const Studies = (() => {
   const STRATEGY_CHOICES = ["All"];
   const SHORT = { trend_pullback: "TP", chart_pattern: "CP", chart_pattern_cup: "CUP", breakout: "BO", donchian: "DC", minervini: "MV" };
   /** The Trade setups machinery every strategy's layer shares: one frame per setup with numbered zones,
-   *  the lane of pills to pick one, the card with each zone's writeup and checklist, and a selected
+   *  the lane of pills to pick one, a pager in its legend row, each zone's writeup and checklist (read in the
+   *  side panel), and a selected
    *  backtest run's own trade standing in for the illustrated entry. It knows nothing of any strategy:
    *  `load()` resolves to { setups (the bases_live / live_setups schema), background (shapes drawn
    *  behind, e.g. Stage 2), note }, `keyRows` is the colour key, `roles` adds role colours. */
@@ -165,6 +169,9 @@ const Studies = (() => {
     const a = idx(d0), b = Math.max(a, idx(d1));
     const span = Math.max(min, (b - a + 1) / fill), from = a - span * lead;
     chart.timeScale().setVisibleLogicalRange({ from, to: from + span });
+    // the chart's opening view ("the last N sessions") waits for the first animation frame: a pick made before
+    // it ran (a page still loading, a throttled tab) was then thrown away, so the first pick never moved the chart
+    ctx.claimView?.();
     ctx.fitPrice?.(price);
   };
 
@@ -187,7 +194,7 @@ const Studies = (() => {
         // a near miss (Minervini's S7): complete but for one rule missed narrowly -- amber, never the VCP's colour
         const NEAR = "#d4a017";
         const kindCol = (s) => (s.kind === "young" ? YOUNG : s.kind === "near" ? NEAR : col(kindKey(s)));
-        // a setup's reference, the same on its frame, its lane pill, the card and the side panel: its place in
+        // a setup's reference, the same on its frame, its lane pill, the pager and the side panel: its place in
         // the list (oldest first), so "#40" names one box wherever you look
         // A setup's reference: its base's start date, "#15Jan10", with a letter when more than one setup shares
         // that base ("#7Jan26b", ordered by end date). A count would shift whenever a longer window loads older
@@ -206,7 +213,7 @@ const Studies = (() => {
         };
         const ref = (s) => `#${s.ref || setups.indexOf(s) + 1}`;
         const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
-        let open = store("ttCardOpen") !== "0", keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
+        let keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
         const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
         const ICON = { pass: "✓", fail: "✗", skip: "·", warn: "!", young: "?" };
         // the selected run's trade on a setup, if it traded one: its record replaces the illustrated entry
@@ -233,75 +240,10 @@ const Studies = (() => {
         const tradeOf = (s) => ownerMap().get(s) || null;
         const isEntry = (z) => z.key === "entry" || z.key === "cheat";
 
-        // ---- the card: the focused setup's verdict, one row per zone, the open zone's writeup and checks
-        const card = document.createElement("div"); card.className = "tt-card"; card.hidden = true;
-        ctx.chartEl?.append(card);
-        // Where the card goes: wherever the viewer dragged it (remembered), else the side of the setup with
-        // more room, so it covers as little of the setup as it can.
-        let moved = null; try { moved = JSON.parse(store("ttCardPos") || "null"); } catch {}
-        // the legend (OHLC, the studies' values) is read on every bar: a card dragged over it, or placed
-        // where the legend has grown since, drops to just below it
-        const clearLegend = () => {
-          const lg = ctx.chartEl.querySelector(".legend"); if (!lg || card.hidden) return;
-          const a = card.getBoundingClientRect(), b = lg.getBoundingClientRect(), o = ctx.chartEl.getBoundingClientRect();
-          if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) card.style.top = `${b.bottom - o.top + 8}px`;
-        };
-        const place = (s) => { placeAt(s); clearLegend(); };
-        const placeAt = (s) => {
-          const el = ctx.chartEl, W = el.clientWidth, H = el.clientHeight;
-          if (moved) {
-            card.style.right = ""; card.style.left = `${Math.max(0, Math.min(W - card.offsetWidth, moved.x * W))}px`;
-            card.style.top = `${Math.max(0, Math.min(H - card.offsetHeight, moved.y * H))}px`; return;
-          }
-          const ts = chart.timeScale(), w = ts.width();
-          const px = (d) => ts.timeToCoordinate(times.find((t) => t >= d) || times.at(-1));
-          const x0 = s ? px(s.from) ?? 0 : 0, x1 = s ? px(s.to) ?? w : w;
-          // away from the entry zone when there is one (it is what matters most); else the roomier side
-          // beside the setup when there is room for the card on either side (the roomier one), so it
-          // covers none of it; otherwise away from the entry zone, which is what matters most
-          const ez = s && s.zones.find(isEntry), ex = ez ? px(ez.from) : null;
-          const cw = (card.offsetWidth || 300) + 16, roomL = Math.max(0, x0), roomR = w - Math.min(w, x1);
-          const left = roomL >= cw || roomR >= cw ? roomL > roomR : ex != null ? ex > w / 2 : x0 > w - x1;
-          card.style.right = left ? "" : `${chart.priceScale("right").width() + 8}px`;
-          card.style.left = left ? `${(chart.priceScale("left").width() || 0) + 8}px` : "";
-          card.style.top = left ? `${(el.querySelector(".legend")?.offsetHeight || 0) + 12}px` : "8px";
-        };
-        let drag = null;
-        card.addEventListener("mousedown", (e) => {
-          e.stopPropagation();   // not a chart drag or a drawing click
-          if (!e.target.closest(".tt-h") || e.target.closest("button")) return;
-          const r = card.getBoundingClientRect();
-          drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, x: e.clientX, y: e.clientY, moved: false };
-        });
-        const onMove = (e) => {
-          if (!drag) return;
-          if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 4) return;
-          drag.moved = true;
-          const host = ctx.chartEl.getBoundingClientRect();
-          moved = { x: (e.clientX - drag.dx - host.left) / host.width, y: (e.clientY - drag.dy - host.top) / host.height };
-          place(focus);
-        };
-        const onUp = () => {
-          if (!drag) return;
-          if (drag.moved) { store("ttCardPos", JSON.stringify(moved)); card.dataset.dragged = "1"; }
-          drag = null;
-        };
-        window.addEventListener("mousemove", onMove); window.addEventListener("mouseup", onUp);
-        new MutationObserver(() => { if (!card.isConnected) { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); } })
-          .observe(ctx.chartEl, { childList: true });
-        card.onclick = (e) => {
-          const z = e.target.closest("[data-z]"), act = e.target.closest("[data-a]");
-          if (card.dataset.dragged) { delete card.dataset.dragged; return; }   // the end of a drag, not a click
-          if (act?.dataset.a === "prev" || act?.dataset.a === "next") {
-            const k = setups.indexOf(focus) + (act.dataset.a === "next" ? 1 : -1);
-            if (setups[k]) { pinned = setups[k]; reveal(pinned); paint(); }
-            return;
-          }
-          if (act?.dataset.a === "dock") { moved = null; store("ttCardPos", "null"); place(focus); return; }
-          if (z) { zoneOpen = zoneOpen === z.dataset.z ? "" : z.dataset.z; store("ttZone", zoneOpen); renderCard(); return; }
-          if (e.target.closest(".tt-kh")) { keyOpen = !keyOpen; store("ttKeyOpen", keyOpen ? "1" : "0"); renderCard(); return; }
-          if (e.target.closest(".tt-h")) { open = !open; store("ttCardOpen", open ? "1" : "0"); renderCard(); }
-        };
+        // ---- the selected setup's text lives in ONE place, the side panel's Trade setups tab (app.js): `detail`
+        // below renders its dates, verdict, one row per zone (the open zone's writeup and checks) and the colour
+        // key, and `act` handles a click in it. The chart keeps only the drawing, the lane, and -- while that tab
+        // is closed -- a one-line pager in this layer's legend row: its id and title, ‹ n of N ›, and a way in.
         const key = () => keyRows(YOUNG, DIM).map(([kind, c, name, what]) => `<div class="tt-k"><i class="mk ${kind}" style="--c:${c}"></i><span><b>${name}</b> — ${what}</span></div>`).join("");
         const checksHtml = (cs) => `<table class="tt-checks">${cs.map((c) => `<tr class="${c.state}" title="${esc(c.code)}">
           <td class="ic">${ICON[c.state]}</td><td>${esc(c.name)}</td><td class="val">${c.state === "skip" ? "not reached" : esc(c.value)}</td></tr>
@@ -321,21 +263,44 @@ const Studies = (() => {
           return `<div class="tt-z ${zoneOpen === z.key ? "on" : ""}"><div class="tt-zh" data-z="${z.key}"><span class="n">${NUM[n]}</span>
             <b>${esc(z.title)}</b><span class="st ${state}">${ICON[state]}</span><span class="ln">${esc(line)}</span></div>${body}</div>`;
         };
-        const renderCard = () => {
-          card.hidden = !on || p.card === "Hide" || !setups.length;
-          if (card.hidden) return;
+        const detail = () => {
           const s = focus;
-          place(s);
-          const keyHtml = `<div class="tt-kh">${keyOpen ? "▾" : "▸"} How to read the chart</div>${keyOpen ? `<div class="tt-key">${key()}</div>` : ""}`;
-          if (!s) { card.innerHTML = `<div class="tt-h"><b>No setup in view</b><i>${open ? "▾" : "▸"}</i></div>${open ? keyHtml : ""}`; return; }
-          const cls = s.kind === "fail" ? "no" : "ok", k = setups.indexOf(s);
+          if (!s) return "";
           const tr = tradeOf(s);
-          card.innerHTML = `<div class="tt-h"><span class="tt-title ${cls}" style="--c:${kindCol(s)}" title="${esc(`${ref(s)} · ${s.title}`)}">${ref(s)} · ${esc(s.title)}</span>
-              ${tr ? `<span class="tt-traded" title="The selected backtest run bought this setup — these are its own levels, not an illustration">● traded${tr.r_multiple != null ? ` ${(+tr.r_multiple).toFixed(1)}R` : ""}</span>` : ""}
-              <span class="tt-nav"><button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${p.tradedOnly ? "trade" : "setup"} ${k + 1} of ${setups.length}</span><button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button></span>
-              <i>${open ? "▾" : "▸"}</i></div>`
-            + (open ? `<div class="tt-date">${esc(s.from)} → ${esc(s.to)}${s.live ? ` <span class="tt-live">forming · judged today</span>` : ""}</div><div class="tt-sum">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}
-              <div class="tt-sub">Pick a setup from the lane at the bottom of the chart, or step with ‹ ›. Drag this header to move the card${moved ? ` · <a data-a="dock">put it back</a>` : ""}.</div>${keyHtml}` : "");
+          return `<div class="tt-card tt-in">${tr ? `<div class="tt-date"><span class="tt-traded" title="The selected backtest run bought this setup — these are its own levels, not an illustration">● traded${tr.r_multiple != null ? ` ${(+tr.r_multiple).toFixed(1)}R` : ""}</span></div>` : ""}
+            <div class="tt-sum" title="${esc(`${s.from} → ${s.to}\n${s.summary}`)}">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}</div>`;
+        };
+        // the colour key, once at the head of the panel's list rather than in every setup
+        const keyBox = () => `<div class="tt-card tt-in tt-keybox"><div class="tt-kh">${keyOpen ? "▾" : "▸"} How to read the chart</div>${keyOpen ? `<div class="tt-key">${key()}</div>` : ""}</div>`;
+        // a click inside the panel's detail: open or close a zone, or the colour key
+        const act = (t) => {
+          const z = t.closest?.("[data-z]");
+          if (z) { zoneOpen = zoneOpen === z.dataset.z ? "" : z.dataset.z; store("ttZone", zoneOpen); publish(); return true; }
+          if (t.closest?.(".tt-kh")) { keyOpen = !keyOpen; store("ttKeyOpen", keyOpen ? "1" : "0"); publish(); return true; }
+          return false;
+        };
+        const step = (d) => { const k = setups.indexOf(focus) + d; if (setups[k]) { pinned = setups[k]; hovered = null; reveal(pinned); paint(); } };
+        const renderPager = () => {
+          const row = ctx.chartEl?.querySelector(`.srow[data-id="${id}"]`);
+          if (!row) return;
+          let pg = row.querySelector(".tt-pager");
+          if (!on || p.card === "Hide" || !setups.length || ctx.setupsOpen?.()) { pg?.remove(); return; }
+          if (!pg) {
+            pg = document.createElement("span"); pg.className = "tt-pager";
+            row.querySelector(".svals")?.before(pg);
+            pg.addEventListener("mousedown", (e) => e.stopPropagation());
+            pg.onclick = (e) => {
+              e.stopPropagation();
+              const a = e.target.closest("[data-a]")?.dataset.a;
+              if (a === "prev") step(-1); else if (a === "next") step(1); else if (a === "open") ctx.openSetups?.();
+            };
+          }
+          const s = focus, k = setups.indexOf(s);
+          pg.innerHTML = (s ? `<a data-a="open" class="tt-title" style="--c:${kindCol(s)}" title="${esc(`${ref(s)} · ${s.title}`)} — open its detail in the side panel">${ref(s)} · ${esc(s.title)}</a>`
+              : `<a data-a="open" class="muted">No setup in view</a>`)
+            + `<button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span>`
+            + `<button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button>`
+            + `<button data-a="open" title="Open the Trade setups panel: every setup, and this one's zones and checks">⧉</button>`;
         };
 
         // ---- which setup: pinned, else under the mouse, else the latest one in view
@@ -343,7 +308,7 @@ const Studies = (() => {
           const r = chart.timeScale().getVisibleLogicalRange();
           return r ? times[Math.min(times.length - 1, Math.max(0, Math.floor(r.to)))] : times.at(-1);
         };
-        // with a backtest run selected, the setup it traded is the one the card opens on
+        // with a backtest run selected, the setup it traded is the one the pager opens on
         const latest = () => {
           const shown = [...setups].reverse().filter((s) => s.from <= edge());
           const r = chart.timeScale().getVisibleLogicalRange(), lo = r ? times[Math.max(0, Math.floor(r.from))] : times[0];
@@ -372,7 +337,7 @@ const Studies = (() => {
             // a traded setup says so on the frame itself: with the layer and a run both on, the one
             // thing you cannot read off the drawing is which of these the run actually bought
             shapes.push({ shape: "box", frame: true, dash: s.kind === "fail" || s.kind === "young", role, from: f.from, to: f.to, top: f.top, bottom: f.bottom,
-              label: `${ref(s)} · ` + (traded ? `${s.title} · ● traded${traded.r_multiple != null ? ` ${(+traded.r_multiple).toFixed(1)}R` : ""}` : s.title) });
+              label: ref(s) + (traded ? ` · ● traded${traded.r_multiple != null ? ` ${(+traded.r_multiple).toFixed(1)}R` : ""}` : "") });   // its title is in the pager and the panel
             s.zones.forEach((z, n) => {
               if (n > 0)   // a faint divider where each zone starts
                 shapes.push({ shape: "line", from: z.from, to: z.from, p0: f.top, p1: f.bottom, role: "dim", dash: true });
@@ -405,7 +370,7 @@ const Studies = (() => {
           const c = (k) => { try { return col(k); } catch { return undefined; } };   // a layer may not declare every colour
           // The entry's buy, stop and target are named on the PRICE AXIS, as the Learn guide's charts do,
           // not in tags over the candles: three or four of them stacked in a narrow entry zone hid the
-          // very bars they were about. The lines stay on the chart, unlabelled; the card gives the numbers.
+          // very bars they were about. The lines stay on the chart, unlabelled; the side panel gives the numbers.
           const AXIS = { buy: "Buy", stop: "SL", target: "TP" };
           axisLines.forEach((l) => main?.removePriceLine(l));
           axisLines = [];
@@ -419,12 +384,12 @@ const Studies = (() => {
           ctx.annotate(id, on ? stage.concat(drawn) : [], { uptrend: c("uptrend"), base: c("base"), contraction: c("base"),
             vcp: c("vcp"), cheat: c("cheat"), miss: c("miss"), flag: c("flag"), near: NEAR, failpath: DIM, young: YOUNG, tight: c("tight"),
             pivot: c("pivot") || c("tight"), buy: c("buy"), stop: c("stop"), breakeven: DIM, target: c("target"), dim: DIM, ...extraRoles });
-          renderCard();
+          renderPager();
           lane.mark();
           publish();
         };
         // the side panel's Trade setups tab (app.js) lists these: hand it the list, the selection, and a way to pick one
-        const publish = () => ctx.onSetups?.({ list: setups, focus: setups.indexOf(focus), note: summary,
+        const publish = () => ctx.onSetups?.({ list: setups, focus: setups.indexOf(focus), note: summary, detail, keyBox, act, pager: renderPager,
           select: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; reveal(pinned); paint(); } });
         let timer = null, raf = 0;
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
@@ -445,13 +410,13 @@ const Studies = (() => {
           if (z) { zoneOpen = z.key; store("ttZone", zoneOpen); }
           paint();
         });
-        // frame a setup stepped to from the card in the left ~60% of the chart, so the card (which goes to
-        // the roomier side) sits clear of it on the right
+        // frame a setup stepped to in the left ~60% of the chart, clear of the price axis's labels on the right
         // a click zooms to a setup's `focus` (the base and the move into it) when it has one: its frame may run back
         // to the start of a long advance
         const reveal = (s) => frameDates(chart, times, ctx, (s.focus || s).from, s.to, { fill: 0.58, lead: 0.04, price: s.focus || s.frame });
 
         // ---- the setup lane: one pill per setup along the bottom of the price pane, stacked where they overlap
+        const LANE_ROWS = 2;
         const lane = (() => {
           const el = document.createElement("div"); el.className = "tt-lane";
           ctx.chartEl?.append(el);
@@ -482,6 +447,9 @@ const Studies = (() => {
               x0 = Math.max(0, x0); x1 = Math.min(w, Math.max(x1, x0 + 8));
               let r = rows.findIndex((edge) => edge < x0 - 2); if (r < 0) { r = rows.length; rows.push(0); }
               rows[r] = x1;
+              // two rows at most, a strip along the pane's foot: a third row and up climbed over the candles. A
+              // setup with no room is still in the panel's list and the pager; the selected one always shows (row 2)
+              if (r >= LANE_ROWS) { if (s !== focus) return; r = LANE_ROWS - 1; }
               // the reference and title when they fit, the reference alone when that fits, else nothing (the tooltip names it)
               const fits = (t) => t.length * 5.6 + 10 <= x1 - x0;
               const sel = s === focus, txt = fits(`${ref(s)} ${s.title}`) ? `${ref(s)} ${s.title}` : fits(ref(s)) ? ref(s) : "";
@@ -493,8 +461,13 @@ const Studies = (() => {
           };
           // the selection changed, not the view: restyle the pills in place, never rebuild them — a pill
           // replaced under the mouse loses the press that was meant for it
-          const mark = () => el.querySelectorAll(".tt-pill").forEach((b) => b.classList.toggle("sel", setups[+b.dataset.i] === focus));
-          chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(() => { render(); if (!card.hidden) place(focus); }));
+          // (unless the newly selected setup had no room in the two rows: then the lane is redrawn to show it)
+          const mark = () => {
+            const pills = [...el.querySelectorAll(".tt-pill")];
+            if (focus && !el.hidden && !pills.some((b) => setups[+b.dataset.i] === focus)) return render();
+            pills.forEach((b) => b.classList.toggle("sel", setups[+b.dataset.i] === focus));
+          };
+          chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(render));
           chart.timeScale().subscribeSizeChange(() => requestAnimationFrame(render));
           return { render, mark, el };
         })();
@@ -544,7 +517,7 @@ const Studies = (() => {
           // the backtest view's legend names what is drawn, not the layer's own note: Minervini's note leads with
           // TODAY's stage ("Stage 4 (declining) since 2026-09-04 · 25 setups"), which reads as the 2013 trade's
           summary = p.tradedOnly ? "the selected run's trades — backtest view" : r.note;
-          setNote(id, summary);
+          setNote(id, "");   // the summary is the panel's; the legend row carries the pager instead
           paint(); lane.render();
         })();
         return { series: [], note: "testing each bar…", setVisible: (v) => { on = v; paint(); lane.render(); } };
@@ -1734,7 +1707,7 @@ const Studies = (() => {
         return { rs, ma: sma(rs, p.maLength) };
       } },
   };
-  const PARAM_LABELS = { days: "Sessions", upDays: "Up days needed", volPct: "Volume rise needed, %", pricePct: "Price rise needed, %", ants: "Ants on the price bars", window: "Sessions per reading", smooth: "Average of last N sessions", length: "Length", source: "Source", mult: "StdDev / multiplier", atrLength: "ATR length", maLength: "MA length",
+  const PARAM_LABELS = { card: "Pager in the legend", days: "Sessions", upDays: "Up days needed", volPct: "Volume rise needed, %", pricePct: "Price rise needed, %", ants: "Ants on the price bars", window: "Sessions per reading", smooth: "Average of last N sessions", length: "Length", source: "Source", mult: "StdDev / multiplier", atrLength: "ATR length", maLength: "MA length",
     fast: "Fast length", slow: "Slow length", signal: "Signal smoothing", kLength: "%K length", kSmoothing: "%K smoothing", dSmoothing: "%D smoothing",
     rsiLength: "RSI length", stochLength: "Stochastic length", k: "K smoothing", d: "D smoothing", factor: "Factor", start: "Start", increment: "Increment",
     maximum: "Maximum", left: "Left bars", right: "Right bars", labels: "Labels", zigzag: "Zig-zag line", timeframe: "Pivots timeframe",
@@ -1980,7 +1953,7 @@ const Studies = (() => {
   function legendRow(e) {
     const { s, def } = e;
     const note = e.skipped ? `<span class="muted">${def.needsBench ? "no index data" : "no volume data"}</span>`
-      : e.note ? `<span class="muted snote" title="${esc(e.note)}">${esc(e.note)}</span>` : "";
+      : e.note ? `<span class="muted snote${e.note.length > LONG_NOTE ? " long" : ""}" title="${esc(e.note)}">${esc(e.note)}</span>` : "";
     return `<div class="srow ${s.hidden || e.skipped ? "off" : ""}" data-id="${s.id}"><span class="sname" title="Click to select, double-click for settings">${esc(label(s))}</span>${note}<span class="svals"></span>${s.transient ? "" : btns(s)}</div>`;
   }
   function legendValues(e, i) {
