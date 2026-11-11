@@ -114,6 +114,8 @@ before the run. The point-in-time group RS from the group-strength study can be 
 | Breadth confirmation | Inside leading groups, do groups with half or more members above the 50-day do better than narrow ones? | Split the leading set by breadth |
 | Weakening as an exit | After a leading group's RS falls 20 points in a month, do its members lag? | Same data, the opposite event |
 | A group gate in a strategy | Do a strategy's trades in groups rated 80+ beat its others? | A research switch on a long strategy (playbook Phase 2), with the stage discipline |
+| Weekly sector ranking with slack *(proposed, [Masonson](creator-les-masonson.md) 33:45-35:31)* | Ranked every Friday over 4-12 weeks, does keeping a leader while it stays in the top four (buying the top three), and selling on a close below the 20-day EMA, beat the month-end top three? He has not traded it (35:44) | `sector_rotation` 1.2 switches `--weekly`, `--lookback-weeks`, `--hold-rank`, `--ema-exit`; optimise runs #1498-1513 |
+| Six sectors, not eleven *(proposed, Masonson 36:06)* | Does dropping the weakest long-run sectors (utilities, real estate…) help, or only reflect hindsight? | `--six` (US; the six are partly inferred, see the creator note §4.4) |
 
 ## 7. Decisions for me to make
 

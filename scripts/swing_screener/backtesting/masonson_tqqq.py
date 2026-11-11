@@ -294,10 +294,19 @@ MT_DOC = {
     "description": "Hold a synthetic 3x Nasdaq 100 fund while the index closes above its {TREND_SMA}-day average "
                    "and its {EXIT_EMA}-day EMA; T-bills otherwise. Les Masonson's rule set, each part a switch.",
     "status": (
-        "NOT YET MEASURED. Built 2026-11-11 from the interview; the optimise-stage runs (2013-2021, in-sample) "
-        "and a 2000-2012 context run are queued. What counts as an edge was written before any result was "
-        "read: excess CAGR over QQQ buy-and-hold above zero, a maximum drawdown no deeper than QQQ's over the "
-        "same window, and enough round trips to judge (at least twenty)."
+        "MEASURED, OPTIMISE STAGE ONLY (2013-2021, IN-SAMPLE) -- AND IT FAILS ITS OWN TEST. The pass rule was "
+        "written before any run: excess CAGR over QQQ buy-and-hold above zero, a max drawdown no deeper than "
+        "QQQ's, at least twenty round trips. QQQ returned 23.01% a year with a -28.6% drawdown; the synthetic "
+        "3x held throughout returned 57.32% with -69.9%. The default (200-day trend, exit below the 20-day EMA) "
+        "made 21.13% with -55.5% over 139 trades, 68% invested, a median hold of 8 days: it fails on both "
+        "return and drawdown, the drawdown coming from 2015-16 chop, not a crash. No switch passes. Closest: "
+        "every extreme switch together (MACD 12,26,9 + RSI + Keltner + breadth) made 17.33% with -28.2% over 27 "
+        "trades, 22% invested -- QQQ's drawdown at three-quarters of its return; without the trend filter "
+        "25.70% (+2.69) but -50.8%. Tighter exits (8- or 10-day EMA) and the 200-day on the 3x series were "
+        "worse; breadth alone traded five times. Context only, never a verdict -- 2000-2012 with today's "
+        "settings: QQQ -2.40% a year (-83%), the 3x held -36.06% (-99.98%: wiped out, as he says), the default "
+        "-12.40% (-90%), the combined set +3.31% (-34%, 34 trades). Not verified: nothing here has a verify "
+        "run, and none should be spent until a version passes the optimise rule."
     ),
     "thesis": (
         "A 3x daily fund compounds the index's trend and is destroyed by its declines and chop: three 10% down "

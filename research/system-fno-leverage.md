@@ -72,6 +72,18 @@ Take the first row that applies.
 **Stock F&O settles by delivery.** An open stock future or in-the-money option at expiry becomes a real purchase or sale
 of shares ([India rules](learn-fno-india-rules.md)). Close or roll before expiry week.
 
+**Leveraged index funds** *(proposed, [Masonson](creator-les-masonson.md) 51:09-60:16; not an F&O instrument, the same
+question)*. A daily-reset 2x or 3x fund loses to its multiple in a flat or falling market, so:
+
+| Rule (proposed) | Source |
+|---|---|
+| No leveraged long while the index closes below its 200-day average | Masonson 68:15-69:09 |
+| Out of the fund, the money sits in T-bills (a money-market or T-bill fund) | Masonson 59:50-60:16 |
+| Step up the multiple only after the rule has worked at 1x, then 2x | Masonson 57:16-57:39 |
+
+Tested as `masonson_tqqq` (a synthetic 3x Nasdaq 100 from the index, checked against the real fund): see the creator
+note §9 for the optimise-stage and 2000-2012 context results.
+
 ## 4. Sizing
 
 The rule is the same as for shares — risk per trade is one R, from [risk and exposure](system-risk-exposure.md) §1 — and

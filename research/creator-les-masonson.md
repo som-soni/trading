@@ -23,7 +23,8 @@ are not quoted in any Learn guide.*
   stays near the top (with slack), and sell it on a rank drop or a close below a short EMA.
 - He has **never traded the sector rule** and is still building the TQQQ swing strategy; he warns against
   overfitting and says a backtest with no drawdowns is the sign of a mistake.
-- Measured here (optimise stage, 2013-2021, and a 2000-2012 context run): see §9.
+- Measured here (in-sample, 2013-2021): no TQQQ timing version beats QQQ with a drawdown no deeper than QQQ's, and his
+  sector switches all made the existing rotation worse (§9).
 
 ---
 
@@ -140,7 +141,66 @@ it for at least 20 years. Otherwise you will sell it in the intermediate term an
 
 ## 9. Nuances worth keeping — and what the data here says
 
-**Measured: to be filled from the optimise-stage runs (2013-2021, in-sample) and the 2000-2012 context run.**
+*Measured here, not his claims. Every rule's setting was fixed before the first run; the pass rules were written
+before any result was read. Optimise stage = 2013-2021, **in-sample**; 2000-2012 is **context** only. No verify run
+has been made.*
+
+**TQQQ timing** (`masonson_tqqq` 1.0, a synthetic 3x Nasdaq 100 that tracks the real fund at 0.9986 daily
+correlation; pass = beat QQQ, drawdown no deeper than QQQ's, 20+ round trips):
+
+| Run (optimise, in-sample) | CAGR % | vs QQQ | Max DD % | Sharpe | Win % | Trades | Invested |
+|---|---|---|---|---|---|---|---|
+| QQQ held | 23.01 | — | -28.6 | 1.16 | — | — | 100% |
+| Synthetic 3x held | 57.32 | +34.31 | -69.9 | 1.07 | — | — | 100% |
+| 3x bought after a 25% fall, held | 43.80 | +20.79 | -69.9 | 0.94 | — | — | 71% |
+| Default: 200-day + exit below 20 EMA | 21.13 | -1.88 | -55.5 | 0.73 | 43 | 139 | 68% |
+| + MACD 12,26,9 | 11.43 | -11.58 | -49.9 | 0.50 | 40 | 91 | 57% |
+| + MACD 6,13,5 (his) | 19.52 | -3.49 | -43.9 | 0.70 | 43 | 112 | 63% |
+| + RSI(7) < 30 | 11.83 | -11.18 | -28.8 | 0.73 | 53 | 40 | 22% |
+| + Keltner 2-ATR | 8.86 | -14.15 | -15.7 | 0.73 | 57 | 21 | 12% |
+| + breadth < 20% | 11.64 | -11.37 | -19.3 | 0.77 | 60 | 5 | 7% |
+| No trend filter | 25.70 | +2.69 | -50.8 | 0.82 | 44 | 143 | 72% |
+| 200-day on the 3x series | 14.22 | -8.79 | -62.1 | 0.57 | 42 | 138 | 65% |
+| Exit below 8 EMA | 15.27 | -7.74 | -50.0 | 0.59 | 43 | 210 | 63% |
+| Exit below 10 EMA | 17.56 | -5.45 | -50.0 | 0.65 | 43 | 191 | 64% |
+| All extremes together | 17.33 | -5.68 | -28.2 | 0.86 | 59 | 27 | 22% |
+
+| Run (2000-2012, context) | CAGR % | Max DD % | Trades |
+|---|---|---|---|
+| QQQ held | -2.40 | -83.0 | — |
+| Synthetic 3x held | -36.06 | -99.98 | — |
+| 3x after a 25% fall | -34.03 | -99.98 | — |
+| Default | -12.40 | -90.0 | 188 |
+| All extremes together | +3.31 | -34.4 | 34 |
+
+- **His decay warning is right** **[measured]**: held through 2000-2012 the 3x is wiped out, and the 25%-fall entry
+  does not save it (the first 25% fall came in 2000).
+- **No version passes in-sample.** The plain 200-day rule keeps most of the 3x run-up in 2017-2020 but gives it
+  back in 2015-16 chop (-55%), deeper than QQQ's worst. Adding his oversold extremes cuts the drawdown to QQQ's
+  level, at three-quarters of QQQ's return and 22% time invested. Tighter EMA exits, his favoured 8 and 10, were
+  worse than 20.
+- **Inferred:** his claimed 29% CAGR at a 45% drawdown (73:00) is not reproduced by these textbook settings; his
+  own settings may differ, and his figures are his.
+
+**Sector rotation switches** (`sector_rotation` 1.2; pass = beat the benchmark, no deeper drawdown, beat the 1.1
+default; optimise, in-sample):
+
+| Run | US CAGR % | Excess | DD % | Trades | India CAGR % | Excess | DD % | Trades |
+|---|---|---|---|---|---|---|---|---|
+| Benchmark | 14.01 | — | -34.1 | — | 13.54 | — | -38.3 | — |
+| 1.1 default (month-end, 6 months) | 11.47 | -2.54 | -30.7 | 98 | 15.11 | +1.57 | -31.4 | 42 |
+| Weekly, 12 weeks | 5.99 | -8.02 | -37.9 | 313 | 9.88 | -3.65 | -38.1 | 160 |
+| Weekly, 8 weeks | 7.65 | -6.36 | -33.9 | 365 | 11.31 | -2.22 | -33.7 | 175 |
+| Weekly, 4 weeks | 6.25 | -7.75 | -35.8 | 473 | 11.89 | -1.65 | -38.9 | 242 |
+| Hold while top 4 | 10.38 | -3.63 | -34.4 | 66 | 12.16 | -1.38 | -39.8 | 18 |
+| Exit below 20 EMA | 0.88 | -13.13 | -34.2 | 239 | 2.49 | -11.04 | -50.3 | 199 |
+| All three | 1.22 | -12.79 | -25.7 | 483 | 4.92 | -8.61 | -64.7 | 362 |
+| Six sectors | 15.15 | +1.14 | -29.9 | 40 | — | | | |
+| All three + six | 2.98 | -11.03 | -20.3 | 374 | — | | | |
+
+- **Every one of his switches made the rule worse, in both markets.** Weekly ranking triples the trading; the EMA exit
+  sells a leader on a dip and leaves the money idle until month-end.
+- **Six sectors passes in the US only, and it is hindsight**: he picked the six in 2026 for having done best.
 
 ## 10. How it compares
 
