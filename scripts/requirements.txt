@@ -8,3 +8,4 @@ matplotlib>=3.8
 fastapi>=0.110
 uvicorn>=0.29
 python-multipart>=0.0.9
+holidays>=0.60      # exchange holiday calendars (marketdata/freshness.py)

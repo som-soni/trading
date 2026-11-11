@@ -39,6 +39,11 @@ class MarketConfig:
     # how the web app shows the market (it builds its market list from MARKETS, so a new country is
     # a config entry plus its data pipeline — no UI change)
     exchange: str = ""          # "NSE", "NYSE · Nasdaq"
+    # the exchange's holiday calendar (python-holidays `financial_holidays` code: "NYSE", "XNSE"), so the
+    # freshness check does not count a holiday as a missing session; empty = weekdays only
+    holiday_calendar: str = ""
+    # one-off closures the calendar does not know (election days, special holidays), ISO dates
+    extra_closures: tuple = ()
     badge: str = ""             # short tag next to symbols: "US", "NSE"
     flag: str = ""              # emoji flag for the market selector
     symbol_suffix: str = ""     # data-provider suffix hidden in the UI (".NS")

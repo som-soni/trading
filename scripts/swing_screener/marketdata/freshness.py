@@ -9,8 +9,9 @@
   price_status(market)      latest complete session, how many trading days it lags the expected
                             one, and any newer, partly loaded day.
 
-Exchange holidays are not modelled, so a lag of one trading day may just be a
-holiday; two or more means the prices job has not run.
+Exchange holidays come from the market's `holiday_calendar` (python-holidays' financial calendars,
+NYSE and NSE) plus its `extra_closures`, so a holiday is neither expected nor counted as a lag. A
+one-off closure announced late and not yet in either still reads as one day behind.
 
 Rows per day come from `price_day_counts`, which triggers on `prices` keep exact for every
 writer; counting them from `prices` itself takes 15-20 s, because recently rewritten rows
@@ -19,6 +20,7 @@ count falls back to `prices`.
 """
 
 import datetime as dt
+import functools
 import threading
 import time
 from zoneinfo import ZoneInfo
@@ -79,23 +81,49 @@ def _q(sql: str, params: tuple) -> list:
         return cur.fetchall()
 
 
+@functools.lru_cache(maxsize=None)
+def _closures(market: str, year: int) -> frozenset:
+    from ..config import MARKETS
+    cfg = MARKETS.get(market)
+    if cfg is None:
+        return frozenset()
+    out = {dt.date.fromisoformat(x) for x in cfg.extra_closures if x.startswith(str(year))}
+    if cfg.holiday_calendar:
+        import holidays
+        out |= set(holidays.financial_holidays(cfg.holiday_calendar, years=year))
+    return frozenset(out)
+
+
+def holidays_between(market: str, start: dt.date, end: dt.date) -> list:
+    """Weekday exchange closures from `start` to `end` inclusive."""
+    return sorted(d for y in range(start.year, end.year + 1) for d in _closures(market, y)
+                  if start <= d <= end and d.weekday() < 5)
+
+
+def is_trading_day(market: str, d: dt.date) -> bool:
+    return d.weekday() < 5 and d not in _closures(market, d.year)
+
+
 def expected_session(market: str, now: dt.datetime | None = None) -> dt.date:
     tz, cutoff = MARKET_CLOSE[market]
     local = (now or dt.datetime.now(dt.timezone.utc)).astimezone(ZoneInfo(tz))
     d = local.date()
-    if d.weekday() < 5 and local.time() >= cutoff:
+    if is_trading_day(market, d) and local.time() >= cutoff:
         return d
     d -= dt.timedelta(days=1)
-    while d.weekday() >= 5:
+    while not is_trading_day(market, d):
         d -= dt.timedelta(days=1)
     return d
 
 
-def lag(d: dt.date | None, expected: dt.date) -> int | None:
-    """Trading days (weekdays) `d` is behind `expected`."""
+def lag(d: dt.date | None, expected: dt.date, market: str | None = None) -> int | None:
+    """Trading days `d` is behind `expected`: weekdays, less the market's exchange holidays when named."""
     if d is None:
         return None
-    return int(np.busday_count(d, expected)) if d < expected else 0
+    if d >= expected:
+        return 0
+    hol = holidays_between(market, d, expected) if market else []
+    return int(np.busday_count(d, expected, holidays=hol))
 
 
 def ensure_day_counts() -> bool:
@@ -161,7 +189,7 @@ def price_status(market: str) -> dict:
     last = days[-1] if days else None
     counts = recent_counts(market)
     newer = sorted(d for d in counts if last is None or d > last)
-    return {"market": market, "latest": last, "expected": exp, "lag": lag(last, exp),
+    return {"market": market, "latest": last, "expected": exp, "lag": lag(last, exp, market),
             "rows": counts.get(last, 0) if last else 0,
             "partial": (newer[-1], counts[newer[-1]]) if newer else None}
 

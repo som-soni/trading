@@ -4,7 +4,7 @@ US_CONFIG = MarketConfig(
     name="US",
     currency_symbol="$",
     currency_code="USD",
-    exchange="NYSE · Nasdaq", badge="US", flag="🇺🇸",
+    exchange="NYSE · Nasdaq", badge="US", flag="🇺🇸", holiday_calendar="NYSE",
     quarterly_source="sec_edgar",
     money_unit="$ M", money_divisor=1e6,
     cap_classes=("cap", 10e9, 2e9), cap_note="the common US convention: large caps $10B and up, mid caps $2–10B, small caps under $2B",

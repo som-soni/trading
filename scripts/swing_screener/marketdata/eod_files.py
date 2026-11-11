@@ -74,7 +74,8 @@ def _missing_days(market: str, symbols: set[str]) -> list[dt.date]:
     full = sorted(counts.values())[-10:]
     normal = full[len(full) // 2] if full else len(symbols)
     days = [start + dt.timedelta(days=i) for i in range((expected - start).days + 1)]
-    return [d for d in days if d.weekday() < 5 and counts.get(d, 0) < freshness.COMPLETE_SHARE * normal]
+    return [d for d in days if freshness.is_trading_day(market, d)
+            and counts.get(d, 0) < freshness.COMPLETE_SHARE * normal]
 
 
 def fill(market: str, days: list[dt.date] | None = None) -> dict:

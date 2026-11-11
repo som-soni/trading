@@ -16,6 +16,10 @@ INDIA_CONFIG = MarketConfig(
     currency_symbol="₹",
     currency_code="INR",
     exchange="NSE", badge="NSE", flag="🇮🇳", symbol_suffix=".NS", fx_to_usd="USDINR", broker="kite",
+    holiday_calendar="XNSE",
+    # NSE closures the published calendar lacks, checked against stored bars 2024-2026: Ram Mandir
+    # consecration day, Lok Sabha polling in Mumbai, Maharashtra assembly and municipal polling
+    extra_closures=("2024-01-22", "2024-05-20", "2024-11-20", "2026-01-15"),
     quarterly_source="nse", eod_file="nse_cm",
     news_locale="hl=en-IN&gl=IN&ceid=IN:en", news_term="share",
     money_unit="₹ Cr", money_divisor=1e7,
