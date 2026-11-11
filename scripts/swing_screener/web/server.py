@@ -4388,6 +4388,18 @@ def watchlist_items(lid: str):
     return _with_prices(wl.items(int(lid)))
 
 
+@app.post("/api/list-quotes")
+def list_quotes(items: list[dict] = Body(..., embed=True)):
+    """Last close, day change and today's screener decisions for a list of (market, symbol) -- the chart's
+    source-list panel (a screen's stocks, a backtest's trades…), read like a watchlist. Stored data only."""
+    rows = _with_prices([{"market": i["market"], "symbol": i["symbol"]} for i in items[:500]
+                         if i.get("market") in MARKETS and i.get("symbol")])
+    picks = {(e["market"], e["symbol"]): e.get("strategies") or [] for e in wl.entries()}
+    for r in rows:
+        r["strategies"] = [{"strategy": x["strategy"], "decision": x.get("decision")} for x in picks.get((r["market"], r["symbol"]), [])]
+    return rows
+
+
 @app.post("/api/watchlists/{lid}/items")
 def watchlist_item_add(lid: int, symbol: str = Body(...), market: str | None = Body(None), note: str | None = Body(None)):
     m, sym = _resolve(symbol, market)

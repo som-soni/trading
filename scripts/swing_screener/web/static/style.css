@@ -2071,3 +2071,43 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
 .sp-row.sp-expired { border-left-color: #9ca3af; --pc: #9ca3af; }
 .sp-tf { display: grid; gap: 6px; justify-items: start; margin-top: 8px; }
 #setupbtn.idle { opacity: .6; }
+/* a level of the selected setup beyond the visible prices: a tag at the pane's edge, not a stretched axis */
+.tt-off { position: absolute; z-index: 13; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; pointer-events: none; }
+.tt-off span { font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 3px; color: #fff; background: var(--c); opacity: .9; white-space: nowrap; }
+/* the setups panel: picker groups and search, sort, today's card, the "Why" behind a zone's checks */
+#side .sp-more { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; background: none; border: 0; }
+#side .sp-more:hover { color: var(--strong); }
+.sp-search { width: 100%; margin: 4px 0 2px; height: 26px; font-size: 12px; }
+.sp-grp .sp-lab { margin-top: 6px; } .sp-grp[hidden], .sp-strat[hidden] { display: none; }
+.sp-strat.lv span { font-style: italic; }
+.sp-sort { display: flex; gap: 6px; margin-top: 6px; } .sp-sort select { height: 24px; font-size: 11.5px; padding: 0 4px; }
+.sp-today { margin-top: 8px; padding: 6px 9px; border: 1px solid var(--accent-line); border-left: 3px solid #22c55e; border-radius: 6px;
+  background: var(--accent-soft); cursor: pointer; --pc: #22c55e; }
+.sp-today .btr-h { align-items: center; justify-content: flex-start; gap: 6px; }
+.sp-lv { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 3px 0 2px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.tt-why { margin: 0 10px 6px; font-size: 11.5px; } .tt-why summary { cursor: pointer; color: var(--muted); }
+.tt-why .tt-x { padding: 4px 0 0; }
+/* the price pane's legend folded: the indicators as one line of names; the setups row (its pager) stays */
+.legend.folded > .srow:not(.keep) { display: none; }
+.legend:not(.folded) .lg-names { display: none; }
+.lg-fold { display: flex; align-items: center; gap: 4px; height: 22px; padding: 1px 4px; border-radius: 4px; pointer-events: auto; cursor: pointer;
+  background: color-mix(in srgb, var(--panel) 72%, transparent); }
+.lg-fold:hover { background: var(--panel-glass); } .lg-fold .lg-caret { color: var(--muted); white-space: nowrap; }
+.lg-names { max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the right rail: every icon with a short caption; a panel with nothing to show is there, disabled */
+.rbar button { height: auto; min-height: 30px; flex-direction: column; gap: 1px; padding: 3px 0 2px; }
+.rbar button .cap { font-size: 8.5px; line-height: 1; letter-spacing: .1px; }
+.rbar button:disabled { opacity: .35; cursor: default; } .rbar button:disabled:hover { background: transparent; color: var(--muted); }
+/* the source-list panel, read like a watchlist: symbol (and how many strategies have it today), close, change */
+.wlr.lsr { grid-template-columns: minmax(0, 1.4fr) 1fr .8fr; }
+.lsr-st { font-style: normal; font-size: 10px; min-width: 14px; height: 14px; line-height: 14px; text-align: center; border-radius: 7px;
+  border: 1.5px solid var(--warn); color: var(--muted); box-sizing: border-box; padding: 0 3px; }
+.lsr-st.trade { background: var(--up); border-color: var(--up); color: #fff; }
+.q-setups.pending { min-width: 220px; }   /* the Today chips' place, held while they load */
+/* the header never pushes the page sideways (at 1141px the theme button stuck out 4px): the status text shortens,
+   the nav items and gaps tighten, and below 1100px the status is its dot alone (its tooltip says the rest).
+   The nav itself keeps overflow visible -- its section menus drop out of it. */
+@media (max-width: 1300px) { .dstatus .ds-l { max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle; }
+  header { gap: 14px; } nav a, nav .sec { padding: 0 8px; } }
+@media (max-width: 1100px) { .dstatus .ds-l { display: none; } }
+#chart.on-divider, #chart.on-divider * { cursor: row-resize !important; }

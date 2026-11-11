@@ -558,6 +558,7 @@ function chartTheme() {
   };
 }
 let keepView = null;
+let themeHook = null;   // set by a page that recolours its chart in place on a theme change (see applyTheme)
 // a strategy was just picked for the chart's Trade setups layer: its first setups select one the panel's filter
 // shows, and go to it (the chart re-renders on a pick, so this outlives the page's own state)
 let setupSwitched = false;
@@ -766,15 +767,18 @@ async function chartPage(alive, market, symbol, tf) {
       <button class="ghost ctype" id="ctype" title="Chart type — ${esc(chartTypeOf(store.get("chartType", "candles")).label)}"><svg viewBox="0 0 20 20">${chartTypeOf(store.get("chartType", "candles")).icon}</svg><svg class="caret" viewBox="0 0 20 20"><path d="M6 8l4 4 4-4"/></svg></button>
       ${store.get("chartType", "candles") === "renko" ? `<label class="field" title="Renko box size: the ATR (TradingView's default) or a percentage of the last brick"><span>Box</span>
         <select id="rkbox">${RENKO_BOXES.map((b) => `<option ${store.get("renkoBox", "ATR (14)") === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>` : ""}
+      <button class="ghost" id="focusbtn" title="Focus — off: everything drawn as usual · setup: other drawings and indicators greyed out · indicators: the setup's labels taken off. Click to cycle."><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/><circle cx="10" cy="10" r="2"/></svg><span>Focus</span></button>
       <button class="ghost" id="ind" title="Add indicators"><svg viewBox="0 0 20 20"><path d="M3 15l4-5 3 3 7-8"/><path d="M13 5h4v4"/></svg>Indicators</button>
       <button class="ghost" id="setupbtn" title="Trade setups: open the panel to pick a strategy and draw what its rules would set up on over the whole history. Not trades: pick a backtest run to see what was actually bought."><svg viewBox="0 0 20 20"><path d="M3 13l4-4 3 2 4-6"/><rect x="11" y="11" width="6" height="5" rx="1"/></svg>Trade setups</button>
       <label class="field" id="trades-field" title="Mark the buys and exits a backtest run made in this symbol"><span>Backtest trades</span>
         <select id="trades"><option value="">Backtest: none</option></select></label>
-      <button class="ghost icon" id="fit" title="Show full history"><svg viewBox="0 0 20 20"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"/></svg></button>
+      <div class="seg rng" title="Date range shown (1D / 1W / 1M set the bar size)">${[["3M", "Last 3 months"], ["1Y", "Last year"], ["5Y", "Last 5 years"], ["All", "All history — click again to go back to the range you had"]]
+        .map(([v, t]) => `<button data-r="${v}" title="${t}">${v}</button>`).join("")}</div>
+      <span class="q-setups pending"><span class="muted">Today…</span></span>
       <span class="spacer"></span>
       ${pos >= 0 ? `<div class="srcchip" title="You are stepping through this list (↑ / ↓)"><span class="muted">From</span>
         <a href="${esc(list.back || "#/screens")}" title="Back to the list">${esc(list.label)}</a>
-        <button class="ghost icon" id="prev" title="Previous (↑)">‹</button><span class="pos-n" title="This stock's place in the list">stock ${pos + 1} of ${list.items.length}</span><button class="ghost icon" id="next" title="Next (↓)">›</button>
+        <button class="ghost icon" id="prev" title="Previous stock in the list (↑)">‹</button><span class="pos-n" title="This stock's place in the list (↑ / ↓ step through it)">stock ${pos + 1} of ${list.items.length}</span><button class="ghost icon" id="next" title="Next stock in the list (↓)">›</button>
         <button class="ghost icon" id="exitlist" title="Stop stepping through this list">✕</button></div>` : ""}
     </div>
     <div class="quote" id="quote"><b class="q-sym">${esc(symbol)}</b><span class="mkt">${MKT_BADGE[market] || market}</span></div>
@@ -795,7 +799,11 @@ async function chartPage(alive, market, symbol, tf) {
   // arriving from a list (a screen, today's setups, movers…): show it beside the chart, so chart and list are both in view
   if (list?.fresh) { if ($('#rbar [data-tab="list"]')) prefs.tab = "list"; store.set("chartList", { ...list, fresh: false }); }
   let setupFeed = null, setupSeen = false, setupFilter = store.get("setupFilter", "all");
-  let spPickOpen = false;   // the setups panel's strategy list, folded to the picked one so the setups get the room
+  let spPickOpen = false;
+  let listQuotes = null;   // the source-list panel's prices and decisions (listPanelHtml), fetched once per visit
+  let setupSort = store.get("setupSort", "newest"), setupYear = "";   // the list's order, and a one-year window (this visit)
+  let stratStyle = {}, stratLabel = {};   // strategy -> its style ("Breakout from a base"…), to group the picker; its name
+  const stratNameOf = (k) => stratLabel[k] || k;   // the setups panel's strategy list, folded to the picked one so the setups get the room
   const layout = $(".chart-layout");
   const syncPanel = () => {
     layout.classList.toggle("collapsed", !prefs.tab);
@@ -872,8 +880,14 @@ async function chartPage(alive, market, symbol, tf) {
     // "Trade only" (the Backtest trades panel's switch): every trade drawn lean, and nothing else of the run
     const run = tradeOnlyOn() ? tradeItems(() => true, true)
       : runDrawnByStudy() ? tradeItems((t) => !claimedTrades.has(t.entry_date), true) : [...vcpAnnotations, ...tradeItems()];
-    dr.annotate([...run, ...studyItems()]);
+    // Focus (the toolbar's Focus button): "setup" greys every other drawing out and keeps its words off; "indicators"
+    // takes the setup's own labels off (its box and lines stay) so the studies can be read
+    const fm = focusMode(), grey = (it) => ({ ...it, color: "#6b708055", text: "", ...(it.type === "text" ? { skip: true } : {}) });
+    const items = [...run.map((it) => ({ ...it, pri: 1 })), ...studyItems()].map((it) =>
+      fm === "setup" && it.pri > 0 ? grey(it) : fm === "indicators" && it.pri === 0 ? (it.type === "text" ? null : { ...it, text: "" }) : it);
+    dr.annotate(items.filter((it) => it && !it.skip));
   };
+  const focusMode = () => store.get("chartFocus", "");
   let zoomToTrade = () => {};
   // "Trade only": with a backtest run on, its trades as entry, stop, target and the buy/sell markers alone -- no
   // setups layer, no frames, zones or lane -- for reading where a trade was bought and sold
@@ -883,6 +897,15 @@ async function chartPage(alive, market, symbol, tf) {
   // rebuild the chart (for an indicator change) without losing the user's zoom / scroll
   const rerender = () => { try { if (chart) keepView = { key: viewKey, range: chart.timeScale().getVisibleLogicalRange() }; } catch {} route(); };
   $("#ind").onclick = () => Studies.openPicker({ onChange: () => { leaveBtView(); rerender(); } });
+  // Focus cycles off -> setup -> indicators, remembered for every chart
+  const FOCUS_NEXT = { "": "setup", setup: "indicators", indicators: "" };
+  const markFocus = () => {
+    const fm = focusMode(), b = $("#focusbtn");
+    b.classList.toggle("on", !!fm); b.querySelector("span").textContent = fm ? `Focus: ${fm}` : "Focus";
+  };
+  let applyFocusSeries = () => {};   // greys the overlay lines in "setup" focus; set once the studies are drawn
+  $("#focusbtn").onclick = () => { store.set("chartFocus", FOCUS_NEXT[focusMode()] ?? ""); markFocus(); applyAnnotations(); applyFocusSeries(); };
+  markFocus();
 
   // Trade setups: one strategy at a time, picked in the side panel's Setups tab (its Strategy row), which also
   // lists the setups. The button carries the chosen strategy, so the chart says what it is drawing, and opens
@@ -909,6 +932,9 @@ async function chartPage(alive, market, symbol, tf) {
 
   const search = $("#sym");
   symbolSearch(search, $(".search ul"), null, (s, m) => go(hrefFor(m, s)));
+  // a search abandoned (Escape, or a click elsewhere) puts the chart's own symbol back in the box
+  search.addEventListener("keydown", (e) => { if (e.key === "Escape") { search.value = symbol; search.blur(); } });
+  search.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== search && alive()) search.value = symbol; }, 250));
   // TradingView habit: start typing anywhere to change symbol; arrows step through the list
   const onKey = (e) => {
     if (e.target.closest?.("input, select, textarea") || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -968,6 +994,8 @@ async function chartPage(alive, market, symbol, tf) {
   // in this stock -- grouped by strategy; the raw run name (the options it ran with) is the tooltip, and its
   // exit and options are spelled out only where two runs would otherwise read the same.
   const stratNames = Object.fromEntries((await STRATEGIES).map((x) => [x.key, x.name]));
+  stratStyle = Object.fromEntries((await STRATEGIES).map((x) => [x.key, x.style_label]));
+  stratLabel = stratNames;
   // a list opened from a strategy's page is labelled with its key and a decision code ("kell_cycle · tradeable"):
   // shown with the strategy's name and in plain words, in the chip, the rail's tooltip and the list panel
   if (list?.label) {
@@ -975,6 +1003,7 @@ async function chartPage(alive, market, symbol, tf) {
       .replace(/ · tradeable\b/, " · would trade").replace(/ · watch\b/, " · on watch"));
     const a = $(".srcchip > a"); if (a) a.textContent = list.label;
     const b = $('#rbar [data-tab="list"]'); if (b) b.title = list.label;
+    if (prefs.tab === "list") renderSide();   // the panel was drawn with the raw label before the names were known
   }
   const runLabel = (r) => {
     const st = stageInfo(r), rp = runParts(r.run), ver = rp?.version || (r.spec_id || "").split("-")[0];
@@ -993,8 +1022,11 @@ async function chartPage(alive, market, symbol, tf) {
       continue;
     }
     const opts = rs.map((r) => {
-      const base = runLabel(r), twin = rs.some((x) => x !== r && runLabel(x) === base);
-      return `<option value="${r.id}" title="${esc(`${stageInfo(r).tip}\nRun: ${r.run}`)}">${esc(base)}${twin ? ` — ${esc(runVariant(r))}` : ""}</option>`;
+      // two runs that read the same but for their trade count still differ in something: say what (their options, else their date)
+      const base = runLabel(r), key = (x) => runLabel(x).replace(/ · \d+ trades? here$/, "");
+      const twin = rs.some((x) => x !== r && key(x) === key(r));
+      const variant = twin && [runVariant(r), /^\d{4}-\d{2}-\d{2}/.test(r.run) ? `run ${prettyDate(String(r.run).slice(0, 10))}` : ""].filter(Boolean).join(", ");
+      return `<option value="${r.id}" title="${esc(`${stageInfo(r).tip}\nRun: ${r.run}`)}">${esc(base)}${variant ? ` — ${esc(variant)}` : ""}</option>`;
     }).join("");
     const glabel = !activeStrat ? stratNames[k] || k : k === activeStrat ? `${stratNames[k] || k} — this chart's setups` : `Other strategy · ${stratNames[k] || k}`;
     sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(glabel)}">${opts}</optgroup>`);
@@ -1030,10 +1062,11 @@ async function chartPage(alive, market, symbol, tf) {
     if (list.backtest.arrive) { prefs.tab = "trades"; store.set("chartList", { ...store.get("chartList", {}), backtest: { ...list.backtest, arrive: false } }); }
   }
   // a backtest run is on: offer its trades as a side panel (click a trade -> its anatomy)
-  if (sel.value) {
-    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="trades" title="Backtest trades — click one to zoom to it and see the structure the strategy traded on">
+  // (the rail is one fixed set of buttons: a panel with nothing to show is there, disabled, and says why)
+  $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="trades" ${sel.value ? "" : "disabled"} title="${sel.value
+    ? "Backtest trades — click one to zoom to it and see the structure the strategy traded on" : "Backtest trades — pick a run in the Backtest menu first"}">
       <svg viewBox="0 0 20 20"><path d="M3 17V3M3 17h14"/><path d="M5 13l3.5-5 3 3L16 5"/></svg></button>`);
-  } else if (prefs.tab === "trades") prefs.tab = "wl";
+  if (!sel.value && prefs.tab === "trades") prefs.tab = "wl";
   // the Trade setups panel: the strategy picker, and the active layer's setups (click one -> the chart goes to it).
   // Offered with no layer on too, so a strategy's history is one click from the chart.
   if (Studies.setupLayers().length && !btView) {
@@ -1041,15 +1074,24 @@ async function chartPage(alive, market, symbol, tf) {
       <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="1.5"/><path d="M6 12l2.5-3 2 2L14 7"/></svg></button>`);
   } else if (prefs.tab === "setups") prefs.tab = "wl";
   // the Chart patterns indicator is on: offer every pattern its detectors saw as a side panel
-  if (Studies.load().some((s) => s.type === "patterns") && !btView) {
-    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="patterns" title="Chart patterns — every pattern the chart-pattern strategy's detectors saw; click one to draw it">
+  {
+    const ok = Studies.load().some((s) => s.type === "patterns") && !btView;
+    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="patterns" ${ok ? "" : "disabled"} title="${ok ? "Chart patterns — every pattern the chart-pattern strategy's detectors saw; click one to draw it"
+      : "Chart patterns — add the Chart patterns indicator (Indicators › Screener) to list them here"}">
       <svg viewBox="0 0 20 20"><path d="M2 15l4-8 3 5 3-7 6 10"/><path d="M2 17h16"/></svg></button>`);
-  } else if (prefs.tab === "patterns") prefs.tab = "wl";
+    if (!ok && prefs.tab === "patterns") prefs.tab = "wl";
+  }
   // the Supply & demand zones indicator is on: offer its zones, with each one's checklist, as a side panel
-  if (Studies.load().some((s) => s.type === "sdz") && !btView) {
-    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="zones" title="Supply & demand zones — every base a decisive move left from, its checklist and retests; click one to go to it">
+  {
+    const ok = Studies.load().some((s) => s.type === "sdz") && !btView;
+    $("#rbar").insertAdjacentHTML("beforeend", `<button data-tab="zones" ${ok ? "" : "disabled"} title="${ok ? "Supply & demand zones — every base a decisive move left from, its checklist and retests; click one to go to it"
+      : "Supply & demand zones — add the Supply & demand zones indicator to list them here"}">
       <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="4" rx="1"/><rect x="3" y="12" width="14" height="4" rx="1"/></svg></button>`);
-  } else if (prefs.tab === "zones") prefs.tab = "wl";
+    if (!ok && prefs.tab === "zones") prefs.tab = "wl";
+  }
+  // a short caption under each rail icon: seven look-alike icons read by their names
+  const CAP = { wl: "List", info: "Info", news: "News", snotes: "Notes", list: "Source", trades: "Trades", setups: "Setups", patterns: "Patterns", zones: "Zones" };
+  $view.querySelectorAll("#rbar [data-tab]").forEach((b) => { if (CAP[b.dataset.tab] && !b.querySelector(".cap")) b.insertAdjacentHTML("beforeend", `<span class="cap">${CAP[b.dataset.tab]}</span>`); });
   syncPanel();
   // the panel first rendered with the remembered tab; if that tab's indicator is not on this chart
   // (zones, patterns, setups…), it was just replaced: render the panel again, or it shows the stale one
@@ -1077,7 +1119,8 @@ async function chartPage(alive, market, symbol, tf) {
       : typeof t === "string" ? prettyDate(t) : prettyDate(new Date(t * 1000).toISOString().slice(0, 10))) },
     handleScroll: { mouseWheel: true, pressedMouseMove: false, horzTouchDrag: true, vertTouchDrag: false } });
   const prevCleanup = cleanup;
-  cleanup = () => { prevCleanup(); dr && dr.destroy(); chart.remove(); };
+  cleanup = () => { prevCleanup(); themeHook = null; dr && dr.destroy(); chart.remove(); };
+  themeHook = () => { try { chart.applyOptions(chartTheme()); applyAnnotations(); } catch {} };
   let main, times;
   // the stored bars (the quote strip always reads these) and the bars drawn: a chart type may rebuild
   // them (Heikin Ashi, Renko), and indicators then read what is drawn, as on TradingView
@@ -1126,7 +1169,7 @@ async function chartPage(alive, market, symbol, tf) {
       color: s.alpha ? col + s.alpha : col, width: s.width || 1, dash: s.dash === undefined ? true : s.dash, text: dim ? "" : s.label || "" };
     if (s.shape === "line") return { type: "trend", pts: [{ t: t0, p: s.p0 }, { t: t1, p: s.p1 }],
       color: col, width: dim ? 1 : s.arrow ? 2.5 : 2, dash: !!s.dash, arrow: !dim && !!s.arrow, text: dim ? "" : s.label || "" };
-    if (s.shape === "text") return dim ? null : { type: "text", pts: [{ t: t1, p: s.price }], color: col, size: 11, text: s.label || "" };
+    if (s.shape === "text") return dim ? null : { type: "text", pts: [{ t: t1, p: s.price }], color: col, size: 11, text: s.label || "", short: s.short };
     if (s.shape === "path") {
       // the pattern itself: its swing points joined in order, each point named (dimmed: line only)
       const P = (s.points || []).map((q) => ({ t: tsOf(q.at), p: q.price, label: q.label })).filter((q) => q.t != null);
@@ -1151,8 +1194,9 @@ async function chartPage(alive, market, symbol, tf) {
   }).flat().filter(Boolean);
   // studies that draw shapes hand them over here, keyed by study id; the overlay redraws at once
   const studyShapes = new Map();
-  studyItems = () => [...studyShapes.values()].flatMap(({ shapes, roles }) => shapeItems(shapes, { roles }));
-  const annotate = (key, shapes, roles) => { studyShapes.set(key, { shapes, roles }); applyAnnotations(); };
+  // each item carries its label priority (opts.pri): the selected setup 0, a study's own drawing 2 (a run's trades are 1)
+  studyItems = () => [...studyShapes.values()].flatMap(({ shapes, roles, pri }) => shapeItems(shapes, { roles }).map((it) => ({ ...it, pri })));
+  const annotate = (key, shapes, roles, opts = {}) => { studyShapes.set(key, { shapes, roles, pri: opts.pri ?? 2 }); applyAnnotations(); };
   // trades: the selected backtest run's trades on this symbol (trade-anatomy), for a study that should
   // defer to a run's record; onTrades: called when they (re)load
   const tradeHooks = [], focusHooks = [];
@@ -1228,6 +1272,15 @@ async function chartPage(alive, market, symbol, tf) {
   // read at paint time, not captured: hiding the indicator from the legend restores the stored layer
   supersededStrategy = () => studies.find((e) => e.def?.setupsFor && !e.skipped && !e.s.hidden)?.def.setupsFor ?? null;
   const nPanes = Math.max(0, ...studies.map((e) => e.pane || 0));
+  applyFocusSeries = () => {
+    const dim = focusMode() === "setup";
+    studies.forEach((e) => {
+      if (!e.def?.overlay || e.def.custom || e.def.setupsFor || e.def.volume) return;
+      (e.series || []).forEach((ser, j) => { const pl = e.def.plots[j]; if (!pl) return;
+        const c = e.s.colors?.[pl.k] || pl.c; ser.applyOptions({ color: dim && /^#[0-9a-f]{6}$/i.test(c) ? c + "40" : c }); });
+    });
+  };
+  applyFocusSeries();
 
   // Opened from a chart-pattern strategy's setups: draw the stock's pattern as of that run (the same
   // detectors and drawing as the Chart patterns indicator, /api/patterns), so a listed setup is visible
@@ -1353,12 +1406,29 @@ async function chartPage(alive, market, symbol, tf) {
     for (let i = 1; i <= nPanes; i++) try { chart.panes()[i].setHeight(per); } catch {}
     if (viewClaimed) {}
     else if (keepView && keepView.key === viewKey && keepView.range) chart.timeScale().setVisibleLogicalRange(keepView.range);
-    else if (times.length > bars) chart.timeScale().setVisibleLogicalRange({ from: times.length - bars, to: times.length + 4 });
+    // empty bars kept right of the last one: today's setup and its labels sit clear of the price axis, not against it
+    else if (times.length > bars) chart.timeScale().setVisibleLogicalRange({ from: times.length - bars, to: times.length + 10 });
     else chart.timeScale().fitContent();
     keepView = null;
     setLegend();
   });
-  $("#fit").onclick = () => chart.timeScale().fitContent();
+  // Date range presets, apart from the bar size: the last 3 months, year or 5 years of bars (with the empty bars
+  // kept at the right), or all of it -- "All" is a toggle, its second click restoring the range you had before it
+  const RANGE_BARS = { D: { "3M": 63, "1Y": 252, "5Y": 1260 }, W: { "3M": 13, "1Y": 52, "5Y": 260 }, M: { "3M": 3, "1Y": 12, "5Y": 60 } };
+  let beforeAll = null;
+  $view.querySelectorAll(".rng [data-r]").forEach((b) => b.onclick = () => {
+    const r = b.dataset.r, ts = chart.timeScale(), n = times.length;
+    if (r === "All") {
+      if (beforeAll) { ts.setVisibleLogicalRange(beforeAll); beforeAll = null; }
+      else { beforeAll = ts.getVisibleLogicalRange(); ts.fitContent(); }
+    } else {
+      beforeAll = null;
+      const bars = (RANGE_BARS[tf] || RANGE_BARS.D)[r];
+      ts.setVisibleLogicalRange({ from: Math.max(0, n - bars), to: n + 6 });
+    }
+    $view.querySelectorAll(".rng [data-r]").forEach((x) => x.classList.toggle("on", x.dataset.r === "All" && !!beforeAll));
+    try { chart.panes().forEach((_, i) => chart.priceScale("right", i).applyOptions({ autoScale: true })); syncAuto(); } catch {}
+  });
   // chart type: TradingView's menu — a change redraws the chart (Renko changes the time axis, so the view resets)
   $("#ctype").onclick = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
@@ -1425,6 +1495,31 @@ async function chartPage(alive, market, symbol, tf) {
     return null;  // the time axis
   };
   let drag = null;
+  // The dividers between panes resize them: a press within a few pixels of one drags it (the library's own divider
+  // is a 1px line, easy to miss), moving the space between the two panes it separates
+  const dividerAt = (y) => {
+    const ps = chart.panes(); let top = 0;
+    for (let i = 0; i < ps.length - 1; i++) { top += ps[i].getHeight(); if (Math.abs(y - top) <= 4) return i; top += 1; }
+    return -1;
+  };
+  let split = null;
+  chartEl.addEventListener("mousedown", (ev) => {
+    if (ev.button !== 0 || ev.target.closest(".legend, .pane-legend, .dtb, .dtext, .autoscale, .tt-pill, .scalebox")) return;
+    const r = chartEl.getBoundingClientRect(), k = dividerAt(ev.clientY - r.top);
+    if (k < 0 || ev.clientX - r.left > chart.timeScale().width()) return;
+    const ps = chart.panes();
+    split = { k, y0: ev.clientY, a: ps[k].getHeight(), b: ps[k + 1].getHeight() };
+    ev.preventDefault(); ev.stopImmediatePropagation();   // not a pan, not a drawing click, not the library's own drag
+  }, true);
+  const onSplitMove = (ev) => {
+    const r = chartEl.getBoundingClientRect();
+    if (!split) { if (!drag && ev.target instanceof Node && chartEl.contains(ev.target)) chartEl.classList.toggle("on-divider", dividerAt(ev.clientY - r.top) >= 0 && ev.clientX - r.left <= chart.timeScale().width()); return; }
+    const dy = Math.max(40 - split.a, Math.min(split.b - 40, ev.clientY - split.y0)), ps = chart.panes();
+    try { ps[split.k].setHeight(split.a + dy); ps[split.k + 1].setHeight(split.b - dy); setLegend(times[lastI]); } catch {}   // the pane legends follow
+  };
+  const onSplitUp = () => { split = null; };
+  window.addEventListener("mousemove", onSplitMove); window.addEventListener("mouseup", onSplitUp);
+  { const prev = cleanup; cleanup = () => { window.removeEventListener("mousemove", onSplitMove); window.removeEventListener("mouseup", onSplitUp); prev(); }; }
   chartEl.addEventListener("mousedown", (ev) => {
     // drawings and legend controls stop the event before it gets here; the axes keep their own drag-to-scale
     if (ev.button !== 0 || ev.target.closest(".legend, .pane-legend, .dtb, .dtext, .autoscale")) return;
@@ -1495,10 +1590,13 @@ async function chartPage(alive, market, symbol, tf) {
   // watch (hollow), read from the stored runs -- nothing is run for it. A chip puts that strategy's Trade
   // setups layer on the chart (one at a time, as the picker does); clicking the chip already on takes it off.
   // (on the toolbar row, beside the Trade setups button, not on a line of their own above the chart)
-  const setChips = $(".chart-top").insertBefore(Object.assign(document.createElement("span"), { className: "q-setups" }), $(".chart-top .spacer"));
+  // (it is in the toolbar from the first paint, holding its place, so the chips arriving later do not move the header)
+  const setChips = $(".chart-top .q-setups");
   Promise.all([api(`/api/chart-setups?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => []), STRATEGIES])
     .then(([xs, strats]) => {
-      if (!alive() || !xs.length) return;
+      if (!alive()) return;
+      setChips.classList.remove("pending");
+      if (!xs.length) { setChips.innerHTML = ""; return; }
       todaySetups = xs;
       if (prefs.tab === "setups") renderSide();
       const names = Object.fromEntries(strats.map((x) => [x.key, x.name]));
@@ -1510,11 +1608,14 @@ async function chartPage(alive, market, symbol, tf) {
         const tip = [`${names[x.strategy] || x.strategy}: ${state} — ${Studies.plainText(x.decision)} (screened ${prettyDate(x.as_of)})`, x.setup,
           x.entry != null ? `entry ${fmt(+x.entry)}${x.stop != null ? ` · stop ${fmt(+x.stop)}` : ""}` : "",
           type ? (type === cur ? "Click to take its setups off the chart" : "Click to draw its setups on the chart")
-            : "This strategy has no setups layer to draw"].filter(Boolean).join("\n");
-        return `<button class="sc${x.tradeable ? " trade" : ""}${type === cur ? " on" : ""}" ${type ? `data-layer="${type}"` : "disabled"} title="${esc(tip)}">
+            : `No setups layer: click to ${Studies.levelsOn(x.strategy) ? "take today's entry and stop off" : "draw today's entry and stop"} (levels only)`].filter(Boolean).join("\n");
+        const lvOn = !type && Studies.levelsOn(x.strategy);
+        return `<button class="sc${x.tradeable ? " trade" : ""}${type === cur || lvOn ? " on" : ""}" ${type ? `data-layer="${type}"` : `data-levels="${esc(x.strategy)}"`} title="${esc(tip)}">
           <i></i><span>${esc(names[x.strategy] || x.strategy)}</span></button>`;   // the state is the dot; the decision and levels are in the tip
       }).join("");
       setChips.onclick = (e) => {
+        const lv = e.target.closest("[data-levels]");
+        if (lv) { Studies.toggleLevels(lv.dataset.levels); rerender(); return; }
         const b = e.target.closest("[data-layer]"); if (!b) return;
         setupSwitched = b.dataset.layer !== Studies.activeSetup();
         Studies.setSetup(setupSwitched ? b.dataset.layer : null);
@@ -1564,6 +1665,20 @@ async function chartPage(alive, market, symbol, tf) {
   // rows are built once; setLegend only rewrites text inside them (see Studies.legendRow)
   legend.innerHTML = `<div class="ohlc"></div>` + studies.filter((e) => e.pane === 0).map((e) => Studies.legendRow(e)).join("");
   for (let p = 1; p <= nPanes; p++) paneLegends[p].innerHTML = studies.filter((e) => e.pane === p).map((e) => Studies.legendRow(e)).join("");
+  // With three or more indicators over the price, their rows fold into ONE line of names (click it for the rows and
+  // their values); six rows over the candles hid the bars they describe. The setups layer's row -- its pager -- always shows.
+  {
+    const over = studies.filter((e) => e.pane === 0 && !e.def?.setupsFor);
+    studies.filter((e) => e.pane === 0 && e.def?.setupsFor).forEach((e) => legend.querySelector(`.srow[data-id="${e.s.id}"]`)?.classList.add("keep"));
+    if (over.length >= 3) {
+      const names = over.map((e) => `<span style="color:${esc(Object.values(e.s.colors || {})[0] || e.def.plots?.[0]?.c || "")}">${esc(Studies.label(e.s))}</span>`).join(" · ");
+      const fold = el(`<div class="lg-fold" title="Click to show each indicator's row and value (click again to fold them)"><span class="lg-caret"></span><span class="lg-names">${names}</span></div>`);
+      legend.querySelector(".ohlc").after(fold);
+      const sync = () => { legend.classList.toggle("folded", store.get("legendFolded", true)); fold.querySelector(".lg-caret").textContent = store.get("legendFolded", true) ? "▸" : "▾ fold"; };
+      fold.onclick = () => { store.set("legendFolded", !store.get("legendFolded", true)); sync(); };
+      sync();
+    }
+  }
   const rowEls = studies.map((e) => ({ e, vals: chartEl.querySelector(`.srow[data-id="${e.s.id}"] .svals`) }));
   const ohlcEl = legend.querySelector(".ohlc");
   const setLegend = (t) => {
@@ -1772,19 +1887,13 @@ async function chartPage(alive, market, symbol, tf) {
     return `${qHtml}${sHtml}<section><h3>Screener — latest</h3>${plans || '<div class="muted small">Not in any screening run.</div>'}</section>
       <section><h3>Decision history</h3>${hist || '<div class="muted small">None.</div>'}</section>`;
   }
-  /** TradingView's details block under the watchlist: the open symbol's price, day change, 52-week range and verdicts */
+  /** The details block under the watchlist: what the chart's header does not say -- the stock's sector path, its
+   *  verdicts and your note. (Its name, price, day change and 52-week range are the header's; repeated here they
+   *  were a second copy of the header beside it.) */
   function detailsHtml() {
-    const q = pxQuote(), sector = ctx.classification?.industry || ctx.classification?.sector || ctx.latest[0]?.sector || qrow?.sector || "";
     const best = [...ctx.latest].sort((a, b) => DEC_RANK(a.decision) - DEC_RANK(b.decision))[0];
-    const pos52 = q && q.hi > q.lo ? ((q.last - q.lo) / (q.hi - q.lo)) * 100 : 50;
-    return `<div class="wld-head"><b>${esc(symbol)}</b><span class="mkt">${MKT_BADGE[market] || market}</span>${sector ? `<span class="muted small">${esc(sector)}</span>` : ""}</div>
-      ${ctx.name ? `<div class="wld-name">${esc(ctx.name)}</div>` : ""}
-      ${ctx.classification ? `<div class="wld-cls small">${[["sector", ctx.classification.sector], ["industry", ctx.classification.industry], ["sub", ctx.classification.sub_key]]
+    return `${ctx.classification ? `<div class="wld-cls small">${[["sector", ctx.classification.sector], ["industry", ctx.classification.industry], ["sub", ctx.classification.sub_key]]
         .filter(([, v]) => v).map(([lv, v]) => `<a href="${secHref(market, lv, v)}" title="Open on the Sectors page">${esc(groupParts(v)[0])}</a>`).join('<span class="muted"> › </span>')}</div>` : ""}
-      ${q ? `<div class="wld-px"><span class="big">${fmt(q.last)}</span><span class="${q.chg >= 0 ? "pos" : "neg"}">${q.chg >= 0 ? "+" : ""}${fmt(q.chg)} (${signed(q.pct)}%)</span></div>
-        <div class="muted small">Close · ${prettyDate(q.date)}</div>
-        <div class="wld-52"><span class="muted small">52-week range</span><div class="bar52 wide"><i style="left:${pos52.toFixed(1)}%"></i></div>
-          <div class="wld-52v small"><span>${fmt(q.lo)}</span><span>${fmt(q.hi)}</span></div></div>` : ""}
       <div class="wld-notes" id="wlnotes"></div>
       <div class="wld-kv">
         ${best ? `<span class="muted">Screener</span><span>${decisionTag(best.decision)}</span>` : ""}
@@ -1815,10 +1924,26 @@ async function chartPage(alive, market, symbol, tf) {
         : '<b>This list is empty</b><div class="muted small">Track stocks here to see their price and change at a glance.</div><button class="primary wl-empty-add">+ Add a symbol</button><div class="muted small">or press ☆ next to any chart\'s name.</div>'}</div>`}</div>
       <div class="wl-details">${detailsHtml()}</div></div>`;
   }
+  // the source list read like a watchlist: each stock's last close, day change and today's screener decisions
+  // (/api/list-quotes, stored data), fetched once per visit; the names show at once and the numbers fill in
   function listPanelHtml() {
+    if (!listQuotes) {
+      // a read, sent as a POST only for the list's length (api() would clear its cache on any POST)
+      listQuotes = fetch("/api/list-quotes", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: list.items.map((x) => ({ market: x.m, symbol: x.s })) }) }).then((x) => x.json())
+        .then((rows) => Object.fromEntries(rows.map((r) => [`${r.market}:${r.symbol}`, r]))).catch(() => ({}));
+      listQuotes.then((q) => { listQuotes.done = q; if (prefs.tab === "list" && alive()) renderSide(); });
+    }
+    const Q = listQuotes.done || {};
+    const state = (d) => (/TRIGGER/i.test(d) ? "on trigger" : /^TRADE/i.test(d) ? "would trade" : "on watch");
     return `<section><h3>${esc(list.label)} <a class="muted" href="${esc(list.back || "#/screening")}">back</a></h3></section>
-      <div class="wlrows">${list.items.map((it, i) => `<a class="wlr nolast ${i === pos ? "cur" : ""}" href="${hrefFor(it.m, it.s)}">
-        <span class="wsym"><span class="dotm ${it.m}"></span>${esc(it.s.replace(/\.NS$/, ""))}</span></a>`).join("")}</div>`;
+      <div class="wlrows">${list.items.map((it, i) => {
+        const r = Q[`${it.m}:${it.s}`], ch = r?.change_pct, st = r?.strategies || [];
+        const tip = st.map((x) => `${stratNameOf(x.strategy)}: ${state(x.decision || "")}`).join("\n");
+        return `<a class="wlr lsr ${i === pos ? "cur" : ""}" href="${hrefFor(it.m, it.s)}" title="${esc(tip)}">
+        <span class="wsym"><span class="dotm ${it.m}"></span>${esc(it.s.replace(/\.NS$/, ""))}${st.length ? `<i class="lsr-st ${st.some((x) => /^TRADE/i.test(x.decision || "")) ? "trade" : ""}" title="${esc(tip)}">${st.length}</i>` : ""}</span>
+        <span>${r?.last != null ? fmt(r.last) : ""}</span><span class="${(ch ?? 0) >= 0 ? "pos" : "neg"}">${ch != null ? signed(ch) + "%" : ""}</span></a>`;
+      }).join("")}</div>`;
   }
   /** the chosen backtest run's trades in this symbol — click one to zoom the chart to it and
    *  light up its anatomy (the rest of the overlay dims to context) */
@@ -1868,19 +1993,51 @@ async function chartPage(alive, market, symbol, tf) {
   function setupPickerHtml() {
     const cur = Studies.activeSetup(), seen = SETUP_COUNTS[`${market}:${symbol}`] || {};
     const today = Object.fromEntries(todaySetups.map((x) => [x.strategy, x]));
-    const layers = Studies.setupLayers();
-    // once a strategy is picked the list folds to it: fourteen chips would push the setups off the panel
+    const layers = Studies.setupLayers(), withLayer = new Set(layers.map((l) => l.strategy));
+    // once a strategy is picked the list folds to it: fifteen chips would push the setups off the panel
     const folded = cur && !spPickOpen;
     // folded, it still offers the strategies that have this stock on trigger or on watch today
     const shown = layers.filter((l) => !folded || l.type === cur || today[l.strategy]);
-    return `<div class="sp-strats">${shown.map((l) => {
+    const todayState = (t) => (t.tradeable ? (/TRIGGER/i.test(t.decision || "") ? "on trigger" : "would trade") : "on watch");
+    const chip = (l) => {
       const t = today[l.strategy], c = seen[l.strategy];
-      const tip = [t ? `Today: ${t.tradeable ? (/TRIGGER/i.test(t.decision || "") ? "on trigger" : "would trade") : "on watch"} (screened ${prettyDate(t.as_of)})` : "",
-        c ? `${c.n} setup${c.n === 1 ? "" : "s"} on this chart, ${c.trade} would trade${c.at ? ` (counted on bars to ${prettyDate(c.at)})` : ""}` : "",
+      const tip = [t ? `Today: ${todayState(t)} (screened ${prettyDate(t.as_of)})` : "",
+        c ? `${c.n} setup${c.n === 1 ? "" : "s"} on this chart, ${c.trade} would trade${c.at ? ` (counted on bars to ${prettyDate(c.at)})` : ""}` : "Its count shows once it has been drawn on this stock",
         EDGE?.strategies?.[l.strategy]?.[market] ? `Backtest: ${EDGE.strategies[l.strategy][market].label}` : "",
         l.type === cur ? (cur && !spPickOpen ? "Click to change strategy" : "Click to take it off the chart") : "Click to draw its setups"].filter(Boolean).join("\n");
-      return `<a class="sp-strat${l.type === cur ? " on" : ""}" data-layer="${l.type}" title="${esc(tip)}">${t ? `<i class="${t.tradeable ? "trade" : ""}"></i>` : ""}${esc(l.name)}${c ? ` <span>${c.n}</span>` : ""}</a>`;
-    }).join("")}${cur && layers.length > shown.length || !folded && cur ? `<a class="sp-more" data-spmore>${folded ? `${layers.length - shown.length} more ▾` : "Fold ▴"}</a>` : ""}</div>`;
+      return `<a class="sp-strat${l.type === cur ? " on" : ""}" data-layer="${l.type}" data-name="${esc(l.name.toLowerCase())}" title="${esc(tip)}">${t ? `<i class="${t.tradeable ? "trade" : ""}"></i>` : ""}${esc(l.name)} <span>${c ? c.n : "–"}</span></a>`;
+    };
+    // a strategy with a decision today but no setups layer (Kell cycle): its entry and stop as levels only
+    const levels = todaySetups.filter((t) => !withLayer.has(t.strategy)).map((t) => {
+      const nm = stratNameOf(t.strategy), on = Studies.levelsOn(t.strategy);
+      return `<a class="sp-strat lv${on ? " on" : ""}" data-levels="${esc(t.strategy)}" data-name="${esc(nm.toLowerCase())}" title="${esc(`${nm}: ${todayState(t)} today — it has no setups layer, so only today's entry and stop are drawn (from the latest screening run).\n${on ? "Click to take the levels off" : "Click to draw them"}`)}"><i class="${t.tradeable ? "trade" : ""}"></i>${esc(nm)} <span>levels only</span></a>`;
+    }).join("");
+    const more = cur && layers.length > shown.length || !folded && cur
+      ? `<a class="sp-more" data-spmore>${folded ? `${layers.length - shown.length} more strategies` : "Show fewer"}</a>` : "";
+    if (folded || !cur) return `<div class="sp-strats">${shown.map(chip).join("")}${levels}${more}</div>`;
+    // open: a search box and the strategies grouped by style (breakouts, pullbacks, trend following…)
+    const groups = new Map();
+    layers.forEach((l) => { const g = stratStyle[l.strategy] || "Other"; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(l); });
+    return `<input class="sp-search" placeholder="Find a strategy" spellcheck="false">
+      ${[...groups].map(([g, ls]) => `<div class="sp-grp"><div class="sp-lab">${esc(g)}</div><div class="sp-strats">${ls.map(chip).join("")}</div></div>`).join("")}
+      ${levels ? `<div class="sp-grp"><div class="sp-lab">Levels only</div><div class="sp-strats">${levels}</div></div>` : ""}<div class="sp-strats">${more}</div>`;
+  }
+  // today's setup of the drawn strategy, when there is one, read off its own entry zone: the buy, stop and target
+  // (a nominal one said so), the risk per share and how far the last close is from the trigger
+  function todayCardHtml() {
+    const k = setupFeed.list.findLastIndex((x) => x.live && ["trade", "trigger"].includes(setupKind(x)));
+    if (k < 0) return "";
+    const s = setupFeed.list[k], e = s.zones.filter((z) => z.key === "entry" || z.key === "cheat");
+    const z = e.find((x) => x.state === "pass") || e.at(-1);
+    const lv = (role) => (z?.shapes || []).find((x) => x.shape === "level" && x.role === role);
+    const buy = lv("buy"), stop = lv("stop"), tgt = lv("target"), last = pxQuote()?.last;
+    if (!buy || !stop) return "";
+    const risk = buy.price - stop.price, away = last ? (buy.price / last - 1) * 100 : null;
+    return `<div class="sp-today" data-si="${k}" title="Today's ${esc(setupKind(s) === "trade" ? "setup — the entry fired" : "plan — waiting for its trigger")}. Click to select it.">
+      <div class="btr-h"><b>Today · #${esc(s.ref || "")}</b><span class="sp-pill">${setupKind(s) === "trade" ? "would trade" : "on trigger"}</span></div>
+      <div class="sp-lv"><span>Buy <b>${fmt(buy.price)}</b></span><span>Stop <b>${fmt(stop.price)}</b></span>${tgt ? `<span>${/^Nominal/i.test(tgt.label || "") ? "Nominal target" : "Target"} <b>${fmt(tgt.price)}</b></span>` : ""}</div>
+      <div class="muted small">Risk ${fmt(risk)} a share (${(risk / buy.price * 100).toFixed(1)}%)${away != null ? ` · ${away > 0
+        ? `the trigger is ${away.toFixed(1)}% above the last close, ${fmt(last)}` : `the last close, ${fmt(last)}, is ${(-away).toFixed(1)}% past the buy`}` : ""}</div></div>`;
   }
   function setupsPanelHtml() {
     const name = Studies.setupName();
@@ -1899,8 +2056,12 @@ async function chartPage(alive, market, symbol, tf) {
       .map(([k, t]) => `<a class="sp-chip ${setupFilter === k ? "on" : ""}" data-f="${k}">${t} <span>${counts[k]}</span></a>`).join("");
     // the verdict as a pill in the card's own border colour, so a column of cards scans without reading
     const PILL = { trade: "would trade", trigger: "on trigger", expired: "not triggered", refused: "refused", young: "too young" };
-    const rows = setupFeed.list.map((s, i) => ({ s, i })).reverse()
+    const years = [...new Set(setupFeed.list.map((x) => (x.base_from || x.from || "").slice(0, 4)).filter(Boolean))].sort().reverse();
+    const yr = years.includes(setupYear) ? setupYear : "";
+    const rows = setupFeed.list.map((s, i) => ({ s, i }))
+      .sort((a, b) => (setupSort === "oldest" ? a.i - b.i : b.i - a.i))
       .filter(({ s }) => setupFilter === "all" || kindOf(s) === setupFilter)
+      .filter(({ s }) => !yr || (s.base_from || s.from || "").startsWith(yr))
       // compact rows -- id, verdict, end date, one-line title; only the selected one opens to its detail (the
       // layer's own text: dates, summary, each zone and its checks), so a column of setups fits the panel
       .map(({ s, i }) => { const cur = i === setupFeed.focus; return `<div class="btr sp-row sp-${kindOf(s)} ${cur ? "cur" : ""}" data-si="${i}">
@@ -1912,7 +2073,10 @@ async function chartPage(alive, market, symbol, tf) {
     return `<section class="sp-head"><h3 title="What the strategy's rules would set up on — not trades. Click one here or in the lane along the chart's foot to go to it.">${esc(name)} · setups</h3>
       ${setupPickerHtml()}
       ${setupFeed.note ? `<div class="small sp-note" title="${esc(Studies.plainText(setupFeed.note))}">${esc(Studies.plainText(setupFeed.note))}</div>` : ""}
-      <div class="sp-chips">${chips}</div>${setupFeed.keyBox ? setupFeed.keyBox() : ""}</section>
+      <div class="sp-chips">${chips}</div>
+      <div class="sp-sort"><select data-spsort title="Order of the list"><option value="newest">Newest first</option><option value="oldest" ${setupSort === "oldest" ? "selected" : ""}>Oldest first</option></select>
+        <select data-spyear title="Only the setups that began in one year"><option value="">All years</option>${years.map((y) => `<option ${y === yr ? "selected" : ""}>${y}</option>`).join("")}</select></div>
+      ${todayCardHtml()}${setupFeed.keyBox ? setupFeed.keyBox() : ""}</section>
       <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;
   }
   /** The Chart patterns panel: every pattern the strategy's detectors found over five years, newest
@@ -1993,7 +2157,7 @@ async function chartPage(alive, market, symbol, tf) {
         ${noteEdit === "new" ? "" : '<button class="primary" data-cnnew>+ New note</button>'}</div>
         <div class="muted small">Your own notes on this stock, newest first — to pick up where you left off next time. They live in Library › Notes too.</div></section>
       ${noteEdit === "new" ? composerHtml(null) : ""}
-      ${ns == null ? '<div class="muted small">Loading…</div>' : ns.length ? ns.map(noteCard).join("")
+      ${ns == null ? '<section><div class="muted small">Loading…</div></section>' : ns.length ? ns.map(noteCard).join("")
         : noteEdit === "new" ? "" : '<div class="muted small">No notes on this stock yet.</div>'}`;
   }
   function wireNotes(host, ns) {
@@ -2115,6 +2279,19 @@ async function chartPage(alive, market, symbol, tf) {
         leaveBtView(); markSetup(); rerender();
       });
       body.querySelector("[data-spmore]")?.addEventListener("click", () => { spPickOpen = !spPickOpen; renderSide(); });
+      body.querySelectorAll("[data-levels]").forEach((el) => el.onclick = () => { Studies.toggleLevels(el.dataset.levels); rerender(); });
+      const find = body.querySelector(".sp-search");
+      if (find) find.oninput = () => {
+        const q = find.value.trim().toLowerCase();
+        body.querySelectorAll(".sp-grp").forEach((g) => {
+          let any = false;
+          g.querySelectorAll("[data-name]").forEach((c) => { const hit = !q || c.dataset.name.includes(q); c.hidden = !hit; any ||= hit; });
+          g.hidden = !any;
+        });
+      };
+      body.querySelector("[data-spsort]")?.addEventListener("change", (e) => { setupSort = e.target.value; store.set("setupSort", setupSort); renderSide(); });
+      body.querySelector("[data-spyear]")?.addEventListener("change", (e) => { setupYear = e.target.value; renderSide(); });
+      body.querySelector(".sp-today")?.addEventListener("click", (e) => setupFeed?.select(+e.currentTarget.dataset.si));
       body.querySelectorAll(".sp-chip").forEach((el) => el.onclick = () => { setupFilter = el.dataset.f; store.set("setupFilter", setupFilter); renderSide(); });
       body.querySelector("[data-tf1d]")?.addEventListener("click", () => go(href(symbol, "D")));
       body.querySelector(".tt-keybox")?.addEventListener("click", (e) => setupFeed?.act?.(e.target));
@@ -8020,6 +8197,18 @@ function eta(sec) {
   if (sec == null) return "";
   return ` · ~${dur(sec)} left`;
 }
+/** A live page (Status, Runs) redraws itself every few seconds while a job is running, and a
+ * volatile region above `selector` (the running/queued rows, a growing log) can change height
+ * between redraws. Call before replacing $view's content; call the returned function after, so
+ * whatever the reader is looking at — `selector`'s element onward — stays at the same screen
+ * position instead of jumping. A no-op on a genuine page navigation (nothing to match yet). */
+function anchorScroll(selector) {
+  const before = $view.querySelector(selector)?.getBoundingClientRect().top;
+  return () => {
+    const after = $view.querySelector(selector)?.getBoundingClientRect().top;
+    if (before != null && after != null) window.scrollBy(0, after - before);
+  };
+}
 const clock = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 const ago = (iso) => {
   if (!iso) return "";
@@ -8043,8 +8232,10 @@ async function refreshStatusDot() {
     const m = store.get("market", MKTS[0].key), pd = s.freshness[m]?.items.find((i) => i.key === "prices")?.date;
     a.querySelector(".ds-l").textContent = stalled ? `Worker stopped · ${waiting} waiting` : s.running.length ? `Updating…${waiting ? ` · ${waiting} queued` : ""}`
       : pd ? prettyDate(pd).replace(/ \d{4}$/, "") : "No data";
+    // what "Updating… · N queued" is: the job running now and what waits behind it
+    const run = s.queue?.running, runTxt = run ? `Running now: ${(run.targets || []).join(", ")}${run.opts?.strategies ? ` ${run.opts.strategies.join(", ")}` : ""}${run.market ? ` (${run.market})` : ""}${run.started_at ? `, since ${clock(run.started_at)}` : ""}` : "";
     const line = (m) => { const f = s.freshness[m]; const p = f.items.find((i) => i.key === "prices"); return `${f.name}: prices ${p.date ? prettyDate(p.date) : "none"} (${ST_TEXT[p.status]})`; };
-    a.title = `${word[st] || "Data status"} — ${MKTS.filter((x) => s.freshness[x.key]).map((x) => line(x.key)).join(" · ")}${s.latest_daily ? ` · last daily run ${clock(s.latest_daily.started_at)}: ${ST_TEXT[s.latest_daily.status]}` : ""} · checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. Click for details.`;
+    a.title = `${word[st] || "Data status"} — ${MKTS.filter((x) => s.freshness[x.key]).map((x) => line(x.key)).join(" · ")}${s.latest_daily ? ` · last daily run ${clock(s.latest_daily.started_at)}: ${ST_TEXT[s.latest_daily.status]}` : ""} · checked ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.${runTxt ? `\n${runTxt}${waiting ? ` · ${waiting} job${waiting > 1 ? "s" : ""} waiting behind it` : ""}.` : ""} Click for the job queue.`;
     return s;
   } catch { a.className = "dstatus"; return null; }
 }
@@ -8289,7 +8480,7 @@ function queuePanel(s) {
         : `<div class="qrow muted small">Nothing running.</div>`}
     ${Q.queued.map((x, i) => `<div class="qrow"><span class="qn">${i + 1}</span><b>Waiting</b>${what(x)}${by(x)}<span class="spacer"></span>
         ${i ? `<button class="sm" data-qfront="${x.id}" title="Run this next">Run next</button>` : ""}<button class="sm" data-qcancel="${x.id}">Cancel</button></div>`).join("")}
-    ${Q.recent.length ? `<details class="qrecent"><summary class="muted small">Recently finished (${Q.recent.length})</summary>
+    ${Q.recent.length ? `<details class="qrecent"${store.get("qrecentOpen", false) ? " open" : ""}><summary class="muted small">Recently finished (${Q.recent.length})</summary>
       ${Q.recent.map((x) => `<div class="qrow">${stBadge(x.status === "ok" ? "ok" : x.status === "cancelled" ? "skipped" : x.status === "stopped" ? "interrupted" : "failed")}${what(x)}${by(x)}
         <span class="muted small">${x.finished_at ? "finished " + clock(x.finished_at) : ""}</span>${x.run_id ? `<a class="small" href="#/runs/${x.run_id}">steps →</a>` : ""}${x.note ? `<span class="muted small">${esc(x.note)}</span>` : ""}</div>`).join("")}</details>` : ""}
   </section>`;
@@ -8302,6 +8493,7 @@ function wireQueuePanel(root) {
   });
   root.querySelectorAll("[data-qcancel]").forEach((b) => b.onclick = () => post(`/api/queue/${b.dataset.qcancel}/cancel`, "Removed from the queue"));
   root.querySelectorAll("[data-qfront]").forEach((b) => b.onclick = () => post(`/api/queue/${b.dataset.qfront}/front`, "Moved to the front"));
+  root.querySelector(".qrecent")?.addEventListener("toggle", (e) => store.set("qrecentOpen", e.target.open));
 }
 
 const SRC_LABEL = { you: ["you", "pos"], curated: ["curated", "neutral"], rule: ["rule", "neutral"], suggested: ["suggested", "info"],
@@ -8377,7 +8569,8 @@ async function subindustriesPage(alive, mkt, group) {
 async function statusPage(alive, runId) {
   if (runId) return go(`#/runs/${runId}`);   // old links
   document.title = "Status · Trading";
-  $view.innerHTML = LOADING;
+  const restoreScroll = anchorScroll(".qrecent, .sec-top");
+  if (!$view.querySelector(".qpanel")) $view.innerHTML = LOADING;   // already showing this page: keep it up during the fetch
   const s = await refreshStatusDot() || await api("/api/status");
   if (!alive()) return;
   const live = s.running.length || s.job_running || s.queue.queued.length;
@@ -8393,13 +8586,15 @@ async function statusPage(alive, runId) {
     <p class="muted small">Web viewer: ${s.freshness.viewer.reports} reports loaded, last ${clock(s.freshness.viewer.reports_loaded_at)}.</p>`;
   $view.querySelector("#strefresh").onclick = () => route();
   wireQueuePanel($view);
+  restoreScroll();
   if (live) { const t = setTimeout(() => { if (alive()) route(); }, 5000); const prev = cleanup; cleanup = () => { clearTimeout(t); prev(); }; }
 }
 
 /** System → Runs: one run's steps and log (Resume when it failed part-way), the run history, and every job. */
 async function runsPage(alive, runId) {
   document.title = "Runs · Trading";
-  $view.innerHTML = LOADING;
+  const restoreScroll = anchorScroll(".stt.hist, .alljobs");
+  if (!$view.querySelector(".stt.steps")) $view.innerHTML = LOADING;   // already showing this page: keep it up during the fetch
   const s = await api("/api/status");
   const run = runId ? await api(`/api/status/run/${runId}`).catch(() => null) : s.latest_daily;
   if (!alive()) return;
@@ -8420,7 +8615,7 @@ async function runsPage(alive, runId) {
         <div class="stprog"><i style="width:${steps.length ? (done / steps.length) * 100 : 0}%"></i></div>
         <div class="muted small" style="margin:4px 0 8px">${done} of ${steps.length} steps done${run.summary ? ` · ${esc(run.summary)}` : ""}${run.args?.strategies ? ` · strategies: ${esc(run.args.strategies.join(", "))}` : ""}</div>
         <table class="stt steps"><thead><tr><th></th><th>Step</th><th class="num">Started</th><th class="num">Took</th><th>Result</th></tr></thead><tbody>${stepRows}</tbody></table>
-        ${run.log_tail ? `<details class="stlog"><summary>Log — last ${run.log_tail.length} lines of ${esc(run.log_path.split("/").slice(-1)[0])}</summary><pre>${esc(run.log_tail.join("\n"))}</pre></details>` : ""}`
+        ${run.log_tail ? `<details class="stlog"${store.get("runsLogOpen", false) ? " open" : ""}><summary>Log — last ${run.log_tail.length} lines of ${esc(run.log_path.split("/").slice(-1)[0])}</summary><pre>${esc(run.log_tail.join("\n"))}</pre></details>` : ""}`
       : `<div class="empty"><b>No run recorded yet</b><div class="muted">Run a pipeline from <a href="#/schedules">Schedules</a>.</div></div>`}
     </section>
     <section class="sec-card"><div class="sec-card-h"><h3>History</h3><span class="muted small">click a run for its steps and log</span></div>
@@ -8430,7 +8625,7 @@ async function runsPage(alive, runId) {
           <td class="num">${dur(r.duration_s)}</td>
           <td class="small">${r.steps ? `<span class="pos">${r.steps.ok} ok</span>${r.steps.failed ? ` · <span class="neg">${r.steps.failed} failed</span>` : ""}${r.steps.skipped ? ` · <span class="muted">${r.steps.skipped} skipped</span>` : ""}` : ""}</td>
           <td class="muted small">${esc(r.summary || "")}</td></tr>`).join("")}</tbody></table>` : '<div class="muted small">Nothing recorded yet.</div>'}</section>
-    <details class="sec-card alljobs"><summary><h3>All jobs</h3><span class="muted small">each job's latest run per market — run a single job</span></summary>
+    <details class="sec-card alljobs"${store.get("runsAllJobsOpen", false) ? " open" : ""}><summary><h3>All jobs</h3><span class="muted small">each job's latest run per market — run a single job</span></summary>
       <table class="stt jobs"><thead><tr><th>Job</th><th>Layer</th><th>Cadence</th>${MKTS.map((m) => `<th>${esc(m.name)}</th>`).join("")}<th>What it does</th></tr></thead><tbody>
       ${s.jobs.map((j) => { const rb = (m) => `<button class="ibtn jrun" data-job="${j.name}" data-m="${m}" title="Run ${esc(j.name)}${m === "all" ? "" : " for " + MKT_BADGE[m]}"><svg viewBox="0 0 20 20" class="play"><path d="M7 5l8 5-8 5z"/></svg></button>`;
         const c = (x, m) => (x ? `<span title="${esc(x.detail || "")}">${stBadge(x.status)} <span class="muted small">${clock(x.at)}</span></span>` : '<span class="muted small">never</span>') + rb(m);
@@ -8444,6 +8639,9 @@ async function runsPage(alive, runId) {
     const t = run.args.targets, m = run.args.markets?.length === 1 ? run.args.markets[0] : "all";
     startJob({ title: `Resume ${t.join(" + ")}`, targets: t, market: m, screens: t.some((x) => ["strategies", "backtest"].includes(x)), resumeFrom: await resumePoint(run) });
   });
+  $view.querySelector(".stlog")?.addEventListener("toggle", (e) => store.set("runsLogOpen", e.target.open));
+  $view.querySelector(".alljobs")?.addEventListener("toggle", (e) => store.set("runsAllJobsOpen", e.target.open));
+  restoreScroll();
   if (run?.status === "running") { const t = setTimeout(() => { if (alive()) route(); }, 5000); const prev = cleanup; cleanup = () => { clearTimeout(t); prev(); }; }
 }
 
@@ -9730,7 +9928,9 @@ const THEMES = [["black", "Black", "#000"], ["graphite", "Graphite", "#1e1e21"],
 function applyTheme(t) {
   store.set("theme", t);
   const eff = t === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "black") : t;
-  if (document.documentElement.dataset.theme !== eff) { document.documentElement.dataset.theme = eff; route(); }   // re-render so charts pick up the colours
+  // re-render so charts pick up the colours -- except a page that can recolour its own chart in place (the Chart
+  // page): rebuilding it reloaded every series and study for a colour change, six seconds of skeleton
+  if (document.documentElement.dataset.theme !== eff) { document.documentElement.dataset.theme = eff; if (themeHook) themeHook(); else route(); }
 }
 matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => { if (store.get("theme", "black") === "system") applyTheme("system"); });
 {

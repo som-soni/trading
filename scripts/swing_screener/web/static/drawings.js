@@ -234,9 +234,14 @@ const Drawings = (() => {
         if (nx > placing.w - w - 2) break;
         r = { x: nx, y, w, h };
       }
+      // Still on top of another: a label of the selected setup (priority 0) is drawn anyway; a lower one -- a backtest
+      // marker, a study's note -- is held back rather than drawn over it, and shown when the mouse is over its spot
+      if (hits(r) && curPri > 0) { held.push({ x, y, w, h }); return null; }
       placed.push(r);
       return r;
     }
+    let curPri = 0;   // the priority of the annotation being painted (0 the selected setup; 1 a backtest run's; 2 other studies)
+    let held = [], heldShown = null;   // labels held back this paint, and the one under the mouse (drawn last, on top)
     function label(ctx, text, x, y, bg, align = "center") {
       ctx.font = "11px -apple-system, Segoe UI, sans-serif";
       const h = 17, maxW = placing ? placing.w - 4 : Infinity;
@@ -246,6 +251,7 @@ const Drawings = (() => {
         text += "…"; w = ctx.measureText(text).width + 10;
       }
       const r = place(align === "right" ? x - w : align === "left" ? x : x - w / 2, y - h / 2, w, h);
+      if (!r) { held.at(-1).draw = (c) => label(c, text, x, y, bg, align); return; }
       ctx.fillStyle = bg; ctx.beginPath(); ctx.roundRect(r.x, r.y, w, h, 3); ctx.fill();
       ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.textAlign = "left"; ctx.fillText(text, r.x + 5, r.y + h / 2 + 0.5);
     }
@@ -342,6 +348,7 @@ const Drawings = (() => {
           lines.forEach((l) => { tw = Math.max(tw, ctx.measureText(l).width); });
           const th = (lines.length - 1) * lh + size + 4;
           const at = place(a.x, a.y, tw, th);   // an annotation's point label steps clear of the others
+          if (!at) { held.at(-1).draw = (c) => { c.font = ctx.font; c.fillStyle = it.color; c.textBaseline = "top"; lines.forEach((l, i) => c.fillText(l, a.x, a.y + i * lh)); }; break; }
           lines.forEach((l, i) => ctx.fillText(l, at.x, at.y + i * lh));
           bboxes.set(it.id, { x: a.x, y: a.y, w: tw, h: th });
           if (isSel) { ctx.strokeStyle = it.color; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(a.x - 3, a.y - 3, tw + 6, th + 6); ctx.setLineDash([]); }
@@ -420,10 +427,22 @@ const Drawings = (() => {
             const { w, h } = area();
             ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, h); ctx.clip();
             // strategy annotations first, so a user's own drawing always sits on top
-            placed.length = 0; placing = { w, h };
+            placed.length = 0; placing = { w, h }; held = [];
             placed.push(...legendRects());
-            auto.forEach((it) => paintItem(ctx, it, w, h, false));
+            // zoomed far out, a caption with a short form (a setup zone's "① Run ✓") shows only that; its full text on hover
+            const tight = (chart.timeScale().options().barSpacing || 6) < 3;
+            // highest priority first, so the selected setup's labels take their spots before anything else is laid out
+            [...auto].sort((p, q) => (p.pri || 0) - (q.pri || 0)).forEach((it) => {
+              curPri = it.pri || 0;
+              if (tight && it.short && it.type === "text") {
+                paintItem(ctx, { ...it, text: it.short }, w, h, false);
+                const a = toPx(it.pts[0]);
+                if (a) held.push({ x: a.x, y: a.y, w: 24, h: 16, draw: (c) => paintItem(c, it, w, h, false) });
+              } else paintItem(ctx, it, w, h, false);
+            });
+            curPri = 0;
             placing = null;
+            if (heldShown?.draw) heldShown.draw(ctx);
             if (!opts.hide) items.forEach((it) => paintItem(ctx, it, w, h, it.id === selected));
             if (draft && draft.type !== "measure") paintItem(ctx, { ...draft, color, width: 2 }, w, h, false);
             const m = measure || (draft && draft.type === "measure" ? draft : null);
@@ -599,6 +618,9 @@ const Drawings = (() => {
     }
     function onMove(e) {
       const p = local(e);
+      // a held-back label shows while the mouse is over its spot
+      const onHeld = held.find((r) => p.x >= r.x - 4 && p.x <= r.x + r.w + 4 && p.y >= r.y - 4 && p.y <= r.y + r.h + 4) || null;
+      if (onHeld !== heldShown) { heldShown = onHeld; req(); }
       if (draft?.free) {
         if (inPlot(p) && Math.hypot(p.x - lastPx.x, p.y - lastPx.y) >= FREE_STEP) { const q = fromPxFree(p.x, p.y); if (q) { draft.pts.push(q); lastPx = p; req(); } }
         return;

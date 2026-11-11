@@ -275,7 +275,10 @@ const Studies = (() => {
               ? `<p class="tt-x">The selected backtest run traded this setup: bought at ${esc((+t.entry_price).toFixed(2))} on ${esc(t.entry_date)}`
                 + (t.exit_date ? `, sold at ${esc((+t.exit_price).toFixed(2))} on ${esc(t.exit_date)} (${esc(t.exit_reason || "exit")})` : ", still open")
                 + `${t.r_multiple != null ? `, ${(+t.r_multiple).toFixed(2)}R` : ""}. Its own levels are drawn from the run's record.</p>`
-              : `${z.illustration ? `<div class="tt-tag">Illustration of the rules — not a trade</div>` : ""}<p class="tt-x">${esc(z.text)}</p>${checksHtml(z.checks.filter((c) => !(c.name === z.title && c.value === z.line)))}`;   // a check that only restates the zone's own line (Run: +136% in 40 sessions) is said once
+              // the numbers first (each check and its value), the reasoning behind "Why": a zone's prose ran to 150 words.
+              // A check that only restates the zone's own line (Run: +136% in 40 sessions) is said once.
+              : `${z.illustration ? `<div class="tt-tag">Illustration of the rules — not a trade</div>` : ""}${checksHtml(z.checks.filter((c) => !(c.name === z.title && c.value === z.line)))}`
+                + (z.text ? `<details class="tt-why"><summary>Why</summary><p class="tt-x">${esc(z.text)}</p></details>` : "");
           }
           return `<div class="tt-z ${zoneOpen === z.key ? "on" : ""}"><div class="tt-zh" data-z="${z.key}"><span class="n">${NUM[n]}</span>
             <b>${esc(z.title)}</b><span class="st ${state}">${ICON[state]}</span><span class="ln">${esc(line)}</span></div>${body}</div>`;
@@ -316,7 +319,7 @@ const Studies = (() => {
             };
           }
           const s = focus, L = listed(), k = L.indexOf(s);
-          pg.innerHTML = (s ? `<a data-a="open" class="tt-title" style="--c:${kindCol(s)}" title="${esc(`${ref(s)} · ${s.title}`)} — open its detail in the side panel">${ref(s)} · ${esc(s.title)}</a>`
+          pg.innerHTML = `<span class="muted">Setup</span>` + (s ? `<a data-a="open" class="tt-title" style="--c:${kindCol(s)}" title="${esc(`${ref(s)} · ${s.title}`)} — open its detail in the side panel">${ref(s)} · ${esc(s.title)}</a>`
               : `<a data-a="open" class="muted">No setup in view</a>`)
             + `<button data-a="older" title="Older setup (down the list)" ${k < 0 || k >= L.length - 1 ? "disabled" : ""}>‹</button>`
             + `<span title="Its place in the panel's list: newest first${ctx.setupShows ? ", the setups its filter shows" : ""}">${k < 0 ? "–" : k + 1} of ${L.length}</span>`
@@ -365,7 +368,7 @@ const Studies = (() => {
               const st = traded && isEntry(z) ? "pass" : z.warn && z.state === "pass" ? "warn" : z.state;
               // captions just inside the frame's top edge: below it, the setup lane would cover them
               shapes.push({ shape: "text", at: z.from, price: f.top, role: st === "fail" ? "stop" : st === "warn" ? "flag" : "dim",
-                label: `${NUM[n]} ${z.title}${z.tag ? ` · ${z.tag}` : ""} ${ICON[st]}` });
+                label: `${NUM[n]} ${z.title}${z.tag ? ` · ${z.tag}` : ""} ${ICON[st]}`, short: NUM[n] });   // zoomed out: the number alone
               if (isEntry(z) && traded) return;   // a traded setup's entry is the run's record, drawn once below
               // a failed setup's contraction line takes its grey, so a real VCP stands out
               shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" }
@@ -394,9 +397,10 @@ const Studies = (() => {
           // very bars they were about. The lines stay on the chart, unlabelled; the side panel gives the numbers.
           const AXIS = { buy: "Buy", stop: "SL", target: "TP" };
           axisLines.forEach((l) => main?.removePriceLine(l));
-          axisLines = [];
+          axisLines = []; axisLevels = [];
           const drawn = shapes.map((x) => {
             if (x.shape !== "level" || !AXIS[x.role] || !x.axis) return x;
+            if (on && main && x.price != null) axisLevels.push({ price: +x.price, title: /^bought/i.test(x.label || "") ? "Bought" : AXIS[x.role], color: c(x.role) || "#888" });
             if (on && main && x.price != null)
               axisLines.push(main.createPriceLine({ price: +x.price, color: c(x.role) || "#888", lineVisible: false, axisLabelVisible: true,
                 title: /^bought/i.test(x.label || "") ? "Bought" : AXIS[x.role] }));
@@ -404,11 +408,34 @@ const Studies = (() => {
           });
           ctx.annotate(id, on ? stage.concat(drawn) : [], { uptrend: c("uptrend"), base: c("base"), contraction: c("base"),
             vcp: c("vcp"), cheat: c("cheat"), miss: c("miss"), flag: c("flag"), near: NEAR, failpath: DIM, young: YOUNG, tight: c("tight"),
-            pivot: c("pivot") || c("tight"), buy: c("buy"), stop: c("stop"), breakeven: DIM, target: c("target"), dim: DIM, ...extraRoles });
+            pivot: c("pivot") || c("tight"), buy: c("buy"), stop: c("stop"), breakeven: DIM, target: c("target"), dim: DIM, ...extraRoles }, { pri: 0 });
           renderPager();
           lane.mark();
           publish();
+          offAxis();
         };
+        // A level of the selected setup beyond the visible prices (a far target) is not allowed to stretch the axis;
+        // it gets a small tag at the pane's edge instead -- "↑ TP 591.97" -- so you know it is there and how far
+        let axisLevels = [], offRaf = 0;
+        const offTag = document.createElement("div"); offTag.className = "tt-off"; ctx.chartEl?.append(offTag);
+        const offAxis = () => {
+          if (!main) return;
+          const H = chart.panes()[0]?.getHeight() || 0, up = [], down = [];
+          for (const l of on ? axisLevels : []) {
+            const y = main.priceToCoordinate(l.price);
+            if (y == null) continue;
+            if (y < 0) up.push(l); else if (y > H) down.push(l);
+          }
+          const tag = (l, arrow) => `<span style="--c:${l.color}">${arrow} ${l.title} ${l.price.toFixed(2)}</span>`;
+          offTag.innerHTML = up.map((l) => tag(l, "↑")).join("") + down.map((l) => tag(l, "↓")).join("");
+          offTag.style.right = `${(chart.priceScale("right").width() || 0) + 6}px`;
+          offTag.hidden = !(up.length || down.length);
+          offTag.classList.toggle("down", !up.length && !!down.length);
+          if (down.length && !up.length) offTag.style.top = `${Math.max(0, H - 24)}px`; else offTag.style.top = "4px";
+        };
+        const offLater = () => { cancelAnimationFrame(offRaf); offRaf = requestAnimationFrame(offAxis); };
+        chart.timeScale().subscribeVisibleLogicalRangeChange(offLater);
+        chart.subscribeCrosshairMove(offLater);
         // the side panel's Trade setups tab (app.js) lists these: hand it the list, the selection, and a way to pick one
         const publish = () => ctx.onSetups?.({ list: setups, focus: setups.indexOf(focus), note: summary, detail, keyBox, act, pager: renderPager,
           select: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; reveal(pinned); paint(); },
@@ -1098,7 +1125,7 @@ const Studies = (() => {
       } },
     // ---- the screener's own trade plan for this symbol (opt-in; nothing is drawn unless added)
     plan: { name: "Screener levels (entry / stop / target)", short: "Plan", cat: "Screener", overlay: true, custom: true,
-      label: (p) => `Plan ${p.strategy === "All" ? "all strategies" : p.strategy}`,
+      label: (p) => `Plan ${p.strategy === "All" ? "all strategies" : stratName(p.strategy)}`,
       params: { strategy: { type: "select", def: "All", options: STRATEGY_CHOICES }, target: { type: "select", def: "Yes", options: ["Yes", "No"] } },
       plots: [{ k: "entry", t: "Entry", c: "#2962ff" }, { k: "stop", t: "Stop", c: "#ef5350" }, { k: "tgt", t: "Target", c: "#26a69a" }],
       draw({ main, p, col, plans }) {
@@ -1107,7 +1134,7 @@ const Studies = (() => {
         for (const l of plans || []) {
           if (p.strategy !== "All" && l.strategy !== p.strategy) continue;
           if (!(l.entry > 0 && l.stop > 0)) continue;
-          const tag = SHORT[l.strategy] || l.strategy;
+          const tag = SHORT[l.strategy] || stratName(l.strategy);
           specs.push({ price: l.entry, color: col("entry"), lineStyle: 0, lineWidth: 1, title: `${tag} entry` });
           specs.push({ price: l.stop, color: col("stop"), lineStyle: 2, lineWidth: 1, title: `${tag} stop` });
           if (p.target === "Yes" && l.target_r > 0)
@@ -1929,7 +1956,10 @@ const Studies = (() => {
       const series = [];
       def.plots.forEach((pl, j) => {
         const color = s.colors[pl.k] || pl.c;
-        const common = { priceLineVisible: false, lastValueVisible: !def.overlay || def.volume, visible: !s.hidden, title: "" };
+        // no value tag on the price axis for an overlay: its value is in the legend, and six moving averages put six tags
+        // over the axis numbers and the setup's Buy / SL. (This read `!def.overlay || def.volume`, which is undefined for
+        // an overlay -- and the library's default for undefined is to show the tag.) A lower pane keeps its own axis's tag.
+        const common = { priceLineVisible: false, lastValueVisible: !def.overlay, visible: !s.hidden, title: "" };
         let ser;
         if (pl.s === "hist") {
           ser = chart.addSeries(LC.HistogramSeries, { ...common, color, ...(def.volume ? { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false } : {}) }, p);
@@ -2086,6 +2116,14 @@ const Studies = (() => {
   }
   function toggleHidden(id) { const list = load(), s = list.find((x) => x.id === id); if (s) { s.hidden = !s.hidden; save(list); } return s; }
   function remove(id) { save(load().filter((s) => s.id !== id)); }
+  // "Levels only": a strategy with no Trade setups layer (Kell cycle) still has today's decision -- its entry and
+  // stop, from the latest screening run -- drawn by the Screener levels study set to that strategy
+  const levelsOn = (strategy) => load().some((s) => s.type === "plan" && s.params.strategy === strategy && !s.hidden);
+  function toggleLevels(strategy) {
+    const list = load(), i = list.findIndex((s) => s.type === "plan" && s.params.strategy === strategy);
+    if (i >= 0) list.splice(i, 1); else list.push(make("plan", { strategy }));
+    save(list);
+  }
 
   // ---- Trade setups: one strategy's setups at a time, chosen from its own control rather than
   // added like an indicator. Single-select because the layer is a singleton in practice — its card
@@ -2103,7 +2141,7 @@ const Studies = (() => {
 
   return { setStrategies: (keys) => STRATEGY_CHOICES.splice(1, STRATEGY_CHOICES.length, ...keys),
     setStrategyNames: (m) => Object.assign(STRATEGY_NAMES, m),
-    setupLayers, activeSetup, setSetup, plainText,
+    setupLayers, activeSetup, setSetup, plainText, levelsOn, toggleLevels,
     transient: (type, params = {}) => ({ ...make(type, params), transient: true }),   // drawn this visit, never saved
     setupName: () => { const t = activeSetup(); return t ? stratName(CATALOG[t].setupsFor) : null; },
     restore: save, CATALOG, learnHref, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };
