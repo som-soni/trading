@@ -407,3 +407,18 @@ did worse than the rest in both markets, so no composite "VCP score" is proposed
 markets with max drawdown no more than 1 point deeper, it becomes a candidate for one verify run per market. Its
 pass criteria will be written before that run. Otherwise it is recorded and dropped. A win in one market only is
 recorded, not adopted.
+
+**Result (optimise, in-sample): passes the screen, narrowly.**
+
+| # | Market | CAGR / max DD | Avg R (trades) | Compared with |
+|---|---|---|---|---|
+| 1451 | India | 3.89% / −19.9% | +0.17 (307) | 3.71% / −20.1% |
+| 1452 | US | −1.99% / −34.4% | −0.03 (1,255) | −3.30% / −40% |
+
+- India gains 0.18 points, inside the noise; the US gains 1.3 points with a shallower drawdown.
+- **Against it:** the rule was sliced from these same years, and a textbook event study on stored prices (about 25,000
+  cheats, 2014–2026, no strategy code; [creator notes](creator-mark-minervini.md) §9.4) found the pullback count does
+  not sort cheat trades in either market. The US gain is more likely fewer cheats freeing slots than a better cheat.
+- **So it does not get a verify run of its own.** It is tested the way the stop cap is: B + 8% cap + this rule, optimise,
+  #1519 (India) and #1520 (US), against B + 8% cap (#1517, #1518). It joins 1.64 only if it raises CAGR in both
+  markets there with max drawdown no more than 1 point deeper; otherwise it is dropped.
