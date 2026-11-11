@@ -551,6 +551,8 @@ table.dtab.click tbody tr { cursor: pointer; } table.dtab.click tbody tr:hover t
 .cmd .copy { position: absolute; right: 6px; bottom: 9px; height: 26px; }
 .sd-src { margin-top: 18px; }
 .rep-nav { max-height: calc(100vh - 74px); overflow: auto; }
+.scalebox { position: absolute; right: 4px; bottom: 4px; z-index: 6; display: flex; gap: 3px; }
+.scalebox .autoscale { position: static; }
 .autoscale { position: absolute; right: 4px; bottom: 4px; z-index: 6; height: 20px; padding: 0 7px; font-size: 12px; border-radius: 4px;
   background: var(--panel); border: 1px solid var(--line-2); color: var(--muted); }
 .autoscale.on { color: var(--accent-text); border-color: var(--accent); background: var(--accent-soft); }
@@ -2053,7 +2055,7 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
 /* the panel's head stays short so the list keeps the height: the note on one line (its tooltip has the rest),
    the verdict filters on one row */
 #side .sp-note { -webkit-line-clamp: 1; }
-#side .sp-chips { flex-wrap: nowrap; gap: 3px; } #side .sp-chips .sp-chip { padding: 2px 6px; white-space: nowrap; }
+#side .sp-chips { flex-wrap: wrap; gap: 3px; } #side .sp-chips .sp-chip { padding: 2px 6px; white-space: nowrap; }
 .tt-card.tt-keybox { margin: 8px -14px -12px; border-radius: 0; }
 .tt-card.tt-keybox .tt-key { max-height: 40vh; overflow: auto; }
 /* only the heading clears the panel's close button: the chips below get the full width */
@@ -2065,3 +2067,7 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
 @media (max-width: 1600px) { #trades-field > span { display: none; } }
 /* the legend's rows read over a setup's drawing: a faint backing keeps its dashed dividers out of the numbers */
 .legend > .ohlc, .legend > .srow:not(:hover) { background: color-mix(in srgb, var(--panel) 72%, transparent); border-radius: 4px; }
+/* Trade setups: a plan that never fired (its setup ended) and the weekly / monthly notice */
+.sp-row.sp-expired { border-left-color: #9ca3af; --pc: #9ca3af; }
+.sp-tf { display: grid; gap: 6px; justify-items: start; margin-top: 8px; }
+#setupbtn.idle { opacity: .6; }

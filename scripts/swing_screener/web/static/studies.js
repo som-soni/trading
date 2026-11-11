@@ -16,6 +16,16 @@ const Studies = (() => {
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  // The words a reader sees, not the code's: a strategy's decision labels and exit codes in plain words
+  // ("TRADE - HIGH CONFIDENCE" -> "trade (high confidence)", "REBALANCE_OUT" -> "rebalanced out"), and ISO dates in
+  // the one format the app uses ("2026-10-16" -> "16 Oct 2026"). Display only: the stored text is unchanged.
+  const MONTH3 = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const PLAIN = { "TRADE - HIGH CONFIDENCE": "trade (high confidence)", "TRADE ON TRIGGER": "trade on trigger", REBALANCE_OUT: "rebalanced out" };
+  const plainText = (t) => String(t ?? "")
+    .replace(/TRADE - HIGH CONFIDENCE|TRADE ON TRIGGER|REBALANCE_OUT/g, (m) => PLAIN[m])
+    .replace(/\b(WATCH|AVOID|TRADE)\b/g, (m) => m.toLowerCase())
+    .replace(/\b[A-Z]{2,}(?:_[A-Z]+)+\b/g, (m) => m.toLowerCase().replace(/_/g, " "))
+    .replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, (_, y, m, d) => `${+d} ${MONTH3[+m - 1]} ${y}`);
   /** a custom study whose result arrives later (a server request) rewrites its legend note in place */
   // a note longer than a glance (an explanation, not a status) reads as an ⓘ with the text as its tooltip
   const LONG_NOTE = 70;
@@ -184,7 +194,7 @@ const Studies = (() => {
     return Math.max(years, back || 0);
   };
 
-  function setupLayer({ chart, main, times, p, col, ctx, id, keyRows, roles: extraRoles = {}, load }) {
+  function setupLayer({ chart, main, times, p, col, ctx, id, def, keyRows, roles: extraRoles = {}, load }) {
         let on = true, stage = [], setups = [], all = [], focus = null, hovered = null, pinned = null, axisLines = [], summary = "";
         const DIM = "#5d6170", YOUNG = "#9ca3af", NUM = ["①", "②", "③", "④"];
         // a setup's colour: a VCP, a cheat entry on a base that is not (yet) a VCP, or a failed base
@@ -214,14 +224,18 @@ const Studies = (() => {
         const ref = (s) => `#${s.ref || setups.indexOf(s) + 1}`;
         const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
         let keyOpen = store("ttKeyOpen") === "1", zoneOpen = store("ttZone") || "";   // zones start closed: a compact card
-        const esc = (x) => String(x ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+        // everything this layer writes is read, so it is said in plain words and the app's date format
+        const esc = (x) => plainText(x).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
         const ICON = { pass: "✓", fail: "✗", skip: "·", warn: "!", young: "?" };
         // the selected run's trade on a setup, if it traded one: its record replaces the illustrated entry
         // Each trade belongs to ONE setup: of the setups whose window holds its entry, the one the rules
         // passed, else the latest to start — so an overlapping refused setup never claims it too.
         let owners = new Map(), ownersOf = null;
         const ownerMap = () => {
-          const ts = ctx.trades?.() || [];
+          // only a run of THIS layer's strategy can have traded its setups: another strategy's run (Quality momentum
+          // over Minervini's setups) matched by date alone and labelled a setup it never saw "traded"
+          const mine = !ctx.runStrategy || !def?.setupsFor || ctx.runStrategy === def.setupsFor;
+          const ts = mine ? ctx.trades?.() || [] : [];
           if (ownersOf === ts && owners.size) return owners;
           owners = new Map(); ownersOf = ts;
           const taken = new Set();
@@ -239,6 +253,9 @@ const Studies = (() => {
         };
         const tradeOf = (s) => ownerMap().get(s) || null;
         const isEntry = (z) => z.key === "entry" || z.key === "cheat";
+        // a target the strategy uses only to size the trade (its exit is a rule: Donchian's channel) is not a take-profit:
+        // drawn faint and never tagged "TP" on the price axis, so only a real price target reads as one
+        const nominalTarget = (x) => x.role === "target" && /^Nominal target/i.test(x.label || "");
 
         // ---- the selected setup's text lives in ONE place, the side panel's Trade setups tab (app.js): `detail`
         // below renders its dates, verdict, one row per zone (the open zone's writeup and checks) and the colour
@@ -268,6 +285,7 @@ const Studies = (() => {
           if (!s) return "";
           const tr = tradeOf(s);
           return `<div class="tt-card tt-in">${tr ? `<div class="tt-date"><span class="tt-traded" title="The selected backtest run bought this setup — these are its own levels, not an illustration">● traded${tr.r_multiple != null ? ` ${(+tr.r_multiple).toFixed(1)}R` : ""}</span></div>` : ""}
+            <div class="tt-date">${esc(ref(s))} = first setup bar ${esc(s.base_from || s.from)}${s.breakout ? ` · signal ${esc(s.breakout)}` : s.crossed ? ` · crossed ${esc(s.crossed)}` : ""}${s.stopped ? ` · stop hit ${esc(s.stopped)}` : ""}</div>
             <div class="tt-sum" title="${esc(`${s.from} → ${s.to}\n${s.summary}`)}">${esc(s.summary)}</div>${s.zones.map((z, n) => zoneHtml(s, z, n)).join("")}</div>`;
         };
         // the colour key, once at the head of the panel's list rather than in every setup
@@ -279,7 +297,9 @@ const Studies = (() => {
           if (t.closest?.(".tt-kh")) { keyOpen = !keyOpen; store("ttKeyOpen", keyOpen ? "1" : "0"); publish(); return true; }
           return false;
         };
-        const step = (d) => { const k = setups.indexOf(focus) + d; if (setups[k]) { pinned = setups[k]; hovered = null; reveal(pinned); paint(); } };
+        // the pager reads like the panel's list: newest first, only the setups its filter shows (ctx.setupShows)
+        const listed = () => [...setups].reverse().filter((x) => !ctx.setupShows || ctx.setupShows(x));
+        const step = (d) => { const L = listed(), k = L.indexOf(focus) + d; if (L[k]) { pinned = L[k]; hovered = null; reveal(pinned); paint(); } };
         const renderPager = () => {
           const row = ctx.chartEl?.querySelector(`.srow[data-id="${id}"]`);
           if (!row) return;
@@ -292,14 +312,15 @@ const Studies = (() => {
             pg.onclick = (e) => {
               e.stopPropagation();
               const a = e.target.closest("[data-a]")?.dataset.a;
-              if (a === "prev") step(-1); else if (a === "next") step(1); else if (a === "open") ctx.openSetups?.();
+              if (a === "older") step(1); else if (a === "newer") step(-1); else if (a === "open") ctx.openSetups?.();
             };
           }
-          const s = focus, k = setups.indexOf(s);
+          const s = focus, L = listed(), k = L.indexOf(s);
           pg.innerHTML = (s ? `<a data-a="open" class="tt-title" style="--c:${kindCol(s)}" title="${esc(`${ref(s)} · ${s.title}`)} — open its detail in the side panel">${ref(s)} · ${esc(s.title)}</a>`
               : `<a data-a="open" class="muted">No setup in view</a>`)
-            + `<button data-a="prev" title="Previous setup" ${k <= 0 ? "disabled" : ""}>‹</button><span>${k + 1} of ${setups.length}</span>`
-            + `<button data-a="next" title="Next setup" ${k >= setups.length - 1 ? "disabled" : ""}>›</button>`
+            + `<button data-a="older" title="Older setup (down the list)" ${k < 0 || k >= L.length - 1 ? "disabled" : ""}>‹</button>`
+            + `<span title="Its place in the panel's list: newest first${ctx.setupShows ? ", the setups its filter shows" : ""}">${k < 0 ? "–" : k + 1} of ${L.length}</span>`
+            + `<button data-a="newer" title="Newer setup (up the list)" ${k <= 0 ? "disabled" : ""}>›</button>`
             + `<button data-a="open" title="Open the Trade setups panel: every setup, and this one's zones and checks">⧉</button>`;
         };
 
@@ -348,7 +369,7 @@ const Studies = (() => {
               if (isEntry(z) && traded) return;   // a traded setup's entry is the run's record, drawn once below
               // a failed setup's contraction line takes its grey, so a real VCP stands out
               shapes.push(...z.shapes.map((x) => (!s.complete && x.role === "contraction" ? { ...x, role: "failpath" }
-                : x.shape === "level" && isEntry(z) ? { ...x, ...(z === primary ? { axis: true } : { faint: true }) } : x)));
+                : x.shape === "level" && isEntry(z) ? { ...x, ...(z === primary && !nominalTarget(x) ? { axis: true } : { faint: true }) } : x)));
             });
             if (traded) {
               // The run's own record, drawn ONCE per setup and in this indicator's vocabulary, so an
@@ -390,17 +411,23 @@ const Studies = (() => {
         };
         // the side panel's Trade setups tab (app.js) lists these: hand it the list, the selection, and a way to pick one
         const publish = () => ctx.onSetups?.({ list: setups, focus: setups.indexOf(focus), note: summary, detail, keyBox, act, pager: renderPager,
-          select: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; reveal(pinned); paint(); } });
+          select: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; reveal(pinned); paint(); },
+          // keep a setup selected across a re-render (a backtest picked): select it without moving the chart
+          pin: (k) => { if (!setups[k]) return; pinned = setups[k]; hovered = null; paint(); } });
         let timer = null, raf = 0;
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
           clearTimeout(timer);
           timer = setTimeout(() => { if (setups.length && !pinned && !hovered && latest() !== focus) paint(); }, 150);
         });
-        // A click on the chart selects a setup covering that bar; clicking again where several overlap steps
-        // to the next of them. Inside the selected setup it opens the zone clicked. Empty space changes nothing.
+        // A click INSIDE the selected setup's box (or on its id tag, just above it) opens the zone clicked; clicking
+        // it again where several setups overlap steps to the next of them. Anywhere else -- empty price area, a
+        // lower pane, a near miss on a legend button -- changes nothing: a setup is picked from its box, its lane
+        // pill, the pager or the panel. (A click on any bar a setup spanned used to select it.)
         chart.subscribeClick((q) => {
-          if (!setups.length) return;
+          if (!setups.length || !focus || !q.point || (q.paneIndex ?? 0) !== 0) return;
           const t = timeOf(q); if (!t) return;
+          const f = focus.frame, yTop = main.priceToCoordinate(f.top), yBot = main.priceToCoordinate(f.bottom);
+          if (!(t >= f.from && t <= f.to) || yTop == null || yBot == null || q.point.y < yTop - 22 || q.point.y > yBot + 2) return;
           const here = setups.filter((s) => s.from <= t && t <= s.to);
           if (!here.length) return;
           const k = here.indexOf(focus);
@@ -410,10 +437,19 @@ const Studies = (() => {
           if (z) { zoneOpen = z.key; store("ttZone", zoneOpen); }
           paint();
         });
-        // frame a setup stepped to in the left ~60% of the chart, clear of the price axis's labels on the right
-        // a click zooms to a setup's `focus` (the base and the move into it) when it has one: its frame may run back
-        // to the start of a long advance
-        const reveal = (s) => frameDates(chart, times, ctx, (s.focus || s).from, s.to, { fill: 0.58, lead: 0.04, price: s.focus || s.frame });
+        // go to a setup: its WHOLE box in view with a margin either side (and empty bars before the price axis), the
+        // price axis on the candles plus the entry's buy and stop -- never stretched to a far target, which once put
+        // the candles in a quarter of the pane (the box's top includes the target)
+        const levelsOf = (s) => {
+          const e = s.zones.filter(isEntry), z = e.find((x) => x.state === "pass") || e.at(-1);
+          const v = (role) => (z?.shapes || []).filter((x) => x.shape === "level" && x.role === role).map((x) => +x.price);
+          const lo = [...v("stop"), s.frame.bottom], hi = v("buy");
+          return { top: hi.length ? Math.max(...hi) : null, bottom: Math.min(...lo) };
+        };
+        const reveal = (s) => {
+          const w = levelsOf(s);
+          frameDates(chart, times, ctx, s.frame.from, s.frame.to, { fill: 0.82, lead: 0.07, price: w.top != null ? w : null });
+        };
 
         // ---- the setup lane: one pill per setup along the bottom of the price pane, stacked where they overlap
         const LANE_ROWS = 2;
@@ -2067,7 +2103,7 @@ const Studies = (() => {
 
   return { setStrategies: (keys) => STRATEGY_CHOICES.splice(1, STRATEGY_CHOICES.length, ...keys),
     setStrategyNames: (m) => Object.assign(STRATEGY_NAMES, m),
-    setupLayers, activeSetup, setSetup,
+    setupLayers, activeSetup, setSetup, plainText,
     transient: (type, params = {}) => ({ ...make(type, params), transient: true }),   // drawn this visit, never saved
     setupName: () => { const t = activeSetup(); return t ? stratName(CATALOG[t].setupsFor) : null; },
     restore: save, CATALOG, learnHref, load, render, legendRow, legendValues, openPicker, openSettings, toggleHidden, remove, label, needsBench: () => load().some((s) => CATALOG[s.type].needsBench) };

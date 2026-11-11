@@ -226,8 +226,15 @@ def _episode(strategy, cfg, daily: pd.DataFrame, ep: list, judge=None) -> dict:
               + [s["top"] for s in shapes if s.get("top")])
     bottom = min([float(daily["low"].iloc[frame_from_i: end_i + 1].min())] + [s["bottom"] for s in shapes if s.get("bottom")])
     frame_to = day(max(i, ep[-1][0]))   # never before the episode's last setup bar
+    stop_hit = None
     if plan:
-        to = day(min(last_bar, max(i + ENTRY_BARS, ep[-1][0])))
+        # The levels illustrate the plan for ENTRY_BARS sessions past the judged bar -- not a trade's life, which
+        # this layer does not simulate. But once a later bar trades through the stop the plan is over (a trade
+        # stopped out, an order void), so the drawing ends there instead of running on below it.
+        horizon = min(last_bar, max(i + ENTRY_BARS, ep[-1][0]))
+        lows = daily["low"].to_numpy()
+        stop_hit = next((j for j in range(i + 1, horizon + 1) if lows[j] <= plan.stop), None)
+        to = day(stop_hit if stop_hit is not None else horizon)
         risk = plan.entry - plan.stop
         nominal = bool(getattr(strategy, "nominal_target", False))   # the exit is a rule, not this price
         levels = [("buy", plan.entry, f"Buy {px(plan.entry)}"),
@@ -248,27 +255,35 @@ def _episode(strategy, cfg, daily: pd.DataFrame, ep: list, judge=None) -> dict:
         rules = " ".join(strategy.render_doc(x) for x in (getattr(strategy, "entry_rules", ()) or ()))
         zones.append({"key": "entry", "title": "Entry", "state": "pass" if kind == "pass" else "warn" if kind == "watch" else "fail",
                       "from": day(i), "to": to, "illustration": True,
-                      "line": f"buy {px(plan.entry)} · stop {px(plan.stop)}" + ("" if nominal else f" · {plan.r_multiple:.1f}R"),
+                      "line": f"buy {px(plan.entry)} · stop {px(plan.stop)}" + ("" if nominal else f" · {plan.r_multiple:.1f}R")
+                              + (f" · stop hit {day(stop_hit)}" if stop_hit is not None else ""),
                       "text": (f"Where this strategy's own build_plans puts the trade on {d.date()}: an illustration, not a "
                                f"recommendation and not a backtest result. Decision: {label}"
                                + (f" ({dec.reason})" if dec and dec.reason else "") + f". {rules}"),
                       "checks": e_checks, "shapes": e_shapes})
         top = max(top, plan.target, plan.entry)
         bottom = min(bottom, plan.stop)
-        frame_to = to
+        frame_to = day(max(stop_hit if stop_hit is not None else horizon, ep[-1][0]))
     live = ep[-1][0] == last_bar
+    # a plan whose entry never fired, on a setup that has ended, is not "on trigger" any more: it expired
+    expired = kind == "watch" and not live and not fired
     # the header names what stopped it in a few words: the gate's short name, or the decision's own reason
     # up to its first dash (breakout: "base projects 0.10R < 2R")
     short = (gate_title(r.first_hard_fail) if not r.hard_gates_passed
              else (dec.reason.split(" — ")[0].split(";")[0] if dec and dec.reason else refused or label))
-    title = {"pass": f"{setup_name} ✓", "watch": f"{setup_name} · on trigger"}.get(kind) or f"✗ {short[:44]}"
+    title = {"pass": f"{setup_name} ✓", "watch": f"{setup_name} · " + ("not triggered" if expired else "on trigger")}.get(kind) or f"✗ {short[:44]}"
     summary = {"pass": f"The strategy trades this: {setup_name} on {d.date()}, decided {label}.",
-               "watch": f"A valid {setup_name} plan on {d.date()}, but {why}."}.get(kind) or f"Not traded: {why}."
+               "watch": (f"A valid {setup_name} plan on {d.date()}; its entry never fired while the setup lasted." if expired
+                         else f"A valid {setup_name} plan on {d.date()}, but {why}.")}.get(kind) or f"Not traded: {why}."
+    if stop_hit is not None:
+        summary += (f" Price went through the stop on {day(stop_hit)}, so the illustrated trade ends there."
+                    if kind == "pass" else f" Price went through the plan's stop on {day(stop_hit)}.")
     if live:
         title += " · today"
         summary = f"Still active on today's bar, {day(last_bar)}. " + summary
     return {"from": frame_from, "base_from": day(first_i), "to": frame_to, "kind": kind, "anchored": judge is not None,
             "complete": kind == "pass", "fail": None if kind == "pass" else (r.first_hard_fail or "plan"),
-            "breakout": day(i) if fired else None, "live": live, "as_of": day(i),
+            "breakout": day(i) if fired else None, "live": live, "as_of": day(i), "expired": expired,
+            "stopped": day(stop_hit) if stop_hit is not None else None,
             "title": title, "summary": summary,
             "frame": {"from": frame_from, "to": frame_to, "top": float(top), "bottom": float(bottom)}, "zones": zones}

@@ -561,6 +561,8 @@ let keepView = null;
 // a strategy was just picked for the chart's Trade setups layer: its first setups select one the panel's filter
 // shows, and go to it (the chart re-renders on a pick, so this outlives the page's own state)
 let setupSwitched = false;
+// the setup selected when a backtest run is picked: the re-render keeps it selected (picking a run never changes it)
+let keepSetup = null;
 // how many setups each strategy's layer found on a stock, remembered (in this browser, across reloads) as each
 // layer reports in, so the setups panel's strategy picker can show a count beside every strategy already
 // scanned. Keyed market:symbol, each count stamped with the chart's last bar; never fetched for -- a count
@@ -890,7 +892,8 @@ async function chartPage(alive, market, symbol, tf) {
     await STRATEGIES;
     const name = Studies.setupName();
     setupBtn.lastChild.textContent = name ? ` ${name}` : " Trade setups";
-    setupBtn.classList.toggle("on", !!name);
+    setupBtn.classList.toggle("on", !!name && tf === "D");   // on a weekly / monthly chart nothing is drawn: not shown as active
+    setupBtn.classList.toggle("idle", !!name && tf !== "D");
     setupBtn.hidden = !Studies.setupLayers().length;
   };
   markSetup();
@@ -965,26 +968,47 @@ async function chartPage(alive, market, symbol, tf) {
   // in this stock -- grouped by strategy; the raw run name (the options it ran with) is the tooltip, and its
   // exit and options are spelled out only where two runs would otherwise read the same.
   const stratNames = Object.fromEntries((await STRATEGIES).map((x) => [x.key, x.name]));
+  // a list opened from a strategy's page is labelled with its key and a decision code ("kell_cycle · tradeable"):
+  // shown with the strategy's name and in plain words, in the chip, the rail's tooltip and the list panel
+  if (list?.label) {
+    list.label = Studies.plainText(String(list.label).replace(/[a-z][a-z0-9]*(?:_[a-z0-9]+)*/g, (k) => stratNames[k] || k)
+      .replace(/ · tradeable\b/, " · would trade").replace(/ · watch\b/, " · on watch"));
+    const a = $(".srcchip > a"); if (a) a.textContent = list.label;
+    const b = $('#rbar [data-tab="list"]'); if (b) b.title = list.label;
+  }
   const runLabel = (r) => {
     const st = stageInfo(r), rp = runParts(r.run), ver = rp?.version || (r.spec_id || "").split("-")[0];
     const yrs = r.window_start ? `${r.window_start.slice(0, 4)}–${r.window_end ? r.window_end.slice(2, 4) : "now"}` : "";
     return `${stratNames[r.strategy] || r.strategy}${ver ? ` ${ver}` : ""} · ${st.text.toLowerCase()}${yrs ? ` ${yrs}` : ""} · ${r.trades} trade${r.trades > 1 ? "s" : ""} here`;
   };
   const runVariant = (r) => { const rp = runParts(r.run); return rp ? [rp.exit, ...rp.options.filter((o) => !o.startsWith("stage-"))].filter(Boolean).join(", ") : r.run; };
-  const byStrat = new Map();
+  // the chart's own strategy (its Trade setups layer) first, under its name; every other strategy's runs after
+  // it, each group named as another strategy -- one of them draws ITS trades, never this strategy's setups
+  const activeStrat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor || null;
+  const byStrat = new Map(activeStrat ? [[activeStrat, []]] : []);
   tradeRuns.forEach((r) => { if (!byStrat.has(r.strategy)) byStrat.set(r.strategy, []); byStrat.get(r.strategy).push(r); });
   for (const [k, rs] of byStrat) {
+    if (!rs.length) {   // the chart's strategy has no run that traded this stock: say so where a run would be
+      sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(stratNames[k] || k)} — this chart's setups"><option disabled>No ${esc(stratNames[k] || k)} backtest traded this stock</option></optgroup>`);
+      continue;
+    }
     const opts = rs.map((r) => {
       const base = runLabel(r), twin = rs.some((x) => x !== r && runLabel(x) === base);
       return `<option value="${r.id}" title="${esc(`${stageInfo(r).tip}\nRun: ${r.run}`)}">${esc(base)}${twin ? ` — ${esc(runVariant(r))}` : ""}</option>`;
     }).join("");
-    sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(stratNames[k] || k)}">${opts}</optgroup>`);
+    const glabel = !activeStrat ? stratNames[k] || k : k === activeStrat ? `${stratNames[k] || k} — this chart's setups` : `Other strategy · ${stratNames[k] || k}`;
+    sel.insertAdjacentHTML("beforeend", `<optgroup label="${esc(glabel)}">${opts}</optgroup>`);
   }
   $("#trades-field").hidden = !tradeRuns.length;
   // a remembered run may no longer exist (or not trade this symbol): fall back to no overlay
   const want = store.get("tradeRun:" + market, "") + "";
   sel.value = [...sel.options].some((o) => o.value === want) ? want : "";
-  sel.onchange = () => { store.set("tradeRun:" + market, sel.value); route(); };
+  sel.onchange = () => {
+    store.set("tradeRun:" + market, sel.value);
+    const cur = setupFeed?.list[setupFeed.focus];
+    keepSetup = cur ? { type: Studies.activeSetup(), ref: cur.ref } : null;
+    rerender();   // keeps the view, as the selection is kept
+  };
   // an option cannot hold a coloured dot, so the chosen run's strategy shows its edge beside the menu
   loadEdges().then(() => {
     const run = tradeRuns.find((x) => String(x.id) === sel.value);
@@ -1048,6 +1072,9 @@ async function chartPage(alive, market, symbol, tf) {
   // drag-panning of the plot is done by our own handler below (both axes, TradingView style), so the
   // library's horizontal-only drag is off; wheel zoom, touch and the axis drag-to-scale stay native
   chart = LC.createChart(chartEl, { autoSize: true, ...chartTheme(), crosshair: { mode: LC.CrosshairMode.Normal },
+    // the crosshair's date in the app's one format ("16 Oct 2026"), not the library's "16 Oct '26"
+    localization: { timeFormatter: (t) => (typeof t === "object" ? prettyDate(`${t.year}-${String(t.month).padStart(2, "0")}-${String(t.day).padStart(2, "0")}`)
+      : typeof t === "string" ? prettyDate(t) : prettyDate(new Date(t * 1000).toISOString().slice(0, 10))) },
     handleScroll: { mouseWheel: true, pressedMouseMove: false, horzTouchDrag: true, vertTouchDrag: false } });
   const prevCleanup = cleanup;
   cleanup = () => { prevCleanup(); dr && dr.destroy(); chart.remove(); };
@@ -1164,6 +1191,8 @@ async function chartPage(alive, market, symbol, tf) {
     runStart: (/^\d{4}-\d{2}-\d{2}/.exec(tradeRuns.find((r) => String(r.id) === String($("#trades").value))?.run || "") || [null])[0],
     // the setups layer's legend pager shows only while the Trade setups tab is closed (the tab has the text then)
     setupsOpen: () => prefs.tab === "setups",
+    runStrategy: runKey,   // a setups layer counts a run's trades as its own only when the run is of its strategy
+    setupShows: (x) => setupFilter === "all" || setupKind(x) === setupFilter,   // the pager follows the panel's list
     openSetups: () => { prefs.tab = "setups"; prefs.panel = true; store.set("chartPrefs", prefs); syncPanel(); renderSide(); },
     onSetups: (feed) => {
       // the layer's first setups: when a strategy was just picked, or the panel's filter hides the one the chart
@@ -1171,15 +1200,23 @@ async function chartPage(alive, market, symbol, tf) {
       // list does not show, at the edge of the old view
       if (!setupSeen && feed.list.length) {
         setupSeen = true;
+        // a backtest run was just picked: the setup that was selected stays selected, and the chart stays put
+        const keep = keepSetup; keepSetup = null;
+        const kk = keep && keep.type === Studies.activeSetup() ? feed.list.findIndex((x) => x.ref === keep.ref) : -1;
         const shows = (x) => setupFilter === "all" || setupKind(x) === setupFilter;
         const cur = feed.list[feed.focus], switched = setupSwitched;
         setupSwitched = false;
-        if (switched || (prefs.tab === "setups" && (!cur || !shows(cur)))) {
+        if (kk >= 0) { if (kk !== feed.focus) return feed.pin(kk); }
+        else if (switched || !cur || !shows(cur)) {
           let k = feed.list.findLastIndex(shows);
           if (k < 0) k = feed.focus >= 0 ? feed.focus : feed.list.length - 1;
           if (switched || k !== feed.focus) return feed.select(k);   // publishes again, with the pick
         }
       }
+      // the selected setup is always one the panel's list shows: picked where the filter hides it (a lane pill, a
+      // click on its box), the filter opens to All rather than leave the list and the chart disagreeing
+      const sel0 = feed.list[feed.focus];
+      if (sel0 && setupFilter !== "all" && setupKind(sel0) !== setupFilter) { setupFilter = "all"; store.set("setupFilter", "all"); feed.pager?.(); }
       setupFeed = feed;
       const strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
       if (strat) noteSetupCount(`${market}:${symbol}`, strat,
@@ -1230,6 +1267,8 @@ async function chartPage(alive, market, symbol, tf) {
       // result, so the arrows carry only a B / S letter: on a trade a few bars long the two marker texts
       // landed on the layer's labels and on each other (ULTRACEMCO.NS, January 2013). Trade only keeps them.
       const layerLabels = !tradeOnly && !!runLayerType && (!!btLayer || Studies.activeSetup() === runLayerType);
+      // every marker names the run's strategy (its initials): beside another strategy's setups, a bare "B" read as theirs
+      const runName = stratNames[runKey] || runKey || "", tag = runName.split(/[\s_-]+/).filter(Boolean).map((w) => w[0].toUpperCase()).join("").slice(0, 3);
       t.rows.forEach((r) => {
         const a = snap(r[c("entry_date")]), b = snap(r[c("exit_date")]), pnl = r[c("pnl")], rm = r[c("r_multiple")];
         const ep = +r[c("entry_price")], xp = +r[c("exit_price")];
@@ -1242,16 +1281,16 @@ async function chartPage(alive, market, symbol, tf) {
         // sell then hid behind the layer's bought / stop / target tags (FEL.NS, monthly): one marker says both.
         if (a && a === b) {
           marks.push({ time: a, shape: "arrowUp", color: pnl >= 0 ? "#26a69a" : "#ef5350", size: 2, position: "belowBar",
-            text: layerLabels ? "B·S" : `B ${fmt(ep)} · S ${fmt(xp)} ${res(rm)}` });
+            text: `${tag} ` + (layerLabels ? "B·S" : `B ${fmt(ep)} · S ${fmt(xp)} ${res(rm)}`) });
           return;
         }
-        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: layerLabels ? "B" : `B ${fmt(ep)}`,
+        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: `${tag} ` + (layerLabels ? "B" : `B ${fmt(ep)}`),
           ...(ep > 0 ? { position: "atPriceBottom", price: ep } : { position: "belowBar" }) });
         // The sell has its own colour and sits ABOVE the bar. In the candles' green or red, pinned to a fill inside
         // the bar, a stop-out vanished into its own red candle and the setup frame's edge (BRITANNIA.NS, Sep 2018).
         // The result is in the trade's heading and card; the level is the stop / target line.
         if (b) marks.push({ time: b, shape: "arrowDown", color: "#d500f9", size: 1.5, position: "aboveBar",
-          text: layerLabels ? "S" : `S ${fmt(xp)} · ${r[c("exit_reason")]} ${res(rm)}` });
+          text: `${tag} ` + (layerLabels ? "S" : `S ${fmt(xp)} · ${Studies.plainText(r[c("exit_reason")])} ${res(rm)}`) });
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
       LC.createSeriesMarkers(main, marks);
@@ -1334,13 +1373,47 @@ async function chartPage(alive, market, symbol, tf) {
   // TradingView); the "auto" toggle, a double-click on the price axis, or Alt+R restores it.
   const scaleOf = (i) => chart.priceScale("right", i);
   const autoBtn = el(`<button class="autoscale" title="Auto-scale the price axis (fit the visible bars)">auto</button>`);
-  chartEl.append(autoBtn);
+  // the price axis's scale beside it: linear (both off), logarithmic, or percent from the first visible bar --
+  // a stock that rose twenty-fold since 2018 is flat for years on a linear axis. Remembered across charts.
+  const MODES = { log: LC.PriceScaleMode.Logarithmic, pct: LC.PriceScaleMode.Percentage };
+  const scaleBox = el(`<div class="scalebox"><button class="autoscale" data-m="log" title="Logarithmic price axis: equal distances are equal % moves">log</button><button class="autoscale" data-m="pct" title="Percent axis: each bar's change from the first visible bar">%</button></div>`);
+  scaleBox.append(autoBtn);
+  chartEl.append(scaleBox);
+  let scaleMode = store.get("chartScaleMode", "");
+  const applyMode = () => {
+    try { scaleOf(0).applyOptions({ mode: MODES[scaleMode] ?? LC.PriceScaleMode.Normal }); } catch {}
+    scaleBox.querySelectorAll("[data-m]").forEach((b) => b.classList.toggle("on", b.dataset.m === scaleMode));
+    floorScale();
+  };
+  scaleBox.querySelectorAll("[data-m]").forEach((b) => b.onclick = () => { scaleMode = scaleMode === b.dataset.m ? "" : b.dataset.m; store.set("chartScaleMode", scaleMode); applyMode(); });
+  // A price is never below zero, so neither is the linear axis: the volume's bottom margin under the candles
+  // put the axis down to -40 on a full-history view of a stock that started near 20. When the visible low is
+  // that close to zero, the bottom margin shrinks just enough (the candles then sit over the volume bars).
+  const baseMargins = { ...(scaleOf(0).options().scaleMargins || { top: 0.06, bottom: 0.06 }) };
+  function floorScale() {
+    try {
+      const r = chart.timeScale().getVisibleLogicalRange(), data = main.data();
+      if (!r || !data.length) return;
+      let lo = Infinity, hi = -Infinity;
+      for (let i = Math.max(0, Math.floor(r.from)); i <= Math.min(data.length - 1, Math.ceil(r.to)); i++) {
+        const d = data[i]; const l = d.low ?? d.value, h = d.high ?? d.value;
+        if (l != null && l < lo) lo = l; if (h != null && h > hi) hi = h;
+      }
+      if (!(hi > 0) || !isFinite(lo)) return;
+      const t = baseMargins.top, want = scaleMode ? baseMargins.bottom : Math.max(0, Math.min(baseMargins.bottom, (lo * (1 - t)) / hi - 0.01));
+      const cur = scaleOf(0).options().scaleMargins?.bottom;
+      if (cur == null || Math.abs(cur - want) > 0.004) scaleOf(0).applyOptions({ scaleMargins: { top: t, bottom: want } });
+    } catch {}
+  }
+  let floorRaf = 0;
+  chart.timeScale().subscribeVisibleLogicalRangeChange(() => { cancelAnimationFrame(floorRaf); floorRaf = requestAnimationFrame(floorScale); });
   const syncAuto = () => autoBtn.classList.toggle("on", scaleOf(0).options().autoScale !== false);
   autoBtn.onclick = () => {
     const on = !autoBtn.classList.contains("on");
     chart.panes().forEach((_, i) => scaleOf(i).applyOptions({ autoScale: on }));
     syncAuto();
   };
+  applyMode();
   const paneAt = (y) => {
     let top = 0;
     const ps = chart.panes();
@@ -1434,7 +1507,7 @@ async function chartPage(alive, market, symbol, tf) {
       setChips.innerHTML = `<span class="muted" title="Strategies whose latest screening run has this stock on trigger, would trade it (filled dot) or has it on watch (hollow). Hover a chip for its decision and levels.">Today</span>` + xs.map((x) => {
         const type = layerOf[x.strategy];
         const state = !x.tradeable ? "on watch" : /TRIGGER/i.test(x.decision || "") ? "on trigger" : "would trade";
-        const tip = [`${names[x.strategy] || x.strategy}: ${state} — ${x.decision} (screened ${prettyDate(x.as_of)})`, x.setup,
+        const tip = [`${names[x.strategy] || x.strategy}: ${state} — ${Studies.plainText(x.decision)} (screened ${prettyDate(x.as_of)})`, x.setup,
           x.entry != null ? `entry ${fmt(+x.entry)}${x.stop != null ? ` · stop ${fmt(+x.stop)}` : ""}` : "",
           type ? (type === cur ? "Click to take its setups off the chart" : "Click to draw its setups on the chart")
             : "This strategy has no setups layer to draw"].filter(Boolean).join("\n");
@@ -1764,7 +1837,7 @@ async function chartPage(alive, market, symbol, tf) {
         <div class="btr-h"><b>${prettyDate(t.entry_date)} → ${t.exit_date ? prettyDate(t.exit_date) : "open"}</b>
           <span class="${(t.r_multiple ?? 0) >= 0 ? "pos" : "neg"}">${tradeResult(t)}</span></div>
         ${t.setup_name ? `<div class="small">Pattern: <b>${esc(t.setup_name)}</b></div>` : ""}
-        <div class="muted small">${esc([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · "))}</div>
+        <div class="muted small">${esc(Studies.plainText([t.setup, t.exit_reason, t.holding_days != null ? `${t.holding_days}d` : ""].filter(Boolean).join(" · ")))}</div>
         ${t.note ? `<div class="btr-note small">${esc(t.note)}</div>` : ""}</div>`).join("");
     return `<section><h3>Backtest trades</h3><div class="muted small">${run ? `${run.stage && run.stage !== "legacy" ? stageChip(run) + " " : ""}<span title="${esc(`Run: ${run.run}`)}">${esc($("#trades").selectedOptions[0]?.textContent || run.run)}</span>` : ""}</div>
       <div class="muted small">Click a trade to zoom to it and highlight what the strategy saw; click again to show every trade.</div>
@@ -1775,9 +1848,17 @@ async function chartPage(alive, market, symbol, tf) {
    *  the backtest-trades panel's shape, so finding a setup is a click rather than a scroll. */
   // a setup by what the rules would DO, judged on the ENTRY zone, not the frame's colour: a complete VCP whose
   // entry fails (a skipped trade) is refused, while a cheat entry on a base that is no VCP would trade
+  // what a setup's dates mean: its id is its FIRST setup bar, which is not the signal (#4Nov26 fired on 11 Nov),
+  // and its drawing runs past the signal for a while -- that end is not a trade's exit
+  function setupDates(s) {
+    return [`#${s.ref || ""}: named for its first setup bar, ${prettyDate(s.base_from || s.from)}`,
+      s.breakout ? `entry signal ${prettyDate(s.breakout)}` : s.crossed ? `crossed the pivot ${prettyDate(s.crossed)}` : `judged on ${prettyDate(s.as_of || s.to)}`,
+      s.stopped ? `price went through the stop ${prettyDate(s.stopped)}` : "",
+      `drawn to ${prettyDate(s.to)} — an illustration's span, not a trade's exit`].filter(Boolean).join("\n");
+  }
   function setupKind(s) {
     const entry = s.zones.find((z) => z.key === "entry" || z.key === "cheat");
-    return s.kind === "young" ? "young" : s.kind === "watch" ? "trigger" : s.kind === "pass" ? "trade"
+    return s.kind === "young" ? "young" : s.kind === "watch" ? (s.expired ? "expired" : "trigger") : s.kind === "pass" ? "trade"
       : ["vcp", "cheat", "near"].includes(s.kind) && entry?.state === "pass" ? "trade" : "refused";
   }
   /** The strategy picker at the top of the Trade setups panel: every strategy with a setups layer, one at a
@@ -1803,16 +1884,21 @@ async function chartPage(alive, market, symbol, tf) {
   }
   function setupsPanelHtml() {
     const name = Studies.setupName();
+    // the setups are judged on daily bars: on a weekly or monthly chart say so once, with the way back
+    if (name && tf !== "D") return `<section><h3>${esc(name)} · setups</h3>${setupPickerHtml()}
+      <div class="sp-tf"><b>Setups are computed on daily bars.</b><div class="muted small">This chart shows ${tf === "W" ? "weekly" : "monthly"} bars.</div>
+      <button class="primary" data-tf1d>Switch to 1D</button></div></section>`;
     if (!name) return `<section><h3>Trade setups</h3>${setupPickerHtml()}
       <div class="muted small">Pick a strategy above to scan this chart's history for its setups — what its rules would set up on, not trades. A dot marks a strategy that has the stock on trigger (filled) or on watch (hollow) today.</div></section>`;
     if (!setupFeed) return `<section><h3>${esc(name)}</h3>${setupPickerHtml()}<div class="muted small">Finding the setups…</div></section>`;
     const kindOf = setupKind;
-    const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, refused: 0 };
+    const counts = { all: setupFeed.list.length, trade: 0, trigger: 0, expired: 0, refused: 0 };
     setupFeed.list.forEach((s) => { const k = kindOf(s); if (k in counts) counts[k]++; });
-    const chips = [["all", "All"], ["trade", "Would trade"], ["trigger", "On trigger"], ["refused", "Refused"]]
+    const chips = [["all", "All"], ["trade", "Would trade"], ["trigger", "On trigger"], ["expired", "Not triggered"], ["refused", "Refused"]]
+      .filter(([k]) => k !== "expired" || counts.expired)   // only strategies whose plans wait for a trigger have these
       .map(([k, t]) => `<a class="sp-chip ${setupFilter === k ? "on" : ""}" data-f="${k}">${t} <span>${counts[k]}</span></a>`).join("");
     // the verdict as a pill in the card's own border colour, so a column of cards scans without reading
-    const PILL = { trade: "would trade", trigger: "on trigger", refused: "refused", young: "too young" };
+    const PILL = { trade: "would trade", trigger: "on trigger", expired: "not triggered", refused: "refused", young: "too young" };
     const rows = setupFeed.list.map((s, i) => ({ s, i })).reverse()
       .filter(({ s }) => setupFilter === "all" || kindOf(s) === setupFilter)
       // compact rows -- id, verdict, end date, one-line title; only the selected one opens to its detail (the
@@ -1820,12 +1906,12 @@ async function chartPage(alive, market, symbol, tf) {
       .map(({ s, i }) => { const cur = i === setupFeed.focus; return `<div class="btr sp-row sp-${kindOf(s)} ${cur ? "cur" : ""}" data-si="${i}">
         <div class="btr-h"><b title="Base from ${esc(prettyDate(s.base_from))}">#${s.ref || `${i + 1} · ${prettyDate(s.base_from)}`}</b>
           <span class="sp-pill">${PILL[kindOf(s)] || ""}</span>
-          <span class="muted small sp-to" title="The setup's last bar">${s.live ? "live today" : `to ${prettyDate(s.to)}`}</span></div>
-        <div class="small sp-title" title="${esc(s.title)}">${esc(s.title)}</div>
+          <span class="muted small sp-to" title="${esc(setupDates(s))}">${s.live ? "live today" : s.breakout ? `signal ${prettyDate(s.breakout)}` : s.stopped ? `stop hit ${prettyDate(s.stopped)}` : `judged ${prettyDate(s.as_of || s.to)}`}</span></div>
+        <div class="small sp-title" title="${esc(Studies.plainText(s.title))}">${esc(Studies.plainText(s.title))}</div>
         ${cur && setupFeed.detail ? setupFeed.detail() : ""}</div>`; }).join("");
     return `<section class="sp-head"><h3 title="What the strategy's rules would set up on — not trades. Click one here or in the lane along the chart's foot to go to it.">${esc(name)} · setups</h3>
       ${setupPickerHtml()}
-      ${setupFeed.note ? `<div class="small sp-note" title="${esc(setupFeed.note)}">${esc(setupFeed.note)}</div>` : ""}
+      ${setupFeed.note ? `<div class="small sp-note" title="${esc(Studies.plainText(setupFeed.note))}">${esc(Studies.plainText(setupFeed.note))}</div>` : ""}
       <div class="sp-chips">${chips}</div>${setupFeed.keyBox ? setupFeed.keyBox() : ""}</section>
       <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;
   }
@@ -2030,6 +2116,7 @@ async function chartPage(alive, market, symbol, tf) {
       });
       body.querySelector("[data-spmore]")?.addEventListener("click", () => { spPickOpen = !spPickOpen; renderSide(); });
       body.querySelectorAll(".sp-chip").forEach((el) => el.onclick = () => { setupFilter = el.dataset.f; store.set("setupFilter", setupFilter); renderSide(); });
+      body.querySelector("[data-tf1d]")?.addEventListener("click", () => go(href(symbol, "D")));
       body.querySelector(".tt-keybox")?.addEventListener("click", (e) => setupFeed?.act?.(e.target));
       body.querySelectorAll(".sp-row").forEach((el) => el.onclick = (e) => {
         if (e.target.closest(".tt-in")) { setupFeed?.act?.(e.target); return; }   // a zone or the key, inside the open row

@@ -2013,11 +2013,16 @@ def _generic_setups(strat, market: str, symbol: str, date: str | None, years: in
             _generic_cache.clear()
         setups = strat.setups_live(raw, MARKETS[market], symbol, years or None, [{"entry": e, "stop": st, "price": px} for e, st, px in anchors])
         n = {k: sum(x["kind"] == k for x in setups) for k in ("pass", "watch", "fail")}
+        n_exp = sum(bool(x.get("expired")) for x in setups)
+        # "would trade", not "traded": with no backtest selected nothing here was bought (the chart keeps
+        # "traded" for a selected run's own trades). Setups overlap -- each is the strategy's view on its own
+        # bar, and close ones describe one move -- so the counts are not separate trades.
+        counts = (f"{n['pass']} would trade, {n['watch'] - n_exp} on trigger, {n_exp} not triggered, {n['fail']} refused")
         _generic_cache[key] = {
             "as_of": as_of, "spec_id": strat.spec_id(), "strategy": strat.key, "symbol": symbol, "market": market,
             "years": years, "runs": [], "bases": setups,
-            "note": (f"{len(setups)} setups in {years} years: {n['pass']} traded, {n['watch']} on trigger, "
-                     f"{n['fail']} refused" if years else f"{len(setups)} setups"),
+            "note": (f"{len(setups)} setups in {years} years: {counts}" if years else f"{len(setups)} setups: {counts}")
+                    + " · setups can overlap: views of one move, not separate trades",
         }
     return _generic_cache[key]
 

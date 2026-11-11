@@ -127,7 +127,7 @@ class DonchianStrategy(Strategy):
     setup_codes = (DC01, DC02)
     setup_names = {DC01: "Channel breakout", DC02: "Coil"}
     # short names for the chart's checklist; the rules themselves are gate_docs
-    gate_titles = {"G1": "Above the 200-day", "G2": "Not already run away"}
+    gate_titles = {"G1": "Above the 200-day", "G2": "Within 1 ATR of the channel high"}
     # the target is only for sizing: the trade ends on a close below the exit channel
     nominal_target = True
     min_bars = 260
