@@ -5036,6 +5036,8 @@ async function screenStudy(host, alive, key, mkt, d, conds) {
 // --------------------------------------------------------- strategies
 
 /** Strategies: one page — Today's setups and every strategy on the left, the chosen one on the right. */
+/** the Strategies sidebar's scroll and the item last clicked in it (see the strategies page) */
+const STRAT_NAV = { top: 0, key: null, y: 0 };
 async function strategiesPage(alive, key, tab, mkt, runKey) {
   key = key && key !== "setups" ? key : "";
   $view.innerHTML = LOADING;
@@ -5111,6 +5113,12 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   const ungrouped = list.filter((x) => !x[`${groupBy}_label`]);
   const rest = ungrouped.length ? group(`${groupBy}:other`, "Other", ungrouped.length,
     ungrouped.map((x) => item(x)).join(""), ungrouped.some((x) => x.key === key)) : "";
+  // the sidebar is rebuilt on every click: keep where it was scrolled, so picking a strategy does not
+  // throw the list back to the top
+  // read from STRAT_NAV, recorded when the item was clicked: by the time this runs the old list may
+  // already be gone (the view shows a loading screen in between)
+  const navTop = STRAT_NAV.top;
+  const anchorY = key && STRAT_NAV.key === key ? STRAT_NAV.y : null;
   $view.innerHTML = `<div class="rep-layout strats-layout"><aside class="rep-nav strat-nav strats-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
       <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div><div class="muted small">full: 2013 → latest, excess over the index per year — context, not a verdict</div></div>
@@ -5119,6 +5127,29 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
       ${untried.length ? `<details class="nav-untried"><summary class="nav-h">Not yet explored (${untried.length})</summary>
         <div class="nav-empty muted small">${ax.none}: ${untried.map((b) => esc(b.label)).join(" · ")}.</div></details>` : ""}
     </aside><section id="stmain" class="scr-main">${LOADING}</section></div>`;
+  {
+    const nav = $view.querySelector(".strats-nav");
+    const place = () => {
+      nav.scrollTop = navTop;
+      const a = nav.querySelector(".nav-item.active");
+      if (!a) return;
+      const nr = nav.getBoundingClientRect(), ar = a.getBoundingClientRect();
+      // the clicked strategy stays where it was under the pointer; a deep link is brought into view
+      if (anchorY != null) nav.scrollTop += ar.top - nr.top - anchorY;
+      else if (ar.top < nr.top || ar.bottom > nr.bottom) nav.scrollTop += ar.top - nr.top - nr.height / 3;
+    };
+    place();
+    requestAnimationFrame(place);   // again once the window scroll and layout have settled
+    STRAT_NAV.key = null;
+    nav.addEventListener("scroll", () => { STRAT_NAV.top = nav.scrollTop; }, { passive: true });
+    nav.addEventListener("click", (ev) => {
+      const it = ev.target.closest("a.nav-item[href^='#/strategies/']");
+      if (!it) return;
+      STRAT_NAV.top = nav.scrollTop;
+      STRAT_NAV.key = decodeURIComponent(it.getAttribute("href").slice("#/strategies/".length).split("/")[0]);
+      STRAT_NAV.y = it.getBoundingClientRect().top - nav.getBoundingClientRect().top;
+    });
+  }
   $view.querySelectorAll(".sgroup button").forEach((b) => b.onclick = () => {
     if (b.dataset.v !== groupBy) { store.set("stratGroupBy", b.dataset.v); route(); } });
   $view.querySelectorAll(".nav-grp").forEach((d) => d.addEventListener("toggle", () => {
@@ -5360,14 +5391,14 @@ function perfGlance(d, key) {
     const curRuns = mine.filter((b) => b.spec_id === cur);
     const oos = curRuns.find((b) => b.stage === "verify");
     const ins = curRuns.find((b) => b.stage === "optimise");
-    // the full-period run (tuning + hold-out years, context only) gets its own row whenever it exists,
-    // under the in-sample and out-of-sample rows, so a reader sees the whole history beside the verdict
+    // the full-period run (tuning + hold-out years, context only) gets its own row whenever it exists
     const full = curRuns.find((b) => b.stage === "full");
     const leg = !oos && !ins && !full ? (curRuns.find((b) => b.stage === "legacy") || curRuns[0] || null) : null;
-    if (oos) out.push(row(oos, m, true, "latest"));
-    else if (ins) out.push(naRow(m, true, oosChip, "not verified yet"));
+    // full period first (the whole history), then out-of-sample (the verdict), then in-sample
+    if (full) out.push(row(full, m, true, "latest"));
+    if (oos) out.push(row(oos, m, !out.length, "latest"));
+    else if (ins) out.push(naRow(m, !out.length, oosChip, "not verified yet"));
     if (ins) out.push(row(ins, m, !out.length, "latest"));
-    if (full) out.push(row(full, m, !out.length, "latest"));
     if (leg) out.push(row(leg, m, !out.length, "latest"));
     if (!curRuns.length) {
       const nx = all.filter((b) => b.market === m && b.spec_id === cur).length;
@@ -5401,7 +5432,8 @@ function perfGlance(d, key) {
       <th class="num">Max DD</th><th class="num">Sharpe</th>
       <th class="num" title="Share of the run's trades that made money. Hover a cell for how many trades it counts.">Win rate</th><th>Run</th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <p class="muted small"><b>Out-of-sample</b> is the number to believe: years ${esc(ver.start || "")} onward, which the rules were never tuned on.
+    <p class="muted small"><b>Full period</b> runs from ${esc((st.optimise || {}).start || "")} to the latest close: the whole history, tuning and hold-out years together -- context, not a verdict.
+      <b>Out-of-sample</b> is the number to believe: years ${esc(ver.start || "")} onward, which the rules were never tuned on.
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
       the gap between the two is the measure of how much.
       ${anyBest ? `<b>Best</b> is the configuration — a version, or a version with experiment settings (shown as <i>+ …</i>) — with the highest excess CAGR among runs over the same window; when that window differs from the latest row's it is shown beneath the stage. Verify the one you pick, once. ` : ""}
