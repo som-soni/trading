@@ -40,6 +40,20 @@ TC01 = "S1"   # TC-01
 TC02 = "S2"   # TC-02
 TC04 = "S4"   # TC-04, numbering kept so old runs still map
 
+# Two entry filters, both OFF until measured out of sample. They came from slicing the US optimise run
+# (2013-2021, v1.4, 554 trades), which is the run they would be judged on, so the shipped rules do not
+# change on that evidence alone. Each withholds the PLAN, after the scan: the gates, flags and setups
+# are recorded exactly as before, so a variant run reuses the cached signal rows (signal_exempt_consts).
+#
+# REQUIRE_NEAR_HIGHS=1 trades a setup only when S4 is also present -- the close within 2% of the
+# 55-session or 52-week high. In that run the 78 trades without it made 0.00R each against +0.30R with
+# it, and India's lower-floor run agreed (+0.08R against +0.34R).
+REQUIRE_NEAR_HIGHS = 0
+# SKIP_FALLING_ADX=1 withholds the plan when W6 is on -- ADX14 lower than five sessions ago, whatever
+# W6's note says. In that run the 264 such trades made +0.07R each against +0.43R for the rest, ahead in
+# 7 of 9 years; India showed no difference, so this one may be noise.
+SKIP_FALLING_ADX = 0
+
 
 def round_tick(value: float, tick: float, direction: str) -> float:
     if tick <= 0:
@@ -51,10 +65,23 @@ def round_tick(value: float, tick: float, direction: str) -> float:
 
 class TrendPullbackStrategy(Strategy):
     selection = "time_series"
-    version = "1.4"
-    # 1.4 changes only the portfolio simulator, never the scan (CLAUDE.md, signal_version).
+    version = "1.5"
+    # 1.4 changed only the portfolio simulator and 1.5 only adds plan-level switches, never the scan
+    # (CLAUDE.md, signal_version).
     signal_version = "1.3"
+    signal_exempt_consts = ("REQUIRE_NEAR_HIGHS", "SKIP_FALLING_ADX")
     changelog = (
+        ("1.5", "2026-11-11",
+         "Two entry filters added as switches, both off, so the shipped rules trade exactly as 1.4 did. "
+         "REQUIRE_NEAR_HIGHS=1 places a plan only when {TC04} is present with the entry setup; "
+         "SKIP_FALLING_ADX=1 withholds the plan when W6 is on (ADX14 lower than five sessions ago). They "
+         "come from slicing the US optimise run (in-sample, 2013-2021, v1.4, 554 trades): trades without "
+         "{TC04} made 0.00R each against +0.30R with it, and trades with W6 on made +0.07R against "
+         "+0.43R. India's in-sample run agreed on the first (+0.08R against +0.34R) and showed nothing "
+         "on the second. About fifteen cuts were examined to find these two, so the real effect is "
+         "smaller than those figures, and the same years cannot confirm them: each is to be measured as "
+         "a `--const` variant in optimise and judged once in verify. Both act on the plan, after the "
+         "scan, so signal_version stays at 1.3 and a variant reuses the cached signal rows."),
         ("1.4", "2026-10-31",
          "Backtest mechanics, no rule changed (backtesting/portfolio_sim, REVIEW-2026-10-31 item 7): a "
          "fill now sees only what had happened by its own moment in the session. An exit frees its "
@@ -373,6 +400,11 @@ class TrendPullbackStrategy(Strategy):
         "**When a buy is placed.** All 14 gates pass, {TC01} or {TC02} is present, the resumption signal "
         "fired on today's close, and the plan is TRADE - HIGH CONFIDENCE (Decisions). The backtest places "
         "an order only then; a TRADE ON TRIGGER plan is listed by the live screen but not traded.",
+        "**Two optional filters, both off.** With REQUIRE_NEAR_HIGHS set to 1 a buy also needs {TC04} "
+        "(the close within 2% of the 55-session or 52-week high); with SKIP_FALLING_ADX set to 1 no buy "
+        "is placed while W6 is on (ADX14 lower than five sessions ago). They are {REQUIRE_NEAR_HIGHS} "
+        "and {SKIP_FALLING_ADX} in the shipped rules, and are run as backtest variants until one has "
+        "passed an out-of-sample run.",
         "**Resumption signal.** Today's close is above the 20-day average and above the prior high: "
         "yesterday's high for {TC01}, the highest high of the 10 sessions before today for {TC02}. It also "
         "wants no resistance level within 3% above the close that is more than {own_level_tol_pct}% above "
@@ -502,6 +534,10 @@ class TrendPullbackStrategy(Strategy):
                  "is present, the live screen shows NO SETUP instead.",
     }
     param_docs = (
+        ("Require near the highs", "REQUIRE_NEAR_HIGHS",
+         "Experiment, off: 1 places a buy only when the near-the-highs setup is also present."),
+        ("Skip falling trend strength", "SKIP_FALLING_ADX",
+         "Experiment, off: 1 places no buy while ADX14 is lower than five sessions ago (W6 on)."),
         ("Minimum price", "cfg.screener.min_price",
          "Not applied by this strategy since v1.1, live or in the backtest: on split-adjusted history it "
          "removed the early years of the biggest winners. Only the Screens pages' stock snapshot uses it."),
@@ -936,6 +972,12 @@ class TrendPullbackStrategy(Strategy):
         plan_a = self._build_plan(ctx, result, cfg.tick_size, "A")
         if plan_a is None:
             return PlanChoice(None, None, "no active setup")
+        # The two switches (module constants above). Read from the result, which a cached signal row
+        # restores in full, so they need no rescan.
+        if REQUIRE_NEAR_HIGHS and not result.setups.get(TC04):
+            return PlanChoice(None, None, "not near the highs (REQUIRE_NEAR_HIGHS)")
+        if SKIP_FALLING_ADX and result.watch_flags.get("W6"):
+            return PlanChoice(None, None, "trend strength is falling (SKIP_FALLING_ADX)")
         plan_b = self._build_plan(ctx, result, cfg.tick_size, "B")
 
         if result.watch_flags.get("W7"):

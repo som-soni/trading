@@ -1267,8 +1267,10 @@
   },
   "trend_pullback": {
     "family": "trend_pullback",
-    "fingerprint": "10d54f8a",
+    "fingerprint": "dbef83d8",
     "params": {
+      "REQUIRE_NEAR_HIGHS": 0,
+      "SKIP_FALLING_ADX": 0,
       "_key": "trend_pullback",
       "gate_codes": [
         "G1",
@@ -1309,7 +1311,7 @@
         "W9"
       ]
     },
-    "version": "1.4"
+    "version": "1.5"
   },
   "turtle_trend": {
     "family": "turtle_trend",
