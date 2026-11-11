@@ -22,7 +22,7 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 | # | Fix | From | Where | Status |
 |---|---|---|---|---|
 | F1 | The results blackout misses an announcement ON the signal date: it blocks only dates strictly after it (`f > d`), so a signal on results day is bought at the next open, into the reaction. Make it `>=` | LTTS 2019 (board meeting 17 Jan, signal 17 Jan, filled into a 5x-volume reversal on the 18th), MARICO 2016 (results 29 Apr, the signal day) | `backtesting/spec.py` `results_blackout`, used by every strategy run with `--results-blackout` — a version bump for each | Not applied. Rough size: 15 of 201 India verify trades and 16 of 400 US had results within the four days up to the fill (avg R +0.53 / −0.08 against +0.38 / −0.04 for all), an upper bound on the leak |
-| F2 | A flat base's pivot (S6 / S8) can be stale: it is the base's last *confirmed* swing high, which lags `SWING_K` sessions, so a higher high made in the last few sessions is ignored and the "breakout" can be a close through a level the stock already traded and closed above. Use the base's highest high through yesterday, as S9 does | MARICO 2016 (pivot 252.9 on 28 Apr; the stock had closed above it on 18, 21 and 22 Apr and made 263.5 on the 22nd) | `minervini_spec.flat_base` (pivot) — evaluate and the chart share it | Not applied. Count how many S6/S8 trades had a higher high inside the base than their pivot before measuring |
+| F2 | A flat base's pivot (S6 / S8) can be stale: it is the base's last *confirmed* swing high, which lags `SWING_K` sessions, so a higher high made in the last few sessions is ignored and the "breakout" can be a close through a level the stock already traded and closed above. Use the base's highest high through yesterday, as S9 does | MARICO 2016 (pivot 252.9 on 28 Apr; the stock had closed above it on 18, 21 and 22 Apr and made 263.5 on the 22nd), STAR 2015 (S8 filled at 1,261 under the 1,281 poke of the day before) | `minervini_spec.flat_base` (pivot) — evaluate and the chart share it | Not applied. Count how many S6/S8 trades had a higher high inside the base than their pivot before measuring |
 
 Already measured and rejected, so not lessons on their own: selling early on weakness after the buy (a close back
 under the pivot, a run of down days; [CAGR gaps](minervini-cagr-gaps.md), early-weakness exits), and a cheat's
@@ -159,3 +159,16 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   The pullbacks widened. The cross came on 1.2x (**L3**), and day one closed at 402, back under the shelf. By November
   the 50-day had risen to 394.5, 2.7% under the buy, so the trend exit was the real stop (**L4**). Fundamentals rated
   weak (SEPA).
+
+### STAR.NS (Strides Pharma) — S8 flat base, 21 Aug 2015, −0.94R
+
+- **Trade:** flat base from the 17 Jul 2015 high of 1,257.83 (5 weeks, 10% deep, 3rd base). The buy-stop filled 21 Aug
+  at 1,260.99, stop 1,189.35 (5.7%); the session closed 1,258.3 on 1.1x volume, so the light-volume exit sold at the
+  next open — 24 Aug, the global sell-off after China's devaluation — which gapped to 1,198.2 (filled 1,196.41).
+- **Fine by Minervini:** a proper flat base, not extended (the base high 15% over the 50-day), results already out (30
+  Jul). The exit cost nothing extra: the stop would have been hit the same morning (low 1,075.6; 931 the next day).
+- **Issues:** the pivot was stale again. On 19 Aug the stock ran to 1,269 and closed 1,255.6; on the 20th to 1,281.2
+  and closed 1,233.3 — two pokes through 1,257.83 that failed, the RADICO pattern of supply waiting at the pivot. Those
+  highs were not yet confirmed swing highs, so the buy-stop still sat at 1,257.83 and filled on the 21st *under* the
+  previous day's 1,281 (→ **F2**, second case). The fill day itself was light (1.1x). Fundamentals rated weak (SEPA).
+  The market shock is the larger cause and not a lesson: no rule sees it coming.
