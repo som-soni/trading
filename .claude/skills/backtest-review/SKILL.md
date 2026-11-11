@@ -1,6 +1,6 @@
 ---
 name: backtest-review
-description: Review a strategy's optimise-stage backtests from its Strategy page URL and propose prioritised improvements per key parameter (CAGR, drawdown, average R, win rate…), with a test plan. Analysis only — never reads verify runs, edits code or queues jobs.
+description: Review a strategy's optimise-stage backtests from its Strategy page URL — against both its own run data and the method as its originator and the research describe it — and propose prioritised improvements per key parameter (CAGR, drawdown, average R, win rate…), with a test plan. Analysis only — never reads verify runs, edits code or queues jobs.
 argument-hint: <strategy page URL, e.g. http://localhost:8000/#/strategies/minervini>
 disable-model-invocation: true
 ---
@@ -42,7 +42,27 @@ CAGR, excess CAGR vs the benchmark, max drawdown and longest drawdown, Sharpe, S
 trades per year, win rate, average R, profit factor, exposure, turnover and costs, average days
 held, and R by exit reason. Show the numbers in one table per market, with sample sizes.
 
-## 3. Diagnose (evidence from the optimise runs only)
+## 3. The method, from the knowledge base
+
+Before diagnosing the runs, step back from this implementation and use what you know about the method
+itself. Read the strategy's rules (`gate_docs`, `setup_docs`, `entry_rules`, `exit_rules`, `param_docs`,
+`backtest_args`), its `thesis`, `caveats` and `changelog`, and any spec it cites (e.g.
+`research/minervini-backtest-spec.md`).
+
+- **Fidelity check.** Compare the rules with the method as its originator teaches it (books, interviews,
+  published rules). List every deviation in a table — rule, the originator's version, this code's
+  version, missing / simplified / added / different threshold — and whether it plausibly matters.
+- **Literature.** What published research and long practitioner experience say about this class of
+  strategy: the market conditions it works and fails in, its known failure modes, and how exits,
+  sizing, market filters and universe are usually handled. State sources accurately; say plainly when
+  something is practitioner lore rather than tested evidence. Never invent a citation or a number.
+- **Known choices.** A deviation the `changelog` or `caveats` show was made on purpose and already
+  tested is reported as a known choice with that outcome, not re-proposed.
+- Everything from this step is a **hypothesis to test**, not a finding. It enters step 5 with the
+  type "from the method" or "from the literature", and the data in step 4 decides how far it ranks:
+  supported by the runs, it ranks with that evidence; contradicted, the data wins and you say so.
+
+## 4. Diagnose (evidence from the optimise runs only)
 
 For every weak key parameter, find the cause in the data, not in theory:
 - which gates / setups / exits produce the losers (R by setup code, exit reason, year, market regime,
@@ -53,7 +73,7 @@ For every weak key parameter, find the cause in the data, not in theory:
 
 Say how big each sample is; a pattern seen on fewer than ~30 trades is a hypothesis, not a finding.
 
-## 4. Propose improvements, prioritised per key parameter
+## 5. Propose improvements, prioritised per key parameter
 
 For each key parameter (e.g. max drawdown, average R, win rate, trade count, excess CAGR), give a
 ranked list of changes:
@@ -62,14 +82,19 @@ ranked list of changes:
 |---|---|---|---|---|---|---|
 
 - Type is one of: parameter change (an existing constant, as `--const NAME=VALUE`), new rule
-  (a gate, setup, exit or sizing change that needs code), or mechanics (`backtest_args`, e.g. exit mode).
+  (a gate, setup, exit or sizing change that needs code), mechanics (`backtest_args`, e.g. exit mode),
+  from the method (closes a fidelity gap from step 3), or from the literature (a published or
+  well-established practice from step 3). Evidence for the last two names the source and what the
+  runs say about it (supports / contradicts / untested here).
 - Rank by expected impact × strength of evidence × simplicity. Mark trade-offs explicitly
   (e.g. tighter stop: higher win-rate loss, fewer big winners).
 - Prefer few, large, well-evidenced changes over many small tweaks; flag any change that is
   curve-fitting a handful of trades.
 - Never base a change on verify-stage results. Do not propose a variant already tested (step 1).
+- Balance the two sources: do not drop a well-founded method gap just because these runs cannot show
+  it yet, and do not promote a textbook idea over a clear contrary result in the data.
 
-## 5. Test plan (do not run it unless asked)
+## 6. Test plan (do not run it unless asked)
 
 - Pass criteria for each proposed variant, written BEFORE any run: which key parameters must
   improve, by how much, and which must not get worse beyond what limit.
@@ -85,10 +110,11 @@ ranked list of changes:
 
 1. Runs reviewed.
 2. Scorecard per market.
-3. Diagnosis with evidence.
-4. The prioritised improvement table per key parameter.
-5. Test plan with pass criteria and commands.
-6. What you could not determine and which data would settle it.
+3. The method: fidelity table, what the literature says, known choices.
+4. Diagnosis with evidence from the runs.
+5. The prioritised improvement table per key parameter.
+6. Test plan with pass criteria and commands.
+7. What you could not determine and which data would settle it.
 
 Report bad news plainly; if the strategy has no demonstrated edge, say so before proposing tweaks.
 Do not edit code, queue jobs or commit.
