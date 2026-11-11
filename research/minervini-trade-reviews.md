@@ -75,7 +75,15 @@ for the batch test, it tests nothing.** Averages are carried by a few huge winne
 - Day one back under the pivot separates sharply (17% won), but it happens after the buy; selling on it was measured
   and rejected (early-weakness exits).
 - **Six full losers carry no pre-entry flag** (CANBK 2016, CENTRALBK 2015, GSFC 2017, ICICIBANK 2019, PIIND 2020,
-  SYNGENE 2020): the chart review sample.
+  SYNGENE 2020). Read bar by bar, they are ordinary breakout failures, not a missed pattern: four went nowhere after
+  the buy (best high within 10 sessions under +0.25R) and drifted into the stop; CENTRALBK filled on a 10x-volume day
+  that gave back half its gain by the close; PIIND reached +1.1R before falling to the stop; ICICIBANK gapped up to the
+  day's high and the market fell 3% that fortnight. That is the method's base cost, which only position size limits.
+- **Distance above the 50-day, in full** (avg R by bucket): under 3% −0.24R (18 trades, 11% won); 3–6% +2.51R; 6–10%
+  +0.35R; 10–15% +1.35R; 15–25% +1.18R; over 25% 0.00R (7). Only the nearest bucket stands out; buying far above the
+  50-day was not worse.
+- The chart screenshots were tried and dropped: the browser pane renders the chart about 800 px wide, too small to read
+  the labels, so the bars were read from the data instead.
 
 ## Reviews
 
