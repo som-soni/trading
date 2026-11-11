@@ -470,6 +470,21 @@ figures heard in it are marked **[unclear]** where the audio is doubtful.*
 - **New and testable**: the gap-day backstop, an earnings rule for held positions, a stop raised to the first natural
   reaction's low, the pause pivot and the pullback buy. See [swing longs](system-swing-longs.md) for how each is
   proposed.
+- **The gap-day backstop, tested (2026-11-11): rejected.** Built as a research switch (1.60: from +2R or +3R, a gap
+  of at least 1 ATR moves the stop to the gap day's low and ratchets on later gaps). Optimise runs #1419–1425, 2013–2021,
+  in-sample. It lowered CAGR in every pairing, in both markets:
+
+  | Variant | India CAGR / max DD | US CAGR / max DD | Compared with (India · US) |
+  |---|---|---|---|
+  | From +3R, with the 150-day exit | 5.77% / −15.4% | −0.58% / −26.5% | 8.26% / −20.9% · 3.08% / −23.9% |
+  | From +2R, with the 150-day exit | 5.82% / −15.3% | −1.84% / −32.6% | the same |
+  | From +3R alone | 2.67% / −14.7% | −4.08% / −40.7% | 3.71% / −20.1% · −3.30% / −40% |
+  | US: lean exits + 150-day + backstop | — | 1.13% / −24.4% | 5.02% / −25.9% |
+
+  It keeps more of each gain and cuts India's drawdown by about 5 points, but a filled gap is a normal day for a
+  leader, so it sells the winners the 150-day exit is there to keep. **[inferred]** The team applies it with judgement,
+  intraday and on news gaps they read; a mechanical rule on every 1-ATR gap is not that. The switch stays off
+  ([CAGR gaps](minervini-cagr-gaps.md)).
 
 ### 12.4 The platform's indicator bands, and the version built here (2026-11-10)
 
