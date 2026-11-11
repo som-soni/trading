@@ -22,7 +22,8 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 | # | Fix | From | Where | Status |
 |---|---|---|---|---|
 | F1 | The results blackout misses an announcement ON the signal date: it blocks only dates strictly after it (`f > d`), so a signal on results day is bought at the next open, into the reaction. Make it `>=` | LTTS 2019 (board meeting 17 Jan, signal 17 Jan, filled into a 5x-volume reversal on the 18th), MARICO 2016 (results 29 Apr, the signal day) | `backtesting/spec.py` `results_blackout`, used by every strategy run with `--results-blackout` — a version bump for each | Not applied. Rough size: 15 of 201 India verify trades and 16 of 400 US had results within the four days up to the fill (avg R +0.53 / −0.08 against +0.38 / −0.04 for all), an upper bound on the leak |
-| F2 | A flat base's pivot (S6 / S8) can be stale: it is the base's last *confirmed* swing high, which lags `SWING_K` sessions, so a higher high made in the last few sessions is ignored and the "breakout" can be a close through a level the stock already traded and closed above. Use the base's highest high through yesterday, as S9 does | MARICO 2016 (pivot 252.9 on 28 Apr; the stock had closed above it on 18, 21 and 22 Apr and made 263.5 on the 22nd), STAR 2015 (S8 filled at 1,261 under the 1,281 poke of the day before) | `minervini_spec.flat_base` (pivot) — evaluate and the chart share it | Not applied. Count how many S6/S8 trades had a higher high inside the base than their pivot before measuring |
+| F2 | A flat base's pivot (S6 / S8) can be stale: it is the base's last *confirmed* swing high, which lags `SWING_K` sessions, so a higher high made in the last few sessions is ignored and the "breakout" can be a close through a level the stock already traded and closed above. Use the base's highest high through yesterday, as S9 does | MARICO 2016 (pivot 252.9 on 28 Apr; the stock had closed above it on 18, 21 and 22 Apr and made 263.5 on the 22nd), STAR 2015 (S8 filled at 1,261 under the 1,281 poke of the day before), ZEEL 2016 (pivot 458.95 after closes of 462–464 and a high of 466.4) | `minervini_spec.flat_base` (pivot) — evaluate and the chart share it | Not applied. Count how many S6/S8 trades had a higher high inside the base than their pivot before measuring |
+| F3 | The results blackout tests the SIGNAL date, so a resting buy-stop (S2 / S8, kept up to 10 sessions) placed 15+ days before results can fill inside the window and hold through them. Test the fill date too (or cancel a resting order once results fall within the window) | ZEEL 2014 (S2 orders from 24 Dec; filled 10 Jan, results 22 Jan) | `portfolio_sim` pending orders / `spec.results_blackout` | Not applied. Small here: results day moved 1.5x and the loss came on 27 Jan from the market |
 
 Already measured and rejected, so not lessons on their own: selling early on weakness after the buy (a close back
 under the pivot, a run of down days; [CAGR gaps](minervini-cagr-gaps.md), early-weakness exits), and a cheat's
@@ -172,3 +173,26 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   highs were not yet confirmed swing highs, so the buy-stop still sat at 1,257.83 and filled on the 21st *under* the
   previous day's 1,281 (→ **F2**, second case). The fill day itself was light (1.1x). Fundamentals rated weak (SEPA).
   The market shock is the larger cause and not a lesson: no rule sees it coming.
+
+### ZEEL.NS — S2 VCP pivot buy, 10 Jan 2014, −1.05R
+
+- **Trade:** base from the 11 Nov 2013 high of 292 (41 sessions, 3rd base, four pullbacks 6.6% → 5.7%, dry at 0.72x);
+  S2 orders rested from 24 Dec and filled 10 Jan at 295.54 (closed 295.1 on 1.8x volume), stop 273.85 (7.3%); stopped
+  27 Jan at 273.44.
+- **Fine by Minervini:** a sound VCP and a confirmed breakout; not extended (base high 17% over the 50-day, the buy 5%
+  over it).
+- **Issues:** no follow-through (a high of 300.4 the next day, then back into the base). Results came on 22 Jan, 12 days
+  after the fill: the blackout passed it because it judges the order's signal date, and the order had been resting
+  since before the window (→ **F3**). The stop itself came from the market — 27 Jan 2014, the emerging-market
+  sell-off, the same day TMPV was sold. Two of these reviews lost on that one week; the market filter stayed open.
+
+### ZEEL.NS — S8 flat base, 15 Jun 2016, −0.36R
+
+- **Trade:** flat base from the 16 May 2016 high of 458.95 (4 weeks, 6% deep, 1st base). The buy-stop filled 15 Jun
+  at 460.14, stop 448.95 (2.4%); the session closed 457.8 on 0.6x, so the light-volume exit sold at the next open.
+- **Issues:** the pivot was stale (→ **F2**, third case): the stock had closed above 458.95 on 7, 9 and 13 Jun (462–464)
+  and made 466.4 on the 14th, none of them confirmed swing highs yet. The real ceiling was 466–475, cleared on 25 Jul
+  on 1.4x volume.
+- **The miss:** it then ran to 578.9 by October, +26%. The base was not bought again: after a light-volume exit the
+  base stays closed (the 1.62 switch `REENTRY_AFTER_LIGHT_VOLUME`, runs #1449–1450, tests exactly this), and the
+  25 Jul S6 signal came the day before results (26 Jul), so the blackout refused it — correctly.
