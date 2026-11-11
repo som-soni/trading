@@ -346,6 +346,22 @@ read after the scan, so these runs copy the cached signals.
 **Decision rule, fixed before the results:** a cap is adopted only if the same value raises CAGR in both markets against
 its comparison run, with max drawdown no more than 1 point deeper. A win in one market only is recorded, not adopted.
 
+**Result (optimise, in-sample): 8% passes, 6% fails.**
+
+| # | Market | Cap | CAGR / max DD | Avg R (trades) | Compared with |
+|---|---|---|---|---|---|
+| 1440 | India | 8 | **4.15% / −19.5%** | +0.22 (247) | 3.71% / −20.1% |
+| 1441 | India | 6 | 2.73% / −11.0% | +0.32 (111) | the same |
+| 1442 | US | 8 | **−1.83% / −30.8%** | −0.03 (1,179) | −3.30% / −40% |
+| 1443 | US | 6 | −3.61% / −40.2% | −0.06 (1,042) | the same |
+
+- **8% raises CAGR in both markets and makes both drawdowns shallower** (India +0.4 points, US +1.5, US drawdown
+  9 points shallower). It meets the rule.
+- **6% skips too much.** India keeps the best trades (+0.32R) but only 111 of them, so the cash idles.
+- **It was measured on the 1.57 baseline, not on candidate B,** and gains need not add. So B with an 8% cap is queued,
+  optimise, both markets: #1517 (India), #1518 (US). B becomes 1.64 with the cap only if that run keeps B's CAGR
+  in India and does not lower it in the US, with max drawdown no more than 1 point deeper; otherwise 1.64 is B alone.
+
 ## Re-entry after a light-volume exit (1.62), queued 2026-11-10
 
 A base reopens only after a shakeout (a stop, a breakeven stop, the 20-day failure). A buy-stop sold at the next
