@@ -24,7 +24,7 @@ def rebalance_dates(index: pd.DatetimeIndex, start: pd.Timestamp, rule: str) -> 
 
 def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
              cost_bps: float = 10.0, account_size: float = 1_000_000.0,
-             lookback_days: int = 252, credits=None):
+             lookback_days: int = 252, credits=None, exit_check=None):
     """Walk the calendar holding whatever `pick` returns.
 
     `pick(date, returns, px)` -> list of column names to hold, equal-weighted. An empty list means
@@ -33,6 +33,10 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
 
     `credits` (marketdata.corporate_actions.Credits), for a frame of stocks: a holding receives the
     cash of a special dividend or demerger on its ex-date, where the stored close only falls.
+
+    `exit_check(date, held)` -> holdings to sell at that session's close, BETWEEN rebalances (a
+    trailing exit such as a close below an average). The money waits in cash for the next rebalance.
+    None, the default, trades only on rebalance dates.
     """
     start_ts = pd.Timestamp(start)
     ret = px / px.shift(lookback_days) - 1.0
@@ -86,6 +90,15 @@ def simulate(px: pd.DataFrame, pick, start: str, rebalance: str = "ME",
                 cash += units[s] * c
                 credited[s] = credited.get(s, 0.0) + units[s] * c
             credit_after = d
+        if d not in rebals and exit_check is not None and units:
+            for s in [s for s in (exit_check(d, list(units)) or []) if s in units]:
+                price = float(pxv.loc[d, s])
+                gross = units[s] * price
+                fee = gross * cost_bps / 10_000
+                cash += gross - fee
+                costs_total += fee
+                trades.append(row(s, d, price, units[s], fee, "EXIT_RULE"))
+                del units[s]
         if d in rebals:
             target = list(pick(d, ret.loc[d], px) or [])
             # sell what is no longer wanted, at this session's close

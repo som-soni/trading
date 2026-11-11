@@ -562,6 +562,38 @@
     },
     "version": "2.4"
   },
+  "masonson_tqqq": {
+    "family": "masonson_tqqq",
+    "fingerprint": "f48d6a36",
+    "params": {
+      "BREADTH_EXTREME_PCT": 20,
+      "BREADTH_MIN_MEMBERS": 30,
+      "BREADTH_SMA": 50,
+      "DRAWDOWN_BUY_PCT": 25,
+      "EXIT_EMA": 20,
+      "EXIT_EMA_TIGHT": 8,
+      "EXPENSE_RATIO": 0.0095,
+      "EXTREME_WINDOW": 10,
+      "FINANCING_MULT": 2,
+      "KELTNER_ATR": 10,
+      "KELTNER_EMA": 20,
+      "KELTNER_MULT": 2,
+      "LEVERAGE": 3,
+      "MACD_FAST": 12,
+      "MACD_FAST_ALT": 6,
+      "MACD_SIGNAL": 9,
+      "MACD_SIGNAL_ALT": 5,
+      "MACD_SLOW": 26,
+      "MACD_SLOW_ALT": 13,
+      "RSI_BARS": 7,
+      "RSI_EXTREME": 30,
+      "SESSIONS_PER_YEAR": 252,
+      "TREND_SMA": 200,
+      "_key": "masonson_tqqq",
+      "cost_bps": 5.0
+    },
+    "version": "1.0"
+  },
   "mean_reversion": {
     "family": "mean_reversion",
     "fingerprint": "9ef4c176",
@@ -1094,15 +1126,19 @@
   },
   "sector_rotation": {
     "family": "sector_rotation",
-    "fingerprint": "e40872af",
+    "fingerprint": "5e03b52f",
     "params": {
+      "EXIT_EMA": 20,
+      "HOLD_RANK": 4,
+      "LOOKBACK_WEEKS": 12,
       "MIN_BARS": 300,
+      "SESSIONS_PER_WEEK": 5,
       "_key": "sector_rotation",
       "cost_bps": 10.0,
       "lookback_days": 126,
       "top_n": 3
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "stage4_shorts": {
     "family": "stage4_shorts",

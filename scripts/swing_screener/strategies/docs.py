@@ -233,6 +233,8 @@ def baseline_doc(key: str) -> dict:
         "commands": {
             "Backtest in-sample (optimise)": f"python -m jobs enqueue backtest --market india --strategies {key} --stage optimise",
             "Verify out-of-sample (once per version)": f"python -m jobs enqueue backtest --market india --strategies {key} --stage verify",
+            # a strategy's own comparison and variant runs (doc["commands"]), shown beside the two above
+            **d.get("commands", {}),
         },
         "source": _source_info(baseline),
     }

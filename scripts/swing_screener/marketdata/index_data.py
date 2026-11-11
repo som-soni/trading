@@ -90,6 +90,13 @@ _US = [
            "S&P 500 ETF (SPY)", expense_ratio=0.0009, note="1993-01 onward"),
     Series("NASDAQ100", "QQQ", "us", "equity", True,
            "Nasdaq 100 ETF (QQQ)", expense_ratio=0.0020, note="1999-03 onward"),
+    # The leveraged Nasdaq 100 funds, stored only to CHECK the synthetic 3x/2x series the
+    # masonson_tqqq strategy holds (backtesting/masonson_tqqq.py) -- they list in 2006 (QLD) and
+    # 2010 (TQQQ), too late for a 2000-2012 stress test. Fees are inside the NAV.
+    Series("TQQQ", "TQQQ", "us", "equity", True,
+           "Nasdaq 100 3x daily (TQQQ)", note="2010-02 onward; ER and financing inside the NAV"),
+    Series("QLD", "QLD", "us", "equity", True,
+           "Nasdaq 100 2x daily (QLD)", note="2006-06 onward; ER and financing inside the NAV"),
     Series("RUSSELL2000", "IWM", "us", "equity", True,
            "Russell 2000 ETF (IWM)", expense_ratio=0.0019, note="2000-05 onward"),
     Series("TOTAL_MKT", "VTI", "us", "equity", True,

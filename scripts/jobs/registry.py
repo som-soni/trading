@@ -31,6 +31,7 @@ logger = logging.getLogger("jobs")
 MARKETS = ("us", "india")
 UNIVERSE_MAX_AGE_DAYS = 7      # `universe` re-fetches the list when older than this (or with --force)
 INDUSTRY_MAX_AGE_DAYS = 30     # `industries` re-classifies when older than this (or with --force)
+INDEX_MEMBERS_MAX_AGE_DAYS = 25   # `index_members` re-fetches the Nasdaq 100 list when older than this
 QUALITY_TOP = {"us": 500, "india": 300}   # `quality` scores the N most liquid companies (+ your tracked list)
 QUALITY_MAX_AGE_DAYS = 30      # statements newer than this are not re-fetched
 FINANCIALS_TOP = {"us": 1500, "india": 500}    # `financials` covers the N most liquid tradable stocks + every Stage-2 stock
@@ -137,6 +138,20 @@ def _group_research(ctx: Ctx) -> None:
         if p:
             head.append(f"{m}: strong − weak group {p['mean']:+.2f}%/month (t {p['t']:.1f})")
     ctx.step.detail = f"{gr.REPORT.name} written · " + " · ".join(head)
+
+
+def _index_members(ctx: Ctx) -> None:
+    """Today's Nasdaq 100 members (marketdata/index_members.py), for the masonson_tqqq breadth rule."""
+    import datetime as dt
+    from swing_screener.marketdata import index_members
+    try:
+        _syms, on = index_members.load(ctx.market, "NASDAQ100")
+    except ValueError:
+        on = None
+    if not ctx.opt("force") and on is not None and (dt.date.today() - on).days <= INDEX_MEMBERS_MAX_AGE_DAYS:
+        ctx.step.skip(f"up to date (fetched {on}; re-fetched every {INDEX_MEMBERS_MAX_AGE_DAYS} days)")
+        return
+    ctx.step.detail = f"{index_members.refresh('NASDAQ100')} Nasdaq 100 members"
 
 
 def _subindustries(ctx: Ctx) -> None:
@@ -1070,6 +1085,8 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("industries", "reference", "industry classification: sector, industry and market cap (Sectors page)", "monthly", True, _industries),
     Job("subindustries", "reference", "sub-industries: official industry codes (BSE / Nasdaq) and the sub-industry coverage", "monthly", True,
         _subindustries, after=("industries",)),
+    Job("index_members", "reference", "index members: today's Nasdaq 100 list (Nasdaq) -- the masonson_tqqq breadth "
+        "rule's universe (marketdata/index_members.py)", "monthly", True, _index_members, markets=("us",)),
     Job("prices", "data", "prices: daily bars for the whole universe", "daily", True, _prices, after=("universe",)),
     Job("splits", "data", "splits & bonus issues: re-fetch the full history of stocks that split after their last full fetch, "
         "and fix the source's own unadjusted splits and stray bars (marketdata/splits.py)",

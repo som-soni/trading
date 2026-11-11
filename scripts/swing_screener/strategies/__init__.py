@@ -130,6 +130,7 @@ def portfolio_strategies() -> dict:
     from ..backtesting.etf_swing import EtfSwingStrategy
     from ..backtesting.fno_income import FnoIncomeStrategy
     from ..backtesting.ma_trend import MaTrendStrategy
+    from ..backtesting.masonson_tqqq import MasonsonTqqqStrategy
     from ..backtesting.mean_reversion import MeanReversionStrategy
     from ..backtesting.parabolic_short import ParabolicShortStrategy
     from ..backtesting.pead import PeadStrategy
@@ -143,7 +144,7 @@ def portfolio_strategies() -> dict:
                                 MeanReversionStrategy, PeadStrategy, FnoIncomeStrategy,
                                 MaTrendStrategy, CombinationStrategy, QualityMomentumStrategy,
                                 Stage4ShortsStrategy, TurtleTrendStrategy, EtfSwingStrategy,
-                                ParabolicShortStrategy)}
+                                ParabolicShortStrategy, MasonsonTqqqStrategy)}
 
 
 def all_specs() -> dict:
