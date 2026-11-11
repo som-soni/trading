@@ -204,7 +204,7 @@ table.data td.none { text-align: center; color: var(--muted); padding: 30px; }
 .bar52 i { position: absolute; top: -3px; width: 2px; height: 10px; background: var(--strong); border-radius: 1px; transform: translateX(-1px); }
 /* one height for the chart, the side panel and the icon rail: app.js sets the grid's height to the window's
    foot (sizeChart) and the grid stretches all three to it, so they always end level and the page never scrolls */
-.chart-layout { display: grid; grid-template-columns: 36px minmax(0, 1fr) var(--side-w, 320px) 40px; gap: 8px; height: calc(100vh - 150px); min-height: 440px; position: relative; }
+.chart-layout { display: grid; grid-template-columns: 36px minmax(0, 1fr) var(--side-w, 320px) 40px; gap: 8px; height: calc(100vh - 220px); min-height: 440px; position: relative; }   /* until app.js measures (while loading) */
 body[data-page="chart"] main { padding-bottom: 0; }
 .chart-layout.collapsed { grid-template-columns: 36px minmax(0, 1fr) 40px; }
 .chart-layout.collapsed .side { display: none; }
@@ -2063,3 +2063,5 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
    below 1600px, the Backtest trades label folds into the select's own empty option */
 .q-setups .sc { max-width: 150px; } .q-setups .sc span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 1600px) { #trades-field > span { display: none; } }
+/* the legend's rows read over a setup's drawing: a faint backing keeps its dashed dividers out of the numbers */
+.legend > .ohlc, .legend > .srow:not(:hover) { background: color-mix(in srgb, var(--panel) 72%, transparent); border-radius: 4px; }

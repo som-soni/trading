@@ -207,11 +207,12 @@ const Drawings = (() => {
     const placed = [];
     let placing = null;   // { w, h } of the pane while annotations paint, else null
     const hits = (r) => placed.some((q) => r.x < q.x + q.w && q.x < r.x + r.w && r.y < q.y + q.h && q.y < r.y + r.h);
-    // the legend's rows (OHLC, one per study) and the setup lane's pills, in pane pixels (the pane starts at
+    // the legend and the setup lane's pills, in pane pixels (the pane starts at
     // the chart element's top-left): a label under either could not be read
     function legendRects() {
       const o = chartEl.getBoundingClientRect();
-      return [...chartEl.querySelectorAll(".legend > *, .tt-lane .tt-pill")].map((e) => e.getBoundingClientRect()).filter((b) => b.width && b.height)
+      // the legend as ONE block (its widest row by all its rows): a label beside a short row still sat on its line
+      return [...chartEl.querySelectorAll(".legend, .tt-lane .tt-pill")].map((e) => e.getBoundingClientRect()).filter((b) => b.width && b.height)
         .map((b) => ({ x: b.left - o.left - chartEl.clientLeft - 4, y: b.top - o.top - chartEl.clientTop - 2, w: b.width + 8, h: b.height + 4 }));
     }
     function place(x, y, w, h) {
@@ -669,6 +670,10 @@ const Drawings = (() => {
     applyCursor();
 
     let auto = [];
+    // the setup lane and the legend are laid out outside the canvas (and the lane after a pan or zoom, a frame
+    // late): when either changes, lay the labels out again against where they now are
+    const relayout = new MutationObserver((ms) => { if (ms.some((m) => m.target.closest?.(".tt-lane") || m.target.classList?.contains("legend"))) req(); });
+    relayout.observe(chartEl, { childList: true, subtree: true });
     const api = {
       /** Read-only annotations drawn by a strategy, not by the user: never saved, never
        *  selectable, never erasable, and replaced wholesale on each call. Kept apart from
@@ -692,6 +697,7 @@ const Drawings = (() => {
         return n;
       },
       destroy() {
+        relayout.disconnect();
         remote && remote.flush && remote.flush();
         chartEl.removeEventListener("mousedown", onDown, true);
         chartEl.removeEventListener("dblclick", onDbl, true);

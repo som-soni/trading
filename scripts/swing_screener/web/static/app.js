@@ -558,6 +558,9 @@ function chartTheme() {
   };
 }
 let keepView = null;
+// a strategy was just picked for the chart's Trade setups layer: its first setups select one the panel's filter
+// shows, and go to it (the chart re-renders on a pick, so this outlives the page's own state)
+let setupSwitched = false;
 // how many setups each strategy's layer found on a stock, remembered (in this browser, across reloads) as each
 // layer reports in, so the setups panel's strategy picker can show a count beside every strategy already
 // scanned. Keyed market:symbol, each count stamped with the chart's last bar; never fetched for -- a count
@@ -789,7 +792,7 @@ async function chartPage(alive, market, symbol, tf) {
   if (prefs.tab === "list" && !$('#rbar [data-tab="list"]')) prefs.tab = "wl";
   // arriving from a list (a screen, today's setups, movers…): show it beside the chart, so chart and list are both in view
   if (list?.fresh) { if ($('#rbar [data-tab="list"]')) prefs.tab = "list"; store.set("chartList", { ...list, fresh: false }); }
-  let setupFeed = null, setupFilter = store.get("setupFilter", "all");
+  let setupFeed = null, setupSeen = false, setupFilter = store.get("setupFilter", "all");
   let spPickOpen = false;   // the setups panel's strategy list, folded to the picked one so the setups get the room
   const layout = $(".chart-layout");
   const syncPanel = () => {
@@ -1163,6 +1166,20 @@ async function chartPage(alive, market, symbol, tf) {
     setupsOpen: () => prefs.tab === "setups",
     openSetups: () => { prefs.tab = "setups"; prefs.panel = true; store.set("chartPrefs", prefs); syncPanel(); renderSide(); },
     onSetups: (feed) => {
+      // the layer's first setups: when a strategy was just picked, or the panel's filter hides the one the chart
+      // chose, select the newest the filter shows -- and go to it -- rather than leave the chart on a setup the
+      // list does not show, at the edge of the old view
+      if (!setupSeen && feed.list.length) {
+        setupSeen = true;
+        const shows = (x) => setupFilter === "all" || setupKind(x) === setupFilter;
+        const cur = feed.list[feed.focus], switched = setupSwitched;
+        setupSwitched = false;
+        if (switched || (prefs.tab === "setups" && (!cur || !shows(cur)))) {
+          let k = feed.list.findLastIndex(shows);
+          if (k < 0) k = feed.focus >= 0 ? feed.focus : feed.list.length - 1;
+          if (switched || k !== feed.focus) return feed.select(k);   // publishes again, with the pick
+        }
+      }
       setupFeed = feed;
       const strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
       if (strat) noteSetupCount(`${market}:${symbol}`, strat,
@@ -1426,7 +1443,8 @@ async function chartPage(alive, market, symbol, tf) {
       }).join("");
       setChips.onclick = (e) => {
         const b = e.target.closest("[data-layer]"); if (!b) return;
-        Studies.setSetup(b.dataset.layer === Studies.activeSetup() ? null : b.dataset.layer);
+        setupSwitched = b.dataset.layer !== Studies.activeSetup();
+        Studies.setSetup(setupSwitched ? b.dataset.layer : null);
         leaveBtView(); markSetup(); rerender();
       };
       sizeChart();
@@ -2006,6 +2024,7 @@ async function chartPage(alive, market, symbol, tf) {
         const off = el.dataset.layer === Studies.activeSetup();
         if (off && !spPickOpen) { spPickOpen = true; renderSide(); return; }   // the folded chip opens the list
         Studies.setSetup(off ? null : el.dataset.layer);
+        setupSwitched = !off;
         spPickOpen = false;
         leaveBtView(); markSetup(); rerender();
       });

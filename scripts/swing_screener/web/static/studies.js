@@ -258,7 +258,7 @@ const Studies = (() => {
               ? `<p class="tt-x">The selected backtest run traded this setup: bought at ${esc((+t.entry_price).toFixed(2))} on ${esc(t.entry_date)}`
                 + (t.exit_date ? `, sold at ${esc((+t.exit_price).toFixed(2))} on ${esc(t.exit_date)} (${esc(t.exit_reason || "exit")})` : ", still open")
                 + `${t.r_multiple != null ? `, ${(+t.r_multiple).toFixed(2)}R` : ""}. Its own levels are drawn from the run's record.</p>`
-              : `${z.illustration ? `<div class="tt-tag">Illustration of the rules — not a trade</div>` : ""}<p class="tt-x">${esc(z.text)}</p>${checksHtml(z.checks)}`;
+              : `${z.illustration ? `<div class="tt-tag">Illustration of the rules — not a trade</div>` : ""}<p class="tt-x">${esc(z.text)}</p>${checksHtml(z.checks.filter((c) => !(c.name === z.title && c.value === z.line)))}`;   // a check that only restates the zone's own line (Run: +136% in 40 sessions) is said once
           }
           return `<div class="tt-z ${zoneOpen === z.key ? "on" : ""}"><div class="tt-zh" data-z="${z.key}"><span class="n">${NUM[n]}</span>
             <b>${esc(z.title)}</b><span class="st ${state}">${ICON[state]}</span><span class="ln">${esc(line)}</span></div>${body}</div>`;
