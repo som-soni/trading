@@ -362,6 +362,11 @@ its comparison run, with max drawdown no more than 1 point deeper. A win in one 
   optimise, both markets: #1517 (India), #1518 (US). B becomes 1.64 with the cap only if that run keeps B's CAGR
   in India and does not lower it in the US, with max drawdown no more than 1 point deeper; otherwise 1.64 is B alone.
 
+**B + 8% cap (optimise, in-sample): passes.** India 10.31% / −18.0%, +0.30R on 181 trades (#1517), against B's
+10.14% / −18.7%. US −0.13% / −35.8%, +0.02R on 895 trades (#1518), against −1.62% / −40.4%. Both CAGRs up, both
+drawdowns shallower, so the cap goes into 1.64. India's trade count falls from 222 to 181: the cap skips the wide
+stops and the cash goes to the rest.
+
 ## Re-entry after a light-volume exit (1.62), queued 2026-11-10
 
 A base reopens only after a shakeout (a stop, a breakeven stop, the 20-day failure). A buy-stop sold at the next
