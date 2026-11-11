@@ -85,6 +85,44 @@ for the batch test, it tests nothing.** Averages are carried by a few huge winne
 - The chart screenshots were tried and dropped: the browser pane renders the chart about 800 px wide, too small to read
   the labels, so the bars were read from the data instead.
 
+## Batch review — run 4090 (US, 1.63, optimise 2013–2021, in-sample), and the two markets together
+
+The same checks on all 909 US trades (39% won, +0.03R a trade; PCRX +27.7R and INGN +25.3R carry the total).
+
+| Flag | Trades | Win % | Median R | Avg R | Without: trades | Win % | Median R | Avg R |
+|---|---|---|---|---|---|---|---|---|
+| L2 base after a climax | 71 | 34 | −0.19 | −0.18 | 838 | 39 | −0.09 | +0.04 |
+| L2, among cheats | 28 | 39 | −0.37 | −0.07 | 148 | 28 | −0.29 | +0.17 |
+| L3 light cross, open-fill setups | 160 | 29 | −0.30 | +0.16 | 75 | 37 | −0.49 | −0.18 |
+| L3 light fill, buy-stop setups | 529 | 40 | −0.04 | −0.07 | 145 | 43 | −0.25 | +0.33 |
+| L4 buy within 3% of the 50-day | 107 | 25 | −0.26 | +0.13 | 802 | 40 | −0.07 | +0.01 |
+| L4, among cheats (102 of the 107) | 102 | 25 | −0.27 | +0.13 | 74 | 36 | −0.37 | +0.13 |
+| F1 results between signal and fill | 44 | 36 | −0.17 | +0.00 | 865 | 39 | −0.09 | +0.03 |
+| F2 stale flat-base pivot | 194 | 39 | −0.06 | +0.02 | 715 | 38 | −0.10 | +0.03 |
+| F3 results within 14 days of the fill | 62 | 37 | −0.11 | −0.10 | 847 | 39 | −0.09 | +0.04 |
+| Day one closed back under the pivot | 343 | 13 | −0.24 | −0.30 | 566 | 54 | +0.02 | +0.23 |
+| Market fell 3%+ in the 10 sessions after | 64 | 25 | −0.20 | −0.30 | 845 | 40 | −0.08 | +0.05 |
+| Cheat (S3/S4) | 176 | 30 | −0.30 | +0.13 | 733 | 41 | −0.07 | +0.00 |
+
+Avg R by the buy's distance above the 50-day: under 3% +0.13 (107 trades, 25% won); 3–6% 0.00 (196, 40%); 6–10%
++0.05 (370, 44%); 10–15% −0.11 (190, 36%); 15–25% +0.50 (38, 34%); over 25% −0.47 (8, 12%).
+
+L1: 432 of the 558 US losers closed back over their base's ceiling within 60 sessions; the run re-bought 9. 155 then
+gained 20% or more, 91 gained under 5% (median 13.6%), most after a light-volume exit (85), then the trend exit (37)
+and the stop (22).
+
+**Both markets together — what the batch test should carry:**
+
+| Lesson / fix | India | US | Verdict |
+|---|---|---|---|
+| L1 reclaim after a losing exit | 79 of 105 losers reclaimed, 42 ran 20%+ | 432 of 558, 155 ran 20%+ | **Test first** (S10). A large pool in both, though the US runs are weaker (median 13.6% against 22%) |
+| L4 buy within 3% of the 50-day | 11% won (18) | 25% won (107) | **Test.** Win rate and median hold in both; the US average does not (INGN +25.3R), and among US cheats the median does not separate |
+| L2 base after a climax | better than the rest | worse than the rest | **Drop**: opposite signs |
+| L3 light crossing volume | no separation on close-confirmed buys | none either | **Drop as written**; the light-volume exit already handles buy-stop fills |
+| F2 stale pivot | 30% won against 44% | 39% against 38% | Fix on correctness; expect little |
+| F1, F3 results windows | no cost | no cost | Fix on correctness; expect nothing |
+| Day one back under the pivot | 17% won | 13% won | Strongest split in both, but after the buy; selling on it was measured and rejected |
+
 ## Reviews
 
 ### RADICO.NS — S8 flat base, 20 Sep 2021, −1.05R
