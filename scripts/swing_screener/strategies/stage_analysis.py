@@ -93,6 +93,12 @@ W1_RANK_QUALITY = 0.5         # the setup score a low-volume breakout ranks at u
 #: Stage 4 late -- in 15 of 16 episodes since 2010 the index ROSE while labelled Stage 4 -- while
 #: entries made in market Stage 3 lost (India 10 trades, 0 wins). 3 tests aiming G7 there instead.
 G7_BLOCK_STAGE = 4
+#: >0 refuses a breakout made more than this many weeks after the stock's current Stage 2 began (G10, 2.12),
+#: Weinstein's "buy early in the advance". The count runs from the week the stage machine dates the Stage 2 to
+#: (its breakout), on completed weeks, as known at the evaluation; a stock still in Stage 1 or in Stage 3 is not
+#: counted. 0 is off. In the 2013-21 optimise runs entries more than 30 weeks into Stage 2 made +0.13R (US, 48
+#: trades) and -0.25R (India, 13) against +0.74R and +0.35R for the rest -- found on those runs, hence an A/B.
+MAX_STAGE2_WEEKS = 0
 
 # ---- exits on deterioration (2.8), OFF by default. Weinstein's sell is a week that closes below the
 # line; these sell on an EARLIER warning that Stage 2 is failing (the stages guide's Stage 3 column).
@@ -400,10 +406,18 @@ class StageAnalysisStrategy(Strategy):
                    "{VOL_MULT}x volume -- and hold until the stop or a week that closes below the "
                    "{MA_WEEKS}-week average.")
     family = "stage_analysis"
-    version = "2.11"
-    # 2.11 changes the stage machine, which build_context and evaluate read (G7, G8, G9, W2), so the
-    # scan reruns: no signal_version pin (CLAUDE.md).
+    version = "2.12"
+    # 2.12 adds G10 to evaluate(), so the scan reruns: no signal_version pin (CLAUDE.md).
     changelog = (
+        ("2.12", "2026-11-11",
+         "G10, Stage 2's age, OFF by default (MAX_STAGE2_WEEKS = 0), so this version trades exactly as 2.11: with "
+         "MAX_STAGE2_WEEKS above 0 it refuses a breakout made more than that many weeks after the stock's current "
+         "Stage 2 began -- the week the stage machine dates it to, on completed weeks, as known at the evaluation. "
+         "Weinstein buys early in the advance; the setup re-qualifies a stock at every new high of a 30%-deep window, "
+         "so most entries are made well into Stage 2. A review of the 2.11 optimise runs (2013-21) found entries more "
+         "than 30 weeks into Stage 2 made +0.13R (US, 48 trades) and -0.25R (India, 13) against +0.74R and +0.35R for "
+         "the rest, and the gap held in the US in both 2013-17 and 2018-21. The 30 was read off those runs, so the "
+         "A/B tries 26, 39 and 52 against pass criteria written first (research/stage-analysis-2.12-variants.md)."),
         ("2.11", "2026-11-06",
          "The stage machine follows Weinstein's definitions: a stage turns on a break of PRICE STRUCTURE, confirmed by "
          "the line. Checked against the guides' worked examples, 2.10 made three kinds of error. (1) A top became a "
@@ -602,12 +616,13 @@ class StageAnalysisStrategy(Strategy):
 
     screen_key = "near_highs"
     screen_gates = {"G1": "H1", "G2": "H2", "G3": "H3"}
-    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9")
+    gate_codes = ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10")
     gate_titles = {
         "G1": "Above the 200-day", "G2": "200-day not falling", "G3": "Near the 52-week high",
         "G4": "Weekly close above the 30-week line", "G5": "30-week line not falling",
         "G6": "Mansfield RS positive or improving", "G7": "Market not in Stage 4",
         "G8": "Sector not in Stage 4", "G9": "The stock not in Stage 4",
+        "G10": "Early in Stage 2",
     }
     watch_codes = ("W1", "W2", "W3")
     setup_codes = (STG01,)
@@ -655,9 +670,9 @@ class StageAnalysisStrategy(Strategy):
         "(see Stage and base checks), on Weinstein's definitions: a stage turns on a breakout above a base, a "
         "breakdown below a top or support, or the line's slope over {SLOPE_WEEKS} weeks turning, and the close must "
         "then hold its side of the line for {CONFIRM_WEEKS} weeks.",
-        "Step 2, the gates (G1-G9). A daily uptrend near the highs (the Near-highs screen), then the weekly tests: "
+        "Step 2, the gates (G1-G10). A daily uptrend near the highs (the Near-highs screen), then the weekly tests: "
         "close above a line that is not falling, relative strength positive or improving, and none of market, "
-        "sector or stock in Stage 4.",
+        "sector or stock in Stage 4; G10, off by default, can refuse a stock too far into its Stage 2.",
         "Step 3, the setup (S1). A base of at least {BASE_MIN_WEEKS} weeks no deeper than {BASE_MAX_DEPTH_PCT}%, and "
         "a weekly close above its high on {VOL_MULT}x volume (W1). The base is the LONGEST such window, re-measured "
         "every week, so inside an advance it stretches to the depth limit and takes in the advance itself: most "
@@ -708,7 +723,9 @@ class StageAnalysisStrategy(Strategy):
         "stage machine: the closest India variant (W1_RANKS_ONLY=1, G7_BLOCK_STAGE=3) still trailed and gained mostly "
         "from trades bought while the index read Stage 4; no exit tried beat the trend exit on return; an audit of "
         "the losing trades (research/audit-stage-analysis-losers.md) found no stage-detection error worth a rule. "
-        "It is the only WEEKLY strategy here."
+        "It is the only WEEKLY strategy here. Version 2.12 adds G10 (Stage 2's age), off by default so it trades as "
+        "2.11; its optimise A/B, with a breakeven stop and more US slots, is queued "
+        "(research/stage-analysis-2.12-variants.md)."
     )
     gate_docs = {
         "G1": "H1: the daily close is above the 200-day average.\n\n"
@@ -752,6 +769,14 @@ class StageAnalysisStrategy(Strategy):
               "Stage 1 passes; Stage 3 passes too and is flagged by W2 instead.\n"
               "- **Why it lags:** the machine leaves Stage 4 only after the next stage's condition has held "
               "{CONFIRM_WEEKS} weeks, so a base that has just turned is still refused.",
+        "G10": "The stock's Stage 2 is not too old. Off by default.\n\n"
+               "- **Count:** weeks from the week the stage machine dates the current Stage 2 to (its breakout) to "
+               "the latest completed week. A stock in Stage 1 -- a first breakout not yet confirmed -- or in Stage 3 "
+               "has no count and passes.\n"
+               "- **Test:** with MAX_STAGE2_WEEKS above 0, the count is at most {MAX_STAGE2_WEEKS} weeks. At 0 the "
+               "gate always passes and the note gives the count.\n"
+               "- **Why:** Weinstein buys early in the advance. The setup re-qualifies a stock at each new high, so "
+               "without this most entries come late in Stage 2.",
     }
     pattern_title = "Stage and base checks"
     pattern_intro = (
@@ -965,6 +990,8 @@ class StageAnalysisStrategy(Strategy):
         ("Swing width", "SWING_WEEKS", "Weeks either side a weekly swing high must top, or a swing low undercut; it "
                                        "is known this late. The lower-high exit reads the highs, the stage "
                                        "machine's 2→4 the lows."),
+        ("Stage 2 age limit", "MAX_STAGE2_WEEKS", "Experiment, off by default: G10 refuses a breakout made more "
+                                                   "than this many weeks after the stock's Stage 2 began."),
         ("G7's blocked market stage", "G7_BLOCK_STAGE", "Experiment: 4 is the shipped rule; 3 refuses entries "
                                                         "while the market tops instead of after it has fallen. "
                                                         "Only that stage is refused, so at 3 a Stage 4 market "
@@ -1069,7 +1096,7 @@ class StageAnalysisStrategy(Strategy):
         self.apply_screen(ctx, result)
 
         if len(wk) < MA_WEEKS + SLOPE_WEEKS + 1:
-            for g in ("G4", "G5", "G6", "G7", "G8", "G9"):
+            for g in ("G4", "G5", "G6", "G7", "G8", "G9", "G10"):
                 result.fail(g, "insufficient weekly history")
             result.recompute_first_fail()
             return result
@@ -1156,12 +1183,24 @@ class StageAnalysisStrategy(Strategy):
         # that lag is the point rather than a thing to route around: a base that has not yet earned
         # Stage 1 has not shown that the selling stopped. Completed weeks only, to read what the
         # chart's band reads. Stage 3 is left to W2, which warns without blocking, as one layer up.
-        own = stage_series(done)
-        ostage = int(own.iloc[-1]) if len(own) and own.iloc[-1] == own.iloc[-1] else 0
+        vals, onset, _ = _stage_machine(done)
+        ostage = int(vals[-1]) if vals else 0
         if ostage == 4:
             result.fail("G9", "the stock itself is still in Stage 4")
         else:
             result.ok("G9", f"the stock is in Stage {ostage or 'unknown'}")
+
+        # How far into its advance: weeks since the current Stage 2 began (the week the machine dates it
+        # to, its breakout), completed weeks only. Weinstein buys early in the advance, not its tenth new high.
+        s2_weeks = len(done) - onset[-1] if ostage == 2 and onset and onset[-1] is not None else None
+        if not MAX_STAGE2_WEEKS:
+            result.ok("G10", "off" + (f" (Stage 2 for {s2_weeks} weeks)" if s2_weeks is not None else ""))
+        elif s2_weeks is None:
+            result.ok("G10", f"not in Stage 2 (Stage {ostage or 'unknown'})")
+        elif s2_weeks > MAX_STAGE2_WEEKS:
+            result.fail("G10", f"Stage 2 began {s2_weeks} weeks ago, more than {MAX_STAGE2_WEEKS}")
+        else:
+            result.ok("G10", f"Stage 2 began {s2_weeks} weeks ago")
 
         # ---- the base, its resistance, and the breakout week
         hist = wk.iloc[:-1]

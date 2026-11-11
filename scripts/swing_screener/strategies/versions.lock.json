@@ -1194,7 +1194,7 @@
   },
   "stage_analysis": {
     "family": "stage_analysis",
-    "fingerprint": "66dbb1bc",
+    "fingerprint": "9aec212d",
     "params": {
       "BASE_MAX_DEPTH_PCT": 30.0,
       "BASE_MAX_WEEKS": 104,
@@ -1210,6 +1210,7 @@
       "G7_BLOCK_STAGE": 4,
       "MANSFIELD_RISE_WEEKS": 4,
       "MANSFIELD_WEEKS": 52,
+      "MAX_STAGE2_WEEKS": 0,
       "MAX_STOP_PCT": 15.0,
       "MA_WEEKS": 30,
       "SLOPE_WEEKS": 4,
@@ -1231,7 +1232,8 @@
         "G6",
         "G7",
         "G8",
-        "G9"
+        "G9",
+        "G10"
       ],
       "min_bars": 330,
       "setup_codes": [
@@ -1243,7 +1245,7 @@
         "W3"
       ]
     },
-    "version": "2.11"
+    "version": "2.12"
   },
   "supertrend": {
     "family": "supertrend",
