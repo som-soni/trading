@@ -63,31 +63,28 @@ Catch-all moves down one.
 
 | Band | Theme | Modules |
 |---|---|---|
-| `1.` | Trading core | 1.1 Strategies, 1.2 Today, 1.3 Market, 1.4 Screening, 1.5 Stock analysis, 1.6 Chart |
+| `1.` | Trading core | 1.1 Strategies, 1.2 Today, 1.3 Market, 1.4 Screening, 1.5 Stock analysis, 1.6 Chart, 1.7 Trade desk |
 | `2.` | Learning & certification | 2.1 Library, 2.2 Daily knowledge test, 2.3 Investment Advisor (SEBI exam) |
 | `3.` | Long-term investing | 3.1 Long-term investment themes |
 | `4.` | Upkeep | 4.1 System, 4.2 Sunday Fixes, 4.3 Public module publishing |
 | `5.` | Catch-all | 5.1 General Q&A, 5.2 Catch-all |
 
-Below the top level, naming is **flat**: one capital letter per thread, `A.`, `B.` … `Z.`, a
-single sequence per module that reads top to bottom in the order the sidebar draws it. Start
-every new thread **from the module's main thread** (not from an Orchestrator or another thread),
-so it sits directly under the module and takes the next free letter at the end — nothing else is
-renamed. A thread that another thread started is pinned under that thread whatever its title, so
-its letter has to follow the position it is drawn in: the threads an Orchestrator started take the
-letters right after it, and later threads shift down. That is why the module's `Orchestrator`, if
-any, is `A.` but Minervini is `J.` under 1.1 Strategies — eight Orchestrator threads sit between
-them. No digits, no depth markers, no module prefix (the module's own row names it). Keep letters
-contiguous (no gaps). After `Z.` continue `ZA.`, `ZB.` … `ZZ.` — never `AA.`: sorted as text,
-`AA.` falls between `A.` and `B.`, while `ZA.` follows `Z.`. Do not use sidebar sections or groups for
-this: they replace the project grouping and duplicate the module names.
+Below the top level, a thread is named **by what it is about, with no prefix**: no letter, digit,
+depth marker or module prefix (the module's own row names it). The sidebar sorts each module's
+threads alphabetically by that name, so a thread is found by its name — the same way under every
+module. Keep names **unique across the project**, so a name alone finds the thread: when a name
+would repeat one elsewhere, add what tells them apart (*Strategies orchestrator*, *Market
+orchestrator*). Lead with the subject word you would search for (*Darvas box strategy*, not
+*Build the Darvas strategy*); a daily or weekly thread leads with a sortable date
+(*2026-11-10 India*). Start every new thread **from the module's main thread** (not from an
+Orchestrator or another thread), so it sits directly under the module: a thread is pinned under
+the thread that started it, wherever its name would sort. Do not use sidebar sections or groups
+for this: they replace the project grouping and duplicate the module names.
 
-**On your first turn in a new session, mark yourself** (when the ccd session tools are
-available; skip silently when they are not): if your title does not already start with a
-marker, follow `parentSessionId` (`get_session`) up to your top-level module, read the titles
-of every thread under that module at any depth (`list_sessions`; `startedBy` can be missing, so
-check `parentSessionId` of any unmarked or top-level-looking row), and rename yourself with the
-module's next free letter. Keep the rest of the title.
+**On your first turn in a new session, name yourself** (when the ccd session tools are
+available; skip silently when they are not): if your title is a placeholder or does not say what
+the thread is about, rename yourself with a short, specific name that is unique across the
+project (check `list_sessions`). Never add a letter prefix.
 
 ## Markets come from config
 
