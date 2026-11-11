@@ -13,8 +13,9 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 | # | Lesson (hypothesis) | From | How to test | Status |
 |---|---|---|---|---|
 | L1 | After a stop-out, a base that reclaims its failed breakout high should be bought again (Minervini's re-entry) | RADICO 2021, UFLEX 2016 | S10 `RECLAIM_ON=1` as an optimise variant; compare CAGR and avg R with and without | Built (1.65, off). Two open parameters: the stop — under the shakeout low it is often wide (RADICO 11%, skipped at the 8% cap; `RECLAIM_STOP_DAYS=3` gives 7.5%) — and the window: UFLEX reclaimed 27 sessions after its failed high, past `RECLAIM_DAYS=20`. Test 20 vs 30 and both stops, rule fixed first |
-| L2 | A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017, GLENMARK 2020 (a one-day news spike) | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
-| L3 | A cheat (S3/S4) confirmed on below-average volume fails more often: Minervini wants the stock to come out of the shelf on rising volume, and the strategy asks the shelf to dry up but sets no volume floor on the close through it | GLENMARK 2020 (0.6x; LUXIND 1.5x and BFINVEST 2.1x passed) | The strategy's cheat trades and the textbook cheat event study: avg R by the cross day's volume ÷ its 50-day (<1x, 1–1.4x, 1.4x+), and by how far the close cleared the shelf | Not tested |
+| L2 | A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017, GLENMARK 2020 (a one-day news spike), TMPV 2021 | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
+| L3 | A cheat (S3/S4) confirmed on below-average volume fails more often: Minervini wants the stock to come out of the shelf on rising volume, and the strategy asks the shelf to dry up but sets no volume floor on the close through it | GLENMARK 2020 (0.6x), TMPV 2014 (1.0x); LUXIND 1.5x and BFINVEST 2.1x passed | The strategy's cheat trades and the textbook cheat event study: avg R by the cross day's volume ÷ its 50-day (<1x, 1–1.4x, 1.4x+), and by how far the close cleared the shelf | Not tested |
+| L4 | A buy just as the stock regains a flat or falling 50-day fails more often: Minervini buys stocks above a rising 50-day; the gates ask only that today's close is above it and the 50-day above the longer averages | TMPV 2014 (all 20 closes before the signal under the 50-day, the 50-day down from 376.3 to 374.3) | The strategy's trades and textbook breakouts: avg R by the 50-day's slope over 10 sessions at entry, and by how many of the last 20 closes were below it | Not tested |
 
 ## Fixes found by the reviews (bugs, not hypotheses — they ship in the next version, measured with the batch)
 
@@ -124,3 +125,24 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   cleared, and the buy at 262.29 sat right under the real ceiling, 263.5; the next day it touched 268.7 and reversed.
   Read correctly, the pivot was 263.5 and nothing broke out until June (→ **F2**).
 - Fundamentals rated weak (SEPA). The stock reached 300.9 by August, through a later base the strategy did not trade.
+
+### TMPV.NS (Tata Motors) — S4 cheat (3C), 22 Jan 2014, −1.11R
+
+- **Trade:** base from the 14 Oct 2013 high of 400.75 (67 sessions, 1st base, five pullbacks 5.8% → 11.4%, widening —
+  VCP-06 rejected it); shelf 361.6–375.4 in the middle third. 21 Jan closed 380.7 through it on 1.0x volume; bought the
+  22 Jan open at 377.97, stop 359.80 (4.8%); the 50-day exit sold it at the 27 Jan open, which gapped to 358.61 —
+  below the stop.
+- **Fine by Minervini:** a long base, RS 72, a tight stop; results not due until 10 Feb.
+- **Issues:** the stock had closed under its 50-day on all 20 sessions before the signal, and the 50-day itself was
+  drifting down (376.3 → 374.3). The cross put the price back over it by 1.7%, so the 50-day exit sat right under the
+  buy — the trade's real stop was the 50-day, two sessions away. Minervini buys above a *rising* 50-day. The cross
+  came on average volume (1.0x), and the pullbacks widened. The market wobbled in the last week of January (the 2014
+  emerging-market sell-off). The stock went on to 448.6 by June. → **L4**, **L3**.
+
+### TMPV.NS (Tata Motors) — S8 flat base, 17 Nov 2021, −0.05R
+
+- **Trade:** flat base from the 14 Oct 2021 high of 530 (21 sessions, 1st base). Buy-stop filled 17 Nov at 531.35,
+  stop 494.85; the session closed 530.2 on 1.1x volume, so the light-volume exit sold it at the next open, 530.65.
+- **The rules worked.** The base sat on a news spike — 383 to 530 in four sessions on 3–5.5x volume (the EV-unit
+  investment, 12–13 Oct), the base high 65% over the 50-day — so it is an **L2** case, but the unconfirmed breakout
+  was cut at breakeven and the stock fell to 443 by 29 Nov.
