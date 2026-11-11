@@ -1323,6 +1323,14 @@ VS_DOC = {
     "description": "Rank liquid stocks by 12-1 momentum divided by realised volatility, hold the top {top_n} "
                    "weighted inverse to volatility, rebalance at every month-end.",
     "status": (
+        "FROM 2018-06-01 (full stage, v1.9, 2026-11-11 -- context, not a verdict; the years from 2022 are the "
+        "verify window, and the start matches the quality-momentum runs, whose India filings only carry equity "
+        "from then): INDIA 25.27% CAGR, -40.7% max drawdown against the Smallcap 250's 13.15% and -52.2% "
+        "(+12.12 excess), 808 trades; by year 2018 -9.7, 2019 +7.1, 2020 +23.7, 2021 +96.2, 2022 -6.4, "
+        "2023 +90.2, 2024 +45.5, 2025 -6.9, 2026 +18.4 -- most of the gain is 2021 and 2023. US 8.50% CAGR, "
+        "-47.8% max drawdown against IWM's 6.58% and -42.3% (+1.92 excess, a deeper drawdown than the index), "
+        "860 trades; by year 2018 -17.5, 2019 +2.6, 2020 +65.4, 2021 +4.4, 2022 -7.8, 2023 +13.1, 2024 +59.8, "
+        "2025 -1.9, 2026 -16.6. The same split as every earlier window: an edge in India, next to none in the US. "
         "VERIFY v1.9, INDIA (2022-01-03 to 2026-11-02, 50bps a side): 22.49% CAGR against the Smallcap 250's "
         "11.68%, +10.81 excess, Sharpe 1.00 against 0.70 -- but max drawdown -30.77% against the index's "
         "-26.88%. The criterion, written before the run, asked for positive excess AND a drawdown no deeper "
