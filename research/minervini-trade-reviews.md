@@ -13,7 +13,7 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 | # | Lesson (hypothesis) | From | How to test | Status |
 |---|---|---|---|---|
 | L1 | After a stop-out, a base that reclaims its failed breakout high should be bought again (Minervini's re-entry) | RADICO 2021 | S10 `RECLAIM_ON=1` as an optimise variant; compare CAGR and avg R with and without | Built (1.65, off). Open question: the stop. Under the shakeout low it is often wide (RADICO 11%, skipped at the 8% cap); `RECLAIM_STOP_DAYS=3` gives 7.5% there. Test both, rule fixed first |
-| L2 | A base that starts right after a climax run (base high far above the 50-day, or a big 3-month gain into it) fails more often | LUXIND 2021 | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (e.g. <15%, 15–25%, 25%+) and by the 3-month gain into the base high | Not tested |
+| L2 | A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017 | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
 
 Already measured and rejected, so not lessons on their own: selling early on weakness after the buy (a close back
 under the pivot, a run of down days; [CAGR gaps](minervini-cagr-gaps.md), early-weakness exits), and a cheat's
@@ -45,3 +45,18 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   above the 50-day and 108% above the 200-day, where the strategy's own EX-04 sells part into strength. The 50-day
   had caught up by September, so the whole shelf sat about 5% over it. The pullbacks widened (8.4% → 12.3%; VCP-06
   rejected it), so the cheat fired in a loosening base. Day one closed back under the shelf. → **L2**.
+
+### BFINVEST.NS — S4 cheat (3C), 1 Jan 2018, −1.08R
+
+- **Trade:** base from the 24 Nov 2017 high of 431 (24 sessions, 3rd base by the chart's count); shelf 374–396.5 in the
+  middle third. 29 Dec closed 396.7 through it on 2.1x volume; bought the 1 Jan open at 399.14, stop 372.20 (6.7%);
+  stopped 16 Jan at 371.08.
+- **Fine by Minervini:** RS 92, Trend Template met, stop within 8%, liquid (about ₹13 crore a day).
+- **Issues:** the base IS the top of a blow-off. 272.6 on 15 Nov to 431 on 24 Nov, +58% in seven sessions on 3–7x
+  volume (+173% from the 24 Aug low): the base high was 70% above the 50-day and 125% above the 200-day. A run like
+  that is a power play at best, bought only through the flag's high (431), and a cheat mid-flag is not one of his
+  entries. The pullbacks widened (10.2% → 16.5%; VCP-06 rejected it). Day one closed at 388.5, back under the shelf.
+  The decline into the stop came on 0.3x volume — no selling, just no buyers, while the 50-day rose to meet the price
+  (it was 366.5 on the stop day). An investment holding company with no growth fundamentals on record (SEPA "no
+  data"): Minervini wants earnings behind a leader; the backtest's fundamentals filter is optional and thin in India
+  before 2020. → **L2** (second case).
