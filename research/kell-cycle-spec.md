@@ -198,9 +198,9 @@ stated, and draft 2 gets its own run.
 ## 8. Results — draft 1 (optimise stage, 2013–2021, in-sample)
 
 Built as strategy `kell_cycle` v1.0 (spec id `v1.0-a4345dde`), with the section-4 changes and the section-5
-trading rules. Six optimise-stage runs are queued: both markets × {default break (a), break (b) `BREAK_MODE=2`,
-loose screen `SCREEN_LOOSE=1`} (queue #1412–#1417). No verify run is made until all three section-6 criteria
-pass and the owner says so.
+trading rules. Six optimise-stage runs: both markets × {default break (a), break (b) `BREAK_MODE=2`,
+loose screen `SCREEN_LOOSE=1`} (queue #1412–#1417), results below. No verify run is made until all three
+section-6 criteria pass and the owner says so.
 
 ### Diagnostics recorded before the runs
 
@@ -224,5 +224,57 @@ the variant that actually addresses the whipsaw the Dixon check found.
 
 ### Backtest results
 
-Pending: the runs are queued behind the rest of the backtest lane. Each run is reported here with CAGR,
-Sharpe, max drawdown, trade count and expectancy in R, plus each criterion's pass or fail, including failures.
+All six runs finished on 2026-11-11: version 1.0, optimise stage, 2013-01-02 to 2021-12-31, so every figure is
+**in-sample**. Expectancy is per closed trade, net of costs. "Top 5% out" is expectancy with the best 5% of trades
+removed. Buy and hold over the same window: India 13.54% CAGR, −38.3% max drawdown; US 14.01%, −34.1%.
+
+| Market | Variant | Spec id | CAGR | Sharpe | Max DD | Trades | Win % | Expectancy | Top 5% out |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| India | default, break (a) | `v1.0-a4345dde` | 15.28% | 0.96 | −35.2% | 381 | 36.1% | +0.274R | −0.094R |
+| India | break (b), `BREAK_MODE=2` | `v1.0-2c2159cf` | 16.60% | 1.05 | −29.2% | 302 | 30.0% | +0.275R | −0.179R |
+| India | loose screen, `SCREEN_LOOSE=1` | `v1.0-cd41d27c` | 19.37% | 1.15 | −33.9% | 399 | 34.2% | +0.465R | −0.095R |
+| US | default, break (a) | `v1.0-a4345dde` | 2.28% | 0.21 | −24.1% | 718 | 28.2% | +0.004R | −0.415R |
+| US | break (b), `BREAK_MODE=2` | `v1.0-2c2159cf` | −2.87% | −0.05 | −49.9% | 659 | 24.5% | −0.149R | −0.524R |
+| US | loose screen, `SCREEN_LOOSE=1` | `v1.0-cd41d27c` | 2.76% | 0.24 | −35.0% | 764 | 27.1% | +0.001R | −0.462R |
+
+Against the section-6 criteria. C2's bar is the Minervini strategy's best like-for-like run: India 8.26% at
+−20.9%, US 3.08% at −23.9%, so a drawdown no deeper than −25.9% in India and −28.9% in the US.
+
+| Market | Variant | C1 expectancy | C2 beats Minervini | C3 top 5% out (India) | All three |
+|---|---|---|---|---|---|
+| India | default | fail (+0.27R < +0.30R) | fail (drawdown −35.2%) | fail (−0.09R) | **fail** |
+| India | break (b) | fail (+0.28R) | fail (drawdown −29.2%) | fail (−0.18R) | **fail** |
+| India | loose screen | pass (+0.47R) | fail (drawdown −33.9%) | fail (−0.10R) | **fail** |
+| US | default | pass (+0.004R) | fail (2.28% < 3.08%) | — | **fail** |
+| US | break (b) | fail (−0.15R) | fail (−2.87%, −49.9%) | — | **fail** |
+| US | loose screen | pass (+0.001R) | fail (2.76%, −35.0%) | — | **fail** |
+
+**Draft 1 fails.** No variant passes all three criteria in either market, so no verify run is made. In India
+every variant beats buy and hold on CAGR, the loose screen by almost 6 points a year, but each draws down
+deeper than the bar, and each depends on its best few trades. In the US the strategy roughly breaks even.
+
+**Why the markets differ** (default runs):
+
+- **The exits behave the same.** Trades closed by the EMA break averaged +1.10R in India and +1.08R in the US;
+  stop-outs −1.12R and −1.14R. The gap is how often the entry fails: 37% of India's trades hit the initial stop,
+  49% of the US's, most within 6 to 8 sessions.
+- **The one-bar stops are tight in the US.** Median stop width at entry, in ATR14:
+
+  | Setup | India stop | US stop | India stopped | US stopped |
+  |---|---:|---:|---:|---:|
+  | S1 wedge pop | 1.46 ATR | 0.97 ATR | 49% | 67% |
+  | S2 first crossback | 1.38 ATR | 1.20 ATR | 39% | 55% |
+  | S3 base-n-break | 2.50 ATR | 2.88 ATR | 30% | 29% |
+
+  Even at the same width the US follows through less: with a stop 1.25 to 2 ATR wide, 56% of US trades stopped
+  out against 34% of India's.
+- **The market, more than the rules.** The plain 12-month momentum baseline over the same window made 16.5% a
+  year in India and −2.1% in the US. Every long-stock strategy tested here splits the same way. Kell's rules
+  ride momentum where the market pays for it, and do not create it where it does not.
+- **Sitting out.** India was invested on 73% of days, the US on 85%; India's losing years (2015, 2018) cost less.
+
+**Next, as draft 2.** Per section 6, the definitions are revised once, with the reason stated. Version 1.2 adds a
+research switch, `MIN_STOP_ATR`: a one-bar stop (S1, S2, S4) at least that many ATR under the entry. A run at
+1.5 ATR is queued in both markets (#1555, #1556), with default 1.2 runs as the like-for-like baseline (#1557,
+#1558). Version 1.1's market filter (the small- and mid-cap trend) is in both, so compare the 1.2 runs with each
+other, not with the 1.0 table above.
