@@ -5392,7 +5392,9 @@ function perfGlance(d, key) {
     const oos = curRuns.find((b) => b.stage === "verify");
     const ins = curRuns.find((b) => b.stage === "optimise");
     // the full-period run (tuning + hold-out years, context only) gets its own row whenever it exists
-    const full = curRuns.find((b) => b.stage === "full");
+    // only the standard full window (the stages' full start): a full run from another start date is a
+    // separate question and stays on the Backtests tab
+    const full = curRuns.find((b) => b.stage === "full" && (!st.full?.start || b.window_start === st.full.start));
     const leg = !oos && !ins && !full ? (curRuns.find((b) => b.stage === "legacy") || curRuns[0] || null) : null;
     // full period first (the whole history), then out-of-sample (the verdict), then in-sample
     if (full) out.push(row(full, m, true, "latest"));
@@ -5432,7 +5434,7 @@ function perfGlance(d, key) {
       <th class="num">Max DD</th><th class="num">Sharpe</th>
       <th class="num" title="Share of the run's trades that made money. Hover a cell for how many trades it counts.">Win rate</th><th>Run</th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <p class="muted small"><b>Full period</b> runs from ${esc((st.optimise || {}).start || "")} to the latest close: the whole history, tuning and hold-out years together -- context, not a verdict.
+    <p class="muted small"><b>Full period</b> runs from ${esc((st.full || {}).start || "")} to the latest close: the whole history, tuning and hold-out years together -- context, not a verdict.
       <b>Out-of-sample</b> is the number to believe: years ${esc(ver.start || "")} onward, which the rules were never tuned on.
       <b>In-sample</b> (${esc((st.optimise || {}).start || "")} → ${esc((st.optimise || {}).end || "")}) is where the rules were chosen, so it flatters them;
       the gap between the two is the measure of how much.

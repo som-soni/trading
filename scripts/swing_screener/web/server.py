@@ -1043,7 +1043,10 @@ def strategy_edges() -> dict:
                         + (f": {test['criterion']}" if test.get("criterion") else "") if test else ""))
             # the current rules' full-period run (tuning + hold-out years): context beside the grade,
             # never part of it -- a full run mixes the years the rules were tuned on with the hold-out
-            fp = next((x for x in mine if _stage(x[1])["stage"] == "full"), None)
+            # only the standard window (windows.STAGES["full"].start): a full run from another start (India
+            # from 2018, when its filings begin) is a separate question, shown on the Backtests tab
+            fp = next((x for x in mine if _stage(x[1])["stage"] == "full"
+                       and _stage(x[1])["window_start"] == windows.STAGES["full"].start), None)
             full = None
             if fp:
                 fr = _risk(fp[2])
