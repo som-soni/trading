@@ -20,7 +20,8 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 
 | # | Fix | From | Where | Status |
 |---|---|---|---|---|
-| F1 | The results blackout misses an announcement ON the signal date: it blocks only dates strictly after it (`f > d`), so a signal on results day is bought at the next open, into the reaction. Make it `>=` | LTTS 2019 (board meeting 17 Jan, signal 17 Jan, filled into a 5x-volume reversal on the 18th) | `backtesting/spec.py` `results_blackout`, used by every strategy run with `--results-blackout` — a version bump for each | Not applied. Rough size: 15 of 201 India verify trades and 16 of 400 US had results within the four days up to the fill (avg R +0.53 / −0.08 against +0.38 / −0.04 for all), an upper bound on the leak |
+| F1 | The results blackout misses an announcement ON the signal date: it blocks only dates strictly after it (`f > d`), so a signal on results day is bought at the next open, into the reaction. Make it `>=` | LTTS 2019 (board meeting 17 Jan, signal 17 Jan, filled into a 5x-volume reversal on the 18th), MARICO 2016 (results 29 Apr, the signal day) | `backtesting/spec.py` `results_blackout`, used by every strategy run with `--results-blackout` — a version bump for each | Not applied. Rough size: 15 of 201 India verify trades and 16 of 400 US had results within the four days up to the fill (avg R +0.53 / −0.08 against +0.38 / −0.04 for all), an upper bound on the leak |
+| F2 | A flat base's pivot (S6 / S8) can be stale: it is the base's last *confirmed* swing high, which lags `SWING_K` sessions, so a higher high made in the last few sessions is ignored and the "breakout" can be a close through a level the stock already traded and closed above. Use the base's highest high through yesterday, as S9 does | MARICO 2016 (pivot 252.9 on 28 Apr; the stock had closed above it on 18, 21 and 22 Apr and made 263.5 on the 22nd) | `minervini_spec.flat_base` (pivot) — evaluate and the chart share it | Not applied. Count how many S6/S8 trades had a higher high inside the base than their pivot before measuring |
 
 Already measured and rejected, so not lessons on their own: selling early on weakness after the buy (a close back
 under the pivot, a run of down days; [CAGR gaps](minervini-cagr-gaps.md), early-weakness exits), and a cheat's
@@ -109,3 +110,17 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   3.2x and 4.5x volume and ran to 322.9 by mid-October, +28%. No setup fired from 15 Aug to 30 Sep: the base was 52
   sessions old (past the flat base's 35) and its last pullback widened (VCP-06). S10 would have seen the failed
   high, but 27 sessions after it — outside `RECLAIM_DAYS` = 20. → **L1** (second case, the window).
+
+### MARICO.NS — S6 flat base, 2 May 2016, −1.06R
+
+- **Trade:** flat base from the 14 Mar 2016 high of 252.9 (6 weeks, 7% deep, 2nd base). 29 Apr closed 259.1 through it on
+  1.5x volume; bought the 2 May open at 262.29, stop 246.00 (6.2%); 3 May fell 4.8% on 1.5x, stopped 5 May at 245.63.
+- **Fine by Minervini:** a shallow, orderly base in a leader of a defensive group, RS 86, not extended (the base high
+  was 10% over the 50-day), volume on the cross.
+- **Issues — two mechanical ones:** (1) results were announced on 29 Apr, the signal day, so the blackout missed it
+  (→ **F1**, second case). (2) The pivot was stale: the detector still read the base high as 252.9, its last confirmed
+  swing high, though the stock had closed above it on 18, 21 and 22 Apr and made 263.5 on the 22nd — that high is
+  confirmed only five sessions later, on the 29th. So the "breakout" was the fourth close over a level already
+  cleared, and the buy at 262.29 sat right under the real ceiling, 263.5; the next day it touched 268.7 and reversed.
+  Read correctly, the pivot was 263.5 and nothing broke out until June (→ **F2**).
+- Fundamentals rated weak (SEPA). The stock reached 300.9 by August, through a later base the strategy did not trade.
