@@ -5048,8 +5048,14 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
   // one dot per market: has this strategy shown an edge there (server.strategy_edges)
   const dot = (x) => `<span class="edge-dots">${MKTS.map((m) => edgeDot(x.key, m.key)).join("")}</span>`;
   const ver = (x) => (x.version && x.version !== "1.0") || !x.is_current ? `<span class="st-ver" title="${esc(x.spec_id || "")}">v${esc(x.version || "1.0")}</span>` : "";
+  // the current rules' full-period run per market (2013 to the latest close): context, never the grade
+  const fullLine = (x) => {
+    const parts = MKTS.map((m) => [m, EDGE?.strategies?.[x.key]?.[m.key]?.full]).filter(([, f]) => f && f.excess != null)
+      .map(([m, f]) => `<span class="${f.excess > 0 ? "pos" : "neg"}">${esc(m.flag || m.name)} ${f.excess > 0 ? "+" : ""}${f.excess.toFixed(1)}%</span>`);
+    return parts.length ? `<span class="sfull" title="Full period (tuning and hold-out years together): excess CAGR over the index. Context, not a verdict.">full ${parts.join(" ")}</span>` : "";
+  };
   const item = (x, sub) => `<a class="nav-item${sub ? " sub" : ""} ${x.key === key ? "active" : ""}" href="#/strategies/${x.key}" title="${esc(x.description || "")}">
-      <span><b class="sn">${dot(x)}${esc(x.name)}${ver(x)}</b><span class="muted small sk">${esc(x.screen_name || "")}</span></span>${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
+      <span><b class="sn">${dot(x)}${esc(x.name)}${ver(x)}</b>${fullLine(x)}<span class="muted small sk">${esc(x.screen_name || "")}</span></span>${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
   // Trading strategies group by style (server order). Within a style they group
   // by FAMILY: the current version heads the group, with older versions and
   // sibling variants nested under it. Listing every version flat made five
@@ -5107,7 +5113,7 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
     ungrouped.map((x) => item(x)).join(""), ungrouped.some((x) => x.key === key)) : "";
   $view.innerHTML = `<div class="rep-layout strats-layout"><aside class="rep-nav strat-nav strats-nav">
       <a class="nav-item ${key ? "" : "active"}" href="#/strategies"><span><b class="sn">Today's setups</b><span class="muted small sk">every strategy's trades and watch names</span></span></a>
-      <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div></div>
+      <div class="nav-legend">${edgeLegend()}<div class="muted small">dots: ${MKTS.map((m) => esc(m.flag || m.name)).join(" ")} — hover for the number</div><div class="muted small">full: 2013 → latest, excess over the index per year — context, not a verdict</div></div>
       <div class="nav-groupby"><span class="muted small">Group by</span>${segmented([["behaviour", "Behaviour"], ["horizon", "Holding period"]], groupBy, "sgroup")}</div>
       ${stratNav}${rest}
       ${untried.length ? `<details class="nav-untried"><summary class="nav-h">Not yet explored (${untried.length})</summary>
