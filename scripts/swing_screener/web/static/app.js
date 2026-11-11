@@ -5351,10 +5351,14 @@ function perfGlance(d, key) {
     const curRuns = mine.filter((b) => b.spec_id === cur);
     const oos = curRuns.find((b) => b.stage === "verify");
     const ins = curRuns.find((b) => b.stage === "optimise");
-    const leg = !oos && !ins ? (curRuns.find((b) => b.stage === "legacy" || b.stage === "full") || curRuns[0] || null) : null;
+    // the full-period run (tuning + hold-out years, context only) gets its own row whenever it exists,
+    // under the in-sample and out-of-sample rows, so a reader sees the whole history beside the verdict
+    const full = curRuns.find((b) => b.stage === "full");
+    const leg = !oos && !ins && !full ? (curRuns.find((b) => b.stage === "legacy") || curRuns[0] || null) : null;
     if (oos) out.push(row(oos, m, true, "latest"));
     else if (ins) out.push(naRow(m, true, oosChip, "not verified yet"));
     if (ins) out.push(row(ins, m, !out.length, "latest"));
+    if (full) out.push(row(full, m, !out.length, "latest"));
     if (leg) out.push(row(leg, m, !out.length, "latest"));
     if (!curRuns.length) {
       const nx = all.filter((b) => b.market === m && b.spec_id === cur).length;
@@ -5366,7 +5370,7 @@ function perfGlance(d, key) {
     // "best legacy" told a reader two answers to one question. Verify runs still never rank: the
     // best of several hold-out results is selection on the hold-out.
     const pool = all.filter((b) => b.market === m);
-    const ref = ins || leg;
+    const ref = ins || leg || full;
     const { best, n } = bestOf(pool, new Set(["optimise", "legacy"]), ref ? winOf(ref) : null);
     if (best && ref && best.id === ref.id) {
       if (n > 1) { anyBest = true; out.push(gap(m, false, chipFor(best), `the latest version is also the best of ${n} configurations run in this window`)); }
