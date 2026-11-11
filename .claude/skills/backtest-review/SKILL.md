@@ -67,7 +67,11 @@ The edge badge already says whether the strategy beat buy-and-hold. Answer what 
 - **Concentration.** How much of the total R the best 5% of trades made, and the best and worst years.
 
 State every sample size. If the strategy shows no selection edge and no edge over buy-and-hold, say so
-first and recommend retiring or rethinking it before proposing tweaks.
+first. Then decide what that means: for a method with a strong, documented record by its originator
+or in research (Minervini's SEPA, O'Neil, Weinstein, dual momentum…), suspect the implementation
+before the method — close the fidelity gaps of step 4 first, and recommend retiring only once a
+faithful version has been tested and still fails. For a method without such a record, recommend
+retiring or rethinking it before proposing tweaks.
 
 ## 4. The method, from the knowledge base
 
