@@ -134,6 +134,21 @@ def realised_vol(px: pd.DataFrame, window: int = 63) -> pd.DataFrame:
     return px.pct_change().rolling(window, min_periods=window // 2).std() * (252 ** 0.5)
 
 
+def drop_partial_days(px: pd.DataFrame, share: float = 0.5) -> pd.DataFrame:
+    """`px` without its partial days: sessions priced for fewer than `share` of the usual universe -- a
+    cache refreshed for part of the universe, or a special session only some symbols printed in (India's
+    Sunday Muhurat session of 2026-11-08 priced 150 of ~3,400, mostly ETFs). The same rule run() applies
+    to its own partial days; a data-cleaning rule, not a strategy rule (so not a module constant, which
+    would move every baseline-family fingerprint without changing a result).
+
+    Done BEFORE any rolling statistic: a wide frame's partial row is NaN for every symbol that did not
+    print, and a 200-bar rolling mean (min_periods=200) over a window holding one NaN is NaN -- so one
+    partial day blanked the 200-day average of nearly every stock for the next 200 sessions, the trend
+    test failed everywhere, and India's ranking came back with 2 names."""
+    coverage = px.notna().sum(axis=1)
+    return px.loc[coverage >= share * coverage.rolling(20, min_periods=1).median()]
+
+
 def load_prices(market: str, min_bars: int) -> tuple:
     """(close, 20d dollar volume, SMA200, total-return close) frames for the whole universe.
 
@@ -166,7 +181,7 @@ def load_prices(market: str, min_bars: int) -> tuple:
     if not closes:
         raise ValueError("no symbols with enough cached history")
     logger.info("%s: %d/%d symbols have enough history", market, len(closes), len(tickers))
-    px = pd.DataFrame(closes).sort_index()
+    px = drop_partial_days(pd.DataFrame(closes).sort_index())
     dv = pd.DataFrame(dollar_vol).sort_index().reindex(px.index)
     tr = corporate_actions.back_adjust(px, corporate_actions.credits(market, list(px.columns)))
     sma200 = tr.rolling(200, min_periods=200).mean()
@@ -332,7 +347,7 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
         dollar_vol[sym] = (d["close"] * d["volume"]).rolling(20, min_periods=20).mean()
     if not closes:
         return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
-    px = pd.DataFrame(closes).sort_index()
+    px = drop_partial_days(pd.DataFrame(closes).sort_index())
     dv = pd.DataFrame(dollar_vol).reindex_like(px)
     # the same total-return series load_prices gives the backtest's signals
     tr = corporate_actions.back_adjust(px, corporate_actions.credits(market, list(px.columns)))
