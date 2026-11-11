@@ -12,7 +12,7 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 
 | # | Lesson (hypothesis) | From | How to test | Status |
 |---|---|---|---|---|
-| L1 | After a stop-out, a base that reclaims its failed breakout high should be bought again (Minervini's re-entry) | RADICO 2021 | S10 `RECLAIM_ON=1` as an optimise variant; compare CAGR and avg R with and without | Built (1.65, off). Open question: the stop. Under the shakeout low it is often wide (RADICO 11%, skipped at the 8% cap); `RECLAIM_STOP_DAYS=3` gives 7.5% there. Test both, rule fixed first |
+| L1 | After a stop-out, a base that reclaims its failed breakout high should be bought again (Minervini's re-entry) | RADICO 2021, UFLEX 2016 | S10 `RECLAIM_ON=1` as an optimise variant; compare CAGR and avg R with and without | Built (1.65, off). Two open parameters: the stop — under the shakeout low it is often wide (RADICO 11%, skipped at the 8% cap; `RECLAIM_STOP_DAYS=3` gives 7.5%) — and the window: UFLEX reclaimed 27 sessions after its failed high, past `RECLAIM_DAYS=20`. Test 20 vs 30 and both stops, rule fixed first |
 | L2 | A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017, GLENMARK 2020 (a one-day news spike) | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
 | L3 | A cheat (S3/S4) confirmed on below-average volume fails more often: Minervini wants the stock to come out of the shelf on rising volume, and the strategy asks the shelf to dry up but sets no volume floor on the close through it | GLENMARK 2020 (0.6x; LUXIND 1.5x and BFINVEST 2.1x passed) | The strategy's cheat trades and the textbook cheat event study: avg R by the cross day's volume ÷ its 50-day (<1x, 1–1.4x, 1.4x+), and by how far the close cleared the shelf | Not tested |
 
@@ -94,3 +94,18 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   would not have bought into at all (he does not buy just before results). The strategy's 14-day results blackout
   should have blocked it, but it only looks at announcements after the signal date. → **F1**.
 - The stock never made a new high in the next six months (best close 1,774.6, June 2019); the trend exit cut it near −1R.
+
+### UFLEX.NS — S2 VCP pivot buy, 20 Jul 2016, −1.07R
+
+- **Trade:** the first pivot-breakout loser reviewed. Base from the 21 Jun 2016 high of 245 (19 sessions, 1st base);
+  pullbacks 15.8% (the Brexit sell-off, 24 Jun) → 5.5%, the tight area dry at 0.46x. Buy-stop at the 245 pivot
+  filled 20 Jul at 249.04 (the session closed 248.3 on 1.9x volume), stop 230.30 (7.5%); stopped 3 Aug at 229.61.
+- **Fine by Minervini:** a textbook VCP — contracting, dry, a confirmed breakout on volume, RS 88, results not due
+  until 17 Aug. This is a loss he would also have taken.
+- **What went wrong:** no follow-through. After the breakout day, nine sessions on 0.2–0.4x volume, a poke to 252.9 on
+  25 Jul, then a slow drift into the stop. The base had followed an +85% run (base high 26.5% over the 50-day, the
+  edge of **L2**'s buckets). Selling a stalled breakout early is already measured and rejected (early-weakness exits).
+- **The miss:** the base held (low 223.9 against 206), and on 31 Aug–1 Sep it broke through the 252.9 failed high on
+  3.2x and 4.5x volume and ran to 322.9 by mid-October, +28%. No setup fired from 15 Aug to 30 Sep: the base was 52
+  sessions old (past the flat base's 35) and its last pullback widened (VCP-06). S10 would have seen the failed
+  high, but 27 sessions after it — outside `RECLAIM_DAYS` = 20. → **L1** (second case, the window).
