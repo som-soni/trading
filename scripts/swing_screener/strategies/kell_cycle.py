@@ -51,6 +51,7 @@ LOOSE_MAX_PCT_BELOW_52W_HIGH = 35.0
 
 # ---- after the scan (build_plans / classify / the backtest's --exit-mode kell read these)
 MAX_STOP_PCT = 8.0        # a BB's stop (the base low) is raised to at most this % under the entry
+MIN_STOP_ATR = 0.0        # research switch (0 = off): a one-bar stop (S1, S2, S4) at least this many ATR under the entry
 NOMINAL_TARGET_R = 10     # a far target for the plan's R column only; the backtest has no target
 EX_SELL_DIVISOR = 3       # the exhaustion sale: 1/this of the shares held, once per leg
 
@@ -81,10 +82,15 @@ def cycle_frame(df: pd.DataFrame) -> pd.DataFrame:
 class KellCycleStrategy(Strategy):
     key = "kell_cycle"
     name = "Kell cycle of price action"
-    version = "1.1"
-    # 1.1 changes only the market filter, applied to the signals after the scan.
+    version = "1.2"
+    # 1.1 changes only the market filter, 1.2 only the stop: both after the scan.
     signal_version = "1.0"
     changelog = (
+        ("1.2", "2026-11-11",
+         "A research switch, off by default: MIN_STOP_ATR (now {MIN_STOP_ATR}) moves a one-bar stop (S1, S2, S4) "
+         "down to at least that many ATR under the entry when the bar's low is closer. The 1.1 optimise runs "
+         "stopped out 49% of US trades against 37% in India, with S1 stops a median 0.97 ATR wide in the US and 1.46 "
+         "in India; the variant tests 1.5 ATR. Plan only, so signal_version stays 1.0."),
         ("1.1", "2026-11-11",
          "The market filter is the minervini strategy's test, and its 1.64 adds the segment's trend: no new buy "
          "unless the small- and mid-cap index (Nifty Smallcap 250, IWM) is up over 63 sessions. Measured on "
@@ -119,7 +125,7 @@ class KellCycleStrategy(Strategy):
     needs_ctx_extras = True
     extra_columns = ("kell_leg", "wp_stop", "cb_stop", "bb_stop", "bb_top", "break_ref")
     extra_numeric_columns = extra_columns
-    signal_exempt_consts = ("MAX_STOP_PCT", "NOMINAL_TARGET_R", "EX_SELL_DIVISOR")
+    signal_exempt_consts = ("MAX_STOP_PCT", "MIN_STOP_ATR", "NOMINAL_TARGET_R", "EX_SELL_DIVISOR")
 
     thesis = (
         "A leading stock's advance is not one move but a cycle that repeats: it is stretched down and sellers tire, "
@@ -194,7 +200,9 @@ class KellCycleStrategy(Strategy):
         "page's backtest command adds them).",
     )
     status = (
-        "Draft 1, built 2026-11-10. First optimise-stage runs (2013-2021, in-sample) queued; no result yet. Pass "
+        "Draft 1, built 2026-11-10. First optimise-stage runs of 1.0 (2013-2021, in-sample): India 15.3% CAGR, "
+        "-35.2% max drawdown, +0.27R a trade; US 2.3%, -24.1%, +0.00R; neither market passed all three criteria. "
+        "The US stopped out 49% of trades (India 37%); the MIN_STOP_ATR variant is queued. Pass "
         "criteria (spec section 6, fixed before any run): expectancy at least +0.30R a trade in India and above zero "
         "in the US; a higher CAGR than the minervini strategy's best like-for-like run in each market at a maximum "
         "drawdown no more than 5 points deeper; with the best 5% of trades removed, expectancy above zero in India."
@@ -222,13 +230,13 @@ class KellCycleStrategy(Strategy):
     setup_docs = {
         S1: (
             "Wedge pop: today is a WP (phase table).\n\n"
-            "- **Stop:** today's low.\n"
+            "- **Stop:** today's low; with MIN_STOP_ATR above 0 (now {MIN_STOP_ATR}), at least that many ATR under the entry.\n"
             "- **Entry:** a new position, or an add to one held."
         ),
         S2: (
             "The first EMA crossback after a wedge pop or base-n-break: today is a CB, and no CB has come since the "
             "cycle's latest WP or BB.\n\n"
-            "- **Stop:** yesterday's low.\n"
+            "- **Stop:** yesterday's low; with MIN_STOP_ATR above 0 (now {MIN_STOP_ATR}), at least that many ATR under the entry.\n"
             "- **Entry:** a new position, or an add to one held."
         ),
         S3: (
@@ -239,7 +247,7 @@ class KellCycleStrategy(Strategy):
         S4: (
             "A later crossback: today is a CB that is not the first since the cycle's latest WP or BB, or comes in a "
             "cycle with no WP or BB yet.\n\n"
-            "- **Stop:** yesterday's low.\n"
+            "- **Stop:** yesterday's low; with MIN_STOP_ATR above 0 (now {MIN_STOP_ATR}), at least that many ATR under the entry.\n"
             "- **Only an add.** It never opens a position."
         ),
     }
@@ -253,8 +261,9 @@ class KellCycleStrategy(Strategy):
         "strategy's test under `--spec`).",
     )
     stop_rules = (
-        "Where it goes. S1: the pop day's low. S2 and S4: the low of the session before the crossback. S3: the base "
-        "low, raised to {MAX_STOP_PCT}% under the entry if further. Rounded down to the tick; it defines that "
+        "Where it goes. S1: the pop day's low. S2 and S4: the low of the session before the crossback. With "
+        "MIN_STOP_ATR above 0 (now {MIN_STOP_ATR}), S1, S2 and S4 stops sit at least that many ATR under the entry. "
+        "S3: the base low, raised to {MAX_STOP_PCT}% under the entry if further. Rounded down to the tick; it defines that "
         "tranche's 1R.",
         "Each tranche keeps its own stop (backtest). The first session whose low touches it sells that tranche at the "
         "stop, or at the open if it opened below it. Stops never move.",
@@ -302,6 +311,8 @@ class KellCycleStrategy(Strategy):
         ("Loose screen", "SCREEN_LOOSE", "1: RS and within Loose high distance of the high only (G7, G8)."),
         ("Loose high distance", "LOOSE_MAX_PCT_BELOW_52W_HIGH", "G7 with the loose screen: % below the 52-week high."),
         ("Maximum BB stop", "MAX_STOP_PCT", "S3: the stop is at most this % under the entry."),
+        ("Minimum one-bar stop", "MIN_STOP_ATR", "S1, S2, S4: the stop is at least this many ATR under the entry "
+         "(0 = off, the bar's low as it is). A research switch."),
         ("Exhaustion sale", "EX_SELL_DIVISOR", "1/this of the shares sells at a leg's first exhaustion."),
         ("Nominal target", "NOMINAL_TARGET_R", "Target = entry + this × R, for the R column only."),
         ("Minimum history", "min_bars", "Daily bars a backtest loads before its start."),
@@ -391,6 +402,8 @@ class KellCycleStrategy(Strategy):
             return PlanChoice(None, None, f"{setup}: no stop level recorded")
         if setup == S3:
             level = max(float(level), entry * (1 - MAX_STOP_PCT / 100))
+        elif MIN_STOP_ATR > 0:
+            level = min(float(level), entry - MIN_STOP_ATR * ctx.atr)
         stop = round_tick(float(level), cfg.tick_size, "down")
         risk = entry - stop
         target = entry + NOMINAL_TARGET_R * risk

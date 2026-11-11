@@ -448,7 +448,7 @@
   },
   "kell_cycle": {
     "family": "kell_cycle",
-    "fingerprint": "a4345dde",
+    "fingerprint": "f0f079ec",
     "params": {
       "BASE_MAX_WIDTH_PCT": 15.0,
       "BASE_MIN_DAYS": 10,
@@ -466,6 +466,7 @@
       "MAX_PCT_BELOW_52W_HIGH": 25.0,
       "MAX_STOP_PCT": 8.0,
       "MIN_PCT_ABOVE_52W_LOW": 30.0,
+      "MIN_STOP_ATR": 0.0,
       "NOMINAL_TARGET_R": 10,
       "POP_HIGH_DAYS": 5,
       "POP_LOOKBACK": 30,
@@ -497,7 +498,7 @@
         "S4"
       ]
     },
-    "version": "1.1"
+    "version": "1.2"
   },
   "kullamagi": {
     "family": "kullamagi",
