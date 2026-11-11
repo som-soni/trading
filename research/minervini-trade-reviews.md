@@ -13,7 +13,8 @@ The trades come from the 1.63 India optimise run (`v1.63-9a651e2c`, in-sample) u
 | # | Lesson (hypothesis) | From | How to test | Status |
 |---|---|---|---|---|
 | L1 | After a stop-out, a base that reclaims its failed breakout high should be bought again (Minervini's re-entry) | RADICO 2021 | S10 `RECLAIM_ON=1` as an optimise variant; compare CAGR and avg R with and without | Built (1.65, off). Open question: the stop. Under the shakeout low it is often wide (RADICO 11%, skipped at the 8% cap); `RECLAIM_STOP_DAYS=3` gives 7.5% there. Test both, rule fixed first |
-| L2 | A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017 | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
+| L2 | A base that starts right after a climax run (base high far above the 50-day, or a big gain into it) fails more often — and a cheat (S3/S4) inside it most of all: after an explosive run the only structure Minervini buys is the tight flag's breakout (the power play), not a shelf mid-flag | LUXIND 2021, BFINVEST 2017, GLENMARK 2020 (a one-day news spike) | Event study + the strategy's trades: avg R by the base high's distance above the 50-day (<15%, 15–25%, 25–50%, 50%+), by the 3-month and 10-session gains into the base high, split by setup (cheat vs pivot breakout) | Not tested. Both cases were cheats in widening bases right after a climax; the textbook cheat study (prior advance ≥25%, not a climax) found no split by contraction pattern, so widening alone is not the lesson |
+| L3 | A cheat (S3/S4) confirmed on below-average volume fails more often: Minervini wants the stock to come out of the shelf on rising volume, and the strategy asks the shelf to dry up but sets no volume floor on the close through it | GLENMARK 2020 (0.6x; LUXIND 1.5x and BFINVEST 2.1x passed) | The strategy's cheat trades and the textbook cheat event study: avg R by the cross day's volume ÷ its 50-day (<1x, 1–1.4x, 1.4x+), and by how far the close cleared the shelf | Not tested |
 
 Already measured and rejected, so not lessons on their own: selling early on weakness after the buy (a close back
 under the pivot, a run of down days; [CAGR gaps](minervini-cagr-gaps.md), early-weakness exits), and a cheat's
@@ -60,3 +61,16 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   (it was 366.5 on the stop day). An investment holding company with no growth fundamentals on record (SEPA "no
   data"): Minervini wants earnings behind a leader; the backtest's fundamentals filter is optional and thin in India
   before 2020. → **L2** (second case).
+
+### GLENMARK.NS — S4 cheat (3C), 28 Aug 2020, −1.06R
+
+- **Trade:** base from the 22 Jun 2020 high of 573.05 (48 sessions, 1st base); shelf 471–497.7 in the middle third.
+  27 Aug closed 497.8 through it; bought the 28 Aug open at 497.75, stop 468.60 (5.9%); stopped 31 Aug at 467.90,
+  three sessions in.
+- **Fine by Minervini:** Trend Template met, a tight stop, the shelf itself quiet (0.2–0.3x the 50-day for a week).
+- **Issues:** the base high is a one-day news spike — 22 Jun opened at 450, ran to 573 on 11.3x volume and closed at
+  520 (the COVID-drug approval), +211% from the March low and 63% above the 50-day. The real structure under it is a
+  range of about 415–510, so the "middle third" and the base depth are measured from a wick. The pullbacks widened
+  (21.4% → 26.4%; VCP-06 rejected it). The cross was barely one: the close cleared the shelf by 0.1 on 0.6x average
+  volume — no demand at the pivot. Fundamentals rated weak (SEPA) and RS 76. Nothing was missed by the stop: the stock
+  ranged 444–536 for the next seven months. → **L2** (third case, the spike variant), **L3**.
