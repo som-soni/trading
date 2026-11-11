@@ -2464,7 +2464,11 @@ class MinerviniSpecStrategy(Strategy):
         "EX-06b — gap-day backstop, a research switch: GAP_BACKSTOP_R is {GAP_BACKSTOP_R} (0 = off). Once the trade's "
         "high has reached that many R, a session that opens at least {GAP_BACKSTOP_ATR} ATR above the previous close "
         "raises the stop to that session's low, from the next session, and each later such gap raises it again. "
-        "A gap that holds keeps the trade; one that fills sells it at the stop (reason GAP_BACKSTOP).",
+        "A gap that holds keeps the trade; one that fills sells it at the stop (reason GAP_BACKSTOP). "
+        "Tested and rejected (optimise runs #1419-1425, 2013-2021, in-sample): from +2R or +3R, with or without "
+        "the 150-day exit, it lowered CAGR in both markets every time -- with the 150-day exit, India 8.26% to 5.77% "
+        "and US 3.08% to -0.58%. It cut India's drawdown by about 5 points, but a filled gap is a normal day for a "
+        "leader, so it sold the winners the slower exit is there to keep. It stays off.",
         "EX-07 — time stop. If the high has not reached +1R within {TIME_STOP_DAYS} sessions of the "
         "buy, the position is sold: it has tied up money without proving itself.",
         "EX-02b — the breakout fails its 20-day average: switched off (FAIL_SMA20_DAYS = 0). Set to a "
@@ -2697,7 +2701,7 @@ class MinerviniSpecStrategy(Strategy):
         ("Loose trend exit after", "TREND_LOOSE_R", "EX-06: once the high reaches this many R, watch the "
          "{TREND_LOOSE_SMA}-day average instead of the 50-day (0 = off)."),
         ("Gap backstop after", "GAP_BACKSTOP_R", "EX-06b: once the high reaches this many R, a gap up raises the stop "
-         "to the gap day's low (0 = off)."),
+         "to the gap day's low (0 = off). Tested and rejected, 1.60: it lowered CAGR in both markets."),
         ("Gap backstop size", "GAP_BACKSTOP_ATR", "EX-06b: the smallest gap, open over the previous close, in ATR14."),
         ("Loose trend exit average", "TREND_LOOSE_SMA", "EX-06: the slower average TREND_LOOSE_R switches to, in sessions."),
         ("Follow-up buy size", "ADD_ON_NEW_BASE", "While held, a breakout of a new base adds this fraction of the first "
