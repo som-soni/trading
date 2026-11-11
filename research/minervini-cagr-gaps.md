@@ -384,6 +384,8 @@ results blackout instead (board meeting 14 Nov, inside 14 days of the 3 and 5 No
 **Decision rule, fixed before the results:** adopted only if it raises CAGR in both markets against its comparison
 run, with max drawdown no more than 1 point deeper. A win in one market only is recorded, not adopted.
 
+**Result (optimise, in-sample): fails — a US win only, recorded, not adopted.** India #1449: 3.50% CAGR / −20.0% (against 3.71% / −20.1%), 339 trades, +0.13R. US #1450: −2.51% / −34.3% (against −3.30% / −40%), 1,321 trades, −0.02R. The switch stays off. It returns as part of L1 in the trade-review batch ([trade reviews](minervini-trade-reviews.md)): ZEEL 2016 is a light-volume exit whose base later ran 26%.
+
 ## A cheat needs at least two pullbacks (1.63), queued 2026-11-10
 
 A cheat entry (S3, S4) is bought while the base is still forming, so any base that clears VCP-01 to VCP-03 can fire

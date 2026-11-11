@@ -194,5 +194,5 @@ pullback count or contraction pattern (textbook cheat event study, [system-swing
   and made 466.4 on the 14th, none of them confirmed swing highs yet. The real ceiling was 466–475, cleared on 25 Jul
   on 1.4x volume.
 - **The miss:** it then ran to 578.9 by October, +26%. The base was not bought again: after a light-volume exit the
-  base stays closed (the 1.62 switch `REENTRY_AFTER_LIGHT_VOLUME`, runs #1449–1450, tests exactly this), and the
+  base stays closed (the 1.62 switch `REENTRY_AFTER_LIGHT_VOLUME` reopens it; runs #1449–1450 failed its rule — India 3.71% → 3.50%, US −3.30% → −2.51% — so it stays off), and the
   25 Jul S6 signal came the day before results (26 Jul), so the blackout refused it — correctly.
