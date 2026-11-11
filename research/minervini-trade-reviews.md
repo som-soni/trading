@@ -56,6 +56,37 @@ plus the switch named. 1.66 adds each change as a research switch, off: `CHEAT_M
 5. Reported whatever the outcome, with the stage named. The 2022-onward verify years were already used for 1.64,
    so any verify of 1.67 is a second look at them and is labelled that way; the clean test is forward data.
 
+### The US batch on candidate D, queued 2026-11-11 — pass rules fixed before any run
+
+Candidate D (#1410, US, optimise: 8.20% CAGR / −19.6%) is the US's lean-exit configuration: no part-sales
+(`PARTIAL_R=0`, `STRENGTH_EXT_PCT=0`), no time stop, no light-volume exit, no breakeven stop, and the market gate on
+the small-cap segment's trend alone (`MKT_INDEX_TEST=0`), with the 150-day exit after +3R. It was only ever run in the
+US, so it is tested here as a **US-only configuration**, a deliberate per-market choice, not the shared rule set.
+
+**D cannot be reproduced exactly on 1.66.** #1410 ran with near-miss setups (S7) on and the 10% stop cap; 1.64 made
+S7 off the default, and the override that would turn it back on is refused (`NEAR_MISS` is built into the detector
+when the module loads, so `--const NEAR_MISS=1` would change the run's id without changing its behaviour). The US base is
+therefore **D′ = D's exits and gate on 1.66's defaults** (S7 off, 8% cap) — the two changes B carried, which helped the
+US in the shared batch. D′ is measured, not assumed.
+
+| Run | Setting (all US, optimise) |
+|---|---|
+| D′ | `PARTIAL_R=0 STRENGTH_EXT_PCT=0 TIME_STOP_DAYS=0 LIGHT_VOLUME_EXIT=0 BREAKEVEN_R=0 MKT_INDEX_TEST=0` |
+| D′ + L4 | D′ + `CHEAT_MIN_SMA50_PCT=3` |
+| D′ + L1a–d | D′ + `RECLAIM_ON=1`, `RECLAIM_DAYS` 20 or 30 × `RECLAIM_STOP_DAYS` 5 or 3 |
+| D′ + fixes | D′ + `FLAT_PIVOT_HIGHEST=1 RESULTS_BLACKOUT_STRICT=1` |
+
+**Pass rules (one market, so weaker evidence than the shared batch):**
+
+1. **D′ as the US base** is kept only if it beats the shared baseline's US run (#1533) by at least 2 points of CAGR
+   with max drawdown no deeper. Otherwise the US stays on the shared rules and the rest of this batch is recorded only.
+2. **A lesson on D′** is adopted for the US configuration only if it raises CAGR against D′ with max drawdown no more
+   than 1 point deeper. L1's four variants count as one test (rule 2 of the shared batch).
+3. **The fixes** are adopted unless they lower CAGR against D′.
+4. The US configuration (D′ + what passes) is run once more together, and must again pass rule 2 against D′. A
+   separate US configuration is then a per-market rule set: it needs its own entry on the Strategy page and its own
+   verify, which would be a second look at 2022-onward and is labelled that way.
+
 ## Batch review — every trade of run 4089 (India, 1.63, optimise 2013–2021, in-sample)
 
 `swing_screener.backtesting.trade_review --run 4089` applies the checks above to all 177 trades (72 won, 105 lost)
