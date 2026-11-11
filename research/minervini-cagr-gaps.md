@@ -315,6 +315,20 @@ exit with the maximum drawdown no more than 2 points deeper (an add is extra exp
 price), **and** the same setting does not lower the US CAGR against #3768. A win in India alone is recorded as an
 India-only result, not adopted, because the replay already showed the US does not support it.
 
+**Result (runs #1430–1434, optimise, in-sample): fails.** Beside the 150-day exit the add costs India 3.4–4.0 points.
+
+| Variant | CAGR / max DD | Compared with |
+|---|---|---|
+| India: add half, with the 150-day | 4.28% / −22.0% | 8.26% / −20.9% |
+| India: add the full first buy, with the 150-day | 4.85% / −22.6% | the same |
+| India: add half, alone | 3.60% / −19.4% | 3.71% / −20.1% |
+| US: add half, with the 150-day | 2.62% / −24.9% | 3.08% / −23.9% |
+| US: add half, alone | −3.24% / −41.1% | −3.30% / −40% |
+
+The replay's +0.47R per add in India did not survive the portfolio: each add takes cash and a slot the next breakout
+would have used, and most adds were stopped at the reaction low. It does not join the combined candidate; the switch
+stays off.
+
 ## A tighter stop cap (SL-03), queued 2026-11-10
 
 From the Manappuram 2018 review ([creator notes](creator-mark-minervini.md) §9.3): an early failed-breakout exit lowered
