@@ -1041,8 +1041,19 @@ def strategy_edges() -> dict:
                      + (f"; {risk['text']}" if risk else "")
                      + (f"; pre-set test {'passed' if test['passed'] else 'failed' if test['passed'] is False else 'not judged'}"
                         + (f": {test['criterion']}" if test.get("criterion") else "") if test else ""))
+            # the current rules' full-period run (tuning + hold-out years): context beside the grade,
+            # never part of it -- a full run mixes the years the rules were tuned on with the hold-out
+            fp = next((x for x in mine if _stage(x[1])["stage"] == "full"), None)
+            full = None
+            if fp:
+                fr = _risk(fp[2])
+                full = {"excess": _excess(fp[2]), "run_id": fp[0],
+                        "max_drawdown": fr and fr["max_drawdown"],
+                        "bench_max_drawdown": fr and fr["bench_max_drawdown"], "deeper": fr and fr["deeper"]}
+                label += (f"; full period (context, not a verdict): excess {full['excess']:+.2f}%/yr"
+                          + (f", {fr['text']}" if fr else ""))
             ent[m] = {"level": level, "label": label, "excess": ex, "stage": st, "version": ver,
-                      "current": current, "run_id": i, "risk": risk,
+                      "current": current, "run_id": i, "risk": risk, "full": full,
                       "test": test and {"passed": test["passed"], "criterion": test.get("criterion")}}
         out[k] = ent
     _EDGE_CACHE.update(at=time.time(), data=out)

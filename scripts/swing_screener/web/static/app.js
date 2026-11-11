@@ -461,7 +461,10 @@ function edgeChip(key, mkt) {
   // two facts on the chip rather than one pass/fail; the pre-set test's verdict is in the tooltip
   const r = e.stage === "verify" && e.risk;
   const risk = r ? ` <span class="risk">· DD ${r.max_drawdown.toFixed(0)}% vs ${r.bench_max_drawdown.toFixed(0)}%${r.deeper ? " (deeper)" : ""}</span>` : "";
-  return `<span class="edge-chip e-${e.level}" title="${esc(e.label)}"><i class="edge e-${e.level}"></i>${esc(mktInfo(mkt).flag || mktInfo(mkt).name)} ${esc(EDGE_SHORT[e.level] || e.level)}${e.excess != null ? ` <b>${e.excess > 0 ? "+" : ""}${e.excess.toFixed(1)}%</b>` : ""}${risk}</span>`;
+  // the current rules' full-period run, as context after the grade (it never sets the grade)
+  const f = e.full;
+  const full = f && f.excess != null ? ` <span class="risk">· full period ${f.excess > 0 ? "+" : ""}${f.excess.toFixed(1)}%${f.max_drawdown != null ? `, DD ${f.max_drawdown.toFixed(0)}% vs ${f.bench_max_drawdown.toFixed(0)}%` : ""}</span>` : "";
+  return `<span class="edge-chip e-${e.level}" title="${esc(e.label)}"><i class="edge e-${e.level}"></i>${esc(mktInfo(mkt).flag || mktInfo(mkt).name)} ${esc(EDGE_SHORT[e.level] || e.level)}${e.excess != null ? ` <b>${e.excess > 0 ? "+" : ""}${e.excess.toFixed(1)}%</b>` : ""}${risk}${full}</span>`;
 }
 /** strategy key for a display name (tables carry the name) */
 const edgeKeyOf = (name) => Object.entries(EDGE?.strategies || {}).find(([, v]) => v.name === name)?.[0];
