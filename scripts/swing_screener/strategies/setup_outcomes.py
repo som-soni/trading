@@ -29,7 +29,7 @@ import pandas as pd
 from ..backtesting import portfolio_sim as ps
 from ..backtesting import tracker
 
-ORDER_KEYS = ("order", "max_fill", "min_open", "confirm_close_above", "cancel_close_below", "max_risk_pct", "expiry_bdays")
+ORDER_KEYS = ("order", "max_fill", "min_open", "confirm_close_above", "fill_min_vol", "cancel_close_below", "max_risk_pct", "expiry_bdays")
 SHARES = 1000   # a notional size, so the exit ladder's partial sales come out as fractions of the position
 
 
@@ -59,6 +59,8 @@ def _level(z: dict, role: str):
 def _fill(daily: pd.DataFrame, i: int, buy: float, stop: float, target: float, meta: dict):
     """(bar index, price, when) of the fill after signal bar `i`, or (None, reason, None)."""
     o, h, l, c = (daily[k].to_numpy(float) for k in ("open", "high", "low", "close"))
+    v = daily["volume"].to_numpy(float)
+    v50 = daily["volume"].rolling(50).mean().to_numpy(float)
     n = len(daily)
     kind = meta.get("order")
     if kind == "close":
@@ -80,6 +82,9 @@ def _fill(daily: pd.DataFrame, i: int, buy: float, stop: float, target: float, m
             if lvl is not None:
                 if c[j] < lvl:
                     continue   # poked through and closed back below: the order keeps resting
+                fmv = meta.get("fill_min_vol")
+                if fmv and v50[j] == v50[j] and v50[j] > 0 and v[j] < fmv * v50[j]:
+                    continue   # closed through on light volume: unconfirmed, the order keeps resting
                 return j, max(buy, float(c[j])), ps.AT_CLOSE
             return j, max(buy, float(o[j])), (ps.AT_OPEN if o[j] >= buy else ps.INTRADAY)
         if l[j] <= stop:
@@ -107,8 +112,10 @@ def outcome(daily: pd.DataFrame, frame: pd.DataFrame, policy, cfg, symbol: str, 
     nominal = t is not None and str(t.get("label", "")).lower().startswith("nominal")
     buy, stop = float(b["price"]), float(st["price"])
     target = float(t["price"]) if t is not None and not nominal and policy.use_target else math.inf
-    # the signal bar: the setup's breakout when it records one (Minervini's bases), else its entry zone's own bar
-    at_ = pd.Timestamp(s.get("breakout") if z.get("key") == "entry" and s.get("breakout") else z.get("from") or s.get("as_of"))
+    # the signal bar: where the strategy's own order was placed (order_from: the coil session for a Minervini S2),
+    # else the setup's breakout when it records one, else its entry zone's own bar
+    at_ = pd.Timestamp(z.get("order_from") or (s.get("breakout") if z.get("key") == "entry" and s.get("breakout") else None)
+                       or z.get("from") or s.get("as_of"))
     pos = daily.index.searchsorted(at_)
     if pos >= len(daily):
         return None
@@ -143,8 +150,64 @@ def outcome(daily: pd.DataFrame, frame: pd.DataFrame, policy, cfg, symbol: str, 
     return out
 
 
-def attach(strategy, market: str, cfg, daily: pd.DataFrame, symbol: str, setups: list[dict]) -> None:
-    """Add `outcome` to each setup in place. `daily`: the enriched daily bars the setups were found on."""
+def _order_at(strategy, cfg, raw: pd.DataFrame, frames, symbol: str, d) -> tuple[dict, str] | None:
+    """The order the strategy itself would place on session `d` -- (its signal_meta's fill part, the setup
+    code) -- when that session's evaluation passes the gates, fires and decides to trade; else None."""
+    from ..core import context as ctx_mod
+    from ..core import sizing
+    try:
+        ctx = ctx_mod.build_context(symbol, raw, earnings_days_away=None, frames=frames, as_of=d)
+        r = strategy.evaluate(ctx) if ctx is not None else None
+        if r is None or not r.hard_gates_passed or not r.has_setup:
+            return None
+        plan = strategy.build_plans(ctx, r, cfg).chosen
+        if plan is None or not plan.is_valid:
+            return None
+        sz = sizing.size_position(cfg, plan.entry, plan.stop, vix_above_threshold=False)
+        if not strategy.classify(ctx, r, plan, sz, None, False).label_before.startswith("TRADE"):
+            return None
+        return order_meta(strategy.signal_meta(ctx, r, plan)), plan.setup
+    except Exception:  # noqa: BLE001 -- a session the strategy cannot be evaluated on places no order
+        return None
+
+
+def _breakout_orders(strategy, cfg, raw: pd.DataFrame, symbol: str, setups: list[dict]) -> None:
+    """For setups that record a breakout but no order (Minervini's bases): the order the strategy itself
+    placed for it. A coiled base (S2) is armed the session BEFORE the breakout, as a buy-stop that fills at
+    the close which confirms it; a plain confirmed breakout (S1) is bought at the next open. Which one fired
+    is the strategy's own evaluation of those two sessions, with S2's own fill test (a close through the level on
+    enough volume) on the breakout close. The coil test alone could not tell them apart: BRITANNIA 2014 (S2) and
+    DMART 2017 (S1) both closed within 3% of the pivot the day before. DMART still replays as S2, a day before the
+    v1.51 run bought it at the open -- a rule of that version (S2's volume test was reworked in 1.53) or a
+    portfolio slot, neither of which a one-setup replay of today's rules can see."""
+    from ..core import context as ctx_mod
+    frames = ctx_mod.prepare_frames(raw)
+    idx = frames.daily.index
+    for s in setups:
+        z = _entry_zone(s)
+        if not s.get("breakout") or z is None or z.get("key") != "entry" or z.get("order") is not None:
+            continue
+        i = idx.searchsorted(pd.Timestamp(s["breakout"]))
+        if i <= 0 or i >= len(idx):
+            continue
+        armed = _order_at(strategy, cfg, raw, frames, symbol, idx[i - 1])
+        d = frames.daily
+        vol_ok = lambda m: not m.get("fill_min_vol") or not (d["volume"].iloc[max(0, i - 49):i + 1].mean() > 0) \
+            or d["volume"].iloc[i] >= m["fill_min_vol"] * d["volume"].iloc[max(0, i - 49):i + 1].mean()
+        # S2 when its order would fill on the breakout's own close (through the level, on enough volume); else the
+        # breakout session's own order (S1, the next open)
+        if (armed and armed[0].get("order") != "open" and armed[0].get("confirm_close_above") is not None
+                and d["close"].iloc[i] >= armed[0]["confirm_close_above"] and vol_ok(armed[0])):
+            z["order"], z["order_from"] = armed[0], str(idx[i - 1].date())   # S2: rests from the coil session
+            continue
+        fired = _order_at(strategy, cfg, raw, frames, symbol, idx[i])
+        if fired:
+            z["order"], z["order_from"] = fired[0], str(idx[i].date())
+
+
+def attach(strategy, market: str, cfg, daily: pd.DataFrame, symbol: str, setups: list[dict], raw: pd.DataFrame | None = None) -> None:
+    """Add `outcome` to each setup in place. `daily`: the enriched daily bars the setups were found on; `raw`
+    (the stored bars), when given, lets a setup with a breakout but no recorded order ask the strategy for it."""
     from ..backtesting.backtest import exit_policy_for
     if not setups or daily is None or daily.empty:
         return
@@ -153,6 +216,11 @@ def attach(strategy, market: str, cfg, daily: pd.DataFrame, symbol: str, setups:
     # Minervini's bases record no order: its MV-01 and cheat entries buy the next session's open after the signal
     # (signal_meta), which stands in for every one of them -- its S2 buys the confirming close, a day earlier
     default = {"order": "open"} if hasattr(strategy, "bases_live") else {}
+    if raw is not None and hasattr(strategy, "bases_live"):
+        try:
+            _breakout_orders(strategy, cfg, raw, symbol, setups)
+        except Exception:  # noqa: BLE001 -- the default order stands in
+            pass
     for s in setups:
         try:
             s["outcome"] = outcome(daily, frame, policy, cfg, symbol, s, default)

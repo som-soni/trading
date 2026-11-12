@@ -2005,7 +2005,7 @@ def _attach_outcomes(strat, market: str, raw: pd.DataFrame, symbol: str, setups:
     from ..core import indicators as ind
     from ..strategies import setup_outcomes
     try:
-        setup_outcomes.attach(strat, market, MARKETS[market], ind.enrich_daily(raw), symbol, setups)
+        setup_outcomes.attach(strat, market, MARKETS[market], ind.enrich_daily(raw), symbol, setups, raw=raw)
     except Exception as e:  # noqa: BLE001 -- outcomes are extra: the setups still show without them
         print(f"setup outcomes for {strat.key} {symbol} failed: {e}", flush=True)
 
