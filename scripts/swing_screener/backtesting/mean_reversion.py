@@ -303,6 +303,15 @@ MR_DOC = {
                    "{RSI_ENTRY} while it is above its {TREND_SMA}-day average; sell on the first close "
                    "above the {EXIT_SMA}-day average, or after {MAX_HOLD} sessions.",
     "status": (
+        "ALL THREE MEASURES, OPTIMISE STAGE (2013-2021, in-sample), 1.2, measured 2026-11-12: none beats the "
+        "index held at its own exposure, in either market, run either way -- the shelf's version (every index "
+        "series, 2 x 25%, time stop, 200-day exit) or as published (one index alone, fully invested, no time "
+        "stop, no 200-day exit). Gap to the index at the same exposure, US / India: RSI(2) shelf -1.12 / -1.47, "
+        "published -0.91 / -0.99; Bollinger shelf -1.07 / -0.63, published -0.79 / -0.51; Double 7s shelf "
+        "-4.48 / -3.32, published -2.38 / -2.01. Win rates of 64-85% and profit factors up to 2.7 are real, but "
+        "the book is invested 6-33% of the time and the index alone, held that much, makes more. Bollinger on "
+        "one index is the closest (US 3.39% CAGR, 85% winners, profit factor 2.46, max drawdown -30.1%; Nifty "
+        "50 2.93%, 22 trades) but has too few trades to stand on. "
         "DOUBLE 7s (Connors), OPTIMISE STAGE (2013-2021, in-sample), 1.2, measured 2026-11-12: it does not "
         "beat simply holding the index. As published -- SPY alone, fully invested on each signal, no time stop "
         "and no 200-day exit (`--measure double7 --only SPY --position-pct 100 --max-positions 1 --max-hold "
