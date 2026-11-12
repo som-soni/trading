@@ -702,10 +702,24 @@ def _backtest_steps(ctx: Ctx) -> list:
             # Every backtest runs inside a STAGE (backtesting/windows.py): a window to tune in, one to
             # verify in, and a read boundary between them, so an optimise run cannot see the years
             # kept back to judge it. The stage decides the dates; the body below only runs the strategy.
+            if key in portfolio_strategies():
+                return body(c, portfolio_strategies()[key].spec_id())
+            # The market's own rules (market_consts) are part of what is verified, so the gate keys on the spec id
+            # the run will carry. backtest.main applies them itself (after its version gate, which reads the
+            # shipped rules); the block restores the shared rules after it, because this process goes on to the
+            # next market.
+            from swing_screener.strategies import get_strategy as _get
+            from swing_screener.strategies.variants import market_rules, market_spec_id
+            shared = any("--shared-rules" in str(x) for x in (c.opt("bt") or []))
+            with market_rules(key, c.market, apply=False):
+                spec = (type(_get(key)).spec_id() if shared else
+                        market_spec_id(key, c.market, skip=[str(kv).partition("=")[0] for kv in (c.opt("const") or [])]))
+                return body(c, spec)
+
+        def body(c: Ctx, spec: str) -> None:
             from swing_screener.backtesting import windows
             from swing_screener.strategies import get_strategy as _get
             stage, start, end = windows.resolve(c.opt("stage"), c.opt("start"))
-            spec = (portfolio_strategies()[key] if key in portfolio_strategies() else type(_get(key))).spec_id()
             repeat = windows.check(c.market, key, spec, c.opts) if stage == "verify" else False
             with windows.active(stage, start, end):
                 out = _run(c, start)

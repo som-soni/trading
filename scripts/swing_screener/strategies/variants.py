@@ -26,6 +26,7 @@ global when it runs, and sees the override.
 """
 
 import ast
+import contextlib
 import importlib
 import inspect
 import sys
@@ -47,8 +48,17 @@ def _read_at_import(tree, name: str, as_attribute: bool) -> str | None:
     """Where `tree` reads `name` while its module is being imported: a module-level statement or a
     class body, never a function body. As a bare name (this module's own constant) or as an
     attribute (`_ms.NAME`, another module's). Returns a short location, or None."""
+    def walk(node):
+        # a lambda's body runs when it is CALLED (`field(default_factory=lambda: _ms.PARTIAL_R)` reads the
+        # constant each time an ExitPolicy is built), so it is not an import-time read
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.Lambda):
+                continue
+            yield child
+            yield from walk(child)
+
     def hit(stmt) -> bool:
-        for n in ast.walk(stmt):
+        for n in (stmt, *walk(stmt)):
             if as_attribute and isinstance(n, ast.Attribute) and n.attr == name and isinstance(n.ctx, ast.Load):
                 return True
             if not as_attribute and isinstance(n, ast.Name) and n.id == name and isinstance(n.ctx, ast.Load):
@@ -136,3 +146,47 @@ def apply_live_variant(strategy_key: str) -> dict | None:
     applied = apply_consts(strategy_key, lv["const"])
     return {"name": lv.get("name", ""), "const": applied, "why": lv.get("why", ""),
             "spec_id": get_strategy(strategy_key).spec_id()}
+
+
+def apply_market_consts(strategy_key: str, market: str, skip=()) -> dict:
+    """Apply the strategy's declared rules for `market` (`market_consts`), except names in `skip` (an explicit
+    `--const` wins). Returns {NAME: value} applied, or {} when the market has none. For a process that runs
+    one market only: the change is process-wide, like every override here."""
+    from . import get_strategy
+    mc = (getattr(type(get_strategy(strategy_key)), "market_consts", None) or {}).get(market) or {}
+    skip = {str(k).strip() for k in skip}
+    consts = {k: v for k, v in (mc.get("const") or {}).items() if k not in skip}
+    return apply_consts(strategy_key, consts) if consts else {}
+
+
+@contextlib.contextmanager
+def market_rules(strategy_key: str, market: str, skip=(), apply: bool = True):
+    """Apply the strategy's rules for `market` for the duration of the block, then restore the module's
+    constants -- including any the block itself overrode in the meantime (backtest.main applies the
+    market's rules and --const again). The job runner screens and backtests several markets in ONE
+    process, so the US rules must not still be in force when India runs. Yields {NAME: value} applied."""
+    import importlib
+    from . import get_strategy
+    mod = importlib.import_module(type(get_strategy(strategy_key)).__module__)
+    saved = {k: v for k, v in vars(mod).items()
+             if k.isupper() and isinstance(v, (int, float)) and not isinstance(v, bool)}
+    try:
+        yield apply_market_consts(strategy_key, market, skip=skip) if apply else {}
+    finally:
+        for k, v in saved.items():
+            setattr(mod, k, v)
+
+
+def market_spec_id(strategy_key: str, market: str, skip=()) -> str:
+    """The spec id a run of `market` will carry under that market's rules, without leaving them applied."""
+    from . import get_strategy
+    with market_rules(strategy_key, market, skip=skip):
+        return get_strategy(strategy_key).spec_id()
+
+
+def market_spec_ids(strategy_key: str) -> dict:
+    """{market: spec id under that market's declared rules} -- for a process that serves every market (the
+    web server), where the shared rules must stay in force."""
+    from . import get_strategy
+    return {m: market_spec_id(strategy_key, m)
+            for m in (getattr(type(get_strategy(strategy_key)), "market_consts", None) or {})}

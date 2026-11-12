@@ -1244,11 +1244,20 @@ def stage_cycle(daily: pd.DataFrame, cfg: MarketConfig, passes: list | None = No
 class MinerviniSpecStrategy(Strategy):
     selection = "time_series"
     family = "minervini"
-    version = "1.66"
-    # 1.65 and 1.66 add switches, all off: with them off evaluate() detects exactly what 1.64 did, so 1.64's
+    version = "1.67"
+    # 1.67 adds the US rules (market_consts): exits and the market gate's index test, read after the scan except
+    # MKT_INDEX_TEST, which is in the US signal id itself, so the shared scan's rows stand. 1.65 and 1.66 add switches, all off: with them off evaluate() detects exactly what 1.64 did, so 1.64's
     # cached rows stand. A variant turning on one evaluate() reads (RECLAIM_ON, FLAT_PIVOT_HIGHEST) rescans.
     signal_version = "1.64"
     changelog = (
+        ("1.67", "2026-11-12",
+         "The US runs its own rules (market_consts['us'], candidate D's lean exits on 1.64's entries, 'D prime'): no "
+         "part-sales (PARTIAL_R=0, STRENGTH_EXT_PCT=0), no time stop, no light-volume exit, no breakeven stop, and the "
+         "market gate on the small-cap segment's trend alone (MKT_INDEX_TEST=0). Optimise 2013-2021 (in-sample): "
+         "10.83% CAGR, max drawdown -18.9%, +0.43R over 342 trades (#1548), against -0.13% / -35.8% under the shared "
+         "rules (#1533); it passed the rule fixed before the run (+2 points, no deeper drawdown). India keeps the "
+         "shared rules unchanged. Every process that runs one market applies its rules (backtest, verify gate, daily "
+         "screen); --bt=--shared-rules runs the US on the shared ones. signal_version stays 1.64."),
         ("1.66", "2026-11-11",
          "The trade-review batch (research/minervini-trade-reviews.md), as research switches, all OFF so no rule "
          "changes. CHEAT_MIN_SMA50_PCT (L4): refuse a cheat whose buy sits less than that % above the 50-day "
@@ -2034,6 +2043,10 @@ class MinerviniSpecStrategy(Strategy):
         "code departs from that spec is listed once, under Known caveats.",
     )
     caveats = (
+        "**The US runs its own rules** (1.67, `market_consts`): no part-sales, no time stop, no light-volume or "
+        "breakeven exit, and the market gate on the small-cap segment's trend alone. The rules on this page are the "
+        "shared ones, which India runs; the exit rows they switch off do not apply to US runs, the daily US screen "
+        "or US verify runs. The chart's illustrated levels (the +2R partial line) always show the shared rules.",
         "**Dead sessions are left out** (1.42, SKIP_DEAD_BARS). A stored session with no volume and no range "
         "is a hole in the price data, not a quiet day, so the base and power-play detectors drop it before "
         "measuring. The averages and the 50-day volume baseline still include it, so a stock with many such "
@@ -2131,6 +2144,13 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v1.67 adds the US's own rules (lean exits, small-cap market gate; see the note above the tabs); India's are "
+        "unchanged and its 1.64 verify stands. US verify criterion, written 2026-11-12 before the run (2022-01-01 to "
+        "today, once): v1.67 in the US passes only if (1) CAGR is above 0, (2) the average trade is above 0R and "
+        "(3) max drawdown is no deeper than -25%. Beating SPY is reported, not a condition. This is a SECOND look "
+        "at 2022 onward for the US: 1.64's verify already showed those years under the shared rules. A fail means "
+        "the US goes back to the shared rules in the next version. In-sample basis (optimise 2013-2021): 10.83% "
+        "CAGR, -18.9%, +0.43R over 342 trades. "
         "v1.64 PASSED verify (India), 2022-01-01 to 2026-11-11, run once per market (runs #1808 India, #1809 US). "
         "India: 6.38% CAGR (Nifty 500 held: 9.46%, excess -3.08 points), max drawdown -10.9% (index -18.8%), "
         "Sharpe 0.65, 201 trades, 33% won, +0.23R a trade, profit factor 1.28 -- passes all three conditions. "
@@ -2949,6 +2969,20 @@ class MinerviniSpecStrategy(Strategy):
                 "block decides which stocks are listed; the volume rule only decides when to sell, so it "
                 "changes nothing on this list -- it is here so the live rules are named in full. The US is "
                 "still a losing book under them. Provisional: replace this when a variant beats it."),
+    }
+
+    #: The US's shipped rules (1.67): applied by every process that runs the US alone (variants.market_rules).
+    market_consts = {
+        "us": {
+            "name": "Lean exits, small-cap market gate (D prime)",
+            "const": {"PARTIAL_R": 0, "STRENGTH_EXT_PCT": 0, "TIME_STOP_DAYS": 0, "LIGHT_VOLUME_EXIT": 0,
+                      "BREAKEVEN_R": 0, "MKT_INDEX_TEST": 0},
+            "why": ("The same entries lose money in the US under the shared exits (optimise 2013-2021, in-sample: "
+                    "-0.13% CAGR, max drawdown -35.8%) and make 10.83% a year with a -18.9% drawdown when winners are "
+                    "held whole -- no part-sales, no time stop, no light-volume or breakeven exit -- and the market "
+                    "gate reads only the small-cap segment's trend. The US exit candidate was picked from many "
+                    "variants on those years, so the margin is optimistic; it is judged by its own verify run."),
+        },
     }
 
     # ---------- screen ----------

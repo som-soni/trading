@@ -1929,6 +1929,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="trade only the first N bases of a stock's advance (Minervini treats later "
                              "bases as riskier; the spec suggests testing 1-3). Off by default: the spec "
                              "says to TEST it, not to adopt it, so it stays opt-in.")
+    parser.add_argument("--shared-rules", action="store_true",
+                        help="ignore the strategy's per-market rules (market_consts) and run the shared ones")
     parser.add_argument("--const", action="append", default=None, metavar="NAME=VALUE",
                         help="override a numeric module constant of the strategy for this run, e.g. "
                              "--const MIN_STRUCTURAL_R=0. Repeatable. Like --vcp it changes the spec "
@@ -2001,6 +2003,24 @@ def main(argv: list[str] | None = None) -> dict | None:
     parser = build_parser()
     args = parser.parse_args(argv)
     signal_source = None   # a run whose cached signal rows this one would write too (seed_signal_cache)
+    # The version gate reads the SHIPPED rules, so it runs before any override -- the market's own rules
+    # (market_consts, below) move the fingerprint on purpose and are part of the version, not an experiment.
+    _stale = None
+    if not args.vcp and not args.const and not args.pp:
+        from ..strategies import versions as _versions
+        _stale = _versions.verify(args.strategy)
+    if not args.shared_rules:
+        # The strategy's declared rules for this market are its shipped rules there; they go first, so an
+        # explicit --const on the same name wins and --const's cache seeding sees them as the base.
+        from ..strategies.variants import apply_market_consts
+        _given = [item.partition("=")[0] for item in (args.const or [])]
+        try:
+            _mc = apply_market_consts(args.strategy, args.market, skip=_given)
+        except ValueError as e:
+            parser.error(f"market_consts: {e}")
+        if _mc:
+            logger.info("%s rules for %s %s -> spec %s", args.strategy, args.market, _mc,
+                        get_strategy(args.strategy).spec_id())
     if getattr(args, "vcp", None):
         # Rebind the strategy module's VCP before anything reads it. spec_params()
         # expands that dataclass, so the fingerprint -- and therefore the signal cache
@@ -2073,14 +2093,11 @@ def main(argv: list[str] | None = None) -> dict | None:
     # would claim a version whose rules no longer match, so refuse instead.
     # `--vcp` is the deliberate exception: an override is an experiment that
     # carries its own fingerprint into the run name and cache key.
-    if not args.vcp and not args.const and not args.pp:
-        from ..strategies import versions as _versions
-        _stale = _versions.verify(args.strategy)
-        if _stale:
-            parser.error(
-                f"{_stale}\n    Bump `version` and add a changelog entry, then record it:\n"
-                f"      PYTHONPATH=. python3 -m swing_screener.strategies.versions --update\n"
-                f"    (an unrecorded experiment can still run via --vcp / --const)")
+    if _stale:
+        parser.error(
+            f"{_stale}\n    Bump `version` and add a changelog entry, then record it:\n"
+            f"      PYTHONPATH=. python3 -m swing_screener.strategies.versions --update\n"
+            f"    (an unrecorded experiment can still run via --vcp / --const)")
     labels = tuple(x.strip() for x in args.accept_labels.split(",") if x.strip())
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
 

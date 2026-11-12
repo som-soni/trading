@@ -71,7 +71,18 @@ def _empty_universe_row(strategy, sym: str, sector: str, decision_label: str, re
     return row
 
 
-def run(
+def run(market_key: str, *args, strategy_key: str = DEFAULT_STRATEGY, **kw) -> pd.DataFrame:
+    """Screen one market under the strategy's rules for it (`market_consts`, the shipped rules there, as a
+    backtest of that market runs them), restored afterwards: the job runner screens every market in one
+    process, and the US rules must not still be in force when India runs."""
+    from ..strategies.variants import market_rules
+    with market_rules(strategy_key, market_key) as mc:
+        if mc:
+            logger.info("%s rules for %s: %s", strategy_key, market_key, mc)
+        return _run(market_key, *args, strategy_key=strategy_key, **kw)
+
+
+def _run(
     market_key: str,
     refresh_universe: bool = False,
     limit: int | None = None,

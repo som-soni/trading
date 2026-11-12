@@ -96,6 +96,16 @@ def _is_current(cls) -> bool:
     return all(vkey(cls.version) >= vkey(p.version) for p in peers)
 
 
+def _market_rules(key: str, cls) -> dict | None:
+    mc = getattr(cls, "market_consts", None)
+    if not mc:
+        return None
+    from .variants import market_spec_ids
+    ids = market_spec_ids(key)
+    return {m: {"name": v.get("name", ""), "const": v.get("const", {}), "why": cls.render_doc(v.get("why", "")),
+                "spec_id": ids.get(m)} for m, v in mc.items()}
+
+
 def strategy_doc(key: str) -> dict:
     from . import portfolio_strategies
     if key in portfolio_strategies():
@@ -133,6 +143,8 @@ def strategy_doc(key: str) -> dict:
         "screen": _screen_ref(cls),
         "live_variant": ({"name": cls.live_variant.get("name", ""), "const": cls.live_variant.get("const", {}),
                           "why": r(cls.live_variant.get("why", ""))} if getattr(cls, "live_variant", None) else None),
+        # per-market shipped rules, with the spec id each market's runs carry (current, not a variant)
+        "market_rules": _market_rules(key, cls),
         "base_rules": getattr(cls, "base_rules", None),
         "pattern": ({"title": r(cls.pattern_title), "intro": r(cls.pattern_intro),
                      "rows": [{"code": c, "text": r(t)} for c, t in cls.pattern_docs.items()]}

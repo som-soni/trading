@@ -486,6 +486,13 @@ class Strategy(SpecMeta, ABC):
     # and be swapped for a better one by editing this one declaration. Every screening row records
     # the variant and spec id it was produced under, so the Candidates tab says which rules it shows.
     live_variant: dict | None = None
+    # Per-market rules: {market key: {"name", "const": {NAME: value}, "why"}}. Unlike live_variant these ARE
+    # the shipped rules for that market: every process that runs the strategy for ONE market applies them at
+    # start (backtest.main, the backtest job's verify gate, the daily screen) through
+    # strategies/variants.apply_market_consts, so the run's spec id carries them and an explicit `--const`
+    # still wins. `--shared-rules` runs the market on the shared rules instead. The web server serves every
+    # market in one process and does not apply them: its chart illustrations show the shared rules.
+    market_consts: dict | None = None
     # Human labels for the codes of the strategy's structure check (e.g. VCP-02 -> "no base yet"),
     # so the Candidates tab can say where a qualifying stock is stuck without a second copy in JS.
     base_rules: dict | None = None

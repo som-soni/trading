@@ -1108,8 +1108,13 @@ def _run_versions(d: dict) -> list[dict]:
     current = d.get("spec_id")
     if current and current not in counts:
         counts[current] = 0          # the rules as they stand, even with nothing run on them yet
+    # a market with its own shipped rules (market_consts) runs under its own spec id: current too, and not
+    # "same version, different rules" -- the difference is declared
+    market_current = {v.get("spec_id"): m for m, v in (d.get("market_rules") or {}).items() if v.get("spec_id")}
     seen_versions: dict[str, int] = {}
     for sid in counts:
+        if sid in market_current:
+            continue
         v = sid.split("-")[0].lstrip("v")
         seen_versions[v] = seen_versions.get(v, 0) + 1
     out = []
@@ -1117,12 +1122,13 @@ def _run_versions(d: dict) -> list[dict]:
         v = sid.split("-")[0].lstrip("v")
         e = by_version.get(v) or {}
         out.append({
-            "spec_id": sid, "version": v, "runs": n, "is_current": sid == current,
+            "spec_id": sid, "version": v, "runs": n, "is_current": sid == current or sid in market_current,
+            "market_rules": market_current.get(sid),
             "date": e.get("date"), "changed": e.get("change"),
             # what landed after this version — the answer to "how is this run out of date?"
             "since": [x for x in log if _vtuple(x["version"]) > _vtuple(v)],
             # same version number, different rules: say so instead of quietly merging them
-            "ambiguous": seen_versions.get(v, 0) > 1,
+            "ambiguous": sid not in market_current and seen_versions.get(v, 0) > 1,
         })
     out.sort(key=lambda x: (_vtuple(x["version"]), x["spec_id"]), reverse=True)
     return out
