@@ -612,6 +612,21 @@ def _screens(ctx: Ctx) -> None:
     ctx.step.stats = {"stocks": len(df), "tradable": int(df["tradable"].sum()), **counts}
 
 
+def _breakout_tracking(ctx: Ctx) -> None:
+    """The paper breakout list: each tracked stock judged on the stored bars by the plan in its note
+    (screening/breakout_tracking.py), the verdict logged and written at the top of the note."""
+    from swing_screener.marketdata import cache
+    from swing_screener.screening import breakout_tracking as bt
+    with cache.offline():
+        r = bt.run(ctx.market)
+    if not r.get("tracked"):
+        ctx.step.skip(r.get("note") or f"no tracked stocks in {ctx.market}")
+        return
+    ctx.step.detail = (" · ".join(f"{n} {k}" for k, n in sorted(r["counts"].items()))
+                       + (f" -- {', '.join(r['moves'])}" if r["moves"] else ""))
+    ctx.step.stats = r["counts"]
+
+
 def _breakout_watch(ctx: Ctx) -> None:
     """Record the day's members of the screens being validated forward (screens/alerts.py FORWARD_SCREENS):
     the Breakout watch screen, scored later by analytics/breakout_study.py --forward."""
@@ -1168,6 +1183,9 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("group_research", "screening", "research: does group strength improve forward returns? (writes research/group-strength-study.md)",
         "monthly", False, _group_research, per_market=False, after=("screen_history",)),
     Job("quality", "screening", "quality scores: fetch statements and score companies", "weekly", True, _quality),
+    Job("breakout_tracking", "screening", "breakout tracking: the paper breakout list checked against the day's bars -- "
+        "broke out, failed, stopped, reached +2R or still waiting (screening/breakout_tracking.py)", "daily", False,
+        _breakout_tracking, after=("prices",)),
     Job("fundamental_scores", "screening", "fundamentals: growth, margins and returns from the stored quarterly results, "
         "and each strategy's view of them (Minervini SEPA)", "weekly", False, _fundamental_scores, after=("financials",)),
     Job("postmarket", "publish", "post-market analysis: the day's tone, indices, breadth, sectors, movers, watchlists, screener changes",
@@ -1190,7 +1208,7 @@ PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
               "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "market_snapshot", "sectors",
-                       "screens", "breakout_watch", "postmarket", "strategies", "positions", "paper", "report", "ingest"],
+                       "screens", "breakout_watch", "breakout_tracking", "postmarket", "strategies", "positions", "paper", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
                         "re-run only the strategies left stale, then check everything is ready",
@@ -1203,7 +1221,7 @@ PIPELINES: dict[str, dict] = {
     "daily": {"summary": "after each market's close — data only: prices, indexes, rates, fund NAVs, breadth, sectors, the screens' snapshot, "
                          "post-market analysis",
               "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "sectors", "screens",
-                       "breakout_watch", "postmarket"]},
+                       "breakout_watch", "breakout_tracking", "postmarket"]},
     "strategies": {"summary": "on demand: today's setups for the chosen strategies (all by default), the daily review report, loaded into the app",
                    "jobs": ["strategies", "report", "ingest"], "defaults": {"strategies": ["all"]}},
     "backtest": {"summary": "on demand: backtest the chosen strategies over their full history and load the reports — slow (minutes to hours per strategy)",
@@ -1227,7 +1245,7 @@ PIPELINES: dict[str, dict] = {
 # page's screens rebuild or a setups refresh does not wait hours behind a backtest in the main lane.
 # Anything not listed — backtests, downloads, month-end history, research — stays in the main lane.
 FAST_JOBS = frozenset({"breadth", "market_snapshot", "sectors", "screens", "breakout_watch", "strategies", "positions",
-                       "postmarket", "report", "ingest", "readiness"})
+                       "postmarket", "report", "ingest", "readiness", "breakout_tracking"})
 # The backtest lane runs these: long jobs on stored data (minutes to many hours, no downloads), so a
 # scheduled market routine in the main lane never waits behind one. Downloads stay in the main lane, so
 # two lanes never hit the data sources at once.
