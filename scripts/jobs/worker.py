@@ -56,6 +56,14 @@ CHILD_START_S = 20    # main lane: how long it waits for the lanes it starts to 
 #: the signal cache filled the disk and the queue drained into failures -- 42 backtests, each failing at
 #: start on writing its log -- because a worker kept claiming items it could not run.
 MIN_FREE_GB = 20
+#: Paused on that floor, the main lane runs the signal-cache cleanup itself (`prune_signals`, the same
+#: registered job the weekly schedule runs) rather than wait for the schedule: on 2026-11-12 a week of
+#: in-sample variants filled the disk between two weekly prunes and 49 items waited all night. It asks for
+#: the job through the queue, so the run is logged like any other, and tries again only after this long
+#: when the cleanup did not free enough.
+CLEANUP_JOB = "prune_signals"
+CLEANUP_RETRY_S = 6 * 3600
+_last_cleanup = [0.0]
 
 _stop = False
 
@@ -93,6 +101,18 @@ def _outside_run() -> dict | None:
 def _free_gb() -> float:
     import shutil
     return shutil.disk_usage(paths.REPO_ROOT).free / 1e9
+
+
+def _cleanup_due() -> bool:
+    """Whether the paused main lane should run the cleanup now: not tried within CLEANUP_RETRY_S, and no
+    cleanup already waiting or running (one from the schedule counts)."""
+    if time.time() - _last_cleanup[0] < CLEANUP_RETRY_S:
+        return False
+    return not any(it.get("targets") == [CLEANUP_JOB] for it in queue.items()["running_all"])
+
+
+def _is_cleanup(item: dict) -> bool:
+    return item.get("targets") == [CLEANUP_JOB]
 
 
 def _final_status(item: dict, exit_code: int | None) -> str:
@@ -268,7 +288,25 @@ def run_forever(lane: str = "main", fast_child: bool = True, backtest_child: boo
                     continue
             free = _free_gb()
             if free < MIN_FREE_GB:
-                tick(None, f"paused: {free:.1f} GB free on disk, below {MIN_FREE_GB} GB -- queued work waits")
+                if main and _cleanup_due():
+                    # ask through the queue (logged, shown on the Data status page), then claim only that item:
+                    # the floor holds back everything else
+                    _last_cleanup[0] = time.time()
+                    queue.enqueue([CLEANUP_JOB], requested_by="worker (disk below floor)", priority=100)
+                    item = queue.claim_next(lane, lambda queued, running: next((x for x in queued if _is_cleanup(x)), None))
+                    if item:
+                        logger.info("%.1f GB free, below %d GB: running %s (#%d)", free, MIN_FREE_GB, CLEANUP_JOB, item["id"])
+                        try:
+                            proc = _start(item)
+                            item["pid"] = proc.pid
+                            _follow(item, proc, tick)
+                        except Exception as exc:  # noqa: BLE001
+                            logger.exception("cleanup #%d could not run", item["id"])
+                            queue.finish(item["id"], "failed", None, f"{type(exc).__name__}: {exc}")
+                        continue
+                tick(None, f"paused: {free:.1f} GB free on disk, below {MIN_FREE_GB} GB -- queued work waits"
+                           + (f"; the signal-cache cleanup ran and did not free enough, next try within "
+                              f"{CLEANUP_RETRY_S // 3600} h" if main and _last_cleanup[0] else ""))
                 time.sleep(POLL_S * 15)
                 continue
             item = queue.claim_next(lane, choose)
