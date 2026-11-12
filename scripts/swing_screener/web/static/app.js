@@ -773,7 +773,8 @@ async function chartPage(alive, market, symbol, tf) {
       <button class="ghost ctype" id="ctype" title="Chart type — ${esc(chartTypeOf(store.get("chartType", "candles")).label)}"><svg viewBox="0 0 20 20">${chartTypeOf(store.get("chartType", "candles")).icon}</svg><svg class="caret" viewBox="0 0 20 20"><path d="M6 8l4 4 4-4"/></svg></button>
       ${store.get("chartType", "candles") === "renko" ? `<label class="field" title="Renko box size: the ATR (TradingView's default) or a percentage of the last brick"><span>Box</span>
         <select id="rkbox">${RENKO_BOXES.map((b) => `<option ${store.get("renkoBox", "ATR (14)") === b ? "selected" : ""}>${b}</option>`).join("")}</select></label>` : ""}
-      <button class="ghost" id="focusbtn" title="Focus — off: everything drawn as usual · setup: other drawings and indicators greyed out · indicators: the setup's labels taken off. Click to cycle."><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/><circle cx="10" cy="10" r="2"/></svg><span>Focus</span></button>
+      <button class="ghost icon" id="focusbtn" title="Focus — off: everything drawn as usual · setup: other drawings and indicators greyed out · indicators: the setup's labels taken off. Click to cycle."><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6"/><circle cx="10" cy="10" r="2"/></svg><span class="fb"></span></button>
+      <button class="ghost icon" id="layouts" title="Layouts — apply a saved set of indicators (and its setups layer), or save the chart's as one"><svg viewBox="0 0 20 20"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="11" y="3" width="6" height="6" rx="1"/><rect x="3" y="11" width="6" height="6" rx="1"/><rect x="11" y="11" width="6" height="6" rx="1"/></svg></button>
       <button class="ghost" id="ind" title="Add indicators"><svg viewBox="0 0 20 20"><path d="M3 15l4-5 3 3 7-8"/><path d="M13 5h4v4"/></svg>Indicators</button>
       <button class="ghost" id="setupbtn" title="Trade setups: open the panel to pick a strategy and draw what its rules would set up on over the whole history. Not trades: pick a backtest run to see what was actually bought."><svg viewBox="0 0 20 20"><path d="M3 13l4-4 3 2 4-6"/><rect x="11" y="11" width="6" height="5" rx="1"/></svg>Trade setups</button>
       <label class="field" id="trades-field" title="Mark the buys and exits a backtest run made in this symbol"><span>Backtest trades</span>
@@ -806,6 +807,8 @@ async function chartPage(alive, market, symbol, tf) {
   if (list?.fresh) { if ($('#rbar [data-tab="list"]')) prefs.tab = "list"; store.set("chartList", { ...list, fresh: false }); }
   let setupFeed = null, setupSeen = false, setupFilter = store.get("setupFilter", "all");
   let spPickOpen = false;
+  let todaySize = { key: "", data: null }, takeOpen = false, stockStrats = null, chartConflicts = null;
+  let replay = null;   // a setup being replayed bar by bar: { ref, rows, k, timer }   // today's card: its position size, and the Take form
   let listQuotes = null;   // the source-list panel's prices and decisions (listPanelHtml), fetched once per visit
   let setupSort = store.get("setupSort", "newest"), setupYear = "";   // the list's order, and a one-year window (this visit)
   let stratStyle = {}, stratLabel = {};   // strategy -> its style ("Breakout from a base"…), to group the picker; its name
@@ -903,11 +906,44 @@ async function chartPage(alive, market, symbol, tf) {
   // rebuild the chart (for an indicator change) without losing the user's zoom / scroll
   const rerender = () => { try { if (chart) keepView = { key: viewKey, range: chart.timeScale().getVisibleLogicalRange() }; } catch {} route(); };
   $("#ind").onclick = () => Studies.openPicker({ onChange: () => { leaveBtView(); rerender(); } });
+  // Layouts (/api/chart-layouts, stored in Postgres -- chart_layouts.py): apply one (its studies replace the chart's,
+  // each with a fresh id), save the chart's own under a name, or delete one of yours. Two starters ship in code.
+  $("#layouts").onclick = async (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const all = await api("/api/chart-layouts").catch(() => []);
+    const apply = (l) => {
+      const uid = () => Math.random().toString(36).slice(2, 8);
+      Studies.restore(l.studies.filter((x) => Studies.CATALOG[x.type]).map((x) => {
+        const def = Studies.CATALOG[x.type], p = {};
+        for (const [k, v] of Object.entries(def.params || {})) p[k] = typeof v === "object" ? v.def : v;
+        return { id: uid(), type: x.type, params: { ...p, ...(x.params || {}) }, colors: x.colors || {}, hidden: !!x.hidden };
+      }));
+      leaveBtView(); rerender();
+      toast(`Layout “${l.name}” applied`, "ok");
+    };
+    const items = all.map((l) => ({ label: `${l.name}${l.starter ? " (starter)" : ""}`, fn: () => apply(l) }));
+    const mine = all.filter((l) => !l.starter);
+    contextMenu(r.left, r.bottom + 4, "Layouts", [...items, { sep: true },
+      { label: "Save this chart's indicators as…", fn: async () => {
+        const name = await askText("Save layout", "", "a name — Swing view, Earnings view…", mine.map((l) => l.name));
+        if (!name) return;
+        try {
+          await api("/api/chart-layouts", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, studies: Studies.load().filter((x) => !x.transient) }) });
+          toast(`Saved layout “${name}”`, "ok");
+        } catch (err) { toast(`Not saved: ${err.message || err}`, "err"); }
+      } },
+      ...(mine.length ? [{ sep: true }, ...mine.map((l) => ({ label: `Delete “${l.name}”`, danger: true, fn: async () => {
+        await api(`/api/chart-layouts/${l.id}`, { method: "DELETE" }).catch(() => {});
+        toast(`Deleted layout “${l.name}”`, "ok");
+      } }))] : [])]);
+  };
   // Focus cycles off -> setup -> indicators, remembered for every chart
   const FOCUS_NEXT = { "": "setup", setup: "indicators", indicators: "" };
   const markFocus = () => {
     const fm = focusMode(), b = $("#focusbtn");
-    b.classList.toggle("on", !!fm); b.querySelector("span").textContent = fm ? `Focus: ${fm}` : "Focus";
+    b.classList.toggle("on", !!fm); b.querySelector(".fb").textContent = fm ? fm[0].toUpperCase() : "";
+    b.title = `Focus: ${fm || "off"} — off: everything drawn as usual · setup: other drawings and indicators greyed out · indicators: the setup's labels taken off. Click to cycle.`;
   };
   let applyFocusSeries = () => {};   // greys the overlay lines in "setup" focus; set once the studies are drawn
   $("#focusbtn").onclick = () => { store.set("chartFocus", FOCUS_NEXT[focusMode()] ?? ""); markFocus(); applyAnnotations(); applyFocusSeries(); };
@@ -1424,6 +1460,8 @@ async function chartPage(alive, market, symbol, tf) {
   // kept at the right), or all of it -- "All" is a toggle, its second click restoring the range you had before it
   const RANGE_BARS = { D: { "3M": 63, "1Y": 252, "5Y": 1260 }, W: { "3M": 13, "1Y": 52, "5Y": 260 }, M: { "3M": 3, "1Y": 12, "5Y": 60 } };
   let beforeAll = null;
+  // they sit on the chart's foot, left (log / % / auto are on the right), not in the toolbar: the toolbar is full
+  { const rng = $(".chart-top .rng"); if (rng) { rng.classList.add("rng-foot"); chartEl.append(rng); } }
   $view.querySelectorAll(".rng [data-r]").forEach((b) => b.onclick = () => {
     const r = b.dataset.r, ts = chart.timeScale(), n = times.length;
     if (r === "All") {
@@ -2070,7 +2108,137 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="btr-h"><b>Today · #${esc(s.ref || "")}</b><span class="sp-pill">${setupKind(s) === "trade" ? "would trade" : "on trigger"}</span></div>
       <div class="sp-lv"><span>Buy <b>${fmt(buy.price)}</b></span><span>Stop <b>${fmt(stop.price)}</b></span>${tgt ? `<span>${/^Nominal/i.test(tgt.label || "") ? "Nominal target" : "Target"} <b>${fmt(tgt.price)}</b></span>` : ""}</div>
       <div class="muted small">Risk ${fmt(risk)} a share (${(risk / buy.price * 100).toFixed(1)}%)${away != null ? ` · ${away > 0
-        ? `the trigger is ${away.toFixed(1)}% above the last close, ${fmt(last)}` : `the last close, ${fmt(last)}, is ${(-away).toFixed(1)}% past the buy`}` : ""}</div></div>`;
+        ? `the trigger is ${away.toFixed(1)}% above the last close, ${fmt(last)}` : `the last close, ${fmt(last)}, is ${(-away).toFixed(1)}% past the buy`}` : ""}</div>
+      ${sizeHtml(buy.price, stop.price)}${conflictHtml()}${takeHtml(s, buy.price, stop.price)}</div>`;
+  }
+  // The position size for today's buy and stop, from the market's own sizing (/api/size: account size, risk per
+  // trade, the maximum position -- core/sizing.py, as the screen and the backtests size), fetched once per level
+  function sizeHtml(buy, stop) {
+    const key = `${market}:${buy}:${stop}`;
+    if (todaySize.key !== key) {
+      todaySize = { key, data: null };
+      api(`/api/size/${market}?entry=${buy}&stop=${stop}`).then((d) => { if (todaySize.key === key) { todaySize.data = d; if (prefs.tab === "setups" && alive()) renderSide(); } }).catch(() => {});
+    }
+    const d = todaySize.data;
+    if (!d) return "";
+    if (d.too_large) return `<div class="sp-size muted small">Too large for the account: one share risks more than ${d.currency}${fmt(d.risk_amount)}</div>`;
+    return `<div class="sp-size small" title="${esc(`Sized as the screen sizes it: ${d.risk_pct.toFixed(2)}% of the ${d.currency}${fmt(d.account_size)} account at risk, at most ${d.max_position_pct.toFixed(0)}% of it in one position. Set in the market's config.`)}">
+      <b>${d.shares}</b> shares · ${d.currency}${fmt(d.position_value)} · risk ${d.currency}${fmt(d.actual_risk)} (${(d.actual_risk / d.account_size * 100).toFixed(2)}% of the account)</div>`;
+  }
+  // "Take": record today's setup in its strategy's book at your own fill (POST /api/open-positions/{market}/take --
+  // the open-position tracker then manages it with the strategy's exit). Nothing is ordered: you buy at the broker.
+  function takeHtml(s, buy, stop) {
+    const strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
+    // a plan still waiting on its trigger: an alert at its buy instead (alerts.py, checked after each close)
+    if (strat && setupKind(s) === "trigger") return `<div class="sp-take"><button class="ghost" data-alertbuy="${buy}" data-strat="${esc(strat)}"
+      title="Set an alert at the buy: the Today page shows it once a session trades there (in the app only)">🔔 Alert at ${fmt(buy)}</button></div>`;
+    if (!strat || setupKind(s) !== "trade") return "";
+    if (!takeOpen) return `<div class="sp-take"><button class="ghost" data-take title="Record that you bought this setup, in ${esc(stratNameOf(strat))}'s book: its stop is then tracked by the strategy's exit">Take…</button></div>`;
+    const sh = todaySize.data?.shares || "";
+    return `<form class="sp-takef" data-takef>
+      <label>Shares <input name="shares" type="number" min="1" step="1" value="${sh}" required></label>
+      <label>Fill <input name="price" type="number" step="0.01" value="${buy.toFixed(2)}" required></label>
+      <label>Stop <input name="initial_stop" type="number" step="0.01" value="${stop.toFixed(2)}" required></label>
+      <label>Date <input name="trade_date" type="date" value="${new Date().toISOString().slice(0, 10)}"></label>
+      <div class="sp-takeb"><button class="primary" type="submit">Record the buy</button><button class="ghost" type="button" data-takex>Cancel</button></div>
+      <div class="muted small">Your own fill, in ${esc(stratNameOf(strat))}'s book — nothing is ordered at the broker.</div></form>`;
+  }
+  // What on the chart argues against today's long trade (/api/conflicts: the stage cycle, live topping patterns, a
+  // bearish RSI divergence -- each from its own code), as one line on today's card, the reasons on hover
+  // ---- Replay: a setup bar by bar (/api/replay -- the strategy's own evaluate / build_plans / classify as of each
+  // session, on the bars up to it). A curtain hides every bar after the cursor, in every pane, so neither the candles
+  // nor an indicator shows what came next; the panel says what the strategy knew on the cursor's session.
+  function replayHtml() {
+    const R = replay, x = R.rows?.[R.k];
+    if (!R.rows) return `<div class="sp-today rp"><b>Replay</b><div class="muted small">Reading each session…</div></div>`;
+    if (!x) return `<div class="sp-today rp"><b>Replay</b><div class="muted small">No sessions to replay.</div><button class="ghost" data-rpx>Close</button></div>`;
+    const ok = (v) => (v ? '<span class="pos">✓</span>' : '<span class="neg">✗</span>');
+    const dec = x.decision ? Studies.plainText(x.decision) : x.setups?.length ? "no plan" : "—";
+    return `<div class="sp-today rp">
+      <div class="btr-h"><b>Replay · #${esc(R.ref)}</b><span class="muted small">${R.k + 1} of ${R.rows.length}</span></div>
+      <div class="rp-ctl"><button class="ghost icon" data-rp="-1" title="Back a session" ${R.k <= 0 ? "disabled" : ""}>‹</button>
+        <button class="ghost icon" data-rpplay title="${R.timer ? "Pause" : "Play"}">${R.timer ? "⏸" : "▶"}</button>
+        <button class="ghost icon" data-rp="1" title="Forward a session" ${R.k >= R.rows.length - 1 ? "disabled" : ""}>›</button>
+        <input type="range" min="0" max="${R.rows.length - 1}" value="${R.k}" data-rpk>
+        <button class="ghost icon" data-rpx title="End the replay">×</button></div>
+      <div class="rp-d"><b>${prettyDate(x.date)}</b> · close ${fmt(x.close)}</div>
+      <div class="rp-g small">${x.error ? `<span class="muted">could not be read (${esc(x.error)})</span>` : `
+        <div>${ok(x.screened)} Screen</div>
+        <div>${ok(x.gates)} Gates${x.first_fail ? ` <span class="muted">— ${esc(x.first_fail)}${x.fail_note ? `: ${esc(Studies.plainText(x.fail_note))}` : ""}</span>` : ""}</div>
+        <div>${ok(x.setups?.length)} Setup${x.setups?.length ? ` <span class="muted">— ${esc(x.setups.join(", "))}${x.fired ? ", fired" : ", not fired"}</span>` : ""}</div>
+        <div><b>${esc(dec)}</b>${x.buy ? ` <span class="muted">· buy ${fmt(x.buy)} · stop ${fmt(x.stop)}</span>` : ""}${x.reason ? `<div class="muted">${esc(Studies.plainText(x.reason))}</div>` : ""}</div>`}</div>
+      <div class="muted small">What the strategy's rules read on that session, from the bars up to it — today's code.</div></div>`;
+  }
+  const curtain = el(`<div class="rp-curtain" hidden></div>`);
+  chartEl.append(curtain);
+  function placeCurtain() {
+    chartEl.classList.toggle("replaying", !!replay?.rows?.length);   // the lane and edge tags stand down (they span the future)
+    if (!replay?.rows?.[replay.k]) { curtain.hidden = true; return; }
+    try { setLegend(replay.rows[replay.k].date); } catch {}   // the legend reads the cursor's session, not the last bar
+    const ts = chart.timeScale(), x = ts.timeToCoordinate(replay.rows[replay.k].date);
+    if (x == null) { curtain.hidden = true; return; }
+    const sp = (ts.options().barSpacing || 6) / 2, left = (chart.priceScale("left").width() || 0) + x + sp;
+    curtain.hidden = false;
+    curtain.style.left = `${left}px`;
+    curtain.style.right = `${chart.priceScale("right").width()}px`;
+    curtain.style.bottom = `${ts.height()}px`;
+  }
+  chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(placeCurtain));
+  async function startReplay(i) {
+    const s = setupFeed?.list[i], strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
+    if (!s || !strat) return;
+    stopReplayTimer();
+    setupFeed.select(i);
+    const end = s.to && s.to < times.at(-1) ? s.to : times.at(-1);
+    replay = { ref: s.ref || "", rows: null, k: 0, timer: null };
+    renderSide();
+    const r = await api(`/api/replay/${strat}/${market}/${encodeURIComponent(symbol)}?start=${s.frame?.from || s.from}&end=${end}`).catch(() => ({ rows: [] }));
+    if (!replay || !alive()) return;
+    replay.rows = r.rows || [];
+    replay.k = 0;
+    renderSide(); placeCurtain();
+  }
+  function stopReplayTimer() { if (replay?.timer) { clearInterval(replay.timer); replay.timer = null; } }
+  function replayTo(k) {
+    if (!replay?.rows) return;
+    replay.k = Math.max(0, Math.min(replay.rows.length - 1, k));
+    if (replay.k >= replay.rows.length - 1) stopReplayTimer();
+    renderSide(); placeCurtain();
+  }
+  function endReplay() { stopReplayTimer(); replay = null; curtain.hidden = true; chartEl.classList.remove("replaying"); try { setLegend(times.at(-1)); } catch {} renderSide(); }
+  { const prev = cleanup; cleanup = () => { stopReplayTimer(); prev(); }; }
+  function conflictHtml() {
+    if (!chartConflicts) {
+      chartConflicts = api(`/api/conflicts/${market}/${encodeURIComponent(symbol)}`).catch(() => null);
+      chartConflicts.then((x) => { chartConflicts.done = x || { conflicts: [], checked: [] }; if (prefs.tab === "setups" && alive()) renderSide(); });
+    }
+    const d = chartConflicts.done;
+    if (!d) return "";
+    const n = d.conflicts.length;
+    const tip = n ? d.conflicts.map((c) => `• ${c.title}: ${Studies.plainText(c.detail)}`).join("\n") : `Checked: ${d.checked.join(", ")} — none argues against it.`;
+    return `<div class="sp-conf ${n ? "warn" : "ok"} small" title="${esc(tip + "\n\nContext, not a rule: the strategy's own gates decided the setup.")}">${n
+      ? `⚠ ${n} ${n === 1 ? "study disagrees" : "studies disagree"}: ${esc(d.conflicts.map((c) => c.title).join(" · "))}` : "No study disagrees"}</div>`;
+  }
+  // Every strategy on THIS stock: its setups on the chart (once drawn here) and its backtest record in the stock --
+  // one stored run per strategy (/api/stock-strategies: its current version's if any, the widest stage), trades,
+  // wins, average R and days held. Backtest results as stored; loaded the first time it is opened.
+  function compareHtml() {
+    const open = store.get("spCompare", false);
+    let body = "";
+    if (open) {
+      if (!stockStrats) {
+        stockStrats = api(`/api/stock-strategies?market=${market}&symbol=${encodeURIComponent(symbol)}`).catch(() => []);
+        stockStrats.then((x) => { stockStrats.done = x; if (prefs.tab === "setups" && alive()) renderSide(); });
+      }
+      const rows = stockStrats.done, seen = SETUP_COUNTS[`${market}:${symbol}`] || {};
+      body = !rows ? '<div class="muted small">Loading…</div>' : !rows.length ? '<div class="muted small">No backtest run traded this stock.</div>'
+        : `<table class="sp-cmpt"><tr><th>Strategy</th><th title="Setups on this chart, once that strategy has been drawn here">Setups</th><th>Trades</th><th>Won</th><th>Avg R</th></tr>
+          ${rows.map((x) => `<tr title="${esc(`${stratNameOf(x.strategy)} · ${x.stage} run ${x.run}${x.current_version ? " (current rules)" : " — an older version than today's rules"}\n${x.trades} trades here, last bought ${prettyDate(x.last)}${x.avg_days != null ? `, held ${x.avg_days} days on average` : ""}; total ${x.total_r}R`)}">
+            <td>${esc(stratNameOf(x.strategy))}${x.current_version ? "" : ' <span class="muted">*</span>'}</td><td>${seen[x.strategy]?.n ?? "–"}</td><td>${x.trades}</td>
+            <td>${x.wins}</td><td class="${(x.avg_r ?? 0) >= 0 ? "pos" : "neg"}">${x.avg_r != null ? rTxt(x.avg_r) : "–"}</td></tr>`).join("")}</table>
+          <div class="muted small">One stored backtest run per strategy, its trades in this stock. * an older version than today's rules.</div>`;
+    }
+    return `<details class="sp-cmp" ${open ? "open" : ""}><summary>Compare strategies on this stock</summary>${body}</details>`;
   }
   function setupsPanelHtml() {
     const name = Studies.setupName();
@@ -2111,6 +2279,7 @@ async function chartPage(alive, market, symbol, tf) {
           <span class="muted small sp-to" title="${esc(setupDates(s))}">${s.live ? "live today" : s.breakout ? `signal ${prettyDate(s.breakout)}` : s.stopped ? `stop hit ${prettyDate(s.stopped)}` : `judged ${prettyDate(s.as_of || s.to)}`}</span></div>
         <div class="small sp-title" title="${esc(Studies.plainText(s.title))}">${esc(Studies.plainText(s.title))}</div>
         ${s.outcome ? `<div class="sp-outs">${outcomeHtml(s)}</div>` : ""}
+        ${cur ? `<button class="ghost sp-rp" data-replay="${i}" title="Step through this setup bar by bar, the later bars hidden: what the strategy knew on each session">▶ Replay</button>` : ""}
         ${cur && setupFeed.detail ? setupFeed.detail() : ""}</div>`; }).join("");
     return `<section class="sp-head"><h3 title="What the strategy's rules would set up on — not trades. Click one here or in the lane along the chart's foot to go to it.">${esc(name)} · setups</h3>
       ${setupPickerHtml()}
@@ -2121,7 +2290,7 @@ async function chartPage(alive, market, symbol, tf) {
       <div class="sp-sort"><select data-spsort title="Order of the list (best / worst by the replayed outcome's R)">${[["newest", "Newest first"], ["oldest", "Oldest first"], ["best", "Best R first"], ["worst", "Worst R first"]]
           .map(([v, t]) => `<option value="${v}" ${setupSort === v ? "selected" : ""}>${t}</option>`).join("")}</select>
         <select data-spyear title="Only the setups that began in one year"><option value="">All years</option>${years.map((y) => `<option ${y === yr ? "selected" : ""}>${y}</option>`).join("")}</select></div>
-      ${todayCardHtml()}${setupFeed.keyBox ? setupFeed.keyBox() : ""}</section>
+      ${replay ? replayHtml() : todayCardHtml()}${compareHtml()}${setupFeed.keyBox ? setupFeed.keyBox() : ""}</section>
       <div class="btrs">${rows || `<div class="muted small">${setupFeed.list.length ? "None of this kind." : "No setups in this window."}</div>`}</div>`;
   }
   /** The Chart patterns panel: every pattern the strategy's detectors found over five years, newest
@@ -2336,7 +2505,41 @@ async function chartPage(alive, market, symbol, tf) {
       };
       body.querySelector("[data-spsort]")?.addEventListener("change", (e) => { setupSort = e.target.value; store.set("setupSort", setupSort); renderSide(); });
       body.querySelector("[data-spyear]")?.addEventListener("change", (e) => { setupYear = e.target.value; renderSide(); });
-      body.querySelector(".sp-today")?.addEventListener("click", (e) => setupFeed?.select(+e.currentTarget.dataset.si));
+      body.querySelector(".sp-today")?.addEventListener("click", (e) => {
+        if (e.target.closest(".sp-take, .sp-takef, .sp-conf") || e.currentTarget.classList.contains("rp")) return;   // its own controls (Take, alert, conflicts, replay), not a pick
+        setupFeed?.select(+e.currentTarget.dataset.si);
+      });
+      body.querySelector("[data-take]")?.addEventListener("click", () => { takeOpen = true; renderSide(); });
+      body.querySelectorAll("[data-replay]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); startReplay(+b.dataset.replay); });
+      body.querySelectorAll("[data-rp]").forEach((b) => b.onclick = () => { stopReplayTimer(); replayTo(replay.k + +b.dataset.rp); });
+      body.querySelector("[data-rpk]")?.addEventListener("input", (e) => { stopReplayTimer(); replayTo(+e.target.value); });
+      body.querySelector("[data-rpx]")?.addEventListener("click", endReplay);
+      body.querySelector("[data-rpplay]")?.addEventListener("click", () => {
+        if (replay.timer) { stopReplayTimer(); renderSide(); return; }
+        if (replay.k >= replay.rows.length - 1) replay.k = 0;
+        replay.timer = setInterval(() => replayTo(replay.k + 1), 700);
+        renderSide();
+      });
+      body.querySelector(".sp-cmp")?.addEventListener("toggle", (e) => { if (e.target.open !== store.get("spCompare", false)) { store.set("spCompare", e.target.open); renderSide(); } });
+      body.querySelector("[data-alertbuy]")?.addEventListener("click", async (e) => {
+        const b = e.currentTarget;
+        try {
+          await api("/api/alerts", { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ market, symbol, direction: "above", price: +b.dataset.alertbuy, strategy: b.dataset.strat }) });
+          toast(`Alert set: ${bareSymbol(symbol)} above ${fmt(+b.dataset.alertbuy)} — it shows on the Today page when reached`, "ok");
+        } catch (err) { toast(`Not set: ${err.message || err}`, "err"); }
+      });
+      body.querySelector("[data-takex]")?.addEventListener("click", () => { takeOpen = false; renderSide(); });
+      body.querySelector("[data-takef]")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const f = new FormData(e.target), strat = Studies.CATALOG[Studies.activeSetup()]?.setupsFor;
+        try {
+          const r = await api(`/api/open-positions/${market}/take`, { method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ strategy: strat, symbol, shares: +f.get("shares"), price: +f.get("price"), initial_stop: +f.get("initial_stop"), trade_date: f.get("trade_date") || null }) });
+          takeOpen = false; renderSide();
+          toast(`Recorded: ${f.get("shares")} ${bareSymbol(symbol)} at ${f.get("price")} in ${stratNameOf(strat)}'s book${r.queued ? " — its stop is being tracked" : ""}`, "ok");
+        } catch (err) { toast(`Not recorded: ${err.message || err}`, "err"); }
+      });
       body.querySelectorAll(".sp-chip").forEach((el) => el.onclick = () => { setupFilter = el.dataset.f; store.set("setupFilter", setupFilter); renderSide(); });
       body.querySelector("[data-tf1d]")?.addEventListener("click", () => go(href(symbol, "D")));
       body.querySelector(".tt-keybox")?.addEventListener("click", (e) => setupFeed?.act?.(e.target));
@@ -9662,6 +9865,7 @@ async function todayPage(alive, mkt) {
     <div class="sec-card td-readings" id="td-readings">${tdHead(`Market readings · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div>
     <div class="sec-card td-rates-card" id="td-rates">${tdHead(`Rates & yields · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div></div>
     <div class="sec-card td-positions" id="td-pos"></div>
+    <div class="sec-card td-near" id="td-near"></div>
     <div class="td-grid">
       <div class="sec-card td-card">${tdHead(`Today's setups · ${esc(mktInfo(mkt).name)}`)}
         <div class="muted small td-explain">Each strategy's verdict on today's data: the trades it would take, with entry, stop and target.</div>
@@ -9682,6 +9886,7 @@ async function todayPage(alive, mkt) {
     .then((a) => fill("tdv-macro", a ? `<span class="td-tl tl ${MACRO_CLS[a.label] || ""}"></span>${esc(a.label)}` : "—"));
   ratesSection($view.querySelector("#td-rates"), mkt);
   openPositionsCard($view.querySelector("#td-pos"), mkt, alive, trade);
+  nearTriggerCard($view.querySelector("#td-near"), mkt, alive);
   readingsSection($view.querySelector("#td-readings"), mkt).then((g) => fill("tdv-gate", gateLabel(g)));
   api("/api/flows").catch(() => null).then((d) => {
     const el_ = $view.querySelector("#tdv-flows");
@@ -9691,6 +9896,43 @@ async function todayPage(alive, mkt) {
     el_.querySelector(".td-v-v").innerHTML = d.flows.map((x) => `<a href="#/macro/${mkt}" class="td-flow"><span class="muted">${esc(x.label.split(" ")[0])}</span> ${n(x.value)}</a>`).join("");
     el_.hidden = false;
   });
+}
+
+/** Near trigger & alerts: every strategy's plan waiting on its buy-stop with the last close within a few % of it
+ * (/api/near-trigger, from the latest screening runs and the stored closes), each with a bell that sets a price alert
+ * at its buy; and your alerts (/api/alerts), the triggered ones first. The `alerts` job checks them after each
+ * market's prices. In the app only: nothing is sent, nothing is ordered. */
+async function nearTriggerCard(host, mkt, alive) {
+  if (!host) return;
+  let pct = store.get("nearPct", 3);
+  const paint = async () => {
+    const [near, mine] = await Promise.all([api(`/api/near-trigger/${mkt}?pct=${pct}`).catch(() => []), api(`/api/alerts?market=${mkt}`).catch(() => [])]);
+    if (!alive()) return;
+    const hit = mine.filter((a) => a.triggered_on), waiting = mine.filter((a) => !a.triggered_on);
+    const aRow = (a) => `<div class="nt-a ${a.triggered_on ? "hit" : ""}"><a href="#/chart/${a.market}/${encodeURIComponent(a.symbol)}"><b>${esc(bareSymbol(a.symbol))}</b></a>
+      <span>${a.direction} ${fmt(a.price)}${a.strategy ? ` <span class="muted">· ${esc(EDGE?.strategies?.[a.strategy]?.name || a.strategy)}</span>` : ""}</span>
+      <span class="muted">${a.triggered_on ? `reached ${prettyDate(a.triggered_on)}, closed ${fmt(a.triggered_close)}` : `set ${prettyDate(a.created_at.slice(0, 10))}`}</span>
+      <button class="ghost icon" data-dismiss="${a.id}" title="${a.triggered_on ? "Dismiss" : "Remove this alert"}">×</button></div>`;
+    host.innerHTML = `${tdHead(`Near trigger & alerts · ${esc(mktInfo(mkt).name)}`, `<span class="muted small">within
+        <select data-pct>${[1, 2, 3, 5, 8].map((v) => `<option ${v === pct ? "selected" : ""}>${v}</option>`).join("")}</select>% of the buy</span>`)}
+      ${hit.length ? `<div class="td-sub">Triggered</div>${hit.map(aRow).join("")}` : ""}
+      <div class="muted small td-explain">Plans a strategy would buy on a stop order, with the last close just under the buy. The bell sets an alert at it, checked after each close — in the app only.</div>
+      <div class="nt-rows">${near.slice(0, 40).map((x) => `<div class="nt-r"><a href="#/chart/${x.market}/${encodeURIComponent(x.symbol)}" title="${esc(x.name || "")}"><b>${esc(bareSymbol(x.symbol))}</b></a>
+        <span class="muted">${esc(x.strategy_name)}</span><span>buy <b>${fmt(x.entry)}</b></span><span class="muted">close ${fmt(x.last)}</span>
+        <span class="nt-away">${x.away_pct.toFixed(1)}% away</span>
+        <button class="ghost icon ${x.alert ? "on" : ""}" ${x.alert ? `data-dismiss="${x.alert.id}" title="Alert set at ${fmt(x.alert.price)} — click to remove"` : `data-bell="${esc(x.symbol)}" data-price="${x.entry}" data-strat="${esc(x.strategy)}" title="Alert me when it trades at ${fmt(x.entry)}"`}>🔔</button></div>`).join("")
+        || '<div class="muted small">No plan this close to its trigger.</div>'}</div>
+      ${waiting.length ? `<div class="td-sub">Waiting</div>${waiting.map(aRow).join("")}` : ""}`;
+    host.querySelector("[data-pct]").onchange = (e) => { pct = +e.target.value; store.set("nearPct", pct); paint(); };
+    host.querySelectorAll("[data-bell]").forEach((b) => b.onclick = async () => {
+      await api("/api/alerts", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ market: mkt, symbol: b.dataset.bell, direction: "above", price: +b.dataset.price, strategy: b.dataset.strat }) }).catch((e) => toast(`Not set: ${e.message || e}`, "err"));
+      paint();
+    });
+    host.querySelectorAll("[data-dismiss]").forEach((b) => b.onclick = async () => { await api(`/api/alerts/${b.dataset.dismiss}/dismiss`, { method: "POST" }).catch(() => {}); paint(); });
+  };
+  host.innerHTML = `${tdHead(`Near trigger & alerts · ${esc(mktInfo(mkt).name)}`)}<div class="muted small">Loading…</div>`;
+  paint();
 }
 
 /** Open positions (/api/open-positions -> backtesting/tracker.py): each open signal trade in a book, with the

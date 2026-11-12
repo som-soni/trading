@@ -74,6 +74,9 @@ def _startup() -> None:
     from ..backtesting import tracker as tracker_mod, paper as paper_mod
     tracker_mod.init_schema()
     paper_mod.init_schema()
+    from .. import chart_layouts as layouts_mod, alerts as alerts_mod
+    layouts_mod.init_schema()
+    alerts_mod.init_schema()
     wl.sync_latest()  # pick up screener runs made while the watchlist didn't exist
     threading.Thread(target=_background_refresh, daemon=True).start()  # what the Today page needs, computed ahead
     threading.Thread(target=db_mod.releasing(_prewarm_sectors), daemon=True).start()
@@ -843,6 +846,44 @@ def trade_runs(market: str, symbol: str):
         if n:
             out.append({"id": rid, "strategy": strat, "run": name, "spec_id": spec, "trades": n, **_stage(name)})
     return out
+
+
+@app.get("/api/stock-strategies")
+def stock_strategies(market: str, symbol: str):
+    """Every strategy's backtest record in ONE stock, for the chart's comparison: per strategy, one run -- its
+    current version's if one traded the stock, else its newest -- preferring the widest stage (full, then
+    optimise, then verify, then legacy), and that run's trades in this symbol: count, wins, average and total R,
+    average days held. Stored backtest results only (report_runs / report_tables)."""
+    from ..strategies import get_strategy
+    order = {"full": 0, "optimise": 1, "verify": 2, "legacy": 3}
+    by: dict[str, list] = {}
+    for rid, strat, name, spec, cols, rows in q(
+        "SELECT r.id, r.strategy, r.run_name, r.spec_id, t.columns, t.rows FROM report_runs r "
+        "JOIN report_tables t ON t.run_id=r.id AND t.name='trades' "
+        "WHERE r.kind='backtest' AND r.market=%s AND r.archived_at IS NULL", (market,)):
+        if "symbol" not in cols:
+            continue
+        mine = [dict(zip(cols, x)) for x in rows if x[cols.index("symbol")] == symbol]
+        if mine:
+            by.setdefault(strat, []).append({"id": rid, "run": name, "spec_id": spec or "", "trades": mine, **_stage(name)})
+    out = []
+    for strat, runs in by.items():
+        try:
+            cur = get_strategy(strat).spec_id().split("-")[0]
+        except Exception:  # noqa: BLE001 -- a portfolio strategy or a retired key: no current version to prefer
+            cur = None
+        current = [r for r in runs if cur and r["spec_id"].split("-")[0] == cur]
+        pool = current or runs
+        widest = min(order.get(r["stage"], 9) for r in pool)
+        run = max((r for r in pool if order.get(r["stage"], 9) == widest), key=lambda r: r["run"])   # the newest of that stage
+        rs = [float(t["r_multiple"]) for t in run["trades"] if t.get("r_multiple") is not None]
+        days = [float(t["holding_days"]) for t in run["trades"] if t.get("holding_days") is not None]
+        out.append({"strategy": strat, "run_id": run["id"], "run": run["run"], "spec_id": run["spec_id"], "stage": run["stage"],
+                    "current_version": bool(current), "trades": len(run["trades"]), "wins": sum(1 for r in rs if r > 0),
+                    "avg_r": round(sum(rs) / len(rs), 2) if rs else None, "total_r": round(sum(rs), 2) if rs else None,
+                    "avg_days": round(sum(days) / len(days), 1) if days else None,
+                    "last": max(str(t.get("entry_date"))[:10] for t in run["trades"])})
+    return sorted(out, key=lambda x: (x["avg_r"] is None, -(x["total_r"] or 0)))
 
 
 # ------------------------------------------------------------ strategies
@@ -1799,6 +1840,112 @@ def record_exit(market: str, body: dict):
 _TAKE_META = {"box_top": "box_top", "box_bottom": "box_bottom", "pivot": "pivot", "box_top_date": "setup_start"}
 
 
+@app.get("/api/near-trigger/{market}")
+def near_trigger(market: str, pct: float = 5.0):
+    """Every strategy plan waiting on its trigger (a buy-stop above the price) whose last stored close is within `pct`
+    percent below the buy -- from each strategy's latest screening run, closes from the stored bars. With the alerts
+    set on them (alerts.py). Stored data only."""
+    from .. import alerts
+    from ..strategies import docs as sdocs
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    cands = []
+    for strat, (run, rows) in _latest_strategy_rows(market).items():
+        for sym, r in rows:
+            e = r.get("entry")
+            if not e or not r.get("has_setup") or not str(r.get("decision") or "").upper().startswith("TRADE"):
+                continue
+            cands.append({"market": market, "symbol": sym, "strategy": strat, "decision": r.get("decision"),
+                          "entry": float(e), "stop": r.get("stop"), "run": run, "setup": r.get("strategy_setup") or ""})
+    quotes = {q["symbol"]: q for q in _with_prices([{"market": market, "symbol": s} for s in {c["symbol"] for c in cands}])}
+    have = {}
+    for a in alerts.listing(market):
+        have.setdefault((a["symbol"], a.get("strategy")), a)
+    out, names = [], {}
+    for c in cands:
+        q = quotes.get(c["symbol"]) or {}
+        last = q.get("last")
+        if not last:
+            continue
+        away = (c["entry"] / last - 1) * 100
+        if not (0 < away <= pct):
+            continue
+        if c["strategy"] not in names:
+            try:
+                names[c["strategy"]] = sdocs.strategy_doc(c["strategy"])["name"]
+            except Exception:  # noqa: BLE001
+                names[c["strategy"]] = c["strategy"]
+        a = have.get((c["symbol"], c["strategy"]))
+        out.append({**c, "name": q.get("name"), "strategy_name": names[c["strategy"]], "last": last,
+                    "change_pct": q.get("change_pct"), "away_pct": round(away, 2), "alert": a})
+    return sorted(out, key=lambda x: x["away_pct"])
+
+
+@app.get("/api/alerts")
+def alerts_list(market: str | None = None, symbol: str | None = None):
+    """Your price alerts (alerts.py), triggered ones first. In the app only: nothing is sent."""
+    from .. import alerts
+    return alerts.listing(market, symbol)
+
+
+@app.post("/api/alerts")
+def alerts_create(body: dict):
+    """Set an alert: {market, symbol, direction ('above' | 'below'), price, strategy?, note?}. Checked by the
+    `alerts` job after each market's prices."""
+    from .. import alerts
+    market = str(body.get("market") or "")
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    try:
+        return alerts.create(market, str(body.get("symbol") or ""), str(body.get("direction") or "above"),
+                             float(body.get("price") or 0), body.get("strategy"), body.get("note"))
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/alerts/{aid}/dismiss")
+def alerts_dismiss(aid: int):
+    from .. import alerts
+    return {"ok": alerts.dismiss(aid)}
+
+
+@app.get("/api/chart-layouts")
+def chart_layouts_list():
+    """The chart's saved layouts (chart_layouts.py): the starters, then yours."""
+    from .. import chart_layouts
+    return chart_layouts.listing()
+
+
+@app.post("/api/chart-layouts")
+def chart_layouts_save(body: dict):
+    """Save the chart's indicators as a named layout: {name, studies}."""
+    from .. import chart_layouts
+    try:
+        return chart_layouts.save(str(body.get("name") or ""), body.get("studies"))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.delete("/api/chart-layouts/{lid}")
+def chart_layouts_delete(lid: int):
+    from .. import chart_layouts
+    return {"ok": chart_layouts.delete(lid)}
+
+
+@app.get("/api/size/{market}")
+def position_size(market: str, entry: float, stop: float):
+    """The market's position size for a buy at `entry` with `stop` -- core/sizing.size_position, the sizing the
+    screen and the backtests use (account size, risk per trade, the maximum position). For the chart's today card."""
+    from ..core import sizing
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    cfg = MARKETS[market]
+    r = sizing.size_position(cfg, float(entry), float(stop), vix_above_threshold=False)
+    return {"shares": r.shares, "position_value": r.position_value, "risk_amount": r.risk_amount,
+            "actual_risk": r.actual_risk_amount, "too_large": r.too_large, "account_size": cfg.account_size,
+            "risk_pct": cfg.risk_pct * 100, "max_position_pct": cfg.max_position_pct * 100, "currency": cfg.currency_symbol}
+
+
 @app.post("/api/open-positions/{market}/take")
 def take_setup(market: str, body: dict):
     """Take a tradeable setup into its strategy's book: a BUY at your fill, with the setup's initial stop (and
@@ -2254,6 +2401,133 @@ def trend_template_bands(market: str, symbol: str, years: int = 5):
 
 
 _pattern_lists: dict = {}   # (market, symbol, last bar, years, spec) -> response
+
+
+_replays: dict = {}
+REPLAY_MAX_BARS = 260
+
+
+@app.get("/api/replay/{strategy}/{market}/{symbol}")
+def setup_replay(strategy: str, market: str, symbol: str, start: str, end: str):
+    """Bar-by-bar replay: what the strategy knew on each session from `start` to `end` -- its own evaluate,
+    build_plans and classify run as of that session on the bars up to it (core.context.build_context's `as_of`),
+    exactly as the setups layer and the backtest scan judge a bar. Per session: the screen, the hard gates (the first
+    to fail), the active setups, whether the entry fired, the decision and the plan's buy and stop. At most
+    REPLAY_MAX_BARS sessions. Exploration, like the setups layer."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..core import context as ctx_mod, sizing
+    from ..marketdata import cache
+    from ..strategies import get_strategy
+    try:
+        strat = get_strategy(strategy)
+    except KeyError:
+        raise HTTPException(404, f"unknown strategy {strategy}")
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    key = (strategy, strat.spec_id(), market, symbol, str(raw.index[-1].date()), start, end)
+    if key in _replays:
+        return _replays[key]
+    cfg = MARKETS[market]
+    frames = ctx_mod.prepare_frames(raw)
+    daily = frames.daily
+    mask = strat.prefilter_mask(cfg, daily)
+    days = daily.index[(daily.index >= pd.Timestamp(start)) & (daily.index <= pd.Timestamp(end))][:REPLAY_MAX_BARS]
+    names = getattr(strat, "setup_names", {}) or {}
+    titles = getattr(strat, "gate_titles", {}) or {}
+    rows = []
+    for d in days:
+        row = {"date": str(d.date()), "close": float(daily.at[d, "close"]), "screened": bool(mask.get(d, False))}
+        try:
+            ctx = ctx_mod.build_context(symbol, raw, earnings_days_away=None, frames=frames, as_of=d)
+            r = strat.evaluate(ctx) if ctx is not None else None
+        except Exception as e:  # noqa: BLE001 -- a session the strategy cannot be read on
+            row["error"] = type(e).__name__
+            rows.append(row)
+            continue
+        if r is None:
+            rows.append(row)
+            continue
+        fail = r.first_hard_fail
+        row.update(gates=bool(r.hard_gates_passed), first_fail=(strat.render_doc(titles.get(fail) or fail) if fail else None),
+                   fail_note=r.hard_notes.get(fail) if fail else None,
+                   setups=[names.get(c, c) for c in r.active_setups], fired=bool(strat.entry_signal_fired(ctx, r)) if r.has_setup else False)
+        if r.hard_gates_passed and r.has_setup:
+            try:
+                choice = strat.build_plans(ctx, r, cfg)
+                plan = choice.chosen if choice.chosen is not None and choice.chosen.is_valid else None
+                if plan:
+                    sz = sizing.size_position(cfg, plan.entry, plan.stop, vix_above_threshold=False)
+                    dec = strat.classify(ctx, r, plan, sz, None, False)
+                    row.update(decision=dec.label_before, reason=dec.reason, buy=float(plan.entry), stop=float(plan.stop))
+                else:
+                    row.update(decision="NO PLAN", reason=choice.reason)
+            except Exception as e:  # noqa: BLE001
+                row["error"] = type(e).__name__
+        rows.append(row)
+    if len(_replays) > 32:
+        _replays.clear()
+    _replays[key] = out = {"strategy": strategy, "spec_id": strat.spec_id(), "rows": rows}
+    return out
+
+
+_conflicts: dict = {}   # (market, symbol, last bar) -> response
+
+
+@app.get("/api/conflicts/{market}/{symbol}")
+def chart_conflicts(market: str, symbol: str):
+    """What on the chart argues AGAINST a long trade today, as of the last stored bar -- for the today card's
+    "studies disagree" line. Each from its own code, never restated: the stage cycle (minervini_spec.stage_cycle:
+    Stage 3 topping or Stage 4 declining), the chart-pattern detectors' live topping patterns
+    (ChartPatternSpecStrategy.detect_live), and a bearish RSI divergence (core/divergence.py). Exploration, not a
+    trade rule: no strategy reads it."""
+    if market not in MARKETS:
+        raise HTTPException(400, f"unknown market {market}")
+    from ..core import divergence, indicators as ind
+    from ..marketdata import cache
+    from ..strategies import get_strategy
+    from ..strategies.minervini_spec import stage_cycle, trend_template_row
+    raw = cache.load_cached(market, symbol)
+    if raw is None or raw.empty:
+        raise HTTPException(404, f"no prices stored for {symbol}")
+    as_of = str(raw.index[-1].date())
+    key = (market, symbol, as_of)
+    if key in _conflicts:
+        return _conflicts[key]
+    daily, cfg, out = ind.enrich_daily(raw), MARKETS[market], []
+    try:
+        passes = []
+        for _, row in daily.iterrows():
+            try:
+                passes.append(trend_template_row(cfg, row))
+            except Exception:  # noqa: BLE001 -- too early for the averages: not Stage 2
+                passes.append((False, "insufficient history"))
+        stages = stage_cycle(daily, cfg, passes)
+        last = stages[-1] if stages else None
+        if last and last["stage"] in (3, 4):
+            out.append({"kind": "stage", "title": f"Stage {last['stage']} ({'topping' if last['stage'] == 3 else 'declining'})",
+                        "detail": f"the stage cycle has it in Stage {last['stage']} since {last['from']}: a long trade is against the trend's phase"})
+    except Exception as e:  # noqa: BLE001
+        print(f"conflicts {symbol}: stage failed: {e}", flush=True)
+    try:
+        cp = get_strategy("chart_pattern")
+        for m in cp.detect_live(daily, market, symbol, show_all=False, topping=True) or []:
+            if m.get("direction") == "bearish":
+                out.append({"kind": "pattern", "title": f"{m.get('name', 'topping pattern')} ({m.get('state', 'live')})",
+                            "detail": f"a topping pattern the chart-pattern detectors see live{f', trigger {float(m['trigger']):.2f}' if m.get('trigger') else ''}"})
+    except Exception as e:  # noqa: BLE001
+        print(f"conflicts {symbol}: patterns failed: {e}", flush=True)
+    dv = divergence.bearish(daily)
+    if dv:
+        out.append({"kind": "divergence", "title": "Bearish RSI divergence",
+                    "detail": f"a higher high ({dv['price_from']:.2f} on {dv['from']} to {dv['price_to']:.2f} on {dv['to']}) with a lower "
+                              f"RSI({divergence.RSI_LEN}) ({dv['rsi_from']} to {dv['rsi_to']})"})
+    if len(_conflicts) > 256:
+        _conflicts.clear()
+    _conflicts[key] = res = {"as_of": as_of, "conflicts": out,
+                             "checked": ["stage cycle (Stage 3 / 4)", "live topping chart patterns", f"bearish RSI({divergence.RSI_LEN}) divergence"]}
+    return res
 
 
 @app.get("/api/patterns-history/{market}/{symbol}")

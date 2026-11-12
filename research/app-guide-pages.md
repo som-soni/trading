@@ -49,6 +49,7 @@ Today is the starting page. It summarises the day for the market chosen in the h
 | **Market readings** card | The daily review's readings from the market snapshot (`analytics/market_snapshot.py`, job `market_snapshot`): each review index against its 9- and 21-day EMA, 50- and 200-day, weekly 50 EMA, distance below its 52-week high and distribution days; then breadth, the volatility index against its threshold, the strategies' market gate, a follow-through flag and the cap- vs broad-index ratios | Readings only, no rule applied; hover a heading for how it is measured. As of the latest session with the benchmark's close. The [daily market review](system-daily-market-review.md) says how to read them |
 | **Rates & yields** card | Each market's policy rate and its bill and bond yields (`marketdata/rates.py`, job `rates`), charted over up to decades, with each rate's latest value and 1-month / 1-year / 5-year change | A dash means the series is not old enough yet for that change (India's T-bills and most G-secs are stored from 15 Oct 2026) |
 | **Open positions** | Each open signal trade in a book: entry, shares, initial stop, the stop for the next session, distance to it, R so far and a status (hold, stop raised, sell-stop armed, exit at the next open, stop reached). **Take a setup…** records a setup you bought | The stop and status come from the strategy's own exit replayed on stored bars after each close. See [your books](app-guide-books.md) |
+| **Near trigger & alerts** | Every strategy's plan waiting on a buy-stop with the last close within 1–8% of the buy (`/api/near-trigger`, from the latest runs and stored closes); a bell sets a price alert at the buy. Your alerts, triggered first | Alerts live in the app only (`price_alerts`, `swing_screener/alerts.py`); the `alerts` job marks one triggered when a stored session after the day it was set reaches the price. Nothing is sent, nothing is ordered |
 | **Today's setups** (summary) | How many setups are tradeable, how many of those are high confidence, how many are on watch, and a chip per strategy with its tradeable count | A summary only — the setups themselves, with entry, stop and target, are on **Strategies → Today's setups**. A warning appears if newer prices loaded after the setups ran |
 | **Screener picks** (summary) | How many stocks joined the screener list in the latest run, how many are on it, how many new ones are trades and how many on watch, and which strategies the new ones came from | New names to look at, not trades. The full list, filterable, is **Screens → Screener picks** (§4). A strategy whose last run is more than 3 days older than the rest is named, since its picks may be stale |
 
@@ -292,6 +293,24 @@ studies, computed in the browser from the bars on screen; your list is saved and
 **Learn** link (and **Learn about it** in an indicator's settings) opens the Learn section that explains it, at
 that heading (`studies.js` `LEARN`, `#/learn/<guide>/<section>`); `tests.test_study_learn` fails when an
 indicator has no section or a link points at a heading that no longer exists.
+**Trade setups panel** (the strategy button, or the rail's Setups icon). One strategy's setups at a time, newest first,
+filterable (would trade / on trigger / not triggered / refused), sortable (newest, oldest, best or worst R) and by year.
+Each row's **outcome** is the setup replayed through the strategy's own order (`signal_meta`, as the portfolio
+simulator fills it) and its own exit policy (the open-position tracker's `track`, from `exit_policy_for`) — R, how
+it exited and days held, "open", or "not filled" (`strategies/setup_outcomes.py`). It is one setup at a time with no
+costs or portfolio, on today's rules: a run on an older version can exit differently (Minervini v1.64 loosened its
+trend exit), and a portfolio slot can delay a fill. The line under the filters sums the outcomes; the lane pills are
+coloured by them. **Today's card** gives the buy, stop, target, risk, the market's own position size (`/api/size`,
+`core/sizing.py`), a **Take…** form that records your fill in the strategy's book (the tracker then manages it), an
+alert at the buy for a plan still on trigger, and **studies disagree** — the stage cycle in Stage 3 or 4, a live
+topping chart pattern, or a bearish RSI divergence (`core/divergence.py`; `/api/conflicts`), context only.
+**Compare strategies on this stock** lists every strategy's stored backtest record in the stock (one run each,
+`/api/stock-strategies`). **▶ Replay** on the selected setup steps through it bar by bar: a curtain hides the later
+bars in every pane, and the panel shows what the strategy's own evaluate, build_plans and classify read on that
+session (`/api/replay`). **Layouts** (the grid icon) saves the chart's indicators under a name in Postgres
+(`chart_layouts`) and applies a saved one; Minervini view and Momentum view are starters. **Focus** greys other
+drawings (setup) or takes the setup's labels off (indicators). The range presets **3M / 1Y / 5Y / All** sit on the
+chart's foot, left; **log / % / auto** on the right.
 **Relative Volume** shows each session's volume as a multiple of its 50-day average on a fixed 0–3× scale, so a
 50% drop is the 0.5 line however tall the spikes around it. Its lines are the Minervini strategy's own volume rules,
 read from its constants: breakout volume (`VOL_MULT`), the tight area's average dry-up (`DRYUP_RATIO`) and a quiet

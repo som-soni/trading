@@ -668,6 +668,17 @@ def _positions(ctx: Ctx) -> None:
     ctx.step.stats = st
 
 
+def _alerts(ctx: Ctx) -> None:
+    """Price alerts (swing_screener/alerts.py): mark each waiting alert whose price a stored session reached
+    since it was set -- the app's own "tell me when", shown on the Today page. Stored prices only; nothing sent."""
+    from swing_screener import alerts
+    from swing_screener.marketdata import cache
+    with cache.offline():
+        st = alerts.check(ctx.market)
+    ctx.step.detail = f"{st['triggered']} triggered, {st['waiting']} waiting"
+    ctx.step.stats = st
+
+
 def _paper(ctx: Ctx) -> None:
     """Paper books (backtesting/paper.py): fill each paper book's pending decisions at the next stored open,
     with the strategy's own cost per side, then record what the strategy decides on the latest close -- a
@@ -1183,12 +1194,17 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         after=("prices",)),
     Job("breakout_watch", "screening", "breakout watch: the day's Breakout watch members, kept as the screen's forward record "
         "(screens/alerts.py)", "daily", False, _breakout_watch, after=("screens",)),
+    Job("breakout_tracking", "screening", "breakout tracking: the paper breakout list checked against the day's bars -- "
+        "broke out, failed, stopped, reached +2R or still waiting (screening/breakout_tracking.py)", "daily", False,
+        _breakout_tracking, after=("prices",)),
     Job("screen_history", "screening", "screen history: month-end stock snapshots the screen study reads (fills gaps)", "monthly",
         False, _screen_history, after=("prices",)),
     Job("strategies", "screening", "strategies: today's setups — entry, stop, target and decision per strategy", "on demand", False,
         after=("prices",), expand=_strategy_steps),
     Job("positions", "screening", "open positions: each book's open signal trades re-managed by its strategy's own exit on "
         "stored bars — current stop and status (backtesting/tracker.py)", "daily", False, _positions, after=("prices",)),
+    Job("alerts", "screening", "price alerts: mark each waiting alert whose price a stored session reached (swing_screener/alerts.py); "
+        "in the app only, nothing sent", "daily", False, _alerts, after=("prices",)),
     Job("paper", "screening", "paper books: each paper book's decisions filled at the next open with the strategy's own "
         "costs, and the latest close's decisions recorded — a forward record without money (backtesting/paper.py)",
         "daily", False, _paper, after=("prices", "strategies", "positions")),
@@ -1197,9 +1213,6 @@ JOBS: dict[str, Job] = {j.name: j for j in [
     Job("group_research", "screening", "research: does group strength improve forward returns? (writes research/group-strength-study.md)",
         "monthly", False, _group_research, per_market=False, after=("screen_history",)),
     Job("quality", "screening", "quality scores: fetch statements and score companies", "weekly", True, _quality),
-    Job("breakout_tracking", "screening", "breakout tracking: the paper breakout list checked against the day's bars -- "
-        "broke out, failed, stopped, reached +2R or still waiting (screening/breakout_tracking.py)", "daily", False,
-        _breakout_tracking, after=("prices",)),
     Job("fundamental_scores", "screening", "fundamentals: growth, margins and returns from the stored quarterly results, "
         "and each strategy's view of them (Minervini SEPA)", "weekly", False, _fundamental_scores, after=("financials",)),
     Job("postmarket", "publish", "post-market analysis: the day's tone, indices, breadth, sectors, movers, watchlists, screener changes",
@@ -1222,7 +1235,7 @@ PIPELINES: dict[str, dict] = {
     "close": {"summary": "the market close routine — the day's data, then every strategy's setups, the review report, "
                          "loaded into the app, so tomorrow's trades are ready without a manual run",
               "jobs": ["universe", "prices", "sessions", "indexes", "rates", "funds", "indicators", "flows", ("fno_bhav", {"recent_days": 10}), ("delivery", {"recent_days": 10}), "breadth", "market_snapshot", "sectors",
-                       "screens", "breakout_watch", "breakout_tracking", "postmarket", "strategies", "positions", "paper", "report", "ingest"],
+                       "screens", "breakout_watch", "breakout_tracking", "postmarket", "strategies", "positions", "alerts", "paper", "report", "ingest"],
               "defaults": {"strategies": ["all"]}},
     "open": {"summary": "the market open routine — catch up any price load the close missed, refresh earnings dates and news, "
                         "re-run only the strategies left stale, then check everything is ready",
@@ -1258,7 +1271,7 @@ PIPELINES: dict[str, dict] = {
 # The fast lane runs only these: short jobs that read stored data (seconds to a few minutes), so a
 # page's screens rebuild or a setups refresh does not wait hours behind a backtest in the main lane.
 # Anything not listed — backtests, downloads, month-end history, research — stays in the main lane.
-FAST_JOBS = frozenset({"breadth", "market_snapshot", "sectors", "screens", "breakout_watch", "strategies", "positions",
+FAST_JOBS = frozenset({"breadth", "market_snapshot", "sectors", "screens", "breakout_watch", "strategies", "positions", "alerts",
                        "postmarket", "report", "ingest", "readiness", "breakout_tracking"})
 # The backtest lane runs these: long jobs on stored data (minutes to many hours, no downloads), so a
 # scheduled market routine in the main lane never waits behind one. Downloads stay in the main lane, so

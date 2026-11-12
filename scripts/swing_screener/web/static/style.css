@@ -2118,3 +2118,39 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
 .sp-out.loss { color: var(--down-text); background: color-mix(in srgb, #f43f5e 14%, transparent); }
 .sp-out.open { color: var(--strong); background: color-mix(in srgb, #38bdf8 18%, transparent); }
 .sp-out.none { color: var(--muted); }
+/* today's card: its size, the Take form */
+.sp-size { margin-top: 3px; font-variant-numeric: tabular-nums; } .sp-size b { color: var(--strong); }
+.sp-take { margin-top: 5px; } .sp-take button { height: 24px; font-size: 12px; }
+.sp-takef { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 8px; margin-top: 6px; cursor: default; }
+.sp-takef label { display: grid; gap: 2px; font-size: 11px; color: var(--muted); } .sp-takef input { height: 24px; font-size: 12px; width: 100%; }
+.sp-takef .sp-takeb, .sp-takef > .muted { grid-column: 1 / -1; display: flex; gap: 6px; }
+/* Today: near-trigger plans and your alerts */
+.nt-rows { display: grid; gap: 1px; max-height: 300px; overflow: auto; margin-top: 6px; }
+.nt-r, .nt-a { display: grid; grid-template-columns: 90px minmax(0, 1.3fr) 1fr 1fr 80px 28px; gap: 8px; align-items: center; font-size: 12px;
+  font-variant-numeric: tabular-nums; padding: 2px 4px; border-radius: 4px; }
+.nt-a { grid-template-columns: 90px minmax(0, 1.5fr) minmax(0, 1.5fr) 28px; }
+.nt-r:hover, .nt-a:hover { background: var(--panel-2); } .nt-r > span, .nt-a > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nt-a.hit { background: color-mix(in srgb, #22c55e 12%, transparent); }
+.nt-away { color: var(--warn); text-align: right; }
+.nt-r button.on { filter: none; color: var(--accent-text); } .nt-r button:not(.on) { filter: grayscale(1); opacity: .55; } .nt-r button:hover { opacity: 1; }
+.td-near select { height: 22px; font-size: 12px; padding: 0 2px; }
+/* the setups panel's strategy comparison on this stock */
+.sp-cmp { margin-top: 8px; font-size: 12px; } .sp-cmp summary { cursor: pointer; color: var(--muted); }
+.sp-cmpt { width: 100%; border-collapse: collapse; margin: 4px 0; font-variant-numeric: tabular-nums; }
+.sp-cmpt th, .sp-cmpt td { padding: 2px 4px; text-align: right; font-size: 11.5px; } .sp-cmpt th { color: var(--muted); font-weight: 500; }
+.sp-cmpt th:first-child, .sp-cmpt td:first-child { text-align: left; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-conf { margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+.sp-conf.warn { color: var(--warn); } .sp-conf.ok { color: var(--muted); }
+/* Replay: the bars after the cursor hidden, the strategy's reading of the cursor's session in the panel */
+.rp-curtain { position: absolute; top: 0; z-index: 4; pointer-events: none; background: var(--panel);
+  border-left: 1px dashed var(--accent); opacity: .97; }
+.sp-today.rp { cursor: default; border-left-color: var(--accent); }
+.rp-ctl { display: flex; align-items: center; gap: 4px; margin: 4px 0; } .rp-ctl input[type=range] { flex: 1; min-width: 0; }
+.rp-ctl .icon { width: 24px; height: 24px; }
+.rp-d { font-variant-numeric: tabular-nums; } .rp-g { display: grid; gap: 2px; margin: 4px 0; }
+.sp-rp { height: 22px; font-size: 11.5px; margin-top: 3px; padding: 0 8px; }
+#chart.replaying .tt-lane, #chart.replaying .tt-off { display: none; }
+#focusbtn { position: relative; } #focusbtn .fb { position: absolute; right: 1px; bottom: 0; font-size: 9px; font-weight: 700; color: var(--accent-text); }
+/* the date-range presets on the chart's foot, left, beside the time axis */
+.rng-foot { position: absolute; left: 4px; bottom: 4px; z-index: 6; display: flex; gap: 0; }
+.rng-foot button { height: 20px; padding: 0 7px; font-size: 11.5px; }
