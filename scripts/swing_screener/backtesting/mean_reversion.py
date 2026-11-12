@@ -303,6 +303,16 @@ MR_DOC = {
                    "{RSI_ENTRY} while it is above its {TREND_SMA}-day average; sell on the first close "
                    "above the {EXIT_SMA}-day average, or after {MAX_HOLD} sessions.",
     "status": (
+        "DOUBLE 7s (Connors), OPTIMISE STAGE (2013-2021, in-sample), 1.2, measured 2026-11-12: it does not "
+        "beat simply holding the index. As published -- SPY alone, fully invested on each signal, no time stop "
+        "and no 200-day exit (`--measure double7 --only SPY --position-pct 100 --max-positions 1 --max-hold "
+        "10000 --no-catastrophe`) -- the US makes 4.56% CAGR at 33% invested, max drawdown -14.0%, 101 trades, "
+        "77% winners, profit factor 2.02, +0.51% a trade: the win rate and profit factor match the published "
+        "claims, but SPY held at the same exposure makes 6.93%, so the timing subtracts 2.4 points a year (SPY "
+        "itself 14.01%). India on the Nifty 50 the same way: -1.63% CAGR, max drawdown -46.5% (one trade lost "
+        "26.8% in March 2020, with no exit below the 200-day), 67% winners, profit factor 0.94. The shelf's "
+        "version (every index series, 2 x 25%, the 10-session time stop and the 200-day exit): US -0.11%, India "
+        "-1.36%, profit factor 1.10 and 0.96. Verify not run: no version beats the index at the same exposure. "
         "OPTIMISE STAGE (2013-2021), 1.1: still fails, and neither new option rescues it. Baseline "
         "selection -1.12 in the US (CAGR 0.50%, 10% invested, max drawdown -8.7%); per trade "
         "+0.27% in India and +0.17% in the US. RANK VOL changes almost nothing (US selection -1.04, "
