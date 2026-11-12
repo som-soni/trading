@@ -231,41 +231,48 @@ def prepare(market: str) -> dict:
             "credits": corporate_actions.Credits.for_market(market, list(frames))}
 
 
+# The filters a signal passes, in the order they are applied; `screen_signal` names the first that refused.
+# The chart's Trade setups layer (`Stage4ShortsStrategy.setups_live`) lists them in this order too.
+FILTERS = ("liquidity", "fno", "rs", "stop", "market")
+REFUSED = {"liquidity": "too little traded", "fno": "no stock future (proxy)", "rs": "not weaker than the index",
+           "stop": "stop too far above the close", "market": "the market is not weak"}
+
+
+def screen_signal(prep: dict, sym: str, f: pd.DataFrame, d, kind: str, use_filter: bool) -> tuple[dict | None, str]:
+    """One signal through the filters: (its candidate, "") or (None, the FILTERS key that refused it)."""
+    floor = MARKETS[prep["market"]].screener.min_dollar_volume or 0
+    r = f.loc[d]
+    if not (r["turnover"] >= floor):
+        return None, "liquidity"
+    if prep["fno_rank"] is not None:
+        rk = prep["fno_rank"].at[d, sym] if d in prep["fno_rank"].index else float("nan")
+        if not (rk <= FNO_PROXY_TOP):
+            return None, "fno"
+    if not (r["rs_excess"] < 0):
+        return None, "rs"
+    stop, close = float(r["stop_b" if kind == "B" else "stop_a"]), float(r["close"])
+    if not (stop > close and (stop / close - 1) * 100 <= MAX_STOP_PCT):
+        return None, "stop"
+    if use_filter and not bool(prep["weak"].asof(d)):
+        return None, "market"
+    return {"symbol": sym, "entry": kind, "stop": stop, "signal_close": close,
+            "rs_excess": float(r["rs_excess"]), "atr": float(r["atr"])}, ""
+
+
 def candidates(prep: dict, entries: str, use_filter: bool, start: pd.Timestamp) -> dict:
     """{signal date: [candidate, ...]}, weakest relative strength first."""
-    cfg = MARKETS[prep["market"]]
-    floor = cfg.screener.min_dollar_volume or 0
-    weak = prep["weak"]
     out: dict = {}
-    dropped = {"liquidity": 0, "fno": 0, "rs": 0, "stop": 0, "market": 0}
+    dropped = {k: 0 for k in FILTERS}
     for sym, f in prep["frames"].items():
         for kind in entries:
             col = "sig_b" if kind == "B" else "sig_a"
-            stop_col = "stop_b" if kind == "B" else "stop_a"
             hits = f.index[f[col].values & (f.index >= start)]
             for d in hits:
-                r = f.loc[d]
-                if not (r["turnover"] >= floor):
-                    dropped["liquidity"] += 1
+                c, why = screen_signal(prep, sym, f, d, kind, use_filter)
+                if c is None:
+                    dropped[why] += 1
                     continue
-                if prep["fno_rank"] is not None:
-                    rk = prep["fno_rank"].at[d, sym] if d in prep["fno_rank"].index else float("nan")
-                    if not (rk <= FNO_PROXY_TOP):
-                        dropped["fno"] += 1
-                        continue
-                if not (r["rs_excess"] < 0):
-                    dropped["rs"] += 1
-                    continue
-                stop, close = float(r[stop_col]), float(r["close"])
-                if not (stop > close and (stop / close - 1) * 100 <= MAX_STOP_PCT):
-                    dropped["stop"] += 1
-                    continue
-                if use_filter and not bool(weak.asof(d)):
-                    dropped["market"] += 1
-                    continue
-                out.setdefault(d, []).append({"symbol": sym, "entry": kind, "stop": stop,
-                                              "signal_close": close, "rs_excess": float(r["rs_excess"]),
-                                              "atr": float(r["atr"])})
+                out.setdefault(d, []).append(c)
     for d in out:
         out[d].sort(key=lambda c: c["rs_excess"])
     return out, dropped
@@ -719,6 +726,72 @@ class Stage4ShortsStrategy(PortfolioStrategy):
         ("India futures roll", "INDIA_ROLL_BPS", "Basis points per monthly roll."),
         ("Futures proxy", "FNO_PROXY_TOP", "India: most-traded stocks treated as having futures."),
     )
+
+    @classmethod
+    def setups_live(cls, raw: pd.DataFrame, cfg, symbol: str, years: int | None = 5, anchors=None) -> list[dict]:
+        """The chart's Trade setups layer: this symbol's signals of the shipped entries, through `screen_signal`,
+        each replayed through `run` on this one symbol (backtesting/portfolio_setups.py)."""
+        from . import portfolio_setups as pset
+        market = pset.market_of(cfg)
+        braw = cache.load_cached(market, cfg.benchmark_ticker)
+        if braw is None or len(raw) < MIN_BARS:
+            return []
+        bench = braw["close"].astype(float)
+        cr = corporate_actions.credits(market, [symbol])
+        f = symbol_frame(raw, bench, cr if len(cr) else None)
+        start = pset.since(f, years)
+        # one symbol cannot be ranked against the tape, so India's futures proxy is not checked here
+        prep = {"market": market, "bench": bench[bench.index <= f.index[-1]], "frames": {symbol: f}, "fno_rank": None,
+                "weak": market_weak(bench), "credits": corporate_actions.Credits.for_market(market, [symbol])}
+        entries = ("B" if ENTRY_FAILED_RALLY else "") + ("A" if ENTRY_BREAKDOWN else "")
+        use_filter = bool(MARKET_FILTER)
+        trades = run(prep, str(start.date()), entries, use_filter)[0]
+        by_entry = {pd.Timestamp(t["entry_date"]): t for t in trades.to_dict("records")}
+        floor = cfg.screener.min_dollar_volume or 0
+        low_prior = f["close"].shift(1).rolling(BREAKDOWN_BARS, min_periods=BREAKDOWN_BARS).min()
+        names = {"B": "Failed rally to the line", "A": "Breakdown to a 52-week low"}
+        out = []
+        for kind in entries:
+            hits = [k for k in range(len(f)) if bool(f[f"sig_{kind.lower()}"].iloc[k]) and f.index[k] >= start]
+            for ep in pset.group(hits):
+                judged = [(k, *screen_signal(prep, symbol, f, f.index[k], kind, use_filter)) for k in ep]
+                k, c, why = next((x for x in judged if x[1] is not None), judged[0])
+                d, r = f.index[k], f.iloc[k]
+                stop = float(r[f"stop_{kind.lower()}"])
+                states = pset.ordered([(x,) for x in FILTERS], why)
+                gates = pset.rows([
+                    ("liquidity", "Liquidity", float(r["turnover"]), f"{LIQ_BARS}-session median traded value at least {floor:,.0f}", states[0]),
+                    ("fno", "Futures proxy", "not checked here", f"India: among the {FNO_PROXY_TOP} most traded (a stock future to short)", None),
+                    ("rs", "Weaker than the index", f"{float(r['rs_excess']):+.1f} points", f"worse than the index over {RS_BARS} sessions", states[2]),
+                    ("stop", "Stop distance", f"{(stop / float(r['close']) - 1) * 100:.1f}%", f"above the close, at most {MAX_STOP_PCT:g}% away", states[3]),
+                    ("market", "Weak market", "yes" if bool(prep["weak"].asof(d)) else "no",
+                     f"the index below its {INDEX_SMA}-day, or the {INDEX_SMA}-day lower than {INDEX_SLOPE_BARS} sessions ago"
+                     + ("" if use_filter else " (off)"), states[4] if use_filter else None)])
+                setup = pset.rows([("stage", "Stage 4", f"{int(r['stage4_run'])} sessions", "the last completed week's stage is 4", True),
+                                   (kind, names[kind], "yes", "the signal", True)])
+                day = lambda i: str(f.index[i].date())
+                shapes = [{"shape": "level", "bars": 15, "to": day(k), "price": float(r["line"]), "role": "pivot",
+                           "label": f"30-week line {float(r['line']):,.2f}"}]
+                if kind == "B":
+                    w = f.iloc[max(0, k - RALLY_BARS + 1): k + 1]
+                    shapes.append({"shape": "box", "from": str(w.index[0].date()), "to": day(k), "top": float(w["high"].max()),
+                                   "bottom": float(w["low"].min()), "role": "base", "label": f"the rally: {RALLY_BARS} sessions"})
+                else:
+                    shapes.append({"shape": "level", "bars": 30, "to": day(k), "price": float(low_prior.iloc[k]), "role": "tight",
+                                   "label": f"{BREAKDOWN_BARS}-session closing low {float(low_prior.iloc[k]):,.2f}"})
+                nxt = f.index[k + 1] if k + 1 < len(f) else None
+                trade = by_entry.get(nxt) if c is not None and nxt is not None else None
+                oc = pset.outcome(f, "short", trade, "not shorted: the next open was past the stop's structure, "
+                                  "the risk was over the limit, or the stock was already short" if c is not None else "")
+                text = (f"{names[kind]} on {d.date()}: " + ("the high reached the falling 30-week line and the close fell back "
+                        "below it." if kind == "B" else f"a close below the lowest close of {BREAKDOWN_BARS} sessions on volume."))
+                out.append(pset.episode(
+                    f, ep, k, name=names[kind], side="short", kind="pass" if c is not None else "fail",
+                    why=REFUSED.get(why, why), gates=gates, setup_rows=setup,
+                    shapes=shapes, text=text, entry=float(r["close"]), stop=stop,
+                    entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules),
+                    outcome_=oc if c is not None else None))
+        return sorted(out, key=lambda e: e["base_from"])
 
 
 def main(argv: list[str] | None = None) -> dict | None:

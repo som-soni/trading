@@ -136,30 +136,42 @@ def prepare(market: str) -> dict:
             "credits": corporate_actions.Credits.for_market(market, list(frames))}
 
 
+# The filters a signal passes, in the order they are applied; `screen_signal` names the first that refused.
+# The chart's Trade setups layer (`ParabolicShortStrategy.setups_live`) lists them in this order too.
+FILTERS = ("liquidity", "stop_narrow", "stop_wide", "at_target")
+REFUSED = {"liquidity": "too little traded", "stop_narrow": "stop too close (the red day's high)",
+           "stop_wide": "stop too far (the red day's high)", "at_target": "already at the first cover"}
+
+
+def screen_signal(prep: dict, sym: str, f: pd.DataFrame, d) -> tuple[dict | None, str]:
+    """One signal through the filters: (its candidate, "") or (None, the FILTERS key that refused it)."""
+    floor = MARKETS[prep["market"]].screener.min_dollar_volume or 0
+    r = f.loc[d]
+    if not (r["liq"] >= floor):
+        return None, "liquidity"
+    close, stop = float(r["close"]), float(r["high"])
+    pct = (stop / close - 1) * 100
+    if pct < MIN_STOP_PCT:
+        return None, "stop_narrow"
+    if pct > MAX_STOP_PCT:
+        return None, "stop_wide"
+    if not (close > r["ema_fast"]):   # already at the first target: nothing to cover into
+        return None, "at_target"
+    return {"symbol": sym, "stop": stop, "close": close, "tier": r["tier"],
+            "run_pct": float(r["run_pct"]), "up_streak": int(r["up_streak"])}, ""
+
+
 def candidates(prep: dict, start: pd.Timestamp) -> tuple[dict, dict]:
     """{signal date: [candidate, ...]}, the most extended run first."""
-    floor = MARKETS[prep["market"]].screener.min_dollar_volume or 0
     out: dict = {}
-    dropped = {"liquidity": 0, "stop_narrow": 0, "stop_wide": 0, "at_target": 0}
+    dropped = {k: 0 for k in FILTERS}
     for sym, f in prep["frames"].items():
         for d in f.index[f["sig"].values & (f.index >= start)]:
-            r = f.loc[d]
-            if not (r["liq"] >= floor):
-                dropped["liquidity"] += 1
+            c, why = screen_signal(prep, sym, f, d)
+            if c is None:
+                dropped[why] += 1
                 continue
-            close, stop = float(r["close"]), float(r["high"])
-            pct = (stop / close - 1) * 100
-            if pct < MIN_STOP_PCT:
-                dropped["stop_narrow"] += 1
-                continue
-            if pct > MAX_STOP_PCT:
-                dropped["stop_wide"] += 1
-                continue
-            if not (close > r["ema_fast"]):   # already at the first target: nothing to cover into
-                dropped["at_target"] += 1
-                continue
-            out.setdefault(d, []).append({"symbol": sym, "stop": stop, "close": close, "tier": r["tier"],
-                                          "run_pct": float(r["run_pct"]), "up_streak": int(r["up_streak"])})
+            out.setdefault(d, []).append(c)
     for d in out:
         out[d].sort(key=lambda c: -c["run_pct"])
     return out, dropped
@@ -521,6 +533,63 @@ class ParabolicShortStrategy(PortfolioStrategy):
         ("Borrow fee", "BORROW_PCT", "Percent a year of the short notional (base case)."),
         ("Cost per side", "COST_BPS", "Spread and slippage, basis points."),
     )
+
+    @classmethod
+    def setups_live(cls, raw: pd.DataFrame, cfg, symbol: str, years: int | None = 5, anchors=None) -> list[dict]:
+        """The chart's Trade setups layer: this symbol's first red days after a run, through `screen_signal`,
+        each replayed through `run` on this one symbol (backtesting/portfolio_setups.py). US only, as the runner."""
+        from . import portfolio_setups as pset
+        market = pset.market_of(cfg)
+        braw = cache.load_cached(market, cfg.benchmark_ticker)
+        if market != "us" or braw is None or len(raw) < MIN_BARS:
+            return []
+        f = symbol_frame(raw)
+        bench = braw["close"].astype(float)
+        start = pset.since(f, years)
+        prep = {"market": market, "bench": bench[bench.index <= f.index[-1]], "frames": {symbol: f},
+                "credits": corporate_actions.Credits.for_market(market, [symbol])}
+        trades = run(prep, str(start.date()))[0]
+        by_entry = {pd.Timestamp(t["entry_date"]): t for t in trades.to_dict("records")}
+        floor = cfg.screener.min_dollar_volume or 0
+        name = "First red day after a run"
+        day = lambda i: str(f.index[i].date())
+        out = []
+        hits = [k for k in range(len(f)) if bool(f["sig"].iloc[k]) and f.index[k] >= start]
+        for ep in pset.group(hits):
+            judged = [(k, *screen_signal(prep, symbol, f, f.index[k])) for k in ep]
+            k, c, why = next((x for x in judged if x[1] is not None), judged[0])
+            d, r = f.index[k], f.iloc[k]
+            close, stop = float(r["close"]), float(r["high"])
+            pct = (stop / close - 1) * 100
+            st = pset.ordered([(x,) for x in FILTERS], why)
+            gates = pset.rows([
+                ("liquidity", "Liquidity", float(r["liq"]), f"{LIQ_BARS}-session mean traded value at least {floor:,.0f}", st[0]),
+                ("stop_narrow", "Stop not too close", f"{pct:.1f}%", f"the red day's high at least {MIN_STOP_PCT:g}% above the close", st[1]),
+                ("stop_wide", "Stop not too far", f"{pct:.1f}%", f"at most {MAX_STOP_PCT:g}% above the close", st[2]),
+                ("at_target", "Room to the first cover", f"{close:,.2f} vs {float(r['ema_fast']):,.2f}",
+                 f"the close above the {TARGET_FAST}-day EMA", st[3])])
+            need = MIN_RUN_PCT_LARGE if r["tier"] == "large" else MIN_RUN_PCT_SMALL
+            setup = pset.rows([("run", "Run-up", f"{float(r['run_pct']):+.0f}%",
+                                f"at least {need:g}% for a {r['tier']}er stock, over {RUN_MAX_BARS} sessions", True),
+                               ("up", "Up days into it", f"{int(r['up_streak'])}", f"at least {MIN_UP_DAYS} up closes in a row", True),
+                               ("red", "Red day", "yes", "a close below the open and below yesterday's close", True)])
+            w = f.iloc[max(0, k - RUN_MAX_BARS): k]
+            lo_at = w["low"].idxmin()
+            shapes = [{"shape": "box", "from": str(lo_at.date()), "to": day(k - 1), "top": float(w["high"].max()),
+                       "bottom": float(w["low"].min()), "role": "base", "label": f"the run: {float(r['run_pct']):+.0f}%"},
+                      {"shape": "box", "from": day(k), "to": day(k), "top": stop, "bottom": float(r["low"]), "role": "tight",
+                       "label": "the first red day"}]
+            trade = by_entry.get(d) if c is not None else None
+            oc = pset.outcome(f, "short", trade, "not shorted: already short this stock, or the risk budget was full")
+            out.append(pset.episode(
+                f, ep, k, name=name, side="short", kind="pass" if c is not None else "fail", why=REFUSED.get(why, why),
+                gates=gates, setup_rows=setup, shapes=shapes,
+                text=(f"{symbol} ran {float(r['run_pct']):+.0f}% over at most {RUN_MAX_BARS} sessions with "
+                      f"{int(r['up_streak'])} up closes, then closed red on {d.date()}."),
+                entry=close, stop=stop, target=float(r["ema_fast"]),
+                target_label=f"First cover: the {TARGET_FAST}-day EMA ~{float(r['ema_fast']):,.2f} (it moves)",
+                entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules), outcome_=oc if c is not None else None))
+        return out
 
 
 def main(argv: list[str] | None = None) -> dict | None:

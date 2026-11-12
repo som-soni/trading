@@ -49,6 +49,17 @@ MIN_VALUE = {"india": 5e7, "us": 2e7}    # 50-day average traded value: ₹5 cro
 COST_BPS = 10.0            # per side: spread, slippage and brokerage on a liquid ETF
 
 
+def etf_frame(d: pd.DataFrame) -> pd.DataFrame:
+    """One ETF's stored bars with everything the entries and the exit read, per session, causal."""
+    d = d.astype(float).copy()
+    d["hh"] = d["high"].shift(1).rolling(ENTRY_DAYS).max()
+    d["ema"] = d["close"].ewm(span=TRAIL_EMA, adjust=False).mean()
+    d["ret_rank"] = d["close"] / d["close"].shift(RANK_DAYS) - 1
+    d["value50"] = (d["close"] * d["volume"]).rolling(50, min_periods=40).mean()
+    d["n"] = np.arange(1, len(d) + 1)
+    return d
+
+
 def load(market: str) -> dict[str, pd.DataFrame]:
     out = {}
     for sym in ETF_UNIVERSE.get(market, ()):
@@ -56,22 +67,27 @@ def load(market: str) -> dict[str, pd.DataFrame]:
         if d is None or len(d) < MIN_BARS:
             logger.info("%s: %s skipped — %d bars", market, sym, 0 if d is None else len(d))
             continue
-        d = d.astype(float).copy()
-        d["hh"] = d["high"].shift(1).rolling(ENTRY_DAYS).max()
-        d["ema"] = d["close"].ewm(span=TRAIL_EMA, adjust=False).mean()
-        d["ret_rank"] = d["close"] / d["close"].shift(RANK_DAYS) - 1
-        d["value50"] = (d["close"] * d["volume"]).rolling(50, min_periods=40).mean()
-        d["n"] = np.arange(1, len(d) + 1)
-        out[sym] = d
+        out[sym] = etf_frame(d)
     if not out:
         raise SystemExit(f"{market}: no ETF in ETF_UNIVERSE has stored prices — fetch them first "
                          f"(python -m jobs enqueue prices --market {market} --symbols ... --days 6500)")
     return out
 
 
-def run(market: str, start: str, account: float):
-    """Walk the calendar: exits at the close, then entries at the close into free slots."""
-    frames = load(market)
+def entry_checks(r, floor: float) -> list[tuple]:
+    """A session's entry tests, each (name, its value, the limit, passed) -- an ETF is a candidate only when
+    every one passes. The chart's Trade setups layer lists them in this order."""
+    value = r["value50"] if pd.notna(r["value50"]) else 0
+    return [("History", r["n"], f"at least {MIN_BARS} sessions", r["n"] >= MIN_BARS),
+            ("Breakout", r["close"], f"a close above the prior {ENTRY_DAYS} sessions' high", pd.notna(r["hh"]) and r["close"] > r["hh"]),
+            ("Trend", r["ema"], f"the close above the {TRAIL_EMA}-day EMA", r["close"] > r["ema"]),
+            ("Liquidity", value, f"50-day average traded value at least {floor:,.0f}", value >= floor)]
+
+
+def run(market: str, start: str, account: float, frames: dict | None = None):
+    """Walk the calendar: exits at the close, then entries at the close into free slots. `frames`: the
+    ETFs to walk (default: every ETF in ETF_UNIVERSE, `load`) -- the chart's setups layer passes one."""
+    frames = load(market) if frames is None else frames
     days = sorted({d for df in frames.values() for d in df.index if d >= pd.Timestamp(start)})
     cash, pos, trades, eq, held = float(account), {}, [], [], []
     fee = COST_BPS / 10_000
@@ -103,8 +119,7 @@ def run(market: str, start: str, account: float):
                 if sym in pos or d not in df.index:
                     continue
                 r = df.loc[d]
-                if (r["n"] >= MIN_BARS and pd.notna(r["hh"]) and r["close"] > r["hh"] and r["close"] > r["ema"]
-                        and (r["value50"] if pd.notna(r["value50"]) else 0) >= floor):
+                if all(ok for *_x, ok in entry_checks(r, floor)):
                     cands.append((float(r["ret_rank"]) if pd.notna(r["ret_rank"]) else -9, sym, r))
             equity = cash + sum(p["shares"] * float(frames[s]["close"].asof(d)) for s, p in pos.items())
             for _rk, sym, r in sorted(cands, key=lambda x: -x[0])[:free]:
@@ -137,7 +152,16 @@ DOC = {
     "description": "The swing system of 'The Long & The Short' (Ep. 44) on liquid ETFs: buy a close above the "
                    "{ENTRY_DAYS}-day high, the strongest {RANK_DAYS}-day performers first, {MAX_POSITIONS} slots of "
                    "{ALLOC_PCT}% each, out on a close below the {TRAIL_EMA}-day EMA.",
-    "status": "Not yet backtested. Built to measure the series' ETF variant; judge it on the optimise stage first.",
+    "status": (
+        "IN-SAMPLE ONLY, INDIA ONLY -- NO EDGE AS BUILT. v1.0, optimise stage (2013-2021, in-sample), India: "
+        "0.76% CAGR against its benchmark's 13.54%, excess -12.78 points a year (-13.34 at the standard India "
+        "cost), max drawdown -9.3% against -38.3%, Sharpe 0.27 against 0.86, 74 trades, win rate 31.5%. The "
+        "book was mostly idle cash, which earns nothing here: the ₹5 crore liquidity floor leaves about three "
+        "ETFs eligible on a typical day, so it held about 0.56 positions on average (strategy review, "
+        "2026-11-12) -- the run measures the floor more than the rule. US: not yet measured; a US optimise "
+        "baseline is queued (job #1631). Verify not run in either market, and no pass criterion has been "
+        "written for India yet -- write one before any verify run."
+    ),
     "thesis": "The series' last idea: the same swing system on a basket of ETFs instead of stocks, for less "
               "single-company risk (no gaps on one company's news) and access to gold, silver and overseas "
               "equity. If breakouts in trending assets persist, a book of the strongest breaking-out ETFs, held "
@@ -178,6 +202,10 @@ DOC = {
         "R is measured against the distance from the entry to the EMA on the entry day — the initial trailing level.",
         "Still open at the end of a test: valued at the final close, with no exit cost.",
     ),
+    # shown beside the page's two default commands (strategies/docs.py baseline_doc), which name India
+    "commands": {
+        "Backtest in-sample, US (optimise)": "python -m jobs enqueue backtest --market us --strategies etf_swing --stage optimise",
+    },
 }
 
 
@@ -215,6 +243,54 @@ class EtfSwingStrategy(PortfolioStrategy):
         ("Minimum history", "MIN_BARS", "Sessions an ETF needs before it can signal."),
         ("Cost per side", "COST_BPS", "Basis points charged on each buy and sell."),
     )
+
+    @classmethod
+    def setups_live(cls, raw: pd.DataFrame, cfg, symbol: str, years: int | None = 5, anchors=None) -> list[dict]:
+        """The chart's Trade setups layer: this ETF's breakouts through `entry_checks`, with the trade `run` makes
+        of each on this one ETF (backtesting/portfolio_setups.py). Only the ETFs in ETF_UNIVERSE trade."""
+        from . import portfolio_setups as pset
+        market = pset.market_of(cfg)
+        if symbol not in ETF_UNIVERSE.get(market, ()) or len(raw) < MIN_BARS:
+            return []
+        f = etf_frame(raw)
+        start = pset.since(f, years)
+        trades = run(market, str(start.date()), float(cfg.account_size), frames={symbol: f})[0]
+        by_entry = {pd.Timestamp(t["entry_date"]): t for t in trades.to_dict("records")}
+        floor = MIN_VALUE.get(market, 0)
+        names = ("history", "breakout", "trend", "liquidity")
+        words = {"history": "too little history", "trend": f"the close is under the {TRAIL_EMA}-day EMA",
+                 "liquidity": "too little traded"}
+        out = []
+        hits = [k for k in range(len(f)) if f.index[k] >= start and pd.notna(f["hh"].iloc[k]) and f["close"].iloc[k] > f["hh"].iloc[k]]
+        for ep in pset.group(hits):
+            judged = [(k, entry_checks(f.iloc[k], floor)) for k in ep]
+            k, checks = next((x for x in judged if all(ok for *_v, ok in x[1])), judged[0])
+            ok = all(o for *_v, o in checks)
+            r, d = f.iloc[k], f.index[k]
+            refused = "" if ok else names[next(i for i, (*_v, o) in enumerate(checks) if not o)]
+            gates = pset.rows([(names[i], n, v, lim, o) for i, (n, v, lim, o) in enumerate(checks)])
+            setup = pset.rows([("breakout", "Breakout", f"{float(r['close']):,.2f}", f"above the prior {ENTRY_DAYS} sessions' high "
+                                f"{float(r['hh']):,.2f}", True),
+                               ("rank", f"{RANK_DAYS}-session return", f"{float(r['ret_rank']) * 100:+.1f}%",
+                                f"ranks the candidates when more than {MAX_POSITIONS} slots' worth break out", True)])
+            w = f.iloc[max(0, k - ENTRY_DAYS): k]
+            shapes = [{"shape": "box", "from": str(w.index[0].date()), "to": str(d.date()), "top": float(r["hh"]),
+                       "bottom": float(w["low"].min()), "role": "base", "label": f"the {ENTRY_DAYS} sessions before"},
+                      {"shape": "level", "bars": ENTRY_DAYS, "to": str(d.date()), "price": float(r["hh"]), "role": "pivot",
+                       "label": f"{ENTRY_DAYS}-session high {float(r['hh']):,.2f}"}]
+            trade = by_entry.get(d) if ok else None
+            if trade is not None:
+                trade = {**trade, "initial_stop": float(r["ema"])}
+            oc = pset.outcome(f, "long", trade, "not bought: already held")
+            out.append(pset.episode(
+                f, ep, k, name=f"{ENTRY_DAYS}-day breakout", side="long", kind="pass" if ok else "fail",
+                why=words.get(refused, refused), gates=gates, setup_rows=setup, shapes=shapes,
+                text=f"{symbol} closed above its {ENTRY_DAYS}-session high on {d.date()}.",
+                entry=float(r["close"]), stop=float(r["ema"]), stop_on_close=True,
+                entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules) + " The stop shown is the "
+                           f"{TRAIL_EMA}-day EMA on the day: it trails, and a close below it sells.",
+                outcome_=oc if ok else None))
+        return out
 
 
 def main(argv: list[str] | None = None) -> dict | None:

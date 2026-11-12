@@ -1382,6 +1382,14 @@ const Studies = (() => {
     // Kell's cycle has no guide of its own; its wedge pop and EMA crossback are pullbacks to moving averages
     setups_kell_cycle: genericSetups("kell_cycle", "learn-strat-pullback-ma", { base: ["Base (base break)", "#2962ff"] }),
     setups_minervini_coil: genericSetups("minervini_coil", "learn-strat-vcp-sepa", { base: ["Coil", "#2962ff"], pivot: ["Coil high", "#26a69a"] }),
+    // portfolio strategies that trade one stock at a time: the same layer, drawn from their own runner
+    // (backtesting/portfolio_setups.py); the shorts draw their stop above the entry
+    setups_stage4_shorts: genericSetups("stage4_shorts", "learn-strat-stage4-shorts", { base: ["Rally into the line", "#2962ff"],
+      pivot: ["30-week line", "#ff9800"], tight: ["52-week closing low", "#ab47bc"] }),
+    setups_parabolic_short: genericSetups("parabolic_short", "learn-strat-kullamagi", { base: ["The run-up", "#2962ff"],
+      tight: ["First red day", "#ff9800"] }),
+    setups_pead: genericSetups("pead", "learn-strat-pead", { base: ["Results reaction", "#2962ff"], support: ["Close before the results", "#ef5350"] }),
+    setups_etf_swing: genericSetups("etf_swing", "learn-strat-channel-breakout", { base: ["Prior sessions", "#2962ff"], pivot: ["Breakout high", "#ff9800"] }),
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },

@@ -2035,7 +2035,8 @@ def _generic_setups(strat, market: str, symbol: str, date: str | None, years: in
         if len(_generic_cache) > 64:
             _generic_cache.clear()
         setups = strat.setups_live(raw, MARKETS[market], symbol, years or None, [{"entry": e, "stop": st, "price": px} for e, st, px in anchors])
-        _attach_outcomes(strat, market, raw, symbol, setups)
+        if not all("outcome" in x for x in setups if x["kind"] == "pass"):   # a portfolio runner supplies its own
+            _attach_outcomes(strat, market, raw, symbol, setups)
         n = {k: sum(x["kind"] == k for x in setups) for k in ("pass", "watch", "fail")}
         n_exp = sum(bool(x.get("expired")) for x in setups)
         # "would trade", not "traded": with no backtest selected nothing here was bought (the chart keeps
@@ -2086,7 +2087,13 @@ def strategy_setups(strategy: str, market: str, symbol: str, date: str | None = 
     try:
         strat = get_strategy(strategy)
     except KeyError:
-        raise HTTPException(404, f"unknown strategy {strategy}")
+        # a portfolio strategy that trades one stock at a time draws its setups from its own runner
+        # (backtesting/portfolio_setups.py); the rest of them have no setups to draw
+        from ..strategies import portfolio_strategies
+        pf = portfolio_strategies().get(strategy)
+        if pf is None or not hasattr(pf, "setups_live"):
+            raise HTTPException(404, f"unknown strategy {strategy}" if pf is None else f"{strategy} has no trade-setups layer")
+        return _generic_setups(pf, market, symbol, date, years, run)
     if not hasattr(strat, "bases_live"):
         # every other strategy: the generic layer (strategies/live_setups.py), which runs the strategy's
         # own evaluate / build_plans / classify bar by bar over the last `years`, adding no rules of its own

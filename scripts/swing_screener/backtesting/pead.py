@@ -147,12 +147,77 @@ def load_event_prices(market: str, symbols) -> dict:
     return out
 
 
+def filter_checks(r, min_yoy: float = MIN_YOY_GROWTH, season_top: float = SEASON_RANK_TOP) -> list[tuple]:
+    """The filing's results filters, each (name, its value, the limit, passed) -- a filing qualifies only
+    when every one passes. The chart's Trade setups layer lists them as its gates."""
+    return [("Profit growth (YoY)", r.yoy, f"at least {min_yoy:g}%", r.yoy >= min_yoy),
+            ("Season rank", r.season_pct, f"top {season_top:g}% of the season so far", (r.season_pct or 0) >= 100 - season_top),
+            ("Acceleration", r.accel, f"growth above last quarter's (+{MIN_ACCELERATION:g} points)", (r.accel or -1) > MIN_ACCELERATION),
+            ("Revenue growth (YoY)", r.rev_growth, f"at least {MIN_REVENUE_GROWTH:g}%", (r.rev_growth or -1) >= MIN_REVENUE_GROWTH)]
+
+
+def qualify(r, df: pd.DataFrame | None, bench: pd.Series | None, start_ts, pos_of, split_k, floor_price: float,
+            liq_floor: float, min_yoy: float = MIN_YOY_GROWTH, season_top: float = SEASON_RANK_TOP) -> tuple:
+    """One filing through the rules: (its candidate, "", what was seen) or (None, the `dropped` key that
+    refused it -- "" for an entry before the start -- , what was seen). `seen` carries the reaction window's
+    dates and figures as far as they were reached, for the chart's Trade setups layer."""
+    seen: dict = {}
+    if not all(ok for *_x, ok in filter_checks(r, min_yoy, season_top)):
+        return None, "filters", seen
+    if df is None:
+        return None, "no_bar", seen
+    # the reaction window: the close BEFORE the filing to the close REACTION_DAYS after
+    idx = df.index
+    after = idx[idx >= r.filed]
+    before = idx[idx < r.filed]
+    if len(after) < REACTION_DAYS + 1 or len(before) < 1:
+        return None, "no_bar", seen
+    d_prev, d_react = before[-1], after[min(REACTION_DAYS - 1, len(after) - 1)]
+    seen.update(d_prev=d_prev, d_react=d_react)
+    tc = df["tr_close"] if "tr_close" in df else df["close"]   # ratio only: no future action leaks
+    p0, p1 = float(tc.loc[d_prev]), float(tc.loc[d_react])
+    if p0 <= 0 or p1 != p1:
+        return None, "no_bar", seen
+    stock_ret = (p1 / p0 - 1) * 100
+    if bench is not None:
+        b = bench.reindex(idx).ffill()
+        bret = (float(b.loc[d_react]) / float(b.loc[d_prev]) - 1) * 100
+    else:
+        bret = 0.0
+    reaction = stock_ret - bret
+    seen.update(reaction=reaction, stock_ret=stock_ret)
+    if not (MIN_REACTION < reaction <= MAX_REACTION):
+        return None, "reaction", seen
+    # entry is the session AFTER the reaction window closes
+    later = idx[idx > d_react]
+    if not len(later):
+        return None, "no_bar", seen
+    d_entry = later[0]
+    seen.update(d_entry=d_entry)
+    if d_entry < start_ts or d_entry not in pos_of:
+        return None, "", seen
+    entry_px = float(df.loc[d_entry, "close"])
+    traded_px = entry_px * (float(split_k.at[d_entry, r.symbol])
+                            if split_k is not None and r.symbol in split_k.columns else 1.0)
+    if entry_px != entry_px or traded_px < floor_price:
+        return None, "liquidity", seen
+    turnover = float(df["close"].mul(df["volume"]).rolling(20).mean().loc[d_entry])
+    if turnover != turnover or turnover < liq_floor:
+        return None, "liquidity", seen
+    return {"symbol": r.symbol, "yoy": r.yoy, "sue": r.sue, "reaction": reaction,
+            "price": entry_px, "stop": float(df.loc[d_react, "low"]),
+            "filed": r.filed, "period_end": r.period_end, "entry_date": d_entry}, "", seen
+
+
 def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
         max_positions: int = MAX_POSITIONS, position_pct: float = POSITION_PCT,
         min_yoy: float = MIN_YOY_GROWTH, season_top: float = SEASON_RANK_TOP,
         cost_bps: float = 10.0, use_stop: bool = STOP_ON_REACTION_LOW,
-        preloaded: tuple | None = None):
-    """Walk the filing calendar, buy the confirmed surprises, hold for the drift window."""
+        preloaded: tuple | None = None, trace: list | None = None):
+    """Walk the filing calendar, buy the confirmed surprises, hold for the drift window.
+
+    `trace`, when given, receives (filing row, candidate or None, refusing key, what was seen) for every
+    filing -- the chart's Trade setups layer reads why each was or was not bought."""
     cfg = MARKETS[market]
     start_ts = pd.Timestamp(start)
 
@@ -184,61 +249,15 @@ def run(market: str, start: str, hold_sessions: int = HOLD_SESSIONS,
     cand: dict = {}
     dropped = {"filters": 0, "no_bar": 0, "reaction": 0, "liquidity": 0}
     for r in ev.itertuples():
-        if not (r.yoy >= min_yoy and (r.season_pct or 0) >= 100 - season_top
-                and (r.accel or -1) > MIN_ACCELERATION
-                and (r.rev_growth or -1) >= MIN_REVENUE_GROWTH):
-            dropped["filters"] += 1
+        c, why, seen = qualify(r, prices.get(r.symbol), bench, start_ts, pos_of, split_k, floor_price, liq_floor,
+                               min_yoy, season_top)
+        if trace is not None:
+            trace.append((r, c, why, seen))
+        if c is None:
+            if why:
+                dropped[why] += 1
             continue
-        df = prices.get(r.symbol)
-        if df is None:
-            dropped["no_bar"] += 1
-            continue
-        # the reaction window: the close BEFORE the filing to the close REACTION_DAYS after
-        idx = df.index
-        after = idx[idx >= r.filed]
-        before = idx[idx < r.filed]
-        if len(after) < REACTION_DAYS + 1 or len(before) < 1:
-            dropped["no_bar"] += 1
-            continue
-        d_prev, d_react = before[-1], after[min(REACTION_DAYS - 1, len(after) - 1)]
-        tc = df["tr_close"] if "tr_close" in df else df["close"]   # ratio only: no future action leaks
-        p0, p1 = float(tc.loc[d_prev]), float(tc.loc[d_react])
-        if p0 <= 0 or p1 != p1:
-            dropped["no_bar"] += 1
-            continue
-        stock_ret = (p1 / p0 - 1) * 100
-        if bench is not None:
-            b = bench.reindex(idx).ffill()
-            bret = (float(b.loc[d_react]) / float(b.loc[d_prev]) - 1) * 100
-        else:
-            bret = 0.0
-        reaction = stock_ret - bret
-        if not (MIN_REACTION < reaction <= MAX_REACTION):
-            dropped["reaction"] += 1
-            continue
-        # entry is the session AFTER the reaction window closes
-        later = idx[idx > d_react]
-        if not len(later):
-            dropped["no_bar"] += 1
-            continue
-        d_entry = later[0]
-        if d_entry < start_ts or d_entry not in pos_of:
-            continue
-        entry_px = float(df.loc[d_entry, "close"])
-        traded_px = entry_px * (float(split_k.at[d_entry, r.symbol])
-                                if split_k is not None and r.symbol in split_k.columns else 1.0)
-        if entry_px != entry_px or traded_px < floor_price:
-            dropped["liquidity"] += 1
-            continue
-        turnover = float(df["close"].mul(df["volume"]).rolling(20).mean().loc[d_entry])
-        if turnover != turnover or turnover < liq_floor:
-            dropped["liquidity"] += 1
-            continue
-        cand.setdefault(d_entry, []).append({
-            "symbol": r.symbol, "yoy": r.yoy, "sue": r.sue, "reaction": reaction,
-            "price": entry_px, "stop": float(df.loc[d_react, "low"]),
-            "filed": r.filed, "period_end": r.period_end,
-        })
+        cand.setdefault(c["entry_date"], []).append(c)
 
     # the next filing date per symbol, so a position can be closed before it reports again
     next_filing = {}
@@ -571,6 +590,71 @@ class PeadStrategy(PortfolioStrategy):
         ("Season rank", "season_top", "Growth must be in this top percent of the season so far."),
         ("Cost per side", "cost_bps", "Basis points per side."),
     )
+
+    @classmethod
+    def setups_live(cls, raw: pd.DataFrame, cfg, symbol: str, years: int | None = 5, anchors=None) -> list[dict]:
+        """The chart's Trade setups layer: each of this symbol's filings through `qualify` (inside `run`, which
+        traces them), with the trade `run` makes of it on this one symbol (backtesting/portfolio_setups.py).
+        The season rank is the market's own, from every filing (`load_events`)."""
+        from . import portfolio_setups as pset
+        market = pset.market_of(cfg)
+        ev = load_events(market)
+        ev = ev[(ev["symbol"] == symbol) & (ev["filed"] <= raw.index[-1])] if len(ev) else ev
+        braw = cache.load_cached(market, cfg.benchmark_ticker)
+        prices = load_event_prices(market, [symbol])
+        if ev.empty or symbol not in prices or braw is None:
+            return []
+        df = prices[symbol].loc[: raw.index[-1]]
+        start = pset.since(df, years)
+        trace: list = []
+        trades = run(market, str(start.date()), preloaded=(ev, {symbol: df}, braw["close"].astype(float)), trace=trace)[0]
+        by_entry = {pd.Timestamp(t["entry_date"]): t for t in trades.to_dict("records")}
+        pos = lambda d: int(df.index.searchsorted(d))
+        steps = ("filters", "no_bar", "reaction", "liquidity")
+        words = {"filters": "the results missed a filter", "no_bar": "no prices around the filing",
+                 "reaction": f"reaction not {MIN_REACTION:g}% to {MAX_REACTION:g}% over the index",
+                 "liquidity": "too little traded, or under the price floor"}
+        pct = lambda v: "—" if v is None or v != v else f"{v:+.1f}%"
+        out = []
+        for r, c, why, seen in trace:
+            if c is None and not why:
+                continue   # an entry before the window
+            at = seen.get("d_entry") or seen.get("d_react") or r.filed
+            k = min(pos(at), len(df) - 1)
+            if df.index[k] < start:
+                continue
+            st = pset.ordered([(x,) for x in steps], why)
+            checks = [("results", n, pct(v) if "rank" not in n else (f"top {100 - v:.0f}%" if v == v and v is not None else "—"), lim, ok)
+                      for n, v, lim, ok in filter_checks(r)]
+            if why == "filters":
+                first = next(n for n, _v, _l, ok in filter_checks(r) if not ok)
+                reason = f"{first.split(' (')[0].lower()} below its limit"
+            else:
+                reason = words.get(why, why)
+            checks += [("reaction", "Reaction over the index", pct(seen.get("reaction")),
+                        f"above {MIN_REACTION:g}%, at most {MAX_REACTION:g}%, over {REACTION_DAYS} sessions", st[2] if st[0] else None),
+                       ("liquidity", "Liquidity", "passed" if st[3] else "—", "the market's price and traded-value floors", st[3] if st[2] else None)]
+            gates = pset.rows(checks, fmt=lambda v: str(v))
+            setup = pset.rows([("filed", "Results filed", str(pd.Timestamp(r.filed).date()), f"quarter to {pd.Timestamp(r.period_end).date()}", True)])
+            shapes = []
+            if seen.get("d_prev") is not None:
+                w = df.loc[seen["d_prev"]: seen["d_react"]]
+                shapes = [{"shape": "box", "from": str(seen["d_prev"].date()), "to": str(seen["d_react"].date()),
+                           "top": float(w["high"].max()), "bottom": float(w["low"].min()), "role": "base",
+                           "label": f"results reaction {pct(seen.get('stock_ret'))} ({pct(seen.get('reaction'))} over the index)"},
+                          {"shape": "level", "bars": 10, "to": str(seen["d_react"].date()), "price": float(df.at[seen["d_prev"], "close"]),
+                           "role": "support", "label": f"close before the results {float(df.at[seen['d_prev'], 'close']):,.2f}"}]
+            trade = by_entry.get(pd.Timestamp(c["entry_date"])) if c else None
+            if trade is not None:
+                trade = {**trade, "initial_stop": c["stop"]}
+            oc = pset.outcome(df, "long", trade, "not bought: a stronger filing that session, or the book was full")
+            out.append(pset.episode(
+                df, [k], k, name="Confirmed results surprise", side="long", kind="pass" if c else "fail", why=reason,
+                gates=gates, setup_rows=setup, shapes=shapes,
+                text=(f"Results filed {pd.Timestamp(r.filed).date()}: profit {pct(r.yoy)} year on year, revenue {pct(r.rev_growth)}."),
+                entry=c["price"] if c else None, stop=c["stop"] if c else None, stop_on_close=bool(STOP_ON_REACTION_LOW),
+                entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules), outcome_=oc if c else None))
+        return out
 
 
 def main(argv: list[str] | None = None) -> dict | None:
