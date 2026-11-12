@@ -2955,21 +2955,9 @@ class MinerviniSpecStrategy(Strategy):
     # cheats (MV-03 / MV-04), all graded TRADE ON TRIGGER; MV-01 alone fired 9 times in 16 years in India.
     backtest_args = "--spec --market-filter --pe --accept-labels 'TRADE - HIGH CONFIDENCE,TRADE ON TRIGGER'"
     base_rules = VCP_RULES
-    #: PROVISIONAL -- the screen lists candidates under this until a variant beats the baseline,
-    #: then this declaration is replaced. Not part of the shipped rules: backtests never apply it.
-    live_variant = {
-        "name": "Block cheats on VCP-09 bases + EX-06 needs volume",
-        "const": {"CHEAT_BLOCK_VCP09": 1, "TREND_EXIT_NEEDS_VOLUME": 1},
-        "why": ("Together they beat each one alone in BOTH markets, on profit factor and average R rather "
-                "than just total R -- the bar set before the runs. Against the 1.22 baseline: India +85.9R, "
-                "PF 1.30 -> 1.85, avgR +0.133 -> +0.414 (volume alone was +78.4R, PF 1.74; the VCP-09 block "
-                "alone +13.1R, PF 1.41); US +43.1R, PF 0.79 -> 0.89, avgR -0.081 -> -0.048 (alone: +20.0R / "
-                "PF 0.84 and +14.2R / PF 0.82). The cost is drawdown: India's deepest is -25.2% against the "
-                "baseline's -19.8%, because waiting for volume holds trades through more dips. The VCP-09 "
-                "block decides which stocks are listed; the volume rule only decides when to sell, so it "
-                "changes nothing on this list -- it is here so the live rules are named in full. The US is "
-                "still a losing book under them. Provisional: replace this when a variant beats it."),
-    }
+    # No live_variant: the daily screen runs the shipped rules (and the US its market_consts). The 1.22-era
+    # provisional variant (CHEAT_BLOCK_VCP09 + TREND_EXIT_NEEDS_VOLUME) was removed 2026-11-12 -- it predated
+    # every rule decided since and kept the daily candidates off the rules the backtests measure.
 
     #: The US's shipped rules (1.67): applied by every process that runs the US alone (variants.market_rules).
     market_consts = {
@@ -4660,8 +4648,10 @@ class MinerviniSpecStrategy(Strategy):
         """Would the screen's rules withhold a cheat whose base (as detected the bar before it) is `p`?
         The same test as `evaluate` -- read from the module constant, or from the live variant when the
         screen applies one that this process (the chart's) has not."""
-        lv = (type(self).live_variant or {}).get("const", {})
-        return bool((CHEAT_BLOCK_VCP09 or lv.get("CHEAT_BLOCK_VCP09")) and p and p.get("fail") == "VCP-09")
+        lv = type(self).live_variant
+        if not lv:
+            return False   # the screen runs the shipped rules, whose verdict the chart already shows
+        return bool((CHEAT_BLOCK_VCP09 or lv.get("const", {}).get("CHEAT_BLOCK_VCP09")) and p and p.get("fail") == "VCP-09")
 
     def _setup(self, daily: pd.DataFrame, cfg: MarketConfig, r: dict, rep: int, bo: int | None,
                cheat: tuple | None = None, live: bool = False, traded_cheat: bool = False,
