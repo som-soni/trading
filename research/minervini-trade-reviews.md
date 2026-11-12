@@ -132,6 +132,10 @@ US in the shared batch. D′ is measured, not assumed.
   not a measured edge. It is a per-market rule set, so rule 4 applies: it needs its own Strategy-page entry and its
   own verify, which is a second look at 2022-onward and is labelled that way.
 - **L4, L1 and the fixes all fail on D′**, as in the shared batch. Rule 4's combined run is D′ alone, already measured.
+- **Adopted as 1.67** (2026-11-12): D′ is the US's own rule set (`market_consts`), applied to every US backtest, the
+  daily US screen and US verify; India is unchanged. US verify queued as #1632, criterion in the strategy's status,
+  written before the run: CAGR above 0, average trade above 0R, max drawdown no deeper than −25%. A second look at
+  2022 onward.
 
 ### Split of the fixes, queued 2026-11-12 — exploratory, decided after seeing #1544–1545 and #1554
 
@@ -141,8 +145,8 @@ split was chosen **after** seeing those results, so it is exploratory, not a pre
 
 | Runs | Setting |
 |---|---|
-| #1617 / #1619 | F2 alone (`FLAT_PIVOT_HIGHEST=1`), India / US, shared rules |
-| #1618 / #1620 | F1 + F3 (`RESULTS_BLACKOUT_STRICT=1`), India / US, shared rules |
+| #1617 / #1633 | F2 alone (`FLAT_PIVOT_HIGHEST=1`), India / US, shared rules (US with `--shared-rules` since 1.67) |
+| #1618 / #1634 | F1 + F3 (`RESULTS_BLACKOUT_STRICT=1`), India / US, shared rules (US with `--shared-rules` since 1.67) |
 | #1621 / #1622 | F2 alone / F1 + F3, on D′ (US) |
 
 How it is read: a fix that costs less than 0.5 points in both markets is adopted, because it is a correction. A fix that
