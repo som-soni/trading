@@ -555,9 +555,11 @@ class ParabolicShortStrategy(PortfolioStrategy):
         day = lambda i: str(f.index[i].date())
         out = []
         hits = [k for k in range(len(f)) if bool(f["sig"].iloc[k]) and f.index[k] >= start]
-        for ep in pset.group(hits):
+        traded = pset.anchor_bars(f, anchors)   # a run's short fills at its signal's close
+        for ep, at in (p for g in pset.group(hits) for p in pset.parts(g, traded)):
             judged = [(k, *screen_signal(prep, symbol, f, f.index[k])) for k in ep]
-            k, c, why = next((x for x in judged if x[1] is not None), judged[0])
+            # judged on the bar a selected run traded, else the first that passed, else the first
+            k, c, why = ([x for x in judged if x[0] == at] or [x for x in judged if x[1] is not None] or judged)[0]
             d, r = f.index[k], f.iloc[k]
             close, stop = float(r["close"]), float(r["high"])
             pct = (stop / close - 1) * 100
@@ -588,7 +590,8 @@ class ParabolicShortStrategy(PortfolioStrategy):
                       f"{int(r['up_streak'])} up closes, then closed red on {d.date()}."),
                 entry=close, stop=stop, target=float(r["ema_fast"]),
                 target_label=f"First cover: the {TARGET_FAST}-day EMA ~{float(r['ema_fast']):,.2f} (it moves)",
-                entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules), outcome_=oc if c is not None else None))
+                entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules), outcome_=oc if c is not None else None,
+                anchored=at is not None))
         return out
 
 

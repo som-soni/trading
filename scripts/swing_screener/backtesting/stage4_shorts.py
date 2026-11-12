@@ -750,12 +750,14 @@ class Stage4ShortsStrategy(PortfolioStrategy):
         floor = cfg.screener.min_dollar_volume or 0
         low_prior = f["close"].shift(1).rolling(BREAKDOWN_BARS, min_periods=BREAKDOWN_BARS).min()
         names = {"B": "Failed rally to the line", "A": "Breakdown to a 52-week low"}
+        traded = pset.anchor_bars(f, anchors, lag=1)   # a run's short fills at the open after its signal
         out = []
         for kind in entries:
             hits = [k for k in range(len(f)) if bool(f[f"sig_{kind.lower()}"].iloc[k]) and f.index[k] >= start]
-            for ep in pset.group(hits):
+            for ep, at in (p for g in pset.group(hits) for p in pset.parts(g, traded)):
                 judged = [(k, *screen_signal(prep, symbol, f, f.index[k], kind, use_filter)) for k in ep]
-                k, c, why = next((x for x in judged if x[1] is not None), judged[0])
+                # judged on the bar a selected run traded, else the first that passed, else the first
+                k, c, why = ([x for x in judged if x[0] == at] or [x for x in judged if x[1] is not None] or judged)[0]
                 d, r = f.index[k], f.iloc[k]
                 stop = float(r[f"stop_{kind.lower()}"])
                 states = pset.ordered([(x,) for x in FILTERS], why)
@@ -790,7 +792,7 @@ class Stage4ShortsStrategy(PortfolioStrategy):
                     why=REFUSED.get(why, why), gates=gates, setup_rows=setup,
                     shapes=shapes, text=text, entry=float(r["close"]), stop=stop,
                     entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules),
-                    outcome_=oc if c is not None else None))
+                    outcome_=oc if c is not None else None, anchored=at is not None))
         return sorted(out, key=lambda e: e["base_from"])
 
 

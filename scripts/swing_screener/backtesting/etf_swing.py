@@ -262,9 +262,11 @@ class EtfSwingStrategy(PortfolioStrategy):
                  "liquidity": "too little traded"}
         out = []
         hits = [k for k in range(len(f)) if f.index[k] >= start and pd.notna(f["hh"].iloc[k]) and f["close"].iloc[k] > f["hh"].iloc[k]]
-        for ep in pset.group(hits):
+        traded = pset.anchor_bars(f, anchors)   # a run buys at its signal's close
+        for ep, at in (p for g in pset.group(hits) for p in pset.parts(g, traded)):
             judged = [(k, entry_checks(f.iloc[k], floor)) for k in ep]
-            k, checks = next((x for x in judged if all(ok for *_v, ok in x[1])), judged[0])
+            # judged on the bar a selected run traded, else the first that passed, else the first
+            k, checks = ([x for x in judged if x[0] == at] or [x for x in judged if all(ok for *_v, ok in x[1])] or judged)[0]
             ok = all(o for *_v, o in checks)
             r, d = f.iloc[k], f.index[k]
             refused = "" if ok else names[next(i for i, (*_v, o) in enumerate(checks) if not o)]
@@ -289,7 +291,7 @@ class EtfSwingStrategy(PortfolioStrategy):
                 entry=float(r["close"]), stop=float(r["ema"]), stop_on_close=True,
                 entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules) + " The stop shown is the "
                            f"{TRAIL_EMA}-day EMA on the day: it trails, and a close below it sells.",
-                outcome_=oc if ok else None))
+                outcome_=oc if ok else None, anchored=at is not None))
         return out
 
 

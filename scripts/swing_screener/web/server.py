@@ -728,6 +728,7 @@ def trade_anatomy(rid: int, symbol: str):
                     "entry_price": v(row, "entry_price"), "exit_price": v(row, "exit_price"),
                     "exit_reason": v(row, "exit_reason"), "r_multiple": v(row, "r_multiple"),
                     "pnl": v(row, "pnl"), "holding_days": v(row, "holding_days"),
+                    "direction": v(row, "direction") or "long",   # the short books record "short"
                     "note": note, "shapes": shapes})
     return out
 

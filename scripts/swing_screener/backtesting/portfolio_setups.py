@@ -47,6 +47,32 @@ def group(bars: list[int]) -> list[list[int]]:
     return out
 
 
+def anchor_bars(daily: pd.DataFrame, anchors: list[dict] | None, lag: int = 0) -> set[int]:
+    """The signal bar of each of a selected run's trades in this symbol: its fill session less `lag` sessions
+    (1 for a runner that fills at the next open, 0 for one that fills at the signal's close)."""
+    out = set()
+    for a in anchors or []:
+        try:
+            d = pd.Timestamp(a["entry"])
+        except Exception:  # noqa: BLE001 -- a trade with no fill date anchors nothing
+            continue
+        i = int(daily.index.searchsorted(d))
+        if i < len(daily) and daily.index[i] == d and i - lag >= 0:
+            out.add(i - lag)
+    return out
+
+
+def parts(ep: list[int], anchored: set[int]) -> list[tuple[list[int], int | None]]:
+    """An episode split at each bar a selected run traded, so each of the run's trades has a setup of its own:
+    (its bars, the bar it is judged on -- the run's signal -- or None when the run traded none of them).
+    The first part keeps the bars before the first traded one, as live_setups.scan does."""
+    cuts = [k for k, i in enumerate(ep) if i in anchored]
+    if not cuts:
+        return [(ep, None)]
+    bounds = [0] + cuts[1:] + [len(ep)]
+    return [(ep[bounds[n]: bounds[n + 1]], ep[c]) for n, c in enumerate(cuts)]
+
+
 def rows(checks: list[tuple], fmt=None) -> list[dict]:
     """(code, name, value, limit, ok) tuples as checklist rows; ok None = not reached."""
     show = fmt or (lambda v: "—" if v is None or v != v else f"{v:,.2f}" if isinstance(v, float) else str(v))
@@ -85,10 +111,11 @@ def episode(daily: pd.DataFrame, bars: list[int], judge: int, *, name: str, side
             gates: list[dict], setup_rows: list[dict], shapes: list[dict], text: str,
             entry: float | None = None, stop: float | None = None, target: float | None = None,
             target_label: str = "", entry_text: str = "", stop_on_close: bool = False,
-            outcome_: dict | None = None) -> dict:
+            outcome_: dict | None = None, anchored: bool = False) -> dict:
     """One setup episode as the chart's Trade setups layer draws it (live_setups._episode's shape).
 
-    `bars`: the episode's signal bar indices; `judge`: the bar it is judged on. `kind`: pass (the runner
+    `bars`: the episode's signal bar indices; `judge`: the bar it is judged on (`anchored`:
+    the bar a selected run traded, whose record the chart then draws instead of the illustration). `kind`: pass (the runner
     takes it), fail (a filter refused it: `why`). `side`: long or short -- a short's stop is above its entry.
     `entry` / `stop` / `target`: the plan's levels (target optional: a rule exit has none). `stop_on_close`:
     the stop is a close beyond it (pead), not a touch."""
@@ -144,11 +171,11 @@ def episode(daily: pd.DataFrame, bars: list[int], judge: int, *, name: str, side
     if live:
         title += " · today"
         summary = f"Still active on today's bar, {day(last_bar)}. " + summary
-    out = {"from": frame_from, "base_from": day(first_i), "to": day(frame_to_i), "kind": kind, "anchored": False,
+    out = {"from": frame_from, "base_from": day(first_i), "to": day(frame_to_i), "kind": kind, "anchored": anchored,
            "complete": kind == "pass", "fail": None if kind == "pass" else "filter",
            "breakout": day(judge) if kind == "pass" else None, "live": live, "as_of": day(judge), "expired": False,
            "stopped": day(stop_hit) if stop_hit is not None else None, "title": title, "summary": summary,
            "frame": {"from": frame_from, "to": day(frame_to_i), "top": float(top), "bottom": float(bottom)}, "zones": zones}
     if outcome_ is not None:
-        out["outcome"] = outcome_
+        out["outcome"] = {**outcome_, "side": side}
     return out

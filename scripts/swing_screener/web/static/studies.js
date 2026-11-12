@@ -272,8 +272,8 @@ const Studies = (() => {
           let body = "";
           if (zoneOpen === z.key) {
             body = t
-              ? `<p class="tt-x">The selected backtest run traded this setup: bought at ${esc((+t.entry_price).toFixed(2))} on ${esc(t.entry_date)}`
-                + (t.exit_date ? `, sold at ${esc((+t.exit_price).toFixed(2))} on ${esc(t.exit_date)} (${esc(t.exit_reason || "exit")})` : ", still open")
+              ? `<p class="tt-x">The selected backtest run traded this setup: ${t.direction === "short" ? "shorted" : "bought"} at ${esc((+t.entry_price).toFixed(2))} on ${esc(t.entry_date)}`
+                + (t.exit_date ? `, ${t.direction === "short" ? "covered" : "sold"} at ${esc((+t.exit_price).toFixed(2))} on ${esc(t.exit_date)} (${esc(t.exit_reason || "exit")})` : ", still open")
                 + `${t.r_multiple != null ? `, ${(+t.r_multiple).toFixed(2)}R` : ""}. Its own levels are drawn from the run's record.</p>`
               // the numbers first (each check and its value), the reasoning behind "Why": a zone's prose ran to 150 words.
               // A check that only restates the zone's own line (Run: +136% in 40 sessions) is said once.
@@ -381,7 +381,7 @@ const Studies = (() => {
               // zone, a setup with a pivot entry and a cheat entry put every level on the axis twice; and
               // a setup today's rules no longer see an entry in drew none of the run's trade at all.
               shapes.push({ shape: "level", role: "buy", from: traded.entry_date, to: traded.exit_date || f.to, axis: true,
-                price: +traded.entry_price, label: `bought ${(+traded.entry_price).toFixed(2)}` });
+                price: +traded.entry_price, label: `${traded.direction === "short" ? "shorted" : "bought"} ${(+traded.entry_price).toFixed(2)}` });
               // the record's own stop and target only: every strategy's traded setup looks the same (its
               // other levels -- resistance, swing lows -- vary by strategy and the zones already say them)
               shapes.push(...(traded.shapes || []).filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target"))

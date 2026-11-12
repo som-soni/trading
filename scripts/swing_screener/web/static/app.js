@@ -569,6 +569,12 @@ let keepSetup = null;
 // scanned. Keyed market:symbol, each count stamped with the chart's last bar; never fetched for -- a count
 // appears only once that strategy's scan has run. The most recently scanned SETUP_COUNTS_KEEP stocks are kept.
 const SETUP_COUNTS = store.get("setupCounts", {}), SETUP_COUNTS_KEEP = 300;
+// a setup outcome's exit reason and R in a few words. Module level, not inside chartPage: a setups layer whose
+// answer is cached can render the panel before chartPage has reached their definitions there
+const EXIT_WORD = { STOP: "stop", TARGET: "target", TIME: "time", hold: "open", stop_raised: "open", partial: "open",
+  exit_next_open: "exit at the open", sell_stop_armed: "open", stopped: "stop" };
+const exitWord = (r) => EXIT_WORD[r] || Studies.plainText(String(r || "").replace(/_/g, " ")).toLowerCase();
+const rTxt = (r) => `${r >= 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`;
 function noteSetupCount(key, strategy, count) {
   const e = { ...(SETUP_COUNTS[key] || {}), [strategy]: count };
   delete SETUP_COUNTS[key]; SETUP_COUNTS[key] = e;   // re-inserted: key order is recency
@@ -1325,6 +1331,8 @@ async function chartPage(alive, market, symbol, tf) {
       t.rows.forEach((r) => {
         const a = snap(r[c("entry_date")]), b = snap(r[c("exit_date")]), pnl = r[c("pnl")], rm = r[c("r_multiple")];
         const ep = +r[c("entry_price")], xp = +r[c("exit_price")];
+        // a short book's trade opens with a sale and closes with a buy: its letters swap
+        const [O, X] = c("direction") != null && r[c("direction")] === "short" ? ["S", "B"] : ["B", "S"];
         // pinned to the FILL price, not under the bar's low: a marker below the candle reads as a
         // fill below the trigger line when the trade actually bought through it
         // size 2: at the default size the run's buys and sells were lost among the candles and the setup's levels.
@@ -1334,16 +1342,16 @@ async function chartPage(alive, market, symbol, tf) {
         // sell then hid behind the layer's bought / stop / target tags (FEL.NS, monthly): one marker says both.
         if (a && a === b) {
           marks.push({ time: a, shape: "arrowUp", color: pnl >= 0 ? "#26a69a" : "#ef5350", size: 2, position: "belowBar",
-            text: `${tag} ` + (layerLabels ? "B·S" : `B ${fmt(ep)} · S ${fmt(xp)} ${res(rm)}`) });
+            text: `${tag} ` + (layerLabels ? `${O}·${X}` : `${O} ${fmt(ep)} · ${X} ${fmt(xp)} ${res(rm)}`) });
           return;
         }
-        if (a) marks.push({ time: a, shape: "arrowUp", color: "#2196f3", size: 2, text: `${tag} ` + (layerLabels ? "B" : `B ${fmt(ep)}`),
+        if (a) marks.push({ time: a, shape: O === "S" ? "arrowDown" : "arrowUp", color: "#2196f3", size: 2, text: `${tag} ` + (layerLabels ? O : `${O} ${fmt(ep)}`),
           ...(ep > 0 ? { position: "atPriceBottom", price: ep } : { position: "belowBar" }) });
         // The sell has its own colour and sits ABOVE the bar. In the candles' green or red, pinned to a fill inside
         // the bar, a stop-out vanished into its own red candle and the setup frame's edge (BRITANNIA.NS, Sep 2018).
         // The result is in the trade's heading and card; the level is the stop / target line.
-        if (b) marks.push({ time: b, shape: "arrowDown", color: "#d500f9", size: 1.5, position: "aboveBar",
-          text: `${tag} ` + (layerLabels ? "S" : `S ${fmt(xp)} · ${Studies.plainText(r[c("exit_reason")])} ${res(rm)}`) });
+        if (b) marks.push({ time: b, shape: X === "B" ? "arrowUp" : "arrowDown", color: "#d500f9", size: 1.5, position: "aboveBar",
+          text: `${tag} ` + (layerLabels ? X : `${X} ${fmt(xp)} · ${Studies.plainText(r[c("exit_reason")])} ${res(rm)}`) });
       });
       marks.sort((x, y) => (x.time < y.time ? -1 : x.time > y.time ? 1 : 0));
       LC.createSeriesMarkers(main, marks);
@@ -1383,7 +1391,7 @@ async function chartPage(alive, market, symbol, tf) {
       const items = (t, i) => shapeItems(t.shapes, { dim: selTrade >= 0 && selTrade !== i,
         withNotes: selTrade === i || (selTrade < 0 && anatomy.length <= 3), at: t.entry_date, price: t.entry_price });
       const lean = (t) => ({ ...t, shapes: [{ shape: "level", from: t.entry_date, to: t.exit_date || t.entry_date, price: +t.entry_price, role: "buy",
-        label: `bought ${(+t.entry_price).toFixed(2)}`, dash: false }, ...t.shapes.filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target"))] });
+        label: `${t.direction === "short" ? "shorted" : "bought"} ${(+t.entry_price).toFixed(2)}`, dash: false }, ...t.shapes.filter((x) => x.shape === "level" && (x.role === "stop" || x.role === "target"))] });
       tradeItems = (keep = () => true, leanOnly = false) => anatomy.flatMap((t, i) => (keep(t) ? items(leanOnly ? lean(t) : t, i) : []));
       // the same window for every strategy: 40 bars before the signal to 15 past the exit, price axis on
       // auto (a setups layer then frames the trade's own setup on top of this). The old window ran back to
@@ -1983,18 +1991,15 @@ async function chartPage(alive, market, symbol, tf) {
   }
   // a setup's outcome (strategies/setup_outcomes.py: its fill and its exit, replayed through the strategy's own
   // order and exit policy) in a few words: "+2.4R · trend exit · 102d", "open +0.5R · 6d", "not filled"
-  const EXIT_WORD = { STOP: "stop", TARGET: "target", TIME: "time", hold: "open", stop_raised: "open", partial: "open",
-    exit_next_open: "exit at the open", sell_stop_armed: "open", stopped: "stop" };
-  const exitWord = (r) => EXIT_WORD[r] || Studies.plainText(String(r || "").replace(/_/g, " ")).toLowerCase();
-  const rTxt = (r) => `${r >= 0 ? "+" : "−"}${Math.abs(r).toFixed(1)}R`;
+  // (EXIT_WORD, exitWord and rTxt are at module level: the panel can render before this point runs)
   function outcomeHtml(s) {
     const o = s.outcome;
     if (!o) return "";
     if (!o.filled) return `<span class="sp-out none" title="${esc(o.note || "")}">not filled</span>`;
     const cls = o.open ? "open" : o.r >= 0 ? "win" : "loss";
     const tip = `Replayed through the strategy's own order and exit (${o.policy || "its exit policy"}), one setup at a time:\n`
-      + `bought ${fmt(o.fill)} on ${prettyDate(o.filled)}, stop ${fmt(o.stop)}\n`
-      + (o.open ? `still open: last close ${fmt(o.exit_price)} (${o.pct >= 0 ? "+" : ""}${o.pct}%)` : `sold ${fmt(o.exit_price)} on ${prettyDate(o.exit)} — ${exitWord(o.reason)} (${o.pct >= 0 ? "+" : ""}${o.pct}%)`)
+      + `${o.side === "short" ? "shorted" : "bought"} ${fmt(o.fill)} on ${prettyDate(o.filled)}, stop ${fmt(o.stop)}\n`
+      + (o.open ? `still open: last close ${fmt(o.exit_price)} (${o.pct >= 0 ? "+" : ""}${o.pct}%)` : `${o.side === "short" ? "covered" : "sold"} ${fmt(o.exit_price)} on ${prettyDate(o.exit)} — ${exitWord(o.reason)} (${o.pct >= 0 ? "+" : ""}${o.pct}%)`)
       + "\nNot a backtest result: no costs, no portfolio, today's code.";
     return `<span class="sp-out ${cls}" title="${esc(tip)}">${o.open ? `open ${rTxt(o.r)}` : `${rTxt(o.r)} · ${esc(exitWord(o.reason))}`} · ${o.days}d</span>`;
   }

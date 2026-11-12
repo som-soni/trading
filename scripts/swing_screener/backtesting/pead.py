@@ -610,6 +610,7 @@ class PeadStrategy(PortfolioStrategy):
         trades = run(market, str(start.date()), preloaded=(ev, {symbol: df}, braw["close"].astype(float)), trace=trace)[0]
         by_entry = {pd.Timestamp(t["entry_date"]): t for t in trades.to_dict("records")}
         pos = lambda d: int(df.index.searchsorted(d))
+        traded = pset.anchor_bars(df, anchors)   # a run buys at the close of the session after the reaction
         steps = ("filters", "no_bar", "reaction", "liquidity")
         words = {"filters": "the results missed a filter", "no_bar": "no prices around the filing",
                  "reaction": f"reaction not {MIN_REACTION:g}% to {MAX_REACTION:g}% over the index",
@@ -653,7 +654,8 @@ class PeadStrategy(PortfolioStrategy):
                 gates=gates, setup_rows=setup, shapes=shapes,
                 text=(f"Results filed {pd.Timestamp(r.filed).date()}: profit {pct(r.yoy)} year on year, revenue {pct(r.rev_growth)}."),
                 entry=c["price"] if c else None, stop=c["stop"] if c else None, stop_on_close=bool(STOP_ON_REACTION_LOW),
-                entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules), outcome_=oc if c else None))
+                entry_text=" ".join(cls.render_doc(x) for x in cls.entry_rules), outcome_=oc if c else None,
+                anchored=k in traded))
         return out
 
 
