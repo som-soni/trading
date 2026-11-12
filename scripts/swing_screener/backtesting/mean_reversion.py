@@ -128,7 +128,7 @@ def load_turnover(market: str) -> dict:
 
 
 def oversold_signals(close: pd.Series, measure: str, rsi_entry: float = RSI_ENTRY,
-                     trend: str = "above200") -> tuple:
+                     trend: str = "above200", catastrophe: bool = CATASTROPHE) -> tuple:
     """(entry mask, exit mask) for one series -- the only thing the three variants disagree on.
 
     trend="off" drops the 200-day filter AND the catastrophe exit together: below the 200-day the
@@ -159,7 +159,7 @@ def oversold_signals(close: pd.Series, measure: str, rsi_entry: float = RSI_ENTR
     else:
         raise ValueError(f"unknown measure '{measure}', choose from {MEASURES}")
 
-    if CATASTROPHE and trend == "above200":
+    if catastrophe and trend == "above200":
         exit_ = exit_ | (close < sma_trend)
     return entry.fillna(False), exit_.fillna(False)
 
@@ -168,7 +168,7 @@ def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_E
         position_pct: float = 25.0, max_positions: int = 2, cost_bps: float = 10.0,
         max_hold: int = MAX_HOLD, preloaded: dict | None = None,
         rank: str = "rsi", trend: str = "above200", turnover: dict | None = None,
-        max_adv_pct: float = MAX_ADV_PCT):
+        max_adv_pct: float = MAX_ADV_PCT, only: list | None = None, catastrophe: bool = CATASTROPHE):
     """Event-driven, not calendar-driven: a signal can fire on any session.
 
     Neither existing engine fits, and bending one would have cost more than the 60 lines here.
@@ -179,11 +179,19 @@ def run(market: str, start: str, measure: str = "rsi2", rsi_entry: float = RSI_E
     """
     cfg = MARKETS[market]
     series = preloaded if preloaded is not None else load_indices(market)
+    # `only`: trade just these series (a label or ticker each, as load_indices keys them), e.g. SPY
+    # alone, as Connors tested Double 7s. Off by default: the shipped run trades every index series.
+    if only:
+        want = {x.strip().upper() for x in only if x.strip()}
+        series = {k: v for k, v in series.items()
+                  if k.split(" (")[0].upper() in want or k.rsplit("(", 1)[-1].rstrip(")").upper() in want}
+        if not series:
+            raise ValueError(f"--only {sorted(want)} matches no index series for {market}")
     start_ts = pd.Timestamp(start)
 
     if rank not in RANKS:
         raise ValueError(f"unknown rank '{rank}', choose from {RANKS}")
-    sigs = {name: oversold_signals(c, measure, rsi_entry, trend) for name, c in series.items()}
+    sigs = {name: oversold_signals(c, measure, rsi_entry, trend, catastrophe) for name, c in series.items()}
     rsi = {name: wilder_rsi(c) for name, c in series.items()} if measure == "rsi2" else {}
     # point-in-time realized volatility, for rank="vol" (data up to and including the signal close)
     vol = {name: c.pct_change().rolling(VOL_RANK_BARS).std() for name, c in series.items()}
@@ -537,18 +545,26 @@ def main(argv: list[str] | None = None) -> dict | None:
     ap.add_argument("--trend", default=MeanReversionStrategy.trend, choices=list(TRENDS))
     ap.add_argument("--max-adv-pct", type=float, default=MAX_ADV_PCT,
                     help="largest buy as %% of a fund's 50-day average traded value (0 = off)")
+    ap.add_argument("--only", default=None,
+                    help="comma-separated index series to trade (label or ticker, e.g. SPY or NIFTY50); default all")
+    ap.add_argument("--no-catastrophe", action="store_true",
+                    help="do not sell on a close back below the trend average (Connors' Double 7s has no such exit)")
     ap.add_argument("--no-ingest", action="store_true")
     a = ap.parse_args(argv)
+    only = [x for x in (a.only or "").split(",") if x.strip()] or None
 
     cfg = MARKETS[a.market]
     tdf, eq, held, csh, costs, series = run(
         a.market, a.start, measure=a.measure, rsi_entry=a.rsi_entry,
         position_pct=a.position_pct, max_positions=a.max_positions,
-        cost_bps=a.cost_bps, max_hold=a.max_hold, rank=a.rank, trend=a.trend, max_adv_pct=a.max_adv_pct)
+        cost_bps=a.cost_bps, max_hold=a.max_hold, rank=a.rank, trend=a.trend, max_adv_pct=a.max_adv_pct,
+        only=only, catastrophe=CATASTROPHE and not a.no_catastrophe)
 
     b = cache.load_cached(a.market, cfg.benchmark_ticker)
     bc = b["close"].astype(float).reindex(eq.index).ffill() if b is not None else None
     notes = [
+        *([f"Series restricted to {', '.join(series)} (--only)."] if only else []),
+        *(["No catastrophe exit (--no-catastrophe): a close below the trend average does not sell."] if a.no_catastrophe else []),
         f"A TIMING rule on {len(series)} index series, not a stock selection: there is no universe to "
         "pick from and no survivorship discount, because indices are maintained rather than selected.",
         (f"Measure '{a.measure}'; entry needs the close above its {TREND_SMA}-day average. Exit on the "
@@ -578,7 +594,9 @@ def main(argv: list[str] | None = None) -> dict | None:
     perf.benchmark_name = f"{cfg.benchmark_symbol} ({cfg.benchmark_ticker})"
 
     variant = (("" if a.rank == "rsi" else f"_rank{a.rank}") + ("" if a.trend == "above200" else f"_trend{a.trend}")
-               + ("" if a.max_adv_pct == MAX_ADV_PCT else f"_adv{a.max_adv_pct:g}"))
+               + ("" if a.max_adv_pct == MAX_ADV_PCT else f"_adv{a.max_adv_pct:g}")
+               + (f"_only-{'+'.join(x.strip().upper() for x in only)}" if only else "")
+               + ("_nocat" if a.no_catastrophe else ""))
     name = (f"{a.start}_{a.measure}_rsi{a.rsi_entry:g}_pos{a.max_positions}x{a.position_pct:g}pct"
             f"_{a.cost_bps:g}bps{variant}_{MeanReversionStrategy.spec_id()}")
     out = run_dir(a.market, a.strategy, name)
