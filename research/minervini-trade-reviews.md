@@ -79,7 +79,7 @@ plus the switch named. 1.66 adds each change as a research switch, off: `CHEAT_M
   right: F1 and F3 hold trades through results that the rule meant to avoid. Splitting them would be a new test,
   decided now that this result is known, and is labelled that way if it runs.
 - **Rule 4 is moot.** Nothing passed, so there is no 1.67 candidate; 1.66 keeps its defaults (every switch off).
-- The US batch on D′ (#1548–1554) is still running and is judged by its own rules below.
+- The US batch on D′ (#1548–1554) is judged by its own rules below.
 
 ### The US batch on candidate D, queued 2026-11-11 — pass rules fixed before any run
 
@@ -111,6 +111,43 @@ US in the shared batch. D′ is measured, not assumed.
 4. The US configuration (D′ + what passes) is run once more together, and must again pass rule 2 against D′. A
    separate US configuration is then a per-market rule set: it needs its own entry on the Strategy page and its own
    verify, which would be a second look at 2022-onward and is labelled that way.
+
+### US D′ batch result (#1548–1554, US, optimise 2013–2021, in-sample) — D′ kept as the US base, nothing on top
+
+| Run | Setting | CAGR | Max DD | Trades | Avg R | Verdict |
+|---|---|---|---|---|---|---|
+| #1533 | Shared baseline 1.66 | −0.13% | −35.8% | 895 | +0.02R | reference |
+| #1548 | **D′** | **10.83%** | **−18.9%** | 342 | +0.43R | **Rule 1 passes**: +10.96 points, drawdown 17 points shallower |
+| #1549 | D′ + L4 | 6.12% (−4.71) | −21.7% | 329 | +0.34R | Fail |
+| #1550 | D′ + L1a (20, stop 5) | 9.57% (−1.26) | −21.6% | 331 | +0.43R | Fail |
+| #1551 | D′ + L1b (20, stop 3) | 8.20% (−2.63) | −23.2% | 339 | +0.39R | Fail |
+| #1552 | D′ + L1c (30, stop 5) | 9.01% (−1.82) | −21.8% | 341 | +0.34R | Fail |
+| #1553 | D′ + L1d (30, stop 3) | 9.46% (−1.37) | −22.9% | 338 | +0.44R | Fail |
+| #1554 | D′ + fixes | 7.47% (−3.36) | −19.7% | 353 | +0.35R | Not adopted (rule 3) |
+
+- **D′ is the US base.** It beats candidate D itself (#1410: 8.20% / −19.6%), so 1.64's two changes (S7 off, the 8%
+  stop cap) help on the lean exits too. The US problem was the exits and the index gate, not the entries: the same
+  entries lose money under the shared exits and make 10.8% a year under D′'s.
+- **Caution:** D was picked from many US exit variants in this same window, so D′'s margin is in-sample selection,
+  not a measured edge. It is a per-market rule set, so rule 4 applies: it needs its own Strategy-page entry and its
+  own verify, which is a second look at 2022-onward and is labelled that way.
+- **L4, L1 and the fixes all fail on D′**, as in the shared batch. Rule 4's combined run is D′ alone, already measured.
+
+### Split of the fixes, queued 2026-11-12 — exploratory, decided after seeing #1544–1545 and #1554
+
+The fixes ran together and cost CAGR in every batch, so they are run one switch at a time to find which one costs. This
+split was chosen **after** seeing those results, so it is exploratory, not a pre-set test. F1 and F3 are one switch
+(`RESULTS_BLACKOUT_STRICT`), so the split has two parts:
+
+| Runs | Setting |
+|---|---|
+| #1617 / #1619 | F2 alone (`FLAT_PIVOT_HIGHEST=1`), India / US, shared rules |
+| #1618 / #1620 | F1 + F3 (`RESULTS_BLACKOUT_STRICT=1`), India / US, shared rules |
+| #1621 / #1622 | F2 alone / F1 + F3, on D′ (US) |
+
+How it is read: a fix that costs less than 0.5 points in both markets is adopted, because it is a correction. A fix that
+costs more is studied trade by trade before any decision: which trades it removes or moves, and whether the old
+behaviour won by holding through results (luck the rule meant to avoid) or by a real breakout the fix misses.
 
 ## Batch review — every trade of run 4089 (India, 1.63, optimise 2013–2021, in-sample)
 
