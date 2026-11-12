@@ -1379,6 +1379,9 @@ const Studies = (() => {
     setups_ema_pullback: genericSetups("ema_pullback", "learn-strat-pullback-ma", { support: ["Fast EMA", "#ff9800"], pivot: ["Setup high", "#26a69a"] }),
     setups_ema100_trend: genericSetups("ema100_trend", "learn-strat-ma-trend", { support: ["100-day EMA", "#ff9800"], pivot: ["Setup high", "#26a69a"] }),
     setups_supertrend: genericSetups("supertrend", "learn-strat-ma-trend", { pivot: ["Upper band", "#26a69a"], support: ["Supertrend line", "#ff9800"] }),
+    // Kell's cycle has no guide of its own; its wedge pop and EMA crossback are pullbacks to moving averages
+    setups_kell_cycle: genericSetups("kell_cycle", "learn-strat-pullback-ma", { base: ["Base (base break)", "#2962ff"] }),
+    setups_minervini_coil: genericSetups("minervini_coil", "learn-strat-vcp-sepa", { base: ["Coil", "#2962ff"], pivot: ["Coil high", "#26a69a"] }),
     vol: { name: "Volume", short: "Vol", cat: "Volume", overlay: true, volume: true, needsVolume: true, params: { maLength: 20 },
       plots: [{ k: "vol", t: "Volume", c: "#26a69a", s: "hist" }, { k: "ma", t: "Volume MA", c: "#2196f3" }],
       calc: (b, p) => ({ vol: b.V, ma: sma(b.V, p.maLength), _colors: { vol: b.C.map((c, i) => (c >= b.O[i] ? "rgba(38,166,154,.45)" : "rgba(239,83,80,.45)")) } }) },
