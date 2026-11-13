@@ -166,6 +166,41 @@ behaviour won by holding through results (luck the rule meant to avoid) or by a 
 - **F2 splits by market:** almost a point in India, −1.5 and a deeper drawdown on D′.
 - Neither meets the read rule, so both go to the trade-by-trade look before any decision. Nothing adopted yet.
 
+### F1 + F3 trade by trade (#1532 vs #1618 India, #1548 vs #1622 US on D′; optimise, in-sample)
+
+Each trade of the reference run that the strict blackout removed, with the announcement dates (`financials.announcements`)
+around it. "F1" = results within 5 days up to the fill; "F3" = results within 14 days after the fill; the rest are knock-on
+(cash and slots moved). "Reaction R" = the move from the close before results to the close after, in the trade's R.
+
+| Market | Removed | Removed R | Added | Added R | Net |
+|---|---|---|---|---|---|
+| India | 24 | +5.9R | 13 | −2.9R | −8.8R of +161.8R |
+| US on D′ | 69 | +34.2R | 67 | +4.5R | −29.7R of +153.7R |
+
+| Market | Group | Trades | Win % | Median R | Avg R | Avg R without the best |
+|---|---|---|---|---|---|---|
+| India | reference run, all trades | 181 | 40% | −0.16 | +0.89 | +0.30 (without top 3) |
+| India | F1 removed | 14 | 43% | −0.71 | −0.22 | −0.42 |
+| India | F3 removed | 8 | 50% | −0.10 | +0.37 | +0.08 |
+| US | reference run, all trades | 342 | 28% | −0.57 | +0.45 | +0.30 (without top 3) |
+| US | F1 removed | 19 | 47% | −0.54 | +1.04 | +0.45 |
+| US | F3 removed | 20 | 20% | −0.86 | +0.75 | −0.14 |
+
+- **The winners did not win on the results move.** The removed trades that held through results made their R from the
+  trend after it: their results reactions add up to +5.4R in India and +9.7R in the US, against far larger totals (JAZZ
+  2013 +17.7R with a 1.0R reaction; CHDN 2017 +11.6R with 0.1R). So "luck the blackout meant to avoid" does not explain
+  the cost.
+- **It is a tail effect.** Three removed trades carry more than the whole removed total in both markets (India +11.0R of
+  +5.9R; US +42.0R of +34.2R). Without its best trade, F3's removed trades are about average in India and below it in
+  the US.
+- **F1 differs by market.** Results-day signals were poor trades in India (−0.22R average) and good ones in the US
+  (+1.04R, +0.45R without the best). Minervini buys a strong breakout on results, so F1 is not clearly a bug.
+- **The CAGR cost is out of scale with the R.** India loses 8.8R of 161.8R (5%) but 2.94 points of 10.31% CAGR: the
+  removed winners (IGL 2017, DRREDDY 2020) came early in their compounding paths.
+- **Decision: `RESULTS_BLACKOUT_STRICT` stays off.** The data do not show the old behaviour winning by luck, and the cost
+  rests on a few trend winners. F1 and F3 share one switch; if F3 alone is worth testing, splitting the switch is a new
+  exploratory run, labelled so.
+
 ## Batch review — every trade of run 4089 (India, 1.63, optimise 2013–2021, in-sample)
 
 `swing_screener.backtesting.trade_review --run 4089` applies the checks above to all 177 trades (72 won, 105 lost)
