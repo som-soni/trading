@@ -137,9 +137,10 @@
    "symbol": "HEGAM.NS",
    "entry": "2019-01-17",
    "price": 738.738,
-   "stop": 692.7,
-   "run": 1273,
-   "spec_id": "v1.16-cd2096ea"
+   "stop": 722.25,
+   "run": 4301,
+   "spec_id": "v1.21-11415136",
+   "setup": "SYMM"
   },
   {
    "strategy": "chart_pattern",
