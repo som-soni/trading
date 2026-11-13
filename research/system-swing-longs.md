@@ -17,6 +17,8 @@ exposure](system-risk-exposure.md); the stocks come from [Sectors → stocks](sy
   here: the base breakout showed little edge on its own, and the fast rebound's first pullback none (rejected).
 - The candidate execution and management rules — buy-stop at the pivot, no chasing; **scale out of a quick "tradable"
   move, hold a true leader** — wait for a strategy to confirm or replace them.
+- **Stops follow one process already** (§5.1): under the structure, sized from, 8% at most, never lowered, gaps budgeted,
+  the exit style chosen before the trade to suit the book (§5.2).
 
 ---
 
@@ -35,7 +37,8 @@ setup in §3 becomes a strategy when it can be coded; a strategy becomes the rul
 > §3, sized as a probe or at reduced risk ([risk and exposure](system-risk-exposure.md) §1), and logged.
 >
 > **Exit — TBD.** To be set from the same strategy: the initial stop, the trailing or time exit, partial sales. The
-> candidate rules are in §5. Whatever the exit, the stop is set before entry and never moved against the trade.
+> candidate rules are in §5. Whatever the exit, the stop is set before entry and never moved against the trade — the
+> process for every stop is §5.1.
 
 **Short-term is on daily bars.** A 1–5 session trade is planned at the close like any other; no position is opened and
 closed in one session. Intraday trading is a separate decision, deferred ([overview](system-overview.md) §1).
@@ -115,6 +118,53 @@ mostly sector and low beta. The setup and the feedback decide, not the list.
   tighter stop but more stop-outs. Choose the trigger timeframe by the stop width I can accept, not by which signal "works".
 
 ## 5. Management and exits — candidate rules
+
+### 5.1 Stops — the process for every trade
+
+*Status: the process I follow now, whatever the strategy (written up 13 Nov 2026, from the daily quiz). The specific exit per
+book is still TBD (§0); this fixes how a stop is set and handled, not which exit wins.* Background: [stops and
+exits](learn-risk-stops-exits.md).
+
+**The initial stop comes from the chart, before the entry.**
+
+1. **Place it just under the level that proves the idea wrong**: the base's tight area, the last contraction's low, the
+   pullback's low (each setup's stop column in §3), plus a small buffer of about 0.1 ATR so an exact touch does not fire it.
+2. **Size from the stop, never the reverse**: shares = risk ÷ (entry − stop). Then check the position cap and buy the
+   smaller of the two ([risk and exposure](system-risk-exposure.md)).
+3. **Width check, both ways.** More than **8%** away → skip the setup (the 8% stop cap, §6 "Tighter stop cap"). Inside about
+   **1 ATR** → normal daily noise will hit it; skip or wait for a tighter setup.
+4. **Never squeeze the stop to make a trade fit or to buy more shares.** A tighter stop than the structure gives is a coin
+   toss. Conviction decides *whether* to trade, not the size.
+5. **Enter it as an order** the day the position opens.
+
+**Then handle it by rule.**
+
+6. **Raise stops only by rule; never lower them.**
+7. **Budget for gaps.** A stop is not a guaranteed price: a gap below it fills at the open. In R the loss is
+   (exit − entry) ÷ (entry − stop), per share, so a gap past the stop can cost −3R or −4R. Expect about one stop in ten to
+   cost around 1.5R and an occasional −4R ([stops and exits](learn-risk-stops-exits.md) §5, §11); size so that survives.
+8. **No new position into results** (the blackout), and never an overweight position into them (§5.3).
+9. **Breakeven only late, if at all.** Moving the stop to entry at +1R scratched about 3 trades in 10 on the textbook
+   breakouts and cut the average (US +0.11R → +0.07R, India +0.35R → +0.21R); at +2R it cost little. A breakeven stop is a
+   portfolio choice (it frees open risk), not free insurance. Default: let the trailing exit reach breakeven by itself.
+10. **Choose the exit style before the trade** (§5.2), never on the day.
+
+### 5.2 Exit style by book — candidates
+
+Match the exit to how long the book plans to hold. Measured on textbook breakouts with a 2-ATR stop ([stops and
+exits](learn-risk-stops-exits.md) §6, illustrative trades, before costs):
+
+| Book | Candidate exit | What it gives |
+|---|---|---|
+| **Short-term** (1–5 sessions) | A time stop after a few sessions, or a +2R target | More wins, small ones; the +2R target raised the win rate (US 36%) and capped the best trade near +14R |
+| **Swing** (days to weeks) | Sell a third to a half **into strength** (+2R/+3R or a climax), trail the rest on a close below the 10- or 21-day average or the 20-day low | A banked piece plus room for the rare large winner — the blend in §5.3 (Kullamägi, Minervini) |
+| **Position** (months) | Close below the 50-day; after +3R, the 150-day (Minervini 1.64) | Fewer wins, rare huge ones; the 20-day-low and 50-day exits had the best average R in both markets |
+| *Volatility trail* | Chandelier: highest close since entry − 3 × ATR | In between, but sold many trades on an ordinary pullback: avg +0.03R US, +0.08R India, against +0.11R / +0.35R for the 20-day-low exit |
+
+The chandelier at 3 ATR is tight for a long trend; use it, if at all, for the short swing or the last piece after a
+climax. Whatever is chosen: paper-trade 20–30 trades in R before judging it.
+
+### 5.3 Partial profits and special cases — candidate rules
 
 The two creators disagree on partial profits, and both are right for different moves:
 
