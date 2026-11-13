@@ -25,6 +25,11 @@ and what the creators said they do.
 | **Reduced** | ½ R | One override applies, or the "uptrend, narrowing" row | The repository's progressive-exposure pilot is ½ of the risk budget (PE-02) |
 | **Probe** | ≤ 0.1 R | A setup I like on a day I don't trust — or the first trades after a correction | Luk: 0.02–0.1% of the account per attempt on a poor day for shorts |
 
+**Setting R: the tolerance check** (a Reddit post, Nov 2026, "if a loss hurts, your size is too big"). *Proposed.* When I set
+normal R, choose it so that a full stop-out does not change how I take the next trade. If a 1R loss still bothers me a
+session later, halve R. Change R as a rule from the journal (the feedback override, §4), never from one trade's feelings.
+This sets the level once; it does not make a new per-trade decision.
+
 **Why a probe tier (Luk; Minervini):** it lets me act on the setup without letting a bad tape set my loss. Luk's two stopped
 probes cost about 0.05% in all; "if it worked, then that's the killer trade". Minervini's "toes in the water" after a low is
 the same idea, scaled up as the first trades work.

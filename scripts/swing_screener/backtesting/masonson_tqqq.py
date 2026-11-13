@@ -380,6 +380,10 @@ MT_DOC = {
     ),
     # the runs the page offers beside the strategy as configured: the comparisons and the switches
     "commands": {
+        # same keys as the page's two default commands (strategies/docs.py baseline_doc), which name
+        # --market india; this runner is US-only (--market choices=[us]), so these replace them
+        "Backtest in-sample (optimise)": "python -m jobs enqueue backtest --market us --strategies masonson_tqqq --stage optimise",
+        "Verify out-of-sample (once per version)": "python -m jobs enqueue backtest --market us --strategies masonson_tqqq --stage verify",
         "Compare: synthetic 3x held throughout": "python -m jobs enqueue backtest --market us --strategies masonson_tqqq --stage optimise --bt='--mode hold3x'",
         "Compare: QQQ held throughout": "python -m jobs enqueue backtest --market us --strategies masonson_tqqq --stage optimise --bt='--mode holdqqq'",
         "Compare: buy the 3x after a 25% fall, hold": "python -m jobs enqueue backtest --market us --strategies masonson_tqqq --stage optimise --bt='--mode dd25'",

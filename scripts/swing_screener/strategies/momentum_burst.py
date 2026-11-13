@@ -160,13 +160,20 @@ class MomentumBurstStrategy(Strategy):
     )
 
     status = (
-        "NOT YET MEASURED. Stage: optimise (2013-2021, in-sample); verify has not been run. The rules were fixed "
-        "from the Learn guide's definition before its event study was run, and not changed after it. Pass "
-        "criterion, set before any backtest result, judged per market: in the optimise stage the base rules beat "
-        "the market's benchmark CAGR (positive excess) AND make a positive average R after costs. A market that "
-        "passes may go to one verify run; one that fails does not. Up-front variants, measured beside the base "
-        "and never chosen as a substitute for it: a 3-session hold (`--time-stop-bars 3`) and a 5% burst "
-        "(BURST_MIN_PCT=5)."
+        "MEASURED, OPTIMISE STAGE ONLY (2013-2021, IN-SAMPLE) -- AND IT FAILS ITS OWN TEST IN BOTH MARKETS. The "
+        "rules were fixed from the Learn guide's definition before its event study was run, and not changed "
+        "after it. Pass criterion, set before any backtest result, judged per market: in the optimise stage the "
+        "base rules beat the market's benchmark CAGR (positive excess) AND make a positive average R after "
+        "costs. A market that passes may go to one verify run; one that fails does not, so neither goes to "
+        "verify (none has been run). v1.0 base rules, optimise stage: US -2.15% CAGR, excess -16.16 points a "
+        "year, max drawdown -61.8%, Sharpe -0.01, 2,546 trades, average R -0.005; India 3.68% CAGR, excess "
+        "-9.86 (-17.37 at the standard India cost), max drawdown -32.5%, Sharpe 0.35, 1,127 trades, average R "
+        "+0.058. Variants, optimise stage, measured beside the base and never a substitute for it: a 10-session "
+        "hold (`--time-stop-bars 10`) US excess -6.73, India -8.90; selling on a close below the 20-day average "
+        "(`--exit-mode ma --ma-col sma20 --time-stop-bars 250`) US -14.47, India +3.48 (17.02% CAGR, max "
+        "drawdown -27.3%, Sharpe 1.02) -- but -0.62 at the standard India cost, in-sample, and a changed exit "
+        "is a new rule set to be judged on its own. The up-front variants, a 3-session hold "
+        "(`--time-stop-bars 3`) and a 5% burst (BURST_MIN_PCT=5), have not been run yet."
     )
     gate_docs = {
         "G1": (

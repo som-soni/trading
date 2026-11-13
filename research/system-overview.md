@@ -107,6 +107,9 @@ Three links tie them together:
 | P7 | **A creator's example is not a base rate.** Check the population before adopting a selection rule | — | "Held up best" lost to the average stock in three sell-offs ([relative strength](learn-price-rs.md) §4.3) |
 | P8 | **Entry and exit come from a tested strategy.** A creator's setup is a candidate until a strategy built on it passes verify | — | Most strategies here have not passed verify; the TBD boxes stay until one does |
 | P9 | **Leverage expresses a decision; it never makes one.** F&O is sized by its worst case, and a probe is never open-ended | SEBI: about 93% of individual F&O traders lost money, FY22–FY24 | Untested here ([F&O and leverage](system-fno-leverage.md) §6) |
+| P10 | **One job per timeframe.** Weekly sets the trend, daily finds the setup, and the entry is a buy-stop left resting. Do not flip timeframes to talk myself into a trade | Reddit post, u/bradgohtrades (Nov 2026), lessons 1 and 4 | Matches §1.2 (planned at the close on daily bars) |
+| P11 | **Waiting is a position.** No setup at its level means no order. If I have to argue for a setup, it is not one | Same post, lessons 2–4; Minervini (no chasing) | Untested as a rule. The written strategy gates are the "clear rules" |
+| P12 | **Hands off between closes.** Once the stop and exit are set, the trade is reviewed at the close, not watched intraday. Exits come from the plan, not from how a candle feels | Same post, lessons 6–7 | **Supported:** early-weakness exits lowered the average in every replay, and managed exits lost to unmanaged ones in the base-breakout strategies ([swing longs](system-swing-longs.md) §5–6; [strategy review](strategy-review-summary.md)) |
 
 ## 4. How material gets in — the three places
 
@@ -123,6 +126,7 @@ Every creator video or stream goes to three places, in this order:
 |---|---|---|
 | Martin Luk | [creator-martin-luk.md](creator-martin-luk.md) — stream of 3 Nov 2026 | Daily review (stretch, narrow vs broad, events), Shorts, Risk (probes, anti-hot-hand) |
 | Mark Minervini | [creator-mark-minervini.md](creator-mark-minervini.md) — webinar, mid-2022 | Daily review (setup supply, feedback), Swing longs (leaders in a decline), Risk (progressive exposure) |
+| u/bradgohtrades (Reddit post, Nov 2026) | None: a short text post, so no research note. An intraday forex trader; the "$10K → $291K student" claim is marketing, not evidence | Principles P10–P12; Swing longs (§5 "would I enter now?", marked rejected); Risk (§1 size by tolerance); Tools (§4 run after exit). Not used: lesson 5, trading London/New York hours, and lesson 7's 15-minute chart, both intraday |
 
 ## 5. Tools
 

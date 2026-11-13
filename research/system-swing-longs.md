@@ -134,6 +134,12 @@ The two creators disagree on partial profits, and both are right for different m
 | One to three natural reactions done, and the advance accelerates | Sell into the strength | Minervini (ANF) |
 | A new trade starts weak — a heavy-volume reversal, a close back below the pivot, or a run of down days | **Hold to the stop**; do not add, and watch it. Selling early helped the two cases that raised it (Manappuram, Marico 2018), but lowered the average in every replay (§6) | Minervini lists these as violations; measured here |
 
+**"Would I enter this right now?"** (a Reddit post, Nov 2026). The test: as a trade moves toward its stop, exit if I would not
+buy it today. *Status: rejected as an exit rule.* It is the early-weakness exit by another name, and every version of that
+lowered the average trade here (§6, "Early-weakness exits"). The stop already answers the question. A version I keep is
+narrower: at the close, if a rule in the plan is broken (results inside the blackout, a close below the exit average),
+act on the rule, not on the feeling.
+
 *Proposed decision rule:* at entry, label the trade **tradable** or **leader**. Tradable → scale out into strength; leader →
 hold and trail. Never take a partial only because a trade went fast.
 

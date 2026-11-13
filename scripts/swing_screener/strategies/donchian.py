@@ -210,14 +210,18 @@ class DonchianStrategy(Strategy):
     # Numbers are `{NAME}` placeholders of the numeric class attributes (entry_channel, ...), which
     # render_doc fills with the live values. A literal is written where the code uses a literal.
     status = (
-        "IN-SAMPLE ONLY, India only. v1.4, optimise stage (2013-2021, in-sample): India 15.15% CAGR, excess "
-        "+1.62 points a year over its benchmark, max drawdown -34.3%, Sharpe 0.83; US -0.09% CAGR, excess "
-        "-14.10, max drawdown -51.8%. India's margin is small and in-sample; verify not run, and no pass "
-        "criterion has been written for it yet -- write one before any India verify run. Variant, optimise "
-        "stage: the market filter lifts India to excess +2.49 with a deeper drawdown, -44.6%. LEGACY (v1.1, "
-        "full period from 2013 before stages, measured 2026-10-13): India 7.68% CAGR against 11.7% (max "
+        "IN-SAMPLE ONLY -- NO RETURN EDGE IN EITHER MARKET. v1.5, optimise stage (2013-2021, in-sample), with "
+        "its own backtest_args: India 11.85% CAGR, excess -1.69 points a year over its benchmark (-2.74 at the "
+        "standard India cost), max drawdown -29.4% against -38.3%, Sharpe 0.69, 269 trades; US 3.61% CAGR, "
+        "excess -10.40, max drawdown -42.5% against -34.1%, Sharpe 0.27, 405 trades. Verify not run, and no "
+        "pass criterion has been written yet -- write one before any verify run. Variant, optimise stage: the "
+        "market filter (`--market-filter`) lifts India to 17.23% CAGR, excess +3.70 (+2.83 at the standard "
+        "cost), Sharpe 0.99, with a deeper drawdown, -41.8%; US to excess -4.70, drawdown -46.2%. The v1.4 "
+        "optimise figures (India excess +1.62) predate v1.5's fill-timing fix and are not comparable. LEGACY "
+        "(v1.1, full period from 2013 before stages, measured 2026-10-13): India 7.68% CAGR against 11.7% (max "
         "drawdown -44.2%), US 6.53% against 12.8% (max drawdown -49.3%). Signal selection among tied breakouts "
-        "is the weak point: the ranking variants move the result more than any exit."
+        "is the open question: in the v1.4 runs the ranking variants moved the result more than any exit, by "
+        "margins not yet tested against path noise."
     )
     gate_docs = {
         "G1": (

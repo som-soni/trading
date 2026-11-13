@@ -104,6 +104,12 @@ The only part whose history can't be rebuilt later, so it should start soon.
 | **Trade** | Market, symbol, side, entry and exit (date, price, size), **the stop planned at entry** (no stop, no R), setup code, strategy if one produced it | Net R of the last 10 trades and losses in a row (the feedback rule); the month's result (the hot-streak rule) |
 | **Daily call** | Rung, bias, risk tier, hunt and events, as I set them; which rules fired; a note | Grading my calls against what followed; checking whether override days actually lost less |
 
+**Run after exit** (proposed; a Reddit post, Nov 2026, lesson 10). For each closed trade, the best and worst move *after*
+the exit at 5, 20 and 60 sessions, in R, computed from stored closes, so I enter nothing by hand. A pattern of big runs
+after exit says my exits are too early. Fix it with a tested exit rule (the 150-day or 50-day trend exit, already measured
+here), not with the post's ad-hoc "leave 10% to run". The strategies' backtest trades could get the same column, to compare
+my exits with the rules'.
+
 Entry: a form on Today and an import of the broker's tradebook CSV. The broker module reads holdings, positions and margins
 only. Letting it also read orders and trades would still be read-only, but it widens a boundary set on purpose, so it
 would be its own decision.
