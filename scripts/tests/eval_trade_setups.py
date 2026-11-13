@@ -110,8 +110,9 @@ def check(c: dict) -> dict:
     cover = [s for s in S if s["base_from"] <= c["entry"] <= s["to"]]
     kinds = c.get("kinds", KINDS.get(c["strategy"], ["pass"]))
     good = [s for s in cover if s["kind"] in kinds]
-    # as the chart picks it (studies.js ownerMap): the setup judged on the traded bar, else the latest passing
-    own = next((s for s in cover if s.get("anchored")), None) or (good or cover or [None])[-1]
+    # as the chart picks it (studies.js ownerMap): the LAST setup judged on the traded bar (`.at(-1)`: a power play
+    # drawn beside the VCP or flat base it grew from is listed after it), else the latest passing, else the latest
+    own = ([s for s in cover if s.get("anchored")] or [None])[-1] or ([s for s in cover if s["kind"] != "fail"] or cover or [None])[-1]
     if own is None:
         out["fails"].append(f"no setup covers the fill {c['entry']} ({len(S)} setups)")
         return out

@@ -6,7 +6,8 @@ layer draws that trade where the run made it. When the rules change (a new spec_
 replaces the strategy's cases in one market with a seeded sample of a run of the CURRENT rules: the current
 spec_id, or a run of the version the strategy pins as its `signal_version` -- a version bump that changed only
 what happens after the scan keeps the scan, and the layer draws the scan (minervini 1.52 changed only the results
-blackout; its 1.51 runs are what the layer draws). It refuses a run of any other spec_id, and leaves every other
+blackout; its 1.51 runs are what the layer draws), or a run of a version since then with the current fingerprint
+(the bumps between only added switches that are off). It refuses a run of any other spec_id, and leaves every other
 case untouched, including the reviewed symbols kept for other strategies.
 
 `--per-setup K` samples K trades of each setup instead of N at random: a plain sample of a run dominated by one
@@ -39,8 +40,18 @@ def drawable(strat, spec_id: str | None) -> bool:
     """Is a run of `spec_id` on the rules the layer now draws: the current spec_id, or the version the strategy
     pins as its signal_version (the scan unchanged since)?"""
     pin = getattr(strat, "signal_version", None)
-    return bool(spec_id) and (spec_id == strat.spec_id() or (pin is not None and pin != strat.version
-                                                               and spec_id.split("-")[0] == f"v{pin}"))
+    if not spec_id:
+        return False
+    if spec_id == strat.spec_id() or (pin is not None and pin != strat.version and spec_id.split("-")[0] == f"v{pin}"):
+        return True
+    # a version between signal_version and now with the current fingerprint: the bumps since only added switches
+    # that are off, or rules for one market (minervini 1.65-1.67) -- a scan change would have moved signal_version
+    ver, _, fp = spec_id.partition("-")
+    num = lambda v: tuple(int(x) for x in v.lstrip("v").split("."))
+    try:
+        return fp == strat.spec_id().partition("-")[2] and num(ver) >= num(pin or strat.version)
+    except ValueError:
+        return False
 
 
 def current_run(strat, strategy: str, market: str) -> int | None:
