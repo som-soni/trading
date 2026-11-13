@@ -118,6 +118,9 @@ _US = [
            "20y+ Treasuries (TLT)", expense_ratio=0.0015, note="2002-07 onward"),
     Series("GOLD", "GLD", "us", "gold", True,
            "Gold (GLD)", expense_ratio=0.0040, note="2004-11 onward"),
+    # Gold miners, the instrument of the Boucher Gold-Silver-GMI model (backtesting/boucher_bonds_gold.py).
+    Series("GOLD_MINERS", "GDX", "us", "equity", True,
+           "Gold miners (GDX)", expense_ratio=0.0051, note="2006-05 onward"),
     # 13-week T-bill YIELD in percent, not a price. 1960 onward, so the cash
     # leg is real data for the whole of every US window here.
     Series("CASH_YIELD", "^IRX", "us", "yield", False,

@@ -352,7 +352,9 @@ def _funds(ctx: Ctx) -> None:
 def _indicators(ctx: Ctx) -> None:
     """Growth, inflation, consumption, housing and credit indicators (marketdata/indicators.py): CPI,
     GDP, industrial production, durable goods, retail and vehicle sales, housing starts/permits, the
-    mortgage rate, bank credit and the Baa credit spread — from FRED's free CSV endpoint; for India also
+    mortgage rate, bank credit, the Baa credit spread, capacity utilization, unemployment, consumer
+    sentiment and the monthly Baa yield (the last four for the Boucher stock-timing switches) — from
+    FRED's free CSV endpoint; for India also
     MoSPI's IIP API (general index, consumer durables/non-durables) and Vahan vehicle registrations."""
     from swing_screener.marketdata import indicators
     out = indicators.refresh(ctx.market)
@@ -1148,7 +1150,7 @@ JOBS: dict[str, Job] = {j.name: j for j in [
         "the first run backfills history (marketdata/funds.py)", "daily", True, _funds),
     Job("indicators", "data", "growth, inflation, consumption, housing and credit indicators: CPI, GDP, industrial "
         "production, durable goods, retail and vehicle sales, housing starts/permits, mortgage rate, bank credit, "
-        "Baa credit spread — FRED; India IIP consumer groups (MoSPI) and vehicle registrations (Vahan) "
+        "Baa credit spread, capacity utilization, unemployment, consumer sentiment, Baa yield — FRED; India IIP consumer groups (MoSPI) and vehicle registrations (Vahan) "
         "(marketdata/indicators.py)", "daily", True, _indicators),
     Job("flows", "data", "FII/DII daily net institutional equity flows: NSE's provisional cash-market activity "
         "(marketdata/flows.py, India only)", "daily", True, _flows),

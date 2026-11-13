@@ -134,6 +134,8 @@ def portfolio_strategies() -> dict:
     so a module-level import would be circular.
     """
     from ..backtesting.baseline import MomentumBaselineStrategy, VolScaledMomentumStrategy
+    from ..backtesting.boucher_bonds_gold import BoucherBondsGoldStrategy
+    from ..backtesting.boucher_stocks import BoucherStocksStrategy
     from ..backtesting.combination import CombinationStrategy
     from ..backtesting.dual_momentum import DualMomentumStrategy
     from ..backtesting.etf_swing import EtfSwingStrategy
@@ -153,7 +155,8 @@ def portfolio_strategies() -> dict:
                                 MeanReversionStrategy, PeadStrategy, FnoIncomeStrategy,
                                 MaTrendStrategy, CombinationStrategy, QualityMomentumStrategy,
                                 Stage4ShortsStrategy, TurtleTrendStrategy, EtfSwingStrategy,
-                                ParabolicShortStrategy, MasonsonTqqqStrategy)}
+                                ParabolicShortStrategy, MasonsonTqqqStrategy,
+                                BoucherStocksStrategy, BoucherBondsGoldStrategy)}
 
 
 def all_specs() -> dict:

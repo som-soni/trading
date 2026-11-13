@@ -11,7 +11,9 @@ quarterly cadence — no resampling) under the market each one describes. Each i
                       sales (RSAFS, and its staples/discretionary split RSDBS/RSGMS), light-vehicle
                       sales (TOTALSA), durable goods orders (DGORDER), housing starts and permits
                       (HOUST, PERMIT), the 30-year mortgage rate (MORTGAGE30US), bank credit (TOTLL)
-                      and the Baa corporate credit spread (BAA10Y)
+                      and the Baa corporate credit spread (BAA10Y); capacity utilization (TCU), the
+                      unemployment rate (UNRATE), Michigan consumer sentiment (UMCSENT) and the
+                      monthly Baa corporate yield (BAA)
                india  real GDP growth (INDGDPRQPSMEI) and real private consumption growth
                       (NAEXKP02INQ659S) — both already YoY rates
     mospi_iip  MoSPI's own IIP API (api.mospi.gov.in, JSON, no key): the general index and the
@@ -112,6 +114,17 @@ INDICATORS: dict[str, list[Indicator]] = {
                   "TOTLL", "Total credit extended by US banks; a slowdown here tightens financial conditions economy-wide, ahead of the effect showing up elsewhere."),
         Indicator("US_CREDIT_SPREAD", "US Baa corporate yield spread over 10-year Treasury", "US credit spread (Baa)", "credit", "%", "daily", False,
                   "BAA10Y", "Widens when lenders demand more to hold lower-grade corporate debt — an early stress signal for financials and credit-sensitive sectors."),
+        # Four series the Boucher stock-timing switches read (backtesting/boucher_stocks.py). FRED dates a
+        # monthly value at the first of its month; the strategy applies each one's release lag itself.
+        Indicator("US_CAPACITY_UTIL", "US capacity utilization, total industry", "US capacity utilization", "growth", "% of capacity", "monthly", False,
+                  "TCU", "How much of the country's productive capacity is in use; readings in the high 80s mean an economy running hot, "
+                         "with producers bidding for scarce resources."),
+        Indicator("US_UNEMPLOYMENT", "US civilian unemployment rate", "US unemployment", "growth", "%", "monthly", False,
+                  "UNRATE", "The share of the labour force out of work; released the first Friday after the month."),
+        Indicator("US_CONSUMER_SENTIMENT", "University of Michigan consumer sentiment", "US consumer sentiment", "consumption", "index (1966Q1=100)", "monthly", False,
+                  "UMCSENT", "How households feel about their finances and the economy; quarterly before 1978, monthly after."),
+        Indicator("US_BAA_YIELD", "Moody's Baa corporate bond yield (monthly average)", "US Baa yield", "credit", "%", "monthly", False,
+                  "BAA", "What lower-grade investment-grade companies pay to borrow long term; a long history (1919 on) of corporate bond pricing."),
     ],
     "india": [
         # a new key, not IN_CPI: that one holds the old FRED mirror's index levels, these are inflation rates
