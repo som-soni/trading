@@ -153,6 +153,19 @@ How it is read: a fix that costs less than 0.5 points in both markets is adopted
 costs more is studied trade by trade before any decision: which trades it removes or moves, and whether the old
 behaviour won by holding through results (luck the rule meant to avoid) or by a real breakout the fix misses.
 
+**Split results so far (optimise 2013–2021, in-sample; #1633–1634 pending):**
+
+| Fix | India, shared rules | US on D′ | US, shared rules |
+|---|---|---|---|
+| None (reference) | 10.31% / −18.0% (#1532) | 10.83% / −18.9% (#1548) | −0.13% / −35.8% (#1533) |
+| F2 alone (`FLAT_PIVOT_HIGHEST=1`) | 11.24% (+0.93) / −18.8%, 169 trades (#1617) | 9.35% (−1.48) / −23.3%, 344 trades (#1621) | pending (#1633) |
+| F1 + F3 (`RESULTS_BLACKOUT_STRICT=1`) | 7.37% (−2.94) / −16.3%, 170 trades (#1618) | 8.54% (−2.29) / −18.4%, 340 trades (#1622) | pending (#1634) |
+
+- **F1 + F3 carries most of the fixes' cost**, in both markets. The trades it removes (signals on results day, resting
+  orders filling into results) made money in this window.
+- **F2 splits by market:** almost a point in India, −1.5 and a deeper drawdown on D′.
+- Neither meets the read rule, so both go to the trade-by-trade look before any decision. Nothing adopted yet.
+
 ## Batch review — every trade of run 4089 (India, 1.63, optimise 2013–2021, in-sample)
 
 `swing_screener.backtesting.trade_review --run 4089` applies the checks above to all 177 trades (72 won, 105 lost)
