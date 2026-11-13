@@ -724,8 +724,13 @@ class StageAnalysisStrategy(Strategy):
         "from trades bought while the index read Stage 4; no exit tried beat the trend exit on return; an audit of "
         "the losing trades (research/audit-stage-analysis-losers.md) found no stage-detection error worth a rule. "
         "It is the only WEEKLY strategy here. Version 2.12 adds G10 (Stage 2's age), off by default so it trades as "
-        "2.11; its optimise A/B, with a breakeven stop and more US slots, is queued "
-        "(research/stage-analysis-2.12-variants.md)."
+        "2.11 (its optimise baseline reproduced 2.11's figures). Its optimise A/B (in-sample, criteria fixed first in "
+        "research/stage-analysis-2.12-variants.md) failed every variant. G10 at 26 / 39 / 52 weeks lifted US average R "
+        "from +0.54 to +0.63 / +0.59 / +0.56 (the bar was +0.15) and India from +0.26 to +0.29 / +0.28 / +0.26; the "
+        "26-week US run was the best (10.42% CAGR, Sharpe 0.96, max drawdown -19.2%) but no value cleared the bar. A "
+        "breakeven stop at +2R changed almost nothing in the US (total R 79.7 to 79.2) and hurt India (22.7 to 18.0, "
+        "profit factor 1.41 to 1.32). 13 US slots added 53 weaker trades: average R +0.39, Sharpe 0.74, max drawdown "
+        "-24.2%. G10 stays off."
     )
     gate_docs = {
         "G1": "H1: the daily close is above the 200-day average.\n\n"
