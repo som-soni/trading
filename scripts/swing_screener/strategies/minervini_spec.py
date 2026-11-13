@@ -2144,6 +2144,10 @@ class MinerviniSpecStrategy(Strategy):
         corporate_actions.CAVEAT_TRADED,
     )
     status = (
+        "v1.67 PASSED verify (US), 2022-01-01 to 2026-11-13, a SECOND look at those years (run #1632): 9.38% CAGR "
+        "(SPY held: 10.03%, excess -0.64 points, reported only), max drawdown -19.1% (SPY -25.4%), 170 trades, 26% won, "
+        "+0.38R a trade, profit factor 1.81 -- passes all three conditions. The same years under the shared rules "
+        "(1.64 verify): -3.36% / -17.4% over 400 trades. Not a clean hold-out: D was picked after 1.64's verify. "
         "v1.67 adds the US's own rules (lean exits, small-cap market gate; see the note above the tabs); India's are "
         "unchanged and its 1.64 verify stands. US verify criterion, written 2026-11-12 before the run (2022-01-01 to "
         "today, once): v1.67 in the US passes only if (1) CAGR is above 0, (2) the average trade is above 0R and "
