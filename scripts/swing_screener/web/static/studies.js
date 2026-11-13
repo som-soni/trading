@@ -1372,13 +1372,8 @@ const Studies = (() => {
     setups_kullamagi: genericSetups("kullamagi", "learn-strat-kullamagi", { base: ["The rest", "#2962ff"], pivot: ["Rest high", "#ff9800"] }),
     setups_momentum_burst: genericSetups("momentum_burst", "learn-strat-momentum-burst", { base: ["Quiet sessions", "#2962ff"],
       tight: ["Burst day", "#ff9800"], pivot: ["Burst threshold", "#26a69a"] }),
-    setups_delivery_breakout: genericSetups("delivery_breakout", "learn-strat-canslim-breakout", { base: ["Delivery day", "#2962ff"],
-      pivot: ["Buy-stop", "#26a69a"], support: ["Delivery day's low", "#ef5350"], tight: ["52-week high", "#ff9800"] }),
     setups_earnings_gaps: genericSetups("earnings_gaps", "learn-strat-earnings-gaps", { base: ["Results reaction", "#2962ff"],
       tight: ["Flag", "#ff9800"], pivot: ["Buy-stop", "#26a69a"], support: ["Close before the news", "#ef5350"] }),
-    setups_ema_pullback: genericSetups("ema_pullback", "learn-strat-pullback-ma", { support: ["Fast EMA", "#ff9800"], pivot: ["Setup high", "#26a69a"] }),
-    setups_ema100_trend: genericSetups("ema100_trend", "learn-strat-ma-trend", { support: ["100-day EMA", "#ff9800"], pivot: ["Setup high", "#26a69a"] }),
-    setups_supertrend: genericSetups("supertrend", "learn-strat-ma-trend", { pivot: ["Upper band", "#26a69a"], support: ["Supertrend line", "#ff9800"] }),
     // Kell's cycle has no guide of its own; its wedge pop and EMA crossback are pullbacks to moving averages
     setups_kell_cycle: genericSetups("kell_cycle", "learn-strat-pullback-ma", { base: ["Base (base break)", "#2962ff"] }),
     setups_minervini_coil: genericSetups("minervini_coil", "learn-strat-vcp-sepa", { base: ["Coil", "#2962ff"], pivot: ["Coil high", "#26a69a"] }),

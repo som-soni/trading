@@ -73,9 +73,32 @@ def test_fill_rebalance() -> None:
           all(r["rebalance_id"] == 7 and r["trade_date"] == "2026-11-03" for r in rows))
 
 
+def test_ma_trend_selection() -> None:
+    """The ma_trend paper book's monthly decision is the backtest's: at every month-end, the share of
+    sleeves holding equals the share `faber` holds on the same series, cut at that close."""
+    print("the ma_trend live selection")
+    import numpy as np
+    from swing_screener.backtesting import ma_trend as mt, rotation
+    idx = pd.bdate_range("2012-01-02", "2020-12-31")
+    rng = np.random.default_rng(7)
+    close = pd.Series(100 * np.exp(np.cumsum(rng.normal(0.0002, 0.012, len(idx)))), index=idx)
+    zero = pd.Series(0.0, index=idx)
+    held = {n: mt.faber("us", "2013-06-01", months=n, preloaded=close, capital=1.0, cash_rate=zero, quote=close)[2]
+            for n in mt.FABER_LOOKBACKS}
+    ends = rotation.rebalance_dates(idx, pd.Timestamp("2013-06-01"), mt.REBALANCE)
+    bad = [d for d in ends
+           if abs(sum(mt.current_selection("us", close=close, upto=d)["weights"].values())
+                  - sum(int(held[n].loc[d]) for n in mt.FABER_LOOKBACKS) / len(mt.FABER_LOOKBACKS)) > 1e-9]
+    check(f"the share held matches faber at all {len(ends)} month-ends", not bad, str(bad[:3]))
+    states = {round(sum(mt.current_selection("us", close=close, upto=d)["weights"].values()), 2) for d in ends}
+    check("the synthetic path exercises partial holdings, not only all-in and all-out",
+          len(states - {0.0, 1.0}) > 0, str(states))
+
+
 def main() -> int:
     test_equity_curve()
     test_fill_rebalance()
+    test_ma_trend_selection()
     print(f"\n{'FAILED: ' + ', '.join(FAILS) if FAILS else 'paper books add up'}")
     return 1 if FAILS else 0
 

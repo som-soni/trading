@@ -51,11 +51,8 @@ from .breakout import BreakoutStrategy
 from .chart_pattern import ChartPatternCupStrategy, ChartPatternStrategy
 from .chart_pattern_spec import ChartPatternSpecStrategy
 from .darvas import DarvasStrategy
-from .delivery_breakout import DeliveryBreakoutStrategy
 from .donchian import DonchianStrategy
 from .earnings_gaps import EarningsGapStrategy
-from .ema100_trend import Ema100TrendStrategy
-from .ema_pullback import EmaPullbackStrategy
 from .kell_cycle import KellCycleStrategy
 from .kullamagi import KullamagiStrategy
 from .minervini_coil import MinerviniCoilStrategy
@@ -63,7 +60,6 @@ from .minervini_spec import MinerviniSpecStrategy
 from .momentum_burst import MomentumBurstStrategy
 from .rs_leaders import RsLeadersStrategy
 from .stage_analysis import StageAnalysisStrategy
-from .supertrend import SupertrendStrategy
 from .trend_pullback import TrendPullbackStrategy
 
 _REGISTRY: dict[str, Strategy] = {}
@@ -84,12 +80,8 @@ register(MinerviniSpecStrategy())
 register(MinerviniCoilStrategy())   # a variant: Minervini with the contraction gauge's breakout as its setup
 register(RsLeadersStrategy())
 register(StageAnalysisStrategy())
-register(SupertrendStrategy())
 register(KullamagiStrategy())
 register(MomentumBurstStrategy())
-register(EmaPullbackStrategy())
-register(DeliveryBreakoutStrategy())
-register(Ema100TrendStrategy())
 register(KellCycleStrategy())
 
 # Superseded implementations, deliberately NOT registered: each covered the same
@@ -104,6 +96,23 @@ register(KellCycleStrategy())
 # These two stay imported because they are still CALLED: screening/find_pattern.py
 # builds a ChartPatternStrategy directly, since its detector vocabulary is the one
 # that tool reports in.
+#
+# Retired 2026-11-13, by the owner's decision after the strategy family reviews
+# (research/strategy-review-summary.md, "Retire now"): each showed no edge in the optimise stage
+# (2013-2021) after its trials, and its method has no strong documented record that a more faithful
+# version could recover. Unregistered, so the screener, the close routine, backtests and the
+# Strategies page no longer run or list them; their past runs stay in report_runs. The modules stay
+# for their history and because supertrend's ATR_PERIOD / MULTIPLIER still parameterise the
+# `--exit-mode supertrend` exit (backtesting/portfolio_sim.py). Re-registering one is a decision,
+# with a new optimise baseline first.
+#
+#   EmaPullbackStrategy       (ema_pullback)       -- Sharpe 0.13 US / -0.06 India; the setup did worse than its own screen
+#   SupertrendStrategy        (supertrend)         -- US picks at the 3rd percentile of random entries; traded signals
+#                                                     did worse than skipped ones in both markets
+#   Ema100TrendStrategy       (ema100_trend)       -- weekly + daily 100 EMA trade (video notes), built faithfully:
+#                                                     excess -5.05 points US / -10.02 India
+#   DeliveryBreakoutStrategy  (delivery_breakout)  -- India delivery-% breakout: 106 trades, -0.02R, 15th percentile
+#                                                     of random entries
 #
 # MinerviniStrategy was deleted (2026-10-16). It looked unused, but minervini_spec
 # imported it for one method -- `prefilter_row`, the row-wise Trend Template that
@@ -189,8 +198,8 @@ __all__ = [
     "Decision", "PlanChoice", "Strategy", "StrategyResult", "TradePlan",
     "TrendPullbackStrategy", "BreakoutStrategy", "DonchianStrategy", "EarningsGapStrategy",
     "ChartPatternStrategy", "ChartPatternCupStrategy", "ChartPatternSpecStrategy",
-    "MinerviniSpecStrategy", "StageAnalysisStrategy", "KullamagiStrategy", "EmaPullbackStrategy",
-    "MomentumBurstStrategy", "DeliveryBreakoutStrategy", "KellCycleStrategy",
+    "MinerviniSpecStrategy", "StageAnalysisStrategy", "KullamagiStrategy",
+    "MomentumBurstStrategy", "KellCycleStrategy",
     "portfolio_strategies", "all_specs",
     "register", "get_strategy", "list_strategies", "describe_strategies",
     "DEFAULT_STRATEGY",

@@ -103,7 +103,7 @@ def kind_of(strategy: str) -> str:
     from ..strategies import _REGISTRY, portfolio_strategies
     if strategy in _REGISTRY:
         return "signal"
-    if strategy in ("momentum_dual_combo", "dual_momentum"):
+    if strategy in ("momentum_dual_combo", "dual_momentum", "ma_trend"):
         return strategy
     cls = portfolio_strategies().get(strategy)
     if cls is not None and hasattr(cls, "lookback") and getattr(cls, "live_selection", True) is not False:
@@ -185,6 +185,10 @@ def _targets(strategy: str, market: str, held: dict) -> tuple[str, str | None, d
         rows = [r for r in sel.get("rows", []) if r.get("held") and r.get("weight_pct")]
         tot = sum(r["weight_pct"] for r in rows) or 1.0
         return sel.get("as_of"), sel.get("spec_id"), {r["symbol"]: r["weight_pct"] / tot for r in rows}
+    if k == "ma_trend":
+        from . import ma_trend
+        sel = ma_trend.current_selection(market, upto=sessions(market)[-1])
+        return sel["as_of"], sel["spec_id"], sel["weights"]
     if k == "dual_momentum":
         from . import dual_momentum as dm
         cls = portfolio_strategies()["dual_momentum"]

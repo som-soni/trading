@@ -175,6 +175,41 @@ def ensemble(market: str, start: str, lookbacks: tuple = FABER_LOOKBACKS, cost_b
     return tdf, eq, held, cash, sum(p[4] for p in parts), caveats + rate_notes
 
 
+def current_selection(market: str, lookbacks: tuple = FABER_LOOKBACKS, close: pd.Series | None = None,
+                      upto=None) -> dict:
+    """What the index rule holds on the latest stored close, for a paper book (backtesting/paper.py).
+
+    The same decision `faber` makes on a month-end: the holdable series' month-end closes
+    (`rotation.rebalance_dates`, whose last entry is the latest session), each sleeve holding while the
+    latest close is above its own average of `n` month-end closes. The book's weight on the index is
+    the share of sleeves holding: 0, 1/4 ... 1. The backtest lets each sleeve drift between switches,
+    while the paper book resets to the share each month; `ensemble`'s docstring measures that
+    difference at under 0.1pp of CAGR.
+
+    What it holds is the benchmark's TRADED price (`benchmark_ticker`: SPY, the Nifty 500 level), as the
+    paper ledger can only price stored bars; the decision itself is read on the total-return series,
+    as the backtest's is. Index mode only: stocks mode has no paper book. `upto` cuts the series at the
+    paper job's latest session, since the holdable series can be stored a session ahead of it.
+    """
+    cfg = MARKETS[market]
+    if close is None:
+        close = holdable(market)[0]
+    close = close.dropna().sort_index()
+    if upto is not None:
+        close = close.loc[:pd.Timestamp(upto)]
+    monthly = close.reindex(rotation.rebalance_dates(close.index, close.index[0], REBALANCE)).dropna()
+    last = float(monthly.iloc[-1])
+    sleeves = []
+    for n in lookbacks:
+        avg = monthly.iloc[-n:].mean() if len(monthly) >= n else float("nan")
+        sleeves.append({"months": n, "average": round(float(avg), 4) if avg == avg else None,
+                        "held": bool(avg == avg and last > avg)})
+    share = sum(s["held"] for s in sleeves) / len(lookbacks)
+    sym = cfg.benchmark_ticker
+    return {"as_of": str(close.index[-1].date()), "spec_id": MaTrendStrategy.spec_id(), "close": round(last, 4),
+            "sleeves": sleeves, "weights": {sym: share} if share > 0 else {}}
+
+
 def _index_close(market: str, series: str | None = None) -> pd.Series:
     cfg = MARKETS[market]
     tkr = cfg.broad_index_symbols.get(series, series) if series else cfg.benchmark_ticker
@@ -443,7 +478,14 @@ class MaTrendStrategy(PortfolioStrategy):
     status = MA_DOC["status"]
     thesis = MA_DOC["thesis"]
     how_it_works = tuple(MA_DOC["how_it_works"])
-    caveats = tuple(MA_DOC["caveats"]) + ("Stocks mode only (the index holds no single stock): " + corporate_actions.CAVEAT_HELD,)
+    caveats = tuple(MA_DOC["caveats"]) + (
+        "Stocks mode only (the index holds no single stock): " + corporate_actions.CAVEAT_HELD,
+        "Paper book (index mode): decided on the same month-end close as the backtest (the share of "
+        "sleeves holding), but filled at the NEXT session's open on the traded index price -- SPY, or the "
+        "Nifty 500 level in India -- with idle cash earning nothing, where the backtest acts at the "
+        "month-end close on the total-return series and pays the cash rate. Expect the paper record to "
+        "trail the backtest by the dividends and the interest.",
+    )
     entry_rules = tuple(MA_DOC["entry_rules"])
     exit_rules = tuple(MA_DOC["exit_rules"])
 
