@@ -209,6 +209,35 @@ around it. "F1" = results within 5 days up to the fill; "F3" = results within 14
   rests on a few trend winners. F1 and F3 share one switch; if F3 alone is worth testing, splitting the switch is a new
   exploratory run, labelled so.
 
+### F2 trade by trade (#1532 vs #1617 India, #1548 vs #1621 US on D′, #1533 vs #1633 US shared; optimise, in-sample)
+
+F2 makes a flat base's pivot (S6 / S8) its highest high through the bar judged, instead of its last confirmed swing high.
+Each run's trades were matched with its reference run by symbol and entry date. A removed trade with an added one in the
+same symbol within 30 days is **moved** (the same base, bought at the raised pivot). The rest are **removed** or
+**added** outright: bases F2 refuses (too deep once the pivot is raised), bases that never reached the higher pivot, and
+knock-on trades (cash and slots moved).
+
+| Rule set | R, reference → F2 | P&L, reference → F2 | Moved: R before → after | Removed outright | Added outright |
+|---|---|---|---|---|---|
+| India | +161.8R → +137.1R | 2.83M → 3.21M | 12 trades, +5.6R → +2.8R | 34, +10.6R | 22, −3.5R |
+| US on D′ | +153.7R → +157.1R | 76.1k → 61.8k | 32 trades, +31.2R → +10.6R | 128, +29.7R | 130, +61.8R |
+| US shared | +19.8R → −24.1R | −0.6k → −5.9k | 128 trades, +12.8R → −8.7R | 212, −1.2R | 238, −16.1R |
+
+- **The direct effect is negative in all three.** The moved trades are F2 itself: the same base, usually bought a few
+  sessions later and up to 4% higher at the raised pivot (a few match at the same price or lower). They lose 2.8R in
+  India, 20.6R on D′ and 21.5R on the shared rules. The later, higher entries give back the start of the move: BAH
+  12.7R → 8.7R, P (Pandora) 8.7R → −1.0R, NOW 3.5R → −1.0R, IGL 6.1R → 3.2R.
+- **India's +0.93 CAGR is a path effect, not better trades.** India's R *falls* by 24.7R (15%) while its P&L rises 13%.
+  The removed trades include FLUOROCHEM 2021 (+18.1R); without it the outright-removed flat bases lose 9R, so F2 refuses
+  some losers, but the gain in money comes from which trades compound when, not from the rule.
+- **The US outright sets are dominated by single trades:** PCRX 2013 (+28.3R) among the D′ additions, JAZZ 2013
+  (+17.7R) and RH 2020 (+13.8R) among the removals. Neither side shows a pattern beyond them.
+- **The "bug" was an earlier, lower entry that worked.** The reviews (MARICO, STAR, ZEEL) read a close through a level
+  the stock had already poked above as a false breakout. Across every flat base it is a buy inside the top of the base,
+  ahead of the highest high, and it earns more R than waiting for that high.
+- **Decision: `FLAT_PIVOT_HIGHEST` stays off.** It fails the read rule in two of three rule sets, and its one gain
+  (India) comes with lower R. The reviewed losers stay lessons of a single trade each.
+
 ## Batch review — every trade of run 4089 (India, 1.63, optimise 2013–2021, in-sample)
 
 `swing_screener.backtesting.trade_review --run 4089` applies the checks above to all 177 trades (72 won, 105 lost)
