@@ -407,8 +407,10 @@ class QualityMomentumStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "quality_momentum"
-    version = "1.6"
+    version = "1.7"
     changelog = (
+        ("1.7", "2026-11-14",
+         "The loop it shares with momentum_baseline (1.5): The turnover floor values every session of its 20-day window on today's price basis (corporate_actions.traded_value), from the momentum_baseline India review of 2026-11-14. A credited special dividend or demerger drops the price but not the shares traded before it, so the plain mean of close x volume kept the pre-ex sessions at the pre-ex price for 20 sessions. AURUM (ex-Majesco) went ex a 98.8% special dividend on 2020-12-23 (Rs 717 -> 8.88); on 2020-12-31 the floor read Rs 121 cr a day while the stock traded Rs 8 lakh, in a locked upper circuit. Pre-ex sessions are now scaled by the same ratio as the price, and only for actions up to the session (point in time), as a split already is: AURUM reads Rs 1.4 cr there. A session whose window spans no credited ex-date is unchanged to the bit. In memory on the optimise stage this run is unchanged in India (8.53%, 151 trades); US unchanged too (14.98%, 443 trades). Bumped because the floor's reading changed for every stock in the 20 sessions after a credited action. Bumped by hand: no numeric constant moved."),
         ("1.6", "2026-11-08",
          "The default is the filings_only variant: ROE and sales growth only, no debt or free-cash-flow test. "
          "Picked on 2026-11-07 by a rule fixed before the post-backfill optimise runs (largest US margin over "

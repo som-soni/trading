@@ -430,6 +430,44 @@ def pit_scale(raw_close: pd.Series, adj_close: pd.Series) -> pd.Series:
     return (raw_close / adj_close).where(adj_close > 0)
 
 
+def traded_value(close: pd.Series, volume: pd.Series, cr: pd.DataFrame | None, window: int = 20,
+                 min_periods: int | None = None) -> pd.Series:
+    """One symbol's trailing `window`-session mean of daily traded value (close x volume), every session
+    of the window valued on bar t's own price basis -- the liquidity a turnover floor should read.
+
+    The stored bars are split-adjusted, so close x volume already holds steady across a split (price /5,
+    shares x5). A credited special dividend or demerger (`cr`, `credits` rows for this symbol) is not
+    adjusted: on its ex-date the price falls by the payout while the shares traded before it stay as they
+    were. A plain mean of close x volume then keeps valuing those pre-ex shares at the pre-ex price for
+    `window` sessions. AURUM (ex-Majesco) went ex a 98.8% special dividend on 2020-12-23, ₹717 -> ₹8.88: on
+    2020-12-31 the plain mean read ₹121 cr a day, while the stock traded ₹8 lakh. Here a pre-ex session's
+    traded value is scaled by the same ratio the price was, (prior close - cash) / prior close, for every
+    action dated after it and up to t -- point in time (no action after t enters), exactly as a split
+    would be -- so on 2020-12-31 AURUM reads ₹1.4 cr.
+
+    Only a session whose window spans a credited ex-date differs from the plain mean, and it is computed
+    from the plain value elsewhere, so every other session is bit-identical to (close x volume).rolling."""
+    mp = window if min_periods is None else min_periods
+    plain = (close * volume).rolling(window, min_periods=mp).mean()
+    if cr is None or not len(cr) or close.empty:
+        return plain
+    adj = back_adjust(close.to_frame("c"), cr.assign(symbol="c"))["c"]
+    scaled = (adj * volume).rolling(window, min_periods=mp).mean() * pit_scale(close, adj)
+    spans = pd.Series(False, index=close.index)
+    for day in cr["date"]:
+        p = close.index.searchsorted(pd.Timestamp(day))   # the first bar on or after the ex-date
+        spans.iloc[p:p + window - 1] = True                # bars whose window still holds a pre-ex bar
+    return plain.where(~spans, scaled)
+
+
+def traded_value_frame(bars: dict, cr: pd.DataFrame | None, window: int = 20,
+                       min_periods: int | None = None) -> dict:
+    """`traded_value` for many symbols at once: {symbol: OHLCV frame} -> {symbol: series}, each on its
+    own bars (a suspension leaves no NaN in another symbol's window), `cr` the market's `credits`."""
+    by = {s: g for s, g in cr.groupby("symbol")} if cr is not None and len(cr) else {}
+    return {s: traded_value(d["close"], d["volume"], by.get(s), window, min_periods) for s, d in bars.items()}
+
+
 class Credits:
     """The credits a backtest walks through, by session: `between(after, upto)` -> [(symbol, cash, kind)]
     for every credit dated after `after` and up to `upto`, so a session the runner dropped or a symbol

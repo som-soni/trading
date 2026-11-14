@@ -168,22 +168,26 @@ def load_prices(market: str, min_bars: int) -> tuple:
     # volatility-weighted one is actively broken by them: see universe.non_stock_symbols.
     skip = universe.non_stock_symbols(market)
     tickers = [t for t in universe.load_universe(market) if t not in skip]
+    cr = corporate_actions.credits(market, tickers)
+    cr_by = {s: g for s, g in cr.groupby("symbol")}
     closes, dollar_vol = {}, {}
     for sym in tickers:
         d = cache.load_cached(market, sym)
         if d is None or len(d) < min_bars:
             continue
         closes[sym] = d["close"]
-        # the same liquidity floor the gated strategy screens on -- without
-        # it a naive momentum rank fills with illiquid microcaps, which is a
-        # property of the universe, not of the momentum idea under test
-        dollar_vol[sym] = (d["close"] * d["volume"]).rolling(20, min_periods=20).mean()
+        # the same liquidity floor the gated strategy screens on -- without it a naive momentum rank
+        # fills with illiquid microcaps, which is a property of the universe, not of the momentum idea
+        # under test. Every session of the 20-day window is valued on today's price basis
+        # (corporate_actions.traded_value): a plain mean kept a 98% special dividend's pre-ex sessions at
+        # the pre-ex price for 20 sessions, and an untradeable stub passed the floor.
+        dollar_vol[sym] = corporate_actions.traded_value(d["close"], d["volume"], cr_by.get(sym))
     if not closes:
         raise ValueError("no symbols with enough cached history")
     logger.info("%s: %d/%d symbols have enough history", market, len(closes), len(tickers))
     px = drop_partial_days(pd.DataFrame(closes).sort_index())
     dv = pd.DataFrame(dollar_vol).sort_index().reindex(px.index)
-    tr = corporate_actions.back_adjust(px, corporate_actions.credits(market, list(px.columns)))
+    tr = corporate_actions.back_adjust(px, cr)
     sma200 = tr.rolling(200, min_periods=200).mean()
     return px, dv, sma200, tr
 
@@ -355,18 +359,15 @@ def current_selection(market: str, strategy_key: str, limit: int | None = None,
     since = pd.Timestamp.today().normalize() - pd.Timedelta(days=int(need * 1.6))
     skip = universe.non_stock_symbols(market)   # the same exclusion load_prices applies
     bars = cache.load_many_cached(market, [t for t in universe.load_universe(market) if t not in skip], since=since)
-    closes, dollar_vol = {}, {}
-    for sym, d in bars.items():
-        if d is None or len(d) < 300:   # the same min_bars load_prices applies, so the same cohort
-            continue
-        closes[sym] = d["close"]
-        dollar_vol[sym] = (d["close"] * d["volume"]).rolling(20, min_periods=20).mean()
-    if not closes:
+    # the same min_bars load_prices applies, so the same cohort
+    bars = {s: d for s, d in bars.items() if d is not None and len(d) >= 300}
+    if not bars:
         return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
-    px = drop_partial_days(pd.DataFrame(closes).sort_index())
-    dv = pd.DataFrame(dollar_vol).reindex_like(px)
-    # the same total-return series load_prices gives the backtest's signals
-    tr = corporate_actions.back_adjust(px, corporate_actions.credits(market, list(px.columns)))
+    px = drop_partial_days(pd.DataFrame({s: d["close"] for s, d in bars.items()}).sort_index())
+    cr = corporate_actions.credits(market, list(px.columns))
+    # the same turnover and total-return series load_prices gives the backtest
+    dv = pd.DataFrame(corporate_actions.traded_value_frame(bars, cr)).reindex_like(px)
+    tr = corporate_actions.back_adjust(px, cr)
     sma200 = tr.rolling(200, min_periods=200).mean()
     if px is None or px.empty:
         return {"as_of": None, "rows": [], "strategy": strategy_key, "market": market}
@@ -972,7 +973,9 @@ DOC = {
         "- **Price floor:** close at or above $10 in the US, read as the price traded that day (see the "
         "caveats); no floor in India.\n"
         "- **Turnover floor:** 20-session average of close × volume at or above $10 million a day in the US, "
-        "₹50 crore in India (the market's screener floor).\n"
+        "₹50 crore in India (the market's screener floor). Every session of the window is valued on today's "
+        "price basis: after a credited special dividend or demerger the shares traded before the ex-date count "
+        "at the price less the payout, as a split's would (v1.5).\n"
         "- **Trend:** close strictly above its 200-session simple moving average, which needs a price on each "
         "of the last 200 sessions.\n"
         "- **Score exists:** the stock has a close on both ends of the momentum window.",
@@ -1441,7 +1444,9 @@ VS_DOC = {
         "operating companies (v1.1), with at least {lookback} + {skip} + 2 stored sessions of history.",
         "Eligible on the month-end session. A stock must pass all four tests on that session's close.\n\n"
         "- **Turnover floor:** 20-session average of close × volume at or above ₹{min_turnover_cr} crore a day "
-        "in India, ${min_turnover_usd_m} million in the US.\n"
+        "in India, ${min_turnover_usd_m} million in the US. Every session of the window is valued on today's "
+        "price basis: after a credited special dividend or demerger the shares traded before the ex-date count "
+        "at the price less the payout, as a split's would (v1.10).\n"
         "- **Price floor:** close at or above $10 in the US, read as the price traded that day (see the "
         "caveats); no floor in India.\n"
         "- **Trend:** close strictly above its 200-session simple moving average, which needs a price on each "
@@ -1544,8 +1549,10 @@ class VolScaledMomentumStrategy(PortfolioStrategy):
     key = VS_DOC["key"]
     doc = VS_DOC                 # the renderer reads this; naming it there was the bug it replaced
     family = "momentum_vol_scaled"
-    version = "1.9"
+    version = "1.10"
     changelog = (
+        ("1.10", "2026-11-14",
+         "The turnover floor values every session of its 20-day window on today's price basis (corporate_actions.traded_value), from the momentum_baseline India review of 2026-11-14. A credited special dividend or demerger drops the price but not the shares traded before it, so the plain mean of close x volume kept the pre-ex sessions at the pre-ex price for 20 sessions. AURUM (ex-Majesco) went ex a 98.8% special dividend on 2020-12-23 (Rs 717 -> 8.88); on 2020-12-31 the floor read Rs 121 cr a day while the stock traded Rs 8 lakh, in a locked upper circuit. Pre-ex sessions are now scaled by the same ratio as the price, and only for actions up to the session (point in time), as a split already is: AURUM reads Rs 1.4 cr there. A session whose window spans no credited ex-date is unchanged to the bit. Effect, in memory on the optimise stage: the book held AURUM from 2020-11-27 (before the dividend, rightly), but on 2020-12-31 the stale floor kept it eligible and the inverse-vol re-weight topped it up by ~58,700 shares at Rs 11.24, 82% of that locked day's volume; the top-up made ~Rs 10.7 lakh, 7.7% of the run's P&L. It is now sold that day. India 25.89% -> 24.07% CAGR, drawdown -50.5% unchanged, 806 trades (run 1832 reproduced exactly before the fix); the US optimise run is unchanged (7.25%, 963 trades). The 2026-11-14 review's 'no bugs' verdict missed this. Bumped by hand: no numeric constant moved."),
         ("1.9", "2026-10-31",
          "Trade rows count every resize (from the 25 Oct accuracy review, merged now). Each month-end re-weights the book, topping a laggard up and trimming a winner, but a trade row was built from the first fill alone, so win rate, profit factor, average R and turnover were wrong while the equity curve (read from cash) was right. A row is now the whole holding period: P&L is every buy, trim, sale and credited special dividend or demerger, with costs; the entry price the average paid, the notional the total paid -- and a holding resized to nothing (a slot below one whole share) now gets its row instead of vanishing. Equity, CAGR and drawdown are unchanged; stored runs' trade statistics are stale. Bumped by hand: no numeric constant moved."),
         ("1.8", "2026-10-29",
@@ -1719,7 +1726,7 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     key = "momentum_baseline"
     doc = DOC
     family = "momentum_baseline"
-    version = "1.4"
+    version = "1.5"
     name = DOC["name"]
     description = DOC["description"]
     status = DOC["status"]
@@ -1748,6 +1755,8 @@ class MomentumBaselineStrategy(PortfolioStrategy):
     )
 
     changelog = (
+        ("1.5", "2026-11-14",
+         "The turnover floor values every session of its 20-day window on today's price basis (corporate_actions.traded_value), from the momentum_baseline India review of 2026-11-14. A credited special dividend or demerger drops the price but not the shares traded before it, so the plain mean of close x volume kept the pre-ex sessions at the pre-ex price for 20 sessions. AURUM (ex-Majesco) went ex a 98.8% special dividend on 2020-12-23 (Rs 717 -> 8.88); on 2020-12-31 the floor read Rs 121 cr a day while the stock traded Rs 8 lakh, in a locked upper circuit. Pre-ex sessions are now scaled by the same ratio as the price, and only for actions up to the session (point in time), as a split already is: AURUM reads Rs 1.4 cr there. A session whose window spans no credited ex-date is unchanged to the bit. Effect, in memory on the optimise stage: the book had bought 64% of AURUM's traded value on 2020-12-31, a trade that made +Rs 8.2 lakh, 11% of the run's P&L; India 18.62% -> 16.66% CAGR, drawdown -54.4% unchanged, 416 trades (run 2831 reproduced exactly before the fix); the US optimise run is unchanged (4.30%, 448 trades). It came in with v1.2, which kept a payer ranked on total return. Bumped by hand: no numeric constant moved."),
         ("1.4", "2026-10-31",
          "Trade rows count every resize (from the 25 Oct accuracy review, merged now). Each month-end re-weights the book, topping a laggard up and trimming a winner, but a trade row was built from the first fill alone, so win rate, profit factor, average R and turnover were wrong while the equity curve (read from cash) was right. A row is now the whole holding period: P&L is every buy, trim, sale and credited special dividend or demerger, with costs; the entry price the average paid, the notional the total paid -- and a holding resized to nothing (a slot below one whole share) now gets its row instead of vanishing. Equity, CAGR and drawdown are unchanged; stored runs' trade statistics are stale. Bumped by hand: no numeric constant moved. "
          "Also `--index-overlay` (off by default) read month k-2's decision on most days: it forward-filled "

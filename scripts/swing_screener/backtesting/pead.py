@@ -134,6 +134,8 @@ def load_event_prices(market: str, symbols) -> dict:
 
     `tr_close` is the close back-adjusted for credited special dividends and demergers: the reaction
     is measured on it, so an ex-date inside the window is not read as the market's verdict.
+    `turnover20` is the liquidity floor's 20-day traded value (corporate_actions.traded_value), so a
+    payout's pre-ex sessions are not valued at the pre-ex price.
     """
     out = {}
     symbols = list(symbols)
@@ -143,7 +145,9 @@ def load_event_prices(market: str, symbols) -> dict:
         d = cache.load_cached(market, s)
         if d is None or len(d) < 60:
             continue
-        out[s] = d.assign(tr_close=corporate_actions.back_adjust_ohlc(d[["close"]], by.get(s))["close"])
+        out[s] = d.assign(tr_close=corporate_actions.back_adjust_ohlc(d[["close"]], by.get(s))["close"],
+                          # the liquidity floor's 20-day traded value, every session on today's price basis
+                          turnover20=corporate_actions.traded_value(d["close"], d["volume"], by.get(s)))
     return out
 
 
@@ -201,7 +205,7 @@ def qualify(r, df: pd.DataFrame | None, bench: pd.Series | None, start_ts, pos_o
                             if split_k is not None and r.symbol in split_k.columns else 1.0)
     if entry_px != entry_px or traded_px < floor_price:
         return None, "liquidity", seen
-    turnover = float(df["close"].mul(df["volume"]).rolling(20).mean().loc[d_entry])
+    turnover = float(df["turnover20"].loc[d_entry])
     if turnover != turnover or turnover < liq_floor:
         return None, "liquidity", seen
     return {"symbol": r.symbol, "yoy": r.yoy, "sue": r.sue, "reaction": reaction,
@@ -443,7 +447,9 @@ PEAD_DOC = {
         "traded that day, the stored close multiplied back by every later split -- and the 20-day "
         "average traded value (close × volume) at or above its liquidity floor — the screener's floors "
         "($10 and $10 million in the US; no price floor and ₹50 crore in India, as configured in October "
-        "2026).\n\n"
+        "2026). Every session of that average is valued on the buy day's price basis: after a credited "
+        "special dividend or demerger the shares traded before the ex-date count at the price less the "
+        "payout, as a split's would (v1.5).\n\n"
         "**Guide (§3 Universe):** $5 or ₹50 and $5 million or ₹5 crore. Differs: the market's own floors "
         "are used, and they are higher.",
         "Size. Each buy spends {POSITION_PCT}% of the account (cash plus open positions at the day's close), "
@@ -532,8 +538,10 @@ class PeadStrategy(PortfolioStrategy):
     key = PEAD_DOC["key"]
     doc = PEAD_DOC
     family = "pead"
-    version = "1.4"
+    version = "1.5"
     changelog = (
+        ("1.5", "2026-11-14",
+         "The turnover floor values every session of its 20-day window on today's price basis (corporate_actions.traded_value), the fix from the momentum_baseline India review of 2026-11-14. A credited special dividend or demerger drops the price but not the shares traded before it, so the plain mean of close x volume kept the pre-ex sessions at the pre-ex price for 20 sessions. AURUM (ex-Majesco) went ex a 98.8% special dividend on 2020-12-23 (Rs 717 -> 8.88); on 2020-12-31 the floor read Rs 121 cr a day while the stock traded Rs 8 lakh, in a locked upper circuit. Pre-ex sessions are now scaled by the same ratio as the price, and only for actions up to the session (point in time), as a split already is: AURUM reads Rs 1.4 cr there. A session whose window spans no credited ex-date is unchanged to the bit. Effect, in memory on the US optimise stage: one buy is no longer taken, BBW on 2021-12-13 ($10.45M stale against $9.90M corrected, after a special dividend), 6.51% -> 6.55% CAGR, drawdown -23.2% unchanged, 931 -> 930 trades. Bumped by hand: no numeric constant moved."),
         ("1.4", "2026-10-31",
          "One position per company, as the entry rules already said. Two filings by one company "
          "that reached their buy on the same session (an amended or duplicate filing; 129 such "

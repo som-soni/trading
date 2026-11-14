@@ -163,8 +163,10 @@ class CombinationStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "momentum_dual_combo"
-    version = "1.6"
+    version = "1.7"
     changelog = (
+        ("1.7", "2026-11-14",
+         "The momentum sleeve's turnover floor no longer reads pre-payout trading after a special dividend or demerger (momentum_vol_scaled 1.10, corporate_actions.traded_value): on 2020-12-31 a stale 20-day average kept AURUM, ex a 98.8% special dividend, eligible and the sleeve topped it up on a locked upper circuit. In memory on the optimise stage: India 21.58% -> 20.69% CAGR, drawdown -28.3% unchanged; US not re-run in memory: its momentum sleeve is unchanged there and the dual sleeve reads no turnover. Bumped by hand: no numeric constant moved."),
         ("1.6", "2026-10-31",
          "The momentum sleeve's trade rows count every resize (momentum_vol_scaled 1.9): they were built "
          "from each holding's first fill alone, so the combined book's win rate, profit factor and "

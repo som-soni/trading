@@ -1001,7 +1001,7 @@
       "skip": 21,
       "top_n": 10
     },
-    "version": "1.4"
+    "version": "1.5"
   },
   "momentum_burst": {
     "family": "momentum_burst",
@@ -1049,7 +1049,7 @@
       "_key": "momentum_dual_combo",
       "momentum_weight": 0.5
     },
-    "version": "1.6"
+    "version": "1.7"
   },
   "momentum_vol_scaled": {
     "family": "momentum_vol_scaled",
@@ -1067,7 +1067,7 @@
       "top_n": 20,
       "vol_window": 63
     },
-    "version": "1.9"
+    "version": "1.10"
   },
   "parabolic_short": {
     "family": "parabolic_short",
@@ -1125,7 +1125,7 @@
       "position_pct": 8.0,
       "season_top": 20.0
     },
-    "version": "1.4"
+    "version": "1.5"
   },
   "quality_momentum": {
     "family": "quality_momentum",
@@ -1151,7 +1151,7 @@
       "skip": 21,
       "top_n": 10
     },
-    "version": "1.6"
+    "version": "1.7"
   },
   "rs_leaders": {
     "family": "rs_leaders",
@@ -1451,6 +1451,6 @@
       "skip": 21,
       "top_n": 20
     },
-    "version": "1.0"
+    "version": "1.1"
   }
 }

@@ -356,8 +356,10 @@ class ValueRankingStrategy(PortfolioStrategy):
     key = DOC["key"]
     doc = DOC
     family = "value_ranking"
-    version = "1.0"
+    version = "1.1"
     changelog = (
+        ("1.1", "2026-11-14",
+         "The loop it shares with momentum_baseline (1.5): The turnover floor values every session of its 20-day window on today's price basis (corporate_actions.traded_value), from the momentum_baseline India review of 2026-11-14. A credited special dividend or demerger drops the price but not the shares traded before it, so the plain mean of close x volume kept the pre-ex sessions at the pre-ex price for 20 sessions. AURUM (ex-Majesco) went ex a 98.8% special dividend on 2020-12-23 (Rs 717 -> 8.88); on 2020-12-31 the floor read Rs 121 cr a day while the stock traded Rs 8 lakh, in a locked upper circuit. Pre-ex sessions are now scaled by the same ratio as the price, and only for actions up to the session (point in time), as a split already is: AURUM reads Rs 1.4 cr there. A session whose window spans no credited ex-date is unchanged to the bit. In memory on the optimise stage: India unchanged (9.38%, 107 trades); US unchanged too (9.42%, 279 trades). Bumped because the floor's reading changed for every stock in the 20 sessions after a credited action. Bumped by hand: no numeric constant moved."),
         ("1.0", "2026-11-14",
          "First version: top 20 by the average percentile of earnings yield, book-to-price, sales-to-price "
          "and free-cash-flow yield (at least 3 of the applicable ones), from filings public on "
