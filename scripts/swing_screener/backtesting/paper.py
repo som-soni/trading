@@ -370,7 +370,13 @@ def step(book: str, market: str, today: date | None = None) -> dict:
                                            and pd.Timestamp(last) + pd.offsets.BDay(1) < latest.replace(day=1)))
         if last is None or (month_end and last < latest.date()) or missed:
             held = ledger.holdings_of(book, market)["positions"]
-            as_of, spec_id, weights = _targets(strategy, market, held)
+            # decide on the calendar's latest session: stock prices for a session are often stored before
+            # the index series the calendar reads, and a selection dated a session ahead never matched
+            # `latest`, so the decision was dropped every day (vol-scaled and quality momentum sat in cash
+            # from 2026-11-09)
+            from ..marketdata import asof
+            with asof.boundary(latest, "paper decision"):
+                as_of, spec_id, weights = _targets(strategy, market, held)
             if as_of == latest.date().isoformat():
                 tg = [{"symbol": s, "weight_pct": round(w * 100, 4)} for s, w in sorted(weights.items())]
                 rid = ledger.save_rebalance(book, market, as_of, spec_id, tg, [], note="paper")
