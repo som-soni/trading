@@ -1122,19 +1122,27 @@
   },
   "pead": {
     "family": "pead",
-    "fingerprint": "1ea48216",
+    "fingerprint": "12b648e8",
     "params": {
+      "ANNOUNCE_MAX_DAYS": 120,
       "HOLD_SESSIONS": 60,
       "MAX_POSITIONS": 15,
       "MAX_REACTION": 20.0,
       "MIN_ACCELERATION": 0.0,
+      "MIN_CUTOFF_EVENTS": 20,
       "MIN_QUARTERS": 8,
       "MIN_REACTION": 0.0,
       "MIN_REVENUE_GROWTH": 10.0,
       "MIN_YOY_GROWTH": 25.0,
       "POSITION_PCT": 8.0,
       "REACTION_DAYS": 2,
+      "REACTION_ENTRY_LAG": 2,
+      "REACTION_MIN_TURNOVER_CR": 5.0,
+      "REACTION_TOP_PCT": 10.0,
       "SEASON_RANK_TOP": 20.0,
+      "STOP_ON_REACTION_LOW": 1,
+      "SUE_TOP_PCT": 20.0,
+      "SURPRISE_MODE": 1,
       "_key": "pead",
       "cost_bps": 10.0,
       "hold_sessions": 60,
@@ -1143,7 +1151,7 @@
       "position_pct": 8.0,
       "season_top": 20.0
     },
-    "version": "1.5"
+    "version": "1.6"
   },
   "quality_momentum": {
     "family": "quality_momentum",

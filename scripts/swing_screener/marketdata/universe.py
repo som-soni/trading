@@ -10,6 +10,7 @@ since the vast majority never reach a gate that needs their sector.
 """
 
 import csv
+import datetime as dt
 import logging
 import time
 from pathlib import Path
@@ -160,6 +161,17 @@ def non_stock_symbols(market: str) -> set[str]:
 LIQUID_EVER_SINCE = "2013-01-01"
 
 
+# Each stock's 20-session average turnover (close x volume) at its own last bar of each month -- the one
+# measure of "liquid at a month-end" that `liquid_ever` (what the financials backfill fetches) and
+# `month_end_turnover` (a backtest's point-in-time universe) both read, so the two cannot disagree.
+_MONTH_END_DV = """
+    WITH x AS (
+      SELECT symbol, date, AVG(close * volume) OVER w AS dv, COUNT(*) OVER w AS n,
+             ROW_NUMBER() OVER (PARTITION BY symbol, date_trunc('month', date) ORDER BY date DESC) AS rn
+      FROM prices WHERE market = %s AND date >= %s AND date <= %s
+      WINDOW w AS (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW))"""
+
+
 def liquid_ever(market: str, floor: float, since: str = LIQUID_EVER_SINCE) -> list[str]:
     """Every stock whose 20-session average turnover (close x volume) reached `floor` on some month-end
     since `since` -- the stocks a backtest could have ranked on SOME past rebalance, not only today's.
@@ -172,18 +184,36 @@ def liquid_ever(market: str, floor: float, since: str = LIQUID_EVER_SINCE) -> li
     """
     from . import db
     since_ts = pd.Timestamp(since)
-    sql = """
-    WITH x AS (
-      SELECT symbol, date, AVG(close * volume) OVER w AS dv, COUNT(*) OVER w AS n,
-             ROW_NUMBER() OVER (PARTITION BY symbol, date_trunc('month', date) ORDER BY date DESC) AS rn
-      FROM prices WHERE market = %s AND date >= %s
-      WINDOW w AS (PARTITION BY symbol ORDER BY date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW))
+    sql = _MONTH_END_DV + """
     SELECT DISTINCT symbol FROM x WHERE rn = 1 AND n = 20 AND date >= %s AND dv >= %s"""
     # one query, in the database: the 20-session average needs a month of lead-in before `since`
     with db.get_connection().cursor() as cur:
-        cur.execute(sql, (market, (since_ts - pd.Timedelta(days=45)).date(), since_ts.date(), floor))
+        cur.execute(sql, (market, (since_ts - pd.Timedelta(days=45)).date(), dt.date.max, since_ts.date(), floor))
         found = {r[0] for r in cur.fetchall()}
     return sorted(found - non_stock_symbols(market))
+
+
+def month_end_turnover(market: str, floor: float, since: str = LIQUID_EVER_SINCE, symbols=None) -> pd.DataFrame:
+    """(symbol, month) pairs where the stock was liquid: its 20-session average turnover at its last bar of
+    that month reached `floor` -- the month-ends `liquid_ever` counts, one row each, as a frame with columns
+    symbol and month (a pandas Period). A backtest's point-in-time universe reads it: a stock counts in a
+    month only if it was liquid at the month-end before, so the set does not depend on which companies some
+    other job fetched later. Honours a backtest stage's boundary (`asof`). `symbols` limits it to those stocks."""
+    from . import asof, db
+    since_ts = pd.Timestamp(since)
+    end = asof.end_date() or dt.date.max
+    base, args = _MONTH_END_DV, [market, (since_ts - pd.Timedelta(days=45)).date(), end]
+    if symbols is not None:
+        base, args = base.replace("AND date <= %s", "AND date <= %s AND symbol = ANY(%s)"), args + [list(symbols)]
+    sql = base + """
+    SELECT symbol, date FROM x WHERE rn = 1 AND n = 20 AND date >= %s AND dv >= %s"""
+    with db.get_connection().cursor() as cur:
+        cur.execute(sql, tuple(args) + (since_ts.date(), floor))
+        rows = cur.fetchall()
+    out = pd.DataFrame(rows, columns=["symbol", "date"])
+    out["month"] = pd.to_datetime(out["date"]).dt.to_period("M")
+    skip = non_stock_symbols(market)
+    return out.loc[~out["symbol"].isin(skip), ["symbol", "month"]].reset_index(drop=True)
 
 
 def fetch_india_universe_from_yfinance_screener() -> Path:

@@ -117,8 +117,8 @@ def test_pead_same_day_filings() -> None:
     close[cal >= filed] = 52.0                       # +4% against a flat index: the market agrees
     close[cal >= pd.Timestamp("2020-04-01")] = 55.0
     df = pd.DataFrame({"open": close, "high": close, "low": close * 0.99, "close": close,
-                       "volume": 1e6})
-    row = dict(symbol="AAA", filed=filed, period_end=pd.Timestamp("2019-12-31"), yoy=60.0,
+                       "volume": 1e6, "turnover20": close * 1e6})
+    row = dict(symbol="AAA", filed=filed, announced=filed, period_end=pd.Timestamp("2019-12-31"), yoy=60.0,
                season_pct=100.0, accel=10.0, rev_growth=30.0, sue=2.0)
     # one company, two filings on the same day (an amendment): both qualify for the same buy
     ev = pd.DataFrame([row, dict(row, sue=1.0)])
