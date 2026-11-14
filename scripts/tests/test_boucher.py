@@ -148,19 +148,21 @@ def bond_gold_rules() -> None:
 
 
 def zero_bound() -> None:
-    print("the T-bill condition is silent below its floor (1.1)")
+    print("the zero-bound floor: off by default (1.2), silences the bill below it with --zero-bound")
     idx = pd.bdate_range("2018-01-01", periods=5 * 60)
     up = pd.Series(np.linspace(100, 200, len(idx)), index=idx)
     low_falling = pd.Series(np.linspace(0.45, 0.05, len(idx)), index=idx)      # under the floor, falling
     rising = pd.Series(np.linspace(2, 5, len(idx)), index=idx)
     falling = pd.Series(np.linspace(5, 2, len(idx)), index=idx)
-    st, r = bs.base_rule(up, low_falling, rising)
+    st0, _ = bs.base_rule(up, low_falling, rising)
+    check("by default (1.0's rule) a falling bill under 0.5% still keeps the S&P in", bool(st0.iloc[-1]))
+    st, r = bs.base_rule(up, low_falling, rising, zero_bound=True)
     check("a falling bill under the floor does not keep the S&P in when the long yield rises", not bool(st.iloc[-1]))
     check("the readings say the bill was silent", not bool(r["tbill_live"].iloc[-1]))
-    st2, _ = bs.base_rule(up, low_falling, falling)
+    st2, _ = bs.base_rule(up, low_falling, falling, zero_bound=True)
     check("under the floor the long yield decides alone: falling long yield, in", bool(st2.iloc[-1]))
     above_floor = pd.Series(np.linspace(3.0, bs.TBILL_FLOOR_PCT + 0.01, len(idx)), index=idx)
-    st3, _ = bs.base_rule(up, above_floor, rising)
+    st3, _ = bs.base_rule(up, above_floor, rising, zero_bound=True)
     check("a falling bill at or above the floor still counts", bool(st3.iloc[-1]))
 
 

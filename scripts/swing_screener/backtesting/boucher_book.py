@@ -110,7 +110,8 @@ def sleeve_inputs():
     the first session the model has every input)."""
     tbill = index_data.load(MARKET, TBILL)
     sp = sp_total_return()
-    want_s, _r = timing_target(closes(SP_TICKER), tbill, long_yield())
+    # the stock sleeve as 1.0 was run and recorded: boucher_stocks' base rule WITH its zero-bound floor
+    want_s, _r = timing_target(closes(SP_TICKER), tbill, long_yield(), zero_bound=True)
     bond = bg.long_bond()
     gold = index_data.load(MARKET, bg.GOLD_MINERS)
     out = {"stocks": (sp, closes(SP_TR), want_s, sp.index[0])}
@@ -231,7 +232,7 @@ BB_DOC = {
         "0.82, 40/40/20 0.64 vs 0.73, 50/40/10 0.83 vs 1.01, 50/20/30 0.54 vs 0.62); (7) Sharpe below both "
         "60/40 books: FAIL; (8) drawdown shallower than both: pass. Timing all three sleeves sits too much of "
         "the book in T-bills: the drawdown it saves is what holding less of everything saves, and the return "
-        "it gives up is larger. The stock sleeve is boucher_stocks 1.1 (7.16% alone). No verify run; on these "
+        "it gives up is larger. The stock sleeve is boucher_stocks' base rule with the zero-bound floor (1.1's rule, 7.16% alone; `--zero-bound` there since 1.2). No verify run; on these "
         "criteria none is justified."
     ),
     "thesis": (
@@ -245,7 +246,8 @@ BB_DOC = {
     "how_it_works": (
         "Three sleeves at fixed weights, each switching on its own model's weekly signal: {BOOK_STOCKS_PCT}% "
         "in the S&P 500 total return while boucher_stocks' base rule is in (S&P above its 40-week average and "
-        "a falling T-bill or long yield, the T-bill silent below its zero-bound floor); {BOOK_BONDS_PCT}% in "
+        "a falling T-bill or long yield, the T-bill silent below its zero-bound floor -- "
+        "boucher_stocks' `--zero-bound`, which failed there and is off in its own default since 1.2); {BOOK_BONDS_PCT}% in "
         "long Treasuries while boucher_bonds_gold's Bond-Bill-Utility model is in; {BOOK_GOLD_PCT}% in gold "
         "miners while its Gold-Silver-GMI model is in. A sleeve whose model is out earns the 13-week T-bill "
         "rate.",
