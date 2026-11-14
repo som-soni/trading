@@ -349,11 +349,17 @@ def ingest(force: bool = False) -> dict:
             source = str(Path("research") / md.name)
             seen.add(source)
             _store(cur, source, ("research", "all", "research", md.stem), md.read_text(), [md])
-        # drop runs whose directory was deleted on disk
-        cur.execute("SELECT id, source_path FROM report_runs")
-        for rid, src in cur.fetchall():
-            if src not in seen:
-                cur.execute("DELETE FROM report_runs WHERE id=%s", (rid,))
+        # drop runs whose directory was deleted on disk -- but only from the main checkout. A git
+        # worktree (`.git` is a file there) holds only its own few reports while sharing this database,
+        # so "not seen here" means nothing: on 2026-11-14 a worktree backtest's ingest deleted ~1,100
+        # of the main checkout's runs, with their archive marks.
+        if (paths.REPO_ROOT / ".git").is_file():
+            logger.warning("ingest from a git worktree (%s): loaded what it found, deleted nothing", paths.REPO_ROOT)
+        else:
+            cur.execute("SELECT id, source_path FROM report_runs")
+            for rid, src in cur.fetchall():
+                if src not in seen:
+                    cur.execute("DELETE FROM report_runs WHERE id=%s", (rid,))
         after = _count(cur)
     return {"runs": after, "scanned": len(seen)}
 
