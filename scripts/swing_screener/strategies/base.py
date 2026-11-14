@@ -274,6 +274,12 @@ class SpecMeta:
         for k, v in (vars(mod).items() if mod else ()):
             if k.isupper() and _dc.is_dataclass(v) and not isinstance(v, type):
                 ns.setdefault(k, _DocFields(v))
+        # The RS rating's universe (backtesting/spec.RS_UNIVERSE) is shared by every strategy that gates on the
+        # rating, so any page may quote it as `{RS_UNIVERSE.min_price_inr}`. Rendering only, imported here: it
+        # is not in any strategy's fingerprint, so a change to it is a version bump by hand.
+        if "{RS_UNIVERSE." in text:
+            from ..backtesting.spec import RS_UNIVERSE
+            ns.setdefault("RS_UNIVERSE", _DocFields(RS_UNIVERSE))
         return text.format_map(ns)
 
     @classmethod
@@ -438,6 +444,12 @@ class Strategy(SpecMeta, ABC):
     def signal_floor(self) -> int:
         """Bars a symbol needs before it can give a signal."""
         return self.min_signal_bars or self.min_bars
+
+    def needs_full_history(self) -> bool:
+        """True when `evaluate` reads further back than the live screen's window (`screening/pipeline.
+        LOOKBACK_DAYS`): the live run then evaluates the pre-filter's survivors on their full stored history,
+        as the backtest scans them. A method, not a flag attribute, so it stays out of the fingerprint."""
+        return False
 
     def rs_young_min_bars(self) -> int:
         """Sessions after which the RS rating rates a listing younger than a year on its history so

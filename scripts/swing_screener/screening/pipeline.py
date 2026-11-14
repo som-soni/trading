@@ -50,6 +50,87 @@ def _watch_flag_summary(result) -> str:
     return ",".join(active) if active else "-"
 
 
+def live_candidates(strategy, cfg, market_key: str, enriched_by_symbol: dict, bars_by_symbol: dict
+                    ) -> tuple[list[str], dict[str, str]]:
+    """The symbols the live run evaluates, and why each other one was left out: the strategy's own pre-filter on
+    today's bar -- nothing else (no market-cap floor: see below). A strategy that reads further back than the
+    window (`needs_full_history`) has its survivors' frames in `bars_by_symbol` replaced by their full stored
+    history, as its backtest scans them. One implementation for the run and tests.test_live_parity."""
+    filtered: list[str] = []
+    fail_reason: dict[str, str] = {}
+    for sym, edf in enriched_by_symbol.items():
+        ok, why = strategy.passes_prefilter(cfg, edf)
+        if ok:
+            filtered.append(sym)
+        else:
+            fail_reason[sym] = why
+    logger.info("Pre-filter (%s): %d/%d pass", strategy.key, len(filtered), len(enriched_by_symbol))
+    # No market-cap floor: until 2026-11-14 India's live run also dropped every stock under ₹5,000 crore, a rule
+    # no backtest applies (market caps are not stored point in time, so none can), which cut about a quarter of
+    # the Trend Template list and made the live list a different universe from the one every strategy was
+    # tested on (Minervini review B1).
+    if filtered and strategy.needs_full_history():
+        # The strategy reads further back than the screening window (minervini's base count walks the whole
+        # Stage 2 advance), so its candidates are evaluated on their full stored history, as its backtest scans
+        # them -- on the window alone a long advance began before it and late bases counted as early ones
+        # (Minervini review B7). Only the pre-filter's survivors are re-read; the pre-filter itself reads
+        # rolling windows the screening window already covers.
+        full = cache.load_many_cached(market_key, filtered)
+        for s_, df_ in full.items():
+            if len(df_) > len(bars_by_symbol.get(s_, ())):
+                bars_by_symbol[s_] = df_
+        logger.info("Full stored history read for %d pre-filtered symbols (%s)", len(full), strategy.key)
+    return filtered, fail_reason
+
+
+def live_decision(strategy, cfg, sym: str, raw: pd.DataFrame, earnings_days, rs_ranks: dict, rs_ranked: bool,
+                  risk_off: bool, high_vol: bool) -> dict:
+    """The live run's decision for one pre-filtered symbol on its latest bar: the strategy's own floor, the
+    context, the market-wide RS rank, evaluate, build_plans, sizing, classify. {"not_reviewed": reason or "",
+    "ctx", "result", "plan", "plan_reason", "sizing", "decision"} (the later keys None where it stopped).
+    One implementation for the run and tests.test_live_parity, which compares it with the backtest's scan."""
+    out = {"not_reviewed": "", "ctx": None, "result": None, "plan": None, "plan_reason": "", "sizing": None,
+           "decision": None}
+    # The strategy's own floor, as the backtest and the live pattern endpoint apply it:
+    # without it a stock the backtest could never have traded was listed as tradeable.
+    if len(raw) < strategy.signal_floor():
+        out["not_reviewed"] = f"insufficient history ({len(raw)} bars < {strategy.signal_floor()})"
+        return out
+    ctx = ctx_mod.build_context(sym, raw, earnings_days)
+    if ctx is None:
+        out["not_reviewed"] = "insufficient history"
+        return out
+    if rs_ranked:
+        ctx.extras["rs_ranked"] = True
+        ctx.extras["rs_rank"] = rs_ranks.get(sym)
+    result = strategy.evaluate(ctx)
+    out.update(ctx=ctx, result=result)
+    if not result.hard_gates_passed or not result.has_setup:
+        return out
+    choice = strategy.build_plans(ctx, result, cfg)
+    out.update(plan=choice.chosen, plan_reason=choice.reason)
+    if choice.chosen is None:
+        return out
+    sz = sizing.size_position(cfg, choice.chosen.entry, choice.chosen.stop, high_vol)
+    out.update(sizing=sz, decision=strategy.classify(ctx, result, choice.chosen, sz, earnings_days, risk_off))
+    return out
+
+
+def _json_safe(v):
+    """`v` with dates as ISO strings, tuples as lists and NaN as None, so it stores as JSON."""
+    if isinstance(v, dict):
+        return {str(k): _json_safe(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_json_safe(x) for x in v]
+    if isinstance(v, (pd.Timestamp, _dt.date)):
+        return v.isoformat()[:10] if not isinstance(v, pd.Timestamp) or v == v.normalize() else v.isoformat()
+    if hasattr(v, "item") and not isinstance(v, (str, bytes)):     # numpy scalars
+        v = v.item()
+    if isinstance(v, float) and v != v:
+        return None
+    return v
+
+
 def _empty_universe_row(strategy, sym: str, sector: str, decision_label: str, reason: str) -> dict:
     """A row for a stock that never got far enough to compute gates (e.g.
     insufficient history) — same columns as a fully-reviewed row, just
@@ -139,26 +220,7 @@ def _run(
             logger.info("  indicators %d/%d (%.0f/s)", _i, len(bars_by_symbol),
                         _i / max(time.time() - _t0, 1e-9))
 
-    filtered: list[str] = []
-    screener_fail_reason: dict[str, str] = {}
-    for sym, edf in enriched_by_symbol.items():
-        ok, why = strategy.passes_prefilter(cfg, edf)
-        if ok:
-            filtered.append(sym)
-        else:
-            screener_fail_reason[sym] = why
-    logger.info("Pre-filter (%s): %d/%d pass", strategy.key, len(filtered), len(enriched_by_symbol))
-
-    if market_key == "india":
-        from ..config.india import INDIA_MIN_MARKET_CAP_CR
-        from . import screener
-
-        caps = universe.get_market_caps_cr(filtered)
-        before = len(filtered)
-        filtered = [
-            s for s in filtered if screener.passes_market_cap(INDIA_MIN_MARKET_CAP_CR, caps.get(s))
-        ]
-        logger.info("Market-cap floor (>=INR %s cr): %d/%d pass", INDIA_MIN_MARKET_CAP_CR, len(filtered), before)
+    filtered, screener_fail_reason = live_candidates(strategy, cfg, market_key, enriched_by_symbol, bars_by_symbol)
 
     sectors_raw = universe.get_sectors(market_key, filtered)
     sectors = {
@@ -228,6 +290,7 @@ def _run(
     logger.info("Evaluating %d filtered symbols (gates, setups, plans)...", len(filtered))
     _t0 = time.time()
     _step = max(1, len(filtered) // 10)
+    orders: dict = {}      # symbol -> the order as the backtest would place it (see below)
     for _i, sym in enumerate(filtered, 1):
         if _i % _step == 0 or _i == len(filtered):
             _rate = _i / max(time.time() - _t0, 1e-9)
@@ -235,23 +298,12 @@ def _run(
                         _rate, (len(filtered) - _i) / max(_rate, 1e-9))
         raw = bars_by_symbol[sym]
         sector = sectors.get(sym, "Unknown")
-        # The strategy's own floor, as the backtest and the live pattern endpoint apply it:
-        # without it a stock the backtest could never have traded was listed as tradeable.
-        if len(raw) < strategy.signal_floor():
-            all_rows.append(_empty_universe_row(
-                strategy, sym, sector, "NOT REVIEWED",
-                f"insufficient history ({len(raw)} bars < {strategy.signal_floor()})"))
+        d = live_decision(strategy, cfg, sym, raw, earnings_map.get(sym), rs_ranks, rs_ranked, risk_off,
+                          market_regime.high_vol)
+        if d["not_reviewed"]:
+            all_rows.append(_empty_universe_row(strategy, sym, sector, "NOT REVIEWED", d["not_reviewed"]))
             continue
-        ctx = ctx_mod.build_context(sym, raw, earnings_map.get(sym))
-        if ctx is None:
-            all_rows.append(_empty_universe_row(strategy, sym, sector, "NOT REVIEWED", "insufficient history"))
-            continue
-
-        if rs_ranked:
-            ctx.extras["rs_ranked"] = True
-            ctx.extras["rs_rank"] = rs_ranks.get(sym)
-
-        result = strategy.evaluate(ctx)
+        ctx, result = d["ctx"], d["result"]
         last = ctx.daily.iloc[-1]
 
         rs_vs_benchmark = None
@@ -321,8 +373,7 @@ def _run(
             all_rows.append(row)
             continue
 
-        choice = strategy.build_plans(ctx, result, cfg)
-        plan, plan_reason = choice.chosen, choice.reason
+        plan, plan_reason = d["plan"], d["plan_reason"]
         if plan is None:  # shouldn't happen given has_setup, but stay defensive
             row.update({
                 "decision": "NO SETUP", "decision_before": "NO SETUP", "tradeable": False,
@@ -331,10 +382,7 @@ def _run(
             all_rows.append(row)
             continue
 
-        sz = sizing.size_position(cfg, plan.entry, plan.stop, market_regime.high_vol)
-        dec = strategy.classify(
-            ctx, result, plan, sz, earnings_map.get(sym), risk_off
-        )
+        sz, dec = d["sizing"], d["decision"]
 
         row.update({
             "strategy_setup": f"{plan.setup} / {plan.plan} ({plan_reason})",
@@ -356,6 +404,16 @@ def _run(
             ),
         })
         row.update(strategy.report_extras(ctx, result, plan))
+        # The order exactly as the backtest would place it (backtest.collect_signals' Signal): unrounded levels,
+        # the decision before the market/sector demotion, and the strategy's own order details (signal_meta:
+        # buy-stop or open order, buy range, stop cap, expiry ...). The paper book trades from this
+        # (backtesting/paper.py), so its forward record runs the backtested order rules.
+        orders[sym] = _json_safe({
+            "setup": plan.setup, "entry": float(plan.entry), "stop": float(plan.stop),
+            "target": float(plan.target) if plan.target == plan.target else None,
+            "decision": dec.label_before, "quality": dec.setup_quality,
+            "rs": ctx.extras.get("rs_rank"), "meta": strategy.signal_meta(ctx, result, plan),
+        })
         if row["watchlist_candidate"]:
             row["wait_for"] = dec.reason
         all_rows.append(row)
@@ -423,15 +481,17 @@ def _run(
     # key set on the rows before it was dropped without a word -- the first run had no SEPA column
     if sepa_by_symbol:
         report["sepa"] = report["symbol"].map(sepa_by_symbol)
+    # stored with the run (universe_history.full_row) for the paper book; not a CSV column
+    report["order"] = report["symbol"].map(orders) if orders else None
     # Screener output goes into the same per-run tree the backtests use, so a
     # day's candidates, its CSV and its charts sit together instead of in a
     # flat pile. The stable top-level CSV is kept as a convenience symlink
     # target for anything that reads "the latest" by a fixed path.
     screen_dir = run_dir(market_key, strategy.key, f"screener/{_dt.date.today()}")
     report_path = screen_dir / "candidates.csv"
-    report.to_csv(report_path, index=False)
+    report.drop(columns="order").to_csv(report_path, index=False)
     latest_csv = REPORT_DIR / f"{market_key}_{strategy.key}_universe.csv"
-    report.to_csv(latest_csv, index=False)
+    report.drop(columns="order").to_csv(latest_csv, index=False)
 
     # history: skip for --limit test runs so partial universes don't
     # pollute run-over-run comparisons

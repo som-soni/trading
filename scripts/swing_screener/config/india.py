@@ -110,7 +110,3 @@ INDIA_CONFIG = MarketConfig(
     slippage_bps=10.0,
     tick_size=0.05,
 )
-
-# Market-cap floor (INR crore), applied in addition to ScreenerThresholds
-# since it doesn't fit the US-shaped dataclass cleanly.
-INDIA_MIN_MARKET_CAP_CR = 5_000

@@ -404,6 +404,10 @@ class PortfolioResult:
     skipped_at: dict = field(default_factory=dict)   # reason -> [(symbol, date)]
     missed_slot_at: list = field(default_factory=list)
     missed_cash_at: list = field(default_factory=list)
+    # Every fill, in order: (session, symbol, "BUY" | "SELL", shares, price after slippage, commission and
+    # charges, moment). Reporting only: the paper book (backtesting/paper.py) writes them to its ledger, so its
+    # forward record is this simulator's own trading.
+    fills: list = field(default_factory=list)
 
 
 PENDING_EXPIRY_BDAYS = 10
@@ -657,6 +661,14 @@ def simulate(
     pending: dict[str, dict] = {}
     adds_pending: dict[str, dict] = {}   # follow-up buys into held positions (policy.add_frac), by symbol
     closed: list[PortfolioTrade] = []
+    fills: list = []          # PortfolioResult.fills
+
+    def log_add(pos: PortfolioTrade, before: int, spent: float, today, at: int) -> None:
+        """A helper bought `pos.shares - before` more shares for `spent` (fill × shares + commission + charges)."""
+        n = pos.shares - before
+        if n > 0:
+            px = (spent - cfg.commission_per_order) / (n * (1 + fee_rate))
+            fills.append((today, pos.symbol, "BUY", n, px, spent - n * px, at))
     costs_total = 0.0
     taken = missed_slot = missed_cash = partial_fills = 0
     skipped: dict[str, int] = {}
@@ -720,6 +732,7 @@ def simulate(
         costs_total += cost
         got = fill * n - cfg.commission_per_order - fill * n * fee_rate
         cash += got
+        fills.append((today, pos.symbol, "SELL", n, fill, cfg.commission_per_order + fill * n * fee_rate, at))
         sold_today.append((at, got, slot, pos, n, pos.stop))
         pos.sold_value += fill * n
         pos.open_shares = pos.held - n
@@ -790,6 +803,7 @@ def simulate(
             fee = fill_slipped * add_n * fee_rate
             extra = cfg.commission_per_order + (fill_slipped - fill) * add_n + fee
             cash -= add_n * fill_slipped + cfg.commission_per_order + fee
+            fills.append((today, sym, "BUY", add_n, fill_slipped, cfg.commission_per_order + fee, INTRADAY))
             costs_total += extra
             # share-weighted average cost keeps pnl and r_multiple correct
             pos.entry_price = ((pos.entry_price * pos.shares + fill_slipped * add_n)
@@ -810,12 +824,14 @@ def simulate(
             pos, df = positions.get(sym), prices.get(sym)
             if pos is None or df is None or today not in df.index:
                 continue
+            before = pos.shares
             got = _fill_add(pos, add, float(df.loc[today, "open"]), cash, fee_rate, cfg, base_slip)
             if isinstance(got, str):
                 skip(got, sym, today)
                 continue
             spent, extra = got
             cash -= spent
+            log_add(pos, before, spent, today, AT_OPEN)
             costs_total += extra
 
         # ---- 0c. adds on a natural reaction (policy.rx_frac): a buy-stop over the previous session's high
@@ -824,11 +840,13 @@ def simulate(
                 df = prices.get(sym)
                 if df is None or today not in df.index or today == pos.entry_date:
                     continue
+                before = pos.shares
                 got = _reaction_add(pos, df, today, policy, cash, fee_rate, cfg, base_slip)
                 if isinstance(got, str):
                     skip(got, sym, today)
                 elif got:
                     cash -= got[0]
+                    log_add(pos, before, got[0], today, INTRADAY)
                     costs_total += got[1]
 
         # ---- 1. exits ----------------------------------------------------
@@ -1098,6 +1116,7 @@ def simulate(
                 continue
 
             cash -= shares * entry + cfg.commission_per_order + fee
+            fills.append((today, sym, "BUY", shares, entry, cfg.commission_per_order + fee, at))
             costs_total += cost
             positions[sym] = PortfolioTrade(
                 symbol=sym, setup=order["setup"], decision=order["decision"],
@@ -1125,6 +1144,7 @@ def simulate(
                 if pos.entry_date == today or df is None or today not in df.index:
                     continue
                 cash_at, equity_now = book_at(AT_CLOSE, today)
+                before = pos.shares
                 got = _kell_add(pos, s, float(df.loc[today, "close"]), cash_at, equity_now, risk_pct_today,
                                 fee_rate, cfg, base_slip, open_risk_at(AT_CLOSE, today), max_open_risk_pct)
                 if isinstance(got, str):
@@ -1133,6 +1153,7 @@ def simulate(
                 spent, extra = got
                 cash -= spent
                 costs_total += extra
+                log_add(pos, before, spent, today, AT_CLOSE)
                 continue
             if s.symbol in positions and _add_wanted(positions[s.symbol], s, policy, today):
                 adds_pending[s.symbol] = {"setup": s.setup, "meta": s.meta, "policy": policy}
@@ -1185,6 +1206,7 @@ def simulate(
         signals_missed_no_slot=missed_slot, signals_missed_no_cash=missed_cash,
         partial_fills=partial_fills, skipped=skipped,
         skipped_at=skipped_at, missed_slot_at=missed_slot_at, missed_cash_at=missed_cash_at,
+        fills=fills,
     )
 
 
@@ -1228,7 +1250,7 @@ def manage_entry_bar(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, p
         return
     if policy.mode == "minervini":
         # the entry bar's close counts for the close-based exits (EX-02, EX-06)
-        _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg, entry_day=True)
+        _manage_minervini(sym, pos, df, bar, today, policy, close_out, sell, fee_rate, cfg, entry_day=True, at=at)
     elif policy.mode == "revert":
         # the fill session's close counts: a bounce that closes above the line that very session sells
         _manage_revert(sym, pos, bar, today, policy, close_out, at=at)
@@ -1329,13 +1351,18 @@ def manage_exit(sym, pos: "PortfolioTrade", df: pd.DataFrame, bar, today, policy
 
 
 def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, policy: ExitPolicy,
-                      close_out, sell, fee_rate: float, cfg: MarketConfig, entry_day: bool = False) -> None:
+                      close_out, sell, fee_rate: float, cfg: MarketConfig, entry_day: bool = False,
+                      at: int | None = None) -> None:
     """One session of the strategy's exit rules, in their priority order.
 
     EX-01 fills during the day; EX-04 at R sells part during the day; the strength sale, a climax
     and EX-02/05/06/07 act on the close and are queued for the next session's open. On the entry
-    bar only the close-based rules run: the order of the day's high and low relative to the fill is
-    unknown."""
+    bar (`entry_day`, bought at moment `at`) the close-based rules run, and EX-01 is tested only
+    where the bar says the stop came after the fill: after an open fill the whole bar came later,
+    so a low at the stop stopped it; after an intraday buy-stop the order of the low and the fill is
+    unknown, unless the bar closed at or under the stop -- price then crossed the stop after the
+    buy. A close fill is tested from the next session. (Until 2026-11-14 the stop was never tested
+    on the entry bar, so an open fill that broke its stop that session sold at the next open.)"""
     o, h, l, c = float(bar["open"]), float(bar["high"]), float(bar["low"]), float(bar["close"])
     m = pos.meta
     if pos.queued_exit and not entry_day:
@@ -1368,6 +1395,11 @@ def _manage_minervini(sym, pos: PortfolioTrade, df: pd.DataFrame, bar, today, po
     if not entry_day:
         m["_max_high"] = max(m.get("_max_high", -math.inf), h)
 
+    if entry_day and pos.stop > 0 and ((at == AT_OPEN and l <= pos.stop) or (at == INTRADAY and c <= pos.stop)):
+        # EX-01 on the fill session, ahead of every other rule: only a breach that certainly came after
+        # the buy (see the docstring). It fills at the stop: the price passed through it after the buy.
+        close_out(sym, pos, pos.stop, "STOP", today, at=INTRADAY)
+        return
     if entry_day and m.get("min_breakout_vol") and v50 == v50 and v50 > 0 and vol < m["min_breakout_vol"] * v50:
         # a buy-stop that filled on a light-volume close is not a valid breakout: sold at the next open
         pos.queued_exit = "LIGHT_VOLUME_BREAKOUT"

@@ -55,7 +55,6 @@ from .donchian import DonchianStrategy
 from .earnings_gaps import EarningsGapStrategy
 from .kell_cycle import KellCycleStrategy
 from .kullamagi import KullamagiStrategy
-from .minervini_coil import MinerviniCoilStrategy
 from .minervini_spec import MinerviniSpecStrategy
 from .momentum_burst import MomentumBurstStrategy
 from .rs_leaders import RsLeadersStrategy
@@ -78,7 +77,6 @@ register(EarningsGapStrategy())
 register(BreakoutStrategy())
 register(ChartPatternSpecStrategy())
 register(MinerviniSpecStrategy())
-register(MinerviniCoilStrategy())   # a variant: Minervini with the contraction gauge's breakout as its setup
 register(RsLeadersStrategy())
 register(StageAnalysisStrategy())
 register(KullamagiStrategy())
@@ -115,6 +113,13 @@ register(StockReversionStrategy())   # buys dips: the per-symbol mean reversion 
 #                                                     excess -5.05 points US / -10.02 India
 #   DeliveryBreakoutStrategy  (delivery_breakout)  -- India delivery-% breakout: 106 trades, -0.02R, 15th percentile
 #                                                     of random entries
+#
+# Retired 2026-11-14, the owner's decision on its review (research/review-minervini_coil-2026-11-14.md; tracker
+# #66): v1.1 failed the pass criterion fixed before its run in both markets (optimise CAGR 0.83% US, 0.58% India;
+# picks at the 19th / 53rd percentile of random Trend Template entries). The module stays for its history; the
+# contraction gauge it traded (core/contraction.py) stays as the chart's indicator.
+#
+#   MinerviniCoilStrategy     (minervini_coil)     -- Minervini with the contraction gauge's breakout as its setup
 #
 # MinerviniStrategy was deleted (2026-10-16). It looked unused, but minervini_spec
 # imported it for one method -- `prefilter_row`, the row-wise Trend Template that

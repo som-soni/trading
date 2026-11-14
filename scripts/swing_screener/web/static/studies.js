@@ -1376,7 +1376,6 @@ const Studies = (() => {
       tight: ["Flag", "#ff9800"], pivot: ["Buy-stop", "#26a69a"], support: ["Close before the news", "#ef5350"] }),
     // Kell's cycle has no guide of its own; its wedge pop and EMA crossback are pullbacks to moving averages
     setups_kell_cycle: genericSetups("kell_cycle", "learn-strat-pullback-ma", { base: ["Base (base break)", "#2962ff"] }),
-    setups_minervini_coil: genericSetups("minervini_coil", "learn-strat-vcp-sepa", { base: ["Coil", "#2962ff"], pivot: ["Coil high", "#26a69a"] }),
     // portfolio strategies that trade one stock at a time: the same layer, drawn from their own runner
     // (backtesting/portfolio_setups.py); the shorts draw their stop above the entry
     setups_stage4_shorts: genericSetups("stage4_shorts", "learn-strat-stage4-shorts", { base: ["Rally into the line", "#2962ff"],

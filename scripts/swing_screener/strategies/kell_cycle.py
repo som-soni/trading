@@ -82,10 +82,12 @@ def cycle_frame(df: pd.DataFrame) -> pd.DataFrame:
 class KellCycleStrategy(Strategy):
     key = "kell_cycle"
     name = "Kell cycle of price action"
-    version = "1.3"
-    # 1.1 changes only the market filter, 1.2 only the stop: both after the scan.
+    version = "1.4"
+    # 1.1 changes only the market filter, 1.2 only the stop, 1.4 only the RS rating's universe: all after the scan.
     signal_version = "1.0"
     changelog = (
+        ("1.4", "2026-11-14",
+         "Backtest mechanics, no rule changed: the RS rating (`--spec`'s TT-08 filter, `filter_min_rs`) ranks a universe whose traded-value floor now scales with the market (backtesting/spec.RS_UNIVERSE; the Minervini review's B6). The fixed floor (Rs 10 crore / $5 million a day) left most early-year Indian stocks unrated, so their signals were dropped as 'outside the rated universe'. signal_version stays 1.0: the scan is unchanged. Results move."),
         ("1.3", "2026-11-14",
          "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; on the 1.2 optimise runs 52 US positions (15 India) were under 0.5% of equity, about 4-5% of slot-days. Orders are bought at the signal close and dropped when no slot is free, so the late-fill problem does not arise. signal_version stays 1.0: the scan is unchanged. Results move."),
         ("1.2", "2026-11-11",

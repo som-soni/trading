@@ -42,7 +42,7 @@ in the past are missing, so every historical number carries survivorship bias.
 | Used by | US | India | Constant |
 |---|---|---|---|
 | Screens: the *Tradable* field | Price ≥ $10; 20-day average traded value ≥ $10M; 260 bars; a valid ATR | No price floor; ≥ ₹50 crore a day | `config/us.py`, `config/india.py` (`min_price`, `min_dollar_volume`); `screens/base.py` (`MIN_BARS`) |
-| Strategies' pre-filter | Traded value only (the price floor is left out, because split-adjusted history would drop early winners) | Same, plus market cap ≥ ₹5,000 crore in the live run (unknown caps pass) | `strategies/base.py` `tradable_point_in_time`; `INDIA_MIN_MARKET_CAP_CR` |
+| Strategies' pre-filter | Traded value only (the price floor is left out, because split-adjusted history would drop early winners) | Same. No market-cap floor: the live run used to drop stocks under ₹5,000 crore, which no backtest can apply (caps are not stored point in time), so it was removed on 2026-11-14 | `strategies/base.py` `tradable_point_in_time` |
 | Breadth | The 1,000 most-traded common stocks by 20-day turnover; closed-end funds flagged by `classify` dropped | Same; symbols not classified as equity (`symbol_kind`) dropped | `BREADTH_N`, `eligible` |
 | Sectors page | ≥ $2M a day at $3+ | ≥ ₹2 crore a day at ₹10+ | `analytics/sectors.py` `MIN_VALUE`, `MIN_PRICE` |
 | Post-market lists, Movers | ≥ $10M a day at $5+ | ≥ ₹10 crore a day at ₹20+ | `analytics/postmarket.py` `LIQUID_VALUE`, `LIQUID_PRICE`; `web/server.py` `MOVER_LIQUID` |

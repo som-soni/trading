@@ -51,7 +51,11 @@ dividends and interest; the gate below judges rule fidelity and drawdown, not re
   - fills land within 2× the modelled 32 bps;
   - every paper signal reconciles with a replay of the rules on the same close.
 - **Caveats:**
-  - Exit ladders are not paper-traded: a position exits whole (`backtesting/paper.py`).
+  - Since 2026-11-14 (v1.68) the book replays its live orders through the backtest's simulator: buy-stops,
+    expiry, sizing, slots, exits and partial sales as backtested (`paper.replay`). Before that it would have
+    bought every tradeable row at the next open (review B3). It held no order under 1.67 (the market filter was
+    shut from 2026-09-15), and runs before 2026-11-14 carry no replayable order, so the record effectively starts
+    with 1.68's first live run.
   - A rule change during the test starts a new book. It does not continue this one.
 
 ### `momentum_dual_combo` India (open since 2026-11-05)
