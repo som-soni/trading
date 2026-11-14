@@ -1813,6 +1813,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="the Minervini spec's portfolio rules: --exit-mode minervini, 8 positions, RS rating >= 70, "
                              "RS-then-tightness ranking, 6%% open-risk cap, 5%% traded-value cap and the spec's costs "
                              "(each can still be overridden by its own flag)")
+    parser.add_argument("--standard-costs", action="store_true",
+                        help="charge the market's standard costs (spec C-01/C-02: charges plus slippage per side, more "
+                             "for illiquid names) without --spec's other portfolio rules")
     parser.add_argument("--min-rs", type=int, default=None, help="skip signals whose RS rating (1-99, cross-sectional) is below this")
     parser.add_argument("--market-filter", action="store_true",
                         help="no new buys in a risk-off market. With --spec, the minervini strategy's own test "
@@ -2105,13 +2108,13 @@ def sim_settings_for(strategy_key: str, market: str) -> dict:
         kw["min_fill_frac"] = float(args.min_fill)
     if args.slot_wait is not None:
         kw["slot_wait_bdays"] = int(args.slot_wait)
-    if args.spec:
+    if args.spec or args.standard_costs:
         kw.update(cost_bps=spec_mod.COST_BPS[market], slippage_bps=spec_mod.SLIPPAGE_BPS[market])
     if args.market_filter:
         # the same series `main` hands the simulator: it cancels resting orders while the market is risk-off
         from ..strategies import minervini_spec as ms
         kw["regime_ok"] = spec_mod.market_ok(market, args.mkt_confirm, bool(args.spec and ms.MKT_GUIDE and not args.mkt01))
-    return {"cfg": cfg, "rank_by": args.rank_by, "spec_costs": bool(args.spec), "simulate": kw}
+    return {"cfg": cfg, "rank_by": args.rank_by, "spec_costs": bool(args.spec or args.standard_costs), "simulate": kw}
 
 
 def main(argv: list[str] | None = None) -> dict | None:
@@ -2294,7 +2297,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             min_fill_frac=args.min_fill, slot_wait_bdays=args.slot_wait,
             top_dollar_volume=args.top_dollar_volume,
             exposure=_exposure_from(args),
-            spec_costs=args.spec,
+            spec_costs=bool(args.spec or args.standard_costs),
             max_open_risk_pct=args.max_open_risk / 100 if args.max_open_risk is not None else None,
             max_adv_pct=args.max_adv_pct / 100 if args.max_adv_pct is not None else None,
             only_symbols=[x.strip() for x in args.symbols.split(",") if x.strip()],
@@ -2337,6 +2340,8 @@ def main(argv: list[str] | None = None) -> dict | None:
         run += "_spec"
     elif args.min_rs is not None:
         run += f"_rs{args.min_rs}"
+    if args.standard_costs and not args.spec:
+        run += "_stdcost"
     if args.market_filter:
         run += ("_mktg" if market_guide else "_mkt") + (f"c{args.mkt_confirm}" if args.mkt_confirm else "")
     if args.results_blackout:
@@ -2415,6 +2420,7 @@ def main(argv: list[str] | None = None) -> dict | None:
             + (" --block-stage3" if args.block_stage3 else "")
             + (f" --fundamentals {args.fundamentals}" if args.fundamentals else "")
             + (" --spec" if args.spec else (f" --min-rs {args.min_rs}" if args.min_rs is not None else ""))
+            + (" --standard-costs" if args.standard_costs and not args.spec else "")
             + (" --market-filter" if args.market_filter else "")
             + (" --mkt01" if args.mkt01 else "")
             + (f" --results-blackout {args.results_blackout}" if args.results_blackout is not None and not args.spec else "")

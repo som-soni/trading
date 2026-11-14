@@ -115,7 +115,7 @@
   },
   "chart_pattern": {
     "family": "chart_pattern",
-    "fingerprint": "11415136",
+    "fingerprint": "b70ae022",
     "params": {
       "ATR_MULT": 1.5,
       "BOUNDARY_LIFE": 1,
@@ -221,6 +221,7 @@
       "TRADE_SYMM": 1,
       "TRADE_TBOT": 1,
       "TRIPLE_MAX_DRIFT": 1.5,
+      "TR_ALTERNATE": 1,
       "TR_MIN_TOUCHES": 4,
       "WEDGE_MIN_CONVERGE": 1.5,
       "W_FIRST_LOW": 1,
@@ -258,7 +259,7 @@
         "W3"
       ]
     },
-    "version": "1.22"
+    "version": "1.23"
   },
   "darvas": {
     "family": "darvas",

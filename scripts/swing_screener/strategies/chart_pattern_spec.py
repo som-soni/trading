@@ -106,6 +106,7 @@ BOUND_LINES = 1           # TL-06, beyond the spec: boundary lines bound the clo
 BOUNDARY_LIFE = 1         # beyond the spec: a boundary pattern lives out §3 from its breakout bar (1 = on)
 HEIGHT_FROM_PRICES = 1    # beyond the spec: a triangle's/wedge's height is its highest high - lowest low (1 = on)
 TR_MIN_TOUCHES = 4        # TR-02: total touches a triangle, wedge or rectangle needs (2 per side still holds)
+TR_ALTERNATE = 1          # TR-02 (1.23): a triangle's or wedge's touches alternate between the lines (1 = on, the spec)
 def _build_params() -> ps.PatternParams:
     return ps.PatternParams(
     k_minor=K_MINOR, k_major=K_MAJOR, min_swing_pct=MIN_SWING_PCT, atr_mult=ATR_MULT,
@@ -118,6 +119,7 @@ def _build_params() -> ps.PatternParams:
     early_breakout=bool(EARLY_BREAKOUT), oneil_first_low=bool(W_FIRST_LOW), wg_min_converge=WEDGE_MIN_CONVERGE,
     contain_breakout_side=bool(CONTAIN_BREAKOUT_SIDE), bound_lines=bool(BOUND_LINES),
     boundary_life=bool(BOUNDARY_LIFE), height_from_prices=bool(HEIGHT_FROM_PRICES), tr_min_touches=TR_MIN_TOUCHES,
+    tr_alternate=bool(TR_ALTERNATE),
 )
 
 
@@ -125,7 +127,8 @@ _PARAM_CONSTANTS = ("K_MINOR", "K_MAJOR", "MIN_SWING_PCT", "ATR_MULT", "TOL_PCT"
                     "BO_VOL", "MAX_WAIT", "FAIL_DAYS", "HORIZON", "W_UNDERCUT_MAX", "W_MIN_DEPTH", "W_MAX_DEPTH",
                     "W_MIN_DAYS", "TRIPLE_MAX_DRIFT", "CUP_RIGHT_LEFT_MIN", "RIM_IDEAL_PCT", "RIM_OK_PCT", "CUP_UNDER_RIM", "CUPNH_NO_HANDLE",
                     "HS_ORIGIN", "HS_MAX_NECK_CHANGE", "EARLY_BREAKOUT", "WEDGE_MIN_CONVERGE", "W_FIRST_LOW",
-                    "CONTAIN_BREAKOUT_SIDE", "BOUND_LINES", "BOUNDARY_LIFE", "HEIGHT_FROM_PRICES", "TR_MIN_TOUCHES")
+                    "CONTAIN_BREAKOUT_SIDE", "BOUND_LINES", "BOUNDARY_LIFE", "HEIGHT_FROM_PRICES", "TR_MIN_TOUCHES",
+                    "TR_ALTERNATE")
 PARAMS = _build_params()
 _PARAMS_KEY: tuple = tuple(globals()[k] for k in _PARAM_CONSTANTS)
 
@@ -252,11 +255,26 @@ def _tradeable(res: dict) -> bool:
 class ChartPatternSpecStrategy(Strategy):
     selection = "time_series"
     family = "chart_pattern"
-    version = "1.22"
-    # 1.22 changes only the portfolio simulator's order mechanics, never the scan
-    # (CLAUDE.md, signal_version).
-    signal_version = "1.21"
+    version = "1.23"
+    # 1.23 changes the detectors (TR-05, TR-02), so signal_version is not pinned: the scan reruns.
     changelog = (
+        ("1.23", "2026-11-14",
+         "Two detector fixes and the market's standard costs, from the 2026-11-14 backtest review. "
+         "(1) TR-05 enforced on the breakout bar (bug B1). The spec's X voids a triangle or wedge that reaches "
+         "80% of the way to its apex without a breakout, and this page said so, but the code exempted every "
+         "breakout bar at any progress. Since the detectors run fresh on each bar and never remember that the "
+         "same lines were void days earlier, a triangle 0.97 of the way to its apex was bought on its "
+         "breakout. Only the bar that crosses the far end of the zone is exempt now. In the 1.22 optimise "
+         "runs those late breakouts were 95 of 244 US triangle/wedge trades and 75% of the run's P&L (India "
+         "62 of 166, 50%). (2) TR-02's alternation restored (TR_ALTERNATE = 1, the spec's rule): a triangle's or "
+         "wedge's touches must switch lines, a run on one line counting once, at least TR_MIN_TOUCHES times. "
+         "Without it a steady recovery into an old high (old high, crash low, rising lows) read as an "
+         "ascending or symmetrical triangle: in the 1.22 US run, 35 trades whose lower line rose more than 25% "
+         "made 46% of all R. The spec gives no bound on the lower line's slope, so no cap was added. "
+         "(3) `--standard-costs` in backtest_args: the market's standard charges plus slippage per side "
+         "(India 12 + 15 bps, 30 bps slippage for illiquid names; US 1 + 5), where the runner charged 10 bps "
+         "in India and 5 in the US. The 1.22 India run was 7.51% CAGR at 10 bps and 5.94% at the standard. "
+         "The keep/retire rule for this version is in the status, written before its runs. Results move."),
         ("1.22", "2026-11-14",
          "Backtest mechanics, no rule changed: no crumb fills (`--min-fill 0.5`), one of the two order problems the donchian backtest review (2026-11-14) found in the shared simulator. A fill the cash allows less than half its planned shares is skipped; it used to buy whatever was left, and on the 1.21 optimise runs 125 US positions (22 India) were under 0.5% of equity, holding 25.2% of US slot-days (7.8% India). The other problem, late fills from orders that waited for a slot, needs no change here: every fill already re-tests MAX_CHASE_PCT, MAX_RISK_PCT and MIN_R against the price paid. signal_version pinned to 1.21: the scan is unchanged, so the cached rows carry forward. Results move."),
         ("1.21", "2026-11-04",
@@ -516,27 +534,25 @@ class ChartPatternSpecStrategy(Strategy):
     min_bars = 260
 
     status = (
-        "v1.22, OPTIMISE STAGE (2013-2021, in-sample), jobs #1788 India and #1789 US, measured 2026-11-15, against "
-        "v1.21: India 7.51% CAGR (was 7.40%), excess -6.03, max drawdown -20.4% (was -20.4%), +0.33R a trade over "
-        "213 trades; US 7.82% CAGR (was 4.95%), excess -6.19, max drawdown -20.9% (was -25.6%), +0.42R a trade "
-        "over 308 trades. CAGR, average R and drawdown better in both markets. The one criterion missed: the share "
-        "of capital in use fell slightly (India 64.0% to 63.9%, US 94.0% to 92.4%), because a skipped crumb leaves "
-        "its cash idle. Verify not run. Figures further on are earlier versions'. "
-        "NO DEMONSTRATED EDGE in the optimise stage (2013-2021, in-sample, v1.18, measured 2026-11-02); verify "
-        "not run. US 4.79% CAGR, excess -9.22 points a year over the benchmark, max drawdown -29.6%, Sharpe 0.40, "
-        "497 trades at +0.07R, profit factor 1.15; India 2.43% CAGR, excess -11.10, max drawdown -31.5%, Sharpe "
-        "0.29, 202 trades at +0.21R, profit factor 1.16 (bracket exits). Variants, optimise stage, never the "
-        "headline: Brandt's breakout buffer BUFFER_ATR=0.5 US 7.99%, excess -6.02, drawdown -24.7%, 522 trades at "
-        "+0.21R, profit factor 1.24; India 2.78%, excess -10.76, 209 trades at +0.20R, profit factor 1.18 (no "
-        "change). Brandt's compression gate COMPRESSION_ADX_MAX=12 US 2.85%, excess -11.16, 162 trades at +0.17R, "
-        "profit factor 1.24; India 19 trades, too few to judge. Earlier variants (v1.16): BO_VOL=0 (no "
-        "breakout-volume test) US 13.07%, excess -0.94, India 4.97%, excess -8.57; "
-        "MAX_RISK_PCT=15 US 7.86%, excess -6.15, India 7.26%, excess -6.28. LEGACY (before stages): v1.5, India, "
-        "full universe from 2013 (measured 2026-10-14), 3.61% CAGR against the index's 11.6%, max drawdown "
-        "-27.8%; the v1.0 comparison (US, 2020-2026, 300-symbol sample, 2026-10-09) lost -0.93% CAGR and -0.072R "
-        "per trade over 253 trades against chart_pattern_legacy's -5.60% and -0.309R, a +0.234R difference with "
-        "a Welch t of 1.16 and a 95% interval of [-0.16, +0.62], so the spec's discipline is NOT demonstrated to "
-        "help."
+        "v1.23 NOT YET RUN: its optimise runs (2013-2021, at the market's standard cost) were queued "
+        "2026-11-14; the figures below are v1.22's, which rest on bug B1 (fixed in 1.23) and are not comparable. "
+        "KEEP/RETIRE RULE FOR 1.23, fixed before its runs (backtest review 2026-11-14): chart_pattern stays a "
+        "standalone strategy only if, in BOTH markets at standard cost, its 1.23 optimise run has (1) excess CAGR "
+        "over the price benchmark of at least -2 points a year; (2) a CAGR at least that of the index held at the "
+        "strategy's own daily exposure; (3) a matched-null percentile of at least 80 against random near-high "
+        "stocks entered on the same dates; (4) a positive CAGR without its best 5% of trades. If any of the four "
+        "fails in either market, it is retired as a standalone strategy and its detectors stay for the Chart "
+        "patterns indicator. The verify stage is not opened for this decision. "
+        "v1.22, optimise stage (2013-2021, in-sample, reviewed 2026-11-14): NO DEMONSTRATED EDGE, FRAGILE. US "
+        "(run 10935) 7.82% CAGR, 7.69% at standard cost, against SPY's 14.01% (excess -6.19 points), max drawdown "
+        "-20.9%, Sharpe 0.60, 308 trades at +0.36R; India (run 10208) 7.51% at the old 10 bps, 5.94% at "
+        "standard cost, against the Nifty 500's 13.54% (excess -6.03), max drawdown -20.4%, 213 trades at +0.31R. "
+        "The trades did no better than random near-high stocks on the same dates (51st and 53rd percentile), "
+        "the index held at the same exposure beat it in both markets, and without the best 5% of trades the "
+        "CAGR was negative (US -5.64%, India -1.40%). Late-apex triangle breakouts, which TR-05 voids (B1), made "
+        "75% (US) and 50% (India) of the P&L. Verify not run. LEGACY (before stages): the v1.0 comparison "
+        "against chart_pattern_legacy (US, 2020-2026, 2026-10-09) found +0.234R a trade with a 95% interval of "
+        "[-0.16, +0.62], so the spec's discipline is NOT demonstrated to help."
     )
     thesis = (
         "If classical chart patterns carry information, a detector built to a "
@@ -589,7 +605,8 @@ class ChartPatternSpecStrategy(Strategy):
         "- **HS-09, HS-10:** added — a false left shoulder and a steep neckline passed.\n"
         "- **TL-04:** the id is reused for the breakout-side containment rule; the spec's TL-04 is the "
         "slope measure.\n"
-        "- **TR-02:** touches need not alternate between the lines.\n"
+        "- **TR-02:** {TR_MIN_TOUCHES} touches in all where the spec asks 5 (a bounding line touches fewer "
+        "than a regression line); they alternate between the lines, as the spec asks, since 1.23.\n"
         "- **WG-04:** added — near-parallel channels passed WG-02.\n"
         "- **Flat base trigger:** includes today's high (the spec freezes it at yesterday).\n"
         "- **BO-02:** the completing patterns take VOL50 before completion, not before their start.\n"
@@ -613,10 +630,12 @@ class ChartPatternSpecStrategy(Strategy):
         "breadth. DBOT was the only pattern with positive expectancy (+0.05R "
         "on 15 trades, which is nothing) -- and that was the textbook "
         "reversal DBOT, replaced in v1.3 by O'Neil's W.",
-        "**It is signal-saturated.** 942 signals produced 253 trades: 85 were "
-        "passed up with all 10 slots full and 132 for insufficient cash, and "
-        "exposure ran at 93.9% against `chart_pattern_legacy`'s 79.3%. A position "
-        "cap, not the detector, decided much of what got traded.",
+        "**Cash, not slots, limits the book.** At 1% risk on a 4–5% stop each position is 17–25% of equity "
+        "(capped at 25%), about 22% at the median stop, so the book holds about 5 names and the 10-slot cap "
+        "never binds. In the v1.22 optimise runs (2013-2021) the US lost 1,713 signals for lack of cash and "
+        "1,065 as fills under half the plan, none to full slots (India 45 and 65); positions averaged 5.1 "
+        "(India 3.5). Which signal gets the cash is first come, first served, and three stocks made 44% of "
+        "the US P&L (India 58%).",
         "**The flat base can never break out on its own bar, so a backtest never buys it.** Its window "
         "includes today, so its trigger (the window high) is at least today's high, and no close can be "
         "{BO_BUFFER}% above it. Live, a flat base only ever shows as TRADE ON TRIGGER.",
@@ -897,7 +916,12 @@ class ChartPatternSpecStrategy(Strategy):
                  "came back, so the line was not the boundary.",
         "TR-02": "Lines — touches: at least {PARAMS.tr_min_touches_side} swings on each line and "
                  "{PARAMS.tr_min_touches} in all. Rectangle (RC-02): {PARAMS.rc_min_touches_side} on each, "
-                 "{PARAMS.rc_min_touches} in all. The touches need not alternate between the lines.",
+                 "{PARAMS.rc_min_touches} in all.\n\n"
+                 "- **Alternating (triangles and wedges, TR_ALTERNATE = {TR_ALTERNATE}):** in time order the "
+                 "touches switch lines at least {PARAMS.tr_min_touches} times, a run of touches on one line "
+                 "counting once. A recovery into an old high (old high, crash low, rising lows) is not a "
+                 "triangle.\n"
+                 "- **Rectangles:** need not alternate.",
         "RC-03": "Rectangle height: (upper − lower) ÷ lower at S is {PARAMS.rc_height[0]:g}% to "
                  "{PARAMS.rc_height[1]:g}%.",
         "RC-04": "Rectangle length: {PARAMS.rc_days[0]} to {PARAMS.rc_days[1]} bars from S to today. A "
@@ -907,7 +931,9 @@ class ChartPatternSpecStrategy(Strategy):
                  "today.",
         "TR-05": "Triangle/wedge — apex zone: today is {PARAMS.tr_apex_zone[0]:g} to "
                  "{PARAMS.tr_apex_zone[1]:g} of the way from S to the apex, in bars.\n\n"
-                 "- **Past the far end:** void.\n"
+                 "- **Past the far end:** void, breakout or not — except a breakout on the bar that crosses "
+                 "the far end (the spec's X: the far end reached WITHOUT a breakout). For a pattern that broke "
+                 "out, progress is measured at its breakout bar.\n"
                  "- **Before the near end:** the lines have barely converged; not yet a pattern.",
         "WG-04": "Wedge — real convergence: the steeper line slopes at least {WEDGE_MIN_CONVERGE} times the "
                  "shallower one; nearer parallel is a channel.",
@@ -1274,6 +1300,10 @@ class ChartPatternSpecStrategy(Strategy):
          "TR-02: {TR_MIN_TOUCHES} touches in all, {PARAMS.tr_min_touches_side} per side. The spec said 5 "
          "in all, tuned for a regression line through the middle of the swings; a bounding line touches "
          "fewer, and Bulkowski's minimum is two per side."),
+        ("Touch alternation", "TR_ALTERNATE",
+         "TR-02 ({TR_ALTERNATE} = on, the spec): a triangle's or wedge's touches alternate between the lines "
+         "-- a run of touches on one line counts once, and the runs must reach {TR_MIN_TOUCHES}. Off (before "
+         "1.23), a V-shaped recovery into an old high passed as a triangle."),
         ("Early breakout", "EARLY_BREAKOUT",
          "BO-04 ({EARLY_BREAKOUT} = on): a pattern that completes once is confirmed {K_MAJOR} bars "
          "after its last point, but its breakout is searched from that point -- a close through T in "
@@ -1321,7 +1351,7 @@ class ChartPatternSpecStrategy(Strategy):
          "Fraction of equity risked between entry and stop, which sets "
          "position size."),
     )
-    backtest_args = "--min-fill 0.5"
+    backtest_args = "--min-fill 0.5 --standard-costs"
 
     # ---------- screen ----------
 

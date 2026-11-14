@@ -195,6 +195,12 @@ class PatternParams:
     tr_scale_days: int = 40               # TR-01: minor swings under this, major over
     tr_min_touches_side: int = 2          # TR-02
     tr_min_touches: int = 5               # TR-02
+    # TR-02's "alternating between the lines": the touches, in time order, switch line; a run of touches
+    # on one line counts once. With it a steady recovery into an old high (old high, crash low, rising
+    # lows, touching the lower line again and again between two touches of the upper) is not a triangle:
+    # BAJAJFINSV.NS's and APOLLOHOSP.NS's 2020 "ascending triangles" were post-crash recoveries with 3
+    # alternating touches. False counts every touch, as chart_pattern did before 1.23.
+    tr_alternate: bool = True
     tr_days: tuple[int, int] = (15, 200)  # TR-04
     tr_apex_zone: tuple[float, float] = (0.50, 0.80)  # TR-05
     # Beyond the spec: a wedge's lines converge at least this many times faster on the steep side
@@ -398,6 +404,15 @@ def touching(line: Line, points: list[Swing], t: float) -> list[Swing]:
 def touches(line: Line, points: list[Swing], t: float) -> int:
     """TL-02: how many swing points lie within `t` of the line."""
     return len(touching(line, points, t))
+
+
+def alternating_touches(upper: Line, lower: Line, points: list[Swing], t: float) -> int:
+    """TR-02's alternation: the highs touching `upper` and the lows touching `lower`, in time order,
+    with each run of touches on one line counted once -- the number of times price crossed from one
+    line to the other, plus one."""
+    seq = sorted([(q.pos, "U") for q in touching(upper, [q for q in points if q.kind == "H"], t)]
+                 + [(q.pos, "L") for q in touching(lower, [q for q in points if q.kind == "L"], t)])
+    return sum(1 for i, (_, side) in enumerate(seq) if i == 0 or side != seq[i - 1][1])
 
 
 def _mark_touches(res: dict, upper: Line, lower: Line, pts: list[Swing], lo: int,
@@ -1504,8 +1519,10 @@ def detect_boundaries(daily: pd.DataFrame, p: PatternParams = PatternParams()) -
             down = kind in (RISING_WEDGE, DESCENDING)
             side = [q for q in pts if q.kind == ("L" if down else "H") and anchor.pos <= q.pos <= t_hi]
             touch_pos = [q.pos for q in touching(lower if down else upper, side, t_frac)]
+            alt = alternating_touches(upper, lower, [q for q in pts if anchor.pos <= q.pos <= t_hi], t_frac)
             res = _boundary_rules(out, d, kind, upper, lower, anchor.pos, tu, tl,
-                                  close, volume, t_pos, t_hi, mid, t_frac, p, touch_pos=touch_pos, k=k)
+                                  close, volume, t_pos, t_hi, mid, t_frac, p, touch_pos=touch_pos, k=k,
+                                  alt=alt)
             _mark_touches(res, upper, lower, pts, anchor.pos, t_hi, t_frac, idx)
             found.append(res)
     return found
@@ -1514,8 +1531,9 @@ def detect_boundaries(daily: pd.DataFrame, p: PatternParams = PatternParams()) -
 def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: Line,
                     s_pos: int, tu: int, tl: int, close, volume, t_pos: int,
                     t_hi: int, mid: float, t_frac: float, p: PatternParams,
-                    touch_pos: list[int] | None = None, k: int = 0) -> dict:
-    """TR-01..TR-07 for triangles and wedges, RC-01..RC-04 for rectangles."""
+                    touch_pos: list[int] | None = None, k: int = 0, alt: int | None = None) -> dict:
+    """TR-01..TR-07 for triangles and wedges, RC-01..RC-04 for rectangles. `alt` is the alternating
+    touch count (`alternating_touches`), which TR-02 asks of a triangle or wedge when `tr_alternate`."""
     rect = kind == RECTANGLE
     rules = RC_RULES if rect else TR_RULES
     dur = t_pos - s_pos
@@ -1588,6 +1606,12 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
     if tu < need_side or tl < need_side or tu + tl < need_all:
         out["fail"] = "RC-02" if rect else "TR-02"
         return out
+    # ...alternating between the lines (TR-02; the rectangle's RC-02 does not ask it)
+    if not rect and p.tr_alternate and alt is not None:
+        out["metrics"]["alternating_touches"] = alt
+        if alt < need_all:
+            out["fail"] = "TR-02"
+            return out
 
     height0 = upper.at(s_pos) - lower.at(s_pos)
     if p.height_from_prices and not rect:
@@ -1625,14 +1649,20 @@ def _boundary_rules(out: dict, d: pd.DataFrame, kind: str, upper: Line, lower: L
     # TR-05: how far through the triangle price has travelled (to its breakout, if it broke out)
     progress = (eff_t - s_pos) / (x - s_pos) if x > s_pos else float("nan")
     out["metrics"]["apex_progress"] = progress
-    # X is "80% of the way WITHOUT a breakout": a close through the trigger on that very bar is
-    # the breakout, judged by the state below, not a void
+    # X is "80% of the way WITHOUT a breakout", so past the zone's far end the pattern is void --
+    # whether or not today breaks out. The one exemption is the bar that crosses the far end: a
+    # breakout on the very bar that reaches 80% is the breakout, judged by the state below. Before
+    # 1.23 every breakout bar was exempt, at any progress, and the detectors (fresh on each bar)
+    # never remembered that the same lines had been void at 80% days earlier: a triangle 0.97 of the
+    # way to its apex was bought on its breakout.
     up_line = lower if kind in (RISING_WEDGE, DESCENDING) else upper
-    breaking = bo_pos is None and (
+    breaking = bo_pos is not None or (
         close[t_pos] < up_line.at(t_pos) * (1 - p.bo_buffer) if kind in (RISING_WEDGE, DESCENDING)
         else close[t_pos] > up_line.at(t_pos) * (1 + p.bo_buffer))
-    if not (progress == progress) or (progress > p.tr_apex_zone[1] and not breaking):
-        out["fail"] = "TR-05"          # X: 80% of the way with no breakout
+    prev = (eff_t - 1 - s_pos) / (x - s_pos) if x > s_pos else float("nan")
+    crossing = breaking and prev == prev and prev <= p.tr_apex_zone[1]
+    if not (progress == progress) or (progress > p.tr_apex_zone[1] and not crossing):
+        out["fail"] = "TR-05"          # X: past 80% of the way, unless breaking out as it gets there
         return out
     # ...and the zone's near end: the spec's breakout happens from 50% of the way. Before that the
     # lines have barely begun to converge, so it is not yet a triangle or a wedge.
