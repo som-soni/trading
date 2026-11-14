@@ -7,7 +7,10 @@ disable-model-invocation: true
 
 # Backtest review
 
-Review a strategy's backtests end to end and propose prioritised improvements.
+Skill version: 5
+
+Review a strategy's backtests end to end and propose prioritised improvements. One strategy per run;
+every finished review is recorded (see Output), so the tracker says which strategies are due.
 
 Strategy page: $ARGUMENTS
 
@@ -23,6 +26,18 @@ The review answers, in order of what can invalidate what: **is the code right** 
 method** (step 7) → **is the edge real** (step 4) → **is it robust** (step 5) → **does it beat buy-and-hold fairly** (step 6) → **when does it work**
 (step 8) → **what to change** (steps 9–11). A look-ahead bug makes every later number meaningless, so bugs are found first and ranked
 first.
+
+## 0. Check the tracker
+
+```bash
+cd scripts && PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.strategy_reviews status
+```
+
+It lists every strategy as **never reviewed**, **strategy changed** (its version moved since the last
+review), **skill updated** (reviewed before checks this skill has added since) or **current**. If this
+strategy is current, say so, give the stored headline (`... strategy_reviews show --strategy <key>`) and
+ask whether to review it again before going on. If it was reviewed before, read that review first: start
+from its bugs and proposed changes, and say in the new review which were fixed, tested or are still open.
 
 ## 1. Find the runs to review
 
@@ -352,6 +367,22 @@ Write the full review to `research/review-<key>-<YYYY-MM-DD>.md` (do not commit 
 wherever a block of comparable figures sits (regimes, R by exit, years), and give the headline in chat:
 the verdict, the bugs, and the top three changes.
 
+Then **record it in the tracker**. This is the one write the review makes; it stores the markdown in
+Postgres, so the review survives a worktree being cleaned up:
+
+```bash
+cd scripts && PYTHONPATH=. .venv/bin/python -m swing_screener.backtesting.strategy_reviews record \
+    --strategy <key> --file ../research/review-<key>-<YYYY-MM-DD>.md \
+    --runs '{"us": <id>, "india": <id>}' --bugs <n> \
+    --verdicts '{"us": {"code": "...", "edge": "...", "robust": "...", "vs_buy_hold": "..."}, "india": {...}}' \
+    --headline "<the verdict in a sentence or two>" --changes '["<change 1>", "<change 2>", "<change 3>"]'
+```
+
+Verdict values: `code` clean | bugs | unresolved (step 3 and accidental gaps from step 7); `edge` yes |
+small | no | not enough evidence (step 4); `robust` robust | fragile | not enough evidence (step 5);
+`vs_buy_hold` beats | matches with less risk | does not (step 6). Give only the markets reviewed. If the
+baseline was an older version's run (step 1), pass `--spec-id` and `--version` of that run.
+
 1. Runs reviewed.
 2. Scorecard per market.
 3. Implementation audit: point in time, accounting, sizing and risk, the trade sample — each flag
@@ -370,4 +401,19 @@ the verdict, the bugs, and the top three changes.
 12. What you could not determine and which data would settle it.
 
 Report bad news plainly; if the code has a bug, say so before anything else, and if the strategy has
-no demonstrated edge, say so before proposing tweaks. Do not edit code, queue jobs or commit.
+no demonstrated edge, say so before proposing tweaks. Do not edit code, queue jobs or commit; recording
+the review in the tracker is the only write.
+
+## Skill versions
+
+A change that adds or changes a check bumps "Skill version" above and adds a line here, so the tracker
+marks reviews made before it as "skill updated".
+
+- **5** (2026-11-14) Does it really beat buy-and-hold (step 6): a fair total-return benchmark, beta and alpha,
+  simpler alternatives, after tax, capacity, power, luck across strategies, book contribution. The tracker.
+- **4** (2026-11-14) Is it robust (step 5): outliers, years and halves, rolling excess, bootstrap, neighbourhood.
+- **3** (2026-11-14) Implementation audit (step 3, with fill timing), position sizing and risk, the trade
+  sample, fidelity statuses, market regimes (step 8).
+- **2** (2026-11-12) The method from the knowledge base; is the edge real; suspect the implementation of a
+  proven method first. The family reviews of 2026-11-12 were made under this version.
+- **1** (2026-11-11) Prioritised improvements from the optimise-stage runs.
