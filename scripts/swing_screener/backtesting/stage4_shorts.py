@@ -739,11 +739,16 @@ DOC = {
         "against an index short at the same beta and beside the best long book, not on its own return."
     ),
     "status": (
-        "NOT YET MEASURED (v1.5). The last test before retirement: Weinstein's own entry (C + P), the hedge "
-        "measured against a beta-matched index-futures short and a cash sleeve, both earning the cash rate, beside "
-        "the best long book. Queued for the optimise stage (2013-2021) only, with the pass criteria written in the "
-        "caveats before the runs. v1.4 (failed rally to the line, optimise): -1.8% a year US, -3.7% India, no "
-        "selection edge, and no hedge value against a cash sleeve beside any of 47 long books."
+        "FAILS both pass criteria in both markets (v1.5, optimise stage 2013-2021); retirement recommended. "
+        "Weinstein's entry (C + P) barely trades once the market itself must be in Stage {MARKET_STAGE} and the "
+        "group weak: 17 shorts in the US (avg -0.78R), 2 in India, and none open in the March 2020 crash. "
+        "Criterion 1, beat the beta-matched index short with cash on Sharpe and drawdown: US excess Sharpe -0.40 "
+        "vs -0.91 but drawdown -3.8% vs -1.7%; India -0.68 vs +0.82. Criterion 2, a 20% sleeve beside the long "
+        "book (quality_momentum US, momentum_vol_scaled India) cutting drawdown by {PASS_DD_POINTS} points vs a "
+        "20% cash sleeve: gain 0.0 points in both, Sharpe slightly below cash. The v1.4 rally entry (B) re-run "
+        "under the fixed measurement also fails: US -1.2% a year, drawdown -19.1%, sleeve gain 0.3 points; "
+        "India +3.1% a year with interest (below the cash rate), drawdown -14.6%, sleeve gain -0.1 points. "
+        "Both results hold at double costs."
     ),
     "thesis": (
         "Every strategy on this shelf is long, so they all lose together in a bad year. Stage 4 stocks "
