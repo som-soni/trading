@@ -201,10 +201,18 @@ BG_DOC = {
                    "count; hold gold miners while miners, gold and silver are all above their averages. "
                    "T-bills otherwise. Mark Boucher's weekly models.",
     "status": (
-        "BUILT, NOT YET MEASURED. Settings are his published ones, fixed before any run. The pass rule, "
-        "written before reading a result: excess CAGR over the model's buy-and-hold (long Treasuries for "
-        "bbu and heine, GDX for gold) above zero with a max drawdown no deeper, or a materially shallower "
-        "drawdown at a CAGR within 1 point of buy-and-hold. Nothing here has a verify run."
+        "OPTIMISE STAGE (2013-2021, in-sample) -- GOLD PASSES; BOND-BILL-UTILITY BORDERLINE; HEINE FAILS. "
+        "Settings are his published ones, fixed before any run. The pass rule, written before reading a "
+        "result: excess CAGR over the model's buy-and-hold (long Treasuries for bbu and heine, GDX for gold) "
+        "above zero with a max drawdown no deeper, or a materially shallower drawdown at a CAGR within 1 "
+        "point. Gold-Silver-GMI: -0.81% against GDX's -3.45%, excess +2.64, drawdown -40.5% against -72.9%, "
+        "21 trades, 38% won, invested 26% of the time (passes). Bond-Bill-Utility: 3.88% against 4.88%, "
+        "excess -0.99, drawdown -15.7% against -21.3%, Sharpe 0.42 against 0.42, 49 trades, 45% won, "
+        "invested 49%: inside the 1-point band with a 5.6-point shallower drawdown, but no better "
+        "risk-adjusted, so borderline. Heine: 3.69%, excess -1.19, drawdown -19.4%, 54 trades (fails). "
+        "Context, full stage 1980-2012 (never a verdict; the start moves to the first week every input "
+        "exists, 1992 for bbu): bbu 4.68% against 8.82%, heine 1.65% (excess -8.53), gold -7.87% "
+        "(excess -10.89) -- all fail. No verify run."
     ),
     "thesis": (
         "The same liquidity cycle as his stock timing, applied to the assets it moves first. Bonds rally "

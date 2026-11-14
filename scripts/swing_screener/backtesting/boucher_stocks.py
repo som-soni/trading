@@ -384,10 +384,22 @@ BS_DOC = {
                    "Treasury yield is below its own; T-bills otherwise. Mark Boucher's liquidity, economic and "
                    "sentiment models as monthly switches; his Nasdaq {OTC_REVERSAL_PCT}% reversal as a mode.",
     "status": (
-        "BUILT, NOT YET MEASURED. Thresholds are his published ones, fixed before any run. The pass rule, "
-        "written before reading a result: excess CAGR over S&P 500 total-return buy-and-hold above zero with "
-        "a max drawdown no deeper than buy-and-hold's, or a materially shallower drawdown at a CAGR within 1 "
-        "point of buy-and-hold. Nothing here has a verify run."
+        "OPTIMISE STAGE (2013-2021, in-sample) -- THE BASE RULE FAILS THE PASS RULE; ONE SWITCH ON ITS OWN "
+        "PASSES. Thresholds are his published ones, fixed before any run. The pass rule, written before "
+        "reading a result: excess CAGR over S&P 500 total-return buy-and-hold above zero with a max drawdown "
+        "no deeper, or a materially shallower drawdown at a CAGR within 1 point. Base rule (40-week trend + "
+        "rates): 11.46% CAGR against 16.18%, excess -4.72, max drawdown -12.4% against -33.7%, Sharpe 1.11 "
+        "against 1.00, 20 trades, 74% won, invested 67% of the time: far shallower, but 4.7 points short. "
+        "Every switch added to it lowers CAGR (monetary composite 4.52%, invested 27%; his late-cycle brake "
+        "10.50%). Switches alone: consumer sentiment passes (16.00%, excess -0.18, drawdown -23.0%, Sharpe "
+        "1.19, 6 trades, invested 93%); capacity utilization never turns bearish in the window and equals "
+        "buy-and-hold; industrial production (15.18%) and the curve (15.01%) miss on drawdown. Nasdaq 7.9% "
+        "reversal: long/short 10.43% against 20.86%, drawdown -35.4% against -30.1% (fails); long/cash "
+        "16.41%, excess -4.46, drawdown -19.9% (fails). Context, full stage 1980-2012 (never a verdict): base "
+        "rule 9.00% against 10.07%, drawdown -29.1% against -55.2% (1.07 points short); monetary alone "
+        "-0.41, drawdown -39.4%; Nasdaq long/cash +1.39, drawdown -46.8% against -77.4%. Few trades "
+        "everywhere (1-28 in nine years), so every figure is a handful of decisions. No verify run; the "
+        "sentiment switch is a candidate, not a result, and was one of 26 variants tried."
     ),
     "thesis": (
         "Boucher's liquidity cycle: stocks are fed by money that reaches the bond and bill markets first, so "
