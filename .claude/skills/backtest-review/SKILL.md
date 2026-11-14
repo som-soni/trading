@@ -85,6 +85,14 @@ on both sides, cash never goes negative unless the rules allow leverage, open po
 the slot limit, and the funnel adds up (signals = taken + passed up for slots + for cash + skipped at
 the fill). Where the runner has a buy-and-hold mode, it must equal the benchmark exactly.
 
+**Fill timing.** Match each trade to the signal whose planned stop it carries (an order that rests
+keeps its signal's levels) and measure the sessions from signal to fill and how far the price paid sits
+above the plan, in ATR. Report average R and n for: filled next session; filled later near the plan (the
+breakout faded back and re-triggered); filled later more than 1 ATR above it (chased). An order that
+waits for a slot can fill past the strategy's own anti-chase gate and stop cap, and in a slot-limited
+book this can be most of the trades — the donchian review (`research/review-donchian-2026-11-14.md`)
+found 62% of US trades there at +0.03R against +0.77R for next-session fills.
+
 **Position sizing and risk management, against the rules as written** (`sizing_rules`, `stop_rules`,
 `params`):
 - Risk per trade at entry matches the rule (e.g. 1% of equity), and where it does not, which cap
