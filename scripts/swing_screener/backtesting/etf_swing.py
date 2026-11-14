@@ -228,6 +228,7 @@ class EtfSwingStrategy(PortfolioStrategy):
                                        "close below the 21-day EMA."),)
     name = DOC["name"]
     description = DOC["description"]
+    retired = "2026-11-14"
     status = DOC["status"]
     thesis = DOC["thesis"]
     how_it_works = tuple(DOC["how_it_works"])

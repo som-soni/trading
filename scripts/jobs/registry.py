@@ -705,10 +705,8 @@ def _backtest_steps(ctx: Ctx) -> list:
     documented arguments (`Strategy.backtest_args` — its real exit policy, the same command the
     Strategies page shows), reports live progress to the run log, and leaves the report for the
     `ingest` job to load. Offline and slow: it reads stored prices only."""
-    from swing_screener.strategies import DEFAULT_STRATEGY, list_strategies, portfolio_strategies
-    keys = ctx.opt("strategies") or [DEFAULT_STRATEGY]
-    if keys == ["all"]:
-        keys = list_strategies() + sorted(portfolio_strategies())
+    from swing_screener.strategies import DEFAULT_STRATEGY, expand_all, portfolio_strategies
+    keys = expand_all(ctx.opt("strategies") or [DEFAULT_STRATEGY])   # "all" leaves retired ones out
 
     def one(key):
         def fn(c: Ctx) -> None:
@@ -835,10 +833,8 @@ def _backtest_steps(ctx: Ctx) -> list:
 
 
 def _strategy_steps(ctx: Ctx) -> list:
-    from swing_screener.strategies import DEFAULT_STRATEGY, list_strategies
-    keys = ctx.opt("strategies") or [DEFAULT_STRATEGY]
-    if keys == ["all"]:
-        keys = list_strategies()
+    from swing_screener.strategies import DEFAULT_STRATEGY, expand_all
+    keys = expand_all(ctx.opt("strategies") or [DEFAULT_STRATEGY], portfolio=False)
 
     def one(key):
         def fn(c: Ctx) -> None:
@@ -1324,12 +1320,10 @@ def research_item(item: dict) -> bool:
 
 def item_strategies(item: dict) -> set[str]:
     """The strategies a backtest item names (`all` expanded, none = the default strategy, as the job reads it)."""
-    from swing_screener.strategies import DEFAULT_STRATEGY, list_strategies, portfolio_strategies
+    from swing_screener.strategies import DEFAULT_STRATEGY, expand_all
     s = (item.get("opts") or {}).get("strategies") or [DEFAULT_STRATEGY]
     keys = [k.strip() for k in (s.split(",") if isinstance(s, str) else s) if k and k.strip()]
-    if keys == ["all"]:
-        keys = list_strategies() + sorted(portfolio_strategies())
-    return set(keys)
+    return set(expand_all(keys))
 
 
 def portfolio_item(item: dict) -> bool:

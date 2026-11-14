@@ -167,6 +167,19 @@ def portfolio_strategies() -> dict:
                                 BoucherStocksStrategy, BoucherBondsGoldStrategy, ValueRankingStrategy)}
 
 
+def expand_all(keys, portfolio: bool = True) -> list[str]:
+    """`keys` with "all" expanded to every registered strategy (and, with `portfolio`, every portfolio strategy)
+    that is not retired (`retired`, a date). Keys named explicitly are kept as given, retired or not: naming one
+    is a deliberate request. The one expansion for the job registry and the runners' "all"."""
+    keys = list(keys or [])
+    if keys != ["all"]:
+        return keys
+    out = [k for k in list_strategies() if not getattr(type(_REGISTRY[k]), "retired", "")]
+    if portfolio:
+        out += [k for k, c in sorted(portfolio_strategies().items()) if not getattr(c, "retired", "")]
+    return out
+
+
 def all_specs() -> dict:
     """Everything that carries a version: per-symbol and portfolio alike."""
     out = {k: type(v) for k, v in _REGISTRY.items()}

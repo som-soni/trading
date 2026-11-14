@@ -220,7 +220,8 @@ def main() -> None:
 
     args = ap.parse_args()
 
-    keys = (list_strategies() if args.strategies.strip() == "all"
+    from ..strategies import expand_all
+    keys = (expand_all(["all"], portfolio=False) if args.strategies.strip() == "all"
             else [k.strip() for k in args.strategies.split(",") if k.strip()])
     for k in keys:
         if k not in list_strategies():

@@ -512,6 +512,7 @@ class MeanReversionStrategy(PortfolioStrategy):
                   "paisa (22,488.65 -> 23,263.90)."),)
     name = MR_DOC["name"]
     description = MR_DOC["description"]
+    retired = "2026-11-14"
     status = MR_DOC["status"]
     thesis = MR_DOC["thesis"]
     how_it_works = tuple(MR_DOC["how_it_works"])

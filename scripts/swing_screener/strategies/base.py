@@ -229,6 +229,10 @@ class SpecMeta:
     family: str = ""
     version: str = "1.0"
     changelog: tuple = ()
+    # The ISO date the owner retired the strategy, "" while active. A retired strategy keeps its page (a measured
+    # negative result) and still runs when named, but "all" leaves it out (strategies.expand_all). A string, so
+    # it is not in the fingerprint: retiring changes no rule and needs no version bump.
+    retired: str = ""
     variant_of: str = ""
     style: str = ""
     selection: str = "time_series"
@@ -250,7 +254,7 @@ class SpecMeta:
         # rendering as its numbers, or the page restates them by hand and they drift. The prose
         # fields are excluded: they are the documentation, not values to interpolate into it, and
         # {name} expanding to the whole status text would be nonsense.
-        _PROSE = {"name", "description", "status", "thesis", "key", "family", "version"}
+        _PROSE = {"name", "description", "status", "thesis", "key", "family", "version", "retired"}
         for k in dir(cls):
             v = getattr(cls, k, None)
             if k.startswith("_") or k in _PROSE:
