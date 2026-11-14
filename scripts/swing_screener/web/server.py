@@ -958,7 +958,7 @@ def strategies():
         d = strat_docs.strategy_doc(k)
         out.append({"key": k, "name": d["name"], "kind": d["kind"], "status": d["status"], "description": d["description"],
                     "screen_name": (d.get("screen") or {}).get("name"),
-                    "style_label": d.get("style_label") or "", "style_rank": d.get("style_rank", 99),
+                    "style": d.get("style") or "", "style_label": d.get("style_label") or "", "style_rank": d.get("style_rank", 99),
                     # how candidates are chosen — the sidebar's primary grouping
                     "behaviour": d.get("behaviour") or "",
                     "behaviour_label": d.get("behaviour_label") or "",

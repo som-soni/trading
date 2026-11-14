@@ -2154,3 +2154,11 @@ dialog.pf-dlg h3 { margin: 0 0 10px; }
 /* the date-range presets on the chart's foot, left, beside the time axis */
 .rng-foot { position: absolute; left: 4px; bottom: 4px; z-index: 6; display: flex; gap: 0; }
 .rng-foot button { height: 20px; padding: 0 7px; font-size: 11.5px; }
+
+/* ---------- Strategies sidebar: what kind of bet each strategy is (app.js STRAT_TAG) */
+.strats-nav .st-tag { flex: none; font-size: 10.5px; font-weight: 600; line-height: 1; padding: 3px 6px; border-radius: 9px;
+  border: 1px solid var(--line-2); color: var(--muted); background: var(--panel-2); white-space: nowrap; }
+.strats-nav .st-tag.st-breakout { color: var(--accent-text); border-color: var(--accent); }
+.strats-nav .st-tag.st-trend { color: var(--strong); }
+.strats-nav .st-tag.st-mean_reversion, .strats-nav .st-tag.st-carry, .strats-nav .st-tag.st-quality_value,
+.strats-nav .st-tag.st-relative_value, .strats-nav .st-tag.st-event_driven { color: var(--up-text); border-color: var(--up); }

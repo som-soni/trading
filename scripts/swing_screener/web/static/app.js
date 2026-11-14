@@ -5610,6 +5610,14 @@ async function strategiesPage(alive, key, tab, mkt, runKey) {
       .map(([m, f]) => `<span class="${f.excess > 0 ? "pos" : "neg"}">${esc(m.flag || m.name)} ${f.excess > 0 ? "+" : ""}${f.excess.toFixed(1)}%</span>`);
     return parts.length ? `<span class="sfull" title="Full period (tuning and hold-out years together): excess CAGR over the index. Context, not a verdict.">full ${parts.join(" ")}</span>` : "";
   };
+  // A tag on every row says what kind of bet the strategy is: for trend/momentum strategies, how it
+  // enters (breakout, trend, pullback, event); for everything else, the behaviour itself, because that
+  // is the difference that matters -- most of the shelf is one trend/momentum bet entered different ways.
+  const STRAT_TAG = { breakout: "Breakout", trend: "Trend", pullback: "Pullback", event: "Event",
+    mean_reversion: "Mean rev.", carry: "Carry", event_driven: "Event", quality_value: "Quality", relative_value: "Pairs" };
+  const tagOf = (x) => (x.behaviour && x.behaviour !== "trend_momentum" ? x.behaviour : x.style);
+  const tag = (x) => { const t = tagOf(x); return STRAT_TAG[t]
+    ? `<span class="st-tag st-${esc(t)}" title="${esc([x.behaviour_label, x.style_label].filter(Boolean).join(" · "))}">${STRAT_TAG[t]}</span>` : ""; };
   const item = (x, sub) => `<a class="nav-item${sub ? " sub" : ""} ${x.key === key ? "active" : ""}" href="#/strategies/${x.key}" title="${esc(x.description || "")}">
       <span><b class="sn">${dot(x)}${esc(x.name)}${ver(x)}</b>${fullLine(x)}<span class="muted small sk">${esc(x.screen_name || "")}</span></span>${x.backtests ? `<span class="n" title="backtests">${x.backtests}</span>` : ""}</a>`;
   // Trading strategies group by style (server order). Within a style they group
